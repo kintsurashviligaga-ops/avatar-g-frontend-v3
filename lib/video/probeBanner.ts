@@ -53,6 +53,11 @@ export function displaysPortrait(p: Pick<BannerProbe, 'width' | 'height' | 'rota
 export interface StreamDurations {
   videoSec: number | null;
   audioSec: number | null;
+  /**
+   * How many packets the picture stream holds — for H.264 in MP4 one packet is one frame, so this is the frame count the
+   * frame-exact QC compares with round(planned × OUTPUT_FPS) (Video Core v1.0 §4). Absent on a reader that does not count.
+   */
+  videoFrames?: number | null;
 }
 
 /**
@@ -64,6 +69,7 @@ export function parseFrameCrc(text: string): StreamDurations {
   const tb = new Map<number, number>();
   const type = new Map<number, string>();
   const span = new Map<number, { start: number; end: number }>();
+  const packets = new Map<number, number>();
   for (const line of String(text ?? '').split(/\r?\n/)) {
     const h = /^#(tb|media_type)\s+(\d+):\s*(\S+)/.exec(line);
     if (h) {
@@ -83,6 +89,7 @@ export function parseFrameCrc(text: string): StreamDurations {
     if (!base) continue;
     const pts = Number(p[3]) * base;
     const end = pts + Number(p[4]) * base;
+    packets.set(s, (packets.get(s) ?? 0) + 1);
     const cur = span.get(s);
     span.set(s, cur ? { start: Math.min(cur.start, pts), end: Math.max(cur.end, end) } : { start: pts, end });
   }
@@ -93,5 +100,9 @@ export function parseFrameCrc(text: string): StreamDurations {
     }
     return null;
   };
-  return { videoSec: lengthOf('video'), audioSec: lengthOf('audio') };
+  const framesOf = (kind: string): number | null => {
+    for (const [s, t] of type) if (t === kind && packets.has(s)) return packets.get(s)!;
+    return null;
+  };
+  return { videoSec: lengthOf('video'), audioSec: lengthOf('audio'), videoFrames: framesOf('video') };
 }

@@ -1,5 +1,5 @@
 import {
-  MAX_EDIT_OUTPUT_SEC, audioFilters, cleanCaption, displayDims, editNameFor, qcEdit,
+  LOUDER_PEAK_LIMIT, MAX_EDIT_OUTPUT_SEC, audioFilters, canonicalJson, cleanCaption, displayDims, editNameFor, qcEdit,
   eraseVf, renderArgs, resolveEdits, validateEditRequest, videoFilters, type EditRequest,
 } from './editPlan';
 import type { BannerProbe } from '@/lib/video/probeBanner';
@@ -110,6 +110,46 @@ describe('validateEditRequest: the stored request passes the quote\'s own checks
     }
   });
 
+  // DEFECT_REGISTER_FINAL row 39, found by the CI E2E on a real Supabase stack: the worker reads the request back from
+  // generation_jobs.params (JSONB), which returns an object's keys shorter-first, and the old check compared the
+  // edits as strings in the order written: every stored trim was refused as `invalid_request`, while 2× passed
+  // (`{ op, factor }` keeps its order). JSON.parse(JSON.stringify()) above keeps the order, so it never showed here.
+  test('a request read back from JSONB, keys in JSONB\'s own order, passes too', () => {
+    // Postgres orders a jsonb object's keys by length, then bytewise (jsonb's uniqueifyJsonbObject).
+    const jsonbOrder = (v: unknown): unknown => {
+      if (Array.isArray(v)) return v.map(jsonbOrder);
+      if (!v || typeof v !== 'object') return v;
+      const keys = Object.keys(v).sort((a, b) => Buffer.byteLength(a) - Buffer.byteLength(b) || Buffer.compare(Buffer.from(a), Buffer.from(b)));
+      return Object.fromEntries(keys.map((k) => [k, jsonbOrder((v as Record<string, unknown>)[k])]));
+    };
+    const trim = jsonbOrder(JSON.parse(JSON.stringify(request([{ op: 'trim', fromSec: 1, toSec: 4 }])))) as EditRequest;
+    expect(Object.keys(trim.edits[0]!)).toEqual(['op', 'toSec', 'fromSec']); // the premise: JSONB does reorder a trim
+    expect(validateEditRequest(trim)).not.toBeNull();
+    for (const asks of [
+      [{ op: 'trim', fromSec: 1.234, toSec: 9.999 }, { op: 'fade', inSec: 0.5, outSec: 0.5 }],
+      [{ op: 'speed', factor: 2 }],
+      [{ op: 'thumbnail', atSec: 29.994 }],
+      [{ op: 'aspect', to: '4:5', fit: 'pad' }, { op: 'caption', text: 'Hello' }, { op: 'volume', db: 3.33 }],
+      [{ op: 'adjust', brightness: 25, warmth: 40 }],
+      [{ op: 'motion', zoom: 'in', shake: true }],
+      [{ op: 'overlay', look: 'grain' }, { op: 'grade', style: 'noir' }],
+      [{ op: 'trim', fromSec: 2, toSec: 12 }, { op: 'erase', boxes: [{ at: 'bottom', lastSec: 4 }] }, { op: 'aspect', to: '1:1' }],
+      [{ op: 'layers', add: [{ kind: 'text', role: 'cta', text: 'Order now', lastSec: 3 }] }],
+    ]) {
+      const stored = jsonbOrder(JSON.parse(JSON.stringify(request(asks)))) as EditRequest;
+      expect({ asks, ok: validateEditRequest(stored) !== null }).toEqual({ asks, ok: true });
+    }
+    // Key order is all it forgives: a changed value is still refused.
+    expect(validateEditRequest({ ...trim, edits: [{ op: 'trim', toSec: 5, fromSec: 1 }] } as unknown as EditRequest)).toBeNull();
+  });
+
+  test('canonicalJson: one string whatever the key order, arrays kept in theirs', () => {
+    expect(canonicalJson({ op: 'trim', toSec: 4, fromSec: 1 })).toBe(canonicalJson({ fromSec: 1, op: 'trim', toSec: 4 }));
+    expect(canonicalJson([{ b: 1, a: { d: 2, c: 3 } }])).toBe('[{"a":{"c":3,"d":2},"b":1}]');
+    expect(canonicalJson([1, 2])).not.toBe(canonicalJson([2, 1]));
+    expect(canonicalJson(null)).toBe('null');
+  });
+
   test('a changed edit, plan or name is refused', () => {
     const req = request([{ op: 'trim', fromSec: 5, toSec: 15 }]);
     expect(validateEditRequest({ ...req, edits: [{ op: 'trim', fromSec: 5, toSec: 25 }] })).toBeNull(); // length no longer matches
@@ -134,7 +174,7 @@ describe('the ffmpeg arguments', () => {
     expect(args).not.toContain('-filter_complex'); // a phone clip keeps its rotation
     const vf = args[args.indexOf('-vf') + 1];
     expect(vf).toBe([
-      'setpts=0.5000*PTS',
+      'setpts=0.5000*PTS,fps=30',
       'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=yuv420p',
       'hue=s=0,eq=contrast=1.25:brightness=-0.02,vignette=PI/4',
       'fade=t=in:st=0:d=1', 'fade=t=out:st=4:d=1', 'format=yuv420p',
@@ -158,6 +198,13 @@ describe('the ffmpeg arguments', () => {
     expect(mute).not.toContain('0:a:0');
     const vol = renderArgs(request([{ op: 'volume', db: -6 }]), 'in', 'out');
     expect(vol).toEqual(expect.arrayContaining(['-c:v', 'copy', '-af', 'volume=-6dB', '-c:a', 'aac']));
+  });
+
+  test('louder holds the peak under full scale; quieter needs no limiter (Production 2026-10-13: +6 dB peaked at +2.4 dBFS)', () => {
+    expect(audioFilters(request([{ op: 'volume', db: 6 }]))).toEqual(['volume=6dB', `alimiter=limit=${LOUDER_PEAK_LIMIT}:level=disabled`]);
+    expect(audioFilters(request([{ op: 'volume', db: -6 }]))).toEqual(['volume=-6dB']);
+    // 2 dB under full scale: the AAC encoder after the limiter overshoots by up to ~1.3 dB (CI 2026-10-13).
+    expect(20 * Math.log10(LOUDER_PEAK_LIMIT)).toBeLessThanOrEqual(-2);
   });
 
   test('a silent source: no sound map, -an', () => {

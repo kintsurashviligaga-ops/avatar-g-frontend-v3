@@ -86,6 +86,23 @@ describe('validateMaster', () => {
     expect(qa.issues).toHaveLength(0);
   });
 
+  test('Video Core v1.0 §4 — a contracted final: exactly its frames, or a critical frame_count_mismatch', () => {
+    const exact = validateMaster({ ...HEALTHY, expectedDurSec: 29.7, actualDurSec: 29.7, expectedFrames: 891, actualFrames: 891 });
+    expect(exact.pass).toBe(true);
+    expect(exact.issues.map((i) => i.code)).not.toContain('frame_count_mismatch');
+    // 29.67 s is inside the ±15 % drift; one frame short is still a failed contract.
+    const short = validateMaster({ ...HEALTHY, expectedDurSec: 29.7, actualDurSec: 29.67, expectedFrames: 891, actualFrames: 890 });
+    expect(short.pass).toBe(false);
+    expect(short.issues).toContainEqual({ code: 'frame_count_mismatch', severity: 'critical', detail: 'master holds 890 frames, the contracted final is 891 (-1)' });
+    expect(validateMaster({ ...HEALTHY, expectedFrames: 720, actualFrames: 721 }).issues[0]).toMatchObject({ code: 'frame_count_mismatch', detail: expect.stringContaining('(+1)') });
+    // The count could not be read: a CRITICAL refusal of its own (round 3, P0) — a check that did not run is not a pass.
+    const unread = validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: null });
+    expect(unread.pass).toBe(false);
+    expect(unread.issues).toContainEqual({ code: 'frame_count_unverified', severity: 'critical', detail: "the master's frames could not be counted (891 expected): the frame-exact check did not run, so the contract is unverified" });
+    // No contract (legacy master): no frame check at all.
+    expect(validateMaster(HEALTHY).issues.map((i) => i.code)).not.toContain('frame_count_mismatch');
+  });
+
   test('multiple criticals still clamp score at 0, never negative', () => {
     const qa = validateMaster({
       ...HEALTHY,
@@ -95,5 +112,53 @@ describe('validateMaster', () => {
     });
     expect(qa.score).toBeGreaterThanOrEqual(0);
     expect(qa.pass).toBe(false);
+  });
+});
+
+describe('the gate — a critical issue withholds the master (Video Core v1.0 §7/§8)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { qcBlockingIssues, describeQcRejection, MasterQaRejected, isMasterQaRejected } = require('./masterQa') as typeof import('./masterQa');
+
+  test('a contracted 29.7 s film that decodes to 890 frames is a critical frame_count_mismatch, and blocking', () => {
+    const qa = validateMaster({ ...HEALTHY, expectedDurSec: 29.7, actualDurSec: 29.7, expectedFrames: 891, actualFrames: 890 });
+    expect(qa.pass).toBe(false);
+    expect(qcBlockingIssues(qa).map((i) => i.code)).toEqual(['frame_count_mismatch']);
+    expect(describeQcRejection(qa)).toMatch(/^frame_count_mismatch: master holds 890 frames, the contracted final is 891 \(-1\)$/);
+  });
+
+  test('exactly 891 frames → nothing blocks; an uncountable master under a contract BLOCKS (frame_count_unverified, round 3 P0)', () => {
+    expect(qcBlockingIssues(validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: 891 }))).toEqual([]);
+    const unread = validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: null });
+    expect(unread.pass).toBe(false);
+    expect(qcBlockingIssues(unread).map((i) => i.code)).toEqual(['frame_count_unverified']);
+    expect(unread.issues.map((i) => `${i.code}:${i.severity}`)).toEqual(['frame_count_unverified:critical']);
+    expect(describeQcRejection(unread)).toMatch(/^frame_count_unverified: the master's frames could not be counted \(891 expected\)/);
+    // Without a contract there is nothing to count against: a legacy master is not refused for an unread count.
+    expect(qcBlockingIssues(validateMaster({ ...HEALTHY, actualFrames: null }))).toEqual([]);
+  });
+
+  test('silent_master and empty_master block too; warnings (drift, bloat, sub-1080p) never do', () => {
+    expect(qcBlockingIssues(validateMaster({ ...HEALTHY, audioPresent: false })).map((i) => i.code)).toEqual(['silent_master']);
+    expect(qcBlockingIssues(validateMaster({ ...HEALTHY, sizeBytes: 10 })).map((i) => i.code)).toEqual(['empty_master']);
+    const warnsOnly = validateMaster({ ...HEALTHY, actualDurSec: 40, sizeBytes: 90_000_000, width: 1280, height: 720 });
+    expect(warnsOnly.pass).toBe(true);
+    expect(warnsOnly.issues.length).toBe(3);
+    expect(qcBlockingIssues(warnsOnly)).toEqual([]);
+    expect(qcBlockingIssues(null)).toEqual([]);
+  });
+
+  test('MasterQaRejected carries the report and the codes, and is recognised across module copies', () => {
+    const qa = validateMaster({ ...HEALTHY, expectedFrames: 720, actualFrames: 722, audioPresent: false });
+    const err = new MasterQaRejected(qa);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe('MasterQaRejected');
+    expect(err.code).toBe('qc_rejected');
+    expect(err.qa).toBe(qa);
+    expect(err.issueCodes).toEqual(['silent_master', 'frame_count_mismatch']);
+    expect(err.message).toMatch(/master rejected by QC \(grade F, score 0\) — silent_master: .*; frame_count_mismatch: master holds 722 frames, the contracted final is 720 \(\+2\)/);
+    expect(isMasterQaRejected(err)).toBe(true);
+    expect(isMasterQaRejected({ code: 'qc_rejected', qa })).toBe(true); // a copy from another module instance
+    expect(isMasterQaRejected(new Error('dispatch stalled'))).toBe(false);
+    expect(isMasterQaRejected(null)).toBe(false);
   });
 });

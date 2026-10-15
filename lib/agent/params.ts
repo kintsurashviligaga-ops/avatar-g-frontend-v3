@@ -37,14 +37,27 @@ const START_PATTERNS: ReadonlyArray<{ re: RegExp; read: (m: RegExpExecArray) => 
   // „5 წამიდან", „5-წამიდან", „მე-5 წამიდან", „58-ე წამიდან" (the owner's Media Studio v2.0 sentence), „5 წმ-დან",
   // „0.58 წამიდან" (0:58)
   { re: new RegExp(`(?:მე-?)?${NUM}(?:\\s*-?\\s*ე)?\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|სეკუნდიდან)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
-  // „0:05-დან", „0.58-დან", „1,30-დან"
-  { re: new RegExp(`(\\d{1,2})[:.,]([0-5]\\d)\\s*-?\\s*დან${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
-  // "from 5 s", "at 5 seconds", "starting at 0:05", "from the 5th second"
-  { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
+  // „0:05-დან", „0.58-დან", „1,30-დან", and with a noun between (Video Core v1.0 §4.2, the owner's „სიმღერა დაიწყე მისი
+  // 0:58 პოზიციიდან"): „0:58 პოზიციიდან", „1:05 ნიშნულიდან", „0:58 მომენტიდან", „0:58 წამიდან"
+  { re: new RegExp(`(\\d{1,2})[:.,]([0-5]\\d)\\s*-?\\s*(?:(?:პოზიცი|ნიშნულ|მომენტ|წამ|წუთ)\\p{L}*)?დან${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
+  // „0:58-ზე დაიწყე", „0:58 წამზე დაიწყოს": the clock the song is started AT
+  { re: new RegExp(`(\\d{1,2})[:.,]([0-5]\\d)(?:\\s*-?\\s*(?:წამ|წუთ)\\p{L}*)?\\s*-?\\s*ზე\\s+(?:დაიწყ|დაწყ|დაადე|ჩართ|ააწყ)`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
+  // "from 5 s", "at 5 seconds", "starting at 0:05", "from the 5th second", "from the 0:58 mark", "from position 0:58"
+  { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?(?:(?:position|mark|point|timestamp)\\s+(?:of\\s+)?)?(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
   { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?${NUM}(?:st|nd|rd|th)?\\s*-?\\s*(?:s|sec|secs|second|seconds)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
-  // „с 5 секунды", „с 5-й секунды", „с 0:05"
-  { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
+  // "at second 58", "from second 58", "starting at sec 58", "at the 58-second mark" (Video Core round 3: the brief's EN
+  // sentence "Start the music at second 58." fell to the chat model while its KA/RU twins were understood)
+  { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?(?:second|sec)\\s+${NUM}${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+the\\s+${NUM}\\s*-?\\s*(?:s|sec|second)\\s+mark${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  // „с 5 секунды", „с 5-й секунды", „с 0:05", «с позиции 0:58», «с отметки 1:05»
+  { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+(?:(?:позиции|отметки|момента|места)\\s+)?(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
   { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+${NUM}\\s*-?\\s*(?:й|ой|ей)?\\s*(?:секунд\\p{L}*|сек\\p{L}*)`, 'iu'), read: (m) => seconds(m[1]!) },
+  // Seconds said to be the TRACK's own (review 2026-10-13, with lib/agent/media/montageAsk asksMusicDelay): "30 seconds
+  // into the song", "after 30 seconds of the song", „სიმღერის 30 წამის შემდეგ", «после 30 секунд песни»
+  { re: new RegExp(`${B0}${NUM}\\s*-?\\s*(?:s|secs?|seconds?)\\s+(?:into|in)\\s+(?:the|this|my)\\s+(?:song|track|music|soundtrack|audio)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  { re: new RegExp(`${B0}after\\s+(?:the\\s+first\\s+)?${NUM}\\s*-?\\s*(?:s|secs?|seconds?)\\s+of\\s+(?:the|this|my)\\s+(?:song|track|music|soundtrack|audio)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  { re: new RegExp(`(?:სიმღერ|ტრეკ|მუსიკ|საუნდტრეკ)\\p{L}*\\s+(?:მე-?)?${NUM}(?:\\s*-?\\s*ე)?\\s*-?\\s*წამის\\s+(?:შემდეგ|მერე)`, 'iu'), read: (m) => seconds(m[1]!) },
+  { re: new RegExp(`${B0}после\\s+(?:первых\\s+)?${NUM}\\s*-?\\s*(?:секунд\\p{L}*|сек\\p{L}*)\\s+(?:песни|трека|музыки|саундтрека)(?!\\p{L})`, 'iu'), read: (m) => seconds(m[1]!) },
 ];
 
 /** The longest track offset anyone needs (an hour) — a pasted number is never a three-day seek. */

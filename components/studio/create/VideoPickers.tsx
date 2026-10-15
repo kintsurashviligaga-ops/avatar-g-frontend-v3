@@ -33,6 +33,7 @@ import {
   spokenVideoDuration,
   videoRoute,
 } from '@/lib/video/duration';
+import { activePlan, describeDurationPlan } from '@/lib/video/durationContract';
 import type { OutputFormat } from '@/lib/veo/types';
 import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import { VIDEO_COPY, vc, type L3 } from './videoCreateCopy';
@@ -43,7 +44,7 @@ const DONE_BTN = 'flex min-h-[52px] w-full items-center justify-center rounded-2
 
 // ── Length ────────────────────────────────────────────────────────────────────────────────────────────────
 
-export function VideoDurationSheet({ open, onClose, locale, seconds, onChange, caps, tier, mode }: {
+export function VideoDurationSheet({ open, onClose, locale, seconds, onChange, caps, tier, mode, requestedSec, joinOverlapSec }: {
   open: boolean;
   onClose: () => void;
   locale: string;
@@ -52,7 +53,13 @@ export function VideoDurationSheet({ open, onClose, locale, seconds, onChange, c
   caps: VideoCapabilities;
   tier: VideoQuality;
   mode: VideoMode;
+  /** Video Core v1.0 §4 — an off-grid length asked in words; the sheet then says requested · rendered · final under the clock. */
+  requestedSec?: number | null;
+  /** The plan's join model: 0 with cuts, 1 s per soft join (lib/video/durationContract joinOverlapFor). */
+  joinOverlapSec?: number;
 }) {
+  const requestPlan = activePlan(requestedSec, seconds, caps, { joinOverlapSec: joinOverlapSec ?? 0 });
+  const finalPlan = requestPlan && requestPlan.deviation === 'trim' ? requestPlan : null;
   const lastOpen = lastOpenStopIndex(caps);
   const index = Math.min(Math.max(0, durationStopIndex(seconds)), lastOpen);
   const firstLocked = VIDEO_DURATION_STOPS[lastOpen + 1];
@@ -68,6 +75,9 @@ export function VideoDurationSheet({ open, onClose, locale, seconds, onChange, c
         <div className="text-center">
           <div data-testid="video-duration-readout" aria-live="polite" className="font-display text-[48px] font-extrabold tabular-nums leading-none text-app-text">{formatVideoClock(seconds)}</div>
           <p className="mt-1.5 text-[13px] text-app-muted">{shape}</p>
+          {finalPlan && (
+            <p data-testid="video-duration-plan-sheet" className="mx-auto mt-2 max-w-[34ch] text-[12.5px] leading-snug tabular-nums text-app-text">{describeDurationPlan(finalPlan, locale)}</p>
+          )}
           <p data-testid="video-duration-price" data-price={price} className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3.5 py-1.5 text-[15px] font-bold tabular-nums text-app-accent">
             <Sparkle size={14} fill="currentColor" strokeWidth={0} aria-hidden="true" />
             <span aria-label={`${vc(VIDEO_COPY.price, locale)}: ${creditsLabel(price, locale)}`}>{price}</span>

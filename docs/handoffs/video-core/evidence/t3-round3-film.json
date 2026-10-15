@@ -1,0 +1,460 @@
+{
+ "ffmpeg": "ffmpeg version 7.0.2-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024 the FFmpeg developers",
+ "sha": "2361153",
+ "node": "v22.22.0",
+ "startedAt": "2026-10-12T12:55:10.299Z",
+ "cases": {
+  "film60s": {
+   "requestedSec": 60,
+   "nativeSec": 64,
+   "finalSec": 60,
+   "expectedFrames": 1800,
+   "inputs": {
+    "count": 8,
+    "clipSec": 8,
+    "fps": 24,
+    "size": "640x360",
+    "measured": [
+     {
+      "fps": 24,
+      "decodedFrames": 192
+     },
+     {
+      "fps": 24,
+      "decodedFrames": 192
+     },
+     {
+      "fps": 24,
+      "decodedFrames": 192
+     },
+     {
+      "fps": 24,
+      "decodedFrames": 192
+     },
+     {
+      "fps": 24,
+      "decodedFrames": 192
+     },
+     {
+      "fps": 24,
+      "decodedFrames": 192
+     },
+     {
+      "fps": 24,
+      "decodedFrames": 192
+     },
+     {
+      "fps": 24,
+      "decodedFrames": 192
+     }
+    ]
+   },
+   "decodedFrames": 1800,
+   "banner": {
+    "durationSec": 60,
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "audio": true
+   },
+   "sizeBytes": 12504339,
+   "hosted": true,
+   "qa": {
+    "pass": true,
+    "score": 100,
+    "grade": "A",
+    "issues": []
+   },
+   "encodeMs": 183718,
+   "encodeArgv": [
+    "-y",
+    "-i",
+    "<asm>/seg0.mp4",
+    "-i",
+    "<asm>/seg1.mp4",
+    "-i",
+    "<asm>/seg2.mp4",
+    "-i",
+    "<asm>/seg3.mp4",
+    "-i",
+    "<asm>/seg4.mp4",
+    "-i",
+    "<asm>/seg5.mp4",
+    "-i",
+    "<asm>/seg6.mp4",
+    "-i",
+    "<asm>/seg7.mp4",
+    "-filter_complex",
+    "[0:v]trim=0:8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v0];[1:v]trim=0:8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v1];[2:v]trim=0:8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v2];[3:v]trim=0:8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v3];[4:v]trim=0:8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v4];[5:v]trim=0:8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v5];[6:v]trim=0:8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v6];[7:v]trim=0:8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v7];[v0][v1][v2][v3][v4][v5][v6][v7]concat=n=8:v=1:a=0[vcat];[vcat]colorbalance=rs=-0.015:bs=0.04:rm=0:bm=0:rh=-0.01:bh=0.03,eq=contrast=1.05:saturation=1.03:gamma=0.98,lut3d=file='<asm>/myavatar-cinematic-teal-orange.cube',vignette=angle=PI/4.2,fade=t=in:st=0:d=0.6,fade=t=out:st=63.40:d=0.60[vfinal];[0:a]atrim=0:8,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na0];[1:a]atrim=0:8,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na1];[2:a]atrim=0:8,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na2];[3:a]atrim=0:8,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na3];[4:a]atrim=0:8,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na4];[5:a]atrim=0:8,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na5];[6:a]atrim=0:8,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na6];[7:a]atrim=0:8,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na7];[na0][na1][na2][na3][na4][na5][na6][na7]concat=n=8:v=0:a=1[natcat];[natcat]volume=0.9[natv];[natv]apad,atrim=0:64.00,asetpts=N/SR/TB,afade=t=in:st=0:d=0.5,afade=t=out:st=63.20:d=0.8,loudnorm=I=-14:TP=-1.5:LRA=11[aout]",
+    "-map",
+    "[vfinal]",
+    "-map",
+    "[aout]",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "ultrafast",
+    "-crf",
+    "20",
+    "-threads",
+    "2",
+    "-pix_fmt",
+    "yuv420p",
+    "-maxrate",
+    "5120k",
+    "-bufsize",
+    "10240k",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "256k",
+    "-ar",
+    "48000",
+    "-t",
+    "60",
+    "-movflags",
+    "+faststart",
+    "<asm>/master.mp4"
+   ],
+   "countArgv": [
+    "-hide_banner",
+    "-nostdin",
+    "-nostats",
+    "-progress",
+    "pipe:1",
+    "-i",
+    "<master>",
+    "-map",
+    "0:v:0",
+    "-fps_mode",
+    "passthrough",
+    "-f",
+    "null",
+    "-"
+   ]
+  },
+  "mixedFps24s": {
+   "requestedSec": 24,
+   "nativeSec": 24,
+   "finalSec": 24,
+   "expectedFrames": 720,
+   "inputs": [
+    {
+     "requestedFps": 24,
+     "decodedFrames": 144,
+     "banner": {
+      "durationSec": 6,
+      "fps": 24,
+      "width": 640,
+      "height": 360,
+      "audio": true
+     },
+     "sizeBytes": 181383
+    },
+    {
+     "requestedFps": 25,
+     "decodedFrames": 150,
+     "banner": {
+      "durationSec": 6,
+      "fps": 25,
+      "width": 640,
+      "height": 360,
+      "audio": true
+     },
+     "sizeBytes": 187718
+    },
+    {
+     "requestedFps": 30,
+     "decodedFrames": 180,
+     "banner": {
+      "durationSec": 6,
+      "fps": 30,
+      "width": 640,
+      "height": 360,
+      "audio": true
+     },
+     "sizeBytes": 186997
+    },
+    {
+     "requestedFps": 60,
+     "decodedFrames": 360,
+     "banner": {
+      "durationSec": 6,
+      "fps": 60,
+      "width": 640,
+      "height": 360,
+      "audio": true
+     },
+     "sizeBytes": 231318
+    }
+   ],
+   "decodedFrames": 720,
+   "banner": {
+    "durationSec": 24,
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "audio": true
+   },
+   "sizeBytes": 5681977,
+   "hosted": true,
+   "qa": {
+    "pass": true,
+    "score": 100,
+    "grade": "A",
+    "issues": []
+   },
+   "encodeArgv": [
+    "-y",
+    "-i",
+    "<asm>/seg0.mp4",
+    "-i",
+    "<asm>/seg1.mp4",
+    "-i",
+    "<asm>/seg2.mp4",
+    "-i",
+    "<asm>/seg3.mp4",
+    "-filter_complex",
+    "[0:v]trim=0:6,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v0];[1:v]trim=0:6,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v1];[2:v]trim=0:6,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v2];[3:v]trim=0:6,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=30,format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v3];[v0][v1][v2][v3]concat=n=4:v=1:a=0[vcat];[vcat]colorbalance=rs=-0.015:bs=0.04:rm=0:bm=0:rh=-0.01:bh=0.03,eq=contrast=1.05:saturation=1.03:gamma=0.98,lut3d=file='<asm>/myavatar-cinematic-teal-orange.cube',vignette=angle=PI/4.2,fade=t=in:st=0:d=0.6,fade=t=out:st=23.40:d=0.60[vfinal];[0:a]atrim=0:6,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na0];[1:a]atrim=0:6,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na1];[2:a]atrim=0:6,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na2];[3:a]atrim=0:6,asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[na3];[na0][na1][na2][na3]concat=n=4:v=0:a=1[natcat];[natcat]volume=0.9[natv];[natv]apad,atrim=0:24.00,asetpts=N/SR/TB,afade=t=in:st=0:d=0.5,afade=t=out:st=23.20:d=0.8,loudnorm=I=-14:TP=-1.5:LRA=11[aout]",
+    "-map",
+    "[vfinal]",
+    "-map",
+    "[aout]",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "ultrafast",
+    "-crf",
+    "20",
+    "-threads",
+    "2",
+    "-pix_fmt",
+    "yuv420p",
+    "-maxrate",
+    "14080k",
+    "-bufsize",
+    "28160k",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "256k",
+    "-ar",
+    "48000",
+    "-t",
+    "24",
+    "-movflags",
+    "+faststart",
+    "<asm>/master.mp4"
+   ]
+  },
+  "vertical9x16": {
+   "requestedSec": 29.7,
+   "nativeSec": 32,
+   "finalSec": 29.7,
+   "expectedFrames": 891,
+   "inputs": [
+    {
+     "width": 360,
+     "height": 640,
+     "fps": 24
+    },
+    {
+     "width": 360,
+     "height": 640,
+     "fps": 24
+    },
+    {
+     "width": 360,
+     "height": 640,
+     "fps": 24
+    },
+    {
+     "width": 360,
+     "height": 640,
+     "fps": 24
+    }
+   ],
+   "decodedFrames": 891,
+   "banner": {
+    "durationSec": 29.7,
+    "fps": 30,
+    "width": 1080,
+    "height": 1920,
+    "audio": true
+   },
+   "width": 1080,
+   "height": 1920,
+   "sizeBytes": 4564105,
+   "hosted": true,
+   "qa": {
+    "pass": true,
+    "score": 100,
+    "grade": "A",
+    "issues": []
+   }
+  },
+  "singleClipNative8s": {
+   "decision": "consolidation-plan D7: delivered as the provider made it (no conform, no new charge) until GG says the grid matters more",
+   "asDelivered": {
+    "decodedFrames": 192,
+    "banner": {
+     "durationSec": 8,
+     "fps": 24,
+     "width": 640,
+     "height": 360,
+     "audio": true
+    },
+    "sizeBytes": 237294,
+    "note": "the clip itself, untouched: 24 fps, not on the 30 fps grid"
+   },
+   "ifConformed": {
+    "decodedFrames": 240,
+    "banner": {
+     "durationSec": 8,
+     "fps": 30,
+     "width": 640,
+     "height": 360,
+     "audio": true
+    },
+    "sizeBytes": 316708,
+    "hosted": true,
+    "cutMs": 552,
+    "note": "cutMasterToLength(url, 8): what one more encode would deliver"
+   }
+  },
+  "clipWithoutAudio": {
+   "requestedSec": 29.7,
+   "inputAudio": [
+    true,
+    true,
+    false,
+    true
+   ],
+   "hosted": true,
+   "uploadsAdded": 1,
+   "outcome": "hosted",
+   "thrown": null,
+   "qa": {
+    "pass": true,
+    "score": 100,
+    "grade": "A",
+    "issues": []
+   },
+   "qaCodes": [],
+   "decodedFrames": 891,
+   "banner": {
+    "durationSec": 29.7,
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "audio": true
+   },
+   "sizeBytes": 6141066,
+   "filtergraph": {
+    "silenceLanes": [
+     2
+    ],
+    "note": "clip indexes whose audio lane the graph built from anullsrc (the clip has no audio stream)"
+   }
+  },
+  "invalidMusic": {
+   "requestedSec": 29.7,
+   "musicBytes": 65536,
+   "hosted": false,
+   "uploadsAdded": 0,
+   "ms": 88,
+   "outcome": "threw",
+   "thrown": {
+    "name": "Error",
+    "isMasterQaRejected": false,
+    "code": 183,
+    "issueCodes": null,
+    "firstLine": "Command failed: /home/claude/avatar-g-frontend-v3/node_modules/ffmpeg-static/ffmpeg -y -i /tmp/asm_R1VB4m/seg0.mp4 -i /tmp/asm_R1VB4m/seg1.mp4 -i /tmp/asm_R1VB4",
+    "ffmpegLines": [
+     "[in#4 @ 0xdc2c340] Error opening input: Invalid data found when processing input",
+     "Error opening input file /tmp/asm_R1VB4m/music.m4a.",
+     "Error opening input files: Invalid data found when processing input"
+    ]
+   },
+   "qa": null,
+   "qaCodes": [],
+   "ffmpegRunsAfterDownload": 1,
+   "decodedFrames": null
+  },
+  "qcRejectThenRetry": {
+   "requestedSec": 29.7,
+   "expectedFrames": 891,
+   "attempt1": {
+    "countedByQc": 890,
+    "thrown": "MasterQaRejected",
+    "code": "qc_rejected",
+    "issueCodes": [
+     "frame_count_mismatch"
+    ],
+    "qa": {
+     "pass": false,
+     "score": 50,
+     "grade": "F",
+     "issues": [
+      {
+       "code": "frame_count_mismatch",
+       "severity": "critical",
+       "detail": "master holds 890 frames, the contracted final is 891 (-1)"
+      }
+     ]
+    },
+    "hosted": false,
+    "ms": 88032
+   },
+   "attempt2": {
+    "decodedFrames": 891,
+    "banner": {
+     "durationSec": 29.7,
+     "fps": 30,
+     "width": 1920,
+     "height": 1080,
+     "audio": true
+    },
+    "sizeBytes": 7419543,
+    "hosted": true,
+    "qa": {
+     "pass": true,
+     "score": 100,
+     "grade": "A",
+     "issues": []
+    },
+    "ms": 86680
+   }
+  },
+  "audioLevels": {
+   "argv": [
+    "-hide_banner",
+    "-nostdin",
+    "-i",
+    "<file>",
+    "-vn",
+    "-af",
+    "volumedetect",
+    "-f",
+    "null",
+    "-"
+   ],
+   "film60sMaster": {
+    "maxDb": -11.2,
+    "meanDb": -16.3,
+    "note": "the stitched master after the filtergraph loudnorm I=-14:TP=-1.5"
+   },
+   "plainSine": {
+    "maxDb": -16.1,
+    "meanDb": -21.1,
+    "note": "sine=frequency=440 as the clips use it, AAC"
+   },
+   "hotSine20dB": {
+    "maxDb": 0,
+    "meanDb": -3.6,
+    "note": "aevalsrc sin() at amplitude 1.0, volume=20dB, AAC — a peak at 0.0 dB is the clip ceiling"
+   }
+  }
+ },
+ "finishedAt": "2026-10-12T13:06:08.691Z"
+}

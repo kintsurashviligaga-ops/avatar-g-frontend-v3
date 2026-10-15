@@ -13,6 +13,7 @@ import {
   failPending,
   heartbeat,
   isLeaseOwned,
+  mustStop,
   reap,
   release,
   settled,
@@ -123,6 +124,38 @@ describe('heartbeat, progress and the end of a run are fenced by the lease', () 
       row.params = { ...row.params, _exec: row.exec };
     };
     expect(await heartbeat(s, 'j1', 'A', now())).toBe('held');
+  });
+
+  test('a read that fails is no lost lease: one dropped read → read again, held; none → unsure', async () => {
+    const s = memoryLeaseStore(now);
+    await put(s);
+    await claim(s, 'j1', 'A', now());
+    t += HEARTBEAT_MS;
+    s.dropReads = 1;
+    expect(await heartbeat(s, 'j1', 'A', now())).toBe('held');
+    expect(s.rows.get('j1')!.exec).toMatchObject({ owner: 'A', leaseUntil: t + LEASE_MS });
+
+    t += HEARTBEAT_MS;
+    s.dropReads = 3; // the database does not answer this beat at all
+    const b = await heartbeat(s, 'j1', 'A', now());
+    expect(b).toBe('unsure');
+    expect(mustStop(b)).toBe(false); // the worker carries on; the lease from the last beat still runs
+    expect(s.rows.get('j1')).toMatchObject({ status: 'processing', exec: { owner: 'A' } });
+
+    s.down = true; // reads answer, writes do not: still no evidence
+    expect(await heartbeat(s, 'j1', 'A', now())).toBe('unsure');
+    s.down = false;
+    // Evidence still stops it at once.
+    expect(mustStop('lost') && mustStop('stopped') && !mustStop('held')).toBe(true);
+  });
+
+  test('a finished worker whose first read fails still delivers (a dropped connection does not cost the render)', async () => {
+    const s = memoryLeaseStore(now);
+    await put(s);
+    await claim(s, 'j1', 'A', now());
+    s.dropReads = 2;
+    expect(await complete(s, 'j1', 'A', { signedUrl: 'https://x/a.mp4', result: {} })).toBe(true);
+    expect(s.rows.get('j1')).toMatchObject({ status: 'completed', signedUrl: 'https://x/a.mp4', exec: { owner: null } });
   });
 
   test('a cancelled row stops its worker: heartbeat says stopped, nothing more lands', async () => {

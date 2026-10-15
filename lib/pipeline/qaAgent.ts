@@ -18,6 +18,7 @@
  * STRICTLY fail-open: a QA error never removes a clip.
  */
 import 'server-only';
+import { fetchPublic, type PublicFetchOptions } from '@/lib/web/publicFetch';
 
 export interface ClipQAResult {
   passed: boolean;
@@ -53,15 +54,22 @@ export async function validateClipQuality(clipUrl: string, _sceneIndex = 0): Pro
 /** Drop clips whose URL is DEFINITIVELY dead (hard 403/404/410) so a single expired URL
  *  can't fail the whole ffmpeg stitch; keep everything else. Probes in parallel, bounded
  *  by a short timeout. FAIL-OPEN: never returns an empty list when given a non-empty one,
- *  and any probe error keeps the clip. Generic over any item carrying a `url`. */
-export async function keepLiveClips<T extends { url: string }>(items: T[]): Promise<T[]> {
+ *  and any probe error keeps the clip. Generic over any item carrying a `url`.
+ *  The probe goes through lib/web/publicFetch (final review 2026-10-13): the URLs are the caller's, so a private or
+ *  local host is never contacted (it is kept, and the ffmpeg download refuses it with the same guard), and every
+ *  redirect hop is checked again. `probeOpts` lets a test inject the fetch and the DNS answer. */
+export async function keepLiveClips<T extends { url: string }>(
+  items: T[],
+  probeOpts: Pick<PublicFetchOptions, 'fetchImpl' | 'lookupImpl'> = {},
+): Promise<T[]> {
   if (!Array.isArray(items) || items.length <= 1) return items; // never risk the only clip
   try {
     const verdicts = await Promise.all(
       items.map(async (it) => {
         try {
-          const res = await fetch(it.url, { method: 'HEAD', signal: AbortSignal.timeout(6_000) });
-          const dead = res.status === 403 || res.status === 404 || res.status === 410;
+          const r = await fetchPublic(it.url, { ...probeOpts, method: 'HEAD', timeoutMs: 6_000 });
+          if (r.ok) void r.res.body?.cancel().catch(() => undefined);
+          const dead = !r.ok && r.error === 'http_error' && (r.status === 403 || r.status === 404 || r.status === 410);
           return { it, dead };
         } catch {
           return { it, dead: false }; // fail-open: keep on any probe error

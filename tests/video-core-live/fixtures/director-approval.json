@@ -1,0 +1,67 @@
+{
+  "storyboard": {
+    "id": "vc-live-board",
+    "title": "A lighthouse keeper at dusk (Video Core live E2E)",
+    "totalDurationSeconds": 16,
+    "shots": [
+      {
+        "id": "s1",
+        "order": 1,
+        "description": "Climb",
+        "prompt": "He climbs.",
+        "durationSeconds": 8,
+        "aspectRatio": "9:16",
+        "quality": "fast"
+      },
+      {
+        "id": "s2",
+        "order": 2,
+        "description": "Lamp",
+        "prompt": "ლამპა ინთება",
+        "durationSeconds": 8,
+        "aspectRatio": "9:16",
+        "quality": "fast"
+      }
+    ],
+    "consistencyLock": {
+      "aspectRatio": "9:16",
+      "enforceAcrossShots": true
+    },
+    "createdAt": "2026-10-13T00:00:00.000Z",
+    "createdBy": "user",
+    "approvedByUser": true
+  },
+  "approval": {
+    "revision": 1,
+    "fingerprint": "da2457c5b0d25887",
+    "sceneCount": 2,
+    "nativeSec": 16,
+    "approvedAt": "2025-10-09T08:53:21.000Z",
+    "board": {
+      "seed": 7,
+      "clipSec": 8,
+      "scenes": [
+        {
+          "ordinal": 1,
+          "beat": "Climb",
+          "prompt": "The keeper climbs the spiral stairs",
+          "frameUrl": null,
+          "edited": false,
+          "anchored": false
+        },
+        {
+          "ordinal": 2,
+          "beat": "Lamp",
+          "prompt": "ლამპა ინთება",
+          "frameUrl": null,
+          "edited": false,
+          "anchored": false
+        }
+      ],
+      "sceneScripts": [
+        "He climbs.",
+        null
+      ]
+    }
+  }
+}

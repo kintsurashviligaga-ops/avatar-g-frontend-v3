@@ -15,7 +15,10 @@
  *     → fail (create it with a migration the owner approves, or don't call it);
  *  2. every known gap is still called and still absent from `production` (a stale entry → fail; delete it, so the
  *     list only shrinks);
- *  3. a file whose `.from()` / `.rpc()` name cannot be read statically is listed in `dynamic`; a new one → fail.
+ *  3. a file whose `.from()` / `.rpc()` name cannot be read statically is listed in `dynamic`; a new one → fail;
+ *  4. a function in `proposed` is called before its migration lands, on purpose: it must be created by a proposal
+ *     SQL file in the repo (docs/handoffs/**\/proposals/) and be absent from Production, and its caller must treat
+ *     "not provisioned" as an answer (lib/orchestrator/idempotencyStore.ts). Once applied, it moves to `production`.
  *
  * When a migration lands in Production, re-read the schema and move the names from `missing` to `production`
  * (the queries are in the snapshot's `note`).
@@ -101,6 +104,7 @@ function scan() {
 const SNAPSHOT: {
   production: { tables: string[]; functions: string[] };
   missing: { tables: string[]; functions: string[] };
+  proposed: { functions: string[] };
   dynamic: string[];
 } = JSON.parse(readFileSync(join(ROOT, '__tests__/schema-drift.snapshot.json'), 'utf8'));
 
@@ -135,7 +139,7 @@ describe('schema drift (code vs the Production schema snapshot)', () => {
   });
 
   test.each(['tables', 'functions'] as const)('no new %s missing in Production', (kind) => {
-    const known = new Set([...SNAPSHOT.production[kind], ...SNAPSHOT.missing[kind]]);
+    const known = new Set([...SNAPSHOT.production[kind], ...SNAPSHOT.missing[kind], ...(kind === 'functions' ? SNAPSHOT.proposed.functions : [])]);
     const added = [...actual[kind]].filter((n) => !known.has(n)).sort();
     // A name here is called by the code but absent from Production. Ship the migration with the owner's approval
     // (then move the name into `production`), or don't call it.
@@ -146,6 +150,23 @@ describe('schema drift (code vs the Production schema snapshot)', () => {
     const stale = SNAPSHOT.missing[kind].filter((n) => !actual[kind].has(n));
     // A name here is good news: no code calls it any more. Delete it from `missing`.
     expect(stale).toEqual([]);
+  });
+
+  test('a proposed function is created by a proposal in the repo, is absent from Production, and is still called', () => {
+    const sql: string[] = [];
+    const find = (p: string): void => {
+      for (const n of readdirSync(p)) {
+        const f = join(p, n);
+        if (statSync(f).isDirectory()) find(f);
+        else if (/\/proposals\/[^/]+\.sql$/.test(rel(f))) sql.push(readFileSync(f, 'utf8'));
+      }
+    };
+    find(join(ROOT, 'docs/handoffs'));
+    for (const name of SNAPSHOT.proposed.functions) {
+      expect({ name, created: sql.some((t) => new RegExp(`create (or replace )?function public\\.${name}\\(`, 'i').test(t)) }).toEqual({ name, created: true });
+      expect({ name, inProduction: SNAPSHOT.production.functions.includes(name) || SNAPSHOT.missing.functions.includes(name) }).toEqual({ name, inProduction: false });
+      expect({ name, called: actual.functions.has(name) }).toEqual({ name, called: true });
+    }
   });
 
   test('no new file hands Supabase a name the scanner cannot read', () => {

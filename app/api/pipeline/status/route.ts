@@ -2,7 +2,7 @@
  * GET /api/pipeline/status?jobId=<id>
  * ===================================
  * Server-Sent Events stream of a pipeline job's live progress, backed by Upstash
- * Redis (`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`). The client opens
+ * Redis (lib/platform/upstashEnv: `KV_REST_API_*` or `UPSTASH_REDIS_REST_*`). The client opens
  * an EventSource on this route for a `jobId` and receives progress events as the
  * agents work, plus a keep-alive heartbeat comment every 30s.
  *

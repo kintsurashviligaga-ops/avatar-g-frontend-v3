@@ -99,3 +99,31 @@ describe('localisation', () => {
     expect(screen.getByText(expected)).toBeTruthy();
   });
 });
+
+describe('measured only (the tray\'s server-observed jobs, Video Core round 3)', () => {
+  it('with no server percent it prints no number, no remaining guess, and an indeterminate bar', () => {
+    const { container } = render(<GenerationProgress kind="video" locale="en" elapsed={40} measuredOnly />);
+    expect(screen.queryByText('%')).toBeNull();
+    expect(screen.queryByText('remaining')).toBeNull();
+    expect(screen.getByText('In progress')).toBeTruthy();
+    expect(container.querySelector('[data-progress="indeterminate"]')).not.toBeNull();
+  });
+  it('the server\'s stage still heads the card', () => {
+    render(<GenerationProgress kind="video" locale="ka" elapsed={40} measuredOnly status="კადრების შეერთება" />);
+    expect(screen.getByText('კადრების შეერთება')).toBeTruthy();
+    expect(screen.queryByText('%')).toBeNull();
+  });
+  it('a real server percent is printed as before', () => {
+    render(<GenerationProgress kind="video" locale="en" elapsed={40} measuredOnly pct={42} />);
+    expect(screen.getByText('42')).toBeTruthy();
+    expect(screen.getByText('%')).toBeTruthy();
+  });
+  it('terminal states are unchanged', () => {
+    render(<GenerationProgress kind="video" locale="en" elapsed={40} measuredOnly state="done" />);
+    expect(screen.getByText('100')).toBeTruthy();
+  });
+  it('without the flag the eased estimate stays (every other studio)', () => {
+    render(<GenerationProgress kind="video" locale="en" elapsed={40} />);
+    expect(screen.getByText('%')).toBeTruthy();
+  });
+});

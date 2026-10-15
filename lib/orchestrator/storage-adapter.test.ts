@@ -3,7 +3,7 @@ jest.mock('server-only', () => ({}));
 // Cut the Supabase import chain (ESM in node_modules) — URL parsing is pure.
 jest.mock('../supabase/server', () => ({ createServiceRoleClient: () => { throw new Error('no client in test'); } }));
 
-import { parseSupabaseObjectUrl } from './storage-adapter';
+import { describeSupabaseObjectUrl, parseSupabaseObjectUrl } from './storage-adapter';
 
 describe('parseSupabaseObjectUrl', () => {
   test('parses a public object URL', () => {
@@ -24,6 +24,36 @@ describe('parseSupabaseObjectUrl', () => {
   test('returns null for malformed input', () => {
     expect(parseSupabaseObjectUrl('not a url')).toBeNull();
     expect(parseSupabaseObjectUrl('https://abc.supabase.co/other/path')).toBeNull();
+  });
+
+  // This deployment's own Supabase host is ours even when it is not a *.supabase.co name (a custom domain, a
+  // self-hosted or local stack). Found by the Video Core CI E2E 2026-10-13: the edit of Agent G's delivered video was
+  // refused as unreadable there because its storage URL parsed as external.
+  const OWN_ELSEWHERE = { SUPABASE_URL: 'https://supabase.video-core-e2e.test:54443' } as unknown as NodeJS.ProcessEnv;
+  const PRODUCTION_SHAPED = {
+    SUPABASE_URL: 'https://zwksnayknzggdcenqqxy.supabase.co',
+    NEXT_PUBLIC_SUPABASE_URL: 'https://zwksnayknzggdcenqqxy.supabase.co',
+  } as unknown as NodeJS.ProcessEnv;
+  const object = (origin: string) => `${origin}/storage/v1/object/sign/renders/montage/a.mp4?token=t`;
+
+  test('the deployment’s own non-*.supabase.co host parses as storage (any port, any case)', () => {
+    expect(parseSupabaseObjectUrl(object('https://supabase.video-core-e2e.test:54443'), OWN_ELSEWHERE)).toEqual({ bucket: 'renders', path: 'montage/a.mp4' });
+    expect(parseSupabaseObjectUrl(object('https://SUPABASE.video-core-e2e.test'), OWN_ELSEWHERE)).toEqual({ bucket: 'renders', path: 'montage/a.mp4' });
+    expect(describeSupabaseObjectUrl(object('https://supabase.video-core-e2e.test:54443'), OWN_ELSEWHERE)).toMatchObject({ host: 'supabase.video-core-e2e.test', access: 'sign', token: 't' });
+  });
+
+  test('any other non-*.supabase.co host stays external, look-alikes included', () => {
+    for (const origin of ['https://evil.example', 'https://supabase.video-core-e2e.test.evil.example', 'https://video-core-e2e.test']) {
+      expect(parseSupabaseObjectUrl(object(origin), OWN_ELSEWHERE)).toBeNull();
+    }
+  });
+
+  test('Production-shaped env: exactly the hosts accepted before (its own host is a *.supabase.co name)', () => {
+    expect(parseSupabaseObjectUrl(object('https://zwksnayknzggdcenqqxy.supabase.co'), PRODUCTION_SHAPED)).not.toBeNull();
+    expect(parseSupabaseObjectUrl(object('https://other-tenant.supabase.co'), PRODUCTION_SHAPED)).not.toBeNull(); // callers check ownStorageHosts
+    expect(parseSupabaseObjectUrl(object('https://zwksnayknzggdcenqqxy.supabase.co.evil.example'), PRODUCTION_SHAPED)).toBeNull();
+    expect(parseSupabaseObjectUrl(object('https://supabase.video-core-e2e.test:54443'), PRODUCTION_SHAPED)).toBeNull();
+    expect(parseSupabaseObjectUrl(object('https://evil.example'), PRODUCTION_SHAPED)).toBeNull();
   });
 });
 

@@ -513,6 +513,18 @@ export function eraseVf(boxes: readonly EraseBox[], frame: { width: number; heig
   return out;
 }
 
+/**
+ * JSON with every object's keys in one order (arrays keep theirs). A stored request comes back from
+ * generation_jobs.params, a JSONB column, in JSONB's own key order (shorter keys first), not in the order resolveEdits
+ * wrote it: `{ op, fromSec, toSec }` is read back as `{ op, toSec, fromSec }`. Compared as written, the worker refused
+ * every stored trim (and every edit whose keys JSONB reorders) as `invalid_request` (DEFECT_REGISTER_FINAL row 39).
+ */
+export function canonicalJson(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) => (x && typeof x === 'object' && !Array.isArray(x)
+    ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, (x as Record<string, unknown>)[k]]))
+    : x));
+}
+
 /** The stored (or returned) request, checked field by field; null when anything is off. */
 export function validateEditRequest(x: unknown): EditRequest | null {
   const r = x as Partial<EditRequest> | null;
@@ -535,10 +547,10 @@ export function validateEditRequest(x: unknown): EditRequest | null {
     width: p.frame?.width ?? p.width, height: p.frame?.height ?? p.height, rotation: 0, videoCodec: p.still ? 'png' : p.copyVideo ? 'h264' : null,
   });
   if (!again.ok) return null;
-  if (JSON.stringify(again.edits) !== JSON.stringify(r.edits)) return null;
+  if (canonicalJson(again.edits) !== canonicalJson(r.edits)) return null;
   if (again.plan.output !== p.output || Math.abs(again.plan.durationSec - p.durationSec) > 0.011) return null;
   if (Boolean(again.plan.clean) !== Boolean(p.clean)) return null;
-  if (JSON.stringify(again.plan.frame ?? null) !== JSON.stringify(p.frame ?? null)) return null;
+  if (canonicalJson(again.plan.frame ?? null) !== canonicalJson(p.frame ?? null)) return null;
   return r as EditRequest;
 }
 
@@ -620,7 +632,10 @@ export function videoFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   const erase = edit(edits, 'erase'), stabilize = edit(edits, 'stabilize'), rotate = edit(edits, 'rotate'), flip = edit(edits, 'flip');
   const motion = edit(edits, 'motion'), adjust = edit(edits, 'adjust');
   const still = plan.output === 'jpg';
-  if (speed) vf.push(setptsFor(speed.factor));
+  // Back on the 30 fps grid right after the re-timing (Video Core round 3, measured): setpts leaves the stream's rate
+  // unknown, the encoder then fell to 25 fps, and a 2× edit of a 6 s 30 fps clip came out 3.04 s / 76 frames with the
+  // picture a frame behind its sound. `fps=30` drops (faster) or repeats (slower) whole frames on the product's grid.
+  if (speed) vf.push(`${setptsFor(speed.factor)},fps=30`);
   // Before the frame changes: the boxes are places of the source as shown.
   if (erase) vf.push(...eraseVf(erase.boxes, plan.frame ?? { width: plan.width, height: plan.height }));
   // Steadied while the picture is still the camera's own (after the fill, which stays where the logo was).
@@ -644,6 +659,14 @@ export function videoFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   return vf;
 }
 
+/**
+ * Peak ceiling after a louder volume (-2 dBFS, linear). Production 2026-10-13: „louder" (+6 dB) on a montage whose peak
+ * was -3.4 dBFS delivered a peak of +2.4 dBFS — clipped sound on every device. The limiter holds the samples it is
+ * given, but the AAC encoder after it adds its own overshoot: with a -1 dBFS ceiling the decoded file still peaked at
+ * +0.27 dBFS in CI (live E2E run 38425457743, the beat montage) and -0.4 dBFS here, so the ceiling leaves 2 dB.
+ */
+export const LOUDER_PEAK_LIMIT = 0.794;
+
 /** The sound chain (`-af`) of the first pass; empty when the sound passes through as it is (still re-encoded to AAC). */
 export function audioFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[] {
   const { edits, plan } = req;
@@ -654,6 +677,7 @@ export function audioFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   if (edit(edits, 'denoise')) af.push(DENOISE_AF);
   if (edit(edits, 'loudness')) af.push(LOUDNESS_AF);
   if (volume) af.push(`volume=${volume.db}dB`);
+  if (volume && volume.db > 0) af.push(`alimiter=limit=${LOUDER_PEAK_LIMIT}:level=disabled`);
   if (fade && fade.inSec > 0) af.push(`afade=t=in:st=0:d=${secArg(fade.inSec)}`);
   if (fade && fade.outSec > 0) af.push(`afade=t=out:st=${secArg(Math.max(0, plan.durationSec - fade.outSec))}:d=${secArg(fade.outSec)}`);
   return af;

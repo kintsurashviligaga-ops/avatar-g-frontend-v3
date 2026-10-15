@@ -97,3 +97,16 @@ describe('ResultCard', () => {
     expect((container.querySelector('[data-testid="result-card"] > div') as HTMLElement).style.aspectRatio).toBe('1 / 1');
   });
 });
+
+describe('ResultCard errorFull (the film\'s refusal reasons, Video Core round 3)', () => {
+  const why = 'The finished video failed its quality check (frame_count_mismatch: counted 890 frames, expected 891). Nothing was delivered or charged.';
+  it('prints the whole sentence, unclamped', () => {
+    render(<ResultCard kind="video" aspect="9:16" state="error" locale="en" error={`⚠️ ${why}`} errorFull />);
+    const p = screen.getByText(why);
+    expect(p.className).not.toMatch(/line-clamp/);
+  });
+  it('without the flag the card keeps its two-line clamp', () => {
+    render(<ResultCard kind="video" aspect="9:16" state="error" locale="en" error={why} />);
+    expect(screen.getByText(why).className).toMatch(/line-clamp-2/);
+  });
+});

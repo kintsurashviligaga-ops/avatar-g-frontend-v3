@@ -1,0 +1,150 @@
+{
+ "ffmpeg": "ffmpeg version 7.0.2-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024 the FFmpeg developers",
+ "cases": {
+  "a_29_7": {
+   "requestedSec": 29.7,
+   "nativeSec": 32,
+   "finalSec": 29.7,
+   "expectedFrames": 891,
+   "decodedFrames": 891,
+   "banner": {
+    "durationSec": 29.7,
+    "fps": 30
+   },
+   "qa": {
+    "pass": true,
+    "score": 100,
+    "grade": "A",
+    "issues": []
+   },
+   "encodeMs": 90101,
+   "countArgv": [
+    "-hide_banner",
+    "-nostdin",
+    "-nostats",
+    "-progress",
+    "pipe:1",
+    "-i",
+    "<master>",
+    "-map",
+    "0:v:0",
+    "-fps_mode",
+    "passthrough",
+    "-f",
+    "null",
+    "-"
+   ]
+  },
+  "b_24": {
+   "contract": {
+    "requestedSec": 24,
+    "nativeSec": 24,
+    "finalSec": 24,
+    "decodedFrames": 720,
+    "banner": {
+     "durationSec": 24,
+     "fps": 30
+    },
+    "qa": {
+     "pass": true,
+     "score": 100,
+     "grade": "A",
+     "issues": []
+    }
+   },
+   "legacyNoContract": {
+    "footageSec": 24,
+    "decodedFrames": 720,
+    "banner": {
+     "durationSec": 30,
+     "fps": 24
+    },
+    "note": "padded to 30 s by cloning the last frame (ffmpeg-filtergraph MASTER_TARGET_SEC); off under a contract"
+   }
+  },
+  "c_refusal": {
+   "joins": "crossfade ×3 (1 s each)",
+   "nativeSec": 32,
+   "stitchedSec": 29,
+   "requestedSec": 29.7,
+   "refused": "longer_than_master",
+   "hosted": false
+  },
+  "e_withheld": {
+   "requestedSec": 29.7,
+   "expectedFrames": 891,
+   "countedFrames": 890,
+   "thrown": "MasterQaRejected",
+   "codes": [
+    "frame_count_mismatch"
+   ],
+   "hosted": false,
+   "qa": {
+    "pass": false,
+    "score": 50,
+    "grade": "F",
+    "issues": [
+     {
+      "code": "frame_count_mismatch",
+      "severity": "critical",
+      "detail": "master holds 890 frames, the contracted final is 891 (-1)"
+     }
+    ]
+   }
+  },
+  "d_single_cut": {
+   "fiveFromSix": {
+    "argv": [
+     "-y",
+     "-i",
+     "<in.mp4>",
+     "-vf",
+     "fps=30",
+     "-t",
+     "5",
+     "-c:v",
+     "libx264",
+     "-preset",
+     "ultrafast",
+     "-crf",
+     "20",
+     "-pix_fmt",
+     "yuv420p",
+     "-c:a",
+     "aac",
+     "-b:a",
+     "192k",
+     "-ar",
+     "48000",
+     "-movflags",
+     "+faststart",
+     "<out.mp4>"
+    ],
+    "decodedFrames": 150,
+    "banner": {
+     "durationSec": 5,
+     "fps": 30
+    }
+   },
+   "twentyNine7From32": {
+    "decodedFrames": 891,
+    "banner": {
+     "durationSec": 29.7,
+     "fps": 30
+    }
+   }
+  },
+  "f_single_cut_gate": {
+   "fiveFromSix": {
+    "hosted": true,
+    "decodedFrames": 150
+   },
+   "forcedOff": {
+    "countedFrames": 149,
+    "expectedFrames": 150,
+    "thrown": true,
+    "hosted": false
+   }
+  }
+ }
+}

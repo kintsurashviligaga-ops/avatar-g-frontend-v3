@@ -35,6 +35,7 @@ import { retrieveContext } from '@/lib/rag/retrieve';
 // (12 scenes) isn't rejected at the API boundary with "Invalid request".
 import { MAX_SEGMENTS } from '@/lib/orchestrator/script-breakdown';
 import { snapFilmGrid } from '@/lib/video/duration';
+import { validateRenderApproval, describeApprovalRefusal } from '@/lib/video/storyboard/revision';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -130,6 +131,30 @@ const orchestrateSchema = z.object({
   // The director's per-scene provenance from the storyboard (structured camera, lighting, mood, location). It used
   // to be computed and then dropped by the client, so the render re-derived every shot from a beat ladder.
   sceneMeta: SceneMetaSchema.optional(),
+  // Video Core v1.0 §5 — the storyboard approval the render was started from: the revision number, its fingerprint, and the
+  // board it was taken from. The route re-fingerprints that board and checks the render's frames, scripts, scene count and
+  // clip length against it (lib/video/storyboard/revision → validateRenderApproval); a render that is not the approved
+  // board is refused BEFORE any clip is dispatched or charged. Optional: a render without a storyboard carries none.
+  storyboardApproval: z.object({
+    revision: z.number().int().min(1).max(100_000),
+    fingerprint: z.string().regex(/^[0-9a-f]{16}$/),
+    sceneCount: z.number().int().min(1).max(MAX_SEGMENTS),
+    nativeSec: z.number().min(1).max(600),
+    approvedAt: z.string().max(40),
+    board: z.object({
+      seed: z.number().int().min(0),
+      clipSec: z.number().min(1).max(60).optional(),
+      scenes: z.array(z.object({
+        ordinal: z.number().int().min(0),
+        beat: z.string().max(400),
+        prompt: z.string().max(4000),
+        frameUrl: z.string().max(4096).nullable(),
+        edited: z.boolean().optional(),
+        anchored: z.boolean().optional(),
+      })).min(1).max(MAX_SEGMENTS),
+      sceneScripts: z.array(z.string().max(4000).nullable()).max(MAX_SEGMENTS).nullable().optional(),
+    }),
+  }).optional(),
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
@@ -201,6 +226,33 @@ export async function POST(req: NextRequest) {
       );
     }
     if (filmGrid.snapped) data.clipSec = filmGrid.clipSec;
+
+    // Video Core v1.0 §5 — a render started from a storyboard must BE that storyboard. The approval's board is
+    // re-fingerprinted here and the render's inputs are checked against it; a mismatch (the board edited after the
+    // approval, another board's approval, frames or scripts that are not the board's) is a 400 with the reason, and
+    // nothing is dispatched or charged. Said in the user's words (ka · en · ru) so the studio can show it as is.
+    if (data.storyboardApproval) {
+      const verdict = validateRenderApproval(data.storyboardApproval, {
+        sceneFrames: data.sceneFrames ?? null,
+        sceneScripts: data.sceneScripts ?? null,
+        sceneCount: data.sceneCount ?? null,
+        clipSec: data.clipSec ?? null,
+      });
+      if (!verdict.ok) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'revision_mismatch',
+            reason: verdict.reason,
+            revision: verdict.revision,
+            fingerprint: verdict.fingerprint,
+            message: describeApprovalRefusal(verdict, data.locale === 'en' || data.locale === 'ru' ? data.locale : 'ka'),
+            detail: verdict.detail,
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     // The gate's auth (getAuthContext → createServerClient) only reads the SSR COOKIE
     // session — correct for the browser UI, which is how logged-in users already get the
@@ -309,9 +361,12 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.sceneCount || data.clipSec || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.templateId || data.characterLock || data.veo || data.sceneMeta?.length)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.sceneCount || data.clipSec || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.templateId || data.characterLock || data.veo || data.sceneMeta?.length || data.storyboardApproval)
         ? {
             ...(data.metadata || {}),
+            // Video Core v1.0 §5 — the approval the render was started from rides with the job (number + fingerprint +
+            // when; the board itself was checked above and is not carried): a delivered film names the board it came from.
+            ...(data.storyboardApproval ? { storyboardApproval: { revision: data.storyboardApproval.revision, fingerprint: data.storyboardApproval.fingerprint, sceneCount: data.storyboardApproval.sceneCount, nativeSec: data.storyboardApproval.nativeSec, approvedAt: data.storyboardApproval.approvedAt } } : {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
             ...(data.orientation ? { orientation: data.orientation } : {}),
             ...(data.sceneFrames?.length ? { sceneFrames: data.sceneFrames } : {}),

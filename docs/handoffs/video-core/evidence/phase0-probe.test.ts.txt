@@ -1,0 +1,56 @@
+/**
+ * Video Core v1.0 PHASE 0 — reproduction probe of the historical duration defects on the current SHA.
+ * Not a regression suite: it prints what the code does today so the defect register starts from facts.
+ */
+import { mineDurationSec } from '@/lib/chat/studioIntent';
+import { mineMusicStart, mineParams, mineTotalDurationSec } from '@/lib/agent/params';
+import { snapVideoSeconds, videoRoute, sceneCountForSeconds } from '@/lib/video/duration';
+import { classifyAgentIntent } from '@/lib/agent/intent';
+import { appendFileSync } from 'node:fs';
+const OUT = process.env.REPRO_OUT || '/tmp/claude-0/repro.json';
+const dump = (label: string, v: unknown) => appendFileSync(OUT, `\n=== ${label}\n${JSON.stringify(v, null, 1)}\n`);
+
+const DUR = [
+  '24-წამიანი კლიპი', 'ერთი წუთი', 'ერთწუთიანი ვიდეო', '60 წამი', 'ოთხწუთიანი ვიდეო', '4 წუთი', '240 წამი',
+  '29.7 წამი', '29,7 წამი', '29.7-წამიანი კლიპი', 'ვიდეო 70 წამი იყოს',
+  'one minute video', 'one-minute clip', 'a four-minute film', '60 seconds', '29.7 seconds', '2 min 30 s',
+  'одноминутное видео', 'четырёхминутный ролик', 'одна минута', '60 секунд', '29,7 секунды', '4 минуты',
+  'ამ ხუთი ვიდეოდან გააკეთე 29.7-წამიანი კლიპი, მუსიკა დაიწყე 0:59-დან, გამოიყენე 9:16 ფორმატი და ბოლოს დაამატე ჩემი ლოგო.',
+  'ვიდეო 70 წამი იყოს. სიმღერა დაიწყე მისი 0:58 პოზიციიდან.',
+  'სიმღერა 0:59-დან დაიწყე',
+];
+
+describe('PHASE 0 probe: durations as the current code reads them', () => {
+  it('prints the table', () => {
+    const rows = DUR.map((t) => ({
+      text: t,
+      mineDurationSec: mineDurationSec(t),
+      mineTotalDurationSec: mineTotalDurationSec(t),
+      musicStart: mineMusicStart(t)?.sec,
+      params: mineParams(t),
+    }));
+    dump('durations', rows);
+    expect(rows.length).toBe(DUR.length);
+  });
+
+  it('prints the film grid snaps', () => {
+    const out = [24, 29.7, 60, 70, 96, 100, 104, 240].map((s) => ({ s, snap: snapVideoSeconds(s), route: videoRoute(s), scenes: sceneCountForSeconds(s) }));
+    dump('grid', out);
+    expect(out.length).toBe(8);
+  });
+
+  it('prints the intents', () => {
+    const cases: Array<{ text: string; attachments?: Array<'video' | 'audio' | 'image'> }> = [
+      { text: '24-წამიანი მუსიკალური კლიპი გამიკეთე' },
+      { text: '24-second music video please' },
+      { text: 'сделай 24-секундный музыкальный клип' },
+      { text: 'ერთწუთიანი ვიდეო გამიკეთე ზღვაზე' },
+      { text: 'ოთხწუთიანი ფილმი გამიკეთე თბილისზე' },
+      { text: 'ამ ხუთი ვიდეოდან გააკეთე 29.7-წამიანი კლიპი, მუსიკა დაიწყე 0:59-დან, გამოიყენე 9:16 ფორმატი და ბოლოს დაამატე ჩემი ლოგო.', attachments: ['video', 'video', 'video', 'video', 'video', 'audio', 'image'] },
+      { text: 'შვიდი კლიპიდან გამოიყენე მხოლოდ ბოლო ხუთი', attachments: ['video', 'video', 'video', 'video', 'video', 'video', 'video', 'audio'] },
+    ];
+    const out = cases.map((c) => ({ text: c.text, intent: classifyAgentIntent({ text: c.text, attachments: c.attachments ?? [] }) }));
+    dump('intents', out);
+    expect(out.length).toBe(cases.length);
+  });
+});

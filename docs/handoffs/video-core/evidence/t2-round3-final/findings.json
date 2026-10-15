@@ -1,0 +1,254 @@
+[
+  {
+    "id": "intent-mv24-plan-mode-ka",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ka] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"შექმენი 24-წამიანი მუსიკალური კლიპი.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
+  },
+  {
+    "id": "intent-exact-297-ka",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ka] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"ვიდეო ზუსტად 29.7 წამი უნდა იყოს.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
+  },
+  {
+    "id": "intent-exact-297-files-ka",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ka] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
+    "text": "\"ვიდეო ზუსტად 29.7 წამი უნდა იყოს.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
+  },
+  {
+    "id": "intent-mv24-plan-mode-en",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[en] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"Make a 24-second music video.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
+  },
+  {
+    "id": "intent-exact-297-en",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[en] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"The video must be exactly 29.7 seconds.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
+  },
+  {
+    "id": "intent-exact-297-files-en",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[en] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
+    "text": "\"The video must be exactly 29.7 seconds.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
+  },
+  {
+    "id": "intent-mv24-plan-mode-ru",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ru] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"Сделай 24-секундный музыкальный клип.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
+  },
+  {
+    "id": "intent-exact-297-ru",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ru] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"Видео должно быть ровно 29.7 секунды.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
+  },
+  {
+    "id": "intent-exact-297-files-ru",
+    "project": "desktop",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ru] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
+    "text": "\"Видео должно быть ровно 29.7 секунды.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
+  },
+  {
+    "id": "card-progressbar-no-pct",
+    "project": "desktop",
+    "spec": "cards.spec.ts",
+    "test": "a running montage shows its stage and no \"%\" when the server sends no percent; Stop is offered",
+    "text": "With pct null from the server the running montage card prints no \"%\" (stage \"Joining the shots\" on the active step); its progressbar reports aria-valuenow=0 (seeded 0 by confirmAgentMontage, never advanced without a server pct)."
+  },
+  {
+    "id": "montage-no-save-to-library",
+    "project": "desktop",
+    "spec": "flows.spec.ts",
+    "test": "download: a finished montage's Download fetches the master and hands the browser a file",
+    "text": "The montage result offers Download, Share and Edit but no \"Save to library\" — by design (components/studio/OmniStudio.tsx ~9686: \"the montage job is already a Library item\"); the client posts nothing to /api/studio/library (0 saves). The server-side filing itself cannot be seen with mocks. Download file name: myavatar-montage-1791885135466.webm."
+  },
+  {
+    "id": "nav-reload-tool",
+    "project": "desktop",
+    "spec": "navigation.spec.ts",
+    "test": "chat → Video through the sidebar row; the mode switch holds across a chat round-trip; a reload resets it",
+    "text": "After a reload the dashboard opens on the chat (the open tool is not persisted); the Video mode comes back as \"documentary\" (the music-video pick is NOT persisted — components/studio/OmniStudio.tsx:2584 keeps videoMode in component state only)."
+  },
+  {
+    "id": "nav-tool-param-stripped",
+    "project": "desktop",
+    "spec": "navigation.spec.ts",
+    "test": "a ?tool=video link opens the Video tool; the param is taken off the URL, so Back/Forward carry no tool",
+    "text": "?tool=video opens the Video tool, then history.replaceState drops the param (URL now \"/en/dashboard\"; components/studio/OmniStudio.tsx:3549). The history entry therefore carries no tool for Back/Forward to restore."
+  },
+  {
+    "id": "nav-back-forward",
+    "project": "desktop",
+    "spec": "navigation.spec.ts",
+    "test": "a ?tool=video link opens the Video tool; the param is taken off the URL, so Back/Forward carry no tool",
+    "text": "Back landed on \"/en/dashboard\" with the Video panel closed (the tool opened by ?tool=video is not restored); Forward landed on \"/en/dashboard\" with the Video panel closed. mobile=false."
+  },
+  {
+    "id": "nav-reload-conversation",
+    "project": "desktop",
+    "spec": "navigation.spec.ts",
+    "test": "a reload opens a fresh chat; the conversation is in History and reopens from there",
+    "text": "After a reload the thread is EMPTY: the studio opens a new, empty conversation on every visit by design (components/studio/OmniStudio.tsx:1440-1455 currentConversationId — only an explicit History pick, OMNI_RESUME_KEY, reopens one); the conversation is listed in History."
+  },
+  {
+    "id": "nav-attachments-on-switch",
+    "project": "desktop",
+    "spec": "navigation.spec.ts",
+    "test": "switching conversations in the sidebar keeps results scoped: a new session shows none, reopening shows them again",
+    "text": "A clip attached in the composer of the new session is parked with its own session when the earlier conversation is reopened (the composer is per conversation). Results (the montage card and its master) are scoped to their conversation."
+  },
+  {
+    "id": "storyboard-mismatch-retry",
+    "project": "desktop",
+    "spec": "storyboard.spec.ts",
+    "test": "Generate sends the approval of the board on screen (fingerprint recomputed here); a revision_mismatch is refused with Retry and nothing runs after it",
+    "text": "After a revision_mismatch the error card's Retry plans a NEW storyboard (POST /api/film/storyboard planOnly) for the user to approve again; the refused dispatch is never re-sent (orchestrate stayed at 1, assemble at 0). Message shown: \"the storyboard changed after it was approved (revision 2 · 0…\"."
+  },
+  {
+    "id": "director-mismatch-no-retry",
+    "project": "desktop",
+    "spec": "storyboard.spec.ts",
+    "test": "the director path posts the same approval; its revision_mismatch is shown with the message and Edit storyboard, nothing is dispatched",
+    "text": "The director path's revision_mismatch is shown with the server message and \"Edit storyboard\" / Close — no Retry button (components/studio/video/DirectorRunOverlay.tsx refused state); the way back is the board itself."
+  },
+  {
+    "id": "intent-mv24-plan-mode-ka",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ka] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"შექმენი 24-წამიანი მუსიკალური კლიპი.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
+  },
+  {
+    "id": "intent-exact-297-ka",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ka] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"ვიდეო ზუსტად 29.7 წამი უნდა იყოს.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
+  },
+  {
+    "id": "intent-exact-297-files-ka",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ka] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
+    "text": "\"ვიდეო ზუსტად 29.7 წამი უნდა იყოს.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
+  },
+  {
+    "id": "intent-mv24-plan-mode-en",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[en] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"Make a 24-second music video.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
+  },
+  {
+    "id": "intent-exact-297-en",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[en] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"The video must be exactly 29.7 seconds.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
+  },
+  {
+    "id": "intent-exact-297-files-en",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[en] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
+    "text": "\"The video must be exactly 29.7 seconds.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
+  },
+  {
+    "id": "intent-mv24-plan-mode-ru",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ru] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"Сделай 24-секундный музыкальный клип.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
+  },
+  {
+    "id": "intent-exact-297-ru",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ru] the five sentences alone: which open the Video tool with the plan said, which are chat",
+    "text": "\"Видео должно быть ровно 29.7 секунды.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
+  },
+  {
+    "id": "intent-exact-297-files-ru",
+    "project": "mobile",
+    "spec": "agent-g-intents.spec.ts",
+    "test": "[ru] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
+    "text": "\"Видео должно быть ровно 29.7 секунды.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
+  },
+  {
+    "id": "card-progressbar-no-pct",
+    "project": "mobile",
+    "spec": "cards.spec.ts",
+    "test": "a running montage shows its stage and no \"%\" when the server sends no percent; Stop is offered",
+    "text": "With pct null from the server the running montage card prints no \"%\" (stage \"Joining the shots\" on the active step); its progressbar reports aria-valuenow=0 (seeded 0 by confirmAgentMontage, never advanced without a server pct)."
+  },
+  {
+    "id": "montage-no-save-to-library",
+    "project": "mobile",
+    "spec": "flows.spec.ts",
+    "test": "download: a finished montage's Download fetches the master and hands the browser a file",
+    "text": "The montage result offers Download, Share and Edit but no \"Save to library\" — by design (components/studio/OmniStudio.tsx ~9686: \"the montage job is already a Library item\"); the client posts nothing to /api/studio/library (0 saves). The server-side filing itself cannot be seen with mocks. Download file name: myavatar-montage-1791885648379.webm."
+  },
+  {
+    "id": "nav-reload-tool",
+    "project": "mobile",
+    "spec": "navigation.spec.ts",
+    "test": "chat → Video through the sidebar row; the mode switch holds across a chat round-trip; a reload resets it",
+    "text": "After a reload the dashboard opens on the chat (the open tool is not persisted); the Video mode comes back as \"documentary\" (the music-video pick is NOT persisted — components/studio/OmniStudio.tsx:2584 keeps videoMode in component state only)."
+  },
+  {
+    "id": "nav-tool-param-stripped",
+    "project": "mobile",
+    "spec": "navigation.spec.ts",
+    "test": "a ?tool=video link opens the Video tool; the param is taken off the URL, so Back/Forward carry no tool",
+    "text": "?tool=video opens the Video tool, then history.replaceState drops the param (URL now \"/en/dashboard\"; components/studio/OmniStudio.tsx:3549). The history entry therefore carries no tool for Back/Forward to restore."
+  },
+  {
+    "id": "nav-back-forward",
+    "project": "mobile",
+    "spec": "navigation.spec.ts",
+    "test": "a ?tool=video link opens the Video tool; the param is taken off the URL, so Back/Forward carry no tool",
+    "text": "Back landed on \"/en/dashboard\" with the Video panel closed (the tool opened by ?tool=video is not restored); Forward landed on \"/en/dashboard\" with the Video panel closed. mobile=true."
+  },
+  {
+    "id": "nav-reload-conversation",
+    "project": "mobile",
+    "spec": "navigation.spec.ts",
+    "test": "a reload opens a fresh chat; the conversation is in History and reopens from there",
+    "text": "After a reload the thread is EMPTY: the studio opens a new, empty conversation on every visit by design (components/studio/OmniStudio.tsx:1440-1455 currentConversationId — only an explicit History pick, OMNI_RESUME_KEY, reopens one); the conversation is listed in History."
+  },
+  {
+    "id": "nav-attachments-on-switch",
+    "project": "mobile",
+    "spec": "navigation.spec.ts",
+    "test": "switching conversations in the sidebar keeps results scoped: a new session shows none, reopening shows them again",
+    "text": "A clip attached in the composer of the new session is parked with its own session when the earlier conversation is reopened (the composer is per conversation). Results (the montage card and its master) are scoped to their conversation."
+  },
+  {
+    "id": "storyboard-mismatch-retry",
+    "project": "mobile",
+    "spec": "storyboard.spec.ts",
+    "test": "Generate sends the approval of the board on screen (fingerprint recomputed here); a revision_mismatch is refused with Retry and nothing runs after it",
+    "text": "After a revision_mismatch the error card's Retry plans a NEW storyboard (POST /api/film/storyboard planOnly) for the user to approve again; the refused dispatch is never re-sent (orchestrate stayed at 1, assemble at 0). Message shown: \"the storyboard changed after it was approved (revision 2 · 0…\"."
+  },
+  {
+    "id": "director-mismatch-no-retry",
+    "project": "mobile",
+    "spec": "storyboard.spec.ts",
+    "test": "the director path posts the same approval; its revision_mismatch is shown with the message and Edit storyboard, nothing is dispatched",
+    "text": "The director path's revision_mismatch is shown with the server message and \"Edit storyboard\" / Close — no Retry button (components/studio/video/DirectorRunOverlay.tsx refused state); the way back is the board itself."
+  }
+]

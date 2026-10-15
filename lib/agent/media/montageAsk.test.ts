@@ -3,7 +3,7 @@ jest.mock('../../admin/guard', () => ({ isAdminUser: (u: { app_metadata?: { role
 
 import type { User } from '@supabase/supabase-js';
 import type { BannerProbe } from '@/lib/video/probeBanner';
-import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, rampOf, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, pickTracks, qcAvSync, qcClips, qcMaster, soundOf, sortInputs, sourceContribution, transitionAsk, wantsBeatCuts } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, rampOf, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, pickTracks, qcAvSync, qcClips, qcMaster, soundOf, sortInputs, sourceContribution, transitionAsk, wantsBeatCuts, asksMusicDelay } from './montageAsk';
 import { checkCoverage, parseAgentRequest, type MontageManifestItem } from './montageManifest';
 import { planBeatCuts } from '@/lib/services/montage/beatPlan';
 import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC, timelineDuration } from '@/lib/services/montage/montagePlan';
@@ -146,11 +146,24 @@ describe('per-clip contribution QC (owner, 2026-10-11)', () => {
   });
 
   test('A/V: picture and sound present, the picture as long as planned, the sound ending with the picture', () => {
-    expect(qcAvSync({ videoSec: 30, audioSec: 29.9 }, 30)).toMatchObject({ ok: true });
-    expect(qcAvSync({ videoSec: 30, audioSec: null }, 30).problems).toEqual(['no soundtrack stream']);
-    expect(qcAvSync({ videoSec: 30, audioSec: 28 }, 30).problems).toEqual(['sound 28.00s against picture 30.00s']);
-    expect(qcAvSync({ videoSec: 20, audioSec: 20 }, 30).problems).toEqual(['picture 20.00s, planned 30.00s']);
+    expect(qcAvSync({ videoSec: 30, audioSec: 29.9, videoFrames: 900 }, 30)).toMatchObject({ ok: true });
+    expect(qcAvSync({ videoSec: 30, audioSec: null, videoFrames: 900 }, 30).problems).toEqual(['no soundtrack stream']);
+    expect(qcAvSync({ videoSec: 30, audioSec: 28, videoFrames: 900 }, 30).problems).toEqual(['sound 28.00s against picture 30.00s']);
+    expect(qcAvSync({ videoSec: 20, audioSec: 20, videoFrames: 600 }, 30).problems).toEqual(['picture 20.00s, planned 30.00s', 'picture 600 frames, planned 900 (30.000s at 30 fps)']);
     expect(qcAvSync(null, 30)).toMatchObject({ ok: false });
+  });
+
+  test('A/V, frame-exact (Video Core v1.0 §4): with the packets counted, the master holds round(planned × 30) frames or fails', () => {
+    expect(qcAvSync({ videoSec: 70, audioSec: 70, videoFrames: 2100 }, 70)).toMatchObject({ ok: true, videoFrames: 2100, plannedFrames: 2100 });
+    expect(qcAvSync({ videoSec: 29.7, audioSec: 29.7, videoFrames: 891 }, 29.7)).toMatchObject({ ok: true, plannedFrames: 891 });
+    // The container says 70 s (inside the 3 % tolerance) but one frame is missing: not delivered.
+    expect(qcAvSync({ videoSec: 69.967, audioSec: 70, videoFrames: 2099 }, 70).problems).toEqual(['picture 2099 frames, planned 2100 (70.000s at 30 fps)']);
+    expect(qcAvSync({ videoSec: 29.7, audioSec: 29.7, videoFrames: 892 }, 29.7)).toMatchObject({ ok: false });
+    // Round 3 (P0): a reader that did not count the frames leaves the length UNVERIFIED — that is a failure, not a pass.
+    expect(qcAvSync({ videoSec: 30, audioSec: 30 }, 30)).toMatchObject({ ok: false, videoFrames: null, plannedFrames: 900, problems: ['picture frames not counted, planned 900: the frame-exact check did not run'] });
+    expect(qcAvSync({ videoSec: 30, audioSec: 30, videoFrames: null }, 30)).toMatchObject({ ok: false, videoFrames: null });
+    // No picture at all is said as that (not as an uncounted one as well).
+    expect(qcAvSync({ videoSec: null, audioSec: 30 }, 30).problems).toEqual(['no picture stream']);
   });
 });
 
@@ -365,6 +378,44 @@ describe('the sound of a montage, in the user\'s words', () => {
     // „უხმოდ" said of the music only, with a track: the track stays
     ['cut these to the music', false, 'own'],
   ] as const)('%s (music sent: %s) → %s', (text, hasMusic, mode) => expect(soundOf(text, hasMusic)).toBe(mode));
+
+  describe('asksMusicDelay — a later start ON THE TIMELINE is told apart from an offset INTO the track (round 3, AC-23)', () => {
+    test.each([
+      'დაამონტაჟე, მუსიკა ვიდეოს მე-5 წამიდან დაიწყოს',
+      'მუსიკა მონტაჟის 3 წამიდან ჩართე',
+      'მუსიკა მოგვიანებით შემოდიოდეს',
+      'მუსიკა 3 წამის შემდეგ დაიწყოს',
+      'პირველი 5 წამი მუსიკის გარეშე, მერე ტრეკი',
+      'start the music 5 seconds into the video',
+      'delay the track by 3 seconds',
+      'the song comes in later',
+      'music only from the 5th second of the edit',
+      'no music for the first 4 seconds',
+      'музыка с 5-й секунды видео',
+      'музыку позже, не сразу',
+      'задержи трек на 3 секунды',
+      'первые 5 секунд без музыки',
+    ])('%s → true', (t) => expect(asksMusicDelay(t)).toBe(true));
+    test.each([
+      'მუსიკა დაიწყე 58-ე წამიდან',
+      'სიმღერა ზუსტად 0.58 წამიდან დაადე',
+      'ამ ვიდეოებიდან 20-წამიანი კლიპი, მუსიკა 5 წამიდან დაიწყე',
+      'music from 5 seconds',
+      'start the track at 0:58',
+      'a 20-second reel to this song',
+      'музыка с 5 секунды',
+      'cut these to the music',
+      'ვიდეოს მე-5 წამიდან გაჭერი', // a cut point, no music word
+      // review 2026-10-13 (finding H): seconds of the TRACK are an offset into it, not a later start (the PR head said true)
+      'music starts after 30 seconds of the song',
+      'the track kicks in after 20 seconds into the song',
+      'მუსიკა სიმღერის 30 წამის შემდეგ დაიწყოს',
+    ])('%s → false', (t) => expect(asksMusicDelay(t)).toBe(false));
+    test('a start anchored to the video stays a delay even with the track offset in the same message', () => {
+      expect(asksMusicDelay('start the music 5 seconds into the video, from 0:30 of the song')).toBe(true);
+      expect(asksMusicDelay('მუსიკა ვიდეოს მე-5 წამიდან, სიმღერის 30 წამიდან')).toBe(true);
+    });
+  });
 
   test('pickTracks: the recording named as one is the narration; else the one with a beat is the music', () => {
     const song = { index: 2, name: 'song.mp3', durationSec: 180, grid: { bpm: 120, periodSec: 0.5, phaseSec: 0, confidence: 0.6 } };

@@ -188,6 +188,35 @@ describe('resolveCallerMedia: URLs', () => {
   });
 });
 
+describe('resolveCallerMedia: this deployment’s own Supabase host is not a *.supabase.co name', () => {
+  // A custom domain, a self-hosted or a local stack (the Video Core CI E2E, 2026-10-13): Agent G's delivered video is
+  // a signed URL on that host, and its edit must resolve it as ours, under the same ownership rules.
+  const OWN = 'https://supabase.video-core-e2e.test:54443';
+  const ELSEWHERE = { SUPABASE_URL: OWN, NEXT_PUBLIC_SUPABASE_URL: OWN } as unknown as NodeJS.ProcessEnv;
+  const own = (bucket: string, path: string, token = 'tok') => `${OWN}/storage/v1/object/sign/${bucket}/${path}?token=${token}`;
+  const there = (over: Partial<CallerMediaDeps> = {}) => deps({ env: ELSEWHERE, sign: async (b, p, ttl) => { signs.push({ bucket: b, path: p, ttl }); return own(b, p, 'FRESH'); }, ...over });
+
+  test('the caller’s own Library row vouches: re-signed on that host', async () => {
+    jobRows.push({ user_id: ME, signed_url: own('renders', 'montage/m1.mp4', 'old'), params: {} });
+    await expect(resolveCallerMedia(own('renders', 'montage/m1.mp4', 'old'), ME, 900, there({ recordedFor: undefined })))
+      .resolves.toEqual({ ok: true, url: own('renders', 'montage/m1.mp4', 'FRESH'), own: true });
+  });
+
+  test('another account’s object there is refused, nothing signed', async () => {
+    jobRows.push({ user_id: YOU, signed_url: own('renders', 'montage/m2.mp4'), params: {} });
+    await expect(resolveCallerMedia(own('renders', 'montage/m2.mp4', 'dead'), ME, 900, there({ recordedFor: undefined })))
+      .resolves.toEqual({ ok: false, reason: 'not_owner' });
+    await expect(firstUnreadableOwnUrl([own('renders', 'montage/m2.mp4', 'dead')], ME, there({ recordedFor: undefined }))).resolves.toBe(0);
+    expect(signs).toEqual([]);
+  });
+
+  test('with Production’s own *.supabase.co host, the same URL is external as before (never signed)', async () => {
+    const u = own('renders', 'montage/m1.mp4');
+    await expect(resolveCallerMedia(u, ME, 900, deps())).resolves.toEqual({ ok: true, url: u, own: false });
+    expect(signs).toEqual([]);
+  });
+});
+
 describe('firstUnreadableOwnUrl (routes that re-sign later)', () => {
   test('finds the first signed URL of ours the caller may not read; external, public and junk entries pass', async () => {
     const values = [

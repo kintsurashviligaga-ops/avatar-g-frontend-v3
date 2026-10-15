@@ -62,6 +62,24 @@ describe('ffmpegExec', () => {
     expect(r.stderr).toMatch(/Input #0, lavfi/);
   });
 
+  test('every other protocol is refused before ffmpeg runs: no cache:/async: wrapper around http, no tcp:, file:, data: …', async () => {
+    const fetchImpl = jest.fn() as unknown as typeof fetch;
+    for (const input of [
+      'cache:http://127.0.0.1:9/a.mp4', 'async:http://169.254.169.254/computeMetadata/v1/', 'CACHE:https://cdn.example/a.mp4',
+      'tcp://127.0.0.1:9', 'unix:/var/run/docker.sock', 'gopher://10.0.0.5/', 'ftp://10.0.0.5/a.mp4', 'rtmp://10.0.0.5/live',
+      'file:/etc/hostname', 'data:video/mp4;base64,AAAA', 'concat:/tmp/a.mp4|/tmp/b.mp4', 'subfile,,start,0,end,0,,:/etc/hostname',
+      'http:169.254.169.254/latest', 'hls+http://10.0.0.5/a.m3u8',
+    ]) {
+      const outcome = await ffmpegExec(bin, ['-hide_banner', '-i', 'https://cdn.example/ok.mp4', '-i', input, '-f', 'null', '-'], {}, { fetchImpl, lookupImpl: PUBLIC })
+        .then(() => 'ran', (e: Error) => e.message);
+      expect({ input, outcome }).toEqual({ input, outcome: 'ffmpeg input refused (protocol)' });
+    }
+    expect(fetchImpl).not.toHaveBeenCalled(); // refused before even the legitimate input was fetched
+    // lavfi graphs with options and plain local paths still pass (the name is followed by `=`, never by `:`).
+    const r = await ffmpegExec(bin, ['-hide_banner', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:d=0.2', '-f', 'null', '-'], {}, { fetchImpl, lookupImpl: PUBLIC });
+    expect(r.stderr).toMatch(/Input #0, lavfi/);
+  });
+
   test('the same address used twice is downloaded once', async () => {
     const seen: string[] = [];
     const url = 'https://cdn.example/clip.mp4';
