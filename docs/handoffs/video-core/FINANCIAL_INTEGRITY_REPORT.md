@@ -18,7 +18,9 @@ PostgREST (`scripts/lease-isolation/run.sh`, CI job "billing on real Postgres"),
 4. რასაც სერვერი ვერ მიაწოდა, ბრუნდება ზუსტად ერთხელ. Owner-ის არჩევანით (R3-A) ახლა ბრუნდება სცენაც, რომელიც Google-მა
    მიიღო და მერე ჩააგდო, მხოლოდ Google-ის საკუთარი პასუხით.
 5. ფასები უცვლელია (`lib/credits/videoPricing.ts`). ადმინს კოდი არასოდეს ჭრის.
-6. Production-ში ეს ყველაფერი ჯერ არ არის: საჭიროა მიგრაცია 20261014a და PR #69-ის deploy (**OWNER ACTION REQUIRED**).
+6. 2026-10-15-დან ეს Production-შია: მიგრაცია 20261014a (~11:32Z) და PR #69 (b46bb44, ~12:00Z). ადმინის ერთმა ფასიანმა
+   ტესტმა 0 კრედიტი დახარჯა (892 → 892), როგორც კოდი ამბობს (`VIDEO_CORE_PAID_E2E_EVIDENCE.md`). ჩვეულებრივი მომხმარებლის
+   ჩამოჭრა Production-ში ჯერ არ შემოწმებულა (**NOT TESTED** on Production; PG tier-ზე დამტკიცებულია).
 
 ## 1. The money path of a film (as built on PR #69)
 
