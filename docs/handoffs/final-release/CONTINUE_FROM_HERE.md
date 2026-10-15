@@ -1,15 +1,18 @@
 # CONTINUE FROM HERE — Final Integration & Production Release
 
-Last update: 2026-10-15 18:30Z. Branch `claude/final-integration-release-wt2y8s` = draft PR #74, base main b21506bb
-(PR #75 merged in). Nothing deployed, nothing paid, no database touched.
+Last update: 2026-10-15 19:30Z. Branch `claude/final-integration-release-wt2y8s` = draft PR #74, main de15464d merged in
+(01 row 7). Nothing deployed by this thread, nothing paid, no database touched.
 
-- DONE: Phase 0 (00), baseline + merges #60 → #65 → #68 → #67 + voice adapter (01 rows 1–4a), Phase 1 credit audit and
-  fixes (02; 01 row 5), voice tests moved to the button-only contract, One Window check (03).
-- DONE 18:30Z: full Jest (01 row 6), PR #74 CI 10/10 green on ff3a48c3, 04 E2E matrix, 05 audit, GO_NO_GO_KA.md (NO-GO until FR-1).
-- OPEN release blocker FR-1 (defects 47/48, cross-user film billing): Video Core PR #76. When #76 is in main: merge main here, re-check
-  47/48, re-run CI. No GO without it.
-- OPEN, not blocking: FR-8 (free-text paid chat path, no mounted UI), FR-12 (ledger "skipped" degrade), FR-13 (external
-  workers), uid race (no failing regression yet; proposal branch 7fe06fb5 not integrated).
-- NEXT: after #76 → one decision card for GG: merge PR #74 + staged Production deploy (admin canary, flags stay off).
-- Owner-gated, not asked yet: isolated Preview Supabase (FR-2), paid acceptance runs, public flags.
-- Never: push to #60/#64/#65/#66/#67/#68 branches, deploy while another thread's build is in flight.
+- DONE: Phases 0–6; FR-1 closed (Video Core PR #76 in main and Production; re-checked here, 01 row 7); Phase 8 files
+  00–09, GO_NO_GO_KA.md, FINAL_OWNER_REPORT_KA.md (pre-release); regression tests for FR-6 (`components/studio/liveRunGate.test.ts`)
+  and FR-11 (`lib/routing/shellRedirects.test.ts`).
+- VERDICT: staged release CONDITIONAL GO; customer-wide NO-GO (GO_NO_GO_KA.md).
+- NEXT (first action): confirm CI 10/10 green on PR #74's head; confirm the Video Core thread's paid ad-film run on
+  Production is finished and no Production build is in flight; then post GG one decision card: merge PR #74 + staged
+  Production deploy (09 preconditions). On the tap: 09 steps 1–6, then ask GG for the admin canary (step 7), then update
+  FINAL_OWNER_REPORT_KA.md item 10 and 04 T-19/T-20 in a docs follow-up on this branch name restarted from main.
+- OPEN, not blocking the staged release: FR-2 (BLOCKED_OWNER), FR-8, FR-12, FR-13; Video Core's FR-9, FR-10.
+- Owner-gated, not asked yet: isolated Preview Supabase, paid acceptance runs (Imagen, Lyria), real-device voice (08),
+  dubbing/presentation prices, public flags.
+- Never: push to the branches of #60/#64/#65/#66/#67/#68; deploy over or roll back another thread's release; a new
+  Vercel Preview without GG's word.

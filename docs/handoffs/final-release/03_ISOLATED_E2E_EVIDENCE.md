@@ -1,8 +1,12 @@
-# 04 — E2E matrix (Phase 4)
+# 03 — Isolated E2E evidence (Phase 4)
 
 Head ff3a48c3 on PR #74 (main b21506bb + #60 + #65 + #68 + #67 + voice adapter + Phase 1 fixes). All runs 2026-10-15
 18:04–18:25Z. Isolated means a local Postgres or Supabase started in CI with synthetic data, and fake or stubbed
 providers. No run touched Production, its database, a paid provider or a bank.
+
+The same 10 checks ran green again on ba35a07e (18:31–18:53Z; runs 38786256790 Video Core, 38786256819 Image,
+38786257199 Music, 38786256743 Voice, 38786256978 BOG, 38786256784 Preview Contract, 38786256700 CI verify). The release
+head (main de15464d merged in) runs them again; the decision card names its result. Per-test rows: 04_FULL_TEST_MATRIX.md.
 
 | Service | Evidence on the merged tree | Class |
 |---|---|---|

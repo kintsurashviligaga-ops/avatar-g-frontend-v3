@@ -1,7 +1,7 @@
-# 03 — One Window (Phase 3)
+# 07 — One Window acceptance (Phase 3)
 
 Tree: integration branch (main b21506bb + #60 + #65 + #68 + #67 + voice adapter + Phase 1 fixes). Evidence is code
-reading plus the branch's unit and wiring tests; browser proof comes from the CI acceptance workflows (05).
+reading plus the branch's unit and wiring tests; browser proof comes from the CI acceptance workflows (03_ISOLATED_E2E_EVIDENCE.md).
 
 ## Canonical runtime
 
