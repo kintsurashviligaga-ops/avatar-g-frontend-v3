@@ -188,9 +188,14 @@ export function mergeMaster(prev: FilmStatusRecord | null, tokenId: string, mast
   if (!prev) {
     return { tokenId, phase: 'assembled', clips: [], audioReady: false, masterUrl, qa, payerUid, billingConsumed: false, updatedAt: now, error: null };
   }
-  // Preserve the ORIGINAL payer + consumed flag on a re-stamp: a null uid at a later stamp (e.g. a
-  // server-side re-stitch) must NOT erase who paid, and a spent waiver must stay spent.
-  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, payerUid: payerUid ?? prev.payerUid ?? null, billingConsumed: prev.billingConsumed === true, updatedAt: now, error: null };
+  // Preserve the ORIGINAL payer + consumed flag on a re-stamp: neither a null uid at a later stamp (e.g. a server-side
+  // re-stitch) nor ANOTHER caller's uid may replace who paid, and a spent waiver must stay spent.
+  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, payerUid: prev.payerUid ?? payerUid ?? null, billingConsumed: prev.billingConsumed === true, updatedAt: now, error: null };
+}
+
+/** The record names a payer and it is not this caller: the token is someone else's film (an anonymous caller included). */
+export function isFilmOwnedByAnother(prior: FilmStatusRecord | null | undefined, uid: string | null): boolean {
+  return !!prior?.payerUid && prior.payerUid !== uid;
 }
 
 // ─── Backing store (Redis REST, fail-open, in-process fallback) ──────────────
