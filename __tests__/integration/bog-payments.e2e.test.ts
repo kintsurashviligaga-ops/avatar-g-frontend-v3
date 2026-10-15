@@ -40,6 +40,8 @@ interface FakeOrder {
   currency: string;
   transferAmount?: number;
   refundAmount?: number;
+  /** The receipt's actions[] (refunds made in the Business Manager, and their outcome). */
+  actions?: Array<Record<string, unknown>>;
 }
 const bank = {
   orders: new Map<string, FakeOrder>(),
@@ -79,6 +81,7 @@ function receiptOf(o: FakeOrder) {
       code_description: o.status === 'rejected' ? 'Insufficient funds' : 'Successful payment',
     },
     reject_reason: o.status === 'rejected' ? 'Insufficient funds' : null,
+    actions: o.actions ?? [],
   };
 }
 
@@ -743,5 +746,46 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     expect(receiptReads()).toBe(0);
     expect((await row(old.json.orderId)).status).toBe('completed');
     expect(await balance(u)).toBe(300);
+  });
+
+  // ── E22 ──
+  test('E22 a refund the issuing bank rejects: the cron reads actions[] the next day and puts the order back to paid with BOG\'s reason; credits never move', async () => {
+    const u = await newUser();
+    const c = await startCheckout(u, { kind: 'topup', amountGel: 20 });
+    const bogId = (await row(c.json.orderId)).bog_order_id;
+    customerPays(bogId);
+    const paidReceipt = receiptOf(bank.orders.get(bogId)!); // from before the refund: kept, replayed below
+    expect(await (await webhook.POST(signedCallback(paidReceipt))).json()).toMatchObject({ status: 'completed' });
+    expect(await balance(u)).toBe(200);
+
+    // A refund is asked for in the Business Manager; its callback arrives.
+    const o = bank.orders.get(bogId)!;
+    o.status = 'refund_requested';
+    expect(await (await webhook.POST(signedCallback(receiptOf(o)))).json()).toMatchObject({ status: 'refund_requested' });
+
+    // The old "completed" replayed: it lists no refund, so it is still ignored.
+    expect(await (await webhook.POST(signedCallback(paidReceipt))).json()).toMatchObject({ status: 'refund_requested' });
+    expect((await row(c.json.orderId)).status).toBe('refund_requested');
+
+    // The issuing bank declines the refund: BOG is back to completed, actions[] says why, nothing went back. No callback.
+    Object.assign(o, {
+      status: 'completed',
+      actions: [
+        { action_id: 'a1', request_channel: 'public_api', action: 'authorize', status: 'completed', amount: '20', code: null, code_description: null },
+        { action_id: 'a2', request_channel: 'business_manager', action: 'refund', status: 'rejected', amount: '20', code: '162', code_description: 'The card issuing bank declined the refund.' },
+      ],
+    });
+    await svc.from('bog_orders').update({ updated_at: new Date(Date.now() - 25 * 3600_000).toISOString() }).eq('shop_order_id', c.json.orderId);
+    expect(await cronTick()).toMatchObject({ ok: true, refundRejected: 1, errors: 0 });
+    const back = await row(c.json.orderId);
+    expect(back.status).toBe('completed');
+    expect(back.reject_reason).toBe('refund_rejected 162 The card issuing bank declined the refund.');
+    expect((await status(u, c.json.orderId)).json.status).toBe('completed');
+
+    // The same receipt as a callback later: an ordinary re-settlement, nothing granted again.
+    expect(await (await webhook.POST(signedCallback(receiptOf(o)))).json()).toMatchObject({ status: 'completed' });
+    expect(await balance(u)).toBe(200);
+    const { data: ledger } = await svc.from('credit_ledger').select('delta').eq('user_id', u);
+    expect(ledger).toEqual([{ delta: 200 }]);
   });
 });

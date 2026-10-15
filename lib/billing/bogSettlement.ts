@@ -15,7 +15,7 @@
 import 'server-only';
 import { randomBytes } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { deleteSavedCard, getBogReceipt, type BogConfig, type BogEnvironment, type BogFetchDeps, type BogReceipt } from './bogClient';
+import { BOG_RESPONSE_CODES, deleteSavedCard, getBogReceipt, type BogConfig, type BogEnvironment, type BogFetchDeps, type BogReceipt } from './bogClient';
 import { fulfillBogOrder, recordBogRenewalFailure } from './wallet-ledger';
 
 export type BogOrderKind = 'topup' | 'subscription' | 'renewal';
@@ -60,7 +60,8 @@ type Db = Pick<SupabaseClient, 'from'>;
  * BOG's refund statuses, in the order a refund moves through them; each is also what we write on our row. They are
  * bookkeeping only: the refund policy is unchanged — credits already granted are NOT clawed back (they may be spent),
  * the owner adjusts a balance by hand. Our row only ever moves forward along completed → … → refunded, so a late or
- * repeated message can never pull it back.
+ * repeated message can never pull it back. One exception: refund_requested returns to completed when BOG's receipt
+ * shows the refund was rejected and nothing went back (rejectedRefundReason).
  */
 export const BOG_REFUND_STATUSES = ['refund_requested', 'refunded_partially', 'refunded'] as const;
 export type BogRefundStatus = (typeof BOG_REFUND_STATUSES)[number];
@@ -74,6 +75,20 @@ export function isBogRefundStatus(status: unknown): status is BogRefundStatus {
 
 /** Amounts are GEL with tetri — a cent of float noise must not read as a mismatch. */
 const AMOUNT_EPSILON = 0.01;
+
+/**
+ * Did the refund fail? Only when the receipt lists refunds (actions[]), every one of them was rejected (e.g. 162, the
+ * issuing bank declined it) and nothing went back (refund_amount 0). Then "refund_rejected <code> <description>",
+ * else null. A replayed "completed" from before the refund lists no refund, so it never qualifies.
+ */
+export function rejectedRefundReason(receipt: BogReceipt): string | null {
+  const refunds = receipt.refundActions ?? [];
+  if (!refunds.length || refunds.some((a) => a.status !== 'rejected')) return null;
+  if ((receipt.refundAmount ?? 0) > AMOUNT_EPSILON) return null;
+  const last = refunds[refunds.length - 1]!;
+  const description = last.codeDescription ?? (last.code ? BOG_RESPONSE_CODES[last.code] : undefined) ?? null;
+  return ['refund_rejected', last.code, description].filter(Boolean).join(' ').slice(0, 200);
+}
 
 /** Find our order by our id first (immutable, server-minted), then by BOG's. null when unknown or unreadable. */
 export async function loadBogOrder(db: Db, ref: { shopOrderId?: string | null; bogOrderId?: string | null }): Promise<BogOrderRow | null> {
@@ -135,6 +150,23 @@ export async function settleBogOrder(
   switch (receipt.state) {
     case 'completed': {
       if (isBogRefundStatus(order.status)) {
+        const refundRejected = order.status === 'refund_requested' ? rejectedRefundReason(receipt) : null;
+        if (refundRejected) {
+          // The refund we recorded failed and nothing went back: the payment stands, so the row returns to completed
+          // with BOG's reason. Status only: nothing is fulfilled or credited again (it was credited once, before).
+          // eslint-disable-next-line no-console
+          console.warn(`[bog] order ${order.shop_order_id}: BOG rejected the refund (${refundRejected}) — back to completed, credits unchanged`);
+          await markOrder(db, order, { status: 'completed', reject_reason: refundRejected }, 'refund_requested');
+          return {
+            status: 'completed',
+            granted: false,
+            kind: order.kind,
+            credits: Number(order.credits ?? 0),
+            tier: order.tier,
+            periodEnd: order.period_end ?? null,
+            autoRenew: null,
+          };
+        }
         // We already heard of a refund, so this "completed" is older news (a late or replayed callback). The order was
         // credited once before the refund began; never fulfil it again or pull the row back to completed.
         // eslint-disable-next-line no-console

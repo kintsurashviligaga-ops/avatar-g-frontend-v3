@@ -79,6 +79,7 @@ async function handle(req: NextRequest) {
     limitDeferred: 0,
     refundChecked: 0,
     refundUpdated: 0,
+    refundRejected: 0,
     errors: 0,
   };
 
@@ -196,6 +197,11 @@ async function handle(req: NextRequest) {
           // Never a fulfil: only the refund branch of settleBogOrder runs, and it only moves the row forward.
           const outcome = await settleBogOrder(svc, order, receipt);
           if (isBogRefundStatus(outcome.status)) report.refundUpdated += 1;
+        } else if (receipt.state === 'completed' && order.status === 'refund_requested') {
+          // The refund we recorded may have failed: settleBogOrder puts the row back to completed only when the
+          // receipt's actions[] shows every refund rejected and nothing returned. Never a fulfil.
+          const outcome = await settleBogOrder(svc, order, receipt);
+          if (outcome.status === 'completed') report.refundRejected += 1;
         }
       } catch {
         report.errors += 1;
