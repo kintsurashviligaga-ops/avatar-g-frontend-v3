@@ -7,14 +7,13 @@
  * functions in a real Postgres (tests/sql/bog — code-identical to Production's). Only two things are stand-ins:
  *   · BOG itself — a fake api.bog.ge below (OAuth, orders, saved cards, receipts, renewals) that signs its callbacks
  *     with a throwaway RSA key, exactly as BOG signs them (SHA256withRSA over the raw body, Callback-Signature);
- *   · Supabase's gateway — a 30-line proxy that maps /rest/v1 to a local PostgREST and answers /auth/v1/user for
+ *   · Supabase's gateway — bogE2eGateway.ts, a 30-line proxy that maps /rest/v1 to a local PostgREST and answers /auth/v1/user for
  *     test bearer tokens, so the routes' real auth path (Bearer → auth.getUser) runs.
  * No network, no credentials, no Production anything.
  */
-import http from 'node:http';
-import { createHmac, createSign, generateKeyPairSync, randomUUID } from 'node:crypto';
-import type { AddressInfo } from 'node:net';
+import { createSign, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
+import { hs256, startSupabaseGateway, type SupabaseGateway } from './bogE2eGateway';
 
 jest.mock('server-only', () => ({}));
 // @t3-oss/env-nextjs ships ESM only (jest cannot load it); the env it validates is plain process.env here.
@@ -150,40 +149,8 @@ function signedCallback(receipt: unknown, opts: { forge?: boolean } = {}) {
   return new NextRequest('http://localhost/api/billing/bog/webhook', { method: 'POST', body: raw, headers: { 'Callback-Signature': sig } });
 }
 
-// ─── Supabase gateway stand-in ───────────────────────────────────────────────────────────────────────────────
-const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
-function hs256(payload: Record<string, unknown>) {
-  const head = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const body = b64url(JSON.stringify(payload));
-  return `${head}.${body}.${b64url(createHmac('sha256', JWT_SECRET ?? 'x').update(`${head}.${body}`).digest())}`;
-}
-let gateway: http.Server;
-async function startGateway(): Promise<string> {
-  gateway = http.createServer(async (req, res) => {
-    const chunks: Buffer[] = [];
-    for await (const c of req) chunks.push(c as Buffer);
-    if (req.url?.startsWith('/auth/v1/user')) {
-      const tok = String(req.headers.authorization ?? '').replace(/^Bearer /, '');
-      const id = tok.startsWith('e2e-user-') ? tok.slice('e2e-user-'.length) : null;
-      res.writeHead(id ? 200 : 401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(id ? { id, aud: 'authenticated', role: 'authenticated', email: `${id}@test.local` } : { msg: 'invalid' }));
-      return;
-    }
-    const target = `${POSTGREST}${(req.url ?? '').replace(/^\/rest\/v1/, '')}`;
-    const headers: Record<string, string> = {};
-    for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !['host', 'content-length', 'connection'].includes(k)) headers[k] = v;
-    const up = await realFetch(target, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
-    const out = Buffer.from(await up.arrayBuffer());
-    const outHeaders: Record<string, string> = {};
-    up.headers.forEach((v, k) => {
-      if (!['content-encoding', 'transfer-encoding', 'content-length', 'connection'].includes(k)) outHeaders[k] = v;
-    });
-    res.writeHead(up.status, outHeaders);
-    res.end(out);
-  });
-  await new Promise<void>((r) => gateway.listen(0, '127.0.0.1', () => r()));
-  return `http://127.0.0.1:${(gateway.address() as AddressInfo).port}`;
-}
+// ─── Supabase gateway stand-in (bogE2eGateway.ts) ──────────────────────────────────────────────────────────────
+let gateway: SupabaseGateway;
 
 const realFetch: typeof fetch = globalThis.fetch;
 
@@ -194,12 +161,13 @@ const CRON_SECRET = 'e2e-cron-secret';
 
 run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
   beforeAll(async () => {
-    const supabaseUrl = await startGateway();
+    gateway = await startSupabaseGateway(POSTGREST!, realFetch);
+    const supabaseUrl = gateway.url;
     Object.assign(process.env, {
       SUPABASE_URL: supabaseUrl,
       NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: hs256({ role: 'anon' }),
-      SUPABASE_SERVICE_ROLE_KEY: hs256({ role: 'service_role' }),
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: hs256(JWT_SECRET!, { role: 'anon' }),
+      SUPABASE_SERVICE_ROLE_KEY: hs256(JWT_SECRET!, { role: 'service_role' }),
       BOG_CLIENT_ID: 'e2e-client',
       BOG_SECRET_KEY: 'e2e-secret',
       BOG_ENV: 'sandbox',
@@ -208,6 +176,13 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
       BOG_CALLBACK_PUBLIC_KEY: PUBLIC_PEM,
       NEXT_PUBLIC_SITE_URL: 'https://e2e.myavatar.test',
       CRON_SECRET,
+      // Every test shares one database, so merchant-wide payments add up across them: E1…E14 run with room to spare,
+      // and the limit scenarios (E17–E19) set their own limits.
+      BOG_LIMIT_24H_GEL: '100000',
+      BOG_LIMIT_30D_GEL: '1000000',
+      // Plans are admin-only by default (automatic payments unconfirmed); the plan scenarios run with plans open, E20
+      // checks the default.
+      BOG_SUBSCRIPTION_MODE: 'public',
     });
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -222,7 +197,7 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
   });
   afterAll(async () => {
     globalThis.fetch = realFetch;
-    await new Promise((r) => gateway.close(r));
+    await gateway.close();
   });
   beforeEach(() => {
     resetBank();
@@ -543,5 +518,230 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     const p = await startCheckout(u, { kind: 'plan', tierId: 'enterprise-free' });
     expect(p.status).toBe(400);
     expect(bank.calls.filter((x) => x === 'POST /ecommerce/orders')).toHaveLength(0);
+  });
+
+  // ── E15 ──
+  test('E15 lost callback behind 120 abandoned checkouts: the cron still reaches and credits it (least recently checked first)', async () => {
+    const owner = await newUser();
+    const old = new Date(Date.now() - 10 * 60_000).toISOString();
+    const abandoned = Array.from({ length: 120 }, (_, i) => {
+      const id = randomUUID();
+      const shop = `myavatar-topup-e15${String(i).padStart(12, '0')}`;
+      bank.orders.set(id, { id, external: shop, amount: 10, status: 'created', saveCard: false, parent: null, currency: 'GEL' });
+      return { shop_order_id: shop, bog_order_id: id, user_id: owner, amount_gel: 10, credits: 100, kind: 'topup', status: 'pending', created_at: old, updated_at: old };
+    });
+    expect((await svc.from('bog_orders').insert(abandoned)).error).toBeNull();
+    try {
+      const u = await newUser();
+      const c = await startCheckout(u, { kind: 'topup', amountGel: 20 });
+      customerPays((await row(c.json.orderId)).bog_order_id); // paid; BOG's callback never arrives; the customer never returns
+      await svc.from('bog_orders').update({ created_at: new Date(Date.now() - 5 * 60_000).toISOString() }).eq('shop_order_id', c.json.orderId);
+      // Created after all 120, so ordering by age would re-check the same 50 abandoned ones on every tick, forever.
+      let ticks = 0;
+      while ((await balance(u)) === 0 && ticks < 4) {
+        await cronTick();
+        ticks += 1;
+      }
+      expect(await balance(u)).toBe(200);
+      expect(ticks).toBeGreaterThanOrEqual(2);
+      expect((await row(c.json.orderId)).status).toBe('completed');
+    } finally {
+      await svc.from('bog_orders').update({ status: 'expired' }).eq('user_id', owner);
+    }
+  });
+
+  // ── E16 ──
+  test('E16 callback, return page and cron settle the same paid order at the same moment → credited exactly once', async () => {
+    const u = await newUser();
+    const c = await startCheckout(u, { kind: 'topup', amountGel: 50 });
+    const bogId = (await row(c.json.orderId)).bog_order_id;
+    customerPays(bogId);
+    await svc.from('bog_orders').update({ created_at: new Date(Date.now() - 5 * 60_000).toISOString() }).eq('shop_order_id', c.json.orderId);
+    const receipt = receiptOf(bank.orders.get(bogId)!);
+    const results = await Promise.all([
+      webhook.POST(signedCallback(receipt)),
+      status(u, c.json.orderId),
+      cronTick(),
+      webhook.POST(signedCallback(receipt)),
+      status(u, c.json.orderId),
+    ]);
+    expect(results[0].status).toBe(200);
+    expect(await balance(u)).toBe(500);
+    const { data: ledger } = await svc.from('credit_ledger').select('delta').eq('user_id', u);
+    expect(ledger).toEqual([{ delta: 500 }]);
+    const { data: topups } = await svc.from('wallet_topups').select('ref').eq('ref', `bog:${c.json.orderId}`);
+    expect(topups).toHaveLength(1);
+  });
+
+  // ── E17 ──
+  test('E17 limits: merchant-wide counts every customer’s payments; per customer counts paid + still-payable checkouts; nothing over reaches BOG', async () => {
+    try {
+      // merchant scope: what everyone paid in the last 24 h (E1…E16) leaves 15 ₾ of room
+      const { data: paid } = await svc.from('bog_orders').select('amount_gel').in('status', ['completed', 'refund_requested', 'refunded_partially', 'refunded', 'amount_mismatch']);
+      const total = (paid as Array<{ amount_gel: string }>).reduce((sum, r) => sum + Number(r.amount_gel), 0);
+      process.env.BOG_LIMIT_24H_GEL = String(total + 15);
+      const stranger = await newUser();
+      const before = bank.calls.filter((x) => x === 'POST /ecommerce/orders').length;
+      const refused = await startCheckout(stranger, { kind: 'topup', amountGel: 20 });
+      expect(refused.status).toBe(429);
+      expect(refused.json).toMatchObject({ error_code: 'BOG_LIMIT_24H', availableAt: expect.any(String) });
+      expect(bank.calls.filter((x) => x === 'POST /ecommerce/orders').length).toBe(before);
+      const { data: none } = await svc.from('bog_orders').select('shop_order_id').eq('user_id', stranger);
+      expect(none).toEqual([]);
+      expect((await startCheckout(stranger, { kind: 'topup', amountGel: 10 })).status).toBe(200);
+
+      // customer scope, 60 ₾ / 24 h: 50 paid → 20 refused, 10 fits; that 10 is still payable on BOG's page → another 10 refused
+      process.env.BOG_LIMIT_SCOPE = 'customer';
+      process.env.BOG_LIMIT_24H_GEL = '60';
+      const u = await newUser();
+      const c = await startCheckout(u, { kind: 'topup', amountGel: 50 });
+      const bogId = (await row(c.json.orderId)).bog_order_id;
+      customerPays(bogId);
+      await webhook.POST(signedCallback(receiptOf(bank.orders.get(bogId)!)));
+      const creditedAt = (await row(c.json.orderId)).credited_at as string;
+      const over = await startCheckout(u, { kind: 'topup', amountGel: 20 });
+      expect(over.status).toBe(429);
+      expect(Date.parse(over.json.availableAt)).toBe(Date.parse(creditedAt) + 86_400_000);
+      expect((await startCheckout(u, { kind: 'topup', amountGel: 10 })).status).toBe(200);
+      expect((await startCheckout(u, { kind: 'topup', amountGel: 10 })).status).toBe(429);
+      // the 50 ₾ customer's spending does not touch another customer in this scope
+      expect((await startCheckout(await newUser(), { kind: 'topup', amountGel: 50 })).status).toBe(200);
+    } finally {
+      process.env.BOG_LIMIT_24H_GEL = '100000';
+      delete process.env.BOG_LIMIT_SCOPE;
+    }
+  });
+
+  // ── E18 ──
+  test('E18 four checkouts at once against 30 ₾ of room: at most one reaches BOG; the others never become orders', async () => {
+    try {
+      process.env.BOG_LIMIT_SCOPE = 'customer';
+      process.env.BOG_LIMIT_24H_GEL = '30';
+      const u = await newUser();
+      const before = bank.calls.filter((x) => x === 'POST /ecommerce/orders').length;
+      const results = await Promise.all(Array.from({ length: 4 }, () => startCheckout(u, { kind: 'topup', amountGel: 20 })));
+      const ok = results.filter((r) => r.status === 200);
+      expect(ok.length).toBeLessThanOrEqual(1);
+      expect(results.filter((r) => r.status !== 200).every((r) => r.status === 429 && r.json.error_code === 'BOG_LIMIT_24H')).toBe(true);
+      expect(bank.calls.filter((x) => x === 'POST /ecommerce/orders').length - before).toBe(ok.length);
+      const { data: rows } = await svc.from('bog_orders').select('status,reject_reason').eq('user_id', u);
+      expect((rows as Array<{ status: string }>).filter((r) => r.status === 'pending')).toHaveLength(ok.length);
+      for (const r of (rows as Array<{ status: string; reject_reason: string | null }>).filter((x) => x.status !== 'pending')) {
+        expect(r).toEqual({ status: 'init_failed', reject_reason: 'limit: customer 24h' });
+      }
+    } finally {
+      process.env.BOG_LIMIT_24H_GEL = '100000';
+      delete process.env.BOG_LIMIT_SCOPE;
+    }
+  });
+
+  // ── E19 ──
+  test('E19 a renewal with no room under the limits waits — not claimed, not charged, no strike — and goes through once there is room', async () => {
+    try {
+      process.env.BOG_LIMIT_SCOPE = 'customer';
+      process.env.BOG_LIMIT_24H_GEL = '100';
+      const u = await newUser();
+      const c = await startCheckout(u, { kind: 'plan', tierId: 'starter' });
+      const bogId = (await row(c.json.orderId)).bog_order_id;
+      customerPays(bogId);
+      await webhook.POST(signedCallback(receiptOf(bank.orders.get(bogId)!)));
+      expect(await balance(u)).toBe(230);
+      await svc.from('subscriptions').update({ current_period_end: new Date(Date.now() + 20 * 60_000).toISOString() }).eq('user_id', u);
+
+      const subscribes = () => bank.calls.filter((x) => x.endsWith('/subscribe')).length;
+      const before = subscribes();
+      const t = await cronTick(); // 54 paid today + 54 more > 100
+      expect(t.limitDeferred).toBeGreaterThanOrEqual(1);
+      expect(subscribes()).toBe(before);
+      const { data: renewals } = await svc.from('bog_orders').select('shop_order_id').eq('user_id', u).eq('kind', 'renewal');
+      expect(renewals).toEqual([]);
+      const { data: sub } = await svc.from('subscriptions').select('status,renewal_failures').eq('user_id', u).single();
+      expect(sub).toEqual({ status: 'active', renewal_failures: 0 });
+
+      process.env.BOG_LIMIT_24H_GEL = '200';
+      const t2 = await cronTick();
+      expect(t2.charged).toBe(1);
+      expect(subscribes()).toBe(before + 1);
+    } finally {
+      process.env.BOG_LIMIT_24H_GEL = '100000';
+      delete process.env.BOG_LIMIT_SCOPE;
+    }
+  });
+
+  // ── E20 ──
+  test('E20 BOG open to everyone, plans not yet: a customer tops up, a plan is refused before any row, order or saved card', async () => {
+    try {
+      delete process.env.BOG_SUBSCRIPTION_MODE;
+      const u = await newUser();
+      const before = bank.calls.length;
+      const plan = await startCheckout(u, { kind: 'plan', tierId: 'starter' });
+      expect(plan.status).toBe(403);
+      expect(plan.json).toMatchObject({ error_code: 'BOG_PLANS_ADMIN_ONLY' });
+      expect(bank.calls.length).toBe(before);
+      const { data: rows } = await svc.from('bog_orders').select('kind').eq('user_id', u);
+      expect(rows).toEqual([]);
+      expect((await startCheckout(u, { kind: 'topup', amountGel: 10 })).status).toBe(200);
+      expect(bank.calls.some((x) => x.startsWith('PUT /orders/'))).toBe(false);
+    } finally {
+      process.env.BOG_SUBSCRIPTION_MODE = 'public';
+    }
+  });
+
+  // ── E21 ──
+  test('E21 a refund made in the Business Manager whose callback is lost: the cron reads it from the receipt the next day; credits never move', async () => {
+    const u = await newUser();
+    const c = await startCheckout(u, { kind: 'topup', amountGel: 20 });
+    const bogId = (await row(c.json.orderId)).bog_order_id;
+    customerPays(bogId);
+    expect(await (await webhook.POST(signedCallback(receiptOf(bank.orders.get(bogId)!)))).json()).toMatchObject({ status: 'completed' });
+    expect(await balance(u)).toBe(200);
+    const receiptReads = () => bank.calls.filter((x) => x === 'GET /receipt/:id').length;
+    const lastChecked = (msAgo: number, shopOrderId = c.json.orderId) =>
+      svc.from('bog_orders').update({ updated_at: new Date(Date.now() - msAgo).toISOString() }).eq('shop_order_id', shopOrderId);
+
+    // Part of it goes back in the Business Manager; no callback reaches us.
+    const o = bank.orders.get(bogId)!;
+    Object.assign(o, { status: 'refunded_partially', transferAmount: 15, refundAmount: 5 });
+
+    // Checked less than a day ago (the callback just settled it): not read again yet.
+    bank.calls.length = 0;
+    await cronTick();
+    expect(receiptReads()).toBe(0);
+    expect((await row(c.json.orderId)).status).toBe('completed');
+
+    // A day later the cron reads the receipt and books the refund — and then leaves the order alone for another day.
+    await lastChecked(25 * 3600_000);
+    expect(await cronTick()).toMatchObject({ ok: true, refundUpdated: 1 });
+    expect((await row(c.json.orderId)).status).toBe('refunded_partially');
+    bank.calls.length = 0;
+    await cronTick();
+    expect(receiptReads()).toBe(0);
+
+    // The rest goes back; the next day's read books it too.
+    Object.assign(o, { status: 'refunded', transferAmount: 0, refundAmount: 20 });
+    await lastChecked(25 * 3600_000);
+    await cronTick();
+    expect((await row(c.json.orderId)).status).toBe('refunded');
+
+    // Refund policy unchanged: the 200 credits stay, granted exactly once.
+    expect(await balance(u)).toBe(200);
+    const { data: ledger } = await svc.from('credit_ledger').select('delta').eq('user_id', u);
+    expect(ledger).toEqual([{ delta: 200 }]);
+
+    // A payment credited over 60 days ago is no longer read; a receipt that still says completed changes nothing.
+    const old = await startCheckout(u, { kind: 'topup', amountGel: 10 });
+    const oldBogId = (await row(old.json.orderId)).bog_order_id;
+    customerPays(oldBogId);
+    await webhook.POST(signedCallback(receiptOf(bank.orders.get(oldBogId)!)));
+    await svc
+      .from('bog_orders')
+      .update({ credited_at: new Date(Date.now() - 61 * 86_400_000).toISOString(), updated_at: new Date(Date.now() - 2 * 86_400_000).toISOString() })
+      .eq('shop_order_id', old.json.orderId);
+    bank.orders.get(oldBogId)!.status = 'refunded';
+    bank.calls.length = 0;
+    await cronTick();
+    expect(receiptReads()).toBe(0);
+    expect((await row(old.json.orderId)).status).toBe('completed');
+    expect(await balance(u)).toBe(300);
   });
 });

@@ -39,6 +39,11 @@ describe('startBogCheckout', () => {
     expect(await startBogCheckout({ kind: 'topup', amountGel: 10, locale: 'en' }, fetchOnce(res(401, {})))).toEqual({ ok: false, reason: 'auth' });
     expect(await startBogCheckout({ kind: 'plan', tierId: 'creator', locale: 'en' }, fetchOnce(res(409, { activeUntil: '2026-11-02T00:00:00Z' })))).toEqual({ ok: false, reason: 'already_subscribed', activeUntil: '2026-11-02T00:00:00Z' });
     expect(await startBogCheckout({ kind: 'topup', amountGel: 10, locale: 'en' }, fetchOnce(res(503, {})))).toEqual({ ok: false, reason: 'unavailable' });
+    expect(
+      await startBogCheckout({ kind: 'topup', amountGel: 50, locale: 'en' }, fetchOnce(res(429, { error_code: 'BOG_LIMIT_24H', availableAt: '2026-10-14T09:09:27.000Z' }))),
+    ).toEqual({ ok: false, reason: 'limit', availableAt: '2026-10-14T09:09:27.000Z' });
+    // a plain rate limit (no BOG limit code) is just an error
+    expect(await startBogCheckout({ kind: 'topup', amountGel: 10, locale: 'en' }, fetchOnce(res(429, { error: 'Too many requests' })))).toEqual({ ok: false, reason: 'error' });
     const boom = jest.fn(async () => { throw new Error('offline'); }) as unknown as typeof fetch;
     expect(await startBogCheckout({ kind: 'topup', amountGel: 10, locale: 'en' }, boom)).toEqual({ ok: false, reason: 'error' });
   });

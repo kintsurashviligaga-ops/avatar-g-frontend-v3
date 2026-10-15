@@ -16,7 +16,9 @@ export type BogCheckoutRequest =
 
 export type BogCheckoutResult =
   | { ok: true; redirectUrl: string; orderId: string; autoRenew?: boolean }
-  | { ok: false; reason: 'auth' | 'already_subscribed' | 'unavailable' | 'error'; activeUntil?: string | null };
+  | { ok: false; reason: 'auth' | 'already_subscribed' | 'unavailable' | 'error'; activeUntil?: string | null }
+  /** BOG's 24 h / 30 day payment limit is reached (lib/billing/bogLimits); availableAt: when there is room again. */
+  | { ok: false; reason: 'limit'; availableAt: string | null };
 
 /** Leave for the bank's payment page. One seam, so tests can watch the navigation instead of performing it. */
 export function navigateToPayment(url: string): void {
@@ -32,11 +34,21 @@ export async function startBogCheckout(req: BogCheckoutRequest, f: typeof fetch 
       credentials: 'include',
       body: JSON.stringify(req),
     });
-    const j = (await res.json().catch(() => ({}))) as { redirectUrl?: unknown; orderId?: unknown; autoRenew?: unknown; activeUntil?: unknown };
+    const j = (await res.json().catch(() => ({}))) as {
+      redirectUrl?: unknown;
+      orderId?: unknown;
+      autoRenew?: unknown;
+      activeUntil?: unknown;
+      error_code?: unknown;
+      availableAt?: unknown;
+    };
     if (res.ok && typeof j.redirectUrl === 'string' && /^https:\/\//i.test(j.redirectUrl) && typeof j.orderId === 'string') {
       return { ok: true, redirectUrl: j.redirectUrl, orderId: j.orderId, ...(typeof j.autoRenew === 'boolean' ? { autoRenew: j.autoRenew } : {}) };
     }
     if (res.status === 401) return { ok: false, reason: 'auth' };
+    if (res.status === 429 && (j.error_code === 'BOG_LIMIT_24H' || j.error_code === 'BOG_LIMIT_30D')) {
+      return { ok: false, reason: 'limit', availableAt: typeof j.availableAt === 'string' ? j.availableAt : null };
+    }
     if (res.status === 409) return { ok: false, reason: 'already_subscribed', activeUntil: typeof j.activeUntil === 'string' ? j.activeUntil : null };
     if (res.status === 503) return { ok: false, reason: 'unavailable' };
     return { ok: false, reason: 'error' };

@@ -57,7 +57,7 @@ interface Copy {
   close: string; viewAllPlans: string; plansTitle: string; topupTitle: string; subscribe: string; perMonth: string;
   monthlyCredits: (n: number) => string; yourPlan: string; currentPlan: string; renewsOn: (d: string) => string;
   activeUntil: (d: string) => string; cancelRenewal: string; cancelConfirm: (d: string) => string; yesCancel: string;
-  keep: string; renewalCanceled: string; cancelError: string; alreadySubscribed: string; popular: string;
+  keep: string; renewalCanceled: string; cancelError: string; alreadySubscribed: string; popular: string; limitReached: string;
 }
 
 const COPY: Record<Lang, Copy> = {
@@ -76,6 +76,7 @@ const COPY: Record<Lang, Copy> = {
     cancelConfirm: (d) => `გეგმა აქტიური დარჩება ${d}-მდე და თანხა აღარ ჩამოგეჭრებათ. გავაუქმოთ განახლება?`,
     yesCancel: 'დიახ, გაუქმება', keep: 'დატოვება', renewalCanceled: 'ავტომატური განახლება გაუქმდა.',
     cancelError: 'გაუქმება ვერ მოხერხდა — სცადეთ თავიდან.', alreadySubscribed: 'ეს გეგმა უკვე აქტიურია.', popular: 'პოპულარული',
+    limitReached: 'საქართველოს ბანკის გადახდების ლიმიტი ამოიწურა — სცადეთ მოგვიანებით.',
   },
   en: {
     title: 'Credits', balance: 'Balance', freeVideos: 'Free videos', pay: 'Pay',
@@ -92,6 +93,7 @@ const COPY: Record<Lang, Copy> = {
     cancelConfirm: (d) => `Your plan stays active until ${d} and you won’t be charged again. Cancel renewal?`,
     yesCancel: 'Yes, cancel', keep: 'Keep plan', renewalCanceled: 'Auto-renewal cancelled.',
     cancelError: 'Could not cancel — please try again.', alreadySubscribed: 'This plan is already active.', popular: 'Popular',
+    limitReached: 'Bank of Georgia’s payment limit has been reached — please try again later.',
   },
   ru: {
     title: 'Кредиты', balance: 'Баланс', freeVideos: 'Бесплатные видео', pay: 'Оплатить',
@@ -108,6 +110,7 @@ const COPY: Record<Lang, Copy> = {
     cancelConfirm: (d) => `Тариф останется активным до ${d}, повторных списаний не будет. Отменить продление?`,
     yesCancel: 'Да, отменить', keep: 'Оставить', renewalCanceled: 'Автопродление отменено.',
     cancelError: 'Не удалось отменить — попробуйте снова.', alreadySubscribed: 'Этот тариф уже активен.', popular: 'Популярный',
+    limitReached: 'Достигнут лимит платежей Bank of Georgia — попробуйте позже.',
   },
 };
 
@@ -162,7 +165,8 @@ export const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
   },
 };
 
-type Rails = { bog: boolean; card: boolean };
+/** bogPlans: BOG may also sell this viewer a plan (BOG_SUBSCRIPTION_MODE); when false, plans keep the card rail. */
+type Rails = { bog: boolean; card: boolean; bogPlans: boolean };
 
 export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSignIn }: CreditsModalProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
@@ -208,8 +212,12 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
     let alive = true;
     fetch('/api/checkout/capabilities', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
-      .then(async (j: { bog?: boolean; stripe?: boolean } | null) => {
-        const next: Rails = { bog: Boolean(j?.bog), card: j ? Boolean(j.stripe) : true };
+      .then(async (j: { bog?: boolean; stripe?: boolean; bogPlans?: boolean } | null) => {
+        const next: Rails = {
+          bog: Boolean(j?.bog),
+          card: j ? Boolean(j.stripe) : true,
+          bogPlans: typeof j?.bogPlans === 'boolean' ? j.bogPlans : Boolean(j?.bog),
+        };
         if (!alive) return;
         setRails(next);
         if (next.bog) {
@@ -217,7 +225,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
           if (alive) setPlan(p);
         }
       })
-      .catch(() => { if (alive) setRails({ bog: false, card: true }); });
+      .catch(() => { if (alive) setRails({ bog: false, card: true, bogPlans: false }); });
     return () => { alive = false; };
   }, [open, authed]);
 
@@ -234,6 +242,9 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
 
   const bog = rails?.bog === true;
   const noRail = rails !== null && !rails.bog && !rails.card;
+  // Plans through BOG only where BOG_SUBSCRIPTION_MODE allows; otherwise a plan uses the card rail (or none).
+  const bogPlans = bog && rails?.bogPlans === true;
+  const noPlanRail = rails !== null && !bogPlans && !rails.card;
 
   /** The older card checkout, used only when BOG is not live. Returns true when it redirected or handled auth. */
   const legacyCardCheckout = useCallback(async (path: string, body: Record<string, unknown>): Promise<boolean> => {
@@ -245,17 +256,17 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
   }, [onClose, onSignIn]);
 
   const startPlan = useCallback(async (pkg: { id: PricingTierId; priceUsd: number }) => {
-    if (busyId || noRail) return;
+    if (busyId || noPlanRail) return;
     const offer = bogPlanOffer(pkg.id);
     setBusyId(`plan:${pkg.id}`);
-    track('payment_initiated', { package: pkg.id, amount: bog && offer ? offer.amountGel : pkg.priceUsd, rail: bog ? 'bog' : 'card' });
+    track('payment_initiated', { package: pkg.id, amount: bogPlans && offer ? offer.amountGel : pkg.priceUsd, rail: bogPlans ? 'bog' : 'card' });
     try {
-      if (bog && offer) {
+      if (bogPlans && offer) {
         const r = await startBogCheckout({ kind: 'plan', tierId: offer.tier, locale: lang });
         if (r.ok) { navigateToPayment(r.redirectUrl); return; } // keep the spinner through the navigation
         setBusyId(null);
         if (r.reason === 'auth') { onClose(); onSignIn(); return; }
-        showToast(r.reason === 'already_subscribed' ? t.alreadySubscribed : t.payError);
+        showToast(r.reason === 'already_subscribed' ? t.alreadySubscribed : r.reason === 'limit' ? t.limitReached : t.payError);
         return;
       }
       if (await legacyCardCheckout('/api/billing/tier-checkout', { tierId: pkg.id })) return;
@@ -265,7 +276,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
       setBusyId(null);
       showToast(t.payError);
     }
-  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.alreadySubscribed, t.payError, legacyCardCheckout]);
+  }, [busyId, noPlanRail, bogPlans, lang, onClose, onSignIn, showToast, t.alreadySubscribed, t.limitReached, t.payError, legacyCardCheckout]);
 
   const startTopup = useCallback(async (amountGel: number) => {
     if (busyId || noRail) return;
@@ -277,7 +288,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         if (r.ok) { navigateToPayment(r.redirectUrl); return; }
         setBusyId(null);
         if (r.reason === 'auth') { onClose(); onSignIn(); return; }
-        showToast(t.payError);
+        showToast(r.reason === 'limit' ? t.limitReached : t.payError);
         return;
       }
       if (await legacyCardCheckout('/api/billing/wallet-topup', { amountGel })) return;
@@ -287,7 +298,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
       setBusyId(null);
       showToast(t.payError);
     }
-  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.payError, legacyCardCheckout]);
+  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.limitReached, t.payError, legacyCardCheckout]);
 
   const doCancelRenewal = useCallback(async () => {
     if (canceling) return;
@@ -403,9 +414,9 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                 const highlight = p.id === 'pro';
                 const isCurrent = Boolean(plan && offer && plan.tier === offer.tier);
                 const busy = busyId === `plan:${p.id}`;
-                const disabled = busyId !== null || noRail || isCurrent || rails === null;
-                const main = bog && offer ? `${offer.amountGel} ₾` : `$${p.priceUsd}`;
-                const sub = bog ? `≈ $${p.priceUsd}` : `≈ ${p.priceGel} ₾`;
+                const disabled = busyId !== null || noPlanRail || isCurrent || rails === null;
+                const main = bogPlans && offer ? `${offer.amountGel} ₾` : `$${p.priceUsd}`;
+                const sub = bogPlans ? `≈ $${p.priceUsd}` : `≈ ${p.priceGel} ₾`;
                 return (
                   // ⚠️ THE WHOLE CARD IS THE TARGET, NOT JUST THE BUTTON. On a phone the button is a ~46px strip at the
                   // bottom of a ~200px card; everything above it looked tappable and did nothing. The inner <button>
@@ -448,10 +459,10 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                     <button type="button" onClick={(e) => { e.stopPropagation(); void startPlan(p); }} disabled={disabled}
                       className="mt-3.5 inline-flex min-h-[46px] w-full min-w-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2 text-center text-[13px] font-semibold leading-snug text-app-bg transition-opacity hover:opacity-90 disabled:opacity-60">
                       {busy
-                        ? <><Loader2 size={13} className="animate-spin" /> {bog ? t.redirectingBog : t.redirecting}</>
+                        ? <><Loader2 size={13} className="animate-spin" /> {bogPlans ? t.redirectingBog : t.redirecting}</>
                         : isCurrent
                           ? <>{plan?.autoRenew ? t.renewsOn(planDate) : t.activeUntil(planDate)}</>
-                          : bog && offer
+                          : bogPlans && offer
                             ? <>{t.subscribe} · {offer.amountGel} ₾ {t.perMonth}</>
                             : <>{t.pay} · ${p.priceUsd}</>}
                     </button>

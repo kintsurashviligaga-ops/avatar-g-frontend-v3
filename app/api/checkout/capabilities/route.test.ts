@@ -18,7 +18,7 @@ jest.mock('../../../../lib/supabase/server', () => ({ createServiceRoleClient: (
 import { GET } from './route';
 
 const ENV = { ...process.env };
-const caps = async () => (await (await GET()).json()) as { stripe: boolean; bog: boolean };
+const caps = async () => (await (await GET()).json()) as { stripe: boolean; bog: boolean; bogPlans: boolean };
 
 beforeEach(() => {
   mockIsAdmin = false;
@@ -26,6 +26,7 @@ beforeEach(() => {
   process.env.BOG_CLIENT_ID = 'client-id';
   process.env.BOG_SECRET_KEY = 'secret';
   delete process.env.BOG_CHECKOUT_MODE;
+  delete process.env.BOG_SUBSCRIPTION_MODE;
   delete process.env.BOG_ENV;
   delete process.env.VERCEL_ENV;
   delete process.env.VERCEL;
@@ -34,8 +35,37 @@ afterAll(() => {
   process.env = { ...ENV };
 });
 
-test('creds + schema, mode unset → BOG offered to everyone (Production today)', async () => {
-  expect(await caps()).toEqual({ stripe: true, bog: true });
+test('creds + schema, mode unset → BOG offered to everyone; plans through BOG stay admin-only until opened', async () => {
+  expect(await caps()).toEqual({ stripe: true, bog: true, bogPlans: false });
+});
+
+describe('BOG_SUBSCRIPTION_MODE (plans save the card for automatic payments the bank has not confirmed)', () => {
+  test('unset or admin → only an admin may buy a plan through BOG; public → everyone BOG is open to', async () => {
+    for (const v of [undefined, 'admin']) {
+      if (v) process.env.BOG_SUBSCRIPTION_MODE = v;
+      mockIsAdmin = false;
+      expect(await caps()).toMatchObject({ bog: true, bogPlans: false });
+      mockIsAdmin = true;
+      expect(await caps()).toMatchObject({ bog: true, bogPlans: true });
+    }
+    mockIsAdmin = false;
+    process.env.BOG_SUBSCRIPTION_MODE = 'public';
+    expect(await caps()).toMatchObject({ bog: true, bogPlans: true });
+  });
+
+  test('off or a typo → no BOG plans for anyone; never wider than the checkout (checkout admin + plans public = admin)', async () => {
+    mockIsAdmin = true;
+    for (const v of ['off', 'publik']) {
+      process.env.BOG_SUBSCRIPTION_MODE = v;
+      expect(await caps()).toMatchObject({ bog: true, bogPlans: false });
+    }
+    process.env.BOG_SUBSCRIPTION_MODE = 'public';
+    process.env.BOG_CHECKOUT_MODE = 'admin';
+    mockIsAdmin = false;
+    expect(await caps()).toMatchObject({ bog: false, bogPlans: false });
+    mockIsAdmin = true;
+    expect(await caps()).toMatchObject({ bog: true, bogPlans: true });
+  });
 });
 
 test('no creds or no schema → no BOG button', async () => {

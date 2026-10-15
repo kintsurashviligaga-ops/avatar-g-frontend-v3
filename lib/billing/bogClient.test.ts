@@ -8,8 +8,11 @@ jest.mock('server-only', () => ({}));
 import { createPublicKey, createSign, generateKeyPairSync } from 'node:crypto';
 import {
   BOG_PUBLISHED_CALLBACK_KEYS,
+  BOG_RESPONSE_CODES,
+  bogCheckoutMode,
   bogConfig,
   bogFullyConfigured,
+  bogSubscriptionMode,
   bogIdempotencyKey,
   callbackSourceIp,
   chargeSavedCard,
@@ -269,7 +272,10 @@ const DOC_RECEIPT = {
     card_expiry_date: '03/24',
     saved_card_type: 'subscription',
     parent_order_id: null,
+    transaction_id: '104001',
   },
+  // Not in the trimmed example: the merchant block every receipt carries (Payment Details, "client").
+  client: { id: '10001', brand_ka: 'მაიავატარი', brand_en: 'MyAvatar.ge', url: 'https://myavatar.ge' },
   reject_reason: null,
 };
 
@@ -291,7 +297,10 @@ describe('receipts + callbacks', () => {
       cardMask: '548888xxxxxx9893',
       cardExpiry: '03/24',
       code: '100',
+      transactionId: '104001',
       rejectReason: null,
+      brandKa: 'მაიავატარი',
+      brandEn: 'MyAvatar.ge',
     });
   });
 
@@ -321,6 +330,26 @@ describe('receipts + callbacks', () => {
     expect(r?.rejectReason).toBe('expiration');
     expect(r?.cardMask).toBeNull();
     expect(parseBogReceipt({ order_status: { key: 'completed' } })).toBeNull();
+  });
+
+  test('a decline names its code: the receipt\'s description, else the documented one; an undocumented code carries the transaction id', () => {
+    const declined = (pd: Record<string, unknown>, reject_reason: string | null = null) =>
+      parseBogReceipt({ ...DOC_RECEIPT, order_status: { key: 'rejected' }, reject_reason, payment_detail: { transfer_method: { key: 'card' }, ...pd } })?.rejectReason;
+    expect(declined({ code: '107', code_description: 'Insufficient funds' }, 'Insufficient funds')).toBe('107 Insufficient funds');
+    expect(declined({ code: '107', transaction_id: 't-1' })).toBe('107 Payment declined due to insufficient funds in the account');
+    expect(declined({ code: '110' }, 'expiration')).toBe('110 Transaction Expired (expiration)');
+    // The bank (2026-10-15): for a code not on the response-codes page, send us the transaction id.
+    expect(declined({ code: '777', code_description: 'Mystery', transaction_id: 't-9' })).toBe('777 Mystery · tx t-9');
+    expect(declined({ transaction_id: 't-9' }, 'unknown')).toBe('unknown · tx t-9');
+    expect(declined({})).toBeNull();
+    // Only a decline is reworded: a completed receipt keeps reject_reason as BOG sent it (normally null).
+    expect(parseBogReceipt({ ...DOC_RECEIPT, payment_detail: { ...DOC_RECEIPT.payment_detail, code: '999' } })?.rejectReason).toBeNull();
+    expect(BOG_RESPONSE_CODES['163']).toBe('Not enough funds available in the account');
+  });
+
+  test('the merchant name BOG shows the payer comes from client.brand_ka / brand_en; absent → null', () => {
+    expect(parseBogReceipt({ ...DOC_RECEIPT, client: undefined })).toMatchObject({ brandKa: null, brandEn: null });
+    expect(parseBogReceipt({ ...DOC_RECEIPT, client: { brand_ka: '  ', brand_en: 'My avatar' } })).toMatchObject({ brandKa: null, brandEn: 'My avatar' });
   });
 
   test('a callback is { event, zoned_request_time, body: <receipt> }', () => {
@@ -373,5 +402,25 @@ describe('helpers', () => {
     expect(isAllowedBogCallbackIp(null, [])).toBe(true);
     expect(isAllowedBogCallbackIp('1.1.1.1', ['1.1.1.1'])).toBe(true);
     expect(isAllowedBogCallbackIp('2.2.2.2', ['1.1.1.1'])).toBe(false);
+  });
+});
+
+describe('bogSubscriptionMode — plans stay closed until the owner opens them (automatic payments unconfirmed)', () => {
+  const mode = (env: Record<string, string>) => bogSubscriptionMode(env as NodeJS.ProcessEnv);
+  test('unset → admin, whatever the checkout mode (public or admin)', () => {
+    expect(mode({})).toBe('admin');
+    expect(mode({ BOG_CHECKOUT_MODE: 'public' })).toBe('admin');
+    expect(mode({ BOG_CHECKOUT_MODE: 'admin' })).toBe('admin');
+  });
+  test('public opens plans only as wide as the checkout; off or a typo closes them', () => {
+    expect(mode({ BOG_SUBSCRIPTION_MODE: 'public' })).toBe('public');
+    expect(mode({ BOG_SUBSCRIPTION_MODE: ' Public ', BOG_CHECKOUT_MODE: 'admin' })).toBe('admin');
+    expect(mode({ BOG_SUBSCRIPTION_MODE: 'off' })).toBe('off');
+    expect(mode({ BOG_SUBSCRIPTION_MODE: 'yes' })).toBe('off');
+  });
+  test('checkout off (or a Preview / Development deployment) → plans off too', () => {
+    expect(mode({ BOG_CHECKOUT_MODE: 'off', BOG_SUBSCRIPTION_MODE: 'public' })).toBe('off');
+    expect(mode({ VERCEL_ENV: 'preview', BOG_SUBSCRIPTION_MODE: 'public' })).toBe('off');
+    expect(bogCheckoutMode({ VERCEL_ENV: 'preview' } as NodeJS.ProcessEnv)).toBe('off');
   });
 });
