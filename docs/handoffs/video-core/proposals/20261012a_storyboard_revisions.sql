@@ -15,6 +15,15 @@
 -- is the record a charge is justified by, and 20260929a / 20261001f are the history of why owner writes are not granted.
 --
 -- Additive only: two tables, their indexes and policies. Nothing existing is altered.
+--
+-- REVISED 2026-10-15 (Video Core final hardening, Phase 3 preflight; still never applied anywhere but a throwaway database):
+--   1. A board's revision numbers were unique per board_id ACROSS users, and board_id is client-minted: one user reusing
+--      another's board_id could block that user's next revision (unique violation) and an approval row could point at
+--      another user's revision. Every key is now scoped by user_id.
+--   2. An approval could carry a fingerprint different from the revision it names. The approval now references the
+--      revision by (user_id, board_id, revision, fingerprint), so an approval exists only for a board somebody actually
+--      saved, as it was saved. A parent_revision must exist on the same board of the same user.
+--   Checked on a real Postgres 16: scripts/lease-isolation/b3-storyboard-revisions.check.sql (run.sh).
 
 begin;
 
@@ -38,10 +47,14 @@ create table if not exists public.storyboard_revisions (
   scenes           jsonb not null check (jsonb_typeof(scenes) = 'array' and octet_length(scenes::text) <= 65536),
   scene_scripts    jsonb check (scene_scripts is null or (jsonb_typeof(scene_scripts) = 'array' and octet_length(scene_scripts::text) <= 65536)),
   created_at       timestamptz not null default now(),
-  unique (board_id, revision)
+  constraint storyboard_revisions_board_revision_key unique (user_id, board_id, revision),
+  -- The approval's foreign key target: a revision as it was saved (its number AND its fingerprint).
+  constraint storyboard_revisions_fingerprint_key unique (user_id, board_id, revision, fingerprint),
+  constraint storyboard_revisions_parent_fkey foreign key (user_id, board_id, parent_revision)
+    references public.storyboard_revisions (user_id, board_id, revision) on delete cascade
 );
 
-create index if not exists storyboard_revisions_user_board_idx on public.storyboard_revisions (user_id, board_id, revision desc);
+-- (user_id, board_id, revision) is already indexed by storyboard_revisions_board_revision_key; no second index.
 
 create table if not exists public.storyboard_approvals (
   id             uuid primary key default gen_random_uuid(),
@@ -50,9 +63,10 @@ create table if not exists public.storyboard_approvals (
   revision       integer not null,
   fingerprint    text not null check (fingerprint ~ '^[0-9a-f]{16}$'),
   -- The film the approval started (film_tokens / renders id), set by the render route once it has one.
-  film_ref       text,
+  film_ref       text check (film_ref is null or char_length(film_ref) between 1 and 128),
   approved_at    timestamptz not null default now(),
-  foreign key (board_id, revision) references public.storyboard_revisions (board_id, revision) on delete cascade
+  constraint storyboard_approvals_revision_fkey foreign key (user_id, board_id, revision, fingerprint)
+    references public.storyboard_revisions (user_id, board_id, revision, fingerprint) on delete cascade
 );
 
 create index if not exists storyboard_approvals_user_idx on public.storyboard_approvals (user_id, approved_at desc);
@@ -69,8 +83,8 @@ create policy storyboard_approvals_owner_read on public.storyboard_approvals
   for select to authenticated using (auth.uid() = user_id);
 
 -- No insert / update / delete policy for authenticated or anon: service_role bypasses RLS and is the only writer.
-revoke all on public.storyboard_revisions from anon, authenticated;
-revoke all on public.storyboard_approvals from anon, authenticated;
+revoke all on public.storyboard_revisions from public, anon, authenticated;
+revoke all on public.storyboard_approvals from public, anon, authenticated;
 grant select on public.storyboard_revisions to authenticated;
 grant select on public.storyboard_approvals to authenticated;
 

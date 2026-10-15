@@ -6,6 +6,10 @@ create role anon nologin; create role authenticated nologin; create role service
 create role authenticator login password 'local-only' noinherit;
 grant anon, authenticated, service_role to authenticator;
 create schema auth; create table auth.users (id uuid primary key);
+-- auth.uid() as Supabase defines it (owner-read policies call it, e.g. the B3 proposal's).
+create function auth.uid() returns uuid language sql stable
+  as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'sub', '')::uuid $$;
+grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated;
 grant usage on schema public to anon, authenticated, service_role;
 
 create table public.profiles (
@@ -135,3 +139,5 @@ revoke execute on function public.deduct_credits(uuid, integer, text), public.re
 
 -- The two test accounts the suites use (lib/agent/media/leaseIsolation.pg.test.ts, lib/agent/run/runIsolation.pg.test.ts).
 insert into auth.users (id) values ('0e000000-0000-4000-8000-00000000000a'), ('0e000000-0000-4000-8000-00000000000b');
+-- The film billing suites' accounts (lib/chat/filmBilling.pg.test.ts 1–24, filmSceneRefund.pg.test.ts 25–40): film_billing rows reference auth.users.
+insert into auth.users (id) select ('0e000000-0000-4000-8000-0000000f00' || lpad(to_hex(n), 2, '0'))::uuid from generate_series(1, 40) n;

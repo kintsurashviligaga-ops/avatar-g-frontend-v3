@@ -77,6 +77,24 @@ export async function claimIdempotencyKey(userId: string, key: string, windowSec
 }
 
 /**
+ * The duplicate guard for a step that TAKES MONEY (a paid film start): the shared DATABASE answers first — durable and the
+ * same row for every instance — and Redis only when the database cannot. Unlike claimIdempotencyKey it says when neither
+ * could answer ('unavailable'), so the caller can refuse instead of charging blind.
+ */
+export async function claimPaidStartKey(userId: string, key: string, windowSec: number): Promise<'claimed' | 'held' | 'unavailable'> {
+  const stored = await storeClaim(userId, key, windowSec);
+  if (stored !== 'unavailable') return stored;
+  const r = redis();
+  if (!r) return 'unavailable';
+  try {
+    const res = await r.set(`idem:${userId}:${key}`, '1', { nx: true, ex: Math.max(1, Math.round(windowSec)) });
+    return res === 'OK' ? 'claimed' : 'held';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+/**
  * Release a previously-claimed idempotency key (PHASE 52 TASK 4).
  *
  * `claimIdempotencyKey` reserves the key for `windowSec` to swallow rapid

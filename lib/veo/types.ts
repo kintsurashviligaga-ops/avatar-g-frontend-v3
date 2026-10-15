@@ -202,7 +202,9 @@ export type VeoPollOutcome =
   | { state: 'processing' }
   | { state: 'succeeded'; videos: VeoVideo[] }
   | { state: 'filtered'; reason: string; supportCodes: string[] }
-  | { state: 'failed'; reason: string; code?: number };
+  /** `finished` = Google says the operation is DONE and produced nothing (an error or no video): a terminal verdict.
+   *  Absent = a local or transport answer (bad name, no config, an unknown / expired operation), which proves nothing. */
+  | { state: 'failed'; reason: string; code?: number; finished?: true };
 
 /** What the Vertex transport needs (lib/veo/vertexAuth.ts → vertexConfig()). */
 export interface VertexConfig {

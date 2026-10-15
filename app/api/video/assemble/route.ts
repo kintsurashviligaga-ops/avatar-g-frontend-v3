@@ -45,6 +45,7 @@ import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
+import { decideFilmWaiver, settleFilmWaiver, FILM_WAIVER_LEASE_SEC } from '@/lib/chat/filmBilling';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
@@ -383,18 +384,53 @@ async function assembleImpl(req: NextRequest) {
   // STATUS/TRACKING side only — a store miss must fall back to billing normally (default false here).
   const billedTokenForCheck = filmTokenId ?? billingToken;
   let filmAlreadyBilled = false;
-  if (billedTokenForCheck && uid) {
-    const [prior, paid] = await Promise.all([getFilmStatus(billedTokenForCheck), getFilmPaid(billedTokenForCheck)]);
-    // ⚠️ THREE WAYS A FILM CAN ARRIVE ALREADY PAID FOR, ALL OWNER-BOUND + SINGLE-USE (isFilmPaidUpstream is the one predicate):
-    //   · masterUrl      — a Product-Ad / re-stitch whose render was billed upstream
-    //   · freeFilmWaived — the film pipeline already spent this user's free-video SLOT on the clips.
-    //     Without honouring it, the free film would either consume a SECOND slot here or be charged
-    //     the stitch — for a film the product told the user is free.
-    //   · the up-front payment — the film's whole quote was taken when it started (filmComposite → recordFilmPaid).
-    // All markers live in the server-side store, never in the client-held `film:` token.
+  // How the waiver this attempt uses goes back when it delivers nothing: a durable lease is settled, a cache waiver restored.
+  let waiverLease: { tokenId: string; leaseId: string } | null = null;
+  let cacheWaiver = false;
+  const settleWaiver = async (delivered: boolean): Promise<void> => {
+    if (waiverLease && uid) {
+      await settleFilmWaiver(uid, waiverLease.tokenId, waiverLease.leaseId, delivered).catch(() => false);
+      waiverLease = null;
+    } else if (cacheWaiver && !delivered && billedTokenForCheck) {
+      await restoreFilmBilling(billedTokenForCheck).catch(() => {});
+      cacheWaiver = false;
+    }
+  };
+  if (filmTokenId && uid && !(await isAdminUser(uid))) {
+    // ⚠️ A FILM'S PAYMENT IS DECIDED FROM DURABLE STORAGE, NOT FROM REDIS (Video Core v1.0 final hardening, Phase 1). The film's
+    // quote was taken when it started; the ledger proves it, film_billing counts the stitches it covers, and a stitch leases
+    // one for longer than this route can run. Redis is only a cache now: when it was down, expired or on another instance
+    // this used to bill the stitch a second time (defect 44). Admins are never billed here (skipBilling below), so they skip it.
+    const decision = await decideFilmWaiver(uid, filmTokenId, crypto.randomUUID());
+    if (decision.action === 'busy') {
+      return NextResponse.json({
+        error: 'duplicate_request', reason: 'film_stitch_in_flight',
+        message: 'This film is already being assembled. Nothing was charged for this request.',
+      }, { status: 409 });
+    }
+    if (decision.action === 'stop') {
+      // eslint-disable-next-line no-console
+      console.error(`[assemble] film billing state unknown (${decision.reason}) for token ${filmTokenId} — refused, nothing charged`);
+      return NextResponse.json({
+        error: 'billing_state_unknown', reason: decision.reason,
+        message: "This film's payment could not be confirmed right now, so nothing was charged and nothing was rendered. Your payment is safe — please try again in a minute.",
+      }, { status: 503 });
+    }
+    if (decision.action === 'waive') {
+      filmAlreadyBilled = true;
+      if (decision.via === 'durable') waiverLease = { tokenId: filmTokenId, leaseId: decision.leaseId };
+      else cacheWaiver = true;
+    }
+  } else if (billingToken && !filmTokenId && uid) {
+    const [prior, paid] = await Promise.all([getFilmStatus(billingToken), getFilmPaid(billingToken)]);
+    // ⚠️ A PRODUCT AD ARRIVES ALREADY PAID FOR when /api/video/remix billed its clip and stamped the master (masterUrl),
+    // owner-bound + single-use (isFilmPaidUpstream is the one predicate). The marker lives in the server-side store, never in
+    // the client-held token. Spent up front so a concurrent/replayed assemble can't reuse it; handed back on failure.
     filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid);
-    // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it.
-    if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
+    if (filmAlreadyBilled) {
+      await consumeFilmBilling(billingToken);
+      cacheWaiver = true;
+    }
   }
   if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
@@ -439,8 +475,12 @@ async function assembleImpl(req: NextRequest) {
     mk: body.marketing && hasOverlayContent(body.marketing) ? 1 : 0,
     cap: body.captionAlignment ? 1 : 0,
   });
-  const fresh = await claimIdempotencyKey(idemOwner, `assemble:${idemKey}`, 60);
+  // ⚠️ THE CLAIM OUTLIVES THE RENDER. It was 60 s while a stitch may run 600 s (maxDuration): a duplicate sent after the first
+  // minute — a client retrying its own timeout — found the key expired and started a second render, billed again when no
+  // payment covered the film. The claim is released the moment an attempt fails, so an honest retry is never held back.
+  const fresh = await claimIdempotencyKey(idemOwner, `assemble:${idemKey}`, FILM_WAIVER_LEASE_SEC);
   if (!fresh) {
+    await settleWaiver(false);
     return NextResponse.json({ error: 'duplicate_request', message: 'This composition is already being assembled.' }, { status: 409 });
   }
 
@@ -679,14 +719,16 @@ async function assembleImpl(req: NextRequest) {
       // eslint-disable-next-line no-console
       console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: producedSomething && !scSkipBilling && !scFreeFilm }));
       if (filmTokenId) await recordFilmMaster(filmTokenId, master, null, uid).catch(() => {});
+      // The waiver this attempt leased is spent only by a master it actually changed; an untouched clip hands it back.
+      await settleWaiver(producedSomething);
       // `freeFilm` reports whether the slot was actually SPENT. When nothing was produced it was handed
       // back above, so saying true here would tell the client their one free video is gone when it is not.
       return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm && producedSomething, single: true });
     } catch (err) {
-      // The waiver of a film paid upstream was spent above (consumeFilmBilling) so a replay cannot reuse it; this attempt
-      // delivered nothing, so it goes back — exactly as the multi-clip saga's compensate hands it back. Without this a
+      // The waiver of a film paid upstream was taken above (a durable lease, or the cache's consumeFilmBilling) so a replay
+      // cannot reuse it; this attempt delivered nothing, so it goes back — exactly as the multi-clip saga's compensate does. Without this a
       // retry of the same film was charged the stitch for a film the product had told the user was paid (or free).
-      if (filmAlreadyBilled && billedTokenForCheck) await restoreFilmBilling(billedTokenForCheck).catch(() => {});
+      await settleWaiver(false);
       // A failed 6s render must never strand the user's credits / free slot — roll the reservation back.
       if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
@@ -849,9 +891,7 @@ async function assembleImpl(req: NextRequest) {
         // marker spent, and the retry the user was invited to make was charged the stitch charge
         // for a film the product had told them was free. Returning it restores only the consumed flag —
         // the masterUrl / freeFilmWaived evidence of the upstream payment is untouched.
-        if (filmAlreadyBilled && billedTokenForCheck) {
-          await restoreFilmBilling(billedTokenForCheck).catch(() => {});
-        }
+        await settleWaiver(false);
         if (skipBilling || uid === null) return; // anon / founder reserved nothing to roll back
         const lock = ctx.bag.lock as TokenLock | null | undefined;
         if (lock) await releaseTokenLock(lock);
@@ -1046,6 +1086,8 @@ async function assembleImpl(req: NextRequest) {
   const qa = (bag.qa as QaReport | null | undefined) ?? null;
   const qaSummary = qa ? { pass: qa.pass, score: qa.score, grade: qa.grade, issues: qa.issues.map((i) => i.code) } : null;
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary, uid);
+  // The film's waiver is spent only now, by a delivered master (a crash before this line leaves the lease to expire).
+  await settleWaiver(Boolean(resultUrl));
 
   // PHASE 27 (VECTOR 2) — POST-RENDER VISION QUALITY GATE. Env-gated (FILM_VISION_QA=1, default OFF →
   // INERT + zero-cost in prod) and fully FAIL-OPEN: it samples keyframes from the finished master and

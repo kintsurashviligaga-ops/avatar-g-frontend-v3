@@ -215,6 +215,7 @@ export function finishedOperationOutcome(op: FinishedOperation): VeoPollOutcome 
       state: 'failed',
       reason: message || 'Veo operation failed',
       ...(typeof e.code === 'number' ? { code: e.code } : {}),
+      finished: true,
     };
   }
   if (op.videos.length > 0) return { state: 'succeeded', videos: op.videos };
@@ -226,7 +227,7 @@ export function finishedOperationOutcome(op: FinishedOperation): VeoPollOutcome 
     const reason = reasons.length > 0 ? redactSecrets(reasons.join('; '), DETAIL_MAX_CHARS) : 'Veo filtered the output (Responsible AI)';
     return { state: 'filtered', reason, supportCodes: supportCodesIn(reasons.join(' ')) };
   }
-  return { state: 'failed', reason: 'Veo finished without returning a video' };
+  return { state: 'failed', reason: 'Veo finished without returning a video', finished: true };
 }
 
 function positiveMs(value: number | undefined, fallback: number): number {
