@@ -62,9 +62,11 @@ const neverLeaks = (line: string) => {
 };
 
 describe('preview-auth-check plan', () => {
-  it('skips everything that is not a Vercel Preview build on the Vertex transport', () => {
-    expect(plan({ ...ENV, VERCEL_ENV: 'production' })).toEqual({ skip: 'not a Vercel Preview build' });
-    expect(plan({})).toEqual({ skip: 'not a Vercel Preview build' });
+  it('skips everything that is not a Vercel Preview or Production build on the Vertex transport', () => {
+    expect(plan({ ...ENV, VERCEL_ENV: 'development' })).toEqual({ skip: 'not a Vercel Preview or Production build' });
+    expect(plan({})).toEqual({ skip: 'not a Vercel Preview or Production build' });
+    // Production today: no VEO_TRANSPORT pin → the build logs a skip and calls nothing.
+    expect(plan({ VERCEL_ENV: 'production' })).toEqual({ skip: 'VEO_TRANSPORT is not vertex' });
     expect(plan({ ...ENV, VEO_TRANSPORT: 'gemini' })).toEqual({ skip: 'VEO_TRANSPORT is not vertex' });
     expect(plan({ ...ENV, VERCEL_OIDC_TOKEN: '' })).toEqual({ skip: 'VERCEL_OIDC_TOKEN is not set in this build' });
   });
@@ -120,10 +122,25 @@ describe('preview-auth-check runCheck', () => {
     neverLeaks(line);
   });
 
-  it('prints a skip line instead of calling Google outside Preview', async () => {
+  it('prints a skip line instead of calling Google outside Preview and Production', async () => {
     const { lib, fetchImpl, seen } = fakes();
-    expect(await runCheck({ ...ENV, VERCEL_ENV: 'production' }, lib, fetchImpl)).toBe('[gcp-auth-check] skipped: not a Vercel Preview build');
+    expect(await runCheck({ ...ENV, VERCEL_ENV: 'development' }, lib, fetchImpl)).toBe('[gcp-auth-check] skipped: not a Vercel Preview or Production build');
     expect(seen.config).toBeUndefined();
+  });
+
+  it('checks a Production build with the Production token (free: token, bucket, sign — never a model call)', async () => {
+    const prodToken = jwtOf({
+      sub: 'owner:kintsurashviligaga-ops-projects:project:avatar-g-frontend-v3:environment:production',
+      environment: 'production',
+    });
+    const { lib, fetchImpl, seen } = fakes();
+    const line = await runCheck({ ...ENV, VERCEL_ENV: 'production', VERCEL_OIDC_TOKEN: prodToken }, lib, fetchImpl);
+    expect(line).toBe(
+      '[gcp-auth-check] env=production sub=owner:kintsurashviligaga-ops-projects:project:avatar-g-frontend-v3:environment:production ok=true mode:wif token:ok bucket:ok sign:ok',
+    );
+    expect(seen.subject).toBe(prodToken);
+    expect(seen.url).toBe('https://storage.googleapis.com/storage/v1/b/myavatar-veo-outputs/o?maxResults=1&fields=kind');
+    expect(line).not.toContain(prodToken);
   });
 });
 

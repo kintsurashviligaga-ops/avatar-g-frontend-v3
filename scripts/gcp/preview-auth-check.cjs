@@ -2,17 +2,18 @@
 /**
  * GCP Part 0 "AUTH VERIFIED" from the build log — no sign-in, nothing billed.
  *
- * Runs before `next build` (vercel.json buildCommand). On a Vercel **Preview** build with VEO_TRANSPORT=vertex it
+ * Runs before `next build` (vercel.json buildCommand). On a Vercel **Preview or Production** build with VEO_TRANSPORT=vertex it
  * trades the build's Vercel OIDC token (VERCEL_OIDC_TOKEN, which Vercel sets in builds; functions get the
  * x-vercel-oidc-token header instead) at GCP STS, impersonates the Veo service account, lists one object of the Veo
  * bucket and signs one blob as the service account — the same three free calls as lib/veo/authCheck.ts, which the
- * admin provider probe runs at request time. A Preview build token carries the same `sub`
- * (…:environment:preview) as a Preview function token, so a pass here proves the pool, provider condition,
- * impersonation binding, bucket grant and signBlob role for the identity the Preview functions use.
+ * admin provider probe runs at request time. A build token carries the same `sub` (…:environment:preview, or
+ * …:environment:production) as that environment's function token, so a pass here proves the pool, provider condition,
+ * impersonation binding, bucket grant and signBlob role for the identity those functions use — for Production, before
+ * a single paid clip and without anyone signing in (Video Core final hardening, Phase 2).
  *
  * Prints ONE line, `[gcp-auth-check] …`: step names, the token's sub/environment claims and redacted errors —
- * never a token or a signature. Every other environment (Production, local, CI) is skipped. It never fails the
- * build: any error, and a hard timeout, end with exit code 0.
+ * never a token or a signature. Every other environment (development, local, CI) is skipped. It never fails the
+ * build: any error, and a hard timeout, end with exit code 0. It never calls a model: nothing is billed.
  */
 
 const PREFIX = '[gcp-auth-check]';
@@ -72,7 +73,7 @@ function claimsOf(jwt) {
 
 /** Decide whether this build checks anything. Returns { skip } or the validated configuration. */
 function plan(env) {
-  if (env.VERCEL_ENV !== 'preview') return { skip: 'not a Vercel Preview build' };
+  if (env.VERCEL_ENV !== 'preview' && env.VERCEL_ENV !== 'production') return { skip: 'not a Vercel Preview or Production build' };
   if (env.VEO_TRANSPORT !== 'vertex') return { skip: 'VEO_TRANSPORT is not vertex' };
   const bad = Object.keys(PATTERNS).filter((k) => !PATTERNS[k].test((env[k] ?? '').trim()));
   const bucket = (env.GCP_VEO_BUCKET ?? '').trim().replace(/^gs:\/\//, '').split('/')[0];
