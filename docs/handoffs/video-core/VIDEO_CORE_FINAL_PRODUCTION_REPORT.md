@@ -132,7 +132,7 @@ Two steps, in this order, each its own word:
 1. **One paying-user test in Production:** a normal (non-admin) account of GG's, signed in by GG, one **16 s film (two
    8 s scenes)**. It proves what the admin run could not: the up-front debit, the stitch not charging again, a
    multi-scene stitch with film QA, and the `filmpay:` ledger row. Quote **50 credits** (`videoCredits`, 16 s Fast;
-   VERIFIED FACT from code), ≈ **$1.60** Vertex (INFERENCE from the list price), no new card payment, no retry. An 8 s
+   VERIFIED FACT from code), ≈ **$1.92** Vertex (INFERENCE from the list price: 8 s scenes render at 1080p, $0.12/s with audio; corrected 2026-10-15 from an earlier $1.60), no new card payment, no retry. An 8 s
    film would not do: it uses the account's free slot when unused, so nothing is debited. The account needs ≥ 50 credits
    already (no top-up in this test). Suggested wording: „ნებას გაძლევ Production-ში ერთი ფასიანი ფილმის ტესტი ჩემი
    ჩვეულებრივი ანგარიშით: 16 წამი (2 სცენა), ≤ 50 კრედიტი, ≤ $2 Vertex, ბარათით გადახდის გარეშე".

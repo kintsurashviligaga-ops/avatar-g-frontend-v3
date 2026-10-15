@@ -40,6 +40,7 @@ import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generatio
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveFilmTemplate } from '@/lib/studio/templateContext';
+import { storyFeaturesPerson } from '@/lib/chat/storyPerson';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
@@ -484,6 +485,14 @@ export async function POST(req: NextRequest) {
   // wardrobe. Fail-open: a miss returns null and the board falls back to per-scene
   // text generation (the prior, drift-prone behaviour).
   if (body.characterAnchor) {
+    // ⚠️ NO PERSON IN THE BRIEF → NO PORTRAIT (lib/chat/storyPerson.ts). The image model can only answer "a head-and-
+    // shoulders close-up of the main character" with a human, and every frame is then drawn with "the EXACT same person
+    // as the reference image": a boat-and-cat brief came back with an invented woman in every frame and every clip.
+    // Only a clear "no" skips it; an unknown answer keeps the anchor. The client already treats a null anchor as
+    // "no reference" (frames from text alone).
+    if (!selfie && (await storyFeaturesPerson(prompt)) === false) {
+      return NextResponse.json({ success: true, anchorUrl: null, anchorSkipped: 'no_person' });
+    }
     const anchorPrompt =
       `Character reference portrait — a clean, evenly-lit head-and-shoulders close-up of the SINGLE main character in this story: "${prompt.slice(0, 600)}". ` +
       `Looking toward camera, neutral softly-blurred background, photorealistic, sharp focus on the face. ` +
