@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
- * lib/billing/bogLimits — BOG's 24 h / 30 day limits: what counts, rolling windows, when there is room again, and
- * failing closed when the orders cannot be read.
+ * lib/billing/bogLimits — BOG's 24 h / 30 day limits: what counts, rolling windows (safe under the bank's calendar
+ * days), when there is room again, and failing closed when the orders cannot be read.
  */
 jest.mock('server-only', () => ({}));
 // bogSettlement is imported only for its refund-status list; its money and bank dependencies stay out of this test.
@@ -134,5 +134,90 @@ describe('checkBogLimits', () => {
       window: 'unknown',
     });
     expect(await check({}, Number.NaN)).toEqual({ ok: false, window: 'unknown' });
+  });
+});
+
+/**
+ * The bank's answer of 2026-10-15: the 1,000 ₾ and 5,000 ₾ limits count CALENDAR days ("24 hours" = a calendar day,
+ * "30 calendar days"), merchant-wide; the 500 ₾ is per payment. We keep rolling windows: a rolling 24 h window always
+ * contains everything paid since the last midnight, and a rolling 30 × 24 h window everything since midnight 29 days
+ * ago — in any time zone without daylight saving (Georgia and UTC have none). So what rolling admits never breaks a
+ * calendar limit; it can only wait longer than the bank would.
+ */
+describe('rolling windows never break the bank’s calendar-day limits (bank answer, 2026-10-15)', () => {
+  const TBILISI = 4 * H;
+  const dayOf = (ms: number, offset: number) => Math.floor((ms + offset) / D);
+
+  /** Deterministic pseudo-random numbers (mulberry32), so a failure reproduces. */
+  function rng(seed: number) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // The letter's limits (the 30-day one binds first), and a raised 30-day limit so the daily one is pressed too.
+  const RAISED: BogLimits = { ...MERCHANT, per30d: 30_000 };
+  test.each([
+    [1, MERCHANT],
+    [2, MERCHANT],
+    [3, MERCHANT],
+    [4, RAISED],
+    [5, RAISED],
+    [6, RAISED],
+  ])('random payments over 90 days (seed %i, %j): every calendar day and every 30 calendar days stay inside, Tbilisi and UTC', async (seed, limits) => {
+    const rand = rng(seed);
+    const start = Date.parse('2026-08-01T00:00:00Z');
+    const paid: Array<{ amount_gel: number; created_at: string; credited_at: string; t: number }> = [];
+    let t = start;
+    let refused = 0;
+    while (t < start + 90 * D) {
+      t += Math.floor(rand() * 9 * H) + 60_000; // the next attempt: a minute to 9 hours later
+      const amount = Math.round((5 + rand() * 495) * 100) / 100; // 5 … 500 ₾, tetri
+      const verdict = await checkBogLimits(db({ paid }).client, { userId: 'u', amountGel: amount, limits, nowMs: t });
+      if (verdict.ok) {
+        const iso = new Date(t).toISOString();
+        paid.push({ amount_gel: amount, created_at: iso, credited_at: iso, t });
+      } else {
+        expect(verdict.window).not.toBe('unknown');
+        refused += 1;
+      }
+    }
+    expect(paid.length).toBeGreaterThan(50);
+    expect(refused).toBeGreaterThan(10); // the limits were actually pressed against
+    let fullDays = 0;
+    for (const offset of [TBILISI, 0]) {
+      const byDay = new Map<number, number>();
+      for (const p of paid) byDay.set(dayOf(p.t, offset), (byDay.get(dayOf(p.t, offset)) ?? 0) + Math.round(p.amount_gel * 100));
+      for (const tetri of byDay.values()) {
+        expect(tetri).toBeLessThanOrEqual(limits.per24h * 100);
+        if (tetri > limits.per24h * 100 * 0.8) fullDays += 1;
+      }
+      const days = [...byDay.keys()];
+      for (let d = Math.min(...days); d <= Math.max(...days); d += 1) {
+        let sum = 0;
+        for (let k = d - 29; k <= d; k += 1) sum += byDay.get(k) ?? 0;
+        expect(sum).toBeLessThanOrEqual(limits.per30d * 100);
+      }
+    }
+    // With the raised 30-day limit, days really do come close to the daily one.
+    if (limits.per30d > 5000) expect(fullDays).toBeGreaterThan(10);
+  });
+
+  test('the price of being safe: 900 ₾ at 22:30 Tbilisi, then 200 ₾ at 01:00 — the bank (new calendar day) would take it, we wait until 22:30', async () => {
+    const paidAt = Date.parse('2026-10-14T18:30:00Z'); // 22:30 in Tbilisi
+    const now = Date.parse('2026-10-14T21:00:00Z'); // 01:00 on the 15th in Tbilisi
+    const iso = new Date(paidAt).toISOString();
+    const r = await checkBogLimits(db({ paid: [{ amount_gel: 900, created_at: iso, credited_at: iso }] }).client, {
+      userId: 'u',
+      amountGel: 200,
+      limits: MERCHANT,
+      nowMs: now,
+    });
+    expect(r).toEqual({ ok: false, window: '24h', limitGel: 1000, usedGel: 900, availableAt: '2026-10-15T18:30:00.000Z' });
   });
 });

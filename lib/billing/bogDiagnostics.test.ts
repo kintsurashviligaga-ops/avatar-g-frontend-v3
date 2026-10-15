@@ -8,7 +8,7 @@ jest.mock('./bogSettlement', () => ({
   bogSandboxBlocked: (cfg: { environment?: string } | null, env: NodeJS.ProcessEnv) => cfg?.environment === 'sandbox' && Boolean(env.VERCEL_ENV),
 }));
 
-import { bogReadiness, probeBogOAuth } from './bogDiagnostics';
+import { bogMerchantSeen, bogReadiness, probeBogOAuth } from './bogDiagnostics';
 
 const SECRET = 'S3cr3t-Value-xyz';
 const ENV = { BOG_CLIENT_ID: 'client-abcd1234', BOG_SECRET_KEY: SECRET, CRON_SECRET: 'c' } as unknown as NodeJS.ProcessEnv;
@@ -188,5 +188,59 @@ describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
     const r = await bogReadiness(db, { ...ENV, BOG_ENV: 'sandbox', VERCEL_ENV: 'preview' } as NodeJS.ProcessEnv);
     expect(r).toMatchObject({ environment: 'sandbox', sandboxBlocked: true });
     expect(r.callbackUrl).not.toContain('myavatar.ge');
+  });
+});
+
+describe('bogMerchantSeen — the merchant name on the receipt of the latest paid order (one GET, no order, no money)', () => {
+  const RECEIPT = {
+    order_id: 'bog-ord-9',
+    order_status: { key: 'completed' },
+    client: { id: '10001', brand_ka: 'მაიავატარი', brand_en: 'MyAvatar.ge', url: 'https://myavatar.ge' },
+  };
+  const paidDb = (rows: unknown[]) => {
+    const q: Record<string, unknown> = {};
+    const b = {
+      select: (cols: string) => ((q.select = cols), b),
+      in: (col: string, vals: unknown[]) => ((q.in = [col, vals]), b),
+      not: (...a: unknown[]) => ((q.not = a), b),
+      order: (...a: unknown[]) => ((q.order = a), b),
+      limit: async (n: number) => ((q.limit = n), { data: rows, error: null }),
+    };
+    return { q, db: { from: () => b } as never };
+  };
+  const bog = (receipt: unknown, status = 200) => {
+    const f = jest.fn(async (url: string) =>
+      String(url).includes('/token')
+        ? new Response(JSON.stringify({ access_token: 'T', expires_in: 300 }), { status: 200 })
+        : new Response(JSON.stringify(receipt), { status }),
+    );
+    return f;
+  };
+
+  test('reads the latest paid order with a BOG id and returns the brand BOG reports', async () => {
+    const { q, db } = paidDb([{ bog_order_id: 'bog-ord-9', created_at: '2026-10-13T09:08:08Z' }]);
+    const f = bog(RECEIPT);
+    const r = await bogMerchantSeen(db, { fetch: f as unknown as typeof fetch }, ENV);
+    expect(r).toEqual({ verdict: 'ok', brandKa: 'მაიავატარი', brandEn: 'MyAvatar.ge', orderCreatedAt: '2026-10-13T09:08:08Z' });
+    expect(q).toMatchObject({ select: 'bog_order_id,created_at', not: ['bog_order_id', 'is', null], order: ['created_at', { ascending: false }], limit: 1 });
+    expect((q.in as unknown[])[1]).toEqual(['completed', 'refund_requested', 'refunded_partially', 'refunded', 'amount_mismatch']);
+    const urls = f.mock.calls.map((c) => String(c[0]));
+    expect(urls[urls.length - 1]).toBe('https://api.bog.ge/payments/v1/receipt/bog-ord-9');
+    // Read-only: nothing but the token request and one GET.
+    expect(f.mock.calls.filter((c) => !String(c[0]).includes('/token')).map((c) => (c[1] as RequestInit | undefined)?.method ?? 'GET')).toEqual(['GET']);
+  });
+
+  test('nothing paid yet → no_paid_order and no request; BOG silent → no_answer; no credentials → unconfigured', async () => {
+    const f = bog(RECEIPT);
+    expect((await bogMerchantSeen(paidDb([]).db, { fetch: f as unknown as typeof fetch }, ENV)).verdict).toBe('no_paid_order');
+    expect(f).not.toHaveBeenCalled();
+    const down = bog({}, 502);
+    expect(await bogMerchantSeen(paidDb([{ bog_order_id: 'x', created_at: 't' }]).db, { fetch: down as unknown as typeof fetch }, ENV)).toEqual({
+      verdict: 'no_answer',
+      brandKa: null,
+      brandEn: null,
+      orderCreatedAt: 't',
+    });
+    expect((await bogMerchantSeen(paidDb([]).db, { fetch: f as unknown as typeof fetch }, {} as NodeJS.ProcessEnv)).verdict).toBe('unconfigured');
   });
 });

@@ -26,11 +26,14 @@ interface Readiness {
   recentOrders: Array<{ kind: string; status: string; amountGel: number; createdAt: string; rejectReason: string | null }>;
 }
 interface Probe { verdict: string; environment: string | null; httpStatus: number; answer: string | null; hint: string; tookMs: number }
+/** The merchant name BOG reports on the receipt of our latest paid order (read when BOG accepts the credentials). */
+interface Merchant { verdict: string; brandKa: string | null; brandEn: string | null; orderCreatedAt: string | null }
 
 export default function BogReadiness({ ka }: { ka: boolean }) {
   const [r, setR] = useState<Readiness | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [probe, setProbe] = useState<Probe | null>(null);
+  const [merchant, setMerchant] = useState<Merchant | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -46,11 +49,12 @@ export default function BogReadiness({ ka }: { ka: boolean }) {
   useEffect(() => { void load(); }, [load]);
 
   const runProbe = useCallback(async () => {
-    setBusy(true); setProbe(null);
+    setBusy(true); setProbe(null); setMerchant(null);
     try {
       const res = await fetch('/api/admin/billing/bog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'oauth' }) });
-      const j = (await res.json().catch(() => ({}))) as { probe?: Probe };
+      const j = (await res.json().catch(() => ({}))) as { probe?: Probe; merchant?: Merchant | null };
       if (j.probe) setProbe(j.probe); else setErr(ka ? 'შემოწმება ვერ მოხერხდა' : 'Check failed');
+      setMerchant(j.merchant ?? null);
     } catch {
       setErr(ka ? 'ქსელის შეცდომა' : 'Network error');
     } finally { setBusy(false); }
@@ -108,7 +112,9 @@ export default function BogReadiness({ ka }: { ka: boolean }) {
               {ka ? 'ბანკის ლიმიტი' : 'Bank limits'}: {ka ? 'ერთი გადახდა' : 'per payment'} ≤ {r.limitsGel.singleTransaction} ₾ · 24{ka ? 'სთ' : 'h'} {r.paidGel.last24h}/{r.limitsGel.per24h} ₾ · 30{ka ? ' დღე' : 'd'} {r.paidGel.last30d}/{r.limitsGel.per30d} ₾
               {' '}
               <span className="text-gray-500">
-                ({ka ? 'მოძრავი ფანჯარა; ითვლის გადახდილ, დაბრუნებულ და შესამოწმებელ შეკვეთებს' : 'rolling windows; counts paid, refunded and under-review orders'}
+                ({ka
+                  ? 'მოძრავი ფანჯარა, ბანკის კალენდარულ დღეებზე მკაცრი; ითვლის გადახდილ, დაბრუნებულ და შესამოწმებელ შეკვეთებს'
+                  : "rolling windows, stricter than the bank's calendar days; counts paid, refunded and under-review orders"}
                 {r.limitScope
                   ? ka
                     ? `; checkout და განახლება ზღვარს ზემოთ უარს ამბობს, ${r.limitScope === 'customer' ? 'თითო მომხმარებელზე' : 'მთელ მერჩანტზე'}`
@@ -141,9 +147,22 @@ export default function BogReadiness({ ka }: { ka: boolean }) {
           <p className="font-semibold">{probe.verdict} · HTTP {probe.httpStatus || '—'} · {probe.environment ?? '—'} · {probe.tookMs} ms</p>
           {probe.answer && <p className="mt-1 break-all font-mono text-[11px] opacity-80">{probe.answer}</p>}
           <p className="mt-1 opacity-90">{probe.hint}</p>
+          {merchant && (
+            <p className="mt-1 opacity-90" data-testid="bog-merchant-name">
+              {ka ? 'სახელი BOG-ის გადახდის გვერდზე' : 'Name on BOG’s payment page'}:{' '}
+              {merchant.verdict === 'ok'
+                ? `${merchant.brandKa ?? '—'} · ${merchant.brandEn ?? '—'}`
+                : merchant.verdict === 'no_paid_order'
+                  ? ka ? 'ჯერ გადახდილი შეკვეთა არ არის' : 'no paid order yet'
+                  : ka ? 'BOG-მა ქვითარი არ დააბრუნა' : 'BOG returned no receipt'}
+              {merchant.orderCreatedAt && <span className="opacity-70"> ({ka ? 'ქვითარი' : 'receipt of'} {merchant.orderCreatedAt.slice(0, 10)})</span>}
+            </p>
+          )}
         </div>
       )}
-      <p className="mt-2 text-[10.5px] text-gray-600">{ka ? 'შემოწმება მხოლოდ ტოკენს ითხოვს — შეკვეთა არ იქმნება, თანხა არ ჩამოიჭრება.' : 'The check only requests a token — no order is created and nothing is charged.'}</p>
+      <p className="mt-2 text-[10.5px] text-gray-600">{ka
+          ? 'შემოწმება ტოკენს ითხოვს და ბოლო გადახდის ქვითარს კითხულობს — შეკვეთა არ იქმნება, თანხა არ ჩამოიჭრება.'
+          : 'The check requests a token and reads the latest payment’s receipt — no order is created and nothing is charged.'}</p>
     </section>
   );
 }

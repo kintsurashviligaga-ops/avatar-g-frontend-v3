@@ -460,8 +460,51 @@ export interface BogReceipt {
   readonly cardMask: string | null;
   readonly cardExpiry: string | null;
   readonly code: string | null;
+  /** BOG's transaction id (payment_detail.transaction_id): what the bank asks for about a code it does not document. */
+  readonly transactionId: string | null;
+  /**
+   * Why a payment was declined: BOG's code, its description (or the documented one) and reject_reason, e.g.
+   * "107 Payment declined due to insufficient funds in the account". An undocumented code also carries
+   * "· tx <transaction id>" — the bank's instruction (2026-10-15) is to send it that id.
+   */
   readonly rejectReason: string | null;
+  /** The merchant's name as BOG shows it to the payer (client.brand_ka / client.brand_en). */
+  readonly brandKa: string | null;
+  readonly brandEn: string | null;
 }
+
+/**
+ * BOG's documented response codes, verbatim (https://api.bog.ge/docs/payments/response-codes, read 2026-10-15).
+ * 1xx/200: payments; 161–179: refunds and other actions. Used only to name a decline the receipt leaves undescribed.
+ */
+export const BOG_RESPONSE_CODES: Readonly<Record<string, string>> = {
+  '100': 'Successful payment',
+  '101': 'Payment declined because card usage is limited. For detailed information, contact the card issuer bank',
+  '102': "Saved card wasn't found",
+  '103': 'Payment declined due to invalid card',
+  '104': 'Payment declined due to exceeding transaction limit',
+  '105': 'Payment declined because the card has expired',
+  '106': 'Payment declined due to exceeding the limit of the amount',
+  '107': 'Payment declined due to insufficient funds in the account',
+  '108': 'Authentication Declined',
+  '109': 'Technical Issue',
+  '110': 'Transaction Expired',
+  '111': 'Authentication timeout',
+  '112': 'General Error',
+  '122': 'Payment declined by the acquirer bank',
+  '199': 'Unknown Response',
+  '200': 'Successful preauthorization',
+  '161': 'Refund could not be completed. Please contact the card issuing bank for more details.',
+  '162': 'The card issuing bank declined the refund.',
+  '163': 'Not enough funds available in the account',
+  '164': 'Refund could not be completed. Please contact the card issuing bank for more details.',
+  '165': 'Refund could not be completed. Please contact the card issuing bank for more details.',
+  '166': 'Refund could not be completed. Please contact the card issuing bank for more details.',
+  '167': 'Card expired. Contact the customer and refund the amount to an active card.',
+  '168': 'Refund could not be completed. Please contact the card issuing bank for more details.',
+  '169': 'The card is expired or the details are incorrect. Please verify the information with the customer and try again.',
+  '179': 'Unknown Response',
+};
 
 const str = (v: unknown, max = 200): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
 const num = (v: unknown): number | null => {
@@ -494,6 +537,9 @@ export function parseBogReceipt(json: unknown): BogReceipt | null {
   const tm = pd.transfer_method as { key?: unknown } | string | undefined;
   const transferMethod = (typeof tm === 'string' ? str(tm) : str(tm?.key))?.toLowerCase() ?? null;
   const isCard = transferMethod === 'card' || transferMethod === 'google_pay';
+  const client = (o.client ?? {}) as Record<string, unknown>;
+  const code = str(pd.code, 8);
+  const transactionId = str(pd.transaction_id, 64);
   return {
     orderId,
     externalOrderId: str(o.external_order_id),
@@ -509,9 +555,23 @@ export function parseBogReceipt(json: unknown): BogReceipt | null {
     paymentOption: str(pd.payment_option)?.toLowerCase() ?? null,
     cardMask: isCard ? str(pd.payer_identifier, 32) : null,
     cardExpiry: str(pd.card_expiry_date, 8),
-    code: str(pd.code, 8),
-    rejectReason: str(o.reject_reason) ?? (statusKey === 'rejected' ? str(pd.code_description) : null),
+    code,
+    transactionId,
+    rejectReason: statusKey === 'rejected' ? declineReason(code, str(pd.code_description, 120), str(o.reject_reason, 60), transactionId) : str(o.reject_reason),
+    brandKa: str(client.brand_ka, 120),
+    brandEn: str(client.brand_en, 120),
   };
+}
+
+/** "107 Payment declined due to insufficient funds in the account (expiration)"; an undocumented code adds "· tx <id>". */
+function declineReason(code: string | null, description: string | null, rejectReason: string | null, transactionId: string | null): string | null {
+  const documented = code ? BOG_RESPONSE_CODES[code] : undefined;
+  const base = [code, description ?? documented ?? null].filter(Boolean).join(' ');
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  let reason = base;
+  if (rejectReason && !(description && same(description, rejectReason))) reason = base ? `${base} (${rejectReason})` : rejectReason;
+  if (!documented && transactionId) reason = reason ? `${reason} · tx ${transactionId}` : `tx ${transactionId}`;
+  return reason ? reason.slice(0, 200) : null;
 }
 
 /** Parse a callback: `{ event: 'order_payment', zoned_request_time, body: <receipt> }`. */

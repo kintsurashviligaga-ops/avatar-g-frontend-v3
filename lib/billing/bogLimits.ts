@@ -6,12 +6,19 @@
  * bank error with no explanation. So the checkout (and the renewal cron) asks here first and says plainly when a
  * limit is reached and when there is room again.
  *
+ * The bank's answers of 2026-10-15: the 1,000 ₾ and 5,000 ₾ are totals on OUR side (merchant-wide), counted in
+ * CALENDAR days ("30 calendar days"); the 500 ₾ is per payment, per cardholder; a refund does NOT give room back.
+ * We keep rolling windows on purpose: a rolling 24 h window always holds everything paid since the last midnight,
+ * and a rolling 30 × 24 h one everything since midnight 29 days ago, in any time zone without daylight saving
+ * (Georgia's and UTC have none). So nothing we admit can break the bank's calendar limits, whatever clock the bank
+ * keeps; the cost is that we sometimes wait longer than the bank would (bogLimits.test.ts proves both).
+ *
  *   bogLimits(env)       the limits in force: the letter's figures, raised or lowered without a deploy of code by
  *                        BOG_LIMIT_PER_PAYMENT_GEL / BOG_LIMIT_24H_GEL / BOG_LIMIT_30D_GEL (an unreadable value
  *                        keeps the letter's figure), and the scope, BOG_LIMIT_SCOPE:
- *                          merchant (default) — every customer's payments together, as the letter reads;
- *                          customer           — each customer separately, for when the bank says the limits are
- *                                               per card (bank question 2; a customer is our nearest stand-in).
+ *                          merchant (default) — every customer's payments together: the bank's rule (2026-10-15);
+ *                          customer           — each customer separately. NOT the bank's rule: it would let the
+ *                                               merchant total pass the limits. Kept only for a bank-approved change.
  *   checkBogLimits(db)   would `amountGel` more fit? Counts, inside rolling 24 h / 30 day windows:
  *                          · paid orders (completed, refunds, amount_mismatch — PAID_STATUSES), timed by when they
  *                            were credited, else made — in scope (everyone's, or this customer's);
@@ -41,8 +48,8 @@ export interface BogLimits {
 
 /**
  * Statuses whose money reached the bank: completed, BOG_REFUND_STATUSES (bogSettlement; bogLimits.test.ts pins the
- * two lists together) and amount_mismatch. Deliberately on the high side: whether a refund gives the limit back is not
- * confirmed by the bank, and an amount_mismatch order was paid but not credited — both count.
+ * two lists together) and amount_mismatch. A refunded payment still counts — the bank confirmed on 2026-10-15 that a
+ * refund does not free room in the limits — and an amount_mismatch order was paid but not credited.
  */
 export const BOG_PAID_STATUSES = ['completed', 'refund_requested', 'refunded_partially', 'refunded', 'amount_mismatch'] as const;
 

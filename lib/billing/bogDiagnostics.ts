@@ -11,13 +11,25 @@
  *   probeBogOAuth()  one OAuth client-credentials request to BOG. It creates no order, moves no money and is free;
  *                    it proves whether BOG accepts this client id + secret in this environment, and says what BOG
  *                    answered (status + the start of the body, the secret scrubbed).
+ *   bogMerchantSeen() the merchant name BOG shows the payer, read from the receipt (GET, read-only) of our latest
+ *                    paid order. The bank renamed the merchant on 2026-10-15 ("corrected, please check"); this is
+ *                    that check without a new payment.
  *
  * The OAuth request mirrors lib/billing/bogClient (same URL, headers and body) rather than reusing its private
  * token function, so the probe never touches — or poisons — the shared token cache.
  */
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { BOG_PUBLISHED_CALLBACK_KEYS, bogCheckoutMode, bogConfig, bogSubscriptionMode, type BogCheckoutMode, type BogConfig } from './bogClient';
+import {
+  BOG_PUBLISHED_CALLBACK_KEYS,
+  bogCheckoutMode,
+  bogConfig,
+  bogSubscriptionMode,
+  getBogReceipt,
+  type BogCheckoutMode,
+  type BogConfig,
+  type BogFetchDeps,
+} from './bogClient';
 import { BOG_PAID_STATUSES, bogLimits, type BogLimitScope } from './bogLimits';
 import { bogCallbackUrl, bogSandboxBlocked, bogSchemaReady } from './bogSettlement';
 
@@ -45,7 +57,7 @@ export interface BogReadiness {
   cronSecretSet: boolean;
   /** Who may start a BOG checkout (BOG_CHECKOUT_MODE). */
   checkoutMode: BogCheckoutMode;
-  /** Who may buy a plan through BOG (BOG_SUBSCRIPTION_MODE; admins only by default — automatic payments unconfirmed). */
+  /** Who may buy a plan through BOG (BOG_SUBSCRIPTION_MODE; admins only by default — automatic payments not yet proven). */
   subscriptionMode: BogCheckoutMode;
   /** Sandbox credentials on a Vercel deployment (Production database): checkout is closed (bogSandboxBlocked). */
   sandboxBlocked: boolean;
@@ -60,8 +72,8 @@ export interface BogReadiness {
 
 /**
  * Paid ₾ against BOG's 24 h / 30 day limits, merchant-wide (BOG_PAID_STATUSES). The windows are rolling (the last
- * 24 h / 30 days from now), timed by when the payment was credited, else when the order was made; whether BOG counts
- * calendar days is not confirmed.
+ * 24 h / 30 days from now), timed by when the payment was credited, else when the order was made. The bank counts
+ * calendar days (2026-10-15); a rolling window always holds at least what its calendar day does (lib/billing/bogLimits).
  */
 /** 5,000 ₾ / 30 days at our smallest order (5 ₾) is 1,000 orders; reading more could not change the verdict. */
 const PAID_ROWS_MAX = 1_000;
@@ -259,4 +271,50 @@ export async function probeBogOAuth(
   if (res.status === 403) return done('forbidden', res.status, answer);
   if (res.status === 404) return done('endpoint_not_found', res.status, answer);
   return done(res.status >= 500 ? 'bog_error' : 'credentials_refused', res.status, answer);
+}
+
+export interface BogMerchantSeen {
+  verdict: 'ok' | 'unconfigured' | 'no_paid_order' | 'no_answer';
+  /** client.brand_ka / client.brand_en of the receipt: the name on BOG's payment page and in the bank's records. */
+  brandKa: string | null;
+  brandEn: string | null;
+  /** When the order whose receipt was read was made. */
+  orderCreatedAt: string | null;
+}
+
+/**
+ * The merchant name BOG reports, from the receipt of our latest paid order (one GET; no order, no money). Never
+ * throws. no_paid_order when nothing was ever paid through BOG here (the receipt of an unpaid order may carry it too,
+ * but a paid one is what the payer saw).
+ */
+export async function bogMerchantSeen(db: Db, deps: BogFetchDeps, env: NodeJS.ProcessEnv = process.env): Promise<BogMerchantSeen> {
+  const none = (verdict: BogMerchantSeen['verdict'], orderCreatedAt: string | null = null): BogMerchantSeen => ({
+    verdict,
+    brandKa: null,
+    brandEn: null,
+    orderCreatedAt,
+  });
+  const cfg = bogConfig(env);
+  if (!cfg) return none('unconfigured');
+  let latest: { bog_order_id: string; created_at: string } | null = null;
+  try {
+    const { data } = await db
+      .from('bog_orders')
+      .select('bog_order_id,created_at')
+      .in('status', [...BOG_PAID_STATUSES])
+      .not('bog_order_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    latest = ((data ?? []) as Array<{ bog_order_id: string; created_at: string }>)[0] ?? null;
+  } catch {
+    latest = null;
+  }
+  if (!latest) return none('no_paid_order');
+  try {
+    const receipt = await getBogReceipt(cfg, deps, latest.bog_order_id);
+    if (!receipt) return none('no_answer', latest.created_at);
+    return { verdict: 'ok', brandKa: receipt.brandKa, brandEn: receipt.brandEn, orderCreatedAt: latest.created_at };
+  } catch {
+    return none('no_answer', latest.created_at);
+  }
 }

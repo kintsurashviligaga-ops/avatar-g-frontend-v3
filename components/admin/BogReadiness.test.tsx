@@ -23,7 +23,7 @@ test('shows the deployment state and runs the credential check on request only',
   expect(screen.getByText('Checkout: admins only')).toBeTruthy();
   expect(screen.getByText('Plans: admins only')).toBeTruthy();
   expect(screen.getByTestId('bog-limits').textContent).toContain('24h 5/1000 ₾ · 30d 59/5000 ₾');
-  expect(screen.getByTestId('bog-limits').textContent).toMatch(/rolling windows; counts paid, refunded and under-review orders/);
+  expect(screen.getByTestId('bog-limits').textContent).toMatch(/rolling windows, stricter than the bank's calendar days; counts paid, refunded and under-review orders/);
   expect(screen.getByTestId('bog-limits').textContent).toContain('checkout and renewals refuse above them, merchant-wide');
   expect(screen.queryByTestId('bog-sandbox-blocked')).toBeNull();
   expect(f).toHaveBeenCalledTimes(1);
@@ -41,4 +41,22 @@ test('sandbox credentials on this deployment are called out', async () => {
   })) as unknown as typeof fetch;
   render(<BogReadiness ka={false} />);
   expect((await screen.findByTestId('bog-sandbox-blocked')).textContent).toMatch(/Production database/);
+});
+
+test('when BOG accepts the credentials, the card shows the merchant name BOG reports (the bank renamed it 2026-10-15)', async () => {
+  global.fetch = jest.fn(async (_url: string, init?: RequestInit) => ({
+    ok: true,
+    status: 200,
+    json: async () =>
+      init?.method === 'POST'
+        ? {
+            probe: { verdict: 'ok', environment: 'production', httpStatus: 200, answer: null, hint: 'ok', tookMs: 90 },
+            merchant: { verdict: 'ok', brandKa: 'მაიავატარი', brandEn: 'MyAvatar.ge', orderCreatedAt: '2026-10-13T09:08:08Z' },
+          }
+        : { bog: readiness },
+  })) as unknown as typeof fetch;
+  render(<BogReadiness ka={false} />);
+  expect(await screen.findByText(/client …1234/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: /Test credentials with BOG/ }));
+  expect((await screen.findByTestId('bog-merchant-name')).textContent).toBe('Name on BOG’s payment page: მაიავატარი · MyAvatar.ge (receipt of 2026-10-13)');
 });

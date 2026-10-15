@@ -718,4 +718,62 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
       process.env.BOG_SUBSCRIPTION_MODE = 'public';
     }
   });
+
+  // ── E21 ──
+  test('E21 a refund made in the Business Manager whose callback is lost: the cron reads it from the receipt the next day; credits never move', async () => {
+    const u = await newUser();
+    const c = await startCheckout(u, { kind: 'topup', amountGel: 20 });
+    const bogId = (await row(c.json.orderId)).bog_order_id;
+    customerPays(bogId);
+    expect(await (await webhook.POST(signedCallback(receiptOf(bank.orders.get(bogId)!)))).json()).toMatchObject({ status: 'completed' });
+    expect(await balance(u)).toBe(200);
+    const receiptReads = () => bank.calls.filter((x) => x === 'GET /receipt/:id').length;
+    const lastChecked = (msAgo: number, shopOrderId = c.json.orderId) =>
+      svc.from('bog_orders').update({ updated_at: new Date(Date.now() - msAgo).toISOString() }).eq('shop_order_id', shopOrderId);
+
+    // Part of it goes back in the Business Manager; no callback reaches us.
+    const o = bank.orders.get(bogId)!;
+    Object.assign(o, { status: 'refunded_partially', transferAmount: 15, refundAmount: 5 });
+
+    // Checked less than a day ago (the callback just settled it): not read again yet.
+    bank.calls.length = 0;
+    await cronTick();
+    expect(receiptReads()).toBe(0);
+    expect((await row(c.json.orderId)).status).toBe('completed');
+
+    // A day later the cron reads the receipt and books the refund — and then leaves the order alone for another day.
+    await lastChecked(25 * 3600_000);
+    expect(await cronTick()).toMatchObject({ ok: true, refundUpdated: 1 });
+    expect((await row(c.json.orderId)).status).toBe('refunded_partially');
+    bank.calls.length = 0;
+    await cronTick();
+    expect(receiptReads()).toBe(0);
+
+    // The rest goes back; the next day's read books it too.
+    Object.assign(o, { status: 'refunded', transferAmount: 0, refundAmount: 20 });
+    await lastChecked(25 * 3600_000);
+    await cronTick();
+    expect((await row(c.json.orderId)).status).toBe('refunded');
+
+    // Refund policy unchanged: the 200 credits stay, granted exactly once.
+    expect(await balance(u)).toBe(200);
+    const { data: ledger } = await svc.from('credit_ledger').select('delta').eq('user_id', u);
+    expect(ledger).toEqual([{ delta: 200 }]);
+
+    // A payment credited over 60 days ago is no longer read; a receipt that still says completed changes nothing.
+    const old = await startCheckout(u, { kind: 'topup', amountGel: 10 });
+    const oldBogId = (await row(old.json.orderId)).bog_order_id;
+    customerPays(oldBogId);
+    await webhook.POST(signedCallback(receiptOf(bank.orders.get(oldBogId)!)));
+    await svc
+      .from('bog_orders')
+      .update({ credited_at: new Date(Date.now() - 61 * 86_400_000).toISOString(), updated_at: new Date(Date.now() - 2 * 86_400_000).toISOString() })
+      .eq('shop_order_id', old.json.orderId);
+    bank.orders.get(oldBogId)!.status = 'refunded';
+    bank.calls.length = 0;
+    await cronTick();
+    expect(receiptReads()).toBe(0);
+    expect((await row(old.json.orderId)).status).toBe('completed');
+    expect(await balance(u)).toBe(300);
+  });
 });
