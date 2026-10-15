@@ -19,8 +19,9 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { getActiveTiers } from '@/lib/billing/pricingConfig.db';
 import { isAdminIdentity } from '@/lib/auth/adminGuard';
-import { bogCheckoutMode, bogConfig, createBogOrder, saveCardForAutomaticPayments } from '@/lib/billing/bogClient';
-import { BOG_SINGLE_TRANSACTION_LIMIT_GEL, bogPlanOffer, topupCredits } from '@/lib/billing/bogCatalog';
+import { bogCheckoutMode, bogConfig, bogSubscriptionMode, createBogOrder, saveCardForAutomaticPayments } from '@/lib/billing/bogClient';
+import { bogPlanOffer, topupCredits } from '@/lib/billing/bogCatalog';
+import { BOG_CHECKOUT_TTL_MINUTES, bogLimits, checkBogLimits, type BogLimitCheck } from '@/lib/billing/bogLimits';
 import { bogCallbackUrl, bogSandboxBlocked, newBogOrderId } from '@/lib/billing/bogSettlement';
 import { TIERS } from '@/lib/billing/tiers';
 
@@ -39,6 +40,24 @@ const CHECKOUT_USER_LIMIT: Parameters<typeof checkRateLimitByKey>[1] = {
 
 const json = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, { status });
 
+/**
+ * A refused limit check, as the customer sees it: which window is full and when there is room again — never how much
+ * has been paid (in merchant scope that would be everyone's turnover).
+ */
+function limitRefusal(check: Exclude<BogLimitCheck, { ok: true }>) {
+  if (check.window === 'unknown') {
+    return json({ error: 'payment limits could not be checked — try again shortly', error_code: 'BOG_LIMIT_UNKNOWN' }, 503);
+  }
+  return json(
+    {
+      error: `Bank of Georgia's ${check.window === '24h' ? '24-hour' : '30-day'} payment limit is reached`,
+      error_code: check.window === '24h' ? 'BOG_LIMIT_24H' : 'BOG_LIMIT_30D',
+      availableAt: check.availableAt,
+    },
+    429,
+  );
+}
+
 export async function POST(request: NextRequest) {
   const cfg = bogConfig();
   if (!cfg) return json({ error: 'Bank of Georgia payments are not configured', error_code: 'BOG_UNCONFIGURED' }, 503);
@@ -56,8 +75,10 @@ export async function POST(request: NextRequest) {
     return json({ error: 'Unauthorized', error_code: 'AUTH_REQUIRED' }, 401);
   }
   const userId = user.id;
+  let admin: boolean | null = null;
+  const isAdminUser = async () => (admin ??= await isAdminIdentity(user).catch(() => false));
   // BOG_CHECKOUT_MODE=admin: the owner tests the live rail while customers cannot start a BOG order.
-  if (mode === 'admin' && !(await isAdminIdentity(user).catch(() => false))) {
+  if (mode === 'admin' && !(await isAdminUser())) {
     return json({ error: 'Bank of Georgia payments are not open yet', error_code: 'BOG_ADMIN_ONLY' }, 403);
   }
   const ipLimited = await checkRateLimit(request, RATE_LIMITS.WRITE);
@@ -91,6 +112,12 @@ export async function POST(request: NextRequest) {
     productId = `credits-${credits}`;
     description = `MyAvatar — ${credits} credits`;
   } else if (isPlan) {
+    // BOG_SUBSCRIPTION_MODE: a plan saves the card for automatic monthly charges the bank has not confirmed yet.
+    const planMode = bogSubscriptionMode();
+    if (planMode === 'off') return json({ error: 'Bank of Georgia plans are switched off', error_code: 'BOG_PLANS_DISABLED' }, 503);
+    if (planMode === 'admin' && !(await isAdminUser())) {
+      return json({ error: 'Bank of Georgia plans are not open yet', error_code: 'BOG_PLANS_ADMIN_ONLY' }, 403);
+    }
     const offer = bogPlanOffer(body.tierId);
     if (!offer) return json({ error: 'tierId must be starter, creator or business', error_code: 'BAD_TIER' }, 400);
     // ⚠️ ONE LIVE PLAN PER TIER. Two tabs, or a second click after paying, would otherwise charge the same plan twice
@@ -115,19 +142,37 @@ export async function POST(request: NextRequest) {
   } else {
     return json({ error: "kind must be 'topup' or 'plan'", error_code: 'BAD_KIND' }, 400);
   }
-  // BOG refuses a single payment above the merchant's limit — say so here instead of minting an order it rejects.
-  if (Number(row.amount_gel) > BOG_SINGLE_TRANSACTION_LIMIT_GEL) {
+  // BOG refuses payments above the merchant's limits — say so here instead of minting an order it declines.
+  const limits = bogLimits();
+  const orderGel = Number(row.amount_gel);
+  if (orderGel > limits.singleTransaction) {
     return json(
-      { error: `Bank of Georgia accepts at most ${BOG_SINGLE_TRANSACTION_LIMIT_GEL} ₾ per payment`, error_code: 'BOG_LIMIT', maxGel: BOG_SINGLE_TRANSACTION_LIMIT_GEL },
+      { error: `Bank of Georgia accepts at most ${limits.singleTransaction} ₾ per payment`, error_code: 'BOG_LIMIT', maxGel: limits.singleTransaction },
       400,
     );
   }
+  const before = await checkBogLimits(svc, { userId, amountGel: orderGel, limits });
+  if (!before.ok) return limitRefusal(before);
 
   const shopOrderId = newBogOrderId(isPlan ? 'plan' : 'topup');
   const { error: insertErr } = await svc
     .from('bog_orders')
     .insert({ shop_order_id: shopOrderId, user_id: userId, status: 'pending', locale, ...row });
   if (insertErr) return json({ error: 'order_mapping_unavailable', error_code: 'BOG_ORDER_ROW' }, 503);
+
+  // ⚠️ CHECK AGAIN WITH THIS ROW COUNTED. Two checkouts racing through the first check would each fit alone; now that
+  // both rows exist, the later re-check sees them both (bogLimits.ts, Concurrency). The order never reaches BOG.
+  const after = await checkBogLimits(svc, { userId, amountGel: 0, limits });
+  if (!after.ok) {
+    const reason = after.window === 'unknown' ? 'limit: unreadable' : `limit: ${limits.scope} ${after.window}`;
+    await svc
+      .from('bog_orders')
+      .update({ status: 'init_failed', reject_reason: reason, updated_at: new Date().toISOString() })
+      .eq('shop_order_id', shopOrderId)
+      .eq('status', 'pending')
+      .then(() => undefined, () => undefined);
+    return limitRefusal(after);
+  }
 
   // ⚠️ SAY WHY. A refused order used to leave only `init_failed`, so four Production checkouts (2026-10-03…06) failed
   // with no trace of the cause. The reason (BOG's OAuth or order answer — never a secret) goes on the row and the log.
@@ -149,14 +194,14 @@ export async function POST(request: NextRequest) {
   const deps = { fetch };
   const order = await createBogOrder(cfg, deps, {
     externalOrderId: shopOrderId,
-    amountGel: Number(row.amount_gel),
+    amountGel: orderGel,
     productId,
     description,
     callbackUrl: bogCallbackUrl(origin, cfg.environment),
     successUrl: back('success'),
     failUrl: back('failed'),
     locale,
-    ttlMinutes: 30,
+    ttlMinutes: BOG_CHECKOUT_TTL_MINUTES,
     cardOnly: isPlan,
   }, (failure) => {
     initFailure = failure;
@@ -167,11 +212,19 @@ export async function POST(request: NextRequest) {
   }
 
   // Bind BOG's id now: a callback (or the return page) may carry only that id.
-  await svc
+  // ⚠️ NO BIND, NO REDIRECT. The return page and the cron can only settle an order whose BOG id is on its row; without
+  // it a lost callback would leave a paid order uncredited. Nobody has paid yet, so refuse here: BOG's unpaid order
+  // simply expires with its page.
+  const bound = await svc
     .from('bog_orders')
     .update({ bog_order_id: order.orderId, updated_at: new Date().toISOString() })
     .eq('shop_order_id', shopOrderId)
-    .then(() => undefined, () => undefined);
+    .then((r) => !r.error, () => false);
+  if (!bound) {
+    initFailure = 'bog_order_id not recorded';
+    await markInitFailed();
+    return json({ error: 'order_mapping_unavailable', error_code: 'BOG_ORDER_ROW' }, 503);
+  }
 
   let autoRenew: boolean | undefined;
   if (isPlan) {

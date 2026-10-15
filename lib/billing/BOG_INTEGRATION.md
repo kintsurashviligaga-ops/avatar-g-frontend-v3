@@ -21,6 +21,9 @@ BOG's Business Manager (https://manager.bog.ge) shows the Online Payments creden
 | `BOG_SECRET_KEY` | OPAY Secret Key |
 | `BOG_ENV` | leave it unset (= `production`) on Vercel. A **sandbox** pair never goes into Vercel: every deployment (Preview too) writes to the Production database, so with `BOG_ENV=sandbox` on any Vercel deployment checkout, callbacks and the cron refuse with `BOG_SANDBOX_BLOCKED` and the button is hidden (`bogSandboxBlocked`). Sandbox runs only locally or in CI |
 | `BOG_CHECKOUT_MODE` | optional: `admin` = only admins can start a BOG payment (the owner's live test), `off` = nobody, unset = everyone. Any other value reads as `off`, and so does any Preview / Development deployment. Settling (callbacks, return page, cron renewals) is never affected |
+| `BOG_SUBSCRIPTION_MODE` | optional: who may buy a **plan** (card saved for automatic monthly charges) through BOG. Unset / `admin` = admins only, `public` = everyone `BOG_CHECKOUT_MODE` lets in, `off` (or any other value) = nobody. Never wider than `BOG_CHECKOUT_MODE`. Leave it unset until the bank confirms automatic payments: opening the checkout then opens top-ups only, and plans keep the card rail. Plans already sold keep renewing and can be cancelled |
+| `BOG_LIMIT_PER_PAYMENT_GEL`, `BOG_LIMIT_24H_GEL`, `BOG_LIMIT_30D_GEL` | optional: the bank's limits, if they change (defaults 500 / 1000 / 5000, the bank letter). An unreadable value keeps the default |
+| `BOG_LIMIT_SCOPE` | optional: `merchant` (default; every customer's payments together) or `customer` (each customer separately — use it if the bank says the limits are per card) |
 
 Before saving a pair, check it with ONE token request (no order, no money): `node scripts/bog-oauth-check.mjs`. The file is self-contained (Node 18+, no packages), so it also runs alone from any folder. It asks for the pair in the terminal with the Secret Key typed blind (nothing echoed, nothing in shell history), prints one verdict line (`✓ ok · HTTP 200 · production · client …1234`) and never prints the secret in any form (verbatim, JSON-escaped, URL-encoded, base64) or a token; `BOG_ENV=sandbox` for a sandbox pair. Exit 0 accepted, 1 refused, 2 usage, 130 Ctrl+C. Never put the secret on a command line.
 
@@ -32,7 +35,7 @@ That is all. You do **not** need `BOG_CALLBACK_PUBLIC_KEY`: BOG's published call
 1. **Automatic payments with a saved card** ("ბარათის დამახსოვრება ავტომატური გადახდებისთვის / subscriptions") enabled for your merchant. Without it plans still sell, but as one month that does not renew (the checkout logs a warning).
 2. **Sandbox credentials**, to test the whole flow with the test cards at https://api.bog.ge/docs/en/sandbox/payments/test-cards before going live.
 
-**Limits (bank letter, 2026-10-12):** 500 ₾ per transaction, 1,000 ₾ per 24 hours, 5,000 ₾ per 30 days. The checkout refuses a single order above 500 ₾ with `BOG_LIMIT` before BOG is asked (`BOG_LIMITS_GEL` in `lib/billing/bogCatalog.ts`); the rolling limits are not enforced in code, and the admin card shows the paid ₾ against them. Whether the rolling limits are per merchant or per card is a question for the bank: if per merchant, a busy day's renewals can hit 1,000 ₾ and BOG would decline the rest.
+**Limits (bank letter, 2026-10-12):** 500 ₾ per transaction, 1,000 ₾ per 24 hours, 5,000 ₾ per 30 days, enforced before BOG is asked (`lib/billing/bogLimits.ts`). The checkout refuses a single order above the per-payment limit with `400 BOG_LIMIT`, and an order that would take the rolling 24 h / 30 day total over its limit with `429 BOG_LIMIT_24H` / `BOG_LIMIT_30D` and `availableAt` (when there is room again; never how much was paid). It counts paid orders (completed, refunds, amount_mismatch) and the customer's own checkouts still payable on BOG's page, checks again after writing its row (two racing checkouts cannot both pass), and fails closed (`503 BOG_LIMIT_UNKNOWN`) when the orders cannot be read. A due renewal with no room is not charged: the cron waits (`limitDeferred`) instead of letting BOG decline it into `past_due`. Whether the bank counts per merchant or per card, and rolling or calendar, is still a question for the bank; the default is merchant-wide and rolling.
 
 The callback URL is sent with every order: `https://<your site>/api/billing/bog/webhook` (from `NEXT_PUBLIC_SITE_URL`). Nothing to register. A sandbox order (local or CI only) carries the callback of the deployment that created it, never the Production site.
 
@@ -49,7 +52,7 @@ cron every 10 min ─▶ /api/cron/bog-billing: reconcile pending orders · expi
 
 - **Exactly once.** Money moves only in `bog_fulfill_order` (migration `20261002a_bog_billing.sql`), under the order's row lock: a top-up through `credit_wallet_gel(… 'bog:<order>')` (the `wallet_topups.ref` primary key), a plan month through `grant_subscription_allowance(invoice 'bog:<order>')`. Callback, return page and cron may all settle the same order — one credits.
 - **The receipt decides whether, our row decides how much.** A receipt whose amount, currency or ids disagree with the order row is flagged `amount_mismatch` and credits nothing.
-- **Lost callbacks.** BOG documents no callback retry. The return page and the cron read `GET /receipt/:id` instead.
+- **Lost callbacks.** BOG documents no callback retry. The return page and the cron read `GET /receipt/:id` instead, which needs BOG's order id on our row: the checkout records it before the redirect, and if it cannot (`503 BOG_ORDER_ROW`, row `init_failed`) the customer is never sent to pay.
 - **Renewals.** `bog_claim_renewal` inserts one order per subscription period (unique index), so overlapping cron ticks cannot double-charge; the charge's `Idempotency-Key` is derived from that order id, so a retried request is not a second charge. Declined → retry after 24 h; three declines in a row → `past_due` (entitlement already ended at `current_period_end` — `resolveUserTier` gates on it).
 - **Cancel.** `DELETE /api/billing/bog/subscription` (the "Cancel auto-renewal" link in the credits modal): the plan stays active until its period ends, the saved card is deleted at BOG, nothing is charged again.
 - **Upgrade / downgrade.** Buying a different plan starts it now; older plans stop renewing (their paid period runs out).
@@ -65,7 +68,8 @@ cron every 10 min ─▶ /api/cron/bog-billing: reconcile pending orders · expi
 | `lib/billing/wallet-ledger.ts` | the three BOG RPC wrappers (service role) |
 | `lib/billing/bogCheckoutClient.ts` | browser calls + the localized return messages |
 | `app/api/billing/bog/{checkout,webhook,orders/[id],subscription}` | routes |
-| `app/api/cron/bog-billing` | reconcile + renew (vercel.json, every 10 min) |
+| `app/api/cron/bog-billing` | reconcile (least recently checked first, so abandoned checkouts cannot starve a paid one) + renew (vercel.json, every 10 min) |
+| `lib/billing/bogLimits.ts` | the bank's 24 h / 30 day limits, checked before an order reaches BOG |
 | `supabase/migrations/20261002a_bog_billing.sql` | tables, functions, VERIFY block |
 
 Stripe: the credits window offers the older card checkout whenever `/api/checkout/capabilities` answers `bog:false` for this visitor (BOG not configured, `BOG_CHECKOUT_MODE=off`, `admin` for a non-admin, a Preview / Development deployment, a sandbox pair on Vercel, billing tables missing) and Stripe is configured. A BOG refusal after the click does **not** fall back to Stripe. No Stripe payment has been completed in Production yet.
