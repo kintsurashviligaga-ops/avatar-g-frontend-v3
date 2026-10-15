@@ -1,5 +1,9 @@
 # Video Core v1.0 — handoff index
 
+**Latest (2026-10-14, second run): `GO_NO_GO_FINAL_KA_2026-10-14b.md` (Georgian GO/NO-GO + one consolidated approval request) and
+`FINAL_RUN_2026-10-14b.md` (changelog, evidence matrix, billing/security/Vertex/migration review, release sequence). New defects
+45–51 in `DEFECT_REGISTER_FINAL.md` (51 open).**
+
 **Merged and deployed 2026-10-13** (merge commit e46c35c, Production deployment `dpl_HDqsJfbyHEoEB5QM87j4UgVwLjQJ`, READY
 13:25:44Z) on GG's word of 13:18:10Z; Production checks, defects 39/40 and what is still open: `PRODUCTION_DEPLOY_REPORT_KA.md`.
 Video Core stays admin-only. Until that merge: branch `claude/video-core-v1-6gh97e` from main 30be5a2, PR #58 → main, no

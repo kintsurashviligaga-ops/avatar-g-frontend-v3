@@ -188,9 +188,22 @@ export function mergeMaster(prev: FilmStatusRecord | null, tokenId: string, mast
   if (!prev) {
     return { tokenId, phase: 'assembled', clips: [], audioReady: false, masterUrl, qa, payerUid, billingConsumed: false, updatedAt: now, error: null };
   }
-  // Preserve the ORIGINAL payer + consumed flag on a re-stamp: a null uid at a later stamp (e.g. a
-  // server-side re-stitch) must NOT erase who paid, and a spent waiver must stay spent.
-  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, payerUid: payerUid ?? prev.payerUid ?? null, billingConsumed: prev.billingConsumed === true, updatedAt: now, error: null };
+  // Preserve the ORIGINAL payer + consumed flag on a re-stamp: neither a null uid at a later stamp (e.g. a
+  // server-side re-stitch) nor ANOTHER caller's uid may replace who paid, and a spent waiver must stay spent.
+  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, payerUid: prev.payerUid ?? payerUid ?? null, billingConsumed: prev.billingConsumed === true, updatedAt: now, error: null };
+}
+
+/** The record names a payer and it is not this caller: the token is someone else's film (an anonymous caller included). */
+export function isFilmOwnedByAnother(prior: FilmStatusRecord | null | undefined, uid: string | null): boolean {
+  return !!prior?.payerUid && prior.payerUid !== uid;
+}
+
+/** /api/video/assemble's function budget (maxDuration 600 s) plus a margin: an 'assembling' record older than this died mid-stitch. */
+export const STITCH_IN_FLIGHT_MS = 660_000;
+
+/** A stitch of this film started recently enough that it may still be running (the 60 s duplicate claim has long expired by then). */
+export function isStitchInFlight(prior: FilmStatusRecord | null | undefined, now = Date.now()): boolean {
+  return prior?.phase === 'assembling' && now - prior.updatedAt < STITCH_IN_FLIGHT_MS;
 }
 
 // ─── Backing store (Redis REST, fail-open, in-process fallback) ──────────────
@@ -355,11 +368,25 @@ export async function recordFilmPaid(tokenId: string, paid: { uid: string; credi
  * at start — AND the caller is the payer, AND that waiver has not been spent. Extracted from the route so tests exercise
  * the real thing.
  */
-export function isFilmPaidUpstream(prior: FilmStatusRecord | null | undefined, paid: FilmPaidRecord | null | undefined, uid: string | null): boolean {
+export function isFilmPaidUpstream(
+  prior: FilmStatusRecord | null | undefined,
+  paid: FilmPaidRecord | null | undefined,
+  uid: string | null,
+  /** The durable waiver's answer (lib/chat/filmWaiverStore consumeFilmWaiver); absent = it could not answer. */
+  durable: 'paid' | 'free' | 'spent' | 'void' | 'none' | 'unavailable' = 'unavailable',
+): boolean {
   if (uid === null) return false;
-  const viaStatus = (!!prior?.masterUrl || prior?.freeFilmWaived === true) && prior?.payerUid === uid && prior?.billingConsumed !== true;
+  // The durable store SPENT a waiver for this very call: waive, whatever Redis holds.
+  if (durable === 'paid' || durable === 'free') return true;
+  const owned = prior?.payerUid === uid && prior?.billingConsumed !== true;
+  const viaMaster = !!prior?.masterUrl && owned;
+  // The durable store knows this film's waiver was already used (or refunded away): the up-front markers — which Redis may
+  // still hold unspent because the spend was recorded elsewhere — must not waive a second time. A master stamped by the
+  // first stitch still covers its lip-sync / composite re-stitch.
+  if (durable === 'spent' || durable === 'void') return viaMaster;
+  const viaFree = prior?.freeFilmWaived === true && owned;
   const viaPayment = !!paid && paid.uid === uid && paid.consumed !== true && paid.credits > 0;
-  return viaStatus || viaPayment;
+  return viaMaster || viaFree || viaPayment;
 }
 
 /** Spend a token's ONE assemble-waiver (single-use billing skip). Idempotent; fails open. After

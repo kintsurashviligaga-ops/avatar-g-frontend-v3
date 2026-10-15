@@ -235,6 +235,29 @@ export async function netDebitedForRef(userId: string, ref: string): Promise<num
   }
 }
 
+/** When the FIRST debit under exactly `ref` was written (epoch ms); 0 when there is none; null when the ledger cannot be read. */
+export async function firstDebitAtForRef(userId: string, ref: string): Promise<number | null> {
+  const sb = client();
+  if (!sb || !userId || !ref) return null;
+  try {
+    const { data, error } = await sb
+      .from('credit_ledger')
+      .select('created_at')
+      .eq('user_id', userId)
+      .eq('metadata->>ref', ref)
+      .lt('delta', 0)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (error) return null;
+    const row = (data ?? [])[0] as { created_at?: unknown } | undefined;
+    if (!row) return 0;
+    const at = Date.parse(String(row.created_at));
+    return Number.isFinite(at) ? at : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Has a debit EVER been taken from this user under exactly `ref` — whatever happened to it since?
  * true / false from the ledger; null when it cannot be read (the caller then lets deduct_credits decide).

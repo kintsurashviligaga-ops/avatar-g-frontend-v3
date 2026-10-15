@@ -44,7 +44,8 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt }
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
+import { consumeFilmWaiver, restoreFilmWaiver } from '@/lib/chat/filmWaiverStore';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, isFilmOwnedByAnother, isStitchInFlight, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
@@ -381,22 +382,6 @@ async function assembleImpl(req: NextRequest) {
   // token the first time its waiver is honored (a paid token maps 1:1 to one downstream assemble).
   // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). Fail-open on the
   // STATUS/TRACKING side only — a store miss must fall back to billing normally (default false here).
-  const billedTokenForCheck = filmTokenId ?? billingToken;
-  let filmAlreadyBilled = false;
-  if (billedTokenForCheck && uid) {
-    const [prior, paid] = await Promise.all([getFilmStatus(billedTokenForCheck), getFilmPaid(billedTokenForCheck)]);
-    // ⚠️ THREE WAYS A FILM CAN ARRIVE ALREADY PAID FOR, ALL OWNER-BOUND + SINGLE-USE (isFilmPaidUpstream is the one predicate):
-    //   · masterUrl      — a Product-Ad / re-stitch whose render was billed upstream
-    //   · freeFilmWaived — the film pipeline already spent this user's free-video SLOT on the clips.
-    //     Without honouring it, the free film would either consume a SECOND slot here or be charged
-    //     the stitch — for a film the product told the user is free.
-    //   · the up-front payment — the film's whole quote was taken when it started (filmComposite → recordFilmPaid).
-    // All markers live in the server-side store, never in the client-held `film:` token.
-    filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid);
-    // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it.
-    if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
-  }
-  if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
   // Resolve the output orientation from the explicit key OR the aspect/format
   // aliases (the assembler accepts `orientation`; callers sometimes send
@@ -420,6 +405,13 @@ async function assembleImpl(req: NextRequest) {
   // (canvas size), music-video mode (audio mix + brand overlay) and the brief
   // (drives the LUT grade) — otherwise re-submitting the SAME segments with a new
   // orientation returns the cached wrong-size master (the 9:16→16:9 bug).
+  // ⚠️ `filmTokenId` is CLIENT-SUPPLIED. A token whose status record names another payer is someone else's film: stamping
+  // it would hand them this master, take over its Library row and its re-stitch waiver. Refused before any claim or charge.
+  // (Store unreachable → null → allowed; recordCompletedFilm still refuses to touch a row another user owns.)
+  if (filmTokenId && isFilmOwnedByAnother(await getFilmStatus(filmTokenId), uid)) {
+    return NextResponse.json({ error: 'film_not_owned', message: 'This film belongs to another account.' }, { status: 403 });
+  }
+
   const idemOwner = uid ?? `anon:${filmTokenId ?? 'session'}`;
   const idemKey = await hashPayload({
     u: idemOwner,
@@ -443,6 +435,38 @@ async function assembleImpl(req: NextRequest) {
   if (!fresh) {
     return NextResponse.json({ error: 'duplicate_request', message: 'This composition is already being assembled.' }, { status: 409 });
   }
+
+  // ⚠️ THE WAIVER IS SPENT ONLY AFTER THE DUPLICATE CLAIM ABOVE IS WON. Spent before it, a double-click let the request that
+  // then lost the claim (409) walk away holding the waiver while the winner — told 'spent' — billed a film already paid for.
+  const billedTokenForCheck = filmTokenId ?? billingToken;
+  let filmAlreadyBilled = false;
+  let waiverSpentDurably = false;
+  if (billedTokenForCheck && uid) {
+    const [prior, paid] = await Promise.all([getFilmStatus(billedTokenForCheck), getFilmPaid(billedTokenForCheck)]);
+    // ⚠️ THREE WAYS A FILM CAN ARRIVE ALREADY PAID FOR, ALL OWNER-BOUND + SINGLE-USE (isFilmPaidUpstream is the one predicate):
+    //   · masterUrl      — a Product-Ad / re-stitch whose render was billed upstream
+    //   · freeFilmWaived — the film pipeline already spent this user's free-video SLOT on the clips.
+    //     Without honouring it, the free film would either consume a SECOND slot here or be charged
+    //     the stitch — for a film the product told the user is free.
+    //   · the up-front payment — the film's whole quote was taken when it started (filmComposite → recordFilmPaid).
+    // All markers live in the server-side store, never in the client-held `film:` token.
+    // ⚠️ THE DURABLE WAIVER DECIDES FIRST (lib/chat/filmWaiverStore: the database table, or the ledger's own debit where the table
+    // is not applied yet). Redis is where the markers used to live alone, and with it unreachable a paid film was charged twice
+    // (defect 44). One UPDATE hands the waiver to exactly one of N concurrent assembles.
+    const durable = await consumeFilmWaiver(billedTokenForCheck, uid);
+    // ⚠️ The duplicate claim above lives 60 s; a stitch runs up to 600 s. A twin of a paid film arriving after the claim lapsed
+    // finds the waiver spent BY THE STITCH STILL RUNNING and would be billed the whole stitch again. Refuse it instead; a
+    // stitch that died stops counting as in flight after STITCH_IN_FLIGHT_MS, so Retry is never blocked for long.
+    if (durable === 'spent' && filmTokenId && isStitchInFlight(prior)) {
+      return NextResponse.json({ error: 'duplicate_request', message: 'This film is already being assembled.' }, { status: 409 });
+    }
+    filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid, durable);
+    waiverSpentDurably = durable === 'paid' || durable === 'free';
+    // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it — in Redis too, so a store that
+    // answers later cannot waive the same film again.
+    if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
+  }
+  if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
   // Render-path selection: GPU RunPod worker when provisioned, otherwise the
   // bundled CPU FFmpeg assembler (Option B). Either way the request completes —
@@ -687,6 +711,7 @@ async function assembleImpl(req: NextRequest) {
       // delivered nothing, so it goes back — exactly as the multi-clip saga's compensate hands it back. Without this a
       // retry of the same film was charged the stitch for a film the product had told the user was paid (or free).
       if (filmAlreadyBilled && billedTokenForCheck) await restoreFilmBilling(billedTokenForCheck).catch(() => {});
+      if (waiverSpentDurably && billedTokenForCheck && uid) await restoreFilmWaiver(billedTokenForCheck, uid).catch(() => {});
       // A failed 6s render must never strand the user's credits / free slot — roll the reservation back.
       if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
@@ -852,6 +877,7 @@ async function assembleImpl(req: NextRequest) {
         if (filmAlreadyBilled && billedTokenForCheck) {
           await restoreFilmBilling(billedTokenForCheck).catch(() => {});
         }
+        if (waiverSpentDurably && billedTokenForCheck && uid) await restoreFilmWaiver(billedTokenForCheck, uid).catch(() => {});
         if (skipBilling || uid === null) return; // anon / founder reserved nothing to roll back
         const lock = ctx.bag.lock as TokenLock | null | undefined;
         if (lock) await releaseTokenLock(lock);

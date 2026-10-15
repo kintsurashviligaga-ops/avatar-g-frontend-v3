@@ -9,6 +9,8 @@ const mockUpdates: Array<Record<string, unknown>> = [];
 const mockRows = new Map<string, Record<string, unknown>>();
 let mockThrow = false;
 let mockWriteError: string | null = null;
+/** Opt-in primary key: an insert of an id already in mockRows fails with 23505, like PostgREST; a fresh one lands. */
+let mockPrimaryKey = false;
 
 jest.mock('../supabase/server', () => ({
   createServiceRoleClient: () => {
@@ -17,6 +19,10 @@ jest.mock('../supabase/server', () => ({
       from: () => ({
         insert: (row: Record<string, unknown>) => {
           mockInserts.push(row);
+          if (mockPrimaryKey) {
+            if (mockRows.has(String(row.id))) return Promise.resolve({ error: { code: '23505', message: 'duplicate key value violates unique constraint' } });
+            mockRows.set(String(row.id), { ...row });
+          }
           return Promise.resolve({ error: null });
         },
         update: (fields: Record<string, unknown>) => {
@@ -48,7 +54,7 @@ jest.mock('../supabase/server', () => ({
 
 jest.mock('../observability/report-error', () => ({ reportError: jest.fn() }));
 
-import { completeJob, createJob, failJob, recordJobEvent, recordJobSettle, updateJobStage, JOB_COLUMNS } from './jobs';
+import { completeJob, createJob, failJob, recordCompletedFilm, recordJobEvent, recordJobSettle, updateJobStage, JOB_COLUMNS } from './jobs';
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const seed = (id: string, status: string, extra: Record<string, unknown> = {}) =>
@@ -60,6 +66,7 @@ beforeEach(() => {
   mockRows.clear();
   mockThrow = false;
   mockWriteError = null;
+  mockPrimaryKey = false;
   seed('p1', 'pending');
   seed('p2', 'pending');
 });
@@ -167,5 +174,30 @@ describe('terminal is terminal: completed and failed rows never move again', () 
     expect(mockRows.get('s')).toMatchObject({ status: 'completed' });
     expect(await recordJobSettle('p1', { _settle: { ref: 'x' } })).toBe(true);
     expect(mockRows.get('p1')).toMatchObject({ status: 'processing', params: { _settle: { ref: 'x' } } });
+  });
+});
+
+describe('recordCompletedFilm — the id comes from the client, so it never takes over another user\'s row', () => {
+  const film = (id: string, userId: string) => ({ id, userId, url: `https://cdn/${userId}.mp4` });
+
+  test('a fresh id is inserted for the caller', async () => {
+    mockPrimaryKey = true;
+    expect(await recordCompletedFilm(film('f-new', 'u1'))).toBe(true);
+    expect(mockRows.get('f-new')).toMatchObject({ user_id: 'u1', status: 'completed', signed_url: 'https://cdn/u1.mp4' });
+  });
+
+  test("another user's row under the same id is left exactly as it was (owner, lease state, result)", async () => {
+    mockPrimaryKey = true;
+    seed('victim', 'processing', { user_id: 'uA', params: { _exec: { v: 3 }, _reserve: { credits: 40 } }, signed_url: 'https://cdn/a.mp4' });
+    const before = JSON.stringify(mockRows.get('victim'));
+    expect(await recordCompletedFilm(film('victim', 'uB'))).toBe(false);
+    expect(JSON.stringify(mockRows.get('victim'))).toBe(before);
+  });
+
+  test("the caller's own row is re-stamped (a re-stitch of the same film)", async () => {
+    mockPrimaryKey = true;
+    seed('mine', 'completed', { user_id: 'u1', signed_url: 'https://cdn/old.mp4' });
+    expect(await recordCompletedFilm(film('mine', 'u1'))).toBe(true);
+    expect(mockRows.get('mine')).toMatchObject({ user_id: 'u1', signed_url: 'https://cdn/u1.mp4' });
   });
 });
