@@ -66,6 +66,7 @@ import { structuredLog } from '@/lib/logger';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { requireUser } from '@/lib/supabase/server';
 import { buildLiveSetup, type LiveSetupMessage, type LiveTool } from '@/lib/voice/geminiLive';
+import { validateVoicePreferences, voiceStyleInstruction, VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
 import { LIVE_ACTIONS_RULE } from '@/lib/voice/liveTools';
 import { resolveLiveModel, toModelResource } from '@/lib/ai/google/models';
 import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
@@ -205,6 +206,7 @@ export async function POST(request: NextRequest) {
       customPersona: body.customPersona,
     });
     const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
+    const experience = body.voiceExperience ? validateVoicePreferences(body.voiceExperience) : null;
     // Talk to a research report. Imported lazily: this module (and its tests) must not pull the research runtime into every mint.
     let reportBlock = '';
     if (body.researchId !== undefined && body.researchId !== null && body.researchId !== '') {
@@ -232,7 +234,7 @@ export async function POST(request: NextRequest) {
     const search = toolsAllowed && profile.googleSearch && isEnabledByDefault(process.env.GEMINI_LIVE_GOOGLE_SEARCH);
     // Voice-to-action: default ON (GEMINI_LIVE_ACTIONS=0 is the kill switch), and only for a client that executes them.
     const actionsWanted = toolsAllowed && body.actions === true && isEnabledByDefault(process.env.GEMINI_LIVE_ACTIONS);
-    const voice = voiceFor(profile, body.voice, body.gender);
+    const voice = voiceFor(profile, experience?.voice ?? body.voice, body.gender);
     const promptNow = new Date();
     // The instruction names the action functions ONLY when the lock carries them, so it is built per attempt.
     const liveFor = (withActions: boolean, withSearch: boolean = search) => toGeminiLiveSetup(
@@ -247,7 +249,8 @@ export async function POST(request: NextRequest) {
       const tools: LiveTool[] = [...(withActions ? ['live_actions' as const] : []), ...(search ? ['google_search' as const] : [])];
       return buildLiveSetup({
         model,
-        systemInstruction: l.systemInstruction,
+        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE),
+        ...(experience ? { turnEagerness: experience.eagerness } : {}),
         voiceName: l.voiceName,
         // The Live session has always run at the model's default temperature; only an active persona changes that.
         ...(personaActive ? { temperature: l.temperature } : {}),
@@ -303,7 +306,7 @@ export async function POST(request: NextRequest) {
       const plain = liveFor(false, false);
       const legacy = buildLiveSetup({
         model,
-        systemInstruction: plain.systemInstruction,
+        systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE),
         voiceName: plain.voiceName,
         ...(personaActive ? { temperature: plain.temperature } : {}),
       });

@@ -1,0 +1,47 @@
+name: Voice Experience acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/voice/**'
+      - 'lib/audio/premium-tts*'
+      - 'components/voice/**'
+      - 'components/studio/ChatChrome.tsx'
+      - 'app/api/voice/**'
+      - 'tests/*voice*'
+      - 'tests/fixtures/liveVoice.ts'
+      - 'playwright.voice-experience.config.ts'
+      - '.github/workflows/voice-experience.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: voice-experience-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  simulated-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_SUPABASE_URL: https://example.supabase.co
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Voice regression (no live provider)
+        run: npx jest --runInBand --testPathPatterns='lib/voice|lib/audio/premium-tts|components/voice|app/api/voice|components/chat/composer/useDictation'
+        timeout-minutes: 4
+      - name: Browser acceptance (simulated audio and provider)
+        run: npx playwright test --config=playwright.voice-experience.config.ts
+        timeout-minutes: 13
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-simulated-evidence
+          path: test-results/
+          retention-days: 14

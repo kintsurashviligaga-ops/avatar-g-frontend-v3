@@ -85,8 +85,8 @@ export class FakeLive {
   }
 
   /**
-   * The user speaking: Google's input transcription of their words, then the end of that exchange. A voice start runs
-   * only on these words (components/voice/live/liveActions: the yes is the user's, never the model's function call).
+   * The user speaking: Google's input transcription of their words, then the end of that exchange.
+   * These words are conversational input, never payment authorization.
    */
   hear(text: string): void {
     this.ws?.send(JSON.stringify({ serverContent: { inputTranscription: { text } } }));
@@ -176,7 +176,9 @@ export async function openLiveCall(page: Page, baseURL: string | undefined, live
 
   await page.getByRole('button', { name: 'ცოცხალი ხმა' }).first().click();
   // The browser minted a token, opened the socket and sent the setup frame; the fake server said setupComplete.
-  await expect.poll(() => live.sent.some((s) => s.setup), { timeout: 20_000 }).toBe(true);
+  // CI trace 38593929938: the first lazy voice chunk took 15.9s to compile in next dev.
+  // This is a bounded cold-start allowance, not a measured audio-response latency target.
+  await expect.poll(() => live.sent.some((s) => s.setup), { timeout: 45_000 }).toBe(true);
   return spend;
 }
 

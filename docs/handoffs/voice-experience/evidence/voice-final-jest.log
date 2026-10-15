@@ -1,0 +1,105 @@
+(node:75174) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS app/api/voice/clone/route.test.ts
+PASS app/api/voice/transcribe/route.test.ts
+  ● Console
+
+    console.warn
+      [transcribe] gemini STT failed: bad_request 400
+
+      172 |         }
+      173 |         // eslint-disable-next-line no-console
+    > 174 |         console.warn('[transcribe] gemini STT failed:', geminiErr instanceof GeminiSttError ? `${geminiErr.code} ${geminiErr.status ?? ''}` : 'error');
+          |                 ^
+      175 |       }
+      176 |     };
+      177 |
+
+      at warn (app/api/voice/transcribe/route.ts:174:17)
+      at POST (app/api/voice/transcribe/route.ts:184:29)
+      at Object.<anonymous> (app/api/voice/transcribe/route.test.ts:148:15)
+
+    console.warn
+      [transcribe] gemini STT failed: quota 402
+
+      172 |         }
+      173 |         // eslint-disable-next-line no-console
+    > 174 |         console.warn('[transcribe] gemini STT failed:', geminiErr instanceof GeminiSttError ? `${geminiErr.code} ${geminiErr.status ?? ''}` : 'error');
+          |                 ^
+      175 |       }
+      176 |     };
+      177 |
+
+      at warn (app/api/voice/transcribe/route.ts:174:17)
+      at POST (app/api/voice/transcribe/route.ts:184:29)
+      at Object.<anonymous> (app/api/voice/transcribe/route.test.ts:197:15)
+
+    console.warn
+      [transcribe] gemini STT failed: bad_request 400
+
+      172 |         }
+      173 |         // eslint-disable-next-line no-console
+    > 174 |         console.warn('[transcribe] gemini STT failed:', geminiErr instanceof GeminiSttError ? `${geminiErr.code} ${geminiErr.status ?? ''}` : 'error');
+          |                 ^
+      175 |       }
+      176 |     };
+      177 |
+
+      at warn (app/api/voice/transcribe/route.ts:174:17)
+      at POST (app/api/voice/transcribe/route.ts:184:29)
+      at Object.<anonymous> (app/api/voice/transcribe/route.test.ts:236:15)
+
+PASS app/api/voice/chat/route.test.ts
+PASS app/api/voice/train/route.test.ts
+PASS app/api/voice/dictation-metrics/route.test.ts
+PASS app/api/voice/webhook/route.test.ts
+PASS app/api/voice/web-read/route.test.ts
+PASS components/voice/GeminiLiveConversation.test.tsx
+PASS components/voice/live/useGeminiLiveSession.test.tsx
+PASS components/voice/experience/VoiceSettingsPanel.test.tsx
+PASS components/voice/live/LiveModeOverlay.test.tsx
+PASS components/voice/live/lateToolAnswer.test.ts
+PASS components/voice/VoiceConversation.test.tsx
+PASS components/voice/live/liveActions.test.tsx
+PASS components/chat/composer/useDictation.test.ts
+PASS components/voice/live/LiveActionCards.test.tsx
+PASS app/api/voice/live/route.test.ts
+PASS components/voice/live/LiveDock.test.tsx
+PASS lib/voice-v2v/geminiStt.test.ts
+PASS lib/voice/liveTools.test.ts
+PASS lib/voice-v2v/providersGoogleOnly.test.ts
+PASS components/voice/live/LiveActivityFeed.test.tsx
+PASS lib/voice/geminiLive.test.ts
+PASS components/voice/live/liveVoiceGate.test.tsx
+PASS lib/voice/liveUi.test.ts
+PASS lib/voice/experience/experience.test.ts
+PASS lib/voice/livePlans.test.ts
+PASS lib/voice/micAcquire.test.ts
+PASS lib/voice/interimCadence.test.ts
+PASS lib/voice/spokenYes.test.ts
+PASS lib/voice/dictationMetrics.test.ts
+PASS lib/voice/webhook-processing.test.ts
+PASS lib/voice/vad.test.ts
+PASS lib/voice/sttAccept.test.ts
+PASS lib/voice/liveTelemetry.test.ts
+PASS lib/voice/experience/readAloud.test.ts
+PASS components/voice/live/liveActivity.test.ts
+PASS lib/voice/voicePrompt.test.ts
+PASS lib/voice/voiceLedger.test.ts
+PASS lib/voice/twilio-signature.test.ts
+PASS lib/voice/liveThread.test.ts
+PASS lib/voice-v2v/vad.test.ts
+PASS lib/voice/voiceCallsSchema.test.ts
+PASS lib/voice/pcm.test.ts
+PASS lib/voice/speechLang.test.ts
+PASS lib/voice/liveStudio.test.ts
+PASS lib/voice/audioExt.test.ts
+PASS lib/audio/premium-tts.test.ts
+PASS lib/voice/livePrime.test.ts
+
+Test Suites: 49 passed, 49 total
+Tests:       1029 passed, 1029 total
+Snapshots:   0 total
+Time:        5.39 s
+Ran all test suites matching lib/voice|lib/audio/premium-tts|components/voice|app/api/voice|components/chat/composer/useDictation.
+Test results written to: ../../../../../../tmp/voice-v2-baseline/voice-final-jest.json

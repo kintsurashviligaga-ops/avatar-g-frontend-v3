@@ -1,0 +1,37 @@
+{
+  "refs": {
+    "voice": "54f570b21f687e156e092f993c7c646588ba4284",
+    "music": "9d25c7a40716617fe71940bc6fc0befc23ff0c1b",
+    "image": "be9edee33b0c0334f948285476865a11f35c084f",
+    "video": "bcb724a1dbb1cd950bbbdacb7600a53745495465"
+  },
+  "steps": [
+    {
+      "with": "image",
+      "exit": 0,
+      "output": "eb7e1200f3d3c83881c557240d0fdd9a7b1ea514\n",
+      "error": ""
+    },
+    {
+      "with": "video",
+      "exit": 0,
+      "output": "973bc4051b6ad0547411b816ad03c1415b27671d\n",
+      "error": ""
+    },
+    {
+      "with": "voice",
+      "exit": 0,
+      "output": "afa45d571dbe228fc9a2936081ecde7fe197893f\n",
+      "error": ""
+    }
+  ],
+  "directory": "/var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/voice-combined-wqnkce7d",
+  "tree_commit": "be6012b2125bc89586b5f15406075ed8e7ae85c4",
+  "integration-tsc.log": 0,
+  "integration-jest.log": 0,
+  "adapter_apply_check": {
+    "exit": 0,
+    "error": ""
+  },
+  "adapter_typecheck_exit": 0
+}

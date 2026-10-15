@@ -1,0 +1,4529 @@
+[WebServer] (node:75591) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:75605) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] Browserslist: browsers data (caniuse-lite) is 8 months old. Please run:
+[WebServer]   npx update-browserslist-db@latest
+[WebServer]   Why you should do it regularly: https://github.com/browserslist/update-db#readme
+[WebServer] (node:75633) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] [env] Missing optional env variables: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, NEXT_PUBLIC_BASE_URL, BASE_URL, ALLOWED_ORIGINS, SENTRY_DSN, VERCEL_ANALYTICS_ID
+[WebServer] [env] Optional env var STRIPE_WEBHOOK_SECRET is not set
+[WebServer] [env] Optional env var SENTRY_DSN is not set
+[WebServer] [env] Optional env var ALLOWED_ORIGINS is not set
+[WebServer] [env] Optional Upstash Redis is not set (KV_REST_API_URL/TOKEN or UPSTASH_REDIS_REST_URL/TOKEN)
+
+Running 6 tests using 1 worker
+
+(node:75634) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:75634) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] (node:75672) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75681) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75696) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+  ✓  1 [chromium-simulated-audio] › tests/voice-experience.spec.ts:10:6 › v2 preferences ka mobile: user-scoped persistence and viewport layout (19.1s)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75710) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75713) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75716) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+  ✓  2 [chromium-simulated-audio] › tests/voice-experience.spec.ts:10:6 › v2 preferences ka desktop: user-scoped persistence and viewport layout (8.7s)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75719) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75721) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75726) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+  ✓  3 [chromium-simulated-audio] › tests/voice-experience.spec.ts:10:6 › v2 preferences en mobile: user-scoped persistence and viewport layout (8.7s)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75728) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75733) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75734) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+  ✓  4 [chromium-simulated-audio] › tests/voice-experience.spec.ts:10:6 › v2 preferences en desktop: user-scoped persistence and viewport layout (8.4s)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75740) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75743) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75744) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+  ✓  5 [chromium-simulated-audio] › tests/voice-experience.spec.ts:10:6 › v2 preferences ru mobile: user-scoped persistence and viewport layout (8.1s)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75751) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75753) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
+[WebServer] (node:75755) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer]  [TypeError: fetch failed] {
+[WebServer]   cause:  [Error: getaddrinfo ENOTFOUND example.supabase.co] {
+[WebServer]   errno: -3008,
+[WebServer]   code: 'ENOTFOUND',
+[WebServer]   syscall: 'getaddrinfo',
+[WebServer]   hostname: 'example.supabase.co'
+[WebServer] }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+[WebServer] [TypeError: fetch failed] {
+[WebServer]   [cause]: Error: getaddrinfo ENOTFOUND example.supabase.co
+[WebServer]       at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:121:26) {
+[WebServer]     errno: -3008,
+[WebServer]     code: 'ENOTFOUND',
+[WebServer]     syscall: 'getaddrinfo',
+[WebServer]     hostname: 'example.supabase.co'
+[WebServer]   }
+[WebServer] }
+  ✓  6 [chromium-simulated-audio] › tests/voice-experience.spec.ts:10:6 › v2 preferences ru desktop: user-scoped persistence and viewport layout (7.6s)
+
+  6 passed (1.3m)
