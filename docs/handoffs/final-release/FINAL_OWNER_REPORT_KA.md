@@ -46,8 +46,8 @@ ledger-ის delta ამ release-ისთვის: ჯერ არ არ�
 
 ## 7. ტესტები
 
-CI 10/10 მწვანე ba35a07e-ზე. Jest სრული ff3a48c3-ზე: suites 937/1/12, tests 14,337/1/114 (ერთი FFmpeg დროის ტესტი
-დატვირთვის ქვეშ). დეტალები: 04_FULL_TEST_MATRIX.md.
+CI 10/10 მწვანე ba35a07e-ზე. Jest სრული main de15464d-ით (f52f918e): suites 939/0/12, tests 14,372/0/114, ერთი
+წარუმატებელიც არ არის; + 2 ახალი regression suite (20 ტესტი). დეტალები: 04_FULL_TEST_MATRIX.md.
 
 ## 8. რეალური და სიმულირებული
 

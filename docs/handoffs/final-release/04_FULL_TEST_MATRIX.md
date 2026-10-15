@@ -27,4 +27,4 @@ PROVEN_PRODUCTION, PROVEN_ISOLATED, PROVEN_UNIT, NOT_RUN, UNAVAILABLE, PENDING.
 | T-19 | Same probe after release | after GG's deploy word | release head | 09 step 6 | 200, release sha | — | PENDING | GG's card | Integration |
 | T-20 | Admin canary on Production (studios visible to admin only, an outside tool shows "paused, not charged") | GG signed in as admin | release head | 09 step 7 | as stated | — | PENDING | GG's sign-in | GG + Integration |
 | T-21 | Paid real runs on the new studios (Imagen, Lyria, Veo) | GG's word naming each | — | — | real asset in Library, ledger delta = quote | not run | NOT_RUN | GG's word | GG |
-| T-22 | Full Jest on the merged tree | local, 4 cores | ff3a48c3 | 01 row 6 | all pass | 937 suites passed / 1 failed (FFmpeg timing under load; passes alone) | PROVEN_ISOLATED | — | Integration |
+| T-22 | Full Jest on the merged tree | local, 4 cores | f52f918e (main de15464d merged) | 01 row 8 | all pass | suites 939 passed / 0 failed / 12 skipped; tests 14,372 / 0 / 114 (+ 2 new suites, 20 tests) | PROVEN_ISOLATED | — | Integration |

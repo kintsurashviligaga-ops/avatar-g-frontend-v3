@@ -46,8 +46,8 @@ Migration არ არის, env არ იცვლება, ფასი �
 ## ტესტები
 
 - CI: 10/10 მწვანე ba35a07e-ზე (03). release-ის commit-ზე ხელახლა გაეშვება და ბარათი შედეგს დაასახელებს.
-- Jest სრული (ff3a48c3): suites 937 passed / 1 failed / 12 skipped; tests 14,337 / 1 / 114. ერთი წარუმატებელი FFmpeg-ის
-  დროის ტესტია დატვირთვის ქვეშ, ცალკე 5/5 გადის.
+- Jest სრული (f52f918e, main de15464d-ით): suites 939 passed / 0 failed / 12 skipped; tests 14,372 / 0 / 114.
+  ამას ემატება 2 ახალი suite (20 ტესტი), ყველა მწვანე.
 - ახალი regression ტესტები: `components/studio/liveRunGate.test.ts` (FR-6), `lib/routing/shellRedirects.test.ts` (FR-11).
   ორივე ვარდება main-ის კოდზე და გადის ბრენჩზე.
 - დეტალურად: 04_FULL_TEST_MATRIX.md.
