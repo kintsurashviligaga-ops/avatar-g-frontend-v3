@@ -35,6 +35,7 @@ import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/i
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
 import { settleFailedFilmScenes } from './filmSceneRefund';
+import { asVeoSafetyCategory, type VeoSafetyCategory } from '@/lib/veo/safetyCodes';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -736,6 +737,8 @@ async function pollFilmTask(predictionId: string, sessionId?: string, userId?: s
           ...(c.note ? { note: c.note } : {}),
           // PHASE 25 (VECTOR 3) — the render engine, consumed by the Director's Console badge.
           ...(c.videoProvider ? { videoProvider: c.videoProvider } : {}),
+          // The scene Google's safety filter declined, and under which rule (the film's error card names both).
+          ...(c.declined ? { declined: c.declined } : {}),
         })),
         stitch: filmStitchToClientStatus(stitchStatus, anyClipPending),
         audio: filmLegToClientStatus(audioStatus),
@@ -776,6 +779,9 @@ interface FilmClipPollState {
    *  'runway' | 'replicate'/'kling' | 'ltx' | …). Threaded to the Director's Console provider badge
    *  so a Runway→Replicate fallback is visible in the UI, not just in the raw response. */
   videoProvider?: string;
+  /** Google's safety filter declined this scene (a terminal verdict, never billed by Google): the category from its support
+   *  code (lib/veo/safetyCodes) and the codes themselves, so the film can name the scene and the rule instead of "failed". */
+  declined?: { category: VeoSafetyCategory | null; codes: string[] };
 }
 
 /** Poll one clip leg; null taskRef short-circuits to its dispatch-time verdict. */
@@ -799,7 +805,15 @@ async function pollFilmClip(clip: FilmTaskRef['clips'][number], sessionId?: stri
     // it to 'failed' would declare the whole film failed on a routing blip. Treat it as 'pending' (keep
     // polling) so the film self-heals; genuine failures still arrive as a clean 'failed'/'canceled'.
     if (sm.predictionStatus === 'failed' || sm.predictionStatus === 'canceled') {
-      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts, providerStatus, note, videoProvider };
+      const declined = sm.metadata?.veoFiltered === true
+        ? {
+            category: asVeoSafetyCategory(sm.metadata.veoSafetyCategory),
+            codes: Array.isArray(sm.metadata.veoSupportCodes)
+              ? sm.metadata.veoSupportCodes.filter((c): c is string => typeof c === 'string' && /^\d{4,12}$/.test(c)).slice(0, 4)
+              : [],
+          }
+        : undefined;
+      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts, providerStatus, note, videoProvider, ...(declined ? { declined } : {}) };
     }
     return { ordinal: clip.ordinal, status: 'pending', url: null, attempts: clip.attempts, providerStatus, note, videoProvider };
   } catch (err) {

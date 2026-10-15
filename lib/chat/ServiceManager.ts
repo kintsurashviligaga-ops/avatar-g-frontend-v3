@@ -27,6 +27,7 @@ import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { hasRunwayProvider, runwayModel, createRunwayI2V, pollRunwayTask } from '@/lib/ai/runway';
 import { createVeoClip, pollVeoClip, transportOf, veoTransport } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
+import { veoSafetyCategory } from '@/lib/veo/safetyCodes';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
@@ -1226,10 +1227,24 @@ export class ServiceManager {
       // it; the raw Veo file is key- or IAM-gated, so it can never be handed to the browser as-is.
       return failed(`${engine} post-processing failed.`);
     }
+    // ⚠️ GOOGLE'S REASON WAS THROWN AWAY HERE. Both branches returned a fixed sentence and logged nothing, so the ad film's
+    // scene 2 (2026-10-15) left only "generation failed" behind; the why (a likeness refusal, support code 15236754) had to
+    // be read back from Google by hand. The reason goes to the server log; the category (never the raw text, which can
+    // echo the prompt) goes to the film, which names the scene and the rule to the person who asked for it.
     if (r.state === 'filtered') {
-      return failed(`${engine} declined this scene under Google's safety rules. Rephrase it and render again.`, { veoFiltered: true });
+      const category = veoSafetyCategory(r.supportCodes);
+      console.warn(`[veo] scene declined by Google (${category ?? 'unlisted code'}) op=${operation.slice(-40)} codes=${r.supportCodes.join(',') || 'none'}: ${r.reason}`);
+      const why = category === 'celebrity' ? ': Google judged the person to look like a well-known public figure' : category ? ` (${category.replace('_', ' ')})` : '';
+      return failed(`${engine} declined this scene under Google's safety rules${why}.`, {
+        veoFiltered: true,
+        veoSafetyCategory: category,
+        veoSupportCodes: r.supportCodes.slice(0, 4),
+      });
     }
-    if (r.state === 'failed') return failed(`${engine} generation failed.`);
+    if (r.state === 'failed') {
+      console.warn(`[veo] scene failed op=${operation.slice(-40)}${r.code !== undefined ? ` code=${r.code}` : ''}${r.finished ? ' (done)' : ''}: ${r.reason}`);
+      return failed(`${engine} generation failed.`);
+    }
     return {
       success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
       message: `${engine} rendering…`, predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
