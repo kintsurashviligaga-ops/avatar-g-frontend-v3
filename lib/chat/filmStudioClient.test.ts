@@ -10,6 +10,7 @@ import {
   everyClipLanded,
   filmProgressKey,
   asErrorText,
+  describeDeclinedScenes,
   MIN_SALVAGE_CLIPS,
   type FilmStudioMatrix,
 } from './filmStudioClient';
@@ -382,5 +383,51 @@ describe('summarizeProgress — phase-aware, honest copy', () => {
     // The {done}/{total} substitution must survive in ka + ru, not just en.
     expect(summarizeProgress(m, 'rendering', 'ka')).toMatch(/2\/5/);
     expect(summarizeProgress(m, 'rendering', 'ru')).toMatch(/2\/5/);
+  });
+});
+
+describe('describeDeclinedScenes — a scene Google declined is named, with its rule and code, in the user\'s language', () => {
+  // The ad film of 2026-10-15: scene 1 rendered, scene 2 was declined under support code 15236754 (celebrity).
+  const adFilm = matrix({
+    sceneCount: 2,
+    clips: [
+      { ordinal: 1, status: 'succeeded', url: 'c1' },
+      { ordinal: 2, status: 'failed', url: null, declined: { category: 'celebrity', codes: ['15236754'] } },
+    ],
+  });
+
+  it('names the scene, the likeness rule and the code (ka / en / ru)', () => {
+    expect(describeDeclinedScenes(adFilm, 'ka')).toBe('Google-მა სცენა 2 უარყო. მისმა ფილტრმა ადამიანი ცნობილ საჯარო პირს მიამსგავსა (კოდი 15236754).');
+    expect(describeDeclinedScenes(adFilm, 'en')).toBe('Google declined scene 2. Its filter judged the person to look like a well-known public figure (code 15236754).');
+    expect(describeDeclinedScenes(adFilm, 'ru')).toBe('Google отклонил сцену 2. Его фильтр счёл, что человек похож на известную публичную персону (код 15236754).');
+  });
+
+  it('fits the error card (≤160 characters) in every language', () => {
+    for (const locale of ['ka', 'en', 'ru']) {
+      expect((describeDeclinedScenes(adFilm, locale) ?? '').length).toBeLessThanOrEqual(160);
+    }
+  });
+
+  it('several scenes under different rules → the generic rule, every scene, at most two codes', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 3, status: 'failed', url: null, declined: { category: 'violence', codes: ['61493863'] } },
+        { ordinal: 1, status: 'failed', url: null, declined: { category: 'celebrity', codes: ['15236754'] } },
+        { ordinal: 2, status: 'failed', url: null, declined: { category: null, codes: ['11111111'] } },
+      ],
+    });
+    expect(describeDeclinedScenes(m, 'en')).toBe('Google declined scenes 1, 2, 3 under its safety rules (code 15236754, 11111111).');
+    expect(describeDeclinedScenes(m, 'ka')).toBe('Google-მა სცენები 1, 2, 3 უსაფრთხოების წესებით უარყო (კოდი 15236754, 11111111).');
+  });
+
+  it('no code → no parenthesis', () => {
+    const m = matrix({ clips: [{ ordinal: 2, status: 'failed', url: null, declined: { category: 'child' } }] });
+    expect(describeDeclinedScenes(m, 'en')).toBe('Google declined scene 2. Its filter judged that the picture shows a child.');
+  });
+
+  it('an ordinary failure, a landed clip or no matrix → null (the caller keeps its own sentence)', () => {
+    expect(describeDeclinedScenes(matrix({ clips: [{ ordinal: 1, status: 'failed', url: null }] }), 'en')).toBeNull();
+    expect(describeDeclinedScenes(matrix({ clips: [{ ordinal: 1, status: 'succeeded', url: 'c1', declined: { category: 'celebrity' } }] }), 'en')).toBeNull();
+    expect(describeDeclinedScenes(null, 'ka')).toBeNull();
   });
 });

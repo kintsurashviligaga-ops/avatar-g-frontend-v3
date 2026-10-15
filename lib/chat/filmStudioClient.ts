@@ -54,6 +54,8 @@ export interface FilmClipState {
   /** PHASE 25 (VECTOR 3) — the render engine that produced this clip ('runway' | 'replicate' |
    *  'kling' | 'ltx' | …). Drives the Director's Console provider badge so a fallback is visible. */
   videoProvider?: string;
+  /** Google's safety filter declined this scene: the category its support code files it under, and the codes. */
+  declined?: { category: string | null; codes?: string[] };
 }
 
 /** Mirrors the server `metadata.film` matrix (providerRouter) the client reads. */
@@ -333,6 +335,63 @@ export function firstPreviewUrl(matrix: FilmStudioMatrix | null): string | null 
     .sort((a, b) => a.ordinal - b.ordinal)
     .find((c) => typeof c.url === 'string' && c.url.length > 0);
   return ready?.url ?? null;
+}
+
+type DeclineLang = 'en' | 'ka' | 'ru';
+const DECLINE_COPY: Record<DeclineLang, {
+  head: (scenes: number[]) => string;
+  celebrity: string;
+  child: string;
+  generic: string;
+  code: string;
+}> = {
+  en: {
+    head: (n) => `Google declined scene${n.length > 1 ? 's' : ''} ${n.join(', ')}`,
+    celebrity: '. Its filter judged the person to look like a well-known public figure',
+    child: '. Its filter judged that the picture shows a child',
+    generic: ' under its safety rules',
+    code: 'code',
+  },
+  ka: {
+    head: (n) => `Google-მა ${n.length > 1 ? 'სცენები' : 'სცენა'} ${n.join(', ')} უარყო`,
+    celebrity: '. მისმა ფილტრმა ადამიანი ცნობილ საჯარო პირს მიამსგავსა',
+    child: '. მისმა ფილტრმა ჩათვალა, რომ კადრში ბავშვია',
+    generic: ' უსაფრთხოების წესებით',
+    code: 'კოდი',
+  },
+  ru: {
+    head: (n) => `Google отклонил ${n.length > 1 ? 'сцены' : 'сцену'} ${n.join(', ')}`,
+    celebrity: '. Его фильтр счёл, что человек похож на известную публичную персону',
+    child: '. Его фильтр счёл, что в кадре ребёнок',
+    generic: ' по своим правилам безопасности',
+    code: 'код',
+  },
+};
+
+/**
+ * The scenes Google's safety filter declined, said in the user's language with the rule and its support code — or null
+ * when no scene was declined (an ordinary failure keeps its own sentence).
+ *
+ * ⚠️ THE AD FILM OF 2026-10-15 ENDED ON "the service may be busy". Scene 2 had been declined by Google's likeness filter
+ * (support code 15236754): a verdict, not a busy service, and one the user can only act on if they are told which scene and
+ * which rule. Short on purpose — the error card prints at most 160 characters of it (lib/ui/opFailure).
+ */
+export function describeDeclinedScenes(matrix: FilmStudioMatrix | null, locale: string = 'en'): string | null {
+  const declined = [...(matrix?.clips ?? [])]
+    .filter((c) => c.status === 'failed' && c.declined)
+    .sort((a, b) => a.ordinal - b.ordinal);
+  if (declined.length === 0) return null;
+  const copy = DECLINE_COPY[locale === 'ka' || locale === 'ru' ? locale : 'en'];
+  const categories = new Set(declined.map((c) => c.declined?.category ?? null));
+  const only = categories.size === 1 ? [...categories][0] : null;
+  const rule = only === 'celebrity' ? copy.celebrity : only === 'child' ? copy.child : copy.generic;
+  const codes = [...new Set(declined.flatMap((c) => c.declined?.codes ?? []))].slice(0, 2);
+  const head = copy.head(declined.map((c) => c.ordinal));
+  // Georgian puts the verb last: "Google-მა სცენა 2 უარყო. …" but "Google-მა სცენა 2 უსაფრთხოების წესებით უარყო".
+  const sentence = locale === 'ka' && rule === copy.generic
+    ? head.replace(/ უარყო$/, `${copy.generic} უარყო`)
+    : `${head}${rule}`;
+  return `${sentence}${codes.length ? ` (${copy.code} ${codes.join(', ')})` : ''}.`;
 }
 
 /**
@@ -972,11 +1031,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // all 5 scenes under a red "halted" header — a contradictory tracker).
     if (!matrix.readyToStitch && !canSalvagePartialCut(matrix)) {
       return fail(
-        renderStalled
+        describeDeclinedScenes(matrix, locale) ?? (renderStalled
           ? 'The render stalled: no scene finished in time. Please try again a little later.'
           : renderFailed
             ? 'One or more scenes failed to render, so the film could not be assembled.'
-            : 'The render timed out before enough scenes were ready to assemble a film.',
+            : 'The render timed out before enough scenes were ready to assemble a film.'),
         matrix,
       );
     }
@@ -990,7 +1049,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // films still need ≥2 salvageable clips. Additive: only the sceneCount===1 case.
     const intendedSingleClip = matrix.sceneCount === 1;
     if (clips.length < MIN_SALVAGE_CLIPS && !(intendedSingleClip && clips.length === 1)) {
-      return fail('Not enough scenes rendered to stitch a film (need at least 2).', matrix);
+      return fail(describeDeclinedScenes(matrix, locale) ?? 'Not enough scenes rendered to stitch a film (need at least 2).', matrix);
     }
     // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
     const musicBed = opts.noMusic ? null : (opts.soundtrackUrl ?? matrix.audioUrl ?? null);
