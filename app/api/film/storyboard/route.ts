@@ -40,7 +40,7 @@ import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generatio
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveFilmTemplate } from '@/lib/studio/templateContext';
-import { storyFeaturesPerson } from '@/lib/chat/storyPerson';
+import { REFERENCE_PERSON_CLAUSE, briefRestagesPhoto, storyFeaturesPerson } from '@/lib/chat/storyPerson';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
@@ -423,7 +423,7 @@ export async function POST(req: NextRequest) {
       const sceneEn = await promptToEnglish(scenePrompt, 'image');
       const head = look ? `Cinematic film still, ${aspect} composition, ${look}.` : `Cinematic film still, ${aspect} composition.`;
       const framePrompt = selfie
-        ? `${head} ${sceneEn} Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features and wardrobe as the reference. ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
+        ? `${head} ${sceneEn} ${REFERENCE_PERSON_CLAUSE} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
         : `${head} ${sceneEn} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
       // GOOGLE-ONLY (docs/VEO_ENGINE.md §3): the frame comes straight from Gemini's image model, the selfie passed as
       // an inline reference so the same person is in every frame. No Replicate, no FLUX: a miss is an empty tile
@@ -540,7 +540,7 @@ export async function POST(req: NextRequest) {
     const tPA = Date.now();
     // VISION PRE-EXTRACTION — read the actual uploaded person off the photo so the (text-only) agent locks the REAL
     // subject rather than inventing a stock persona. Fail-open (null) → the strong text instruction still applies.
-    const characterVisualId = selfie ? await describeCharacterFromImage(selfie, locale) : null;
+    const characterVisualId = selfie ? await describeCharacterFromImage(selfie, locale, prompt) : null;
     if (characterVisualId) console.log(`[storyboard] scriptsOnly vision character-lock: "${characterVisualId.slice(0, 120)}"`);
     const brief = await runPromptAgent({
       brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
@@ -577,7 +577,9 @@ export async function POST(req: NextRequest) {
     // render as per-scene anchors, so the film matches the uploaded images. A SINGLE
     // image stays a character-lock reference (unchanged behaviour).
     const anchorMode = hostedRefs.length >= 2;
-    const lockScene1Plan = !!selfie && !anchorMode; // single selfie → Scene 1 IS that exact image (V1)
+    // Single selfie → Scene 1 IS that exact image (V1), unless the brief puts the person somewhere else or in other
+    // clothes: then scene 1 is drawn like the others, the same face in the brief's scene (lib/chat/storyPerson.ts).
+    const lockScene1Plan = !!selfie && !anchorMode && (await briefRestagesPhoto(prompt)) !== true;
     return NextResponse.json({
       success: true,
       sessionId,
@@ -616,7 +618,7 @@ export async function POST(req: NextRequest) {
   // character + per-scene image prompts), fail-open to the haiku Script Agent, then
   // render all frames in one request. Fail-open: a miss leaves `plan` in place.
   const tPromptAgent = Date.now();
-  const characterVisualIdFull = selfie ? await describeCharacterFromImage(selfie, locale) : null;
+  const characterVisualIdFull = selfie ? await describeCharacterFromImage(selfie, locale, prompt) : null;
   if (characterVisualIdFull) console.log(`[storyboard] full vision character-lock: "${characterVisualIdFull.slice(0, 120)}"`);
   const masterBrief: MasterFilmBrief | null = await runPromptAgent({
     brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
@@ -646,7 +648,8 @@ export async function POST(req: NextRequest) {
   // the real person and the identity can never drift on the first shot. Only scenes 2..N are generated (each still
   // identity-locked to the selfie). We skip generating frame[0] entirely — no wasted flux call, no throwaway frame.
   // (With ≥2 uploads the anchorModeFull path below already maps every scene to its own uploaded frame.)
-  const lockScene1 = !!selfie && hostedRefs.length < 2;
+  // …unless the brief restages the person (another place or other clothes): the same rule as the planOnly board above.
+  const lockScene1 = !!selfie && hostedRefs.length < 2 && (await briefRestagesPhoto(prompt)) !== true;
   const frames = await mapWithConcurrency(storyPlan.scenes, frameConcurrency, (scene, i) =>
     (i === 0 && lockScene1) ? Promise.resolve<string | null>(selfie) : genFrame(scene.prompt));
   // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —

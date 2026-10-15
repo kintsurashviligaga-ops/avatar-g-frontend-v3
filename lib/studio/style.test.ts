@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { STYLE_MAX, isKnownStyle, sanitizeStyle } from './style';
+import { STYLE_MAX, isKnownStyle, sanitizeStyle, withFilmStyle } from './style';
 
 describe('sanitizeStyle', () => {
   it('passes every label the studio actually sends through unchanged', () => {
@@ -79,5 +79,26 @@ describe('isKnownStyle', () => {
       expect(TABLE[k]).toBeDefined(); // the trap the plain lookup fell into
       expect(isKnownStyle(TABLE, k)).toBe(false);
     }
+  });
+});
+
+describe('withFilmStyle', () => {
+  it('names the house word once when the style is already "Cinematic"', () => {
+    expect(withFilmStyle('A red paper boat drifts across a pond', 'Cinematic')).toBe('A red paper boat drifts across a pond. Visual style: cinematic.');
+  });
+
+  it('adds the house word after any other style', () => {
+    expect(withFilmStyle('A red paper boat drifts across a pond', 'Noir')).toBe('A red paper boat drifts across a pond. Visual style: noir, cinematic.');
+  });
+
+  it('gives a brief that already ends a sentence no second full stop', () => {
+    expect(withFilmStyle('ის ლაპარაკობს კამერასთან.', 'Cinematic')).toBe('ის ლაპარაკობს კამერასთან. Visual style: cinematic.');
+    expect(withFilmStyle('Wow!  ', 'Anime')).toBe('Wow! Visual style: anime, cinematic.');
+  });
+
+  it('leaves the brief alone without a usable style', () => {
+    expect(withFilmStyle('A boat', '')).toBe('A boat');
+    expect(withFilmStyle('A boat', null)).toBe('A boat');
+    expect(withFilmStyle('A boat', '‮​')).toBe('A boat');
   });
 });
