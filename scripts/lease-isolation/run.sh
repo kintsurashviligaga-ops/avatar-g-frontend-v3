@@ -79,3 +79,14 @@ psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f docs/handof
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
 sleep 2
 FILM_PHASE=after node node_modules/.bin/jest lib/chat/filmBilling.pg.test.ts --no-watchman --ci --forceExit
+# Phase 3 (B3) preflight: the storyboard revision proposal (docs/handoffs/video-core/proposals/20261012a_storyboard_revisions.sql)
+# on the same database — applied twice (it must be re-runnable), checked, rolled back with its own footer, re-applied and
+# checked again. NOT applied anywhere else: it waits for the owner's word and for the code that would write it.
+B3=docs/handoffs/video-core/proposals/20261012a_storyboard_revisions.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f "$B3"
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f "$B3"
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f scripts/lease-isolation/b3-storyboard-revisions.check.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q \
+  -c "drop table if exists public.storyboard_approvals; drop table if exists public.storyboard_revisions;"
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f "$B3"
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f scripts/lease-isolation/b3-storyboard-revisions.check.sql
