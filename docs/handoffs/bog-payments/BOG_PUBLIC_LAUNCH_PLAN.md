@@ -129,8 +129,10 @@ BOG-ის დოკუმენტაცია (https://api.bog.ge/docs/payment
 
 ბანკის ინსტრუქციით („Sand Box Geo.pdf“) sandbox თვითმომსახურებაა:
 
-1. https://manager.bog.ge/login → ჩართე **Sandbox** გადამრთველი → **Sandbox ობიექტები**.
-2. **ობიექტის შექმნა:** სახელი ქართულად და ლათინურად (მაგ. „MyAvatar.ge test“), საიტი https://myavatar.ge, ლოგო, „საბარათე გადახდები“ → დამატება.
+1. **კომპიუტერზე** (მობილურ აპლიკაციაში ეს არ არის) https://manager.bog.ge → ზემოთ მარჯვნივ კომპანიის სახელი → მენიუში გადამრთველი **„Sandbox გარემოზე გადასვლა“** → იხსნება „Sandbox - ობიექტების მართვა“.
+2. **„+ სატესტო ობიექტის შექმნა“:** სახელი ქართულად და ლათინურად (მაგ. „MyAvatar ტესტი“ / „MyAvatar test“), საიტი https://myavatar.ge, ლოგო არასავალდებულოა, „საბარათე გადახდა“ ჩართული → **„SANDBOX ობიექტის შექმნა“**.
+
+⚠️ ნამდვილი ვებგვერდის ობიექტის გვერდი (მაგ. `manager/application/…`, ანგარიშის ნომრით, „Public Key“ / „Secret Key“ „Test“-ის გარეშე) sandbox **არ არის**: მისი გასაღებები ნამდვილ გადახდებს და refund-ს მართავს და აქ არ იწერება.
 3. ობიექტის გვერდზე დააკოპირე **Test Public Key** და **Test Secret Key** და ჩასვი GitHub-ში, არა ჩატში: https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/settings/secrets/actions → New repository secret:
    - `BOG_SANDBOX_CLIENT_ID` = Test Public Key
    - `BOG_SANDBOX_SECRET_KEY` = Test Secret Key
