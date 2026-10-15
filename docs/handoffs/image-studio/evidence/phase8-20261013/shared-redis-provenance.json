@@ -1,0 +1,15 @@
+{
+  "main": "fef867a6ebad67a2a0a56a24e0b15c683a353d79",
+  "identicalFilesSha256": {
+    "lib/platform/upstashEnv.ts": "6ada7efc306a17f4c4064ca0db273f1c452d07ed5bd9be75ba6d8712f78af104",
+    "lib/platform/upstashEnv.test.ts": "cc6135ca1267d2800661cc8fcd1e7c255af25af14a19a6fb6693a47d58fd6560"
+  },
+  "redBefore": {
+    "pass": 6,
+    "fail": 2
+  },
+  "greenAfter": {
+    "pass": 30,
+    "fail": 0
+  }
+}

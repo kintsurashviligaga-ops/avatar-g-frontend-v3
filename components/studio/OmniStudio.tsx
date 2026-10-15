@@ -215,6 +215,9 @@ const PhotoshootCreatePanel = dynamic(() => import('@/components/studio/create/P
 const ShootResultPane = dynamic(() => import('@/components/studio/create/newtools/ShootResultPane').then((m) => m.ShootResultPane), { ssr: false, loading: () => <div className="h-24" /> });
 import { toast } from 'sonner';
 // The Image tool's Create screen (Higgsfield grammar): a view over the state below. Its option lists and price live in lib/studio/imageCreate.
+import { ImageWorkspace } from '@/components/studio/image/ImageWorkspace';
+import { useImageStudioAccess } from '@/components/studio/image/useImageStudioAccess';
+import { imageCopy } from '@/components/studio/image/copy';
 import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
 import { ImageDesk } from '@/components/studio/create/ImageDesk';
 import type { ImageResultActions } from '@/components/studio/create/ImageResultPane';
@@ -2147,6 +2150,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // through (the guest policy lives server-side, lib/chat/guestChat) and stops every paid tool at sign-in. A restart
   // on another tool (initialTool) is selected by the deep-link effect through the same path the sidebar uses.
   const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical' | 'photo'>('chat');
+  const imageStudioAccess = useImageStudioAccess(mode === 'image');
+  const [imageWorkspaceOpen, setImageWorkspaceOpen] = useState(true);
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -2179,6 +2184,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Mobile: the service-option panels collapse behind a toggle so they never cover the
   // chat (the cards are tall). Default collapsed on mobile; on desktop (sm:) always open.
   const [optionsOpen, setOptionsOpen] = useState(false);
+  useEffect(() => {
+    if (mode === 'image' && imageStudioAccess && imageWorkspaceOpen) setOptionsOpen(false);
+  }, [mode, imageStudioAccess, imageWorkspaceOpen]);
   /**
    * ⚠️ THE COMPOSER HAD TWO OPTIONS SURFACES AND NO RULE THAT ONLY ONE MAY BE OPEN. `mode` drives the
    * accordion panels (image · music · video · lipsync · remix, rendered inside the collapsible div at
@@ -10066,7 +10074,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // ≥ 1024 px: the Image tool's CENTRE column is the Result pane + Models & prices (components/studio/create/ImageDesk) in place of the
   // greeting and the thread. It reads the same `messages` and calls the same handlers as the thread's own buttons, keyed by the
   // message's index (resolved against the thread here, so the pane and the thread cannot disagree about what a button does).
-  const imageDesk = imageCreate && isDesktop;
+  const imageWorkspace = imageCreate && imageWorkspaceOpen && !!imageStudioAccess;
+  const imageDesk = imageCreate && isDesktop && !imageWorkspace;
   // Agent G's latest word on the Image desk (its thread is hidden there): the reply to a greeting, its questions, its confirmation.
   let gateIdx = -1;
   if (imageDesk && gateFrom !== null) {
@@ -10153,7 +10162,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* IMAGE — the Create screen (components/studio/create/ImageCreatePanel): a VIEW over the state above. Generation, the
             queue, billing and the template-pick semantics stay in this file; the screen only draws them. Script → Storyboard is
             slotted into its Advanced section below, unchanged. */}
-        {mode === 'image' && (
+        {mode === 'image' && imageStudioAccess && (
+          <button type="button" className="mb-3 min-h-[44px] w-full rounded-lg border border-white/25 bg-black px-3 py-2 text-base text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#338FE8]"
+            onClick={() => { setImageWorkspaceOpen(x => !x); if (!isDesktop) setOptionsOpen(false); }}>
+            {imageCopy(locale).t(imageWorkspace ? 'close' : 'open')}
+          </button>
+        )}
+        {mode === 'image' && !imageWorkspace && (
           <ImageCreatePanel
             locale={locale}
             desktop={isDesktop}
@@ -11424,7 +11439,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // „too tight, the right side does not show well", the owner on 2026-10-09, a Mac with visible scrollbars). The feed
         // now reaches into the column's right padding (-mr-4 pr-4): the text keeps the composer's edge and the bar sits in
         // the gutter, thin and quiet, with its room kept (scrollbar-gutter) so nothing jumps when the thread grows past one screen.
-        className={`${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y -mr-4 pr-4 pt-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(var(--app-border)/0.35)_transparent] ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
+        className={`${imageDesk || imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y -mr-4 pr-4 pt-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(var(--app-border)/0.35)_transparent] ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
         {videoStage}
         {musicPane}
@@ -11435,7 +11450,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             onWalkthrough={shoot.walkthrough} onUseAsReference={shoot.useAsReference} onDismissRun={shoot.dismissRun}
             onDismissTile={shoot.dismissTile} onClear={shoot.clearRuns} onOpenSettings={openSettings}
           />
-        ) : imageDesk ? null : messages.length === 0 && !musicPane ? (videoStage ? null : (
+        ) : imageDesk || imageWorkspace ? null : messages.length === 0 && !musicPane ? (videoStage ? null : (
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
@@ -11476,6 +11491,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {/* The Image tool on a desktop: the Result pane + Models & prices stand where the thread would (the thread is inside it,
           one tap away). ⚠️ The feed above is HIDDEN, not unmounted, and renders nothing meanwhile — its ref, scroll handlers and the
           keyboard re-pin all keep a node to talk to, and the thread is never mounted twice. */}
+      {imageWorkspace && imageStudioAccess && (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
+          <ImageWorkspace key={imageStudioAccess.userId} access={imageStudioAccess} locale={locale} initialPrompt={input}
+            onClose={() => setImageWorkspaceOpen(false)} />
+        </div>
+      )}
       {imageDesk && imageDeskActions && (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
           <ImageDesk
@@ -11498,7 +11519,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       )}
 
       {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
-      {showJump && !imageDesk && messages.length > 0 && (
+      {showJump && !imageDesk && !imageWorkspace && messages.length > 0 && (
         <button
           type="button"
           onClick={() => scrollToBottom()}
@@ -11513,7 +11534,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
-      <div ref={composerRef} className="shrink-0 pt-1">
+      <div ref={composerRef} className={imageWorkspace ? 'hidden' : 'shrink-0 pt-1'}>
         {/* ⚠️ DICTATION USED TO DIE IN SILENCE. Interim transcription failures were swallowed by a bare
             fail-soft catch: a 429 (the route shares the 100-req/60s READ bucket while a long dictation
             fires a pass every 1.2s), a 500 or an offline blip produced no toast and no state change, so

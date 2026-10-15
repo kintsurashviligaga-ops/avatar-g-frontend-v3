@@ -1,0 +1,25 @@
+{
+  "command": [
+    "node",
+    "node_modules/jest/bin/jest.js",
+    "--runInBand",
+    "--detectOpenHandles",
+    "--no-watchman",
+    "lib/image/studio",
+    "components/studio/image",
+    "lib/api/rate-limit.test.ts",
+    "lib/orchestrator/storage-adapter.uploads.test.ts",
+    "app/api/agent/media/sweep/route.test.ts",
+    "components/studio/create/omniWiring.test.ts",
+    "lib/agent/tools/registry.test.ts",
+    "lib/platform/upstashEnv.test.ts"
+  ],
+  "cwd": "/private/tmp/image-studio-main-fef867a6",
+  "deadlineSeconds": 180,
+  "startedAt": "2026-10-13T19:16:30.374746+00:00",
+  "timedOut": false,
+  "pid": 5304,
+  "exitCode": 0,
+  "elapsedSeconds": 3.789,
+  "finishedAt": "2026-10-13T19:16:34.163340+00:00"
+}

@@ -1,0 +1,22 @@
+{
+  "codeCommit": "a7b34014961ce8a46ff1ed2a500c92a3babd4142",
+  "checkpoint": "ed0dd85339b710219ca62eccad2b14dcdc3a4293",
+  "files": [
+    "components/studio/image/ImageWorkspace.tsx",
+    "lib/api/rate-limit.ts",
+    "lib/api/rate-limit.test.ts",
+    "lib/orchestrator/storage-adapter.ts",
+    "lib/orchestrator/storage-adapter.uploads.test.ts",
+    "scripts/image-studio/live-e2e.mjs",
+    "scripts/image-studio/live-e2e.test.mjs"
+  ],
+  "sha256": {
+    "components/studio/image/ImageWorkspace.tsx": "bc7a0b66b41b30f12253950be72ecd009b12abcd49c1119c3aa7bd6c6b51beba",
+    "lib/api/rate-limit.ts": "4cbcef07f825d314814a13b07cf1d77f89314ec30e452f9126360adc13d90678",
+    "lib/api/rate-limit.test.ts": "c57dc97e01d85113e81bc2e7e8c7e76d6c69c009cf47b6763b30e4f57ebb5e2c",
+    "lib/orchestrator/storage-adapter.ts": "16e18f3bc4f262e63b9b63b664271b937e1d4fa4c0e2b301619bd9994987152c",
+    "lib/orchestrator/storage-adapter.uploads.test.ts": "b35f1ac0ad8ee06ddd79cf5b17f16778383c925777930761428b214e1ab84dd5",
+    "scripts/image-studio/live-e2e.mjs": "267328ef36323ad0a0514f23398ec97c3c21a26916ad5ad9e79890d81f0beb04",
+    "scripts/image-studio/live-e2e.test.mjs": "231db4936d4ee48d94b4edefe6adc841497e62133459c42ae7003205edd13c56"
+  }
+}

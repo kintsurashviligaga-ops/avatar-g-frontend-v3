@@ -1,0 +1,33 @@
+{
+  "engineeringCommit": "ed9ebfda971a196e6acb6b60d8841d8bdb09dbfe",
+  "imageParent": "5b43b26c6e3f11a14f42c749d89b45279479406c",
+  "mainParent": "fef867a6ebad67a2a0a56a24e0b15c683a353d79",
+  "testedIntegrationCommit": "2edaafd5c9c121cc85ca44ba8c0ca53d79768a77",
+  "localAndTestedTree": "5305d0c4c1e1f785b74bb8ab65ed452421ed5fd6",
+  "equalityVerified": true,
+  "rawLogsSha256": {
+    "verify5b": "177a056aaa9c30580e1937da23b6c76fb0b46d7f016e0ddf6192104196fa080a",
+    "live5bRetry": "9b4bef64323b7d1d97bc152b6da6e70415d0a1a9fd032a34dd1eaef3fb0ca635",
+    "font-failed5b": "edb1ff8c6e4fdbb6d39ee00af4d9dcf4cd6152532ea5000a8e0458249c7f5dd3",
+    "billing5b": "7b88bbafb848921e2177894e8081bd1b99756c7a97fee0a7ce61db4c6f8c6ae6",
+    "image-db5b": "b7e0c779ea6208cda6850efb449d77312ed64a643a343f76c3e3eafc67550f26"
+  },
+  "ci": {
+    "run": 38454305928,
+    "jestPass": 13928,
+    "jestSkipped": 70,
+    "suitesPass": 909,
+    "suitesSkipped": 8,
+    "seconds": 372.914,
+    "typecheck": "PASS",
+    "build": "PASS"
+  },
+  "live": {
+    "run": 38454305911,
+    "attempt": 2,
+    "pass": 38,
+    "imagePass": 3,
+    "minutes": 17.9,
+    "firstAttempt": "FAIL before tests: next/font URL extension parser; unchanged-code retry passed"
+  }
+}

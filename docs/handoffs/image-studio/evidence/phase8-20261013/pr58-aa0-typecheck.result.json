@@ -1,0 +1,17 @@
+{
+  "command": [
+    "node",
+    "node_modules/typescript/bin/tsc",
+    "--noEmit",
+    "--incremental",
+    "false"
+  ],
+  "cwd": "/private/tmp/image-studio-pr58-aa0de1f7",
+  "deadlineSeconds": 120,
+  "startedAt": "2026-10-13T14:16:24.931675+00:00",
+  "timedOut": false,
+  "pid": 99037,
+  "exitCode": 0,
+  "elapsedSeconds": 22.147,
+  "finishedAt": "2026-10-13T14:16:47.078956+00:00"
+}

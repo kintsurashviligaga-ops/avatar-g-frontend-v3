@@ -22,9 +22,11 @@ export interface RateLimitConfig {
 
 class InMemoryRateLimiter {
   private store = new Map<string, { count: number; resetTime: number }>();
+  private nextCleanup = 0;
 
   check(key: string, config: RateLimitConfig): { allowed: boolean; remaining: number; resetTime: number } {
     const now = Date.now();
+    this.cleanup(now);
     const record = this.store.get(key);
 
     if (!record || now > record.resetTime) {
@@ -45,13 +47,18 @@ class InMemoryRateLimiter {
 
   /** Undo one counted request in a live window. A missing or expired bucket, or a count of 0, is left alone. */
   refund(key: string): void {
+    const now = Date.now();
+    this.cleanup(now);
     const record = this.store.get(key);
-    if (!record || Date.now() > record.resetTime || record.count <= 0) return;
+    if (!record || now > record.resetTime || record.count <= 0) return;
     record.count--;
   }
 
-  cleanup() {
-    const now = Date.now();
+  // Sweep at most once per five minutes of activity. An idle process owns no
+  // background timer; the next request reclaims expired buckets before use.
+  private cleanup(now: number) {
+    if (now < this.nextCleanup) return;
+    this.nextCleanup = now + 5 * 60 * 1000;
     for (const [key, record] of this.store) {
       if (now > record.resetTime) this.store.delete(key);
     }
@@ -59,9 +66,6 @@ class InMemoryRateLimiter {
 }
 
 const memLimiter = new InMemoryRateLimiter();
-if (typeof setInterval !== 'undefined') {
-  setInterval(() => memLimiter.cleanup(), 5 * 60 * 1000);
-}
 
 // ─── Redis-backed limiter (production) ───────────────────────────────────────
 

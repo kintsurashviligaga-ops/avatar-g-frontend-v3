@@ -1,0 +1,470 @@
+{
+  "head": "09333d7ab9a93922c1a39ea685d396cda508bc3f",
+  "stats": {
+    "startTime": "2026-10-13T14:32:04.146Z",
+    "duration": 946514.0719999999,
+    "expected": 38,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "tests": [
+    {
+      "file": "auth.setup.ts",
+      "title": "sign in through the sheet as this project's synthetic user",
+      "project": "setup-mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 3156
+        }
+      ]
+    },
+    {
+      "file": "auth.setup.ts",
+      "title": "sign in through the sheet as this project's synthetic user",
+      "project": "setup-desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 2094
+        }
+      ]
+    },
+    {
+      "file": "billing.spec.ts",
+      "title": "setup: the payer signs in and uploads two clips and a truncated one to its own folder",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 207
+        }
+      ]
+    },
+    {
+      "file": "billing.spec.ts",
+      "title": "the first film spends the free film, not credits",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10559
+        }
+      ]
+    },
+    {
+      "file": "billing.spec.ts",
+      "title": "a different composition is debited its price exactly once",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10321
+        }
+      ]
+    },
+    {
+      "file": "billing.spec.ts",
+      "title": "a stitch that cannot decode a clip delivers nothing and nets to zero (one debit, one refund at most)",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 181
+        }
+      ]
+    },
+    {
+      "file": "billing.spec.ts",
+      "title": "two presses at once: every delivered film is paid once, every failed press is refunded",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 70967
+        }
+      ]
+    },
+    {
+      "file": "contracts.spec.ts",
+      "title": "a confirmed sign-up gets its profile and exactly one 50-credit starter grant (auth triggers + ledger trigger)",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 71
+        }
+      ]
+    },
+    {
+      "file": "contracts.spec.ts",
+      "title": "RLS: a signed-in user reads only their own profile, ledger and jobs, and writes none of them",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 168
+        }
+      ]
+    },
+    {
+      "file": "contracts.spec.ts",
+      "title": "RPC: the money functions and the account lookup refuse anon and users; the service role gets idempotent results",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 146
+        }
+      ]
+    },
+    {
+      "file": "contracts.spec.ts",
+      "title": "access: Agent G media is closed to an ordinary user and to anonymous callers (AGENT_G_MEDIA_EXEC=admin)",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 331
+        }
+      ]
+    },
+    {
+      "file": "contracts.spec.ts",
+      "title": "storage: the uploads and the renders buckets are private (20261008c, 20261009b)",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 24
+        }
+      ]
+    },
+    {
+      "file": "image-contracts.spec.ts",
+      "title": "real Auth identifies the owner; anonymous Image access is refused",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 54
+        }
+      ]
+    },
+    {
+      "file": "image-contracts.spec.ts",
+      "title": "real DB RLS, asset signing, version lineage and Library isolate two users",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 290
+        }
+      ]
+    },
+    {
+      "file": "image-contracts.spec.ts",
+      "title": "private Storage refuses public URLs and foreign direct reads or signatures",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 59
+        }
+      ]
+    },
+    {
+      "file": "recovery.spec.ts",
+      "title": "job recovery: the lease lapses mid-render \u2192 the sweep takes it as attempt 2 \u2192 the full master, nothing charged",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 34523
+        }
+      ]
+    },
+    {
+      "file": "recovery.spec.ts",
+      "title": "storyboard approval: an edited shot and a stale revision are refused before anything is stored or charged",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 287
+        }
+      ]
+    },
+    {
+      "file": "transport.spec.ts",
+      "title": "every long synchronous call got its answer (no connection lost before the response)",
+      "project": "api",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 0
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "upload \u2192 Agent G \u2192 quote \u2192 Start (double-pressed) \u2192 real ffmpeg master \u2192 exact frames \u2192 Download \u2192 Library",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 11914
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "another user cannot read this job, its master or its uploads (RLS, storage, task route)",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 333
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "upload \u2192 Agent G \u2192 quote \u2192 Start (double-pressed) \u2192 real ffmpeg master \u2192 exact frames \u2192 Download \u2192 Library",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 11692
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "another user cannot read this job, its master or its uploads (RLS, storage, task route)",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 321
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "Stop while it renders \u2192 cancelled, nothing charged \u2192 Retry \u2192 a fresh quote \u2192 the full-length master",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 85279
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "error recovery: a file that is not audio is refused at upload; an undecodable clip is refused at the quote, nothing runs",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4835
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: speed-2x \u2192 plan \u2192 Start \u2192 exactly 75 frames",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 27831
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: slow-motion \u2192 plan \u2192 Start \u2192 exactly 300 frames",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 47970
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: volume \u2192 plan \u2192 Start \u2192 exactly 150 frames",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 60844
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: adjust \u2192 plan \u2192 Start \u2192 exactly 150 frames",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 60202
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: trim \u2192 plan \u2192 Start \u2192 exactly 90 frames",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 52979
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "Stop while it renders \u2192 cancelled, nothing charged \u2192 Retry \u2192 a fresh quote \u2192 the full-length master",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 84600
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "error recovery: a file that is not audio is refused at upload; an undecodable clip is refused at the quote, nothing runs",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4743
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: speed-2x \u2192 plan \u2192 Start \u2192 exactly 75 frames",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 28229
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: slow-motion \u2192 plan \u2192 Start \u2192 exactly 300 frames",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 48323
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: volume \u2192 plan \u2192 Start \u2192 exactly 150 frames",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 61244
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: adjust \u2192 plan \u2192 Start \u2192 exactly 150 frames",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 59421
+        }
+      ]
+    },
+    {
+      "file": "journey.spec.ts",
+      "title": "edit lane on Agent G's delivered video: trim \u2192 plan \u2192 Start \u2192 exactly 90 frames",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 52908
+        }
+      ]
+    },
+    {
+      "file": "sync.spec.ts",
+      "title": "the track from 0:10, 5 s, in the page language \u2192 quote \u2192 Start \u2192 150 frames that sound like the track after 0:10",
+      "project": "desktop",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 18796
+        }
+      ]
+    },
+    {
+      "file": "sync.spec.ts",
+      "title": "the track from 0:10, 5 s, in the page language \u2192 quote \u2192 Start \u2192 150 frames that sound like the track after 0:10",
+      "project": "mobile",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 18943
+        }
+      ]
+    }
+  ],
+  "scope": "Real local services, synthetic Image assets, no paid provider calls"
+}

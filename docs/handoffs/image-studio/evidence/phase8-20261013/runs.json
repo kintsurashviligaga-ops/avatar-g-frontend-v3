@@ -1,0 +1,40 @@
+{
+  "numPassedTests": 6,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTotalTests": 6,
+  "success": true,
+  "startTime": 1791901667455,
+  "tests": [
+    {
+      "file": "runIsolation.pg.test.ts",
+      "status": "passed",
+      "assertions": [
+        {
+          "name": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) I: one message, three steps: a video\u2019s sound \u2192 a cut of two clips to it \u2192 a noir look with fades; three real results, one start per plan, nothing charged",
+          "status": "passed"
+        },
+        {
+          "name": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) E: the cut\u2019s worker dies mid-render and the server restarts; after the lease lapses the montage sweep runs it as attempt 2, and a fresh process finishes the run from the database alone",
+          "status": "passed"
+        },
+        {
+          "name": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) F: a stop while ffmpeg encodes the priced cut kills the encoder; the 7 credits come back once and the delivered sound stays",
+          "status": "passed"
+        },
+        {
+          "name": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) G: a priced step waits for its own yes (forged ones refused); eight ticks race on the run and each step gets one job and one charge",
+          "status": "passed"
+        },
+        {
+          "name": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) G: a failed priced step is paid back; a resume reuses the delivered sound (no second extraction, no second charge for it) and a second tap replays the first resume",
+          "status": "passed"
+        },
+        {
+          "name": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) H: another user can neither steer the run nor use its token, its uploads or its results; their own run fails at the quote and charges nothing",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

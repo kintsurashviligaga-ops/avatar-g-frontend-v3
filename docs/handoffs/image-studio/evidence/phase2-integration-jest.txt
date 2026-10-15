@@ -1,0 +1,19 @@
+PASS app/api/agent/media/sweep/route.test.ts
+PASS lib/image/studio/engine.test.ts
+PASS lib/image/studio/task.test.ts
+PASS lib/tasks/taskView.test.ts
+PASS lib/image/studio/quality.test.ts
+PASS app/api/tasks/route.test.ts
+PASS lib/image/studio/contracts.test.ts
+PASS lib/image/studio/provider.test.ts
+PASS lib/tasks/taskService.test.ts
+PASS lib/tasks/statusModel.test.ts
+PASS lib/image/studio/live.test.ts
+PASS lib/image/studio/http.test.ts
+
+Test Suites: 12 passed, 12 total
+Tests:       111 passed, 111 total
+Snapshots:   0 total
+Time:        0.779 s, estimated 1 s
+Ran all test suites matching lib/image/studio|app/api/agent/media/sweep/route.test.ts|lib/tasks|app/api/tasks/route.test.ts.
+Test results written to: docs/handoffs/image-studio/evidence/phase2-integration-jest.json
