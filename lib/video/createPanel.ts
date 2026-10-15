@@ -14,6 +14,7 @@ import { MUSIC_VIDEO_MULT, VIDEO_QUALITY_MULT, type VideoMode, type VideoQuality
 import { TRIAL } from '@/lib/billing/tiers';
 import { resolutionFor } from '@/lib/veo/capabilities';
 import type { VeoResolution } from '@/lib/veo/types';
+import { planSceneDialogue } from '@/lib/chat/sceneDialogue';
 import {
   FILM_MAX_SEC,
   VIDEO_DURATION_STOPS,
@@ -62,20 +63,78 @@ export interface LipsyncAddOnArgs {
   lipsyncOn: boolean;
   /** A documentary film has typed dialogue (OmniStudio `videoSpeech`) — the talking-head pass speaks it. */
   hasDialogue: boolean;
+  /** Veo renders the film's own sound (the Veo plan's `nativeAudio` / `generateAudio`), so it says the typed line in-clip. */
+  veoSpeaks?: boolean;
+}
+
+/**
+ * Veo says the documentary's typed character line itself: Veo's sound is on and the line fits the film's scenes the way
+ * filmComposite places it (planSceneDialogue: one line per scene, each a speakable line of at most 200 characters, all
+ * or nothing). When it does not fit, filmComposite keeps its old voice path, so callers must too.
+ */
+export function veoSpeaksTypedLine({ speech, sceneCount, nativeAudio }: { speech: string; sceneCount: number; nativeAudio: boolean }): boolean {
+  if (!nativeAudio || !speech.trim()) return false;
+  const plan = planSceneDialogue({ sceneCount, clipSec: 8, script: speech });
+  return plan.complete && plan.placed > 0;
+}
+
+export interface NarrationCueArgs {
+  mode: VideoMode;
+  /** The Narration chip (OmniStudio `videoNarration`, on by default). */
+  narrationOn: boolean;
+  /** Narration in the user's own trained voice (`videoMyVoiceNarration && hasTrainedVoice`). */
+  myVoiceNarration: boolean;
+  /** Veo will say the typed "What the character says" line in-clip (veoSpeaksTypedLine). */
+  characterLineOnVeo: boolean;
+}
+
+/**
+ * Whether the film brief gets the narrator cue (OmniStudio `t.narrationCue`, "with professional spoken voice-over
+ * narration"). ⚠️ The cue is what tells filmComposite the typed line is a NARRATOR's (wantsCommentary): with the chip on by
+ * default, a line typed into "What the character says" was read by an off-screen voice instead of the character, and
+ * Veo was never given it. So when Veo will say that line on screen, the chip no longer turns it into a voice-over. The
+ * user's own trained voice is an explicit pick and keeps the cue; a music video never has one.
+ */
+export function narrationCueApplies({ mode, narrationOn, myVoiceNarration, characterLineOnVeo }: NarrationCueArgs): boolean {
+  if (mode !== 'documentary') return false;
+  if (myVoiceNarration) return true;
+  return narrationOn && !characterLineOnVeo;
+}
+
+/**
+ * Whether the film runs the lip-sync pass after it assembles — OmniStudio's `wantsLipsync`.
+ *
+ * A music video: when its Lip-sync switch is on (the singer). A documentary: when it has typed dialogue AND its own clips
+ * cannot say it. ⚠️ With Veo's sound on, Veo speaks the line inside the clip with the film's own face (filmComposite
+ * delegates it); the documentary talking head (a HeyGen photo + an ElevenLabs voice, cut in over a scene) then put a
+ * SECOND, different face on screen saying the same words, replaced a scene, and charged the add-on for it.
+ */
+export function filmLipsyncRuns({ mode, lipsyncOn, hasDialogue, veoSpeaks = false }: LipsyncAddOnArgs): boolean {
+  if (mode === 'musicvideo') return lipsyncOn;
+  return hasDialogue && !veoSpeaks;
 }
 
 /**
  * The lip-sync pass a film runs after it assembles, in credits — 0 when this film would not run one.
  *
  * It is NOT part of the film's price: OmniStudio starts it as its own /api/video/lipsync job (the singer for a music
- * video with Lip-sync on, the talking head for a documentary with dialogue), and that route reserves the avatar price
- * (`quoteCredits({tool:'avatar'})` = creditCostFor('avatar'), what it deducts) when the job starts and refunds it when the
- * render fails. A free first film still pays this. So the quote shows it NEXT TO the Generate number, never inside it.
- * Same condition as OmniStudio's `wantsLipsync`.
+ * video with Lip-sync on, the talking head for a documentary with dialogue its clips cannot speak), and that route reserves
+ * the avatar price (`quoteCredits({tool:'avatar'})` = creditCostFor('avatar'), what it deducts) when the job starts and
+ * refunds it when the render fails. A free first film still pays this. So the quote shows it NEXT TO the Generate number,
+ * never inside it. Same condition as OmniStudio's `wantsLipsync` (filmLipsyncRuns).
  */
-export function lipsyncAddOnCredits({ mode, lipsyncOn, hasDialogue }: LipsyncAddOnArgs): number {
-  const runs = mode === 'musicvideo' ? lipsyncOn : hasDialogue;
-  return runs ? quoteCredits({ tool: 'avatar' }) : 0;
+export function lipsyncAddOnCredits(args: LipsyncAddOnArgs): number {
+  return filmLipsyncRuns(args) ? quoteCredits({ tool: 'avatar' }) : 0;
+}
+
+/**
+ * Whether the finished film gets the music-video graphics pass (/api/video/graphics: an equalizer, a "LIVE" title card,
+ * the "MyAvatar.ge Originals" music bug, burned-in subtitles). A music video only. ⚠️ It used to run on EVERY film, so a
+ * documentary or an advert came back with a concert overlay nobody asked for, swapped in after the clean film was
+ * already shown, and the studio's job stayed open until that ffmpeg pass ended.
+ */
+export function filmGraphicsRuns(mode: VideoMode): boolean {
+  return mode === 'musicvideo';
 }
 
 /** The line under Generate that names the lip-sync charge: when it is taken, and that a failed pass gives it back. */

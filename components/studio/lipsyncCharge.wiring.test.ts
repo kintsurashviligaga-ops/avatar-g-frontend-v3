@@ -13,9 +13,11 @@ const code = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\
 
 describe('the lip-sync charge is shown where the film is confirmed', () => {
   test('one value, from the pure helper, on the same condition renderFilm uses to run the pass', () => {
-    expect(code).toContain("const filmLipsyncCredits = lipsyncAddOnCredits({ mode: videoMode, lipsyncOn: videoLipsync, hasDialogue: videoSpeech.trim().length > 0 });");
-    // renderFilm's own condition, unchanged — the helper mirrors it (lib/video/createPanel.test.ts pins the helper's cases).
-    expect(code).toContain('const wantsLipsync = (isMusicVideo && videoLipsync) || (!isMusicVideo && hasDialogue);');
+    expect(code).toMatch(/const filmLipsyncCredits = lipsyncAddOnCredits\(\{\s*mode: videoMode, lipsyncOn: videoLipsync, hasDialogue: videoSpeech\.trim\(\)\.length > 0,\s*veoSpeaks: veoSpeaksTypedLine\(\{ speech: videoSpeech, sceneCount: sceneCountForSeconds\(videoDuration\), nativeAudio: veoPlan\.nativeAudio \}\),\s*\}\);/);
+    // renderFilm runs the pass on the SAME helper (filmLipsyncRuns is what lipsyncAddOnCredits prices), with the same
+    // "Veo says the typed line" test on the job's own snapshot (lib/video/createPanel.test.ts pins the helpers' cases).
+    expect(code).toMatch(/const veoSpeaks = veoSpeaksTypedLine\(\{\s*speech: videoSpeech,\s*sceneCount: storyboardScenes\?\.length \|\| sceneScripts\?\.length \|\| sceneCountForSeconds\(videoDuration\),\s*nativeAudio: veo\.generateAudio,\s*\}\);/);
+    expect(code).toContain("const wantsLipsync = filmLipsyncRuns({ mode: isMusicVideo ? 'musicvideo' : 'documentary', lipsyncOn: videoLipsync, hasDialogue, veoSpeaks });");
   });
 
   test('the create screen\'s Generate and the storyboard\'s Generate both carry it; a director run (no pass) carries none', () => {
