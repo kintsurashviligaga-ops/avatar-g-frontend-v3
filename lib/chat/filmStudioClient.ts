@@ -542,6 +542,14 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** A fresh id for one Generate press (the film start's duplicate key on the server — lib/chat/filmBilling filmStartKey). */
+export function newFilmRequestId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  const hex = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${(8 + Math.floor(Math.random() * 4)).toString(16)}${hex(3)}-${hex(12)}`;
+}
+
 async function postOrchestrate(body: Record<string, unknown>, signal?: AbortSignal): Promise<OrchestrateLike> {
   const res = await fetch('/api/chat/orchestrate', {
     method: 'POST',
@@ -829,6 +837,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.sceneMeta?.length ? { sceneMeta: opts.sceneMeta } : {}),
           // Video Core v1.0 §5 — the approval, with its board, for the server to check this render against.
           ...(opts.storyboardApproval ? { storyboardApproval: opts.storyboardApproval } : {}),
+          // ONE Generate press = one film start: the server refuses a second start under the same id, with nothing charged.
+          metadata: { filmRequestId: newFilmRequestId() },
         },
         signal,
       );

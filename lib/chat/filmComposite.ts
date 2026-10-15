@@ -44,7 +44,9 @@ import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
 import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
-import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid } from './filmStatusStore';
+import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid, getFilmStartReplay, recordFilmStartReplay } from './filmStatusStore';
+import { filmChargeRef as filmChargeRefFor, recordFilmBilling, filmStartKey } from './filmBilling';
+import { claimPaidStartKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { generateFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
 import { enrichSfxBrief } from './sfxTriggers';
@@ -441,6 +443,33 @@ async function renderClip(
   // eslint-disable-next-line no-console
   console.warn(`[film] clip ${scene.ordinal} exhausted retries:`, failReason);
   return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: MAX_CLIP_DISPATCH_ATTEMPTS, debited, error: failReason };
+}
+
+/**
+ * A film start refused BEFORE anything was charged: a duplicate of a start already under way (the same Generate press sent
+ * twice, or retried), or — in Production — a start whose duplicate state neither the database nor Redis could confirm.
+ */
+export function filmStartRefused(locale: string, why: 'duplicate' | 'unconfirmed'): ChatResponse {
+  const message = why === 'duplicate'
+    ? (locale === 'en' ? 'This film is already starting from your earlier request — nothing more was charged.'
+      : locale === 'ru' ? 'Этот фильм уже запускается по вашему предыдущему запросу — повторно ничего не списано.'
+      : 'ეს ფილმი უკვე იწყება შენი წინა მოთხოვნით — ხელახლა არაფერი ჩამოგეჭრა.')
+    : (locale === 'en' ? 'The film could not be started safely right now — nothing was charged. Please try again in a minute.'
+      : locale === 'ru' ? 'Сейчас фильм нельзя безопасно запустить — ничего не списано. Попробуйте через минуту.'
+      : 'ფილმის უსაფრთხოდ დაწყება ახლა ვერ მოხერხდა — არაფერი ჩამოგეჭრა. სცადე ერთ წუთში.');
+  return { success: false, intent: 'video_generation', responseType: 'text', message, metadata: { provider: 'billing', filmStart: why } };
+}
+
+/** A retried press whose first start already answered: the same film again, nothing charged or dispatched again. */
+export function filmStartReplayed(locale: string, predictionId: string, film: unknown): ChatResponse {
+  const message = locale === 'en' ? 'This film is already rendering from your earlier request — nothing more was charged.'
+    : locale === 'ru' ? 'Этот фильм уже создаётся по вашему предыдущему запросу — повторно ничего не списано.'
+    : 'ეს ფილმი უკვე იქმნება შენი წინა მოთხოვნით — ხელახლა არაფერი ჩამოგეჭრა.';
+  return {
+    success: true, intent: 'video_generation', responseType: 'video', message,
+    predictionId, predictionStatus: 'processing', assetType: 'composite-film',
+    metadata: { provider: 'composite', composite: true, film, filmStart: 'replayed' },
+  };
 }
 
 /**
@@ -864,7 +893,44 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   }
 
   // Stable per-request id; namespaces per-leg debit refs for idempotent retries.
-  const compositeId = `film:${input.sessionId}:${Date.now()}`;
+  // ⚠️ ONE TIMESTAMP FOR THE FILM. The status token (deriveFilmTokenId) used to hash a second Date.now() taken after dispatch,
+  // so nothing could lead from the token /assemble is handed back to the ledger row this film was charged under. The token
+  // is now known BEFORE the charge, and the charge is taken under filmChargeRef(token): the durable proof of payment.
+  const filmCreatedAt = Date.now();
+  const compositeId = `film:${input.sessionId}:${filmCreatedAt}`;
+  const filmTokenId = deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed });
+
+  // ── ONE APPROVED START = AT MOST ONE CHARGE ─────────────────────────────────
+  // ⚠️ THE FILM START HAD NO DUPLICATE GUARD. The chat's per-user paid-dispatch lock sits further down the router and the film
+  // is dispatched before it, so a double-sent Generate — or a client retrying a start whose answer it never received — charged
+  // the quote and rendered every clip again. The press's own id (or, without one, a key derived from the film) is claimed in
+  // the shared database first; a duplicate is refused with nothing charged. A start that delivered nothing gives its key back.
+  let startKey: string | null = null;
+  let startWindowSec = 0;
+  if (input.userId && input.userId !== 'anonymous') {
+    const start = await filmStartKey(input.metadata, {
+      sessionId: input.sessionId, message: input.message, totalSec: grid.totalSec,
+      tier: plan.shared.veo?.tier ?? null, musicVideo: input.metadata?.musicVideoMode === true,
+    });
+    const claim = await claimPaidStartKey(input.userId, start.key, start.windowSec);
+    if (claim === 'held') {
+      // The same press again — most often a browser that timed out while the first start was charged and dispatched. It gets
+      // THAT film back (its token and matrix) when the first start has answered, the plain refusal while it is still under
+      // way; never a second charge or a second render.
+      const replay = await getFilmStartReplay(input.userId, start.key, start.windowSec).catch(() => null);
+      return replay ? filmStartReplayed(input.locale, replay.predictionId, replay.film) : filmStartRefused(input.locale, 'duplicate');
+    }
+    // Neither the database nor Redis could say whether this press already started a film: in Production that is a money
+    // question nobody can answer, so nothing is charged; elsewhere (local / CI without the guard's table) it proceeds.
+    if (claim === 'unavailable' && process.env.VERCEL_ENV === 'production') return filmStartRefused(input.locale, 'unconfirmed');
+    if (claim === 'claimed') { startKey = start.key; startWindowSec = start.windowSec; }
+  }
+  const undoStart = async (): Promise<void> => {
+    if (!startKey) return;
+    const key = startKey;
+    startKey = null;
+    await releaseIdempotencyKey(input.userId, key).catch(() => {});
+  };
 
   // ── Pre-flight: balance gate (skips anonymous; downstream gate covers them) ─
   // (Clip legs never charge: the film is debited once up front and renderClip always gets the waiver — see its call.)
@@ -876,7 +942,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // platform ~$5.76 of Veo and the customer 20 credits. `filmCharged` is what is currently held against this film (net of any
   // dispatch-time refund); the ref makes every debit/refund of it idempotent.
   let filmCharged = 0;
-  const filmChargeRef = `${compositeId}:charge`;
+  const filmChargeRef = filmChargeRefFor(filmTokenId);
   if (input.userId && input.userId !== 'anonymous') {
     // A founder/promo FREE film needs ZERO wallet balance, so it must bypass the
     // gate entirely — otherwise a 0.00 ₾ wallet would block the very first free
@@ -925,12 +991,14 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // The pre-flight gate (credits against credits — it compared credits with ₾, ten times too lax) stops the obvious
       // case before anything is touched; the debit below is the real, atomic guard.
       if (filmBalanceDecision(balance, filmQuote) === 'insufficient') {
+        await undoStart();
         return insufficientCreditsResponse('video_generation', filmQuote, input.locale);
       }
       const debit = await deductCredits(input.userId, filmQuote, filmChargeRef);
       if (!debit.ok) {
         // 'insufficient' is the honest top-up answer; anything else (ledger down, RPC absent) FAILS CLOSED — a render we
         // cannot charge for must not start, and nothing was taken, so nothing needs refunding.
+        await undoStart();
         return debit.reason === 'insufficient'
           ? insufficientCreditsResponse('video_generation', filmQuote, input.locale)
           : chargeRefusedResponse('video_generation', filmQuote, 'error', input.locale);
@@ -1089,6 +1157,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     console.error('[film] scene synthesis threw — protecting balance:', err instanceof Error ? err.message : err);
     await refundFilmScenes('all');
     if (freeFilmConsumed && input.userId) await restoreFreeFilm(input.userId).catch(() => {});
+    await undoStart();
     return connectionFailed(err instanceof Error ? err.message : String(err));
   }
   const anyClip = clips.some((c) => c.status === 'queued');
@@ -1106,6 +1175,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // Bubble up WHY every clip failed (first distinct upstream reason) so the
     // failure is actionable instead of an opaque "couldn't connect".
     const reason = clips.map((c) => c.error).find((e): e is string => Boolean(e)) ?? null;
+    await undoStart();
     return connectionFailed(reason);
   }
 
@@ -1365,9 +1435,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // PHASE 43 §1 — Mint the Union Poll token. Every clip taskRef + the audio
   // workId rides in ONE predictionId; `pollFilmTask` decodes it and polls the
   // full matrix in lock-step instead of tracking a single clip.
-  // Hoisted: deriveFilmTokenId() must hash the SAME createdAt the token carries, or /assemble would
-  // look up a different record and bill a free film.
-  const filmCreatedAt = Date.now();
+  // deriveFilmTokenId() must hash the SAME createdAt the token carries (filmCreatedAt, taken before the charge), or /assemble
+  // would look up a different record and ledger ref and bill a free or paid film again.
   const filmToken = encodeFilmRef({
     sessionId: input.sessionId,
     createdAt: filmCreatedAt,
@@ -1391,18 +1460,17 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // — never into `filmToken`, which the client holds and could forge into unlimited free assembles.
   // Owner-bound and single-use on the assemble side. Fail-open: a store miss just bills normally.
   if (freeFilmConsumed && input.userId) {
-    await recordFreeFilmWaiver(
-      deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed }),
-      input.userId,
-    ).catch(() => {});
+    // Durable first (film_billing, proposal 20261014a); the Redis marker stays as the cache /assemble falls back to.
+    await recordFilmBilling({ uid: input.userId, tokenId: filmTokenId, kind: 'free', credits: 0, ref: null }).catch(() => 'unavailable');
+    await recordFreeFilmWaiver(filmTokenId, input.userId).catch(() => {});
   }
   // The same for a PAID film: the whole price is already taken, so the stitch must not charge it again (its own key — see
   // recordFilmPaid). Fail-open: a store miss makes /assemble bill the stitch by the film's length, the safe direction.
   if (filmCharged > 0 && input.userId) {
-    await recordFilmPaid(
-      deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed }),
-      { uid: input.userId, credits: filmCharged, ref: filmChargeRef },
-    ).catch(() => {});
+    // The ledger row under filmChargeRef IS the proof of payment; film_billing counts the stitches it covers (a lost row is
+    // rebuilt from the ledger by /assemble), and the Redis marker is only the cache.
+    await recordFilmBilling({ uid: input.userId, tokenId: filmTokenId, kind: 'paid', credits: filmCharged, ref: filmChargeRef }).catch(() => 'unavailable');
+    await recordFilmPaid(filmTokenId, { uid: input.userId, credits: filmCharged, ref: filmChargeRef }).catch(() => {});
   }
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so
@@ -1438,6 +1506,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   timer.mark('dispatch-complete');
   // eslint-disable-next-line no-console
   console.log('[film] timing', JSON.stringify(timer.summary()));
+  // A retry of this press whose answer was lost gets this same film back (see the start guard above).
+  if (startKey) await recordFilmStartReplay(input.userId, startKey, { predictionId: filmToken, film: filmSummary }, startWindowSec).catch(() => {});
 
   return {
     success: true,

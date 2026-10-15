@@ -56,9 +56,11 @@ describe('the assemble route returns it on the failure path', () => {
 
   it('restores BEFORE the skipBilling early return', () => {
     // skipBilling is TRUE in exactly the case that spent the waiver, so a restore placed after that
-    // early return would never run — which is how this stayed broken.
+    // early return would never run — which is how this stayed broken. The restore is now settleWaiver(false): it hands a
+    // durable lease back (settle_film_waiver) or, on the cache path, calls restoreFilmBilling exactly as before.
+    expect(src).toMatch(/const settleWaiver = async \(delivered: boolean\)[\s\S]{0,400}restoreFilmBilling\(/);
     const compensate = src.slice(src.indexOf('compensate: async (_r, ctx) =>'));
-    const restoreAt = compensate.indexOf('restoreFilmBilling');
+    const restoreAt = compensate.indexOf('settleWaiver(false)');
     const returnAt = compensate.indexOf('if (skipBilling || uid === null) return;');
     expect(restoreAt).toBeGreaterThan(-1);
     expect(restoreAt).toBeLessThan(returnAt);

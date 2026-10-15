@@ -193,13 +193,14 @@ describe('the route and the assembler, on the source (T2)', () => {
 
   test('a failed single clip hands back the waiver of a film paid upstream, as the multi-clip saga does', () => {
     const catchAt = route.indexOf('} catch (err) {', route.indexOf('const scRef = `assemble-single:'));
-    const restore = route.indexOf('if (filmAlreadyBilled && billedTokenForCheck) await restoreFilmBilling(billedTokenForCheck).catch(() => {});', catchAt);
+    // settleWaiver(false) hands back a durable lease (settle_film_waiver) or, on the cache path, calls restoreFilmBilling.
+    const restore = route.indexOf('await settleWaiver(false);', catchAt);
     const gate = route.indexOf('if (isFinalCutRejected(err)) {', catchAt);
     expect(catchAt).toBeGreaterThan(0);
     expect(restore).toBeGreaterThan(catchAt);
     expect(restore).toBeLessThan(gate); // before every answer of the catch
     // the saga's compensate still does the same for the multi-clip path
-    expect(route).toMatch(/if \(filmAlreadyBilled && billedTokenForCheck\) \{\s*await restoreFilmBilling\(billedTokenForCheck\)\.catch\(\(\) => \{\}\);/);
+    expect(route).toMatch(/compensate: async \(_r, ctx\) => \{[\s\S]{0,900}?await settleWaiver\(false\);\s*if \(skipBilling \|\| uid === null\) return;/);
   });
 
   test('a film paid upstream is never told "not charged": the failure messages say no EXTRA charge was made', () => {

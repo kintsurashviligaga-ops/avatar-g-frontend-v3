@@ -413,3 +413,56 @@ export async function recordFilmFailed(tokenId: string, error: string): Promise<
     : { tokenId, phase: 'failed', clips: [], audioReady: false, masterUrl: null, updatedAt: Date.now(), error };
   await putFilmStatus(next);
 }
+
+// ─── A film start's answer, for the client that never received it ──────────────────────────────────────────────────
+
+/**
+ * A film start whose answer was lost (the browser timed out while the server dispatched and charged) is retried under the
+ * same press id — and the duplicate guard rightly refuses to charge or render it again. Without its answer the browser has
+ * no token to follow, though: the user paid for a film they cannot see. The start's answer (the token to poll and the
+ * matrix to draw) is kept for the press's own window, owner-bound, so that retry gets the SAME film back instead of a
+ * refusal. A cache only: a miss means the plain "already starting" refusal, never a second charge.
+ */
+export interface FilmStartReplay {
+  uid: string;
+  key: string;
+  predictionId: string;
+  film: unknown;
+  at: number;
+}
+
+const START_PREFIX = 'film:start:';
+const START_MEMORY_MAX = 500;
+const startMemory = new Map<string, FilmStartReplay>();
+
+export async function recordFilmStartReplay(uid: string, key: string, answer: { predictionId: string; film: unknown }, ttlSec: number): Promise<void> {
+  const rec: FilmStartReplay = { uid, key, predictionId: answer.predictionId, film: answer.film, at: Date.now() };
+  const k = `${START_PREFIX}${uid}:${key}`;
+  if (startMemory.size >= START_MEMORY_MAX) startMemory.delete(startMemory.keys().next().value as string);
+  startMemory.set(k, rec);
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(k, JSON.stringify(rec), { ex: Math.max(1, Math.round(ttlSec)) });
+  } catch {
+    /* fail open — the in-memory copy answers a retry that lands on this instance */
+  }
+}
+
+export async function getFilmStartReplay(uid: string, key: string, ttlSec: number): Promise<FilmStartReplay | null> {
+  const k = `${START_PREFIX}${uid}:${key}`;
+  const valid = (v: unknown): v is FilmStartReplay => !!v && typeof v === 'object'
+    && (v as FilmStartReplay).uid === uid && (v as FilmStartReplay).key === key && typeof (v as FilmStartReplay).predictionId === 'string';
+  const r = redis();
+  if (r) {
+    try {
+      const raw = await r.get(k);
+      const parsed = typeof raw === 'string' ? (JSON.parse(raw) as unknown) : raw;
+      if (valid(parsed)) return parsed;
+    } catch {
+      /* fall through to the in-memory copy */
+    }
+  }
+  const mem = startMemory.get(k);
+  return mem && valid(mem) && Date.now() - mem.at <= ttlSec * 1000 ? mem : null;
+}

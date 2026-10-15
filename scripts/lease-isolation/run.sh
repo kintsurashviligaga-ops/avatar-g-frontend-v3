@@ -2,7 +2,8 @@
 # Crash recovery (E), retry exhaustion (F) and refunds (G) of Agent G's lease queue, the ledger's replay refusal
 # (lib/orchestrator/ledgerOnce.pg.test.ts, before and after 20261002d) and multi-step runs on real ffmpeg
 # (lib/agent/run/runIsolation.pg.test.ts), the delivery outbox's store (lib/notifications/outboxIsolation.pg.test.ts) and
-# the R2 duplicate guard (lib/orchestrator/idempotencyStore.pg.test.ts, before and after its proposal), against a REAL but throwaway database: a local Postgres 16 with the
+# the R2 duplicate guard (lib/orchestrator/idempotencyStore.pg.test.ts, before and after its proposal) and a film's payment and
+# stitches (lib/chat/filmBilling.pg.test.ts, before and after proposal 20261014a), against a REAL but throwaway database: a local Postgres 16 with the
 # Production shape (./schema.sql) behind a real PostgREST (Docker). Nothing here can reach Production: the database
 # lives in a temp dir on this machine, PostgREST listens on 127.0.0.1, and every suite refuses any non-local URL.
 #
@@ -70,3 +71,11 @@ psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/mi
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
 sleep 2
 IDEM_PHASE=after node node_modules/.bin/jest lib/orchestrator/idempotencyStore.pg.test.ts --no-watchman --ci --forceExit
+# Video Core final hardening, Phase 1: a film's payment and its stitches on the real ledger, first as Production is today
+# (no film_billing: the ledger + cache, a paid film without its cache STOPS), then with the proposal applied
+# (docs/handoffs/video-core/proposals/20261014a_film_billing.sql; NOT applied anywhere else — it waits for the owner's word).
+FILM_PHASE=before node node_modules/.bin/jest lib/chat/filmBilling.pg.test.ts --no-watchman --ci --forceExit
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f docs/handoffs/video-core/proposals/20261014a_film_billing.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
+sleep 2
+FILM_PHASE=after node node_modules/.bin/jest lib/chat/filmBilling.pg.test.ts --no-watchman --ci --forceExit
