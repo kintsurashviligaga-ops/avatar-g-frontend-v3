@@ -7,11 +7,12 @@
  * limit is reached and when there is room again.
  *
  * The bank's answers of 2026-10-15: the 1,000 ₾ and 5,000 ₾ are totals on OUR side (merchant-wide), counted in
- * CALENDAR days ("30 calendar days"); the 500 ₾ is per payment, per cardholder; a refund does NOT give room back.
+ * CALENDAR days — the day runs from midnight to midnight Georgian time, the month is "30 calendar days" — and
+ * automatic renewals count in them too; the 500 ₾ is per payment, per cardholder; a refund does NOT give room back.
  * We keep rolling windows on purpose: a rolling 24 h window always holds everything paid since the last midnight,
  * and a rolling 30 × 24 h one everything since midnight 29 days ago, in any time zone without daylight saving
- * (Georgia's and UTC have none). So nothing we admit can break the bank's calendar limits, whatever clock the bank
- * keeps; the cost is that we sometimes wait longer than the bank would (bogLimits.test.ts proves both).
+ * (Georgia's and UTC have none). So nothing we admit can break the bank's calendar limits; the cost is that we
+ * sometimes wait longer than the bank would, at most until the same hour the next day (bogLimits.test.ts proves both).
  *
  *   bogLimits(env)       the limits in force: the letter's figures, raised or lowered without a deploy of code by
  *                        BOG_LIMIT_PER_PAYMENT_GEL / BOG_LIMIT_24H_GEL / BOG_LIMIT_30D_GEL (an unreadable value

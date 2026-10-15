@@ -439,6 +439,18 @@ export async function deleteSavedCard(cfg: BogConfig, deps: BogFetchDeps, parent
  */
 export type BogOrderState = 'completed' | 'rejected' | 'pending' | 'refund_requested' | 'refunded_partially' | 'refunded' | 'other';
 
+/** One refund asked for on an order (receipt `actions[]`, action refund / partial_refund), as BOG lists it. */
+export interface BogRefundAction {
+  /** completed | rejected */
+  readonly status: string | null;
+  /** BOG's action response code (161–179 for a failed refund) and its description. */
+  readonly code: string | null;
+  readonly codeDescription: string | null;
+  readonly amount: number | null;
+  /** public_api | business_manager | support */
+  readonly channel: string | null;
+}
+
 export interface BogReceipt {
   readonly orderId: string;
   readonly externalOrderId: string | null;
@@ -471,6 +483,8 @@ export interface BogReceipt {
   /** The merchant's name as BOG shows it to the payer (client.brand_ka / client.brand_en). */
   readonly brandKa: string | null;
   readonly brandEn: string | null;
+  /** The refunds asked for on this order, in BOG's order (oldest first); empty when none. */
+  readonly refundActions: readonly BogRefundAction[];
 }
 
 /**
@@ -560,7 +574,22 @@ export function parseBogReceipt(json: unknown): BogReceipt | null {
     rejectReason: statusKey === 'rejected' ? declineReason(code, str(pd.code_description, 120), str(o.reject_reason, 60), transactionId) : str(o.reject_reason),
     brandKa: str(client.brand_ka, 120),
     brandEn: str(client.brand_en, 120),
+    refundActions: parseRefundActions(o.actions),
   };
+}
+
+function parseRefundActions(actions: unknown): BogRefundAction[] {
+  if (!Array.isArray(actions)) return [];
+  return actions
+    .filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === 'object')
+    .filter((a) => ['refund', 'partial_refund'].includes(str(a.action)?.toLowerCase() ?? ''))
+    .map((a) => ({
+      status: str(a.status)?.toLowerCase() ?? null,
+      code: str(a.code, 8),
+      codeDescription: str(a.code_description, 120),
+      amount: num(a.amount),
+      channel: str(a.request_channel, 40)?.toLowerCase() ?? null,
+    }));
 }
 
 /** "107 Payment declined due to insufficient funds in the account (expiration)"; an undocumented code adds "· tx <id>". */

@@ -7,6 +7,7 @@
 | წყარო | რა გამოვიყენე |
 |---|---|
 | ბანკის წერილი 2026-10-15 08:03Z (Gmail, 7 კითხვის პასუხი) | სახელი, ლიმიტები, recurring, refund, callback, sandbox, response კოდები |
+| ბანკის წერილი 2026-10-15 12:26Z (Gmail, ჩვენი მეორე წერილის 4 კითხვის პასუხი) | refund: საკომისიო არა, 3 თვემდე, სრული / ნაწილობრივი; დღე: საქართველოს დროით შუაღამიდან შუაღამემდე, თვე 30 კალენდარული დღე; recurring: „დიახ“, ლიმიტში ითვლება; callback-ის გამეორებაზე პირდაპირი პასუხი არ არის ([ანგარიში v1.6](../BOG_POST_LAUNCH_REPORT.md#v16--ბანკის-მეორე-პასუხი-2026-10-15-1226z)) |
 | „Sand Box Geo.pdf“ (წერილის დანართი, 6 გვ.) | sandbox-ის თვითმომსახურება Business Manager-ში: Sandbox ობიექტი → Test Public Key / Test Secret Key |
 | https://api.bog.ge/docs | Payment Details (`transaction_id`, `code`, `code_description`, `client.brand_ka/en`, `refund_amount`, `actions[]`), Callback, Refund (`POST /payment/refund/:order_id`, `Idempotency-Key`), Response codes, Sandbox test cards (…0001 / …0002 / …0003) |
 | ორი დადასტურებული ხელშეკრულება | **არ მაქვს** (Gmail-ში არ არის). შინაარსი არ ვივარაუდე |

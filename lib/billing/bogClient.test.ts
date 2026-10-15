@@ -301,7 +301,25 @@ describe('receipts + callbacks', () => {
       rejectReason: null,
       brandKa: 'მაიავატარი',
       brandEn: 'MyAvatar.ge',
+      refundActions: [],
     });
+  });
+
+  test('refunds come from actions[] (refund / partial_refund only), oldest first, with BOG\'s code and channel', () => {
+    const r = parseBogReceipt({
+      ...DOC_RECEIPT,
+      actions: [
+        { action_id: 'a1', request_channel: 'public_api', action: 'authorize', status: 'completed', amount: '100.5', code: null },
+        { action_id: 'a2', request_channel: 'business_manager', action: 'refund', status: 'rejected', amount: '100.5', code: '162', code_description: 'The card issuing bank declined the refund.' },
+        { action_id: 'a3', request_channel: 'support', action: 'partial_refund', status: 'completed', amount: '5', code: null, code_description: null },
+        null,
+      ],
+    });
+    expect(r?.refundActions).toEqual([
+      { status: 'rejected', code: '162', codeDescription: 'The card issuing bank declined the refund.', amount: 100.5, channel: 'business_manager' },
+      { status: 'completed', code: null, codeDescription: null, amount: 5, channel: 'support' },
+    ]);
+    expect(parseBogReceipt({ ...DOC_RECEIPT, actions: 'nope' })?.refundActions).toEqual([]);
   });
 
   test('maps every documented status key; an unknown one is never "completed"', () => {

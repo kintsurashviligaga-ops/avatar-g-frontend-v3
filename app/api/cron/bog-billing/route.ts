@@ -13,7 +13,7 @@
  *                 or the next tick's reconcile. A declined charge backs off a day; three in a row → past_due. A charge
  *                 that would exceed BOG's 24 h / 30 day limits (lib/billing/bogLimits) is not attempted: BOG would
  *                 decline it, and three declines would wrongly end a paying customer's plan. It waits for room.
- *   4. REFUNDS    paid orders of the last 60 days are re-read from BOG's receipt at most once a day, oldest check first,
+ *   4. REFUNDS    paid orders of the last 93 days are re-read from BOG's receipt at most once a day, oldest check first,
  *                 so a refund made in the Business Manager whose callback was lost still reaches our books (the bank,
  *                 2026-10-15: refund status is read through Payment Details). Bookkeeping only, forward-only
  *                 (settleBogOrder): no credit is granted or taken back, and a receipt that still says completed changes
@@ -47,8 +47,11 @@ const RECONCILE_BATCH = 50;
 const RENEW_BATCH = 25;
 /** 20 receipts a tick is 2,880 a day: every paid order of the horizon is re-read daily up to that many orders. */
 const REFUND_BATCH = 20;
-/** Our refund policy takes requests for 14 days; the bank returns the money in 1–3 business days. 60 days is ample. */
-const REFUND_HORIZON_MS = 60 * 86_400_000;
+/**
+ * BOG takes a refund for up to 3 months after the payment (the bank, 2026-10-15), so one can be made in the Business
+ * Manager long after our 14-day refund policy. 93 days covers any 3 calendar months.
+ */
+const REFUND_HORIZON_MS = 93 * 86_400_000;
 const REFUND_RECHECK_MS = 86_400_000;
 
 async function handle(req: NextRequest) {
@@ -79,6 +82,7 @@ async function handle(req: NextRequest) {
     limitDeferred: 0,
     refundChecked: 0,
     refundUpdated: 0,
+    refundRejected: 0,
     errors: 0,
   };
 
@@ -196,6 +200,11 @@ async function handle(req: NextRequest) {
           // Never a fulfil: only the refund branch of settleBogOrder runs, and it only moves the row forward.
           const outcome = await settleBogOrder(svc, order, receipt);
           if (isBogRefundStatus(outcome.status)) report.refundUpdated += 1;
+        } else if (receipt.state === 'completed' && order.status === 'refund_requested') {
+          // The refund we recorded may have failed: settleBogOrder puts the row back to completed only when the
+          // receipt's actions[] shows every refund rejected and nothing returned. Never a fulfil.
+          const outcome = await settleBogOrder(svc, order, receipt);
+          if (outcome.status === 'completed') report.refundRejected += 1;
         }
       } catch {
         report.errors += 1;
