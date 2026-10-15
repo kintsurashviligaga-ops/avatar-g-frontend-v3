@@ -14,6 +14,7 @@ jest.mock('./wallet-ledger', () => ({
 const mockDeleteCard = jest.fn(async () => true);
 const mockReceipt = jest.fn();
 jest.mock('./bogClient', () => ({
+  BOG_RESPONSE_CODES: jest.requireActual('./bogClient').BOG_RESPONSE_CODES,
   deleteSavedCard: (...a: unknown[]) => (mockDeleteCard as (...x: unknown[]) => Promise<boolean>)(...a),
   getBogReceipt: (...a: unknown[]) => mockReceipt(...a),
 }));
@@ -25,6 +26,7 @@ import {
   isBogOrderId,
   newBogOrderId,
   reconcileBogOrder,
+  rejectedRefundReason,
   settleBogOrder,
   type BogOrderRow,
 } from './bogSettlement';
@@ -82,6 +84,7 @@ const receipt = (r: Partial<BogReceipt> = {}): BogReceipt => ({
   cardExpiry: '03/27',
   code: '100',
   rejectReason: null,
+  refundActions: [],
   ...r,
 });
 const fulfilled = (f: Record<string, unknown> = {}) => ({
@@ -221,6 +224,41 @@ describe('refund statuses — BOG’s own three, bookkeeping only, never backwar
     }
     expect(mockFulfill).not.toHaveBeenCalled();
     expect(updates).toHaveLength(0);
+  });
+
+  test('a refund BOG rejected (actions[]: every refund rejected, nothing back) puts refund_requested back to completed — status only, never a re-fulfil', async () => {
+    const failed = receipt({
+      refundAmount: 0,
+      refundActions: [{ status: 'rejected', code: '162', codeDescription: null, amount: 20, channel: 'business_manager' }],
+    });
+    const out = await settleBogOrder(db, order({ status: 'refund_requested' }), failed);
+    expect(out).toEqual({ status: 'completed', granted: false, kind: 'topup', credits: 200, tier: null, periodEnd: null, autoRenew: null });
+    expect(updates).toHaveLength(1);
+    expect(updates[0].patch).toMatchObject({ status: 'completed', reject_reason: 'refund_rejected 162 The card issuing bank declined the refund.' });
+    expect(updates[0].filters).toEqual(expect.arrayContaining([['status', 'refund_requested']]));
+    expect(mockFulfill).not.toHaveBeenCalled();
+  });
+
+  test('no way back to completed unless the refund really failed: a completed refund, money returned, or a later refund status', async () => {
+    const rejected = { status: 'rejected', code: '162', codeDescription: null, amount: 20, channel: 'public_api' };
+    const cases: Array<[string, BogReceipt]> = [
+      ['refund_requested', receipt({ refundActions: [rejected, { ...rejected, status: 'completed', code: null }] })],
+      ['refund_requested', receipt({ refundAmount: 5, refundActions: [rejected] })],
+      ['refunded_partially', receipt({ refundAmount: 0, refundActions: [rejected] })],
+      ['refunded', receipt({ refundAmount: 0, refundActions: [rejected] })],
+    ];
+    for (const [status, r] of cases) expect(await settleBogOrder(db, order({ status }), r)).toEqual({ status, refundAmountGel: null });
+    expect(updates).toHaveLength(0);
+    expect(mockFulfill).not.toHaveBeenCalled();
+  });
+
+  test('the rejected refund is named by BOG\'s description, else the documented one; no refunds listed → null', () => {
+    const r = (code: string | null, codeDescription: string | null) =>
+      receipt({ refundActions: [{ status: 'rejected', code, codeDescription, amount: 5, channel: 'support' }] });
+    expect(rejectedRefundReason(r('167', 'Card expired'))).toBe('refund_rejected 167 Card expired');
+    expect(rejectedRefundReason(r('163', null))).toBe('refund_rejected 163 Not enough funds available in the account');
+    expect(rejectedRefundReason(r(null, null))).toBe('refund_rejected');
+    expect(rejectedRefundReason(receipt())).toBeNull();
   });
 
   test('a refund for an order we never credited changes nothing and grants nothing (it needs a human)', async () => {

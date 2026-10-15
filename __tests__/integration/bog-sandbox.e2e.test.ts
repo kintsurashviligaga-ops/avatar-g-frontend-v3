@@ -394,11 +394,16 @@ run('BOG payments against Bank of Georgia’s real sandbox (local database, Chro
     note(`refund request: HTTP ${res.status} ${res.json?.key ?? res.text}`);
     await sleep(10_000);
     const rc = await receipt(bogId);
-    note(`receipt after the refund attempt: ${rc.statusKey}`);
+    note(`receipt after the refund attempt: ${rc.statusKey}, refund actions ${JSON.stringify(rc.refundActions)}`);
     expect(['completed', 'refund_requested']).toContain(rc.state);
     await backdate(c.json.orderId, { updated_at: 25 * 3600_000 });
     await cronTick();
-    expect(['completed', 'refund_requested']).toContain((await row(c.json.orderId)).status);
+    const after = await row(c.json.orderId);
+    expect(['completed', 'refund_requested']).toContain(after.status);
+    // BOG back at completed with the refund rejected in actions[] → our row is paid again, with BOG's reason.
+    if (rc.state === 'completed' && rc.refundActions.some((a) => a.status === 'rejected')) {
+      expect(after.status).toBe('completed');
+    }
     expect(await balance(u)).toBe(100);
     expect(await ledger(u)).toEqual([100]);
   });
