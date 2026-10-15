@@ -41,6 +41,15 @@ test('the duplicate claim outlives the render (600 s maxDuration), not 60 s', ()
   expect(code).toMatch(/export const maxDuration = 600/);
 });
 
+test("a film token whose status names another payer is refused before any waiver, claim, charge or stamp", () => {
+  const guard = code.indexOf('isFilmOwnedByAnother(await getFilmStatus(filmTokenId), uid)');
+  expect(guard).toBeGreaterThan(0);
+  for (const later of ['await decideFilmWaiver(', 'await recordFilmAssembling(filmTokenId)', 'claimIdempotencyKey(idemOwner, `assemble:${idemKey}`', 'await deductCredits(']) {
+    expect(guard).toBeLessThan(code.indexOf(later));
+  }
+  expect(code).toMatch(/error: 'film_not_owned'[^]*status: 403/);
+});
+
 test('every charge and refund in the route uses that one amount', () => {
   const uses = code.match(/assembleCost/g) ?? [];
   expect(uses.length).toBeGreaterThanOrEqual(7);

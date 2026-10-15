@@ -348,12 +348,23 @@ export async function recordCompletedFilm(input: {
     ...(input.durationMs != null ? { duration_ms: input.durationMs } : {}),
   };
   const hasCostCols = withCost !== base && (input.costUsd != null || input.costGel != null || input.durationMs != null);
+  // ⚠️ `input.id` is often CLIENT-SUPPLIED (a film token, a job id). A blind upsert on it let one user rewrite another's row —
+  // owner, result, and the lease/reserve state a paid job's refund depends on. Insert; an id that exists is re-stamped
+  // only when it is the caller's own row, otherwise nothing is written.
+  const write = async (row: typeof base): Promise<{ error: { code?: string; message?: string } | null }> => {
+    const ins = await sb.from(TABLE).insert(row);
+    if (ins.error?.code !== '23505') return { error: ins.error };
+    const { id, user_id, ...fields } = row;
+    const upd = await sb.from(TABLE).update(fields).eq('id', id).eq('user_id', user_id).select('id');
+    if (upd.error) return { error: upd.error };
+    return (upd.data ?? []).length > 0 ? { error: null } : { error: { code: 'not_owner', message: 'id belongs to another user' } };
+  };
   try {
-    let { error } = await sb.from(TABLE).upsert(withCost, { onConflict: 'id' });
-    // Defensive fallback: if the cost columns aren't migrated yet, the upsert errors on
+    let { error } = await write(withCost);
+    // Defensive fallback: if the cost columns aren't migrated yet, the write errors on
     // the unknown column — retry with the base row so the film is still recorded.
-    if (error && hasCostCols) {
-      ({ error } = await sb.from(TABLE).upsert(base, { onConflict: 'id' }));
+    if (error && error.code !== 'not_owner' && hasCostCols) {
+      ({ error } = await write(base));
     }
     if (!error) await fireCompletionNotification(sb, input.userId, 'film', 'film-studio', input.id);
     return !error;

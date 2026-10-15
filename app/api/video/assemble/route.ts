@@ -44,7 +44,7 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt }
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling, isFilmOwnedByAnother } from '@/lib/chat/filmStatusStore';
 import { decideFilmWaiver, settleFilmWaiver, FILM_WAIVER_LEASE_SEC } from '@/lib/chat/filmBilling';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
@@ -382,6 +382,12 @@ async function assembleImpl(req: NextRequest) {
   // token the first time its waiver is honored (a paid token maps 1:1 to one downstream assemble).
   // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). Fail-open on the
   // STATUS/TRACKING side only — a store miss must fall back to billing normally (default false here).
+  // ⚠️ `filmTokenId` is CLIENT-SUPPLIED. A token whose status record names another payer is someone else's film: stamping
+  // it would hand them this master, take over its Library row and its re-stitch waiver. Refused before any claim or charge.
+  // (Store unreachable → null → allowed; recordCompletedFilm still refuses to touch a row another user owns.)
+  if (filmTokenId && isFilmOwnedByAnother(await getFilmStatus(filmTokenId), uid)) {
+    return NextResponse.json({ error: 'film_not_owned', message: 'This film belongs to another account.' }, { status: 403 });
+  }
   const billedTokenForCheck = filmTokenId ?? billingToken;
   let filmAlreadyBilled = false;
   // How the waiver this attempt uses goes back when it delivers nothing: a durable lease is settled, a cache waiver restored.

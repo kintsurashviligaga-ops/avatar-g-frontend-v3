@@ -67,8 +67,18 @@ async function viaGemini(o: LlmTextOpts): Promise<GeminiResponse | null> {
       ...(o.json ? { responseMimeType: 'application/json' as const } : {}),
       ...(o.googleSearch && !o.json ? { googleSearch: true } : {}),
     });
-    return r.text && r.text.trim() ? r : null;
-  } catch { return null; }
+    if (r.text && r.text.trim()) return r;
+    // An empty reply says why in finishReason (MAX_TOKENS: the output cap ran out, thinking included; SAFETY; …). The
+    // "Gemini missed" line below used to be all a miss left in the logs, so a cap too small for the answer looked like
+    // a dead key.
+    // eslint-disable-next-line no-console
+    console.warn('[llmText] Gemini returned no text', { model: r.model, finishReason: r.finishReason ?? null, maxTokens: o.maxTokens ?? 2000 });
+    return null;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[llmText] Gemini call failed', { message: String((e as Error)?.message ?? e).slice(0, 300) });
+    return null;
+  }
 }
 
 /** Gemini, and only Gemini. null = Gemini missed (or the budget guard refused) — never another provider's text. */

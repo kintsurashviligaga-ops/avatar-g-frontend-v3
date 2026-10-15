@@ -14,6 +14,16 @@
 import 'server-only';
 import { llmText } from '@/lib/ai/llmText';
 
+/**
+ * Output budget of the two yes/no classifiers below. The JSON answer is a handful of tokens, but the flash tier is a
+ * thinking model: llmText asks for thinkingBudget 0, and a model that still spends a few thinking tokens counts them
+ * against maxOutputTokens. At 20 the budget could run out before any text, Gemini answered with an empty reply, and the
+ * caller fell back to its old behaviour. Seen in Production on 2026-10-15 18:17Z: the re-stage check of a brief that
+ * asked for a black jacket on a black background missed, and the storyboard opened on the raw selfie. A bigger cap costs
+ * nothing (billing is per token produced) and leaves room for the answer.
+ */
+const CLASSIFIER_MAX_TOKENS = 256;
+
 const SYSTEM =
   'You read a short video brief (any language: Georgian, English, Russian …) and decide one thing: will at least one HUMAN ' +
   'being be visible on screen? Count a person, people, a crowd, a singer or performer, a presenter, the user themselves ' +
@@ -46,7 +56,7 @@ export async function storyFeaturesPerson(brief: string): Promise<boolean | null
   const text = String(brief || '').trim().slice(0, 1500);
   if (!text) return null;
   try {
-    const raw = await llmText({ system: SYSTEM, user: text, json: true, temperature: 0, maxTokens: 20, timeoutMs: 8000 });
+    const raw = await llmText({ system: SYSTEM, user: text, json: true, temperature: 0, maxTokens: CLASSIFIER_MAX_TOKENS, timeoutMs: 8000 });
     return parsePersonVerdict(raw);
   } catch {
     return null;
@@ -71,6 +81,27 @@ const RESTAGE_SYSTEM =
   'costume, a jacket, a suit)? Actions, gestures, speech, mood and camera moves alone do NOT count. ' +
   'Reply with JSON only: {"restage": true} or {"restage": false}.';
 
+/**
+ * Words that can only mean the brief names the person's place or clothes (KA / EN / RU). Read ONLY when the classifier
+ * gives no answer: an explicit "შავ პიჯაკში შავ ფონზე" / "a black jacket on a black background" is not a judgement call,
+ * so a Gemini miss must not open the film on the raw photo for it. Narrow on purpose: "სცენა" (scene AND stage) and other
+ * words a brief uses about the film itself are left out, and a brief that names neither stays unknown (photo kept).
+ */
+const SETTING_OR_WARDROBE: readonly RegExp[] = [
+  // Georgian: background (a whole word: "ტელეფონზე" and "მიკროფონი" contain the same letters), then t-shirt, jacket, coat,
+  // suit/costume, shirt, tie, dress, clothing, studio, office, beach, street.
+  /(?<!\p{L})ფონ(?:ზე|ი|ად|ში)(?!\p{L})|მაისურ|პიჯაკ|ქურთუკ|კოსტიუმ|პერანგ|ჰალსტუხ|კაბაში|კაბით|ტანსაცმ|სტუდიაში|სტუდიის|ოფისში|პლაჟზე|ქუჩაში/u,
+  /\b(?:background|backdrop|jacket|blazer|suits?|t-?shirts?|shirts?|dress(?:es|ed)?|hoodie|outfit|costume|wearing|studio|office|beach|street)\b/i,
+  // Russian, with letter boundaries (\b does not see Cyrillic; "телефон" and "фонтан" must not read as "фон").
+  /(?<!\p{L})(?:фон[еау]?(?!\p{L})|пиджак|куртк|костюм|футболк|рубашк|плать|одет|студи|офис|пляж|улиц)/iu,
+];
+
+/** Does the brief itself name a place or clothes for the person, in so many words? (The classifier's fallback only.) */
+export function briefNamesSettingOrWardrobe(brief: string): boolean {
+  const text = String(brief || '');
+  return SETTING_OR_WARDROBE.some((re) => re.test(text));
+}
+
 /** The re-stage classifier's reply → true / false, or null when it says neither clearly. */
 export function parseRestageVerdict(raw: string | null | undefined): boolean | null {
   return parseVerdict(raw, 'restage');
@@ -86,15 +117,21 @@ export function parseRestageVerdict(raw: string | null | undefined): boolean | n
  * drawn like every other scene instead: the same face from the photo, in the brief's place and clothes.
  *
  * Gemini only (lib/ai/llmText). FAIL DIRECTION: unknown (no key, an error, an unreadable answer) is `null`, and the caller
- * keeps the photo as scene 1, so a flaky classifier can never take the user's own photo out of a film that wanted it.
+ * keeps the photo as scene 1, so a flaky classifier can never take the user's own photo out of a film that wanted it —
+ * unless the brief names the place or the clothes in so many words (briefNamesSettingOrWardrobe), which needs no model.
  */
 export async function briefRestagesPhoto(brief: string): Promise<boolean | null> {
   const text = String(brief || '').trim().slice(0, 1500);
   if (!text) return null;
+  let verdict: boolean | null = null;
   try {
-    const raw = await llmText({ system: RESTAGE_SYSTEM, user: text, json: true, temperature: 0, maxTokens: 20, timeoutMs: 8000 });
-    return parseRestageVerdict(raw);
+    const raw = await llmText({ system: RESTAGE_SYSTEM, user: text, json: true, temperature: 0, maxTokens: CLASSIFIER_MAX_TOKENS, timeoutMs: 8000 });
+    verdict = parseRestageVerdict(raw);
   } catch {
-    return null;
+    verdict = null;
   }
+  // The classifier's answer stands when it gives one. Without one, a brief that names the place or the clothes outright
+  // is still a re-stage; anything else stays unknown and the caller keeps the photo as scene 1.
+  if (verdict !== null) return verdict;
+  return briefNamesSettingOrWardrobe(text) ? true : null;
 }
