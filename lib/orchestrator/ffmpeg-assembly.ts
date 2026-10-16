@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex, joinOverlaps, resolveJoins } from './ffmpeg-filtergraph';
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
+import { keepsOnlySong } from './songMix';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, MasterQaRejected, type QaReport } from './masterQa';
 import { SoundtrackUnreadable } from './soundtrackUnreadable';
@@ -445,8 +446,10 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
-      // Preserve the clips' own sound whenever ANY clip has it (opt-in: omitted → previous graph unchanged).
-      ...(nativeAudio.some(Boolean) ? { nativeAudio } : {}),
+      // Preserve the clips' own sound whenever ANY clip has it (opt-in: omitted → previous graph unchanged) — except
+      // under a music video's song: each Veo clip invents its own music and singing, so keeping them made the song
+      // jump at every cut (Production 2026-10-16). The one continuous song is the only soundtrack there.
+      ...(nativeAudio.some(Boolean) && !keepsOnlySong({ musicVideo, hasMusic: Boolean(music) }) ? { nativeAudio } : {}),
       hasVoice: Boolean(voicePath),
       hasMusic: Boolean(music),
       hasSfx: Boolean(sfx),

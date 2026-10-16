@@ -74,6 +74,15 @@ export const REFERENCE_PERSON_CLAUSE =
   'The person wears the clothing this shot describes (the reference\'s own clothing only when the shot names none), ' +
   'and the background, location and lighting are the ones this shot describes, not the reference photo\'s.';
 
+/**
+ * A MUSIC VIDEO follows one performer through every shot, so the outfit is locked too (Production 2026-10-16, GG: the
+ * singer wore a yellow vest, then a bomber, then a beanie, one per scene). Every frame copies the reference's clothes.
+ */
+export const MUSIC_VIDEO_PERSON_CLAUSE =
+  'Featuring the EXACT same person as the reference image — identical face, hair, skin tone and facial features — ' +
+  'wearing the SAME outfit and accessories as in the reference image, unchanged in every shot. ' +
+  'The background, location and lighting are the ones this shot describes.';
+
 const RESTAGE_SYSTEM =
   'Someone uploaded ONE photo of a person and wrote a short brief (any language: Georgian, English, Russian …) for a video ' +
   'that stars that person. Decide one thing: does the brief say WHERE the person is (a background, a set, a place or a ' +

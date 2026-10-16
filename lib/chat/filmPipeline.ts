@@ -335,7 +335,7 @@ export function buildStyleGuide(shared: FilmShared): string {
   return (
     `Consistent across every shot: ${aesthetic}, one color palette, consistent key and rim lighting, `
     + `the same lens and depth of field, ${identity}, the SAME person throughout. `
-    + `Professional color grading, ARRI Alexa color science, neutral white balance, clean neutral whites, crisp 8K, sharp focus.`
+    + `Professional color grading, ARRI Alexa color science, neutral white balance, clean neutral whites, natural skin tones, balanced bright exposure, crisp 8K, sharp focus.`
   );
 }
 
@@ -409,7 +409,7 @@ const CINEMATIC_BEATS: readonly CinematicBeat[] = [
   { name: 'Arc Reveal', framing: 'A controlled camera arc moving around the protagonist to reveal the space and depth — 28mm lens, deliberate parallax, lit entirely by motivated practical sources in the room', cameraMotion: 'pan_right' },
   { name: 'Close-Up', framing: 'Intimate close-up on an 85mm portrait lens, a slow controlled push on the protagonist’s face capturing a real, present emotional beat — creamy bokeh, soft Rembrandt lighting', cameraMotion: 'pan_left' },
   { name: 'Wide Reveal', framing: 'A sweeping high aerial wide shot rising and pulling away over the scene — expansive composition, volumetric natural light, the protagonist small against an epic backdrop', cameraMotion: 'zoom_out' },
-  { name: 'Resolution', framing: 'A crane pull-back rising as the protagonist and the scene resolve — expansive composition, warm cinematic colour grade, a confident, conclusive final beat', cameraMotion: 'zoom_out' },
+  { name: 'Resolution', framing: 'A crane pull-back rising as the protagonist and the scene resolve — expansive composition, natural true-to-life colour grade, a confident, conclusive final beat', cameraMotion: 'zoom_out' },
 ];
 
 /**
@@ -1021,7 +1021,9 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // meaningless to a video model — it is a sampler concept, not language — and it burned prompt budget in
     // the highest-value tail position. The seed still travels as a real provider PARAMETER (shared.seed →
     // selectedOptions.seed), which is where it actually locks continuity.
-    const continuity = scriptDriven
+    // A music video follows ONE singer through every shot, so its scenes keep the full same-person anchor even when a
+    // script drives them (Production 2026-10-16: the singer's face, clothes and bar changed at every cut).
+    const continuity = scriptDriven && !opts.musicVideo
       ? `${buildWorldStyleGuide(shared)}${conditionalCharacter}`
       : `${styleGuide} Continuity — the protagonist is ${characterAnchor}.`;
     // The SPOKEN LINE rides immediately after the scene's action — the highest-weighted position after

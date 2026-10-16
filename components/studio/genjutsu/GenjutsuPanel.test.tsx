@@ -167,3 +167,24 @@ test('the panel speaks Georgian and Russian', async () => {
   await act(async () => { await Promise.resolve(); });
   expect(screen.getByTestId('vfx-hero').textContent).toContain('Выберите эффект');
 });
+
+test('a finished video goes to the chat and is not drawn a second time in the panel (Production 2026-10-16)', async () => {
+  jest.useFakeTimers();
+  try {
+    (startGeneration as jest.Mock).mockResolvedValue({ ok: true, job: { jobId: 'j2', credits: 25, gel: null, refsUsed: 0, refsTotal: 0, engine: 'Veo 3.1 Fast', seconds: null } });
+    (fetchStatus as jest.Mock).mockResolvedValue({ ok: true, done: true, state: 'ready', videoUrl: 'https://cdn.example/out.mp4' });
+    const delivered = jest.fn();
+    render(<GenjutsuPanel locale="en" onDelivered={delivered} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    fireEvent.click(document.querySelector('[data-preset="portal"]')!);
+    await act(async () => { fireEvent.click(generate()); });
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { jest.advanceTimersByTime(60_000); await Promise.resolve(); await Promise.resolve(); });
+    await waitFor(() => expect(delivered).toHaveBeenCalledWith('https://cdn.example/out.mp4', expect.any(String)));
+    expect(screen.getByTestId('vfx-job').getAttribute('data-state')).toBeTruthy();
+    expect(screen.getByTestId('vfx-job').querySelector('video')).toBeNull();
+    expect(screen.getByTestId('vfx-job').textContent).toContain('in the chat');
+  } finally {
+    jest.useRealTimers();
+  }
+});

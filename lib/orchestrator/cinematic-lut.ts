@@ -84,8 +84,8 @@ const LOOKS: Record<LutLook, LookFn> = {
 export function pickLutLook(brief: string | null | undefined): LutLook {
   const b = (brief ?? '').toLowerCase();
   if (!b) return 'cinematic';
-  const night = /\b(night|neon|moody|purple|violet|magenta|midnight|rooftop at night|nightclub|club|rgb|cyberpunk|dark)\b/.test(b)
-    || /ღამ|ნეონ|იისფერ|მუქ/.test(brief ?? '');
+  const night = /\b(night|neon|moody|purple|violet|magenta|midnight|rooftop at night|nightclub|club|rgb|cyberpunk)\b/.test(b)
+    || /ღამ|ნეონ|იისფერ/.test(brief ?? '');
   if (night) return 'night_neon';
   const warm = /\b(golden hour|sunset|sunrise|warm|amber|dawn|dusk|candle|firelight)\b/.test(b)
     || /ოქროსფერ|მზის ჩასვლ|თბილ/.test(brief ?? '');

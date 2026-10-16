@@ -35,18 +35,31 @@ Updated 2026-10-16 ~09:00Z by the certification thread ("Production E2E და �
 - Music chat "MP3/WAV" message: root cause found in the error mapping; confirm with GG's next try.
 - Anonymous load: 401 console noise, Sentry envelopes.
 
+## Release state (2026-10-16)
+
+- PR #80 merged 09:54Z (54b5225) after GG's verified "გაშვება+ტესტი" tap; Production dpl_5RhwPKevnXdGiVN4Kz62SKBZBXFM.
+  Rollback target ffde345c (dpl_Jn9ucwhB5ND6STFgo1CPPVeswtLD). Veo avatar live for admins; GG makes the one ~$1 test clip.
+- PR #81 (draft, this branch restarted from main): GG's 09:38Z/09:54Z music-video and studio report.
+  | Commit | Change | Test |
+  |---|---|---|
+  | ef1e6f3 | One song: Veo clip audio dropped when a music video has its song (`keepsOnlySong`); Georgian/genre detection in the song prompt; natural colour (no night-neon from "dark", natural grade in prompts); stale typed line cleared after dispatch; render tray top right on desktop and foldable; VFX result shown once (in chat), VFX settings in a collapsible group | `lib/elevenlabs/musicPrompt.test.ts`, `lib/chat/musicVideoContinuity.test.ts`, `components/studio/JobTray.test.tsx`, `GenjutsuPanel.test.tsx`, `components/studio/filmTypedLine.wiring.test.ts` |
+  | b03af32 | Music video: performer keeps one outfit in every storyboard frame (`MUSIC_VIDEO_PERSON_CLAUSE`), waist-up anchor with full outfit | `app/api/film/storyboard/selfie.test.ts` |
+- Song order: a Georgian music video already builds its song BEFORE the scenes (`/api/audio/georgian-song`, OmniStudio send); a
+  non-Georgian one gets one ElevenLabs song in parallel; either way one track is the only bed. Real lip-sync to the song is
+  impossible with Google-only (HeyGen refused): decision card posted to GG (one song, lips not synced / add lip-sync provider).
+
 ## Pending PRs
 
-- #80 (this branch, draft). Docs PR #79 belongs to the Final Integration thread.
+- #81 (this branch, draft). Merge, deploy and any paid music-video test need GG's word and a cost card (Veo + song, within $10/day).
+- Docs PR #79 belongs to the Final Integration thread.
 
 ## Owner-gated decisions
 
-- Merge and Production deploy of #80 (decision card once CI is green).
+- Lip-sync provider for music videos (card posted).
+- Merge and Production deploy of #81.
 - Any paid provider run (Veo, image, avatar), real BOG payment, migration, public flag, price change.
-- Voice cloning for "my voice" (a new paid capability).
-- The missing end of PHASE 6 and PHASE 7 of GG's brief.
+- Close public Lyria music or keep it; Veo avatar public price.
 
 ## Exact next action
 
-Build the Veo avatar (photo as start image, Veo speaks the words, direction as prompt) behind the admin gate with
-mock tests; ask GG for one paid test and the price. Then the signed-in Mac runner (GG signs in by email code) for PHASE 1 and 2.
+Drive PR #81 CI green; after GG's avatar test, check its output and logs; then a priced card for one paid music-video test.

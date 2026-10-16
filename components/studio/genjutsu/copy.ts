@@ -148,7 +148,7 @@ const KA: Copy = {
   liveQuote: 'ფასი ცოცხლად, ატვირთვის შემდეგ',
   creditsWord: (n) => `${n} კრედიტი`,
   jobWorking: 'VFX სცენა მზადდება — ჩვეულებრივ რამდენიმე წუთი სჭირდება.',
-  jobDone: 'მზადაა — ფაილი ბიბლიოთეკაშიც შეინახა.',
+  jobDone: 'მზადაა — ვიდეო ჩათშია და ბიბლიოთეკაშიც შეინახა.',
   another: 'ახალი VFX',
   stillWorking: 'ჯერ კიდევ მუშაობს. შედეგი ბიბლიოთეკაში გამოჩნდება.',
   fileSkipped: {
@@ -247,7 +247,7 @@ const EN: Copy = {
   liveQuote: 'Live price after upload',
   creditsWord: (n) => `${n} ${n === 1 ? 'credit' : 'credits'}`,
   jobWorking: 'Your VFX scene is rendering — it usually takes a few minutes.',
-  jobDone: 'Done — it is also saved in your Library.',
+  jobDone: 'Done — the video is in the chat and saved in your Library.',
   another: 'Make another',
   stillWorking: 'Still working. The result will appear in your Library.',
   fileSkipped: {
@@ -351,7 +351,7 @@ const RU: Copy = {
     return `${n} ${w}`;
   },
   jobWorking: 'VFX-сцена готовится — обычно это занимает несколько минут.',
-  jobDone: 'Готово — файл сохранён и в вашей библиотеке.',
+  jobDone: 'Готово — видео в чате и сохранено в библиотеке.',
   another: 'Ещё одну',
   stillWorking: 'Всё ещё работает. Результат появится в библиотеке.',
   fileSkipped: {

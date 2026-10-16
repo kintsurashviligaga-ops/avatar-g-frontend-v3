@@ -40,7 +40,7 @@ import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generatio
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveFilmTemplate } from '@/lib/studio/templateContext';
-import { REFERENCE_PERSON_CLAUSE, briefRestagesPhoto, storyFeaturesPerson } from '@/lib/chat/storyPerson';
+import { MUSIC_VIDEO_PERSON_CLAUSE, REFERENCE_PERSON_CLAUSE, briefRestagesPhoto, storyFeaturesPerson } from '@/lib/chat/storyPerson';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
@@ -423,7 +423,7 @@ export async function POST(req: NextRequest) {
       const sceneEn = await promptToEnglish(scenePrompt, 'image');
       const head = look ? `Cinematic film still, ${aspect} composition, ${look}.` : `Cinematic film still, ${aspect} composition.`;
       const framePrompt = selfie
-        ? `${head} ${sceneEn} ${REFERENCE_PERSON_CLAUSE} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
+        ? `${head} ${sceneEn} ${musicVideo ? MUSIC_VIDEO_PERSON_CLAUSE : REFERENCE_PERSON_CLAUSE} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
         : `${head} ${sceneEn} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
       // GOOGLE-ONLY (docs/VEO_ENGINE.md §3): the frame comes straight from Gemini's image model, the selfie passed as
       // an inline reference so the same person is in every frame. No Replicate, no FLUX: a miss is an empty tile
@@ -493,7 +493,12 @@ export async function POST(req: NextRequest) {
     if (!selfie && (await storyFeaturesPerson(prompt)) === false) {
       return NextResponse.json({ success: true, anchorUrl: null, anchorSkipped: 'no_person' });
     }
-    const anchorPrompt =
+    // A music video's anchor shows the OUTFIT too (waist-up), because every frame then copies it (MUSIC_VIDEO_PERSON_CLAUSE).
+    const anchorPrompt = musicVideo
+      ? `Character reference portrait — a clean, evenly-lit waist-up shot of the SINGLE performer in this music video: "${prompt.slice(0, 600)}", ` +
+        `showing the face and the complete stage outfit and accessories clearly. Looking toward camera, neutral softly-blurred background, natural colours, photorealistic, sharp focus. ` +
+        `This is the DEFINITIVE reference for the entire video — the same face, hair and outfit in every shot.`
+      :
       `Character reference portrait — a clean, evenly-lit head-and-shoulders close-up of the SINGLE main character in this story: "${prompt.slice(0, 600)}". ` +
       `Looking toward camera, neutral softly-blurred background, photorealistic, sharp focus on the face. ` +
       `This is the DEFINITIVE identity reference for the entire film — one consistent person, exact same face, hair and wardrobe in every shot.`;
