@@ -154,8 +154,9 @@ export function ResultCard({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={poster} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-md" />
             )}
+            {/* An error carries its own warning icon and text in the centre; the kind icon sat on top of that text. */}
             {state !== 'error' && <div aria-hidden="true" className="result-shimmer absolute inset-0" />}
-            <Icon aria-hidden="true" size={size === 'tile' ? 18 : 22} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-app-text/20" />
+            {state !== 'error' && <Icon aria-hidden="true" size={size === 'tile' ? 18 : 22} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-app-text/20" />}
           </>
         )}
 

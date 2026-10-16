@@ -396,6 +396,22 @@ describe('poll() → deliver a finished Veo clip', () => {
     warn.mockRestore();
   });
 
+  it('a declined scene is logged once, however often the film polls it', async () => {
+    // The second ad try (2026-10-15 23:05Z) wrote the same refusal six times, one per poll of the finished operation.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const ref = await taskRefFor(GEMINI_OP);
+    pollVeoClipMock.mockResolvedValue({ state: 'filtered', reason: 'filtered', supportCodes: ['17301594'] });
+    const sm = new ServiceManager();
+    for (let i = 0; i < 3; i++) {
+      const res = await sm.poll(ref, SESSION);
+      expect(res).toMatchObject({ success: false, predictionStatus: 'failed' });
+      expect(res.metadata.veoFiltered).toBe(true);
+    }
+    const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith('[veo] scene declined') && l.includes('codes=17301594'));
+    expect(lines).toHaveLength(1);
+    warn.mockRestore();
+  });
+
   it('a failed operation logs Google\'s reason instead of dropping it', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const ref = await taskRefFor(GEMINI_OP);
