@@ -22,7 +22,8 @@ jest.mock('../../../../lib/api/rate-limit', () => ({
 jest.mock('../../../../lib/veo/policy', () => ({ isGoogleOnly: jest.fn(() => true) }));
 jest.mock('../../../../lib/ai/llmText', () => ({ llmText: jest.fn(async () => null) }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
-jest.mock('../../../../lib/ai/geminiImage', () => ({ generateGeminiImage: jest.fn(async () => null) }));
+// A drawn frame: these tests read the prompt of the one image call (an empty answer would be retried once).
+jest.mock('../../../../lib/ai/geminiImage', () => ({ generateGeminiImage: jest.fn(async () => ({ base64: Buffer.alloc(8, 1).toString('base64'), mimeType: 'image/jpeg' })) }));
 jest.mock('../../../../lib/gemini/image-analysis', () => ({ describeCharacterFromImage: jest.fn(async () => null) }));
 jest.mock('../../../../lib/chat/promptAgent', () => ({ runPromptAgent: jest.fn(async () => null), promptAgentModel: () => 'gemini-test-flash' }));
 jest.mock('../../../../lib/chat/ServiceManager', () => ({

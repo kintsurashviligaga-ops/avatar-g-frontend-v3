@@ -516,7 +516,11 @@ export async function POST(req: NextRequest) {
     // The planned `scene.prompt` already carries the look in full. A client prompt (the board's own, cut to 600, or a
     // user edit) may not, so the resolved look leads it, unless the text already holds it whole.
     const frameLook = customPrompt && template && !customPrompt.includes(template.look) ? template.look : undefined;
-    const frameUrl = await genFrame(customPrompt ?? scene.prompt, frameLook);
+    // One retry, as the full board's second pass below does: the image model now and then answers
+    // finishReason=NO_IMAGE for an ordinary prompt (2026-10-16: scene 4 of two consecutive 4-scene boards came back
+    // empty and rendered on a manual re-roll). The board asks for each frame through this path, and one empty tile
+    // also switches frame chaining off for the whole film.
+    const frameUrl = (await genFrame(customPrompt ?? scene.prompt, frameLook)) ?? (await genFrame(customPrompt ?? scene.prompt, frameLook));
     return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
   }
 
