@@ -52,7 +52,9 @@ describe('what the gate does with each verdict', () => {
     expect(card).not.toMatch(/fetch\(|runImageJob|runMusicJob|createStoryboard/);
   });
   test('only a decision lets a prompt through: a confirmed card, or the panel\'s own Generate button', () => {
-    expect(src).toContain("void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}) });");
+    // The card's Create, and a typed yes under it (consentRef, GG 2026-10-16), send its prompt with the frame and photo it holds.
+    expect(src).toContain("void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(card.aspect ? { aspect: card.aspect } : {}),");
+    expect(src).toContain("void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(cardAspect ? { aspect: cardAspect } : {}),");
     expect(src).toContain("onGenerate={() => runTool(true, 'panel')}");
     expect(src).toContain("onGenerate: () => runTool(true, 'panel'),");
     expect(src).toContain('void send({ promptOverride: prompt, explicit: true })');
