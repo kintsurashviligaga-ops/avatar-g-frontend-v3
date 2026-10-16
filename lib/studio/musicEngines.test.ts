@@ -129,7 +129,10 @@ describe('the stored preference', () => {
     setMusicEnginePref('elevenlabs-music');
     expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBe('elevenlabs-music');
     expect(getMusicEnginePref()).toBe('elevenlabs-music');
-    expect(musicEngineField()).toEqual({ engine: 'elevenlabs-music' });
+    // Production 2026-10-16: the route refuses every engine but Lyria, so a stored outside pick is sent as Auto.
+    expect(musicEngineField()).toEqual({});
+    setMusicEnginePref('lyria');
+    expect(musicEngineField()).toEqual({ engine: 'lyria' });
     setMusicEnginePref('auto');
     expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBeNull();
     expect(musicEngineField()).toEqual({});

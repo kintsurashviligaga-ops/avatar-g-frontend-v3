@@ -95,3 +95,17 @@ test('a server job that does report a percent still shows that percent', () => {
   expect(container.textContent ?? '').toMatch(/55\s*%/);
   expect(container.querySelector('[data-progress="indeterminate"]')).toBeNull();
 });
+
+test('the ✕ hides a stuck render with no stop of its own, and it stays hidden after a reload (Production 2026-10-16)', () => {
+  window.localStorage.removeItem('jobTray.hidden');
+  act(() => { useJobQueue.setState({ durableJobs: [render1], inlineJobIds: [] }); });
+  const { unmount } = render(<JobTray locale="en" />);
+  expect(screen.getByText('A red car')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Hide renders' }));
+  expect(screen.queryByTestId('job-tray')).toBeNull();
+  expect(cancels()).toHaveLength(0); // hiding never stops or fails the job
+  unmount();
+  render(<JobTray locale="en" />);
+  expect(screen.queryByTestId('job-tray')).toBeNull();
+  window.localStorage.removeItem('jobTray.hidden');
+});

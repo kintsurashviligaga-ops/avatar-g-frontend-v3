@@ -104,6 +104,7 @@ import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
 import { nextAvatarAttempt, startRefusal } from '@/lib/avatar/renderAttempts';
+import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob';
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
@@ -5390,7 +5391,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           ...(!m.instrumental ? { vocalGender: m.voiceType } : {}),
         });
         const templateId = m.templateId && bodyTemplateId === m.templateId ? m.templateId : null;
-        const res = await fetch('/api/ai/music', {
+        // ⚠️ A phone that locks or backgrounds the app drops this one long request while the server keeps rendering (and
+        // charging). That drop is not a failure: wait for the job's own row instead (lib/jobs/awaitDroppedJob).
+        let res: Response;
+        try {
+        res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -5408,6 +5413,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             ...(m.useTrained ? {} : isVoiceClone ? { voiceReference: uploadedAudioUrl } : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
           }),
         });
+        } catch (err) {
+          if (!isDroppedConnection(err, signal)) throw err;
+          trackJobUpdate(jobId, 'Composing', 50);
+          const late = await awaitDroppedJob(jobId, { signal });
+          onProgress({ pct: 100 });
+          if (late && 'url' in late) {
+            updateBubble(bubbleId, { text: '', audioUrl: late.url });
+            notifyCredit('music', { seconds: m.duration === 0 ? 90 : m.duration });
+            return late.url;
+          }
+          updateBubble(bubbleId, { text: `⚠️ ${late ? describeGenerationFailure({ error: late.error }, locale, t.musicFailed) : (locale === 'en' ? 'The connection dropped. If the track finishes, it will be in your Library.' : locale === 'ru' ? 'Связь прервалась. Если трек готов, он будет в вашей Библиотеке.' : 'კავშირი გაწყდა. თუ ტრეკი დასრულდება, ბიბლიოთეკაში იქნება.')}` });
+          throw new Error(late ? (late.error || 'music failed') : 'connection dropped');
+        }
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string; controls?: unknown; voiceApplied?: boolean };
         onProgress({ pct: 100 });
         if (j.success && j.url) {

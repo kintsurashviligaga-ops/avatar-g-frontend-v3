@@ -21,6 +21,33 @@ import { GenerationProgress, type ProgressKind, type ProgressState } from './ui/
 
 type Lang = 'ka' | 'en' | 'ru';
 
+/**
+ * Rows the user closed with the tray's ✕. A render whose page died never writes its row again, so it stayed
+ * "1 active" on every device with nothing to close it (Production 2026-10-16, GG). Closing only HIDES it here (the
+ * job, its charge and its Library entry are untouched); kept a day per device, then forgotten.
+ */
+export const TRAY_HIDDEN_KEY = 'jobTray.hidden';
+const HIDDEN_TTL_MS = 24 * 60 * 60 * 1000;
+export function readHiddenJobs(now = Date.now()): Set<string> {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(TRAY_HIDDEN_KEY) || '{}') as Record<string, number>;
+    return new Set(Object.entries(raw).filter(([, at]) => typeof at === 'number' && now - at < HIDDEN_TTL_MS).map(([id]) => id));
+  } catch {
+    return new Set();
+  }
+}
+export function rememberHiddenJobs(ids: readonly string[], now = Date.now()): void {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(TRAY_HIDDEN_KEY) || '{}') as Record<string, number>;
+    const kept: Record<string, number> = {};
+    for (const [id, at] of Object.entries(raw)) if (typeof at === 'number' && now - at < HIDDEN_TTL_MS) kept[id] = at;
+    for (const id of ids) kept[id] = now;
+    window.localStorage.setItem(TRAY_HIDDEN_KEY, JSON.stringify(kept));
+  } catch {
+    /* storage blocked: hidden for this page only */
+  }
+}
+
 
 function tr(locale: Lang) {
   const en = {
@@ -32,6 +59,7 @@ function tr(locale: Lang) {
     canceled: 'Canceled',
     cancel: 'Cancel',
     clear: 'Clear finished',
+    close: 'Hide renders',
     waiting: 'Waiting for a free slot…',
     counts: (a: number, q: number) => `${a} active${q ? ` · ${q} queued` : ''}`,
   };
@@ -47,6 +75,7 @@ function tr(locale: Lang) {
       canceled: 'Отменено',
       cancel: 'Отмена',
       clear: 'Очистить',
+      close: 'Скрыть рендеры',
       waiting: 'Ожидание свободного слота…',
     };
   }
@@ -61,6 +90,7 @@ function tr(locale: Lang) {
       canceled: 'გაუქმდა',
       cancel: 'გაუქმება',
       clear: 'გასუფთავება',
+      close: 'რენდერების დამალვა',
       waiting: 'ცდის თავისუფალ სლოტს…',
       counts: (a: number, q: number) => `${a} აქტიური${q ? ` · ${q} რიგში` : ''}`,
     };
@@ -142,7 +172,7 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   // VECTOR 2 — auto-dismiss a SUCCESSFUL render 4s after it lands, so the green "მზადაა" row never
   // lingers forever. Only HIDES it from the tray (the durable data log is untouched); failed /
   // canceled rows stay visible so the user can see + retry them.
-  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  const [dismissed, setDismissed] = useState<Set<string>>(() => (typeof window === 'undefined' ? new Set() : readHiddenJobs()));
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const doneKey = jobs.filter((j) => j.status === 'done').map((j) => j.id).sort().join(',');
   useEffect(() => {
@@ -194,6 +224,11 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
 
   if (!shown) return null;
 
+  const hideAll = () => {
+    const ids = visible.map((j) => j.id);
+    rememberHiddenJobs(ids);
+    setDismissed((prev) => new Set([...prev, ...ids]));
+  };
   const anyFinished = visible.some((j) => j.status === 'done' || j.status === 'failed' || j.status === 'canceled');
   const activeCount = visible.filter((j) => j.status === 'rendering').length;
   const queuedCount = visible.filter((j) => j.status === 'queued').length;
@@ -222,11 +257,17 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
             {activeCount + queuedCount > 0 ? t.counts(activeCount, queuedCount) : ''}
           </span>
         </p>
-        {anyFinished && (
-          <button type="button" onClick={clearFinished} className="tap-44 relative text-[10.5px] font-medium text-app-muted transition-colors hover:text-app-accent">
-            {t.clear}
+        <div className="flex items-center gap-2">
+          {anyFinished && (
+            <button type="button" onClick={clearFinished} className="tap-44 relative text-[10.5px] font-medium text-app-muted transition-colors hover:text-app-accent">
+              {t.clear}
+            </button>
+          )}
+          <button type="button" data-testid="job-tray-close" aria-label={t.close} title={t.close} onClick={hideAll}
+            className="tap-44 relative flex h-6 w-6 items-center justify-center rounded-full text-[14px] leading-none text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            ×
           </button>
-        )}
+        </div>
       </div>
       <div className="flex max-h-[46vh] flex-col gap-1.5 overflow-y-auto overscroll-contain">
         {visible.map((job) => (

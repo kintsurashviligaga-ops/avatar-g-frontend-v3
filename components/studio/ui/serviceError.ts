@@ -28,6 +28,9 @@ type Known =
   | 'generation_refunded'
   // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): a tool with no Google / ElevenLabs engine yet refuses before any charge.
   | 'google_only'
+  // A music option outside Google Lyria (a cover, a sampled voice, another engine) — refused before any charge. It used
+  // to fall through to the loose /unsupported/ rule and read as „this format can't be read, try MP3 or WAV" (2026-10-16).
+  | 'option_unavailable'
   // Final P0/P1 repair run: dubbing / decks stay off until the owner approves their price; the quote/confirm codes.
   | 'pricing_not_approved' | 'duration_unmeasurable' | 'quote_invalid' | 'job_unavailable';
 
@@ -56,6 +59,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     quote_invalid: 'ფასი შეიცვალა ან ვადა გაუვიდა. ნახე ახალი ფასი და დაადასტურე ხელახლა — თანხა არ ჩამოგეჭრა.',
     job_unavailable: 'სამუშაო ვერ ჩავწერეთ. სცადე ცოტა ხანში — თანხა არ ჩამოგეჭრა.',
     google_only: 'ეს ხელსაწყო დროებით შეჩერებულია, სანამ Google-ის ძრავაზე გადავა. თანხა არ ჩამოგეჭრა.',
+    option_unavailable: 'ეს არჩევანი მიუწვდომელია: აქ მხოლოდ Google-ის ძრავა მუშაობს. აირჩიე „ავტო“ ან მოხსენი ფაილი — თანხა არ ჩამოგეჭრა.',
   },
   en: {
     insufficient_credits: 'Not enough credits. Top up your balance and try again.',
@@ -81,6 +85,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     quote_invalid: 'The price changed or the quote expired. Check the new price and confirm again — you were not charged.',
     job_unavailable: 'We could not record the job. Try again shortly — you were not charged.',
     google_only: 'This tool is paused while it moves to Google’s engines. You were not charged.',
+    option_unavailable: 'That option is not available: only Google’s engine runs here. Pick Auto or remove the file. You were not charged.',
   },
   ru: {
     insufficient_credits: 'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
@@ -106,6 +111,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     quote_invalid: 'Цена изменилась или срок предложения истёк. Проверьте новую цену и подтвердите снова — списания не было.',
     job_unavailable: 'Не удалось записать задачу. Повторите чуть позже — списания не было.',
     google_only: 'Этот инструмент временно приостановлен на время перехода на движки Google. Списания не было.',
+    option_unavailable: 'Этот вариант недоступен: здесь работает только движок Google. Выберите «Авто» или уберите файл. Списания не было.',
   },
 };
 
@@ -126,6 +132,7 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^ledger_unavailable$/, 'billing_unavailable'],
   [/^cannot_cancel$/, 'cannot_cancel'],
   [/^google_only$/, 'google_only'],
+  [/^unsupported$/, 'option_unavailable'],
   [/^pricing_not_approved$/, 'pricing_not_approved'],
   [/^duration_unmeasurable$/, 'duration_unmeasurable'],
   [/^(quote_invalid|quote_price_changed)$/, 'quote_invalid'],
