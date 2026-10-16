@@ -3,7 +3,7 @@
  *
  * ⚠️ PRODUCTION 2026-10-16 (GG's iPhone, 22:19 Tbilisi). Agent G had offered a 9:16 portrait from GG's photo; GG answered
  * „კი შექმენი სურათი 9:16 ფორმატის" ("yes, make the picture in 9:16"), and the chat replied that it cannot generate in the
- * chat and told him to open the Image tool, attach the photo again, pick 9:16 and paste a prompt. Three faults:
+ * chat and told GG to open the Image tool, attach the photo again, pick 9:16 and paste a prompt. Three faults:
  *   1. A leading „კი" hid the order: the order check wants the generate verb first, so the message went to the model.
  *   2. A yes only counted when it was ONE word (or one word more), so "yes + the order again" was never a yes.
  *   3. The model was told it can start nothing, so it sent people to a tool.

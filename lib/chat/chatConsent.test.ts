@@ -7,7 +7,7 @@ import {
   aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference, orientationForAspect, quotedCredits,
 } from './chatConsent';
 
-// GG's own message on his iPhone, 22:19 Tbilisi.
+// GG's own message on GG's iPhone, 22:19 Tbilisi.
 const GG_YES = 'კი შექმენი სურათი 9:16 ფორმატის';
 // The reply it got (shortened in the middle only): no generation, „open the Image tool".
 const GG_REPLY = 'მე ჩატში პირდაპირ გენერირებას ვერ გავუშვებ — სურათის შესაქმნელად გახსენი ხელსაწყო „სურათი“ „+“ ღილაკით, მიამაგრე ეს ფოტო, პარამეტრებში პროპორციად აირჩიე 9:16 და დააჭირე შექმნას.\n\nპრომპტის ველში ჩასვი:\n\n„Vertical 9:16 professional portrait maintaining the exact face and features of the man in the reference image, wearing a crisp white dress shirt and a tailored black suit jacket, solid matte black background, studio lighting, photorealistic, ultra-detailed, 8k“\n\n(ფასი: 2 კრედიტი / 0.20 ₾).';
@@ -70,7 +70,7 @@ describe('aspectFromText — the frame the user named', () => {
 });
 
 describe('the offer\'s photo and price', () => {
-  it('GG\'s offer leans on his photo („the man in the reference image") and quotes 2 credits', () => {
+  it('GG\'s offer leans on GG\'s photo („the man in the reference image") and quotes 2 credits', () => {
     expect(offerUsesReference(GG_REPLY)).toBe(true);
     expect(quotedCredits(GG_REPLY)).toBe(2);
   });

@@ -106,7 +106,7 @@ describe('intentDetector — autonomous chat dispatch classification', () => {
     expect(wouldDispatch('გამიკეთე სურათი მთის')).toBe(true);
   });
 
-  // ⚠️ 2026-10-16: the owner asked the chat for a picture, a song and a video in his own words and got a conversation
+  // ⚠️ 2026-10-16: the owner asked the chat for a picture, a song and a video in the owner's own words and got a conversation
   // back. Georgian puts the verb where it likes, says „please" formally, and asks with „შეგიძლია …?" and „მინდა …"; the
   // gate only knew a verb at the start. Nothing here charges: the chat shows Agent G's card and renders only on a tap.
   const laneOf = (m: string) => (isGenerativeCommand(m) ? resolveGenerativeLane(m, detectIntent(m)) : null);

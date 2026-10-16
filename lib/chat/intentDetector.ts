@@ -263,7 +263,7 @@ export function detectIntent(
 // ─── Georgian orders (2026-10-16) ───────────────────────────────────────────────────────────────────────────────────
 //
 // ⚠️ GEORGIAN PUTS THE VERB WHERE IT LIKES, AND THE GATE ONLY LOOKED AT THE START. The owner asked the chat for a picture, a
-// song and a video in his own words and got a conversation back: „კატის სურათი დამიხატე" (a cat's picture — draw it),
+// song and a video in the owner's own words and got a conversation back: „კატის სურათი დამიხატე" (a cat's picture — draw it),
 // „მუსიკა შემიქმენი", „სიმღერა დამიწერე სიყვარულზე", the formal „გთხოვთ დამიხატეთ", „შეგიძლია დამიხატო?" (can you draw
 // me…?), „მინდა კატის სურათი" (I want a picture of a cat). None LED with a verb, so none was an order, and the chat model —
 // which can start nothing — answered in words. Nothing is charged on any of these: the chat shows Agent G's card (its

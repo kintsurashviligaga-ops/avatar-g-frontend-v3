@@ -7,7 +7,7 @@ import { join } from 'path';
  * nothing is charged).
  *
  * Production 2026-10-16 (GG's iPhone, 22:19 Tbilisi): Agent G had offered a 9:16 portrait from GG's photo; GG answered
- * „კი შექმენი სურათი 9:16 ფორმატის" and the chat told him it cannot generate in the chat — open the Image tool, attach the
+ * „კი შექმენი სურათი 9:16 ფორმატის" and the chat said it cannot generate in the chat — open the Image tool, attach the
  * photo again, pick 9:16, paste a prompt. GG's rule (18:20–18:21Z): every service runs in the chat, and once Agent G has
  * clarified and the user agrees, generation starts. The contract:
  *
@@ -77,7 +77,7 @@ async function say(page: Page, text: string): Promise<void> {
   await box.press('Enter');
 }
 
-// The reply GG got, shortened in the middle only: a quoted prompt that uses his photo, and its price.
+// The reply GG got, shortened in the middle only: a quoted prompt that uses GG's photo, and its price.
 const PORTRAIT = 'Vertical 9:16 professional portrait maintaining the exact face and features of the man in the reference image, wearing a crisp white dress shirt and a tailored black suit jacket, solid matte black background, studio lighting, photorealistic';
 const GG_OFFER = `სურათის შესაქმნელად გახსენი ხელსაწყო „სურათი“, მიამაგრე ეს ფოტო და აირჩიე 9:16.\n\nპრომპტის ველში ჩასვი:\n\n„${PORTRAIT}“\n\n(ფასი: 2 კრედიტი / 0.20 ₾).`;
 const FOX = 'a red fox in deep snow at dawn, photorealistic, soft light';
@@ -87,7 +87,7 @@ test.use({ viewport: { width: 1280, height: 800 } });
 test.describe('a yes in the chat starts what Agent G offered', () => {
   test.beforeEach(async ({ page }) => { await seed(page); });
 
-  test('GG\'s „კი შექმენი სურათი 9:16 ფორმატის" starts the offered portrait, in 9:16, from his earlier photo', async ({ page }) => {
+  test('GG\'s „კი შექმენი სურათი 9:16 ფორმატის" starts the offered portrait, in 9:16, from GG\'s earlier photo', async ({ page }) => {
     const calls = await mockRoutes(page, [GG_OFFER]);
     await openChat(page);
     await page.locator('input[type=file][multiple][accept^="image/*,audio/*"][accept*="application/pdf"]').setInputFiles([
