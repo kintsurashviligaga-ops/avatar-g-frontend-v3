@@ -48,7 +48,10 @@ const COMMENTARY_RE = new RegExp(
   [
     // English
     'commentat', 'commentary', 'narrat', 'voice ?over', 'voiceover',
-    'announc', 'sportscast', 'play[- ]?by[- ]?play', 'spoken', 'dialogue', 'speaks',
+    // NOT 'spoken', 'dialogue' or 'speaks': they describe a character talking on screen ("the actor speaks to camera"),
+    // and matching them sent the typed "What the character says" line to an off-screen narrator instead of the actor
+    // (Video Core certification 2026-10-15, open item; the Georgian brief never matched, so only English briefs broke).
+    'announc', 'sportscast', 'play[- ]?by[- ]?play',
     // Georgian — კომენტ(ატორი), ნარაცი(ა), გახმოვანებ, წამყვან(ი), დიქტორ(ი), თხრობ
     'კომენტ', 'ნარაცი', 'გახმოვან', 'წამყვან', 'დიქტორ', 'თხრობ',
     // Russian — комментат(ор), наррат(ор), озвуч(ка), диктор, ведущ(ий)

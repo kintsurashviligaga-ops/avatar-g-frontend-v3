@@ -42,6 +42,7 @@ beforeEach(() => {
   };
   (dequeueQueueItems as jest.Mock).mockImplementation(async (name: string, n: number) => queues[name].splice(0, n));
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 afterEach(() => { process.env = { ...ENV }; jest.restoreAllMocks(); });
 
@@ -63,4 +64,17 @@ test('a failed stale-job scan no longer starves the channel queues', async () =>
   const res = await tick({ authorization: 'Bearer cron-secret' });
   expect(res.status).toBe(200);
   expect(processWhatsAppPayload).toHaveBeenCalledTimes(1);
+});
+
+test('a missing service_jobs table is a warning once, not an error on every tick (top Production error group, 2026-10-16)', async () => {
+  (createServiceRoleClient as jest.Mock).mockReturnValue(db({ message: "Could not find the table 'public.service_jobs' in the schema cache" }));
+  await tick({ authorization: 'Bearer cron-secret' });
+  await tick({ authorization: 'Bearer cron-secret' });
+  expect(console.error).not.toHaveBeenCalledWith('[Worker.Tick] stale service_jobs scan failed', expect.anything());
+});
+
+test('any other stale-scan failure is still logged as an error', async () => {
+  (createServiceRoleClient as jest.Mock).mockReturnValue(db({ message: 'canceling statement due to statement timeout' }));
+  await tick({ authorization: 'Bearer cron-secret' });
+  expect(console.error).toHaveBeenCalledWith('[Worker.Tick] stale service_jobs scan failed', expect.objectContaining({ message: 'canceling statement due to statement timeout' }));
 });
