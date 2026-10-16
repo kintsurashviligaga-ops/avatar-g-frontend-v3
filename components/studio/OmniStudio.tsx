@@ -3942,6 +3942,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       // The film's real size: the approved board's scenes (or the scripts', or the length's grid) × the clip length.
       const filmScenes = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(snap.videoDuration);
+      // The typed line and dialogue belong to THIS film (this closure keeps its copy for the graphics pass below). Left in
+      // the panel they rode into the next film unseen: an old ad line, "come on check the site myavatar.ge", came back as
+      // a caption and a sung lyric in a later music video (Production 2026-10-16).
+      setVideoSpeech(''); setVideoDialogue('');
       const res = await driveFilmStudio({
         prompt: filmPrompt,
         referenceImages: refs,

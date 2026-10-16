@@ -72,6 +72,13 @@ export async function composeElevenLabsMusic(input: ComposeMusicInput): Promise<
   return { audio, contentType: 'audio/mpeg' };
 }
 
+/** True when most letters of `text` are Georgian (Mkhedruli). */
+export function mostlyGeorgian(text: string): boolean {
+  const ka = (text.match(/[\u10D0-\u10FF]/g) || []).length;
+  const latin = (text.match(/[A-Za-z]/g) || []).length;
+  return ka > 0 && ka >= latin;
+}
+
 /**
  * Build an ElevenLabs Music prompt + instrumental flag from a film brief. Mirrors the
  * genre / vocalist / lyric-language / mood detection used for the legacy Udio request
@@ -87,7 +94,7 @@ export function buildElevenMusicPrompt(o: { brief: string; totalSec: number; mus
     o.musicVideoMode === true ||
     /\bmusic video\b/.test(lower) ||
     (/\bmusic\b|\bsong\b|\bbeat\b|\bvocal|\br&b\b|\brnb\b|\bpop\b|\bhip[- ]?hop\b/.test(lower) && /\bsing|\bsinger\b|\bvocal|\blyric/.test(lower)) ||
-    /მუსიკალური ვიდეო|სიმღერ|მომღერ/.test(brief);
+    /მუსიკალური ვიდეო|სიმღერ|მომღერ|მღერ/.test(brief);
 
   if (!isMusicVideo) {
     return {
@@ -104,7 +111,13 @@ export function buildElevenMusicPrompt(o: { brief: string; totalSec: number; mus
     /hip[- ]?hop|\brap\b/.test(lower) ? 'hip-hop' :
     /\bfolk[- ]?pop\b/.test(lower) ? 'folk-pop' :
     /\bpop\b/.test(lower) ? 'pop' :
-    /\brock\b/.test(lower) ? 'rock' :
+    /\bblues\b|ბლუზ/.test(lower) && /\bjazz\b|ჯაზ/.test(lower) ? 'blues and jazz' :
+    /\bblues\b|ბლუზ/.test(lower) ? 'blues' :
+    /\bjazz\b|ჯაზ/.test(lower) ? 'jazz' :
+    /\bcountry\b|ქანთრ/.test(lower) ? 'country' :
+    /\bsoul\b|სოულ/.test(lower) ? 'soul' :
+    /\bfolk\b|ფოლკ|ხალხურ/.test(lower) ? 'folk' :
+    /\brock\b|როკ/.test(lower) ? 'rock' :
     /\belectronic|\bedm\b|\bsynth/.test(lower) ? 'electronic' : 'pop';
   // Explicit selector wins; otherwise infer from the brief (default male tenor).
   // 'duet' → two lead vocalists (male + female) trading lines and harmonising.
@@ -113,7 +126,9 @@ export function buildElevenMusicPrompt(o: { brief: string; totalSec: number; mus
   const vocalist = duet
     ? 'a male–female duet: a powerful male tenor and a powerful female lead trading verses and harmonising on the chorus'
     : female ? 'a powerful female lead vocalist' : 'a powerful male tenor lead vocalist';
-  const georgian = /\bgeorgian\b/.test(lower) || /ქართ/.test(brief);
+  // The song's language follows what the user WROTE: a brief typed in Georgian gets a Georgian song (Production
+  // 2026-10-16: "ძველ ფაბში მღერის ბლუზს და ჯაზს" came back as an English blues track), unless it asks for English.
+  const georgian = !/\benglish\b|ინგლისურ/.test(lower) && (/\bgeorgian\b/.test(lower) || /ქართ/.test(brief) || mostlyGeorgian(brief.split('\n\n')[0] ?? ''));
   const lyricLang = georgian ? 'sung in Georgian' : 'sung lyrics';
   const moody = /\bmoody\b|\bnight\b|\bneon\b|atmospheric|\bdark\b/.test(lower) || /ღამ|ნეონ/.test(brief);
 
