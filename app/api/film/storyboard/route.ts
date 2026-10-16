@@ -57,7 +57,8 @@ export const maxDuration = 300;
 const SINGLE_SHOT_CLAUSE =
   'A single, unified, continuous cinematic film still. One isolated focused shot. Strictly single frame — ' +
   'NOT a collage, not split-screen, no grid, no multiple panels, no side-by-side frames, no borders, no ' +
-  'dividers, no picture-in-picture. Every object is realistically grounded and held by human hands where held.';
+  'dividers, no picture-in-picture, no on-screen text, captions, titles, labels or scene numbers. Every object is ' +
+  'realistically grounded and held by human hands where held.';
 const _STORYBOARD_FRAME_NEGATIVE =
   'split screen, collage, grid, panels, comic templates, comic book style, diptych, triptych, multiple ' +
   'angles, floating objects, ungrounded physics, borders, dividers, picture-in-picture, deformed face, ' +

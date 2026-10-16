@@ -569,6 +569,29 @@ export function mergeSceneCaptions<T extends CaptionMergeScene>(
   });
 }
 
+/**
+ * The FRAME prompt for each scene once the per-scene story shots are in. The plan's own frame prompt is the WHOLE
+ * brief plus a camera beat, cut to 600 characters by the frame route, so for a brief that lists its scenes ("four
+ * scenes: ... the second scene ... the fourth scene ...") every frame request carried all of them and no beat. The
+ * image model then drew the whole storyboard as a 2x2 grid with "SCENE 1..4" captions, or answered NO_IMAGE
+ * (2026-10-16: scene 2 came back as four panels and scene 4 empty on every try and every re-roll). The scene's own
+ * story shot describes that scene alone, so it wins over the plan prompt; a per-scene action the user typed still
+ * wins over both, and a blank script slot keeps the plan prompt. Pure: returns a new record.
+ */
+export function storyFramePrompts(
+  framePrompts: Readonly<Record<number, string>>,
+  scripts: readonly (string | null | undefined)[],
+  isEdited: (ordinal: number) => boolean = () => false,
+): Record<number, string> {
+  const out: Record<number, string> = { ...framePrompts };
+  scripts.forEach((sc, i) => {
+    const ord = i + 1;
+    const script = sc?.trim();
+    if (script && !isEdited(ord)) out[ord] = script;
+  });
+  return out;
+}
+
 // ─── Plan model ──────────────────────────────────────────────────────────────
 
 /** PHASE 45 §2/§3 — a film accepts up to THREE user reference images that lock
