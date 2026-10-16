@@ -63,7 +63,10 @@ test.describe('voice mode, end to end', () => {
     const deck = await live.call('prepare_generation', { tool: 'presentation', prompt: 'საქართველოს ღვინის 8000 წელი' });
     expect(deck.ok).toBe(true);
     expect(String(deck.summary)).toMatch(/press Create/);
-    await expect.poll(async () => page.locator('textarea').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value))).toContain('საქართველოს ღვინის 8000 წელი');
+    // The deck's panel is a dynamic chunk (ServiceParamsPanel) the dev server compiles on its first use: the topic lands the
+    // moment that chunk arrives, 2–3 s here and past the default 5 s on a CI runner (run 38959203433). Production serves
+    // it prebuilt. The wait covers the compile; the assertion is unchanged.
+    await expect.poll(async () => page.locator('textarea').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value)), { timeout: 20_000 }).toContain('საქართველოს ღვინის 8000 წელი');
     await expect.poll(() => toolOnScreen(live)).toBe('presentation');
     const deckStart = await live.call('start_generation', { confirmed: 'yes' });
     expect(deckStart.ok).toBe(false); // a deck is made by its panel's Create, never by a voice start
