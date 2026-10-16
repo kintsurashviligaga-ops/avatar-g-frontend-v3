@@ -139,6 +139,23 @@ export interface ProceedDecision {
 }
 
 /**
+ * The share of the DAILY limit that only chat may spend. Media (video, image, music…) stops at the rest of it.
+ *
+ * WHY: the daily limit is one envelope for the whole site, and a few Veo clips spend most of it. On 2026-10-16 the
+ * day's video tests used it up and from then on every chat turn, live call and spoken reply was refused too, so the
+ * whole product looked broken for every user until midnight UTC. Chat costs about a cent a turn; keeping the last
+ * tenth of the day for it keeps the assistant answering while media waits for the next day. The total spend still
+ * never passes the owner's limit: this only decides which calls may use its last part.
+ */
+export const CHAT_DAILY_RESERVE_SHARE = 0.1;
+
+/** The daily ceiling a call of this service is held to (see CHAT_DAILY_RESERVE_SHARE). */
+export function dailyCeilingFor(service: ServiceType, dailyLimit: number): number {
+  if (!(dailyLimit > 0)) return dailyLimit;
+  return service === 'chat' ? dailyLimit : Math.round(dailyLimit * (1 - CHAT_DAILY_RESERVE_SHARE) * 10_000) / 10_000;
+}
+
+/**
  * THE gate. Returns false when the call would cross either hard limit, or when the §1.8 ladder has already
  * suspended that service. Deliberately evaluates the PROJECTED total (used + this call), not the current one:
  * checking after the fact is how a budget gets blown by a single expensive video.
@@ -154,7 +171,7 @@ export function canProceed(input: ProceedInput): ProceedDecision {
   if (!allowedServices(mode, input.isFreeTier === true).includes(input.service)) {
     return { ...base, allowed: false, reason: 'service_suspended' };
   }
-  if (input.limits.dailyLimit > 0 && projectedDaily > input.limits.dailyLimit) {
+  if (input.limits.dailyLimit > 0 && projectedDaily > dailyCeilingFor(input.service, input.limits.dailyLimit)) {
     return { ...base, allowed: false, reason: 'daily_limit' };
   }
   if (input.limits.monthlyLimit > 0 && projectedMonthly > input.limits.monthlyLimit) {

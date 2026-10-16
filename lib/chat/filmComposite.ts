@@ -28,6 +28,7 @@
 
 import 'server-only';
 import { hasVideoProvider, videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
+import { BUDGET_ERROR_PREFIX, budgetReasonOf, budgetRefusalMessage, isBudgetRefusal } from '@/lib/services/billing/budgetMessage';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
@@ -414,6 +415,14 @@ async function renderClip(
       // dead. ServiceManager.execute() reports exactly this shape (`predictionStatus: 'failed'` /
       // `success: false`, ServiceManager.ts:277) and its own retry loop already refuses it the same way
       // (line 371) — this call site was the one that did not.
+      // ⚠️ A BUDGET REFUSAL IS FINAL FOR THE DAY. The platform limit answered "no" before anything was sent to Google;
+      // asking three more times only repeats the "no" (2026-10-16: four refusals per clip, then "could not reach the
+      // video service" instead of the limit). It goes back as `budget_exceeded:<reason>` so the film says which
+      // limit stopped it and when it lifts.
+      if (dispatched.metadata?.budgetExceeded === true) {
+        const reason = typeof dispatched.metadata.budgetReason === 'string' ? dispatched.metadata.budgetReason : 'daily_limit';
+        return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: attempt, debited, error: `${BUDGET_ERROR_PREFIX}${reason}` };
+      }
       const dispatchDead = dispatched.success === false
         || dispatched.predictionStatus === 'failed'
         || dispatched.predictionStatus === 'canceled'
@@ -1116,6 +1125,21 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     else console.error(`[film] REFUND FAILED ref=${ref} user=${input.userId} amount=${amount} — needs manual credit`);
   };
 
+  // The platform's own spend limit stopped every clip (not the provider): say which limit and when it lifts.
+  const budgetRefused = (reason?: string): ChatResponse => ({
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message: budgetRefusalMessage(input.locale, reason),
+    metadata: {
+      provider: 'composite',
+      composite: true,
+      platformBudget: true,
+      budgetReason: reason ?? 'daily_limit',
+      balanceProtected: true,
+    },
+  });
+
   const connectionFailed = (diagnostic?: string | null): ChatResponse => ({
     success: false,
     intent: 'video_generation',
@@ -1256,6 +1280,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // failure is actionable instead of an opaque "couldn't connect".
     const reason = clips.map((c) => c.error).find((e): e is string => Boolean(e)) ?? null;
     await undoStart();
+    const budgetError = clips.map((c) => c.error).find((e): e is string => isBudgetRefusal(e));
+    if (budgetError) return budgetRefused(budgetReasonOf(budgetError));
     return connectionFailed(reason);
   }
 

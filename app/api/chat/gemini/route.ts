@@ -57,7 +57,8 @@ import { savedFactsBlock } from '@/lib/memory/context';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, refundRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isReplyLocale, resolveReplyLocale } from '@/lib/chat/replyLocale';
-import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { chatBudgetRefusal, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { anonymousGenerationAllowed, isAnonymousUser, signInToGenerateBody } from '@/lib/auth/generationGate';
 import {
   GUEST_GLOBAL_KEY,
@@ -629,7 +630,7 @@ export async function POST(req: NextRequest) {
   // Started now, awaited inside the stream: their latencies overlap each other and the Response is returned at once.
   // The budget estimate covers the platform prompt and the history text, not just the latest message, and is priced
   // at the mode's PRIMARY model — a Pro turn pre-checked at the flat Flash rate looked cheaper than it is.
-  const budgetPromise = chatBudgetAllows(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => true);
+  const budgetPromise = chatBudgetRefusal(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => null);
   const preamblesPromise: Promise<[string | null, string | null]> =
     auth.supabase && accountId
       ? Promise.all([
@@ -717,9 +718,11 @@ export async function POST(req: NextRequest) {
       try {
         // ── BUDGET GATE (Master Task §2.1.1) — in-stream, so a refusal is a normal assistant message, not a dead
         //    turn. Fails OPEN on a guard fault.
-        if (!(await budgetPromise)) {
+        const budgetRefused = await budgetPromise;
+        if (budgetRefused) {
           tryWrite({ meta: { provider: 'budget', model: 'none' } });
-          notice('budget', { afterText: false, retryable: false });
+          // Which limit, and when it lifts (2026-10-16: "try again later" left the owner guessing until midnight UTC).
+          notice('budget', { afterText: false, retryable: false, message: budgetRefusalMessage(noticeLocale, budgetRefused) });
           return;
         }
 

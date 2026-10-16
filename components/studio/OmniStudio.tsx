@@ -102,8 +102,8 @@ import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
-import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
-import { formatWalletBalance } from '@/lib/billing/gel';
+import { creditCostFor, creditsWithUsd } from '@/lib/credits/pricing';
+import { budgetShortLabel } from '@/lib/services/billing/budgetMessage';
 import { nextAvatarAttempt, startRefusal } from '@/lib/avatar/renderAttempts';
 import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob';
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
@@ -1622,6 +1622,9 @@ interface StoryboardState {
   /** Scene ordinals whose frame is still being generated (drives the N/M counter
    *  + per-tile spinner). Empty/undefined once every frame has settled. */
   pending?: number[];
+  /** Set when the PLATFORM budget refused a frame (the route's `budgetMessage`): the board shows it — which limit,
+   *  when it lifts — instead of promising the empty tiles "fill in automatically", which they cannot while it holds. */
+  budgetNote?: string | null;
   /** Prompt-Agent locked character fragment (from /api/film/storyboard scriptsOnly) —
    *  threaded to the render so the protagonist is identical across every clip. */
   character?: string | null;
@@ -1706,7 +1709,7 @@ function commitSceneOrder(prev: StoryboardState, ordered: StoryboardScene[]): St
  *   • When the frame lands it MORPHS in via a blur-up (blurred+scaled → sharp), so
  *     an agent's delivery glides in with no layout pop (fixed-aspect container).
  */
-function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, clipSec, structEnabled, onRegenScene, onEditScene, onView, onDelete, onMove, dragEnabled, dragActive, dragging, dragOver, onDragStartScene, onDragOverScene, onDropScene, onDragEndScene }: {
+function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, clipSec, structEnabled, emptyNote, onRegenScene, onEditScene, onView, onDelete, onMove, dragEnabled, dragActive, dragging, dragOver, onDragStartScene, onDragOverScene, onDropScene, onDragEndScene }: {
   s: StoryboardScene;
   t: (typeof COPY)[Lang];
   portrait: boolean;
@@ -1720,6 +1723,8 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
   clipSec: number;
   /** P9 — structural edits (move/delete) only once frames have settled (not streaming). */
   structEnabled: boolean;
+  /** Replaces the empty tile's "fills in at render" when that is not true (the platform limit refused the frame). */
+  emptyNote?: string | null;
   onRegenScene: (ordinal: number, baseImage?: string) => void;
   onEditScene: (ordinal: number, text: string) => void;
   onView: (url: string) => void;
@@ -1812,7 +1817,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
                 <ImageIcon size={18} className="text-app-muted/40" />
                 {/* Settled board (structEnabled) → this empty scene auto-fills at render, so say so
                     instead of the ambiguous "no frame" that reads as broken. Mid-stream → "no frame". */}
-                <span className="px-2 text-center text-[10px] leading-tight text-app-muted/45">{structEnabled ? t.sbAutoFill : t.sbEmpty}</span>
+                <span className="px-2 text-center text-[10px] leading-tight text-app-muted/45">{emptyNote ?? (structEnabled ? t.sbAutoFill : t.sbEmpty)}</span>
               </>
             )}
           </div>
@@ -1911,7 +1916,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
 /** Exported for its unit test only. */
-export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncCredits, speechTooLong, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
+export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCredits, speechTooLong, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
@@ -2017,6 +2022,7 @@ export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, l
                 total={total}
                 clipSec={boardClipSec}
                 structEnabled={!streaming}
+                emptyNote={sb.budgetNote ? budgetShortLabel(locale) : null}
                 onRegenScene={onRegenScene}
                 onEditScene={onEditScene}
                 onView={onView}
@@ -2054,14 +2060,15 @@ export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, l
             <span className={`inline-flex items-center gap-1 font-semibold ${loaded === total ? 'text-emerald-400' : 'text-amber-400'}`}>
               <Check size={11} /> <span className="tabular-nums">{loaded}/{total}</span> {t.sbReady}
             </span>
-            {loaded < total && <span className="text-app-muted">· {total - loaded} {t.sbAutoFill}</span>}
+            {loaded < total && !sb.budgetNote && <span className="text-app-muted">· {total - loaded} {t.sbAutoFill}</span>}
+            {loaded < total && sb.budgetNote && <span data-testid="storyboard-budget-note" className="w-full text-amber-400">{sb.budgetNote}</span>}
             <span className="text-app-muted/70">· ⏱ {t.sbRenderNote}</span>
           </div>
         )}
         {/* Above the buttons, not under them: the bar's bottom padding is the phone's safe area. */}
         {(lipsyncCredits ?? 0) > 0 && (
           <p data-testid="storyboard-lipsync-addon" data-credits={lipsyncCredits} className="px-4 pb-2 pt-1 text-center text-[11px] leading-snug text-app-muted">
-            {lipsyncAddOnNote(lipsyncCredits ?? 0, _locale)}
+            {lipsyncAddOnNote(lipsyncCredits ?? 0, locale)}
           </p>
         )}
         {speechTooLong && (
@@ -2077,7 +2084,7 @@ export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, l
             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-all duration-200 hover:opacity-90 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50">
             <Film size={16} /> {t.sbGenerate}
             {free
-              ? <span className="rounded-full bg-app-bg/20 px-2 py-0.5 text-[11.5px] font-bold">{_locale === 'en' ? 'Free' : _locale === 'ru' ? 'Бесплатно' : 'უფასო'}</span>
+              ? <span className="rounded-full bg-app-bg/20 px-2 py-0.5 text-[11.5px] font-bold">{locale === 'en' ? 'Free' : locale === 'ru' ? 'Бесплатно' : 'უფასო'}</span>
               : typeof price === 'number' && price > 0 && (
                 <span className="inline-flex items-center gap-1 tabular-nums" aria-hidden="true"><Sparkle size={13} fill="currentColor" strokeWidth={0} />{price}</span>
               )}
@@ -2273,7 +2280,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Credit-deduction toast — shown briefly after each successful generation
   // ("−N credits · X.XX ₾"). Pricing is centralised in lib/credits/pricing.ts; the
   // real balance is still the GEL wallet (the ₾ pill re-reads it on the next open).
-  const [creditToast, setCreditToast] = useState<{ credits: number; balanceGel: number | null } | null>(null);
+  const [creditToast, setCreditToast] = useState<{ credits: number; balanceCredits: number | null } | null>(null);
   // Single dismiss timer — cleared before rescheduling so overlapping generations don't stack stale timers
   // that prematurely hide a newer toast (V4).
   const creditToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2306,7 +2313,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (kind === 'music') track('music_generated', { credits });
     else if (kind === 'image') track('image_generated', { count: opts?.count ?? 1 });
     else if (kind === 'video' || kind === 'avatar') track('video_generated', { duration: opts?.seconds ?? null, credits });
-    setCreditToast({ credits, balanceGel: null });
+    setCreditToast({ credits, balanceCredits: null });
     // V4 — a spend just landed server-side; tell the app shell to re-read the header ₾ pill
     // so the balance visibly drops (the shell only refreshed on mount/auth/modal-close before,
     // which is why generations looked like they never deducted).
@@ -2339,9 +2346,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const res = await fetch('/api/credits/balance', { cache: 'no-store', credentials: 'include' });
         const j = (await res.json().catch(() => ({}))) as { balance?: number | null };
         if (typeof j?.balance === 'number') {
-          setCreditToast((c) => (c ? { ...c, balanceGel: j.balance as number } : c));
-          // Credits low: warn under ~1 ₾ (≈10 credits at 0.10 ₾/cr).
-          if (j.balance < 1) fileNotif('credits_low', locale === 'en' ? 'Credits almost out ⚠️' : locale === 'ru' ? 'Кредиты заканчиваются ⚠️' : 'კრედიტები თითქმის ამოიწურა ⚠️');
+          // `balance` is the wallet in CREDITS (profiles.credits_balance), not GEL.
+          setCreditToast((c) => (c ? { ...c, balanceCredits: j.balance as number } : c));
+          // Credits low: warn under 10 credits (≈1 ₾ at 0.10 ₾/cr). This compared credits with 1 as if they were ₾.
+          if (j.balance < 10) fileNotif('credits_low', locale === 'en' ? 'Credits almost out ⚠️' : locale === 'ru' ? 'Кредиты заканчиваются ⚠️' : 'კრედიტები თითქმის ამოიწურა ⚠️');
         }
       } catch { /* fail-soft */ }
     })();
@@ -4904,13 +4912,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               signal: ac.signal,
               body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: anchorRefs, style: videoStyle, ...templateRef, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal], musicVideoMode }),
             });
-            const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
+            const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null; budgetRefused?: boolean; budgetMessage?: string };
             const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
-            if (url || attempt === MAX - 1) {
+            // The platform limit said no: retrying asks again for the same "no". Settle the tile and say why.
+            const budgetNote = !url && jf.budgetRefused && typeof jf.budgetMessage === 'string' ? jf.budgetMessage : null;
+            if (url || budgetNote || attempt === MAX - 1) {
               setStoryboard((prev) => prev ? {
                 ...prev,
                 scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
                 pending: (prev.pending ?? []).filter((o) => o !== ordinal),
+                ...(budgetNote ? { budgetNote } : {}),
               } : prev);
               return;
             }
@@ -4966,14 +4977,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         credentials: 'include',
         body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: refsForScene, style: videoStyle, ...(pickedVideoTemplateId ? { templateId: pickedVideoTemplateId } : {}), locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null; budgetRefused?: boolean; budgetMessage?: string };
       if (j.success && typeof j.frameUrl === 'string') {
         const url = j.frameUrl;
         setStoryboard((prev) => prev
           // The re-rolled frame is AI-generated (the sceneOrdinal route always genFrames), so it is NO LONGER the
           // user's exact uploaded image — clear `anchored` so the "Source Reference Locked" badge doesn't go stale.
-          ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url, anchored: false } : s)) }
+          ? { ...prev, budgetNote: null, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url, anchored: false } : s)) }
           : prev);
+      } else if (j.budgetRefused && typeof j.budgetMessage === 'string') {
+        const budgetNote = j.budgetMessage;
+        setStoryboard((prev) => (prev ? { ...prev, budgetNote } : prev));
       }
     } catch {
       /* keep the existing frame on failure */
@@ -12397,7 +12411,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       )}
       {/* Credit-deduction toast — dark card, green check, 3 lines (done · spent · balance). */}
       {creditToast && (() => {
-        const creditsWord = locale === 'en' ? 'credits' : locale === 'ru' ? 'кред.' : 'კრედიტი';
         return (
           <div
             className="pointer-events-none fixed inset-x-0 z-[111] mx-auto flex w-fit max-w-[88vw] animate-[fadeIn_0.2s_ease-out] flex-col gap-1 rounded-2xl bg-app-elevated px-4 py-3 text-[13px] font-semibold tabular-nums text-app-text shadow-lg ring-1 ring-app-accent/30"
@@ -12406,9 +12419,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           >
             <span className="flex items-center gap-1.5"><Check size={15} className="text-emerald-400" /> {locale === 'en' ? 'Generation complete' : locale === 'ru' ? 'Генерация завершена' : 'გენერაცია დასრულდა'}</span>
             {/* Line icons, not 💳/💰 (docs/DESIGN.md bans emoji as UI) — this toast follows every paid generation. */}
-            <span className="flex items-center gap-1.5 text-app-muted"><CreditCard size={14} aria-hidden="true" /> −{creditToast.credits} {creditsWord} ({formatWalletBalance(creditsToGel(creditToast.credits), locale)})</span>
-            {creditToast.balanceGel !== null && (
-              <span className="flex items-center gap-1.5 text-app-muted"><Wallet size={14} aria-hidden="true" /> {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{gelToCredits(creditToast.balanceGel)} {creditsWord}</span> ({formatWalletBalance(creditToast.balanceGel, locale)})</span>
+            <span className="flex items-center gap-1.5 text-app-muted"><CreditCard size={14} aria-hidden="true" /> −{creditsWithUsd(creditToast.credits, locale)}</span>
+            {creditToast.balanceCredits !== null && (
+              <span className="flex items-center gap-1.5 text-app-muted"><Wallet size={14} aria-hidden="true" /> {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{creditsWithUsd(creditToast.balanceCredits, locale)}</span></span>
             )}
           </div>
         );

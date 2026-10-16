@@ -35,15 +35,24 @@ export const UNSPECIFIED_CHAT_MODEL = 'chat';
  * the per-user credit wallet still gates independently.
  */
 export async function chatBudgetAllows(inputText: string, model: string = UNSPECIFIED_CHAT_MODEL): Promise<boolean> {
+  return (await chatBudgetRefusal(inputText, model)) === null;
+}
+
+/**
+ * The same check, answering WHY when it refuses: the guard's reason (`daily_limit`, `monthly_limit`, …) or null when the
+ * turn may run. A route that tells the person about the refusal uses this, so the notice can say which limit stopped the
+ * chat and when it lifts (lib/services/billing/budgetMessage). Fails OPEN exactly like chatBudgetAllows.
+ */
+export async function chatBudgetRefusal(inputText: string, model: string = UNSPECIFIED_CHAT_MODEL): Promise<string | null> {
   try {
     const { canProceed } = await import('./BillingGuard');
     const { estimateCost, approximateTokens } = await import('./costModel');
     const decision = await canProceed(
       estimateCost({ service: 'chat', model: modelLabel(model), inputTokens: approximateTokens(inputText), outputTokens: 800 }),
     );
-    return decision.allowed;
+    return decision.allowed ? null : decision.reason;
   } catch {
-    return true;
+    return null;
   }
 }
 

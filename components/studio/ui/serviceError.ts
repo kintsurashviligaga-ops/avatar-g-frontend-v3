@@ -15,6 +15,8 @@
  * Every message says what happened AND what to do next, because "something went wrong" leaves the user
  * with nowhere to go.
  */
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
+
 export type ErrLang = 'ka' | 'en' | 'ru';
 
 type Known =
@@ -200,7 +202,13 @@ export function refundNoticeOr(body: unknown, locale: string, otherwise: string)
 
 export function describeGenerationFailure(body: unknown, locale: string, fallback: string): string {
   const lang: ErrLang = locale === 'en' || locale === 'ru' ? locale : 'ka';
-  const b = (body && typeof body === 'object' ? body : {}) as { success?: unknown; refunded?: unknown; code?: unknown; error?: unknown; message?: unknown };
+  const b = (body && typeof body === 'object' ? body : {}) as { success?: unknown; refunded?: unknown; code?: unknown; error?: unknown; message?: unknown; budgetReason?: unknown };
+  // The platform's own AI limit (lib/services/billing/budgetMessage): the route's sentence names the limit and when it
+  // lifts, which no generic line can. It wins over the refund notice, since it already says the balance was kept.
+  if (b.code === 'platform_budget' || b.error === 'platform_budget') {
+    if (typeof b.message === 'string' && b.message.trim()) return b.message;
+    return budgetRefusalMessage(lang, typeof b.budgetReason === 'string' ? b.budgetReason : null);
+  }
   if (b.refunded === true && b.success !== true) return COPY[lang].generation_refunded;
   for (const field of [b.code, b.error]) {
     const key = typeof field === 'string' && field.trim() ? knownFor(field.trim()) : null;
