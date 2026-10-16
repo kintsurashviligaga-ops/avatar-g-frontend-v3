@@ -4,7 +4,7 @@
  * generation starts. The Photographer and the Interior designer used to only open their panel from the chat.
  */
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
-import { shootKindForTool, shootOfferText, shootWire } from './chatShoot';
+import { shootKindForTool, shootOfferText, shootWire, productAdOfferText, productAdPhotoAsk, PRODUCT_PHOTO_WAIT_MS } from './chatShoot';
 
 const kindOf = (text: string) => {
   const r = routeAgentIntent(text);
@@ -56,5 +56,26 @@ describe('Agent G\'s words on the card', () => {
     const t = shootOfferText({ kind: 'photoshoot', prompt: long, withPhoto: true, locale: 'ka' });
     expect(t).toContain(`${'x'.repeat(397)}…`);
     expect(t).not.toContain('x'.repeat(398));
+  });
+});
+
+describe('the product ad ordered in the chat', () => {
+  it.each(['make a product ad for my sneakers', 'პროდუქტის რეკლამა გამიკეთე', 'ამ პროდუქტის სარეკლამო ვიდეო გამიკეთე', 'сделай рекламу товара'])(
+    '„%s" opens the product ad, which the chat now offers on its card', (text) => {
+      const r = routeAgentIntent(text);
+      expect(r?.kind === 'open' ? r.tool : null).toBe('product');
+    });
+
+  it('the card names the photo, the length, the frame and the style — not the order\'s words (the route takes none)', () => {
+    expect(productAdOfferText({ seconds: 8, aspect: '9:16', style: 'luxury', locale: 'ka' }))
+      .toBe('მზად ვარ, გავაკეთო პროდუქტის სარეკლამო ვიდეო შენი ფოტოდან: 8 წმ, 9:16, სტილი „ლუქსი".\nდავიწყო?');
+    expect(productAdOfferText({ seconds: 24, aspect: '1:1', style: 'nature', locale: 'en' })).toContain('24 s, 1:1, style „Nature"');
+    expect(productAdOfferText({ seconds: 8, aspect: '16:9', style: 'epic', locale: 'ru' }).endsWith('Начинать?')).toBe(true);
+  });
+
+  it('with no photo Agent G asks for one and promises the price first; it waits ten minutes for it', () => {
+    expect(productAdPhotoAsk('ka')).toContain('ფოტო მჭირდება');
+    expect(productAdPhotoAsk('en')).toContain('show the price before anything starts');
+    expect(PRODUCT_PHOTO_WAIT_MS).toBe(600_000);
   });
 });

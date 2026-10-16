@@ -160,7 +160,7 @@ import { classifyFocusInput, gateMessage, isAffirmation, isConversational, merge
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
 import { aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference, orientationForAspect } from '@/lib/chat/chatConsent';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
-import { shootKindForTool, shootOfferText, shootWire } from '@/lib/chat/chatShoot';
+import { shootKindForTool, shootOfferText, shootWire, productAdOfferText, productAdPhotoAsk, PRODUCT_PHOTO_WAIT_MS } from '@/lib/chat/chatShoot';
 import type { StudioWire } from '@/lib/studio/shootWire';
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
@@ -2506,6 +2506,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, []);
   /** Agent G asked clarifying questions about this prompt (lib/chat/focusGate); the user's next message answers them. */
   const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number; /** asked in plain chat (one-shot) */ inChat?: boolean } | null>(null);
+  /** When Agent G asked for the product's photo for a product ad ordered in the chat without one (the photo sent next makes its card). */
+  const productAskRef = useRef<number | null>(null);
   /** Index in `messages` where Agent G's current gate turn began — the Image desk shows its latest word while the thread is hidden. */
   const [gateFrom, setGateFrom] = useState<number | null>(null);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
@@ -4477,8 +4479,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // PHASE 2 L1 — Product-Ad generate: product photo + commercial preset → one i2v
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
   // `hookOverride` — the composer's words (the one field on screen on a phone); the panel's hook field is the fallback.
-  const generateProductAd = useCallback((hookOverride?: string) => {
-    if (!productImage) return;
+  // `chatPhoto` — a product ad Agent G's card agreed in the chat (lib/chat/chatShoot): that photo, alone, and the order and
+  // its photo are already in the thread above the card.
+  const generateProductAd = useCallback((hookOverride?: string, chatPhoto?: string) => {
+    if (!chatPhoto && !productImage) return;
     const hook = (hookOverride?.trim() || productHook.trim()).slice(0, AD_HOOK_MAX_CHARS);
     void ensureNotificationPermission(); // PHASE 20 — permission on the generate gesture
     // The product ad renders PER-JOB in its OWN chat bubble (by id) through the Cap-3 queue —
@@ -4490,8 +4494,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const bubbleId = `product_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     // ── SNAPSHOT every panel input NOW so this job is independent of later panel edits AND of
     //    other concurrent product jobs (true per-job isolation via jobId/bubbleId). ────────────
-    const photos = [productImage, ...productImages].filter((p): p is string => !!p);
-    const firstPhoto = productImage;
+    const photos = chatPhoto ? [chatPhoto] : [productImage, ...productImages].filter((p): p is string => !!p);
+    const firstPhoto = photos[0]!;
     const preset = productPreset;
     const duration = productDuration;
     // Dedicated product aspect → the remix op's aspect AND the assemble orientation.
@@ -4512,7 +4516,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const scorePrompt = `${preset} product commercial, premium, uplifting`;
     // Open the result in the chat (like image/music/swap): close the panel + drop a progress bubble.
     setOptionsOpen(false);
-    setMessages((prev) => [...prev, { role: 'user', text: `🛍 ${productBrand.trim() || jobLabel}` }, { role: 'assistant', text: t.remixRunning, id: bubbleId, remixOpKind: 'productad' }]);
+    setMessages((prev) => [...prev, ...(chatPhoto ? [] : [{ role: 'user' as const, text: `🛍 ${productBrand.trim() || jobLabel}` }]), { role: 'assistant', text: t.remixRunning, id: bubbleId, remixOpKind: 'productad' }]);
     submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: (job) => trackJobSettle(job, bubbleId), run: async ({ signal, onProgress, jobId }): Promise<string> => {
     // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
     trackJobUpdate(jobId, jobLabel, 10);
@@ -6490,6 +6494,34 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // card, its plan card, or a reply that offered a quoted, priced prompt now does what that card's button does, or starts
     // the offer itself (consentRef, below the cards' handlers). Only agreement counts (lib/chat/chatConsent): a yes that
     // changes the job goes on to Agent G, which offers again. The Live call's words never start spending.
+    // THE PRODUCT AD ORDERED IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat). It needs the product's photo:
+    // Agent G's card offers the ad from the photo at the Product ad panel's length, frame, style and price, and its Create
+    // or a „კი" runs the panel's own job with that photo. Ordered without one, Agent G asks for it; the photo sent next
+    // (alone, or with words that order nothing else) makes the card. Any other message ends the question.
+    const offerProductAd = (words: string, photo: Media) => {
+      const credits = quoteCredits({ tool: 'product', seconds: productDuration });
+      const card: AgentGCardState = { kind: 'confirm', target: 'video', prompt: words, credits, madeIn: 'chat', single: true, product: { image: photo.dataUrl } };
+      gatePendingRef.current = null;
+      productAskRef.current = null;
+      trackQuoteShown('video.product-ad', credits, 'agent-card');
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', text: words, medias: [photo], modelMedias: [] },
+        { role: 'assistant', text: productAdOfferText({ seconds: productDuration, aspect: productAspect, style: productPreset, locale }), agentG: card },
+      ]);
+      setGateFrom(messages.length);
+      setAttachments([]);
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+    };
+    const productAskedAt = productAskRef.current;
+    productAskRef.current = null;
+    if (mode === 'chat' && !opts?.confirmed && productAskedAt !== null && Date.now() - productAskedAt < PRODUCT_PHOTO_WAIT_MS) {
+      const photo = attachments.length === 1 && isImage(attachments[0]!.mimeType) ? attachments[0]! : null;
+      if (photo && (!text || (!isGenerativeCommand(text) && !detectStudioIntent(text) && !routeAgentIntent(text) && !isConsentToStart(text)))) {
+        offerProductAd(text, photo);
+        return;
+      }
+    }
     if (text && !opts?.confirmed && !opts?.explicit && !opts?.fromLive && isConsentToStart(text) && consentRef.current(text)) {
       setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
       return;
@@ -6854,6 +6886,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ]);
       setGateFrom(messages.length);
       if (photos.length) setAttachments([]);
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      return;
+    }
+    // The product ad (see offerProductAd above): its card with the photo attached now, or Agent G asks for one.
+    if (agentRoute?.kind === 'open' && agentRoute.tool === 'product' && !attachments.some((a) => !isImage(a.mimeType))) {
+      const photo = attachments.find((a) => isImage(a.mimeType));
+      if (photo) { offerProductAd(text, photo); return; }
+      productAskRef.current = Date.now();
+      gatePendingRef.current = null;
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: productAdPhotoAsk(locale) }]);
       setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
       return;
     }
@@ -7456,7 +7498,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
+  }, [productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -8731,9 +8773,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     gatePendingRef.current = null;
     setGateFrom(null);
     resolveGateCard(idx);
+    if (card.product) {
+      trackGenerationConfirmed('video.product-ad', 'agent-card', card.credits || null);
+      generateProductAd(undefined, card.product.image);
+      return;
+    }
     trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
     void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(card.aspect ? { aspect: card.aspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}), ...(card.studio ? { studio: card.studio } : {}) });
-  }, [resolveGateCard, send, videoMode]);
+  }, [resolveGateCard, send, videoMode, generateProductAd]);
   const editGate = useCallback((idx: number) => {
     const card = messagesRef.current[idx]?.agentG;
     if (!card || card.done) return;
@@ -9175,6 +9222,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       gatePendingRef.current = null;
       setGateFrom(null);
       resolveGateCard(idx);
+      if (card.product) {
+        trackGenerationConfirmed('video.product-ad', 'agent-card', card.credits || null);
+        generateProductAd(undefined, card.product.image);
+        return true;
+      }
       trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
       void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(cardAspect ? { aspect: cardAspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}), ...(card.studio ? { studio: card.studio } : {}) });
       return true;

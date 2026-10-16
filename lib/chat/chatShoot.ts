@@ -8,6 +8,8 @@
  * through the same image route the panels use (`studio` = lib/studio/shootWire, resolved on the server), one charge and
  * one refund path.
  *
+ * The product ad runs the same way (its card carries the product's photo; Create runs the panel's own product-ad job).
+ *
  * Pure and client-safe.
  */
 import type { ToolId } from '@/lib/studio/tools';
@@ -64,3 +66,38 @@ export function shootOfferText(input: { kind: ShootKind; prompt: string; withPho
   const quote = l === 'en' ? `“${cut}”` : `«${cut}»`;
   return [head, quote, ...(input.withPhoto ? [] : [NO_PHOTO[input.kind][l]]), ASK[l]].join('\n');
 }
+
+export type ProductStyle = 'splash' | 'epic' | 'luxury' | 'nature';
+const STYLE: Record<ProductStyle, Record<Lang, string>> = {
+  splash: { ka: 'შხეფა', en: 'Splash', ru: 'Всплеск' },
+  epic: { ka: 'ეპიკური', en: 'Epic', ru: 'Эпик' },
+  luxury: { ka: 'ლუქსი', en: 'Luxury', ru: 'Люкс' },
+  nature: { ka: 'ბუნება', en: 'Nature', ru: 'Природа' },
+};
+
+/**
+ * The product ad, ordered in the chat. It needs the product's photo: with one, Agent G's card offers the ad at its price,
+ * at the panel's length, frame and style; without one, Agent G asks for it, and the photo sent next makes the card.
+ * The ad is drawn from the photo and the style (the route takes no words), so the card names those, not the order's words.
+ */
+export function productAdOfferText(input: { seconds: number; aspect: string; style: ProductStyle; locale: string | null | undefined }): string {
+  const l = lang(input.locale);
+  const style = STYLE[input.style][l];
+  const head = l === 'en'
+    ? `I am ready to make a product ad video from your photo: ${input.seconds} s, ${input.aspect}, style „${style}".`
+    : l === 'ru'
+      ? `Готова сделать рекламное видео товара по вашему фото: ${input.seconds} с, ${input.aspect}, стиль «${style}».`
+      : `მზად ვარ, გავაკეთო პროდუქტის სარეკლამო ვიდეო შენი ფოტოდან: ${input.seconds} წმ, ${input.aspect}, სტილი „${style}".`;
+  return [head, ASK[l]].join('\n');
+}
+
+/** Agent G's question when a product ad is ordered with no photo. */
+export function productAdPhotoAsk(locale: string | null | undefined): string {
+  const l = lang(locale);
+  if (l === 'en') return 'For the product ad I need the product\'s photo. Attach it and send it to me; I will show the price before anything starts.';
+  if (l === 'ru') return 'Для рекламы товара нужно его фото. Прикрепите и отправьте его мне; цену покажу до запуска.';
+  return 'პროდუქტის რეკლამისთვის მისი ფოტო მჭირდება. მიამაგრე და გამომიგზავნე; ფასს დაწყებამდე გაჩვენებ.';
+}
+
+/** How long a product ad ordered without a photo waits for one (the photo sent next makes its card). */
+export const PRODUCT_PHOTO_WAIT_MS = 10 * 60_000;

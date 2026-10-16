@@ -34,6 +34,8 @@ export interface AgentGCardState {
   single?: boolean;
   /** A Photographer / Interior designer render ordered in the chat (lib/chat/chatShoot): Create sends it as the image route's `studio`. */
   studio?: StudioWire;
+  /** A product ad ordered in the chat (lib/chat/chatShoot): Create runs the product ad from this photo, at the panel's length and frame. */
+  product?: { image: string };
   /** Decided already — the buttons are gone. */
   done?: boolean;
 }
