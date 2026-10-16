@@ -127,6 +127,14 @@ describe('the chat step: the Video tool opens in the mode and at the length the 
     expect(planChatTurn('ოთხწუთიანი ფილმი გამიკეთე თბილისზე', snap())).toMatchObject({ kind: 'open', tool: 'video', videoMode: 'documentary', durationSec: 240 });
   });
 
+  test('a memory of a video, a refusal or a question does not open the Video tool (2026-10-16)', () => {
+    expect(planChatTurn('გუშინ რომ ვიდეო გამიკეთე, მომეწონა', snap()).kind).toBe('pass');
+    expect(planChatTurn('რატომ ვერ გამიკეთე ვიდეო ზღვაზე', snap()).kind).toBe('pass');
+    // …while the same verb-final order still opens it, and so do the polite and the wish forms
+    expect(planChatTurn('შეგიძლია ვიდეო გამიკეთო ზღვაზე?', snap())).toMatchObject({ kind: 'open', tool: 'video' });
+    expect(planChatTurn('მომიმზადე ვიდეო ზღვაზე', snap())).toMatchObject({ kind: 'open', tool: 'video' });
+  });
+
   test('no length in the words: the step carries none (the tool must not inherit the last project\'s)', () => {
     const step = planChatTurn('make a video about the sea', snap({ locale: 'en' }));
     expect(step).toMatchObject({ kind: 'open', tool: 'video', videoMode: 'documentary' });

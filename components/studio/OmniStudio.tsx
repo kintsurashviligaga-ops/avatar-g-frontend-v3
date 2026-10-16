@@ -127,7 +127,7 @@ import { useDurableProgress } from '@/hooks/useDurableProgress';
 import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from '@/lib/jobs/trackJob';
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
-import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from '@/lib/chat/intentDetector';
+import { detectIntent, isGenerativeCommand, isMusicVideoIntent, isVideoIntent, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, updateMessage, getMessages, getConversations } from '@/lib/chat-history';
 import { cardSignature, hasCard, mergeServerTurns, readTurnMeta, turnMetaOf } from '@/lib/chat/turnMeta';
 import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
@@ -1227,22 +1227,6 @@ const AGENT_G_PHASES: { icon: string; ka: string; en: string; ru: string }[] = [
   { icon: '🚀', ka: 'ვხსნი რედაქტორს…', en: 'Opening the editor…', ru: 'Открываю редактор…' },
 ];
 
-// FIX 2 — Chat-mode video intent. When the user describes a video in plain Chat
-// mode, the old behaviour was an inert text reply ("▶ Video Studio will…") that
-// fired NOTHING. These detectors let the chat handler auto-route a strong video
-// brief straight into the real Video Studio pipeline. Deliberately conservative:
-// a bare "video" mention does NOT fire — it needs an explicit production cue (make
-// a video / music video / short film / 30-second clip), in en/ka/ru.
-function isVideoIntent(s: string): boolean {
-  const b = (s || '').toLowerCase();
-  if (/\b(music\s*video|video\s*clip|short\s*film|mini[\s-]?(movie|film))\b/.test(b)) return true;
-  if (/\b(make|create|generate|produce|render|build|do)\b[\s\S]{0,48}\bvideo\b/.test(b)) return true;
-  if (/\b(30|thirty)[\s-]?(second|sec|s)\b[\s\S]{0,40}\b(video|film|clip)\b/.test(b)) return true;
-  // Georgian / Russian explicit cues.
-  if (/მუსიკალური\s*ვიდეო|ვიდეო\s*კლიპ|შემიქმენ[\s\S]{0,40}ვიდეო|გააკეთ[\s\S]{0,40}ვიდეო|ფილმ/.test(s || '')) return true;
-  if (/музыкальн\w*\s*клип|видеоклип|сними[\s\S]{0,30}видео|сделай[\s\S]{0,30}видео/.test(b)) return true;
-  return false;
-}
 /**
  * Does the text NAME a video deliverable (any of the 3 locales)? Deliberately a plain noun check with no
  * imperative-verb requirement — it is only ever used TOGETHER with an attached photo, and "here's my photo +
@@ -1258,12 +1242,6 @@ function mentionsVideoDeliverable(s: string): boolean {
   return /\b(video|film|movie|clip|trailer|reel|footage)\b/.test(b)
     || /ვიდეო|ფილმ|კლიპ|ტრეილერ|რგოლ|მოკლემეტრაჟ/.test(s || '')
     || /видео|фильм|клип|трейлер|ролик/.test(b);
-}
-function isMusicVideoIntent(s: string): boolean {
-  const b = (s || '').toLowerCase();
-  return /\bmusic\s*video\b|\br&b\b|\brnb\b|\bsong\b|\bsinger\b|\bvocal|\blyric/.test(b)
-    || /მუსიკალური\s*ვიდეო|სიმღერ|მომღერ|ვოკალ|ვიდეო\s*კლიპ/.test(s || '')
-    || /музыкальн\w*\s*клип|видеоклип|песн\w|вокал|певиц/.test(b);
 }
 
 // ── Multi-conversation chat history (localStorage) ───────────────────────────
@@ -7409,7 +7387,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // brief fails — the exact reason a photo + film brief used to fall through to plain chat and get a
     // "I'll hand this to the Video Studio…" REPLY instead of an actual render.
     const chatPhotoVideoBrief = attachments.some((a) => isImage(a.mimeType)) && mentionsVideoDeliverable(text);
-    if (mode === 'chat' && text && (chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || (chatIntent?.intent === 'video_generation' && chatIntent.confidence >= 0.7))))) {
+    if (mode === 'chat' && text && (chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || chatLane === 'video_generation')))) {
       const musicVideo = isMusicVideoIntent(text);
       setMode('video');
       setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
