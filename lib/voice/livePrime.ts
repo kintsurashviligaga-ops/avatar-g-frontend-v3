@@ -50,6 +50,8 @@ function clearTtl(): void {
 export function primeLive(): void {
   if (typeof window === 'undefined') return;
   try {
+    // A second tap during loading must not discard the already capturing microphone.
+    if (slot && now() - slot.at < 10_000) return;
     // Drop an older prime that nobody took (its mic tracks must not stay hot).
     const stale = slot;
     slot = null;

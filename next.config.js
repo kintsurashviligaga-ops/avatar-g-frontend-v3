@@ -143,6 +143,12 @@ const nextConfig = {
       // DAY-4 photo-to-music-video: multiplexes an uploaded image + the generated track into an MP4 via
       // ffmpeg-static — the binary must ride along in this lambda or the multiplex ENOENTs at runtime.
       '/api/music/video': ['./node_modules/ffmpeg-static/**'],
+      // Music Studio v1: ffmpeg QC of every Lyria track (the worker runs in the start, status and sweep functions) and
+      // the deterministic edits.
+      '/api/music/studio/jobs': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/jobs/[id]': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/sweep': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/edit': ['./node_modules/ffmpeg-static/**'],
       // Music voice-clone transcodes the uploaded voice to mp3 (+ loops short clips)
       // via ffmpeg-static before MiniMax — its binary must ride along in this lambda too.
       '/api/ai/music': ['./node_modules/ffmpeg-static/**'],
@@ -383,6 +389,9 @@ const nextConfig = {
       ['services/workflow', '/:locale/dashboard'], ['services/workflow/:path*', '/:locale/dashboard'],
       ['account/invoices', '/:locale/account/billing'], ['account/invoices/:path*', '/:locale/account/billing'],
       ['admin/disputes', '/:locale/admin'],
+      // /create and /app were never routes but are typed and linked from outside as "the studio" (final-release master
+      // task §7.1: /ka/create answered 404). The one canonical runtime is /{lang} (ServiceHub → ChatChrome + OmniStudio).
+      ['create', home], ['create/:path*', home], ['app', home], ['app/:path*', home],
     ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
     // /{lang}/studio — the „Studio Beta" second studio — is RETIRED everywhere, whatever STUDIO_V2 says (the owner,
     // 2026-10-09 18:25Z: „too confusing"; it was a second set of Video / Image / Avatar / Music tabs beside the studio's own

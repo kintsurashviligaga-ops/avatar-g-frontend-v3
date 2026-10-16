@@ -45,6 +45,7 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { llmText } from '@/lib/ai/llmText';
 import { googleAiConfigured } from '@/lib/ai/google/transport';
 import { randomUUID } from 'crypto';
+import { AI_AGENT_COSTS } from '@/lib/credits/aiAgentCosts';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,14 +54,8 @@ const MAX_CONTEXT_LENGTH  = 1000;
 const DEFAULT_MAX_TOKENS  = 2048;
 const TIMEOUT_MS          = 30_000;
 
-// Credit costs per agent — kept in sync with lib/monetization/credits.ts
-const AGENT_COSTS: Record<AgentType, number> = {
-  avatar : 10,
-  image  :  5,
-  video  : 15,
-  music  :  8,
-  copy   :  3,
-} as const;
+// Credit costs per agent — lib/credits/aiAgentCosts (the service pages print the same table).
+const AGENT_COSTS: Readonly<Record<AgentType, number>> = AI_AGENT_COSTS;
 
 // System prompts per agent
 const AGENT_SYSTEM_PROMPTS: Record<AgentType, string> = {

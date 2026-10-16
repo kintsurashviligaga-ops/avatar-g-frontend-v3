@@ -1,0 +1,25 @@
+{
+  "observedAt": "2026-10-13T05:21:46.121531+00:00",
+  "threads": [
+    {
+      "title": "გააგრძელე წინა ჩათი",
+      "id": "01a13101-529c-70a1-8197-5817e6322111",
+      "status": "active",
+      "flags": [
+        "waitingOnApproval"
+      ]
+    },
+    {
+      "title": "continue",
+      "id": "01a12e74-3f68-7e31-900e-dff1459d9742",
+      "status": "active",
+      "flags": [
+        "waitingOnApproval"
+      ]
+    }
+  ],
+  "userReported": "Stop button not visible",
+  "cancelled": false,
+  "processCheck": "No matching Jest, Playwright, Next build/dev, tsc, or Git writer processes observed",
+  "action": "Do not approve or resume old chats; reject/cancel pending approval cards if available"
+}

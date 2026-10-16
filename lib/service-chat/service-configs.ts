@@ -586,7 +586,7 @@ export const agentGConfig: ServiceChatConfig = {
     },
   ],
   transferActions: [
-    { id: 'to-workflow', label: { en: 'Open Workflow Builder', ka: 'გახსენი Workflow', ru: 'Открыть Workflow' }, icon: 'GitBranch', targetService: 'workflow', description: { en: 'Design this as a reusable workflow', ka: 'მრავალჯერადი workflow-ის შექმნა', ru: 'Создать переиспользуемый workflow' } },
+    { id: 'to-workflow', label: { en: 'Plan as a workflow', ka: 'ვორქფლოუდ დაგეგმვა', ru: 'Спланировать как воркфлоу' }, icon: 'GitBranch', targetService: 'workflow', description: { en: 'Plan the steps with Agent G (no automation runner yet)', ka: 'ნაბიჯების დაგეგმვა Agent G-სთან (ავტომატური გაშვება ჯერ არ არის)', ru: 'Спланировать шаги с Agent G (автозапуска пока нет)' } },
     { id: 'to-business', label: { en: 'Business Analysis', ka: 'ბიზნეს ანალიზი', ru: 'Бизнес-анализ' }, icon: 'Briefcase', targetService: 'business', description: { en: 'Send to Business Agent for analysis', ka: 'გაგზავნე ბიზნეს აგენტთან', ru: 'Отправить бизнес-агенту' } },
   ],
 };

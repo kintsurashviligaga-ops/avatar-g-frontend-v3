@@ -1,0 +1,20 @@
+{
+  "command": [
+    "node",
+    "node_modules/jest/bin/jest.js",
+    "--runInBand",
+    "--detectOpenHandles",
+    "--no-watchman",
+    "lib/image/studio/live.test.ts",
+    "lib/platform/upstashEnv.test.ts",
+    "lib/image/studio/engine.test.ts"
+  ],
+  "cwd": "/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af",
+  "deadlineSeconds": 90,
+  "startedAt": "2026-10-13T19:20:54.674878+00:00",
+  "timedOut": false,
+  "pid": 5499,
+  "exitCode": 0,
+  "elapsedSeconds": 1.154,
+  "finishedAt": "2026-10-13T19:20:55.829140+00:00"
+}

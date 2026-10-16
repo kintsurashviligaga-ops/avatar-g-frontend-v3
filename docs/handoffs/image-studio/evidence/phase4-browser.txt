@@ -1,0 +1,57 @@
+[WebServer] <w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (133kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] The user aborted a request.
+[WebServer] 
+[WebServer] Retrying 1/3...
+[WebServer] [env] Missing optional env variables: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, NEXT_PUBLIC_BASE_URL, BASE_URL, ALLOWED_ORIGINS, SENTRY_DSN, VERCEL_ANALYTICS_ID
+[WebServer] [env] Optional env var STRIPE_WEBHOOK_SECRET is not set
+[WebServer] [env] Optional env var UPSTASH_REDIS_REST_URL is not set
+[WebServer] [env] Optional env var SENTRY_DSN is not set
+[WebServer] [env] Optional env var ALLOWED_ORIGINS is not set
+
+Running 4 tests using 1 worker
+
+[WebServer]  [33m[1m⚠[22m[39m Cross origin request detected from 127.0.0.1 to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+[WebServer] Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+  ✓  1 [chromium] › tests/image-studio.spec.ts:57:7 › en: one-window quote, explicit confirmation, refresh recovery and cancellation (8.2s)
+  ✓  2 [chromium] › tests/image-studio.spec.ts:57:7 › ka: one-window quote, explicit confirmation, refresh recovery and cancellation (3.4s)
+  ✓  3 [chromium] › tests/image-studio.spec.ts:57:7 › ru: one-window quote, explicit confirmation, refresh recovery and cancellation (3.3s)
+  ✘  4 [chromium] › tests/image-studio.spec.ts:88:5 › four quoted variants start sequentially; completed tiles never start again (1.5m)
+
+
+  1) [chromium] › tests/image-studio.spec.ts:88:5 › four quoted variants start sequentially; completed tiles never start again 
+
+    [31mTest timeout of 90000ms exceeded.[39m
+
+    Error: locator.selectOption: Test timeout of 90000ms exceeded.
+    Call log:
+    [2m  - waiting for getByTestId('image-workspace').getByLabel('Variations', { exact: true })[22m
+
+
+      89 |   const { workspace, requests, jobs } = await setup(page, 'en');
+      90 |   await workspace.getByLabel('Prompt / Agent G command', { exact: true }).fill('Four product ideas');
+    > 91 |   await workspace.getByLabel('Variations', { exact: true }).selectOption('4');
+         |                                                             ^
+      92 |   await workspace.getByRole('button', { name: 'Review plan and price', exact: true }).click();
+      93 |   await expect(workspace).toContainText('4 × 2 = 8 credits');
+      94 |   await workspace.getByRole('button', { name: 'Confirm and start', exact: true }).click();
+        at /Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/tests/image-studio.spec.ts:91:61
+
+    Error Context: docs/handoffs/image-studio/evidence/browser-results/image-studio-four-quoted-v-b3a4a-ted-tiles-never-start-again-chromium/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    docs/handoffs/image-studio/evidence/browser-results/image-studio-four-quoted-v-b3a4a-ted-tiles-never-start-again-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace docs/handoffs/image-studio/evidence/browser-results/image-studio-four-quoted-v-b3a4a-ted-tiles-never-start-again-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests/image-studio.spec.ts:88:5 › four quoted variants start sequentially; completed tiles never start again 
+  3 passed (2.1m)

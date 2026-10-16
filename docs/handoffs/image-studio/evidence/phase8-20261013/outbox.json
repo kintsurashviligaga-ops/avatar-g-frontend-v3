@@ -1,0 +1,32 @@
+{
+  "numPassedTests": 4,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTotalTests": 4,
+  "success": true,
+  "startTime": 1791901688666,
+  "tests": [
+    {
+      "file": "outboxIsolation.pg.test.ts",
+      "status": "passed",
+      "assertions": [
+        {
+          "name": "delivery outbox on a real Postgres + PostgREST (local, isolated) 1. a finished queued job is told once on each outlet; a second pass sends nothing",
+          "status": "passed"
+        },
+        {
+          "name": "delivery outbox on a real Postgres + PostgREST (local, isolated) 2. two deliverers at once: each outlet once",
+          "status": "passed"
+        },
+        {
+          "name": "delivery outbox on a real Postgres + PostgREST (local, isolated) 3. the lease queue clears a paid refund after our record: neither write undoes the other",
+          "status": "passed"
+        },
+        {
+          "name": "delivery outbox on a real Postgres + PostgREST (local, isolated) 4. the due list: fresh untold and open rows; never a step, a live row or a browser-written row",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

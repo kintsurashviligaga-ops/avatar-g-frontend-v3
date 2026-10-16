@@ -97,3 +97,26 @@ describe('stopPremium', () => {
     expect(() => stopPremium()).not.toThrow();
   });
 });
+
+test('stop during synthesis prevents late playback even when fetch ignores abort', async () => {
+  let resolve!: (value: unknown) => void;
+  globalThis.fetch = jest.fn(() => new Promise(r => { resolve = r; })) as unknown as typeof fetch;
+  const pending = speakPremium('old answer');
+  stopPremium();
+  resolve({ ok: true, blob: async () => new Blob(['audio']) });
+  expect(await pending).toBeNull();
+  expect(playMock).not.toHaveBeenCalled();
+});
+
+test('out-of-order syntheses cannot replace the newest playback', async () => {
+  const resolves: Array<(value: unknown) => void> = [];
+  globalThis.fetch = jest.fn(() => new Promise(r => resolves.push(r))) as unknown as typeof fetch;
+  const old = speakPremium('old');
+  const latest = speakPremium('latest');
+  const response = { ok: true, blob: async () => new Blob(['audio']) };
+  resolves[1]!(response);
+  expect(await latest).not.toBeNull();
+  resolves[0]!(response);
+  expect(await old).toBeNull();
+  expect(playMock).toHaveBeenCalledTimes(1);
+});

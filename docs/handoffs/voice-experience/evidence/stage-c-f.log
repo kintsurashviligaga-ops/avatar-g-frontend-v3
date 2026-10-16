@@ -1,0 +1,83 @@
+FAIL components/voice/experience/VoiceSettingsPanel.test.tsx
+  ● ka accessible controls persist only for the signed-in account
+
+    TypeError: expect(...).toBeInTheDocument is not a function
+
+       7 |  const {rerender}=render(<VoiceSettingsPanel userId="alice" locale={locale}/>);
+       8 |  fireEvent.change(screen.getByLabelText(label),{target:{value:'coach'}});
+    >  9 |  expect(screen.getByRole('option',{name:coach})).toBeInTheDocument();
+         |                                                  ^
+      10 |  expect(loadVoicePreferences('alice',localStorage).personality).toBe('coach');
+      11 |  rerender(<VoiceSettingsPanel userId="bob" locale={locale}/>);
+      12 |  await waitFor(()=>expect(screen.getByLabelText(label)).toHaveValue('friendly'));
+
+      at toBeInTheDocument (components/voice/experience/VoiceSettingsPanel.test.tsx:9:50)
+
+  ● en accessible controls persist only for the signed-in account
+
+    TypeError: expect(...).toBeInTheDocument is not a function
+
+       7 |  const {rerender}=render(<VoiceSettingsPanel userId="alice" locale={locale}/>);
+       8 |  fireEvent.change(screen.getByLabelText(label),{target:{value:'coach'}});
+    >  9 |  expect(screen.getByRole('option',{name:coach})).toBeInTheDocument();
+         |                                                  ^
+      10 |  expect(loadVoicePreferences('alice',localStorage).personality).toBe('coach');
+      11 |  rerender(<VoiceSettingsPanel userId="bob" locale={locale}/>);
+      12 |  await waitFor(()=>expect(screen.getByLabelText(label)).toHaveValue('friendly'));
+
+      at toBeInTheDocument (components/voice/experience/VoiceSettingsPanel.test.tsx:9:50)
+
+  ● ru accessible controls persist only for the signed-in account
+
+    TypeError: expect(...).toBeInTheDocument is not a function
+
+       7 |  const {rerender}=render(<VoiceSettingsPanel userId="alice" locale={locale}/>);
+       8 |  fireEvent.change(screen.getByLabelText(label),{target:{value:'coach'}});
+    >  9 |  expect(screen.getByRole('option',{name:coach})).toBeInTheDocument();
+         |                                                  ^
+      10 |  expect(loadVoicePreferences('alice',localStorage).personality).toBe('coach');
+      11 |  rerender(<VoiceSettingsPanel userId="bob" locale={locale}/>);
+      12 |  await waitFor(()=>expect(screen.getByLabelText(label)).toHaveValue('friendly'));
+
+      at toBeInTheDocument (components/voice/experience/VoiceSettingsPanel.test.tsx:9:50)
+
+  ● voice and personality are independent; sarcasm is opt-in; reset deletes device preferences
+
+    TypeError: expect(...).toHaveValue is not a function
+
+      17 |  fireEvent.change(screen.getByLabelText('Voice'),{target:{value:'Charon'}});
+      18 |  fireEvent.change(screen.getByLabelText('Personality'),{target:{value:'sarcastic'}});
+    > 19 |  expect(screen.getByLabelText('Sarcasm')).toHaveValue('light');
+         |                                           ^
+      20 |  expect(screen.getByLabelText('Voice')).toHaveValue('Charon');
+      21 |  fireEvent.change(screen.getByLabelText('Personality'),{target:{value:'calm'}});
+      22 |  expect(screen.getByLabelText('Sarcasm')).toBeDisabled();
+
+      at Object.toHaveValue (components/voice/experience/VoiceSettingsPanel.test.tsx:19:43)
+
+  ● guests cannot write another account preference
+
+    TypeError: expect(...).toBeDisabled is not a function
+
+      26 | test('guests cannot write another account preference',()=>{
+      27 |  render(<VoiceSettingsPanel locale="en"/>);
+    > 28 |  expect(screen.getByLabelText('Personality')).toBeDisabled();
+         |                                               ^
+      29 |  expect(screen.getByText('Sign in to save preferences.')).toBeVisible();
+      30 | });
+      31 |
+
+      at Object.toBeDisabled (components/voice/experience/VoiceSettingsPanel.test.tsx:28:47)
+
+PASS components/voice/live/useGeminiLiveSession.test.tsx
+(node:54712) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS app/api/voice/live/route.test.ts
+PASS lib/voice/experience/readAloud.test.ts
+PASS lib/voice/experience/experience.test.ts
+
+Test Suites: 1 failed, 4 passed, 5 total
+Tests:       5 failed, 144 passed, 149 total
+Snapshots:   0 total
+Time:        1.651 s
+Ran all test suites matching lib/voice/experience|components/voice/experience|components/voice/live/useGeminiLiveSession.test.tsx|app/api/voice/live/route.test.ts.

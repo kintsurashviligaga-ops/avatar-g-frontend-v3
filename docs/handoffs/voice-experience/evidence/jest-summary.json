@@ -1,0 +1,17 @@
+{
+  "numPassedTestSuites": 49,
+  "numFailedTestSuites": 0,
+  "numPassedTests": 1029,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "success": true,
+  "baseline": {
+    "suites": 39,
+    "tests": 895
+  },
+  "additional_hook_suite": {
+    "passed": 58,
+    "failed": 0,
+    "new_tests": 1
+  }
+}

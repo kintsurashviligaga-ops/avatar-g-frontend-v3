@@ -11,7 +11,7 @@ jest.mock('../services/billing/BillingGuard', () => ({
 }));
 jest.mock('./geminiFallbackReport', () => ({ reportGeminiFallback: jest.fn() }));
 
-import { generateLyriaTrack, hasLyriaProvider, LYRIA_FALLBACK, lyriaModel } from './lyriaMusic';
+import { generateLyriaTrack, hasLyriaProvider, LYRIA_FALLBACK, lyriaModel, lyriaRequest } from './lyriaMusic';
 import { reportGeminiFallback } from './geminiFallbackReport';
 
 /**
@@ -84,5 +84,33 @@ describe('a Lyria miss reports no fallback engine', () => {
     expect(report).toHaveBeenCalledTimes(1);
     expect(report.mock.calls[0][0]).toMatchObject({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK });
     expect(LYRIA_FALLBACK).not.toMatch(/udio|musicgen|elevenlabs/i);
+  });
+});
+
+describe('lyriaRequest (Music Studio) — controlled provider faults: one call, never a retry, no audio invented', () => {
+  const realFetch = global.fetch;
+  beforeEach(() => { mockKey = 'test-gemini-key'; delete process.env.GEMINI_TRANSPORT; });
+  afterAll(() => { global.fetch = realFetch; });
+
+  it.each([
+    ['quota (429 RESOURCE_EXHAUSTED)', () => Promise.resolve(new Response(JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED' } }), { status: 429 })), { reason: 'http', status: 429 }],
+    ['unsupported model (404 NOT_FOUND)', () => Promise.resolve(new Response(JSON.stringify({ error: { status: 'NOT_FOUND' } }), { status: 404 })), { reason: 'http', status: 404 }],
+    ['provider unavailable (503)', () => Promise.resolve(new Response('busy', { status: 503 })), { reason: 'http', status: 503 }],
+    ['safety rejection (200, blocked prompt, no audio)', () => Promise.resolve(new Response(JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' } }), { status: 200 })), { reason: 'no_audio' }],
+    ['provider timeout', () => Promise.reject(Object.assign(new Error('t'), { name: 'TimeoutError' })), { reason: 'timeout' }],
+    ['network disconnect', () => Promise.reject(new TypeError('fetch failed')), { reason: 'network' }],
+  ])('%s', async (_label, answer, expected) => {
+    const f = jest.fn(answer);
+    global.fetch = f as unknown as typeof fetch;
+    const r = await lyriaRequest('calm piano', 'lyria-3-clip-preview', new AbortController().signal);
+    expect(r).toMatchObject({ ok: false, ...expected });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('an empty prompt never reaches the provider', async () => {
+    const f = jest.fn();
+    global.fetch = f as unknown as typeof fetch;
+    expect(await lyriaRequest('   ', 'lyria-3-clip-preview', new AbortController().signal)).toMatchObject({ ok: false, reason: 'not_configured' });
+    expect(f).not.toHaveBeenCalled();
   });
 });

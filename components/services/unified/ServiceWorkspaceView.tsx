@@ -33,6 +33,7 @@ import {
   extractOutputUrl,
   formDefaults,
   isAuthRequired,
+  actionLabelWithPrice,
   servicePlan,
   studioToolHref,
   unwrapApiData,
@@ -313,7 +314,7 @@ function ServiceFormView({ serviceId, form, lang, cardImage }: { serviceId: stri
         ))}
         <button type="submit" data-testid="service-primary" disabled={busy || !prompt} aria-busy={busy || undefined} className={cx(PRIMARY_PILL, '!mt-6 disabled:cursor-not-allowed disabled:opacity-40')}>
           {busy && <Loader2 size={18} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-          {busy ? c.working : form.actionLabel[lang]}
+          {busy ? c.working : actionLabelWithPrice(form, lang)}
         </button>
       </form>
 

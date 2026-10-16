@@ -1,0 +1,57 @@
+FAIL lib/audio/premium-tts.test.ts
+  ● stop during synthesis prevents late playback even when fetch ignores abort
+
+    expect(received).toBeNull()
+
+    Received: <audio preload="auto" src="blob:mock" />
+
+      105 |   stopPremium();
+      106 |   resolve({ ok: true, blob: async () => new Blob(['audio']) });
+    > 107 |   expect(await pending).toBeNull();
+          |                         ^
+      108 |   expect(playMock).not.toHaveBeenCalled();
+      109 | });
+      110 |
+
+      at Object.toBeNull (lib/audio/premium-tts.test.ts:107:25)
+
+  ● out-of-order syntheses cannot replace the newest playback
+
+    expect(received).toBeNull()
+
+    Received: <audio preload="auto" src="blob:mock" />
+
+      118 |   expect(await latest).not.toBeNull();
+      119 |   resolves[0]!(response);
+    > 120 |   expect(await old).toBeNull();
+          |                     ^
+      121 |   expect(playMock).toHaveBeenCalledTimes(1);
+      122 | });
+      123 |
+
+      at Object.toBeNull (lib/audio/premium-tts.test.ts:120:21)
+
+FAIL lib/voice/livePrime.test.ts
+  ● double tap adopts one pending prime without interrupting the first syllable
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 1
+    Received length: 2
+    Received array:  [{"closed": true, "resume": [Function mockConstructor]}, {"closed": false, "resume": [Function mockConstructor]}]
+
+      80 |   primeLive();
+      81 |   await Promise.resolve(); await Promise.resolve();
+    > 82 |   expect(Ctx.all).toHaveLength(1);
+         |                   ^
+      83 |   expect(gum).toHaveBeenCalledTimes(1);
+      84 |   expect(Ctx.all[0]!.closed).toBe(false);
+      85 |   expect(takePrimed()?.playCtx).toBe(Ctx.all[0]);
+
+      at Object.toHaveLength (lib/voice/livePrime.test.ts:82:19)
+
+Test Suites: 2 failed, 2 total
+Tests:       3 failed, 11 passed, 14 total
+Snapshots:   0 total
+Time:        0.193 s, estimated 1 s
+Ran all test suites matching lib/audio/premium-tts.test.ts|lib/voice/livePrime.test.ts.

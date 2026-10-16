@@ -22,20 +22,19 @@ const STATUS: MusicEnginesStatus = {
   chain: ['lyria'], // Auto is Lyria alone (R7) — MusicGen is ready, but only as an explicit pick
 };
 
-test('the list is exactly the engines the route can run, in picker order — and nothing the route cannot run', () => {
+test('the picker lists the known engines, but the route can run exactly ONE: Google Lyria (Music Studio v1 boundary)', () => {
   expect(MUSIC_ENGINE_CHAIN).toEqual(['lyria', 'udio', 'elevenlabs-music', 'musicgen']);
-  // Pinned from the route's source: the four engine names it can run (a pick is checked against them).
   const route = readFileSync(join(process.cwd(), 'app/api/ai/music/route.ts'), 'utf8');
-  const names = [...route.matchAll(/engines\.push\(\{ name: '([a-z-]+)'/g)].map((m) => m[1]);
-  expect(names).toEqual([...MUSIC_ENGINE_CHAIN]);
+  // The only attempt the route can build is Lyria's; no other engine's client is even imported.
+  expect([...route.matchAll(/name: '([a-z-]+)'/g)].map((m) => m[1])).toEqual(['lyria']);
+  expect(route).not.toMatch(/lib\/udio\/client|lib\/elevenlabs\/music|lib\/ai\/replicate|lib\/audio\/rvc|pollinations\.ai/);
+  // Any other pick is refused before the reserve.
+  expect(route).toContain("(preferredEngine !== null && preferredEngine !== 'lyria')");
 });
 
-test('…and they are NOT a chain: the route runs ONE engine per request, Lyria on Auto, with no failover (R7)', () => {
+test('…and there is no chain: ONE attempt reaches the failover helper, with no failover (R7)', () => {
   const route = readFileSync(join(process.cwd(), 'app/api/ai/music/route.ts'), 'utf8');
-  // Exactly one attempt reaches the failover helper — a list of one has nothing to reroute to.
   expect(route).toContain('runWithLatencyFailover<Track>([bounded],');
-  expect(route).toContain("const attempt = picked ?? engines.find((p) => p.name === 'lyria');");
-  // The old reorder-the-chain shapes are gone.
   expect(route).not.toMatch(/providers\.(unshift|splice)\(/);
 });
 

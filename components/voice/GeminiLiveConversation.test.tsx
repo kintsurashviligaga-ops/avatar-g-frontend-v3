@@ -352,7 +352,7 @@ describe('voice-to-action', () => {
     expect(dock).toHaveTextContent('Agent G');
     // The step the agent just took, with its check.
     const line = screen.getByTestId('live-dock-line');
-    expect(line).toHaveTextContent('Studio opened');
+    await waitFor(() => expect(line).toHaveTextContent('Studio opened'));
     expect(line.querySelector('[data-mark="done"]')).not.toBeNull();
     const end = screen.getByTestId('live-dock-end');
     expect(end).toHaveTextContent('End');

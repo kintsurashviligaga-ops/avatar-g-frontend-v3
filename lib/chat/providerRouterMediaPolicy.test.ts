@@ -84,6 +84,7 @@ beforeEach(() => {
     saved[k] = process.env[k];
     delete process.env[k];
   }
+  process.env.MEDIA_GOOGLE_ONLY = '0'; // explicit opt-out: unset is fail-closed ON
   (isMusicVideoComposite as jest.Mock).mockReturnValue(false);
   (startUdioGeneration as jest.Mock).mockResolvedValue({ workId: 'w1', model: 'udio-test' });
   fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
@@ -113,8 +114,6 @@ describe('MEDIA_GOOGLE_ONLY on: chat branches with only outside engines are refu
   });
 
   it.each([
-    ['a chat music command', input()],
-    ['a music command that names an engine', input({ selectedOptions: { provider: 'replicate' } })],
     ['the interior service', input({ message: 'redesign my living room in a scandi style', serviceContext: 'interior' })],
     ['a 3D room asked by name', input({ message: 'make a marble 3d interior of a small room' })],
     ['a Replicate visual analysis', input({ message: 'tell me what you see', serviceContext: 'visual-ai' })],
@@ -127,19 +126,37 @@ describe('MEDIA_GOOGLE_ONLY on: chat branches with only outside engines are refu
   });
 
   it('speaks Georgian by default', async () => {
-    const res = await orchestrate(input({ locale: 'ka' }));
+    const res = await orchestrate(input({ message: 'tell me what you see', serviceContext: 'visual-ai', locale: 'ka' }));
     expect(res.message).toBe(googleOnlyMessage('ka'));
   });
 });
 
-describe('MEDIA_GOOGLE_ONLY off: the same branches run as before', () => {
-  it('a chat music command still reaches its engine', async () => {
+describe.each([['off', ''], ['on', '1']])('chat music (Udio / MusicGen) is refused whatever MEDIA_GOOGLE_ONLY says (%s) — Music Studio v1 boundary', (_l, flag) => {
+  beforeEach(() => {
+    if (flag) process.env.MEDIA_GOOGLE_ONLY = flag; else delete process.env.MEDIA_GOOGLE_ONLY;
     process.env.UDIO_API_KEY = 'udio-test';
-    const res = await orchestrate(input());
-    expect(startUdioGeneration).toHaveBeenCalledTimes(1);
-    expect(res.metadata).toMatchObject({ provider: 'udio' });
+    process.env.REPLICATE_API_TOKEN = 'r8-test';
   });
 
+  it.each([
+    ['a chat music command', input()],
+    ['a music command that names an engine', input({ selectedOptions: { provider: 'replicate' } })],
+  ])('%s → pointed to the Music tool, nothing charged, no engine reached', async (_label, req) => {
+    const res = await orchestrate(req);
+    expect(res.success).toBe(false);
+    expect(res.metadata).toMatchObject({ provider: 'policy', code: 'unsupported' });
+    expect(res.message).toMatch(/Music tool \(Google Lyria\)/);
+    expectNoOutsideEngine();
+  });
+
+  it('in Georgian by default', async () => {
+    const res = await orchestrate(input({ locale: 'ka' }));
+    expect(res.message).toMatch(/Google Lyria/);
+    expect(res.message).toMatch(/თანხა არ ჩამოგეჭრა/);
+  });
+});
+
+describe('MEDIA_GOOGLE_ONLY off: the same branches run as before', () => {
   it('the interior service without a photo still asks for one', async () => {
     const res = await orchestrate(input({ message: 'redesign my living room', serviceContext: 'interior' }));
     expect(res.metadata).toMatchObject({ provider: 'worldlabs', validation: 'blocked_missing_image' });

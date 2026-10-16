@@ -5,6 +5,7 @@ import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
 /**
  * Convert a film's spoken narration into the user's TRAINED voice (RVC) before the
@@ -18,6 +19,10 @@ export const maxDuration = 200;
 
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.WRITE); if (rl) return rl;
+  // RVC runs on Replicate, outside the Google-only media boundary, and this route charges nothing: with the boundary on
+  // (the default since the final integration) it answers the paused-tool refusal before any provider call. The film
+  // stitch treats any answer without a `url` as "keep the original narration".
+  const outside = refuseOutsideEngine(req); if (outside) return outside;
   const body = (await req.json().catch(() => ({}))) as { voiceoverUrl?: unknown; locale?: unknown };
   const voiceoverUrl = typeof body.voiceoverUrl === 'string' ? body.voiceoverUrl.trim() : '';
   if (!/^https?:\/\//i.test(voiceoverUrl)) {

@@ -156,7 +156,7 @@ const SERVICE_CONTEXT_MAP: Record<string, string> = {
   image: 'The user is in the Image Creation section. Help them generate AI images, posters, or artwork. Guide them through prompts, styles, aspect ratios, and quality settings.',
   music: 'The user is in the Music Production section. Help them produce AI music tracks, choose genres, moods, instruments, and duration.',
   text: 'The user is in the Content Writing section. Help them write scripts, captions, marketing copy, or other text content using AI.',
-  workflow: 'The user is in the Workflow Builder. Help them chain multiple AI services together into automated multi-step workflows.',
+  workflow: 'The user is planning a workflow. Draft a clear step-by-step plan naming which studio does each step. There is no visual builder or automation runner: never claim a workflow will run by itself.',
 };
 
 function buildSystemPrompt(params: {

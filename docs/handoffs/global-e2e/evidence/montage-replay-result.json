@@ -1,0 +1,131 @@
+{
+ "quote": {
+  "jobId": "e2e-job",
+  "credits": 0,
+  "totalSec": 7,
+  "shots": 2,
+  "clips": 2,
+  "aspect": "16:9",
+  "beatSynced": false,
+  "bpm": null,
+  "musicStartSec": 0,
+  "sound": "own",
+  "cutting": "whole",
+  "musicFile": null,
+  "manifest": [
+   {
+    "index": 0,
+    "path": "https://media.test/in/VEO-1-t2v-9x16.mp4",
+    "name": "VEO-1-t2v-9x16.mp4",
+    "kind": "video",
+    "durationSec": 4.01
+   },
+   {
+    "index": 1,
+    "path": "https://media.test/in/VEO-2-i2v-16x9.mp4",
+    "name": "VEO-2-i2v-16x9.mp4",
+    "kind": "video",
+    "durationSec": 4.01
+   }
+  ],
+  "clipOrder": [
+   0,
+   1
+  ],
+  "engine": {
+   "id": "ffmpeg-montage",
+   "label": "FFmpeg montage",
+   "free": true
+  },
+  "unusedFiles": [],
+  "expiresAt": 1791990674914
+ },
+ "master": {
+  "durationSec": 7,
+  "hasVideo": true,
+  "hasAudio": true,
+  "width": 1280,
+  "height": 720,
+  "rotation": 0,
+  "videoCodec": "h264",
+  "audioCodec": "aac"
+ },
+ "qc": {
+  "files": 2,
+  "videos": 2,
+  "clips": [
+   {
+    "index": 0,
+    "name": "VEO-1-t2v-9x16.mp4",
+    "outT": 1.75,
+    "srcT": 1.95,
+    "diff": 0.44,
+    "ok": true
+   },
+   {
+    "index": 1,
+    "name": "VEO-2-i2v-16x9.mp4",
+    "outT": 5.25,
+    "srcT": 1.95,
+    "diff": 0.2,
+    "ok": true
+   }
+  ],
+  "maxDiff": 12,
+  "av": {
+   "videoSec": 7,
+   "audioSec": 7,
+   "videoFrames": 210,
+   "plannedFrames": 210
+  },
+  "durationSec": 7,
+  "ok": true,
+  "outcome": "PASS",
+  "sources": [
+   {
+    "index": 0,
+    "name": "VEO-1-t2v-9x16.mp4",
+    "kind": "video",
+    "shots": 1,
+    "outputSec": 3.5,
+    "windows": [
+     {
+      "outStartSec": 0,
+      "outEndSec": 3.5,
+      "srcStartSec": 0.2,
+      "srcEndSec": 3.7
+     }
+    ]
+   },
+   {
+    "index": 1,
+    "name": "VEO-2-i2v-16x9.mp4",
+    "kind": "video",
+    "shots": 1,
+    "outputSec": 3.5,
+    "windows": [
+     {
+      "outStartSec": 3.5,
+      "outEndSec": 7,
+      "srcStartSec": 0.2,
+      "srcEndSec": 3.7
+     }
+    ]
+   }
+  ],
+  "audio": {
+   "sourceStartSec": 0,
+   "timelineStartSec": 0,
+   "targetSec": 7,
+   "endPolicy": "stop",
+   "sourceAudio": "preserve",
+   "replacementAudio": "none"
+  }
+ },
+ "audits": [
+  "quote:ok",
+  "run:ok:queued",
+  "run:ok:started",
+  "run:ok:delivered"
+ ]
+}

@@ -1,4 +1,5 @@
 'use client';
+import { ReadAloudControls } from '@/components/voice/experience/ReadAloudControls';
 
 /**
  * OmniStudio (Service Hub — Card B). MyAvatar Smart Assistant (multimodal).
@@ -144,8 +145,12 @@ const COMPLETED_SERVICE: Readonly<Record<'image' | 'music' | 'video' | 'avatar' 
 };
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
+import { MusicStudioCard, type MusicDraft } from './music/MusicStudioCard';
+import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './music/musicDraft';
+import { handleMusicVoice } from './music/musicVoiceBridge';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
+import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
@@ -215,6 +220,9 @@ const PhotoshootCreatePanel = dynamic(() => import('@/components/studio/create/P
 const ShootResultPane = dynamic(() => import('@/components/studio/create/newtools/ShootResultPane').then((m) => m.ShootResultPane), { ssr: false, loading: () => <div className="h-24" /> });
 import { toast } from 'sonner';
 // The Image tool's Create screen (Higgsfield grammar): a view over the state below. Its option lists and price live in lib/studio/imageCreate.
+import { ImageWorkspace } from '@/components/studio/image/ImageWorkspace';
+import { useImageStudioAccess } from '@/components/studio/image/useImageStudioAccess';
+import { imageCopy } from '@/components/studio/image/copy';
 import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
 import { ImageDesk } from '@/components/studio/create/ImageDesk';
 import type { ImageResultActions } from '@/components/studio/create/ImageResultPane';
@@ -1105,7 +1113,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1493,6 +1501,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.filmQa ? { filmQa: m.filmQa } : {}),
       ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
       ...(m.researchId ? { researchId: m.researchId } : {}),
+      ...(m.musicDraft ? { musicDraft: m.musicDraft } : {}),
       ...(m.notice ? { notice: true } : {}),
       ...(m.errorTail ? { errorTail: true } : {}),
       // A reply's sources are a few short links — kept, so its source chips survive a reload like the reply itself.
@@ -2154,6 +2163,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // through (the guest policy lives server-side, lib/chat/guestChat) and stops every paid tool at sign-in. A restart
   // on another tool (initialTool) is selected by the deep-link effect through the same path the sidebar uses.
   const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical' | 'photo'>('chat');
+  const imageStudioAccess = useImageStudioAccess(mode === 'image');
+  const [imageWorkspaceOpen, setImageWorkspaceOpen] = useState(true);
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -2186,6 +2197,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Mobile: the service-option panels collapse behind a toggle so they never cover the
   // chat (the cards are tall). Default collapsed on mobile; on desktop (sm:) always open.
   const [optionsOpen, setOptionsOpen] = useState(false);
+  useEffect(() => {
+    if (mode === 'image' && imageStudioAccess && imageWorkspaceOpen) setOptionsOpen(false);
+  }, [mode, imageStudioAccess, imageWorkspaceOpen]);
   /**
    * ⚠️ THE COMPOSER HAD TWO OPTIONS SURFACES AND NO RULE THAT ONLY ONE MAY BE OPEN. `mode` drives the
    * accordion panels (image · music · video · lipsync · remix, rendered inside the collapsible div at
@@ -5320,6 +5334,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     /** Weirdness / Style influence (lib/ai/musicControls); absent → neutral. `genre` is the style line, `voiceType` the 4-stop singer. */
     sliders?: { weirdness: number; styleInfluence: number };
   }) => {
+    // Music Studio v1 (NEXT_PUBLIC_MUSIC_STUDIO_V1=1): a plain composition becomes the plan card — quote, explicit Confirm,
+    // the durable job, edits, Library — on Google Lyria only. A cover or a voice request has no approved engine and keeps
+    // its old path, which the server now refuses before any charge.
+    if (musicStudioV1OnClient() && !m.audioRef && !m.useTrained) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', text: m.userBubble, ...(m.medias?.length ? { medias: m.medias } : {}) },
+        { role: 'assistant', text: musicStudioIntro(locale), musicDraft: musicDraftFromPanel(m, locale) },
+      ]);
+      return;
+    }
     const sliders = m.sliders ?? { weirdness: SLIDER_DEFAULT, styleInfluence: SLIDER_DEFAULT };
     const bubbleId = `music_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setMessages((prev) => [
@@ -5893,7 +5918,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     persistChatTurn('user', queued.text);
     // Preserve the queued turn's voice intent so a dictated follow-up still auto-plays its reply (consumed
     // at the top of streamChat).
-    autoPlayReplyRef.current = queued.viaVoice;
+    autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     // streamChat renders the user turn from its history arg (setMessages([...history, assistant])), so
     // no separate setMessages is needed here — that would only double-render the bubble.
     void streamChat([...messagesRef.current, userMsg]);
@@ -6484,7 +6509,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // A phone's Create sheet covers the thread: close it so the answer is SEEN (the generate branches do the same).
         if (!isDesktop) setOptionsOpen(false);
         persistChatTurn('user', text);
-        autoPlayReplyRef.current = viaVoice;
+        autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
         await streamChat([...messages, chatTurn]);
         return;
       }
@@ -6504,7 +6529,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
         const credits = gateMode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
-          : gateMode === 'music' ? quoteCredits({ tool: 'music', seconds: musicDuration || undefined })
+          : gateMode === 'music' ? musicQuote({ duration: musicDuration }) /* "Full song" (0) bills the 90 s tier, as the route does */
             : gateMode === 'avatar' ? quoteCredits({ tool: 'avatar' })
               : 0;
         gatePendingRef.current = verdict.kind === 'clarify' ? { mode: gateMode, base: promptText, at: Date.now(), inChat } : null;
@@ -6861,7 +6886,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); setAttachments([]);
       inputSourceRef.current = 'text';
       persistChatTurn('user', asked, attachments);
-      autoPlayReplyRef.current = viaVoice;
+      autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
       setBusy(false);
       await streamChat([...messages, videoTurn]);
       return;
@@ -7260,7 +7285,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     persistChatTurn('user', text, attachments); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     // Arm auto-play ONLY for a voice-initiated turn — its reply will be spoken aloud at stream end; a typed
     // turn stays text-only. Consumed at the top of streamChat.
-    autoPlayReplyRef.current = viaVoice;
+    autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     await streamChat([...messages, userMsg]);
   }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
@@ -7841,7 +7866,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /** The price the studio's own Generate button shows (lib/credits/quote). A video is priced at its storyboard: undefined. */
   const livePrice = (tool: ToolId, over: { musicSec?: number } = {}): number | undefined => {
     if (tool === 'image') return quoteCredits({ tool: 'image', count: imgCount }) || undefined;
-    if (tool === 'music') { const sec = over.musicSec ?? musicDuration; return quoteCredits({ tool: 'music', seconds: sec || undefined }) || undefined; }
+    if (tool === 'music') { const sec = over.musicSec ?? musicDuration; return musicQuote({ duration: sec || 0 }) || undefined; }
     if (tool === 'avatar') return quoteCredits({ tool: 'avatar' }) || undefined;
     return undefined;
   };
@@ -8230,6 +8255,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         });
         return true;
       }
+      case 'music_studio': {
+        // Music Studio v1 by voice (components/studio/music/musicVoiceBridge): plan puts a PRICED card in the thread —
+        // nothing is charged, and only the card's Create (the user's own tap) starts the job. Edits, joins, downloads free.
+        if (!musicStudioV1OnClient()) { reply({ ok: false, error: 'not_enabled', message: 'Music Studio is not switched on here. Use prepare_generation with tool music instead.' }); return true; }
+        if (signedOut && d.action === 'plan') { reply({ ok: false, error: 'signed_out', message: 'The user must sign in before making music.' }); return true; }
+        const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+        const r = handleMusicVoice(d, {
+          locale: lang,
+          addDraft: (request) => {
+            const id = `md_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+            setMessages((prev) => [...prev, { role: 'user', text: request.prompt }, { role: 'assistant', text: musicStudioIntro(locale), musicDraft: { id, request } }]);
+            return id;
+          },
+          note: (what) => { try { window.dispatchEvent(new CustomEvent(LIVE_RESULT_EVENT, { detail: { kind: 'music', what } })); } catch { /* old engines */ } },
+        });
+        reply({ ok: r.ok, message: r.message, ...(r.error ? { error: r.error } : {}), ...(r.state ? { state: r.state } : {}) });
+        return true;
+      }
       case 'agent_task': {
         // Agent G's cards in this chat (montage, MP3, edit) by the call's plan number (V7: status; M3: a voice start of
         // any of them). start only checks the card can start: the call's countdown runs it (liveRunRef) on the user's yes.
@@ -8293,9 +8336,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (target.tool !== activeTool || (target.fingerprint && target.fingerprint !== liveFp(activeTool))) {
       return refuse('changed', 'What is on screen changed after the price was told (the studio, the prompt or the price), so nothing was started.');
     }
-    runTool(true, 'voice');
-    detail.reply = { ok: true };
-    return true;
+    // A studio render is PAID (it debits on start). Spoken words alone never spend credits (final-release master task
+    // §8.D: a spoken „კი", a model's tool flag or a transcript may never debit): the price stays on screen and the run
+    // starts only from its visible button. Agent G's free montage / audio / edit plans above still take the spoken yes.
+    return refuse('ui_confirmation_required', 'The price is on screen; press its button to start. Nothing was started or charged.');
   };
 
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
@@ -9068,7 +9112,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (busy || genActiveRef.current) return false;
         clearComposer();
         persistChatTurn('user', text);
-        autoPlayReplyRef.current = viaVoice;
+        autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
         void streamChat([...msgs, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }]);
         return true;
       case 'redo':
@@ -9655,6 +9699,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         <SourcesChips sources={m.sources} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} className="mt-2" />
                       )}
                       {m.researchId && <ResearchCard id={m.researchId} locale={locale} />}
+                      {m.musicDraft && <MusicStudioCard draft={m.musicDraft} locale={locale} onRegenerate={(d) => setMessages((prev) => [...prev, { role: 'assistant', text: musicStudioIntro(locale), musicDraft: d }])} />}
                       {routingChip && routingPrompt && (
                         <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
                           {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <ScanFace size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
@@ -9940,12 +9985,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         className={`${act} ${copiedIdx === i ? 'text-app-accent' : ''}`}>
                         {copiedIdx === i ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
                       </button>
+                      {process.env.NEXT_PUBLIC_VOICE_EXPERIENCE_V2 === '1' ? <ReadAloudControls text={m.text} locale={locale} /> : (
                       <button type="button" onClick={() => void speakMsg(m.text, i)} aria-label={readWord} title={readWord}
                         className={`${act} ${speakingIdx === i ? 'text-app-accent' : ''}`}>
                         {speakingIdx === i
                           ? (speakPhase === 'loading' ? <Loader2 size={18} aria-hidden="true" className="animate-spin" /> : <Square size={16} aria-hidden="true" />)
                           : <Volume2 size={18} aria-hidden="true" />}
                       </button>
+                      )}
                       {modelLabel && (
                         <span data-testid="reply-model" title={modelLabel}
                           className="ml-auto min-w-0 truncate pl-2 text-[12px] font-medium tabular-nums text-app-muted">
@@ -10115,7 +10162,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // ≥ 1024 px: the Image tool's CENTRE column is the Result pane + Models & prices (components/studio/create/ImageDesk) in place of the
   // greeting and the thread. It reads the same `messages` and calls the same handlers as the thread's own buttons, keyed by the
   // message's index (resolved against the thread here, so the pane and the thread cannot disagree about what a button does).
-  const imageDesk = imageCreate && isDesktop;
+  const imageWorkspace = imageCreate && imageWorkspaceOpen && !!imageStudioAccess;
+  const imageDesk = imageCreate && isDesktop && !imageWorkspace;
   // Agent G's latest word on the Image desk (its thread is hidden there): the reply to a greeting, its questions, its confirmation.
   let gateIdx = -1;
   if (imageDesk && gateFrom !== null) {
@@ -10202,7 +10250,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* IMAGE — the Create screen (components/studio/create/ImageCreatePanel): a VIEW over the state above. Generation, the
             queue, billing and the template-pick semantics stay in this file; the screen only draws them. Script → Storyboard is
             slotted into its Advanced section below, unchanged. */}
-        {mode === 'image' && (
+        {mode === 'image' && imageStudioAccess && (
+          <button type="button" className="mb-3 min-h-[44px] w-full rounded-lg border border-white/25 bg-black px-3 py-2 text-base text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#338FE8]"
+            onClick={() => { setImageWorkspaceOpen(x => !x); if (!isDesktop) setOptionsOpen(false); }}>
+            {imageCopy(locale).t(imageWorkspace ? 'close' : 'open')}
+          </button>
+        )}
+        {mode === 'image' && !imageWorkspace && (
           <ImageCreatePanel
             locale={locale}
             desktop={isDesktop}
@@ -11473,7 +11527,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // „too tight, the right side does not show well", the owner on 2026-10-09, a Mac with visible scrollbars). The feed
         // now reaches into the column's right padding (-mr-4 pr-4): the text keeps the composer's edge and the bar sits in
         // the gutter, thin and quiet, with its room kept (scrollbar-gutter) so nothing jumps when the thread grows past one screen.
-        className={`${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y -mr-4 pr-4 pt-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(var(--app-border)/0.35)_transparent] ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
+        className={`${imageDesk || imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y -mr-4 pr-4 pt-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(var(--app-border)/0.35)_transparent] ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
         {videoStage}
         {musicPane}
@@ -11484,7 +11538,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             onWalkthrough={shoot.walkthrough} onUseAsReference={shoot.useAsReference} onDismissRun={shoot.dismissRun}
             onDismissTile={shoot.dismissTile} onClear={shoot.clearRuns} onOpenSettings={openSettings}
           />
-        ) : imageDesk ? null : messages.length === 0 && !musicPane ? (videoStage ? null : (
+        ) : imageDesk || imageWorkspace ? null : messages.length === 0 && !musicPane ? (videoStage ? null : (
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
@@ -11525,6 +11579,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {/* The Image tool on a desktop: the Result pane + Models & prices stand where the thread would (the thread is inside it,
           one tap away). ⚠️ The feed above is HIDDEN, not unmounted, and renders nothing meanwhile — its ref, scroll handlers and the
           keyboard re-pin all keep a node to talk to, and the thread is never mounted twice. */}
+      {imageWorkspace && imageStudioAccess && (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
+          <ImageWorkspace key={imageStudioAccess.userId} access={imageStudioAccess} locale={locale} initialPrompt={input}
+            onClose={() => setImageWorkspaceOpen(false)} />
+        </div>
+      )}
       {imageDesk && imageDeskActions && (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
           <ImageDesk
@@ -11547,7 +11607,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       )}
 
       {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
-      {showJump && !imageDesk && messages.length > 0 && (
+      {showJump && !imageDesk && !imageWorkspace && messages.length > 0 && (
         <button
           type="button"
           onClick={() => scrollToBottom()}
@@ -11562,7 +11622,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
-      <div ref={composerRef} className="shrink-0 pt-1">
+      <div ref={composerRef} className={imageWorkspace ? 'hidden' : 'shrink-0 pt-1'}>
         {/* ⚠️ DICTATION USED TO DIE IN SILENCE. Interim transcription failures were swallowed by a bare
             fail-soft catch: a 429 (the route shares the 100-req/60s READ bucket while a long dictation
             fires a pass every 1.2s), a 500 or an offline blip produced no toast and no state change, so

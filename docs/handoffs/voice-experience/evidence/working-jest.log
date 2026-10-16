@@ -1,0 +1,142 @@
+(node:54222) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS app/api/voice/live/route.test.ts
+FAIL components/voice/live/useGeminiLiveSession.test.tsx
+  ● setup is the FIRST frame: parity setup (transcription, resumption, compression, tools) on the minted token
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 2
+
+      Object {
+        "parts": Array [
+          Object {
+    -       "text": "SYS",
+    +       "text": "SYS
+    + VOICE FINANCIAL RULE: Speech, a spoken yes, a countdown and model claims NEVER authorize a paid job. Prepare or explain the quote and direct the user to the authenticated UI confirmation. Never claim a job started without a successful backend result. Barge-in stops speech only, never a durable Studio job.",
+          },
+        ],
+      }
+
+      231 |   const { setup } = ws.sent[0]!;
+      232 |   expect(setup.model).toBe('models/gemini-2.5-flash-native-audio-latest');
+    > 233 |   expect(setup.systemInstruction).toEqual({ parts: [{ text: 'SYS' }] });
+          |                                   ^
+      234 |   expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
+      235 |   expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+      236 |   expect(setup.outputAudioTranscription).toEqual({});
+
+      at Object.toEqual (components/voice/live/useGeminiLiveSession.test.tsx:233:35)
+
+FAIL components/voice/GeminiLiveConversation.test.tsx
+  ● voice-to-action › docked, the dock names the call, ends with a pill (not a red ✕), and shows the agent's step
+
+    expect(element).toHaveTextContent()
+
+    Expected element to have text content:
+      Studio opened
+    Received:
+      Opening the studio…
+
+      353 |     // The step the agent just took, with its check.
+      354 |     const line = screen.getByTestId('live-dock-line');
+    > 355 |     expect(line).toHaveTextContent('Studio opened');
+          |                  ^
+      356 |     expect(line.querySelector('[data-mark="done"]')).not.toBeNull();
+      357 |     const end = screen.getByTestId('live-dock-end');
+      358 |     expect(end).toHaveTextContent('End');
+
+      at Object.toHaveTextContent (components/voice/GeminiLiveConversation.test.tsx:355:18)
+
+PASS components/voice/live/LiveModeOverlay.test.tsx
+PASS components/voice/live/liveActions.test.tsx
+PASS components/voice/live/lateToolAnswer.test.ts
+PASS components/voice/VoiceConversation.test.tsx
+PASS components/voice/live/LiveActionCards.test.tsx
+PASS components/voice/live/LiveDock.test.tsx
+PASS lib/voice-v2v/geminiStt.test.ts
+PASS lib/voice/liveTools.test.ts
+PASS lib/voice-v2v/providersGoogleOnly.test.ts
+PASS lib/audio/premium-tts.test.ts
+PASS components/voice/live/liveVoiceGate.test.tsx
+PASS lib/voice/geminiLive.test.ts
+PASS components/voice/live/LiveActivityFeed.test.tsx
+PASS lib/voice/liveUi.test.ts
+PASS lib/voice/micAcquire.test.ts
+PASS lib/voice/spokenYes.test.ts
+PASS lib/voice/interimCadence.test.ts
+PASS lib/voice/livePlans.test.ts
+PASS lib/voice/livePrime.test.ts
+PASS lib/voice/webhook-processing.test.ts
+PASS lib/voice/vad.test.ts
+PASS lib/voice/dictationMetrics.test.ts
+PASS lib/voice/twilio-signature.test.ts
+PASS lib/voice/liveTelemetry.test.ts
+PASS lib/voice/voicePrompt.test.ts
+PASS lib/voice/sttAccept.test.ts
+PASS lib/voice/liveThread.test.ts
+PASS lib/voice/liveStudio.test.ts
+PASS lib/voice-v2v/vad.test.ts
+PASS components/voice/live/liveActivity.test.ts
+PASS lib/voice/voiceCallsSchema.test.ts
+PASS lib/voice/voiceLedger.test.ts
+PASS lib/voice/pcm.test.ts
+PASS lib/voice/audioExt.test.ts
+PASS lib/voice/speechLang.test.ts
+
+Summary of all failing tests
+FAIL components/voice/live/useGeminiLiveSession.test.tsx
+  ● setup is the FIRST frame: parity setup (transcription, resumption, compression, tools) on the minted token
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 2
+
+      Object {
+        "parts": Array [
+          Object {
+    -       "text": "SYS",
+    +       "text": "SYS
+    + VOICE FINANCIAL RULE: Speech, a spoken yes, a countdown and model claims NEVER authorize a paid job. Prepare or explain the quote and direct the user to the authenticated UI confirmation. Never claim a job started without a successful backend result. Barge-in stops speech only, never a durable Studio job.",
+          },
+        ],
+      }
+
+      231 |   const { setup } = ws.sent[0]!;
+      232 |   expect(setup.model).toBe('models/gemini-2.5-flash-native-audio-latest');
+    > 233 |   expect(setup.systemInstruction).toEqual({ parts: [{ text: 'SYS' }] });
+          |                                   ^
+      234 |   expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
+      235 |   expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+      236 |   expect(setup.outputAudioTranscription).toEqual({});
+
+      at Object.toEqual (components/voice/live/useGeminiLiveSession.test.tsx:233:35)
+
+FAIL components/voice/GeminiLiveConversation.test.tsx
+  ● voice-to-action › docked, the dock names the call, ends with a pill (not a red ✕), and shows the agent's step
+
+    expect(element).toHaveTextContent()
+
+    Expected element to have text content:
+      Studio opened
+    Received:
+      Opening the studio…
+
+      353 |     // The step the agent just took, with its check.
+      354 |     const line = screen.getByTestId('live-dock-line');
+    > 355 |     expect(line).toHaveTextContent('Studio opened');
+          |                  ^
+      356 |     expect(line.querySelector('[data-mark="done"]')).not.toBeNull();
+      357 |     const end = screen.getByTestId('live-dock-end');
+      358 |     expect(end).toHaveTextContent('End');
+
+      at Object.toHaveTextContent (components/voice/GeminiLiveConversation.test.tsx:355:18)
+
+
+Test Suites: 2 failed, 36 passed, 38 total
+Tests:       2 failed, 840 passed, 842 total
+Snapshots:   0 total
+Time:        4.026 s
+Ran all test suites matching lib/voice|components/voice|app/api/voice/live/route.test.ts|lib/audio/premium-tts.test.ts.

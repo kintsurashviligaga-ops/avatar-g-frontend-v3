@@ -5,6 +5,10 @@
  * same calls their routes make.
  */
 import 'server-only';
+import { IMAGE_KIND } from '@/lib/image/studio/contracts';
+import { imageTaskKind } from '@/lib/image/studio/task';
+import { liveImageDeps } from '@/lib/image/studio/live';
+import { workImage } from '@/lib/image/studio/engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { execOf, leaseRowOf } from '@/lib/orchestrator/jobLease';
 import { JOB_COLUMNS } from '@/lib/orchestrator/jobs';
@@ -173,7 +177,9 @@ export function liveTaskDeps(): TaskDeps {
       }
     },
     kindOf: (row) => execOf(row.params)?.kind ?? null,
-    kinds: { [MONTAGE_KIND]: montage, [AUDIO_KIND]: audio, [EDIT_KIND]: edit, [RUN_KIND]: run },
+    kinds: { [MONTAGE_KIND]: montage, [AUDIO_KIND]: audio, [EDIT_KIND]: edit, [RUN_KIND]: run,
+      [IMAGE_KIND]: imageTaskKind(liveImageDeps, id => after('image-studio-worker', () => workImage(liveImageDeps(), id, newWorkerId()))),
+    },
     plain: taskFromRow,
   };
 }

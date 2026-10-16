@@ -1,0 +1,13 @@
+{
+  "upstreamPR": 58,
+  "upstreamHead": "aa0de1f732fa8f43172b88c0c66b92aff018a987",
+  "upstreamFixCommit": "954e3859d752ae89ec56ca756f0d44598f68c447",
+  "portCommit": "84764dca6682abe2ca481879fe2fe71aefaeec16",
+  "bothStablePatchIds": "670f75e6b64ac963c7766835d5b3704d630c7d37",
+  "files": [
+    "lib/agent/media/leaseIsolation.pg.test.ts",
+    "lib/agent/media/testing/fakeMontageDeps.ts"
+  ],
+  "assertionsChanged": false,
+  "runtimeImplementationChanged": false
+}

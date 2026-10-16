@@ -1,0 +1,356 @@
+From 5ea83af6f0ad236a684366556dffa4377d0a1365 Mon Sep 17 00:00:00 2001
+From: giorgi <noreply@example.com>
+Date: Wed, 14 Oct 2026 21:52:08 +0400
+Subject: [PATCH] defect 51 patch
+
+---
+ app/api/video/assemble/route.ts               | 39 ++++++++++--
+ .../video/assemble/stitchSettlement.test.ts   | 45 ++++++++++++++
+ lib/orchestrator/assembleQcGate.test.ts       |  6 +-
+ lib/orchestrator/jobs.ts                      | 21 +++++++
+ lib/orchestrator/stitchSettlement.test.ts     | 62 +++++++++++++++++++
+ lib/orchestrator/stitchSettlement.ts          | 46 ++++++++++++++
+ 6 files changed, 213 insertions(+), 6 deletions(-)
+ create mode 100644 app/api/video/assemble/stitchSettlement.test.ts
+ create mode 100644 lib/orchestrator/stitchSettlement.test.ts
+ create mode 100644 lib/orchestrator/stitchSettlement.ts
+
+diff --git a/app/api/video/assemble/route.ts b/app/api/video/assemble/route.ts
+index 59ec8915..a789cec8 100644
+--- a/app/api/video/assemble/route.ts
++++ b/app/api/video/assemble/route.ts
+@@ -52,6 +52,7 @@ import { keepLiveClips } from '@/lib/pipeline/qaAgent';
+ import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
+ import { textToHostedSpeech, sanitizeSpokenText } from '@/lib/chat/filmVoiceover';
+ import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
++import { openStitchSettlement, closeStitchSettlement } from '@/lib/orchestrator/stitchSettlement';
+ import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
+ import { saveClipCheckpoints } from '@/lib/pipeline/checkpoints';
+ // ISSUE 5 — the VIDEO pipeline uses ElevenLabs Music ONLY. Udio is intentionally NOT imported here so it can
+@@ -578,6 +579,8 @@ async function assembleImpl(req: NextRequest) {
+     // billing through filmAlreadyBilled — so a fresh ref per attempt costs no one twice for one film. The rollback is
+     // `${ref}:refund`: idempotent per attempt, and readable by refundDebitByRef.
+     const scRef = `assemble-single:${idemKey}:${crypto.randomUUID()}`;
++    // Defect 51 — the durable settlement row for this attempt's charge (lib/orchestrator/stitchSettlement).
++    const scSettleId = crypto.randomUUID();
+     if (!scSkipBilling && uid) {
+       scLock = await lockTokens(uid, assembleCost, 900);
+       const freeFilm = await consumeFreeFilm(uid);
+@@ -586,6 +589,9 @@ async function assembleImpl(req: NextRequest) {
+       } else {
+         const debit = await deductCredits(uid, assembleCost, scRef);
+         scDebited = debit.ok;
++        // Defect 51 — opened BEFORE the render: a function killed mid-render leaves it `processing` with this exact ref and
++        // amount, and the drainer refunds `${scRef}:refund` — the same ref as the rollbacks below, so it pays back once.
++        if (scDebited) await openStitchSettlement({ id: scSettleId, userId: uid, ref: scRef, credits: assembleCost });
+         // 'skipped' (ledger RPC absent) is the only non-fatal miss — charge best-effort like the saga.
+         if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
+           if (scLock) await releaseTokenLock(scLock);
+@@ -695,10 +701,16 @@ async function assembleImpl(req: NextRequest) {
+       const producedSomething = master !== clipUrl;
+       if (producedSomething) {
+         if (scLock) await commitTokenLock(scLock).catch(() => {});
++        // Delivered: the charge stands, so nothing may stay behind for the drainer to refund.
++        if (scDebited && uid) await closeStitchSettlement(scSettleId, uid);
+       } else if (!scSkipBilling && uid) {
+         if (scLock) await releaseTokenLock(scLock).catch(() => {});
+         if (scFreeFilm) await restoreFreeFilm(uid).catch(() => {});
+-        else if (scDebited) await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => {});
++        else if (scDebited) {
++          // A refund that did not land leaves the settlement live: the drainer retries it under the same ref.
++          const r = await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => null);
++          if (r?.ok) await closeStitchSettlement(scSettleId, uid);
++        }
+       }
+       // eslint-disable-next-line no-console
+       console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: producedSomething && !scSkipBilling && !scFreeFilm }));
+@@ -716,7 +728,10 @@ async function assembleImpl(req: NextRequest) {
+       if (!scSkipBilling && uid) {
+         if (scLock) await releaseTokenLock(scLock).catch(() => {});
+         if (scFreeFilm) await restoreFreeFilm(uid).catch(() => {});
+-        else if (scDebited) await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => {});
++        else if (scDebited) {
++          const r = await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => null);
++          if (r?.ok) await closeStitchSettlement(scSettleId, uid);
++        }
+       }
+       await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`).catch(() => {});
+       // Video Core v1.0 §4/§7 — the single-clip QC gate: a cut whose decoded frames are not the contracted final is
+@@ -832,6 +847,10 @@ async function assembleImpl(req: NextRequest) {
+   // personal credit charge is skipped (their wallet may legitimately be 0 while
+   // the platform LTX balance funds the real render). Billed exactly like anon.
+   const skipBilling = uid === null ? true : (filmAlreadyBilled || await isAdminUser(uid));
++  // Defect 51 — the saga id is fixed up front so the charge ref is known to the durable settlement row (its own uuid).
++  const sagaId = `saga_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
++  const sagaRef = `assemble:${sagaId}`;
++  const sagaSettleId = crypto.randomUUID();
+ 
+   const steps: SagaStep[] = [
+     {
+@@ -858,8 +877,11 @@ async function assembleImpl(req: NextRequest) {
+           return lock;
+         }
+ 
+-        const debit = await deductCredits(uid, assembleCost, `assemble:${ctx.sagaId}`);
++        const debit = await deductCredits(uid, assembleCost, sagaRef);
+         ctx.bag.debited = debit.ok;
++        // Defect 51 — opened BEFORE dispatch: a function killed mid-stitch (maxDuration / crash — no compensate runs) leaves
++        // it `processing`, and the drainer refunds `${sagaRef}:refund`, the same ref as the compensate below (exactly once).
++        if (debit.ok) await openStitchSettlement({ id: sagaSettleId, userId: uid, ref: sagaRef, credits: assembleCost });
+         // Fail-fast on a real rejection so we never dispatch a paid render
+         // the user can't afford or that the DB couldn't record. 'skipped'
+         // (RPC not provisioned) is the only non-fatal miss.
+@@ -885,7 +907,12 @@ async function assembleImpl(req: NextRequest) {
+         // broken render never silently burns the user's one free film. Only ONE
+         // of these branches runs — a free render never also debited credits.
+         if (ctx.bag.freeFilm) await restoreFreeFilm(uid);
+-        else if (ctx.bag.debited) await refundCredits(uid, assembleCost, `assemble-rollback:${ctx.sagaId}`);
++        else if (ctx.bag.debited) {
++          // `${sagaRef}:refund` (was a private `assemble-rollback:` ref the drainer could not see — it would have paid twice).
++          // A refund that did not land leaves the settlement live for the drainer.
++          const r = await refundCredits(uid, assembleCost, `${sagaRef}:refund`).catch(() => null);
++          if (r?.ok) await closeStitchSettlement(sagaSettleId, uid);
++        }
+       },
+     },
+     {
+@@ -969,13 +996,15 @@ async function assembleImpl(req: NextRequest) {
+       run: async (ctx) => {
+         const lock = ctx.bag.lock as TokenLock | null | undefined;
+         if (lock) await commitTokenLock(lock);
++        // Delivered: the charge stands — close the settlement so the drainer can never refund this stitch.
++        if (ctx.bag.debited && uid) await closeStitchSettlement(sagaSettleId, uid);
+         return null;
+       },
+     },
+   ];
+ 
+   const bag: Record<string, unknown> = {};
+-  const saga = await runSaga(steps, { signal: req.signal, bag });
++  const saga = await runSaga(steps, { sagaId, signal: req.signal, bag });
+   let resultUrl = typeof bag.tempUrl === 'string' ? bag.tempUrl : null;
+ 
+   if (!saga.ok) {
+diff --git a/app/api/video/assemble/stitchSettlement.test.ts b/app/api/video/assemble/stitchSettlement.test.ts
+new file mode 100644
+index 00000000..73e76f75
+--- /dev/null
++++ b/app/api/video/assemble/stitchSettlement.test.ts
+@@ -0,0 +1,45 @@
++/** @jest-environment node */
++/**
++ * Defect 51 — structural guard: both charged stitch paths open a durable settlement row after the debit and before the
++ * stitch, refund in-route under `${ref}:refund` (the drainer's ref, so the two collapse to one), close the row only when
++ * the attempt settled in-route, and leave it live when the in-route refund failed.
++ */
++import { readFileSync } from 'node:fs';
++import { join } from 'node:path';
++
++const src = readFileSync(join(__dirname, 'route.ts'), 'utf8');
++const code = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
++
++test('single clip: the settlement opens right after a charged debit and before the render', () => {
++  const debit = code.indexOf('await deductCredits(uid, assembleCost, scRef)');
++  const open = code.indexOf('openStitchSettlement({ id: scSettleId, userId: uid, ref: scRef, credits: assembleCost })');
++  expect(debit).toBeGreaterThan(0);
++  expect(open).toBeGreaterThan(debit);
++  expect(open).toBeLessThan(code.indexOf('const clipUrl = await reSignIfInternal(segments[0]!.url)'));
++});
++
++test('multi clip: the settlement opens inside reserve-credits after the debit, before dispatch', () => {
++  const debit = code.indexOf('await deductCredits(uid, assembleCost, sagaRef)');
++  const open = code.indexOf('openStitchSettlement({ id: sagaSettleId, userId: uid, ref: sagaRef, credits: assembleCost })');
++  expect(debit).toBeGreaterThan(0);
++  expect(open).toBeGreaterThan(debit);
++  expect(open).toBeLessThan(code.indexOf("name: 'dispatch'"));
++  expect(code).toMatch(/runSaga\(steps, \{ sagaId, signal: req\.signal, bag \}\)/);
++});
++
++test('the saga rollback refunds under the drainer\'s ref (not a private assemble-rollback ref that would pay twice)', () => {
++  expect(code).not.toMatch(/assemble-rollback:/);
++  expect(code).toMatch(/refundCredits\(uid, assembleCost, `\$\{sagaRef\}:refund`\)/);
++});
++
++test('every in-route refund closes the settlement only when it landed; a failed refund leaves the row for the drainer', () => {
++  expect((code.match(/if \(r\?\.ok\) await closeStitchSettlement\(scSettleId, uid\)/g) ?? []).length).toBe(2);
++  expect(code).toMatch(/if \(r\?\.ok\) await closeStitchSettlement\(sagaSettleId, uid\)/);
++});
++
++test('a delivered stitch closes its settlement, so the drainer can never refund it', () => {
++  const single = code.indexOf('if (scLock) await commitTokenLock(scLock).catch(() => {});');
++  expect(code.indexOf('await closeStitchSettlement(scSettleId, uid)', single)).toBeGreaterThan(single);
++  const commit = code.indexOf("name: 'commit'");
++  expect(code.indexOf('await closeStitchSettlement(sagaSettleId, uid)', commit)).toBeGreaterThan(commit);
++});
+diff --git a/lib/orchestrator/assembleQcGate.test.ts b/lib/orchestrator/assembleQcGate.test.ts
+index a437cdea..9b4adc2d 100644
+--- a/lib/orchestrator/assembleQcGate.test.ts
++++ b/lib/orchestrator/assembleQcGate.test.ts
+@@ -138,7 +138,11 @@ describe('the route and the assembler, on the source (T2)', () => {
+   });
+ 
+   test('the single-clip path answers the same qc_rejected after rolling the reservation back, before the assemble_failed fallback', () => {
+-    const refund = route.indexOf("else if (scDebited) await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => {});");
++    // Defect 51: the rollback checks its refund and closes the durable settlement row only when it landed.
++    const refund = route.indexOf(
++      "const r = await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => null);",
++      route.indexOf('// A failed 6s render must never strand'),
++    );
+     const release = route.indexOf('await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`).catch(() => {});', refund);
+     const gate = route.indexOf('if (isFinalCutRejected(err)) {', release);
+     const fallback = route.indexOf("return NextResponse.json({ error: 'assemble_failed'", gate);
+diff --git a/lib/orchestrator/jobs.ts b/lib/orchestrator/jobs.ts
+index 48982c50..c1cabb03 100644
+--- a/lib/orchestrator/jobs.ts
++++ b/lib/orchestrator/jobs.ts
+@@ -287,6 +287,27 @@ export async function jobSnapshot(id: string): Promise<{ userId: string; status:
+   }
+ }
+ 
++/**
++ * Delete a still-live row owned by `userId` (status pending/processing). Used to close a durable settlement row
++ * (lib/orchestrator/stitchSettlement) once its attempt settled in-route, so the drainer has nothing left to refund.
++ * A final row and another user's row are never touched. Best-effort, never throws; true when a row was removed.
++ */
++export async function discardLiveJob(id: string, userId: string): Promise<boolean> {
++  const sb = client();
++  if (!sb || !id || !userId) return false;
++  try {
++    const { data, error } = await sb.from(TABLE).delete().eq('id', id).eq('user_id', userId).in('status', [...LIVE_STATUSES]).select('id');
++    if (error) {
++      reportError(new Error(error.message), { fn: 'discardLiveJob', id });
++      return false;
++    }
++    return Array.isArray(data) && data.length > 0;
++  } catch (e) {
++    reportError(e, { fn: 'discardLiveJob', id });
++    return false;
++  }
++}
++
+ /** Mark a live job failed with a short reason. False when it was already final (a delivered job never turns failed). */
+ export async function failJob(id: string, error: string): Promise<boolean> {
+   const moved = await transition(id, { status: 'failed', current_stage: 'failed', error: error.slice(0, 300) }, 'failJob');
+diff --git a/lib/orchestrator/stitchSettlement.test.ts b/lib/orchestrator/stitchSettlement.test.ts
+new file mode 100644
+index 00000000..2b65057e
+--- /dev/null
++++ b/lib/orchestrator/stitchSettlement.test.ts
+@@ -0,0 +1,62 @@
++/** @jest-environment node */
++/**
++ * Defect 51 — a function killed mid-stitch kept the stitch debit. The charge is durable (credit_ledger) but the in-route
++ * refund is not: once the platform kills the function there is nothing left that knows the debit exists. The settlement
++ * row opened here, right after the charge and before the stitch, is what the drainer (lib/pipeline/renderDrainer) reads.
++ */
++const rows = new Map<string, Record<string, unknown>>();
++jest.mock('./jobs', () => ({
++  createJob: jest.fn(async (input: { id: string; userId: string; serviceType: string; params?: Record<string, unknown>; status?: string }) => {
++    if (rows.has(input.id)) return false;
++    rows.set(input.id, { id: input.id, user_id: input.userId, service_type: input.serviceType, status: input.status ?? 'pending', params: input.params ?? {}, updated_at: new Date(Date.now() - 31 * 60 * 1000).toISOString() });
++    return true;
++  }),
++  discardLiveJob: jest.fn(async (id: string, userId: string) => {
++    const r = rows.get(id);
++    if (!r || r.user_id !== userId || !['pending', 'processing'].includes(String(r.status))) return false;
++    rows.delete(id);
++    return true;
++  }),
++}));
++
++import { openStitchSettlement, closeStitchSettlement } from './stitchSettlement';
++import { reapReserve, selectReapable, type DrainJobRow } from '../pipeline/renderDrainer';
++
++beforeEach(() => rows.clear());
++
++test('a function killed mid-stitch leaves a processing row the drainer refunds with the exact charge ref and amount', async () => {
++  // The stitch debit landed; the function now opens the settlement and is killed while the stitch runs (nothing after it executes).
++  expect(await openStitchSettlement({ id: 'set-1', userId: 'u1', ref: 'assemble:saga_x', credits: 42 })).toBe(true);
++  const reaped = selectReapable([...rows.values()] as unknown as DrainJobRow[], Date.now());
++  expect(reaped.map((r) => r.id)).toEqual(['set-1']);
++  // The drainer refunds `${ref}:refund` — the SAME ref the in-route rollback uses, so the two collapse to one refund.
++  expect(reapReserve(reaped[0]!)).toEqual({ userId: 'u1', ref: 'assemble:saga_x', credits: 42 });
++});
++
++test('a settled stitch (delivered, or refunded in-route) leaves nothing for the drainer to refund', async () => {
++  await openStitchSettlement({ id: 'set-2', userId: 'u1', ref: 'assemble:saga_y', credits: 42 });
++  expect(await closeStitchSettlement('set-2', 'u1')).toBe(true);
++  expect(selectReapable([...rows.values()] as unknown as DrainJobRow[], Date.now())).toEqual([]);
++});
++
++test('nothing charged, nothing opened (a free slot or skipped debit must never be refundable)', async () => {
++  expect(await openStitchSettlement({ id: 'set-3', userId: 'u1', ref: 'assemble:saga_z', credits: 0 })).toBe(false);
++  expect(await openStitchSettlement({ id: 'set-4', userId: '', ref: 'assemble:saga_z', credits: 5 })).toBe(false);
++  expect(await openStitchSettlement({ id: 'set-5', userId: 'u1', ref: '', credits: 5 })).toBe(false);
++  expect(rows.size).toBe(0);
++});
++
++test('closing never touches another user\'s row, and a null id is a no-op', async () => {
++  await openStitchSettlement({ id: 'set-6', userId: 'u1', ref: 'assemble:saga_w', credits: 7 });
++  expect(await closeStitchSettlement('set-6', 'u2')).toBe(false);
++  expect(await closeStitchSettlement(null, 'u1')).toBe(false);
++  expect(rows.has('set-6')).toBe(true);
++});
++
++test('a settlement write that throws never breaks the stitch (fail-open)', async () => {
++  const jobs = jest.requireMock('./jobs') as { createJob: jest.Mock; discardLiveJob: jest.Mock };
++  jobs.createJob.mockImplementationOnce(async () => { throw new Error('db down'); });
++  jobs.discardLiveJob.mockImplementationOnce(async () => { throw new Error('db down'); });
++  await expect(openStitchSettlement({ id: 'set-7', userId: 'u1', ref: 'assemble:saga_v', credits: 3 })).resolves.toBe(false);
++  await expect(closeStitchSettlement('set-7', 'u1')).resolves.toBe(false);
++});
+diff --git a/lib/orchestrator/stitchSettlement.ts b/lib/orchestrator/stitchSettlement.ts
+new file mode 100644
+index 00000000..ba521c0b
+--- /dev/null
++++ b/lib/orchestrator/stitchSettlement.ts
+@@ -0,0 +1,46 @@
++/**
++ * Durable settlement for the /api/video/assemble stitch charge (defect 51).
++ *
++ * The stitch debit is durable (credit_ledger) but its rollback lived only in the function: a stitch killed by the platform
++ * (maxDuration, an OOM, a crash) never reached the refund, and nothing else knew the debit existed. So, right after a
++ * CHARGED debit and before the stitch runs, the route opens a `processing` generation_jobs row carrying
++ * `params._reserve { ref, credits }` — the exact shape the render drainer (lib/pipeline/renderDrainer) refunds from when a
++ * row is still processing 30 min later (a stitch lives at most maxDuration = 600 s, so a row that old is a dead function).
++ *
++ * Exactly once: the drainer refunds `${ref}:refund` (refundDebitByRef, capped at what the ledger shows under `ref`), and the
++ * route's in-route rollbacks use the same `${ref}:refund`, so refund_credits collapses the two to one.
++ * Never on a delivered stitch: the route closes (deletes) the row once the attempt settled in-route — delivered, or refunded
++ * — and leaves it live only when the in-route refund did not land, which is exactly the case the drainer must pick up.
++ *
++ * The row has its own per-attempt id (never the client-supplied film token), so it cannot collide with the Library row
++ * recordCompletedFilm writes, nor with a retry of the same film. Only call with a charge that actually landed: a free slot
++ * or a `skipped` debit has nothing to refund, and stamping it would let the drainer mint credits.
++ */
++import { createJob, discardLiveJob } from './jobs';
++
++export async function openStitchSettlement(input: { id: string; userId: string; ref: string; credits: number }): Promise<boolean> {
++  if (!input.id || !input.userId || !input.ref || !(input.credits > 0)) return false;
++  // Best-effort, never throws: a lost row only forgoes the drainer's backstop — the in-route rollback still covers every
++  // failure the function lives through, and the stitch the user paid for must not be blocked by a bookkeeping write.
++  try {
++    return await createJob({
++      id: input.id,
++      userId: input.userId,
++      serviceType: 'film',
++      status: 'processing',
++      params: { source: 'assemble-settlement', subtype: 'stitch', _reserve: { ref: input.ref, credits: Math.round(input.credits) } },
++    });
++  } catch {
++    return false;
++  }
++}
++
++/** Close a settlement whose attempt settled in-route. Best-effort, never throws; false when nothing (live, owned) was removed. */
++export async function closeStitchSettlement(id: string | null, userId: string | null): Promise<boolean> {
++  if (!id || !userId) return false;
++  try {
++    return await discardLiveJob(id, userId);
++  } catch {
++    return false;
++  }
++}
+-- 
+2.50.1 (Apple Git-155)
+

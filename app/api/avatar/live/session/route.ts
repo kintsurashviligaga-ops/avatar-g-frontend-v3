@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // userId, so IP rotation across throwaway accounts can't multiply sessions). All fail-closed.
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ ok: false, error: 'unauthenticated' }, { status: 401 });
+  // HeyGen LiveAvatar is outside the Google-only media boundary and charges no credits: refused while the boundary is on.
+  const outside = refuseOutsideEngine(req); if (outside) return outside as NextResponse;
   const ipLimited = await checkRateLimit(req, RATE_LIMITS.VOICE_TOKEN);
   if (ipLimited) return ipLimited;
   const perUser = await checkRateLimitByKey(user.id, RATE_LIMITS.LIVEAVATAR_SESSION);

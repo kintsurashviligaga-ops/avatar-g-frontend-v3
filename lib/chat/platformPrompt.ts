@@ -24,6 +24,7 @@
  *
  * Pure (no I/O, no env); the date line is computed per call so a cached prompt can never serve yesterday's date.
  */
+import { ownerApprovedPrice } from '@/lib/billing/pricingApproval';
 import { TOOL_META, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { SERVICE_CATALOG } from '@/lib/catalog/services';
@@ -137,11 +138,19 @@ function priceBlock(topUp: string): string {
   const packs = BOG_TOPUP_PACKS_GEL.map((g) => `${g} ₾ = ${topupCredits(g)} cr`).join(', ');
   const fast = FILM_EXAMPLE_SECONDS.map((sec) => `${sec} s ${videoQuote({ seconds: sec, tier: 'fast', mode: 'documentary' })}`).join(', ');
   const pct = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
+  // Dubbing and decks run only once the owner approved their price (lib/billing/paidServiceGate); until then the
+  // assistant must not quote a number the product will refuse to charge.
+  const gated = [
+    ownerApprovedPrice('dubbing', C.dubbing_per_minute) ? `dub ${cr(C.dubbing_per_minute)}/min` : null,
+    ownerApprovedPrice('presentation', C.presentation_deck) ? `deck ${cr(C.presentation_deck)}` : null,
+  ];
+  const off = [gated[0] ? null : 'dubbing', gated[1] ? null : 'decks'].filter(Boolean);
+  const dubDeck = [...gated.filter(Boolean), ...(off.length ? [`${off.join(' and ')}: not yet available`] : [])].join('; ');
   return [
     `PRICES (cr = credits; 1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾; ${chat}): image ${cr(C.image_generate)} each;`,
     `film: Fast ${fast} cr; Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)};`,
-    `film lip-sync +${quoteCredits({ tool: 'avatar' })} cr; chat clip/product ad: video ${cr(C.video_30s)} under 60 s, ${cr(C.video_60s)} for 60 s or more; music ${cr(C.music_30s)} under 60 s,`,
-    `${cr(C.music_60s)} for 60–89 s, ${cr(C.music_90s)} for 90 s or more; talking avatar ${cr(C.avatar_30s)}; remix ${cr(C.remix_video)}; 3D model ${cr(C.model3d)}.`,
+    `film lip-sync +${quoteCredits({ tool: 'avatar' })} cr; chat clip/product ad: video ${cr(C.video_30s)} <60 s, ${cr(C.video_60s)} ≥60 s; music ${cr(C.music_30s)} <60 s,`,
+    `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; talking avatar ${cr(C.avatar_30s)}; remix ${cr(C.remix_video)}; 3D model ${cr(C.model3d)}; ${dubDeck}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote prices only in credits and lari and only these numbers; for anything not listed, do not guess.`,
   ].join(' ');
 }

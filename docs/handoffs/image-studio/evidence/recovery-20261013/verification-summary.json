@@ -1,0 +1,212 @@
+{
+  "branch": "codex/image-studio-v1",
+  "head": "30be5a2d96495f67134cad34796ce724a744bd28",
+  "scope": "Combined unique-suite results from bounded regression groups, with the changed wiring suite replaced by its final branch rerun. Not a single monolithic invocation.",
+  "suiteCount": 884,
+  "tests": {
+    "passed": 13336,
+    "pending": 30,
+    "failed": 18
+  },
+  "failed": [
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "pictures TX-01 exact Georgian text on a picture: the very words, drawn whole, where asked"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "pictures TX-07 the same design re-laid as a 9:16 story: a revision, the words kept, inside the tall safe area"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "a logo and a line, revised the first result: our logo top-left, a line at the bottom, the package untouched"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "a logo and a line, revised TX-04 \u201e\u10d6\u10d4\u10d3\u10d0 \u10da\u10dd\u10d2\u10dd \u10db\u10dd\u10ee\u10e1\u10d4\u10dc\u10d8, \u10de\u10d0\u10d9\u10d4\u10e2\u10d8\u10e1 \u10da\u10dd\u10d2\u10dd \u10e8\u10d4\u10d8\u10dc\u10d0\u10e0\u10e9\u10e3\u10dc\u10d4\": our logo gone without a trace, the package logo kept"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "a logo and a line, revised TX-06 + TX-09 two revisions of the same result at once: a premium restyle (same words) and the logo moved right"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "TX-05 \u201e\u10d1\u10dd\u10da\u10dd \u10e1\u10d0\u10db \u10ec\u10d0\u10db\u10e8\u10d8 \u10d0\u10dc\u10d8\u10db\u10d0\u10ea\u10d8\u10e3\u10e0\u10d8 CTA \u10e9\u10d0\u10e1\u10d5\u10d8\": absent before 5 s, slides up into place, held to the end"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "TX-10 several layers: each in its own time, the later one drawn above the logo, all editable later"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "caption tracks TX-02 + TX-03 a Georgian track burned in on its times, and the same video without it"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "caption tracks reload: the stored job answers with both copies, the files and the QC; a repeated Start replays, never re-runs"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "caption tracks a revision in words: \u201e\u10e5\u10d4\u10e4\u10e8\u10d4\u10dc\u10d4\u10d1\u10d8 \u10e4\u10d0\u10d8\u10da\u10d0\u10d3 \u10db\u10dd\u10db\u10d4\u10ea\u10d8\" keeps the same lines (the parent's track), only delivered anew"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "caption tracks TX-08 an English track (typed lines), timed, burned in and as SRT/VTT"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "words a font cannot draw are refused at the quote, named, and nothing is queued"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "long Georgian text: 150 letters are laid out to fit a 9:16 frame; 161 are refused"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "masks hide a region where and when asked (mosaic and blur), and only there"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "a cancel during a layered edit kills ffmpeg and delivers nothing"
+    },
+    {
+      "suite": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "what a phone plays: H.264 4:2:0, the index before the data (faststart), the sound kept as AAC"
+    },
+    {
+      "suite": "lib/agent/media/effects.ffmpeg.test.ts",
+      "test": "F10 the sound evened out: -14 LUFS from a quiet clip"
+    },
+    {
+      "suite": "lib/video/ffmpegExec.test.ts",
+      "test": "ffmpegExec a playlist is not media: refused by type, and by demuxer when it lies about its type"
+    }
+  ],
+  "preservedFileDrift": [],
+  "original88Verified": true,
+  "changedByRecovery": [
+    "components/studio/create/omniWiring.test.ts"
+  ],
+  "stages": {
+    "video-compatibility-with-modes": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 0.039,
+      "deadlineSeconds": 30
+    },
+    "regression-libraries-5": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 1.71,
+      "deadlineSeconds": 180
+    },
+    "regression-agent": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 4.651,
+      "deadlineSeconds": 180
+    },
+    "wiring-fixed-branch": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 1.547,
+      "deadlineSeconds": 60
+    },
+    "video-compatibility": {
+      "exitCode": 1,
+      "timedOut": false,
+      "elapsedSeconds": 0.039,
+      "deadlineSeconds": 30
+    },
+    "focused": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 3.706,
+      "deadlineSeconds": 120
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 17.251,
+      "deadlineSeconds": 120
+    },
+    "regression-libraries-3": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 8.924,
+      "deadlineSeconds": 180
+    },
+    "regression-components": {
+      "exitCode": 1,
+      "timedOut": false,
+      "elapsedSeconds": 26.905,
+      "deadlineSeconds": 180
+    },
+    "build-snapshot": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 63.851,
+      "deadlineSeconds": 240
+    },
+    "regression-api": {
+      "exitCode": -15,
+      "timedOut": false,
+      "elapsedSeconds": 67.069,
+      "deadlineSeconds": 180
+    },
+    "regression-libraries-1": {
+      "exitCode": 1,
+      "timedOut": false,
+      "elapsedSeconds": 7.896,
+      "deadlineSeconds": 180
+    },
+    "wiring-fixed-snapshot": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 1.436,
+      "deadlineSeconds": 60
+    },
+    "browser-snapshot": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 53.282,
+      "deadlineSeconds": 210
+    },
+    "regression-libraries-4": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 7.357,
+      "deadlineSeconds": 180
+    },
+    "lint-snapshot": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 14.255,
+      "deadlineSeconds": 120
+    },
+    "regression-native": {
+      "exitCode": 1,
+      "timedOut": false,
+      "elapsedSeconds": 116.533,
+      "deadlineSeconds": 180
+    },
+    "regression-libraries-1-local-network": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 8.718,
+      "deadlineSeconds": 180
+    },
+    "regression-libraries-2": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 6.21,
+      "deadlineSeconds": 180
+    },
+    "regression-api-handles": {
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedSeconds": 10.971,
+      "deadlineSeconds": 180
+    }
+  }
+}

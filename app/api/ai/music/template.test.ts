@@ -55,7 +55,6 @@ jest.mock('../../../../lib/audio/trackDuration', () => ({ probeTrackDurationSec:
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { generateLyriaTrack } from '../../../../lib/ai/lyriaMusic';
-import { generateMusicCover } from '../../../../lib/ai/replicate';
 import { hashPayload } from '../../../../lib/orchestrator/idempotency';
 import { resolveTemplateContext } from '../../../../lib/studio/templateContext';
 import { musicTemplateValues } from '../../../../lib/studio/templates';
@@ -141,11 +140,4 @@ test('a Georgian Folk track saved by the Round-2 build (genre "folk") re-rolls w
   expect(brief).toContain(DESCRIPTOR);
   expect(brief).toContain('Style: georgian folk.');
   expect(key.t).toBe('georgian-folk');
-});
-
-test('a cover (an uploaded reference track) keeps its own source: no brief, no descriptor', async () => {
-  (generateMusicCover as jest.Mock).mockResolvedValueOnce({ audioUrl: '' });
-  await POST(post({ ...FOLK_BODY, templateId: 'georgian-folk', audioReference: 'https://cdn.example.com/track.mp3' }));
-  expect(generateLyriaTrack).not.toHaveBeenCalled();
-  expect((generateMusicCover as jest.Mock).mock.calls[0][0]).not.toContain(DESCRIPTOR);
 });

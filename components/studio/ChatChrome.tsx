@@ -13,6 +13,8 @@
  * in a native slide-over (no iframe).
  */
 
+import { VoicePreferencesProvider } from '@/components/voice/experience/VoicePreferencesProvider';
+import { VoiceSettingsPanel, VOICE_SETTINGS_LABEL } from '@/components/voice/experience/VoiceSettingsPanel';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ViewportDebugOverlay } from '@/components/studio/ViewportDebugOverlay';
 import { SaveReadyPrompt } from '@/components/studio/ui/SaveReadyPrompt';
@@ -617,6 +619,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Service hub is collapsed by default: chat history stays the sidebar's centre of gravity.
   const [personaOpen, setPersonaOpen] = useState(false);
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false);
+  const voiceV2 = process.env.NEXT_PUBLIC_VOICE_EXPERIENCE_V2 === '1';
   // Only used for the "a persona is active" dot — read once on mount (localStorage is not reactive).
   const [activePersonaId, setActivePersonaId] = useState('');
   useEffect(() => { setActivePersonaId(loadSelectedPersonaId()); }, []);
@@ -1184,6 +1188,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tLibrary}
           </button>
+          {voiceV2 && <button type="button" className={sideRow} onClick={() => { setSidebarOpen(false); setVoiceSettingsOpen(true); }}>{VOICE_SETTINGS_LABEL[lang]}</button>}
           <ResearchSidebarRow locale={lang} authed={authed} className={sideRow} onPicked={() => setSidebarOpen(false)} />
           <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
             <Sparkles className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {t.persona}
@@ -1400,6 +1405,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         </nav>
       )}
 
+      {voiceV2 && <StudioSheet open={voiceSettingsOpen} title={VOICE_SETTINGS_LABEL[lang]} onClose={() => setVoiceSettingsOpen(false)}>
+        <VoiceSettingsPanel userId={userId} locale={lang} />
+      </StudioSheet>}
       <PersonaPicker
         locale={locale}
         open={personaOpen}
@@ -1666,10 +1674,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         LIVEAVATAR_ENABLED && liveUid && !liveAvatarUnavailable && Date.now() >= liveAvatarCooldownUntil
           ? <LiveAvatarRealtime locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => { liveAvatarCooldownUntil = Date.now() + LIVEAVATAR_COOLDOWN_MS; setLiveAvatarUnavailable(true); }} />
           : GEMINI_LIVE_ENABLED && liveUid && !liveUnavailable
-            ? <GeminiLiveConversation userId={liveUid} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)}
+            ? <VoicePreferencesProvider userId={voiceV2 ? liveUid : ''}><GeminiLiveConversation userId={liveUid} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)}
                 // The persona the chat is using speaks on the call too (read at open time; localStorage is not reactive).
                 personaId={loadSelectedPersonaId() || undefined}
-                customPersona={loadCustomPersonas().find((p: Persona) => p.id === loadSelectedPersonaId())} />
+                customPersona={loadCustomPersonas().find((p: Persona) => p.id === loadSelectedPersonaId())} /></VoicePreferencesProvider>
             : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />
       )}
 

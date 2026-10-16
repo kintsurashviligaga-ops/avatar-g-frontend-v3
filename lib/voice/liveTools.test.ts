@@ -54,6 +54,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
       'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
       'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'call_view', 'show_code', 'open_url', 'end_call',
       'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g', 'extract_audio', 'agent_task',
+      'music_studio',
     ]);
     for (const d of LIVE_FUNCTION_DECLARATIONS) {
       expect(d.name).toMatch(/^[a-z_]{1,64}$/); // Gemini: a-z, 0-9, _ ; ≤ 64
@@ -95,17 +96,17 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(byName.open_studio!.parameters!.required).toEqual(['tool']);
   });
 
-  it('tells the model the money rule: only start_generation spends, and only after the price and a clear yes', () => {
+  it('tells the model the money rule: preparing is free, and a paid start is the user\'s own tap, never a spoken yes', () => {
     const prep = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'prepare_generation')!;
     expect(prep.description).toMatch(/does NOT start/);
     expect(prep.description).toMatch(/no credits/);
     const start = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'start_generation')!;
-    expect(start.description).toMatch(/SPENDS CREDITS/);
-    expect(start.description).toMatch(/ONLY after you told the user the price and they clearly said yes/);
+    expect(start.description).toMatch(/never starts by voice: this answers ui_confirmation_required/);
+    expect(start.description).toMatch(/pressing the priced button on screen/);
     expect(start.parameters!.required).toEqual(['confirmed']);
     expect(start.parameters!.properties!.confirmed!.enum).toEqual(['yes']);
     expect(LIVE_ACTIONS_RULE).toMatch(/never spend credits/);
-    expect(LIVE_ACTIONS_RULE).toMatch(/ONLY after the user clearly says yes to that price/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/A spoken yes never starts or charges anything/);
     expect(LIVE_ACTIONS_RULE).toMatch(/Never start a generation on your own initiative/);
     expect(LIVE_ACTIONS_RULE).toMatch(/ok:false/);
   });
@@ -523,7 +524,7 @@ describe('ask_agent_g', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'ask_agent_g')!;
 
   it('is declared after the older ones (they keep their order) with one required STRING `task`', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 3]!.name).toBe('ask_agent_g');
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 4]!.name).toBe('ask_agent_g');
     const p = decl().parameters!;
     expect(p.type).toBe('OBJECT');
     expect(Object.keys(p.properties!)).toEqual(['task']);
@@ -584,7 +585,7 @@ describe('extract_audio', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'extract_audio')!;
 
   it('is declared after ask_agent_g with a required action (plan · start · stop), an optional url and the start confirmation', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 2]!.name).toBe('extract_audio');
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 3]!.name).toBe('extract_audio');
     const p = decl().parameters!;
     expect(Object.keys(p.properties!)).toEqual(['action', 'url', 'confirmed']);
     expect(p.properties!.action!.enum).toEqual(['plan', 'start', 'stop']);
@@ -597,7 +598,7 @@ describe('extract_audio', () => {
     expect(d).toMatch(/Free, no credits/);
     expect(d).toMatch(/video platforms[\s\S]*refused by their terms: never look for a way around/);
     expect(d).toMatch(/upload their own or a licensed file/);
-    expect(d).toMatch(/only after the user clearly says yes/);
+    expect(d).toMatch(/"start" never starts it by voice/);
     expect(d).toMatch(/starting confirms the file is theirs or licensed/);
     expect(LIVE_ACTIONS_RULE).toMatch(/call extract_audio with action "plan"/);
     expect(LIVE_ACTIONS_RULE).toMatch(/offer the\s+upload instead, never a workaround/);
@@ -631,8 +632,8 @@ function isObjArgs(v: unknown): boolean {
 describe('agent_task', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'agent_task')!;
 
-  it('is declared LAST with a required action (start · stop · status) and an optional INTEGER plan', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('agent_task');
+  it('is declared after extract_audio (music_studio follows it) with a required action (start · stop · status) and an optional INTEGER plan', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 2]!.name).toBe('agent_task');
     const p = decl().parameters!;
     expect(Object.keys(p.properties!)).toEqual(['action', 'plan']);
     expect(p.properties!.action!.enum).toEqual(['start', 'stop', 'status']);
@@ -640,14 +641,12 @@ describe('agent_task', () => {
     expect(p.required).toEqual(['action']);
   });
 
-  it('tells the model the yes is the user\'s own words, checked by the app, never its own word', () => {
+  it('tells the model no start is ever made by voice: the user presses the card\'s button', () => {
     const d = decl().description;
-    expect(d).toMatch(/only after you told the\s+user what it does/);
-    expect(d).toMatch(/the app checks what it heard, not your\s+word/);
-    expect(LIVE_ACTIONS_RULE).toMatch(/the app checks its transcript of the user, never your word/);
-    expect(LIVE_ACTIONS_RULE).toMatch(/If an \[App\] note says\s+nothing was started, ask the user again plainly; never say it started/);
-    const start = LIVE_FUNCTION_DECLARATIONS.find((x) => x.name === 'start_generation')!.description;
-    expect(start).toMatch(/runs only if the user's own words after the price were a clear yes/);
+    expect(d).toMatch(/action "start" never starts anything by voice: it answers ui_confirmation_required/);
+    expect(d).toMatch(/starts the plan with its card's button/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/No start is ever made by voice/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/Never say something started unless the screen shows it/);
   });
 
   it('start / stop take a plan number (a numeric string too); status ignores one; absent = the newest', () => {
@@ -666,5 +665,47 @@ describe('agent_task', () => {
     // planId / planKind are set by the browser executor from its own ledger, never taken from the model's args.
     expect(ok('agent_task', { action: 'start', plan: 1, planId: 'someone-elses-card', planKind: 'montage' }))
       .toEqual({ type: 'agent_task', action: 'start', plan: 1 });
+  });
+});
+
+describe('music_studio (Music Studio v1 by voice)', () => {
+  const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'music_studio')!;
+
+  it('is declared LAST with a required action and NO start / confirmation field: voice can never start a Music Studio job', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('music_studio');
+    const p = decl().parameters!;
+    expect(p.required).toEqual(['action']);
+    expect(p.properties!.action!.enum).toEqual(['plan', 'edit', 'join', 'status', 'cancel', 'download', 'save']);
+    expect(Object.keys(p.properties!)).not.toContain('confirmed');
+    expect(p.properties!.action!.enum).not.toContain('start');
+    expect(decl().description).toMatch(/you can NEVER start it/);
+    expect(decl().description).toMatch(/never offer an instrumental as if it were the song/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/you can never start it or charge for it/);
+  });
+
+  it('plan: prompt required; genre / mood cleaned to the contract alphabet; bpm clamped; tempo / mode enums', () => {
+    expect(err('music_studio', { action: 'plan' })).toMatchObject({ field: 'prompt' });
+    expect(ok('music_studio', { action: 'plan', prompt: ' calm piano ', genre: 'jazz!!', mood: 'calm', bpm: 400, tempo: 'SLOW' }))
+      .toEqual({ type: 'music_studio', action: 'plan', prompt: 'calm piano', genre: 'jazz', mood: 'calm', bpm: 220, tempo: 'slow' });
+    expect(err('music_studio', { action: 'plan', prompt: 'x', mode: 'rap' })).toMatchObject({ field: 'mode' });
+    expect(err('music_studio', { action: 'plan', prompt: 'x', tempo: 'warp' })).toMatchObject({ field: 'tempo' });
+    expect(err('music_studio', { action: 'plan', prompt: 'x', bpm: 'fast' })).toMatchObject({ field: 'bpm' });
+  });
+
+  it('plan: lyrics, their language and the voice only travel with a song; a language without lyrics is dropped', () => {
+    expect(ok('music_studio', { action: 'plan', prompt: 'x', lyrics: 'la la', vocalGender: 'female' })).toEqual({ type: 'music_studio', action: 'plan', prompt: 'x' });
+    expect(ok('music_studio', { action: 'plan', prompt: 'x', mode: 'song', lyricsLanguage: 'ka', vocalGender: 'female' }))
+      .toEqual({ type: 'music_studio', action: 'plan', prompt: 'x', mode: 'song', vocalGender: 'female' });
+    expect(ok('music_studio', { action: 'plan', prompt: 'x', mode: 'song', lyrics: 'გამარჯობა', lyricsLanguage: 'ka' }))
+      .toEqual({ type: 'music_studio', action: 'plan', prompt: 'x', mode: 'song', lyrics: 'გამარჯობა', lyricsLanguage: 'ka' });
+  });
+
+  it('edit needs the words; join clamps count 2-6 and crossfade 0-10 and checks the format; the rest take no fields', () => {
+    expect(err('music_studio', { action: 'edit' })).toMatchObject({ field: 'command' });
+    expect(ok('music_studio', { action: 'edit', command: 'fade out 3 seconds' })).toEqual({ type: 'music_studio', action: 'edit', command: 'fade out 3 seconds' });
+    expect(ok('music_studio', { action: 'join', count: 9, crossfadeSec: 30, format: 'wav' })).toEqual({ type: 'music_studio', action: 'join', count: 6, crossfadeSec: 10, format: 'wav' });
+    expect(err('music_studio', { action: 'join', format: 'flac' })).toMatchObject({ field: 'format' });
+    for (const a of ['status', 'cancel', 'download', 'save']) expect(ok('music_studio', { action: a, prompt: 'ignored' })).toEqual({ type: 'music_studio', action: a });
+    expect(err('music_studio', { action: 'start' })).toMatchObject({ field: 'action' });
   });
 });

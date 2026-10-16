@@ -61,7 +61,7 @@ const GEMINI_OK = { base64: 'aW1n', mimeType: 'image/png', model: 'gemini-3.1-fl
 beforeEach(() => {
   jest.clearAllMocks();
   delete process.env.IMAGE_PRIMARY_PROVIDER;
-  delete process.env.MEDIA_GOOGLE_ONLY;
+  process.env.MEDIA_GOOGLE_ONLY = '0';
   imagenOn.mockReturnValue(false);
   blocker.mockReturnValue(null);
   gemini.mockResolvedValue(GEMINI_OK);
@@ -154,7 +154,7 @@ it("a photo edit sends the photo to Google image and requires it to load (an edi
 
 describe('MEDIA_GOOGLE_ONLY on — no outside engine runs, whatever is configured or picked', () => {
   beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; });
-  afterAll(() => { delete process.env.MEDIA_GOOGLE_ONLY; });
+  afterAll(() => { process.env.MEDIA_GOOGLE_ONLY = '0'; });
 
   it('the configured NanoBanana is skipped; Google image answers', async () => {
     process.env.IMAGE_PRIMARY_PROVIDER = 'nanobanana';

@@ -15,9 +15,10 @@
  * visible outage is diagnosable, a silent vendor swap hid a dead key for days. Flip the kill switch, don't patch
  * the callers.
  */
-import { isEnabledByDefault } from '@/lib/env/flag';
+import { googleOnlySwitch } from '@/lib/env/providerBoundary';
 
 /** True unless AI_GOOGLE_ONLY is explicitly set falsy ('0' | 'false' | 'no' | 'off', case-insensitive). */
 export function isAiGoogleOnly(): boolean {
-  return isEnabledByDefault(process.env.AI_GOOGLE_ONLY);
+  // A falsy value re-opens the fallbacks only with OUTSIDE_ENGINES_APPROVED on record (lib/env/providerBoundary).
+  return googleOnlySwitch(process.env.AI_GOOGLE_ONLY);
 }

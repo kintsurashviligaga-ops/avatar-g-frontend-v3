@@ -1,0 +1,28 @@
+{
+  "numPassedTests": 3,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTotalTests": 3,
+  "success": true,
+  "startTime": 1791901690471,
+  "tests": [
+    {
+      "file": "imageIsolation.pg.test.ts",
+      "status": "passed",
+      "assertions": [
+        {
+          "name": "Image Studio with real isolated queue and hardened credit ledger quote writes nothing; eight confirmations and workers produce one job, one debit, one injected render",
+          "status": "passed"
+        },
+        {
+          "name": "Image Studio with real isolated queue and hardened credit ledger provider failure refunds once; repeated sweeps preserve real balance and debit/refund rows",
+          "status": "passed"
+        },
+        {
+          "name": "Image Studio with real isolated queue and hardened credit ledger foreign cancellation is refused; owner cancellation refunds and prevents dispatch",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

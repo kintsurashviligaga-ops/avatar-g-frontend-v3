@@ -30,10 +30,10 @@ import { deductCredits } from '../../../../lib/orchestrator/ledger';
 import { createPrediction } from '../../../../lib/replicate/client';
 
 const ENV = { ...process.env };
-const post = () => POST(new NextRequest('https://myavatar.ge/api/ai/edit-audio', {
+const post = (action = 'vocal_isolation') => POST(new NextRequest('https://myavatar.ge/api/ai/edit-audio', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ action: 'vocal_isolation', mediaUrl: 'user-1/song.mp3' }),
+  body: JSON.stringify({ action, mediaUrl: 'user-1/song.mp3' }),
 }));
 
 beforeEach(() => {
@@ -42,18 +42,13 @@ beforeEach(() => {
 });
 afterAll(() => { process.env = ENV; });
 
-test('a ledger error → 503 billing_unavailable (localized), and Demucs never runs', async () => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason: 'error' });
-  const res = await post();
-  expect(res.status).toBe(503);
-  const j = await res.json();
-  expect(j).toMatchObject({ url: null, error: 'billing_unavailable' });
-  expect(j.message).toMatch(/კრედიტი არ ჩამოგეჭრა/);
-  expect(createPrediction).not.toHaveBeenCalled();
-});
-
-test('a charged separation runs (unchanged)', async () => {
+test.each(['vocal_isolation', 'splitter'])('%s (Replicate Demucs) is outside the provider boundary → 400 unsupported, nothing charged, Demucs never runs', async (action) => {
   (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
-  await post();
-  expect(createPrediction).toHaveBeenCalledTimes(1);
+  const res = await post(action);
+  expect(res.status).toBe(400);
+  const j = await res.json();
+  expect(j).toMatchObject({ url: null, code: 'unsupported' });
+  expect(j.message).toMatch(/თანხა არ ჩამოგეჭრა/);
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(createPrediction).not.toHaveBeenCalled();
 });

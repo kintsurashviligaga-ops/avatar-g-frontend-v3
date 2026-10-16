@@ -64,7 +64,11 @@ import { takePrimed as takePrimedLive, disposePrimed, type PrimedLive } from '@/
 import { reportLiveFailure, type LiveFailureContext } from '@/lib/voice/liveTelemetry';
 import { requestLiveThreadId } from '@/lib/voice/liveThread';
 import { acquireMic, browserMicDeps, type MicDeps, type MicFailure, type MicResult } from '@/lib/voice/micAcquire';
-import { requestMicRelease } from '@/lib/voice/micBus';
+import { useVoicePreferencesContext } from '@/components/voice/experience/VoicePreferencesProvider';
+import { voiceStyleInstruction, VOICE_UI_APPROVAL_RULE, type VoicePreferences } from '@/lib/voice/experience/settings';
+import { voiceStyleCommand } from '@/lib/voice/experience/commands';
+import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
+import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
 import { liveVoicePersona } from '@/lib/voice/voicePrompt';
@@ -547,6 +551,11 @@ export function lateToolAnswerNote(responses: readonly LiveFunctionResponse[]): 
 }
 
 export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}): UseGeminiLiveSessionResult {
+  const experience = useVoicePreferencesContext();
+  const experienceRef = useRef(experience);
+  experienceRef.current = experience;
+  const sessionPreferencesRef = useRef<VoicePreferences | null>(null);
+  const appliedStyleRef = useRef('');
   const optsRef = useRef(options);
   optsRef.current = options;
   const deps = useCallback((): LiveSessionDeps => ({ ...defaultDeps(), ...(optsRef.current.deps ?? {}) }), []);
@@ -663,6 +672,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   }, []);
 
   const emitHeard = useCallback((e: LiveHeardEvent) => {
+    if ('end' in e && e.end && experienceRef.current) {
+      const next = voiceStyleCommand(pendingUserRef.current, experienceRef.current.preferences);
+      if (next) experienceRef.current.update(next);
+    }
     try { optsRef.current.onHeard?.(e); } catch { /* a host bug must never kill the call */ }
   }, []);
 
@@ -860,6 +873,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     const o = optsRef.current;
     const gen = genRef.current;
     const parity = o.parity !== false && !degradedRef.current;
+    // A fresh setup reinstates the session snapshot; reapply any mid-call style at listening.
+    if (typeof handle !== 'string') {
+      appliedStyleRef.current = sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : '';
+    }
     mintsRef.current += 1;
     const threadId = typeof handle === 'string' ? null : o.chatSessionId !== undefined ? o.chatSessionId : requestLiveThreadId();
     let res: Response;
@@ -875,7 +892,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         credentials: 'include',
         body: JSON.stringify({
           locale: o.locale || 'ka',
-          voice: o.voiceName,
+          voice: sessionPreferencesRef.current?.voice ?? o.voiceName,
+          ...(sessionPreferencesRef.current ? { voiceExperience: sessionPreferencesRef.current } : {}),
           personaId: o.personaId ?? null,
           customPersona: o.customPersona ?? null,
           ...(typeof o.researchId === 'string' && o.researchId ? { researchId: o.researchId } : {}),
@@ -939,8 +957,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     ];
     return buildLiveSetup({
       model: modelRef.current ?? '',
-      systemInstruction: o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale),
-      voiceName: o.voiceName || 'Aoede',
+      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale)) + '\n'
+        + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE),
+      voiceName: sessionPreferencesRef.current?.voice ?? o.voiceName ?? 'Aoede',
+      ...(sessionPreferencesRef.current ? { turnEagerness: sessionPreferencesRef.current.eagerness } : {}),
       ...(typeof o.temperature === 'number' ? { temperature: o.temperature } : {}),
       ...(parity
         ? {
@@ -1007,9 +1027,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     dispatchActivity({ type: 'toolStart', calls: calls.map((c) => ({ id: c.id, name: c.name })) });
     let responses: LiveFunctionResponse[] = [];
     const handler = optsRef.current.onToolCall;
-    if (handler) {
-      try { responses = (await handler(calls)) || []; } catch { responses = []; }
-    }
+    try { responses = await executeVoiceCalls(calls, handler); } catch { responses = []; }
     const answered = new Set(responses.map((r) => r.id));
     for (const c of calls) {
       if (!answered.has(c.id)) responses.push({ id: c.id, name: c.name, response: { error: 'not_supported' } });
@@ -1420,6 +1438,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const start = useCallback(async (): Promise<void> => {
     if (activeRef.current) return; // a call is already running or starting (double tap, double effect)
     activeRef.current = true;
+    sessionPreferencesRef.current = experienceRef.current?.preferences ?? null;
+    appliedStyleRef.current = sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : '';
     const gen = ++genRef.current;
     const isStale = () => gen !== genRef.current;
     const d = deps();
@@ -1612,12 +1632,22 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     emitHeard({ text: pendingUserRef.current });
   }, [emitHeard, publishCaptions]);
 
+  useMicRelease(() => stop(), 'live');
+
   const sendNote = useCallback((text: string): boolean => {
     const t = typeof text === 'string' ? text.trim() : '';
     if (!t || !readyRef.current || !sessionRef.current) return false;
     sessionRef.current.sendText(t);
     return true;
   }, []);
+
+  useEffect(() => {
+    if (!experience || status !== 'listening') return;
+    const instruction = voiceStyleInstruction(experience.preferences);
+    if (instruction !== appliedStyleRef.current && sendNote('[App] The user changed conversation style. Keep the current context.\n' + instruction)) {
+      appliedStyleRef.current = instruction;
+    }
+  }, [experience, status, sendNote]);
 
   const getLevels = useCallback((): LiveLevels => {
     const input = mutedRef.current ? 0 : Math.min(1, Math.max(0, inputLevelRef.current));

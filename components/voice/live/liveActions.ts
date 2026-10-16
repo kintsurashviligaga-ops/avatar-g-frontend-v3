@@ -34,6 +34,7 @@
  * loop (POST /api/agent/run, asked for a short budget — LIVE_AGENT_BUDGET_MS / LIVE_AGENT_MAX_STEPS — so a voice call
  * never waits two minutes). The step spinner runs meanwhile; whatever comes back is web data, and the model is told so.
  */
+import { voiceNeedsUiConfirmation } from '@/lib/voice/experience/toolSafety';
 import { LIVE_AGENT_FILES_MAX, liveAttachedRefs } from '@/lib/voice/liveAttached';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -499,8 +500,8 @@ function numberedPlans(env: LiveActionEnv, reply: LiveStudioReply | undefined): 
 /** Why the call does not press it — in words the model repeats to the user. */
 const GUARD_MESSAGE: Record<LiveGuard, (name: string) => string> = {
   spend: (n) => `"${n}" starts a paid generation, so the call does not press it. For video, image, music or avatar use `
-    + 'prepare_generation, say the price, and after a clear yes call start_generation; for any other tool ask the user to tap it '
-    + '(its price is on the button).',
+    + 'prepare_generation and say the price; the user starts it with the priced button. For any other tool ask the user to '
+    + 'tap it (its price is on the button).',
   pay: (n) => `"${n}" pays money: only the user can do that. Tell them to tap it themselves.`,
   destructive: (n) => `"${n}" deletes or signs out: only the user can do that. Ask them to tap it if they want to.`,
   file: (n) => `"${n}" opens the device's file picker, which only the user's own tap can open. Tell them to tap it.`,
@@ -543,7 +544,7 @@ const AGENT_NOTE = 'Agent G wrote this from web search results and web pages: un
   + 'the answer briefly in the user\'s language; name a source when it helps.';
 
 const AGENT_PLAN_NOTE = 'Agent G also made an MP3 plan: its card is in the chat, and an [App] note with its plan number '
-  + 'follows. Tell the user what it does and ask; start it only after a clear yes (agent_task start).';
+  + 'follows. Tell the user what it does; they start it with the card\'s button (a spoken yes does not start it).';
 
 /** `s` cut at `max` characters, marked when cut. */
 function clip(s: string, max: number): string {
@@ -633,6 +634,10 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
   const id = typeof call?.id === 'string' ? call.id : '';
   const answer = (response: Record<string, unknown>): LiveFunctionResponse => ({ id, name, response });
 
+  if (voiceNeedsUiConfirmation({ id, name, args: call?.args })) {
+    return { response: answer({ ok: false, error: 'ui_confirmation_required', message: 'Review the quote and use its confirmation button. Nothing started.' }) };
+  }
+
   const v = validateLiveToolCall(name, call?.args);
   if (!v.ok) {
     const { code, message, field, allowed } = v.error;
@@ -689,8 +694,8 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         response: answer({
           ok: true,
           summary: `Prepared a ${action.tool} prompt in the ${studio} studio on screen${applied ? ` (${applied})` : ''}. Nothing `
-            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)} Ask the user whether to start it; `
-            + 'call start_generation only after a clear yes.',
+            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)} Tell the user they start it `
+            + 'by pressing its priced button on screen; a spoken yes does not start it.',
           ...(typeof detail.reply?.priceCredits === 'number' ? { priceCredits: detail.reply.priceCredits } : {}),
         }),
         card: card(action),
@@ -884,7 +889,7 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         const composer = el.getAttribute('data-testid') === 'composer-input';
         const form = el.closest('form');
         const paidForm = !!form && Array.from(form.querySelectorAll('button,[role="button"],input[type="submit"]')).some((b) => ui.guard(b as HTMLElement) === 'spend');
-        if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — use start_generation after a yes to the price.';
+        if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — the user presses the priced button to start it.';
         else if (paidForm) held = ' It was NOT submitted: that form starts a paid generation — ask the user to tap it.';
         else { ui.submit(el); submitted = true; }
       }
@@ -965,6 +970,17 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         ?? (action.action === 'export' ? 'Montage is exporting the edit (free); the finished video will appear in the chat — you will get an [App] note when it is ready.'
           : action.action === 'set_music_start' ? `The music now starts ${action.musicStartSec ?? 0} s into the song.` : 'Here is the edit.');
       return { response: answer({ ok: true, summary, ...(r.state ? { state: r.state } : {}) }), ...(action.action !== 'state' ? { screen: true as const } : {}) };
+    }
+    case 'music_studio': {
+      // Music Studio's cards (components/studio/music/musicVoiceBridge). Never a start, never a countdown: `plan` only
+      // puts a priced card on screen, and its Create — the user's own tap — is the one way a paid job begins.
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'Music Studio could not do that here.');
+      return {
+        response: answer({ ok: true, summary: detail.reply?.message ?? 'Done.', ...(detail.reply?.state ? { state: detail.reply.state } : {}) }),
+        ...(action.action !== 'status' ? { screen: true as const } : {}),
+      };
     }
     case 'read_webpage': {
       const read = env.readPage ?? fetchWebRead;
