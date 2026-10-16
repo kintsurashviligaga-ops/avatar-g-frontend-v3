@@ -157,3 +157,14 @@ test('Library version reuse quotes an owned edit with its parent and preserves t
   expect(mockFetch.mock.calls.every(([url]) => url !== '/api/image/jobs')).toBe(true);
   expect(await screen.findByText('Version history')).toBeTruthy();
 });
+
+test('a prompt handed in after mount (Agent G in a Live call or its chat card) fills the open workspace; an empty one keeps it', () => {
+  const view = render(<ImageWorkspace access={access} locale="en" initialPrompt="" onClose={() => {}} />);
+  const box = screen.getByLabelText('Prompt / Agent G command') as HTMLTextAreaElement;
+  expect(box.value).toBe('');
+  view.rerender(<ImageWorkspace access={access} locale="en" initialPrompt="a leopard chasing a deer, low angle" onClose={() => {}} />);
+  expect(box.value).toBe('a leopard chasing a deer, low angle');
+  // the composer clears its box after a send: that must not wipe the workspace
+  view.rerender(<ImageWorkspace access={access} locale="en" initialPrompt="" onClose={() => {}} />);
+  expect(box.value).toBe('a leopard chasing a deer, low angle');
+});

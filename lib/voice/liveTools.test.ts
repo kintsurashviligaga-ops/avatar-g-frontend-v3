@@ -108,6 +108,10 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(LIVE_ACTIONS_RULE).toMatch(/never spend credits/);
     expect(LIVE_ACTIONS_RULE).toMatch(/A spoken yes never starts or charges anything/);
     expect(LIVE_ACTIONS_RULE).toMatch(/Never start a generation on your own initiative/);
+    // Production 2026-10-16: the call said an image was "already processing" and never called prepare_generation.
+    expect(LIVE_ACTIONS_RULE).toMatch(/an avatar and agrees to a prompt, call prepare_generation with that prompt\s+right away/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/For an avatar the prompt is only the words it says/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/Never say the system is processing/);
     expect(LIVE_ACTIONS_RULE).toMatch(/ok:false/);
   });
 

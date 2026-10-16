@@ -1128,6 +1128,9 @@ html[data-live-docked] .ag-fixed-shell:not(.app-native-shell) {
 html[data-live-docked] .app-native-shell,
 html[data-live-docked] [data-chrome-header],
 html[data-live-docked] .ag-fixed-shell > aside { padding-top: 0 !important; }
+/* A phone's Create sheet stops under a docked Live call (2026-10-16): at 86svh its top slid beneath the dock, so the
+   dock, the sheet's header and the sheet read as layers of two screens. The dock keeps the call's controls in reach. */
+html[data-live-docked] .studio-sheet { max-height: calc(100svh - var(--live-dock-h) - 12px) !important; }
 /* The collapsed rail keeps its own 10 px, minus the safe area. */
 html[data-live-docked] .ag-fixed-shell > nav { padding-top: 0.625rem !important; }
 /* The phone's history drawer is fixed to the viewport: it opens under the dock, never behind it. */

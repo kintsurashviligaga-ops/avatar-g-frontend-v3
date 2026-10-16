@@ -313,6 +313,8 @@ describe('the mint', () => {
     const text = lockedText();
     expect(text).toMatch(/You cannot see or hear the content of files the user attached in this call/);
     expect(text).toMatch(/the HANDING OFF rule above does not apply/);
+    expect(text).not.toMatch(/start renders yourself/);
+    expect(text).toMatch(/the user starts every render with its priced button/);
   });
 
   test('only if the legacy lock is rejected too does it drop to the {model}-only lock, and says so', async () => {

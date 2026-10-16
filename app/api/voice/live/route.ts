@@ -144,10 +144,12 @@ function liveCallRule(search: boolean, actions: boolean): string {
     'speak natural sentences with no Markdown, lists, headings, tables, code blocks, LaTeX or emoji; describe structure',
     'in words. If the user speaks another language, answer in that language.',
     // ⚠️ THE TEXT CHAT'S RULES CONTRADICTED THE CALL'S. Above, HANDING OFF says no reply can start a render and ANSWERING
-    // says attached files are read in full — true for the text chat, false here: with actions the call DOES open tools
-    // and start renders (after the user's yes), and it never sees a file's content, only its name.
+    // says attached files are read in full — true for the text chat, false here: with actions the call DOES open and fill
+    // tools, and it never sees a file's content, only its name. ⚠️ It said "you start renders yourself" until 2026-10-16,
+    // against LIVE_ACTIONS_RULE (a spoken yes starts nothing) — and the model told GG an image was "already processing"
+    // when nothing ran.
     actions
-      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you open tools and start renders yourself with your functions, always after the user's clear yes to the price.`
+      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you fill and open tools yourself with your functions, and the user starts every render with its priced button on screen.`
       : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud.',
     'You cannot see or hear the content of files the user attached in this call (a photo, a video, a track): you know them only by name (get_screen_state). Never describe what is in them; offer what you can do with them, or ask the user to type the question in the chat, where the files are read.',
     actions

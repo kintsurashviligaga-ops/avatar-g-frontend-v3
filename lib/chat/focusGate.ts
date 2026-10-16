@@ -21,6 +21,7 @@
  * ⚠️ NO `\b`. It is ASCII-only: against Georgian or Cyrillic it never matches (the same trap that once killed every Russian
  * command in lib/chat/intentDetector). Everything here tokenises with Unicode property escapes instead.
  */
+import { splitAvatarScript } from '../avatar/scriptSplit';
 import { isGenerativeCommand } from '@/lib/chat/intentDetector';
 
 /** The tools Agent G stands in front of. `avatar` is the studio's 'lipsync' mode: there the words are the SCRIPT the
@@ -169,7 +170,7 @@ const QUESTION_OPENERS = new Set([
 const AFFIRM = [
   'yes', 'yep', 'yeah', 'sure', 'ok', 'okay', 'go', 'go ahead', 'do it', 'create it', 'generate it', 'make it', 'proceed',
   'looks good', 'sounds good', 'confirm', 'start',
-  'კი', 'ჰო', 'დიახ', 'ოკ', 'ოკეი', 'კარგი', 'გააკეთე', 'შექმენი', 'დაიწყე', 'ასე შექმენი', 'ასე გააკეთე', 'დაადასტურე',
+  'კი', 'ჰო', 'დიახ', 'ოკ', 'ოკეი', 'კარგი', 'კარგია', 'დავიწყოთ', 'წავიდეთ', 'გააკეთე', 'შექმენი', 'დაიწყე', 'ასე შექმენი', 'ასე გააკეთე', 'დაადასტურე',
   'да', 'давай', 'ок', 'окей', 'хорошо', 'создавай', 'делай', 'начинай', 'поехали', 'подтверждаю',
 ] as const;
 
@@ -322,11 +323,11 @@ const CONFIRM: Record<Lang, (what: string, prompt: string) => string> = {
   ru: (what, prompt) => `Готова создать ${what}:\n«${prompt}»\nНачинать?`,
 };
 
-/** The avatar's prompt is a SCRIPT, so the confirmation quotes what it will SAY. */
-const CONFIRM_AVATAR: Record<Lang, (prompt: string) => string> = {
-  ka: (prompt) => `მზად ვარ, ავატარმა თქვას:\n«${prompt}»\nდავიწყო?`,
-  en: (prompt) => `I am ready to make the avatar say:\n“${prompt}”\nShall I start?`,
-  ru: (prompt) => `Готова: аватар скажет\n«${prompt}»\nНачинать?`,
+/** The avatar's prompt is a SCRIPT, so the confirmation quotes what it will SAY — and, apart, how it behaves (never spoken). */
+const CONFIRM_AVATAR: Record<Lang, (speech: string, direction: string) => string> = {
+  ka: (speech, direction) => `მზად ვარ, ავატარმა თქვას:\n«${speech}»${direction ? `\nქცევა (არ წაიკითხავს): ${direction}` : ''}\nდავიწყო?`,
+  en: (speech, direction) => `I am ready to make the avatar say:\n“${speech}”${direction ? `\nHow it behaves (not spoken): ${direction}` : ''}\nShall I start?`,
+  ru: (speech, direction) => `Готова: аватар скажет\n«${speech}»${direction ? `\nКак ведёт себя (не озвучивается): ${direction}` : ''}\nНачинать?`,
 };
 
 const BUTTONS: Record<Lang, { create: string; asIs: string; edit: string; stale: string; dismiss: string }> = {
@@ -346,8 +347,12 @@ export interface GateCopyInput {
 export function gateMessage({ kind, mode, prompt, locale }: GateCopyInput): string {
   const l = lang(locale);
   if (kind === 'clarify') return CLARIFY[mode][l];
-  const shown = prompt.length > 400 ? `${prompt.slice(0, 397)}…` : prompt;
-  return mode === 'avatar' ? CONFIRM_AVATAR[l](shown) : CONFIRM[l](TARGET[mode][l], shown);
+  const cut = (t: string): string => (t.length > 400 ? `${t.slice(0, 397)}…` : t);
+  if (mode === 'avatar') {
+    const { speech, direction } = splitAvatarScript(prompt);
+    return CONFIRM_AVATAR[l](cut(speech), cut(direction));
+  }
+  return CONFIRM[l](TARGET[mode][l], cut(prompt));
 }
 
 export function gateButtons(locale: string): { create: string; asIs: string; edit: string; stale: string; dismiss: string } {

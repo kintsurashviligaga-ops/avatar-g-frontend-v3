@@ -171,3 +171,13 @@ describe('describeGenerationFailure — the refund notice is shown when, and onl
     expect(omni).toContain('describeGenerationFailure(j, locale, failMsg)');
   });
 });
+
+describe('music option refusal (Production 2026-10-16)', () => {
+  it('the route\'s `unsupported` refusal is not read as a file-format error asking for MP3 or WAV', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { describeGenerationFailure } = require('./serviceError');
+    const msg = describeGenerationFailure({ success: false, code: 'unsupported', error: 'unsupported' }, 'ka', 'x');
+    expect(msg).not.toMatch(/MP3|WAV/);
+    expect(msg).toContain('Google');
+  });
+});

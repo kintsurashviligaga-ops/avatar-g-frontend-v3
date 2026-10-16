@@ -7,6 +7,14 @@ import { processWhatsAppPayload } from '@/lib/agent-g/channels/whatsapp-processo
 import { processTelegramUpdateInBackground } from '@/lib/agent-g/channels/telegram-webhook-handler';
 import { recordRouteMetric } from '@/lib/platform/request-metrics';
 
+let missingTableLogged = false;
+
+/** PostgREST's "table not in the schema cache" (PGRST205) or Postgres' undefined_table (42P01). */
+function isMissingTable(error: { message?: string; code?: string }): boolean {
+  return error.code === 'PGRST205' || error.code === '42P01'
+    || /could not find the table|relation .* does not exist/i.test(error.message || '');
+}
+
 export const dynamic = 'force-dynamic';
 // Every read live: Next 14 caches a GET route's fetches otherwise (app/api/agent/media/sweep/route.ts).
 export const fetchCache = 'force-no-store';
@@ -60,7 +68,16 @@ export async function POST(request: NextRequest) {
   // A failed stale-job scan (the table missing on this deployment, a transient error) must not starve the channel
   // queues below: it used to answer 500 here, before a single WhatsApp/Telegram delivery was looked at.
   if (staleError) {
-    console.error('[Worker.Tick] stale service_jobs scan failed', { request_id: requestId, message: staleError.message });
+    if (isMissingTable(staleError)) {
+      // Production has no service_jobs table (schema drift, pinned by the ratchet), so every cron tick used to log an
+      // ERROR and this line was the top group in Vercel's runtime errors, burying real ones. Say it once per instance.
+      if (!missingTableLogged) {
+        missingTableLogged = true;
+        console.warn('[Worker.Tick] service_jobs table missing on this database; stale-job recovery skipped', { request_id: requestId });
+      }
+    } else {
+      console.error('[Worker.Tick] stale service_jobs scan failed', { request_id: requestId, message: staleError.message });
+    }
   }
 
   let recycled = 0;

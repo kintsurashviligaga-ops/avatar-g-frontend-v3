@@ -8,8 +8,8 @@
  * shows again unless they manually clear the value.
  *
  * "Necessary only" disables analytics SDKs (PostHog, Vercel) via the
- * `window.__myavatarAnalyticsAllowed` flag — code that initialises
- * those SDKs checks this flag and no-ops if false.
+ * stored choice — PostHog starts only after "Accept all" (lib/analytics/consent.ts)
+ * and stops capturing on a later "Necessary only".
  *
  * The "Privacy" trigger opens an IN-APP scrollable modal (no navigation away) so the
  * consent decision never yanks the user off the page.
@@ -17,11 +17,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { CONSENT_KEY, saveConsent } from '@/lib/analytics/consent';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Choice = 'all' | 'necessary';
 
-const KEY = 'myavatar-cookie-consent';
+const KEY = CONSENT_KEY;
 
 const COPY: Record<Lang, {
   title: string;
@@ -89,16 +90,8 @@ const COPY: Record<Lang, {
   },
 };
 
-declare global {
-  interface Window {
-    __myavatarAnalyticsAllowed?: boolean;
-  }
-}
-
 function applyChoice(choice: Choice) {
-  if (typeof window === 'undefined') return;
-  window.__myavatarAnalyticsAllowed = choice === 'all';
-  try { localStorage.setItem(KEY, choice); } catch { /* ignore */ }
+  saveConsent(choice);
 }
 
 export default function CookieConsent() {

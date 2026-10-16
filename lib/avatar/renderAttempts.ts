@@ -47,3 +47,21 @@ export function nextAvatarAttempt(o: AttemptOutcome): NextAttempt {
   if (o.error && !TRANSIENT_SADTALKER.test(o.error)) return 'stop';
   return 'retry';
 }
+
+/**
+ * A start that returned NO job: may the composer try again? Only a start that names no reason, or the provider's own
+ * start crash, is worth one more POST. A REFUSAL with a reason (`google_only` — the tool is paused at the Google-only
+ * boundary; `insufficient_credits`; `provider_not_configured`; `media_unresolved`; `tts-failed`…) is the same on every
+ * try, and its reason is what the user must read.
+ *
+ * ⚠️ PRODUCTION 2026-10-16 (GG's iPhone): with the boundary on, POST /api/video/lipsync answered 503 `google_only`. The
+ * composer read only `jobId`, so it posted three times and then told the user to re-attach the photo — the wrong fix
+ * for a tool that is switched off.
+ */
+export function startRefusal(body: unknown): { code: string; body: Record<string, unknown> } | null {
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  if (typeof b.jobId === 'string' && b.jobId) return null;
+  const code = typeof b.code === 'string' && b.code.trim() ? b.code.trim() : typeof b.error === 'string' && b.error.trim() ? b.error.trim() : '';
+  if (!code || code === 'start_failed' || code === 'provider_failed') return null;
+  return { code, body: b };
+}

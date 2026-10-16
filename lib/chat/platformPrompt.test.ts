@@ -193,6 +193,8 @@ describe('buildPlatformPrompt — shape and size', () => {
     expect(p).toMatch(/search first/);
     expect(p).toMatch(/Never reply with JSON/);
     expect(p).toMatch(/cannot start, queue or finish a render/);
+    // Production 2026-10-16: a text reply told GG his image was "already processing" when nothing had started.
+    expect(p).toMatch(/never claim anything is processing/);
     expect(p).toMatch(/Mkhedruli/);
   });
 

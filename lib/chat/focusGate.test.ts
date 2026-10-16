@@ -132,6 +132,12 @@ describe('avatar — the words are the script the presenter speaks', () => {
     expect(msg).toContain('make the avatar say');
     expect(msg).toContain('Welcome to my channel');
   });
+  test('the avatar card quotes only the words it will speak; the direction is shown apart, as not spoken (Production 2026-10-16)', () => {
+    const msg = gateMessage({ kind: 'confirm', mode: 'avatar', prompt: 'ავატარი ემოციურად, ჟესტებით და ეფექტურად ამბობს: გადადი მაიავატარ.ჯიზე და შექმენი შენი ავატარი', locale: 'ka' });
+    expect(msg).toContain('«გადადი მაიავატარ.ჯიზე და შექმენი შენი ავატარი»');
+    expect(msg).toContain('ქცევა (არ წაიკითხავს): ავატარი ემოციურად, ჟესტებით და ეფექტურად');
+    expect(msg).not.toMatch(/«[^»]*ამბობს/);
+  });
   test('a one-word script gets questions; the panel’s own Generate button goes straight through', () => {
     expect(kind('Welcome', 'avatar')).toBe('clarify');
     expect(gateMessage({ kind: 'clarify', mode: 'avatar', prompt: 'Welcome', locale: 'ka' })).toContain('🎙️');

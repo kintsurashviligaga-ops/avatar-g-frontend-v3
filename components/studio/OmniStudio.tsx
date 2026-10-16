@@ -103,10 +103,14 @@ import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
-import { nextAvatarAttempt } from '@/lib/avatar/renderAttempts';
+import { nextAvatarAttempt, startRefusal } from '@/lib/avatar/renderAttempts';
+import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob';
+import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
 import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/useMyTwin';
+/** The avatar gallery's first card: opens the user's own face photo picker (it is not a preset). */
+const OWN_PHOTO_CARD_ID = 'own-photo';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
@@ -152,6 +156,7 @@ import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
+import { offeredPrompt } from '@/lib/chat/offeredPrompt';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
@@ -2383,6 +2388,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // v330 — Avatar/lip-sync face: a scoped single-IMAGE picker (the slot can't ingest
   // PDFs/audio/multiples the way the shared attach button could).
   const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
+  const lipAudioRef = useRef<HTMLInputElement | null>(null);
   // AUTO-PLAY TTS: when a chat turn was started by VOICE (mic/dictation), the assistant's finished reply is
   // auto-spoken via /api/tts/gemini. Set by send() right before streamChat, consumed once at stream end.
   // A TYPED turn leaves this false, so its reply stays text-only. speakMsgRef bridges to speakMsg (which is
@@ -3851,6 +3857,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const startedAt = jobCtx ? Date.now() : genStartRef.current;
     const bubbleId = jobCtx?.jobId;
     let finalUrl: string | null = null;
+    // The master as delivered, when this is a queued job (D-C3): its durable row is completed with it at once.
+    let deliveredUrl: string | null = null;
     let lastPostedPct = -1;
     // Patch THIS film's bubble — by stable jobId when queued, else the last assistant bubble
     // (legacy). Guarded by the per-job alive check; `fn` may return null to skip.
@@ -4094,6 +4102,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const filmSeconds = filmScenes * (clipSec ?? FILM_CLIP_SEC);
         notifyCredit('video', { seconds: filmSeconds, credits: videoQuote({ seconds: filmSeconds, tier: veo.tier, mode: videoMode }), service: serviceForTool('video', { videoMode }) ?? undefined });
         finalUrl = res.masterUrl;
+        // ⚠️ D-C3 — THE DELIVERED FILM'S ROW STAYED "RUNNING" (Video Core certification, 2026-10-15). The durable row was
+        // completed only when the whole job returned, i.e. after the post-delivery upgrades (lip-sync, a music video's
+        // graphics) — a minute or more after the film was on screen. A page closed in that window left the row
+        // `processing`, and every tray that read it showed a running film for 30 minutes. The film is delivered now, so its
+        // row says so now; an upgrade that lands later is filed in the Library on its own (below).
+        if (jobCtx) { deliveredUrl = res.masterUrl; trackJobComplete(jobCtx.jobId, res.masterUrl); }
       }
       // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
       // row flips to failed (the legacy path just leaves the ⚠️ bubble in place).
@@ -4266,10 +4280,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     // Queued success → resolve with the final (possibly lip-synced/graphics-upgraded) URL so the
     // job's result carries it into onSettle → trackJobComplete(url).
-    if (jobCtx) return finalUrl ?? undefined;
+    if (jobCtx) {
+      // The durable row was completed with the master at delivery (D-C3); a lip-synced / graphics version is its own result.
+      if (finalUrl && deliveredUrl && finalUrl !== deliveredUrl) autoSaveToLibrary(finalUrl, 'film', filmPrompt);
+      return finalUrl ?? undefined;
+    }
     // NB: the 22 video-panel vars are NOT deps — renderFilm reads them from the immutable `snap`
     // param (captured at submit by startFilmRender), so it no longer re-creates on every panel edit.
-  }, [locale, notifyCredit, t.generatingVideo, t.videoFailed]);
+  }, [locale, notifyCredit, autoSaveToLibrary, t.generatingVideo, t.videoFailed]);
 
   // TASK 4 — the single dispatch point for a cinema render. Legacy path (flag OFF): call
   // renderFilm directly and RETURN its promise, so existing `await`/`void` call sites behave
@@ -5373,7 +5391,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           ...(!m.instrumental ? { vocalGender: m.voiceType } : {}),
         });
         const templateId = m.templateId && bodyTemplateId === m.templateId ? m.templateId : null;
-        const res = await fetch('/api/ai/music', {
+        // ⚠️ A phone that locks or backgrounds the app drops this one long request while the server keeps rendering (and
+        // charging). That drop is not a failure: wait for the job's own row instead (lib/jobs/awaitDroppedJob).
+        let res: Response;
+        try {
+        res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -5391,6 +5413,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             ...(m.useTrained ? {} : isVoiceClone ? { voiceReference: uploadedAudioUrl } : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
           }),
         });
+        } catch (err) {
+          if (!isDroppedConnection(err, signal)) throw err;
+          trackJobUpdate(jobId, 'Composing', 50);
+          const late = await awaitDroppedJob(jobId, { signal });
+          onProgress({ pct: 100 });
+          if (late && 'url' in late) {
+            updateBubble(bubbleId, { text: '', audioUrl: late.url });
+            notifyCredit('music', { seconds: m.duration === 0 ? 90 : m.duration });
+            return late.url;
+          }
+          updateBubble(bubbleId, { text: `⚠️ ${late ? describeGenerationFailure({ error: late.error }, locale, t.musicFailed) : (locale === 'en' ? 'The connection dropped. If the track finishes, it will be in your Library.' : locale === 'ru' ? 'Связь прервалась. Если трек готов, он будет в вашей Библиотеке.' : 'კავშირი გაწყდა. თუ ტრეკი დასრულდება, ბიბლიოთეკაში იქნება.')}` });
+          throw new Error(late ? (late.error || 'music failed') : 'connection dropped');
+        }
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string; controls?: unknown; voiceApplied?: boolean };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
@@ -6478,6 +6513,32 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
       return null;
     })();
+    // ⚠️ A YES TO AGENT G'S OWN OFFER WENT BACK TO THE MODEL (Production 2026-10-16): the reply quoted an image prompt and
+    // asked "დავიწყოთ გენერაცია?", the user said "კარგია", and the model — which can start nothing — answered that the
+    // system was "already processing" it. A short yes right after such an offer now puts that prompt on Agent G's priced
+    // card (lib/chat/offeredPrompt); nothing renders until its Create tap.
+    if (text && !opts?.confirmed && !(gatePendingRef.current && Date.now() - gatePendingRef.current.at < 10 * 60_000) && isAffirmation(text)) {
+      const lastReply = [...messages].reverse().find((m) => m.role === 'assistant' && !m.notice);
+      const here = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode : null;
+      const offer = lastReply && !lastReply.agentG ? offeredPrompt(lastReply.text, here) : null;
+      // From the chat a confirmed card renders a picture or a track (as chatOrder does); a film starts from Video mode's storyboard.
+      if (offer && (inChat ? offer.mode !== 'video' : offer.mode === effMode)) {
+        gatePendingRef.current = null;
+        const credits = offer.mode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
+          : offer.mode === 'music' ? musicQuote({ duration: musicDuration }) : 0;
+        const card: AgentGCardState = { kind: 'confirm', target: offer.mode, prompt: offer.prompt, credits, ...(inChat ? { madeIn: 'chat' as const } : {}) };
+        trackQuoteShown(serviceForTool(offer.mode as ToolId), credits, 'agent-card');
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', text },
+          { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: offer.mode, prompt: offer.prompt, locale }), agentG: card },
+        ]);
+        setGateFrom(messages.length);
+        if (!isDesktop) setOptionsOpen(false);
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        return;
+      }
+    }
     const gateMode: GateMode | null = focusGateMode ?? chatOrder;
     if (gateMode && text && !opts?.confirmed) {
       const pend = inChat ? chatPend : gatePendingRef.current;
@@ -7082,6 +7143,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // talking clip) → covers both "dub a video" and "make a character speak".
       const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
+      // Only the words go to the voice. "The avatar, emotionally, says: …" was read out whole (Production 2026-10-16):
+      // the direction part ("emotionally, with gestures") is how it behaves, not what it says (lib/avatar/scriptSplit).
+      const spoken = text ? (splitAvatarScript(text).speech || text) : text;
       // PRESENTER — no face photo AND no chosen preset, but a typed script → a
       // consistent stock avatar speaks it in the CLONED Georgian voice (audio-driven
       // HeyGen). START + POLL, mobile-safe. (A face OR a preset falls through to the
@@ -7095,7 +7159,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             // Honour the panel's Voice (Female/Male) + Format selections.
-            body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
+            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: lipGender }),
           });
           const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string; error?: string; code?: string };
           let sj: { success?: boolean; videoId?: string; error?: string; code?: string } = {};
@@ -7177,10 +7241,41 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         if (!videoUrl) throw new Error('upload failed');
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
+        // GOOGLE VEO AVATAR first (GG's choice, 2026-10-16): the photo is the first frame and Veo speaks the words. Open to
+        // admins until the owner opens it (423 → the older path below, which the Google-only boundary refuses with its
+        // reason). A recorded/uploaded track cannot drive Veo's own voice, so it keeps the older path.
+        if (!audioUrl && spoken) {
+          const veoRes = await fetch('/api/avatar/veo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ photo: videoUrl, speech: spoken, direction: text ? splitAvatarScript(text).direction : '', aspect: lipFormat === '16:9' ? '16:9' : '9:16' }),
+          });
+          if (veoRes.status !== 423) {
+            const vj = (await veoRes.json().catch(() => ({}))) as { success?: boolean; jobId?: string; error?: string; code?: string; refunded?: boolean };
+            let veoUrl: string | null = null;
+            let veoFail: string | null = vj.success && vj.jobId ? null : describeGenerationFailure(vj, locale, t.lipsyncFailed);
+            for (let i = 0; i < 60 && vj.jobId && !veoUrl && !veoFail; i++) { // ~6 min of short polls (mobile-safe)
+              if (!mine()) return;
+              await new Promise((r) => setTimeout(r, 6000));
+              const pr = await fetch(`/api/genjutsu/status?id=${encodeURIComponent(vj.jobId)}`, { credentials: 'include', signal: ac.signal }).catch(() => null);
+              const pj = (await pr?.json().catch(() => ({}))) as { done?: boolean; state?: string; videoUrl?: string; error?: string; refunded?: boolean } | undefined;
+              if (pj?.done) { if (pj.videoUrl) veoUrl = pj.videoUrl; else veoFail = describeGenerationFailure(pj, locale, t.lipsyncFailed); }
+            }
+            if (!veoUrl && !veoFail) veoFail = lipStillRendering;
+            setMessages((prev) => {
+              if (!mine()) return prev;
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last && last.role === 'assistant') next[next.length - 1] = veoUrl ? { role: 'assistant', text: '', videoUrl: veoUrl, genKind: 'lipsync', orientation: lipFormat === '16:9' ? 'landscape' : 'vertical' } : { role: 'assistant', text: `⚠️ ${veoFail}` };
+              return next;
+            });
+            if (mine() && veoUrl) notifyCredit('avatar');
+            return;
+          }
+        }
         const startBody = JSON.stringify({
           videoUrl,
           ...(audioUrl ? { audioUrl } : {}),
-          ...(text ? { text } : {}),
+          ...(spoken ? { text: spoken } : {}),
           ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: lipGender }),
           orientation: lipOrientation, // honour the Format selector (9:16 / 16:9 / 1:1) in the HeyGen render
         });
@@ -7195,12 +7290,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Whether the FINAL attempt ended in a terminal failure its GET confirmed refunded — the only case the bubble may
         // say "credits refunded". Reset per attempt, so a start that failed afterwards claims nothing.
         let lastRefunded = false;
+        // A start the server REFUSED (Google-only boundary, credits, configuration) is shown with its reason and never
+        // retried: three retries of a 503 google_only ended in "re-attach the photo" (Production 2026-10-16).
+        let refusal: { code: string; body: Record<string, unknown> } | null = null;
         for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
           lastRefunded = false;
           const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: startBody, credentials: 'include', signal: ac.signal });
           const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
-          if (!startJson.jobId) { resultErr = 'start failed'; continue; }
+          if (!startJson.jobId) {
+            refusal = startRefusal(startJson);
+            if (refusal) break;
+            resultErr = 'start failed'; continue;
+          }
           const usedHeygen = String(startJson.jobId).startsWith('heygen:');
           resultErr = null;
           let settled = false;
@@ -7225,6 +7327,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
               ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
+              : refusal
+                ? { role: 'assistant', text: `⚠️ ${describeGenerationFailure(refusal.body, locale, t.lipsyncFailed)}` }
               : stillRendering
                 ? { role: 'assistant', text: `⚠️ ${lipStillRendering}` }
                 : lastRefunded
@@ -7721,6 +7825,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setAttachments((prev) => [...prev.filter((a) => !isAudio(a.mimeType)), { dataUrl, mimeType }].slice(-MAX_ATTACHMENTS));
     setMusicAudioMode('voice');
   }, []);
+  // Avatar „My audio": a recorded or uploaded track IS the avatar's voice (no TTS, no cloning). It replaces any earlier
+  // track and leaves the music panel's own state alone (GG, 2026-10-16: „ჩემი აუდიო" had no record / upload control).
+  const addAvatarAudio = useCallback((dataUrl: string, mimeType: string) => {
+    setAttachments((prev) => [...prev.filter((a) => !isAudio(a.mimeType)), { dataUrl, mimeType }].slice(-MAX_ATTACHMENTS));
+    setLipMyVoice(false);
+  }, []);
 
   const stopVoiceRecording = useCallback(() => {
     try { voiceRecRef.current?.stop(); } catch { /* noop */ }
@@ -7730,7 +7840,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setVoiceRecording(false);
   }, []);
 
-  const startVoiceRecording = useCallback(async () => {
+  const startVoiceRecording = useCallback(async (target: 'music' | 'avatar' = 'music') => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       // Reentrancy guard: a concurrent invoke may have acquired+assigned a stream while we awaited getUserMedia.
@@ -7747,7 +7857,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const type = rec.mimeType || mime || 'audio/webm';
         const blob = new Blob(voiceChunksRef.current, { type });
         const r = new FileReader();
-        r.onload = () => addVoiceMedia(String(r.result), type);
+        r.onload = () => (target === 'avatar' ? addAvatarAudio : addVoiceMedia)(String(r.result), type);
         r.readAsDataURL(blob);
       };
       voiceRecRef.current = rec;
@@ -7762,7 +7872,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } catch {
       setVoiceRecording(false);
     }
-  }, [addVoiceMedia, stopVoiceRecording]);
+  }, [addVoiceMedia, addAvatarAudio, stopVoiceRecording]);
   // Live voice asks every in-page mic holder to let go before it takes the mic (lib/voice/micBus): Android Chrome and
   // some Windows drivers refuse a second capture of a busy device, and Live reported that as „the microphone could
   // not start“. The clip recorded so far is kept — the recorder's onstop still attaches it.
@@ -7925,6 +8035,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (typeof a.durationSec === 'number') { const d = snapMusicSeconds(a.durationSec); setMusicDuration(d); applied.durationSec = d; musicSec = d; }
       if (typeof a.instrumental === 'boolean') { setMusicInstrumental(a.instrumental); applied.instrumental = a.instrumental; }
       if (a.style) { const st = a.style.slice(0, 60); setMusicStyles([st]); applied.style = st; }
+    } else if (tool === 'avatar') {
+      // The avatar panel's own controls (GG, 2026-10-16: Live must hand off an avatar like the other tools): its Format,
+      // and a voice gender named in the style. The prompt is the words it says (the send path keeps only those).
+      const f = a.aspectRatio === '9:16' || a.aspectRatio === '16:9' || a.aspectRatio === '1:1' ? a.aspectRatio : null;
+      if (f) { setLipFormat(f); applied.aspectRatio = f; }
+      const g = a.style ? (/\b(fe)?male\b|ქალ|კაც|муж|жен/i.exec(a.style)?.[0] ?? '') : '';
+      if (g) { const female = /female|ქალ|жен/i.test(g); setLipGender(female ? 'female' : 'male'); applied.voice = female ? 'female' : 'male'; }
     }
     return { applied, ...(musicSec !== undefined ? { musicSec } : {}) };
   };
@@ -10402,12 +10519,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <TemplateGallery
               testId="avatar-templates"
               label={locale === 'en' ? 'Presenters' : locale === 'ru' ? 'Ведущие' : 'წამყვანები'}
-              items={[...(myTwinFace ? [myTwinCardItem(locale, myTwinFace)] : []), ...AVATAR_TEMPLATES.map((tp) => ({
+              items={[{
+                // First card: the user's OWN face (GG, 2026-10-16: no visible way to use his own photo in the list).
+                id: OWN_PHOTO_CARD_ID, thumb: null, palette: ['#1C1C21', '#338FE8'] as const, Icon: Upload,
+                label: locale === 'en' ? 'Upload your photo' : locale === 'ru' ? 'Загрузить своё фото' : 'საკუთარი სურათის ატვირთვა',
+                hint: locale === 'en' ? 'Your own face speaks' : locale === 'ru' ? 'Говорит ваше лицо' : 'ილაპარაკებს შენი სახე',
+              }, ...(myTwinFace ? [myTwinCardItem(locale, myTwinFace)] : []), ...AVATAR_TEMPLATES.map((tp) => ({
                 id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
                 thumb: tp.thumb, palette: tp.palette, Icon: ScanFace, meta: tp.values.format,
               }))]}
-              activeId={myTwinFace && lipPreset === myTwinFace ? MY_TWIN_CARD_ID : matchAvatarTemplate({ preset: lipPreset, format: lipFormat })}
+              activeId={attachments.some((a) => isImage(a.mimeType)) && !lipPreset ? OWN_PHOTO_CARD_ID : myTwinFace && lipPreset === myTwinFace ? MY_TWIN_CARD_ID : matchAvatarTemplate({ preset: lipPreset, format: lipFormat })}
               onPick={(id) => {
+                if (id === OWN_PHOTO_CARD_ID) { lipsyncFaceRef.current?.click(); return; }
                 if (id === MY_TWIN_CARD_ID) {
                   // The twin's face stands in like a preset (the send path re-hosts it for the render); voice/format stay.
                   if (myTwinFace) setLipPreset(myTwinFace);
@@ -10444,19 +10567,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 </div>
               </div>
             </div>
-            {(attachments.some((a) => isAudio(a.mimeType)) || hasTrainedVoice) && (
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+            {/* „My audio": upload or record the track the avatar speaks; with a track the text box is optional. */}
+            {(() => {
+              const audioOn = attachments.some((a) => isAudio(a.mimeType));
+              return (
+              <div data-testid="avatar-my-audio" className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'My audio' : locale === 'ru' ? 'Моё аудио' : 'ჩემი აუდიო'}</span>
                 <div className="flex flex-wrap gap-1.5">
-                  {attachments.some((a) => isAudio(a.mimeType)) && (
-                    <Chip active onClick={() => fileRef.current?.click()}>{t.lipAudioLabel} ✓</Chip>
+                  <Chip active={false} onClick={() => lipAudioRef.current?.click()}><Upload size={12} className="mr-1 inline" />{locale === 'en' ? 'Upload' : locale === 'ru' ? 'Загрузить' : 'ატვირთვა'}</Chip>
+                  {voiceRecording ? (
+                    <Chip active onClick={stopVoiceRecording}><Square size={11} className="mr-1 inline" />{locale === 'en' ? 'Stop' : locale === 'ru' ? 'Стоп' : 'გაჩერება'} · {voiceRecSec}s</Chip>
+                  ) : (
+                    <Chip active={false} onClick={() => void startVoiceRecording('avatar')}><Mic size={12} className="mr-1 inline" />{locale === 'en' ? 'Record' : locale === 'ru' ? 'Записать' : 'ჩაწერა'}</Chip>
                   )}
-                  {hasTrainedVoice && (
+                  {audioOn && (
+                    <Chip active onClick={() => setAttachments((prev) => prev.filter((a) => !isAudio(a.mimeType)))}>{t.lipAudioLabel} ✓ <X size={11} className="ml-1 inline" /></Chip>
+                  )}
+                  {hasTrainedVoice && !audioOn && (
                     <Chip active={lipMyVoice} onClick={() => setLipMyVoice((v) => !v)}>{locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
                   )}
                 </div>
+                <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Your recording is what the avatar says — the text is then optional.' : locale === 'ru' ? 'Аватар произнесёт вашу запись — текст тогда не обязателен.' : 'ავატარი შენს ჩანაწერს იტყვის — ტექსტი მაშინ აუცილებელი არ არის.'}</span>
               </div>
-            )}
+              );
+            })()}
             </>)}
           </div>
         )}
@@ -11622,7 +11756,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
-      <div ref={composerRef} className={imageWorkspace ? 'hidden' : 'shrink-0 pt-1'}>
+      {/* ⚠️ "TWO SCREENS" ON A PHONE (GG's iPhone, 2026-10-16): with a tool's Create sheet open, the chat's own bar (+, clip,
+          mic) still sat under the sheet, so the sheet, that bar and Safari's bar read as two stacked screens. The sheet is
+          the screen while it is open; closing it brings the bar back. */}
+      <div ref={composerRef} data-testid="composer-bar" className={imageWorkspace || (!isDesktop && optionsOpen && !chatOnly) ? 'hidden' : 'shrink-0 pt-1'}>
         {/* ⚠️ DICTATION USED TO DIE IN SILENCE. Interim transcription failures were swallowed by a bare
             fail-soft catch: a 429 (the route shares the 100-req/60s READ bucket while a long dictation
             fires a pass every 1.2s), a 500 or an offline blip produced no toast and no state change, so
@@ -11912,6 +12049,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               { dataUrl: small, mimeType: dataUrlMimeOf(small) || f.type || 'image/jpeg', ...(f.name ? { name: f.name } : {}) },
             ]);
           } catch { /* ignore unreadable file */ }
+        }} />
+        {/* Avatar „My audio" upload: the track the avatar speaks (replaces any earlier one). */}
+        <input ref={lipAudioRef} type="file" accept="audio/*" className="hidden" data-testid="avatar-audio-input" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try { addAvatarAudio(await fileToDataUrl(f), f.type || 'audio/mpeg'); } catch { /* ignore unreadable file */ }
         }} />
         {/* Camera capture — shoot a photo in-app; it joins the attachment tray and, in
             Video mode, seeds the storyboard as the start image. `capture="environment"`
@@ -12466,7 +12610,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         onClick={(e) => e.stopPropagation()}
         className={isDesktop
           ? 'flex min-h-0 flex-1 flex-col'
-          : 'sheet-rise relative flex max-h-[86svh] w-full flex-col overflow-hidden rounded-t-[28px] border border-app-border/10 bg-app-surface shadow-[0_-12px_40px_rgba(0,0,0,0.35)] sm:max-h-[72svh] sm:max-w-[440px] sm:rounded-[28px]'}
+          : 'studio-sheet sheet-rise relative flex max-h-[86svh] w-full flex-col overflow-hidden rounded-t-[28px] border border-app-border/10 bg-app-surface shadow-[0_-12px_40px_rgba(0,0,0,0.35)] sm:max-h-[72svh] sm:max-w-[440px] sm:rounded-[28px]'}
         style={isDesktop ? undefined : { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         {isDesktop ? null : (
