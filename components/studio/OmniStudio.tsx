@@ -152,6 +152,7 @@ import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
+import { offeredPrompt } from '@/lib/chat/offeredPrompt';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
@@ -6478,6 +6479,32 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
       return null;
     })();
+    // ⚠️ A YES TO AGENT G'S OWN OFFER WENT BACK TO THE MODEL (Production 2026-10-16): the reply quoted an image prompt and
+    // asked "დავიწყოთ გენერაცია?", the user said "კარგია", and the model — which can start nothing — answered that the
+    // system was "already processing" it. A short yes right after such an offer now puts that prompt on Agent G's priced
+    // card (lib/chat/offeredPrompt); nothing renders until its Create tap.
+    if (text && !opts?.confirmed && !(gatePendingRef.current && Date.now() - gatePendingRef.current.at < 10 * 60_000) && isAffirmation(text)) {
+      const lastReply = [...messages].reverse().find((m) => m.role === 'assistant' && !m.notice);
+      const here = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode : null;
+      const offer = lastReply && !lastReply.agentG ? offeredPrompt(lastReply.text, here) : null;
+      // From the chat a confirmed card renders a picture or a track (as chatOrder does); a film starts from Video mode's storyboard.
+      if (offer && (inChat ? offer.mode !== 'video' : offer.mode === effMode)) {
+        gatePendingRef.current = null;
+        const credits = offer.mode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
+          : offer.mode === 'music' ? musicQuote({ duration: musicDuration }) : 0;
+        const card: AgentGCardState = { kind: 'confirm', target: offer.mode, prompt: offer.prompt, credits, ...(inChat ? { madeIn: 'chat' as const } : {}) };
+        trackQuoteShown(serviceForTool(offer.mode as ToolId), credits, 'agent-card');
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', text },
+          { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: offer.mode, prompt: offer.prompt, locale }), agentG: card },
+        ]);
+        setGateFrom(messages.length);
+        if (!isDesktop) setOptionsOpen(false);
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        return;
+      }
+    }
     const gateMode: GateMode | null = focusGateMode ?? chatOrder;
     if (gateMode && text && !opts?.confirmed) {
       const pend = inChat ? chatPend : gatePendingRef.current;
@@ -11622,7 +11649,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
-      <div ref={composerRef} className={imageWorkspace ? 'hidden' : 'shrink-0 pt-1'}>
+      {/* ⚠️ "TWO SCREENS" ON A PHONE (GG's iPhone, 2026-10-16): with a tool's Create sheet open, the chat's own bar (+, clip,
+          mic) still sat under the sheet, so the sheet, that bar and Safari's bar read as two stacked screens. The sheet is
+          the screen while it is open; closing it brings the bar back. */}
+      <div ref={composerRef} data-testid="composer-bar" className={imageWorkspace || (!isDesktop && optionsOpen && !chatOnly) ? 'hidden' : 'shrink-0 pt-1'}>
         {/* ⚠️ DICTATION USED TO DIE IN SILENCE. Interim transcription failures were swallowed by a bare
             fail-soft catch: a 429 (the route shares the 100-req/60s READ bucket while a long dictation
             fires a pass every 1.2s), a 500 or an offline blip produced no toast and no state change, so
@@ -12466,7 +12496,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         onClick={(e) => e.stopPropagation()}
         className={isDesktop
           ? 'flex min-h-0 flex-1 flex-col'
-          : 'sheet-rise relative flex max-h-[86svh] w-full flex-col overflow-hidden rounded-t-[28px] border border-app-border/10 bg-app-surface shadow-[0_-12px_40px_rgba(0,0,0,0.35)] sm:max-h-[72svh] sm:max-w-[440px] sm:rounded-[28px]'}
+          : 'studio-sheet sheet-rise relative flex max-h-[86svh] w-full flex-col overflow-hidden rounded-t-[28px] border border-app-border/10 bg-app-surface shadow-[0_-12px_40px_rgba(0,0,0,0.35)] sm:max-h-[72svh] sm:max-w-[440px] sm:rounded-[28px]'}
         style={isDesktop ? undefined : { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         {isDesktop ? null : (

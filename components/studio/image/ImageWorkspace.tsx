@@ -35,6 +35,14 @@ export function ImageWorkspace({ access, locale, initialPrompt = '', onClose }: 
   const batchRef = useRef(batch); batchRef.current = batch;
   const pauseRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // A prompt handed in later (Agent G's Live prepare_generation, or its chat card) fills the box of an open workspace.
+  // The draft was read once at mount, so the workspace kept an empty or older prompt while the call said it was ready.
+  const handedPrompt = useRef(initialPrompt);
+  useEffect(() => {
+    if (initialPrompt === handedPrompt.current) return;
+    handedPrompt.current = initialPrompt;
+    if (initialPrompt.trim()) setDraft(d => ({ ...d, originalPrompt: initialPrompt }));
+  }, [initialPrompt]);
   const fail = useCallback((e: unknown) => {
     if (alive.current) setError(imageErrorCopy(e instanceof ImageClientError ? e.code : 'unknown_error', locale));
   }, [locale]);
