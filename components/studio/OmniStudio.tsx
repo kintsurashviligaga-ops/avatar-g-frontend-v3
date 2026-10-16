@@ -103,10 +103,13 @@ import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
-import { nextAvatarAttempt } from '@/lib/avatar/renderAttempts';
+import { nextAvatarAttempt, startRefusal } from '@/lib/avatar/renderAttempts';
+import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
 import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/useMyTwin';
+/** The avatar gallery's first card: opens the user's own face photo picker (it is not a preset). */
+const OWN_PHOTO_CARD_ID = 'own-photo';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
@@ -2384,6 +2387,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // v330 — Avatar/lip-sync face: a scoped single-IMAGE picker (the slot can't ingest
   // PDFs/audio/multiples the way the shared attach button could).
   const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
+  const lipAudioRef = useRef<HTMLInputElement | null>(null);
   // AUTO-PLAY TTS: when a chat turn was started by VOICE (mic/dictation), the assistant's finished reply is
   // auto-spoken via /api/tts/gemini. Set by send() right before streamChat, consumed once at stream end.
   // A TYPED turn leaves this false, so its reply stays text-only. speakMsgRef bridges to speakMsg (which is
@@ -7121,6 +7125,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // talking clip) → covers both "dub a video" and "make a character speak".
       const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
+      // Only the words go to the voice. "The avatar, emotionally, says: …" was read out whole (Production 2026-10-16):
+      // the direction part ("emotionally, with gestures") is how it behaves, not what it says (lib/avatar/scriptSplit).
+      const spoken = text ? (splitAvatarScript(text).speech || text) : text;
       // PRESENTER — no face photo AND no chosen preset, but a typed script → a
       // consistent stock avatar speaks it in the CLONED Georgian voice (audio-driven
       // HeyGen). START + POLL, mobile-safe. (A face OR a preset falls through to the
@@ -7134,7 +7141,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             // Honour the panel's Voice (Female/Male) + Format selections.
-            body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
+            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: lipGender }),
           });
           const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string; error?: string; code?: string };
           let sj: { success?: boolean; videoId?: string; error?: string; code?: string } = {};
@@ -7219,7 +7226,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const startBody = JSON.stringify({
           videoUrl,
           ...(audioUrl ? { audioUrl } : {}),
-          ...(text ? { text } : {}),
+          ...(spoken ? { text: spoken } : {}),
           ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: lipGender }),
           orientation: lipOrientation, // honour the Format selector (9:16 / 16:9 / 1:1) in the HeyGen render
         });
@@ -7234,12 +7241,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Whether the FINAL attempt ended in a terminal failure its GET confirmed refunded — the only case the bubble may
         // say "credits refunded". Reset per attempt, so a start that failed afterwards claims nothing.
         let lastRefunded = false;
+        // A start the server REFUSED (Google-only boundary, credits, configuration) is shown with its reason and never
+        // retried: three retries of a 503 google_only ended in "re-attach the photo" (Production 2026-10-16).
+        let refusal: { code: string; body: Record<string, unknown> } | null = null;
         for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
           lastRefunded = false;
           const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: startBody, credentials: 'include', signal: ac.signal });
           const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
-          if (!startJson.jobId) { resultErr = 'start failed'; continue; }
+          if (!startJson.jobId) {
+            refusal = startRefusal(startJson);
+            if (refusal) break;
+            resultErr = 'start failed'; continue;
+          }
           const usedHeygen = String(startJson.jobId).startsWith('heygen:');
           resultErr = null;
           let settled = false;
@@ -7264,6 +7278,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
               ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
+              : refusal
+                ? { role: 'assistant', text: `⚠️ ${describeGenerationFailure(refusal.body, locale, t.lipsyncFailed)}` }
               : stillRendering
                 ? { role: 'assistant', text: `⚠️ ${lipStillRendering}` }
                 : lastRefunded
@@ -7760,6 +7776,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setAttachments((prev) => [...prev.filter((a) => !isAudio(a.mimeType)), { dataUrl, mimeType }].slice(-MAX_ATTACHMENTS));
     setMusicAudioMode('voice');
   }, []);
+  // Avatar „My audio": a recorded or uploaded track IS the avatar's voice (no TTS, no cloning). It replaces any earlier
+  // track and leaves the music panel's own state alone (GG, 2026-10-16: „ჩემი აუდიო" had no record / upload control).
+  const addAvatarAudio = useCallback((dataUrl: string, mimeType: string) => {
+    setAttachments((prev) => [...prev.filter((a) => !isAudio(a.mimeType)), { dataUrl, mimeType }].slice(-MAX_ATTACHMENTS));
+    setLipMyVoice(false);
+  }, []);
 
   const stopVoiceRecording = useCallback(() => {
     try { voiceRecRef.current?.stop(); } catch { /* noop */ }
@@ -7769,7 +7791,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setVoiceRecording(false);
   }, []);
 
-  const startVoiceRecording = useCallback(async () => {
+  const startVoiceRecording = useCallback(async (target: 'music' | 'avatar' = 'music') => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       // Reentrancy guard: a concurrent invoke may have acquired+assigned a stream while we awaited getUserMedia.
@@ -7786,7 +7808,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const type = rec.mimeType || mime || 'audio/webm';
         const blob = new Blob(voiceChunksRef.current, { type });
         const r = new FileReader();
-        r.onload = () => addVoiceMedia(String(r.result), type);
+        r.onload = () => (target === 'avatar' ? addAvatarAudio : addVoiceMedia)(String(r.result), type);
         r.readAsDataURL(blob);
       };
       voiceRecRef.current = rec;
@@ -7801,7 +7823,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } catch {
       setVoiceRecording(false);
     }
-  }, [addVoiceMedia, stopVoiceRecording]);
+  }, [addVoiceMedia, addAvatarAudio, stopVoiceRecording]);
   // Live voice asks every in-page mic holder to let go before it takes the mic (lib/voice/micBus): Android Chrome and
   // some Windows drivers refuse a second capture of a busy device, and Live reported that as „the microphone could
   // not start“. The clip recorded so far is kept — the recorder's onstop still attaches it.
@@ -7964,6 +7986,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (typeof a.durationSec === 'number') { const d = snapMusicSeconds(a.durationSec); setMusicDuration(d); applied.durationSec = d; musicSec = d; }
       if (typeof a.instrumental === 'boolean') { setMusicInstrumental(a.instrumental); applied.instrumental = a.instrumental; }
       if (a.style) { const st = a.style.slice(0, 60); setMusicStyles([st]); applied.style = st; }
+    } else if (tool === 'avatar') {
+      // The avatar panel's own controls (GG, 2026-10-16: Live must hand off an avatar like the other tools): its Format,
+      // and a voice gender named in the style. The prompt is the words it says (the send path keeps only those).
+      const f = a.aspectRatio === '9:16' || a.aspectRatio === '16:9' || a.aspectRatio === '1:1' ? a.aspectRatio : null;
+      if (f) { setLipFormat(f); applied.aspectRatio = f; }
+      const g = a.style ? (/\b(fe)?male\b|ქალ|კაც|муж|жен/i.exec(a.style)?.[0] ?? '') : '';
+      if (g) { const female = /female|ქალ|жен/i.test(g); setLipGender(female ? 'female' : 'male'); applied.voice = female ? 'female' : 'male'; }
     }
     return { applied, ...(musicSec !== undefined ? { musicSec } : {}) };
   };
@@ -10441,12 +10470,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <TemplateGallery
               testId="avatar-templates"
               label={locale === 'en' ? 'Presenters' : locale === 'ru' ? 'Ведущие' : 'წამყვანები'}
-              items={[...(myTwinFace ? [myTwinCardItem(locale, myTwinFace)] : []), ...AVATAR_TEMPLATES.map((tp) => ({
+              items={[{
+                // First card: the user's OWN face (GG, 2026-10-16: no visible way to use his own photo in the list).
+                id: OWN_PHOTO_CARD_ID, thumb: null, palette: ['#1C1C21', '#338FE8'] as const, Icon: Upload,
+                label: locale === 'en' ? 'Upload your photo' : locale === 'ru' ? 'Загрузить своё фото' : 'საკუთარი სურათის ატვირთვა',
+                hint: locale === 'en' ? 'Your own face speaks' : locale === 'ru' ? 'Говорит ваше лицо' : 'ილაპარაკებს შენი სახე',
+              }, ...(myTwinFace ? [myTwinCardItem(locale, myTwinFace)] : []), ...AVATAR_TEMPLATES.map((tp) => ({
                 id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
                 thumb: tp.thumb, palette: tp.palette, Icon: ScanFace, meta: tp.values.format,
               }))]}
-              activeId={myTwinFace && lipPreset === myTwinFace ? MY_TWIN_CARD_ID : matchAvatarTemplate({ preset: lipPreset, format: lipFormat })}
+              activeId={attachments.some((a) => isImage(a.mimeType)) && !lipPreset ? OWN_PHOTO_CARD_ID : myTwinFace && lipPreset === myTwinFace ? MY_TWIN_CARD_ID : matchAvatarTemplate({ preset: lipPreset, format: lipFormat })}
               onPick={(id) => {
+                if (id === OWN_PHOTO_CARD_ID) { lipsyncFaceRef.current?.click(); return; }
                 if (id === MY_TWIN_CARD_ID) {
                   // The twin's face stands in like a preset (the send path re-hosts it for the render); voice/format stay.
                   if (myTwinFace) setLipPreset(myTwinFace);
@@ -10483,19 +10518,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 </div>
               </div>
             </div>
-            {(attachments.some((a) => isAudio(a.mimeType)) || hasTrainedVoice) && (
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+            {/* „My audio": upload or record the track the avatar speaks; with a track the text box is optional. */}
+            {(() => {
+              const audioOn = attachments.some((a) => isAudio(a.mimeType));
+              return (
+              <div data-testid="avatar-my-audio" className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'My audio' : locale === 'ru' ? 'Моё аудио' : 'ჩემი აუდიო'}</span>
                 <div className="flex flex-wrap gap-1.5">
-                  {attachments.some((a) => isAudio(a.mimeType)) && (
-                    <Chip active onClick={() => fileRef.current?.click()}>{t.lipAudioLabel} ✓</Chip>
+                  <Chip active={false} onClick={() => lipAudioRef.current?.click()}><Upload size={12} className="mr-1 inline" />{locale === 'en' ? 'Upload' : locale === 'ru' ? 'Загрузить' : 'ატვირთვა'}</Chip>
+                  {voiceRecording ? (
+                    <Chip active onClick={stopVoiceRecording}><Square size={11} className="mr-1 inline" />{locale === 'en' ? 'Stop' : locale === 'ru' ? 'Стоп' : 'გაჩერება'} · {voiceRecSec}s</Chip>
+                  ) : (
+                    <Chip active={false} onClick={() => void startVoiceRecording('avatar')}><Mic size={12} className="mr-1 inline" />{locale === 'en' ? 'Record' : locale === 'ru' ? 'Записать' : 'ჩაწერა'}</Chip>
                   )}
-                  {hasTrainedVoice && (
+                  {audioOn && (
+                    <Chip active onClick={() => setAttachments((prev) => prev.filter((a) => !isAudio(a.mimeType)))}>{t.lipAudioLabel} ✓ <X size={11} className="ml-1 inline" /></Chip>
+                  )}
+                  {hasTrainedVoice && !audioOn && (
                     <Chip active={lipMyVoice} onClick={() => setLipMyVoice((v) => !v)}>{locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
                   )}
                 </div>
+                <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Your recording is what the avatar says — the text is then optional.' : locale === 'ru' ? 'Аватар произнесёт вашу запись — текст тогда не обязателен.' : 'ავატარი შენს ჩანაწერს იტყვის — ტექსტი მაშინ აუცილებელი არ არის.'}</span>
               </div>
-            )}
+              );
+            })()}
             </>)}
           </div>
         )}
@@ -11954,6 +12000,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               { dataUrl: small, mimeType: dataUrlMimeOf(small) || f.type || 'image/jpeg', ...(f.name ? { name: f.name } : {}) },
             ]);
           } catch { /* ignore unreadable file */ }
+        }} />
+        {/* Avatar „My audio" upload: the track the avatar speaks (replaces any earlier one). */}
+        <input ref={lipAudioRef} type="file" accept="audio/*" className="hidden" data-testid="avatar-audio-input" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try { addAvatarAudio(await fileToDataUrl(f), f.type || 'audio/mpeg'); } catch { /* ignore unreadable file */ }
         }} />
         {/* Camera capture — shoot a photo in-app; it joins the attachment tray and, in
             Video mode, seeds the storyboard as the start image. `capture="environment"`

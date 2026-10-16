@@ -6,7 +6,7 @@
  * video — and a user who could afford exactly one got a 402 on the fallback while the first, unpolled job finished
  * unseen. Only a terminal verdict (refunded server-side) may move on to the next engine.
  */
-import { nextAvatarAttempt } from './renderAttempts';
+import { nextAvatarAttempt, startRefusal } from './renderAttempts';
 
 const base = { settled: true, url: null, error: null, usedHeygen: false };
 
@@ -34,5 +34,24 @@ describe('nextAvatarAttempt', () => {
 
   it('a terminal SadTalker verdict with no reason keeps the old retry', () => {
     expect(nextAvatarAttempt(base)).toBe('retry');
+  });
+});
+
+describe('startRefusal — a refused avatar start is shown, not retried', () => {
+  it('the Google-only boundary refusal (Production 2026-10-16) stops at once with its code', () => {
+    const r = startRefusal({ success: false, url: null, jobId: null, code: 'google_only', error: 'google_only', message: 'paused' });
+    expect(r?.code).toBe('google_only');
+  });
+  it('credits, configuration and media refusals stop too', () => {
+    for (const code of ['insufficient_credits', 'provider_not_configured', 'media_unresolved', 'tts-failed']) {
+      expect(startRefusal({ jobId: null, code })?.code).toBe(code);
+    }
+  });
+  it('a started job, a reasonless miss and the provider\'s own start crash are not refusals', () => {
+    expect(startRefusal({ jobId: 'heygen:abc' })).toBeNull();
+    expect(startRefusal({})).toBeNull();
+    expect(startRefusal(null)).toBeNull();
+    expect(startRefusal({ jobId: null, code: 'start_failed' })).toBeNull();
+    expect(startRefusal({ jobId: null, error: 'provider_failed' })).toBeNull();
   });
 });
