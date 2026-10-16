@@ -1,6 +1,6 @@
 # 02 — P0/P1 defect register (final integration)
 
-Tree: integration branch (main e1dbf300 + #60 + #65 + #68 + #67 + voice adapter patch; main b21506bb and de15464d merged later). Found by the Phase 0 PR audit
+Tree: integration branch (main e1dbf300 + #60 + #65 + #68 + #67 + voice adapter patch; main b21506bb, de15464d and 5517047 merged later). Found by the Phase 0 PR audit
 and the Phase 1 credit-equation audit (code reading, 2026-10-15 17:20–17:45Z). Status: FIXED-ON-BRANCH = fixed here,
 not in Production until the release; OWNER-THREAD = belongs to another active thread; OPEN = not fixed.
 

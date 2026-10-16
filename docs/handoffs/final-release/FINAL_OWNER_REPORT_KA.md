@@ -5,7 +5,7 @@
 
 ## 1. რა იყო Production-ზე და რა არის ახალი
 
-Production ახლა: main de15464d, dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm (Video Core PR #76, defects 47/48 გასწორებული).
+Production ახლა: main 5517047, dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR (Video Core PR #77, 20:46Z; მანამდე PR #76, defects 47/48).
 ახალი ამ release-ით: Image Studio (admin), Music Studio (გამორთული), Voice v2 (გამორთული) და ხმის უსაფრთხოება, Google-ის
 საზღვარი ჩართული, dubbing/პრეზენტაცია გამორთული ფასის დამტკიცებამდე, Phase 1 შესწორებები (GO_NO_GO_KA.md, „რას ცვლის").
 
@@ -18,7 +18,7 @@ Production ახლა: main de15464d, dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm (Video 
 | #68 Voice Experience v2 | f93f1bc1 | e71e484a (+ adapter 0dc444e2) |
 | #67 Global E2E (provider boundary) | 731e9612 | 7aaf1eed |
 | Phase 1 შესწორებები | — | e80d88b4 |
-| main (PR #75, #76) | b21506bb, de15464d | bea302a1 და ბოლო merge (01 row 7) |
+| main (PR #75, #76, #77) | b21506bb, de15464d, 55170471 | bea302a1, f52f918e, 6f52934f (01 rows 7, 9) |
 
 არ შევიდა: #64 (ჩანაცვლდა; 47/48 Video Core-მა გადაიტანა #76-ით), #66 phone (migration-ის სახელი ემთხვევა), uid race.
 
@@ -27,7 +27,7 @@ Production ახლა: main de15464d, dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm (Video 
 ამ release-მდე უკვე PROVEN: საიტი KA/EN/RU, რეგისტრაცია/შესვლა, admin guard, კრედიტები, ატვირთვა, admin chat montage,
 admin 4 წმ Veo კლიპი, ჩვეულებრივი ანგარიშის ფასიანი 16 წმ ფილმი, BOG admin 10 ₾. ამ release-ის ცვლილებები Production-ზე
 ჯერ არ არის, ამიტომ მათთვის Production მტკიცება ჯერ არ არსებობს. Production-ის read-only შემოწმება 19:11Z: `/api/version`
-de15464, `/api/health` healthy, `/api/health/public` 5 ok, voice down (ElevenLabs probe, 2026-09-დან).
+de15464 (20:52Z: 5517047), `/api/health` healthy, `/api/health/public` 5 ok, voice down (ElevenLabs probe, 2026-09-დან).
 
 ## 4. რა რჩება გამორთული, დაბლოკილი ან დაუმტკიცებელი
 
@@ -63,7 +63,7 @@ CI 10/10 მწვანე ba35a07e-ზე. Jest სრული main de15464d-
 
 ## 10. Deploy
 
-ჯერ არა. Rollback target: dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm (de15464d).
+ჯერ არა. Rollback target: dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR (5517047), release-ის წინ ხელახლა შემოწმდება.
 
 ## 11. შემდეგი ნაბიჯი, თუ სესია დასრულდება
 

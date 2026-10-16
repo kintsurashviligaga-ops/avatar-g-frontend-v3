@@ -1,7 +1,7 @@
 # 09 — Release and rollback runbook
 
 Release = merge PR #74 into main; Vercel's Git integration builds main and assigns the Production domains (that is how
-#70, #71, #73, #75 and #76 went live). There is no migration and no env change in this release, so a rollback touches
+#70, #71, #73, #75, #76 and #77 went live). There is no migration and no env change in this release, so a rollback touches
 code only. "Staged" means every new studio stays off or admin-only after the deploy; nothing widens for customers.
 
 ## Preconditions (all must hold; the integration thread checks them)
@@ -11,8 +11,9 @@ code only. "Staged" means every new studio stays off or admin-only after the dep
    live E2E, Voice simulated-browser, BOG isolated + sandbox job, preview-e2e).
 3. No other thread's Production build is in flight (`list_deployments` target=production, state BUILDING/QUEUED is
    empty) and no paid Production run is in progress (Video Core thread's latest status).
-4. Rollback target recorded: the deployment serving Production just before the merge. On 2026-10-15 19:12Z that was
-   dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm (main de15464d); re-read it at release time.
+4. Rollback target recorded: the deployment serving Production just before the merge. On 2026-10-15 20:52Z that was
+   dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR (main 5517047, Video Core PR #77, READY 20:46Z); before it
+   dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm (de15464d). Re-read it at release time.
 
 ## Release
 
