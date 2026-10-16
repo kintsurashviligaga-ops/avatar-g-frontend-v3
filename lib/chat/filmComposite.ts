@@ -66,6 +66,8 @@ import {
   type SceneScreenwriterMeta,
 } from './filmPipeline';
 import { planSceneDialogue, type SceneSpokenLine } from './sceneDialogue';
+import { checkSceneSpeech, reflowSpeech } from '@/lib/video/speechTiming';
+import { filmFrameChainOn, chainEndFrame } from '@/lib/video/frameChain';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
@@ -290,6 +292,8 @@ async function renderClip(
   sceneFrame: string | null,
   /** True for a FREE film (promo) or founder/admin render → clip legs must NOT charge. */
   waiveClipBilling: boolean,
+  /** The NEXT scene's first frame: this clip ends on it (Veo interpolation) so the cut is seamless. */
+  nextSceneFrame: string | null = null,
 ): Promise<FilmClipResult> {
   // Gate on the SAME predicate as the pipeline pre-flight (hasVideoProvider =
   // LTX OR Replicate). The runtime now renders via Replicate as a primary when no
@@ -339,6 +343,7 @@ async function renderClip(
   // reference in place (buildFilmClipRequest already wired it).
   const clipReq = buildFilmClipRequest(scene, shared);
   if (sceneFrame) clipReq.selectedOptions.characterReference = sceneFrame;
+  if (sceneFrame && nextSceneFrame) clipReq.selectedOptions.veoEndFrame = nextSceneFrame;
 
   // PHASE 43 §3 / PHASE 58 — Isolated per-leg retry. We retry ONLY when a dispatch
   // fails to produce a provider job (throw or null taskRef); a successfully queued
@@ -776,7 +781,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     return s && !wantsCommentary(input.message) ? s : null;
   })();
   type DialogueSourceKind = 'master-script' | 'script-scenes' | 'dialogueScript' | 'narrationScript';
-  const { sceneDialogue, dialogueSource, dialogueComplete, dialoguePlacedCount } = ((): {
+  const { sceneDialogue: plannedDialogue, dialogueSource, dialogueComplete, dialoguePlacedCount: plannedPlacedCount } = ((): {
     sceneDialogue: SceneSpokenLine[][]; dialogueSource: DialogueSourceKind | null; dialogueComplete: boolean; dialoguePlacedCount: number;
   } => {
     const base = { sceneCount: grid.sceneCount, clipSec: grid.clipSec };
@@ -821,6 +826,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }
     return { sceneDialogue: [], dialogueSource: null, dialogueComplete: false, dialoguePlacedCount: 0 };
   })();
+  let sceneDialogue = plannedDialogue;
+  let dialoguePlacedCount = plannedPlacedCount;
   const spokenSceneCount = sceneDialogue.filter((l) => l.length > 0).length;
   // ALL-OR-NOTHING. The ElevenLabs dialogue leg is ONE track for the whole film, so it can only be
   // dropped wholesale — which means a line we failed to place in some scene's prompt would end up spoken
@@ -831,6 +838,34 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   if (spokenSceneCount > 0 && !delegateSpeech) {
     // eslint-disable-next-line no-console
     console.log(`[filmComposite] dialogue from ${dialogueSource} NOT delegated to Veo (nativeSpeech=${nativeSpeech}, complete=${dialogueComplete}) → ElevenLabs keeps every line`);
+  }
+
+  // ── EVERY WORD MUST FIT ITS SCENE ───────────────────────────────────────────
+  // Veo never refuses a line that is too long for its clip: it rushes it, swallows words, or stops when the shot
+  // ends. The 2026-10-16 ad (three 36–42-syllable Georgian lines on three 8 s scenes) came back exactly so —
+  // speech from frame 0 to the last frame, the third line cut off. So the words are measured against the time
+  // BEFORE anything is charged: an overfull scene hands its overflow to the next one (one speaker, words kept in
+  // order, cut at a sentence or clause break — with chained scenes the speech runs on across the cut), and a
+  // script that cannot fit the film at all is refused with the scene count it needs, never rendered half-said.
+  if (delegateSpeech) {
+    const sceneTexts = sceneDialogue.map((lines) => lines.map((l) => l.text).join(' '));
+    const fit = checkSceneSpeech(sceneTexts, grid.clipSec);
+    if (fit.overflow) {
+      const speakers = Array.from(new Set(sceneDialogue.flat().map((l) => l.speaker ?? '')));
+      const reflowed = speakers.length <= 1
+        ? reflowSpeech(sceneTexts.filter((t) => t.trim()).join(' '), sceneDialogue.length, grid.clipSec)
+        : null;
+      if (!reflowed) {
+        // eslint-disable-next-line no-console
+        console.log(`[filmComposite] speech does not fit: ${fit.totalSeconds}s of speech over ${sceneDialogue.length} × ${grid.clipSec}s scenes — needs ${fit.scenesNeeded}; refused before any charge`);
+        return speechTooLongResponse(input.locale, fit.totalSeconds, sceneDialogue.length, fit.scenesNeeded, grid.clipSec);
+      }
+      const speaker = speakers[0] || null;
+      sceneDialogue = reflowed.map((text) => (text ? [{ text, speaker }] : []));
+      dialoguePlacedCount = sceneDialogue.reduce((n, lines) => n + lines.length, 0);
+      // eslint-disable-next-line no-console
+      console.log(`[filmComposite] speech re-flowed across ${sceneDialogue.length} scenes so every word fits (${fit.scenes.map((x) => `${x.seconds}s`).join(' / ')} → ${checkSceneSpeech(reflowed, grid.clipSec).scenes.map((x) => `${x.seconds}s`).join(' / ')})`);
+    }
   }
 
   // ⚠️ ENGLISH FOR THE RENDERER — VERBATIM FOR THE VOICE. Veo, Runway, Kling and LTX are trained
@@ -1144,6 +1179,15 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // eslint-disable-next-line no-console
       console.info('[film] vision-qa report:', JSON.stringify(qa.report));
     }
+    // FRAME CHAINING — each clip ends on the next scene's first frame (Veo first→last interpolation), so every
+    // join is a match cut: same framing, light, pose and wardrobe on both sides of the cut. Independent clips
+    // rendered in parallel each drifted on their own (the 2026-10-16 ad: framing, background and colour jumped at
+    // every join). 8 s clips only (Google's interpolation length); FILM_FRAME_CHAIN=0 turns it off.
+    const chainFrames = filmFrameChainOn(grid.clipSec, sceneFrames);
+    if (chainFrames) {
+      // eslint-disable-next-line no-console
+      console.log(`[filmComposite] frame chaining on: ${sceneFrames.length - 1} clip(s) end on the next scene's first frame`);
+    }
     clips = await mapWithConcurrency(plan.scenes, clipDispatchConcurrency(), (scene, i) =>
       renderClip(
         input,
@@ -1154,6 +1198,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         clipForecast.retailGel,
         sceneFrames[i] ?? null,
         true, // no per-clip legs: the film was charged ONCE up front (filmCharged) — `debit_wallet_gel` is not on prod, and if it ever is, this keeps it from charging twice
+        chainFrames ? chainEndFrame(sceneFrames, i) : null,
       ),
     );
   } catch (err) {
@@ -1537,5 +1582,23 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         marginMultiplier: forecast.marginMultiplier,
       },
     },
+  };
+}
+
+/** The script holds more speech than the film's scenes can say: refuse before any charge, naming what would fit. */
+function speechTooLongResponse(locale: string | undefined, speechSec: number, scenes: number, scenesNeeded: number, clipSec: number): ChatResponse {
+  const loc = (locale || 'ka').toLowerCase();
+  const needSec = scenesNeeded * clipSec;
+  const message = loc === 'en'
+    ? `The text is about ${Math.round(speechSec)} s of speech, but ${scenes} scenes of ${clipSec} s can say only part of it — words would be rushed or cut off. Choose ${needSec} s (${scenesNeeded} scenes) or shorten the text. Nothing was charged.`
+    : loc === 'ru'
+      ? `Текст занимает около ${Math.round(speechSec)} с речи, а ${scenes} сцены по ${clipSec} с вмещают только часть — слова будут скомканы или обрезаны. Выберите ${needSec} с (${scenesNeeded} сцен) или сократите текст. Ничего не списано.`
+      : `ტექსტი დაახლოებით ${Math.round(speechSec)} წამი საუბარია, ${scenes} სცენა ${clipSec} წამით კი მხოლოდ ნაწილს იტევს — სიტყვები აჩქარდება ან მოიჭრება. აირჩიე ${needSec} წამი (${scenesNeeded} სცენა) ან შეამოკლე ტექსტი. თანხა არ ჩამოგეჭრა.`;
+  return {
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message,
+    metadata: { provider: 'composite', composite: true, speechTooLong: true, speechSec, scenes, scenesNeeded, clipSec },
   };
 }

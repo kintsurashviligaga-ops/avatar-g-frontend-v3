@@ -234,6 +234,22 @@ describe('execute() → createVeoClip carries the studio’s Veo plan exactly', 
     expect(r.seed).toBe(42);
   });
 
+  it('frame chaining: veoEndFrame becomes the clip\'s LAST frame (first→last interpolation), and the native move yields to it', async () => {
+    const { veoReferenceMode: _r, ...firstFrame } = STUDIO_PLAN;
+    await new ServiceManager().execute(videoRequest({ ...firstFrame, veoEndFrame: 'https://cdn.example/next-scene.png' }));
+    const r = createVeoClipMock.mock.calls[0]![0].request;
+    expect(r.startImage).toEqual({ kind: 'url', url: REFS[0] });
+    expect(r.lastFrame).toEqual({ kind: 'url', url: 'https://cdn.example/next-scene.png' });
+    expect(r).not.toHaveProperty('cameraControl');
+  });
+
+  it('frame chaining never rides with reference mode (Google rejects references + a last frame)', async () => {
+    await new ServiceManager().execute(videoRequest({ ...STUDIO_PLAN, veoEndFrame: 'https://cdn.example/next-scene.png' }));
+    const r = createVeoClipMock.mock.calls[0]![0].request;
+    expect(r).not.toHaveProperty('lastFrame');
+    expect(r.cameraControl).toBe('push_in');
+  });
+
   it('an accepted submit returns a gemini-veo task ref that encodes the operation and the NATIVE aspect', async () => {
     const res = await new ServiceManager().execute(videoRequest(STUDIO_PLAN));
     expect(res.success).toBe(true);

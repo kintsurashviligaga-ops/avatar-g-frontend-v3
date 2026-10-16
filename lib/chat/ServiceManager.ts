@@ -1152,6 +1152,9 @@ export class ServiceManager {
     const cameraControl = move ? nativeCameraControl(move as CameraMove) : undefined; // unknown move → undefined
     const ordinal = Number.parseInt(this.getOption(opts, ['sceneOrdinal']) ?? '', 10);
     const media = (url: string): VeoMedia => ({ kind: 'url', url });
+    // Film frame chaining: the clip ENDS on the next scene's first frame (Veo first→last interpolation), so the
+    // cut to the next clip is a match cut instead of a jump in framing, light and pose. Only with a first frame.
+    const endFrame = !references.length && startImage ? this.getOption(opts, ['veoEndFrame']) : undefined;
 
     const result = await createVeoClip({
       request: {
@@ -1164,8 +1167,9 @@ export class ServiceManager {
         generateAudio: flag('veoGenerateAudio') ?? true,
         ...(flag('veoEnhancePrompt') ? { enhancePrompt: true } : {}),
         ...(negativePrompt ? { negativePrompt } : {}),
-        ...(references.length ? { referenceImages: references.map(media) } : startImage ? { startImage: media(startImage) } : {}),
-        ...(cameraControl ? { cameraControl } : {}),
+        ...(references.length ? { referenceImages: references.map(media) } : startImage ? { startImage: media(startImage), ...(endFrame ? { lastFrame: media(endFrame) } : {}) } : {}),
+        // The two frames already define the move; a native camera move on top would fight the interpolation.
+        ...(cameraControl && !endFrame ? { cameraControl } : {}),
       },
       ...(tier ? { tier } : {}),
       sessionId: request.sessionId,

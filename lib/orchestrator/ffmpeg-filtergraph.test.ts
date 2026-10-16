@@ -324,3 +324,17 @@ describe('Video Core v1.0 §4 — the stitched length under the joins, and no pa
     expect(legacy.filter).toContain('atrim=0:30.00');
   });
 });
+
+describe('shot matching (clipLook)', () => {
+  const base = { nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 0, clipSec: 8, transition: 'cut' };
+  it('without clipLook every clip keeps the shared grade (graph unchanged)', () => {
+    const { filter } = buildFilterComplex(base);
+    expect(filter.match(/eq=contrast=1\.06:saturation=1\.08:gamma=0\.98/g)).toHaveLength(3);
+  });
+  it('a corrected clip folds its exposure and saturation into the same eq; the others are untouched', () => {
+    const { filter } = buildFilterComplex({ ...base, clipLook: [null, { brightness: 0.03, saturation: 0.9 }, null] });
+    expect(filter).toContain('[1:v]');
+    expect(filter).toMatch(/eq=contrast=1\.06:brightness=0\.03:saturation=0\.972:gamma=0\.98,unsharp=3:3:0\.3\[v1\]/);
+    expect(filter.match(/eq=contrast=1\.06:saturation=1\.08:gamma=0\.98/g)).toHaveLength(2);
+  });
+});

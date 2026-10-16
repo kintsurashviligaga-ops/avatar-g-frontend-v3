@@ -233,6 +233,9 @@ export function buildSpeechDirection(
     out += ` Then ${who} answers: "${reply.text}"${stopFor(reply.text)}`;
   }
   out += list.length > 1 ? ' Both voices are heard clearly in the shot.' : ' The voice is heard clearly in the shot.';
+  // Pacing: a line handed to Veo with no tempo was rushed and clipped at the cut (the 2026-10-16 ad). The words are
+  // already sized to fit the clip (lib/video/speechTiming), so ask for a calm delivery that lands inside the shot.
+  out += ' Calm, natural pace, every word complete, the last word finished a beat before the shot ends.';
   return out;
 }
 
