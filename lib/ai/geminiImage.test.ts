@@ -2,12 +2,12 @@
 jest.mock('server-only', () => ({}));
 jest.mock('../orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => 'k' }));
 jest.mock('../web/publicFetch', () => ({ fetchPublicBytes: jest.fn() }));
-jest.mock('./google/transport', () => ({ googleModelFetch: jest.fn(), googleTransportBlocker: () => null }));
+jest.mock('./google/transport', () => ({ googleImageModelFetch: jest.fn(), googleImageTransportBlocker: () => null }));
 
-import { googleModelFetch } from './google/transport';
+import { googleImageModelFetch } from './google/transport';
 import { generateGeminiImage, retryAfterMs, RATE_LIMIT_BACKOFF_MS } from './geminiImage';
 
-const fetchMock = googleModelFetch as jest.Mock;
+const fetchMock = googleImageModelFetch as jest.Mock;
 const image = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'AAAA' } }] } }] }), { status: 200 });
 const limited = (retryAfter?: string) => new Response('{}', { status: 429, headers: retryAfter ? { 'retry-after': retryAfter } : {} });
 

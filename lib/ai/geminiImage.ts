@@ -16,8 +16,7 @@
  * NEVER THROWS: null on any miss (no transport, 4xx/5xx, safety block, no image part, timeout).
  */
 import 'server-only';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
+import { googleImageModelFetch, googleImageTransportBlocker } from '@/lib/ai/google/transport';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
 const MAX_REF_BYTES = 12 * 1024 * 1024;
 
@@ -85,7 +84,7 @@ export function retryAfterMs(header: string | null): number | null {
 }
 
 export async function generateGeminiImage(args: GeminiImageArgs): Promise<GeminiImageResult | null> {
-  if (googleTransportBlocker(resolveGeminiKey()) || !args.prompt?.trim()) return null;
+  if (googleImageTransportBlocker() || !args.prompt?.trim()) return null;
   const model = (args.model || geminiFrameModel()).trim();
   const wanted = (args.referenceImages ?? []).slice(0, 3);
   const refs = (await Promise.all(wanted.map(toInlinePart)))
@@ -94,7 +93,7 @@ export async function generateGeminiImage(args: GeminiImageArgs): Promise<Gemini
   try {
     // Header auth on either transport: no credential ever lands in a URL (logs, traces, error messages).
     const body = JSON.stringify(buildGeminiImageBody(args.prompt, refs, args.aspectRatio));
-    const send = () => googleModelFetch(model, 'generateContent', {
+    const send = () => googleImageModelFetch(model, 'generateContent', {
       method: 'POST',
       cache: 'no-store',
       body,
