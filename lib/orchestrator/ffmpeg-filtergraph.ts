@@ -80,6 +80,9 @@ export interface FilterGraphOpts {
   nativeAudio?: boolean[];
   /** Gain for the native diegetic lane (0–1.5). Default 0.9 — present and natural without burying narration. */
   nativeAudioVolume?: number;
+  /** Shot matching (lib/video/clipLook): clipLook[i] corrects clip i's exposure/saturation toward the film's median
+   *  BEFORE the shared grade, so one vivid and one dull clip stop jumping at the cut. null/absent → unchanged. */
+  clipLook?: ({ brightness: number; saturation: number } | null)[];
 }
 
 const XFADE: Record<string, string> = {
@@ -100,6 +103,12 @@ const CANVAS: Record<string, readonly [number, number]> = {
   square: [1080, 1080],
   portrait: [1080, 1350],
 };
+/** The per-clip grade; a shot-match correction folds into the same eq (one pass, no extra filter). */
+function clipEq(look: { brightness: number; saturation: number } | null | undefined): string {
+  if (!look) return 'eq=contrast=1.06:saturation=1.08:gamma=0.98';
+  const sat = Math.round(1.08 * look.saturation * 1000) / 1000;
+  return `eq=contrast=1.06:brightness=${look.brightness}:saturation=${sat}:gamma=0.98`;
+}
 const TRANSITION_SEC = 1; // 1s crossfade (offset = clipSec - 1)
 
 /**
@@ -242,7 +251,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
       // bug). `setpts=PTS-STARTPTS` rebases the trimmed clip to 0 for a clean
       // concat/xfade so each [v{i}] is precisely clipSec long.
       `[${i}:v]trim=0:${clipSec},setpts=PTS-STARTPTS,${fit},setsar=1,settb=AVTB,fps=${vfps},` +
-        `format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v${i}]`,
+        `format=yuv420p,${clipEq(opts.clipLook?.[i])},unsharp=3:3:0.3[v${i}]`,
     );
   }
   let vmap: string;

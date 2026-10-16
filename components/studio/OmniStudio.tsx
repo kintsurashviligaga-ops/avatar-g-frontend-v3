@@ -24,6 +24,7 @@ import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { isChargedRemixOp, remixAskText, remixOpCredits } from '@/lib/video/remixCharge';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
+import { speechFit, speechFitNote } from '@/lib/video/speechTiming';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { conversationsKey, currentUid } from '@/lib/chat/historyKeys';
 import { describeOpFailure, filmFailureText } from '@/lib/ui/opFailure';
@@ -1908,7 +1909,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncCredits, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
+function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncCredits, speechTooLong, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
@@ -1920,6 +1921,9 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncC
   /** The lip-sync pass after the film, in credits (lib/video/createPanel.lipsyncAddOnCredits) — its own charge, never
    *  in `price`, and not covered by the free slot. 0/absent → none runs. */
   lipsyncCredits?: number;
+  /** The typed words take longer to say than these scenes hold (lib/video/speechTiming): the note to show. Generate is
+   *  held until the board has enough scenes or the text is shorter — the server would refuse it anyway. */
+  speechTooLong?: string | null;
   /** The scene ordinal currently re-rolling its frame (null = none). */
   regenningOrdinal: number | null;
   onGenerate: () => void;
@@ -2055,11 +2059,16 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncC
             {lipsyncAddOnNote(lipsyncCredits ?? 0, _locale)}
           </p>
         )}
+        {speechTooLong && (
+          <p data-testid="storyboard-speech-too-long" role="alert" className="px-4 pb-2 pt-1 text-center text-[11.5px] font-medium leading-snug text-amber-400">
+            {speechTooLong}
+          </p>
+        )}
         <div className="flex items-center gap-2 border-t border-app-border/10 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
           <button type="button" onClick={onRegenerate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-4 py-2.5 text-[13px] font-medium text-app-text transition-all duration-200 hover:bg-app-border/10 active:scale-95 disabled:opacity-50">
             <RotateCcw size={15} /> {t.sbRegen}
           </button>
-          <button type="button" onClick={onGenerate} disabled={busy} data-testid="storyboard-generate" data-price={free ? 'free' : typeof price === 'number' && price > 0 ? price : undefined}
+          <button type="button" onClick={onGenerate} disabled={busy || !!speechTooLong} data-testid="storyboard-generate" data-price={free ? 'free' : typeof price === 'number' && price > 0 ? price : undefined}
             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-all duration-200 hover:opacity-90 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50">
             <Film size={16} /> {t.sbGenerate}
             {free
@@ -12509,6 +12518,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           free={freeSlotApplies(videoFreeFilms, storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC))}
           // A director run renders exactly the board, no lip-sync pass after it (see onGenerate below).
           lipsyncCredits={directorRunsOn ? 0 : filmLipsyncCredits}
+          speechTooLong={(() => {
+            // A music video's text is LYRICS (sung over the song), not lines each scene must say.
+            if (videoMode === 'musicvideo' || !videoSpeech.trim()) return null;
+            const clip = storyboard.clipSec ?? FILM_CLIP_SEC;
+            const fit = speechFit(videoSpeech, storyboard.scenes.length, clip);
+            return fit.fits ? null : speechFitNote(fit, clip, locale);
+          })()}
           regenningOrdinal={regenningOrdinal}
           onRegenScene={(ordinal, baseImage) => void regenScene(ordinal, baseImage)}
           onEditScene={editScene}

@@ -229,8 +229,11 @@ describe('buildSpeechDirection — Veo-native, verbatim, no negations', () => {
     expect(buildSpeechDirection('I know.', { speaker: 'NARRATOR' })).toMatch(/^The character on screen/);
   });
   it('bounds a runaway line (an 8s shot cannot deliver a monologue)', () => {
-    // MAX_SPOKEN_LINE_CHARS (200) + the fixed direction — never the caller's 5000.
-    expect(buildSpeechDirection('x'.repeat(5000)).length).toBeLessThan(340);
+    // MAX_SPOKEN_LINE_CHARS (200) + the fixed direction (incl. the pacing clause) — never the caller's 5000.
+    expect(buildSpeechDirection('x'.repeat(5000)).length).toBeLessThan(440);
+  });
+  it('asks for a calm pace that finishes inside the shot', () => {
+    expect(buildSpeechDirection('I know.')).toMatch(/natural pace, every word complete/);
   });
   it('returns nothing for a silent scene', () => {
     expect(buildSpeechDirection(null)).toBe('');
