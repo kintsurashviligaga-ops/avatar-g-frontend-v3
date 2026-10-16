@@ -265,3 +265,37 @@ Proposals (not built): re-render only the declined scene (touches billing, needs
 
 Still open: D-C2 (light jump at the cut); an English brief with "speaks"/"dialogue" still routes typed lines to a
 narrator.
+
+### Run 3 (no photo, invented actor): film made
+
+GG chose "without the photo" on the decision card at 04:46:14Z on 2026-10-16: one more paid try, the same two scenes,
+an invented actor. Admin account, Production 5517047 (PR #77). No photo was attached, so the studio made its own
+Gemini character anchor (`googleOnly: true`, no other image provider) and used it for both frames and both scenes.
+Gates before the press: preflight (Vertex, sound, daily cap on, director off), served commit, panel (9:16, 16 s, Fast,
+sound on, music off, both lines typed, price 50), storyboard (anchor made, two frames, neither the raw anchor portrait).
+Claude viewed both frames (same presenter, black T-shirt and black blazer, dark background, nothing else in frame),
+then pressed Generate once at 05:15:20Z.
+
+| What | Result | Label |
+|---|---|---|
+| Film | Delivered 05:19:26Z, 247 s after the press; both scenes rendered, one dispatch, no scene declined | PROVEN_PRODUCTION + PROVEN_REAL_PROVIDER |
+| Vertex | Two `veo-3.1-fast-generate-001` operations, us-central1, 9:16, 8 s, 1080p (Production log 05:15:27Z) | PROVEN_PRODUCTION |
+| File | 16.000 s, 480 frames at 30 fps, H.264 1080×1920, AAC 48 kHz stereo, 32.2 MB; no decode errors, no PTS gaps, no frozen or repeated frames; the downloaded file is byte-identical to the delivered one (sha256 7279b756…) | PROVEN (technical) |
+| Sound | No silence; mean −16.7 dB, max −0.9 dB (scene 1 −17.3, scene 2 −16.1); no narrator, no music (the actor speaks in-clip) | PROVEN (technical) |
+| Picture | The same invented presenter in both scenes, black T-shirt and black blazer, gesturing, nothing else in frame | Matches the brief visually; a valid MP4 does not prove creative quality |
+| Georgian speech | Whisper medium, auto mode, detects the language of both scenes as Georgian (`ka`) but cannot transcribe it (degenerate output), so the words are not verified | PARTIAL |
+| Library / history | Saved and listed in the Library; the film's status is `assembled`, durable | PROVEN_PRODUCTION |
+| Credits | 892 → 892 (admins are not charged; the quote was 50) | PROVEN |
+| Cost | Ceiling log: reserved $0.96 twice, today 2026-10-16 $1.92 of $10; Vertex list price 2 × 8 s × $0.12 ≈ $1.92 | Reservation PROVEN; Google's bill INFERRED |
+
+Observations: scene 1 has a smoky dark-blue backdrop and scene 2 is near-black, so the background changes at the cut
+(D-C2, still open); the first 4 frames (0.13 s) are black. Production errors in the window: only the known
+`service_jobs` worker-tick line (a missing table, pinned by the schema-drift ratchet), nothing from this film.
+
+Consistent with the cause given for runs 1–2 (INFERENCE from one run each way): with the reference photo Google's
+likeness filter declined one scene each time; with an invented actor both scenes passed.
+
+D-C7 (one icon on the error card) and D-C8 (a Google refusal logged once per operation) are fixed with regression
+tests in PR #78.
+
+The "without the photo" consent is used up. Any further paid run needs GG's new word.
