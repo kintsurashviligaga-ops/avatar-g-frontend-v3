@@ -78,6 +78,12 @@ export interface FilmTaskRef {
    * the -12dB sidechain duck; anything else falls back to voiceUrl. Bounded to 16.
    */
   dialogueStems?: { url: string; speaker: string; startSec: number }[] | null;
+  /**
+   * The scenes after the first wait on the sequential chain (lib/chat/filmChain): each is dispatched by a poll, from the
+   * previous clip's last frame, once that clip lands. Their clip refs here stay `pending` with no taskRef; the poll reads
+   * the real ones from the server's chain record. Absent on every other film.
+   */
+  chain?: boolean;
 }
 
 function b64urlEncode(s: string): string {
