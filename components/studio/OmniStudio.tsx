@@ -55,7 +55,7 @@ import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
 import { FilmQaBadge } from './FilmQaBadge';
 import { MusicVideoLook, type MusicVideoLookValue } from './create/MusicVideoLook';
-import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
+import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions, storyFramePrompts } from '@/lib/chat/filmPipeline';
 import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, type VeoRenderOptions } from '@/lib/video/veoPlan';
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
 import type { Transition } from '@/lib/veo/types';
@@ -4764,7 +4764,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // so the "Source Reference Locked" badge shows even for the single-selfie case (anchorMode false).
         return { uid: nextSceneUid(), ordinal: s.ordinal, beat: s.beat, prompt: ua || s.prompt, ...(ua ? { edited: true } : {}), frameUrl: s.frameUrl ?? null, anchored: !!s.anchored || (anchorMode && !!s.frameUrl) };
       });
-      const framePrompts: Record<number, string> = {};
+      let framePrompts: Record<number, string> = {};
       // Also steer each scene's FRAME IMAGE with the user's action (falls back to the AI prompt).
       planned.forEach((s) => { framePrompts[s.ordinal] = userAction(s.ordinal) || (s.framePrompt && s.framePrompt.trim()) || s.prompt; });
       const ordinals = scenes.filter((s) => !s.frameUrl).map((s) => s.ordinal); // only un-anchored scenes stream a generated frame
@@ -4819,13 +4819,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         } catch { /* best-effort; frames fall back to deterministic beats */ }
         if (!scripts || !scripts.length) return;
         const finalScripts = scripts;
-        if (hasScript) {
-          // The per-scene shots BECOME the frame prompts (so each storyboard image depicts
-          // the script), unless the user typed a per-scene action (which wins).
-          finalScripts.forEach((sc, i) => { const ord = i + 1; if (!userAction(ord) && sc && sc.trim()) framePrompts[ord] = sc.trim(); });
-        }
+        // The per-scene shots BECOME the frame prompts for EVERY brief (so each storyboard image depicts its own
+        // scene), unless the user typed a per-scene action (which wins). A typed brief used to keep the plan prompt,
+        // which is the whole brief: a brief that lists its scenes then drew all of them in one frame (see
+        // storyFramePrompts). Stored on the board too, so a re-roll asks for the same single scene.
+        framePrompts = storyFramePrompts(framePrompts, finalScripts, (ord) => Boolean(userAction(ord)));
+        const storyPrompts = framePrompts;
         setStoryboard((prev) => (prev ? {
           ...prev,
+          framePrompts: storyPrompts,
           sceneScripts: finalScripts,
           ...(character ? { character } : {}),
           ...(sceneMeta && sceneMeta.length === prev.scenes.length ? { sceneMeta } : {}),
@@ -4835,13 +4837,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // e.g. a WWII teaser reading the same as a coffee ad) even though these
           // story-specific scripts already existed and drove the render. Surface them so the
           // storyboard the user reviews matches the actual scene content. User-edited scenes
-          // and blank script slots are preserved (see mergeSceneCaptions). NOTE: the FRAME
-          // prompts stay gated on `hasScript` above — a typed brief keeps its fast
-          // deterministic stills; only the on-screen caption becomes story-specific.
+          // and blank script slots are preserved (see mergeSceneCaptions). The FRAME prompts
+          // follow the same scripts (above), so the caption and the frame show one scene.
           scenes: mergeSceneCaptions(prev.scenes, finalScripts, (ord) => Boolean(userAction(ord))),
         } : prev));
       };
-      if (hasScript) { await Promise.race([enrichStory(), new Promise<void>((r) => setTimeout(r, 90000))]); } else { void enrichStory(); }
+      // Frames wait for the story shots on EVERY brief (bounded): a frame drawn from the plan prompt is the whole
+      // brief, not its scene. An attached script gets longer, its decomposer is slower. A miss or a timeout keeps the
+      // plan prompts, as before.
+      await Promise.race([enrichStory(), new Promise<void>((r) => setTimeout(r, hasScript ? 90000 : 60000))]);
 
       // STEP 2.6 — CHARACTER LOCK. Derive ONE protagonist anchor portrait from the
       // brief, then condition EVERY scene frame on it so the character stays identical

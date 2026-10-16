@@ -21,6 +21,7 @@ import {
   googleModelFetch,
   googleTransportBlocker,
   googleTransportKind,
+  googleImageTransportKind,
   googleTransports,
 } from './transport';
 import { createGoogleGenerativeAI } from './provider';
@@ -313,5 +314,21 @@ describe('key-rotating callers (orchestrator script / interior routes)', () => {
     expect(googleCallAttempts(['k1', 'k2'])).toEqual([undefined]);
     process.env.GEMINI_TRANSPORT = 'bogus';
     expect(googleCallAttempts(['k1'])).toEqual([]);
+  });
+});
+
+describe('image transport override (GEMINI_IMAGE_TRANSPORT)', () => {
+  it('follows GEMINI_TRANSPORT when unset', () => {
+    expect(googleImageTransportKind({})).toBe('gemini_api');
+    expect(googleImageTransportKind({ GEMINI_TRANSPORT: 'vertex' })).toBe('vertex');
+  });
+
+  it('keeps images on the API key while text and music use Vertex', () => {
+    expect(googleImageTransportKind({ GEMINI_TRANSPORT: 'vertex', GEMINI_IMAGE_TRANSPORT: 'gemini_api' })).toBe('gemini_api');
+    expect(googleImageTransportKind({ GEMINI_TRANSPORT: 'gemini_api', GEMINI_IMAGE_TRANSPORT: 'vertex' })).toBe('vertex');
+  });
+
+  it('fails closed on an unknown value', () => {
+    expect(() => googleImageTransportKind({ GEMINI_IMAGE_TRANSPORT: 'replicate' })).toThrow();
   });
 });

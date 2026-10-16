@@ -205,3 +205,30 @@ export const googleTransports: GeminiTransportSelector<GoogleRestTransport> = {
 export async function googleModelFetch(model: string, method: GoogleModelMethod, init: RequestInit): Promise<Response> {
   return googleTransports.select().fetch({ model, method, init });
 }
+
+/**
+ * The transport for IMAGE generation: GEMINI_IMAGE_TRANSPORT when set, else GEMINI_TRANSPORT. It exists because the two
+ * accounts have separate limits: on 2026-10-16 Vertex AI answered every storyboard frame with 429 (per-minute image
+ * quota) while text worked there, so frames can stay on the Gemini API key and text and music on Vertex. An unknown
+ * value fails closed, like GEMINI_TRANSPORT.
+ */
+export function googleImageTransportKind(env: Env = process.env): GeminiTransportKind {
+  const raw = (env.GEMINI_IMAGE_TRANSPORT ?? '').trim();
+  return raw ? googleTransportKind({ GEMINI_TRANSPORT: raw }) : googleTransportKind(env);
+}
+
+/** One image-model RPC on the image transport. Throws NotConfiguredError when it cannot serve. */
+export async function googleImageModelFetch(model: string, method: GoogleModelMethod, init: RequestInit): Promise<Response> {
+  return googleTransports.selectFixed(googleImageTransportKind()).fetch({ model, method, init });
+}
+
+/** Why an image call cannot be made on the image transport right now, or null. */
+export function googleImageTransportBlocker(): string | null {
+  let kind: GeminiTransportKind;
+  try {
+    kind = googleImageTransportKind();
+  } catch {
+    return 'GEMINI_IMAGE_TRANSPORT is not gemini_api or vertex';
+  }
+  return googleTransportProblems(kind).length ? `${kind} is not configured` : null;
+}

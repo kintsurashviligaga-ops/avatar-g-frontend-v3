@@ -16,8 +16,7 @@
  * NEVER THROWS: null on any miss (no transport, 4xx/5xx, safety block, no image part, timeout).
  */
 import 'server-only';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
+import { googleImageModelFetch, googleImageTransportBlocker } from '@/lib/ai/google/transport';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
 const MAX_REF_BYTES = 12 * 1024 * 1024;
 
@@ -72,8 +71,20 @@ export function buildGeminiImageBody(prompt: string, inlineRefs: Array<{ inlineD
   };
 }
 
+/** Waits before each retry of a 429 (per-minute quota). Total stays well inside a storyboard request's budget. */
+export const RATE_LIMIT_BACKOFF_MS: readonly number[] = [4_000, 10_000, 15_000];
+const MAX_RETRY_AFTER_MS = 20_000;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Retry-After in ms (seconds form only), capped; null when absent or unusable. */
+export function retryAfterMs(header: string | null): number | null {
+  const secs = Number((header ?? '').trim());
+  if (!header || !Number.isFinite(secs) || secs < 0) return null;
+  return Math.min(secs * 1000, MAX_RETRY_AFTER_MS);
+}
+
 export async function generateGeminiImage(args: GeminiImageArgs): Promise<GeminiImageResult | null> {
-  if (googleTransportBlocker(resolveGeminiKey()) || !args.prompt?.trim()) return null;
+  if (googleImageTransportBlocker() || !args.prompt?.trim()) return null;
   const model = (args.model || geminiFrameModel()).trim();
   const wanted = (args.referenceImages ?? []).slice(0, 3);
   const refs = (await Promise.all(wanted.map(toInlinePart)))
@@ -81,12 +92,24 @@ export async function generateGeminiImage(args: GeminiImageArgs): Promise<Gemini
   if (args.requireReferences && refs.length < wanted.length) return null;
   try {
     // Header auth on either transport: no credential ever lands in a URL (logs, traces, error messages).
-    const res = await googleModelFetch(model, 'generateContent', {
+    const body = JSON.stringify(buildGeminiImageBody(args.prompt, refs, args.aspectRatio));
+    const send = () => googleImageModelFetch(model, 'generateContent', {
       method: 'POST',
       cache: 'no-store',
-      body: JSON.stringify(buildGeminiImageBody(args.prompt, refs, args.aspectRatio)),
+      body,
       signal: AbortSignal.timeout(args.timeoutMs ?? 90_000),
     });
+    let res = await send();
+    // A 429 is the per-minute quota, not a refusal: on Vertex AI the image model allows only a few calls a minute, and
+    // a storyboard asks for its frames together (2026-10-16: scene 4 of a 4-scene board got 429 every time). Wait and
+    // try again, a bounded number of times, honouring Retry-After when Google sends one.
+    for (const fallbackMs of RATE_LIMIT_BACKOFF_MS) {
+      if (res.status !== 429) break;
+      // eslint-disable-next-line no-console
+      console.warn(`[gemini-image] ${model} 429, retrying`);
+      await sleep(retryAfterMs(res.headers.get('retry-after')) ?? fallbackMs);
+      res = await send();
+    }
     if (!res.ok) {
       // eslint-disable-next-line no-console
       console.warn(`[gemini-image] ${model} ${res.status}`);
