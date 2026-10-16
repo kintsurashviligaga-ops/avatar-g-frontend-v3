@@ -60,6 +60,16 @@ const REPLICATE_LTX_VIDEO_VERSION =
   '8c47da666861d081eeb4d1261853087de23923a268a69b63febdf5dc1dee08e4';
 const TASK_REF_VERSION = 1;
 
+// Veo refusals already written to the log, per warm instance. Bounded: past the cap it starts over, which at worst
+// repeats a line.
+const loggedVeoDeclines = new Set<string>();
+function firstVeoDecline(key: string): boolean {
+  if (loggedVeoDeclines.has(key)) return false;
+  if (loggedVeoDeclines.size >= 500) loggedVeoDeclines.clear();
+  loggedVeoDeclines.add(key);
+  return true;
+}
+
 // PHASE 47 §3 — Radical agent recovery. A film clip's LTX dispatch is retried up
 // to 3 times with exponential backoff before the master agent falls back to the
 // amber strip. We retry ONLY transient failures (network throw / 429 / 5xx); a
@@ -1233,7 +1243,10 @@ export class ServiceManager {
     // echo the prompt) goes to the film, which names the scene and the rule to the person who asked for it.
     if (r.state === 'filtered') {
       const category = veoSafetyCategory(r.supportCodes);
-      console.warn(`[veo] scene declined by Google (${category ?? 'unlisted code'}) op=${operation.slice(-40)} codes=${r.supportCodes.join(',') || 'none'}: ${r.reason}`);
+      // Once per operation: the film polls a finished operation on every tick, so the same refusal was written six times.
+      if (firstVeoDecline(`${operation}|${r.supportCodes.join(',')}`)) {
+        console.warn(`[veo] scene declined by Google (${category ?? 'unlisted code'}) op=${operation.slice(-40)} codes=${r.supportCodes.join(',') || 'none'}: ${r.reason}`);
+      }
       const why = category === 'celebrity' ? ': Google judged the person to look like a well-known public figure' : category ? ` (${category.replace('_', ' ')})` : '';
       return failed(`${engine} declined this scene under Google's safety rules${why}.`, {
         veoFiltered: true,

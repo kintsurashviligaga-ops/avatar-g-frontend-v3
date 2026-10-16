@@ -198,3 +198,104 @@ merge, its own deployment becomes the newest and f498ee2's (`dpl_53tGzqum…`) t
 **CONDITIONAL GO** for Video Core v1.0 as released (signed-in users with credits, admin-only Agent G media lanes),
 on the three conditions at the top. **NO-GO** for calling Agent G's paid media lanes publicly launched until GG gives
 that word.
+
+## 17. Addendum: the ad film test (GG, 16:49Z)
+
+GG's ask of 16:49:10Z: fix everything, then make one 9:16 advert from GG's photo: an actor in a black T-shirt and black
+jacket on a black background presents the MyAvatar.ge chat (scene 1) and explains Agent G taking a spoken task and
+doing all of it (scene 2), in Georgian. That counted as GG's word for one paid run; GG's tap "კი, ერთხელ" at 19:47:34Z
+allowed one more after the fix below reached Production. The photo stays on GG's Mac and in the studio's own upload;
+it is not in GitHub or CI.
+
+### Fixes shipped (each: CI green, merge commit, Production verified with `/api/health`, engine `vertex`, `dailyCap: true`)
+
+| PR | main | Production | What |
+|---|---|---|---|
+| #73 | e1dbf30 | `dpl_4gYXPWEzruPweyCyonr6WXQT9X1o` | D-C1: no invented person in a storyboard without one (§12) |
+| #75 | b21506b | `dpl_2bSktQyb9CrcLZZxWTyZNCd82PBG` | A photo-led advert keeps the brief's scene, clothes and light (the photo locks the face only); with Veo's sound on the actor says the typed lines in-clip (no narrator cue, no HeyGen talking head, no +20 add-on); music-video graphics only for music videos (probably the cause of D-C3; INFERENCE); the style word once (D-C5) |
+| #76 | de15464 | `dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm` | Defects 47/48: a film id from the client cannot take over another account's film (403 `film_not_owned` before any charge); a brief naming clothes or a background re-stages the photo (the check's token budget was too small) |
+| #77 | 5517047 | `dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR` (READY 20:46:39Z) | D-C6 below: the card names the scene Google declined, the rule and the code; the scenes that rendered are handed over; the server logs Google's reason |
+
+BOG read-only smoke after #77: run [38804987664](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38804987664), success.
+Rollback now: Instant Rollback to `dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm` (de15464); never a Redeploy of old code.
+
+### Run 1 (admin account, 19:29:11Z): no film
+
+PROVEN_PRODUCTION + PROVEN_REAL_PROVIDER. GG signed in as the admin account (admins are not charged film credits).
+The storyboard frames were black-on-black and not the raw photo. One press. Scene 1 rendered. Scene 2 came back from
+Vertex with `raiMediaFilteredCount: 1` and support code **15236754**, which Google files under "Celebrity" (the filter
+judged the face to look like a well-known person; scene 1 with the same face passed). Google states that blocked videos
+are not billed. Credits 892 → 892. The daily ceiling kept the scene's reservation (conservative). List price of the one
+rendered clip: 8 s × $0.12 ≈ $0.96 (INFERENCE; Google's bill not visible here).
+
+**D-C6 (fixed in #77).** The studio said "Video generation failed — the service may be busy" and showed nothing of
+scene 1. Cause: with `NEXT_PUBLIC_PARALLEL_CINEMA=1` (Production) the film runs as a queued job; the job's throw landed
+in the studio's own catch, which painted the generic line over the honest reason already on the card. A rendered scene
+of a failed film was also never shown. Now: the card reads, for example, "Google-მა სცენა 2 უარყო. მისმა ფილტრმა
+ადამიანი ცნობილ საჯარო პირს მიამსგავსა (კოდი 15236754)." (KA/EN/RU, ≤ 160 characters), and the rendered scenes are
+links under it. Tests: unit (`lib/veo/safetyCodes.test.ts`, `serviceManagerVeo.test.ts`, `filmPollSceneRefund.test.ts`,
+`filmStudioClient.test.ts`; 178 suites, 3,363 tests) and a browser test on desktop and phone with and without the
+queued mode; with the old throw restored the browser test fails showing exactly the Production card. PROVEN_MOCK.
+
+Not controllable by us: Google's likeness filter. Not built (would touch billing; a proposal, not a fix): an automatic
+retry of a declined scene, or re-rendering only the missing scene.
+
+### Run 2
+
+Admin account, paid button pressed once at 23:05:54Z (GG's consent 19:47Z, "yes, once"). Production: 5517047 (PR #77).
+
+| What | Result | Label |
+|---|---|---|
+| Film | Not made: Google declined scene 1 (category "Celebrity", code 15236754); in run 1 it declined scene 2 | FAILED (Google's filter, not our code) |
+| New card (D-C6, PR #77) | Named scene 1, the filter's reason and the code; "▶ Scene 2" offered below it | PROVEN_PRODUCTION |
+| Server log | "[veo] scene declined by Google (Celebrity) …" with category and codes | PROVEN_PRODUCTION |
+| Scene 2 (file) | 8.000 s, H.264 1080×1920 (9:16), 24 fps, AAC stereo; audio mean −22.1 dB, max −6.0 dB | PROVEN (technical) |
+| Scene 2 (picture) | Black background, black jacket and tee, gesturing speaker, nothing else in frame | Matches the brief visually; a valid MP4 does not prove creative quality |
+| Scene 2 (Georgian speech) | whisper medium could not transcribe it (degenerate repeated output) | NOT PROVEN |
+| Credits | 0 (admins are not charged) | PROVEN |
+| Cost | Vertex ≈ $0.96 for the rendered scene (estimate; Google does not bill blocked videos); today's reservations $6.16 of $10 | INFERRED |
+
+Cause: in both runs Google's likeness filter reacts to the reference photo (the face), in a different scene each time. No setting on our side turns it off.
+
+The "yes, once" consent is used up. Any further paid run needs GG's new word.
+
+New low defects: D-C7, the film icon overlaps the text of the error card; D-C8, the decline log line repeats on every poll (6× for one operation).
+
+Proposals (not built): re-render only the declined scene (touches billing, needs GG's decision); make the film without the photo, with an invented actor.
+
+Still open: D-C2 (light jump at the cut); an English brief with "speaks"/"dialogue" still routes typed lines to a
+narrator.
+
+### Run 3 (no photo, invented actor): film made
+
+GG chose "without the photo" on the decision card at 04:46:14Z on 2026-10-16: one more paid try, the same two scenes,
+an invented actor. Admin account, Production 5517047 (PR #77). No photo was attached, so the studio made its own
+Gemini character anchor (`googleOnly: true`, no other image provider) and used it for both frames and both scenes.
+Gates before the press: preflight (Vertex, sound, daily cap on, director off), served commit, panel (9:16, 16 s, Fast,
+sound on, music off, both lines typed, price 50), storyboard (anchor made, two frames, neither the raw anchor portrait).
+Claude viewed both frames (same presenter, black T-shirt and black blazer, dark background, nothing else in frame),
+then pressed Generate once at 05:15:20Z.
+
+| What | Result | Label |
+|---|---|---|
+| Film | Delivered 05:19:26Z, 247 s after the press; both scenes rendered, one dispatch, no scene declined | PROVEN_PRODUCTION + PROVEN_REAL_PROVIDER |
+| Vertex | Two `veo-3.1-fast-generate-001` operations, us-central1, 9:16, 8 s, 1080p (Production log 05:15:27Z) | PROVEN_PRODUCTION |
+| File | 16.000 s, 480 frames at 30 fps, H.264 1080×1920, AAC 48 kHz stereo, 32.2 MB; no decode errors, no PTS gaps, no frozen or repeated frames; the downloaded file is byte-identical to the delivered one (sha256 7279b756…) | PROVEN (technical) |
+| Sound | No silence; mean −16.7 dB, max −0.9 dB (scene 1 −17.3, scene 2 −16.1); no narrator, no music (the actor speaks in-clip) | PROVEN (technical) |
+| Picture | The same invented presenter in both scenes, black T-shirt and black blazer, gesturing, nothing else in frame | Matches the brief visually; a valid MP4 does not prove creative quality |
+| Georgian speech | Whisper medium, auto mode, detects the language of both scenes as Georgian (`ka`) but cannot transcribe it (degenerate output), so the words are not verified | PARTIAL |
+| Library / history | Saved and listed in the Library; the film's status is `assembled`, durable | PROVEN_PRODUCTION |
+| Credits | 892 → 892 (admins are not charged; the quote was 50) | PROVEN |
+| Cost | Ceiling log: reserved $0.96 twice, today 2026-10-16 $1.92 of $10; Vertex list price 2 × 8 s × $0.12 ≈ $1.92 | Reservation PROVEN; Google's bill INFERRED |
+
+Observations: scene 1 has a smoky dark-blue backdrop and scene 2 is near-black, so the background changes at the cut
+(D-C2, still open); the first 4 frames (0.13 s) are black. Production errors in the window: only the known
+`service_jobs` worker-tick line (a missing table, pinned by the schema-drift ratchet), nothing from this film.
+
+Consistent with the cause given for runs 1–2 (INFERENCE from one run each way): with the reference photo Google's
+likeness filter declined one scene each time; with an invented actor both scenes passed.
+
+D-C7 (one icon on the error card) and D-C8 (a Google refusal logged once per operation) are fixed with regression
+tests in PR #78.
+
+The "without the photo" consent is used up. Any further paid run needs GG's new word.
