@@ -160,6 +160,8 @@ import { classifyFocusInput, gateMessage, isAffirmation, isConversational, merge
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
 import { aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference, orientationForAspect } from '@/lib/chat/chatConsent';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
+import { shootKindForTool, shootOfferText, shootWire } from '@/lib/chat/chatShoot';
+import type { StudioWire } from '@/lib/studio/shootWire';
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
 import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
@@ -1046,7 +1048,7 @@ interface Media { dataUrl: string; mimeType: string; /** The original file name 
 // `templateId`: the template card the user PICKED, when it still matched these values at request time
 // (hooks/usePickedTemplate; a card that is merely lit sends nothing) — sent with the request AND its re-roll, so both
 // get the card's server-resolved context (the route re-checks the match).
-type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string; templateId?: string };
+type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string; templateId?: string; /** A Photographer / Interior designer render ordered in the chat (lib/chat/chatShoot). */ studio?: StudioWire };
 // MusicRegenSpec (+ duration / tempo / voice, and the body built from it) lives in lib/studio/musicRegen — tested there.
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
@@ -5064,7 +5066,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           spec.kind === 'image'
-            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}), ...(spec.studio ? { studio: spec.studio } : {}) }
             : musicRegenBody(spec),
         ),
         credentials: 'include',
@@ -5173,7 +5175,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: AbortSignal.any([signal, deadline]),
-          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
+          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}), ...(spec.studio ? { studio: spec.studio } : {}) }),
         }).catch((e: unknown) => {
           // Mirrors runImageBatch's per-tile try/catch: the reason must land ON THE BUBBLE before the
           // rejection escapes, because the floating tray is hidden while only one job is active
@@ -5262,7 +5264,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal,
-              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
+              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}), ...(spec.studio ? { studio: spec.studio } : {}) }),
             });
             const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
             onProgress({ pct: 100 });
@@ -6408,7 +6410,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
     return { clips: media.length, music: !!track };
   }, [setMode]);
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode; /** The frame the user named („9:16") — wins over the panel's for this one render. */ aspect?: ImgAspect; /** A photo from earlier in the thread the offer is built on (lib/chat/chatConsent latestThreadPhoto). */ refImage?: string; /** One picture, whatever the panel's count: the price the offer quoted was one image's. */ single?: boolean; /** The Live call sent these words (chat_send): a spoken „yes" never starts spending (PHASE 5). */ fromLive?: boolean }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode; /** The frame the user named („9:16") — wins over the panel's for this one render. */ aspect?: ImgAspect; /** A photo from earlier in the thread the offer is built on (lib/chat/chatConsent latestThreadPhoto). */ refImage?: string; /** One picture, whatever the panel's count: the price the offer quoted was one image's. */ single?: boolean; /** The Live call sent these words (chat_send): a spoken „yes" never starts spending (PHASE 5). */ fromLive?: boolean; /** A Photographer / Interior designer render Agent G's card agreed in the chat (lib/chat/chatShoot). */ studio?: StudioWire }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
@@ -6648,7 +6650,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const neg = imgNegative.trim();
       // A ratio written in the words („… 9:16") is the frame the user asked for, whatever the picker was left on.
       const aspect = opts?.aspect ?? aspectFromText(text, { ratioOnly: true }) ?? imgAspect;
-      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
+      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(opts?.studio ? { studio: opts.studio } : pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
       if (imgCount > 1 && !opts?.single) runImageBatch(spec, imgCount);
       else runImageJob(text, ref, spec);
       setInput('');
@@ -6813,7 +6815,35 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // above do: the tool opens, nothing renders, nothing is charged. A request for a service that does not exist yet
     // („მუსიკა დამირემიქსე" — an AUDIO remix) is answered honestly with the nearest real one, never with the video
     // remix. lib/catalog/agentRoute decides; it returns null for everything the routers above and below already own.
-    const agentRoute = mode === 'chat' && text ? routeAgentIntent(text) : null;
+    // A card already agreed („კი", Create) carries its own target: it never routes back into the catalog.
+    const agentRoute = mode === 'chat' && text && !opts?.confirmed ? routeAgentIntent(text) : null;
+    // THE PHOTOGRAPHER AND THE INTERIOR DESIGNER RUN IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat; Agent G
+    // clarifies, the user agrees, generation starts). They used to open their panel and leave the photo in the composer.
+    // Agent G's card now says what it will make, from which photo, at one render's price; its Create or a „კი" renders it
+    // here through the image route with the studio (lib/chat/chatShoot), the panels' own charge and refund path.
+    const shootKind = agentRoute?.kind === 'open' ? shootKindForTool(agentRoute.tool) : null;
+    if (agentRoute?.kind === 'open' && shootKind && !attachments.some((a) => !isImage(a.mimeType))) {
+      const photos = attachments.filter((a) => isImage(a.mimeType));
+      // The photo attached now, else one sent earlier in this chat when the words point at it („ამ ფოტოდან").
+      const refImage = photos[0]?.dataUrl ?? (offerUsesReference(text) ? latestThreadPhoto(messages) : undefined);
+      const shootAspect = aspectFromText(text, { ratioOnly: true }) ?? undefined;
+      const credits = quoteCredits({ tool: 'image', count: 1 });
+      const card: AgentGCardState = {
+        kind: 'confirm', target: 'image', prompt: text, credits, madeIn: 'chat', single: true, studio: shootWire(shootKind),
+        ...(refImage ? { refImage } : {}), ...(shootAspect ? { aspect: shootAspect } : {}),
+      };
+      gatePendingRef.current = null;
+      trackQuoteShown(agentRoute.service.id, credits, 'agent-card');
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', text, ...(photos.length ? { medias: photos, modelMedias: [] } : {}) },
+        { role: 'assistant', text: shootOfferText({ kind: shootKind, prompt: text, withPhoto: !!refImage, locale }), agentG: card },
+      ]);
+      setGateFrom(messages.length);
+      if (photos.length) setAttachments([]);
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      return;
+    }
     if (agentRoute) {
       const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
       const en = lang === 'en', ru = lang === 'ru';
@@ -6868,7 +6898,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
         const neg = imgNegative.trim();
         const aspect = opts?.aspect ?? aspectFromText(text, { ratioOnly: true }) ?? imgAspect;
-        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
+        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(opts?.studio ? { studio: opts.studio } : pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
         if (imgCount > 1 && !opts?.single) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
         setInput(''); setAttachments([]); stopDictationEcho();
         return;
@@ -8689,7 +8719,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setGateFrom(null);
     resolveGateCard(idx);
     trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
-    void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(card.aspect ? { aspect: card.aspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}) });
+    void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(card.aspect ? { aspect: card.aspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}), ...(card.studio ? { studio: card.studio } : {}) });
   }, [resolveGateCard, send, videoMode]);
   const editGate = useCallback((idx: number) => {
     const card = messagesRef.current[idx]?.agentG;
@@ -9133,7 +9163,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setGateFrom(null);
       resolveGateCard(idx);
       trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
-      void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(cardAspect ? { aspect: cardAspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}) });
+      void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(cardAspect ? { aspect: cardAspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}), ...(card.studio ? { studio: card.studio } : {}) });
       return true;
     }
     // 2) The priced question before a charged edit of an attached video, and Agent G's plan cards: Create / Start.

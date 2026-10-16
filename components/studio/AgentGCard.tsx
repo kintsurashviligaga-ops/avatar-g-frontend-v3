@@ -14,6 +14,7 @@ import { Sparkle } from 'lucide-react';
 import { creditsLabel } from '@/lib/credits/quote';
 import { gateButtons, type GateMode } from '@/lib/chat/focusGate';
 import type { ImgAspect } from '@/lib/studio/imageCreate';
+import type { StudioWire } from '@/lib/studio/shootWire';
 
 export interface AgentGCardState {
   kind: 'clarify' | 'confirm';
@@ -31,6 +32,8 @@ export interface AgentGCardState {
   refImage?: string;
   /** One picture whatever the panel's count — the card's price is one image's (an offer Agent G made in words). */
   single?: boolean;
+  /** A Photographer / Interior designer render ordered in the chat (lib/chat/chatShoot): Create sends it as the image route's `studio`. */
+  studio?: StudioWire;
   /** Decided already — the buttons are gone. */
   done?: boolean;
 }
