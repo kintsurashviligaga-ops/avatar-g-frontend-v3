@@ -508,20 +508,29 @@ export async function POST(req: NextRequest) {
   }
 
   // Single-scene regeneration — the user asked to re-roll just one frame.
-  const sceneOrdinal = typeof body.sceneOrdinal === 'number' ? Math.floor(body.sceneOrdinal) : null;
-  if (sceneOrdinal && sceneOrdinal >= 1 && sceneOrdinal <= plan.scenes.length) {
-    const scene = plan.scenes[sceneOrdinal - 1]!;
+  // ⚠️ A FRAME CALL NEVER FALLS THROUGH TO THE WHOLE BOARD. The board's frame calls send no sceneCount, so `plan` here
+  // has the default FILM_SCENE_COUNT (3) scenes. Scene 4 of a 4-scene (32 s) board failed `ordinal <= plan.scenes.length`
+  // and ran the full-board path below: three more frames on the image quota, a whole board in the answer and no
+  // `frameUrl`, so tile 4 stayed empty on every 32 s board (2026-10-16, GG's ad test) and each re-roll repeated it.
+  // The frame is drawn from the scene prompt the board sends; the plan's own scene is only the fallback.
+  const sceneOrdinal = body.sceneOrdinal === undefined || body.sceneOrdinal === null ? null : Number(body.sceneOrdinal);
+  if (sceneOrdinal !== null) {
     // Honor a user-EDITED shot description (Storyboard scene editing) when present,
     // so re-rolling the frame reflects the user's own wording; else the planned shot.
     const customPrompt = typeof body.scenePrompt === 'string' && body.scenePrompt.trim() ? body.scenePrompt.trim().slice(0, 600) : null;
+    const ordinalOk = Number.isInteger(sceneOrdinal) && sceneOrdinal >= 1 && sceneOrdinal <= 12;
+    const scene = ordinalOk ? plan.scenes[sceneOrdinal - 1] : undefined;
+    if (!ordinalOk || (!scene && !customPrompt)) {
+      return NextResponse.json({ success: false, error: 'sceneOrdinal is out of range and no scenePrompt was sent' }, { status: 400 });
+    }
     // The planned `scene.prompt` already carries the look in full. A client prompt (the board's own, cut to 600, or a
     // user edit) may not, so the resolved look leads it, unless the text already holds it whole.
     const frameLook = customPrompt && template && !customPrompt.includes(template.look) ? template.look : undefined;
     // One retry, as the full board's second pass below does: the image model now and then answers
-    // finishReason=NO_IMAGE for an ordinary prompt (2026-10-16: scene 4 of two consecutive 4-scene boards came back
-    // empty and rendered on a manual re-roll). The board asks for each frame through this path, and one empty tile
-    // also switches frame chaining off for the whole film.
-    const frameUrl = (await genFrame(customPrompt ?? scene.prompt, frameLook)) ?? (await genFrame(customPrompt ?? scene.prompt, frameLook));
+    // finishReason=NO_IMAGE for an ordinary prompt. The board asks for each frame through this path, and one empty
+    // tile also switches frame chaining off for the whole film.
+    const shot = customPrompt ?? scene!.prompt; // the guard above: no planned scene → the board sent its own prompt
+    const frameUrl = (await genFrame(shot, frameLook)) ?? (await genFrame(shot, frameLook));
     return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
   }
 

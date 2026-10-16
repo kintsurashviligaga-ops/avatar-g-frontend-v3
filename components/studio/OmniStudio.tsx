@@ -377,7 +377,8 @@ function fmtDur(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-const COPY: Record<Lang, {
+/** Exported for tests. */
+export const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
   modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string; share: string; linkCopied: string; remix: string; remixPlaceholder: string; remixGenerating: string;
   magicHint: string;
@@ -1909,7 +1910,8 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncCredits, speechTooLong, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
+/** Exported for its unit test only. */
+export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncCredits, speechTooLong, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
@@ -1955,8 +1957,11 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncC
   const boardClipSec = sb.clipSec ?? FILM_CLIP_SEC; // 8 s unless the script (or a 4 s / 6 s pick) sets its own
   const pkgSec = total * boardClipSec; // the film's real length: scenes × clip
   return (
-    <div className="fixed inset-0 z-[90] flex flex-col bg-app-bg/95 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }} onClick={onCancel}>
-      <div onClick={(e) => e.stopPropagation()} className="mx-auto flex h-full w-full max-w-3xl flex-col">
+    // No click-outside dismissal: on a wide window the dark margins beside the board are the backdrop, and one stray
+    // click there closed the board and aborted every frame still drawing (2026-10-16, GG's ad test). It closes only from
+    // its own X / Cancel.
+    <div className="fixed inset-0 z-[90] flex flex-col bg-app-bg/95 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }} data-testid="storyboard-overlay">
+      <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
         <div className="flex items-start justify-between gap-2 px-4 py-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
