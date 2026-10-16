@@ -242,7 +242,26 @@ retry of a declined scene, or re-rendering only the missing scene.
 
 ### Run 2
 
-Pending: the runner on GG's Mac waits for GG's sign-in (window open from 20:46Z to 23:46Z). Result to follow here.
+Admin account, paid button pressed once at 23:05:54Z (GG's consent 19:47Z, "yes, once"). Production: 5517047 (PR #77).
+
+| What | Result | Label |
+|---|---|---|
+| Film | Not made: Google declined scene 1 (category "Celebrity", code 15236754); in run 1 it declined scene 2 | FAILED (Google's filter, not our code) |
+| New card (D-C6, PR #77) | Named scene 1, the filter's reason and the code; "▶ Scene 2" offered below it | PROVEN_PRODUCTION |
+| Server log | "[veo] scene declined by Google (Celebrity) …" with category and codes | PROVEN_PRODUCTION |
+| Scene 2 (file) | 8.000 s, H.264 1080×1920 (9:16), 24 fps, AAC stereo; audio mean −22.1 dB, max −6.0 dB | PROVEN (technical) |
+| Scene 2 (picture) | Black background, black jacket and tee, gesturing speaker, nothing else in frame | Matches the brief visually; a valid MP4 does not prove creative quality |
+| Scene 2 (Georgian speech) | whisper medium could not transcribe it (degenerate repeated output) | NOT PROVEN |
+| Credits | 0 (admins are not charged) | PROVEN |
+| Cost | Vertex ≈ $0.96 for the rendered scene (estimate; Google does not bill blocked videos); today's reservations $6.16 of $10 | INFERRED |
+
+Cause: in both runs Google's likeness filter reacts to the reference photo (the face), in a different scene each time. No setting on our side turns it off.
+
+The "yes, once" consent is used up. Any further paid run needs GG's new word.
+
+New low defects: D-C7, the film icon overlaps the text of the error card; D-C8, the decline log line repeats on every poll (6× for one operation).
+
+Proposals (not built): re-render only the declined scene (touches billing, needs GG's decision); make the film without the photo, with an invented actor.
 
 Still open: D-C2 (light jump at the cut); an English brief with "speaks"/"dialogue" still routes typed lines to a
 narrator.
