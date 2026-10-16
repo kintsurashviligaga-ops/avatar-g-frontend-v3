@@ -3298,6 +3298,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // progress only showed in the floating corner tray. Reactive subscription → drives the elapsed clock.
   const queueActiveNow = useJobQueue((s) => s.jobs.some((j) => j.status === 'rendering' || j.status === 'queued'));
 
+  // <html data-studio-work> while anything here is in flight or a board is open: a new deploy's service worker then
+  // waits to reload this tab (lib/pwa/updateReload) instead of wiping a board or a render the user paid for.
+  const studioWorking = busy || storyboardBusy || queueActiveNow || storyboard !== null || directorBoard !== null;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (studioWorking) root.dataset.studioWork = '1';
+    else delete root.dataset.studioWork;
+    return () => { delete root.dataset.studioWork; };
+  }, [studioWorking]);
+
   // Tick the elapsed clock while a generation OR the storyboard build is in flight
   // (so the storyboard overlay can show a live % too, not just a spinner).
   useEffect(() => {
