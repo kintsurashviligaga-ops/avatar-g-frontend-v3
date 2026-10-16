@@ -3852,6 +3852,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const startedAt = jobCtx ? Date.now() : genStartRef.current;
     const bubbleId = jobCtx?.jobId;
     let finalUrl: string | null = null;
+    // The master as delivered, when this is a queued job (D-C3): its durable row is completed with it at once.
+    let deliveredUrl: string | null = null;
     let lastPostedPct = -1;
     // Patch THIS film's bubble — by stable jobId when queued, else the last assistant bubble
     // (legacy). Guarded by the per-job alive check; `fn` may return null to skip.
@@ -4095,6 +4097,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const filmSeconds = filmScenes * (clipSec ?? FILM_CLIP_SEC);
         notifyCredit('video', { seconds: filmSeconds, credits: videoQuote({ seconds: filmSeconds, tier: veo.tier, mode: videoMode }), service: serviceForTool('video', { videoMode }) ?? undefined });
         finalUrl = res.masterUrl;
+        // ⚠️ D-C3 — THE DELIVERED FILM'S ROW STAYED "RUNNING" (Video Core certification, 2026-10-15). The durable row was
+        // completed only when the whole job returned, i.e. after the post-delivery upgrades (lip-sync, a music video's
+        // graphics) — a minute or more after the film was on screen. A page closed in that window left the row
+        // `processing`, and every tray that read it showed a running film for 30 minutes. The film is delivered now, so its
+        // row says so now; an upgrade that lands later is filed in the Library on its own (below).
+        if (jobCtx) { deliveredUrl = res.masterUrl; trackJobComplete(jobCtx.jobId, res.masterUrl); }
       }
       // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
       // row flips to failed (the legacy path just leaves the ⚠️ bubble in place).
@@ -4267,10 +4275,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     // Queued success → resolve with the final (possibly lip-synced/graphics-upgraded) URL so the
     // job's result carries it into onSettle → trackJobComplete(url).
-    if (jobCtx) return finalUrl ?? undefined;
+    if (jobCtx) {
+      // The durable row was completed with the master at delivery (D-C3); a lip-synced / graphics version is its own result.
+      if (finalUrl && deliveredUrl && finalUrl !== deliveredUrl) autoSaveToLibrary(finalUrl, 'film', filmPrompt);
+      return finalUrl ?? undefined;
+    }
     // NB: the 22 video-panel vars are NOT deps — renderFilm reads them from the immutable `snap`
     // param (captured at submit by startFilmRender), so it no longer re-creates on every panel edit.
-  }, [locale, notifyCredit, t.generatingVideo, t.videoFailed]);
+  }, [locale, notifyCredit, autoSaveToLibrary, t.generatingVideo, t.videoFailed]);
 
   // TASK 4 — the single dispatch point for a cinema render. Legacy path (flag OFF): call
   // renderFilm directly and RETURN its promise, so existing `await`/`void` call sites behave
