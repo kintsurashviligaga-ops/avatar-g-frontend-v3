@@ -7241,6 +7241,37 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         if (!videoUrl) throw new Error('upload failed');
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
+        // GOOGLE VEO AVATAR first (GG's choice, 2026-10-16): the photo is the first frame and Veo speaks the words. Open to
+        // admins until the owner opens it (423 → the older path below, which the Google-only boundary refuses with its
+        // reason). A recorded/uploaded track cannot drive Veo's own voice, so it keeps the older path.
+        if (!audioUrl && spoken) {
+          const veoRes = await fetch('/api/avatar/veo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ photo: videoUrl, speech: spoken, direction: text ? splitAvatarScript(text).direction : '', aspect: lipFormat === '16:9' ? '16:9' : '9:16' }),
+          });
+          if (veoRes.status !== 423) {
+            const vj = (await veoRes.json().catch(() => ({}))) as { success?: boolean; jobId?: string; error?: string; code?: string; refunded?: boolean };
+            let veoUrl: string | null = null;
+            let veoFail: string | null = vj.success && vj.jobId ? null : describeGenerationFailure(vj, locale, t.lipsyncFailed);
+            for (let i = 0; i < 60 && vj.jobId && !veoUrl && !veoFail; i++) { // ~6 min of short polls (mobile-safe)
+              if (!mine()) return;
+              await new Promise((r) => setTimeout(r, 6000));
+              const pr = await fetch(`/api/genjutsu/status?id=${encodeURIComponent(vj.jobId)}`, { credentials: 'include', signal: ac.signal }).catch(() => null);
+              const pj = (await pr?.json().catch(() => ({}))) as { done?: boolean; state?: string; videoUrl?: string; error?: string; refunded?: boolean } | undefined;
+              if (pj?.done) { if (pj.videoUrl) veoUrl = pj.videoUrl; else veoFail = describeGenerationFailure(pj, locale, t.lipsyncFailed); }
+            }
+            if (!veoUrl && !veoFail) veoFail = lipStillRendering;
+            setMessages((prev) => {
+              if (!mine()) return prev;
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last && last.role === 'assistant') next[next.length - 1] = veoUrl ? { role: 'assistant', text: '', videoUrl: veoUrl, genKind: 'lipsync', orientation: lipFormat === '16:9' ? 'landscape' : 'vertical' } : { role: 'assistant', text: `⚠️ ${veoFail}` };
+              return next;
+            });
+            if (mine() && veoUrl) notifyCredit('avatar');
+            return;
+          }
+        }
         const startBody = JSON.stringify({
           videoUrl,
           ...(audioUrl ? { audioUrl } : {}),

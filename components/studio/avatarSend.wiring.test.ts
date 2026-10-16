@@ -40,3 +40,12 @@ describe('avatar panel and Live hand-off wiring (GG 2026-10-16)', () => {
     expect(live).toContain("setLipGender(female ? 'female' : 'male')");
   });
 });
+
+describe('Veo avatar wiring (GG chose Veo, 2026-10-16)', () => {
+  it('a photo with words tries the Google Veo avatar first and polls the scene status route; 423 falls back', () => {
+    expect(lip).toContain("fetch('/api/avatar/veo'");
+    expect(lip).toContain('if (veoRes.status !== 423)');
+    expect(lip).toContain('/api/genjutsu/status?id=');
+    expect(lip).toMatch(/if \(!audioUrl && spoken\)/);
+  });
+});

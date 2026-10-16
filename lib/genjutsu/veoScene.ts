@@ -59,6 +59,13 @@ export interface SceneSubmitInput {
   userId: string;
   /** Groups the Vertex GCS inputs/outputs of this scene. */
   sessionId: string;
+  /**
+   * The Veo avatar (lib/avatar/veoAvatar): the user's face photo as the clip's FIRST FRAME instead of references (Veo
+   * takes one or the other). A signed URL of our own storage, like the references.
+   */
+  startImageUrl?: string;
+  /** Replaces the VFX scene's negative prompt (the avatar's own). */
+  negativePrompt?: string;
 }
 
 export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit> {
@@ -85,8 +92,8 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
             // Reference mode pins the clip to 8 s (the engine would snap to it anyway); say so, so the price is the length.
             durationSec: SCENE_SECONDS,
             generateAudio: true,
-            negativePrompt: SCENE_NEGATIVE_PROMPT,
-            ...(input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
+            negativePrompt: input.negativePrompt ?? SCENE_NEGATIVE_PROMPT,
+            ...(input.startImageUrl ? { startImage: { kind: 'url' as const, url: input.startImageUrl } } : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
           },
           tier,
           sessionId: input.sessionId,

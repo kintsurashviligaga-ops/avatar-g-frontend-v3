@@ -121,6 +121,12 @@
     "app/api/research/**": {
       "maxDuration": 60
     },
+    "app/api/avatar/veo/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/genjutsu/**": {
+      "maxDuration": 120
+    },
     "app/api/**": {
       "maxDuration": 15
     }
