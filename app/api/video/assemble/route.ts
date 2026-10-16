@@ -619,9 +619,10 @@ async function assembleImpl(req: NextRequest) {
           return NextResponse.json({ error: 'insufficient_credits', reason: 'insufficient_credits', message }, { status: 402 });
         }
       }
-    } else {
-      scFreeFilm = true; // anon trial / founder — no charge (mirrors saga bag.freeFilm)
     }
+    // D-C4: a covered stitch (anon trial, founder/admin, or a film paid up front) is NOT the free slot. `freeFilm` used to
+    // be set here too, so a paid film's response said `freeFilm: true` while the slot stayed untouched. `freeFilm` now
+    // means only "the one free video was spent"; `covered` says "this stitch needed no charge".
 
     try {
       const clipUrl = await reSignIfInternal(segments[0]!.url);
@@ -729,7 +730,7 @@ async function assembleImpl(req: NextRequest) {
       await settleWaiver(producedSomething);
       // `freeFilm` reports whether the slot was actually SPENT. When nothing was produced it was handed
       // back above, so saying true here would tell the client their one free video is gone when it is not.
-      return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm && producedSomething, single: true });
+      return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm && producedSomething, covered: scSkipBilling, single: true });
     } catch (err) {
       // The waiver of a film paid upstream was taken above (a durable lease, or the cache's consumeFilmBilling) so a replay
       // cannot reuse it; this attempt delivered nothing, so it goes back — exactly as the multi-clip saga's compensate does. Without this a
@@ -861,8 +862,9 @@ async function assembleImpl(req: NextRequest) {
       name: 'reserve-credits',
       run: async (ctx) => {
         if (skipBilling) {
-          // Anonymous trial OR founder/admin — nothing to reserve, no charge.
-          ctx.bag.freeFilm = true;
+          // Anonymous trial, founder/admin, or a film paid up front — nothing to reserve, no charge. That is `covered`,
+          // not the free slot (D-C4): `freeFilm` is set only when consume_free_film actually spent it.
+          ctx.bag.covered = true;
           return null;
         }
         if (uid === null) return null; // unreachable past skipBilling — narrows uid to string
@@ -1154,5 +1156,5 @@ async function assembleImpl(req: NextRequest) {
 
   // Return the resolved song URL so the client can drive a HeyGen singer-performance
   // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
-  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
+  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), covered: Boolean(bag.covered), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
 }

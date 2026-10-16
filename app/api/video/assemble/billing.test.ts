@@ -55,3 +55,13 @@ test('every charge and refund in the route uses that one amount', () => {
   expect(uses.length).toBeGreaterThanOrEqual(7);
   expect(code).not.toMatch(/deductCredits\(uid, \d+,/);
 });
+
+test('D-C4: `freeFilm` means only "the free slot was spent"; a covered stitch reports `covered` instead', () => {
+  // the only places that set the flag are the two consume_free_film successes
+  expect((code.match(/scFreeFilm = true/g) ?? []).length).toBe(1);
+  expect((code.match(/ctx\.bag\.freeFilm = true/g) ?? []).length).toBe(1);
+  expect(code).toMatch(/const freeFilm = await consumeFreeFilm\(uid\);\s*if \(typeof freeFilm === 'number' && freeFilm >= 0\) \{\s*scFreeFilm = true;/);
+  expect(code).toMatch(/if \(skipBilling\) \{\s*ctx\.bag\.covered = true;/);
+  expect(code).toMatch(/freeFilm: scFreeFilm && producedSomething, covered: scSkipBilling, single: true/);
+  expect(code).toMatch(/freeFilm: Boolean\(bag\.freeFilm\), covered: Boolean\(bag\.covered\)/);
+});
