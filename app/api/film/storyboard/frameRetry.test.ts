@@ -35,13 +35,17 @@ import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
 const image = generateGeminiImage as jest.Mock;
 const FRAME = { base64: Buffer.alloc(8, 1).toString('base64'), mimeType: 'image/jpeg' };
 
-function post(): NextRequest {
+function post(extra: Record<string, unknown> = { sceneCount: 4, sceneOrdinal: 4 }): NextRequest {
   return new NextRequest('https://myavatar.ge/api/film/storyboard', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ prompt: 'A presenter on a black stage explains a product', orientation: 'vertical', locale: 'en', sceneCount: 4, sceneOrdinal: 4 }),
+    body: JSON.stringify({ prompt: 'A presenter on a black stage explains a product', orientation: 'vertical', locale: 'en', ...extra }),
   });
 }
+
+// The board's own frame call, as OmniStudio sends it: the scene's prompt and NO sceneCount.
+const SHOT_4 = 'Medium shot: the presenter finishes the pitch and invites the viewer, one hand open toward camera';
+const boardFrame4 = () => post({ sceneOrdinal: 4, scenePrompt: SHOT_4, referenceImages: [] });
 
 let fetchSpy: jest.SpyInstance;
 beforeEach(() => {
@@ -71,5 +75,50 @@ describe('single-scene frame', () => {
     const body = await (await POST(post())).json();
     expect(body).toMatchObject({ success: true, ordinal: 4, frameUrl: null });
     expect(image).toHaveBeenCalledTimes(2);
+  });
+});
+
+// 2026-10-16, GG's 32 s ad test: tile 4 of every 4-scene board stayed empty. The board's frame calls send no sceneCount,
+// so the route planned the default 3 scenes, scene 4 failed `ordinal <= plan.scenes.length` and the call ran the WHOLE
+// board instead (three more frames on the image quota, then an answer with no frameUrl). Each re-roll repeated it.
+describe('a frame call never runs the whole board', () => {
+  it('scene 4 of a 4-scene board (no sceneCount, as the board sends it) → ONE frame from its own scene prompt', async () => {
+    image.mockResolvedValue(FRAME);
+    const res = await POST(boardFrame4());
+    const body = await res.json();
+    expect(body).toMatchObject({ success: true, ordinal: 4, frameUrl: 'https://x.supabase.co/signed/frame.jpg' });
+    expect(body.scenes).toBeUndefined();
+    expect(image).toHaveBeenCalledTimes(1);
+    expect(image.mock.calls[0][0].prompt).toContain(SHOT_4);
+  });
+
+  it('scenes past the default plan up to 12 are frames too', async () => {
+    image.mockResolvedValue(FRAME);
+    for (const ordinal of [5, 6, 12]) {
+      const body = await (await POST(post({ sceneOrdinal: ordinal, scenePrompt: `shot ${ordinal}` }))).json();
+      expect(body).toMatchObject({ success: true, ordinal, frameUrl: 'https://x.supabase.co/signed/frame.jpg' });
+    }
+    expect(image).toHaveBeenCalledTimes(3);
+  });
+
+  it('an ordinal past the plan with no scene prompt → 400, nothing drawn', async () => {
+    const res = await POST(post({ sceneOrdinal: 4 }));
+    expect(res.status).toBe(400);
+    expect(image).not.toHaveBeenCalled();
+  });
+
+  it('a malformed ordinal → 400, nothing drawn (it used to run the whole board)', async () => {
+    for (const sceneOrdinal of [0, -1, 2.5, 13, 'x']) {
+      const res = await POST(post({ sceneOrdinal, scenePrompt: 'a shot' }));
+      expect(res.status).toBe(400);
+    }
+    expect(image).not.toHaveBeenCalled();
+  });
+
+  it('within the plan and no scene prompt → the planned scene, as before', async () => {
+    image.mockResolvedValue(FRAME);
+    const body = await (await POST(post({ sceneOrdinal: 2 }))).json();
+    expect(body).toMatchObject({ success: true, ordinal: 2, frameUrl: 'https://x.supabase.co/signed/frame.jpg' });
+    expect(image).toHaveBeenCalledTimes(1);
   });
 });
