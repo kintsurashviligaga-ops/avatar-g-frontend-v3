@@ -54,7 +54,9 @@ jest.mock('../../../../lib/elevenlabs/music', () => ({
   composeElevenLabsMusic: jest.fn(),
   hasElevenLabsMusicKey: jest.fn(() => true),
   buildElevenMusicPrompt: jest.fn(() => ({ prompt: 'cinematic instrumental film score', instrumental: true })),
+  filmSongSeconds: jest.requireActual('../../../../lib/elevenlabs/music').filmSongSeconds,
 }));
+jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => `EN: ${p}`) }));
 jest.mock('../../../../lib/orchestrator/masterQa', () => ({}));
 jest.mock('../../../../lib/ai/visionQualityGate', () => ({ evaluateRenderQuality: jest.fn(), visionQaEnabled: jest.fn(() => false) }));
 jest.mock('../../../../lib/chat/filmStatusStore', () => ({
@@ -74,7 +76,9 @@ jest.mock('../../../../lib/ai/replicate', () => ({ generateMusic: jest.fn(async 
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '../../../../lib/elevenlabs/music';
+import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '../../../../lib/elevenlabs/music';
+import { stitchedSeconds } from '../../../../lib/orchestrator/ffmpeg-filtergraph';
+import { VIDEO_FPS } from '../../../../lib/video/durationContract';
 import { generateMusic } from '../../../../lib/ai/replicate';
 import { muxAudioOntoVideo } from '../../../../lib/video/remixOps';
 import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
@@ -136,4 +140,22 @@ test('no ElevenLabs key: the same — no music, no MusicGen', async () => {
   expect(json).toMatchObject({ url: CLIP, scoreFallback: null, musicUrl: null });
   expect(composeElevenLabsMusic).not.toHaveBeenCalled();
   expect(generateMusic).not.toHaveBeenCalled();
+});
+
+test('the song runs under the WHOLE film: a 6 × 8 s film gets a song as long as its stitch, not the old 30 s', async () => {
+  // Was Math.min(30, …): the mix pads a short bed with silence, so a 48 s music video had no song for its last 18 s.
+  const segments = Array.from({ length: 6 }, (_, i) => ({ url: `https://storage.example/clip-${i}.mp4`, durationSec: 8 }));
+  await POST(post({ segments, scorePrompt: 'ძველ ფაბში მღერის ბლუზს', musicVideoMode: true })).catch(() => undefined);
+  expect(composeElevenLabsMusic).toHaveBeenCalledTimes(1);
+  const { lengthMs } = (composeElevenLabsMusic as jest.Mock).mock.calls[0][0] as { lengthMs: number };
+  expect(lengthMs).toBe(Math.round(stitchedSeconds(6, 8, undefined, VIDEO_FPS)) * 1000);
+  expect(lengthMs).toBeGreaterThan(30_000);
+});
+
+test('the engine is handed the brief in English, the scene length, and the raw brief for the song language', async () => {
+  const segments = Array.from({ length: 3 }, (_, i) => ({ url: `https://storage.example/clip-${i}.mp4`, durationSec: 8 }));
+  await POST(post({ segments, scorePrompt: 'ძველ ფაბში მღერის ბლუზს', musicVideoMode: true })).catch(() => undefined);
+  expect(buildElevenMusicPrompt).toHaveBeenCalledWith(expect.objectContaining({
+    brief: 'ძველ ფაბში მღერის ბლუზს', theme: 'EN: ძველ ფაბში მღერის ბლუზს', sceneSec: 8, musicVideoMode: true,
+  }));
 });

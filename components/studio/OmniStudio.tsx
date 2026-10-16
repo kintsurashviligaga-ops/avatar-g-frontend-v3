@@ -3942,16 +3942,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const wantsEnglishVocals = /\bin\s+english\b|english\s+(?:lyrics|vocals|song)/i.test(filmPrompt);
       const georgianBrief = !wantsEnglishVocals && (locale === 'ka' || /\bgeorgian\b/i.test(filmPrompt) || /[Ⴀ-ჿᲐ-Ჿ]/.test(filmPrompt));
       let kaSoundtrack: string | null = isMusicVideo && videoSoundtrack?.url ? videoSoundtrack.url : null;
+      // The film's real size: the approved board's scenes (or the scripts', or the length's grid) × the clip length.
+      const filmScenes = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(snap.videoDuration);
+      // The Georgian song is built for THIS film: as long as its scenes (it was sent the length picker's value, which a
+      // board of another size does not match), at a tempo that puts every cut on a bar line.
+      const songSceneSec = clipSec ?? FILM_CLIP_SEC;
       if (isMusicVideo && !kaSoundtrack && georgianBrief && mine()) {
         patchFilmBubble((last) => (last.role === 'assistant' && !last.videoUrl) ? { ...last, text: locale === 'en' ? '🎤 Writing the Georgian vocal track…' : locale === 'ru' ? '🎤 Создаю грузинский вокал…' : '🎤 ვქმნი ქართულ ვოკალს…' } : null);
         try {
-          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender === 'duet' ? 'female' : videoVocalGender, ...(videoVocalGender === 'duet' ? { genderSecondary: 'male' } : {}), totalSec: videoDuration }) });
+          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender === 'duet' ? 'female' : videoVocalGender, ...(videoVocalGender === 'duet' ? { genderSecondary: 'male' } : {}), totalSec: filmScenes * songSceneSec, sceneSec: songSceneSec }) });
           const j = (await r.json().catch(() => ({}))) as { url?: string | null };
           if (j.url) kaSoundtrack = j.url;
         } catch { /* fail-open → EL Music (English) */ }
       }
-      // The film's real size: the approved board's scenes (or the scripts', or the length's grid) × the clip length.
-      const filmScenes = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(snap.videoDuration);
       // The typed line and dialogue belong to THIS film (this closure keeps its copy for the graphics pass below). Left in
       // the panel they rode into the next film unseen: an old ad line, "come on check the site myavatar.ge", came back as
       // a caption and a sung lyric in a later music video (Production 2026-10-16).
