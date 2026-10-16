@@ -43,7 +43,7 @@ import { POST } from './route';
 import { llmText } from '../../../../lib/ai/llmText';
 import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
 import { describeCharacterFromImage } from '../../../../lib/gemini/image-analysis';
-import { REFERENCE_PERSON_CLAUSE } from '../../../../lib/chat/storyPerson';
+import { MUSIC_VIDEO_PERSON_CLAUSE, REFERENCE_PERSON_CLAUSE } from '../../../../lib/chat/storyPerson';
 
 const AD_BRIEF = 'შექმენი 9:16 ფორმატის სარეკლამო ვიდეო სადაც მსახიობი შავ ფონზე შავ მაისურში და შავ პიჯაკში ლაპარაკობს, პრეზენტაციას აკეთებს';
 const ANIMATE_ONLY = 'He smiles at the camera and waves.';
@@ -122,6 +122,15 @@ describe('a frame with the photo locks the face, not the photo\'s clothes or pla
     expect(call.prompt).toContain('black jacket on a plain black background');
     expect(call.prompt).not.toMatch(/wardrobe as the reference/);
     expect(call.referenceImages).toEqual([expect.stringMatching(/^https:\/\/x\.supabase\.co\/signed\/storyboard-ref\//)]);
+  });
+
+  it('a MUSIC VIDEO frame keeps the reference\'s outfit in every shot (Production 2026-10-16: a new outfit per scene)', async () => {
+    const res = await POST(post({ prompt: 'a rapper on a neon street', musicVideoMode: true, sceneOrdinal: 1, scenePrompt: 'The rapper on a rainy neon street, singing into a microphone.', referenceImages: [photo(8)] }));
+    expect(await res.json()).toMatchObject({ success: true, ordinal: 1 });
+    const call = (generateGeminiImage as jest.Mock).mock.calls[0][0] as { prompt: string };
+    expect(call.prompt).toContain(MUSIC_VIDEO_PERSON_CLAUSE);
+    expect(call.prompt).not.toContain(REFERENCE_PERSON_CLAUSE);
+    expect(MUSIC_VIDEO_PERSON_CLAUSE).toMatch(/SAME outfit and accessories as in the reference image/);
   });
 
   it('the clause itself: face locked; clothing, background and light from the shot', () => {

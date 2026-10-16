@@ -4132,7 +4132,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (mine()) {
           try {
             const sc = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
-            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, ...(videoTemplateId ? { templateId: videoTemplateId } : {}), locale, sceneCount: sc, characterAnchor: true }) });
+            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, ...(videoTemplateId ? { templateId: videoTemplateId } : {}), locale, sceneCount: sc, characterAnchor: true, musicVideoMode: isMusicVideo }) });
             const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
             if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
           } catch { /* fall through */ }
@@ -4845,7 +4845,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         try {
           const ar = await fetch('/api/film/storyboard', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, style: videoStyle, ...templateRef, locale, sceneCount, characterAnchor: true }),
+            body: JSON.stringify({ prompt: filmPrompt, orientation, style: videoStyle, ...templateRef, locale, sceneCount, characterAnchor: true, musicVideoMode }),
           });
           const aj = (await ar.json().catch(() => ({}))) as { success?: boolean; anchorUrl?: string | null };
           if (aj.success && typeof aj.anchorUrl === 'string' && aj.anchorUrl) {
@@ -4874,7 +4874,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal: ac.signal,
-              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: anchorRefs, style: videoStyle, ...templateRef, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
+              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: anchorRefs, style: videoStyle, ...templateRef, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal], musicVideoMode }),
             });
             const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
             const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
