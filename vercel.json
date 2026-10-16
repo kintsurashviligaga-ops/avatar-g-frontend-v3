@@ -4,7 +4,8 @@
   "git": {
     "deploymentEnabled": {
       "claude/video-core-v1-6gh97e": false,
-      "claude/final-integration-release-wt2y8s": false
+      "claude/final-integration-release-wt2y8s": false,
+      "claude/production-launch-certification-u2s9hy": false
     }
   },
   "buildCommand": "node scripts/gcp/preview-auth-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
