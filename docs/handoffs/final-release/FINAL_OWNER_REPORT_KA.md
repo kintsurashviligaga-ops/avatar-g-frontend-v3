@@ -1,11 +1,11 @@
 # საბოლოო ანგარიში GG-სთვის — Final Integration (2026-10-15)
 
-სტატუსი: **release ჯერ არ მომხდარა.** ბრენჩი მზადაა (PR #74), ელოდება CI-ს release-ის commit-ზე, Video Core-ის ფასიანი
-ტესტის დასრულებას და GG-ის merge + deploy ბარათს. deploy-ის შემდეგ ეს ფაილი განახლდება 10-ე პუნქტით.
+სტატუსი: **release ჯერ არ მომხდარა.** ბრენჩი მზადაა (PR #74), ელოდება CI-ს release-ის commit-ზე და GG-ის merge + deploy
+ბარათს (Video Core-ის ფასიანი ტესტი და deploy დასრულდა 2026-10-16 05:58Z-მდე). deploy-ის შემდეგ ეს ფაილი განახლდება 10-ე პუნქტით.
 
 ## 1. რა იყო Production-ზე და რა არის ახალი
 
-Production ახლა: main 5517047, dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR (Video Core PR #77, 20:46Z; მანამდე PR #76, defects 47/48).
+Production ახლა: main 369acfc, dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (Video Core PR #78, 2026-10-16 05:58Z; მანამდე PR #77, 5517047).
 ახალი ამ release-ით: Image Studio (admin), Music Studio (გამორთული), Voice v2 (გამორთული) და ხმის უსაფრთხოება, Google-ის
 საზღვარი ჩართული, dubbing/პრეზენტაცია გამორთული ფასის დამტკიცებამდე, Phase 1 შესწორებები (GO_NO_GO_KA.md, „რას ცვლის").
 
@@ -18,7 +18,7 @@ Production ახლა: main 5517047, dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR (Video C
 | #68 Voice Experience v2 | f93f1bc1 | e71e484a (+ adapter 0dc444e2) |
 | #67 Global E2E (provider boundary) | 731e9612 | 7aaf1eed |
 | Phase 1 შესწორებები | — | e80d88b4 |
-| main (PR #75, #76, #77) | b21506bb, de15464d, 55170471 | bea302a1, f52f918e, 6f52934f (01 rows 7, 9) |
+| main (PR #75, #76, #77, #78) | b21506bb, de15464d, 55170471, 369acfc0 | bea302a1, f52f918e, 6f52934f, b9c7fc6f (01 rows 7, 9, 10) |
 
 არ შევიდა: #64 (ჩანაცვლდა; 47/48 Video Core-მა გადაიტანა #76-ით), #66 phone (migration-ის სახელი ემთხვევა), uid race.
 
@@ -27,7 +27,7 @@ Production ახლა: main 5517047, dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR (Video C
 ამ release-მდე უკვე PROVEN: საიტი KA/EN/RU, რეგისტრაცია/შესვლა, admin guard, კრედიტები, ატვირთვა, admin chat montage,
 admin 4 წმ Veo კლიპი, ჩვეულებრივი ანგარიშის ფასიანი 16 წმ ფილმი, BOG admin 10 ₾. ამ release-ის ცვლილებები Production-ზე
 ჯერ არ არის, ამიტომ მათთვის Production მტკიცება ჯერ არ არსებობს. Production-ის read-only შემოწმება 19:11Z: `/api/version`
-de15464 (20:52Z: 5517047), `/api/health` healthy, `/api/health/public` 5 ok, voice down (ElevenLabs probe, 2026-09-დან).
+de15464 (20:52Z: 5517047; 2026-10-16 06:11Z: 369acfc), `/api/health` healthy, `/api/health/public` 5 ok, voice down (ElevenLabs probe, 2026-09-დან).
 
 ## 4. რა რჩება გამორთული, დაბლოკილი ან დაუმტკიცებელი
 
@@ -63,7 +63,7 @@ CI 10/10 მწვანე ba35a07e-ზე. Jest სრული main de15464d-
 
 ## 10. Deploy
 
-ჯერ არა. Rollback target: dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR (5517047), release-ის წინ ხელახლა შემოწმდება.
+ჯერ არა. Rollback target: dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (369acfc), release-ის წინ ხელახლა შემოწმდება.
 
 ## 11. შემდეგი ნაბიჯი, თუ სესია დასრულდება
 

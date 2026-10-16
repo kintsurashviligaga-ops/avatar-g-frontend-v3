@@ -1,4 +1,4 @@
-# GO / NO-GO — საბოლოო ინტეგრაცია (2026-10-15, განახლდა 20:55Z)
+# GO / NO-GO — საბოლოო ინტეგრაცია (2026-10-15, განახლდა 2026-10-16 06:15Z)
 
 ## ვერდიქტი
 
@@ -9,7 +9,9 @@
 
 FR-1 (defects 47/48) დაიხურა: Video Core-ის PR #76 main-შია (de15464d) და Production-ზეა. main ამ ბრენჩში შემოვიდა,
 სამი ფაილი main-ის იდენტურია, `filmOwner.test.ts` აქაც მწვანეა (01 row 7). 20:50Z-ზე ბრენჩში შემოვიდა main 5517047
-(Video Core PR #77: Google-ის მიერ უარყოფილი სცენა ბარათზე სახელდება), კონფლიქტის გარეშე (01 row 9).
+(Video Core PR #77: Google-ის მიერ უარყოფილი სცენა ბარათზე სახელდება), კონფლიქტის გარეშე (01 row 9). 2026-10-16 06:05Z-ზე
+შემოვიდა main 369acfc (Video Core PR #78: ერთი ხატულა შეცდომის ბარათზე, Google-ის უარი ლოგში ერთხელ), კონფლიქტის გარეშე,
+სრული Jest მწვანეა (01 row 10). Video Core-ის მესამე ფასიანი ტესტი 05:20Z-ზე დასრულდა, მისი deploy 05:58Z-ზე.
 
 ## რას ცვლის release Production-ზე
 
@@ -28,7 +30,7 @@ Migration არ არის, env არ იცვლება, ფასი �
 
 | სერვისი | release-ის შემდეგ | GO / NO-GO |
 |---|---|---|
-| Video Core | უცვლელი (Video Core thread-ის კოდი, 5517047) | უცვლელი |
+| Video Core | უცვლელი (Video Core thread-ის კოდი, 369acfc) | უცვლელი |
 | Image Studio (#60) | მხოლოდ admin (AGENT_G_MEDIA_EXEC) | GO admin-ისთვის; საჯაროდ NO-GO, სანამ რეალური Imagen ტესტი არ ჩატარდება |
 | Music Studio (#65) | გამორთული (flag-ები არ არის) | NO-GO საჯაროდ, სანამ რეალური Lyria ტესტი არ ჩატარდება |
 | Voice v2 UI (#68) | გამორთული; ხმის უსაფრთხოების წესი ჩართულია ყველასთვის | უსაფრთხოება GO; v2 UI NO-GO (08) |
@@ -63,6 +65,6 @@ Migration არ არის, env არ იცვლება, ფასი �
 
 ## Rollback
 
-Vercel Instant Rollback release-მდე არსებულ deployment-ზე. 2026-10-15 20:52Z-ზე ეს იყო
-dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR (5517047, Video Core PR #77); release-ის წინ ხელახლა ჩაიწერება. ბაზას არაფერი სჭირდება (migration არ არის).
+Vercel Instant Rollback release-მდე არსებულ deployment-ზე. 2026-10-16 06:11Z-ზე ეს იყო
+dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (369acfc, Video Core PR #78); release-ის წინ ხელახლა ჩაიწერება. ბაზას არაფერი სჭირდება (migration არ არის).
 ნაბიჯები: 09_RELEASE_ROLLBACK_RUNBOOK.md.

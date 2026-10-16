@@ -5,7 +5,7 @@ Lyria), ElevenLabs and FFmpeg only. No fallback to another engine, ever.
 
 ## Switches
 
-| Switch | On main (Production 5517047) | On this branch | Re-open |
+| Switch | On main (Production 369acfc) | On this branch | Re-open |
 |---|---|---|---|
 | `VIDEO_GOOGLE_ONLY` (lib/veo/policy) | default ON | default ON | owner only |
 | `AI_GOOGLE_ONLY` (lib/ai/google/policy) | default ON | default ON | owner only |
