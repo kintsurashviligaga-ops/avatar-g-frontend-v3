@@ -52,7 +52,9 @@ jest.mock('../../../../lib/elevenlabs/music', () => ({
   composeElevenLabsMusic: jest.fn(),
   hasElevenLabsMusicKey: jest.fn(() => true),
   buildElevenMusicPrompt: jest.fn(() => ({ prompt: 'cinematic instrumental film score', instrumental: true })),
+  filmSongSeconds: jest.requireActual('../../../../lib/elevenlabs/music').filmSongSeconds,
 }));
+jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => `EN: ${p}`) }));
 jest.mock('../../../../lib/orchestrator/masterQa', () => ({}));
 jest.mock('../../../../lib/ai/visionQualityGate', () => ({ evaluateRenderQuality: jest.fn(), visionQaEnabled: jest.fn(() => false) }));
 jest.mock('../../../../lib/pipeline/compositing/ffmpeg-overlay', () => ({ overlayMasterUrl: jest.fn(), hasOverlayContent: jest.fn(() => false) }));

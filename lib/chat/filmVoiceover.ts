@@ -26,7 +26,7 @@
  */
 
 import 'server-only';
-import { sanitizeSpokenText } from './spokenText';
+import { sanitizeSpokenText, splitSpokenText } from './spokenText';
 import { castRoster, collapseVoicedTurns, type CastTurn, type VoicedTurn } from './dialogueCasting';
 import { llmText } from '@/lib/ai/llmText';
 import { isGoogleOnly } from '@/lib/veo/policy';
@@ -314,6 +314,15 @@ export async function textToHostedSpeech(text: string, voiceId?: string | null):
   }
 }
 
+/** Longest text one TTS request carries. A longer narration is read in sentence-sized parts and joined. */
+const TTS_PART_CHARS = 600;
+/**
+ * The whole narration's bound: a 4-minute film's worth of Georgian speech. It used to be the single request's 600, which
+ * silently cut a long narration mid-sentence — invisible while Veo spoke the film's lines, but a Georgian film is voiced
+ * entirely off camera now (lib/chat/filmComposite), and its words are already measured against the film's length there.
+ */
+const NARRATION_MAX_CHARS = 2400;
+
 /**
  * End-to-end commentator leg: brief → narration → speech → hosted signed URL.
  * Always resolves; returns null (never throws) on any failure so the caller can
@@ -336,7 +345,7 @@ export async function generateFilmVoiceover(opts: {
   try {
     // v363 — sanitize the verbatim narration so production annotations (TC/SFX/overlay/scene headers) are
     // never spoken. If sanitizing empties it (the field held only a shot-list), fall back to the LLM writer.
-    const sanitized = sanitizeSpokenText(opts.narrationScript).slice(0, 600);
+    const sanitized = sanitizeSpokenText(opts.narrationScript).slice(0, NARRATION_MAX_CHARS);
     const custom = sanitized.length >= 3 ? sanitized : null;
     const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
     if (!script) return null;
@@ -355,8 +364,15 @@ export async function generateFilmVoiceover(opts: {
       voiceId = pickGeorgianVoiceId(opts.brief);
       ttsGender = genderForPersona(detectPersona(opts.brief));
     }
-    const audio = await synthesizeVoiceover(script, voiceId, ttsGender, toneToVoiceSettings(opts.voiceTone));
-    if (!audio) return null;
+    // One voice, read in order: each part is the same voice and settings, and the mp3 frames concatenate into one track
+    // (the dialogue leg below joins its lines the same way). A part that fails fails the whole voice — never a hole.
+    const settings = toneToVoiceSettings(opts.voiceTone);
+    const parts = await Promise.all(splitSpokenText(script, TTS_PART_CHARS).map((p) => synthesizeVoiceover(p, voiceId, ttsGender, settings)));
+    if (!parts.length || parts.some((p) => !p)) return null;
+    const read = parts as { base64: string; contentType: string }[];
+    const audio = read.length === 1
+      ? read[0]!
+      : { base64: Buffer.concat(read.map((p) => Buffer.from(p.base64, 'base64'))).toString('base64'), contentType: read[0]!.contentType };
     // 2-hour signed URL — comfortably outlives the render + assemble window.
     const path = `${opts.compositeId}/voiceover.mp3`;
     return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;

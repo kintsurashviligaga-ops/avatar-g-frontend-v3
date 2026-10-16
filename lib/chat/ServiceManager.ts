@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { generateImagenImages, hasGeminiImagenProvider, geminiImagenModel } from '@/lib/ai/geminiImagen';
 import type { ServiceType as BillingServiceType } from '@/lib/services/billing/costModel';
 import { z } from 'zod';
@@ -338,7 +339,7 @@ export class ServiceManager {
           provider: 'replicate',
           operation,
           responseType: operation === 'text-to-image' ? 'image' : 'video',
-          message: 'The platform API budget for this period is exhausted. Please try again later.',
+          message: budgetRefusalMessage(request.locale, err.reason),
           predictionStatus: 'failed',
           metadata: {
             provider: 'replicate' as const,

@@ -19,6 +19,9 @@ import { billingLocale, ledgerUnavailableBody, replayRefusedBody } from '@/lib/a
 import { providerErrorBody } from '@/lib/api/providerError';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
+import { platformBudgetRefusal } from '@/lib/services/billing/budgetCheck';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { composeImagePrompt } from '@/lib/studio/composeImagePrompt';
 import { resolveTemplateContext } from '@/lib/studio/templateContext';
@@ -214,6 +217,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });
       }
     } catch { idemKey = ''; /* mutex unavailable — proceed without the double-click guard */ }
+    // THE PLATFORM'S DAILY AI LIMIT, ASKED BEFORE THE CREDIT IS RESERVED, so a refusal charges and refunds nothing.
+    if (isMediaGoogleOnly()) {
+      const budgetRefusal = await platformBudgetRefusal({ service: 'image', model: 'gemini-image', units: 1 });
+      if (budgetRefusal) {
+        await releaseMutex();
+        return NextResponse.json({
+          success: false, code: 'platform_budget', budgetReason: budgetRefusal,
+          message: budgetRefusalMessage(billingLocale(req), budgetRefusal),
+        }, { status: 503 });
+      }
+    }
     // ── THE CHARGE FAILS CLOSED. ──────────────────────────────────────────────────────────────────────────────
     // ⚠️ THIS USED TO SHARE THE MUTEX'S FAIL-OPEN `try`, and only `insufficient` stopped the render: a deduct that
     // came back `error` (the ledger unreachable or refusing the write) rendered the image UNBILLED, for everyone,
@@ -319,12 +333,33 @@ export async function POST(req: NextRequest) {
     let alreadyHosted = false;
     const model = googleOnly ? `Google ${geminiFrameModel()}` : `NanoBananaAI ${endpoint.toUpperCase()}`;
     if (googleOnly) {
-      const img = await generateGeminiImage({
-        prompt: finalPrompt,
-        referenceImages: referenceImageUrl ? [referenceImageUrl] : [],
-        requireReferences: true,
-        aspectRatio: body.aspectRatio ?? '1:1',
-      }).catch(() => null);
+      // ⚠️ INSIDE THE PLATFORM BUDGET like every other paid Google call. This route (photo shoot, interior design,
+      // product photos) called Google directly: its renders were never booked against the daily limit and kept
+      // running after the limit had stopped chat, video and storyboards for everyone (2026-10-16). A refusal returns
+      // the reserved credit and says which limit and when it lifts.
+      let img: Awaited<ReturnType<typeof generateGeminiImage>> = null;
+      try {
+        img = await guardedCall(
+          { service: 'image', model: 'gemini-image', units: 1, userId: rUser?.id ?? null, promptSummary: prompt.slice(0, 200), actualCost: (r) => (r ? undefined : 0) },
+          () => generateGeminiImage({
+            prompt: finalPrompt,
+            referenceImages: referenceImageUrl ? [referenceImageUrl] : [],
+            requireReferences: true,
+            aspectRatio: body.aspectRatio ?? '1:1',
+          }).catch(() => null),
+        );
+      } catch (err) {
+        if (!(err instanceof BudgetExceededError)) throw err;
+        const refunded = await refundReserve();
+        console.warn(`[nanobanana/image] refused by the budget guard (${err.reason})`);
+        return NextResponse.json({
+          success: false,
+          code: 'platform_budget',
+          budgetReason: err.reason,
+          refunded,
+          message: budgetRefusalMessage(billingLocale(req), err.reason),
+        }, { status: 503 });
+      }
       if (img) {
         const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
         providerUrl = await uploadAndSign('uploads', `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800).catch(() => null);

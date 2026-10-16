@@ -38,6 +38,7 @@ import { generateGeminiImage } from '@/lib/ai/geminiImage';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveFilmTemplate } from '@/lib/studio/templateContext';
 import { MUSIC_VIDEO_PERSON_CLAUSE, REFERENCE_PERSON_CLAUSE, briefRestagesPhoto, storyFeaturesPerson } from '@/lib/chat/storyPerson';
@@ -402,6 +403,12 @@ export async function POST(req: NextRequest) {
   // Diagnostic — which provider produced each frame (returned in the response so a
   // benchmark can confirm flux-schnell is actually firing; the re-host hides the source URL).
   const frameSourceTally = { fluxSchnell: 0, nanobanana: 0, replicateFlux: 0, gemini: 0 };
+  // Set when the platform budget refused a frame: the board then says which limit and when it lifts, instead of
+  // promising the empty tile "fills in automatically" (it cannot while the limit holds) and retrying it.
+  let budgetRefusal: string | null = null;
+  const budgetFields = () => (budgetRefusal
+    ? { budgetRefused: true, budgetReason: budgetRefusal, budgetMessage: budgetRefusalMessage(locale, budgetRefusal) }
+    : {});
   // `look`: the template's film look, put at the HEAD of the frame prompt. Only for a scene prompt that came back
   // from the client: the board hands each scene's full prompt to the browser (`framePrompt`) and the frame call
   // returns it as `scenePrompt`, which is cut to 600 characters below, and the look sits in the style guide around
@@ -440,6 +447,7 @@ export async function POST(req: NextRequest) {
         } catch (err) {
           if (!(err instanceof BudgetExceededError)) throw err;
           console.warn(`[storyboard] frame refused by the budget guard (${err.reason})`);
+          budgetRefusal = err.reason;
           return null;
         }
         if (!img) return null;
@@ -504,7 +512,7 @@ export async function POST(req: NextRequest) {
       `Looking toward camera, neutral softly-blurred background, photorealistic, sharp focus on the face. ` +
       `This is the DEFINITIVE identity reference for the entire film — one consistent person, exact same face, hair and wardrobe in every shot.`;
     const anchorUrl = await genFrame(anchorPrompt);
-    return NextResponse.json({ success: true, anchorUrl });
+    return NextResponse.json({ success: true, anchorUrl, ...(anchorUrl ? {} : budgetFields()) });
   }
 
   // Single-scene regeneration — the user asked to re-roll just one frame.
@@ -530,8 +538,10 @@ export async function POST(req: NextRequest) {
     // finishReason=NO_IMAGE for an ordinary prompt. The board asks for each frame through this path, and one empty
     // tile also switches frame chaining off for the whole film.
     const shot = customPrompt ?? scene!.prompt; // the guard above: no planned scene → the board sent its own prompt
-    const frameUrl = (await genFrame(shot, frameLook)) ?? (await genFrame(shot, frameLook));
-    return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
+    // A budget refusal is not retried: the second ask would get the same "no".
+    const first = await genFrame(shot, frameLook);
+    const frameUrl = first ?? (budgetRefusal ? null : await genFrame(shot, frameLook));
+    return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl, ...(frameUrl ? {} : budgetFields()) });
   }
 
   // SCRIPTS-ONLY — run JUST the LLM Script Agent and return the per-scene story
@@ -675,7 +685,7 @@ export async function POST(req: NextRequest) {
   // so the storyboard rarely shows a scene with a missing image ("not all scenes
   // generate"). One extra attempt per missing frame; still fail-soft to null.
   const missing = frames.map((f, i) => (f ? -1 : i)).filter((i) => i >= 0);
-  if (missing.length) {
+  if (missing.length && !budgetRefusal) {
     const retried = await mapWithConcurrency(missing.map((i) => storyPlan.scenes[i]!), frameConcurrency, (scene) => genFrame(scene.prompt));
     missing.forEach((sceneI, k) => { if (retried[k]) frames[sceneI] = retried[k]; });
   }
@@ -703,6 +713,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
+    ...budgetFields(),
     sessionId,
     seed: storyPlan.shared.seed,
     orientation,

@@ -168,3 +168,57 @@ test('a prompt handed in after mount (Agent G in a Live call or its chat card) f
   view.rerender(<ImageWorkspace access={access} locale="en" initialPrompt="" onClose={() => {}} />);
   expect(box.value).toBe('a leopard chasing a deer, low angle');
 });
+
+// GG's iPhone, 2026-10-16 19:36Z: „…და შემდეგ ეს იჭედება". A tab keeps its batch; a restored job the server no longer
+// knows used to count as running for good — every field disabled, no Cancel, the same 404 every 3 s.
+test('a restored job the server no longer knows is dropped once: the form unlocks and says why', async () => {
+  mockFetch.mockImplementation(async (url: string) => (url.startsWith('/api/image/jobs/')
+    ? { ok: false, json: async () => ({ ok: false, error: 'not_found' }) }
+    : response(quote())));
+  sessionStorage.setItem('image-studio:v1:ui-owner', JSON.stringify([{ quote: quote(), issued: true }]));
+  render(<ImageWorkspace access={access} locale="en" onClose={() => {}} />);
+  const box = screen.getByLabelText('Prompt / Agent G command') as HTMLTextAreaElement;
+  expect(box.closest('fieldset')!.disabled).toBe(true); // restored and issued: locked until its status arrives
+  await waitFor(() => expect(box.closest('fieldset')!.disabled).toBe(false));
+  expect(screen.getByRole('alert').textContent).toBe('The image was not found.');
+  expect(screen.queryByTestId('image-job')).toBeNull();
+  await waitFor(() => expect(JSON.parse(sessionStorage.getItem('image-studio:v1:ui-owner')!)).toEqual([]));
+  expect(mockFetch.mock.calls.filter(([url]) => url.startsWith('/api/image/jobs/'))).toHaveLength(1);
+});
+
+test('a network failure keeps the restored job and asks again; it is not dropped', async () => {
+  jest.useFakeTimers();
+  let calls = 0;
+  mockFetch.mockImplementation(async (url: string) => {
+    if (!url.startsWith('/api/image/jobs/')) return response(quote());
+    calls += 1;
+    if (calls === 1) throw new TypeError('Load failed');
+    return response(job('job-1'));
+  });
+  sessionStorage.setItem('image-studio:v1:ui-owner', JSON.stringify([{ quote: quote(), issued: true }]));
+  render(<ImageWorkspace access={access} locale="en" onClose={() => {}} />);
+  await act(async () => {});
+  expect(screen.getByTestId('image-job')).toBeTruthy();
+  await act(async () => { jest.advanceTimersByTime(3000); });
+  await waitFor(() => expect(screen.getByText('1. Generating image')).toBeTruthy());
+  expect(calls).toBe(2);
+});
+
+test('the poll never reads a job whose start is still in flight (its row does not exist yet)', async () => {
+  jest.useFakeTimers();
+  let release: (v: unknown) => void = () => {};
+  mockFetch.mockImplementation(async (url: string) => {
+    if (url.endsWith('/commands')) return response(quote());
+    if (url === '/api/image/jobs') return new Promise((resolve) => { release = resolve; });
+    return { ok: false, json: async () => ({ ok: false, error: 'not_found' }) };
+  });
+  render(<ImageWorkspace access={access} locale="en" initialPrompt="a red bicycle" onClose={() => {}} />);
+  fireEvent.click(screen.getByText('Review plan and price'));
+  await act(async () => {});
+  fireEvent.click(screen.getByText('Confirm and start'));
+  await act(async () => { jest.advanceTimersByTime(6500); });
+  expect(mockFetch.mock.calls.filter(([url]) => url.startsWith('/api/image/jobs/'))).toHaveLength(0);
+  expect(screen.getByTestId('image-job')).toBeTruthy();
+  await act(async () => { release(response(job('job-1'))); });
+  await waitFor(() => expect(screen.getByText('1. Generating image')).toBeTruthy());
+});

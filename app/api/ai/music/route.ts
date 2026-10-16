@@ -15,6 +15,8 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { debitExistsForRef, deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { billingLocale, ledgerUnavailableBody, replayRefusedBody } from '@/lib/api/billingCopy';
 import { providerErrorBody } from '@/lib/api/providerError';
+import { platformBudgetRefusal } from '@/lib/services/billing/budgetCheck';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { settleMusicCharge } from '@/lib/credits/musicSettlement';
@@ -218,6 +220,17 @@ export async function POST(req: NextRequest) {
         ? 'Эта опция недоступна: музыку здесь создаёт только Google Lyria. Списания не было.'
         : 'ეს ფუნქცია მიუწვდომელია: მუსიკას აქ მხოლოდ Google Lyria ქმნის. თანხა არ ჩამოგეჭრა.';
     return NextResponse.json({ success: false, code: 'unsupported', error: 'unsupported', message, url: null }, { status: 400 });
+  }
+
+  // THE PLATFORM'S DAILY AI LIMIT, ASKED BEFORE ANY CHARGE. Lyria's own gate refused too, but only after the credit was
+  // reserved, and its null came back as the generic "service unavailable" (2026-10-16): the person could not tell the
+  // site's limit was spent, or when it lifts.
+  const budgetRefusal = await platformBudgetRefusal({ service: 'music', model: 'lyria-3', units: 1 });
+  if (budgetRefusal) {
+    return NextResponse.json({
+      success: false, code: 'platform_budget', error: 'platform_budget', budgetReason: budgetRefusal,
+      message: budgetRefusalMessage(billingLocale(req), budgetRefusal), url: null,
+    }, { status: 503 });
   }
 
   // Fold the tempo selection into the brief as a feel/BPM hint (empty for 'medium').

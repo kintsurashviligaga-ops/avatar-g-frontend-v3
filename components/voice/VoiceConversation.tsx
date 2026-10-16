@@ -69,13 +69,15 @@ import {
   liveQuietText,
 } from './live/LiveCallChrome';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import LiveOrb, { type LiveOrbState } from './live/LiveOrb';
 import type { LiveCaption, LiveLevels } from './live/useGeminiLiveSession';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Status = 'connecting' | 'off' | 'listening' | 'thinking' | 'speaking' | 'resume' | 'error';
-/** Why the session stopped: the microphone, the routes' rate limit, or a leg that answered nothing (signed out, TTS). */
-type VoiceError = 'mic' | 'rate_limited' | 'failed';
+/** Why the session stopped: the microphone, the routes' rate limit, the platform's daily AI limit, or a leg that
+ *  answered nothing (signed out, TTS). */
+type VoiceError = 'mic' | 'rate_limited' | 'budget' | 'failed';
 interface Turn { role: 'user' | 'assistant'; content: string }
 
 /** This screen's own words; everything the Live call also says (status, Mute, End, „ცოცხალი ზარი“) is LIVE_OVERLAY_STRINGS. */
@@ -185,6 +187,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   // The last exchange, numbered so each new turn mounts new caption lines (the log announces additions).
   const [turn, setTurn] = useState<{ n: number; said: string; reply: string }>({ n: 0, said: '', reply: '' });
   const [error, setError] = useState<VoiceError | null>(null);
+  /** Which platform limit stopped the call (the voice chat route's `budgetReason`); null reads as the daily limit. */
+  const budgetReasonRef = useRef<string | null>(null);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
   const [captionsOn, setCaptionsOn] = useState(true);
@@ -409,7 +413,10 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       if (stale()) return;
       if (cr && cr.status === 401) { go('error'); setError('failed'); return; } // signed out → stop, don't loop
       if (cr && cr.status === 429) { go('error'); setError('rate_limited'); return; } // rate-limited → stop, don't re-pay STT in a loop
-      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string; locale?: string } | null) : null;
+      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string; locale?: string; code?: string; budgetReason?: string } | null) : null;
+      // The platform's daily AI limit: the spoken reply would need TTS, which the same limit refuses, so the call
+      // stopped on "no answer" (2026-10-16). Say which limit stopped it and when it lifts, and stop the loop.
+      if (cj?.code === 'budget') { budgetReasonRef.current = cj.budgetReason ?? null; go('error'); setError('budget'); return; }
       const answer = (cj?.reply || '').trim();
       // The server answers in the language actually SPOKEN (detected from the transcript), which may differ from the
       // UI locale — use THAT locale for TTS so the voice + engine match the reply (Russian speech → Russian voice).
@@ -429,6 +436,10 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({ text: answer, locale: spokenLocale }), signal: turnSignal(30_000, ttsSig),
         });
+        if (res.status === 503) {
+          const ej = (await res.json().catch(() => null)) as { error?: string } | null;
+          if (ej?.error === 'budget_exhausted') { if (!stale()) { go('error'); setError('budget'); } return; }
+        }
         if (res.ok) {
           const bytes = await res.arrayBuffer();
           const ctx = audioCtxRef.current;
@@ -671,7 +682,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         <LiveErrorPanel
           icon={errorKind === 'mic' ? <MicOff size={26} /> : <AlertCircle size={26} />}
           headline={errorKind === 'mic' ? live.micHeadline : t.stopped}
-          reason={errorKind === 'mic' ? t.micDenied : errorKind === 'rate_limited' ? t.rateLimited : t.noReply}
+          reason={errorKind === 'mic' ? t.micDenied : errorKind === 'rate_limited' ? t.rateLimited : errorKind === 'budget' ? budgetRefusalMessage(lang, budgetReasonRef.current) : t.noReply}
           locale={lang}
         >
           <button type="button" onClick={onMicTap} className={livePrimaryButtonClass(lang)}>

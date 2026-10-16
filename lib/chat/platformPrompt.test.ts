@@ -4,7 +4,9 @@
  */
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
-import { buildPlatformPrompt, PLATFORM_UI_LABELS, type PlatformPromptLocale } from './platformPrompt';
+import { buildPlatformPrompt, PLATFORM_UI_LABELS, START_QUESTION, type PlatformPromptLocale } from './platformPrompt';
+import { offeredPrompt } from './offeredPrompt';
+import { quoteCredits } from '@/lib/credits/quote';
 import { ALL_TOOLS, TOOL_META } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { getService } from '@/lib/catalog/services';
@@ -193,9 +195,27 @@ describe('buildPlatformPrompt — shape and size', () => {
     expect(p).toMatch(/search first/);
     expect(p).toMatch(/Never reply with JSON/);
     expect(p).toMatch(/cannot start, queue or finish a render/);
-    // Production 2026-10-16: a text reply told GG his image was "already processing" when nothing had started.
+    // Production 2026-10-16: a text reply told GG the image was "already processing" when nothing had started.
     expect(p).toMatch(/never claim anything is processing/);
     expect(p).toMatch(/Mkhedruli/);
+  });
+
+  // Production 2026-10-16 (GG's iPhone): „კი შექმენი სურათი 9:16 ფორმატის" got „I can't generate in the chat — open the
+  // Image tool via +, attach the photo, pick 9:16". GG: every service runs in the chat, and a yes starts it.
+  it.each(LOCALES)('offers in the chat and asks to start, instead of sending people to a tool (%s)', (locale) => {
+    const p = build(locale);
+    expect(p).toMatch(/never send them to a tool, a menu or the \+ button/);
+    expect(p).toMatch(/never ask them to attach again a file that is already in this chat/);
+    expect(p).toContain(`exactly this question: "${START_QUESTION[locale]}"`);
+    expect(p).not.toMatch(/Nothing runs until the user taps that tool's Create/);
+    expect(p).not.toMatch(/name the tool and how to open it in one sentence, then offer a ready-to-use prompt/);
+  });
+
+  it.each(LOCALES)('an offer in the shape it asks for is one the studio starts on a yes, at the price it really costs (%s)', (locale) => {
+    const one = quoteCredits({ tool: 'image', count: 1 });
+    expect(build(locale)).toContain(`one image is ${one} credits`);
+    const reply = `9:16 portrait: "a man in a tailored black suit, studio light, photorealistic" — ${one} credits (0.20 ₾). ${START_QUESTION[locale]}`;
+    expect(offeredPrompt(reply)).toEqual({ mode: 'image', prompt: 'a man in a tailored black suit, studio light, photorealistic', credits: one });
   });
 
   it('is deterministic for the same input', () => {

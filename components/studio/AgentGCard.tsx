@@ -13,6 +13,8 @@
 import { Sparkle } from 'lucide-react';
 import { creditsLabel } from '@/lib/credits/quote';
 import { gateButtons, type GateMode } from '@/lib/chat/focusGate';
+import type { ImgAspect } from '@/lib/studio/imageCreate';
+import type { StudioWire } from '@/lib/studio/shootWire';
 
 export interface AgentGCardState {
   kind: 'clarify' | 'confirm';
@@ -24,6 +26,16 @@ export interface AgentGCardState {
   prompt: string;
   /** What pressing the button costs, in credits; 0 = no price on this card. */
   credits: number;
+  /** The frame the user named for it („9:16"): Create renders in it whatever the panel is set to. */
+  aspect?: ImgAspect;
+  /** The photo the offer is built on (an earlier attachment in the thread): Create sends it as the reference. */
+  refImage?: string;
+  /** One picture whatever the panel's count — the card's price is one image's (an offer Agent G made in words). */
+  single?: boolean;
+  /** A Photographer / Interior designer render ordered in the chat (lib/chat/chatShoot): Create sends it as the image route's `studio`. */
+  studio?: StudioWire;
+  /** A product ad ordered in the chat (lib/chat/chatShoot): Create runs the product ad from this photo, at the panel's length and frame. */
+  product?: { image: string };
   /** Decided already — the buttons are gone. */
   done?: boolean;
 }

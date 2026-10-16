@@ -10,6 +10,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './serviceError';
+import { budgetRefusalMessage } from '../../../lib/services/billing/budgetMessage';
 
 const KA_FALLBACK = 'ვერ მოხერხდა';
 
@@ -174,10 +175,26 @@ describe('describeGenerationFailure — the refund notice is shown when, and onl
 
 describe('music option refusal (Production 2026-10-16)', () => {
   it('the route\'s `unsupported` refusal is not read as a file-format error asking for MP3 or WAV', () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { describeGenerationFailure } = require('./serviceError');
     const msg = describeGenerationFailure({ success: false, code: 'unsupported', error: 'unsupported' }, 'ka', 'x');
     expect(msg).not.toMatch(/MP3|WAV/);
     expect(msg).toContain('Google');
+  });
+});
+
+describe('describeGenerationFailure — the platform\'s AI limit (2026-10-16)', () => {
+  it('shows the route\'s own sentence, which names the limit and when it lifts', () => {
+    const message = budgetRefusalMessage('ka', 'daily_limit');
+    expect(describeGenerationFailure({ success: false, code: 'platform_budget', message }, 'ka', KA_FALLBACK)).toBe(message);
+  });
+
+  it('wins over the refund notice: the sentence already says the balance was kept', () => {
+    const message = budgetRefusalMessage('en', 'daily_limit');
+    expect(describeGenerationFailure({ success: false, code: 'platform_budget', refunded: true, message }, 'en', 'x')).toBe(message);
+  });
+
+  it('a refusal without a message still names the limit, in the screen\'s language', () => {
+    expect(describeGenerationFailure({ success: false, error: 'platform_budget', budgetReason: 'monthly_limit' }, 'en', 'x'))
+      .toBe(budgetRefusalMessage('en', 'monthly_limit'));
+    expect(describeGenerationFailure({ success: false, code: 'platform_budget' }, 'ka', KA_FALLBACK)).toContain('04:00');
   });
 });

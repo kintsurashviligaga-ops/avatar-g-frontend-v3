@@ -40,7 +40,8 @@ import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { cutMasterToLength, isFinalCutRejected } from '@/lib/video/finalCut';
 import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
-import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
+import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt, filmSongSeconds } from '@/lib/elevenlabs/music';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
@@ -517,9 +518,10 @@ async function assembleImpl(req: NextRequest) {
   // URLs, not durations) so the score gen can start without waiting on the re-sign.
   // Combined with the raised function budget (maxDuration 600s) the full 30s master
   // stitches comfortably inside the deadline even on a cold CPU node.
-  const audioTotalSec = Math.min(30, Math.max(8, Math.round(
-    segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0),
-  )));
+  // ⚠️ THE SONG RUNS UNDER THE WHOLE FILM. This was capped at 30 s (from when no film was longer), and the mix pads the bed
+  // with silence to the film's length, so a 32 s music video lost its song for the last 2 s and a 48 s one for 18 s. It is
+  // now the film's own length: the contracted final cut when there is one, else what the clips stitch to.
+  const audioTotalSec = filmSongSeconds(finalCut?.ok ? finalCut.finalSec : stitchSec);
 
   // AUDIO BED — VIDEO pipeline is ElevenLabs-ONLY (ISSUE 5). ElevenLabs is THE engine
   // for instrumentals + sung vocals (and ElevenLabs sound-generation already powers the
@@ -539,17 +541,24 @@ async function assembleImpl(req: NextRequest) {
 
     // ONE shared song spec (e.g. a sung Georgian R&B track for a music video, or an
     // instrumental film score) — the brief ElevenLabs Music composes from.
+    // The engine reads English: the brief goes to it translated (a Georgian brief quoted verbatim was noise to it, and
+    // the song ignored the theme). The song's language still follows what the user typed (buildElevenMusicPrompt).
+    const scoreBrief = typeof body.scorePrompt === 'string' ? body.scorePrompt : '';
+    const theme = scoreBrief.trim() ? await promptToEnglish(scoreBrief, 'music').catch(() => scoreBrief) : '';
     const { prompt, instrumental } = buildElevenMusicPrompt({
-      brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
+      brief: scoreBrief,
       totalSec: audioTotalSec,
       musicVideoMode,
       vocalGender: body.vocalGender,
+      theme,
+      sceneSec: clipSecOfRender,
     });
 
     // PRIMARY — ElevenLabs Music (instrumentals + sung vocals). Time-boxed.
     if (hasElevenLabsMusicKey()) {
       try {
-        const EL_MUSIC_BUDGET_MS = 90_000;
+        // A longer song takes longer to compose: about a second per second of song, never under the old 90 s.
+        const EL_MUSIC_BUDGET_MS = Math.min(200_000, Math.max(90_000, audioTotalSec * 1_000));
         const { audio, contentType } = await Promise.race([
           composeElevenLabsMusic({ prompt, lengthMs: audioTotalSec * 1000, instrumental }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('elevenlabs music timed out')), EL_MUSIC_BUDGET_MS)),

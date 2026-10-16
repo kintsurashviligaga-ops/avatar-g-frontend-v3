@@ -28,6 +28,7 @@
 
 import 'server-only';
 import { hasVideoProvider, videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
+import { BUDGET_ERROR_PREFIX, budgetReasonOf, budgetRefusalMessage, isBudgetRefusal } from '@/lib/services/billing/budgetMessage';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
@@ -66,7 +67,8 @@ import {
   type SceneScreenwriterMeta,
 } from './filmPipeline';
 import { planSceneDialogue, type SceneSpokenLine } from './sceneDialogue';
-import { checkSceneSpeech, reflowSpeech } from '@/lib/video/speechTiming';
+import { checkSceneSpeech, reflowSpeech, speechSeconds, OVERFLOW_TOLERANCE, SPEECH_LEAD_SEC, SPEECH_TAIL_SEC } from '@/lib/video/speechTiming';
+import { isGeorgianText } from '@/lib/audio/tts-model';
 import { filmFrameChainOn, chainEndFrame } from '@/lib/video/frameChain';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
@@ -413,6 +415,14 @@ async function renderClip(
       // dead. ServiceManager.execute() reports exactly this shape (`predictionStatus: 'failed'` /
       // `success: false`, ServiceManager.ts:277) and its own retry loop already refuses it the same way
       // (line 371) — this call site was the one that did not.
+      // ⚠️ A BUDGET REFUSAL IS FINAL FOR THE DAY. The platform limit answered "no" before anything was sent to Google;
+      // asking three more times only repeats the "no" (2026-10-16: four refusals per clip, then "could not reach the
+      // video service" instead of the limit). It goes back as `budget_exceeded:<reason>` so the film says which
+      // limit stopped it and when it lifts.
+      if (dispatched.metadata?.budgetExceeded === true) {
+        const reason = typeof dispatched.metadata.budgetReason === 'string' ? dispatched.metadata.budgetReason : 'daily_limit';
+        return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: attempt, debited, error: `${BUDGET_ERROR_PREFIX}${reason}` };
+      }
       const dispatchDead = dispatched.success === false
         || dispatched.predictionStatus === 'failed'
         || dispatched.predictionStatus === 'canceled'
@@ -834,10 +844,24 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // by nobody. `complete` is false whenever anything could not be placed (a third line inside one 6s
   // window, more lines than scenes, a line with no speakable words), and then we delegate NOTHING: the
   // prompts and the ElevenLabs path stay byte-identical to before.
-  const delegateSpeech = nativeSpeech && dialogueComplete && spokenSceneCount > 0;
+  //
+  // ⚠️ GEORGIAN IS NEVER HANDED TO VEO. Veo cannot speak it: the 2026-10-16 ad (a Georgian narration delegated scene by
+  // scene) came back with a new voice in every scene and the words garbled. A Georgian film is voiced OFF CAMERA by one
+  // ElevenLabs voice over the whole cut (the owner's call, 2026-10-16): nobody on screen talks (silentPresenter in the
+  // plan), the clips render without Veo's own audio, and the ElevenLabs leg that owns the source voices every line.
+  // Not for a music video: its singer sings, and that film's voice is the song. Keyed on the SOURCE text, not on
+  // the lines that could be placed: a Georgian script too long to place is still voiced by ElevenLabs, and a clip
+  // that talks on its own beside it is the same double voice.
+  const offCameraText = dialogueSource === 'narrationScript' ? narrationAsDialogue
+    : dialogueSource === 'dialogueScript' ? dialogueScriptRaw
+    : dialogueSource === 'master-script'
+      ? [parsedMaster?.narrationScript, ...(parsedMaster?.dialogue ?? []).map((d) => d.text)].filter(Boolean).join(' ')
+      : sceneDialogue.flat().map((l) => l.text).join(' ');
+  const offCameraVoice = !input.metadata?.musicVideoMode && !!offCameraText?.trim() && isGeorgianText(offCameraText);
+  const delegateSpeech = nativeSpeech && !offCameraVoice && dialogueComplete && spokenSceneCount > 0;
   if (spokenSceneCount > 0 && !delegateSpeech) {
     // eslint-disable-next-line no-console
-    console.log(`[filmComposite] dialogue from ${dialogueSource} NOT delegated to Veo (nativeSpeech=${nativeSpeech}, complete=${dialogueComplete}) → ElevenLabs keeps every line`);
+    console.log(`[filmComposite] dialogue from ${dialogueSource} NOT delegated to Veo (nativeSpeech=${nativeSpeech}, complete=${dialogueComplete}, offCamera=${offCameraVoice}) → ElevenLabs keeps every line`);
   }
 
   // ── EVERY WORD MUST FIT ITS SCENE ───────────────────────────────────────────
@@ -865,6 +889,17 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       dialoguePlacedCount = sceneDialogue.reduce((n, lines) => n + lines.length, 0);
       // eslint-disable-next-line no-console
       console.log(`[filmComposite] speech re-flowed across ${sceneDialogue.length} scenes so every word fits (${fit.scenes.map((x) => `${x.seconds}s`).join(' / ')} → ${checkSceneSpeech(reflowed, grid.clipSec).scenes.map((x) => `${x.seconds}s`).join(' / ')})`);
+    }
+  }
+  // The off-camera voice is ONE track over the whole cut, so its words are measured against the film, not a scene: a
+  // script longer than the film would be cut off at the last frame, so it is refused here, before any charge.
+  if (offCameraVoice) {
+    const seconds = speechSeconds(offCameraText ?? '');
+    if (seconds > Math.max(0, grid.totalSec - SPEECH_LEAD_SEC - SPEECH_TAIL_SEC) * OVERFLOW_TOLERANCE) {
+      const scenesNeeded = Math.ceil((seconds + SPEECH_LEAD_SEC + SPEECH_TAIL_SEC) / grid.clipSec);
+      // eslint-disable-next-line no-console
+      console.log(`[filmComposite] off-camera voice does not fit: ${Math.round(seconds)}s of speech over a ${grid.totalSec}s film — needs ${scenesNeeded} scenes; refused before any charge`);
+      return speechTooLongResponse(input.locale, seconds, grid.sceneCount, scenesNeeded, grid.clipSec);
     }
   }
 
@@ -900,7 +935,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const sceneScriptsEn: string[] | undefined = sceneScripts?.length
     ? await Promise.all(sceneScripts.map((s) => promptToEnglish(s, 'video')))
     : undefined;
-  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, ...(filmTemplate ? { look: filmTemplate.look } : {}), orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}), ...(veoPlan ? { veo: veoPlan.film, veoScenes: veoPlan.scenes, outputFormat: veoPlan.film.format } : {}) });
+  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, ...(filmTemplate ? { look: filmTemplate.look } : {}), orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}), ...(offCameraVoice ? { silentPresenter: true } : {}), ...(veoPlan ? { veo: veoPlan.film, veoScenes: veoPlan.scenes, outputFormat: veoPlan.film.format } : {}) });
   // `grid.totalSec` (not a bare pinnedSceneCount × clipSec) is what the plan splits, so plan.sceneCount
   // and grid.sceneCount can never disagree — a mismatch would slide every dialogue line one scene off.
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
@@ -1090,6 +1125,21 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     else console.error(`[film] REFUND FAILED ref=${ref} user=${input.userId} amount=${amount} — needs manual credit`);
   };
 
+  // The platform's own spend limit stopped every clip (not the provider): say which limit and when it lifts.
+  const budgetRefused = (reason?: string): ChatResponse => ({
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message: budgetRefusalMessage(input.locale, reason),
+    metadata: {
+      provider: 'composite',
+      composite: true,
+      platformBudget: true,
+      budgetReason: reason ?? 'daily_limit',
+      balanceProtected: true,
+    },
+  });
+
   const connectionFailed = (diagnostic?: string | null): ChatResponse => ({
     success: false,
     intent: 'video_generation',
@@ -1114,6 +1164,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // renderClip never throws (it catches per-leg), but guard the fan-out anyway:
   // an unexpected throw must still roll the ledger back and surface the clean
   // localized halt rather than a 500.
+  // OFF-CAMERA VOICE → the clips render without Veo's own audio: a silent presenter's clip would otherwise carry a
+  // murmur under the voice-over. (Vertex honours the switch, and costs less without audio; the Gemini API always
+  // renders sound.) The film's price is unchanged.
+  if (offCameraVoice && plan.shared.veo) plan.shared.veo = { ...plan.shared.veo, generateAudio: false };
+
   let clips: FilmClipResult[];
   try {
     // PREFER approved storyboard frames (from /api/film/storyboard) as the
@@ -1225,6 +1280,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // failure is actionable instead of an opaque "couldn't connect".
     const reason = clips.map((c) => c.error).find((e): e is string => Boolean(e)) ?? null;
     await undoStart();
+    const budgetError = clips.map((c) => c.error).find((e): e is string => isBudgetRefusal(e));
+    if (budgetError) return budgetRefused(budgetReasonOf(budgetError));
     return connectionFailed(reason);
   }
 
@@ -1321,7 +1378,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     const v = voiceMeta?.narrationScript;
     const explicit = typeof v === 'string' && v.trim() ? v.trim() : null;
     // The parsed Master-Script VO spine feeds the SAME verbatim narrationScript slot when no explicit one is set.
-    return explicit ?? masterNarration;
+    // Off camera, the lines written in the scene sheets feed no other leg: the narrator reads them, in scene order.
+    const sheetLines = offCameraVoice && dialogueSource === 'script-scenes'
+      ? sceneDialogue.flat().map((l) => l.text).join(' ').trim() || null
+      : null;
+    return explicit ?? masterNarration ?? sheetLines;
   })();
   // Explicit narrator gender (video panel 👩/👨) — overrides brief auto-detection.
   const narratorGender: 'male' | 'female' | null =

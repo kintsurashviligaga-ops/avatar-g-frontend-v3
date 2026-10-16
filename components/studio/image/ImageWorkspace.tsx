@@ -7,8 +7,12 @@ import { imageApi, finalJob, ImageClientError, readBatch, saveBatch, type BatchI
 import { uploadFileToStorage, uploadErrorText } from '@/components/studio/ui/useUpload';
 import { imageCopy, imageErrorCopy } from './copy';
 
-const control = 'min-h-[44px] rounded-lg border border-white/25 bg-black px-3 py-2 text-base text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#338FE8] disabled:opacity-50';
-const button = control + ' touch-manipulation hover:border-[#338FE8]';
+// ⚠️ ON A PHONE THE MODEL PICKER RAN PAST THE SCREEN (GG's iPhone, 2026-10-16). A <select> is as wide as its longest option
+// („Nano Banana 2 (Gemini 3.1 Flash Image)"), and a grid item never shrinks below its content: the picker pushed 21 px past a
+// 390 px screen. Every control is the width of its column (w-full min-w-0) and every label may shrink (field).
+const control = 'min-h-[44px] w-full min-w-0 rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-base text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#338FE8] disabled:opacity-50';
+const field = 'grid min-w-0 gap-1.5 text-sm text-white/80';
+const button = control.replace('w-full ', '') + ' touch-manipulation hover:border-[#338FE8]';
 const primary = button + ' bg-[#338FE8] font-semibold text-black';
 const emptyRequest = (access: ImageAccess, locale: string, prompt: string): ImageRequest => ({
   v: 1, originalPrompt: prompt, operation: 'generate', modelId: access.models[0]!.id,
@@ -32,6 +36,8 @@ export function ImageWorkspace({ access, locale, initialPrompt = '', onClose }: 
   const [source, setSource] = useState<ImageAsset | null>(null), [compare, setCompare] = useState(false);
   const [zoom, setZoom] = useState(100), [copied, setCopied] = useState(false);
   const alive = useRef(true), launching = useRef(false), uploadingRef = useRef(false), previewUrls = useRef<string[]>([]);
+  /** The job whose start request is in flight: it has no row to read yet, so the poll leaves it alone until the start answers. */
+  const startingRef = useRef<string | null>(null);
   const batchRef = useRef(batch); batchRef.current = batch;
   const pauseRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -56,18 +62,29 @@ export function ImageWorkspace({ access, locale, initialPrompt = '', onClose }: 
     if (alive.current) setBatch(items => items.map(x => x.quote.jobId === job.jobId ? { ...x, job } : x));
   }, []);
   // Restore only by authenticated job IDs. Poll real states without manufactured percentages.
+  // ⚠️ A JOB THE SERVER NO LONGER KNOWS LOCKED THE WHOLE FORM FOR GOOD. The tab keeps its batch (sessionStorage) and a
+  // restored, issued tile counts as running until its status arrives. When that status was `not_found` (gone, or not this
+  // account's), the tile stayed "running" forever: every field disabled, no Cancel, the poll asking again every 3 s, and
+  // reopening the studio restored it again. Such a tile is dropped, once, with the not-found message; any other failure
+  // (the network, a 5xx) keeps it and asks again.
   useEffect(() => {
     const ctl = new AbortController();
     let busy = false, first = true;
     const poll = async () => {
       if (busy) return;
       busy = true;
+      const gone: string[] = [];
       for (const item of batchRef.current) {
-        if (!item.issued || (!first && finalJob(item.job) && !item.job?.settlementPending)) continue;
+        if (!item.issued || item.quote.jobId === startingRef.current || (!first && finalJob(item.job) && !item.job?.settlementPending)) continue;
         try { const job = await imageApi<ClientJob>('/api/image/jobs/' + encodeURIComponent(item.quote.jobId), undefined, ctl.signal);
           if (!ctl.signal.aborted) updateJob(job);
-        } catch (e) { if (!ctl.signal.aborted) fail(e); }
+        } catch (e) {
+          if (ctl.signal.aborted) continue;
+          if (e instanceof ImageClientError && e.code === 'not_found') gone.push(item.quote.jobId);
+          fail(e);
+        }
       }
+      if (gone.length && alive.current) setBatch(items => items.filter(x => !gone.includes(x.quote.jobId)));
       first = false; busy = false;
     };
     void poll();
@@ -81,11 +98,11 @@ export function ImageWorkspace({ access, locale, initialPrompt = '', onClose }: 
     const next = batch.find(x => !x.issued || !x.job);
     if (!next) { setAutoRun(false); return; }
     if (next.quote.expiresAt <= Date.now()) { setAutoRun(false); fail(new ImageClientError('quote_expired')); return; }
-    launching.current = true;
+    launching.current = true; startingRef.current = next.quote.jobId;
     setBatch(items => items.map(x => x.quote.jobId === next.quote.jobId ? { ...x, issued: true } : x));
     void imageApi<ClientJob>('/api/image/jobs', { plan: next.quote.plan, token: next.quote.token, confirmed: true })
       .then(updateJob).catch(e => { if (alive.current) setAutoRun(false); fail(e); })
-      .finally(() => { launching.current = false; });
+      .finally(() => { launching.current = false; startingRef.current = null; });
   }, [autoRun, batch, fail, updateJob]);
   const pending = batch.some(x => x.issued && (!finalJob(x.job) || x.job?.settlementPending));
   const locked = pending || autoRun || uploading || quoting;
@@ -178,31 +195,31 @@ export function ImageWorkspace({ access, locale, initialPrompt = '', onClose }: 
   const expiry = activeQuote ? new Date(Math.min(...batch.map(x => x.quote.expiresAt))).toLocaleTimeString(locale === 'ka' ? 'ka-GE' : locale) : '';
   const shown = compare && source ? source : selected;
   return <section data-testid="image-workspace" aria-label={c.t('title')} className="min-w-0 space-y-5 bg-black p-4 text-white sm:p-5">
-    <header className="flex flex-wrap items-center justify-between gap-3">
-      <h2 className="text-xl font-semibold">{c.t('title')}</h2>
-      <button type="button" className={button} onClick={onClose}>{c.t('close')}</button>
+    <header className="flex min-w-0 items-center justify-between gap-3">
+      <h2 className="min-w-0 break-words text-lg font-semibold leading-snug">{c.t('title')}</h2>
+      <button type="button" className={button + ' shrink-0'} onClick={onClose}>{c.t('close')}</button>
     </header>
     {error && <p role="alert" className="break-words rounded-lg border border-red-300/50 p-3 text-red-200">{error}</p>}
     {localWarning && <p role="status">{c.t('storageLocal')}</p>}
     <fieldset disabled={locked} className="min-w-0 space-y-4">
-      <label className="block space-y-2" htmlFor={uid + '-prompt'}><span>{c.t('prompt')}</span>
+      <label className="block min-w-0 space-y-1.5 text-sm text-white/80" htmlFor={uid + '-prompt'}><span>{c.t('prompt')}</span>
         <textarea ref={inputRef} id={uid + '-prompt'} className={control + ' w-full resize-y'} rows={4} maxLength={8000}
           value={draft.originalPrompt} onChange={e => set('originalPrompt', e.target.value)} />
       </label>
       <p className="text-sm text-white/75">{c.t('unchanged')}</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="grid gap-1">{c.t('operation')}<select aria-label={c.t('operation')} className={control} value={draft.operation} onChange={e => set('operation', e.target.value as ImageRequest['operation'])}>
+        <label className={field}>{c.t('operation')}<select aria-label={c.t('operation')} className={control} value={draft.operation} onChange={e => set('operation', e.target.value as ImageRequest['operation'])}>
           {model?.operations.map(op => <option key={op} value={op}>{c.operation(op)}</option>)}</select></label>
-        <label className="grid gap-1">{c.t('model')}<select aria-label={c.t('model')} className={control} value={draft.modelId} onChange={e => set('modelId', e.target.value)}>
+        <label className={field}>{c.t('model')}<select aria-label={c.t('model')} className={control} value={draft.modelId} onChange={e => set('modelId', e.target.value)}>
           {access.models.map(m => <option key={m.id} value={m.id}>{m.label ?? m.id}</option>)}</select></label>
-        <label className="grid gap-1">{c.t('aspect')}<select aria-label={c.t('aspect')} className={control} value={draft.aspectRatio} onChange={e => set('aspectRatio', e.target.value as ImageRequest['aspectRatio'])}>
+        <label className={field}>{c.t('aspect')}<select aria-label={c.t('aspect')} className={control} value={draft.aspectRatio} onChange={e => set('aspectRatio', e.target.value as ImageRequest['aspectRatio'])}>
           {(model?.aspects ?? ASPECTS).map(x => <option key={x}>{x}</option>)}</select></label>
-        <label className="grid gap-1">{c.t('resolution')}<select aria-label={c.t('resolution')} className={control} value={draft.resolution} onChange={e => set('resolution', e.target.value as ImageRequest['resolution'])}>
+        <label className={field}>{c.t('resolution')}<select aria-label={c.t('resolution')} className={control} value={draft.resolution} onChange={e => set('resolution', e.target.value as ImageRequest['resolution'])}>
           {(model?.resolutions ?? RESOLUTIONS).map(x => <option key={x}>{x}</option>)}</select></label>
-        <label className="grid gap-1">{c.t('variations')}<select aria-label={c.t('variations')} className={control} value={count} onChange={e => { setCount(Number(e.target.value)); if (!hasIssued) setBatch([]); }}>
+        <label className={field}>{c.t('variations')}<select aria-label={c.t('variations')} className={control} value={count} onChange={e => { setCount(Number(e.target.value)); if (!hasIssued) setBatch([]); }}>
           {[1, 2, 4].map(x => <option key={x}>{x}</option>)}</select></label>
       </div>
-      <label className="grid gap-1">{c.t('instructions')}<textarea className={control} rows={2}
+      <label className={field}>{c.t('instructions')}<textarea className={control} rows={2}
         value={draft.instructions.join('\n')} onChange={e => set('instructions', e.target.value.split('\n'))} /></label>
       {draft.parentJobId && <p className="break-all text-sm">{c.t('parent')}: {draft.parentJobId}</p>}
       <h3 className="font-semibold">{c.t('references')} ({draft.references.length}/4)</h3>

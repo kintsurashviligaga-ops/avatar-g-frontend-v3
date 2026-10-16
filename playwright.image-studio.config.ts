@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 const port = Number(process.env.PLAYWRIGHT_DEV_PORT || 3147);
 const evidence = process.env.IMAGE_STUDIO_EVIDENCE_DIR || './docs/handoffs/image-studio/evidence';
 export default defineConfig({
-  testDir: './tests', testMatch: 'image-studio.spec.ts', timeout: 90000, workers: 1, retries: 0,
+  testDir: './tests', testMatch: ['image-studio.spec.ts', 'image-studio-phone.spec.ts'], timeout: 90000, workers: 1, retries: 0,
   outputDir: evidence + '/browser-results',
   reporter: [['list'], ['json', { outputFile: evidence + '/browser-results.json' }]],
   use: { baseURL: 'http://127.0.0.1:' + port, trace: 'retain-on-failure' },

@@ -102,8 +102,8 @@ import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
-import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
-import { formatWalletBalance } from '@/lib/billing/gel';
+import { creditCostFor, creditsWithUsd } from '@/lib/credits/pricing';
+import { budgetShortLabel } from '@/lib/services/billing/budgetMessage';
 import { nextAvatarAttempt, startRefusal } from '@/lib/avatar/renderAttempts';
 import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob';
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
@@ -127,7 +127,7 @@ import { useDurableProgress } from '@/hooks/useDurableProgress';
 import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from '@/lib/jobs/trackJob';
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
-import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from '@/lib/chat/intentDetector';
+import { detectIntent, isGenerativeCommand, isMusicVideoIntent, isVideoIntent, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, updateMessage, getMessages, getConversations } from '@/lib/chat-history';
 import { cardSignature, hasCard, mergeServerTurns, readTurnMeta, turnMetaOf } from '@/lib/chat/turnMeta';
 import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
@@ -158,7 +158,10 @@ import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
+import { aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference, orientationForAspect } from '@/lib/chat/chatConsent';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
+import { shootKindForTool, shootOfferText, shootWire, productAdOfferText, productAdPhotoAsk, PRODUCT_PHOTO_WAIT_MS } from '@/lib/chat/chatShoot';
+import type { StudioWire } from '@/lib/studio/shootWire';
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
 import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
@@ -1045,7 +1048,7 @@ interface Media { dataUrl: string; mimeType: string; /** The original file name 
 // `templateId`: the template card the user PICKED, when it still matched these values at request time
 // (hooks/usePickedTemplate; a card that is merely lit sends nothing) — sent with the request AND its re-roll, so both
 // get the card's server-resolved context (the route re-checks the match).
-type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string; templateId?: string };
+type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string; templateId?: string; /** A Photographer / Interior designer render ordered in the chat (lib/chat/chatShoot). */ studio?: StudioWire };
 // MusicRegenSpec (+ duration / tempo / voice, and the body built from it) lives in lib/studio/musicRegen — tested there.
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
@@ -1227,22 +1230,6 @@ const AGENT_G_PHASES: { icon: string; ka: string; en: string; ru: string }[] = [
   { icon: '🚀', ka: 'ვხსნი რედაქტორს…', en: 'Opening the editor…', ru: 'Открываю редактор…' },
 ];
 
-// FIX 2 — Chat-mode video intent. When the user describes a video in plain Chat
-// mode, the old behaviour was an inert text reply ("▶ Video Studio will…") that
-// fired NOTHING. These detectors let the chat handler auto-route a strong video
-// brief straight into the real Video Studio pipeline. Deliberately conservative:
-// a bare "video" mention does NOT fire — it needs an explicit production cue (make
-// a video / music video / short film / 30-second clip), in en/ka/ru.
-function isVideoIntent(s: string): boolean {
-  const b = (s || '').toLowerCase();
-  if (/\b(music\s*video|video\s*clip|short\s*film|mini[\s-]?(movie|film))\b/.test(b)) return true;
-  if (/\b(make|create|generate|produce|render|build|do)\b[\s\S]{0,48}\bvideo\b/.test(b)) return true;
-  if (/\b(30|thirty)[\s-]?(second|sec|s)\b[\s\S]{0,40}\b(video|film|clip)\b/.test(b)) return true;
-  // Georgian / Russian explicit cues.
-  if (/მუსიკალური\s*ვიდეო|ვიდეო\s*კლიპ|შემიქმენ[\s\S]{0,40}ვიდეო|გააკეთ[\s\S]{0,40}ვიდეო|ფილმ/.test(s || '')) return true;
-  if (/музыкальн\w*\s*клип|видеоклип|сними[\s\S]{0,30}видео|сделай[\s\S]{0,30}видео/.test(b)) return true;
-  return false;
-}
 /**
  * Does the text NAME a video deliverable (any of the 3 locales)? Deliberately a plain noun check with no
  * imperative-verb requirement — it is only ever used TOGETHER with an attached photo, and "here's my photo +
@@ -1258,12 +1245,6 @@ function mentionsVideoDeliverable(s: string): boolean {
   return /\b(video|film|movie|clip|trailer|reel|footage)\b/.test(b)
     || /ვიდეო|ფილმ|კლიპ|ტრეილერ|რგოლ|მოკლემეტრაჟ/.test(s || '')
     || /видео|фильм|клип|трейлер|ролик/.test(b);
-}
-function isMusicVideoIntent(s: string): boolean {
-  const b = (s || '').toLowerCase();
-  return /\bmusic\s*video\b|\br&b\b|\brnb\b|\bsong\b|\bsinger\b|\bvocal|\blyric/.test(b)
-    || /მუსიკალური\s*ვიდეო|სიმღერ|მომღერ|ვოკალ|ვიდეო\s*კლიპ/.test(s || '')
-    || /музыкальн\w*\s*клип|видеоклип|песн\w|вокал|певиц/.test(b);
 }
 
 // ── Multi-conversation chat history (localStorage) ───────────────────────────
@@ -1622,6 +1603,9 @@ interface StoryboardState {
   /** Scene ordinals whose frame is still being generated (drives the N/M counter
    *  + per-tile spinner). Empty/undefined once every frame has settled. */
   pending?: number[];
+  /** Set when the PLATFORM budget refused a frame (the route's `budgetMessage`): the board shows it — which limit,
+   *  when it lifts — instead of promising the empty tiles "fill in automatically", which they cannot while it holds. */
+  budgetNote?: string | null;
   /** Prompt-Agent locked character fragment (from /api/film/storyboard scriptsOnly) —
    *  threaded to the render so the protagonist is identical across every clip. */
   character?: string | null;
@@ -1706,7 +1690,7 @@ function commitSceneOrder(prev: StoryboardState, ordered: StoryboardScene[]): St
  *   • When the frame lands it MORPHS in via a blur-up (blurred+scaled → sharp), so
  *     an agent's delivery glides in with no layout pop (fixed-aspect container).
  */
-function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, clipSec, structEnabled, onRegenScene, onEditScene, onView, onDelete, onMove, dragEnabled, dragActive, dragging, dragOver, onDragStartScene, onDragOverScene, onDropScene, onDragEndScene }: {
+function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, clipSec, structEnabled, emptyNote, onRegenScene, onEditScene, onView, onDelete, onMove, dragEnabled, dragActive, dragging, dragOver, onDragStartScene, onDragOverScene, onDropScene, onDragEndScene }: {
   s: StoryboardScene;
   t: (typeof COPY)[Lang];
   portrait: boolean;
@@ -1720,6 +1704,8 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
   clipSec: number;
   /** P9 — structural edits (move/delete) only once frames have settled (not streaming). */
   structEnabled: boolean;
+  /** Replaces the empty tile's "fills in at render" when that is not true (the platform limit refused the frame). */
+  emptyNote?: string | null;
   onRegenScene: (ordinal: number, baseImage?: string) => void;
   onEditScene: (ordinal: number, text: string) => void;
   onView: (url: string) => void;
@@ -1812,7 +1798,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
                 <ImageIcon size={18} className="text-app-muted/40" />
                 {/* Settled board (structEnabled) → this empty scene auto-fills at render, so say so
                     instead of the ambiguous "no frame" that reads as broken. Mid-stream → "no frame". */}
-                <span className="px-2 text-center text-[10px] leading-tight text-app-muted/45">{structEnabled ? t.sbAutoFill : t.sbEmpty}</span>
+                <span className="px-2 text-center text-[10px] leading-tight text-app-muted/45">{emptyNote ?? (structEnabled ? t.sbAutoFill : t.sbEmpty)}</span>
               </>
             )}
           </div>
@@ -1911,7 +1897,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
 /** Exported for its unit test only. */
-export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncCredits, speechTooLong, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
+export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCredits, speechTooLong, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
@@ -2017,6 +2003,7 @@ export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, l
                 total={total}
                 clipSec={boardClipSec}
                 structEnabled={!streaming}
+                emptyNote={sb.budgetNote ? budgetShortLabel(locale) : null}
                 onRegenScene={onRegenScene}
                 onEditScene={onEditScene}
                 onView={onView}
@@ -2054,14 +2041,15 @@ export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, l
             <span className={`inline-flex items-center gap-1 font-semibold ${loaded === total ? 'text-emerald-400' : 'text-amber-400'}`}>
               <Check size={11} /> <span className="tabular-nums">{loaded}/{total}</span> {t.sbReady}
             </span>
-            {loaded < total && <span className="text-app-muted">· {total - loaded} {t.sbAutoFill}</span>}
+            {loaded < total && !sb.budgetNote && <span className="text-app-muted">· {total - loaded} {t.sbAutoFill}</span>}
+            {loaded < total && sb.budgetNote && <span data-testid="storyboard-budget-note" className="w-full text-amber-400">{sb.budgetNote}</span>}
             <span className="text-app-muted/70">· ⏱ {t.sbRenderNote}</span>
           </div>
         )}
         {/* Above the buttons, not under them: the bar's bottom padding is the phone's safe area. */}
         {(lipsyncCredits ?? 0) > 0 && (
           <p data-testid="storyboard-lipsync-addon" data-credits={lipsyncCredits} className="px-4 pb-2 pt-1 text-center text-[11px] leading-snug text-app-muted">
-            {lipsyncAddOnNote(lipsyncCredits ?? 0, _locale)}
+            {lipsyncAddOnNote(lipsyncCredits ?? 0, locale)}
           </p>
         )}
         {speechTooLong && (
@@ -2077,7 +2065,7 @@ export function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, l
             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-all duration-200 hover:opacity-90 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50">
             <Film size={16} /> {t.sbGenerate}
             {free
-              ? <span className="rounded-full bg-app-bg/20 px-2 py-0.5 text-[11.5px] font-bold">{_locale === 'en' ? 'Free' : _locale === 'ru' ? 'Бесплатно' : 'უფასო'}</span>
+              ? <span className="rounded-full bg-app-bg/20 px-2 py-0.5 text-[11.5px] font-bold">{locale === 'en' ? 'Free' : locale === 'ru' ? 'Бесплатно' : 'უფასო'}</span>
               : typeof price === 'number' && price > 0 && (
                 <span className="inline-flex items-center gap-1 tabular-nums" aria-hidden="true"><Sparkle size={13} fill="currentColor" strokeWidth={0} />{price}</span>
               )}
@@ -2182,8 +2170,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // through (the guest policy lives server-side, lib/chat/guestChat) and stops every paid tool at sign-in. A restart
   // on another tool (initialTool) is selected by the deep-link effect through the same path the sidebar uses.
   const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical' | 'photo'>('chat');
-  const imageStudioAccess = useImageStudioAccess(mode === 'image');
-  const [imageWorkspaceOpen, setImageWorkspaceOpen] = useState(true);
+  // ⚠️ THE IMAGE TOOL SHOWED TWO PANELS, ONE ON TOP OF THE OTHER (GG's iPhone, 2026-10-16 19:36Z and 19:55Z: „ჯერ მარცხენა
+  // იხსნება და მერე ზემოდან ის მარჯვენა და იჭედება ვეღარ ვთიშავ… უნდა იყოს ერთი და ლამაზი და მარტივად გამოსაყენებელი").
+  // Choosing Image opens its Create sheet at once; the admin-only Image Studio used to open by default, so about a second
+  // later — when /api/image/models answered — a second, different form covered the sheet, with no chat, no composer and a
+  // close button named „არსებული ხელსაწყოები". The Image tool now has ONE panel, the Create sheet, for everyone. The studio
+  // has no entry in the tool; it opens only from its own link (/dashboard?tool=image&imageStudio=1), which its acceptance
+  // suite and the owner use on purpose.
+  const [imageWorkspaceOpen, setImageWorkspaceOpen] = useState(false);
+  // Asked only while the studio is wanted: the Image tool itself never waits on it.
+  const imageStudioAccess = useImageStudioAccess(mode === 'image' && imageWorkspaceOpen);
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -2273,7 +2269,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Credit-deduction toast — shown briefly after each successful generation
   // ("−N credits · X.XX ₾"). Pricing is centralised in lib/credits/pricing.ts; the
   // real balance is still the GEL wallet (the ₾ pill re-reads it on the next open).
-  const [creditToast, setCreditToast] = useState<{ credits: number; balanceGel: number | null } | null>(null);
+  const [creditToast, setCreditToast] = useState<{ credits: number; balanceCredits: number | null } | null>(null);
   // Single dismiss timer — cleared before rescheduling so overlapping generations don't stack stale timers
   // that prematurely hide a newer toast (V4).
   const creditToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2306,7 +2302,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (kind === 'music') track('music_generated', { credits });
     else if (kind === 'image') track('image_generated', { count: opts?.count ?? 1 });
     else if (kind === 'video' || kind === 'avatar') track('video_generated', { duration: opts?.seconds ?? null, credits });
-    setCreditToast({ credits, balanceGel: null });
+    setCreditToast({ credits, balanceCredits: null });
     // V4 — a spend just landed server-side; tell the app shell to re-read the header ₾ pill
     // so the balance visibly drops (the shell only refreshed on mount/auth/modal-close before,
     // which is why generations looked like they never deducted).
@@ -2339,9 +2335,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const res = await fetch('/api/credits/balance', { cache: 'no-store', credentials: 'include' });
         const j = (await res.json().catch(() => ({}))) as { balance?: number | null };
         if (typeof j?.balance === 'number') {
-          setCreditToast((c) => (c ? { ...c, balanceGel: j.balance as number } : c));
-          // Credits low: warn under ~1 ₾ (≈10 credits at 0.10 ₾/cr).
-          if (j.balance < 1) fileNotif('credits_low', locale === 'en' ? 'Credits almost out ⚠️' : locale === 'ru' ? 'Кредиты заканчиваются ⚠️' : 'კრედიტები თითქმის ამოიწურა ⚠️');
+          // `balance` is the wallet in CREDITS (profiles.credits_balance), not GEL.
+          setCreditToast((c) => (c ? { ...c, balanceCredits: j.balance as number } : c));
+          // Credits low: warn under 10 credits (≈1 ₾ at 0.10 ₾/cr). This compared credits with 1 as if they were ₾.
+          if (j.balance < 10) fileNotif('credits_low', locale === 'en' ? 'Credits almost out ⚠️' : locale === 'ru' ? 'Кредиты заканчиваются ⚠️' : 'კრედიტები თითქმის ამოიწურა ⚠️');
         }
       } catch { /* fail-soft */ }
     })();
@@ -2509,6 +2506,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, []);
   /** Agent G asked clarifying questions about this prompt (lib/chat/focusGate); the user's next message answers them. */
   const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number; /** asked in plain chat (one-shot) */ inChat?: boolean } | null>(null);
+  /** When Agent G asked for the product's photo for a product ad ordered in the chat without one (the photo sent next makes its card). */
+  const productAskRef = useRef<number | null>(null);
   /** Index in `messages` where Agent G's current gate turn began — the Image desk shows its latest word while the thread is hidden. */
   const [gateFrom, setGateFrom] = useState<number | null>(null);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
@@ -3298,6 +3297,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // progress only showed in the floating corner tray. Reactive subscription → drives the elapsed clock.
   const queueActiveNow = useJobQueue((s) => s.jobs.some((j) => j.status === 'rendering' || j.status === 'queued'));
 
+  // <html data-studio-work> while anything here is in flight or a board is open: a new deploy's service worker then
+  // waits to reload this tab (lib/pwa/updateReload) instead of wiping a board or a render the user paid for.
+  const studioWorking = busy || storyboardBusy || queueActiveNow || storyboard !== null || directorBoard !== null;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (studioWorking) root.dataset.studioWork = '1';
+    else delete root.dataset.studioWork;
+    return () => { delete root.dataset.studioWork; };
+  }, [studioWorking]);
+
   // Tick the elapsed clock while a generation OR the storyboard build is in flight
   // (so the storyboard overlay can show a live % too, not just a spinner).
   useEffect(() => {
@@ -3604,6 +3613,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const videoMode = tl === 'video' && (vm === 'musicvideo' || vm === 'documentary') ? vm : null;
         selectTool(tl, 'deep-link', serviceForTool(tl, { videoMode }));
         if (videoMode) { setVideoMode(videoMode); url.searchParams.delete('mode'); }
+        // The admin Image Studio's own link: the studio, not the Create sheet under it (it opens once its access answers).
+        if (tl === 'image' && url.searchParams.get('imageStudio') === '1') {
+          setImageWorkspaceOpen(true); setOptionsOpen(false);
+          url.searchParams.delete('imageStudio');
+        }
         url.searchParams.delete('tool');
         window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
         return;
@@ -3946,16 +3960,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const wantsEnglishVocals = /\bin\s+english\b|english\s+(?:lyrics|vocals|song)/i.test(filmPrompt);
       const georgianBrief = !wantsEnglishVocals && (locale === 'ka' || /\bgeorgian\b/i.test(filmPrompt) || /[Ⴀ-ჿᲐ-Ჿ]/.test(filmPrompt));
       let kaSoundtrack: string | null = isMusicVideo && videoSoundtrack?.url ? videoSoundtrack.url : null;
+      // The film's real size: the approved board's scenes (or the scripts', or the length's grid) × the clip length.
+      const filmScenes = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(snap.videoDuration);
+      // The Georgian song is built for THIS film: as long as its scenes (it was sent the length picker's value, which a
+      // board of another size does not match), at a tempo that puts every cut on a bar line.
+      const songSceneSec = clipSec ?? FILM_CLIP_SEC;
       if (isMusicVideo && !kaSoundtrack && georgianBrief && mine()) {
         patchFilmBubble((last) => (last.role === 'assistant' && !last.videoUrl) ? { ...last, text: locale === 'en' ? '🎤 Writing the Georgian vocal track…' : locale === 'ru' ? '🎤 Создаю грузинский вокал…' : '🎤 ვქმნი ქართულ ვოკალს…' } : null);
         try {
-          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender === 'duet' ? 'female' : videoVocalGender, ...(videoVocalGender === 'duet' ? { genderSecondary: 'male' } : {}), totalSec: videoDuration }) });
+          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender === 'duet' ? 'female' : videoVocalGender, ...(videoVocalGender === 'duet' ? { genderSecondary: 'male' } : {}), totalSec: filmScenes * songSceneSec, sceneSec: songSceneSec }) });
           const j = (await r.json().catch(() => ({}))) as { url?: string | null };
           if (j.url) kaSoundtrack = j.url;
         } catch { /* fail-open → EL Music (English) */ }
       }
-      // The film's real size: the approved board's scenes (or the scripts', or the length's grid) × the clip length.
-      const filmScenes = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(snap.videoDuration);
       // The typed line and dialogue belong to THIS film (this closure keeps its copy for the graphics pass below). Left in
       // the panel they rode into the next film unseen: an old ad line, "come on check the site myavatar.ge", came back as
       // a caption and a sung lyric in a later music video (Production 2026-10-16).
@@ -4462,8 +4479,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // PHASE 2 L1 — Product-Ad generate: product photo + commercial preset → one i2v
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
   // `hookOverride` — the composer's words (the one field on screen on a phone); the panel's hook field is the fallback.
-  const generateProductAd = useCallback((hookOverride?: string) => {
-    if (!productImage) return;
+  // `chatPhoto` — a product ad Agent G's card agreed in the chat (lib/chat/chatShoot): that photo, alone, and the order and
+  // its photo are already in the thread above the card.
+  const generateProductAd = useCallback((hookOverride?: string, chatPhoto?: string) => {
+    if (!chatPhoto && !productImage) return;
     const hook = (hookOverride?.trim() || productHook.trim()).slice(0, AD_HOOK_MAX_CHARS);
     void ensureNotificationPermission(); // PHASE 20 — permission on the generate gesture
     // The product ad renders PER-JOB in its OWN chat bubble (by id) through the Cap-3 queue —
@@ -4475,8 +4494,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const bubbleId = `product_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     // ── SNAPSHOT every panel input NOW so this job is independent of later panel edits AND of
     //    other concurrent product jobs (true per-job isolation via jobId/bubbleId). ────────────
-    const photos = [productImage, ...productImages].filter((p): p is string => !!p);
-    const firstPhoto = productImage;
+    const photos = chatPhoto ? [chatPhoto] : [productImage, ...productImages].filter((p): p is string => !!p);
+    const firstPhoto = photos[0]!;
     const preset = productPreset;
     const duration = productDuration;
     // Dedicated product aspect → the remix op's aspect AND the assemble orientation.
@@ -4497,7 +4516,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const scorePrompt = `${preset} product commercial, premium, uplifting`;
     // Open the result in the chat (like image/music/swap): close the panel + drop a progress bubble.
     setOptionsOpen(false);
-    setMessages((prev) => [...prev, { role: 'user', text: `🛍 ${productBrand.trim() || jobLabel}` }, { role: 'assistant', text: t.remixRunning, id: bubbleId, remixOpKind: 'productad' }]);
+    setMessages((prev) => [...prev, ...(chatPhoto ? [] : [{ role: 'user' as const, text: `🛍 ${productBrand.trim() || jobLabel}` }]), { role: 'assistant', text: t.remixRunning, id: bubbleId, remixOpKind: 'productad' }]);
     submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: (job) => trackJobSettle(job, bubbleId), run: async ({ signal, onProgress, jobId }): Promise<string> => {
     // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
     trackJobUpdate(jobId, jobLabel, 10);
@@ -4894,13 +4913,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               signal: ac.signal,
               body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: anchorRefs, style: videoStyle, ...templateRef, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal], musicVideoMode }),
             });
-            const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
+            const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null; budgetRefused?: boolean; budgetMessage?: string };
             const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
-            if (url || attempt === MAX - 1) {
+            // The platform limit said no: retrying asks again for the same "no". Settle the tile and say why.
+            const budgetNote = !url && jf.budgetRefused && typeof jf.budgetMessage === 'string' ? jf.budgetMessage : null;
+            if (url || budgetNote || attempt === MAX - 1) {
               setStoryboard((prev) => prev ? {
                 ...prev,
                 scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
                 pending: (prev.pending ?? []).filter((o) => o !== ordinal),
+                ...(budgetNote ? { budgetNote } : {}),
               } : prev);
               return;
             }
@@ -4956,14 +4978,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         credentials: 'include',
         body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: refsForScene, style: videoStyle, ...(pickedVideoTemplateId ? { templateId: pickedVideoTemplateId } : {}), locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null; budgetRefused?: boolean; budgetMessage?: string };
       if (j.success && typeof j.frameUrl === 'string') {
         const url = j.frameUrl;
         setStoryboard((prev) => prev
           // The re-rolled frame is AI-generated (the sceneOrdinal route always genFrames), so it is NO LONGER the
           // user's exact uploaded image — clear `anchored` so the "Source Reference Locked" badge doesn't go stale.
-          ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url, anchored: false } : s)) }
+          ? { ...prev, budgetNote: null, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url, anchored: false } : s)) }
           : prev);
+      } else if (j.budgetRefused && typeof j.budgetMessage === 'string') {
+        const budgetNote = j.budgetMessage;
+        setStoryboard((prev) => (prev ? { ...prev, budgetNote } : prev));
       }
     } catch {
       /* keep the existing frame on failure */
@@ -5058,7 +5083,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           spec.kind === 'image'
-            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}), ...(spec.studio ? { studio: spec.studio } : {}) }
             : musicRegenBody(spec),
         ),
         credentials: 'include',
@@ -5167,7 +5192,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: AbortSignal.any([signal, deadline]),
-          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
+          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}), ...(spec.studio ? { studio: spec.studio } : {}) }),
         }).catch((e: unknown) => {
           // Mirrors runImageBatch's per-tile try/catch: the reason must land ON THE BUBBLE before the
           // rejection escapes, because the floating tray is hidden while only one job is active
@@ -5256,7 +5281,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal,
-              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
+              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}), ...(spec.studio ? { studio: spec.studio } : {}) }),
             });
             const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
             onProgress({ pct: 100 });
@@ -5613,6 +5638,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * after the card handlers it calls (they are declared after send). true = the message was handled here.
    */
   const agentTurnRef = useRef<(text: string, viaVoice: boolean) => boolean>(() => false);
+  /** A yes to what Agent G proposed last (lib/chat/chatConsent): presses that card's button or starts the offer. Assigned
+   *  below with agentTurnRef (it presses card handlers declared after send). true = the yes was used here. */
+  const consentRef = useRef<(text: string) => boolean>(() => false);
   /** chat_send while another tool was open: sent once the chat is on screen (the send path reads the mode it renders with). */
   const pendingLiveChatRef = useRef<string | null>(null);
   useEffect(() => {
@@ -6399,7 +6427,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
     return { clips: media.length, music: !!track };
   }, [setMode]);
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode; /** The frame the user named („9:16") — wins over the panel's for this one render. */ aspect?: ImgAspect; /** A photo from earlier in the thread the offer is built on (lib/chat/chatConsent latestThreadPhoto). */ refImage?: string; /** One picture, whatever the panel's count: the price the offer quoted was one image's. */ single?: boolean; /** The Live call sent these words (chat_send): a spoken „yes" never starts spending (PHASE 5). */ fromLive?: boolean; /** A Photographer / Interior designer render Agent G's card agreed in the chat (lib/chat/chatShoot). */ studio?: StudioWire }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
@@ -6461,6 +6489,43 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // plan on screen („მუსიკა 5 წამიდან დაიწყე"), a request missing its track / photo / video, an edit there is no route
     // for yet: each is answered here, in any tool, before a tool reads the words as its prompt. Everything else goes on.
     // A card's own confirm and a panel's explicit Generate are not re-read: the user already chose.
+    // ⚠️ A YES STARTS WHAT AGENT G PROPOSED (GG, Production 2026-10-16 18:21Z: „when the agent has clarified and the user
+    // agrees, generation must start — for every service"). „კი", „ok", „კი შექმენი სურათი 9:16 ფორმატის" right after Agent G's
+    // card, its plan card, or a reply that offered a quoted, priced prompt now does what that card's button does, or starts
+    // the offer itself (consentRef, below the cards' handlers). Only agreement counts (lib/chat/chatConsent): a yes that
+    // changes the job goes on to Agent G, which offers again. The Live call's words never start spending.
+    // THE PRODUCT AD ORDERED IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat). It needs the product's photo:
+    // Agent G's card offers the ad from the photo at the Product ad panel's length, frame, style and price, and its Create
+    // or a „კი" runs the panel's own job with that photo. Ordered without one, Agent G asks for it; the photo sent next
+    // (alone, or with words that order nothing else) makes the card. Any other message ends the question.
+    const offerProductAd = (words: string, photo: Media) => {
+      const credits = quoteCredits({ tool: 'product', seconds: productDuration });
+      const card: AgentGCardState = { kind: 'confirm', target: 'video', prompt: words, credits, madeIn: 'chat', single: true, product: { image: photo.dataUrl } };
+      gatePendingRef.current = null;
+      productAskRef.current = null;
+      trackQuoteShown('video.product-ad', credits, 'agent-card');
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', text: words, medias: [photo], modelMedias: [] },
+        { role: 'assistant', text: productAdOfferText({ seconds: productDuration, aspect: productAspect, style: productPreset, locale }), agentG: card },
+      ]);
+      setGateFrom(messages.length);
+      setAttachments([]);
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+    };
+    const productAskedAt = productAskRef.current;
+    productAskRef.current = null;
+    if (mode === 'chat' && !opts?.confirmed && productAskedAt !== null && Date.now() - productAskedAt < PRODUCT_PHOTO_WAIT_MS) {
+      const photo = attachments.length === 1 && isImage(attachments[0]!.mimeType) ? attachments[0]! : null;
+      if (photo && (!text || (!isGenerativeCommand(text) && !detectStudioIntent(text) && !routeAgentIntent(text) && !isConsentToStart(text)))) {
+        offerProductAd(text, photo);
+        return;
+      }
+    }
+    if (text && !opts?.confirmed && !opts?.explicit && !opts?.fromLive && isConsentToStart(text) && consentRef.current(text)) {
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      return;
+    }
     if (text && !opts?.confirmed && !opts?.explicit && agentTurnRef.current(text, viaVoice)) return;
     // Agent G takes the MP3 out of a link or one attached video/audio file (see startAgentAudio): only when its route is
     // open to this user and the message asks for exactly that (lib/agent/media/audioChat.audioExtractAsk). It goes first:
@@ -6535,32 +6600,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
       return null;
     })();
-    // ⚠️ A YES TO AGENT G'S OWN OFFER WENT BACK TO THE MODEL (Production 2026-10-16): the reply quoted an image prompt and
-    // asked "დავიწყოთ გენერაცია?", the user said "კარგია", and the model — which can start nothing — answered that the
-    // system was "already processing" it. A short yes right after such an offer now puts that prompt on Agent G's priced
-    // card (lib/chat/offeredPrompt); nothing renders until its Create tap.
-    if (text && !opts?.confirmed && !(gatePendingRef.current && Date.now() - gatePendingRef.current.at < 10 * 60_000) && isAffirmation(text)) {
-      const lastReply = [...messages].reverse().find((m) => m.role === 'assistant' && !m.notice);
-      const here = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode : null;
-      const offer = lastReply && !lastReply.agentG ? offeredPrompt(lastReply.text, here) : null;
-      // From the chat a confirmed card renders a picture or a track (as chatOrder does); a film starts from Video mode's storyboard.
-      if (offer && (inChat ? offer.mode !== 'video' : offer.mode === effMode)) {
-        gatePendingRef.current = null;
-        const credits = offer.mode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
-          : offer.mode === 'music' ? musicQuote({ duration: musicDuration }) : 0;
-        const card: AgentGCardState = { kind: 'confirm', target: offer.mode, prompt: offer.prompt, credits, ...(inChat ? { madeIn: 'chat' as const } : {}) };
-        trackQuoteShown(serviceForTool(offer.mode as ToolId), credits, 'agent-card');
-        setMessages((prev) => [
-          ...prev,
-          { role: 'user', text },
-          { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: offer.mode, prompt: offer.prompt, locale }), agentG: card },
-        ]);
-        setGateFrom(messages.length);
-        if (!isDesktop) setOptionsOpen(false);
-        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
-        return;
-      }
-    }
+    // A yes to Agent G's own offer (a quoted prompt) is read above, before Agent G's turn (consentRef).
     const gateMode: GateMode | null = focusGateMode ?? chatOrder;
     if (gateMode && text && !opts?.confirmed) {
       const pend = inChat ? chatPend : gatePendingRef.current;
@@ -6650,11 +6690,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // very send still built a VIDEO storyboard — the new mode only took effect on the next message.
     if (effMode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
       setOptionsOpen(false);
-      const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
+      const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
       const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
       const neg = imgNegative.trim();
-      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
-      if (imgCount > 1) runImageBatch(spec, imgCount);
+      // A ratio written in the words („… 9:16") is the frame the user asked for, whatever the picker was left on.
+      const aspect = opts?.aspect ?? aspectFromText(text, { ratioOnly: true }) ?? imgAspect;
+      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(opts?.studio ? { studio: opts.studio } : pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
+      if (imgCount > 1 && !opts?.single) runImageBatch(spec, imgCount);
       else runImageJob(text, ref, spec);
       setInput('');
       setAttachments([]);
@@ -6818,7 +6860,45 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // above do: the tool opens, nothing renders, nothing is charged. A request for a service that does not exist yet
     // („მუსიკა დამირემიქსე" — an AUDIO remix) is answered honestly with the nearest real one, never with the video
     // remix. lib/catalog/agentRoute decides; it returns null for everything the routers above and below already own.
-    const agentRoute = mode === 'chat' && text ? routeAgentIntent(text) : null;
+    // A card already agreed („კი", Create) carries its own target: it never routes back into the catalog.
+    const agentRoute = mode === 'chat' && text && !opts?.confirmed ? routeAgentIntent(text) : null;
+    // THE PHOTOGRAPHER AND THE INTERIOR DESIGNER RUN IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat; Agent G
+    // clarifies, the user agrees, generation starts). They used to open their panel and leave the photo in the composer.
+    // Agent G's card now says what it will make, from which photo, at one render's price; its Create or a „კი" renders it
+    // here through the image route with the studio (lib/chat/chatShoot), the panels' own charge and refund path.
+    const shootKind = agentRoute?.kind === 'open' ? shootKindForTool(agentRoute.tool) : null;
+    if (agentRoute?.kind === 'open' && shootKind && !attachments.some((a) => !isImage(a.mimeType))) {
+      const photos = attachments.filter((a) => isImage(a.mimeType));
+      // The photo attached now, else one sent earlier in this chat when the words point at it („ამ ფოტოდან").
+      const refImage = photos[0]?.dataUrl ?? (offerUsesReference(text) ? latestThreadPhoto(messages) : undefined);
+      const shootAspect = aspectFromText(text, { ratioOnly: true }) ?? undefined;
+      const credits = quoteCredits({ tool: 'image', count: 1 });
+      const card: AgentGCardState = {
+        kind: 'confirm', target: 'image', prompt: text, credits, madeIn: 'chat', single: true, studio: shootWire(shootKind),
+        ...(refImage ? { refImage } : {}), ...(shootAspect ? { aspect: shootAspect } : {}),
+      };
+      gatePendingRef.current = null;
+      trackQuoteShown(agentRoute.service.id, credits, 'agent-card');
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', text, ...(photos.length ? { medias: photos, modelMedias: [] } : {}) },
+        { role: 'assistant', text: shootOfferText({ kind: shootKind, prompt: text, withPhoto: !!refImage, locale }), agentG: card },
+      ]);
+      setGateFrom(messages.length);
+      if (photos.length) setAttachments([]);
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      return;
+    }
+    // The product ad (see offerProductAd above): its card with the photo attached now, or Agent G asks for one.
+    if (agentRoute?.kind === 'open' && agentRoute.tool === 'product' && !attachments.some((a) => !isImage(a.mimeType))) {
+      const photo = attachments.find((a) => isImage(a.mimeType));
+      if (photo) { offerProductAd(text, photo); return; }
+      productAskRef.current = Date.now();
+      gatePendingRef.current = null;
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: productAdPhotoAsk(locale) }]);
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      return;
+    }
     if (agentRoute) {
       const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
       const en = lang === 'en', ru = lang === 'ru';
@@ -6868,11 +6948,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // IMAGE — text→image; an attached image becomes an img2img ref (mirrors the Image panel).
       if (chatLane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
         setOptionsOpen(false);
-        const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
+        // The photo the offer is built on: one attached now, else the one from earlier in the thread it named.
+        const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
         const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
         const neg = imgNegative.trim();
-        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
-        if (imgCount > 1) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
+        const aspect = opts?.aspect ?? aspectFromText(text, { ratioOnly: true }) ?? imgAspect;
+        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(opts?.studio ? { studio: opts.studio } : pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
+        if (imgCount > 1 && !opts?.single) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
         setInput(''); setAttachments([]); stopDictationEcho();
         return;
       }
@@ -7385,14 +7467,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // brief fails — the exact reason a photo + film brief used to fall through to plain chat and get a
     // "I'll hand this to the Video Studio…" REPLY instead of an actual render.
     const chatPhotoVideoBrief = attachments.some((a) => isImage(a.mimeType)) && mentionsVideoDeliverable(text);
-    if (mode === 'chat' && text && (chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || (chatIntent?.intent === 'video_generation' && chatIntent.confidence >= 0.7))))) {
+    // A yes to Agent G's film offer: its quoted prompt is the brief, whatever verb it starts with (consentRef).
+    const agreedFilm = opts?.confirmed === true && opts.target === 'video';
+    if (mode === 'chat' && text && (agreedFilm || chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || chatLane === 'video_generation')))) {
       const musicVideo = isMusicVideoIntent(text);
       setMode('video');
       setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
-      const routeOrientation = musicVideo ? 'vertical' : videoOrientation;
+      const routeOrientation = opts?.aspect ? orientationForAspect(opts.aspect) : musicVideo ? 'vertical' : videoOrientation;
       const routeRefs = [
         ...videoCharacterRefs,
         ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
+        ...(opts?.refImage && !attachments.some((a) => isImage(a.mimeType)) ? [opts.refImage] : []),
       ];
       const routeNote = locale === 'en'
         ? '🎬 Opening Video Studio and planning your scenes — review the storyboard, then tap Generate Video.'
@@ -7413,7 +7498,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
+  }, [productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -8133,7 +8218,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
     };
   };
-  liveChatSendRef.current = (text: string) => { void send({ promptOverride: text }); };
+  liveChatSendRef.current = (text: string) => { void send({ promptOverride: text, fromLive: true }); };
   // What a call's ask_agent_g hands Agent G: the checked stored paths of the user's files (composer first, else the
   // newest turn that carried files) — the same references a typed request sends.
   setLiveAttachedRefs(() => {
@@ -8688,9 +8773,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     gatePendingRef.current = null;
     setGateFrom(null);
     resolveGateCard(idx);
+    if (card.product) {
+      trackGenerationConfirmed('video.product-ad', 'agent-card', card.credits || null);
+      generateProductAd(undefined, card.product.image);
+      return;
+    }
     trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
-    void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}) });
-  }, [resolveGateCard, send, videoMode]);
+    void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(card.aspect ? { aspect: card.aspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}), ...(card.studio ? { studio: card.studio } : {}) });
+  }, [resolveGateCard, send, videoMode, generateProductAd]);
   const editGate = useCallback((idx: number) => {
     const card = messagesRef.current[idx]?.agentG;
     if (!card || card.done) return;
@@ -9100,6 +9190,86 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Reassigned every render (after the card handlers it calls, declared after send), so it reads the screen as it is.
   // The snapshot is what the user sees: Agent G's cards, the tray's jobs (a card's own job is its card's), the reply or
   // the render in flight, the last reply, the last result. Nothing here spends: a note, a stop, or a fresh plan card.
+  // ── A YES STARTS WHAT AGENT G PROPOSED (GG, Production 2026-10-16 18:21Z) ──────────────────────────────────────────
+  // send() asks this first when the message is agreement (lib/chat/chatConsent isConsentToStart). The LAST thing Agent G
+  // said decides what the yes is for: its card (the card's own button), its plan card (Start), or a reply that offered a
+  // quoted prompt — started here when the reply quoted the price it really costs, else shown on Agent G's priced card,
+  // whose Create or next yes starts it. A yes that names another medium is not a yes to this. true = handled.
+  consentRef.current = (text: string): boolean => {
+    let idx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!;
+      if (m.role === 'assistant' && !m.notice) { idx = i; break; }
+    }
+    const last = idx >= 0 ? messages[idx] : undefined;
+    if (!last) return false;
+    const said = namedMedium(text);
+    const aspect = aspectFromText(text) ?? undefined;
+    // A visitor without an account is asked to sign in (as for any paid order); the words are kept for the way back.
+    const guestStop = (): boolean => {
+      if (typeof document === 'undefined' || document.documentElement.dataset.authed !== '0') return false;
+      stashPendingPrompt(text, activeToolRef.current);
+      window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+      return true;
+    };
+    // 1) Agent G's confirm / clarify card, still live: the yes is its Create.
+    const card = last.agentG;
+    if (card) {
+      const live = !card.done && (card.madeIn === 'chat' ? mode === 'chat' : (mode === 'lipsync' ? 'avatar' : mode) === card.target);
+      if (!live || (said && said !== card.target)) return false;
+      if (guestStop()) return true;
+      const cardAspect = aspect ?? card.aspect;
+      gatePendingRef.current = null;
+      setGateFrom(null);
+      resolveGateCard(idx);
+      if (card.product) {
+        trackGenerationConfirmed('video.product-ad', 'agent-card', card.credits || null);
+        generateProductAd(undefined, card.product.image);
+        return true;
+      }
+      trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
+      void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(cardAspect ? { aspect: cardAspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}), ...(card.studio ? { studio: card.studio } : {}) });
+      return true;
+    }
+    // 2) The priced question before a charged edit of an attached video, and Agent G's plan cards: Create / Start.
+    if (last.id && mode === 'chat') {
+      if (last.remixAsk && !last.remixAsk.done && (!said || said === 'video')) { void confirmChatRemix(last.id); return true; }
+      if (last.montage?.phase === 'quoted') { void confirmAgentMontage(last.id); return true; }
+      if (last.audioJob?.phase === 'quoted') { void confirmAgentAudio(last.id); return true; }
+      if (last.editJob?.phase === 'quoted') { void confirmAgentEdit(last.id); return true; }
+      if (last.runJob?.phase === 'planned') { void confirmAgentRun(last.id); return true; }
+    }
+    // 3) A reply that offered a quoted prompt (lib/chat/offeredPrompt).
+    const here = mode === 'image' || mode === 'video' || mode === 'music' ? mode : null;
+    const offer = offeredPrompt(last.text, here);
+    if (!offer || (said && said !== offer.mode) || (mode !== 'chat' && offer.mode !== mode)) return false;
+    if (guestStop()) return true;
+    const inChat = mode === 'chat';
+    const offerAspect = aspect ?? aspectFromText(offer.prompt, { ratioOnly: true }) ?? aspectFromText(last.text, { ratioOnly: true }) ?? undefined;
+    // „the man in the reference image": the photo the user attached earlier in this chat, not a new upload.
+    const refImage = (offer.mode === 'image' || offer.mode === 'video') && offerUsesReference(last.text) ? latestThreadPhoto(messages) : undefined;
+    // What it costs: ONE picture (the price an offer quotes), a track at the Music panel's length. A film is priced on its storyboard.
+    const credits = offer.mode === 'image' ? quoteCredits({ tool: 'image', count: 1 }) : offer.mode === 'music' ? musicQuote({ duration: musicDuration }) : 0;
+    const extra = { ...(offerAspect ? { aspect: offerAspect } : {}), ...(refImage ? { refImage } : {}), single: true as const };
+    if (offer.mode === 'video' || offer.credits === credits) {
+      trackGenerationConfirmed(serviceForTool(offer.mode as ToolId, { videoMode }), 'composer', credits || null);
+      void send({ promptOverride: offer.prompt, confirmed: true, ...(inChat ? { target: offer.mode } : {}), ...extra });
+      return true;
+    }
+    // The reply named no price, or not the real one: Agent G's card shows the real one; its Create or the next yes starts it.
+    gatePendingRef.current = null;
+    const next: AgentGCardState = { kind: 'confirm', target: offer.mode, prompt: offer.prompt, credits, ...(inChat ? { madeIn: 'chat' as const } : {}), ...extra };
+    trackQuoteShown(serviceForTool(offer.mode as ToolId), credits, 'agent-card');
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text },
+      { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: offer.mode, prompt: offer.prompt, locale }), agentG: next },
+    ]);
+    setGateFrom(messages.length);
+    if (!isDesktop) setOptionsOpen(false);
+    return true;
+  };
+
   agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {
     const msgs = messagesRef.current;
     const cards: ThreadCard[] = [];
@@ -10389,10 +10559,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* IMAGE — the Create screen (components/studio/create/ImageCreatePanel): a VIEW over the state above. Generation, the
             queue, billing and the template-pick semantics stay in this file; the screen only draws them. Script → Storyboard is
             slotted into its Advanced section below, unchanged. */}
-        {mode === 'image' && imageStudioAccess && (
-          <button type="button" className="mb-3 min-h-[44px] w-full rounded-lg border border-white/25 bg-black px-3 py-2 text-base text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#338FE8]"
-            onClick={() => { setImageWorkspaceOpen(x => !x); if (!isDesktop) setOptionsOpen(false); }}>
-            {imageCopy(locale).t(imageWorkspace ? 'close' : 'open')}
+        {/* The open studio's way back, in the desktop panel (on a phone the sheet is shut while the studio is open). The Image
+            tool has no way IN: the studio opens only from its own link (see imageWorkspaceOpen). */}
+        {imageWorkspace && (
+          <button type="button" data-testid="image-studio-close" onClick={() => setImageWorkspaceOpen(false)}
+            className="flex min-h-[52px] w-full touch-manipulation items-center gap-3 rounded-2xl bg-app-elevated/40 px-4 text-left text-[15px] font-medium text-app-text ring-1 ring-app-border/10 transition-colors hover:bg-app-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+            <X size={18} aria-hidden="true" className="shrink-0 text-app-muted" />{imageCopy(locale).t('close')}
           </button>
         )}
         {mode === 'image' && !imageWorkspace && (
@@ -11738,7 +11910,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {imageWorkspace && imageStudioAccess && (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
           <ImageWorkspace key={imageStudioAccess.userId} access={imageStudioAccess} locale={locale} initialPrompt={input}
-            onClose={() => setImageWorkspaceOpen(false)} />
+            onClose={() => { setImageWorkspaceOpen(false); if (!isDesktop) setOptionsOpen(true); }} />
         </div>
       )}
       {imageDesk && imageDeskActions && (
@@ -12387,7 +12559,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       )}
       {/* Credit-deduction toast — dark card, green check, 3 lines (done · spent · balance). */}
       {creditToast && (() => {
-        const creditsWord = locale === 'en' ? 'credits' : locale === 'ru' ? 'кред.' : 'კრედიტი';
         return (
           <div
             className="pointer-events-none fixed inset-x-0 z-[111] mx-auto flex w-fit max-w-[88vw] animate-[fadeIn_0.2s_ease-out] flex-col gap-1 rounded-2xl bg-app-elevated px-4 py-3 text-[13px] font-semibold tabular-nums text-app-text shadow-lg ring-1 ring-app-accent/30"
@@ -12396,9 +12567,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           >
             <span className="flex items-center gap-1.5"><Check size={15} className="text-emerald-400" /> {locale === 'en' ? 'Generation complete' : locale === 'ru' ? 'Генерация завершена' : 'გენერაცია დასრულდა'}</span>
             {/* Line icons, not 💳/💰 (docs/DESIGN.md bans emoji as UI) — this toast follows every paid generation. */}
-            <span className="flex items-center gap-1.5 text-app-muted"><CreditCard size={14} aria-hidden="true" /> −{creditToast.credits} {creditsWord} ({formatWalletBalance(creditsToGel(creditToast.credits), locale)})</span>
-            {creditToast.balanceGel !== null && (
-              <span className="flex items-center gap-1.5 text-app-muted"><Wallet size={14} aria-hidden="true" /> {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{gelToCredits(creditToast.balanceGel)} {creditsWord}</span> ({formatWalletBalance(creditToast.balanceGel, locale)})</span>
+            <span className="flex items-center gap-1.5 text-app-muted"><CreditCard size={14} aria-hidden="true" /> −{creditsWithUsd(creditToast.credits, locale)}</span>
+            {creditToast.balanceCredits !== null && (
+              <span className="flex items-center gap-1.5 text-app-muted"><Wallet size={14} aria-hidden="true" /> {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{creditsWithUsd(creditToast.balanceCredits, locale)}</span></span>
             )}
           </div>
         );

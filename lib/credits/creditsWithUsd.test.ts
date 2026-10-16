@@ -1,0 +1,34 @@
+/**
+ * The spend toast's two lines (−2 credits, balance N credits) — GG 2026-10-16: the interior design toast read
+ * "ბალანსი 8560 კრედიტი ($317.04)" for a wallet of 856 credits, because the credit balance was converted as if it
+ * were GEL. The toast now formats both lines with creditsWithUsd.
+ */
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { creditsWithUsd, creditCostFor } from './pricing';
+
+describe('creditsWithUsd', () => {
+  it('shows the wallet balance in credits with its real dollar value, not ten times it', () => {
+    expect(creditsWithUsd(856)).toBe('856 კრედიტი ($31.70)');
+    expect(creditsWithUsd(856, 'en')).toBe('856 credits ($31.70)');
+    expect(creditsWithUsd(856, 'ru')).toBe('856 кред. ($31.70)');
+  });
+
+  it('prices one image render the way the route charges it', () => {
+    expect(creditsWithUsd(creditCostFor('image'))).toBe('2 კრედიტი ($0.07)');
+  });
+
+  it('never prints NaN or a negative balance', () => {
+    expect(creditsWithUsd(Number.NaN)).toBe('0 კრედიტი ($0.00)');
+    expect(creditsWithUsd(null)).toBe('0 კრედიტი ($0.00)');
+    expect(creditsWithUsd(-5)).toBe('0 კრედიტი ($0.00)');
+  });
+
+  it('is what the spend toast renders, for the charge and for the balance', () => {
+    const src = readFileSync(join(process.cwd(), 'components/studio/OmniStudio.tsx'), 'utf8');
+    expect(src).toContain('creditsWithUsd(creditToast.credits, locale)');
+    expect(src).toContain('creditsWithUsd(creditToast.balanceCredits, locale)');
+    expect(src).not.toMatch(/gelToCredits\(creditToast/);
+    expect(src).not.toMatch(/formatWalletBalance\(creditToast/);
+  });
+});

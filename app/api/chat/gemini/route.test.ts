@@ -31,7 +31,7 @@ jest.mock('../../../../lib/ai/google/chatStream', () => ({
 
 jest.mock('../../../../lib/services/billing/chatBudget', () => {
   const actual = jest.requireActual('../../../../lib/services/billing/chatBudget');
-  return { ...actual, chatBudgetAllows: jest.fn(async () => true), bookChatUsage: jest.fn(async () => undefined) };
+  return { ...actual, chatBudgetRefusal: jest.fn(async () => null), bookChatUsage: jest.fn(async () => undefined) };
 });
 
 jest.mock('../../../../lib/api/rate-limit', () => {
@@ -71,7 +71,8 @@ jest.mock('ai', () => ({ streamText: jest.fn() }));
 import { NextRequest } from 'next/server';
 import { POST, HEARTBEAT_MS, TURN_DEADLINE_MS, maxDuration } from './route';
 import { streamGeminiChat, type StreamGeminiChatInput, type StreamGeminiChatResult } from '../../../../lib/ai/google/chatStream';
-import { chatBudgetAllows, bookChatUsage } from '../../../../lib/services/billing/chatBudget';
+import { chatBudgetRefusal, bookChatUsage } from '../../../../lib/services/billing/chatBudget';
+import { budgetRefusalMessage } from '../../../../lib/services/billing/budgetMessage';
 import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, refundRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { embed } from '../../../../lib/memory/embed';
 import { buildProfilePreamble } from '../../../../lib/chat/userMemory';
@@ -91,7 +92,8 @@ import {
 
 const USER_ID = '6f1c2b3a-1111-4222-8333-444455556666';
 const OUR_OUTAGE_KA = '⚠️ AI სერვისი დროებით მიუწვდომელია ჩვენი მხრიდან. სცადე ცოტა ხანში.';
-const BUDGET_NOTICE_KA = 'ბოდიში — პლატფორმის დღევანდელი AI ბიუჯეტი ამოიწურა. სცადეთ ცოტა ხანში.';
+/** The refusal names the limit and when it lifts (lib/services/billing/budgetMessage). */
+const BUDGET_NOTICE_KA = budgetRefusalMessage('ka', 'daily_limit');
 const SAFETY_EN = '⚠️ This request was blocked by safety filters. Please rephrase and try again.';
 
 const mockStream = streamGeminiChat as jest.MockedFunction<typeof streamGeminiChat>;
@@ -189,7 +191,7 @@ describe('sign-in', () => {
       message: 'ჩატის გამოსაყენებლად შედი ანგარიშზე.',
     });
     expect(mockStream).not.toHaveBeenCalled();
-    expect(chatBudgetAllows).not.toHaveBeenCalled();
+    expect(chatBudgetRefusal).not.toHaveBeenCalled();
     expect(checkRateLimitByKey).not.toHaveBeenCalled();
     expect(embed).not.toHaveBeenCalled();
     expect(bookChatUsage).not.toHaveBeenCalled();
@@ -273,7 +275,7 @@ describe('guest chat', () => {
     expect(authNotice(frames)).toEqual({ code: 'auth_required', retryable: false, message: GUEST_NOTICE.media.ka, lang: 'ka' });
     expect(frames[frames.length - 1]).toBe('DONE');
     expect(mockStream).not.toHaveBeenCalled();
-    expect(chatBudgetAllows).not.toHaveBeenCalled();
+    expect(chatBudgetRefusal).not.toHaveBeenCalled();
     expect(checkRateLimitByKey).not.toHaveBeenCalled();
   });
 
@@ -451,7 +453,7 @@ describe('provider failures', () => {
 
 describe('in-stream refusals', () => {
   test('budget exhausted → the old in-stream refusal (+ a budget {error}); the model is never called', async () => {
-    (chatBudgetAllows as jest.Mock).mockResolvedValueOnce(false);
+    (chatBudgetRefusal as jest.Mock).mockResolvedValueOnce('daily_limit');
     const res = await POST(post(userTurn('გამარჯობა')));
     expect(res.status).toBe(200);
     expect(await framesOf(res)).toEqual([
@@ -466,7 +468,7 @@ describe('in-stream refusals', () => {
 
   test('the budget estimate covers the platform prompt and the history, not just the last message', async () => {
     await (await POST(post(userTurn('short')))).text();
-    const estimateText = (chatBudgetAllows as jest.Mock).mock.calls[0][0] as string;
+    const estimateText = (chatBudgetRefusal as jest.Mock).mock.calls[0][0] as string;
     expect(estimateText).toContain('short');
     expect(estimateText).toContain('Agent G');
   });
@@ -745,7 +747,7 @@ describe('chat modes', () => {
     // A Pro turn draws on BOTH daily buckets, CHAT_USER first.
     expect((checkRateLimitByKey as jest.Mock).mock.calls).toEqual([[USER_ID, RATE_LIMITS.CHAT_USER], [...PRO_CALL]]);
     // Pre-checked at the Pro rate, not the flat Flash one.
-    expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.1-pro-preview');
+    expect((chatBudgetRefusal as jest.Mock).mock.calls[0][1]).toBe('gemini-3.1-pro-preview');
     expect(metaFrames(frames)[0]!.meta).toMatchObject({ mode: 'pro', fallback: false });
     expect(metaFrames(frames)[0]!.meta).not.toHaveProperty('requestedMode');
   });
@@ -758,7 +760,7 @@ describe('chat modes', () => {
     expect(config.maxOutputTokens).toBe(32768);
     expect(config.temperature).toBeUndefined();
     expect(proChecked()).toBe(false); // not a Pro turn — no Pro allowance spent
-    expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.8-flash');
+    expect((chatBudgetRefusal as jest.Mock).mock.calls[0][1]).toBe('gemini-3.8-flash');
   });
 
   test("mode 'lite' is the Flash-Lite chain, thinking low, persona temperature kept", async () => {
@@ -766,7 +768,7 @@ describe('chat modes', () => {
     const { models, config } = lastCall();
     expect(models).toEqual([...DEFAULT_CHAT_MODELS.lite]);
     expect(config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.7, maxOutputTokens: 16384 });
-    expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.1-flash-lite');
+    expect((chatBudgetRefusal as jest.Mock).mock.calls[0][1]).toBe('gemini-3.1-flash-lite');
   });
 
   test("the mode's thinking replaces the persona's; Fast keeps the persona's temperature, Pro drops it", async () => {
@@ -861,7 +863,7 @@ describe('chat modes', () => {
     const input = lastCall();
     expect(input.models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
     expect(input.config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.7, maxOutputTokens: 16384 });
-    expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.8-flash');
+    expect((chatBudgetRefusal as jest.Mock).mock.calls[0][1]).toBe('gemini-3.8-flash');
     const downgrade = { mode: 'fast', fallback: false, requestedMode: 'pro', reason: 'pro_cap', resetAt: '2026-10-01T08:15:00.000Z' };
     expect(metaFrames(frames).map((f) => f.meta)).toEqual([
       { provider: 'gemini', model: 'gemini-3.8-flash', ...downgrade },
@@ -921,7 +923,7 @@ describe('chat modes', () => {
   });
 
   test('the budget refusal frame is not dressed up as an answer', async () => {
-    (chatBudgetAllows as jest.Mock).mockResolvedValueOnce(false);
+    (chatBudgetRefusal as jest.Mock).mockResolvedValueOnce('daily_limit');
     const frames = await framesOf(await POST(post({ ...userTurn('hi'), mode: 'pro' })));
     expect(metaFrames(frames)).toEqual([{ meta: { provider: 'budget', model: 'none' } }]);
   });

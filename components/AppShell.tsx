@@ -6,6 +6,7 @@ import { ClientErrorBoundary } from './ClientErrorBoundary';
 import { PageEnvironment } from './ui/PageEnvironment';
 import CookieConsent from './CookieConsent';
 import PresenceHeartbeat from './presence/PresenceHeartbeat';
+import { createUpdateReloader } from '@/lib/pwa/updateReload';
 
 const SKIP_LABEL = { ka: 'მთავარ შინაარსზე გადასვლა', en: 'Skip to main content', ru: 'Перейти к основному содержимому' } as const;
 
@@ -94,13 +95,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     let swUpdateCleanup: (() => void) | null = null;
     if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
       const hadController = !!navigator.serviceWorker.controller;
-      let didReload = false;
+      // ⚠️ NEVER UNDER THE USER'S HANDS (lib/pwa/updateReload): a deploy's worker takes over every open tab, and the
+      // instant reload wiped a half-filled Video panel mid-test (2026-10-16). Work in progress waits for a quiet moment.
+      const reloader = createUpdateReloader(document, window, () => window.location.reload());
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         // Only auto-reload when a NEW worker takes over an existing client.
         // First-time installs (no previous controller) shouldn't reload.
-        if (didReload || !hadController) return;
-        didReload = true;
-        window.location.reload();
+        if (!hadController) return;
+        reloader.onTakeover();
       });
 
       // RELIABLE auto-update. The SW already skipWaiting()+clients.claim()s, but the
@@ -118,6 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.addEventListener('focus', checkForUpdate);
       const updateTimer = window.setInterval(checkForUpdate, 300_000); // every 5 min while open
       swUpdateCleanup = () => {
+        reloader.dispose();
         document.removeEventListener('visibilitychange', onVisible);
         window.removeEventListener('focus', checkForUpdate);
         window.clearInterval(updateTimer);

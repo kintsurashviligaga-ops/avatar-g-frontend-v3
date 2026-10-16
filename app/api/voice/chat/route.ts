@@ -25,7 +25,8 @@ import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
-import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
+import { chatBudgetRefusal } from '@/lib/services/billing/chatBudget';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, detectSpokenLocale, type VoiceLocale, type VoiceTurn } from '@/lib/voice/voicePrompt';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { joinMemory, newestSavedFacts, savedFactsBlock } from '@/lib/memory/context';
@@ -65,12 +66,6 @@ const SPEECH_CHAR_CAP = 600;
 
 /** The pre-profile voice temperature, kept for "no persona" so wiring profiles changes nothing for it. */
 const DEFAULT_VOICE_TEMPERATURE = 0.6;
-
-const BUDGET_REPLY: Record<VoiceLocale, string> = {
-  ka: 'ბოდიში — პლატფორმის დღევანდელი AI ბიუჯეტი ამოიწურა. სცადეთ ცოტა ხანში.',
-  en: "Sorry — the platform's AI budget for this period is exhausted. Please try again later.",
-  ru: 'Извините — лимит ИИ платформы на этот период исчерпан. Попробуйте позже.',
-};
 
 const MALE_VOICES: ReadonlySet<LiveVoice> = new Set<LiveVoice>(['Charon', 'Puck']);
 
@@ -150,10 +145,10 @@ export async function POST(req: NextRequest) {
     // The memory read and the budget check are independent round-trips: run them TOGETHER (a voice turn waits on
     // every millisecond before the model starts). The budget estimate leaves out the memory preamble — a few dozen
     // tokens, and the guard fails open anyway.
-    const [facts, saved, budgetOk] = await Promise.all([
+    const [facts, saved, budgetRefused] = await Promise.all([
       getUserProfileFacts(supabase, user.id).catch(() => null),
       newestSavedFacts(supabase, user.id),
-      chatBudgetAllows(`${effectiveSystem} ${prompt}`),
+      chatBudgetRefusal(`${effectiveSystem} ${prompt}`),
     ]);
 
     // VECTOR 3 — inject the user's cross-chat memory into the VOICE persona (+ extract facts), so Agent G is
@@ -170,8 +165,8 @@ export async function POST(req: NextRequest) {
 
     // An exhausted platform budget is said out loud. (llmText re-checks it; the guard's read is cached, so the
     // second check is free.) Fails OPEN like every chatBudget call.
-    if (!budgetOk) {
-      return NextResponse.json({ reply: BUDGET_REPLY[locale], locale, gender, voice, code: 'budget' });
+    if (budgetRefused) {
+      return NextResponse.json({ reply: budgetRefusalMessage(locale, budgetRefused), locale, gender, voice, code: 'budget', budgetReason: budgetRefused });
     }
 
     const raw = await llmText({

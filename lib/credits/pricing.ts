@@ -84,6 +84,19 @@ export function gelToCredits(gel: number): number {
 }
 
 /**
+ * A CREDIT amount with its dollar value: `856 კრედიტი ($31.70)`.
+ *
+ * ⚠️ The wallet (`/api/credits/balance` → `profiles.credits_balance`) is already in CREDITS. The spend toast passed it
+ * through gelToCredits + formatWalletBalance as if it were GEL, so 856 credits read "8560 კრედიტი ($317.04)" — ten
+ * times the real balance (GG, 2026-10-16). One helper for both toast lines keeps the unit in one place.
+ */
+export function creditsWithUsd(credits: number | null | undefined, locale?: string): string {
+  const n = typeof credits === 'number' && Number.isFinite(credits) ? Math.max(0, Math.round(credits)) : 0;
+  const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кред.' : 'კრედიტი';
+  return `${n} ${unit} ($${(creditsToGel(n) / GEL_PER_USD).toFixed(2)})`;
+}
+
+/**
  * Top-up packages shown in the Credits modal. The amounts match the Stripe products
  * (9 / 29 / 89 ₾). `credits` is the FLAT 10-per-GEL value (1 credit = 0.10 ₾) — it MUST
  * equal what the wallet actually delivers (the Stripe wallet top-up credits the literal
