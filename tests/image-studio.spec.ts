@@ -62,9 +62,17 @@ async function setup(page: Page, locale: string) {
   await page.goto('/' + locale + '/dashboard', { waitUntil: 'load' });
   await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 60000 });
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
+  const workspace = await openStudio(page);
+  return { workspace, requests, jobs, assets };
+}
+/** The Image tool opens on its Create screen; the studio opens only from its row under Advanced (GG's iPhone, 2026-10-16). */
+async function openStudio(page: Page) {
+  await expect(page.getByTestId('image-create-panel')).toBeVisible({ timeout: 20000 });
+  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('image-studio-open').click();
   const workspace = page.getByTestId('image-workspace');
   await expect(workspace).toBeVisible({ timeout: 20000 });
-  return { workspace, requests, jobs, assets };
+  return workspace;
 }
 
 for (const locale of ['en', 'ka', 'ru']) {
@@ -90,13 +98,14 @@ for (const locale of ['en', 'ka', 'ru']) {
     await page.reload({ waitUntil: 'load' });
     await expect(page.getByTestId('composer-input')).toBeAttached();
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
+    await openStudio(page);
     await expect(page.getByTestId('image-job')).toContainText(c.stage('generating'));
     expect(requests.filter(x => x.path === '/api/image/jobs')).toHaveLength(1);
     await page.getByTestId('image-workspace').getByRole('button', { name: c.t('cancel'), exact: true }).click();
     await expect(page.getByTestId('image-job')).toContainText(c.stage('cancelled'));
     await page.getByTestId('image-workspace').getByRole('button', { name: c.t('close'), exact: true }).click();
-    // Existing Image Studio remains mounted as the selectable legacy workflow.
-    await expect(page.getByTestId('image-create-panel')).toBeAttached();
+    // Close returns to the Image tool's Create screen.
+    await expect(page.getByTestId('image-create-panel')).toBeVisible();
   });
 }
 test('four quoted variants start sequentially; completed tiles never start again', async ({ page }) => {

@@ -2171,7 +2171,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // on another tool (initialTool) is selected by the deep-link effect through the same path the sidebar uses.
   const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical' | 'photo'>('chat');
   const imageStudioAccess = useImageStudioAccess(mode === 'image');
-  const [imageWorkspaceOpen, setImageWorkspaceOpen] = useState(true);
+  // ⚠️ THE IMAGE TOOL SHOWED TWO SCREENS, ONE AFTER THE OTHER (GG's iPhone, 2026-10-16 19:36Z: „ორმაგად აჩენს… იჭედება").
+  // Choosing Image opens its Create sheet at once; the admin-only Image Studio used to open by default, so about a second
+  // later — when /api/image/models answered — it swapped the sheet for a second, different form under the user's finger,
+  // with no chat and no composer. The tool now has ONE screen, the Create sheet; the studio opens only when asked for
+  // (its row under „დამატებით"), and nothing arriving later changes the screen.
+  const [imageWorkspaceOpen, setImageWorkspaceOpen] = useState(false);
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -10494,10 +10499,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* IMAGE — the Create screen (components/studio/create/ImageCreatePanel): a VIEW over the state above. Generation, the
             queue, billing and the template-pick semantics stay in this file; the screen only draws them. Script → Storyboard is
             slotted into its Advanced section below, unchanged. */}
-        {mode === 'image' && imageStudioAccess && (
-          <button type="button" className="mb-3 min-h-[44px] w-full rounded-lg border border-white/25 bg-black px-3 py-2 text-base text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#338FE8]"
-            onClick={() => { setImageWorkspaceOpen(x => !x); if (!isDesktop) setOptionsOpen(false); }}>
-            {imageCopy(locale).t(imageWorkspace ? 'close' : 'open')}
+        {/* The open studio's way back, in the desktop panel (on a phone the sheet is shut while the studio is open). The way IN
+            is a row in the Create screen's „დამატებით" — never above its header, and never opened by itself. */}
+        {imageWorkspace && (
+          <button type="button" data-testid="image-studio-close" onClick={() => setImageWorkspaceOpen(false)}
+            className="flex min-h-[52px] w-full touch-manipulation items-center gap-3 rounded-2xl bg-app-elevated/40 px-4 text-left text-[15px] font-medium text-app-text ring-1 ring-app-border/10 transition-colors hover:bg-app-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+            <X size={18} aria-hidden="true" className="shrink-0 text-app-muted" />{imageCopy(locale).t('close')}
           </button>
         )}
         {mode === 'image' && !imageWorkspace && (
@@ -10537,6 +10544,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // The one top-up the studio has: ChatChrome owns CreditsModal and opens it on this event.
             onTopUp={() => window.dispatchEvent(new CustomEvent('myavatar:open-credits'))}
             advancedExtra={(
+            <>
+            {imageStudioAccess && (
+              <button type="button" data-testid="image-studio-open"
+                onClick={() => { setImageWorkspaceOpen(true); if (!isDesktop) setOptionsOpen(false); }}
+                style={{ minHeight: TAP_MIN_PX }}
+                className="flex w-full touch-manipulation items-center justify-between gap-3 rounded-xl border border-app-border/15 bg-app-elevated/40 px-3.5 py-2 text-left text-[12.5px] font-semibold text-app-text shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition-colors hover:bg-app-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+                <span className="min-w-0 truncate">{imageCopy(locale).t('open')}</span>
+                <ChevronDown size={15} aria-hidden="true" className="shrink-0 -rotate-90 text-app-muted" />
+              </button>
+            )}
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <button type="button" onClick={() => setImgBoardOpen((v) => !v)} aria-expanded={imgBoardOpen}
                 style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
@@ -10601,6 +10618,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 </div>
               )}
             </div>
+            </>
             )}
           />
         )}
@@ -11843,7 +11861,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {imageWorkspace && imageStudioAccess && (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
           <ImageWorkspace key={imageStudioAccess.userId} access={imageStudioAccess} locale={locale} initialPrompt={input}
-            onClose={() => setImageWorkspaceOpen(false)} />
+            onClose={() => { setImageWorkspaceOpen(false); if (!isDesktop) setOptionsOpen(true); }} />
         </div>
       )}
       {imageDesk && imageDeskActions && (
