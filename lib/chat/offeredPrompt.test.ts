@@ -35,3 +35,30 @@ describe('offeredPrompt — a yes to Agent G\'s own quoted prompt opens the tool
     expect(offeredPrompt('დავიწყოთ სურათის გენერაცია?')).toBeNull(); // no quoted prompt
   });
 });
+
+describe('offeredPrompt — the offers a yes now starts (GG, Production 2026-10-16 18:21Z)', () => {
+  // The reply GG got to „კი შექმენი სურათი 9:16 ფორმატის" (shortened in the middle): a quoted prompt and its price, no question.
+  const GG_REPLY = 'სურათის შესაქმნელად გახსენი ხელსაწყო „სურათი“, მიამაგრე ეს ფოტო და აირჩიე 9:16.\n\nპრომპტის ველში ჩასვი:\n\n„Vertical 9:16 professional portrait maintaining the exact face and features of the man in the reference image, solid matte black background, studio lighting“\n\n(ფასი: 2 კრედიტი / 0.20 ₾).';
+
+  it('a quoted prompt with its price after it is an offer, and carries that price', () => {
+    const o = offeredPrompt(GG_REPLY);
+    expect(o?.mode).toBe('image');
+    expect(o?.prompt.startsWith('Vertical 9:16 professional portrait')).toBe(true);
+    expect(o?.credits).toBe(2);
+  });
+
+  it('„დავიწყო?" — the question the chat prompt asks for — ends an offer, and a price before the prompt still counts', () => {
+    const o = offeredPrompt('სურათი 9:16 ფორმატში, ფასი 2 კრედიტი: „a man in a tailored black suit, studio light, photorealistic“ დავიწყო?');
+    expect(o).toEqual({ mode: 'image', prompt: 'a man in a tailored black suit, studio light, photorealistic', credits: 2 });
+    expect(offeredPrompt('Song offer: "warm acoustic ballad about the sea at night" — 3 credits. Shall I start?')?.mode).toBe('music');
+    expect(offeredPrompt('Фильм: «дрон пролетает над старым Тбилиси на рассвете». Запускаю?')?.mode).toBe('video');
+  });
+
+  it('„do you want it?" endings are offers too', () => {
+    expect(offeredPrompt('ასეთ სურათს გავაკეთებ: „a red fox in deep snow at dawn, photorealistic“. გინდა?')?.mode).toBe('image');
+  });
+
+  it('a price inside the prompt is not the offer\'s price', () => {
+    expect(offeredPrompt('Poster text: "Sale — 50 credits off every lamp this week". What colours do you like?')).toBeNull();
+  });
+});

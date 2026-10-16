@@ -158,6 +158,7 @@ import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
+import { aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference, orientationForAspect } from '@/lib/chat/chatConsent';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
@@ -5618,6 +5619,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * after the card handlers it calls (they are declared after send). true = the message was handled here.
    */
   const agentTurnRef = useRef<(text: string, viaVoice: boolean) => boolean>(() => false);
+  /** A yes to what Agent G proposed last (lib/chat/chatConsent): presses that card's button or starts the offer. Assigned
+   *  below with agentTurnRef (it presses card handlers declared after send). true = the yes was used here. */
+  const consentRef = useRef<(text: string) => boolean>(() => false);
   /** chat_send while another tool was open: sent once the chat is on screen (the send path reads the mode it renders with). */
   const pendingLiveChatRef = useRef<string | null>(null);
   useEffect(() => {
@@ -6404,7 +6408,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
     return { clips: media.length, music: !!track };
   }, [setMode]);
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode; /** The frame the user named („9:16") — wins over the panel's for this one render. */ aspect?: ImgAspect; /** A photo from earlier in the thread the offer is built on (lib/chat/chatConsent latestThreadPhoto). */ refImage?: string; /** One picture, whatever the panel's count: the price the offer quoted was one image's. */ single?: boolean; /** The Live call sent these words (chat_send): a spoken „yes" never starts spending (PHASE 5). */ fromLive?: boolean }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
@@ -6466,6 +6470,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // plan on screen („მუსიკა 5 წამიდან დაიწყე"), a request missing its track / photo / video, an edit there is no route
     // for yet: each is answered here, in any tool, before a tool reads the words as its prompt. Everything else goes on.
     // A card's own confirm and a panel's explicit Generate are not re-read: the user already chose.
+    // ⚠️ A YES STARTS WHAT AGENT G PROPOSED (GG, Production 2026-10-16 18:21Z: „when the agent has clarified and the user
+    // agrees, generation must start — for every service"). „კი", „ok", „კი შექმენი სურათი 9:16 ფორმატის" right after Agent G's
+    // card, its plan card, or a reply that offered a quoted, priced prompt now does what that card's button does, or starts
+    // the offer itself (consentRef, below the cards' handlers). Only agreement counts (lib/chat/chatConsent): a yes that
+    // changes the job goes on to Agent G, which offers again. The Live call's words never start spending.
+    if (text && !opts?.confirmed && !opts?.explicit && !opts?.fromLive && isConsentToStart(text) && consentRef.current(text)) {
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      return;
+    }
     if (text && !opts?.confirmed && !opts?.explicit && agentTurnRef.current(text, viaVoice)) return;
     // Agent G takes the MP3 out of a link or one attached video/audio file (see startAgentAudio): only when its route is
     // open to this user and the message asks for exactly that (lib/agent/media/audioChat.audioExtractAsk). It goes first:
@@ -6540,32 +6553,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
       return null;
     })();
-    // ⚠️ A YES TO AGENT G'S OWN OFFER WENT BACK TO THE MODEL (Production 2026-10-16): the reply quoted an image prompt and
-    // asked "დავიწყოთ გენერაცია?", the user said "კარგია", and the model — which can start nothing — answered that the
-    // system was "already processing" it. A short yes right after such an offer now puts that prompt on Agent G's priced
-    // card (lib/chat/offeredPrompt); nothing renders until its Create tap.
-    if (text && !opts?.confirmed && !(gatePendingRef.current && Date.now() - gatePendingRef.current.at < 10 * 60_000) && isAffirmation(text)) {
-      const lastReply = [...messages].reverse().find((m) => m.role === 'assistant' && !m.notice);
-      const here = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode : null;
-      const offer = lastReply && !lastReply.agentG ? offeredPrompt(lastReply.text, here) : null;
-      // From the chat a confirmed card renders a picture or a track (as chatOrder does); a film starts from Video mode's storyboard.
-      if (offer && (inChat ? offer.mode !== 'video' : offer.mode === effMode)) {
-        gatePendingRef.current = null;
-        const credits = offer.mode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
-          : offer.mode === 'music' ? musicQuote({ duration: musicDuration }) : 0;
-        const card: AgentGCardState = { kind: 'confirm', target: offer.mode, prompt: offer.prompt, credits, ...(inChat ? { madeIn: 'chat' as const } : {}) };
-        trackQuoteShown(serviceForTool(offer.mode as ToolId), credits, 'agent-card');
-        setMessages((prev) => [
-          ...prev,
-          { role: 'user', text },
-          { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: offer.mode, prompt: offer.prompt, locale }), agentG: card },
-        ]);
-        setGateFrom(messages.length);
-        if (!isDesktop) setOptionsOpen(false);
-        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
-        return;
-      }
-    }
+    // A yes to Agent G's own offer (a quoted prompt) is read above, before Agent G's turn (consentRef).
     const gateMode: GateMode | null = focusGateMode ?? chatOrder;
     if (gateMode && text && !opts?.confirmed) {
       const pend = inChat ? chatPend : gatePendingRef.current;
@@ -6655,11 +6643,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // very send still built a VIDEO storyboard — the new mode only took effect on the next message.
     if (effMode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
       setOptionsOpen(false);
-      const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
+      const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
       const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
       const neg = imgNegative.trim();
-      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
-      if (imgCount > 1) runImageBatch(spec, imgCount);
+      // A ratio written in the words („… 9:16") is the frame the user asked for, whatever the picker was left on.
+      const aspect = opts?.aspect ?? aspectFromText(text, { ratioOnly: true }) ?? imgAspect;
+      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
+      if (imgCount > 1 && !opts?.single) runImageBatch(spec, imgCount);
       else runImageJob(text, ref, spec);
       setInput('');
       setAttachments([]);
@@ -6873,11 +6863,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // IMAGE — text→image; an attached image becomes an img2img ref (mirrors the Image panel).
       if (chatLane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
         setOptionsOpen(false);
-        const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
+        // The photo the offer is built on: one attached now, else the one from earlier in the thread it named.
+        const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
         const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
         const neg = imgNegative.trim();
-        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
-        if (imgCount > 1) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
+        const aspect = opts?.aspect ?? aspectFromText(text, { ratioOnly: true }) ?? imgAspect;
+        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
+        if (imgCount > 1 && !opts?.single) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
         setInput(''); setAttachments([]); stopDictationEcho();
         return;
       }
@@ -7390,14 +7382,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // brief fails — the exact reason a photo + film brief used to fall through to plain chat and get a
     // "I'll hand this to the Video Studio…" REPLY instead of an actual render.
     const chatPhotoVideoBrief = attachments.some((a) => isImage(a.mimeType)) && mentionsVideoDeliverable(text);
-    if (mode === 'chat' && text && (chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || chatLane === 'video_generation')))) {
+    // A yes to Agent G's film offer: its quoted prompt is the brief, whatever verb it starts with (consentRef).
+    const agreedFilm = opts?.confirmed === true && opts.target === 'video';
+    if (mode === 'chat' && text && (agreedFilm || chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || chatLane === 'video_generation')))) {
       const musicVideo = isMusicVideoIntent(text);
       setMode('video');
       setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
-      const routeOrientation = musicVideo ? 'vertical' : videoOrientation;
+      const routeOrientation = opts?.aspect ? orientationForAspect(opts.aspect) : musicVideo ? 'vertical' : videoOrientation;
       const routeRefs = [
         ...videoCharacterRefs,
         ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
+        ...(opts?.refImage && !attachments.some((a) => isImage(a.mimeType)) ? [opts.refImage] : []),
       ];
       const routeNote = locale === 'en'
         ? '🎬 Opening Video Studio and planning your scenes — review the storyboard, then tap Generate Video.'
@@ -8138,7 +8133,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
     };
   };
-  liveChatSendRef.current = (text: string) => { void send({ promptOverride: text }); };
+  liveChatSendRef.current = (text: string) => { void send({ promptOverride: text, fromLive: true }); };
   // What a call's ask_agent_g hands Agent G: the checked stored paths of the user's files (composer first, else the
   // newest turn that carried files) — the same references a typed request sends.
   setLiveAttachedRefs(() => {
@@ -8694,7 +8689,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setGateFrom(null);
     resolveGateCard(idx);
     trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
-    void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}) });
+    void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(card.aspect ? { aspect: card.aspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}) });
   }, [resolveGateCard, send, videoMode]);
   const editGate = useCallback((idx: number) => {
     const card = messagesRef.current[idx]?.agentG;
@@ -9105,6 +9100,81 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Reassigned every render (after the card handlers it calls, declared after send), so it reads the screen as it is.
   // The snapshot is what the user sees: Agent G's cards, the tray's jobs (a card's own job is its card's), the reply or
   // the render in flight, the last reply, the last result. Nothing here spends: a note, a stop, or a fresh plan card.
+  // ── A YES STARTS WHAT AGENT G PROPOSED (GG, Production 2026-10-16 18:21Z) ──────────────────────────────────────────
+  // send() asks this first when the message is agreement (lib/chat/chatConsent isConsentToStart). The LAST thing Agent G
+  // said decides what the yes is for: its card (the card's own button), its plan card (Start), or a reply that offered a
+  // quoted prompt — started here when the reply quoted the price it really costs, else shown on Agent G's priced card,
+  // whose Create or next yes starts it. A yes that names another medium is not a yes to this. true = handled.
+  consentRef.current = (text: string): boolean => {
+    let idx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!;
+      if (m.role === 'assistant' && !m.notice) { idx = i; break; }
+    }
+    const last = idx >= 0 ? messages[idx] : undefined;
+    if (!last) return false;
+    const said = namedMedium(text);
+    const aspect = aspectFromText(text) ?? undefined;
+    // A visitor without an account is asked to sign in (as for any paid order); the words are kept for the way back.
+    const guestStop = (): boolean => {
+      if (typeof document === 'undefined' || document.documentElement.dataset.authed !== '0') return false;
+      stashPendingPrompt(text, activeToolRef.current);
+      window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+      return true;
+    };
+    // 1) Agent G's confirm / clarify card, still live: the yes is its Create.
+    const card = last.agentG;
+    if (card) {
+      const live = !card.done && (card.madeIn === 'chat' ? mode === 'chat' : (mode === 'lipsync' ? 'avatar' : mode) === card.target);
+      if (!live || (said && said !== card.target)) return false;
+      if (guestStop()) return true;
+      const cardAspect = aspect ?? card.aspect;
+      gatePendingRef.current = null;
+      setGateFrom(null);
+      resolveGateCard(idx);
+      trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
+      void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(cardAspect ? { aspect: cardAspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}) });
+      return true;
+    }
+    // 2) The priced question before a charged edit of an attached video, and Agent G's plan cards: Create / Start.
+    if (last.id && mode === 'chat') {
+      if (last.remixAsk && !last.remixAsk.done && (!said || said === 'video')) { void confirmChatRemix(last.id); return true; }
+      if (last.montage?.phase === 'quoted') { void confirmAgentMontage(last.id); return true; }
+      if (last.audioJob?.phase === 'quoted') { void confirmAgentAudio(last.id); return true; }
+      if (last.editJob?.phase === 'quoted') { void confirmAgentEdit(last.id); return true; }
+      if (last.runJob?.phase === 'planned') { void confirmAgentRun(last.id); return true; }
+    }
+    // 3) A reply that offered a quoted prompt (lib/chat/offeredPrompt).
+    const here = mode === 'image' || mode === 'video' || mode === 'music' ? mode : null;
+    const offer = offeredPrompt(last.text, here);
+    if (!offer || (said && said !== offer.mode) || (mode !== 'chat' && offer.mode !== mode)) return false;
+    if (guestStop()) return true;
+    const inChat = mode === 'chat';
+    const offerAspect = aspect ?? aspectFromText(offer.prompt, { ratioOnly: true }) ?? aspectFromText(last.text, { ratioOnly: true }) ?? undefined;
+    // „the man in the reference image": the photo the user attached earlier in this chat, not a new upload.
+    const refImage = (offer.mode === 'image' || offer.mode === 'video') && offerUsesReference(last.text) ? latestThreadPhoto(messages) : undefined;
+    // What it costs: ONE picture (the price an offer quotes), a track at the Music panel's length. A film is priced on its storyboard.
+    const credits = offer.mode === 'image' ? quoteCredits({ tool: 'image', count: 1 }) : offer.mode === 'music' ? musicQuote({ duration: musicDuration }) : 0;
+    const extra = { ...(offerAspect ? { aspect: offerAspect } : {}), ...(refImage ? { refImage } : {}), single: true as const };
+    if (offer.mode === 'video' || offer.credits === credits) {
+      trackGenerationConfirmed(serviceForTool(offer.mode as ToolId, { videoMode }), 'composer', credits || null);
+      void send({ promptOverride: offer.prompt, confirmed: true, ...(inChat ? { target: offer.mode } : {}), ...extra });
+      return true;
+    }
+    // The reply named no price, or not the real one: Agent G's card shows the real one; its Create or the next yes starts it.
+    gatePendingRef.current = null;
+    const next: AgentGCardState = { kind: 'confirm', target: offer.mode, prompt: offer.prompt, credits, ...(inChat ? { madeIn: 'chat' as const } : {}), ...extra };
+    trackQuoteShown(serviceForTool(offer.mode as ToolId), credits, 'agent-card');
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text },
+      { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: offer.mode, prompt: offer.prompt, locale }), agentG: next },
+    ]);
+    setGateFrom(messages.length);
+    if (!isDesktop) setOptionsOpen(false);
+    return true;
+  };
+
   agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {
     const msgs = messagesRef.current;
     const cards: ThreadCard[] = [];

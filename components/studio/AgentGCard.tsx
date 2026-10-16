@@ -13,6 +13,7 @@
 import { Sparkle } from 'lucide-react';
 import { creditsLabel } from '@/lib/credits/quote';
 import { gateButtons, type GateMode } from '@/lib/chat/focusGate';
+import type { ImgAspect } from '@/lib/studio/imageCreate';
 
 export interface AgentGCardState {
   kind: 'clarify' | 'confirm';
@@ -24,6 +25,12 @@ export interface AgentGCardState {
   prompt: string;
   /** What pressing the button costs, in credits; 0 = no price on this card. */
   credits: number;
+  /** The frame the user named for it („9:16"): Create renders in it whatever the panel is set to. */
+  aspect?: ImgAspect;
+  /** The photo the offer is built on (an earlier attachment in the thread): Create sends it as the reference. */
+  refImage?: string;
+  /** One picture whatever the panel's count — the card's price is one image's (an offer Agent G made in words). */
+  single?: boolean;
   /** Decided already — the buttons are gone. */
   done?: boolean;
 }

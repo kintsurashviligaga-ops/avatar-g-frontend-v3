@@ -87,6 +87,9 @@ function tbilisiNow(now: Date): string {
   return `${WEEKDAYS[t.getUTCDay()]}, ${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]} ${t.getUTCFullYear()}, ${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`;
 }
 
+/** The one question an offer ends with — the words lib/chat/offeredPrompt reads as "shall I start?". */
+export const START_QUESTION: Readonly<Record<PlatformPromptLocale, string>> = { ka: 'დავიწყო?', en: 'Shall I start?', ru: 'Запускаю?' };
+
 const gel = (credits: number): string => creditsToGel(credits).toFixed(2);
 const cr = (credits: number): string => `${credits} cr (${gel(credits)} ₾)`;
 /** The film lengths the price line gives as examples (the Video tool's presets). */
@@ -218,7 +221,12 @@ export function buildPlatformPrompt(opts: {
 
     `STUDIO TOOLS by side-menu category (name — what it does · Google engine):\n${toolLines(loc)}\n${notYetLine(loc)}\nVoice: the "${ui.liveVoice}" button starts a live spoken conversation (Gemini Live) for signed-in users, and replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
 
-    `HANDING OFF: You cannot start, queue or finish a render from a text reply — the studio runs the tools. A clear typed request is usually routed to its tool automatically; every tool opens from "${ui.toolsSheet}" (the + button) or from its category under "${NAV_GROUP_LABEL.create[loc]}" or "${NAV_GROUP_LABEL.work[loc]}" in the side menu, and files are attached with "${ui.attach}" (the paperclip beside +). So when someone wants to create or edit media and the request reached you, name the tool and how to open it in one sentence, then offer a ready-to-use prompt in quotes. Nothing runs until the user taps that tool's Create: never claim anything is processing, or a result you have not seen. Never reply with JSON, commands or routing payloads. Bring up tools only when the user wants to make or edit media, or asks about the platform. Creating needs sign-in; paid tools spend credits.`,
+    // ⚠️ IT SENT PEOPLE TO A TOOL FOR WHAT THE CHAT DOES ITSELF (Production 2026-10-16, GG's iPhone): „კი შექმენი სურათი 9:16
+    // ფორმატის" got „I can't generate in the chat — open the Image tool via +, attach the photo again, pick 9:16, paste this".
+    // GG's rule (18:20Z): every service runs in the chat, and once Agent G has clarified and the user agrees, it starts. The
+    // studio starts an image or a song on the yes to a quoted, priced offer (lib/chat/offeredPrompt + chatConsent), and a film
+    // opens its storyboard; so the model offers in exactly that shape and never points at a menu for those three.
+    `HANDING OFF: You cannot start, queue or finish a render yourself; the studio starts it in this chat once the user agrees. For an image, song or film never send them to a tool, a menu or the + button, and never ask them to attach again a file that is already in this chat. Missing key details? Ask up to two short questions. Otherwise offer once: format or length, one prompt in quotes (English for an image or film; "the reference image" when it uses their photo), its price from PRICES (one image is ${CREDIT_COSTS.image_generate} credits), ending with exactly this question: "${START_QUESTION[loc]}". A film opens its priced storyboard first. Other tools open from "${ui.toolsSheet}" (+) or "${NAV_GROUP_LABEL.create[loc]}" / "${NAV_GROUP_LABEL.work[loc]}" in the side menu; files attach with "${ui.attach}". The result shows here: never claim anything is processing, or a result you have not seen. Never reply with JSON, commands or routing payloads.`,
 
     priceBlock(ui.topUp),
   ].join('\n\n');
