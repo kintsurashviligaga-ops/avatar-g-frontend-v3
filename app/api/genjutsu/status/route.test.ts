@@ -15,6 +15,7 @@ jest.mock('../../../../lib/orchestrator/jobs', () => ({
   recordCompletedFilm: jest.fn(async () => true),
 }));
 jest.mock('../../../../lib/studio/runtime', () => ({ getStudioRuntime: jest.fn() }));
+jest.mock('../../../../lib/avatar/voicedClip', () => ({ deliverVoicedAvatar: jest.fn() }));
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
@@ -26,6 +27,7 @@ import { refundDebitByRef } from '../../../../lib/orchestrator/ledger';
 import { failJob, jobSnapshot, recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
 import { reportError } from '../../../../lib/observability/report-error';
 import { getStudioRuntime } from '../../../../lib/studio/runtime';
+import { deliverVoicedAvatar } from '../../../../lib/avatar/voicedClip';
 
 const ENV = { ...process.env };
 const UID = '11111111-2222-4333-8444-555555555555';
@@ -34,9 +36,9 @@ const UUID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const OP = 'models/veo-3.1-fast-generate-preview/operations/abc123';
 
 /** A real, authentic polled id for `payer`, created `ageMs` ago. */
-function polledId(payer = UID, ageMs = 60_000, aspect: '16:9' | '9:16' = '16:9') {
+function polledId(payer = UID, ageMs = 60_000, aspect: '16:9' | '9:16' = '16:9', voiced = false) {
   const ref = genjutsuChargeRef(payer, UUID);
-  const jobId = composeVeoJobId(OP, aspect, Date.now() - ageMs);
+  const jobId = composeVeoJobId(OP, aspect, Date.now() - ageMs, voiced);
   return { ref, id: withGenjutsuCharge(jobId, signGenjutsuCharge({ u: payer, r: ref, j: jobId })!) };
 }
 const get = (id: string) => GET(new NextRequest(`https://myavatar.ge/api/genjutsu/status?id=${encodeURIComponent(id)}`));
@@ -150,6 +152,34 @@ test('a delivered clip past the cap is still delivered, not refunded (the cap on
   const j = await (await get(polledId(UID, GENJUTSU_HARD_CAP_MS + 60_000).id)).json();
   expect(j.state).toBe('ready');
   expect(refundDebitByRef).not.toHaveBeenCalled();
+});
+
+// ─── a talking avatar voiced by ElevenLabs (GG 2026-10-17 07:54Z) ─────────────────────────────────────────────────
+
+test('voiced avatar: the clip is shown WITH its line — the voiced file, filed in the Library as an avatar', async () => {
+  (pollScene as jest.Mock).mockResolvedValue({ state: 'ready', url: 'https://signed.example/silent.mp4' });
+  (deliverVoicedAvatar as jest.Mock).mockResolvedValue('https://signed.example/voiced.mp4');
+  const j = await (await get(polledId(UID, 60_000, '9:16', true).id)).json();
+  expect(j).toEqual({ success: true, done: true, state: 'ready', videoUrl: 'https://signed.example/voiced.mp4' });
+  expect(deliverVoicedAvatar).toHaveBeenCalledWith('https://signed.example/silent.mp4', UUID);
+  expect((recordCompletedFilm as jest.Mock).mock.calls[0]![0]).toMatchObject({ id: genjutsuJobId(UUID), url: 'https://signed.example/voiced.mp4', subtype: 'avatar', prompt: 'Avatar', orientation: 'vertical' });
+});
+
+test('voiced avatar: a clip whose line is not on it yet is never shown silent — "delivering", then refunded at the cap', async () => {
+  (pollScene as jest.Mock).mockResolvedValue({ state: 'ready', url: 'https://signed.example/silent.mp4' });
+  (deliverVoicedAvatar as jest.Mock).mockResolvedValue(null);
+  expect(await (await get(polledId(UID, 60_000, '9:16', true).id)).json()).toEqual({ success: true, done: false, state: 'delivering' });
+  expect(recordCompletedFilm).not.toHaveBeenCalled();
+  expect(refundDebitByRef).not.toHaveBeenCalled();
+  const { id, ref } = polledId(UID, GENJUTSU_HARD_CAP_MS + 5_000, '9:16', true);
+  expect(await (await get(id)).json()).toMatchObject({ done: true, state: 'failed', refunded: true });
+  expect(refundDebitByRef).toHaveBeenCalledWith(UID, ref);
+});
+
+test('an unvoiced scene never goes through the voice leg', async () => {
+  (pollScene as jest.Mock).mockResolvedValue({ state: 'ready', url: 'https://signed.example/clip.mp4' });
+  await get(polledId().id);
+  expect(deliverVoicedAvatar).not.toHaveBeenCalled();
 });
 
 // ─── a Higgsfield job (the studio saga owns its refunds) ────────────────────────────────────────────────────────

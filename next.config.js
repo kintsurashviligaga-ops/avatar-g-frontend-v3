@@ -110,6 +110,10 @@ const nextConfig = {
       // out of the finished clip inside the poll. Without the binary every scene would fall back to its storyboard frame.
       // Measured 2026-10-16: the route traces 44 MB without it, ~122 MB with it (the assemble route is 124 MB).
       '/api/chat/orchestrate': ['./node_modules/ffmpeg-static/**'],
+      // The talking avatar's Georgian line (lib/avatar/voicedClip): ffmpeg lays the ElevenLabs voice over Veo's silent clip
+      // inside the poll that delivers it (and crops a Gemini-API clip's mark there). Without the binary a voiced avatar
+      // would never deliver and be refunded at the hard cap.
+      '/api/genjutsu/status': ['./node_modules/ffmpeg-static/**'],
       // Surgical Editor: deterministic ops shell out to ffmpeg-static (lib/video/{trimClip,surgicalOps}); text
       // overlays rasterise via @resvg (drawtext is unavailable on Vercel — no libfreetype). Both binaries must ride.
       '/api/ai/edit': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],

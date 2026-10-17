@@ -7,10 +7,16 @@
  * language), and the user's "how it behaves" text directs the motion. One 8 s clip, priced as one Veo clip from the
  * video price SSoT (lib/credits/videoPricing) — no new price constant.
  *
+ * ⚠️ A GEORGIAN LINE IS SPOKEN BY ELEVENLABS, NOT BY VEO (GG's tap, 2026-10-17 07:54Z: „ElevenLabs ხმა"). Veo's own
+ * Georgian is garbled (the 2026-10-16 film), so for Georgian words Veo renders the person TALKING with no sound and the
+ * cloned native-Georgian voice is laid over the clip (app/api/genjutsu/status). The lips follow the words only roughly —
+ * the trade GG chose. English and Russian keep Veo's own voice.
+ *
  * Pure: the route (app/api/avatar/veo) owns auth, money and the provider.
  */
 import { buildSpeechDirection } from '@/lib/chat/filmPipeline';
 import { videoCredits } from '@/lib/credits/videoPricing';
+import { isGeorgianText } from '@/lib/audio/tts-model';
 import type { VeoAspect } from '@/lib/veo/types';
 
 /** Veo's longest clip; a start-image clip may be 4, 6 or 8 s. */
@@ -36,11 +42,22 @@ export interface VeoAvatarInput {
   speech: string;
   direction: string;
   aspect: VeoAspect;
+  /** The voice the user picked for a line ElevenLabs speaks; null = told by the words (lib/chat/filmVoiceover). */
+  voiceGender: 'male' | 'female' | null;
 }
+
+/** Georgian words are voiced by ElevenLabs over a silent Veo clip; any other language is Veo's own voice. */
+export function avatarVoiceByElevenLabs(speech: string): boolean {
+  return isGeorgianText(speech);
+}
+
+/** The ElevenLabs line and the voiced clip of one avatar job, at fixed paths in `renders`: the job's uuid finds both again. */
+export const avatarVoicePath = (uuid: string): string => `avatar-veo/${uuid}/voice.mp3`;
+export const avatarVoicedPath = (uuid: string): string => `avatar-veo/${uuid}/voiced.mp4`;
 
 export type VeoAvatarParse =
   | { ok: true; value: VeoAvatarInput & { photo: string; expectedCredits: number | null } }
-  | { ok: false; field: 'photo' | 'speech' | 'direction' | 'aspect' | 'expectedCredits'; code: 'required' | 'too_long' | 'invalid' };
+  | { ok: false; field: 'photo' | 'speech' | 'direction' | 'aspect' | 'voiceGender' | 'expectedCredits'; code: 'required' | 'too_long' | 'invalid' };
 
 const clean = (v: unknown): string => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '');
 
@@ -56,20 +73,31 @@ export function parseVeoAvatarRequest(raw: unknown): VeoAvatarParse {
   if (direction.length > VEO_AVATAR_DIRECTION_MAX) return { ok: false, field: 'direction', code: 'too_long' };
   const aspect = b.aspect === undefined || b.aspect === null || b.aspect === '' ? '9:16' : b.aspect;
   if (aspect !== '9:16' && aspect !== '16:9') return { ok: false, field: 'aspect', code: 'invalid' };
+  const vg = b.voiceGender === undefined || b.voiceGender === null || b.voiceGender === '' ? null : b.voiceGender;
+  if (vg !== null && vg !== 'male' && vg !== 'female') return { ok: false, field: 'voiceGender', code: 'invalid' };
   const ec = b.expectedCredits;
   if (ec !== undefined && ec !== null && !(typeof ec === 'number' && Number.isInteger(ec) && ec >= 0)) return { ok: false, field: 'expectedCredits', code: 'invalid' };
-  return { ok: true, value: { photo, speech, direction, aspect, expectedCredits: typeof ec === 'number' ? ec : null } };
+  return { ok: true, value: { photo, speech, direction, aspect, voiceGender: vg, expectedCredits: typeof ec === 'number' ? ec : null } };
 }
 
 /**
  * The Veo prompt. A start-image clip is prompted for MOTION (Google's guidance): keep the person from the first frame,
  * act as directed, say the words — verbatim, in their own language.
  */
-export function buildVeoAvatarPrompt({ speech, direction }: { speech: string; direction: string }): string {
+export function buildVeoAvatarPrompt({ speech, direction, voicedSec }: { speech: string; direction: string; voicedSec?: number }): string {
   const act = direction ? ` ${direction.replace(/[.!?…]?$/, '.')}` : ' Natural, warm expression and small natural head movements.';
   return [
     'The person in the first frame looks into the camera and talks to the viewer. Keep their face, hair, clothes and the background exactly as in the first frame; a steady medium close-up.',
     act.trim(),
-    buildSpeechDirection(speech),
+    // A line voiced by ElevenLabs: Veo is told only HOW LONG to talk — never the words, which it would put on screen or
+    // try to say itself — so the mouth moves while the voice speaks and rests after it.
+    voicedSec !== undefined ? silentTalkDirection(voicedSec) : buildSpeechDirection(speech),
   ].join(' ');
+}
+
+function silentTalkDirection(seconds: number): string {
+  const talk = Math.max(1, Math.min(VEO_AVATAR_SECONDS, Math.round(seconds * 2) / 2));
+  return talk >= VEO_AVATAR_SECONDS - 0.5
+    ? 'They speak continuously for the whole clip, lips and jaw moving naturally as in clear, calm conversation.'
+    : `From the very start they speak for about ${talk} seconds, lips and jaw moving naturally as in clear, calm conversation, then they stop talking, close their mouth and hold a warm, friendly look at the camera.`;
 }

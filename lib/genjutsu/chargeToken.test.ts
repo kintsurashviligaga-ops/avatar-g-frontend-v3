@@ -60,6 +60,9 @@ test('the reservation ref and the job-row id derive from one uuid; only refs thi
 });
 
 test('the job id composite round-trips, and rejects anything malformed', () => {
-  expect(parseVeoJobId(composeVeoJobId(OP, '9:16', 1_760_000_000_123.4))).toEqual({ operation: OP, aspect: '9:16', createdMs: 1_760_000_000_123 });
-  for (const bad of ['', OP, `${OP}::1:1::5`, `${OP}::16:9::nope`, `${OP}::16:9::0`, `::16:9::5`, `${OP}::16:9`]) expect(parseVeoJobId(bad)).toBeNull();
+  expect(parseVeoJobId(composeVeoJobId(OP, '9:16', 1_760_000_000_123.4))).toEqual({ operation: OP, aspect: '9:16', createdMs: 1_760_000_000_123, voiced: false });
+  // The talking avatar voiced by ElevenLabs carries its marker inside the signed id.
+  expect(composeVeoJobId(OP, '9:16', 1_760_000_000_000, true)).toBe(`${OP}::9:16::1760000000000::v`);
+  expect(parseVeoJobId(composeVeoJobId(OP, '9:16', 1_760_000_000_000, true))).toEqual({ operation: OP, aspect: '9:16', createdMs: 1_760_000_000_000, voiced: true });
+  for (const bad of ['', OP, `${OP}::1:1::5`, `${OP}::16:9::nope`, `${OP}::16:9::0`, `::16:9::5`, `${OP}::16:9`, `${OP}::16:9::5::x`, `${OP}::16:9::5::v::v`]) expect(parseVeoJobId(bad)).toBeNull();
 });

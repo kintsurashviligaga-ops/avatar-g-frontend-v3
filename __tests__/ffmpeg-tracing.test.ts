@@ -12,7 +12,8 @@ import { dirname, join, relative } from 'path';
 
 const ROOT = join(__dirname, '..');
 const NATIVE = { ffmpeg: 'ffmpeg-static', resvg: '@resvg/resvg-js' } as const;
-const SCOPES = ['app/api/agent', 'app/api/tasks'];
+// …and the talking avatar's two routes (lib/avatar/voicedClip): the poll that lays its ElevenLabs line over the clip.
+const SCOPES = ['app/api/agent', 'app/api/tasks', 'app/api/genjutsu/status', 'app/api/avatar/veo'];
 
 /** Routes that import a module reaching the package but never run it. Each needs a reason a reviewer can check. */
 const NEVER_RUNS: Record<string, { ffmpeg?: string; resvg?: string }> = {
@@ -27,6 +28,11 @@ const NEVER_RUNS: Record<string, { ffmpeg?: string; resvg?: string }> = {
   '/api/agent/media/audio': { resvg: 'takes the sound out of a video; draws no text' },
   '/api/agent/media/analyze': { resvg: 'probes the file; draws nothing' },
   '/api/agent/run': { resvg: 'its tools quote; renders run in the edit and task workers' },
+  '/api/genjutsu/status': { resvg: 'crops a clip and lays the avatar line over it (lib/video/remixOps); draws no text' },
+  '/api/avatar/veo': {
+    ffmpeg: 'speaks the line and submits the clip; ffmpeg runs where it is delivered (/api/genjutsu/status)',
+    resvg: 'speaks the line and submits the clip; draws nothing',
+  },
 };
 
 function routeFiles(dir: string): string[] {
@@ -80,7 +86,7 @@ function tracingIncludes(): Map<string, string> {
   return out;
 }
 
-describe('native binaries ride with every Agent G and task route that uses them', () => {
+describe('native binaries ride with every Agent G, task and avatar route that uses them', () => {
   const includes = tracingIncludes();
   const routes = SCOPES.flatMap(routeFiles);
 

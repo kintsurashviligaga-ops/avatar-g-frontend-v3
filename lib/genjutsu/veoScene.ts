@@ -66,6 +66,11 @@ export interface SceneSubmitInput {
   startImageUrl?: string;
   /** Replaces the VFX scene's negative prompt (the avatar's own). */
   negativePrompt?: string;
+  /**
+   * Veo's own sound. Off only for the avatar whose Georgian line ElevenLabs speaks (lib/avatar/veoAvatar): a silent clip
+   * is priced at Veo's silent rate, and the voice is laid over it once it is delivered. Default on.
+   */
+  audio?: boolean;
 }
 
 export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit> {
@@ -73,13 +78,14 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
   if (!transport) return { ok: false, reason: 'not_configured', retryable: false };
   const tier: VeoTier = input.quality === 'standard' ? 'standard' : 'fast';
   const model = resolveModel(transport, tier);
+  const audio = input.audio !== false;
   try {
     const created = await guardedCall(
       {
         service: 'video',
         model,
         units: SCENE_SECONDS,
-        unitCostUsd: costPerSecondUsd(model, resolutionFor(SCENE_SECONDS), true, transport),
+        unitCostUsd: costPerSecondUsd(model, resolutionFor(SCENE_SECONDS), audio, transport),
         userId: input.userId,
         promptSummary: input.prompt.slice(0, 200),
         actualCost: submitActualCost,
@@ -91,7 +97,7 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
             aspect: input.aspect,
             // Reference mode pins the clip to 8 s (the engine would snap to it anyway); say so, so the price is the length.
             durationSec: SCENE_SECONDS,
-            generateAudio: true,
+            generateAudio: audio,
             negativePrompt: input.negativePrompt ?? SCENE_NEGATIVE_PROMPT,
             ...(input.startImageUrl ? { startImage: { kind: 'url' as const, url: input.startImageUrl } } : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
           },

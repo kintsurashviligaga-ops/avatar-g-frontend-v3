@@ -46,6 +46,34 @@ describe('Veo avatar wiring (GG chose Veo, 2026-10-16)', () => {
     expect(lip).toContain("fetch('/api/avatar/veo'");
     expect(lip).toContain('if (veoRes.status !== 423)');
     expect(lip).toContain('/api/genjutsu/status?id=');
-    expect(lip).toMatch(/if \(!audioUrl && spoken\)/);
+    expect(lip).toMatch(/if \(!audioUrl && spoken && /);
+  });
+});
+
+describe('a talking avatar ordered with no photo, in the chat or the avatar tool (GG, 2026-10-17 07:39Z)', () => {
+  const send = src.slice(src.indexOf('const send = useCallback(async'), src.indexOf("if (effMode === 'lipsync') {"));
+  it('no photo and no preset: a ready presenter where the Veo avatar is open; HeyGen only when it is closed', () => {
+    expect(lip).toContain('const veoDoor = !faceAtt && !lipPreset && text && !audioAtt ? await readVeoAvatarDoor() : null;');
+    expect(lip).toContain('const lipFace = lipPreset ?? (veoDoor?.open ? stockAvatarFace(voiceGender, veoAspect) : null);');
+    expect(lip).toContain('if (!faceAtt && !lipFace && text) {');
+    expect(lip).toContain('const chosenPreset = lipFace;');
+  });
+  it('Veo gets the voice’s gender, the frame and the price on screen; a video face stays a dub', () => {
+    expect(lip).toMatch(/if \(!audioUrl && spoken && \(!faceAtt \|\| isImage\(faceAtt\.mimeType\)\)\)/);
+    expect(lip).toContain('aspect: veoAspect, voiceGender,');
+    expect(lip).toContain('expectedCredits: veoDoorRef.current.credits');
+  });
+  it('every avatar price on screen is Veo’s where its door is open (the card said 20, Veo charges 25)', () => {
+    expect(src).toContain("const avatarCredits = veoAvatarDoor?.open ? veoAvatarDoor.credits : quoteCredits({ tool: 'avatar' });");
+    expect(src).toContain("if (tool === 'avatar') return avatarCredits || undefined;");
+    expect(src).toContain("const composerQuote = activeTool === 'avatar' ? avatarCredits || null");
+    expect(send).toContain("gateMode === 'avatar' ? (door?.open ? door.credits : quoteCredits({ tool: 'avatar' }))");
+  });
+  it('in the chat the order gets Agent G’s card, and its yes renders it as the avatar tool’s — no chat route reads it again', () => {
+    expect(send).toContain("kind: 'confirm', target: 'avatar', prompt: text, credits: avatarDoor.credits, madeIn: 'chat', aspect,");
+    expect(send).toContain("const chatAvatar = mode === 'chat' && opts?.confirmed === true && opts.target === 'avatar';");
+    expect(send).toContain("if (chatAvatar) effMode = 'lipsync';");
+    expect(send).toContain("const studio = mode === 'chat' && !chatAvatar ? detectStudioIntent(text) : null;");
+    expect(send).toContain("const chatIntent = mode === 'chat' && !chatAvatar && text && isGenerativeCommand(text) ? detectIntent(text) : null;");
   });
 });

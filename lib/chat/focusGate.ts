@@ -23,6 +23,7 @@
  */
 import { splitAvatarScript } from '../avatar/scriptSplit';
 import { isGenerativeCommand } from '@/lib/chat/intentDetector';
+import { isRefineWord } from './refineRequest';
 
 /** The tools Agent G stands in front of. `avatar` is the studio's 'lipsync' mode: there the words are the SCRIPT the
  *  presenter speaks, so "აქ ხარ?" would have been rendered as a paid talking-head video saying "are you here?". */
@@ -190,6 +191,8 @@ export function isAffirmation(text: string): boolean {
   const toks = words(text);
   if (!toks.length || toks.length > 4) return false;
   const rest = startsWithAny(toks, AFFIRM);
+  // „make it better" / „сделай лучше" is a change to the last result, not a yes (lib/chat/refineRequest, 2026-10-17).
+  if (rest?.length === 1 && isRefineWord(rest[0]!)) return false;
   return rest !== null && rest.length <= 1;
 }
 

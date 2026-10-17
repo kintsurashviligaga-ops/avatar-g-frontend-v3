@@ -34,7 +34,10 @@ type Known =
   // to fall through to the loose /unsupported/ rule and read as „this format can't be read, try MP3 or WAV" (2026-10-16).
   | 'option_unavailable'
   // Final P0/P1 repair run: dubbing / decks stay off until the owner approves their price; the quote/confirm codes.
-  | 'pricing_not_approved' | 'duration_unmeasurable' | 'quote_invalid' | 'job_unavailable';
+  | 'pricing_not_approved' | 'duration_unmeasurable' | 'quote_invalid' | 'job_unavailable'
+  // The talking avatar's Georgian line (app/api/avatar/veo): ElevenLabs did not speak it, or it runs past the 8 s clip.
+  // Both are refused before any charge.
+  | 'voice_unavailable' | 'speech_too_long';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -62,6 +65,8 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     job_unavailable: 'სამუშაო ვერ ჩავწერეთ. სცადე ცოტა ხანში — თანხა არ ჩამოგეჭრა.',
     google_only: 'ეს ხელსაწყო დროებით შეჩერებულია, სანამ Google-ის ძრავაზე გადავა. თანხა არ ჩამოგეჭრა.',
     option_unavailable: 'ეს არჩევანი მიუწვდომელია: აქ მხოლოდ Google-ის ძრავა მუშაობს. აირჩიე „ავტო“ ან მოხსენი ფაილი — თანხა არ ჩამოგეჭრა.',
+    voice_unavailable: 'ქართული ხმა ახლა ვერ შეიქმნა. სცადე ერთ წუთში — თანხა არ ჩამოგეჭრა.',
+    speech_too_long: 'ტექსტი ავატარის 8 წამს არ ეტევა. შეამოკლე და სცადე ხელახლა — თანხა არ ჩამოგეჭრა.',
   },
   en: {
     insufficient_credits: 'Not enough credits. Top up your balance and try again.',
@@ -88,6 +93,8 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     job_unavailable: 'We could not record the job. Try again shortly — you were not charged.',
     google_only: 'This tool is paused while it moves to Google’s engines. You were not charged.',
     option_unavailable: 'That option is not available: only Google’s engine runs here. Pick Auto or remove the file. You were not charged.',
+    voice_unavailable: 'The voice could not be made right now. Try again in a minute — you were not charged.',
+    speech_too_long: 'The line does not fit the avatar’s 8 seconds. Shorten it and try again — you were not charged.',
   },
   ru: {
     insufficient_credits: 'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
@@ -114,6 +121,8 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     job_unavailable: 'Не удалось записать задачу. Повторите чуть позже — списания не было.',
     google_only: 'Этот инструмент временно приостановлен на время перехода на движки Google. Списания не было.',
     option_unavailable: 'Этот вариант недоступен: здесь работает только движок Google. Выберите «Авто» или уберите файл. Списания не было.',
+    voice_unavailable: 'Голос сейчас не удалось создать. Попробуйте через минуту — списания не было.',
+    speech_too_long: 'Текст не помещается в 8 секунд аватара. Сократите его и попробуйте снова — списания не было.',
   },
 };
 
@@ -139,6 +148,8 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^duration_unmeasurable$/, 'duration_unmeasurable'],
   [/^(quote_invalid|quote_price_changed)$/, 'quote_invalid'],
   [/^job_unavailable$/, 'job_unavailable'],
+  [/^voice_unavailable$/, 'voice_unavailable'],
+  [/^speech_too_long$/, 'speech_too_long'],
   [/^not_configured$/, 'provider_not_configured'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often
   // as "not enough". A false positive here is a slightly-wrong-but-actionable message; a miss is a

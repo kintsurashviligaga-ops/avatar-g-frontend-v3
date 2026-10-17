@@ -54,6 +54,17 @@ describe('describeServiceError', () => {
     }
   });
 
+  it('says why a talking avatar was refused before its charge: no voice, or a line past its 8 seconds (2026-10-17)', () => {
+    for (const code of ['voice_unavailable', 'speech_too_long']) {
+      const ka = describeGenerationFailure({ success: false, error: code }, 'ka', KA_FALLBACK);
+      expect(ka).not.toBe(KA_FALLBACK);
+      expect(ka).toMatch(/თანხა არ ჩამოგეჭრა/);
+      expect(describeGenerationFailure({ success: false, error: code }, 'en', 'x')).toMatch(/not charged/);
+      expect(describeGenerationFailure({ success: false, error: code }, 'ru', 'x')).toMatch(/списания не было/);
+    }
+    expect(describeGenerationFailure({ success: false, error: 'speech_too_long', seconds: 9.4 }, 'ka', KA_FALLBACK)).toMatch(/8 წამ/);
+  });
+
   it('matches the studio codes whole — a longer string that merely contains one is not claimed', () => {
     expect(describeServiceError('xyz_price_changed_log', 'en', 'fallback')).toBe('fallback');
   });
