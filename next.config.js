@@ -131,6 +131,9 @@ const nextConfig = {
       '/api/agent/media/montage': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // …and its per-minute sweep, which renders a job whose worker never started or died (lib/agent/media/montageWorker).
       '/api/agent/media/sweep': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // A chat film whose tab closed (lib/chat/filmFollowWorker): its sweep polls the film (a chained scene's last frame is
+      // read with ffmpeg) and stitches it through the assemble route in-process (ffmpeg + the @resvg lower-third).
+      '/api/film/sweep': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // …and its audio extraction: ffmpeg takes the sound out of a video as an MP3 (lib/agent/media/audioLive).
       '/api/agent/media/audio': ['./node_modules/ffmpeg-static/**'],
       // …and the one task route (lib/tasks): reading a lease job that no worker holds starts one there, montage or audio.

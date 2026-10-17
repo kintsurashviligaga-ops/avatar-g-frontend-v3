@@ -639,35 +639,120 @@ export function composeTransitionRender(transition: string | null | undefined, j
   return g;
 }
 
+/**
+ * The choices a film's stitch needs besides its clips, all made in the studio before the render started. The dispatch
+ * hands them to the server with the film (`filmFollow`), so a film whose tab closes is stitched the way the tab would have
+ * stitched it (lib/chat/filmFollowWorker). `myVoiceNarration` is not among them: the re-voice runs in the browser.
+ */
+export interface FilmFollowPlan {
+  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
+  transition?: DriveFilmOptions['transition'];
+  joinTransitions?: DriveFilmOptions['joinTransitions'];
+  noMusic?: boolean;
+  musicVideoMode?: boolean;
+  soundtrackUrl?: string | null;
+  locale?: string;
+  vocalGender?: 'male' | 'female' | 'duet';
+  audioMix?: AudioMixOptions;
+  finalDurationSec?: number;
+}
+
+/** The stitch's share of the studio options (what FilmFollowPlan holds), as the dispatch sends it. */
+export function filmFollowPlan(opts: DriveFilmOptions): FilmFollowPlan {
+  return {
+    ...(opts.orientation ? { orientation: opts.orientation } : {}),
+    ...(opts.transition ? { transition: opts.transition } : {}),
+    ...(opts.joinTransitions?.length ? { joinTransitions: opts.joinTransitions } : {}),
+    ...(opts.noMusic ? { noMusic: true } : {}),
+    ...(opts.musicVideoMode ? { musicVideoMode: true } : {}),
+    ...(opts.soundtrackUrl ? { soundtrackUrl: opts.soundtrackUrl } : {}),
+    ...(opts.locale ? { locale: opts.locale } : {}),
+    ...(opts.vocalGender ? { vocalGender: opts.vocalGender } : {}),
+    ...(opts.audioMix ? { audioMix: opts.audioMix } : {}),
+    ...(typeof opts.finalDurationSec === 'number' && opts.finalDurationSec > 0 ? { finalDurationSec: opts.finalDurationSec } : {}),
+  };
+}
+
+/**
+ * The /api/video/assemble body for a film's landed clips. ONE builder for both drivers: the tab (driveFilmStudio) and the
+ * server that finishes a film whose tab closed (lib/chat/filmFollowWorker), so the two can never stitch the same film two
+ * ways. `voiceUrl` is the narration to mix (the tab may have re-voiced it); absent → the film's own.
+ */
+export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix, scorePrompt: string, voiceUrl?: string | null): Record<string, unknown> {
+  const clipUrls = readyClipUrls(matrix);
+  const clipSec = matrix.clipSec ?? null;
+  // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
+  const musicUrl = plan.noMusic ? null : (plan.soundtrackUrl ?? matrix.audioUrl ?? null);
+  // PHASE 48 §2 — commentator/narration track, when the brief asked for one.
+  const finalVoiceUrl = voiceUrl !== undefined ? voiceUrl : (matrix.voiceUrl ?? null);
+  // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
+  const sfxUrl = matrix.sfxUrl ?? null;
+  // DAY-6 multi-voice — per-speaker dialogue stems (≥2 → assembler spatial premix + -12dB duck).
+  const dialogueStems = matrix.dialogueStems ?? null;
+  const customAudioUrl = plan.soundtrackUrl ?? null;
+  // v330 — the caption language for the burned-in lower-third (the app locale).
+  const captionLang: 'ka' | 'en' | 'ru' = plan.locale === 'ka' ? 'ka' : plan.locale === 'ru' ? 'ru' : 'en';
+  const scenesPlanned = matrix.sceneCount || matrix.clips.length;
+  const finalDurationSec = finalContractForCut(plan.finalDurationSec, clipUrls.length, scenesPlanned);
+  const audioMix = plan.audioMix;
+  // PHASE 2 L2/L6 — assemble the transition + 3-track-audio / smart-ducking knobs into
+  // ONE globalRender object. Each key is opt-in; an empty object is omitted entirely so
+  // the route keeps its defaults (and the existing documentary mix) when nothing is set.
+  const globalRender: Record<string, string | number | boolean> = { ...composeTransitionRender(plan.transition, plan.joinTransitions) };
+  if (audioMix?.threeTrack) globalRender.three_track_mix = true;
+  if (typeof audioMix?.musicVolume === 'number') globalRender.music_volume = audioMix.musicVolume;
+  if (typeof audioMix?.sfxVolume === 'number') globalRender.sfx_volume = audioMix.sfxVolume;
+  if (audioMix?.smartDuck === false) globalRender.smart_duck = false;
+  if (typeof audioMix?.duckDb === 'number') globalRender.duck_db = audioMix.duckDb;
+  return {
+    // The assembler derives the master timeline (and every per-clip trim) from these durations, so a
+    // film rendered on a 6s grid must report 6s — a hardcoded 8 pad-froze the tail of every clip.
+    segments: clipUrls.map((url) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : FILM_CLIP_SEC })),
+    ...(musicUrl ? { musicUrl } : {}),
+    // Music OFF → tell the route to skip score generation (no musicUrl + this flag).
+    ...(plan.noMusic ? { noMusic: true } : {}),
+    // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
+    // the score under it (voiceoverUrl → vocal_ducking_pct).
+    ...(finalVoiceUrl ? { voiceoverUrl: finalVoiceUrl } : {}),
+    // DAY-6 multi-voice — ≥2 per-speaker dialogue stems → the assembler builds the
+    // spatialized multi-voice lane with the -12dB sidechain duck (route re-signs + caps at 16).
+    ...(dialogueStems && dialogueStems.length >= 2 ? { dialogueStems } : {}),
+    // PHASE 49 §7 — cinematic SFX / sound-design, mixed under the score.
+    ...(sfxUrl ? { sfxUrl } : {}),
+    ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
+    ...(matrix.statusTokenId ? { filmTokenId: matrix.statusTokenId } : {}),
+    // Video Core v1.0 §4 — the final length the master is cut to (the route refuses one these clips cannot be cut to).
+    ...(typeof finalDurationSec === 'number' && finalDurationSec > 0 ? { finalDurationSec } : {}),
+    // Pass any non-landscape canvas (vertical · 1:1 · 4:5) to the assembler;
+    // landscape is the route default.
+    ...(plan.orientation && plan.orientation !== 'landscape' ? { orientation: plan.orientation } : {}),
+    // v330 — explicit Music Video mode → song-master mix + branded lower-third.
+    // A supplied soundtrack implies music-video intent.
+    ...(plan.musicVideoMode || customAudioUrl ? { musicVideoMode: true } : {}),
+    // v330 — a user-uploaded soundtrack: the route anchors onto it, bypassing
+    // both the Udio score and the MusicGen fallback.
+    ...(customAudioUrl ? { customAudioUrl } : {}),
+    // v330 — caption language for the FiraGO lower-third (ka/en/ru).
+    ...(captionLang ? { captionLang } : {}),
+    // v330 — selected sung-vocal gender (steers the ElevenLabs Music singer).
+    ...(plan.vocalGender ? { vocalGender: plan.vocalGender } : {}),
+    // Scene transition + L2/L6 audio knobs. globalRender wins over the route's
+    // film-token default ('cut'), so the user's choices are honoured.
+    ...(Object.keys(globalRender).length ? { globalRender } : {}),
+  };
+}
+
 /** Mirror of MyAvatarChatV2.assembleFilm — hand the landed clips to the authed stitch. */
 async function assembleMaster(
-  clipUrls: string[],
-  musicUrl: string | null,
-  statusTokenId: string | undefined,
+  plan: FilmFollowPlan,
+  matrix: FilmStudioMatrix,
   scorePrompt: string,
-  signal?: AbortSignal,
-  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait',
-  voiceUrl?: string | null,
-  sfxUrl?: string | null,
-  transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide' | 'fade_black',
   myVoiceNarration?: boolean,
-  noMusic?: boolean,
-  musicVideoMode?: boolean,
-  customAudioUrl?: string | null,
-  captionLang?: 'ka' | 'en' | 'ru',
-  vocalGender?: 'male' | 'female' | 'duet',
-  audioMix?: AudioMixOptions,
-  dialogueStems?: { url: string; speaker: string; startSec: number }[] | null,
-  /** The film's real per-scene length (4–8s). Absent → the 8s default grid. */
-  clipSec?: number | null,
-  /** Per-join transitions (the studio's scene timeline). */
-  joinTransitions?: string[] | null,
-  /** Video Core v1.0 §4 — the contracted final length the assembler cuts the master to. */
-  finalDurationSec?: number | null,
+  signal?: AbortSignal,
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null; clipsDropped?: number } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
-  let finalVoiceUrl = voiceUrl ?? null;
+  let finalVoiceUrl = matrix.voiceUrl ?? null;
   if (myVoiceNarration && finalVoiceUrl) {
     try {
       const cr = await fetch('/api/video/voice-narration', {
@@ -678,56 +763,12 @@ async function assembleMaster(
       if (cj?.url) finalVoiceUrl = cj.url;
     } catch { /* keep the original TTS narration */ }
   }
-  // PHASE 2 L2/L6 — assemble the transition + 3-track-audio / smart-ducking knobs into
-  // ONE globalRender object. Each key is opt-in; an empty object is omitted entirely so
-  // the route keeps its defaults (and the existing documentary mix) when nothing is set.
-  const globalRender: Record<string, string | number | boolean> = { ...composeTransitionRender(transition, joinTransitions) };
-  if (audioMix?.threeTrack) globalRender.three_track_mix = true;
-  if (typeof audioMix?.musicVolume === 'number') globalRender.music_volume = audioMix.musicVolume;
-  if (typeof audioMix?.sfxVolume === 'number') globalRender.sfx_volume = audioMix.sfxVolume;
-  if (audioMix?.smartDuck === false) globalRender.smart_duck = false;
-  if (typeof audioMix?.duckDb === 'number') globalRender.duck_db = audioMix.duckDb;
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     signal,
-    body: JSON.stringify({
-      // The assembler derives the master timeline (and every per-clip trim) from these durations, so a
-      // film rendered on a 6s grid must report 6s — a hardcoded 8 pad-froze the tail of every clip.
-      segments: clipUrls.map((url) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : FILM_CLIP_SEC })),
-      ...(musicUrl ? { musicUrl } : {}),
-      // Music OFF → tell the route to skip score generation (no musicUrl + this flag).
-      ...(noMusic ? { noMusic: true } : {}),
-      // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
-      // the score under it (voiceoverUrl → vocal_ducking_pct).
-      ...(finalVoiceUrl ? { voiceoverUrl: finalVoiceUrl } : {}),
-      // DAY-6 multi-voice — ≥2 per-speaker dialogue stems → the assembler builds the
-      // spatialized multi-voice lane with the -12dB sidechain duck (route re-signs + caps at 16).
-      ...(dialogueStems && dialogueStems.length >= 2 ? { dialogueStems } : {}),
-      // PHASE 49 §7 — cinematic SFX / sound-design, mixed under the score.
-      ...(sfxUrl ? { sfxUrl } : {}),
-      ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
-      ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
-      // Video Core v1.0 §4 — the final length the master is cut to (the route refuses one these clips cannot be cut to).
-      ...(typeof finalDurationSec === 'number' && finalDurationSec > 0 ? { finalDurationSec } : {}),
-      // Pass any non-landscape canvas (vertical · 1:1 · 4:5) to the assembler;
-      // landscape is the route default.
-      ...(orientation && orientation !== 'landscape' ? { orientation } : {}),
-      // v330 — explicit Music Video mode → song-master mix + branded lower-third.
-      // A supplied soundtrack implies music-video intent.
-      ...(musicVideoMode || customAudioUrl ? { musicVideoMode: true } : {}),
-      // v330 — a user-uploaded soundtrack: the route anchors onto it, bypassing
-      // both the Udio score and the MusicGen fallback.
-      ...(customAudioUrl ? { customAudioUrl } : {}),
-      // v330 — caption language for the FiraGO lower-third (ka/en/ru).
-      ...(captionLang ? { captionLang } : {}),
-      // v330 — selected sung-vocal gender (steers the ElevenLabs Music singer).
-      ...(vocalGender ? { vocalGender } : {}),
-      // Scene transition + L2/L6 audio knobs. globalRender wins over the route's
-      // film-token default ('cut'), so the user's choices are honoured.
-      ...(Object.keys(globalRender).length ? { globalRender } : {}),
-    }),
+    body: JSON.stringify(filmAssembleBody(plan, matrix, scorePrompt, finalVoiceUrl)),
   });
   // FIX 4 — surface the route's STRUCTURED reason (insufficient credits, audio/
   // stitch failure) instead of collapsing every non-OK response to a blank null.
@@ -898,6 +939,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.storyboardApproval ? { storyboardApproval: opts.storyboardApproval } : {}),
           // ONE Generate press = one film start: the server refuses a second start under the same id, with nothing charged.
           metadata: { filmRequestId: newFilmRequestId() },
+          // How the film is stitched, kept by the server with the film: if this tab closes, the server finishes the film
+          // the way this tab would have (lib/chat/filmFollowWorker).
+          filmFollow: filmFollowPlan(opts),
         },
         signal,
       );
@@ -1051,30 +1095,23 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     if (clips.length < MIN_SALVAGE_CLIPS && !(intendedSingleClip && clips.length === 1)) {
       return fail(describeDeclinedScenes(matrix, locale) ?? 'Not enough scenes rendered to stitch a film (need at least 2).', matrix);
     }
-    // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
-    const musicBed = opts.noMusic ? null : (opts.soundtrackUrl ?? matrix.audioUrl ?? null);
-    // PHASE 48 §2 — commentator/narration track, when the brief asked for one.
-    const voiceBed = matrix.voiceUrl ?? null;
-    // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
-    const sfxBed = matrix.sfxUrl ?? null;
-    // DAY-6 multi-voice — per-speaker dialogue stems (≥2 → assembler spatial premix + -12dB duck).
-    const dialogueStemsBed = matrix.dialogueStems ?? null;
-    // v330 — Music Video mode (explicit, or implied by an uploaded soundtrack) +
-    // the caption language for the burned-in lower-third (the app locale).
-    const musicVideoMode = Boolean(opts.musicVideoMode);
-    const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
-    // The full transition (crossfade/cut/dissolve/zoom/slide) flows to the assembler
-    // → globalRender.transition → buildFilterComplex's XFADE map.
+    // The beds (score, narration, SFX, dialogue stems), the caption language, the transitions and the final-length
+    // contract are composed by filmAssembleBody — the one builder the server's follower uses too (lib/chat/filmFollowWorker).
     // Lip-sync is NOT done here (a whole-master sync/lipsync-2 pass warps the wide/
     // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
     // compositeDocumentary path, which lip-syncs a clean close-up face and composites
     // it back in-place instead).
     const scenesPlanned = matrix.sceneCount || matrix.clips.length;
-    const finalContract = finalContractForCut(opts.finalDurationSec, clips.length, scenesPlanned);
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null, finalContract);
-    let assembled: { url: string; qa: FilmQaSummary | null } | null =
+    const assembledRes = await assembleMaster(filmFollowPlan(opts), matrix, message, opts.myVoiceNarration, signal);
+    // The route's music report rides along: rebuilding this object as { url, qa } alone dropped it, so a film every
+    // music provider missed came back with no "no soundtrack" note (audit 2026-10-17, still true on 9f691d8).
+    let assembled: { url: string; qa: FilmQaSummary | null; scoreFallback?: string | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
-        ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
+        ? {
+          url: assembledRes.url,
+          qa: 'qa' in assembledRes ? assembledRes.qa : null,
+          ...('scoreFallback' in assembledRes && assembledRes.scoreFallback !== undefined ? { scoreFallback: assembledRes.scoreFallback } : {}),
+        }
         : null;
     // FIX 4 — keep the route's real reason (e.g. the insufficient-credits top-up
     // message) so a failure shows WHY in chat, not a generic "could not host".
@@ -1114,7 +1151,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       // A master RECOVERED from the durable tracker carries no score report, and `undefined` is the
       // honest value for that — it means "not reported", which the delivery notice treats differently
       // from null ("every provider missed"). Inventing null here would warn about a film that is fine.
-      scoreFallback: 'scoreFallback' in assembled ? (assembled.scoreFallback as string | null | undefined) : undefined,
+      scoreFallback: assembled.scoreFallback,
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {

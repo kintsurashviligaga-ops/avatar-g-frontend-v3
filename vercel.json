@@ -34,6 +34,9 @@
     "app/api/video/assemble/route.ts": {
       "maxDuration": 600
     },
+    "app/api/film/sweep/route.ts": {
+      "maxDuration": 600
+    },
     "app/api/video/longform/route.ts": {
       "maxDuration": 300
     },
@@ -234,6 +237,10 @@
     },
     {
       "path": "/api/agent/media/sweep",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/film/sweep",
       "schedule": "* * * * *"
     },
     {

@@ -13,7 +13,7 @@ import { dirname, join, relative } from 'path';
 const ROOT = join(__dirname, '..');
 const NATIVE = { ffmpeg: 'ffmpeg-static', resvg: '@resvg/resvg-js' } as const;
 // …and the talking avatar's two routes (lib/avatar/voicedClip): the poll that lays its ElevenLabs line over the clip.
-const SCOPES = ['app/api/agent', 'app/api/tasks', 'app/api/genjutsu/status', 'app/api/avatar/veo'];
+const SCOPES = ['app/api/agent', 'app/api/tasks', 'app/api/genjutsu/status', 'app/api/avatar/veo', 'app/api/film/sweep'];
 
 /** Routes that import a module reaching the package but never run it. Each needs a reason a reviewer can check. */
 const NEVER_RUNS: Record<string, { ffmpeg?: string; resvg?: string }> = {
