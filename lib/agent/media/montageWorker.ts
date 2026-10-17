@@ -22,7 +22,8 @@ import { OUTPUT_FPS } from '@/lib/services/montage/beatPlan';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { ASPECT_DIMS, timelineDuration } from '@/lib/services/montage/montagePlan';
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, mustStop, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
-import { MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
+import { BUDGET_REASONS, MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
+import { budgetReasonOf, isBudgetRefusal } from '@/lib/services/billing/budgetMessage';
 import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, audioTiming, clipCheckPoints, frameDiff, qcAvSync, qcClips, qcMaster, sourceContribution, type ClipVerdict, type QcOutcome } from './montageAsk';
 import { checkManifest, isPictureKind, parseAgentRequest, sameManifest, type AgentMontageRequest } from './montageManifest';
 
@@ -160,6 +161,12 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
       outcome = { ok: false, step: 'resolve', error: e instanceof Error ? e.message : 'render failed' };
     }
     if (ctl.signal.aborted) return halted(beat);
+    // ⚠️ THE PLATFORM'S AI LIMIT IS NOT A BROKEN RENDER (2026-10-16): it read „the montage failed", so nobody could tell the
+    // site's daily limit was spent, or when it lifts. Its own code carries the guard's reason to the card.
+    if (!outcome.ok && isBudgetRefusal(outcome.error)) {
+      const reason = budgetReasonOf(outcome.error);
+      return end(`budget_exceeded: ${reason && (BUDGET_REASONS as readonly string[]).includes(reason) ? reason : 'daily_limit'}`, `${outcome.step}: ${outcome.error}`.slice(0, 200));
+    }
     if (!outcome.ok) return end(`render_failed: ${outcome.step}: ${outcome.error}`.slice(0, 300), `${outcome.step}: ${outcome.error}`.slice(0, 200));
 
     // ── QC before delivery ───────────────────────────────────────────────────────────────────────────────────────

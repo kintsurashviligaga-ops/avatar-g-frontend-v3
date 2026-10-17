@@ -27,6 +27,8 @@ import MontageStudio from './MontageStudio';
 import { resamplePeaks, visiblePeaks } from './Timeline';
 // eslint-disable-next-line import/first
 import { MONTAGE_COMMAND_EVENT } from './voiceCommands';
+// eslint-disable-next-line import/first
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -118,6 +120,23 @@ describe('MontageStudio', () => {
     expect(screen.getAllByTestId('montage-clip')).toHaveLength(2);
     fireEvent.click(screen.getByTestId('montage-redo'));
     expect(screen.getAllByTestId('montage-clip')).toHaveLength(1);
+  });
+
+  // 2026-10-16: the site's daily AI limit was spent and the export said only that it failed.
+  it('an export the platform\'s AI limit refuses says which limit and when it lifts', async () => {
+    const message = budgetRefusalMessage('ka', 'daily_limit');
+    const base = global.fetch as jest.Mock;
+    global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => (String(url).includes('/api/v2/montage/render')
+      ? { ok: false, status: 503, json: async () => ({ success: false, code: 'platform_budget', error: 'platform_budget', budgetReason: 'daily_limit', message }) }
+      : base(url, init))) as unknown as typeof fetch;
+    render(<MontageStudio locale="ka" onExit={() => {}} />);
+    await addTwoClips();
+    await act(async () => { uploads.splice(0).forEach((r, i) => r({ path: `u/${i}` })); });
+    await waitFor(() => expect(screen.getByTestId('montage-export-btn')).toBeEnabled());
+    await act(async () => { fireEvent.click(screen.getByTestId('montage-export-btn')); });
+    await waitFor(() => expect(screen.getByTestId('montage-export')).toHaveAttribute('data-phase', 'error'));
+    expect(screen.getByTestId('montage-export')).toHaveTextContent(message);
+    expect(message).toContain('04:00');
   });
 
   it('writes text on a clip — it shows on the text track and goes out with the export', async () => {

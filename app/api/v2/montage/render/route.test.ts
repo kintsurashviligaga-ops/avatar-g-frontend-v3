@@ -25,7 +25,10 @@ jest.mock('../../../../../lib/services/montage/montagePipeline', () => ({
 }));
 jest.mock('../../../../../lib/services/billing/guardedCall', () => ({
   guardedCall: jest.fn(async (_opts: unknown, fn: () => Promise<unknown>) => fn()),
-  BudgetExceededError: class BudgetExceededError extends Error {},
+  BudgetExceededError: class BudgetExceededError extends Error {
+    reason: string;
+    constructor(_service?: string, reason = 'daily_limit') { super(`budget_exceeded:${reason}`); this.reason = reason; }
+  },
 }));
 jest.mock('../../../../../lib/orchestrator/jobs', () => ({
   createJob: jest.fn(async () => true),
@@ -49,6 +52,10 @@ import { runMontage } from '../../../../../lib/services/montage/montagePipeline'
 import { createJob } from '../../../../../lib/orchestrator/jobs';
 // eslint-disable-next-line import/first
 import { checkRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
+// eslint-disable-next-line import/first
+import { BudgetExceededError, guardedCall } from '../../../../../lib/services/billing/guardedCall';
+// eslint-disable-next-line import/first
+import { budgetRefusalMessage } from '../../../../../lib/services/billing/budgetMessage';
 
 const post = (body: unknown) =>
   POST(new Request('https://myavatar.ge/api/v2/montage/render', {
@@ -154,6 +161,21 @@ describe('owner check (lib/security/callerMedia)', () => {
   it('an external clip URL is not ours to judge: it still meets only the public-address check', async () => {
     const res = await post(edit({ shots: shot('https://cdn.example.com/clip.mp4') }));
     expect(res.status).toBe(200);
+  });
+});
+
+// 2026-10-16: the site's daily AI limit was spent and the export said only „export failed", in English from the route.
+describe('the platform budget refuses the render', () => {
+  it('answers which limit it is and when it lifts, in the person\'s language, in the shape every budget refusal has', async () => {
+    (guardedCall as jest.Mock).mockRejectedValueOnce(new (BudgetExceededError as unknown as new (s: string, r: string) => Error)('montage', 'daily_limit'));
+    const res = await post(edit());
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body).toEqual({
+      success: false, code: 'platform_budget', error: 'platform_budget', budgetReason: 'daily_limit',
+      message: budgetRefusalMessage('ka', 'daily_limit'),
+    });
+    expect(body.message).toContain('04:00');
   });
 });
 
