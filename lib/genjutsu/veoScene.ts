@@ -67,8 +67,8 @@ export interface SceneSubmitInput {
   /** Replaces the VFX scene's negative prompt (the avatar's own). */
   negativePrompt?: string;
   /**
-   * Veo's own sound. Off only for the avatar whose Georgian line ElevenLabs speaks (lib/avatar/veoAvatar): a silent clip
-   * is priced at Veo's silent rate, and the voice is laid over it once it is delivered. Default on.
+   * Veo's own sound; a silent clip is priced at Veo's silent rate. Default on — the voiced avatar keeps it too since
+   * 2026-10-17 10:22Z: Veo says the line so its mouth matches, and its voice is replaced on delivery (lib/avatar/speechMatch).
    */
   audio?: boolean;
 }

@@ -65,7 +65,7 @@ test('submits ONE 8 s reference-to-video request: the references as our own URLs
   expect(SCENE_NEGATIVE_PROMPT).not.toMatch(/logo|\btext\b/i);
 });
 
-test('the voiced avatar asks Veo for no sound, priced at the silent rate; every other scene keeps it', async () => {
+test('a scene asked for no sound renders silent at the silent rate; every other scene keeps its sound', async () => {
   (veoTransport as jest.Mock).mockReturnValue('vertex');
   await submitScene({ ...input, referenceUrls: [], startImageUrl: 'https://signed.example/face.jpg', audio: false });
   expect((createVeoClip as jest.Mock).mock.calls[0]![0].request.generateAudio).toBe(false);

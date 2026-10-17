@@ -8,7 +8,8 @@
  * gave, the preset they picked, else a ready presenter matched to the voice and the frame — and the order goes to Veo.
  *
  * Agent G's card says what will be made before anything is charged: the line, the voice (a Georgian line is spoken by
- * ElevenLabs and the lips follow it only approximately: GG's choice, 2026-10-17 07:54Z), the face, the frame, the price.
+ * ElevenLabs — GG's choice, 2026-10-17 07:54Z — and fitted to the mouth phrase by phrase since the 10:22Z tap, see
+ * lib/avatar/speechMatch), the face, the frame, the price.
  */
 import { AVATAR_TEMPLATES } from '@/lib/studio/templates';
 import { creditsLabel } from '@/lib/credits/quote';
@@ -69,9 +70,9 @@ export function avatarOfferText(o: AvatarOffer): string {
       : `გავაკეთებ ${VEO_AVATAR_SECONDS} წამიან მოლაპარაკე ავატარს (${o.aspect}).`;
   const says = en ? `**Says:** “${line}”` : ru ? `**Скажет:** «${line}»` : `**იტყვის:** „${line}“`;
   const voice = eleven
-    ? (en ? `**Voice:** a Georgian ${o.gender} voice (ElevenLabs); the lips follow it approximately.`
-      : ru ? `**Голос:** грузинский ${o.gender === 'female' ? 'женский' : 'мужской'} голос (ElevenLabs); губы следуют ему приблизительно.`
-        : `**ხმა:** ქართული ${o.gender === 'female' ? 'ქალის' : 'კაცის'} ხმა (ElevenLabs); ტუჩები ხმას მიახლოებით მიჰყვება.`)
+    ? (en ? `**Voice:** a Georgian ${o.gender} voice (ElevenLabs), fitted to the lips phrase by phrase.`
+      : ru ? `**Голос:** грузинский ${o.gender === 'female' ? 'женский' : 'мужской'} голос (ElevenLabs), подогнанный к губам по фразам.`
+        : `**ხმა:** ქართული ${o.gender === 'female' ? 'ქალის' : 'კაცის'} ხმა (ElevenLabs), ტუჩებს ფრაზა-ფრაზა მოერგება.`)
     : (en ? '**Voice:** the video engine’s own voice.' : ru ? '**Голос:** собственный голос видеодвижка.' : '**ხმა:** ვიდეოს ძრავის საკუთარი ხმა.');
   const face = o.face === 'photo'
     ? (en ? '**Face:** your photo.' : ru ? '**Лицо:** ваше фото.' : '**სახე:** შენი ფოტო.')

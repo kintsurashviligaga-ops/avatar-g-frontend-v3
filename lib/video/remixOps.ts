@@ -17,6 +17,7 @@ import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { ASPECT_DIMS as SHARED_ASPECT_DIMS, GRADE_VF, atempoChain, type GradeStyle } from '@/lib/video/editFilters';
 import { soundMixGraph } from '@/lib/services/montage/montageSound';
+import { describeDub, dubFilter, frameLevelsDb, planDub, speechSpans } from '@/lib/avatar/speechMatch';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -194,7 +195,10 @@ export async function muxAudioOntoVideo(
 }
 
 /**
- * The talking avatar's voice laid over its silent Veo clip (lib/avatar/veoAvatar, GG's ElevenLabs choice 2026-10-17).
+ * The talking avatar's ElevenLabs line laid over its Veo clip (lib/avatar/veoAvatar, GG's ElevenLabs choice 2026-10-17).
+ * Veo SAID the line itself (in Latin letters, GG's tap 10:22Z „Veo ლაპარაკობს"), so its mouth follows its own voice:
+ * that voice is dropped and the line, cut at its pauses, is laid phrase by phrase onto where Veo spoke
+ * (lib/avatar/speechMatch). A clip with no voice of its own (the silent clips before) gets the line from its start.
  * Unlike 'replace' above, the PICTURE decides the length: a 3 s line under an 8 s clip is padded with silence to
  * `seconds` (`apad=whole_dur`), never the clip cut to 3 s by `-shortest`; a line a hair longer than the clip ends with
  * it (`-t`). The picture is stream-copied when it can be. Hosted at `dest` — a fixed path, so a repeat poll re-signs
@@ -213,9 +217,16 @@ export async function muxVoiceOntoClip(
     const out = join(dir, 'out.mp4');
     const vcodec = (await videoStreamIsMp4Copyable(videoUrl)) ? ['-c:v', 'copy'] : X264;
     const sec = String(Number(seconds.toFixed(3)));
+    const line = await speechLevels(BIN, voiceUrl, join(dir, 'line.pcm'));
+    const veo = await speechLevels(BIN, videoUrl, join(dir, 'veo.pcm'));
+    const lineSpans = line ? speechSpans(line) : [];
+    const veoSpans = veo ? speechSpans(veo) : [];
+    const pieces = planDub(lineSpans, veoSpans, seconds);
+    // eslint-disable-next-line no-console
+    console.warn('[avatar.voice] dub:', describeDub(lineSpans, veoSpans, pieces));
     await exec(BIN, [
       '-y', '-i', videoUrl, '-i', voiceUrl,
-      '-filter_complex', `[1:a]apad=whole_dur=${sec}[voice]`,
+      '-filter_complex', pieces ? dubFilter(pieces, '1:a', seconds) : `[1:a]apad=whole_dur=${sec}[voice]`,
       '-map', '0:v:0', '-map', '[voice]',
       ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-t', sec, '-movflags', '+faststart', out,
     ], { maxBuffer: 1 << 26, timeout: 90_000 });
@@ -228,6 +239,19 @@ export async function muxVoiceOntoClip(
     return null;
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** A track's levels (lib/avatar/speechMatch), read from its first audio stream as 16 kHz mono; null when it has none. */
+async function speechLevels(bin: string, url: string, pcmPath: string): Promise<number[] | null> {
+  try {
+    await exec(bin, ['-y', '-v', 'error', '-i', url, '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-f', 's16le', pcmPath], { maxBuffer: 1 << 24, timeout: 60_000 });
+    const buf = await readFile(pcmPath);
+    if (buf.byteLength < 320) return null;
+    const pcm = new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 2));
+    return frameLevelsDb(pcm, 16_000);
+  } catch {
+    return null;
   }
 }
 

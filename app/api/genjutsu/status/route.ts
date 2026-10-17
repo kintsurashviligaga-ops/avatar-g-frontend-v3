@@ -17,9 +17,10 @@
  * refund is by ref (what the LEDGER shows, once as `${ref}:refund`), so this poll, a repeat poll and the render drainer
  * collapse to ONE credit-back. A finished clip is re-hosted at a fixed path, so a re-poll re-signs the same object.
  *
- * ⚠️ A VOICED AVATAR (`::v` in the signed id, app/api/avatar/veo) is shown only WITH its ElevenLabs line: Veo's silent
- * clip is muxed with the line stored before the charge (lib/avatar/voicedClip), and until that lands the job reads
- * `delivering` — never a silent avatar, and the hard cap below still refunds one that never gets its voice.
+ * ⚠️ A VOICED AVATAR (`::v` in the signed id, app/api/avatar/veo) is shown only WITH its ElevenLabs line: Veo's own
+ * voice is replaced by the line stored before the charge, fitted onto where Veo spoke (lib/avatar/voicedClip), and until
+ * that lands the job reads `delivering` — never a silent avatar, and the hard cap below still refunds one that never
+ * gets its voice.
  *
  * ⚠️ maxDuration 120 here; vercel.json's `app/api/**` glob (15 s) overrides it unless `app/api/genjutsu/**` is added
  * there, and the Gemini-transport watermark crop needs ffmpeg-static traced for this route (next.config.js

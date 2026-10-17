@@ -1,6 +1,7 @@
 /**
  * lib/avatar/voicedClip.ts — deliver a talking avatar whose Georgian line ElevenLabs speaks (lib/avatar/veoAvatar): Veo's
- * silent clip with the line laid over it. Server-only; called by GET /api/genjutsu/status once Veo's clip is hosted.
+ * clip with the line in place of Veo's own voice, fitted onto where Veo spoke (lib/avatar/speechMatch). Server-only;
+ * called by GET /api/genjutsu/status once Veo's clip is hosted.
  *
  * Both files sit at fixed paths named by the job's uuid (the line was stored there BEFORE the charge, by
  * app/api/avatar/veo), so a repeat poll re-signs the finished clip instead of muxing again, and nothing here needs a

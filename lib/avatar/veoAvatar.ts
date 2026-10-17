@@ -7,16 +7,19 @@
  * language), and the user's "how it behaves" text directs the motion. One 8 s clip, priced as one Veo clip from the
  * video price SSoT (lib/credits/videoPricing) — no new price constant.
  *
- * ⚠️ A GEORGIAN LINE IS SPOKEN BY ELEVENLABS, NOT BY VEO (GG's tap, 2026-10-17 07:54Z: „ElevenLabs ხმა"). Veo's own
- * Georgian is garbled (the 2026-10-16 film), so for Georgian words Veo renders the person TALKING with no sound and the
- * cloned native-Georgian voice is laid over the clip (app/api/genjutsu/status). The lips follow the words only roughly —
- * the trade GG chose. English and Russian keep Veo's own voice.
+ * ⚠️ A GEORGIAN LINE IS HEARD IN ELEVENLABS' VOICE, NOT VEO'S (GG's tap, 2026-10-17 07:54Z: „ElevenLabs ხმა"). Veo's own
+ * Georgian is garbled (the 2026-10-16 film). Veo first rendered the person talking with NO sound and the line was laid
+ * over it: the mouth moved on its own and did not match at all (GG, 10:15Z). Now Veo SAYS the line, in Latin letters,
+ * so its mouth follows its own voice; that voice is replaced by the cloned native-Georgian line, fitted phrase by
+ * phrase onto where Veo spoke (lib/avatar/speechMatch, on delivery in app/api/genjutsu/status) — GG's tap 10:22Z
+ * „Veo ლაპარაკობს". English and Russian keep Veo's own voice.
  *
  * Pure: the route (app/api/avatar/veo) owns auth, money and the provider.
  */
 import { buildSpeechDirection } from '@/lib/chat/filmPipeline';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { isGeorgianText } from '@/lib/audio/tts-model';
+import { georgianToLatin } from './speechMatch';
 import type { VeoAspect } from '@/lib/veo/types';
 
 /** Veo's longest clip; a start-image clip may be 4, 6 or 8 s. */
@@ -89,15 +92,21 @@ export function buildVeoAvatarPrompt({ speech, direction, voicedSec }: { speech:
   return [
     'The person in the first frame looks into the camera and talks to the viewer. Keep their face, hair, clothes and the background exactly as in the first frame; a steady medium close-up.',
     act.trim(),
-    // A line voiced by ElevenLabs: Veo is told only HOW LONG to talk — never the words, which it would put on screen or
-    // try to say itself — so the mouth moves while the voice speaks and rests after it.
-    voicedSec !== undefined ? silentTalkDirection(voicedSec) : buildSpeechDirection(speech),
+    // A line voiced by ElevenLabs: Veo says the same syllables in Latin letters, at the ElevenLabs line's length, so its
+    // mouth makes them; its own voice is then replaced (lib/avatar/speechMatch).
+    voicedSec !== undefined ? dubbedLineDirection(speech, voicedSec) : buildSpeechDirection(speech),
   ].join(' ');
 }
 
-function silentTalkDirection(seconds: number): string {
+function dubbedLineDirection(speech: string, seconds: number): string {
   const talk = Math.max(1, Math.min(VEO_AVATAR_SECONDS, Math.round(seconds * 2) / 2));
-  return talk >= VEO_AVATAR_SECONDS - 0.5
-    ? 'They speak continuously for the whole clip, lips and jaw moving naturally as in clear, calm conversation.'
-    : `From the very start they speak for about ${talk} seconds, lips and jaw moving naturally as in clear, calm conversation, then they stop talking, close their mouth and hold a warm, friendly look at the camera.`;
+  const words = georgianToLatin(speech).replace(/"/g, '');
+  const pace = talk >= VEO_AVATAR_SECONDS - 0.5
+    ? 'Calm, natural pace that fills the whole clip, every word complete.'
+    : `Calm, natural pace, starting right away and taking about ${talk} seconds; then they close their mouth and hold a warm, friendly look at the camera.`;
+  return [
+    `They speak aloud to the camera, lips moving in sync with the words, a Georgian phrase pronounced exactly as written, every vowel clear: "${words}".`,
+    pace,
+    'Only their voice is heard, clear and close, with no music.',
+  ].join(' ');
 }

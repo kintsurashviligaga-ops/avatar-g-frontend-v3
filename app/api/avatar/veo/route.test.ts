@@ -87,8 +87,9 @@ test('admin, English words: row with _reserve, then the charge, then ONE Veo sub
   expect(parseVeoJobId(polled.jobId)?.voiced).toBe(false);
 });
 
-// GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა": a Georgian line is ElevenLabs' voice over a silent Veo clip.
-test('Georgian words: the ElevenLabs line is made BEFORE the charge, Veo gets no words and no sound, the job id says voiced', async () => {
+// GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა": a Georgian line is heard in ElevenLabs' voice. Tap 10:22Z „Veo ლაპარაკობს":
+// Veo says the same line in Latin letters, with its sound on, so its mouth makes the syllables the voice replaces.
+test('Georgian words: the ElevenLabs line is made BEFORE the charge, Veo says it in Latin letters with sound, the job id says voiced', async () => {
   const res = await POST(post({ ...BODY, voiceGender: 'male' }));
   expect(res.status).toBe(202);
   const j = await res.json();
@@ -103,8 +104,9 @@ test('Georgian words: the ElevenLabs line is made BEFORE the charge, Veo gets no
   expect(voiceAt).toBeLessThan((deductCredits as jest.Mock).mock.invocationCallOrder[0]!);
   expect(voiceAt).toBeLessThan((createJob as jest.Mock).mock.invocationCallOrder[0]!);
   const sub = (submitScene as jest.Mock).mock.calls[0][0];
-  expect(sub.audio).toBe(false);
-  expect(sub.prompt).not.toContain('გამარჯობა'); // the words never reach Veo
+  expect(sub.audio).toBeUndefined(); // Veo's own sound on: its lip sync follows its own voice
+  expect(sub.prompt).not.toContain('გამარჯობა'); // never the Georgian script, which Veo garbles
+  expect(sub.prompt).toContain('"gamarjoba, me var sheni avatari"');
   expect(sub.prompt).toContain('about 3 seconds');
   expect(sub.prompt).toContain('იღიმის.'); // the direction still moves it
   expect((createJob as jest.Mock).mock.calls[0][0].params.voiced).toBe(true);
