@@ -16,6 +16,7 @@ import {
   saveFilmStitchRecord,
 } from './filmSceneBook';
 import { videoCredits } from '@/lib/credits/videoPricing';
+import { pickLutLook } from '@/lib/orchestrator/cinematic-lut';
 
 const scene = (over: Partial<FilmBookScene> = {}): FilmBookScene => ({
   ordinal: 2, seed: 41, userPrompt: 'A woman walks into the bakery.', storyboardFrame: 'https://frames.example/2.png',
@@ -99,7 +100,21 @@ describe('cutting the new clip into the film', () => {
       musicUrl: 'https://store.example/score.mp3', voiceoverUrl: 'https://store.example/vo.mp3', orientation: 'vertical',
       captionLang: 'ka', finalDurationSec: 24, filmTokenId: 'f0123456789abcdef', segments: cut.segments,
     });
-    expect(body).not.toHaveProperty('scorePrompt');
+  });
+
+  test('the new stitch keeps the film’s brief, so the scenes the user kept keep their grade (live E2E: the night LUT was lost)', () => {
+    const rec = record({ body: { ...record().body, scorePrompt: 'შექმენი 9:16 სარეკლამო ვიდეო. პირველი: ღამის თბილისი ზემოდან.' } });
+    const cut = restitchSegments(rec.segments, 2, 'https://clips.example/2-redo.mp4', 8)!;
+    const body = restitchBody(rec, cut.segments, cut.inserted);
+    expect(body.scorePrompt).toBe(rec.body.scorePrompt);
+    // The look the assembler picks from that brief is the original film's, not the default.
+    expect(pickLutLook(body.scorePrompt as string)).toBe('night_neon');
+    expect(pickLutLook(undefined)).toBe('cinematic');
+    // And the music it carries is the recorded one: the assembler takes `musicUrl` before it would compose from the brief.
+    expect(body.musicUrl).toBe('https://store.example/score.mp3');
+    // The redo body is the delivered one with only the scenes changed (no key lost, none added).
+    const { segments: _a, filmTokenId: _b, ...again } = body;
+    expect(again).toEqual({ ...rec.body, musicUrl: rec.musicUrl });
   });
 
   test('a film that gained a scene drops the final length it was cut to; a film with no music keeps its score brief', () => {
