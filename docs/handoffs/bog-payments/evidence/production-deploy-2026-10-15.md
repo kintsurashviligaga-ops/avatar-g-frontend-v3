@@ -44,3 +44,30 @@
 | BOG ყველასთვის, ავტომატური გეგმები | შენი ცალკე სიტყვით, ზემოთა პუნქტების შემდეგ |
 
 Production-ში ამ deploy-ის გარდა არაფერი შეცვლილა: გადახდა, refund, env, credential ან მიგრაცია არ ყოფილა.
+
+## 6. მეორე deploy: PR #70 (2026-10-15 14:36Z)
+
+შუალედში Production-ში PR #69 (Video Core, `b46bb44`) შევიდა სხვა თრედიდან, 12:05Z-ზე; BOG smoke მასზეც მწვანე იყო (run 38732005645).
+
+| | |
+|---|---|
+| შენი სიტყვა | 14:23:51Z ბარათი „PR #70 შევაერთო და Production-ში გავუშვა?“ → „Merge + deploy“ (CI-ის მწვანე გახდომის შემდეგ) |
+| რა მოაქვს | ბანკის მიერ უარყოფილი refund (`actions[]`, `rejected`, `refund_amount` 0) შეკვეთას `refund_requested`-იდან `completed`-ში აბრუნებს, მხოლოდ სტატუსს; cron-ის refund-ის შეჯერება 60-ის ნაცვლად 93 დღეს კითხულობს (BOG refund-ს 3 თვემდე იღებს); docs |
+| CI merge-მდე (head `afd0506`) | verify 38749319198 · live E2E (desktop + phone) და billing on real Postgres 38749319120 · BOG E2E isolated 38749319290 · preview-e2e 38749319068 · Vercel Preview: ყველა **success**. Sandbox job კვლავ **not run** (სატესტო გასაღებები GitHub-ში ჯერ არ არის) |
+| Merge | PR #70 → `main`, merge commit `4fc0377` (14:36:33Z). მიგრაცია, env-ის ან `vercel.json`-ის ცვლილება არ ყოფილა |
+| Deployment | `dpl_5kNkFQWWfxju5Q4V1FBVpi92ako5`, აწყობა 14:36:34Z, **READY 14:40:23Z**; myavatar.ge და www.myavatar.ge მასზეა |
+| BOG-ის რეჟიმი | უცვლელი: `BOG_CHECKOUT_MODE=admin`, გეგმები მხოლოდ ადმინისთვის |
+
+| შემოწმება (ანონიმური, read-only) | შედეგი | იარლიყი |
+|---|---|---|
+| `/api/health` 14:42:57Z | `ok: true`, `healthy`, commit `4fc0377` | PROVEN |
+| `/api/checkout/capabilities` 14:43:02Z | `stripe: true`, `bog: false`, `bogPlans: false` | PROVEN |
+| workflow „BOG Production smoke (read-only)“, run 38753844415, main `4fc0377`, 14:43:06Z | 9/9: `/ka` `/en` `/ru` 200; BOG ანონიმურს არ უჩანს; checkout 401, ხელმოუწერელი callback 401, შეკვეთის სტატუსი 401, admin API 403, cron 403 (ამ შემოწმების საკუთარი 403-ია) | PROVEN |
+| cron `/api/cron/bog-billing` ახალ deployment-ზე | 14:50Z-ის ტიკი 200 `dpl_5kNkFQWWfxju5Q4V1FBVpi92ako5`-ზე (Vercel observability, deployment-ის მიხედვით). 14:40Z-ის ტიკი ჯერ ძველ deployment-ზე იყო, ისიც 200; 14:43Z-ის 403 smoke-ისაა | PROVEN |
+| 5xx 14:36Z-დან | არცერთი მთელ პროექტზე, 14:36–14:56Z (Vercel observability). Runtime errors-ში მხოლოდ ძველი ჯგუფი: `/api/app/worker/tick` → `public.service_jobs` არ არსებობს (2026-10-02-დან, BOG-ს არ ეხება, ლოგის ჩანაწერია, 5xx არა) | PROVEN |
+| უარყოფილი refund-ის გზა ცოცხლად | Production-ში უარყოფილი refund ჯერ არ ყოფილა; იზოლირებულად E22 (CI + ლოკალურად) | PROVEN იზოლირებულად · Production-ში NOT RUN |
+| HawkScan | `HAWK_API_KEY` არ არის | NOT RUN |
+
+უკან დაბრუნება ახლა: Vercel Instant Rollback → `dpl_6AaKtWBNgxyvjZSv4eF48DdSdTE7` (`b46bb44`, Video Core-ითურთ). უფრო ძველზე (`dpl_jQrS5XWa2xm7zVLAnAUizS4B6ToD`) დაბრუნება Video Core-ის Vertex-ს და film billing-ს წაიღებს, ამიტომ მხოლოდ ორივე თრედის შეთანხმებით. BOG-ის გამორთვა: `BOG_CHECKOUT_MODE=off` + მიმდინარე deployment-ის Redeploy. Vercel-ში Redeploy-ს შენ ნუ დააჭერ.
+
+ამ deploy-ის გარდა Production-ში არაფერი შეცვლილა: გადახდა, refund, env, credential ან მიგრაცია არ ყოფილა.
