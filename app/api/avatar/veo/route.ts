@@ -8,7 +8,15 @@
  * unless AVATAR_VEO_PUBLIC=1 (a public flag: GG's word).
  *
  * THE ORDER IS THE SAFETY, as in /api/genjutsu/generate: sign-in → admin/flag → parse (free) → rate → own photo →
- * price check → balance → daily slot → durable row with `_reserve` → RESERVE → submit once → refund on any miss.
+ * price check → balance → the Georgian voice → daily slot → durable row with `_reserve` → RESERVE → submit once →
+ * refund on any miss.
+ *
+ * ⚠️ A GEORGIAN LINE IS ELEVENLABS' VOICE (GG, 2026-10-17 07:54Z). It is made BEFORE anything is charged: no voice, or a
+ * line longer than the clip, is an honest refusal with nothing taken. Veo then renders the person talking with no sound
+ * (its Georgian is garbled), and the status route lays the line over the clip before it is shown (lib/avatar/voicedClip).
+ * The `::v` in the signed job id is what tells it to.
+ *
+ * GET answers whether this caller may use it, and at what price — the studio's card and panel print that price.
  */
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,13 +24,18 @@ import { billingLocale, ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { isAdminIdentity } from '@/lib/auth/adminGuard';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { VEO_AVATAR_NEGATIVE, buildVeoAvatarPrompt, parseVeoAvatarRequest, veoAvatarCredits, veoAvatarPublic } from '@/lib/avatar/veoAvatar';
+import {
+  VEO_AVATAR_NEGATIVE, VEO_AVATAR_SECONDS, avatarVoiceByElevenLabs, avatarVoicePath, buildVeoAvatarPrompt, parseVeoAvatarRequest,
+  veoAvatarCredits, veoAvatarPublic,
+} from '@/lib/avatar/veoAvatar';
+import { speakAvatarLine } from '@/lib/chat/filmVoiceover';
 import { composeVeoJobId, genjutsuChargeReady, genjutsuChargeRef, genjutsuJobId, signGenjutsuCharge, withGenjutsuCharge } from '@/lib/genjutsu/chargeToken';
 import { GENJUTSU_RATE, claimDailySlot, fail, releaseDailySlot } from '@/lib/genjutsu/serverCommon';
 import { submitScene } from '@/lib/genjutsu/veoScene';
 import { reportError } from '@/lib/observability/report-error';
 import { createJob, failJob } from '@/lib/orchestrator/jobs';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
+import { removeStorageObjects } from '@/lib/orchestrator/storage-adapter';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { readJson } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -33,6 +46,21 @@ export const maxDuration = 60;
 
 const ROUTE = '/api/avatar/veo';
 const PHOTO_TTL_SEC = 3_600;
+/** The line may end a hair after the picture (an mp3's own lead-in and tail): the clip's last frame ends it. */
+const VOICE_SLACK_SEC = 0.25;
+
+/** Whether this caller may start an avatar, and its price. Signed out → closed (nothing to start). Never throws. */
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const credits = veoAvatarCredits();
+  let user: Awaited<ReturnType<typeof authedClientFromRequest>>['user'] | null = null;
+  try {
+    user = (await authedClientFromRequest(req)).user ?? null;
+  } catch {
+    user = null;
+  }
+  const open = !!user?.id && (veoAvatarPublic() || (await isAdminIdentity(user).catch(() => false)));
+  return NextResponse.json({ success: true, open, credits, seconds: VEO_AVATAR_SECONDS }, { headers: { 'Cache-Control': 'no-store' } });
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const locale = billingLocale(req);
@@ -62,16 +90,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (r.expectedCredits !== null && r.expectedCredits !== credits) return fail(409, 'price_changed', { credits });
   if (!genjutsuChargeReady()) return NextResponse.json(ledgerUnavailableBody(locale), { status: 503 });
   if (!(await hasSufficientBalance(userId, credits))) return fail(402, 'insufficient_credits', { needed: credits });
-  if (!(await claimDailySlot())) return fail(429, 'rate_limited', { scope: 'daily' });
 
   const uuid = randomUUID();
+  // The Georgian line, spoken now — before the slot, the row and the charge, so a miss costs the user nothing.
+  const voiced = avatarVoiceByElevenLabs(r.speech);
+  let voicedSec: number | undefined;
+  if (voiced) {
+    const line = await speakAvatarLine({ text: r.speech, gender: r.voiceGender, path: avatarVoicePath(uuid) });
+    if (!line) return fail(503, 'voice_unavailable', { refunded: false });
+    if (line.seconds > VEO_AVATAR_SECONDS + VOICE_SLACK_SEC) {
+      await removeStorageObjects('renders', [avatarVoicePath(uuid)]).catch(() => {});
+      return fail(422, 'speech_too_long', { seconds: Math.round(line.seconds * 10) / 10, maxSeconds: VEO_AVATAR_SECONDS });
+    }
+    voicedSec = line.seconds;
+  }
+  if (!(await claimDailySlot())) return fail(429, 'rate_limited', { scope: 'daily' });
+
   const ref = genjutsuChargeRef(userId, uuid);
   const rowId = genjutsuJobId(uuid);
   const createdMs = Date.now();
 
   const filed = await createJob({
     id: rowId, userId, serviceType: 'film', status: 'processing',
-    params: { subtype: 'avatar', op: 'avatar-veo', prompt: r.speech.slice(0, 200), aspect: r.aspect, _reserve: { ref, credits } },
+    params: { subtype: 'avatar', op: 'avatar-veo', prompt: r.speech.slice(0, 200), aspect: r.aspect, ...(voiced ? { voiced: true } : {}), _reserve: { ref, credits } },
   });
   if (!filed) reportError(new Error('veo avatar job row not filed'), { route: ROUTE, ref });
 
@@ -91,9 +132,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   };
 
   const sub = await submitScene({
-    prompt: buildVeoAvatarPrompt({ speech: r.speech, direction: r.direction }),
+    prompt: buildVeoAvatarPrompt({ speech: r.speech, direction: r.direction, ...(voicedSec !== undefined ? { voicedSec } : {}) }),
     aspect: r.aspect, quality: 'fast', referenceUrls: [], startImageUrl: photo.url,
     negativePrompt: VEO_AVATAR_NEGATIVE, userId, sessionId: `avatar-${uuid}`,
+    ...(voiced ? { audio: false } : {}),
   });
   if (!sub.ok) {
     const refunded = await refund(`veo ${sub.reason}`);
@@ -102,11 +144,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return fail(sub.reason === 'invalid_request' || sub.reason === 'safety' ? 422 : 503, code, { refunded });
   }
 
-  const jobId = composeVeoJobId(sub.operation, sub.aspect, createdMs);
+  const jobId = composeVeoJobId(sub.operation, sub.aspect, createdMs, voiced);
   const token = signGenjutsuCharge({ u: userId, r: ref, j: jobId });
   if (!token) {
     const refunded = await refund('no charge token');
     return fail(503, 'billing_unavailable', { refunded });
   }
-  return NextResponse.json({ success: true, op: 'avatar', jobId: withGenjutsuCharge(jobId, token), credits, engine: 'Veo' }, { status: 202 });
+  return NextResponse.json({ success: true, op: 'avatar', jobId: withGenjutsuCharge(jobId, token), credits, engine: 'Veo', ...(voiced ? { voice: 'ElevenLabs' } : {}) }, { status: 202 });
 }

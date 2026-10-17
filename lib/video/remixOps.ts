@@ -194,6 +194,44 @@ export async function muxAudioOntoVideo(
 }
 
 /**
+ * The talking avatar's voice laid over its silent Veo clip (lib/avatar/veoAvatar, GG's ElevenLabs choice 2026-10-17).
+ * Unlike 'replace' above, the PICTURE decides the length: a 3 s line under an 8 s clip is padded with silence to
+ * `seconds` (`apad=whole_dur`), never the clip cut to 3 s by `-shortest`; a line a hair longer than the clip ends with
+ * it (`-t`). The picture is stream-copied when it can be. Hosted at `dest` — a fixed path, so a repeat poll re-signs
+ * one object instead of muxing again. Null on any miss.
+ */
+export async function muxVoiceOntoClip(
+  videoUrl: string,
+  voiceUrl: string,
+  seconds: number,
+  dest: { bucket: string; path: string },
+): Promise<string | null> {
+  if (!BIN || !videoUrl || !voiceUrl || !(seconds > 0)) return null;
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'avatar-voice-'));
+    const out = join(dir, 'out.mp4');
+    const vcodec = (await videoStreamIsMp4Copyable(videoUrl)) ? ['-c:v', 'copy'] : X264;
+    const sec = String(Number(seconds.toFixed(3)));
+    await exec(BIN, [
+      '-y', '-i', videoUrl, '-i', voiceUrl,
+      '-filter_complex', `[1:a]apad=whole_dur=${sec}[voice]`,
+      '-map', '0:v:0', '-map', '[voice]',
+      ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-t', sec, '-movflags', '+faststart', out,
+    ], { maxBuffer: 1 << 26, timeout: 90_000 });
+    const buf = await readFile(out);
+    if (buf.byteLength < 1_024) return null;
+    return await uploadBufferAndSign(dest.bucket, dest.path, buf, 'video/mp4', 604_800);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[avatar.voice] mux failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
  * Agent G's montage sound in one pass (lib/services/montage/montageSound): the master's own track, a music bed from
  * `musicStartSec` at `musicGainDb`, and a narration from `voiceStartSec` that the rest steps back under. The picture is
  * stream-copied whenever it can be (see muxAudioOntoVideo). Null on any failure: the caller fails the job, since a

@@ -35,16 +35,20 @@ export const signGenjutsuCharge = (c: GenjutsuCharge): string | null => token.si
 export const withGenjutsuCharge = (jobId: string, t: string): string => token.withToken(jobId, t);
 export const genjutsuChargeForPolledId = (id: string): { jobId: string; charge: GenjutsuCharge | null } => token.forPolledId(id);
 
-/** The composite the token binds: Veo's operation, the native aspect it renders, and when the job was created. */
-export function composeVeoJobId(operation: string, aspect: '16:9' | '9:16', createdMs: number): string {
-  return `${operation}::${aspect}::${Math.round(createdMs)}`;
+/**
+ * The composite the token binds: Veo's operation, the native aspect it renders, and when the job was created. `voiced`
+ * (`::v`) marks a talking avatar whose ElevenLabs line is laid over the clip on delivery (lib/avatar/veoAvatar) — inside
+ * the signed id, so no caller can add or strip it.
+ */
+export function composeVeoJobId(operation: string, aspect: '16:9' | '9:16', createdMs: number, voiced = false): string {
+  return `${operation}::${aspect}::${Math.round(createdMs)}${voiced ? '::v' : ''}`;
 }
 
-export function parseVeoJobId(jobId: string): { operation: string; aspect: '16:9' | '9:16'; createdMs: number } | null {
+export function parseVeoJobId(jobId: string): { operation: string; aspect: '16:9' | '9:16'; createdMs: number; voiced: boolean } | null {
   const parts = jobId.split('::');
-  if (parts.length !== 3) return null;
+  if (parts.length !== 3 && !(parts.length === 4 && parts[3] === 'v')) return null;
   const [operation, aspect, created] = parts as [string, string, string];
   const createdMs = Number(created);
   if (!operation || (aspect !== '16:9' && aspect !== '9:16') || !Number.isFinite(createdMs) || createdMs <= 0) return null;
-  return { operation, aspect, createdMs };
+  return { operation, aspect, createdMs, voiced: parts.length === 4 };
 }

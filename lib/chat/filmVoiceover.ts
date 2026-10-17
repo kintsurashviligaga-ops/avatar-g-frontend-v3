@@ -35,7 +35,8 @@ import { genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { isElevenLabsVoiceId } from '@/lib/audio/voiceId';
 import { resolveVoiceId, personaToGender, toneToVoiceSettings, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
-import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { uploadAndSign, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { mp3DurationSec } from '@/lib/audio/mp3Duration';
 import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
 
 /**
@@ -330,6 +331,30 @@ export async function textToHostedSpeech(text: string, voiceId?: string | null):
     if (!audio) return null;
     const path = `lipsync-tts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
     return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The talking avatar's line (app/api/avatar/veo, GG's 2026-10-17 07:54Z choice: its Georgian is ElevenLabs', the picture
+ * Veo's). ONE request in the voice of the chosen gender — the cloned native-Georgian voice for a Georgian line — hosted at
+ * `path` (a fixed path, so the status route finds it again by the job alone), with how long it plays: the route refuses a
+ * line longer than the clip BEFORE it charges. Null on any miss (no key, a refusal, empty audio, a failed upload).
+ */
+export async function speakAvatarLine(opts: { text: string; gender?: 'male' | 'female' | null; path: string }): Promise<{ url: string; seconds: number } | null> {
+  try {
+    const text = sanitizeSpokenText(opts.text).trim();
+    if (!text) return null;
+    const voiceId = opts.gender ? pickNarratorVoiceId(opts.gender) : pickGeorgianVoiceId(text);
+    const gender: TtsGender = opts.gender ? (opts.gender === 'male' ? 'MALE' : 'FEMALE') : genderForPersona(detectPersona(text));
+    const audio = await synthesizeVoiceover(text, voiceId, gender);
+    if (!audio) return null;
+    const buf = Buffer.from(audio.base64, 'base64');
+    const seconds = mp3DurationSec(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
+    if (seconds === null) return null;
+    const url = await uploadBufferAndSign('renders', opts.path, buf, audio.contentType, 7200);
+    return url ? { url, seconds } : null;
   } catch {
     return null;
   }

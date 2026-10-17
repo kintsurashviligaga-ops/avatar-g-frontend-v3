@@ -149,7 +149,10 @@ describe('the chat can USE what it is given', () => {
 
 describe('the price is on the button that spends', () => {
   it('the composer\'s run button prints the quote for the tools without a Generate button of their own', () => {
-    expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \|\| activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(/);
+    // The avatar is quoted at what the route that runs it charges: the Veo avatar's own price (GET /api/avatar/veo) where
+    // it is open to the caller — 25, not the 20 the old engine cost (GG, 2026-10-17) — else the catalog quote.
+    expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \? avatarCredits \|\| null\s*: activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(/);
+    expect(omni).toContain("const avatarCredits = veoAvatarDoor?.open ? veoAvatarDoor.credits : quoteCredits({ tool: 'avatar' });");
     // a product ad is quoted at the length it renders (8 / 24 / 48 s), as the remix route charges it — never one clip's price
     expect(omni).toContain("quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool })");
     expect(omni).toContain('data-price={composerQuote ?? undefined}');

@@ -23,9 +23,11 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
   refundDebitByRef: jest.fn(async () => ({ ok: true })),
 }));
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ createJob: jest.fn(async () => true), failJob: jest.fn(async () => undefined) }));
+jest.mock('../../../../lib/chat/filmVoiceover', () => ({ speakAvatarLine: jest.fn() }));
+jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ removeStorageObjects: jest.fn(async () => undefined) }));
 
 import { NextRequest } from 'next/server';
-import { POST } from './route';
+import { GET, POST } from './route';
 import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { isAdminIdentity } from '../../../../lib/auth/adminGuard';
 import { resolveCallerMedia } from '../../../../lib/security/callerMedia';
@@ -33,7 +35,10 @@ import { submitScene } from '../../../../lib/genjutsu/veoScene';
 import { genjutsuChargeForPolledId } from '../../../../lib/genjutsu/chargeToken';
 import { deductCredits, refundDebitByRef } from '../../../../lib/orchestrator/ledger';
 import { createJob } from '../../../../lib/orchestrator/jobs';
-import { veoAvatarCredits } from '../../../../lib/avatar/veoAvatar';
+import { avatarVoicePath, veoAvatarCredits } from '../../../../lib/avatar/veoAvatar';
+import { speakAvatarLine } from '../../../../lib/chat/filmVoiceover';
+import { removeStorageObjects } from '../../../../lib/orchestrator/storage-adapter';
+import { parseVeoJobId } from '../../../../lib/genjutsu/chargeToken';
 
 const ENV = { ...process.env };
 const UID = '11111111-2222-4333-8444-555555555555';
@@ -48,7 +53,9 @@ beforeEach(() => {
   (isAdminIdentity as jest.Mock).mockResolvedValue(true);
   (resolveCallerMedia as jest.Mock).mockResolvedValue({ ok: true, url: 'https://own/signed/face.jpg', own: true });
   (submitScene as jest.Mock).mockResolvedValue({ ok: true, operation: 'projects/p/operations/op1', aspect: '9:16', model: 'veo', transport: 'vertex', adjustments: [] });
+  (speakAvatarLine as jest.Mock).mockResolvedValue({ url: 'https://own/signed/voice.mp3', seconds: 3.1 });
 });
+const EN_BODY = { ...BODY, speech: 'Welcome to MyAvatar.ge', direction: 'smiles' };
 afterAll(() => { process.env = ENV; });
 
 test('an ordinary account is refused before anything is read or charged while the owner has not opened it', async () => {
@@ -59,8 +66,8 @@ test('an ordinary account is refused before anything is read or charged while th
   expect(submitScene).not.toHaveBeenCalled();
 });
 
-test('admin: row with _reserve, then the charge, then ONE Veo submit with the photo as the first frame and the words verbatim', async () => {
-  const res = await POST(post(BODY));
+test('admin, English words: row with _reserve, then the charge, then ONE Veo submit with the photo as the first frame and the words verbatim', async () => {
+  const res = await POST(post(EN_BODY));
   expect(res.status).toBe(202);
   const j = await res.json();
   expect(j.credits).toBe(veoAvatarCredits());
@@ -70,10 +77,64 @@ test('admin: row with _reserve, then the charge, then ONE Veo submit with the ph
   const sub = (submitScene as jest.Mock).mock.calls[0][0];
   expect(sub.startImageUrl).toBe('https://own/signed/face.jpg');
   expect(sub.referenceUrls).toEqual([]);
-  expect(sub.prompt).toContain('"გამარჯობა, მე ვარ შენი ავატარი"');
-  expect(sub.prompt).toContain('იღიმის.');
+  expect(sub.prompt).toContain('"Welcome to MyAvatar.ge"');
+  expect(sub.prompt).toContain('smiles.');
+  expect(sub.audio).toBeUndefined(); // Veo's own voice
+  expect(speakAvatarLine).not.toHaveBeenCalled();
   // The status route can authorise the poll and its refund with the token it carries.
-  expect(genjutsuChargeForPolledId(j.jobId).charge?.u).toBe(UID);
+  const polled = genjutsuChargeForPolledId(j.jobId);
+  expect(polled.charge?.u).toBe(UID);
+  expect(parseVeoJobId(polled.jobId)?.voiced).toBe(false);
+});
+
+// GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა": a Georgian line is ElevenLabs' voice over a silent Veo clip.
+test('Georgian words: the ElevenLabs line is made BEFORE the charge, Veo gets no words and no sound, the job id says voiced', async () => {
+  const res = await POST(post({ ...BODY, voiceGender: 'male' }));
+  expect(res.status).toBe(202);
+  const j = await res.json();
+  expect(j.voice).toBe('ElevenLabs');
+  const line = (speakAvatarLine as jest.Mock).mock.calls[0][0];
+  expect(line.text).toBe('გამარჯობა, მე ვარ შენი ავატარი');
+  expect(line.gender).toBe('male');
+  const uuid = /^avatar-veo\/([0-9a-f-]{36})\/voice\.mp3$/.exec(line.path)?.[1];
+  expect(uuid).toBeTruthy();
+  expect(line.path).toBe(avatarVoicePath(uuid!));
+  const voiceAt = (speakAvatarLine as jest.Mock).mock.invocationCallOrder[0]!;
+  expect(voiceAt).toBeLessThan((deductCredits as jest.Mock).mock.invocationCallOrder[0]!);
+  expect(voiceAt).toBeLessThan((createJob as jest.Mock).mock.invocationCallOrder[0]!);
+  const sub = (submitScene as jest.Mock).mock.calls[0][0];
+  expect(sub.audio).toBe(false);
+  expect(sub.prompt).not.toContain('გამარჯობა'); // the words never reach Veo
+  expect(sub.prompt).toContain('about 3 seconds');
+  expect(sub.prompt).toContain('იღიმის.'); // the direction still moves it
+  expect((createJob as jest.Mock).mock.calls[0][0].params.voiced).toBe(true);
+  expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)?.voiced).toBe(true);
+});
+
+test('Georgian words with no voice, or a line longer than the clip: refused, nothing charged, nothing submitted', async () => {
+  (speakAvatarLine as jest.Mock).mockResolvedValue(null);
+  const none = await POST(post(BODY));
+  expect(none.status).toBe(503);
+  expect(await none.json()).toMatchObject({ error: 'voice_unavailable', refunded: false });
+  (speakAvatarLine as jest.Mock).mockResolvedValue({ url: 'https://own/signed/voice.mp3', seconds: 11.4 });
+  const long = await POST(post(BODY));
+  expect(long.status).toBe(422);
+  expect(await long.json()).toMatchObject({ error: 'speech_too_long', seconds: 11.4, maxSeconds: 8 });
+  expect(removeStorageObjects).toHaveBeenCalledTimes(1);
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(createJob).not.toHaveBeenCalled();
+  expect(submitScene).not.toHaveBeenCalled();
+});
+
+test('GET: open and its price for an admin, closed for an ordinary account and for a visitor', async () => {
+  const get = () => GET(new NextRequest('https://myavatar.ge/api/avatar/veo'));
+  expect(await (await get()).json()).toMatchObject({ open: true, credits: veoAvatarCredits(), seconds: 8 });
+  (isAdminIdentity as jest.Mock).mockResolvedValue(false);
+  expect(await (await get()).json()).toMatchObject({ open: false, credits: veoAvatarCredits() });
+  process.env.AVATAR_VEO_PUBLIC = '1';
+  expect(await (await get()).json()).toMatchObject({ open: true });
+  (authedClientFromRequest as jest.Mock).mockResolvedValue({ user: null });
+  expect(await (await get()).json()).toMatchObject({ open: false });
 });
 
 test('a photo that is not the caller\'s own storage object is refused before any charge', async () => {

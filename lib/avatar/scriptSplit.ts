@@ -16,8 +16,14 @@ export interface AvatarScript {
 }
 
 // "… says: <words>" / "… ამბობს: <words>" / "… говорит: <words>". The colon (or a quote right after) is what marks the
-// words, so "the avatar says hello to everyone" stays a plain script.
-const SAYS = /^(.*?)(?:^|\s)(ამბობს|იტყვის|თქვას|ეუბნება|ამბობდეს|says|say|saying|tells|говорит|скажет|произносит|скажи)\s*(?:[:：]|(?=["“„«]))\s*(.+)$/isu;
+// words, so "the avatar says hello to everyone" stays a plain script. The language the words are in may stand between
+// the verb and the colon — „ამბობს ქართულად:", "says in English:", "говорит по-русски:" (Production 2026-10-17, below).
+const LANG = '(?:ქართულად|ინგლისურად|რუსულად|in\\s+(?:georgian|english|russian)|по-грузински|по-английски|по-русски|на\\s+(?:грузинском|английском|русском)(?:\\s+языке)?)';
+const SAYS = new RegExp(`^(.*?)(?:^|\\s)(ამბობს|იტყვის|თქვას|ეუბნება|ამბობდეს|says|say|saying|tells|говорит|скажет|произносит|скажи)(?:\\s+${LANG})?\\s*(?:[:：]|(?=["“„«]))\\s*(.+)$`, 'isu');
+// ⚠️ PRODUCTION 2026-10-17 (GG): „შექმენი ავატარი რომელიც ამბობს ქართულად: გადადი მაი ავატარ ჯიზე და დაიწყე" — the language
+// word hid the colon from SAYS, so the whole order became the script. The order itself („make an avatar that") is not how
+// the avatar behaves either: it is dropped from the direction.
+const ORDER_LEAD = /^(?:(?:please|pls)\s+)?(?:შემიქმენი|შექმენი|გამიკეთე|გააკეთე|დამიმზადე|make(?:\s+me)?|create(?:\s+me)?|generate|build|создай(?:те)?|сделай(?:те)?|сгенерируй)\s+(?:(?:ერთი|an?|one)\s+)?(?:(?:მოლაპარაკე|talking|говорящ\S*)\s+)?(?:ავატარ\S*|avatar|аватар\S*)\s*,?\s*(?:(?:რომელიც|რომ|that|which|who|который|которая)(?=\s|$)\s*)?/iu;
 const QUOTED = /["“„«]([^"“”„«»]{2,})["”“»]/u;
 const PAREN = /\(([^()]{2,})\)|\*([^*]{2,})\*/gu;
 
@@ -32,7 +38,7 @@ export function splitAvatarScript(raw: string): AvatarScript {
   const bare = text.replace(PAREN, (_m, a: string | undefined, b: string | undefined) => { directions.push((a ?? b ?? '').trim()); return ' '; });
   const m = SAYS.exec(bare);
   if (m && m[3] && unquote(m[3])) {
-    const before = tidy(m[1] ?? '');
+    const before = tidy((m[1] ?? '').replace(ORDER_LEAD, ''));
     if (before) directions.unshift(before);
     return { speech: unquote(m[3]), direction: tidy(directions.join('; ')) };
   }

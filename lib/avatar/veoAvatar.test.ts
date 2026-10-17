@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { buildVeoAvatarPrompt, parseVeoAvatarRequest, veoAvatarCredits, VEO_AVATAR_SPEECH_MAX } from './veoAvatar';
+import { avatarVoiceByElevenLabs, avatarVoicePath, avatarVoicedPath, buildVeoAvatarPrompt, parseVeoAvatarRequest, veoAvatarCredits, VEO_AVATAR_SPEECH_MAX } from './veoAvatar';
 import { videoCredits } from '../credits/videoPricing';
 
 describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
@@ -18,11 +18,32 @@ describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
     expect(veoAvatarCredits()).toBe(videoCredits({ seconds: 8, quality: 'fast' }));
   });
   it('parses strictly: words required, a too-long line refused, 9:16 by default', () => {
-    expect(parseVeoAvatarRequest({ photo: 'omni-uploads/u/a.jpg', speech: 'hi' })).toEqual({ ok: true, value: { photo: 'omni-uploads/u/a.jpg', speech: 'hi', direction: '', aspect: '9:16', expectedCredits: null } });
+    expect(parseVeoAvatarRequest({ photo: 'omni-uploads/u/a.jpg', speech: 'hi' })).toEqual({ ok: true, value: { photo: 'omni-uploads/u/a.jpg', speech: 'hi', direction: '', aspect: '9:16', voiceGender: null, expectedCredits: null } });
     expect(parseVeoAvatarRequest({ photo: 'x', speech: '' })).toEqual({ ok: false, field: 'speech', code: 'required' });
     expect(parseVeoAvatarRequest({ speech: 'hi' })).toEqual({ ok: false, field: 'photo', code: 'required' });
     expect(parseVeoAvatarRequest({ photo: 'x', speech: 'a'.repeat(VEO_AVATAR_SPEECH_MAX + 1) })).toMatchObject({ ok: false, code: 'too_long' });
     expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', aspect: '1:1' })).toMatchObject({ ok: false, field: 'aspect' });
     expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', expectedCredits: 'free' })).toMatchObject({ ok: false, field: 'expectedCredits' });
+    expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', voiceGender: 'female' })).toMatchObject({ ok: true, value: { voiceGender: 'female' } });
+    expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', voiceGender: 'robot' })).toEqual({ ok: false, field: 'voiceGender', code: 'invalid' });
+  });
+
+  // GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა".
+  it('a Georgian line is ElevenLabs\' voice; English and Russian stay Veo\'s', () => {
+    expect(avatarVoiceByElevenLabs('გადადი მაი ავატარ ჯიზე და დაიწყე')).toBe(true);
+    expect(avatarVoiceByElevenLabs('Welcome to MyAvatar.ge')).toBe(false);
+    expect(avatarVoiceByElevenLabs('Добро пожаловать')).toBe(false);
+  });
+  it('a voiced prompt names how long to talk and never the words; a full-length line talks the whole clip', () => {
+    const p = buildVeoAvatarPrompt({ speech: 'გადადი მაი ავატარ ჯიზე და დაიწყე', direction: 'იღიმის', voicedSec: 2.7 });
+    expect(p).not.toContain('გადადი');
+    expect(p).not.toMatch(/in Georgian/);
+    expect(p).toContain('about 2.5 seconds');
+    expect(p).toContain('იღიმის.');
+    expect(buildVeoAvatarPrompt({ speech: 'x', direction: '', voicedSec: 7.9 })).toMatch(/whole clip/);
+  });
+  it('the line and the voiced clip sit at fixed paths named by the job', () => {
+    expect(avatarVoicePath('abc')).toBe('avatar-veo/abc/voice.mp3');
+    expect(avatarVoicedPath('abc')).toBe('avatar-veo/abc/voiced.mp4');
   });
 });
