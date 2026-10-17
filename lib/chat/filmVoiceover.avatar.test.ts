@@ -38,8 +38,9 @@ afterEach(() => { fetchSpy.mockRestore(); process.env = { ...ENV }; });
 
 test('the line in the male Georgian voice, hosted at the path given, with its length', async () => {
   const r = await speakAvatarLine({ text: 'გადადი მაი ავატარ ჯიზე და დაიწყე', gender: 'male', path: 'avatar-veo/id/voice.mp3' });
-  expect(r?.url).toBe('https://storage.example/avatar-veo/id/voice.mp3');
-  expect(r?.seconds).toBeCloseTo(115 * 1152 / 44_100, 3);
+  if (!r || !('url' in r)) throw new Error('no line');
+  expect(r.url).toBe('https://storage.example/avatar-veo/id/voice.mp3');
+  expect(r.seconds).toBeCloseTo(115 * 1152 / 44_100, 3);
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   expect(String(fetchSpy.mock.calls[0][0])).toBe(`https://api.elevenlabs.io/v1/text-to-speech/${KA_VOICE_MALE}`);
   expect(JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body)).text).toBe('გადადი მაი ავატარ ჯიზე და დაიწყე');
@@ -51,10 +52,28 @@ test('the female voice when she is chosen', async () => {
   expect(String(fetchSpy.mock.calls[0][0])).toContain(KA_VOICE_FEMALE);
 });
 
-test('ElevenLabs refusing, or a body that is not audio, is null — nothing hosted', async () => {
-  fetchSpy.mockResolvedValue(new Response('{"detail":{"status":"quota_exceeded"}}', { status: 401 }));
+test('an outage, or a body that is not audio, is null — nothing hosted', async () => {
+  fetchSpy.mockImplementation(async () => new Response('{"detail":{"status":"service_unavailable"}}', { status: 503 }));
   expect(await speakAvatarLine({ text: 'გამარჯობა', gender: 'male', path: 'p.mp3' })).toBeNull();
-  fetchSpy.mockResolvedValue(new Response(new Uint8Array(4096), { status: 200 }));
+  fetchSpy.mockImplementation(async () => new Response(new Uint8Array(4096), { status: 200 }));
   expect(await speakAvatarLine({ text: 'გამარჯობა', gender: 'male', path: 'p.mp3' })).toBeNull();
   expect(uploadBufferAndSign).not.toHaveBeenCalled();
+});
+
+// Production, 2026-10-17 09:31Z, the one approved avatar test: both models answered this, and the user was told to try
+// again in a minute. A retry cannot change a plan: the line is off.
+const PLAN_REFUSAL = '{"detail":{"status":"ivc_not_permitted","code":"subscription_required","message":"Your subscription does not include instant voice cloning."}}';
+
+test('a plan that does not allow the cloned Georgian voices is "off", not a passing miss — nothing hosted', async () => {
+  fetchSpy.mockImplementation(async () => new Response(PLAN_REFUSAL, { status: 401 }));
+  expect(await speakAvatarLine({ text: 'გადადი მაი ავატარ ჯიზე და დაიწყე', gender: 'female', path: 'p.mp3' })).toEqual({ off: true });
+  expect(fetchSpy).toHaveBeenCalledTimes(2); // eleven_v3, then eleven_multilingual_v2 — both refused
+  expect(uploadBufferAndSign).not.toHaveBeenCalled();
+});
+
+test('a lasting refusal from one model and no answer from the other stays a passing miss', async () => {
+  fetchSpy
+    .mockImplementationOnce(async () => new Response(PLAN_REFUSAL, { status: 401 }))
+    .mockImplementationOnce(async () => { throw new TypeError('fetch failed'); });
+  expect(await speakAvatarLine({ text: 'გამარჯობა', gender: 'male', path: 'p.mp3' })).toBeNull();
 });

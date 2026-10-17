@@ -116,6 +116,11 @@ test('Georgian words with no voice, or a line longer than the clip: refused, not
   const none = await POST(post(BODY));
   expect(none.status).toBe(503);
   expect(await none.json()).toMatchObject({ error: 'voice_unavailable', refunded: false });
+  // Production 2026-10-17 09:31Z: ElevenLabs' plan refused the cloned voice for good — a code of its own, not "retry".
+  (speakAvatarLine as jest.Mock).mockResolvedValue({ off: true });
+  const off = await POST(post(BODY));
+  expect(off.status).toBe(503);
+  expect(await off.json()).toMatchObject({ error: 'voice_off', refunded: false });
   (speakAvatarLine as jest.Mock).mockResolvedValue({ url: 'https://own/signed/voice.mp3', seconds: 11.4 });
   const long = await POST(post(BODY));
   expect(long.status).toBe(422);

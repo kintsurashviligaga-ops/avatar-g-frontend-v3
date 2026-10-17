@@ -98,6 +98,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (voiced) {
     const line = await speakAvatarLine({ text: r.speech, gender: r.voiceGender, path: avatarVoicePath(uuid) });
     if (!line) return fail(503, 'voice_unavailable', { refunded: false });
+    // ElevenLabs refused for good (2026-10-17 09:31Z: the plan does not allow the cloned Georgian voices) — a retry
+    // cannot help, so the user is not told to try again in a minute.
+    if ('off' in line) return fail(503, 'voice_off', { refunded: false });
     if (line.seconds > VEO_AVATAR_SECONDS + VOICE_SLACK_SEC) {
       await removeStorageObjects('renders', [avatarVoicePath(uuid)]).catch(() => {});
       return fail(422, 'speech_too_long', { seconds: Math.round(line.seconds * 10) / 10, maxSeconds: VEO_AVATAR_SECONDS });

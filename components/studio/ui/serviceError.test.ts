@@ -65,6 +65,17 @@ describe('describeServiceError', () => {
     expect(describeGenerationFailure({ success: false, error: 'speech_too_long', seconds: 9.4 }, 'ka', KA_FALLBACK)).toMatch(/8 წამ/);
   });
 
+  it('a voice ElevenLabs refused for good is "off", and its copy never asks for a retry in a minute (2026-10-17 09:31Z)', () => {
+    const ka = describeGenerationFailure({ success: false, error: 'voice_off', refunded: false }, 'ka', KA_FALLBACK);
+    expect(ka).toMatch(/გამორთულია/);
+    expect(ka).toMatch(/თანხა არ ჩამოგეჭრა/);
+    expect(ka).not.toMatch(/წუთში|სცადე/);
+    const en = describeGenerationFailure({ success: false, error: 'voice_off' }, 'en', 'x');
+    expect(en).toMatch(/not charged/);
+    expect(en).not.toMatch(/minute|try again/i);
+    expect(describeGenerationFailure({ success: false, error: 'voice_off' }, 'ru', 'x')).not.toMatch(/минуту/);
+  });
+
   it('matches the studio codes whole — a longer string that merely contains one is not claimed', () => {
     expect(describeServiceError('xyz_price_changed_log', 'en', 'fallback')).toBe('fallback');
   });

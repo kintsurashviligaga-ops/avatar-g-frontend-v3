@@ -83,3 +83,25 @@ it('logs the missing variable names and skips the auth check when Vertex is not 
   expect(mockAuth).not.toHaveBeenCalled();
   expect(warn).toHaveBeenCalledWith('[provider-probe] veo ok=false transport:none · google-only:true · vertex:missing GCP_VEO_BUCKET');
 });
+
+// 2026-10-17 09:31Z: ElevenLabs refused the approved avatar's Georgian line (`401 subscription_required /
+// ivc_not_permitted`) while this probe read "N characters left" as ok. It reports the plan and its cloning now.
+it('fails ElevenLabs on a plan that does not allow the cloned Georgian voices, and names the plan', async () => {
+  process.env.ELEVENLABS_API_KEY = 'el-test-key';
+  mockAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok', 'bucket:ok', 'sign:ok'] });
+  const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+    subscription: { tier: 'free', character_count: 120, character_limit: 10000, can_use_instant_voice_cloning: false },
+  }), { status: 200 }));
+  try {
+    const res = await GET(req());
+    const body = (await res.json()) as { results: Array<{ provider: string; ok: boolean; detail: string }> };
+    const el = body.results.find((r) => r.provider === 'elevenlabs');
+    expect(el?.ok).toBe(false);
+    expect(el?.detail).toMatch(/plan free/);
+    expect(el?.detail).toMatch(/cloned voices: NOT allowed/);
+    expect(el?.detail).toContain('9880 characters left');
+    expect(JSON.stringify(body)).not.toContain('el-test-key');
+  } finally {
+    fetchSpy.mockRestore();
+  }
+});
