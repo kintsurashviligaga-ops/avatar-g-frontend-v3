@@ -70,6 +70,7 @@ import { planSceneDialogue, type SceneSpokenLine } from './sceneDialogue';
 import { checkSceneSpeech, reflowSpeech, speechSeconds, OVERFLOW_TOLERANCE, SPEECH_LEAD_SEC, SPEECH_TAIL_SEC } from '@/lib/video/speechTiming';
 import { isGeorgianText } from '@/lib/audio/tts-model';
 import { filmFrameChainOn, chainEndFrame } from '@/lib/video/frameChain';
+import { filmSequentialChainOn, filmChainStoreReady, saveFilmChainPlan } from './filmChain';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
@@ -309,21 +310,12 @@ async function renderClip(
     return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0, debited: false };
   }
 
-  // A debit is only ever issued by withTrace for a real, billable user with a
-  // positive retail price. Track it locally so the orchestrator can refund this
-  // exact leg if the whole film collapses.
-  const realUser = Boolean(input.userId && input.userId !== 'anonymous');
-  // A FREE film (promo slot) or founder/admin render must NOT charge per clip — the pre-flight
-  // waives them, but the per-leg debit was still firing (promo not actually free; founder drained).
-  const billable = realUser && forecastClipRetail > 0 && !waiveClipBilling;
-  let debited = false;
-
   // PHASE 4A — preview-tier model gate: the premium i2v upgrade (Kling/Hailuo) is only
   // honored for a signed-in, non-preview render; anon trials + preview-quality renders
   // fall through to the cheap LTX default and never burn the premium budget.
   const clipModel = selectClipVideoModel({
     requested: typeof input.metadata?.videoModel === 'string' ? input.metadata.videoModel : null,
-    isSignedIn: realUser,
+    isSignedIn: Boolean(input.userId && input.userId !== 'anonymous'),
     preview: input.metadata?.quality === 'preview',
   });
 
@@ -346,6 +338,44 @@ async function renderClip(
   const clipReq = buildFilmClipRequest(scene, shared);
   if (sceneFrame) clipReq.selectedOptions.characterReference = sceneFrame;
   if (sceneFrame && nextSceneFrame) clipReq.selectedOptions.veoEndFrame = nextSceneFrame;
+
+  return submitFilmClip(
+    { userId: input.userId ?? null, sessionId: input.sessionId, locale: input.locale, videoModel: clipModel ?? null },
+    clipReq, scene, compositeId, forecastClipWholesale, forecastClipRetail, waiveClipBilling,
+  );
+}
+
+/** Who a film clip is rendered for: the film's owner, session and locale, and the clip model the start resolved. */
+export interface FilmClipContext {
+  userId: string | null;
+  sessionId: string;
+  locale: string;
+  videoModel: ReturnType<typeof selectClipVideoModel> | null;
+}
+
+/**
+ * Send ONE film clip request (already built: prompt, start frame, Veo options) and report the leg. Shared by the film
+ * start and by a chained scene the poll dispatches later (lib/chat/filmChain), so both follow the same retry, budget and
+ * billing rules. Never throws.
+ */
+export async function submitFilmClip(
+  ctx: FilmClipContext,
+  clipReq: { userPrompt: string; selectedOptions: Record<string, string> },
+  scene: { ordinal: number; seed: number },
+  compositeId: string,
+  forecastClipWholesale: number,
+  forecastClipRetail: number,
+  /** True for a FREE film (promo) or founder/admin render, and for every film charged up front → no per-clip charge. */
+  waiveClipBilling: boolean,
+): Promise<FilmClipResult> {
+  // A debit is only ever issued by withTrace for a real, billable user with a
+  // positive retail price. Track it locally so the orchestrator can refund this
+  // exact leg if the whole film collapses.
+  const realUser = Boolean(ctx.userId && ctx.userId !== 'anonymous');
+  // A FREE film (promo slot) or founder/admin render must NOT charge per clip — the pre-flight
+  // waives them, but the per-leg debit was still firing (promo not actually free; founder drained).
+  const billable = realUser && forecastClipRetail > 0 && !waiveClipBilling;
+  let debited = false;
 
   // PHASE 43 §3 / PHASE 58 — Isolated per-leg retry. We retry ONLY when a dispatch
   // fails to produce a provider job (throw or null taskRef); a successfully queued
@@ -370,7 +400,7 @@ async function renderClip(
     try {
       const dispatched = await withTrace(
         {
-          userId: input.userId || null,
+          userId: ctx.userId || null,
           agentId: 'video-agent',
           workerKind: 'ltx',
           action: 'generate_clip',
@@ -387,15 +417,15 @@ async function renderClip(
         },
         () =>
           serviceManager.execute({
-            sessionId: input.sessionId,
+            sessionId: ctx.sessionId,
             serviceContext: 'video',
             intent: 'video_generation',
             userPrompt: clipReq.userPrompt,
             selectedOptions: clipReq.selectedOptions,
-            locale: input.locale,
+            locale: ctx.locale,
             // PHASE 2 L5 / 4A — per-render i2v model (Cinema panel Kling/Hailuo toggle),
             // gated by selectClipVideoModel so anon/preview renders stay on cheap LTX.
-            ...(clipModel ? { videoModel: clipModel } : {}),
+            ...(ctx.videoModel ? { videoModel: ctx.videoModel } : {}),
           }),
         (r) => r.predictionId || r.assetUrl || null,
       );
@@ -1170,6 +1200,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   if (offCameraVoice && plan.shared.veo) plan.shared.veo = { ...plan.shared.veo, generateAudio: false };
 
   let clips: FilmClipResult[];
+  // True once the later scenes wait on the sequential chain (lib/chat/filmChain): the token says so, and the poll advances it.
+  let filmChained = false;
   try {
     // PREFER approved storyboard frames (from /api/film/storyboard) as the
     // per-scene identity anchors: the user reviewed them, so the render MATCHES
@@ -1238,24 +1270,76 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // join is a match cut: same framing, light, pose and wardrobe on both sides of the cut. Independent clips
     // rendered in parallel each drifted on their own (the 2026-10-16 ad: framing, background and colour jumped at
     // every join). 8 s clips only (Google's interpolation length); FILM_FRAME_CHAIN=0 turns it off.
-    const chainFrames = filmFrameChainOn(grid.clipSec, sceneFrames);
-    if (chainFrames) {
-      // eslint-disable-next-line no-console
-      console.log(`[filmComposite] frame chaining on: ${sceneFrames.length - 1} clip(s) end on the next scene's first frame`);
+    // SEQUENTIAL CHAIN (owner's choice, 2026-10-16) — scene 1 renders now; every later scene starts from the previous
+    // clip's REAL last frame, dispatched by the film's poll once that clip lands (lib/chat/filmChain). Asking Veo to end a
+    // clip on the next storyboard frame did not hold on the paid ad, so the joins jumped. Needs a store every poll can
+    // read; without one, and for anything the chain does not cover, the scenes render side by side exactly as before.
+    const sequential = filmSequentialChainOn({
+      sceneCount: plan.scenes.length,
+      googleOnly,
+      referenceMode,
+      musicVideo: !!input.metadata?.musicVideoMode,
+      owner: input.userId,
+    }) && filmChainStoreReady();
+    let chained: FilmClipResult[] | null = null;
+    let firstClip: FilmClipResult | null = null;
+    if (sequential) {
+      // no per-clip legs: the film was charged ONCE up front (filmCharged), as in the side-by-side path below
+      firstClip = await renderClip(input, plan.scenes[0]!, plan.shared, compositeId, clipForecast.wholesaleGel, clipForecast.retailGel, sceneFrames[0] ?? null, true);
+      if (firstClip.status === 'queued') {
+        const saved = await saveFilmChainPlan({
+          v: 1,
+          tokenId: filmTokenId,
+          uid: input.userId as string,
+          sessionId: input.sessionId,
+          locale: input.locale,
+          compositeId,
+          videoModel: effectiveVideoModel ?? null,
+          forecast: { wholesaleGel: clipForecast.wholesaleGel, retailGel: clipForecast.retailGel },
+          sceneCredits: filmCharged > 0 ? perSceneCredits(filmQuoteTaken, Math.max(1, plan.scenes.length)) : 0,
+          chargeRef: filmCharged > 0 ? filmChargeRef : null,
+          scenes: plan.scenes.slice(1).map((scene, i) => {
+            const req = buildFilmClipRequest(scene, plan.shared);
+            return { ordinal: scene.ordinal, seed: scene.seed, userPrompt: req.userPrompt, selectedOptions: req.selectedOptions, storyboardFrame: sceneFrames[i + 1] ?? null };
+          }),
+          createdAt: Date.now(),
+        });
+        if (saved) {
+          // The waiting scenes are Veo scenes (the chain runs only behind the Google-only boundary): the double-voice guard
+          // below counts them as such.
+          chained = [firstClip, ...plan.scenes.slice(1).map((scene): FilmClipResult => ({ ordinal: scene.ordinal, taskRef: null, status: 'pending', attempts: 0, debited: false, engine: 'gemini-veo' }))];
+          // eslint-disable-next-line no-console
+          console.log(`[filmComposite] sequential chain: scene 1 sent, ${plan.scenes.length - 1} scene(s) start from the previous clip's last frame`);
+        }
+      }
     }
-    clips = await mapWithConcurrency(plan.scenes, clipDispatchConcurrency(), (scene, i) =>
-      renderClip(
-        input,
-        scene,
-        plan.shared,
-        compositeId,
-        clipForecast.wholesaleGel,
-        clipForecast.retailGel,
-        sceneFrames[i] ?? null,
-        true, // no per-clip legs: the film was charged ONCE up front (filmCharged) — `debit_wallet_gel` is not on prod, and if it ever is, this keeps it from charging twice
-        chainFrames ? chainEndFrame(sceneFrames, i) : null,
-      ),
-    );
+    if (chained) {
+      clips = chained;
+      filmChained = true;
+    } else {
+      const chainFrames = filmFrameChainOn(grid.clipSec, sceneFrames);
+      if (chainFrames) {
+        // eslint-disable-next-line no-console
+        console.log(`[filmComposite] frame chaining on: ${sceneFrames.length - 1} clip(s) end on the next scene's first frame`);
+      }
+      // A chain whose plan could not be stored keeps the scene 1 it already sent; the rest go side by side.
+      const sent = firstClip;
+      clips = await mapWithConcurrency(plan.scenes, clipDispatchConcurrency(), (scene, i) =>
+        i === 0 && sent
+          ? Promise.resolve(sent)
+          : renderClip(
+            input,
+            scene,
+            plan.shared,
+            compositeId,
+            clipForecast.wholesaleGel,
+            clipForecast.retailGel,
+            sceneFrames[i] ?? null,
+            true, // no per-clip legs: the film was charged ONCE up front (filmCharged) — `debit_wallet_gel` is not on prod, and if it ever is, this keeps it from charging twice
+            chainFrames ? chainEndFrame(sceneFrames, i) : null,
+          ),
+      );
+    }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[film] scene synthesis threw — protecting balance:', err instanceof Error ? err.message : err);
@@ -1556,6 +1640,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // must not be stitched as 8s.
     clipSec: grid.clipSec,
     clips: clips.map((c) => ({ ordinal: c.ordinal, taskRef: c.taskRef, status: clipDispatchStatus(c.status), attempts: c.attempts })),
+    // The later scenes are dispatched by the poll from the previous clip's last frame (lib/chat/filmChain).
+    ...(filmChained ? { chain: true } : {}),
     musicWorkId,
     voiceUrl,
     sfxUrl,
@@ -1611,7 +1697,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const summary = [
     `🎬 Film pipeline started (${sceneCount} × ${grid.clipSec}s Veo scenes)`,
     `📝 Storyboard: ${sceneCount} scenes planned`,
-    `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
+    filmChained
+      ? `🎥 Scene 1 dispatched; scenes 2–${sceneCount} each start from the previous scene's last frame (shared seed ${plan.shared.seed})`
+      : `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
     '✂️ Editor will stitch the final cut',
     // musicWorkId is always null (Udio retired) — the score is generated at the ASSEMBLE step (ElevenLabs
     // Music / MusicGen) or the user's custom soundtrack is used. So don't tell every user "Score skipped".

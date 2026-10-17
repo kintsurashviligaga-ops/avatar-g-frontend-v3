@@ -35,6 +35,7 @@ import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/i
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
 import { settleFailedFilmScenes } from './filmSceneRefund';
+import { advanceFilmChain, getFilmChainPlan, getFilmChainSteps } from './filmChain';
 import { asVeoSafetyCategory, type VeoSafetyCategory } from '@/lib/veo/safetyCodes';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
@@ -622,11 +623,50 @@ async function pollFilmTask(predictionId: string, sessionId?: string, userId?: s
   }
 
   const effectiveSession = sessionId || ref.sessionId;
+  const statusTokenId = deriveFilmTokenId({ sessionId: ref.sessionId, createdAt: ref.createdAt, seed: ref.seed });
+
+  // ── The sequential chain (lib/chat/filmChain) ───────────────────────────────
+  // Scenes after the first wait in the token with no task ref; the server's chain record holds what became of each. A
+  // waiting scene reads as pending, so the film is never "done" before every scene had its turn.
+  const chainPlan = ref.chain ? await getFilmChainPlan(statusTokenId) : null;
+  const chainSteps = chainPlan ? await getFilmChainSteps(chainPlan) : null;
+  const waiting = (clip: FilmTaskRef['clips'][number]): boolean => !!ref.chain && !clip.taskRef && clip.status === 'pending';
+  const clipRefs = ref.clips.map((clip) => {
+    const step = waiting(clip) ? chainSteps?.get(clip.ordinal) : undefined;
+    return step ? { ...clip, taskRef: step.taskRef, status: step.status } : clip;
+  });
 
   // ── Poll all clip legs in lock-step ─────────────────────────────────────────
   const clipStates = await Promise.all(
-    ref.clips.map(async (clip) => pollFilmClip(clip, effectiveSession)),
+    clipRefs.map(async (clip): Promise<FilmClipPollState> => (waiting(clip)
+      ? { ordinal: clip.ordinal, status: 'pending', url: null, attempts: 0, providerStatus: 'waiting', note: 'starts from the previous clip’s last frame' }
+      : pollFilmClip(clip, effectiveSession))),
   );
+
+  // The next scene, once its predecessor has landed: only the film owner's poll sends it, and only the one that claims it.
+  if (chainPlan && chainSteps) {
+    // Loaded only for a chained film: its wiring pulls in ffmpeg, Storage and the ledger, which no other poll needs.
+    const { filmChainDeps } = await import('./filmChainRuntime');
+    const advanced = await advanceFilmChain(
+      chainPlan,
+      clipStates.map((c) => ({ ordinal: c.ordinal, status: c.status, url: c.url })),
+      chainSteps,
+      userId,
+      filmChainDeps,
+    );
+    if (advanced) {
+      const i = clipRefs.findIndex((c) => c.ordinal === advanced.ordinal);
+      if (i >= 0) {
+        clipRefs[i] = { ...clipRefs[i]!, taskRef: advanced.step.taskRef, status: advanced.step.status };
+        const j = clipStates.findIndex((c) => c.ordinal === advanced.ordinal);
+        if (j >= 0) {
+          clipStates[j] = advanced.step.status === 'queued'
+            ? { ordinal: advanced.ordinal, status: 'pending', url: null, attempts: 1, providerStatus: 'queued', note: `started from ${advanced.step.from}`, videoProvider: 'gemini-veo' }
+            : { ordinal: advanced.ordinal, status: 'failed', url: null, attempts: 1, providerStatus: 'failed', ...(advanced.step.error ? { note: advanced.step.error.slice(0, 140) } : {}) };
+        }
+      }
+    }
+  }
   // ⚠️ NO REFUND IS EVER DECIDED FROM THIS TOKEN. It is unsigned (its task refs can be forged) and a mapped transient 429
   // can read as 'failed'. A dead clip here is only a HINT: R3-A (lib/chat/filmSceneRefund, below) re-asks Google about the
   // operation the film START recorded server-side for the signed-in user, and gives the scene's share back only on Google's
@@ -661,10 +701,9 @@ async function pollFilmTask(predictionId: string, sessionId?: string, userId?: s
   // so a reload / second device can recover the unified state (and the final
   // master, once the assemble route stamps it) via /api/video/status/[tokenId].
   // Best-effort + fail-open: a tracking write must never break the poll.
-  const statusTokenId = deriveFilmTokenId({ sessionId: ref.sessionId, createdAt: ref.createdAt, seed: ref.seed });
   // R3-A — a scene Google accepted and then failed: its share back, once, on the server's record and Google's own word.
   const deadAfterDispatch = clipStates
-    .filter((c) => c.status === 'failed' && ref.clips.some((x) => x.ordinal === c.ordinal && x.taskRef))
+    .filter((c) => c.status === 'failed' && clipRefs.some((x) => x.ordinal === c.ordinal && x.taskRef))
     .map((c) => c.ordinal);
   const creditsGivenBack = deadAfterDispatch.length > 0
     ? await settleFailedFilmScenes(userId, statusTokenId, deadAfterDispatch).catch(() => 0)
