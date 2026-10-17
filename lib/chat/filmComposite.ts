@@ -1033,6 +1033,149 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     await releaseIdempotencyKey(input.userId, key).catch(() => {});
   };
 
+  // ── THE VOICE TRACK ─────────────────────────────────────────────────────────
+  // Which legs Veo already speaks in-clip is known only after dispatch (the double-voice guard below), so the sources take
+  // that decision as an argument. An off-camera voice film has nothing delegated (its clips are silent), so its voice can be
+  // made before anything is charged or sent.
+  //   narration  → generateFilmVoiceover.narrationScript  (the sanitized VO spine, verbatim)
+  //   dialogue   → generateDialogueVoiceover.turns         (per-SPEAKER N-character casting)
+  const filmVoiceSpec = (veoSpeaks: { dialogueLeg: boolean; narrationLeg: boolean; narrationSpine: string | null }) => {
+    const suppressDialogueLeg = veoSpeaks.dialogueLeg;
+    const suppressNarrationLeg = veoSpeaks.narrationLeg;
+    const masterNarration = parsedMaster && parsedMaster.narrationScript.trim() ? parsedMaster.narrationScript.trim() : null;
+    const customNarration = (() => {
+      // Veo is already speaking these exact words inside the clips → voicing them again here is the double
+      // voice. (Only fires when narrationScript was the delegated source; a real VO spine is untouched.)
+      if (suppressNarrationLeg) return null;
+      const v = voiceMeta?.narrationScript;
+      const explicit = typeof v === 'string' && v.trim() ? v.trim() : null;
+      // The parsed Master-Script VO spine feeds the SAME verbatim narrationScript slot when no explicit one is set.
+      // Off camera, the lines written in the scene sheets feed no other leg: the narrator reads them, in scene order.
+      const sheetLines = offCameraVoice && dialogueSource === 'script-scenes'
+        ? sceneDialogue.flat().map((l) => l.text).join(' ').trim() || null
+        : null;
+      return explicit ?? masterNarration ?? sheetLines;
+    })();
+    // Explicit narrator gender (video panel 👩/👨) — overrides brief auto-detection.
+    const narratorGender: 'male' | 'female' | null =
+      voiceMeta?.narratorGender === 'male' || voiceMeta?.narratorGender === 'female' ? voiceMeta.narratorGender : null;
+    // Master-Script dialogue leg — the parsed on-camera dialogue with the VO NARRATOR spine folded in,
+    // timecode-ordered (review finding #2: don't drop narration when dialogue also exists). Empty → null,
+    // so narration-only scripts route through the single-voice narration leg below. Exact silence-gap
+    // placement at each timecode is the Phase-2 assemble refinement; here they play in script order.
+    const masterTurns = (() => {
+      if (!parsedMaster) return null;
+      // Veo speaks the ON-CAMERA dialogue in-clip → this leg would double it. The VO NARRATOR spine is NOT
+      // delegated (a narrator has no mouth in frame), so it routes through the single-voice narration leg
+      // below via `masterNarration` instead of being dropped.
+      if (suppressDialogueLeg) return null;
+      const t = masterDialogueTurns(parsedMaster, narratorGender);
+      return t.length ? t : null;
+    })();
+    // PHASE 2 L1 — Character Voice selector (language + persona + tone). Whitelisted to
+    // the allowed unions; null when unset so the legacy gender/brief path is unchanged.
+    const voiceLanguage = (voiceMeta?.voiceLanguage === 'ka' || voiceMeta?.voiceLanguage === 'en' || voiceMeta?.voiceLanguage === 'ru') ? voiceMeta.voiceLanguage : null;
+    const voicePersona = (voiceMeta?.voicePersona === 'male' || voiceMeta?.voicePersona === 'female' || voiceMeta?.voicePersona === 'child' || voiceMeta?.voicePersona === 'elderly') ? voiceMeta.voicePersona : null;
+    const voiceTone = (voiceMeta?.voiceTone === 'epic' || voiceMeta?.voiceTone === 'emotional' || voiceMeta?.voiceTone === 'energetic') ? voiceMeta.voiceTone : null;
+    // Multi-character dialogue script (video panel toggle) — split per speaker, each
+    // line voiced in its gendered voice and mixed into one track. Wins over single narration.
+    // Suppressed when Veo already speaks these lines in-clip (see the double-voice guard above).
+    const dialogueScript = suppressDialogueLeg ? null : dialogueScriptRaw;
+    return {
+      masterTurns, dialogueScript, customNarration, narratorGender, voiceLanguage, voicePersona, voiceTone,
+      suppressDialogueLeg, delegatedNarrationSpine: veoSpeaks.narrationSpine,
+    } as const;
+  };
+  // DAY-6 multi-voice: when the Master-Script dialogue is multi-voice-viable (≥2 DISTINCT
+  // TIMECODED speakers), render per-speaker STEMS ONCE (generateDialogueStems) so the assembler
+  // spatial-premixes them with the -12dB sidechain duck. On ANY miss (not viable, 1 speaker, a
+  // failed leg, or no ElevenLabs key) it returns null and we fall through to the EXACT single-track
+  // path below — so every single-voice / narration film is byte-identical to before. No double-render:
+  // generateDialogueStems returns null (never a partial upload) before we reach generateDialogueVoiceover.
+  const renderVoiceTrack = async (spec: ReturnType<typeof filmVoiceSpec>): Promise<{ voiceUrl: string | null; dialogueStems: DialogueStem[] | null }> => {
+    const { masterTurns, dialogueScript, customNarration, narratorGender, voiceLanguage, voicePersona, voiceTone, suppressDialogueLeg, delegatedNarrationSpine } = spec;
+    if (masterTurns && dialogueStemsViable(masterTurns)) {
+      const stemsRes = await generateDialogueStems({ turns: masterTurns, compositeId }).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[film] dialogue stems leg failed:', err instanceof Error ? err.message : err);
+        return null;
+      });
+      if (stemsRes && stemsRes.stems.length >= 2) {
+        return { voiceUrl: stemsRes.mergedUrl, dialogueStems: stemsRes.stems };
+      }
+    }
+    // TRACK 3.3 — Music Video mode: the SONG leads, so skip the spoken narrator/dialogue VO track
+    // ENTIRELY (no VO mixed over the vocal → zero sync drift). Documentary is byte-identical to before.
+    const single = input.metadata?.musicVideoMode
+      ? null
+      // SUPPRESSION MUST NOT PROMOTE A DIFFERENT VOICE. Nulling `dialogueScript`/`masterTurns` does not
+      // end this ternary chain — it ADVANCES it, so a film whose dialogue Veo now speaks would fall
+      // through to generateFilmVoiceover and get a narrator track laid over clips that already talk
+      // (either the same words again from the "what the character says" box, or a brand-new brief-derived
+      // commentary). The ONLY voice that legitimately survives delegation is a VO NARRATOR SPINE that was
+      // already part of the suppressed leg — i.e. a Master Script's own VO sheet, which is off-camera and
+      // was never delegated. Everything else: no voice track.
+      : suppressDialogueLeg
+      ? (delegatedNarrationSpine
+          ? await generateFilmVoiceover({
+              brief: input.message,
+              totalSec: plan.shared.totalSec,
+              compositeId,
+              narrationScript: delegatedNarrationSpine,
+              narratorGender,
+              voiceLanguage,
+              voicePersona,
+              voiceTone,
+            }).catch((err) => {
+              // eslint-disable-next-line no-console
+              console.warn('[film] narrator-spine leg failed:', err instanceof Error ? err.message : err);
+              return null;
+            })
+          : null)
+      : (masterTurns || dialogueScript)
+      ? await generateDialogueVoiceover(
+          // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
+          masterTurns ? { turns: masterTurns, compositeId } : { script: dialogueScript!, compositeId },
+        ).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[film] dialogue voiceover leg failed:', err instanceof Error ? err.message : err);
+          return null;
+        })
+      : (wantsCommentary(input.message) || customNarration)
+      ? await generateFilmVoiceover({
+          brief: input.message,
+          totalSec: plan.shared.totalSec,
+          compositeId,
+          narrationScript: customNarration,
+          narratorGender,
+          voiceLanguage,
+          voicePersona,
+          voiceTone,
+        }).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
+          return null;
+        })
+      : null;
+    return { voiceUrl: single, dialogueStems: null };
+  };
+
+  // ── AN OFF-CAMERA VOICE IS MADE FIRST ───────────────────────────────────────
+  // ⚠️ 2026-10-17: the paid 32 s ad came back SILENT. A Georgian film is voiced off camera by ElevenLabs only (its clips
+  // render with Veo's own audio off, see offCameraVoice), the voice leg ran beside the clips, ElevenLabs refused every
+  // request, and the leg's null quietly became a film with no sound after the Veo render was paid for. That voice is the
+  // film's only speech, so it is made before anything is charged or rendered: no voice, no film, nothing taken.
+  let voiceMadeFirst: { voiceUrl: string | null; dialogueStems: DialogueStem[] | null } | null = null;
+  if (offCameraVoice) {
+    voiceMadeFirst = await renderVoiceTrack(filmVoiceSpec({ dialogueLeg: false, narrationLeg: false, narrationSpine: null }));
+    if (!voiceMadeFirst.voiceUrl && !voiceMadeFirst.dialogueStems?.length) {
+      // eslint-disable-next-line no-console
+      console.warn('[filmComposite] off-camera voice could not be made (ElevenLabs gave no audio) → film refused before any charge or render');
+      await undoStart();
+      return filmVoiceUnavailableResponse(input.locale);
+    }
+  }
+
   // ── Pre-flight: balance gate (skips anonymous; downstream gate covers them) ─
   // (Clip legs never charge: the film is debited once up front and renderClip always gets the waiver — see its call.)
   // Tracked so a film that dispatches nothing can hand the slot back (see the restore below).
@@ -1452,47 +1595,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // OR the user typed verbatim dialogue (narrationScript); SFX runs for every film.
   // (voiceMeta + parsedMaster are resolved up-front, before the plan — the scene grid and the per-scene
   // spoken lines both derive from the same parse.)
-  //   narration  → generateFilmVoiceover.narrationScript  (the sanitized VO spine, verbatim)
-  //   dialogue   → generateDialogueVoiceover.turns         (per-SPEAKER N-character casting)
-  const masterNarration = parsedMaster && parsedMaster.narrationScript.trim() ? parsedMaster.narrationScript.trim() : null;
-  const customNarration = (() => {
-    // Veo is already speaking these exact words inside the clips → voicing them again here is the double
-    // voice. (Only fires when narrationScript was the delegated source; a real VO spine is untouched.)
-    if (suppressNarrationLeg) return null;
-    const v = voiceMeta?.narrationScript;
-    const explicit = typeof v === 'string' && v.trim() ? v.trim() : null;
-    // The parsed Master-Script VO spine feeds the SAME verbatim narrationScript slot when no explicit one is set.
-    // Off camera, the lines written in the scene sheets feed no other leg: the narrator reads them, in scene order.
-    const sheetLines = offCameraVoice && dialogueSource === 'script-scenes'
-      ? sceneDialogue.flat().map((l) => l.text).join(' ').trim() || null
-      : null;
-    return explicit ?? masterNarration ?? sheetLines;
-  })();
-  // Explicit narrator gender (video panel 👩/👨) — overrides brief auto-detection.
-  const narratorGender: 'male' | 'female' | null =
-    voiceMeta?.narratorGender === 'male' || voiceMeta?.narratorGender === 'female' ? voiceMeta.narratorGender : null;
-  // Master-Script dialogue leg — the parsed on-camera dialogue with the VO NARRATOR spine folded in,
-  // timecode-ordered (review finding #2: don't drop narration when dialogue also exists). Empty → null,
-  // so narration-only scripts route through the single-voice narration leg below. Exact silence-gap
-  // placement at each timecode is the Phase-2 assemble refinement; here they play in script order.
-  const masterTurns = (() => {
-    if (!parsedMaster) return null;
-    // Veo speaks the ON-CAMERA dialogue in-clip → this leg would double it. The VO NARRATOR spine is NOT
-    // delegated (a narrator has no mouth in frame), so it routes through the single-voice narration leg
-    // below via `masterNarration` instead of being dropped.
-    if (suppressDialogueLeg) return null;
-    const t = masterDialogueTurns(parsedMaster, narratorGender);
-    return t.length ? t : null;
-  })();
-  // PHASE 2 L1 — Character Voice selector (language + persona + tone). Whitelisted to
-  // the allowed unions; null when unset so the legacy gender/brief path is unchanged.
-  const voiceLanguage = (voiceMeta?.voiceLanguage === 'ka' || voiceMeta?.voiceLanguage === 'en' || voiceMeta?.voiceLanguage === 'ru') ? voiceMeta.voiceLanguage : null;
-  const voicePersona = (voiceMeta?.voicePersona === 'male' || voiceMeta?.voicePersona === 'female' || voiceMeta?.voicePersona === 'child' || voiceMeta?.voicePersona === 'elderly') ? voiceMeta.voicePersona : null;
-  const voiceTone = (voiceMeta?.voiceTone === 'epic' || voiceMeta?.voiceTone === 'emotional' || voiceMeta?.voiceTone === 'energetic') ? voiceMeta.voiceTone : null;
-  // Multi-character dialogue script (video panel toggle) — split per speaker, each
-  // line voiced in its gendered voice and mixed into one track. Wins over single narration.
-  // Suppressed when Veo already speaks these lines in-clip (see the double-voice guard above).
-  const dialogueScript = suppressDialogueLeg ? null : dialogueScriptRaw;
+  // (The voice's sources and its render: filmVoiceSpec / renderVoiceTrack, above the charge.)
   // PHASE 25 (VECTOR 2) — QA DIRECTOR AGENT pre-assembly gate. Pure, deterministic, fail-open. It
   // grades the collective PLANNING output (character lock, scene count, empty/monotone scenes,
   // orientation) and applies the ONE provably-safe single-pass correction — filling any missing
@@ -1532,78 +1635,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const sfxBriefEn = sfxCueText ? await promptToEnglish(sfxCueText, 'video') : messageEn;
 
   const [voiceResult, sfxUrl] = await Promise.all([
-    // DAY-6 multi-voice: when the Master-Script dialogue is multi-voice-viable (≥2 DISTINCT
-    // TIMECODED speakers), render per-speaker STEMS ONCE (generateDialogueStems) so the assembler
-    // spatial-premixes them with the -12dB sidechain duck. On ANY miss (not viable, 1 speaker, a
-    // failed leg, or no ElevenLabs key) it returns null and we fall through to the EXACT single-track
-    // path below — so every single-voice / narration film is byte-identical to before. No double-render:
-    // generateDialogueStems returns null (never a partial upload) before we reach generateDialogueVoiceover.
-    (async (): Promise<{ voiceUrl: string | null; dialogueStems: DialogueStem[] | null }> => {
-      if (masterTurns && dialogueStemsViable(masterTurns)) {
-        const stemsRes = await generateDialogueStems({ turns: masterTurns, compositeId }).catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[film] dialogue stems leg failed:', err instanceof Error ? err.message : err);
-          return null;
-        });
-        if (stemsRes && stemsRes.stems.length >= 2) {
-          return { voiceUrl: stemsRes.mergedUrl, dialogueStems: stemsRes.stems };
-        }
-      }
-      // TRACK 3.3 — Music Video mode: the SONG leads, so skip the spoken narrator/dialogue VO track
-      // ENTIRELY (no VO mixed over the vocal → zero sync drift). Documentary is byte-identical to before.
-      const single = input.metadata?.musicVideoMode
-        ? null
-        // SUPPRESSION MUST NOT PROMOTE A DIFFERENT VOICE. Nulling `dialogueScript`/`masterTurns` does not
-        // end this ternary chain — it ADVANCES it, so a film whose dialogue Veo now speaks would fall
-        // through to generateFilmVoiceover and get a narrator track laid over clips that already talk
-        // (either the same words again from the "what the character says" box, or a brand-new brief-derived
-        // commentary). The ONLY voice that legitimately survives delegation is a VO NARRATOR SPINE that was
-        // already part of the suppressed leg — i.e. a Master Script's own VO sheet, which is off-camera and
-        // was never delegated. Everything else: no voice track.
-        : suppressDialogueLeg
-        ? (delegatedNarrationSpine
-            ? await generateFilmVoiceover({
-                brief: input.message,
-                totalSec: plan.shared.totalSec,
-                compositeId,
-                narrationScript: delegatedNarrationSpine,
-                narratorGender,
-                voiceLanguage,
-                voicePersona,
-                voiceTone,
-              }).catch((err) => {
-                // eslint-disable-next-line no-console
-                console.warn('[film] narrator-spine leg failed:', err instanceof Error ? err.message : err);
-                return null;
-              })
-            : null)
-        : (masterTurns || dialogueScript)
-        ? await generateDialogueVoiceover(
-            // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
-            masterTurns ? { turns: masterTurns, compositeId } : { script: dialogueScript!, compositeId },
-          ).catch((err) => {
-            // eslint-disable-next-line no-console
-            console.warn('[film] dialogue voiceover leg failed:', err instanceof Error ? err.message : err);
-            return null;
-          })
-        : (wantsCommentary(input.message) || customNarration)
-        ? await generateFilmVoiceover({
-            brief: input.message,
-            totalSec: plan.shared.totalSec,
-            compositeId,
-            narrationScript: customNarration,
-            narratorGender,
-            voiceLanguage,
-            voicePersona,
-            voiceTone,
-          }).catch((err) => {
-            // eslint-disable-next-line no-console
-            console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
-            return null;
-          })
-        : null;
-      return { voiceUrl: single, dialogueStems: null };
-    })(),
+    // An off-camera voice was made before the clips (AN OFF-CAMERA VOICE IS MADE FIRST); every other film's voice is made here.
+    voiceMadeFirst ?? renderVoiceTrack(filmVoiceSpec({ dialogueLeg: suppressDialogueLeg, narrationLeg: suppressNarrationLeg, narrationSpine: delegatedNarrationSpine })),
     generateFilmSfx({
       // PHASE 2 L3 — when the Prompt Agent produced per-scene SFX cues, compose them
       // into a scene-aware ambience brief (no music/speech) instead of the generic
@@ -1735,6 +1768,23 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
 }
 
 /** The script holds more speech than the film's scenes can say: refuse before any charge, naming what would fit. */
+/** A film whose off-camera voice could not be made: refused before anything was charged or rendered. */
+function filmVoiceUnavailableResponse(locale: string | undefined): ChatResponse {
+  const loc = (locale || 'ka').toLowerCase();
+  const message = loc === 'en'
+    ? 'The film’s voice could not be made right now (the voice service did not answer), so the film was not started — nothing was charged. Please try again later.'
+    : loc === 'ru'
+      ? 'Голос фильма сейчас не удалось создать (голосовой сервис не ответил), поэтому фильм не запущен — ничего не списано. Попробуйте позже.'
+      : 'ფილმის ხმა ახლა ვერ შეიქმნა (ხმის სერვისმა არ უპასუხა), ამიტომ ფილმი არ დაიწყო — თანხა არ ჩამოგეჭრა. სცადე მოგვიანებით.';
+  return {
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message,
+    metadata: { provider: 'composite', composite: true, voiceUnavailable: true },
+  };
+}
+
 function speechTooLongResponse(locale: string | undefined, speechSec: number, scenes: number, scenesNeeded: number, clipSec: number): ChatResponse {
   const loc = (locale || 'ka').toLowerCase();
   const needSec = scenesNeeded * clipSec;

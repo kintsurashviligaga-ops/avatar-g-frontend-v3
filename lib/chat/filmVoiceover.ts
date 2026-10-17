@@ -212,6 +212,22 @@ export function parseDialogueScript(script: string): DialogueTurn[] {
   return merged;
 }
 
+/**
+ * Why ElevenLabs refused a request, for the log: the HTTP status and ElevenLabs' own error code (detail.status / detail.code,
+ * e.g. `api_key_id_used_as_api_key`, `quota_exceeded`). Never the request, never the key. Never throws.
+ */
+export async function elevenLabsRefusal(res: { status: number; text: () => Promise<string> }): Promise<string> {
+  let code = '';
+  try {
+    const body = JSON.parse(await res.text()) as { detail?: { status?: unknown; code?: unknown } | string } | null;
+    const detail = body?.detail;
+    if (detail && typeof detail === 'object') {
+      code = [detail.code, detail.status].filter((x): x is string => typeof x === 'string' && /^[a-z0-9_]{1,64}$/i.test(x)).join(' / ');
+    }
+  } catch { /* not JSON: the status alone */ }
+  return code ? `${res.status} ${code}` : String(res.status);
+}
+
 async function synthesizeVoiceover(
   text: string,
   voiceIdOverride?: string | null,
@@ -272,6 +288,11 @@ async function synthesizeVoiceover(
               const buf = Buffer.from(await res.arrayBuffer());
               // Guard against an empty / error-page body masquerading as audio.
               if (buf.byteLength >= 1024) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' as const };
+            } else {
+              // Named, never silent: on 2026-10-17 every voice of a paid film came back null with nothing in the logs, and
+              // the cause (the key's ID set where the key belongs) was only found in the Music leg's warning.
+              // eslint-disable-next-line no-console
+              console.warn(`[tts] ElevenLabs ${m} refused: ${await elevenLabsRefusal(res)}`);
             }
             // else: try the next model in the chain (e.g. eleven_v3 not enabled on this account)
           }
@@ -513,7 +534,11 @@ async function synthesizeSfx(brief: string, totalSec: number): Promise<{ base64:
       body: JSON.stringify({ text, duration_seconds: duration, prompt_influence: 0.4 }),
       signal: ac.signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.warn(`[sfx] ElevenLabs sound generation refused: ${await elevenLabsRefusal(res)}`);
+      return null;
+    }
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.byteLength < 1024) return null;
     return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };

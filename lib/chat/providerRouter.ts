@@ -35,7 +35,7 @@ import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/i
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
 import { settleFailedFilmScenes } from './filmSceneRefund';
-import { advanceFilmChain, getFilmChainPlan, getFilmChainSteps } from './filmChain';
+import { advanceFilmChain, chainRetryDue, getFilmChainPlan, getFilmChainSteps } from './filmChain';
 import { asVeoSafetyCategory, type VeoSafetyCategory } from '@/lib/veo/safetyCodes';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
@@ -647,13 +647,22 @@ async function pollFilmTask(predictionId: string, sessionId?: string, userId?: s
   if (chainPlan && chainSteps) {
     // Loaded only for a chained film: its wiring pulls in ffmpeg, Storage and the ledger, which no other poll needs.
     const { filmChainDeps } = await import('./filmChainRuntime');
+    const chainLegs = clipStates.map((c) => ({ ordinal: c.ordinal, status: c.status, url: c.url, declined: !!c.declined }));
+    // A scene Google declined from a last frame is owed one more try from its storyboard frame. Until that try has an
+    // outcome the scene is not final: it reads as pending (another poll may hold the try), so it is neither hinted for
+    // R3-A (no share back for a scene still being made) nor ends the film one scene short.
+    const resending = chainRetryDue(chainPlan, chainLegs, chainSteps)?.ordinal ?? null;
     const advanced = await advanceFilmChain(
       chainPlan,
-      clipStates.map((c) => ({ ordinal: c.ordinal, status: c.status, url: c.url })),
+      chainLegs,
       chainSteps,
       userId,
       filmChainDeps,
     );
+    if (resending != null && advanced?.ordinal !== resending) {
+      const j = clipStates.findIndex((c) => c.ordinal === resending);
+      if (j >= 0) clipStates[j] = { ordinal: resending, status: 'pending', url: null, attempts: 1, providerStatus: 'queued', note: 'declined by Google; sent again from its storyboard frame', videoProvider: 'gemini-veo' };
+    }
     if (advanced) {
       const i = clipRefs.findIndex((c) => c.ordinal === advanced.ordinal);
       if (i >= 0) {

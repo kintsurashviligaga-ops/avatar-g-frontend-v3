@@ -17,6 +17,11 @@
  * WHAT CAN GO WRONG, AND WHAT HAPPENS.
  *   • The predecessor failed (Google declined it, or its dispatch died): the scene starts from its own storyboard frame,
  *     so one bad scene costs one scene, not the rest of the film.
+ *   • Google's safety filter declined a scene that started from the previous clip's last frame (the paid 2026-10-17 ad:
+ *     scene 3 was refused under the celebrity rule from clip 2's last frame, so the 32 s film came out 24 s): the scene is
+ *     sent ONCE more from its own storyboard frame, the frame the owner approved, before the next scene starts. A declined
+ *     clip is not billed by Google, so the second try costs one render. Its outcome is kept under its own key, so the first
+ *     try's record still stands and the second try can never be made twice.
  *   • The last frame cannot be read or hosted: the same fallback, the storyboard frame.
  *   • The dispatch fails: the scene is recorded failed and its share of a paid film goes back, decided here from the
  *     dispatch this server just made (never from the client's token). The next scene then starts from its storyboard frame.
@@ -76,6 +81,8 @@ export interface FilmChainStep {
   from: 'last-frame' | 'storyboard' | 'none';
   at: number;
   error?: string;
+  /** The second try of a scene Google declined from a last frame. A scene has at most one. */
+  retry?: true;
 }
 
 /** One leg of the film as this poll sees it. */
@@ -83,6 +90,8 @@ export interface FilmChainLeg {
   ordinal: number;
   status: 'pending' | 'succeeded' | 'failed' | 'skipped';
   url: string | null;
+  /** Google's safety filter declined this clip (a terminal verdict Google does not bill). */
+  declined?: boolean;
 }
 
 /** The next scene to dispatch, and where it starts. */
@@ -129,6 +138,25 @@ export function chainNextStep(
   return null;
 }
 
+/**
+ * A chained scene to send once more from its own storyboard frame, or null. Only a scene Google's safety filter declined
+ * after it started from the previous clip's last frame, only when it has a storyboard frame to start from, and only once:
+ * the first such scene in film order. While it is due the next scene waits, so the film keeps its order.
+ */
+export function chainRetryDue(
+  plan: Pick<FilmChainPlan, 'scenes'>,
+  legs: readonly FilmChainLeg[],
+  steps: ReadonlyMap<number, FilmChainStep>,
+): { ordinal: number } | null {
+  for (const scene of plan.scenes) {
+    const step = steps.get(scene.ordinal);
+    if (!step || step.retry || step.from !== 'last-frame' || step.status !== 'queued' || !scene.storyboardFrame) continue;
+    const leg = legs.find((l) => l.ordinal === scene.ordinal);
+    if (leg?.status === 'failed' && leg.declined) return { ordinal: scene.ordinal };
+  }
+  return null;
+}
+
 // ─── Store (Upstash Redis; a process-local map only where FILM_CHAIN_MEMORY=1, for a single dev/test server) ───────
 
 let client: Redis | null = null;
@@ -154,6 +182,9 @@ const memoryAllowed = (): boolean => /^(1|true|on)$/i.test((process.env.FILM_CHA
 const planKey = (tokenId: string) => `film:chain:${tokenId}`;
 const stepKey = (tokenId: string, ordinal: number) => `film:chain:${tokenId}:step:${ordinal}`;
 const claimKey = (tokenId: string, ordinal: number) => `film:chain:${tokenId}:claim:${ordinal}`;
+// A scene's second try (chainRetryDue) keeps its own outcome and claim, so the first try's record is never replaced.
+const retryStepKey = (tokenId: string, ordinal: number) => `film:chain:${tokenId}:retry:${ordinal}`;
+const retryClaimKey = (tokenId: string, ordinal: number) => `film:chain:${tokenId}:retryclaim:${ordinal}`;
 
 function memGet(key: string): string | null {
   const hit = memory.get(key);
@@ -205,11 +236,17 @@ export async function getFilmChainPlan(tokenId: string): Promise<FilmChainPlan |
   return plan && plan.v === 1 && plan.tokenId === tokenId && Array.isArray(plan.scenes) ? plan : null;
 }
 
-/** The outcomes recorded so far for the plan's scenes. A store that cannot answer reads as null. */
+/**
+ * The outcomes recorded so far for the plan's scenes. A scene that was sent a second time reads as that second try (its
+ * job is the one the film follows). A store that cannot answer reads as null.
+ */
 export async function getFilmChainSteps(plan: FilmChainPlan): Promise<Map<number, FilmChainStep> | null> {
   const out = new Map<number, FilmChainStep>();
   if (plan.scenes.length === 0) return out;
-  const keys = plan.scenes.map((s) => stepKey(plan.tokenId, s.ordinal));
+  const keys = [
+    ...plan.scenes.map((s) => stepKey(plan.tokenId, s.ordinal)),
+    ...plan.scenes.map((s) => retryStepKey(plan.tokenId, s.ordinal)),
+  ];
   const r = redis();
   let raws: unknown[];
   if (r) {
@@ -219,32 +256,43 @@ export async function getFilmChainSteps(plan: FilmChainPlan): Promise<Map<number
   } else {
     return null;
   }
+  const usable = (raw: unknown): FilmChainStep | null => {
+    const step = parse<FilmChainStep>(raw);
+    return step && (step.status === 'queued' || step.status === 'failed') ? step : null;
+  };
   plan.scenes.forEach((s, i) => {
-    const step = parse<FilmChainStep>(raws[i]);
-    if (step && (step.status === 'queued' || step.status === 'failed')) out.set(s.ordinal, step);
+    const first = usable(raws[i]);
+    const second = first ? usable(raws[plan.scenes.length + i]) : null;
+    if (first) out.set(s.ordinal, second ? { ...second, retry: true } : first);
   });
   return out;
 }
 
-/** Record a scene's outcome. The first write wins, so a late, stale writer cannot replace it. */
+/** Record a scene's outcome (a second try's under its own key). The first write wins: a late, stale writer cannot replace it. */
 export async function recordFilmChainStep(tokenId: string, ordinal: number, step: FilmChainStep): Promise<boolean> {
+  const key = step.retry ? retryStepKey(tokenId, ordinal) : stepKey(tokenId, ordinal);
   const r = redis();
   if (r) {
     try {
-      return (await r.set(stepKey(tokenId, ordinal), JSON.stringify(step), { nx: true, ex: FILM_CHAIN_TTL_SEC })) === 'OK';
+      return (await r.set(key, JSON.stringify(step), { nx: true, ex: FILM_CHAIN_TTL_SEC })) === 'OK';
     } catch {
       return false;
     }
   }
-  return memoryAllowed() ? memSetNx(stepKey(tokenId, ordinal), JSON.stringify(step), FILM_CHAIN_TTL_SEC) : false;
+  return memoryAllowed() ? memSetNx(key, JSON.stringify(step), FILM_CHAIN_TTL_SEC) : false;
 }
 
 /**
  * Claim the right to dispatch a scene. 'claimed': this poll sends it. 'held': another poll is sending it now. 'stale': a
  * claim exists whose poll never recorded an outcome. 'unavailable': the store cannot answer, so nobody sends it this tick.
  */
-export async function claimFilmChainStep(tokenId: string, ordinal: number, now: number): Promise<'claimed' | 'held' | 'stale' | 'unavailable'> {
-  const key = claimKey(tokenId, ordinal);
+export async function claimFilmChainStep(
+  tokenId: string,
+  ordinal: number,
+  now: number,
+  retry = false,
+): Promise<'claimed' | 'held' | 'stale' | 'unavailable'> {
+  const key = retry ? retryClaimKey(tokenId, ordinal) : claimKey(tokenId, ordinal);
   const r = redis();
   let won: boolean;
   let held: unknown;
@@ -297,12 +345,15 @@ export async function advanceFilmChain(
   deps: FilmChainDeps,
 ): Promise<{ ordinal: number; step: FilmChainStep } | null> {
   if (!uid || uid !== plan.uid) return null;
+  const now = deps.now ?? Date.now;
+  const store = deps.store ?? { claim: claimFilmChainStep, record: recordFilmChainStep };
+  // A declined scene's second try comes first: until it has an outcome, the next scene waits for it.
+  const retry = chainRetryDue(plan, legs, steps);
+  if (retry) return resendFromStoryboard(plan, retry.ordinal, deps, now, store);
   const next = chainNextStep(plan, legs, steps);
   if (!next) return null;
   const scene = plan.scenes.find((s) => s.ordinal === next.ordinal);
   if (!scene) return null;
-  const now = deps.now ?? Date.now;
-  const store = deps.store ?? { claim: claimFilmChainStep, record: recordFilmChainStep };
 
   try {
     const claim = await store.claim(plan.tokenId, scene.ordinal, now());
@@ -342,6 +393,53 @@ export async function advanceFilmChain(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`[filmChain] ${plan.tokenId} scene ${scene.ordinal} advance threw:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * Send a scene Google declined from a last frame once more, from its own storyboard frame. Claimed and recorded under the
+ * second try's own keys; a dispatch that fails, or a claim whose poll died, gives the scene's share back once (no job, so
+ * R3-A never sees it). A queued second try needs no new share: the scene's share was recorded with its first try, and
+ * R3-A gives it back only if this try fails at Google too.
+ */
+async function resendFromStoryboard(
+  plan: FilmChainPlan,
+  ordinal: number,
+  deps: FilmChainDeps,
+  now: () => number,
+  store: NonNullable<FilmChainDeps['store']>,
+): Promise<{ ordinal: number; step: FilmChainStep } | null> {
+  const scene = plan.scenes.find((s) => s.ordinal === ordinal);
+  if (!scene?.storyboardFrame) return null;
+  try {
+    const claim = await store.claim(plan.tokenId, ordinal, now(), true);
+    if (claim === 'held' || claim === 'unavailable') return null;
+    if (claim === 'stale') {
+      const step: FilmChainStep = { taskRef: null, status: 'failed', from: 'none', at: now(), retry: true, error: 'second try outcome unknown — not sent again' };
+      if (await store.record(plan.tokenId, ordinal, step)) await deps.refundScene(plan, ordinal).catch(() => undefined);
+      return { ordinal, step };
+    }
+    const sent = await deps.dispatch(plan, scene, scene.storyboardFrame).catch((err): { taskRef: null; status: 'failed'; error: string } => ({
+      taskRef: null, status: 'failed', error: err instanceof Error ? err.message : String(err),
+    }));
+    const queued = sent.status === 'queued' && !!sent.taskRef;
+    const step: FilmChainStep = {
+      taskRef: queued ? sent.taskRef : null,
+      status: queued ? 'queued' : 'failed',
+      from: 'storyboard',
+      at: now(),
+      retry: true,
+      ...(sent.error ? { error: sent.error.slice(0, 200) } : {}),
+    };
+    const recorded = await store.record(plan.tokenId, ordinal, step);
+    if (recorded && !queued) await deps.refundScene(plan, ordinal).catch(() => undefined);
+    // eslint-disable-next-line no-console
+    console.log(`[filmChain] ${plan.tokenId} scene ${ordinal}: Google declined its last-frame start → second try ${step.status} from storyboard${step.error ? ` (${step.error})` : ''}`);
+    return { ordinal, step };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[filmChain] ${plan.tokenId} scene ${ordinal} second try threw:`, err instanceof Error ? err.message : err);
     return null;
   }
 }

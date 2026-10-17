@@ -119,6 +119,8 @@ beforeEach(() => {
   mockReleaseKey.mockImplementation(async (uid: string, key: string) => { mockStartKeys.delete(`${uid}|${key}`); });
   let n = 0;
   mockExecute.mockImplementation(async () => queued(++n));
+  // A Georgian film's off-camera voice is made before anything is charged or sent: it has to come back for the film to start.
+  (generateFilmVoiceover as jest.Mock).mockResolvedValue('https://store.local.test/voiceover.mp3');
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);

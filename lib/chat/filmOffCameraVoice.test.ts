@@ -121,6 +121,8 @@ beforeEach(() => {
   mockReleaseKey.mockImplementation(async (uid: string, key: string) => { mockStartKeys.delete(`${uid}|${key}`); });
   let n = 0;
   mockExecute.mockImplementation(async () => queued(++n));
+  // A Georgian film's off-camera voice is made before anything is charged or sent: it has to come back for the film to start.
+  (generateFilmVoiceover as jest.Mock).mockResolvedValue('https://store.local.test/voiceover.mp3');
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -199,6 +201,45 @@ describe('a Georgian narration is spoken off camera by ONE voice', () => {
     expect(mockDeduct).not.toHaveBeenCalled();
     expect(mockExecute).not.toHaveBeenCalled();
     expect(generateFilmVoiceover).not.toHaveBeenCalled();
+  });
+});
+
+describe('no voice, no film: the off-camera voice is made before anything is charged or rendered', () => {
+  // ⚠️ 2026-10-17: the paid 32 s ad came back SILENT. Production's ElevenLabs key was the key's ID, every voice request
+  // was refused, and the voice leg (run beside the clips) quietly returned nothing after the Veo render was paid for.
+  test('ElevenLabs gives no voice → refused, nothing charged, no clip sent, and the press can be tried again', async () => {
+    (generateFilmVoiceover as jest.Mock).mockResolvedValue(null);
+    const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
+    expect(res.success).toBe(false);
+    expect((res.metadata as { voiceUnavailable?: boolean }).voiceUnavailable).toBe(true);
+    expect(res.message).toMatch(/nothing was charged/);
+    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(mockConsumeFree).not.toHaveBeenCalled();
+    expect(clipCalls()).toHaveLength(0);
+    expect(mockReleaseKey).toHaveBeenCalledTimes(1);
+  });
+
+  test('the same for the founder, whose film the platform pays for', async () => {
+    (generateFilmVoiceover as jest.Mock).mockResolvedValue(null);
+    const res = await handleFilmComposite(input(adPanel(KA_SCRIPT), 'founder'));
+    expect(res.success).toBe(false);
+    expect(clipCalls()).toHaveLength(0);
+  });
+
+  test('the voice is made first, then the charge, then the clips', async () => {
+    const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
+    expect(res.success).toBe(true);
+    const voiceAt = (generateFilmVoiceover as jest.Mock).mock.invocationCallOrder[0]!;
+    expect(voiceAt).toBeLessThan(mockDeduct.mock.invocationCallOrder[0]!);
+    expect(voiceAt).toBeLessThan(mockExecute.mock.invocationCallOrder[0]!);
+  });
+
+  test('a film Veo voices in-clip is not held to an ElevenLabs voice it never asked for', async () => {
+    (generateFilmVoiceover as jest.Mock).mockResolvedValue(null);
+    const en = 'Meet the new studio. One window makes the video, the voice and the music. Try it today.';
+    const res = await handleFilmComposite(input({ ...adPanel(en), voiceLanguage: 'en' }));
+    expect(res.success).toBe(true);
+    expect(clipCalls()).toHaveLength(4);
   });
 });
 

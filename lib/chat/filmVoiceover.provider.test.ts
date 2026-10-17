@@ -22,7 +22,7 @@ jest.mock('../audio/azure-tts', () => ({
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => 'https://storage.example/tts.mp3') }));
 jest.mock('../elevenlabs/concurrency', () => ({ withElevenLabsSlot: jest.fn(<T,>(fn: () => Promise<T>) => fn()) }));
 
-import { textToHostedSpeech } from './filmVoiceover';
+import { elevenLabsRefusal, generateFilmSfx, textToHostedSpeech } from './filmVoiceover';
 import { synthesizeGoogleTts } from '../audio/google-tts';
 import { synthesizeAzureGeorgian } from '../audio/azure-tts';
 import { uploadAndSign } from '../orchestrator/storage-adapter';
@@ -81,4 +81,37 @@ test('a voice override that is not a voice id → null, and nothing is fetched (
   expect(fetchSpy).not.toHaveBeenCalled();
   noOtherProvider();
   expect(uploadAndSign).not.toHaveBeenCalled();
+});
+
+describe('a refusal is named in the log, never silent', () => {
+  // ⚠️ 2026-10-17: a paid film's voice and sound effects both came back null with nothing in the logs. The cause (the key's
+  // ID set where the key belongs) surfaced only in the Music leg's warning.
+  const refusal = JSON.stringify({ detail: { type: 'authentication_error', code: 'invalid_api_key', message: 'API key ID used as API key', status: 'api_key_id_used_as_api_key' } });
+
+  test('the voice: status and ElevenLabs’ own code, for each model tried, and never the key', async () => {
+    fetchSpy.mockImplementation(async () => new Response(refusal, { status: 400 }));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(await textToHostedSpeech(KA, VOICE)).toBeNull();
+    const lines = warn.mock.calls.map((c) => String(c[0]));
+    expect(lines).toEqual([
+      '[tts] ElevenLabs eleven_v3 refused: 400 invalid_api_key / api_key_id_used_as_api_key',
+      '[tts] ElevenLabs eleven_multilingual_v2 refused: 400 invalid_api_key / api_key_id_used_as_api_key',
+    ]);
+    expect(lines.join('\n')).not.toContain('el-test-key');
+    warn.mockRestore();
+  });
+
+  test('the sound effects: the same', async () => {
+    fetchSpy.mockImplementation(async () => new Response(refusal, { status: 400 }));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(await generateFilmSfx({ brief: 'rain on a pier', totalSec: 24, compositeId: 'c1' })).toBeNull();
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual(['[sfx] ElevenLabs sound generation refused: 400 invalid_api_key / api_key_id_used_as_api_key']);
+    warn.mockRestore();
+  });
+
+  test('a body that is not ElevenLabs’ JSON, or a code that is not a plain token, logs the status alone', async () => {
+    expect(await elevenLabsRefusal(new Response('<html>bad gateway</html>', { status: 502 }))).toBe('502');
+    expect(await elevenLabsRefusal(new Response(JSON.stringify({ detail: { status: 'sk_live secret here' } }), { status: 401 }))).toBe('401');
+    expect(await elevenLabsRefusal(new Response(JSON.stringify({ detail: 'quota' }), { status: 429 }))).toBe('429');
+  });
 });

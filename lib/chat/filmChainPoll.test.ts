@@ -95,7 +95,7 @@ function chainToken(): string {
 
 /** The client's vocabulary: a clip still rendering (or waiting its turn) reads 'queued'. */
 /** Provider verdicts by job: job-1 is scene 1; veoRef(n) is the chained scene n's own job. */
-let verdicts: Record<string, { success: boolean; predictionStatus: string; assetUrl?: string; message?: string }>;
+let verdicts: Record<string, { success: boolean; predictionStatus: string; assetUrl?: string; message?: string; metadata?: Record<string, unknown> }>;
 const clipsOf = (res: Awaited<ReturnType<typeof pollOrchestrationTask>>) =>
   (res.metadata?.film as { clips: Array<{ ordinal: number; status: string; providerStatus?: string; note?: string }> }).clips;
 
@@ -105,7 +105,7 @@ beforeEach(async () => {
   __setFilmChainRedisForTests(null);
   await saveFilmChainPlan(plan());
   verdicts = { 'job-1': { success: false, predictionStatus: 'processing' } };
-  sm.poll.mockImplementation(async (taskRef: string) => ({ ...(verdicts[taskRef] ?? { success: false, predictionStatus: 'processing' }), metadata: {} }));
+  sm.poll.mockImplementation(async (taskRef: string) => ({ metadata: {}, ...(verdicts[taskRef] ?? { success: false, predictionStatus: 'processing' }) }));
   mockExtract.mockResolvedValue(Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
   mockUpload.mockResolvedValue(HOSTED);
   mockSubmit.mockImplementation(async (_ctx: unknown, _req: unknown, scene: { ordinal: number }) => ({ status: 'queued', taskRef: veoRef(scene.ordinal), attempts: 1 }));
@@ -170,6 +170,71 @@ test('scene 2 failed at Google → scene 3 starts from its own storyboard frame,
   expect(mockSettle).toHaveBeenCalledWith(OWNER, TOKEN_ID, [2]);
   const steps = await getFilmChainSteps((await getFilmChainPlan(TOKEN_ID))!);
   expect(steps!.get(3)).toMatchObject({ status: 'queued', from: 'storyboard' });
+});
+
+/** Google's safety filter on a clip (ServiceManager's Veo poll): failed, with the rule it fell under. */
+const declinedByGoogle = { success: false, predictionStatus: 'failed', message: 'declined by Google', metadata: { veoFiltered: true, veoSafetyCategory: 'celebrity', veoSupportCodes: ['15236754'] } };
+
+test('scene 2 declined by Google from scene 1’s last frame → sent once more from its own storyboard frame, before scene 3, with no share back', async () => {
+  // ⚠️ 2026-10-17: the paid 32 s ad lost scene 3 this way (celebrity rule, from clip 2's last frame) and came out 24 s.
+  verdicts['job-1'] = { success: true, predictionStatus: 'succeeded', assetUrl: CLIP_1 };
+  await pollOrchestrationTask(chainToken(), 's1', OWNER); // scene 2 from scene 1's last frame
+  verdicts[veoRef(2)] = declinedByGoogle;
+  const SECOND = veoRef(22);
+  mockSubmit.mockImplementationOnce(async () => ({ status: 'queued', taskRef: SECOND, attempts: 1 }));
+  mockExtract.mockClear();
+
+  const res = await pollOrchestrationTask(chainToken(), 's1', OWNER);
+  expect(mockSubmit).toHaveBeenCalledTimes(2);
+  const [, req, scene] = mockSubmit.mock.calls[1]!;
+  expect(scene.ordinal).toBe(2);
+  expect(req.selectedOptions.characterReference).toBe('https://frames.local.test/2.png');
+  expect(mockExtract).not.toHaveBeenCalled();
+  expect(mockSettle).not.toHaveBeenCalled();
+  expect(mockRefund).not.toHaveBeenCalled();
+  expect(clipsOf(res).find((c) => c.ordinal === 2)).toMatchObject({ status: 'queued' });
+  expect(clipsOf(res).find((c) => c.ordinal === 3)).toMatchObject({ status: 'queued', providerStatus: 'waiting' });
+  expect(res.status).not.toBe('succeeded');
+
+  // The next poll follows the second try's own job and sends nothing again.
+  sm.poll.mockClear();
+  await pollOrchestrationTask(chainToken(), 's1', OWNER);
+  expect(sm.poll.mock.calls.map((c) => c[0])).toEqual(['job-1', SECOND]);
+  expect(mockSubmit).toHaveBeenCalledTimes(2);
+
+  // The second try lands → scene 3 starts from ITS real last frame.
+  verdicts[SECOND] = { success: true, predictionStatus: 'succeeded', assetUrl: 'https://media.local.test/clip-2b.mp4' };
+  await pollOrchestrationTask(chainToken(), 's1', OWNER);
+  expect(mockSubmit).toHaveBeenCalledTimes(3);
+  expect(mockSubmit.mock.calls[2]![2].ordinal).toBe(3);
+  expect(mockExtract).toHaveBeenCalledWith('https://media.local.test/clip-2b.mp4');
+});
+
+test('declined again on its second try: no third try; scene 3 starts from its storyboard frame and scene 2 is hinted for R3-A', async () => {
+  verdicts['job-1'] = { success: true, predictionStatus: 'succeeded', assetUrl: CLIP_1 };
+  await pollOrchestrationTask(chainToken(), 's1', OWNER);
+  verdicts[veoRef(2)] = declinedByGoogle;
+  const SECOND = veoRef(22);
+  mockSubmit.mockImplementationOnce(async () => ({ status: 'queued', taskRef: SECOND, attempts: 1 }));
+  await pollOrchestrationTask(chainToken(), 's1', OWNER); // the second try
+  verdicts[SECOND] = declinedByGoogle;
+
+  await pollOrchestrationTask(chainToken(), 's1', OWNER);
+  expect(mockSubmit).toHaveBeenCalledTimes(3);
+  const [, req, scene] = mockSubmit.mock.calls[2]!;
+  expect(scene.ordinal).toBe(3);
+  expect(req.selectedOptions.characterReference).toBe('https://frames.local.test/3.png');
+  expect(mockSettle).toHaveBeenCalledWith(OWNER, TOKEN_ID, [2]);
+  await pollOrchestrationTask(chainToken(), 's1', OWNER);
+  expect(mockSubmit).toHaveBeenCalledTimes(3);
+});
+
+test('a plain failure (not Google’s safety filter) is not sent again', async () => {
+  verdicts['job-1'] = { success: true, predictionStatus: 'succeeded', assetUrl: CLIP_1 };
+  await pollOrchestrationTask(chainToken(), 's1', OWNER);
+  verdicts[veoRef(2)] = { success: false, predictionStatus: 'failed', message: 'generation failed' };
+  await pollOrchestrationTask(chainToken(), 's1', OWNER);
+  expect(mockSubmit.mock.calls.map((c) => (c[2] as { ordinal: number }).ordinal)).toEqual([2, 3]);
 });
 
 test('a scene Google refuses at dispatch is recorded failed and its share goes back once, under the film’s charge', async () => {
