@@ -377,7 +377,7 @@ for (const vp of VIEWPORTS) {
       // The loading loop (components/studio/ui/LoadingLoop) fills the tile and actually plays, muted and inline.
       // (This Chromium build has no H.264, so it plays the VP9 source; Chrome and Safari can take either.)
       const loop = card.getByTestId('loading-loop');
-      await expect.poll(() => loop.evaluate((v) => { const el = v as HTMLVideoElement; return !el.paused && el.muted && el.currentTime > 0 && /\/media\/loading\/avatar-forming\.(webm|mp4)$/.test(el.currentSrc); }), { timeout: 15_000 }).toBe(true);
+      await expect.poll(() => loop.evaluate((v) => { const el = v as HTMLVideoElement; return !el.paused && el.muted && el.currentTime > 0 && /\/media\/loading\/blue-wave\.(webm|mp4)$/.test(el.currentSrc); }), { timeout: 15_000 }).toBe(true);
       await page.screenshot({ path: `test-results/loading-loop-${vp.name}.png` });
       const cancel = card.getByRole('button', { name: 'გაუქმება' });
       const box = (await cancel.boundingBox())!;

@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle, Check, Clock, Loader2, X } from 'lucide-react';
+import { AlertTriangle, Check, Clock, X } from 'lucide-react';
 import { LoadingLoop } from './LoadingLoop';
 
 /**
@@ -147,7 +147,7 @@ export type ProgressState = 'running' | 'queued' | 'done' | 'failed' | 'canceled
 
 export function GenerationProgress({
   kind, elapsed, status, locale, targetSec, pct: pctOverride, compact, measuredOnly = false,
-  title, subtitle, state = 'running', queuePosition, error, onCancel, cancelLabel, children,
+  title, subtitle, state = 'running', queuePosition, error, onCancel, cancelLabel, children, loop = true,
 }: {
   kind: ProgressKind;
   /** Seconds since the run started. */
@@ -192,6 +192,11 @@ export function GenerationProgress({
    * default, so every studio that runs its own work keeps the eased estimate it was designed with.
    */
   measuredOnly?: boolean;
+  /**
+   * Draw the loading loop while the job waits or runs (default). Off only where the loop is already on screen
+   * right above this card (the film console tucked under its ResultCard), so one wait never shows two loops.
+   */
+  loop?: boolean;
 }) {
   const stages = STAGES[locale][kind];
   const target = targetSec ?? PROGRESS_TARGET[kind];
@@ -208,6 +213,7 @@ export function GenerationProgress({
     : Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
   const sc = STATE_COPY[locale] ?? STATE_COPY.ka;
   const running = state === 'running';
+  const working = running || state === 'queued';
   // Terminal states show 100 — the work IS over — while `running` keeps the honest sub-95 estimate.
   const shownPct = state === 'done' ? 100 : state === 'queued' ? 0 : running ? pct : 100;
   const headline = !running
@@ -237,11 +243,18 @@ export function GenerationProgress({
           {subtitle && <p className="truncate text-[10px] font-medium uppercase tracking-wider text-app-muted/70">{subtitle}</p>}
         </div>
       )}
+      {/* THE loading picture (the owner's rule, 2026-10-17: every generation shows only this card): while the job
+          waits or runs, the loop fills the card's head. No spinner anywhere on the card. */}
+      {loop && working && !compact && (
+        <div aria-hidden="true" data-testid="generation-progress-loop" className="relative h-[150px] w-full overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
+          <LoadingLoop />
+        </div>
+      )}
       <div className="flex items-end justify-between gap-3">
         <div className="flex min-w-0 items-end gap-3">
-          {/* The loading loop (./LoadingLoop) while the job waits or runs; the tray's compact rows stay still. */}
-          {!compact && (running || state === 'queued') && (
-            <div aria-hidden="true" className="relative h-[76px] w-[43px] shrink-0 overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
+          {/* A compact row (the job tray, a panel) carries the same loop as a small tile. */}
+          {loop && working && compact && (
+            <div aria-hidden="true" data-testid="generation-progress-loop" className="relative h-[52px] w-[30px] shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-app-border/15">
               <LoadingLoop />
             </div>
           )}
@@ -253,7 +266,7 @@ export function GenerationProgress({
               </div>
             )}
             <span className={`mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium ${tone}`}>
-              {running ? <Loader2 size={13} className="shrink-0 animate-spin" />
+              {running ? null
                 : state === 'queued' ? <Clock size={13} className="shrink-0" />
                 : state === 'done' ? <Check size={13} className="shrink-0" />
                 : state === 'failed' ? <AlertTriangle size={13} className="shrink-0" />
@@ -306,7 +319,7 @@ export function GenerationProgress({
                 {state === 'done' ? (
                   <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Check size={12} className="text-app-accent" /></span>
                 ) : state === 'active' ? (
-                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Loader2 size={12} className="animate-spin text-app-accent" /></span>
+                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><span className="h-[7px] w-[7px] rounded-full bg-app-accent" /></span>
                 ) : (
                   <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center"><span className="h-[13px] w-[13px] rounded-full border border-app-border/30" /></span>
                 )}

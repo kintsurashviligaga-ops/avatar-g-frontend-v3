@@ -10,6 +10,7 @@
 import { AlertCircle, ArrowLeft, MessageSquare } from 'lucide-react';
 import type { MontageAspect } from '@/lib/services/montage/montagePlan';
 import { ProgressBar } from '../ui/controls';
+import { LoadingLoop } from '../ui/LoadingLoop';
 import { ResultActions } from '../ui/ResultActions';
 import { STAGE_LABEL, aspectRatio, langOf, type Copy } from './copy';
 
@@ -37,11 +38,12 @@ export function ExportView(p: {
         {state.phase === 'running' && (
           <>
             <div
-              className="relative w-full overflow-hidden rounded-2xl bg-app-surface"
+              className="relative w-full overflow-hidden rounded-2xl bg-black"
               style={{ aspectRatio: String(r), maxHeight: '52vh', maxWidth: `calc(52vh * ${r})` }}
               aria-hidden="true"
+              data-testid="montage-export-loop"
             >
-              <div className="absolute inset-0 animate-pulse bg-gradient-to-b from-app-elevated/60 to-app-surface motion-reduce:animate-none" />
+              <LoadingLoop />
             </div>
             <div className="mt-5 w-full" role="status" aria-live="polite">
               <p className="mb-2 text-center text-[15px] font-semibold text-app-text">{t.exporting}</p>

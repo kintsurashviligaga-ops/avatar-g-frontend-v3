@@ -8,8 +8,8 @@ import { LoadingLoop } from './LoadingLoop';
  * ResultCard — one tile for a generation from the moment it is asked for to the moment it is on screen:
  * queued → rendering → finalizing → ready (or error). The tile has the RESULT's shape from the start (a 9:16
  * video is a 9:16 tile while it renders), so the feed does not jump when the media arrives, and what the user
- * watches while waiting is the loading loop (./LoadingLoop: the avatar forming out of light, the owner's clip,
- * 2026-10-09) under a thin accent bar — not a spinner (docs/DESIGN.md §5, §8).
+ * watches while waiting is the loading loop (./LoadingLoop: the owner's blue wave clip,
+ * 2026-10-17) under a thin accent bar — not a spinner (docs/DESIGN.md §5, §8).
  *
  * Honest progress, same rules as GenerationProgress: a server-reported percent wins; otherwise elapsed / cap,
  * held at 92 % until the job is actually ready. The bar never claims "done" on a guess.

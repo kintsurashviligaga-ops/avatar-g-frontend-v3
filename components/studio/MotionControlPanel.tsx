@@ -11,6 +11,7 @@ import { Upload, Sparkles, Loader2, X, CheckCircle, AlertCircle, Music2, Mic } f
 import { AppToggle } from '@/components/ui/AppToggle';
 import { describeGenerationFailure } from './ui/serviceError';
 import { saveMedia } from '@/lib/media/saveMedia';
+import { LoadingLoop } from './ui/LoadingLoop';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T: Record<Lang, Record<string, string>> = {
@@ -340,8 +341,12 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
 
       {busy && (
         <div className="space-y-2 rounded-2xl border border-app-border/10 bg-app-bg/40 p-3.5">
+          {/* The loading loop: the one picture of every generation's wait (the owner's rule, 2026-10-17). */}
+          <div aria-hidden="true" className="relative h-[140px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
+            <LoadingLoop />
+          </div>
           <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-app-accent" />
+            <span className="h-1.5 w-1.5 rounded-full bg-app-accent" />
             <span className="text-xs text-app-accent">
               {stage === 'lipsync' ? 'Lip-sync · HeyGen' : 'Kling · Replicate'} · ~2–4 min
             </span>
@@ -355,7 +360,6 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
               <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-app-accent/40" /><span>{lang === 'en' ? 'Music (MusicGen)' : lang === 'ru' ? 'Музыка (MusicGen)' : 'მუსიკა (MusicGen)'}</span></div>
             ) : null}
           </div>
-          <div className="h-1 w-full overflow-hidden rounded-full bg-app-elevated"><div className="h-full w-3/4 animate-pulse rounded-full bg-app-accent" /></div>
           <p className="text-[10.5px] text-app-muted">{aspectRatio}{enableLipsync && lipsyncText.trim() ? ' + lip-sync' : enableMusic ? ' + music' : ''}</p>
         </div>
       )}

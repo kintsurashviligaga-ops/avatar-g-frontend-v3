@@ -20,7 +20,8 @@
  * pass through a function) and reach the model as signed URLs (lib/studio/media).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, ExternalLink, Loader2, X } from 'lucide-react';
+import { Download, ExternalLink, X } from 'lucide-react';
+import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
 import { GenerateButton } from '@/components/studio/ui/GenerateButton';
 import { describeServiceError } from '@/components/studio/ui/serviceError';
 import { uploadFileToStorage } from '@/components/studio/ui/useUpload';
@@ -202,13 +203,13 @@ export function HiggsfieldGenerate(p: HiggsfieldGenerateProps) {
 
       {job && (
         <div data-testid="hf-job" data-status={job.status} className="flex items-center gap-3 rounded-2xl bg-app-elevated/60 px-3 py-2 ring-1 ring-app-border/10" aria-live="polite">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black/40">
+          <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black/40">
             {job.status === 'completed' && job.outputUrls[0] ? (
               p.service === 'image'
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={job.outputUrls[0]} alt="" className="h-full w-full object-cover" />
                 : <video src={job.outputUrls[0]} muted playsInline className="h-full w-full object-cover" />
-            ) : RUNNING.has(job.status) ? <Loader2 size={18} className="animate-spin text-app-muted" aria-hidden="true" /> : <X size={18} className="text-app-muted" aria-hidden="true" />}
+            ) : RUNNING.has(job.status) ? <LoadingLoop /> : <X size={18} className="text-app-muted" aria-hidden="true" />}
           </div>
           <div className="min-w-0 flex-1 text-[13px] leading-snug">
             <p className="font-medium text-app-text">

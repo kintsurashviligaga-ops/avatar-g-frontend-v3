@@ -12,6 +12,7 @@ import { cancelJob } from './api';
 import { elapsedMinutes, jobFailureText, researchCopy } from './copy';
 import { researchActions } from './store';
 import { useEnsureJob } from './useEnsureJob';
+import { LoadingLoop } from '../ui/LoadingLoop';
 
 /** Re-render every `everyMs` while `on` (the elapsed-minutes line). */
 function useTicker(on: boolean, everyMs = 30_000): number {
@@ -40,8 +41,13 @@ export function ResearchCard({ id, locale, className = '' }: { id: string; local
   if (!job) {
     return (
       <div className={shell} data-testid="research-card" data-state={missing ? 'missing' : 'loading'}>
+        {!missing && (
+          <div aria-hidden="true" data-testid="research-card-loop" className="relative mb-3 h-[120px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
+            <LoadingLoop />
+          </div>
+        )}
         <p className="flex items-center gap-2 text-[13px] text-app-muted">
-          {missing ? <AlertCircle size={16} aria-hidden="true" /> : <Loader2 size={16} className="motion-safe:animate-spin" aria-hidden="true" />}
+          {missing ? <AlertCircle size={16} aria-hidden="true" /> : null}
           {missing ? c.cardMissing : c.cardLoading}
         </p>
       </div>
@@ -61,15 +67,16 @@ export function ResearchCard({ id, locale, className = '' }: { id: string; local
     const searches = job.progress?.searches ?? 0;
     return (
       <div className={shell} data-testid="research-card" data-state="running">
+        {/* The loading loop: research waits look like every other generation's wait (the owner's rule, 2026-10-17). */}
+        <div aria-hidden="true" data-testid="research-card-loop" className="relative mb-3 h-[120px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
+          <LoadingLoop />
+        </div>
         <div className="flex items-start gap-3">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-app-accent" aria-hidden="true">
             <FileSearch size={16} />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[14px] font-semibold text-app-text" role="status">{job.cancelRequested ? c.cardCanceling : c.cardRunning}</p>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-border/20" aria-hidden="true">
-              <div className="h-full w-1/3 rounded-full bg-app-accent motion-safe:animate-pulse" />
-            </div>
             <p className="mt-2 line-clamp-2 text-[12.5px] leading-snug text-app-muted">{job.progress?.summary || c.cardWorking}</p>
             <p className="mt-1 text-[12px] text-app-muted">
               {c.cardElapsed(mins)}{searches > 0 ? ` · ${c.cardSearches(searches)}` : ''}

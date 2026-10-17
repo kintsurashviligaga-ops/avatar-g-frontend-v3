@@ -20,6 +20,7 @@ import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
+import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { isChargedRemixOp, remixAskText, remixOpCredits } from '@/lib/video/remixCharge';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
@@ -1801,23 +1802,18 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
             className="h-full w-full cursor-zoom-in object-cover opacity-0 blur-md scale-[1.04] [transition:opacity_.6s_ease,filter_.7s_ease,transform_.7s_ease]"
             onLoad={(e) => { const el = e.currentTarget; el.style.opacity = '1'; el.style.filter = 'blur(0)'; el.style.transform = 'scale(1)'; }}
           />
+        ) : pending ? (
+          // A frame being drawn: the loading loop fills the tile (every generation's wait shows only the loop).
+          <div className="relative h-full w-full overflow-hidden bg-black">
+            <LoadingLoop />
+            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-medium text-white/85">{t.sbScene} {s.ordinal} · {t.sbGenerating}…</span>
+          </div>
         ) : (
-          // SMART SKELETON — shimmer-swept, not a flat gray box.
           <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-br from-app-elevated to-app-surface">
-            <div className="pointer-events-none absolute inset-0 animate-[tile-shimmer_1.6s_linear_infinite] bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-            {pending ? (
-              <>
-                <Loader2 size={18} className="animate-spin text-app-accent/70" />
-                <span className="text-[10px] font-medium text-app-muted/70">{t.sbScene} {s.ordinal} · {t.sbGenerating}…</span>
-              </>
-            ) : (
-              <>
-                <ImageIcon size={18} className="text-app-muted/40" />
-                {/* Settled board (structEnabled) → this empty scene auto-fills at render, so say so
-                    instead of the ambiguous "no frame" that reads as broken. Mid-stream → "no frame". */}
-                <span className="px-2 text-center text-[10px] leading-tight text-app-muted/45">{emptyNote ?? (structEnabled ? t.sbAutoFill : t.sbEmpty)}</span>
-              </>
-            )}
+            <ImageIcon size={18} className="text-app-muted/40" />
+            {/* Settled board (structEnabled) → this empty scene auto-fills at render, so say so
+                instead of the ambiguous "no frame" that reads as broken. Mid-stream → "no frame". */}
+            <span className="px-2 text-center text-[10px] leading-tight text-app-muted/45">{emptyNote ?? (structEnabled ? t.sbAutoFill : t.sbEmpty)}</span>
           </div>
         )}
 
@@ -1859,7 +1855,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
           </span>
         )}
         {regenning && (
-          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-1 bg-black/60"><Loader2 size={20} className="animate-spin text-white" /><span className="text-[10px] font-medium text-white/85">{t.sbRegen}…</span></div>
+          <div className="absolute inset-0 z-30 overflow-hidden bg-black"><LoadingLoop /><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-medium text-white/85">{t.sbRegen}…</span></div>
         )}
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
       </div>
@@ -1973,10 +1969,9 @@ export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCre
               <span className="rounded-full bg-app-elevated px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-app-muted ring-1 ring-app-border/15">{pkgSec}s · {total}×{boardClipSec}s</span>
             </div>
             {streaming ? (
-              // V2 — Cinematic Compiling Core: a pulsing radial glow whose hue tracks real progress.
+              // V2 — the compiling line: a still dot whose hue tracks real progress (the frames' own tiles show the loop).
               <div className="mt-1 flex items-center gap-2">
                 <span className="relative flex h-5 w-5 items-center justify-center">
-                  <span className="mya-core-pulse absolute inset-0 rounded-full" style={{ background: `radial-gradient(circle, ${coreColor} 0%, transparent 70%)`, animation: 'mya-core-pulse 1.6s ease-in-out infinite' }} />
                   <span className="relative h-2 w-2 rounded-full" style={{ background: coreColor, boxShadow: `0 0 8px ${coreColor}` }} />
                 </span>
                 <span className="text-[12px] font-medium" style={{ color: coreColor }}>{t.sbCompiling} · <span className="tabular-nums">{loaded}/{total}</span> {t.sbFrames}</span>
@@ -1994,7 +1989,7 @@ export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCre
         <div className="flex items-center gap-1.5 px-4 pb-1 text-[10.5px] font-semibold uppercase tracking-wide">
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400 ring-1 ring-emerald-400/30"><Check size={10} /> {t.sbPipeScript}</span>
           <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-emerald-400/40 to-app-accent/40" />
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${streaming ? 'bg-app-accent/15 text-app-accent ring-app-accent/40' : 'bg-emerald-500/15 text-emerald-400 ring-emerald-400/30'}`}>{streaming ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} {t.sbPipeBoard}</span>
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${streaming ? 'bg-app-accent/15 text-app-accent ring-app-accent/40' : 'bg-emerald-500/15 text-emerald-400 ring-emerald-400/30'}`}>{streaming ? <span className="h-1.5 w-1.5 rounded-full bg-app-accent" /> : <Check size={10} />} {t.sbPipeBoard}</span>
           <span aria-hidden className={`h-px flex-1 ${streaming ? 'bg-app-border/20' : 'bg-gradient-to-r from-app-accent/40 to-app-accent/60'}`} />
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${streaming ? 'bg-app-elevated text-app-muted/60 ring-app-border/15' : 'bg-app-accent/15 text-app-accent ring-app-accent/40'}`}><Film size={10} /> {t.sbPipeRender}</span>
         </div>
@@ -6491,7 +6486,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!job) return;
     sceneRedoAsksRef.current.delete(bubbleId);
     trackGenerationConfirmed('video.scene-redo', 'agent-card', job.credits || null);
-    const say = (text: string) => patchMsgById(bubbleId, (m) => ({ ...m, text, sceneRedoAsk: undefined, genKind: 'video' }));
+    // A video bubble with a progress number stays the in-flight video card (the loading loop) wherever it sits in the chat.
+    const say = (text: string) => patchMsgById(bubbleId, (m) => ({ ...m, text, sceneRedoAsk: undefined, genKind: 'video', videoProgress: 0 }));
     say(sceneRedoProgressText(job.ordinal, 'rendering', locale));
     try {
       const out = await runSceneRedo({
@@ -6510,11 +6506,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         patchMsgById(bubbleId, () => ({ role: 'assistant', id: bubbleId, text, videoUrl: out.clipUrl, genKind: 'video', ...(job.carry.orientation ? { orientation: job.carry.orientation } : {}) }));
         if (job.credits > 0) notifyCredit('video', { credits: job.credits, service: 'video.scene-redo' });
       } else {
-        patchMsgById(bubbleId, (m) => ({ ...m, text, sceneRedoAsk: undefined, genKind: undefined, ...(out.kind === 'refused' && out.error === 'insufficient_credits' ? { topUp: true } : {}) }));
+        patchMsgById(bubbleId, (m) => ({ ...m, text, sceneRedoAsk: undefined, genKind: undefined, videoProgress: undefined, ...(out.kind === 'refused' && out.error === 'insufficient_credits' ? { topUp: true } : {}) }));
         if (out.kind === 'failed' && out.refunded) { try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ } }
       }
     } catch {
-      patchMsgById(bubbleId, (m) => ({ ...m, text: `⚠️ ${t.videoFailed}`, sceneRedoAsk: undefined, genKind: undefined }));
+      patchMsgById(bubbleId, (m) => ({ ...m, text: `⚠️ ${t.videoFailed}`, sceneRedoAsk: undefined, genKind: undefined, videoProgress: undefined }));
     }
   }, [patchMsgById, locale, notifyCredit, t.videoFailed]);
   // Edit: nothing runs; the words go back to the composer.
@@ -8987,7 +8983,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const upscale = useCallback(async (url: string) => {
     if (upscaling) return;
     setUpscaling(true);
-    setMessages((prev) => [...prev, { role: 'assistant', text: t.upscaling }]);
+    // An image in the making: the in-flight image card (the loading loop), not a bare line of text.
+    setMessages((prev) => [...prev, { role: 'assistant', text: t.upscaling, genKind: 'image' }]);
     try {
       const r = await fetch('/api/ai/upscale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageUrl: url, scale: 2 }), credentials: 'include' });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
@@ -9889,7 +9886,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-1.5">
                       {m.batch.tiles.map((tile, k) => (
-                        // Every tile is a ResultCard: while it renders, a shimmer plate and a thin bar in the
+                        // Every tile is a ResultCard: while it renders, the loading loop and a thin bar in the
                         // batch's own ratio (it used to be a bare spinner in a grey box); when it lands, the
                         // image with open / download / use-as-reference; when it fails, one line, a retry of
                         // THAT tile only (the good variations are not re-billed) and a way to put it away.
@@ -12932,7 +12929,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <div className="min-w-0">
                 <h2 className="text-[15px] font-semibold tracking-tight text-app-text">🎬 {t.sbTitle}</h2>
                 <p className="flex items-center gap-1.5 text-[12px] text-app-accent">
-                  <Loader2 size={12} className="animate-spin" /> {t.sbCreating}
+                  {t.sbCreating}
                   <span className="tabular-nums text-app-muted">· {Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100))}% · {fmtClock(elapsed)}</span>
                 </p>
               </div>
@@ -12944,22 +12941,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <div className="mx-4 mb-1 h-1 overflow-hidden rounded-full bg-app-border/15">
               <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100)))}%` }} />
             </div>
-            {/* Skeleton preview of the 6 scenes being built — staggered shimmer so it
-                feels like the storyboard is materialising, not a blank spinner. */}
+            {/* The storyboard being built: the loading loop in the film's own shape, the one picture of every
+                generation's wait (the owner's rule, 2026-10-17). It replaced six pulsing skeleton tiles. */}
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {Array.from({ length: sceneCountForDuration(videoDuration) }).map((_, i) => (
-                  <div key={i} className="overflow-hidden rounded-xl border border-app-border/10 bg-app-elevated">
-                    <div className={`relative ${videoOrientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} animate-pulse bg-gradient-to-br from-app-border/20 via-app-border/10 to-app-border/15`} style={{ animationDelay: `${i * 140}ms` }}>
-                      <span className="absolute left-1.5 top-1.5 rounded-full bg-black/45 px-2 py-0.5 text-[11px] font-medium text-white/75">{t.sbScene} {i + 1}</span>
-                      <div className="absolute inset-0 flex items-center justify-center"><ImageIcon size={20} className="text-app-muted/25" /></div>
-                    </div>
-                    <div className="space-y-1.5 p-2">
-                      <div className="h-2.5 w-3/4 animate-pulse rounded bg-app-border/25" style={{ animationDelay: `${i * 140}ms` }} />
-                      <div className="h-2 w-full animate-pulse rounded bg-app-border/15" style={{ animationDelay: `${i * 140 + 70}ms` }} />
-                    </div>
-                  </div>
-                ))}
+              <div
+                aria-hidden="true"
+                data-testid="storyboard-loop"
+                className={`relative mx-auto mt-3 overflow-hidden rounded-2xl bg-black ring-1 ring-app-border/15 ${videoOrientation === 'vertical' ? 'aspect-[9/16] w-[min(62vw,280px)]' : 'aspect-video w-[min(86vw,460px)]'}`}
+              >
+                <LoadingLoop />
               </div>
             </div>
             <div className="border-t border-app-border/10 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>

@@ -25,6 +25,7 @@ import { ArrowRight, Check, ChevronDown, ChevronLeft, Copy, Download, Loader2, L
 import { supabase } from '@/lib/supabase/browser'
 import { serviceCardImage } from '@/lib/services/cardImage'
 import { signInPath } from '@/lib/routing/signIn'
+import { LoadingLoop } from '@/components/studio/ui/LoadingLoop'
 import { TOOL_META, type ToolId } from '@/lib/studio/tools'
 import {
   apiErrorMessage,
@@ -343,7 +344,9 @@ function ServiceFormView({ serviceId, form, lang, cardImage }: { serviceId: stri
         <div className="flex flex-1 flex-col" aria-live="polite">
           {busy ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-app-muted">
-              <Loader2 size={22} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              <div aria-hidden="true" data-testid="service-working-loop" className="relative h-[160px] w-full max-w-md overflow-hidden rounded-2xl bg-black ring-1 ring-app-border/15">
+                <LoadingLoop />
+              </div>
               <p className="text-[15px]">{c.working}</p>
             </div>
           ) : error ? (
