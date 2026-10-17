@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { isMontageAspect, type MontageAspect, type MontageCaptionPos, type MontageGrade, type MontageTransition } from '@/lib/services/montage/montagePlan';
 import { useJobQueue } from '@/store/useJobQueue';
-import { describeServiceError } from '../ui/serviceError';
+import { describeGenerationFailure, describeServiceError } from '../ui/serviceError';
 import { uploadErrorText, uploadFileToStorage } from '../ui/useUpload';
 import { montageCopy, langOf, type Copy } from './copy';
 import { ExportView, type ExportState } from './ExportView';
@@ -552,7 +552,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
         credentials: 'include',
         body: JSON.stringify(clientJobId ? { ...body, clientJobId } : body),
       });
-      const j = (await res.json().catch(() => null)) as { videoUrl?: string; message?: string; step?: string; error?: string; warnings?: { musicRequestedButMissing?: boolean } } | null;
+      const j = (await res.json().catch(() => null)) as { videoUrl?: string; message?: string; step?: string; error?: string; code?: string; warnings?: { musicRequestedButMissing?: boolean } } | null;
       if (res.ok && j?.videoUrl) {
         onDelivered?.(j.videoUrl, body.aspect as MontageAspect);
         if (mounted.current) {
@@ -560,7 +560,10 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
           setExportedOnce(true);
         }
       } else if (mounted.current) {
-        const message = res.status === 401 ? uploadErrorText('auth', locale) : describeServiceError(j?.message ?? j?.error ?? j?.step, lang, t.exportFailed);
+        const message = res.status === 401 ? uploadErrorText('auth', locale)
+          // The platform's AI limit names itself and when it lifts; the export's generic line would hide it.
+          : j?.code === 'platform_budget' ? describeGenerationFailure(j, lang, t.exportFailed)
+            : describeServiceError(j?.message ?? j?.error ?? j?.step, lang, t.exportFailed);
         setExp({ phase: 'error', message });
       }
     } catch {

@@ -5,6 +5,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { validateMontageRequest, montageUnits, timelineDuration, MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import { runMontage } from '@/lib/services/montage/montagePipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
+import { billingLocale } from '@/lib/api/billingCopy';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
 import { firstUnreadableOwnUrl, resolveCallerMedia } from '@/lib/security/callerMedia';
@@ -159,9 +161,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (err) {
     if (err instanceof BudgetExceededError) {
       await failJob(jobId, 'budget_exceeded').catch(() => {});
+      // The shape every budget refusal has (lib/services/billing/budgetMessage): which limit, and when it lifts.
       return NextResponse.json(
-        { error: 'budget_exceeded', reason: err.reason, message: 'The platform budget for this period is exhausted. Please try again later.' },
-        { status: 429 },
+        { success: false, code: 'platform_budget', error: 'platform_budget', budgetReason: err.reason, message: budgetRefusalMessage(billingLocale(req), err.reason) },
+        { status: 503 },
       );
     }
     await failJob(jobId, err instanceof Error ? err.message : 'montage failed').catch(() => {});

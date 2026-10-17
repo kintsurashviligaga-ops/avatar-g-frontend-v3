@@ -4,7 +4,8 @@
  */
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
-import { buildPlatformPrompt, PLATFORM_UI_LABELS, START_QUESTION, type PlatformPromptLocale } from './platformPrompt';
+import { buildPlatformPrompt, OUTSIDE_ENGINE_TOOLS, PLATFORM_UI_LABELS, START_QUESTION, VEO_AVATAR_PROMPT_CREDITS, type PlatformPromptLocale } from './platformPrompt';
+import { veoAvatarCredits } from '@/lib/avatar/veoAvatar';
 import { offeredPrompt } from './offeredPrompt';
 import { quoteCredits } from '@/lib/credits/quote';
 import { ALL_TOOLS, TOOL_META } from '@/lib/studio/tools';
@@ -17,6 +18,9 @@ import { videoCredits } from '@/lib/credits/videoPricing';
 const LOCALES: PlatformPromptLocale[] = ['ka', 'en', 'ru'];
 const NOW = new Date('2026-09-30T08:00:00Z'); // 12:00 in Tbilisi (UTC+4)
 const build = (locale: PlatformPromptLocale, now: Date = NOW) => buildPlatformPrompt({ locale, now });
+/** The names on the prompt's NOT AVAILABLE YET line. */
+const notYetNames = (p: string): string[] =>
+  (p.match(/^NOT AVAILABLE YET: (.*?)\. When asked/m)?.[1] ?? '').split(', ').filter(Boolean);
 
 // Every vendor an earlier prompt named, or a fallback leg that could tempt the model. Word-bounded + case-blind.
 const BANNED = [
@@ -134,6 +138,92 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
   });
 });
 
+describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2026-10-16)', () => {
+  const cr = (n: number) => `${n} cr (${creditsToGel(n).toFixed(2)} ₾)`;
+  const toolLine = (p: string, id: (typeof ALL_TOOLS)[number], locale: PlatformPromptLocale) =>
+    p.includes(`- ${TOOL_META[id].name[locale]} — ${TOOL_META[id].sub[locale]}`);
+
+  it.each(LOCALES)('with the media switch on, the outside-engine tools are not listed or priced (%s)', (locale) => {
+    const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly: true });
+    for (const id of OUTSIDE_ENGINE_TOOLS) {
+      expect({ id, listed: toolLine(p, id, locale) }).toEqual({ id, listed: false });
+      expect(notYetNames(p)).toContain(TOOL_META[id].name[locale]);
+    }
+    expect(p).not.toContain('talking avatar');
+    expect(p).not.toContain('film lip-sync');
+    expect(p).not.toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
+    // Remix stays: its ffmpeg ops run; the line says which edits are closed.
+    expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (trim, captions, voice-over, music, colour, speed only; restyle, background and redub not available yet)`);
+    expect(p).toContain(`remix ${cr(CREDIT_COSTS.remix_video)}`);
+    expect(p).toContain('say plainly it is not available yet (nothing is charged)');
+    expect(p.length).toBeLessThanOrEqual(5000);
+  });
+
+  it.each(LOCALES)('with the switch off, the same tools are listed and priced again (%s)', (locale) => {
+    const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly: false });
+    for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, listed: toolLine(p, id, locale) }).toEqual({ id, listed: true });
+    expect(p).toContain(`talking avatar ${cr(CREDIT_COSTS.avatar_30s)}`);
+    expect(p).toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
+    expect(p).not.toContain('restyle, background and redub not available yet');
+  });
+
+  it.each(LOCALES)('a user who may run the Veo avatar is offered it at the Veo clip price, with Veo named (%s)', (locale) => {
+    const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly: true, veoAvatar: true });
+    expect(p).toContain(`- ${TOOL_META.avatar.name[locale]} — ${TOOL_META.avatar.sub[locale]} · Veo`);
+    expect(p).toContain(`talking avatar ${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip`);
+    expect(notYetNames(p)).not.toContain(TOOL_META.avatar.name[locale]);
+    // The film's lip-sync pass stays on the old engine, which the switch still refuses.
+    expect(p).not.toContain('film lip-sync');
+    for (const id of OUTSIDE_ENGINE_TOOLS.filter((t) => t !== 'avatar')) expect(notYetNames(p)).toContain(TOOL_META[id].name[locale]);
+    expect(p.length).toBeLessThanOrEqual(5000);
+  });
+
+  it('prices the Veo avatar as the route charges it', () => {
+    expect(VEO_AVATAR_PROMPT_CREDITS).toBe(veoAvatarCredits());
+  });
+
+  it('lists dubbing and decks as tools only once the owner approved their price', () => {
+    const saved = process.env.OWNER_APPROVED_PRICING;
+    delete process.env.OWNER_APPROVED_PRICING;
+    const off = build('en');
+    expect(notYetNames(off)).toEqual(expect.arrayContaining([TOOL_META.dubbing.name.en, TOOL_META.presentation.name.en]));
+    expect(toolLine(off, 'dubbing', 'en')).toBe(false);
+    process.env.OWNER_APPROVED_PRICING = `dubbing:${CREDIT_COSTS.dubbing_per_minute},presentation:${CREDIT_COSTS.presentation_deck}`;
+    const on = build('en');
+    expect(toolLine(on, 'dubbing', 'en')).toBe(true);
+    expect(toolLine(on, 'presentation', 'en')).toBe(true);
+    expect(notYetNames(on)).not.toContain(TOOL_META.dubbing.name.en);
+    if (saved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = saved;
+  });
+
+  it('follows the switch the routes read, fail-closed when it is unset', () => {
+    const saved = { m: process.env.MEDIA_GOOGLE_ONLY, a: process.env.OUTSIDE_ENGINES_APPROVED };
+    delete process.env.MEDIA_GOOGLE_ONLY;
+    delete process.env.OUTSIDE_ENGINES_APPROVED;
+    expect(build('en')).toBe(buildPlatformPrompt({ locale: 'en', now: NOW, mediaGoogleOnly: true }));
+    process.env.MEDIA_GOOGLE_ONLY = '0'; // a falsy switch alone does not reopen outside engines (lib/env/providerBoundary)
+    expect(build('en')).toBe(buildPlatformPrompt({ locale: 'en', now: NOW, mediaGoogleOnly: true }));
+    process.env.OUTSIDE_ENGINES_APPROVED = 'owner-test-approval';
+    expect(build('en')).toBe(buildPlatformPrompt({ locale: 'en', now: NOW, mediaGoogleOnly: false }));
+    for (const [k, v] of [['MEDIA_GOOGLE_ONLY', saved.m], ['OUTSIDE_ENGINES_APPROVED', saved.a]] as const) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  });
+
+  it('closes exactly the tools whose route the switch refuses', () => {
+    // Read as text: mediaPolicy imports next/server, which needs the node test environment this suite does not use.
+    const policy = readFileSync(join(process.cwd(), 'lib/providers/mediaPolicy.ts'), 'utf8');
+    const gated = new Set([...policy.matchAll(/\{ file: '([^']+)'/g)].map((m) => m[1]));
+    const route: Record<(typeof OUTSIDE_ENGINE_TOOLS)[number], string> = {
+      avatar: 'app/api/video/lipsync/route.ts',
+      swap: 'app/api/video/remix/route.ts',
+      motion: 'app/api/motion-control/route.ts',
+      model3d: 'app/api/v2/model3d/create/route.ts',
+    } as never;
+    for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, gated: gated.has(route[id]) }).toEqual({ id, gated: true });
+  });
+});
+
 describe('buildPlatformPrompt — date line (Tbilisi, UTC+4)', () => {
   afterEach(() => {
     jest.restoreAllMocks();
@@ -236,9 +326,15 @@ describe('buildPlatformPrompt — locale variants', () => {
     }
   });
 
-  it.each(LOCALES)('lists every studio tool under its %s UI name and tagline', (locale) => {
-    const p = build(locale);
-    for (const id of ALL_TOOLS) expect(p).toContain(`- ${TOOL_META[id].name[locale]} — ${TOOL_META[id].sub[locale]}`);
+  it.each(LOCALES)('lists every studio tool under its %s UI name and tagline, or names it as not available yet', (locale) => {
+    for (const mediaGoogleOnly of [true, false]) {
+      const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly });
+      const closed = notYetNames(p);
+      for (const id of ALL_TOOLS) {
+        const listed = p.includes(`- ${TOOL_META[id].name[locale]} — ${TOOL_META[id].sub[locale]}`);
+        expect({ id, mediaGoogleOnly, listed, closed: closed.includes(TOOL_META[id].name[locale]) }).toEqual({ id, mediaGoogleOnly, listed, closed: !listed });
+      }
+    }
   });
 
   it.each(LOCALES)('points at the %s labels of the real buttons', (locale) => {
@@ -251,9 +347,14 @@ describe('buildPlatformPrompt — locale variants', () => {
 
   it.each(LOCALES)('lists the %s tools under the side menu\'s categories and names what is not available yet', (locale) => {
     const p = build(locale);
-    for (const g of toolGroups()) expect(p).toContain(`${g.label[locale]}:\n- ${TOOL_META[g.tools[0]!].name[locale]}`);
+    const closed = notYetNames(p);
+    for (const g of toolGroups()) {
+      const open = g.tools.filter((id) => !closed.includes(TOOL_META[id].name[locale]));
+      if (open.length === 0) expect(p).not.toContain(`${g.label[locale]}:\n`);
+      else expect(p).toContain(`${g.label[locale]}:\n- ${TOOL_META[open[0]!].name[locale]}`);
+    }
     expect(p).toContain('NOT AVAILABLE YET:');
-    expect(p).toContain(getService('music.remix')!.label[locale]);
+    expect(closed).toContain(getService('music.remix')!.label[locale]);
   });
 
   it('falls back to Georgian for an unknown locale', () => {

@@ -17,7 +17,7 @@
  */
 jest.mock('server-only', () => ({}));
 
-let mockUser: { id: string } | null = null;
+let mockUser: { id: string; email?: string; email_confirmed_at?: string } | null = null;
 const mockRpc = jest.fn(async () => ({ data: [] as unknown[], error: null as unknown }));
 jest.mock('../../../../lib/supabase/server', () => ({
   authedClientFromRequest: jest.fn(async () => ({ supabase: { rpc: mockRpc }, user: mockUser })),
@@ -81,6 +81,8 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { streamText } from 'ai';
 import { decodeFrames, type ChatFrame } from '../../../../lib/chat/sse';
 import { DEFAULT_CHAT_MODELS } from '../../../../lib/ai/google/models';
+import { adminAllowlist } from '../../../../lib/auth/adminGuard';
+import { VEO_AVATAR_PROMPT_CREDITS } from '../../../../lib/chat/platformPrompt';
 import {
   GUEST_GLOBAL_KEY,
   GUEST_MAX_MESSAGE_CHARS,
@@ -603,6 +605,27 @@ describe('the Gemini call', () => {
     expect(system).toContain('Reply in Georgian');
     expect(system).not.toMatch(/Runway|FLUX|HeyGen|Udio|ElevenLabs|\$15|\$99/);
     expect(input.abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  test('offers the talking avatar only to whoever the Veo avatar route lets through (the admin until GG opens it)', async () => {
+    // Production: the media switch is on (unset = on), so the old avatar engine is closed for everyone.
+    delete process.env.MEDIA_GOOGLE_ONLY;
+    delete process.env.OUTSIDE_ENGINES_APPROVED;
+    delete process.env.AVATAR_VEO_PUBLIC;
+    const offered = `talking avatar ${VEO_AVATAR_PROMPT_CREDITS} cr`;
+
+    await (await POST(post(userTurn('ფოტო ალაპარაკე')))).text();
+    expect(lastCall().config.system).not.toContain(offered);
+    expect(lastCall().config.system).toMatch(/^NOT AVAILABLE YET: .*ავატარი/m);
+
+    mockUser = { id: USER_ID, email: adminAllowlist()[0]!, email_confirmed_at: '2026-01-01T00:00:00Z' };
+    await (await POST(post(userTurn('ფოტო ალაპარაკე')))).text();
+    expect(lastCall().config.system).toContain(offered);
+
+    mockUser = { id: USER_ID };
+    process.env.AVATAR_VEO_PUBLIC = '1';
+    await (await POST(post(userTurn('ფოტო ალაპარაკე')))).text();
+    expect(lastCall().config.system).toContain(offered);
   });
 
   test('the legacy Pro tier (clients before modes) still uses the Pro chain', async () => {

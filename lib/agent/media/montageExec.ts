@@ -151,6 +151,8 @@ export type MontageErrorCode =
   | 'clips_too_long'
   // The list of files a run or a worker holds is not the quoted one, or misses a clip:
   | 'manifest_invalid'
+  // The platform's AI budget (BillingGuard) refused the render, with the guard's reason: said as lib/services/billing/budgetMessage.
+  | `budget_${BudgetReason}`
   // The finished master does not show every clip (per-clip QC): not delivered.
   | 'clip_missing'
   // The user's words name a picture that is not there („ბოლო შვიდი" of five), or leave none (./sourceSelect).
@@ -616,10 +618,18 @@ export interface RunInput {
 
 export const CANCELLED = 'cancelled by the user';
 
+/** The platform budget's refusal reasons (lib/services/billing/budgetPolicy), each its own montage code. */
+export const BUDGET_REASONS = ['daily_limit', 'monthly_limit', 'service_suspended', 'full_stop'] as const;
+export type BudgetReason = (typeof BUDGET_REASONS)[number];
+
 /** The error column of a failed row → the code the chat speaks. Rows are written `<code>: <detail>`. */
 export function codeOfRowError(error: string | null): MontageErrorCode {
   const e = error ?? '';
   if (/^cancel/i.test(e)) return 'cancelled';
+  if (e.startsWith('budget_exceeded')) {
+    const reason = BUDGET_REASONS.find((r) => e.startsWith(`budget_exceeded: ${r}`));
+    return `budget_${reason ?? 'daily_limit'}`;
+  }
   for (const code of ['qc_failed', 'clip_missing', 'manifest_invalid', 'insufficient_credits', 'billing_unavailable', 'invalid_request'] as const) {
     if (e.startsWith(code)) return code;
   }

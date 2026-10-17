@@ -9,7 +9,7 @@
 jest.mock('server-only', () => ({}));
 
 import {
-  advanceFilmChain, chainNextStep, claimFilmChainStep, filmChainStoreReady, filmSequentialChainOn, getFilmChainPlan,
+  advanceFilmChain, chainNextStep, chainRetryDue, claimFilmChainStep, filmChainStoreReady, filmSequentialChainOn, getFilmChainPlan,
   getFilmChainSteps, recordFilmChainStep, saveFilmChainPlan, __setFilmChainRedisForTests, CHAIN_CLAIM_STALE_MS,
   FILM_CHAIN_MAX_SCENES, type FilmChainDeps, type FilmChainLeg, type FilmChainPlan, type FilmChainStep,
 } from './filmChain';
@@ -182,6 +182,74 @@ describe('advancing the chain', () => {
     const d = deps({ dispatch: async () => { throw new Error('socket hang up'); } });
     const out = await advanceFilmChain(plan(), landed, new Map(), 'user-1', d);
     expect(out?.step.status).toBe('failed');
+  });
+});
+
+describe('a scene Google declined from a last frame', () => {
+  // ⚠️ 2026-10-17: scene 3 of the paid ad was refused under Google's celebrity rule when it started from clip 2's last
+  // frame; nothing tried its own approved storyboard frame, and the 32 s film came out 24 s.
+  const queuedFrom = (from: FilmChainStep['from'], extra: Partial<FilmChainStep> = {}): FilmChainStep => ({ taskRef: 'job-a', status: 'queued', from, at: 1, ...extra });
+  const declined = (...s: Array<[FilmChainLeg['status'], string | null, boolean?]>): FilmChainLeg[] =>
+    s.map(([status, url, d], i) => ({ ordinal: i + 1, status, url, ...(d ? { declined: true } : {}) }));
+
+  test('is due once more, from its storyboard frame, only after a last-frame start the filter declined', () => {
+    const steps = new Map([[2, queuedFrom('last-frame')]]);
+    expect(chainRetryDue(plan(), declined(['succeeded', 'u1'], ['failed', null, true]), steps)).toEqual({ ordinal: 2 });
+    // a storyboard start declined, a plain failure, an earlier second try, a scene with no storyboard frame: never
+    expect(chainRetryDue(plan(), declined(['succeeded', 'u1'], ['failed', null, true]), new Map([[2, queuedFrom('storyboard')]]))).toBeNull();
+    expect(chainRetryDue(plan(), declined(['succeeded', 'u1'], ['failed', null]), steps)).toBeNull();
+    expect(chainRetryDue(plan(), declined(['succeeded', 'u1'], ['failed', null, true]), new Map([[2, queuedFrom('storyboard', { retry: true })]]))).toBeNull();
+    const noFrame = plan({ scenes: plan().scenes.map((s) => ({ ...s, storyboardFrame: null })) });
+    expect(chainRetryDue(noFrame, declined(['succeeded', 'u1'], ['failed', null, true]), steps)).toBeNull();
+  });
+
+  test('the owner’s poll re-sends it from its storyboard frame, records it as the second try, and holds the next scene', async () => {
+    const d = deps();
+    const p = plan();
+    await recordFilmChainStep(p.tokenId, 2, queuedFrom('last-frame'));
+    const steps = (await getFilmChainSteps(p))!;
+    const out = await advanceFilmChain(p, declined(['succeeded', 'u1'], ['failed', null, true], ['pending', null]), steps, 'user-1', d);
+    expect(out).toMatchObject({ ordinal: 2, step: { status: 'queued', from: 'storyboard', retry: true, taskRef: 'job-1' } });
+    expect(d.calls.dispatch).toHaveLength(1);
+    expect((d.calls.dispatch[0]![1] as { ordinal: number }).ordinal).toBe(2);
+    expect(d.calls.dispatch[0]![2]).toBe('https://frames.example/2.png');
+    expect(d.calls.extract).toHaveLength(0);
+    expect(d.calls.refund).toHaveLength(0);
+    // The film now follows the second try's job; the first try's record still stands under its own key.
+    const after = (await getFilmChainSteps(p))!;
+    expect(after.get(2)).toMatchObject({ taskRef: 'job-1', retry: true });
+    // Its job renders → nothing else is sent, and the next scene waits for it.
+    expect(await advanceFilmChain(p, declined(['succeeded', 'u1'], ['pending', null], ['pending', null]), after, 'user-1', d)).toBeNull();
+    expect(d.calls.dispatch).toHaveLength(1);
+  });
+
+  test('two polls at once: the second try is sent exactly once, and neither sends the next scene', async () => {
+    const d = deps();
+    const p = plan();
+    await recordFilmChainStep(p.tokenId, 2, queuedFrom('last-frame'));
+    const steps = (await getFilmChainSteps(p))!;
+    const l = declined(['succeeded', 'u1'], ['failed', null, true], ['pending', null]);
+    const [a, b] = await Promise.all([advanceFilmChain(p, l, steps, 'user-1', d), advanceFilmChain(p, l, steps, 'user-1', d)]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    expect(d.calls.dispatch).toHaveLength(1);
+  });
+
+  test('a second try that fails at dispatch is recorded failed and gives the scene’s share back once', async () => {
+    const d = deps({ dispatch: async () => ({ taskRef: null, status: 'failed', error: 'refused' }) });
+    const p = plan();
+    await recordFilmChainStep(p.tokenId, 2, queuedFrom('last-frame'));
+    const out = await advanceFilmChain(p, declined(['succeeded', 'u1'], ['failed', null, true]), (await getFilmChainSteps(p))!, 'user-1', d);
+    expect(out).toMatchObject({ ordinal: 2, step: { status: 'failed', retry: true } });
+    expect(d.calls.refund).toEqual([[p, 2]]);
+    expect((await getFilmChainSteps(p))!.get(2)).toMatchObject({ status: 'failed', retry: true });
+  });
+
+  test('another user’s poll never re-sends it', async () => {
+    const d = deps();
+    const p = plan();
+    await recordFilmChainStep(p.tokenId, 2, queuedFrom('last-frame'));
+    expect(await advanceFilmChain(p, declined(['succeeded', 'u1'], ['failed', null, true]), (await getFilmChainSteps(p))!, 'someone-else', d)).toBeNull();
+    expect(d.calls.dispatch).toHaveLength(0);
   });
 });
 
