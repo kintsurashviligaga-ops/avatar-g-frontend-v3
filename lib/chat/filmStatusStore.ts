@@ -471,3 +471,55 @@ export async function getFilmStartReplay(uid: string, key: string, ttlSec: numbe
   const mem = startMemory.get(k);
   return mem && valid(mem) && Date.now() - mem.at <= ttlSec * 1000 ? mem : null;
 }
+
+// ─── Is the film's tab still driving it? (lib/chat/filmFollow) ─────────────────────────────────────────────────────
+
+const WATCH_PREFIX = 'film:watch:';
+const WATCH_TTL_SEC = 10 * 60;
+
+/**
+ * The film's own tab polled it just now. The server takes a film over only once its tab has gone quiet
+ * (lib/chat/filmFollow FOLLOW_TAKEOVER_MS), so two drivers never send the same scene or stitch the same film. Fails open:
+ * a lost mark only makes the server wait for a tab that may be gone (the next poll writes it again).
+ */
+export async function markFilmWatched(tokenId: string, at = Date.now()): Promise<void> {
+  const r = redis();
+  if (!r || !tokenId) return;
+  try {
+    await r.set(`${WATCH_PREFIX}${tokenId}`, String(at), { ex: WATCH_TTL_SEC });
+  } catch {
+    /* fail-open */
+  }
+}
+
+/**
+ * When the film's tab last polled it (epoch ms); null when it has not in the last WATCH_TTL_SEC. 'unknown' when there is
+ * no shared store to ask (no Redis, or it did not answer): the follower then leaves the film alone, since a process-local
+ * answer cannot see a tab served by another instance.
+ */
+export async function filmWatchedAt(tokenId: string): Promise<number | null | 'unknown'> {
+  const r = redis();
+  if (!r) return 'unknown';
+  try {
+    const raw = await r.get(`${WATCH_PREFIX}${tokenId}`);
+    if (raw === null || raw === undefined) return null;
+    const at = Number(raw);
+    return Number.isFinite(at) && at > 0 ? at : null;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** getFilmStatus for a decision that must not act on a guess: 'unknown' when the shared store did not answer. */
+export async function readFilmStatusStrict(tokenId: string): Promise<FilmStatusRecord | null | 'unknown'> {
+  const r = redis();
+  if (!r) return 'unknown';
+  try {
+    const raw = await r.get(`${KEY_PREFIX}${tokenId}`);
+    if (raw === null || raw === undefined) return null;
+    const parsed = typeof raw === 'string' ? (JSON.parse(raw) as FilmStatusRecord) : (raw as FilmStatusRecord);
+    return parsed && typeof parsed === 'object' && parsed.tokenId === tokenId ? parsed : null;
+  } catch {
+    return 'unknown';
+  }
+}

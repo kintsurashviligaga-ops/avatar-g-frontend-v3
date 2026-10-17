@@ -26,6 +26,7 @@ import { liveEditDeps } from '@/lib/agent/media/editLive';
 import { RUN_KIND, runOf } from '@/lib/agent/run/runEngine';
 import { cancelRun, readRun, tickRun } from '@/lib/agent/run/runExec';
 import { liveRunDeps } from '@/lib/agent/run/runLive';
+import { FILM_FOLLOW_KIND } from '@/lib/chat/filmFollow';
 import { taskFromAudio, taskFromEdit, taskFromMontage, taskFromRow, taskFromRun, type TaskRow } from './taskView';
 import type { TaskDeps, TaskKind } from './taskService';
 
@@ -179,6 +180,9 @@ export function liveTaskDeps(): TaskDeps {
     kindOf: (row) => execOf(row.params)?.kind ?? null,
     kinds: { [MONTAGE_KIND]: montage, [AUDIO_KIND]: audio, [EDIT_KIND]: edit, [RUN_KIND]: run,
       [IMAGE_KIND]: imageTaskKind(liveImageDeps, id => after('image-studio-worker', () => workImage(liveImageDeps(), id, newWorkerId()))),
+      // A film the server follows once its tab closes (lib/chat/filmFollow) is bookkeeping, not a task: the film shows where
+      // it always did (the chat, then the Library), and its follow row is neither listed nor readable here.
+      [FILM_FOLLOW_KIND]: { status: async () => null, view: () => null, cancel: async () => 'not_found', startWorker: () => {} },
     },
     plain: taskFromRow,
   };

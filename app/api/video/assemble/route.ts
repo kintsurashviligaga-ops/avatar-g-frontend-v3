@@ -31,6 +31,7 @@ import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { markFreeOutput } from '@/lib/billing/entitlements';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { firstUnreadableOwnUrl } from '@/lib/security/callerMedia';
+import { actorOf } from '@/lib/video/assembleActor';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
@@ -245,14 +246,17 @@ export async function POST(req: NextRequest) {
 async function assembleImpl(req: NextRequest) {
   // Throttle the expensive stitch (5/min) — additive, fails open without Upstash, returns before any
   // billing/idempotency side-effect. Anonymous assemble stays allowed (product decision); only rate is capped.
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  // A server-made stitch (a film whose tab closed, lib/chat/filmFollowWorker) speaks for the film's owner and runs inside
+  // the sweep's budget; it has no cookie and is not throttled per caller (lib/video/assembleActor).
+  const actor = actorOf(req);
+  const rl = actor ? null : await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (rl) return rl;
   // v330 — function-entry timestamp so the synchronous audio legs + the dispatch
   // deadline stay collectively under maxDuration (300s). The dispatch timeout below is
   // made RELATIVE to time already consumed so it fires inside the function (→ saga
   // compensate releases credits) rather than letting the platform hard-kill the request.
   const fnT0 = Date.now();
-  const MAX_FN_MS = 600_000; // v331 — matches the raised maxDuration (was 300_000)
+  const MAX_FN_MS = actor ? actor.budgetMs : 600_000; // v331 — matches the raised maxDuration (was 300_000)
   let body: AssembleBody;
   try {
     body = (await req.json()) as AssembleBody;
@@ -286,8 +290,7 @@ async function assembleImpl(req: NextRequest) {
       return NextResponse.json({ error: 'invalid_media_url', message: 'Every clip and audio file must be a web (https) link.' }, { status: 400 });
     }
   }
-  const { user } = await authedClientFromRequest(req);
-  const uid = user?.id ?? null;
+  const uid = actor ? actor.uid : ((await authedClientFromRequest(req)).user?.id ?? null);
   // ⚠️ ANONYMOUS CALLERS USED TO REACH THE PAID RENDER AND BE BILLED NOTHING. Both billing branches
   // below carried `uid === null ? true` as "skip billing" — commented "anon trial" — so a caller with no
   // account consumed real Veo / Replicate / ElevenLabs spend that could never be charged, attributed or

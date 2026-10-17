@@ -23,6 +23,7 @@ import { sanitizePrompt } from '@/lib/security/apiGuard';
 import { reportError } from '@/lib/observability/report-error';
 import { providerErrorBody } from '@/lib/api/providerError';
 import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/chat/providerRouter';
+import { fileFilmFollow, noteFilmPolled } from '@/lib/chat/filmFollowFile';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { anonymousGenerationAllowed, isAnonymousUser } from '@/lib/auth/generationGate';
 import { spendGuestTurn, guestRefusalMessage } from '@/lib/chat/guestAllowance';
@@ -172,6 +173,9 @@ const orchestrateSchema = z.object({
   serviceId: z.string().optional(),
   demoMode: z.boolean().default(false),
   metadata: z.record(z.unknown()).optional(),
+  // How a film is stitched (lib/chat/filmStudioClient filmFollowPlan): kept, checked field by field, with the film the
+  // server follows once its tab closes (lib/chat/filmFollow sanitizeFollowPlan).
+  filmFollow: z.unknown().optional(),
 }).refine(
   // Dispatch needs a message; a poll needs a predictionId. Require exactly one
   // of those entry points so neither a blank dispatch nor a malformed poll slips
@@ -402,6 +406,10 @@ export async function POST(req: NextRequest) {
       customInstructions: effectiveInstructions,
     });
 
+    // A film started here is followed by the server once its tab goes quiet (lib/chat/filmFollow): it sends the remaining
+    // scenes, stitches, or pays back what cannot be finished. Fails open: the tab still drives the film as before.
+    await fileFilmFollow({ userId, predictionId: response.predictionId, sessionId, message: rawMessage, plan: data.filmFollow });
+
     return NextResponse.json(response);
   } catch (error) {
     console.error('[Orchestrate Error]', error);
@@ -447,6 +455,8 @@ export async function POST(req: NextRequest) {
 async function handlePoll(predictionId: string, sessionId?: string, userId?: string) {
   try {
     const result = await pollOrchestrationTask(predictionId, sessionId, userId);
+    // The film's tab is still driving it: the server's follower keeps its hands off (lib/chat/filmFollow).
+    await noteFilmPolled(userId, result);
     return NextResponse.json(result);
   } catch (error) {
     // The thrown text can be a provider's raw error body — log it, answer with the sanitised, localized class.

@@ -87,9 +87,11 @@ describe('the final length reaches the render and the server cuts to it, or refu
     expect(filmClient).toMatch(/finalDurationSec\?: number;/);
     expect(filmClient).toMatch(/\.\.\.\(typeof finalDurationSec === 'number' && finalDurationSec > 0 \? \{ finalDurationSec \} : \{\}\),/);
     // …only for a cut of every planned scene: a salvaged cut goes without it (finalContractForCut, unit-tested beside it).
-    expect(filmClient).toMatch(/const finalContract = finalContractForCut\(opts\.finalDurationSec, clips\.length, scenesPlanned\);/);
-    expect(filmClient).toMatch(/opts\.joinTransitions \?\? null, finalContract\);/);
-    expect(filmClient).not.toMatch(/opts\.joinTransitions \?\? null, opts\.finalDurationSec \?\? null\);/);
+    // The body is built once (filmAssembleBody) for the tab and for the server that finishes a film whose tab closed.
+    expect(filmClient).toMatch(/const finalDurationSec = finalContractForCut\(plan\.finalDurationSec, clipUrls\.length, scenesPlanned\);/);
+    expect(filmClient).toMatch(/const assembledRes = await assembleMaster\(filmFollowPlan\(opts\), matrix, message, opts\.myVoiceNarration, signal\);/);
+    expect(filmClient).toMatch(/body: JSON\.stringify\(filmAssembleBody\(plan, matrix, scorePrompt, finalVoiceUrl\)\),/);
+    expect(filmClient).not.toMatch(/\{ finalDurationSec: plan\.finalDurationSec \}/);
   });
   test('a clip the route drops as dead leaves a salvaged cut: no contract, and the response says how many were dropped', () => {
     expect(route).toMatch(/const clipsDropped = handedOver\.length - segments\.length;/);
