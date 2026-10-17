@@ -3,15 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * The loading loop: the avatar forming out of light (the owner's clip, 2026-10-09), drawn on every loading card
- * while a job is queued or running: the in-chat result tile (./ResultCard) and the progress card
- * (./GenerationProgress).
+ * The loading loop: the blue wave (the owner's clip, 2026-10-17, replacing the avatar-forming clip of 2026-10-09), the ONE
+ * picture every generation shows while it is queued or running: the in-chat result tile (./ResultCard) and the progress
+ * card (./GenerationProgress). The owner's words: every generation on myavatar.ge has only this card.
  *
- * The asset is the owner's 10 s, 720×1280 clip re-encoded for a card: 432×768, no sound, its last 0.7 s faded to
- * black so the loop lands on the near-black particles it starts from. Two files, the browser takes the first it can
- * decode: VP9 WebM (≈ 0.37 MB) and H.264 MP4 (≈ 0.5 MB, faststart) for the rest. Cached after the first card. The
- * poster is the wireframe frame at 3.3 s, and the first play starts there too, so the poster never jumps back to the
- * clip's near-black opening; every later loop plays the whole clip.
+ * The asset is the owner's 5 s, 512×910 clip of a blue dot wave, re-encoded for a card: same size, no sound. It already
+ * ends where it begins, so it loops from its first frame with no fade. Two files, the browser takes the first it can
+ * decode: VP9 WebM (≈ 0.45 MB) and H.264 MP4 (≈ 0.64 MB, faststart) for the rest. Cached after the first card. The
+ * poster is the first frame, so the poster and the first play line up.
  *
  * Motion is opt-in per device, never assumed:
  *   · the poster renders first (server and client alike), the video only after mount;
@@ -19,11 +18,11 @@ import { useEffect, useRef, useState } from 'react';
  *   · off screen (a long chat scrolled away from the card) the video pauses, and plays again when it is back.
  * Decorative only: hidden from assistive tech; the card's own caption and progressbar carry the state.
  */
-export const LOADING_LOOP_WEBM = '/media/loading/avatar-forming.webm';
-export const LOADING_LOOP_SRC = '/media/loading/avatar-forming.mp4';
-export const LOADING_LOOP_POSTER = '/media/loading/avatar-forming.jpg';
-/** Where the poster frame sits in the clip (s): the first play starts here. */
-export const LOADING_LOOP_POSTER_AT = 3.3;
+export const LOADING_LOOP_WEBM = '/media/loading/blue-wave.webm';
+export const LOADING_LOOP_SRC = '/media/loading/blue-wave.mp4';
+export const LOADING_LOOP_POSTER = '/media/loading/blue-wave.jpg';
+/** Where the poster frame sits in the clip (s): the first play starts here. The wave's poster is its first frame. */
+export const LOADING_LOOP_POSTER_AT = 0;
 
 /** May this device play the loop? No under reduced motion or Save-Data. */
 export function loopAllowed(w: Pick<Window, 'matchMedia'> | undefined, nav: Navigator | undefined): boolean {
@@ -33,9 +32,9 @@ export function loopAllowed(w: Pick<Window, 'matchMedia'> | undefined, nav: Navi
   return conn?.saveData !== true;
 }
 
-export function LoadingLoop({ className = '', position = '50% 32%' }: {
+export function LoadingLoop({ className = '', position = '50% 50%' }: {
   className?: string;
-  /** object-position: a wide tile crops the portrait clip, and the face sits in its upper third. */
+  /** object-position: a wide tile crops the portrait clip; the wave is even, so the middle is the default. */
   position?: string;
 }) {
   const ref = useRef<HTMLVideoElement>(null);

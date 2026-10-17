@@ -23,7 +23,7 @@ jest.mock('../ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: s
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => null), uploadBufferAndSign: jest.fn(async () => null) }));
 jest.mock('./promptAgent', () => ({ runPromptAgent: jest.fn(async () => null) }));
 jest.mock('./filmVoiceover', () => ({
-  generateFilmVoiceover: jest.fn(async () => null),
+  generateCheckedFilmVoiceover: jest.fn(async () => null),
   generateDialogueVoiceover: jest.fn(async () => null),
   generateDialogueStems: jest.fn(async () => null),
   dialogueStemsViable: jest.fn(() => false),
@@ -81,7 +81,7 @@ jest.mock('./filmBilling', () => ({
 }));
 
 import { handleFilmComposite } from './filmComposite';
-import { generateDialogueVoiceover, generateFilmVoiceover } from './filmVoiceover';
+import { generateDialogueVoiceover, generateCheckedFilmVoiceover } from './filmVoiceover';
 import { decodeFilmRef } from './filmTaskRef';
 import { deriveFilmTokenId } from './filmStatusStore';
 import { getFilmChainPlan, __setFilmChainRedisForTests } from './filmChain';
@@ -120,7 +120,7 @@ beforeEach(() => {
   let n = 0;
   mockExecute.mockImplementation(async () => queued(++n));
   // A Georgian film's off-camera voice is made before anything is charged or sent: it has to come back for the film to start.
-  (generateFilmVoiceover as jest.Mock).mockResolvedValue('https://store.local.test/voiceover.mp3');
+  (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue({ url: 'https://store.local.test/voiceover.mp3', score: null, verdict: null, reads: 1, words: null });
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -233,7 +233,7 @@ describe('chain on (a store every poll can read)', () => {
     const plan = (await getFilmChainPlan(tokenIdOf(res)))!;
     expect(plan.scenes.filter((s) => /Every scene keeps the same face|Start your very first film|One window makes/.test(s.userPrompt))).toHaveLength(3);
     expect(generateDialogueVoiceover).not.toHaveBeenCalled();
-    expect(generateFilmVoiceover).not.toHaveBeenCalled();
+    expect(generateCheckedFilmVoiceover).not.toHaveBeenCalled();
   });
 
   test('scene 1 refused: nothing waits on it, the other scenes go side by side as before', async () => {

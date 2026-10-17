@@ -51,12 +51,18 @@ test('reduced motion or Save-Data: the poster only, and the clip is never reques
   expect(render(<LoadingLoop />).container.querySelector('video')).toBeNull();
 });
 
-test('the cards draw it only while a job waits or runs; the tray rows stay still', () => {
+test('the cards draw it only while a job waits or runs, the tray rows included (one loading picture everywhere)', () => {
   setMotion(false);
   const loop = (c: HTMLElement) => c.querySelector('[data-testid="loading-loop"]');
   expect(loop(render(<GenerationProgress kind="image" locale="en" elapsed={3} />).container)).not.toBeNull();
   expect(loop(render(<GenerationProgress kind="image" locale="en" elapsed={0} state="queued" />).container)).not.toBeNull();
-  expect(loop(render(<GenerationProgress kind="image" locale="en" elapsed={3} compact />).container)).toBeNull();
+  // The owner's rule (2026-10-17): every generation shows this card, so a compact row carries the loop too.
+  expect(loop(render(<GenerationProgress kind="image" locale="en" elapsed={3} compact />).container)).not.toBeNull();
+  // A card tucked under a ResultCard that already shows the loop opts out, so one wait never shows two.
+  expect(loop(render(<GenerationProgress kind="video" locale="en" elapsed={3} loop={false} />).container)).toBeNull();
+  // No spinner on the card while it runs: the loop is the only moving picture.
+  const running = render(<GenerationProgress kind="video" locale="en" elapsed={30} />).container;
+  expect(running.querySelector('.animate-spin')).toBeNull();
   for (const state of ['done', 'failed', 'canceled'] as const) {
     expect(loop(render(<GenerationProgress kind="image" locale="en" elapsed={3} state={state} />).container)).toBeNull();
   }

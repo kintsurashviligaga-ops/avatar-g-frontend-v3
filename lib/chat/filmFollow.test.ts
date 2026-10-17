@@ -51,7 +51,7 @@ describe('the stitch plan kept with the film', () => {
     const plan = {
       orientation: 'vertical', transition: 'dissolve', joinTransitions: ['cut', 'crossfade'], noMusic: true, musicVideoMode: true,
       soundtrackUrl: 'https://cdn.example/song.mp3', locale: 'ru', vocalGender: 'duet', finalDurationSec: 30,
-      audioMix: { threeTrack: true, musicVolume: 0.4, sfxVolume: 1.2, smartDuck: false, duckDb: -12 },
+      audioMix: { threeTrack: true, musicVolume: 0.4, sfxVolume: 1.2, smartDuck: false, duckDb: -12 }, subtitles: true,
     };
     expect(sanitizeFollowPlan(plan)).toEqual(plan);
   });
@@ -59,7 +59,7 @@ describe('the stitch plan kept with the film', () => {
   test('anything else is dropped, field by field', () => {
     expect(sanitizeFollowPlan({
       orientation: 'diagonal', transition: 'wipe', joinTransitions: ['cut', 'spin'], noMusic: 'yes', soundtrackUrl: 'file:///etc/passwd',
-      locale: 'de', vocalGender: 'robot', finalDurationSec: 9_999, audioMix: { musicVolume: 9, duckDb: 3 }, extra: 1,
+      locale: 'de', vocalGender: 'robot', finalDurationSec: 9_999, audioMix: { musicVolume: 9, duckDb: 3 }, subtitles: 'yes', extra: 1,
     })).toEqual({});
     expect(sanitizeFollowPlan(null)).toEqual({});
     expect(sanitizeFollowPlan(['vertical'])).toEqual({});

@@ -2,13 +2,15 @@
 
 /**
  * AgentTaskCard — Agent G's work in the chat as a task panel (lib/agent/media/taskSteps): a header with the count of
- * steps done and a clock, every step from the first upload to the saved result in one list joined by a line, a spinner
- * on the step in progress, ✓ on the steps done, an empty circle on the steps ahead, and the card's own buttons under it.
+ * steps done and a clock, the loading loop while Agent G works (the one picture of a wait, the owner's rule of
+ * 2026-10-17), every step from the first upload to the saved result in one list joined by a line, a lit ring on the
+ * step in progress, ✓ on the steps done, an empty circle on the steps ahead, and the card's own buttons under it.
  * It stays in the thread after the work ends, with every step and where it ended; the header folds the list away.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, Film, Hand, Image as ImageIcon, Mic, Minus, Music2, Sparkles, Square, X } from 'lucide-react';
 import { clockText, type StepState, type TaskCardModel } from '@/lib/agent/media/taskSteps';
+import { LoadingLoop } from './ui/LoadingLoop';
 
 type Lang = 'ka' | 'en' | 'ru';
 const L: Record<Lang, { fold: string; unfold: string; steps: string; files: string; state: Record<StepState, string> }> = {
@@ -23,8 +25,8 @@ function StepIcon({ state }: { state: StepState }) {
     case 'done':
       return <span className={`${box} bg-app-accent text-app-bg`}><Check size={12} strokeWidth={3} aria-hidden="true" /></span>;
     case 'active':
-      // A ring with a moving arc: the step in progress (a still arc under reduced motion still reads as „in progress").
-      return <span className={`${box} bg-app-surface`}><span className="h-[18px] w-[18px] rounded-full border-2 border-app-accent/25 border-t-app-accent motion-safe:animate-spin" /></span>;
+      // A still lit ring: the step in progress. The loading loop at the card's head is the only moving picture.
+      return <span className={`${box} bg-app-surface ring-2 ring-app-accent`}><span className="h-[7px] w-[7px] rounded-full bg-app-accent" /></span>;
     case 'waiting':
       return <span className={`${box} bg-app-accent/15 text-app-accent ring-2 ring-app-accent/70`}><Hand size={11} aria-hidden="true" /></span>;
     case 'failed':
@@ -106,6 +108,13 @@ export function AgentTaskCard({
         <ChevronDown size={16} aria-hidden="true" className={`shrink-0 text-app-muted transition-transform duration-200 ${folded ? '' : 'rotate-180'}`} />
       </button>
 
+      {/* While Agent G works, the loading loop: every generation's wait looks the same. */}
+      {model.status === 'working' && !folded ? (
+        <div aria-hidden="true" data-testid={`${testId}-loop`} className="relative mx-4 mb-3 h-[140px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
+          <LoadingLoop />
+        </div>
+      ) : null}
+
       {model.pct !== null ? (
         <div className="mx-4 h-1 overflow-hidden rounded-full bg-app-border/20" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={model.pct} aria-label={model.title}>
           <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(3, model.pct)}%` }} />
@@ -140,7 +149,7 @@ export function AgentTaskCard({
                 <StepIcon state={s.state} />
                 <div className="min-w-0 flex-1 pt-px">
                   <p className={`text-[13.5px] leading-[1.35] ${
-                    s.state === 'active' ? 'agent-step-sheen font-medium'
+                    s.state === 'active' ? 'font-medium text-app-text'
                       : s.state === 'failed' ? 'font-medium text-app-danger'
                         : s.state === 'waiting' ? 'font-medium text-app-text'
                           : muted ? (s.state === 'skipped' ? 'text-app-muted/60 line-through decoration-app-muted/30' : 'text-app-muted')

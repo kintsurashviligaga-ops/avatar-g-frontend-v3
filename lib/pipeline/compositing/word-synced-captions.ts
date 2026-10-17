@@ -75,6 +75,37 @@ export function alignmentToWords(a: ElevenAlignment): CaptionWord[] {
   return words;
 }
 
+/**
+ * The inverse of alignmentToWords: timed words → a character alignment (each word's span shared evenly by its characters,
+ * the space between two words taking the gap between them). For timings that come from listening to the audio instead of
+ * from the with-timestamps TTS (a film's narration, timed by Scribe in lib/chat/filmVoiceCheck), so they reach the same
+ * caption burn. alignmentToWords(wordsToAlignment(w)) gives back w's words and times.
+ */
+export function wordsToAlignment(words: readonly CaptionWord[]): ElevenAlignment {
+  const characters: string[] = [];
+  const starts: number[] = [];
+  const ends: number[] = [];
+  words.forEach((w) => {
+    const text = w.text.replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    if (characters.length) {
+      const prevEnd = ends[ends.length - 1]!;
+      characters.push(' ');
+      starts.push(prevEnd);
+      ends.push(Math.max(prevEnd, w.startSec));
+    }
+    // A space inside one timed word stays a space: alignmentToWords then splits it there, each part keeping its share.
+    const chars = Array.from(text);
+    const span = Math.max(0, w.endSec - w.startSec) / chars.length;
+    chars.forEach((ch, k) => {
+      characters.push(ch);
+      starts.push(w.startSec + k * span);
+      ends.push(k === chars.length - 1 ? Math.max(w.startSec, w.endSec) : w.startSec + (k + 1) * span);
+    });
+  });
+  return { characters, character_start_times_seconds: starts, character_end_times_seconds: ends };
+}
+
 /** Turn words into on-screen caption cards (≤maxWords / ≤maxChars each), each timed to
  *  its words' real start/end. A card ends early at sentence punctuation. */
 export function wordsToSegments(words: CaptionWord[], opts: SegmentOptions = {}): CaptionSegment[] {

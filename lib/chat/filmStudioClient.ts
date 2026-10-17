@@ -30,6 +30,7 @@ import { StallDetector } from '@/lib/jobs/stallDetector';
 import type { VeoRenderOptions } from '@/lib/video/veoPlan';
 import type { SceneScreenwriterMeta } from '@/lib/chat/filmPipeline';
 import type { RenderApprovalWire } from '@/lib/video/storyboard/revision';
+import type { SceneQaEntry } from '@/lib/ai/visionQualityGate';
 
 /** The director's per-scene provenance as the orchestrate route accepts it (lib/veo/renderOptions SceneMetaSchema). */
 export type SceneMetaWire = Pick<SceneScreenwriterMeta, 'cameraShot' | 'mood' | 'location' | 'lighting' | 'camera'>;
@@ -133,6 +134,8 @@ export interface FilmStudioResult {
   scenesRequested?: number;
   /** What the score leg did — null means every music provider missed and the film is SILENT. */
   scoreFallback?: string | null;
+  /** Each scene clip's own vision grade, when the assembler ran the check (FILM_VISION_QA): names a weak scene. */
+  sceneQa?: SceneQaEntry[];
   /** The resolved song/vocal URL (ElevenLabs Music / Udio) — drives the HeyGen
    *  singer-performance lip-sync (face frame + this vocal). Null when silent. */
   musicUrl?: string | null;
@@ -216,6 +219,9 @@ export interface DriveFilmOptions {
   sceneMeta?: SceneMetaWire[];
   /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
   myVoiceNarration?: boolean;
+  /** The user asked for subtitles (the panel's switch, or the brief): the narration's words are burned at the stitch. Off by
+   *  default, the user's choice (the owner's word 2026-10-17). */
+  subtitles?: boolean;
   /** Verbatim dialogue from the video panel — spoken as the film's voice-over (as-is). */
   narrationScript?: string;
   /** Explicit narrator gender (video panel 👩/👨) → cloned female/male Georgian voice. */
@@ -317,15 +323,20 @@ export function estimateFilmCostGel(sceneCount: number = FILM_SCENE_COUNT): numb
   return n * GEL_COST.video_film + GEL_COST.voice_tts;
 }
 
-/** Ordered, de-duplicated URLs of the clips that actually landed. */
-export function readyClipUrls(matrix: FilmStudioMatrix | null): string[] {
+/** The clips that actually landed, in scene order and de-duplicated, each with the scene it is. */
+export function readyClips(matrix: FilmStudioMatrix | null): { url: string; ordinal: number }[] {
   if (!matrix) return [];
   const seen = new Set<string>();
   return [...matrix.clips]
     .sort((a, b) => a.ordinal - b.ordinal)
     .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url.length > 0)
-    .map((c) => c.url as string)
-    .filter((url) => (seen.has(url) ? false : (seen.add(url), true)));
+    .map((c) => ({ url: c.url as string, ordinal: c.ordinal }))
+    .filter((c) => (seen.has(c.url) ? false : (seen.add(c.url), true)));
+}
+
+/** Ordered, de-duplicated URLs of the clips that actually landed. */
+export function readyClipUrls(matrix: FilmStudioMatrix | null): string[] {
+  return readyClips(matrix).map((c) => c.url);
 }
 
 /** First playable clip URL — the graceful fallback while the editor stitches. */
@@ -655,6 +666,7 @@ export interface FilmFollowPlan {
   vocalGender?: 'male' | 'female' | 'duet';
   audioMix?: AudioMixOptions;
   finalDurationSec?: number;
+  subtitles?: boolean;
 }
 
 /** The stitch's share of the studio options (what FilmFollowPlan holds), as the dispatch sends it. */
@@ -670,6 +682,7 @@ export function filmFollowPlan(opts: DriveFilmOptions): FilmFollowPlan {
     ...(opts.vocalGender ? { vocalGender: opts.vocalGender } : {}),
     ...(opts.audioMix ? { audioMix: opts.audioMix } : {}),
     ...(typeof opts.finalDurationSec === 'number' && opts.finalDurationSec > 0 ? { finalDurationSec: opts.finalDurationSec } : {}),
+    ...(opts.subtitles ? { subtitles: true } : {}),
   };
 }
 
@@ -679,7 +692,8 @@ export function filmFollowPlan(opts: DriveFilmOptions): FilmFollowPlan {
  * ways. `voiceUrl` is the narration to mix (the tab may have re-voiced it); absent → the film's own.
  */
 export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix, scorePrompt: string, voiceUrl?: string | null): Record<string, unknown> {
-  const clipUrls = readyClipUrls(matrix);
+  const landed = readyClips(matrix);
+  const clipUrls = landed.map((c) => c.url);
   const clipSec = matrix.clipSec ?? null;
   // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
   const musicUrl = plan.noMusic ? null : (plan.soundtrackUrl ?? matrix.audioUrl ?? null);
@@ -707,7 +721,8 @@ export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix,
   return {
     // The assembler derives the master timeline (and every per-clip trim) from these durations, so a
     // film rendered on a 6s grid must report 6s — a hardcoded 8 pad-froze the tail of every clip.
-    segments: clipUrls.map((url) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : FILM_CLIP_SEC })),
+    // Each clip names its scene, so one scene can later be rendered again and cut back into its own place (filmSceneRedo).
+    segments: landed.map(({ url, ordinal }) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : FILM_CLIP_SEC, ordinal })),
     ...(musicUrl ? { musicUrl } : {}),
     // Music OFF → tell the route to skip score generation (no musicUrl + this flag).
     ...(plan.noMusic ? { noMusic: true } : {}),
@@ -739,6 +754,8 @@ export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix,
     // Scene transition + L2/L6 audio knobs. globalRender wins over the route's
     // film-token default ('cut'), so the user's choices are honoured.
     ...(Object.keys(globalRender).length ? { globalRender } : {}),
+    // Subtitles only when the user asked: the route burns the narration's words as they were timed at the film's start.
+    ...(plan.subtitles ? { subtitles: true } : {}),
   };
 }
 
@@ -749,7 +766,7 @@ async function assembleMaster(
   scorePrompt: string,
   myVoiceNarration?: boolean,
   signal?: AbortSignal,
-): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null; clipsDropped?: number } | { url: null; error: string } | null> {
+): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null; clipsDropped?: number; sceneQa?: SceneQaEntry[] } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
   let finalVoiceUrl = matrix.voiceUrl ?? null;
@@ -776,7 +793,7 @@ async function assembleMaster(
   // ⚠️ `scoreFallback` WAS MISSING FROM THIS CAST, so the route's own report that every music provider
   // missed — it literally logs "SILENT (all music providers missed — proceeding silent, not 500)" —
   // was dropped right here at the door, and a film with no soundtrack was handed back as a clean one.
-  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown; clipsDropped?: unknown } | null;
+  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown; clipsDropped?: unknown; sceneQa?: unknown } | null;
   if (!res.ok) {
     const msg = typeof json?.message === 'string' && json.message.trim()
       ? json.message.trim()
@@ -797,7 +814,28 @@ async function assembleMaster(
     scoreFallback: json.scoreFallback === null ? null : (typeof json.scoreFallback === 'string' ? json.scoreFallback : undefined),
     // Clips the route found dead (hard 403/404/410) and left out of the cut — the delivered film is that many scenes short.
     ...(typeof json.clipsDropped === 'number' && json.clipsDropped > 0 ? { clipsDropped: json.clipsDropped } : {}),
+    ...(asSceneQa(json.sceneQa).length ? { sceneQa: asSceneQa(json.sceneQa) } : {}),
   };
+}
+
+/** Narrow the assembler's per-scene vision grades; anything malformed is dropped, never guessed. */
+export function asSceneQa(v: unknown): SceneQaEntry[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((e): SceneQaEntry[] => {
+    if (!e || typeof e !== 'object') return [];
+    const o = e as Record<string, unknown>;
+    const grade = o.grade;
+    if (!(typeof o.ordinal === 'number' && Number.isInteger(o.ordinal) && o.ordinal >= 1 && o.ordinal <= 24)) return [];
+    if (grade !== 'A' && grade !== 'B' && grade !== 'C' && grade !== 'F') return [];
+    if (typeof o.score !== 'number' || !Number.isFinite(o.score)) return [];
+    return [{
+      ordinal: o.ordinal,
+      grade,
+      score: o.score,
+      action: o.action === 'rerender' ? 'rerender' : 'accept',
+      issues: Array.isArray(o.issues) ? o.issues.filter((x): x is string => typeof x === 'string').slice(0, 12) : [],
+    }];
+  });
 }
 
 /** Recover an already-hosted master (+ its QA verdict) from the durable tracker. */
@@ -1105,12 +1143,13 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const assembledRes = await assembleMaster(filmFollowPlan(opts), matrix, message, opts.myVoiceNarration, signal);
     // The route's music report rides along: rebuilding this object as { url, qa } alone dropped it, so a film every
     // music provider missed came back with no "no soundtrack" note (audit 2026-10-17, still true on 9f691d8).
-    let assembled: { url: string; qa: FilmQaSummary | null; scoreFallback?: string | null } | null =
+    let assembled: { url: string; qa: FilmQaSummary | null; scoreFallback?: string | null; sceneQa?: SceneQaEntry[] } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? {
           url: assembledRes.url,
           qa: 'qa' in assembledRes ? assembledRes.qa : null,
           ...('scoreFallback' in assembledRes && assembledRes.scoreFallback !== undefined ? { scoreFallback: assembledRes.scoreFallback } : {}),
+          ...('sceneQa' in assembledRes && assembledRes.sceneQa?.length ? { sceneQa: assembledRes.sceneQa } : {}),
         }
         : null;
     // FIX 4 — keep the route's real reason (e.g. the insufficient-credits top-up
@@ -1152,6 +1191,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       // honest value for that — it means "not reported", which the delivery notice treats differently
       // from null ("every provider missed"). Inventing null here would warn about a film that is fine.
       scoreFallback: assembled.scoreFallback,
+      ...(assembled.sceneQa?.length ? { sceneQa: assembled.sceneQa } : {}),
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {

@@ -159,10 +159,10 @@ describe('assemble — per-join transitions reach the assembler as globalRender.
     expect(assembleBody()).not.toHaveProperty('globalRender');
   });
 
-  it('segments carry the film’s own clip length and the status token rides along (no double charge on a re-stitch)', async () => {
+  it('segments carry the film’s own clip length, their scene number and the status token (no double charge on a re-stitch)', async () => {
     await run({ joinTransitions: ['cut', 'dissolve', 'cut'] });
     const body = assembleBody();
-    expect(body.segments).toEqual(readyMatrix().clips.map((c) => ({ url: c.url, durationSec: 8 })));
+    expect(body.segments).toEqual(readyMatrix().clips.map((c) => ({ url: c.url, durationSec: 8, ordinal: c.ordinal })));
     expect(body.filmTokenId).toBe('film_tok_1');
   });
 });

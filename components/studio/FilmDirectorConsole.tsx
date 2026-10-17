@@ -20,7 +20,6 @@ import {
   Waves,
   Layers,
   Wand2,
-  Loader2,
   Check,
   AlertTriangle,
   ArrowDown,
@@ -158,7 +157,8 @@ const STATUS_STYLE: Record<FilmAgentStatus, { card: string; pill: string; bar: s
 function StatusIcon({ status }: { status: FilmAgentStatus }) {
   if (status === 'completed') return <Check size={11} className="text-emerald-500" />;
   if (status === 'error') return <AlertTriangle size={11} className="text-red-500" />;
-  if (status === 'processing') return <Loader2 size={11} className="animate-spin text-app-accent" />;
+  // A working agent is a still accent dot: the loading loop above the console is the only moving picture of a wait.
+  if (status === 'processing') return <span className="h-[7px] w-[7px] rounded-full bg-app-accent" />;
   return <span className="h-[7px] w-[7px] rounded-full border border-app-muted/40" />;
 }
 
@@ -244,7 +244,7 @@ function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
         <span className="h-2 w-2 rounded-full bg-amber-400/70" />
         <span className="h-2 w-2 rounded-full bg-emerald-500/70" />
         <span className="ml-1.5 flex items-center gap-1 text-[9.5px] font-semibold uppercase tracking-wider text-app-muted/70">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           {FEED[loc]}
         </span>
         <span className="ml-auto font-mono text-[9.5px] tabular-nums text-app-muted/60">{log.length}</span>
@@ -265,7 +265,7 @@ function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
             </div>
           ))}
           <div className="flex items-center pt-0.5">
-            <span className="inline-block h-2.5 w-1.5 animate-pulse bg-app-accent/70" />
+            <span className="inline-block h-2.5 w-1.5 bg-app-accent/70" />
           </div>
         </div>
       </div>
@@ -340,6 +340,8 @@ export default function FilmDirectorConsole({
       {...(typeof targetSec === 'number' ? { targetSec } : {})}
       {...(onCancel && (anyWorking || !allDone) ? { onCancel } : {})}
       {...(stopLabel ? { cancelLabel: stopLabel } : {})}
+      // The console sits under its ResultCard, which already shows the loading loop: one wait, one loop.
+      loop={false}
     >
 
       {/* 9-agent crew grid */}
@@ -352,7 +354,7 @@ export default function FilmDirectorConsole({
       {/* Live status line (the pipeline's streamed headline) */}
       {statusText && statusText.trim() ? (
         <div className="flex items-center gap-2 rounded-lg bg-app-border/10 px-2.5 py-1.5">
-          <Loader2 size={12} className="shrink-0 animate-spin text-app-accent" />
+          <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-app-accent" />
           <span className="truncate text-[11.5px] font-medium text-app-text">{statusText.trim()}</span>
         </div>
       ) : null}

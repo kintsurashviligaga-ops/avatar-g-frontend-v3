@@ -27,7 +27,7 @@ jest.mock('../ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: s
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => null) }));
 jest.mock('./promptAgent', () => ({ runPromptAgent: jest.fn(async () => null) }));
 jest.mock('./filmVoiceover', () => ({
-  generateFilmVoiceover: jest.fn(async () => null),
+  generateCheckedFilmVoiceover: jest.fn(async () => null),
   generateDialogueVoiceover: jest.fn(async () => null),
   generateDialogueStems: jest.fn(async () => null),
   dialogueStemsViable: jest.fn(() => false),
@@ -84,8 +84,15 @@ jest.mock('./filmBilling', () => ({
   recordFilmScenes: (...a: unknown[]) => mockRecordScenes(...a),
 }));
 
+// The narration's timed words are kept for the subtitles a user may ask for at the stitch.
+const mockRecordCaptions = jest.fn();
+jest.mock('./filmStatusStore', () => ({
+  ...jest.requireActual('./filmStatusStore'),
+  recordFilmCaptions: (...a: unknown[]) => mockRecordCaptions(...a),
+}));
+
 import { handleFilmComposite } from './filmComposite';
-import { generateFilmVoiceover } from './filmVoiceover';
+import { generateCheckedFilmVoiceover } from './filmVoiceover';
 import { SILENT_PRESENTER_DIRECTION, silenceSpeechVerbs } from './filmPipeline';
 import type { OrchestratorInput } from './providerRouter';
 
@@ -109,6 +116,7 @@ beforeEach(() => {
   mockDeduct.mockResolvedValue({ ok: true, balance: 900 });
   mockRefund.mockResolvedValue({ ok: true });
   mockRecordScenes.mockResolvedValue('recorded');
+  mockRecordCaptions.mockResolvedValue(undefined);
   mockConsumeFree.mockResolvedValue(-1); // no free slot
   mockRestoreFree.mockResolvedValue(0);
   mockStartKeys.clear();
@@ -122,7 +130,7 @@ beforeEach(() => {
   let n = 0;
   mockExecute.mockImplementation(async () => queued(++n));
   // A Georgian film's off-camera voice is made before anything is charged or sent: it has to come back for the film to start.
-  (generateFilmVoiceover as jest.Mock).mockResolvedValue('https://store.local.test/voiceover.mp3');
+  (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue({ url: 'https://store.local.test/voiceover.mp3', score: null, verdict: null, reads: 1, words: null });
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -170,8 +178,8 @@ describe('a Georgian narration is spoken off camera by ONE voice', () => {
 
   test('the whole narration is voiced once, verbatim, in the male Georgian voice the panel picked', async () => {
     await handleFilmComposite(input(adPanel(KA_SCRIPT)));
-    expect(generateFilmVoiceover).toHaveBeenCalledTimes(1);
-    expect(generateFilmVoiceover).toHaveBeenCalledWith(expect.objectContaining({
+    expect(generateCheckedFilmVoiceover).toHaveBeenCalledTimes(1);
+    expect(generateCheckedFilmVoiceover).toHaveBeenCalledWith(expect.objectContaining({
       narrationScript: KA_SCRIPT, voicePersona: 'male', voiceLanguage: 'ka', totalSec: 32,
     }));
   });
@@ -191,7 +199,7 @@ describe('a Georgian narration is spoken off camera by ONE voice', () => {
       expect(clip.userPrompt).toContain(SILENT_PRESENTER_DIRECTION);
       expect(clip.selectedOptions.veoGenerateAudio).toBe('0');
     }
-    expect(generateFilmVoiceover).toHaveBeenCalledWith(expect.objectContaining({ narrationScript: oneLong }));
+    expect(generateCheckedFilmVoiceover).toHaveBeenCalledWith(expect.objectContaining({ narrationScript: oneLong }));
   });
 
   test('a narration longer than the film is refused before anything is charged or rendered', async () => {
@@ -200,7 +208,7 @@ describe('a Georgian narration is spoken off camera by ONE voice', () => {
     expect((res.metadata as { speechTooLong?: boolean }).speechTooLong).toBe(true);
     expect(mockDeduct).not.toHaveBeenCalled();
     expect(mockExecute).not.toHaveBeenCalled();
-    expect(generateFilmVoiceover).not.toHaveBeenCalled();
+    expect(generateCheckedFilmVoiceover).not.toHaveBeenCalled();
   });
 });
 
@@ -208,7 +216,7 @@ describe('no voice, no film: the off-camera voice is made before anything is cha
   // ⚠️ 2026-10-17: the paid 32 s ad came back SILENT. Production's ElevenLabs key was the key's ID, every voice request
   // was refused, and the voice leg (run beside the clips) quietly returned nothing after the Veo render was paid for.
   test('ElevenLabs gives no voice → refused, nothing charged, no clip sent, and the press can be tried again', async () => {
-    (generateFilmVoiceover as jest.Mock).mockResolvedValue(null);
+    (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(null);
     const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
     expect(res.success).toBe(false);
     expect((res.metadata as { voiceUnavailable?: boolean }).voiceUnavailable).toBe(true);
@@ -220,7 +228,7 @@ describe('no voice, no film: the off-camera voice is made before anything is cha
   });
 
   test('the same for the founder, whose film the platform pays for', async () => {
-    (generateFilmVoiceover as jest.Mock).mockResolvedValue(null);
+    (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(null);
     const res = await handleFilmComposite(input(adPanel(KA_SCRIPT), 'founder'));
     expect(res.success).toBe(false);
     expect(clipCalls()).toHaveLength(0);
@@ -229,17 +237,72 @@ describe('no voice, no film: the off-camera voice is made before anything is cha
   test('the voice is made first, then the charge, then the clips', async () => {
     const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
     expect(res.success).toBe(true);
-    const voiceAt = (generateFilmVoiceover as jest.Mock).mock.invocationCallOrder[0]!;
+    const voiceAt = (generateCheckedFilmVoiceover as jest.Mock).mock.invocationCallOrder[0]!;
     expect(voiceAt).toBeLessThan(mockDeduct.mock.invocationCallOrder[0]!);
     expect(voiceAt).toBeLessThan(mockExecute.mock.invocationCallOrder[0]!);
   });
 
   test('a film Veo voices in-clip is not held to an ElevenLabs voice it never asked for', async () => {
-    (generateFilmVoiceover as jest.Mock).mockResolvedValue(null);
+    (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(null);
     const en = 'Meet the new studio. One window makes the video, the voice and the music. Try it today.';
     const res = await handleFilmComposite(input({ ...adPanel(en), voiceLanguage: 'en' }));
     expect(res.success).toBe(true);
     expect(clipCalls()).toHaveLength(4);
+  });
+});
+
+describe('the voice must say the film’s words: Scribe listens before anything is charged', () => {
+  const checked = (verdict: 'pass' | 'weak' | 'fail', score: number, words: Array<{ text: string; startSec: number; endSec: number }> | null = null) => ({
+    url: 'https://store.local.test/voiceover.mp3', score, verdict, reads: verdict === 'pass' ? 1 : 2, words,
+  });
+
+  test('both reads lost most of the words → refused as unclear, nothing charged, no clip sent, the press can be tried again', async () => {
+    (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(checked('fail', 0.31));
+    const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
+    expect(res.success).toBe(false);
+    const meta = res.metadata as { voiceUnavailable?: boolean; voiceUnclear?: boolean };
+    expect(meta.voiceUnclear).toBe(true);
+    expect(meta.voiceUnavailable).toBe(true);
+    expect(res.message).toMatch(/nothing was charged/);
+    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(mockConsumeFree).not.toHaveBeenCalled();
+    expect(clipCalls()).toHaveLength(0);
+    expect(mockReleaseKey).toHaveBeenCalledTimes(1);
+    expect(mockRecordCaptions).not.toHaveBeenCalled();
+  });
+
+  test('a Georgian refusal is in Georgian', async () => {
+    (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(checked('fail', 0.2));
+    const res = await handleFilmComposite({ ...input(adPanel(KA_SCRIPT)), locale: 'ka' });
+    expect(res.success).toBe(false);
+    expect(res.message).toMatch(/თანხა არ ჩამოგეჭრა/);
+  });
+
+  test('a weak read (most words there) still makes the film: Scribe is never held to an exact match', async () => {
+    (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(checked('weak', 0.62));
+    const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
+    expect(res.success).toBe(true);
+    expect(mockDeduct).toHaveBeenCalledTimes(1);
+    expect(clipCalls()).toHaveLength(4);
+  });
+
+  test('a voice Scribe could not check (no transcript) goes ahead unverified, as before', async () => {
+    const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
+    expect(res.success).toBe(true);
+    expect(clipCalls()).toHaveLength(4);
+    expect(mockRecordCaptions).not.toHaveBeenCalled();
+  });
+
+  test('the narration’s timed words are kept for the owner’s film (burned only if the user asks for subtitles)', async () => {
+    const words = [{ text: 'წარმოგიდგენთ', startSec: 0.1, endSec: 0.9 }, { text: 'ახალ', startSec: 1, endSec: 1.3 }];
+    (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(checked('pass', 0.94, words));
+    const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
+    expect(res.success).toBe(true);
+    expect(mockRecordCaptions).toHaveBeenCalledTimes(1);
+    const [tokenId, uid, kept] = mockRecordCaptions.mock.calls[0]!;
+    expect(typeof tokenId).toBe('string');
+    expect(uid).toBe('user-1');
+    expect(kept).toEqual(words);
   });
 });
 
@@ -254,7 +317,7 @@ describe('a language Veo speaks keeps its in-clip voice (unchanged)', () => {
       expect(clip.userPrompt).not.toContain(SILENT_PRESENTER_DIRECTION);
       expect(clip.selectedOptions.veoGenerateAudio).toBe('1');
     }
-    expect(generateFilmVoiceover).not.toHaveBeenCalled();
+    expect(generateCheckedFilmVoiceover).not.toHaveBeenCalled();
   });
 });
 

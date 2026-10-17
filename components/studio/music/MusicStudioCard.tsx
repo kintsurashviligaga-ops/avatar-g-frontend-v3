@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Download, Loader2, Music2, RotateCcw, Scissors, X } from 'lucide-react';
+import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
 import type { MusicRequest } from '@/lib/music/studio/contracts';
 import { cancelCall, editCall, isFinal, pollDelayMs, quoteCall, startCall, statusCall, commandCall, type MusicJobView, type MusicQuote, type Refusal } from '@/lib/music/studio/client';
 import { LIVE_RESULT_EVENT, type LiveResultNote } from '@/lib/voice/liveTools';
@@ -215,7 +216,8 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   if (!v || !isFinal(v)) {
     return (
       <div className={shell} aria-live="polite" aria-busy="true" data-testid="music-card" data-phase="running" data-stage={v?.stage ?? 'queued'} ref={rootRef}>
-        <p className="flex items-center gap-2 text-[13px] text-app-text" data-testid="music-stage"><Loader2 className="h-4 w-4 animate-spin text-app-accent" aria-hidden />{stageText(v?.stage ?? 'queued', locale)}</p>
+        <div aria-hidden="true" data-testid="music-loop" className="relative mb-2 h-[120px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15"><LoadingLoop /></div>
+        <p className="text-[13px] text-app-text" data-testid="music-stage">{stageText(v?.stage ?? 'queued', locale)}</p>
         {v?.cancellable && <button type="button" data-testid="music-cancel" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={cancel}><X className="h-4 w-4" aria-hidden />{c.cancel}</button>}
       </div>
     );
