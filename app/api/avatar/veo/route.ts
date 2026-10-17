@@ -4,7 +4,7 @@
  * VFX scene: GET /api/genjutsu/status?id=<jobId> (refunds a failed render by its signed charge token).
  *
  * ⚠️ ADMIN ONLY until the owner opens it. GG chose this engine on 2026-10-16 (the HeyGen avatar is refused by the
- * Google-only boundary); its first paid test and its public price are his to approve, so a non-admin is refused 423
+ * Google-only boundary); its first paid test and its public price are theirs to approve, so a non-admin is refused 423
  * unless AVATAR_VEO_PUBLIC=1 (a public flag: GG's word).
  *
  * THE ORDER IS THE SAFETY, as in /api/genjutsu/generate: sign-in → admin/flag → parse (free) → rate → own photo →
@@ -12,8 +12,9 @@
  * refund on any miss.
  *
  * ⚠️ A GEORGIAN LINE IS ELEVENLABS' VOICE (GG, 2026-10-17 07:54Z). It is made BEFORE anything is charged: no voice, or a
- * line longer than the clip, is an honest refusal with nothing taken. Veo then renders the person talking with no sound
- * (its Georgian is garbled), and the status route lays the line over the clip before it is shown (lib/avatar/voicedClip).
+ * line longer than the clip, is an honest refusal with nothing taken. Veo then says the line in Latin letters (its
+ * Georgian is garbled), so its mouth makes those syllables, and the status route replaces Veo's voice with the line,
+ * fitted phrase by phrase onto where Veo spoke, before it is shown (lib/avatar/voicedClip, lib/avatar/speechMatch).
  * The `::v` in the signed job id is what tells it to.
  *
  * GET answers whether this caller may use it, and at what price — the studio's card and panel print that price.
@@ -138,7 +139,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     prompt: buildVeoAvatarPrompt({ speech: r.speech, direction: r.direction, ...(voicedSec !== undefined ? { voicedSec } : {}) }),
     aspect: r.aspect, quality: 'fast', referenceUrls: [], startImageUrl: photo.url,
     negativePrompt: VEO_AVATAR_NEGATIVE, userId, sessionId: `avatar-${uuid}`,
-    ...(voiced ? { audio: false } : {}),
   });
   if (!sub.ok) {
     const refunded = await refund(`veo ${sub.reason}`);

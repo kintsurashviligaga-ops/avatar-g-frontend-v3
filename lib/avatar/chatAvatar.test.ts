@@ -45,7 +45,8 @@ describe('avatarOfferText', () => {
     expect(t).toContain('„გადადი მაი ავატარ ჯიზე და დაიწყე“');
     expect(t).toContain('ElevenLabs');
     expect(t).toContain('ქალის ხმა');
-    expect(t).toContain('მიახლოებით');
+    expect(t).toContain('ტუჩებს ფრაზა-ფრაზა მოერგება'); // GG 10:15Z: "approximately" was not true; 10:22Z tap
+    expect(t).not.toContain('მიახლოებით');
     expect(t).toContain('მზა წამყვანი');
     expect(t).toContain('8 წამიან');
     expect(t).toContain('25 კრედიტი');

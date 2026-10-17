@@ -34,10 +34,13 @@ describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
     expect(avatarVoiceByElevenLabs('Welcome to MyAvatar.ge')).toBe(false);
     expect(avatarVoiceByElevenLabs('Добро пожаловать')).toBe(false);
   });
-  it('a voiced prompt names how long to talk and never the words; a full-length line talks the whole clip', () => {
+  // GG 10:15Z: "the lip sync does not match at all" — Veo had been told only how long to talk. Tap 10:22Z „Veo ლაპარაკობს".
+  it('a voiced prompt has Veo SAY the line in Latin letters at the voice\'s length, never in Georgian script', () => {
     const p = buildVeoAvatarPrompt({ speech: 'გადადი მაი ავატარ ჯიზე და დაიწყე', direction: 'იღიმის', voicedSec: 2.7 });
     expect(p).not.toContain('გადადი');
-    expect(p).not.toMatch(/in Georgian/);
+    expect(p).toContain('"gadadi mai avatar jize da daitsqe"');
+    expect(p).toMatch(/speak aloud .*lips moving in sync with the words/);
+    expect(p).toMatch(/no music/);
     expect(p).toContain('about 2.5 seconds');
     expect(p).toContain('იღიმის.');
     expect(buildVeoAvatarPrompt({ speech: 'x', direction: '', voicedSec: 7.9 })).toMatch(/whole clip/);
