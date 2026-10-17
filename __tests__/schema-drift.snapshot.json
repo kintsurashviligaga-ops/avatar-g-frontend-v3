@@ -125,6 +125,7 @@
       "agent_g_connect_codes",
       "agent_g_events",
       "agent_g_memory",
+      "agent_g_phone_otp_challenges",
       "agent_g_subtasks",
       "agent_g_tasks",
       "agent_g_user_prefs",
