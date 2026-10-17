@@ -52,7 +52,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(LIVE_FUNCTION_DECLARATIONS.map((d) => d.name)).toEqual([...LIVE_ACTION_NAMES]);
     expect(LIVE_ACTION_NAMES).toEqual([
       'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
-      'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'call_view', 'show_code', 'open_url', 'end_call',
+      'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'close_panel', 'call_view', 'show_code', 'open_url', 'end_call',
       'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g', 'extract_audio', 'agent_task',
       'music_studio',
     ]);
@@ -338,6 +338,9 @@ describe('validateLiveToolCall — the screen-control functions', () => {
     expect(err('scroll_chat', { to: 'left' })).toMatchObject({ field: 'to' });
     expect(ok('open_panel', { panel: 'credits' })).toEqual({ type: 'open_panel', panel: 'credits' });
     expect(err('open_panel', { panel: 'billing-admin' })).toMatchObject({ field: 'panel' });
+    expect(ok('close_panel', { what: 'Settings' })).toEqual({ type: 'close_panel', what: 'settings' });
+    expect(ok('close_panel', { what: 'tool' })).toEqual({ type: 'close_panel', what: 'tool' });
+    expect(err('close_panel', { what: 'credits' })).toMatchObject({ field: 'what', allowed: ['settings', 'tool'] });
     expect(ok('call_view', { view: 'screen' })).toEqual({ type: 'call_view', view: 'screen' });
     expect(err('call_view', { view: 'tiny' })).toMatchObject({ field: 'view' });
   });

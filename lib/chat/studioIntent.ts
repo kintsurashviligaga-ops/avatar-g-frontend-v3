@@ -79,6 +79,8 @@ const KA_IMPERATIVE_STEMS = [
   'დამიდუბლირ', 'დაადუბლირ', 'დამიმონტაჟ', 'დაამონტაჟ',
   'გააერთიან', 'გამიერთიან', 'შემიდგინ', 'შემიკრიბ',
   'მინდა', 'მჭირდებ', 'დაიწყ', 'გახსენ', 'გამიხსენ',
+  // Let's make / create: „გავაკეთოთ ავატარი" is how a Georgian speaker proposes the work (GG's plan 2026-10-17 11:28Z).
+  'გავაკეთ', 'შევქმნ',
 ].join('|');
 
 const IMPERATIVE_LEAD = new RegExp(

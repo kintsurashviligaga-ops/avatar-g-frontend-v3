@@ -20,7 +20,7 @@ describe('isConsentToStart — what counts as "yes, start it"', () => {
 
   it.each([
     'კი', 'ჰო', 'დიახ', 'კარგი', 'კარგია, დავწერე.', 'დაიწყე', 'კი, დაიწყე', 'ჰო გააკეთე ახლავე', 'კი გთხოვ', 'კი მინდა',
-    'კი, ვერტიკალურად', 'yes', 'ok, go ahead', 'yes please make it', 'sure, 16:9', 'да', 'да, давай', 'хорошо, запускай',
+    'კი, ვერტიკალურად', 'კი, გავაკეთოთ', 'შევქმნათ', 'yes', 'ok, go ahead', 'yes please make it', 'sure, 16:9', 'да', 'да, давай', 'хорошо, запускай',
   ])('„%s" agrees', (t) => {
     expect(isConsentToStart(t)).toBe(true);
   });

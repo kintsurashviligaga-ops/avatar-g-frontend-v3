@@ -236,17 +236,17 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
     expect(executeLiveToolCall(call('v', 'call_view', { view: 'screen' }), env).view).toBe('screen');
   });
 
-  test('chat_send / new_chat / scroll_chat / open_panel / stop act on the screen; no studio → ok:false', () => {
+  test('chat_send / new_chat / scroll_chat / open_panel / close_panel / stop act on the screen; no studio → ok:false', () => {
     const { env, actions } = replyingEnv({});
     for (const c of [
       call('1', 'chat_send', { text: 'write a plan' }), call('2', 'new_chat'), call('3', 'scroll_chat', { to: 'bottom' }),
-      call('4', 'open_panel', { panel: 'credits' }), call('5', 'stop', { what: 'all' }),
+      call('4', 'open_panel', { panel: 'credits' }), call('6', 'close_panel', { what: 'tool' }), call('5', 'stop', { what: 'all' }),
     ]) {
       const out = executeLiveToolCall(c, env);
       expect(out.response.response.ok).toBe(true);
       expect(out.screen).toBe(true);
     }
-    expect(actions.map((a) => a.type)).toEqual(['chat_send', 'new_chat', 'scroll_chat', 'open_panel', 'stop']);
+    expect(actions.map((a) => a.type)).toEqual(['chat_send', 'new_chat', 'scroll_chat', 'open_panel', 'close_panel', 'stop']);
     const none = replyingEnv({}, false);
     expect(executeLiveToolCall(call('n', 'new_chat'), none.env).response.response).toMatchObject({ ok: false, error: 'studio_unavailable' });
   });
