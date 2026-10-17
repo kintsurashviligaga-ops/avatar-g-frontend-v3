@@ -1,65 +1,52 @@
 # Production launch certification: continue from here
 
-Updated 2026-10-16 ~09:00Z by the certification thread ("Production E2E და გაშვების სერტიფიკაცია").
+Updated 2026-10-16 ~23:00Z by the certification thread ("Production E2E და გაშვების სერტიფიკაცია").
 
 | Field | Value |
 |---|---|
-| Current phase | PHASE 1 (signed-in part pending), PHASE 3 fixes in progress, GG's reports (image, avatar, music, tray) fixed on the branch; Veo avatar build next |
-| Branch | `claude/production-launch-certification-u2s9hy` (draft PR #80) |
-| Main SHA | `ffde345c` (PR #74 merge) |
-| Production SHA | `ffde345c`, `dpl_Jn9ucwhB5ND6STFgo1CPPVeswtLD`; rollback target `369acfc` `dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp` |
-| Last successful test | Jest: studio, jobs, studio-lib, chat, voice, avatar, api/voice, api/ai suites green (3824 tests); `tsc --noEmit` clean (7af9186) |
+| Current phase | Service sweep (GG 17:19Z): fixes deployed through PR #85; film last-frame chain in PR #86 waits on GG's card |
+| Branch | `claude/production-launch-certification-u2s9hy` (draft PR #86, restarted from main after #85) |
+| Main SHA | `46caaf70` (PR #85 squash merge) |
+| Production SHA | `46caaf7`, `dpl_8EmwacmhSYAPhYpTJP581s3fMAuT` (READY 22:07:58Z); rollback target `b53c2df` `dpl_9cHPM3Mm28BavJjkuD7UuvhK7vHW` |
+| Last successful test | PR #86 CI 7/7 green on `bf2b8361`; local jest 980 suites / 14,708 tests, `tsc` and `eslint` clean |
 
-## Completed fixes (on the branch, not deployed)
+## Deployed today (Production)
 
-| Commit | Fix | Evidence |
-|---|---|---|
-| 995dacd | PostHog only after "Accept all"; CSP allows the PostHog assets host | Production repro: flags call before consent; `components/analytics/PostHogProvider.consent.test.tsx` |
-| 995dacd | 404 page follows the URL locale | Production repro: English 404 on `/ka/...`; `components/NotFoundView.test.tsx` |
-| 995dacd | Worker tick: missing `service_jobs` table warns once instead of an error per tick | `app/api/app/worker/tick/route.test.ts` |
-| 995dacd | "speaks/dialogue" in an English brief no longer routes typed lines to a narrator | `lib/chat/filmVoiceover.commentary.test.ts` |
-| d31512f | D-C4: `freeFilm` only when the free slot was spent; `covered` for a stitch that needed no charge | `app/api/video/assemble/billing.test.ts` |
-| d8d58d7 | Agent G no longer claims an image is "processing"; a yes to its quoted offer shows the priced card; Live fills the tool with `prepare_generation`; phone sheet hides the chat bar and stops under a docked call | `lib/chat/offeredPrompt.test.ts`, `components/studio/imageHandoff.wiring.test.ts`, prompt tests |
-| d5dc748 | D-C3: a delivered film's durable row is completed at delivery, not after the lip-sync/graphics upgrades | `components/studio/filmRowSettle.wiring.test.ts` |
-| 59aa187 | vercel.json: this branch builds no Vercel Preview (4 Previews had been built before this; unused) | `vercel.json` |
-| f08b667 | Avatar: only the spoken words reach TTS (direction shown apart); a refused start (google_only) shows its reason, no 3x retry; own-photo card; My audio upload + record; Live fills avatar format/voice | `lib/avatar/scriptSplit.test.ts`, `lib/avatar/renderAttempts.test.ts`, `components/studio/avatarSend.wiring.test.ts` |
-| 7af9186 | Music: a dropped phone request waits for the job row; a stored non-Lyria engine pick is sent as Auto (the route refused every track from such a device); `unsupported` no longer reads as "try MP3 or WAV"; render tray close button | `lib/jobs/awaitDroppedJob.test.ts`, `components/studio/musicDrop.wiring.test.ts`, `components/studio/JobTray.test.tsx`, `lib/studio/musicEngines.test.ts` |
+| PR | Change |
+|---|---|
+| #80 | Device fixes; Veo avatar (admin only) |
+| #81 | Music video: one song under the clip |
+| #82 | Frame chaining, speech timing, colour match |
+| #83 | Per-scene storyboard frames, 429 backoff, `GEMINI_IMAGE_TRANSPORT` |
+| #84 | Storyboard frame 4+; an outside click keeps the board |
+| #85 | A chat yes starts image, music, film (storyboard), photoshoot, interior, product ad; Image is one panel; a Georgian film is voiced off camera by one ElevenLabs voice; honest daily-limit messages; design card balance fix |
+
+## Waiting on GG
+
+- PR #86 (each film scene starts from the previous clip's real last frame): card in the thread asks deploy + one paid
+  32 s 4-scene ad (~$4 Vertex + a little ElevenLabs). Not deployed; the joins are not proven on real Veo yet.
+- The ~$1 Veo avatar test clip (GG runs it).
+- Video Core public opening; public Lyria music (open to every signed-in user); dubbing and deck prices; BOG items.
+
+## Follow-ups built after PR #86 (local, to go up once #86 is settled)
+
+- Chat no longer offers closed services. Under `MEDIA_GOOGLE_ONLY` the platform prompt lists the talking avatar,
+  character swap, motion transfer and 3D model as not available yet and drops their prices; dubbing and decks stay closed
+  until their price is approved; remix says which edits still run. The admin (or everyone with `AVATAR_VEO_PUBLIC=1`) is
+  offered the Veo avatar at its Veo price. Tests: `lib/chat/platformPrompt.test.ts`, `app/api/chat/gemini/route.test.ts`.
+- Montage names the platform's daily AI limit and when it lifts (04:00 Tbilisi) instead of "montage failed", in the chat
+  card and the Video editing export. Tests: `lib/agent/media/montageWorker.test.ts`,
+  `app/api/v2/montage/render/route.test.ts`, `components/studio/montage/MontageStudio.test.tsx`.
 
 ## Open defects
 
-- D-C2: light/time-of-day jump between scenes (each scene's start frame is drawn separately).
-- Four leading black frames in a stitched film.
-- Georgian speech accuracy unverified (GG asked to listen to the ad film).
-- Avatar engine: paused in Production by the Google-only boundary (HeyGen). GG chose (09:13Z card) a Veo-based avatar; build it, then a paid test and price need GG's word.
-- Music is live for every signed-in user in Production (POST /api/ai/music, Google Lyria, credits charged, no admin gate); "Music off" only means the v1 plan card. Not a flag breach, but the memory note was wrong.
-- Music chat "MP3/WAV" message: root cause found in the error mapping; confirm with GG's next try.
-- Anonymous load: 401 console noise, Sentry envelopes.
-
-## Release state (2026-10-16)
-
-- PR #80 merged 09:54Z (54b5225) after GG's verified "გაშვება+ტესტი" tap; Production dpl_5RhwPKevnXdGiVN4Kz62SKBZBXFM.
-  Rollback target ffde345c (dpl_Jn9ucwhB5ND6STFgo1CPPVeswtLD). Veo avatar live for admins; GG makes the one ~$1 test clip.
-- PR #81 (draft, this branch restarted from main): GG's 09:38Z/09:54Z music-video and studio report.
-  | Commit | Change | Test |
-  |---|---|---|
-  | ef1e6f3 | One song: Veo clip audio dropped when a music video has its song (`keepsOnlySong`); Georgian/genre detection in the song prompt; natural colour (no night-neon from "dark", natural grade in prompts); stale typed line cleared after dispatch; render tray top right on desktop and foldable; VFX result shown once (in chat), VFX settings in a collapsible group | `lib/elevenlabs/musicPrompt.test.ts`, `lib/chat/musicVideoContinuity.test.ts`, `components/studio/JobTray.test.tsx`, `GenjutsuPanel.test.tsx`, `components/studio/filmTypedLine.wiring.test.ts` |
-  | b03af32 | Music video: performer keeps one outfit in every storyboard frame (`MUSIC_VIDEO_PERSON_CLAUSE`), waist-up anchor with full outfit | `app/api/film/storyboard/selfie.test.ts` |
-- Song order: a Georgian music video already builds its song BEFORE the scenes (`/api/audio/georgian-song`, OmniStudio send); a
-  non-Georgian one gets one ElevenLabs song in parallel; either way one track is the only bed. Real lip-sync to the song is
-  impossible with Google-only (HeyGen refused): decision card posted to GG (one song, lips not synced / add lip-sync provider).
-
-## Pending PRs
-
-- #81 (this branch, draft). Merge, deploy and any paid music-video test need GG's word and a cost card (Veo + song, within $10/day).
-- Docs PR #79 belongs to the Final Integration thread.
-
-## Owner-gated decisions
-
-- Lip-sync provider for music videos (card posted).
-- Merge and Production deploy of #81.
-- Any paid provider run (Veo, image, avatar), real BOG payment, migration, public flag, price change.
-- Close public Lyria music or keep it; Veo avatar public price.
+- Closing the window mid-render loses the render (and stops a chained film's later scenes).
+- A storyboard frame's outfit can drift from the reference.
+- Storyboard frames 2–3 empty and Live call stopping (GG's 17:19Z screenshots) were the spent daily limit; re-check
+  signed in once GG is at the Mac.
 
 ## Exact next action
 
-Drive PR #81 CI green; after GG's avatar test, check its output and logs; then a priced card for one paid music-video test.
+Read GG's answer on the PR #86 card (verify the tap with `fetch_thread`). On "ორივე": mark #86 ready, squash merge,
+watch the Production build, check health, then run the one paid ad film with GG signed in on Chrome for Testing and
+compare the joins. Then put the follow-ups above up as the next PR.
