@@ -29,7 +29,42 @@ const SYSTEM =
   'being be visible on screen? Count a person, people, a crowd, a singer or performer, a presenter, the user themselves ' +
   '("me", "my avatar"), hands or a body part of a person, and a theme that needs people (a love song, friendship, a family). ' +
   'Do NOT count animals (even talking or dressed ones), objects, vehicles, food, landscapes, buildings, nature or abstract ' +
-  'visuals. Reply with JSON only: {"person": true} or {"person": false}.';
+  'visuals. A voice alone (narration, a voice-over) puts nobody on screen. When the brief says that no people or no faces ' +
+  'are shown, the answer is false. Reply with JSON only: {"person": true} or {"person": false}.';
+
+/**
+ * The brief says in so many words that nobody (or no face) is on screen (KA / EN / RU). Read BEFORE the classifier, and a
+ * match is a "no person" with no model call.
+ *
+ * ⚠️ WHY: the classifier counts "hands or a body part", and the studio's brief carries the dialogue block ("CHARACTER
+ * DIALOGUE … spoken verbatim by the SAME character"), so it answered "person" for briefs that said the opposite. The anchor
+ * portrait was then drawn and every frame got its face: "კადრებში ადამიანის სახე არ ჩანს" came back with a face in every
+ * frame, and "კადრებში ადამიანები არ ჩანან" with a woman standing on an empty promenade (live E2E 2026-10-17, 17:13Z and
+ * 17:36Z). Only the user's own words are read (the studio's appended SCRIPT / DIALOGUE / LYRICS blocks are cut off, a
+ * script's "nobody answers" is not a framing rule), and "other people" ("სხვა ადამიანები არ ჩანან") is not "nobody".
+ */
+const NOBODY_ON_SCREEN: readonly RegExp[] = [
+  // Georgian: people / crowd / face … not seen ("ადამიანები არ ჩანან", "ადამიანის სახე არ ჩანს"), the same the other way
+  // round ("არ ჩანს არცერთი ადამიანი"), "without people" ("ადამიანების გარეშე") and "nobody is seen" ("არავინ ჩანს").
+  /(?<!სხვა\s)(?<!\p{L})(?:ადამიან|ხალხ|სახე)\p{L}*\s+(?:\p{L}+\s+)?(?:არ|ვერ)\s+(?:უნდა\s+)?(?:ჩან|ჩნდ|გამოჩნდ)/u,
+  /(?:არ|ვერ)\s+(?:ჩან|ჩნდ)\p{L}*\s+(?:არცერთი\s+|არც\s+ერთი\s+)?(?:ადამიან|ხალხ|სახე)/u,
+  /(?<!\p{L})(?:ადამიან|ხალხ|სახე)\p{L}*\s+გარეშე(?!\p{L})/u,
+  /(?<!\p{L})არავინ\s+(?:არ\s+)?(?:ჩან|ჩნდ)/u,
+  /\b(?:no|without)\s+(?:people|persons?|humans?|faces?)\b/i,
+  /\b(?:nobody|no\s+one)\s+(?:is\s+)?(?:visible|shown|seen|on\s+screen|in\s+(?:the\s+)?(?:frames?|shots?))\b/i,
+  /\b(?:people|persons|humans|faces?)\s+(?:are|is)\s+(?:not|never)\s+(?:visible|shown|seen)\b/i,
+  // Russian, with letter boundaries (\b does not see Cyrillic).
+  /(?<!\p{L})(?:без\s+(?:людей|лиц)|нет\s+(?:людей|лиц)|(?:людей|лиц)\s+(?:в\s+кадре\s+)?(?:нет|не\s+видно)|(?:люди|лица|лицо)\s+не\s+(?:видн|показ)|никого\s+(?:нет|не\s+видно))(?!\p{L})/iu,
+];
+
+/** The studio appends these blocks to the brief; they are not the user's framing (OmniStudio filmPrompt). */
+const APPENDED_BLOCK = /\n\n(?:SCRIPT —|CHARACTER DIALOGUE|LYRICS)/;
+
+/** Does the brief itself say nobody (or no face) is on screen? (Read before the classifier; a match skips it.) */
+export function briefSaysNobodyOnScreen(brief: string): boolean {
+  const own = String(brief || '').split(APPENDED_BLOCK)[0] ?? '';
+  return NOBODY_ON_SCREEN.some((re) => re.test(own));
+}
 
 /** A yes/no classifier's reply → true / false, or null when it says neither clearly. `key` names the JSON field. */
 function parseVerdict(raw: string | null | undefined, key: string): boolean | null {
@@ -55,6 +90,7 @@ export function parsePersonVerdict(raw: string | null | undefined): boolean | nu
 export async function storyFeaturesPerson(brief: string): Promise<boolean | null> {
   const text = String(brief || '').trim().slice(0, 1500);
   if (!text) return null;
+  if (briefSaysNobodyOnScreen(text)) return false;
   try {
     const raw = await llmText({ system: SYSTEM, user: text, json: true, temperature: 0, maxTokens: CLASSIFIER_MAX_TOKENS, timeoutMs: 8000 });
     return parsePersonVerdict(raw);

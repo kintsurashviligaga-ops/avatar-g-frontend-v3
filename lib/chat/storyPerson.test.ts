@@ -3,7 +3,7 @@ jest.mock('server-only', () => ({}));
 jest.mock('../ai/llmText', () => ({ llmText: jest.fn(async () => null) }));
 
 import { llmText } from '../ai/llmText';
-import { briefNamesSettingOrWardrobe, briefRestagesPhoto, parsePersonVerdict, storyFeaturesPerson } from './storyPerson';
+import { briefNamesSettingOrWardrobe, briefRestagesPhoto, briefSaysNobodyOnScreen, parsePersonVerdict, storyFeaturesPerson } from './storyPerson';
 
 const llm = llmText as jest.MockedFunction<typeof llmText>;
 
@@ -54,6 +54,62 @@ describe('storyFeaturesPerson', () => {
     llm.mockResolvedValueOnce('{"person": true}');
     await storyFeaturesPerson('x'.repeat(5000));
     expect(llm.mock.calls[0]![0].user.length).toBe(1500);
+  });
+});
+
+// The two briefs of the live E2E of 2026-10-17, as the studio sent them (the dialogue block appended): both said nobody is
+// on screen, both got the anchor portrait, and the frames got its face (17:13Z) and a woman on an empty promenade (17:36Z).
+const DIALOGUE = '\n\nCHARACTER DIALOGUE (spoken verbatim by the SAME character — never replace the speaker):\nბათუმი საღამოს ყველაზე ლამაზია.';
+const E2E_A =
+  'შექმენი 9:16 სარეკლამო ვიდეო, სამი სცენა. პირველი: ღამის თბილისი ზემოდან, ძველი ქალაქის შუქები ციმციმებს. მეორე: ხელი ' +
+  'ტელეფონს იჭერს, ეკრანზე ცისფერი წერტილებისგან შექმნილი ტალღა მოძრაობს. მესამე: თანამედროვე სტუდია, ლეპტოპზე ვიდეოს ' +
+  'მონტაჟი, თბილი შუქი. კადრებში ადამიანის სახე არ ჩანს.' + DIALOGUE;
+const E2E_B =
+  'შექმენი 9:16 ვიდეო, ორი სცენა. პირველი: ბათუმის ზღვა მზის ჩასვლისას, ტალღები ნაპირზე. მეორე: ბათუმის ბულვარი საღამოს, ' +
+  'ფანრები ინთება. კადრებში ადამიანები არ ჩანან.' + DIALOGUE + ' (with professional spoken voice-over narration)';
+
+describe('briefSaysNobodyOnScreen', () => {
+  it.each([
+    ['E2E film A (no face, a hand on a phone)', E2E_A],
+    ['E2E film B (no people)', E2E_B],
+    ['KA, the other way round', 'ღამის ქალაქი, არ ჩანს არცერთი ადამიანი'],
+    ['KA, without people', 'ცარიელი სანაპირო ადამიანების გარეშე'],
+    ['KA, nobody', 'ძველი ეზო, არავინ ჩანს'],
+    ['KA, must not show', 'ტყე დილით, ადამიანები არ უნდა ჩანდნენ'],
+    ['EN, no people', 'A neon street at night, no people'],
+    ['EN, without faces', 'hands typing on a laptop, without faces'],
+    ['EN, nobody in frame', 'an empty stadium, nobody in the frame'],
+    ['EN, faces not shown', 'a cooking video where faces are not shown'],
+    ['RU, без людей', 'ночной город без людей'],
+    ['RU, лиц не видно', 'руки на клавиатуре, лиц не видно'],
+  ])('%s → true', (_name, brief) => {
+    expect(briefSaysNobodyOnScreen(brief)).toBe(true);
+  });
+
+  it.each([
+    ['a person on screen', 'A woman walks along the Batumi boulevard at sunset'],
+    ['only the OTHER people are gone', 'მსახიობი ცარიელ ქუჩაზე, სხვა ადამიანები არ ჩანან'],
+    ['the advert brief: nothing but the actor', 'შექმენი 9:16 ფორმატის სარეკლამო ვიდეო: მსახიობი შავ ფონზე. კადრში არაფერი არ ჩანს მსახიობის გარდა, რომელიც ჟესტებით ლაპარაკობს.'],
+    ['EN, no one ELSE', 'a man alone on a pier, no one else around'],
+    ['EN, no other people', 'a dancer on an empty stage, no other people'],
+    ['a script line is not a framing rule', 'Make a film from the script.\n\nSCRIPT — the SINGLE source of truth:\nShe knocks. Nobody is seen at the window.'],
+    ['RU, a person', 'девушка поёт на сцене'],
+  ])('%s → false', (_name, brief) => {
+    expect(briefSaysNobodyOnScreen(brief)).toBe(false);
+  });
+
+  it('a brief that says so is "no person" with no model call, so no portrait is drawn', async () => {
+    llm.mockReset();
+    await expect(storyFeaturesPerson(E2E_A)).resolves.toBe(false);
+    await expect(storyFeaturesPerson(E2E_B)).resolves.toBe(false);
+    expect(llm).not.toHaveBeenCalled();
+  });
+
+  it('tells the classifier that a voice alone is nobody on screen', async () => {
+    llm.mockReset();
+    llm.mockResolvedValueOnce('{"person": true}');
+    await storyFeaturesPerson('a sunset over the sea');
+    expect(llm.mock.calls[0]![0].system).toMatch(/voice alone/);
   });
 });
 
