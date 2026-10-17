@@ -1072,9 +1072,15 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const scenesPlanned = matrix.sceneCount || matrix.clips.length;
     const finalContract = finalContractForCut(opts.finalDurationSec, clips.length, scenesPlanned);
     const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null, finalContract);
-    let assembled: { url: string; qa: FilmQaSummary | null } | null =
+    // The route's music report rides along: rebuilding this object as { url, qa } alone dropped it, so a film every
+    // music provider missed came back with no "no soundtrack" note (audit 2026-10-17, still true on 9f691d8).
+    let assembled: { url: string; qa: FilmQaSummary | null; scoreFallback?: string | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
-        ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
+        ? {
+          url: assembledRes.url,
+          qa: 'qa' in assembledRes ? assembledRes.qa : null,
+          ...('scoreFallback' in assembledRes && assembledRes.scoreFallback !== undefined ? { scoreFallback: assembledRes.scoreFallback } : {}),
+        }
         : null;
     // FIX 4 — keep the route's real reason (e.g. the insufficient-credits top-up
     // message) so a failure shows WHY in chat, not a generic "could not host".
@@ -1114,7 +1120,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       // A master RECOVERED from the durable tracker carries no score report, and `undefined` is the
       // honest value for that — it means "not reported", which the delivery notice treats differently
       // from null ("every provider missed"). Inventing null here would warn about a film that is fine.
-      scoreFallback: 'scoreFallback' in assembled ? (assembled.scoreFallback as string | null | undefined) : undefined,
+      scoreFallback: assembled.scoreFallback,
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
