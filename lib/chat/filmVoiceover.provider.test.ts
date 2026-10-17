@@ -22,7 +22,7 @@ jest.mock('../audio/azure-tts', () => ({
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => 'https://storage.example/tts.mp3') }));
 jest.mock('../elevenlabs/concurrency', () => ({ withElevenLabsSlot: jest.fn(<T,>(fn: () => Promise<T>) => fn()) }));
 
-import { elevenLabsRefusal, generateFilmSfx, textToHostedSpeech } from './filmVoiceover';
+import { SFX_TEXT_MAX, elevenLabsRefusal, generateFilmSfx, sfxPromptText, textToHostedSpeech } from './filmVoiceover';
 import { synthesizeGoogleTts } from '../audio/google-tts';
 import { synthesizeAzureGeorgian } from '../audio/azure-tts';
 import { uploadAndSign } from '../orchestrator/storage-adapter';
@@ -107,6 +107,19 @@ describe('a refusal is named in the log, never silent', () => {
     expect(await generateFilmSfx({ brief: 'rain on a pier', totalSec: 24, compositeId: 'c1' })).toBeNull();
     expect(warn.mock.calls.map((c) => String(c[0]))).toEqual(['[sfx] ElevenLabs sound generation refused: 400 invalid_api_key / api_key_id_used_as_api_key']);
     warn.mockRestore();
+  });
+
+  test('the sound-effects prompt stays within ElevenLabs’ 450 characters, whatever the brief (live E2E: 400 text_too_long)', async () => {
+    const long = 'Waves breaking on the Batumi promenade at dusk, gulls, a distant ferry horn, wind in the palms, footsteps on wet stone, '.repeat(4);
+    await generateFilmSfx({ brief: long, totalSec: 16, compositeId: 'c1' });
+    const sent = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as { text: string };
+    expect(sent.text.length).toBeLessThanOrEqual(SFX_TEXT_MAX);
+    expect(sent.text).toMatch(/^Cinematic, immersive sound design and ambience for this film scene: Waves breaking/);
+    expect(sent.text).toMatch(/No music, no melody, no speech\.$/);
+    // The old 280-character cut sent 461.
+    expect(`Cinematic, immersive sound design and ambience for this film scene: ${long.slice(0, 280)}. Layered environmental sound effects and foley that fit the location and action. No music, no melody, no speech.`.length).toBeGreaterThan(SFX_TEXT_MAX);
+    // A short brief reads exactly as before.
+    expect(sfxPromptText('rain on a pier')).toBe('Cinematic, immersive sound design and ambience for this film scene: rain on a pier. Layered environmental sound effects and foley that fit the location and action. No music, no melody, no speech.');
   });
 
   test('a body that is not ElevenLabs’ JSON, or a code that is not a plain token, logs the status alone', async () => {
