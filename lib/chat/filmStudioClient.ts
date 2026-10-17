@@ -216,6 +216,9 @@ export interface DriveFilmOptions {
   sceneMeta?: SceneMetaWire[];
   /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
   myVoiceNarration?: boolean;
+  /** The user asked for subtitles (the panel's switch, or the brief): the narration's words are burned at the stitch. Off by
+   *  default, the user's choice (the owner's word 2026-10-17). */
+  subtitles?: boolean;
   /** Verbatim dialogue from the video panel — spoken as the film's voice-over (as-is). */
   narrationScript?: string;
   /** Explicit narrator gender (video panel 👩/👨) → cloned female/male Georgian voice. */
@@ -655,6 +658,7 @@ export interface FilmFollowPlan {
   vocalGender?: 'male' | 'female' | 'duet';
   audioMix?: AudioMixOptions;
   finalDurationSec?: number;
+  subtitles?: boolean;
 }
 
 /** The stitch's share of the studio options (what FilmFollowPlan holds), as the dispatch sends it. */
@@ -670,6 +674,7 @@ export function filmFollowPlan(opts: DriveFilmOptions): FilmFollowPlan {
     ...(opts.vocalGender ? { vocalGender: opts.vocalGender } : {}),
     ...(opts.audioMix ? { audioMix: opts.audioMix } : {}),
     ...(typeof opts.finalDurationSec === 'number' && opts.finalDurationSec > 0 ? { finalDurationSec: opts.finalDurationSec } : {}),
+    ...(opts.subtitles ? { subtitles: true } : {}),
   };
 }
 
@@ -739,6 +744,8 @@ export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix,
     // Scene transition + L2/L6 audio knobs. globalRender wins over the route's
     // film-token default ('cut'), so the user's choices are honoured.
     ...(Object.keys(globalRender).length ? { globalRender } : {}),
+    // Subtitles only when the user asked: the route burns the narration's words as they were timed at the film's start.
+    ...(plan.subtitles ? { subtitles: true } : {}),
   };
 }
 

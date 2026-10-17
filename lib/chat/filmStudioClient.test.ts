@@ -11,6 +11,8 @@ import {
   filmProgressKey,
   asErrorText,
   describeDeclinedScenes,
+  filmFollowPlan,
+  filmAssembleBody,
   MIN_SALVAGE_CLIPS,
   type FilmStudioMatrix,
 } from './filmStudioClient';
@@ -58,6 +60,24 @@ describe('estimateFilmCostGel — honest retail forecast from the real matrix', 
   it('clamps invalid scene counts back to the default', () => {
     expect(estimateFilmCostGel(0)).toBeCloseTo(estimateFilmCostGel(FILM_SCENE_COUNT), 5);
     expect(estimateFilmCostGel(Number.NaN)).toBeCloseTo(estimateFilmCostGel(FILM_SCENE_COUNT), 5);
+  });
+});
+
+describe('subtitles are the user’s choice: they reach the stitch only when asked for', () => {
+  const landed = matrix({ sceneCount: 2, statusTokenId: 'tok-1', clips: [{ ordinal: 1, status: 'succeeded', url: 'c1' }, { ordinal: 2, status: 'succeeded', url: 'c2' }] });
+
+  it('off by default: no subtitles key in the plan or the stitch body', () => {
+    const plan = filmFollowPlan({ prompt: 'p' });
+    expect(plan).not.toHaveProperty('subtitles');
+    expect(filmAssembleBody(plan, landed, 'brief')).not.toHaveProperty('subtitles');
+  });
+
+  it('asked for: the plan the server keeps and the body the tab sends both carry it', () => {
+    const plan = filmFollowPlan({ prompt: 'p', subtitles: true });
+    expect(plan.subtitles).toBe(true);
+    const body = filmAssembleBody(plan, landed, 'brief');
+    expect(body.subtitles).toBe(true);
+    expect(body.filmTokenId).toBe('tok-1');
   });
 });
 

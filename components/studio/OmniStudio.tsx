@@ -51,6 +51,7 @@ import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
 import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { wantsSubtitles } from '@/lib/chat/filmVoiceCheck';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
 import { FilmQaBadge } from './FilmQaBadge';
@@ -1093,6 +1094,8 @@ interface FilmSnap {
   /** The pasted timecoded Master Script — read by the render, so it belongs to the submit moment like the rest. */
   videoMasterScript: string;
   videoMusic: boolean;
+  /** Subtitles of the narration, burned at the stitch: the user's choice, off by default (the owner's word 2026-10-17). */
+  videoSubtitles: boolean;
   videoNarratorGender: 'male' | 'female';
   videoMultiChar: boolean;
   videoDialogue: string;
@@ -2666,6 +2669,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [videoRequestedSec, setVideoRequestedSec] = useState<number | null>(null);
   // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
+  // Subtitles of the narration (documentary mode): off unless the user turns them on, or asks for them in the brief.
+  const [videoSubtitles, setVideoSubtitles] = useState(false);
   // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
   // 'musicvideo' → the song rules the master (narrator omitted, backing ducked −12 dB);
   // 'documentary' → narration-forward (voice on top, music ducked under it).
@@ -3897,7 +3902,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // edits the user makes afterwards. These locals shadow the same-named closure state for the body.
     const {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
-      videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
+      videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoSubtitles, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
       voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta, videoMasterScript, motionIntensity,
       videoTemplateId, finalDurationSec, storyboardApproval,
@@ -4058,6 +4063,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ...(!isMusicVideo && videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}),
         // Music can only be turned OFF in documentary mode; a music video always has its song.
         ...(!isMusicVideo && !videoMusic ? { noMusic: true } : {}),
+        // Subtitles of the narration only when the user asked: the panel's switch, or the brief in so many words.
+        ...(!isMusicVideo && (videoSubtitles || wantsSubtitles(filmPrompt)) ? { subtitles: true } : {}),
         // PHASE 2 L2/L6 — documentary 3-track master + smart ducking. The assembler only
         // applies it when the film actually has voice + music + sfx, so films missing any
         // keep their existing mix. Music videos use the song-master path (not this).
@@ -4412,7 +4419,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const finalDurationSec = requestedCut ? requestedCut.finalSec : quantizeToFrames(stitchOfRender);
     const snap: FilmSnap = {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
-      videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
+      videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoSubtitles, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
       voiceTone, videoModel, hasTrainedVoice, videoMasterScript,
       // The format follows THIS request's orientation (a retry replays the orientation it was planned with, whatever
@@ -4449,7 +4456,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
-  }, [renderFilm, submitJob, trackJobSettle, locale, videoRequestedSec, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, pickedVideoTemplateId]);
+  }, [renderFilm, submitJob, trackJobSettle, locale, videoRequestedSec, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoSubtitles, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, pickedVideoTemplateId]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -11218,6 +11225,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>{t.narration}</Chip>
                     {hasTrainedVoice && (
                       <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>{locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
+                    )}
+                    {/* Subtitles of the narration: the user's choice, off by default. */}
+                    {videoNarration && (
+                      <Chip active={videoSubtitles} onClick={() => setVideoSubtitles((v) => !v)}>{locale === 'en' ? 'Subtitles' : locale === 'ru' ? 'Субтитры' : 'სუბტიტრი'}</Chip>
                     )}
                   </div>
                   {/* Character voice — female/male cloned Georgian voice, or "Both"

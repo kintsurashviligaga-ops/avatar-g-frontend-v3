@@ -39,6 +39,9 @@ import { uploadAndSign, uploadBufferAndSign } from '@/lib/orchestrator/storage-a
 import { mp3DurationSec } from '@/lib/audio/mp3Duration';
 import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
 import { isLastingVoiceRefusal } from '@/lib/elevenlabs/account';
+import { transcribeWithScribe } from '@/lib/services/dubbing/elevenScribe';
+import type { CaptionWord } from '@/lib/pipeline/compositing/word-synced-captions';
+import { checkFilmVoice, type VoiceVerdict } from './filmVoiceCheck';
 
 /**
  * Strong-signal commentator / narration intent across Georgian, English and
@@ -380,12 +383,8 @@ const TTS_PART_CHARS = 600;
  */
 const NARRATION_MAX_CHARS = 2400;
 
-/**
- * End-to-end commentator leg: brief → narration → speech → hosted signed URL.
- * Always resolves; returns null (never throws) on any failure so the caller can
- * fall back to the music-only timeline with zero behavioural change.
- */
-export async function generateFilmVoiceover(opts: {
+/** What the narration leg is told: the brief, the length, and the voice the panel picked. */
+export interface FilmVoiceoverOptions {
   brief: string;
   totalSec: number;
   compositeId: string;
@@ -398,41 +397,107 @@ export async function generateFilmVoiceover(opts: {
   voiceLanguage?: VoiceLanguage | null;
   voicePersona?: VoicePersonaSel | null;
   voiceTone?: VoiceTone | null;
-}): Promise<string | null> {
-  try {
-    // v363 — sanitize the verbatim narration so production annotations (TC/SFX/overlay/scene headers) are
-    // never spoken. If sanitizing empties it (the field held only a shot-list), fall back to the LLM writer.
-    const sanitized = sanitizeSpokenText(opts.narrationScript).slice(0, NARRATION_MAX_CHARS);
-    const custom = sanitized.length >= 3 ? sanitized : null;
-    const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
-    if (!script) return null;
-    // PHASE 2 L1 — the Character Voice selector wins when present (lang+persona);
-    // else the explicit panel gender; else a brief-detected persona voice. The two
-    // legacy branches are untouched so existing renders behave identically.
-    let voiceId: string | null;
-    let ttsGender: TtsGender;
-    if (opts.voicePersona && opts.voiceLanguage) {
-      voiceId = resolveVoiceId(opts.voiceLanguage, opts.voicePersona) ?? pickGeorgianVoiceId(opts.brief);
-      ttsGender = personaToGender(opts.voicePersona) === 'male' ? 'MALE' : 'FEMALE';
-    } else if (opts.narratorGender) {
-      voiceId = pickNarratorVoiceId(opts.narratorGender);
-      ttsGender = opts.narratorGender === 'male' ? 'MALE' : 'FEMALE';
-    } else {
-      voiceId = pickGeorgianVoiceId(opts.brief);
-      ttsGender = genderForPersona(detectPersona(opts.brief));
-    }
+}
+
+/**
+ * The narration's words, and a way to read them aloud in the voice the panel picked (each call is one more read). null when
+ * there is nothing to say (no script, and the writer gave none).
+ */
+async function filmNarration(opts: FilmVoiceoverOptions): Promise<{ script: string; speak: () => Promise<{ base64: string; contentType: string } | null> } | null> {
+  // v363 — sanitize the verbatim narration so production annotations (TC/SFX/overlay/scene headers) are
+  // never spoken. If sanitizing empties it (the field held only a shot-list), fall back to the LLM writer.
+  const sanitized = sanitizeSpokenText(opts.narrationScript).slice(0, NARRATION_MAX_CHARS);
+  const custom = sanitized.length >= 3 ? sanitized : null;
+  const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
+  if (!script) return null;
+  // PHASE 2 L1 — the Character Voice selector wins when present (lang+persona);
+  // else the explicit panel gender; else a brief-detected persona voice. The two
+  // legacy branches are untouched so existing renders behave identically.
+  let voiceId: string | null;
+  let ttsGender: TtsGender;
+  if (opts.voicePersona && opts.voiceLanguage) {
+    voiceId = resolveVoiceId(opts.voiceLanguage, opts.voicePersona) ?? pickGeorgianVoiceId(opts.brief);
+    ttsGender = personaToGender(opts.voicePersona) === 'male' ? 'MALE' : 'FEMALE';
+  } else if (opts.narratorGender) {
+    voiceId = pickNarratorVoiceId(opts.narratorGender);
+    ttsGender = opts.narratorGender === 'male' ? 'MALE' : 'FEMALE';
+  } else {
+    voiceId = pickGeorgianVoiceId(opts.brief);
+    ttsGender = genderForPersona(detectPersona(opts.brief));
+  }
+  const settings = toneToVoiceSettings(opts.voiceTone);
+  const speak = async (): Promise<{ base64: string; contentType: string } | null> => {
     // One voice, read in order: each part is the same voice and settings, and the mp3 frames concatenate into one track
     // (the dialogue leg below joins its lines the same way). A part that fails fails the whole voice — never a hole.
-    const settings = toneToVoiceSettings(opts.voiceTone);
     const parts = await Promise.all(splitSpokenText(script, TTS_PART_CHARS).map((p) => synthesizeVoiceover(p, voiceId, ttsGender, settings)));
     if (!parts.length || parts.some((p) => !p)) return null;
     const read = parts as { base64: string; contentType: string }[];
-    const audio = read.length === 1
+    return read.length === 1
       ? read[0]!
       : { base64: Buffer.concat(read.map((p) => Buffer.from(p.base64, 'base64'))).toString('base64'), contentType: read[0]!.contentType };
+  };
+  return { script, speak };
+}
+
+/**
+ * End-to-end commentator leg: brief → narration → speech → hosted signed URL.
+ * Always resolves; returns null (never throws) on any failure so the caller can
+ * fall back to the music-only timeline with zero behavioural change.
+ */
+export async function generateFilmVoiceover(opts: FilmVoiceoverOptions): Promise<string | null> {
+  try {
+    const narration = await filmNarration(opts);
+    const audio = narration ? await narration.speak() : null;
+    if (!audio) return null;
     // 2-hour signed URL — comfortably outlives the render + assemble window.
     const path = `${opts.compositeId}/voiceover.mp3`;
     return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** A film narration that was listened to after it was read (./filmVoiceCheck). */
+export interface CheckedFilmVoiceover {
+  url: string;
+  /** How closely what Scribe heard matches the script (0–1); null = Scribe did not answer, the voice is unverified. */
+  score: number | null;
+  verdict: VoiceVerdict | null;
+  /** 1, or 2 when the first read did not say its words. */
+  reads: number;
+  /** The script's own words, timed from the audio: the film's subtitles, when the user asks for them. */
+  words: CaptionWord[] | null;
+}
+
+/**
+ * generateFilmVoiceover, listened to: Scribe (ElevenLabs speech-to-text) hears the read, and a read that does not say its
+ * words is read once more (./filmVoiceCheck checkFilmVoice). The better read is hosted, with its score and the script's
+ * words timed for subtitles. A verdict of 'fail' is the caller's to act on (a film whose voice is its only speech is not
+ * made with it). Never throws; null when no voice came back.
+ */
+export async function generateCheckedFilmVoiceover(opts: FilmVoiceoverOptions): Promise<CheckedFilmVoiceover | null> {
+  try {
+    const narration = await filmNarration(opts);
+    if (!narration) return null;
+    const languageCode = isGeorgianText(narration.script) ? 'ka' : null;
+    const outcome = await checkFilmVoice({
+      script: narration.script,
+      read: async () => {
+        const audio = await narration.speak();
+        if (!audio) return null;
+        const buf = Buffer.from(audio.base64, 'base64');
+        return { audio: { buf, contentType: audio.contentType }, seconds: mp3DurationSec(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)) };
+      },
+      listen: async ({ buf }) => {
+        // Bounded well under the dispatch's budget: a check that cannot answer leaves the voice unverified, never late.
+        const heard = await transcribeWithScribe(buf, { languageCode, diarize: false, timeoutMs: 30_000 });
+        return heard ? { text: heard.text, words: heard.words ?? [] } : null;
+      },
+    });
+    if (!outcome) return null;
+    const url = await uploadBufferAndSign('renders', `${opts.compositeId}/voiceover.mp3`, outcome.read.audio.buf, outcome.read.audio.contentType, 7200);
+    if (!url) return null;
+    return { url, score: outcome.score, verdict: outcome.verdict, reads: outcome.reads, words: outcome.words };
   } catch {
     return null;
   }

@@ -148,6 +148,7 @@ export function sanitizeFollowPlan(raw: unknown): FilmFollowPlan {
     ...(vocalGender ? { vocalGender } : {}),
     ...(audioMix && Object.keys(audioMix).length ? { audioMix } : {}),
     ...(finalDurationSec !== undefined ? { finalDurationSec } : {}),
+    ...(o.subtitles === true ? { subtitles: true } : {}),
   };
 }
 

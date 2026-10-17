@@ -39,14 +39,14 @@ import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { cutMasterToLength, isFinalCutRejected } from '@/lib/video/finalCut';
-import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
+import { type ElevenAlignment, wordsToAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt, filmSongSeconds } from '@/lib/elevenlabs/music';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling, isFilmOwnedByAnother } from '@/lib/chat/filmStatusStore';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling, isFilmOwnedByAnother, readFilmCaptions } from '@/lib/chat/filmStatusStore';
 import { decideFilmWaiver, settleFilmWaiver, FILM_WAIVER_LEASE_SEC } from '@/lib/chat/filmBilling';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
@@ -209,6 +209,10 @@ interface AssembleBody {
   /** STEP 2.3 — ElevenLabs with-timestamps alignment → word-synced burned captions on
    *  the CPU-FFmpeg master (fail-open; absent → no captions, path unchanged). */
   captionAlignment?: ElevenAlignment | null;
+  /** The user asked for subtitles on a chat film (the panel's switch, or the brief in so many words; never on by default — the
+   *  owner's word 2026-10-17). With filmTokenId and no captionAlignment, the narration's words as Scribe timed them at the film's
+   *  start (lib/chat/filmVoiceCheck, kept 24 h for the film's owner only) are burned. Nothing kept → no subtitles, path unchanged. */
+  subtitles?: boolean;
   /** v357 — the structured film script (scriptSchema shape). Threaded to the assembler where
    *  (under FILM_AUDIO_MIX_ENABLED) its explicit muteWindows drive the hard-mute post-pass.
    *  Validated fail-open inside the assembler; absent/malformed → the master is unchanged. */
@@ -391,6 +395,12 @@ async function assembleImpl(req: NextRequest) {
   // (Store unreachable → null → allowed; recordCompletedFilm still refuses to touch a row another user owns.)
   if (filmTokenId && isFilmOwnedByAnother(await getFilmStatus(filmTokenId), uid)) {
     return NextResponse.json({ error: 'film_not_owned', message: 'This film belongs to another account.' }, { status: 403 });
+  }
+  // Subtitles the user asked for: the film's own narration, timed when it was made. Read before the idempotency key below, so a
+  // captioned stitch never replays an uncaptioned one. Owner-bound (readFilmCaptions returns another user's words to no one).
+  if (body.subtitles === true && !body.captionAlignment && filmTokenId && uid) {
+    const words = await readFilmCaptions(filmTokenId, uid).catch(() => null);
+    if (words?.length) body.captionAlignment = wordsToAlignment(words);
   }
   const billedTokenForCheck = filmTokenId ?? billingToken;
   let filmAlreadyBilled = false;

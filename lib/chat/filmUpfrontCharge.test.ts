@@ -27,7 +27,7 @@ jest.mock('../ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: s
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => null) }));
 jest.mock('./promptAgent', () => ({ runPromptAgent: jest.fn(async () => null) }));
 jest.mock('./filmVoiceover', () => ({
-  generateFilmVoiceover: jest.fn(async () => null),
+  generateCheckedFilmVoiceover: jest.fn(async () => null),
   generateDialogueVoiceover: jest.fn(async () => null),
   generateDialogueStems: jest.fn(async () => null),
   dialogueStemsViable: jest.fn(() => false),
