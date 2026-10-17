@@ -132,6 +132,9 @@ export type VeoMedia =
 
 export type PersonGeneration = 'allow_all' | 'allow_adult' | 'dont_allow';
 
+/** Vertex `parameters.resizeMode` (image-to-video): fit a first frame of another shape by bars or by cropping. */
+export type VeoResizeMode = 'pad' | 'crop';
+
 /** A fully-specified clip request — what normalizeClipRequest() returns and the payload builders consume. */
 export interface VeoClipRequest {
   prompt: string;
@@ -151,6 +154,11 @@ export interface VeoClipRequest {
   referenceImages?: VeoMedia[];
   /** Vertex only, opt-in (VEO_NATIVE_CAMERA_CONTROL=1), requires startImage. */
   cameraControl?: VertexCameraControl;
+  /**
+   * Vertex only, requires startImage: how a first frame of another shape fits the aspect. Google's default is `pad`
+   * (black bars: the square avatar faces came out letterboxed in 9:16, 2026-10-17); `crop` fills the frame.
+   */
+  resizeMode?: VeoResizeMode;
   personGeneration?: PersonGeneration;
   /** Vertex only. Default false: we compile our own prompt, and enhancement defeats the seed. */
   enhancePrompt?: boolean;
@@ -163,7 +171,7 @@ export interface VeoClipRequest {
 
 /** One adjustment normalizeClipRequest made to fit the model's contract — logged and shown in the UI. */
 export interface ClipAdjustment {
-  field: 'durationSec' | 'resolution' | 'aspect' | 'referenceImages' | 'lastFrame' | 'cameraControl' | 'generateAudio' | 'tier' | 'prompt';
+  field: 'durationSec' | 'resolution' | 'aspect' | 'referenceImages' | 'lastFrame' | 'cameraControl' | 'resizeMode' | 'generateAudio' | 'tier' | 'prompt';
   from: unknown;
   to: unknown;
   reason: string;

@@ -138,6 +138,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const sub = await submitScene({
     prompt: buildVeoAvatarPrompt({ speech: r.speech, direction: r.direction, ...(voicedSec !== undefined ? { voicedSec } : {}) }),
     aspect: r.aspect, quality: 'fast', referenceUrls: [], startImageUrl: photo.url,
+    // The faces are square: Veo's default pads them into 9:16 with black bars above and below (the 2026-10-17 runs).
+    // Cropping keeps the centred face and fills the frame; 16:9 keeps the bars rather than cut off the head.
+    ...(r.aspect === '9:16' ? { resizeMode: 'crop' as const } : {}),
     negativePrompt: VEO_AVATAR_NEGATIVE, userId, sessionId: `avatar-${uuid}`,
   });
   if (!sub.ok) {

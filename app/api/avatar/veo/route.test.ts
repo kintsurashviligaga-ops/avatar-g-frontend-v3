@@ -80,11 +80,22 @@ test('admin, English words: row with _reserve, then the charge, then ONE Veo sub
   expect(sub.prompt).toContain('"Welcome to MyAvatar.ge"');
   expect(sub.prompt).toContain('smiles.');
   expect(sub.audio).toBeUndefined(); // Veo's own voice
+  expect(sub.resizeMode).toBe('crop'); // the square face fills 9:16, no black bars
   expect(speakAvatarLine).not.toHaveBeenCalled();
   // The status route can authorise the poll and its refund with the token it carries.
   const polled = genjutsuChargeForPolledId(j.jobId);
   expect(polled.charge?.u).toBe(UID);
   expect(parseVeoJobId(polled.jobId)?.voiced).toBe(false);
+});
+
+// The 2026-10-17 runs came back letterboxed: the square face was padded into 9:16. A landscape avatar keeps the pad, so
+// the head is never cut off.
+test('a landscape avatar keeps Veo\'s padding; only 9:16 crops the face to fill the frame', async () => {
+  const res = await POST(post({ ...EN_BODY, aspect: '16:9' }));
+  expect(res.status).toBe(202);
+  const sub = (submitScene as jest.Mock).mock.calls[0][0];
+  expect(sub.aspect).toBe('16:9');
+  expect(sub.resizeMode).toBeUndefined();
 });
 
 // GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა": a Georgian line is heard in ElevenLabs' voice. Tap 10:22Z „Veo ლაპარაკობს":

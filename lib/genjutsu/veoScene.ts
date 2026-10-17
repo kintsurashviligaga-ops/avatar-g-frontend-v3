@@ -25,7 +25,7 @@ import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabil
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
-import type { VeoAspect, VeoFailureReason, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
+import type { VeoAspect, VeoFailureReason, VeoResizeMode, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { stripBottomWatermark } from '@/lib/video/remixOps';
 import { SCENE_SECONDS } from './limits';
 import type { GenjutsuQuality } from './types';
@@ -64,6 +64,8 @@ export interface SceneSubmitInput {
    * takes one or the other). A signed URL of our own storage, like the references.
    */
   startImageUrl?: string;
+  /** How the first frame fits the aspect when its shape differs (Vertex; Google's default letterboxes it). */
+  resizeMode?: VeoResizeMode;
   /** Replaces the VFX scene's negative prompt (the avatar's own). */
   negativePrompt?: string;
   /**
@@ -99,6 +101,7 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
             durationSec: SCENE_SECONDS,
             generateAudio: audio,
             negativePrompt: input.negativePrompt ?? SCENE_NEGATIVE_PROMPT,
+            ...(input.startImageUrl && input.resizeMode ? { resizeMode: input.resizeMode } : {}),
             ...(input.startImageUrl ? { startImage: { kind: 'url' as const, url: input.startImageUrl } } : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
           },
           tier,

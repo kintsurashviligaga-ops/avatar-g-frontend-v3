@@ -28,8 +28,11 @@ export const VEO_AVATAR_SECONDS = 8;
 export const VEO_AVATAR_SPEECH_MAX = 200;
 export const VEO_AVATAR_DIRECTION_MAX = 300;
 
-/** What the avatar must not show. Nouns only (Veo's negative-prompt rule). */
-export const VEO_AVATAR_NEGATIVE = 'subtitles, captions, on-screen text, watermark, distorted face, extra people, face change, blurry';
+/**
+ * What the avatar must not show or play. Nouns only (Veo's negative-prompt rule). Music under its words is what the
+ * voice is told apart from (Production 2026-10-17 11:14Z: sound to 8 s read as speech), so it is asked away too.
+ */
+export const VEO_AVATAR_NEGATIVE = 'subtitles, captions, on-screen text, watermark, distorted face, extra people, face change, blurry, background music';
 
 /** Open to everyone only by the owner's flag (AVATAR_VEO_PUBLIC=1, a public flag: GG's word); otherwise admins only. */
 export function veoAvatarPublic(env: NodeJS.ProcessEnv = process.env): boolean {

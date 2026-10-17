@@ -115,9 +115,9 @@ test('nothing to lay or no length → null, nothing hosted', async () => {
 
 // GG's tap 2026-10-17 10:22Z „Veo ლაპარაკობს".
 test('a clip where Veo spoke: Veo\'s voice is gone and each phrase of the line lands where Veo\'s mouth said it', async () => {
-  // The ElevenLabs line: two phrases, 0.1–0.5 s and 0.8–1.9 s — earlier and shorter than Veo's.
+  // The ElevenLabs line: two phrases, 0.1–0.6 s and 0.8–1.9 s — earlier and shorter than Veo's.
   local[VOICE_URL] = join(dir, 'voice-two-phrases.mp3');
-  await run(BIN, ['-y', '-v', 'error', '-f', 'lavfi', '-i', `aevalsrc='if(between(t,0.1,0.5)+between(t,0.8,1.9),0.5*sin(2*PI*220*t),0)':s=44100:d=2.2`, '-b:a', '128k', local[VOICE_URL]!]);
+  await run(BIN, ['-y', '-v', 'error', '-f', 'lavfi', '-i', `aevalsrc='if(between(t,0.1,0.6)+between(t,0.8,1.9),0.5*sin(2*PI*220*t),0)':s=44100:d=2.2`, '-b:a', '128k', local[VOICE_URL]!]);
   const url = await muxVoiceOntoClip(SPOKEN_CLIP_URL, VOICE_URL, 8, { bucket: 'renders', path: 'avatar-veo/id/voiced.mp4' });
   expect(url).toBe('https://signed.test/avatar-veo/id/voiced.mp4');
   const file = await hostedFile();
@@ -133,6 +133,28 @@ test('a clip where Veo spoke: Veo\'s voice is gone and each phrase of the line l
   expect(spans[1]!.start).toBeLessThan(2.06);
   expect(spans[1]!.end).toBeGreaterThan(3.12);
   expect(spans[1]!.end).toBeLessThan(3.32);
+}, 60_000);
+
+// Production 2026-10-17 11:14Z: Veo's track held sound under and after its words to 8 s, so all of it read as speech
+// ("veo 0.44–8.00") and the line was slowed to 60% over it: the voice ran a second past the mouth (closed at 3.2 s).
+test('a clip with a bed under Veo\'s words and a laugh after them: the line lands on the words only, at a natural speed', async () => {
+  const BED_CLIP_URL = 'https://x.supabase.co/storage/v1/object/sign/renders/genjutsu/u/bed.mp4?token=b';
+  local[BED_CLIP_URL] = join(dir, 'bed.mp4');
+  // Words 0.44–3.2 s (-9 dB), a laugh 6.8–7.6 s, and a bed the whole 8 s 20 dB under the words.
+  await run(BIN, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=360x640:rate=24:duration=8',
+    '-f', 'lavfi', '-i', `aevalsrc='0.5*between(t,0.44,3.2)*sin(2*PI*300*t)+0.3*between(t,6.8,7.6)*sin(2*PI*400*t)+0.05*sin(2*PI*600*t)':s=48000:d=8`,
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', local[BED_CLIP_URL]!]);
+  // The ElevenLabs line: one phrase, 0.06–2.32 s, as in the Production run.
+  local[VOICE_URL] = join(dir, 'voice-one-phrase.mp3');
+  await run(BIN, ['-y', '-v', 'error', '-f', 'lavfi', '-i', `aevalsrc='if(between(t,0.06,2.32),0.5*sin(2*PI*220*t),0)':s=44100:d=2.6`, '-b:a', '128k', local[VOICE_URL]!]);
+  await muxVoiceOntoClip(BED_CLIP_URL, VOICE_URL, 8, { bucket: 'renders', path: 'avatar-veo/id/voiced.mp4' });
+  const spans = await spokenSpans(await hostedFile());
+  expect(spans).toHaveLength(1); // nothing laid over the laugh
+  expect(spans[0]!.start).toBeGreaterThan(0.35);
+  expect(spans[0]!.start).toBeLessThan(0.5);
+  // The words end at 3.2 s: the line ends with them, not a second later.
+  expect(spans[0]!.end).toBeGreaterThan(3.0);
+  expect(spans[0]!.end).toBeLessThan(3.35);
 }, 60_000);
 
 test('a clip with no voice of its own (the silent clips before): the line plays from its own start', async () => {
