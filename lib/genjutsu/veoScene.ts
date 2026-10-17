@@ -70,7 +70,8 @@ export interface SceneSubmitInput {
   negativePrompt?: string;
   /**
    * Veo's own sound; a silent clip is priced at Veo's silent rate. Default on — the voiced avatar keeps it too since
-   * 2026-10-17 10:22Z: Veo says the line so its mouth matches, and its voice is replaced on delivery (lib/avatar/speechMatch).
+   * 2026-10-17 10:22Z: Veo says the line so the face moves with it; on delivery sync.so redraws the mouth to the ElevenLabs
+   * line and the line is the only sound (lib/avatar/voicedClip, GG 12:29Z).
    */
   audio?: boolean;
 }

@@ -12,7 +12,8 @@ import { dirname, join, relative } from 'path';
 
 const ROOT = join(__dirname, '..');
 const NATIVE = { ffmpeg: 'ffmpeg-static', resvg: '@resvg/resvg-js' } as const;
-// …and the talking avatar's two routes (lib/avatar/voicedClip): the poll that lays its ElevenLabs line over the clip.
+// …and the talking avatar's two routes (lib/avatar/voicedClip): the poll that tails its ElevenLabs line and lays it under
+// sync.so's lip-synced picture.
 const SCOPES = ['app/api/agent', 'app/api/tasks', 'app/api/genjutsu/status', 'app/api/avatar/veo'];
 
 /** Routes that import a module reaching the package but never run it. Each needs a reason a reviewer can check. */
@@ -28,7 +29,7 @@ const NEVER_RUNS: Record<string, { ffmpeg?: string; resvg?: string }> = {
   '/api/agent/media/audio': { resvg: 'takes the sound out of a video; draws no text' },
   '/api/agent/media/analyze': { resvg: 'probes the file; draws nothing' },
   '/api/agent/run': { resvg: 'its tools quote; renders run in the edit and task workers' },
-  '/api/genjutsu/status': { resvg: 'crops a clip and lays the avatar line over it (lib/video/remixOps); draws no text' },
+  '/api/genjutsu/status': { resvg: 'crops a clip, tails the avatar line and lays it under the lip-synced picture (lib/video/remixOps); draws no text' },
   '/api/avatar/veo': {
     ffmpeg: 'speaks the line and submits the clip; ffmpeg runs where it is delivered (/api/genjutsu/status)',
     resvg: 'speaks the line and submits the clip; draws nothing',

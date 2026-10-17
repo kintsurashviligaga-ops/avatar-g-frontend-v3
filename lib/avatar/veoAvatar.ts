@@ -9,17 +9,18 @@
  *
  * ⚠️ A GEORGIAN LINE IS HEARD IN ELEVENLABS' VOICE, NOT VEO'S (GG's tap, 2026-10-17 07:54Z: „ElevenLabs ხმა"). Veo's own
  * Georgian is garbled (the 2026-10-16 film). Veo first rendered the person talking with NO sound and the line was laid
- * over it: the mouth moved on its own and did not match at all (GG, 10:15Z). Now Veo SAYS the line, in Latin letters,
- * so its mouth follows its own voice; that voice is replaced by the cloned native-Georgian line, fitted phrase by
- * phrase onto where Veo spoke (lib/avatar/speechMatch, on delivery in app/api/genjutsu/status) — GG's tap 10:22Z
- * „Veo ლაპარაკობს". English and Russian keep Veo's own voice.
+ * over it: the mouth moved on its own and did not match at all (GG, 10:15Z). Fitting the line onto the mouth Veo drew
+ * for it (10:22Z) still flapped the jaw without the shapes of the sounds and slowed the voice (GG, 12:29Z), so the mouth
+ * is now sync.so's: Veo SAYS the line in Latin letters, so the face moves like someone saying it, and on delivery
+ * sync.so redraws the mouth to the cloned native-Georgian line at its natural speed and length (lib/avatar/voicedClip,
+ * in app/api/genjutsu/status). English and Russian keep Veo's own voice.
  *
  * Pure: the route (app/api/avatar/veo) owns auth, money and the provider.
  */
 import { buildSpeechDirection } from '@/lib/chat/filmPipeline';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { isGeorgianText } from '@/lib/audio/tts-model';
-import { georgianToLatin } from './speechMatch';
+import { georgianToLatin } from './georgianLatin';
 import type { VeoAspect } from '@/lib/veo/types';
 
 /** Veo's longest clip; a start-image clip may be 4, 6 or 8 s. */
@@ -95,8 +96,8 @@ export function buildVeoAvatarPrompt({ speech, direction, voicedSec }: { speech:
   return [
     'The person in the first frame looks into the camera and talks to the viewer. Keep their face, hair, clothes and the background exactly as in the first frame; a steady medium close-up.',
     act.trim(),
-    // A line voiced by ElevenLabs: Veo says the same syllables in Latin letters, at the ElevenLabs line's length, so its
-    // mouth makes them; its own voice is then replaced (lib/avatar/speechMatch).
+    // A line voiced by ElevenLabs: Veo says the same syllables in Latin letters, at the ElevenLabs line's length, so the
+    // face moves like someone saying them; sync.so then redraws the mouth to the line (lib/avatar/voicedClip).
     voicedSec !== undefined ? dubbedLineDirection(speech, voicedSec) : buildSpeechDirection(speech),
   ].join(' ');
 }

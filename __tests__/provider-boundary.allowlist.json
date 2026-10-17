@@ -1,5 +1,5 @@
 {
-  "note": "Frozen 2026-10-09 from the tree: runtime files that still reach a non-Google, non-ElevenLabs AI vendor (R7). Only delete lines; __tests__/provider-boundary.test.ts fails on a new file and on a stale line.",
+  "note": "Frozen 2026-10-09 from the tree: runtime files that still reach a non-Google, non-ElevenLabs AI vendor (R7). Only delete lines; __tests__/provider-boundary.test.ts fails on a new file and on a stale line. syncso was added by the owner's word (GG, 2026-10-17 12:29Z: lip sync for the talking avatar, lib/providers/syncso.ts only).",
   "files": {
     "replicate": [
       "app/api/admin/provider-probe/route.ts",
@@ -134,6 +134,9 @@
     "pollinations": [],
     "tavily": [
       "lib/ai/webSearch.ts"
+    ],
+    "syncso": [
+      "lib/providers/syncso.ts"
     ]
   }
 }

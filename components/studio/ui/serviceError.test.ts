@@ -76,6 +76,15 @@ describe('describeServiceError', () => {
     expect(describeGenerationFailure({ success: false, error: 'voice_off' }, 'ru', 'x')).not.toMatch(/минуту/);
   });
 
+  it('a Georgian avatar without its lip sync switched on says so, charges nothing, and asks for no retry (GG 12:29Z)', () => {
+    const ka = describeGenerationFailure({ success: false, error: 'lipsync_unavailable', refunded: false }, 'ka', KA_FALLBACK);
+    expect(ka).toMatch(/ტუჩების სინქრონი/);
+    expect(ka).toMatch(/თანხა არ ჩამოგეჭრა/);
+    expect(ka).not.toMatch(/წუთში|სცადე/);
+    expect(describeGenerationFailure({ success: false, error: 'lipsync_unavailable' }, 'en', 'x')).toMatch(/Lip sync.*not charged/);
+    expect(describeGenerationFailure({ success: false, error: 'lipsync_unavailable' }, 'ru', 'x')).toMatch(/Списания не было/);
+  });
+
   it('matches the studio codes whole — a longer string that merely contains one is not claimed', () => {
     expect(describeServiceError('xyz_price_changed_log', 'en', 'fallback')).toBe('fallback');
   });

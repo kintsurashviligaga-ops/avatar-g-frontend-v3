@@ -11,11 +11,11 @@
  * price check → balance → the Georgian voice → daily slot → durable row with `_reserve` → RESERVE → submit once →
  * refund on any miss.
  *
- * ⚠️ A GEORGIAN LINE IS ELEVENLABS' VOICE (GG, 2026-10-17 07:54Z). It is made BEFORE anything is charged: no voice, or a
- * line longer than the clip, is an honest refusal with nothing taken. Veo then says the line in Latin letters (its
- * Georgian is garbled), so its mouth makes those syllables, and the status route replaces Veo's voice with the line,
- * fitted phrase by phrase onto where Veo spoke, before it is shown (lib/avatar/voicedClip, lib/avatar/speechMatch).
- * The `::v` in the signed job id is what tells it to.
+ * ⚠️ A GEORGIAN LINE IS ELEVENLABS' VOICE (GG, 2026-10-17 07:54Z), LIP-SYNCED BY SYNC.SO (GG, 12:29Z). It is made
+ * BEFORE anything is charged: no voice, no lip-sync key (SYNC_API_KEY, the owner's to enter), or a line longer than the
+ * clip, is an honest refusal with nothing taken. Veo says the line in Latin letters (its Georgian is garbled), so the
+ * face moves like someone saying it; the status route then has sync.so redraw the mouth to the line, at the line's
+ * natural speed and length, before it is shown (lib/avatar/voicedClip). The `::v` in the signed job id tells it to.
  *
  * GET answers whether this caller may use it, and at what price — the studio's card and panel print that price.
  */
@@ -37,6 +37,7 @@ import { reportError } from '@/lib/observability/report-error';
 import { createJob, failJob } from '@/lib/orchestrator/jobs';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { removeStorageObjects } from '@/lib/orchestrator/storage-adapter';
+import { syncConfigured } from '@/lib/providers/syncso';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { readJson } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -96,6 +97,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // The Georgian line, spoken now — before the slot, the row and the charge, so a miss costs the user nothing.
   const voiced = avatarVoiceByElevenLabs(r.speech);
   let voicedSec: number | undefined;
+  // No fallback to another lip-sync method (GG, 12:29Z: the Veo dub was not good enough): without the key, no avatar.
+  if (voiced && !syncConfigured()) return fail(503, 'lipsync_unavailable', { refunded: false });
   if (voiced) {
     const line = await speakAvatarLine({ text: r.speech, gender: r.voiceGender, path: avatarVoicePath(uuid) });
     if (!line) return fail(503, 'voice_unavailable', { refunded: false });
@@ -156,5 +159,5 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const refunded = await refund('no charge token');
     return fail(503, 'billing_unavailable', { refunded });
   }
-  return NextResponse.json({ success: true, op: 'avatar', jobId: withGenjutsuCharge(jobId, token), credits, engine: 'Veo', ...(voiced ? { voice: 'ElevenLabs' } : {}) }, { status: 202 });
+  return NextResponse.json({ success: true, op: 'avatar', jobId: withGenjutsuCharge(jobId, token), credits, engine: 'Veo', ...(voiced ? { voice: 'ElevenLabs', lipsync: 'sync.so' } : {}) }, { status: 202 });
 }
