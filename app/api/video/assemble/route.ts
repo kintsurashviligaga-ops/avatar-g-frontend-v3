@@ -32,6 +32,8 @@ import { markFreeOutput } from '@/lib/billing/entitlements';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { firstUnreadableOwnUrl } from '@/lib/security/callerMedia';
 import { actorOf } from '@/lib/video/assembleActor';
+import { saveFilmStitchRecord } from '@/lib/chat/filmSceneBook';
+import { keptStitchBody } from '@/lib/chat/filmSceneRedo';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
@@ -45,7 +47,7 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt, 
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
-import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
+import { evaluateRenderQuality, evaluateSceneClips, visionQaEnabled, type SceneQaEntry } from '@/lib/ai/visionQualityGate';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling, isFilmOwnedByAnother, readFilmCaptions } from '@/lib/chat/filmStatusStore';
 import { decideFilmWaiver, settleFilmWaiver, FILM_WAIVER_LEASE_SEC } from '@/lib/chat/filmBilling';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
@@ -148,6 +150,8 @@ const DISPATCH_TIMEOUT_MS = (() => {
 interface SegmentInput {
   url?: string;
   durationSec?: number;
+  /** The scene this clip is (1-based), so a scene redo can cut its new clip into the same place (lib/chat/filmSceneRedo). */
+  ordinal?: number;
   cameraMotion?: string | null;
   render?: Record<string, string | number | boolean>;
 }
@@ -245,6 +249,26 @@ export async function POST(req: NextRequest) {
       { status: 502 },
     );
   }
+}
+
+/**
+ * What a delivered film stitch was cut from (its scenes in order, its music and its choices), kept for the film's owner so one
+ * scene can later be rendered again and cut back into the same film (lib/chat/filmSceneRedo). Best-effort: without it a scene
+ * redo is simply not offered for this film.
+ */
+async function keepStitchRecord(filmTokenId: string, uid: string, segments: SegmentInput[], body: AssembleBody, musicUrl: string | null): Promise<void> {
+  const kept = segments
+    .filter((s): s is SegmentInput & { url: string } => typeof s.url === 'string' && s.url.length > 0)
+    .map((s) => ({
+      url: s.url,
+      ...(typeof s.durationSec === 'number' && Number.isFinite(s.durationSec) ? { durationSec: s.durationSec } : {}),
+      ...(typeof s.ordinal === 'number' && Number.isInteger(s.ordinal) && s.ordinal > 0 ? { ordinal: s.ordinal } : {}),
+    }));
+  await saveFilmStitchRecord({
+    v: 1, tokenId: filmTokenId, uid, segments: kept,
+    body: keptStitchBody(body as unknown as Record<string, unknown>),
+    musicUrl, at: Date.now(),
+  }).catch(() => false);
 }
 
 async function assembleImpl(req: NextRequest) {
@@ -416,7 +440,11 @@ async function assembleImpl(req: NextRequest) {
       cacheWaiver = false;
     }
   };
-  if (filmTokenId && uid && !(await isAdminUser(uid))) {
+  if (actor?.covered && filmTokenId && uid) {
+    // A scene redo (app/api/film/scene/redo/stitch) took the scene's price itself before it rendered; cutting its clip into the
+    // film is part of that price. It spends none of the film's stitch waivers, which stay for the user's own re-stitches.
+    filmAlreadyBilled = true;
+  } else if (filmTokenId && uid && !(await isAdminUser(uid))) {
     // ⚠️ A FILM'S PAYMENT IS DECIDED FROM DURABLE STORAGE, NOT FROM REDIS (Video Core v1.0 final hardening, Phase 1). The film's
     // quote was taken when it started; the ledger proves it, film_billing counts the stitches it covers, and a stitch leases
     // one for longer than this route can run. Redis is only a cache now: when it was down, expired or on another instance
@@ -748,6 +776,7 @@ async function assembleImpl(req: NextRequest) {
       // eslint-disable-next-line no-console
       console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: producedSomething && !scSkipBilling && !scFreeFilm }));
       if (filmTokenId) await recordFilmMaster(filmTokenId, master, null, uid).catch(() => {});
+      if (filmTokenId && uid && master) await keepStitchRecord(filmTokenId, uid, segments, body, musicUrl);
       // The waiver this attempt leased is spent only by a master it actually changed; an untouched clip hands it back.
       await settleWaiver(producedSomething);
       // `freeFilm` reports whether the slot was actually SPENT. When nothing was produced it was handed
@@ -1116,6 +1145,7 @@ async function assembleImpl(req: NextRequest) {
   const qa = (bag.qa as QaReport | null | undefined) ?? null;
   const qaSummary = qa ? { pass: qa.pass, score: qa.score, grade: qa.grade, issues: qa.issues.map((i) => i.code) } : null;
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary, uid);
+  if (filmTokenId && uid && resultUrl) await keepStitchRecord(filmTokenId, uid, segments, body, resolvedMusicUrl);
   // The film's waiver is spent only now, by a delivered master (a crash before this line leaves the lease to expire).
   await settleWaiver(Boolean(resultUrl));
 
@@ -1125,18 +1155,34 @@ async function assembleImpl(req: NextRequest) {
   // action:'rerender' SIGNAL (an actual poll-time scene re-render needs the film-token param overhaul
   // flagged in Phase 23/26). Wrapped so it can never throw into the assemble saga.
   let visionQa: Awaited<ReturnType<typeof evaluateRenderQuality>> | null = null;
+  // Audit item 3b (2026-10-17): each scene clip is graded too, so a weak scene is named by its number and can be
+  // shot again at the scene's price (/api/film/scene/redo). Same switch, same 45 s bound, run beside the master.
+  let sceneQa: SceneQaEntry[] = [];
   if (visionQaEnabled() && resultUrl) {
     try {
       // Bound the WHOLE gate (frame extraction + the bare-fetch Gemini call) so a stalled provider or
       // ffmpeg can never PIN this route until maxDuration — a hang is not an error. On the race timeout
       // we simply skip QA (null). The deliverable master is already stamped (recordFilmMaster above).
-      visionQa = await Promise.race([
-        evaluateRenderQuality({ videoUrl: resultUrl }),
-        new Promise<null>((r) => setTimeout(() => r(null), 45_000)),
+      const sceneClips = signedSegments.length > 1
+        ? signedSegments.map((s, i) => {
+          const o = segments[i]?.ordinal;
+          return { url: s.url, ordinal: typeof o === 'number' && Number.isInteger(o) && o >= 1 && o <= 24 ? o : i + 1 };
+        })
+        : [];
+      [visionQa, sceneQa] = await Promise.all([
+        Promise.race([
+          evaluateRenderQuality({ videoUrl: resultUrl }),
+          new Promise<null>((r) => setTimeout(() => r(null), 45_000)),
+        ]),
+        evaluateSceneClips(sceneClips, { deadlineMs: 45_000 }).catch(() => []),
       ]);
       if (visionQa?.ran) {
         // eslint-disable-next-line no-console
         console.info(`[assemble][vision-qa] grade=${visionQa.grade} score=${visionQa.score} action=${visionQa.action} issues=${visionQa.issues.map((i) => i.code).join(',') || 'none'}`);
+      }
+      for (const q of sceneQa) {
+        // eslint-disable-next-line no-console
+        console.info(`[assemble][vision-qa] scene=${q.ordinal} grade=${q.grade} score=${q.score} action=${q.action} issues=${q.issues.join(',') || 'none'}`);
       }
     } catch { /* fail-open — the vision gate can never break assembly */ }
   }
@@ -1178,5 +1224,5 @@ async function assembleImpl(req: NextRequest) {
 
   // Return the resolved song URL so the client can drive a HeyGen singer-performance
   // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
-  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), covered: Boolean(bag.covered), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
+  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), ...(sceneQa.length ? { sceneQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), covered: Boolean(bag.covered), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
 }

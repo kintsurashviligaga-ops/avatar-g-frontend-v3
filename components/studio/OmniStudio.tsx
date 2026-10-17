@@ -109,6 +109,7 @@ import { nextAvatarAttempt, startRefusal } from '@/lib/avatar/renderAttempts';
 import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob';
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { avatarRetakeText, filmRefineNote, improvedBrief, refineChange } from '@/lib/chat/refineRequest';
+import { quoteSceneRedo, runSceneRedo, sceneRedoAsk, sceneRedoOfferText, sceneRedoProgressText, sceneRedoResultText, weakScenesText } from '@/lib/chat/filmSceneRedoClient';
 import { type AvatarFace, avatarGenderFromText, avatarOfferText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
@@ -1154,6 +1155,11 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
+  /** The film's server token and scene count while its scene book lives (a day): ONE scene can be shot again at that scene's
+   *  price and cut back into this film (lib/chat/filmSceneRedoClient). Never persisted. */
+  filmTokenId?: string; filmSceneCount?: number;
+  /** Agent G's priced question before one scene of a film is shot again: Create (or a „კი") runs it. Never persisted. */
+  sceneRedoAsk?: { credits: number; ordinal: number; done?: boolean };
   /** A delivered film's own brief, length, frame and references: „უკეთესად გააკეთე" re-plans THIS film (lib/chat/refineRequest). Never persisted. */
   filmSpec?: FilmRefineSpec;
   /** A delivered talking avatar's order: „უკეთესად გააკეთე" offers another take of the same line. Never persisted. */
@@ -4135,7 +4141,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const landed = (res.matrix?.clips ?? [])
         .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url)
         .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
-      const remixCarry = landed.length >= 2 ? { filmClips: landed, filmPrompt, ...(res.matrix?.clipSec ? { filmClipSec: res.matrix.clipSec } : {}) } : {};
+      const remixCarry = {
+        ...(landed.length >= 2 ? { filmClips: landed, filmPrompt, ...(res.matrix?.clipSec ? { filmClipSec: res.matrix.clipSec } : {}) } : {}),
+        // One scene of it can be shot again and cut back in (the server keeps its scene book for a day).
+        ...(res.filmTokenId ? { filmTokenId: res.filmTokenId, filmSceneCount: res.matrix?.sceneCount || landed.length } : {}),
+      };
       // Every delivered film keeps what it was planned from, one clip or many: „უკეთესად გააკეთე" re-plans THIS film
       // (GG 2026-10-17: a 4 s film had no prompt on it, and the words were planned as a new film). Stored refs are
       // links only; the photos of the last request stay in lastVideoReqRef.
@@ -4160,6 +4170,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               : `⚠️ ${res.scenesRequested}-დან ${res.scenesRendered} სცენა დარენდერდა — ${shortBy} ვერ მოხერხდა და მონტაჟში ვერ მოხვდა.`)
         : '';
       const declinedNote = res.ok && res.masterUrl && shortBy > 0 ? (describeDeclinedScenes(res.matrix, locale) ?? '') : '';
+      // The per-scene vision check (FILM_VISION_QA) names a weak scene, and the command that shoots just that one again.
+      const weakNote = res.ok && res.masterUrl ? weakScenesText(res.sceneQa, Boolean(res.filmTokenId) && landed.length >= 2, locale) : '';
 
       // MUSIC VIDEO — the cinematic LTX montage is the PRIMARY result. We no longer relip the
       // whole master (sync/lipsync-2 warped the wide/aerial shots — "terrible"). Show the
@@ -4170,7 +4182,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
-            ? { role: 'assistant', text: [partialNote, declinedNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(res.qa ? { filmQa: res.qa } : {}), ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry, filmSpec }
+            ? { role: 'assistant', text: [partialNote, declinedNote, ...deliveryNotes, weakNote].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(res.qa ? { filmQa: res.qa } : {}), ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry, filmSpec }
             // The route's own reason when it gave one (a QC refusal, an unreadable soundtrack) after a short headline in the
             // user's language; "the service may be busy" only when the route said nothing a person can read.
             : { role: 'assistant', text: `⚠️ ${filmFailureText(res, locale, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(landed.length > 0 ? { sceneClips: landed } : {}), ...(bubbleId ? { id: bubbleId } : {}) })
@@ -6445,6 +6457,74 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setAttachments(job.attachments);
   }, [patchMsgById]);
 
+  // ── ONE SCENE OF A FILM, SHOT AGAIN (lib/chat/filmSceneRedoClient; server app/api/film/scene/redo) ─────────────────
+  // „შეცვალე მე-2 სცენა …" right after a film, or the film's edit box naming one scene: Agent G asks first, the scene's price
+  // on its card (GG 2026-10-17 14:26:55Z, „სცენის ფასი"); Create or a „კი" shoots that scene again from its own storyboard
+  // frame and cuts it into the same film. One bubble carries the question, the run and the new cut, which can be redone again.
+  const sceneRedoAsksRef = useRef(new Map<string, { tokenId: string; ordinal: number; note: string; credits: number; text: string; carry: Partial<Msg> }>());
+  const askSceneRedo = useCallback(async (src: Msg, ordinal: number, note: string, userText: string): Promise<boolean> => {
+    if (!src.filmTokenId) return false;
+    const quote = await quoteSceneRedo(src.filmTokenId, ordinal);
+    if (!quote) return false;
+    const id = `redo-${src.filmTokenId}-${ordinal}-${Date.now().toString(36)}`;
+    const carry: Partial<Msg> = {
+      filmTokenId: src.filmTokenId,
+      ...(src.filmSceneCount ? { filmSceneCount: src.filmSceneCount } : {}),
+      ...(src.filmClips ? { filmClips: src.filmClips } : {}),
+      ...(src.filmPrompt ? { filmPrompt: src.filmPrompt } : {}),
+      ...(src.filmClipSec ? { filmClipSec: src.filmClipSec } : {}),
+      ...(src.orientation ? { orientation: src.orientation } : {}),
+    };
+    sceneRedoAsksRef.current.set(id, { tokenId: src.filmTokenId, ordinal, note, credits: quote.price, text: userText, carry });
+    trackQuoteShown('video.scene-redo', quote.price, 'agent-card');
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text: userText },
+      { role: 'assistant', id, text: sceneRedoOfferText(ordinal, quote.price, locale), sceneRedoAsk: { credits: quote.price, ordinal } },
+    ]);
+    return true;
+  }, [locale]);
+  // Create on the price shown: the scene runs once (the question is spent before the request leaves), in the same bubble.
+  // It does not hold the chat: the bubble is patched by its id while the user goes on.
+  const confirmSceneRedo = useCallback(async (bubbleId: string) => {
+    const job = sceneRedoAsksRef.current.get(bubbleId);
+    if (!job) return;
+    sceneRedoAsksRef.current.delete(bubbleId);
+    trackGenerationConfirmed('video.scene-redo', 'agent-card', job.credits || null);
+    const say = (text: string) => patchMsgById(bubbleId, (m) => ({ ...m, text, sceneRedoAsk: undefined, genKind: 'video' }));
+    say(sceneRedoProgressText(job.ordinal, 'rendering', locale));
+    try {
+      const out = await runSceneRedo({
+        tokenId: job.tokenId, ordinal: job.ordinal, note: job.note, expectedPrice: job.credits,
+        onPhase: (phase) => say(sceneRedoProgressText(job.ordinal, phase, locale)),
+      });
+      const text = sceneRedoResultText(out, job.ordinal, locale);
+      if (out.kind === 'done') {
+        // The film's new cut, with the new scene in the clips a later remix or redo starts from.
+        const filmClips = job.carry.filmClips && out.clipUrl
+          ? [...job.carry.filmClips.filter((c) => c.ordinal !== job.ordinal), { ordinal: job.ordinal, url: out.clipUrl }].sort((a, b) => a.ordinal - b.ordinal)
+          : job.carry.filmClips;
+        patchMsgById(bubbleId, () => ({ role: 'assistant', id: bubbleId, text, videoUrl: out.masterUrl, genKind: 'video', ...job.carry, ...(filmClips ? { filmClips } : {}) }));
+        if (job.credits > 0) notifyCredit('video', { credits: job.credits, service: 'video.scene-redo' });
+      } else if (out.kind === 'clip_only') {
+        patchMsgById(bubbleId, () => ({ role: 'assistant', id: bubbleId, text, videoUrl: out.clipUrl, genKind: 'video', ...(job.carry.orientation ? { orientation: job.carry.orientation } : {}) }));
+        if (job.credits > 0) notifyCredit('video', { credits: job.credits, service: 'video.scene-redo' });
+      } else {
+        patchMsgById(bubbleId, (m) => ({ ...m, text, sceneRedoAsk: undefined, genKind: undefined, ...(out.kind === 'refused' && out.error === 'insufficient_credits' ? { topUp: true } : {}) }));
+        if (out.kind === 'failed' && out.refunded) { try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ } }
+      }
+    } catch {
+      patchMsgById(bubbleId, (m) => ({ ...m, text: `⚠️ ${t.videoFailed}`, sceneRedoAsk: undefined, genKind: undefined }));
+    }
+  }, [patchMsgById, locale, notifyCredit, t.videoFailed]);
+  // Edit: nothing runs; the words go back to the composer.
+  const editSceneRedo = useCallback((bubbleId: string) => {
+    const job = sceneRedoAsksRef.current.get(bubbleId);
+    sceneRedoAsksRef.current.delete(bubbleId);
+    patchMsgById(bubbleId, (m) => ({ ...m, sceneRedoAsk: m.sceneRedoAsk ? { ...m.sceneRedoAsk, done: true } : undefined }));
+    if (job) setInput(job.text);
+  }, [patchMsgById]);
+
   /**
    * ONE WAY TO OPEN THE MONTAGE EDITOR WITH THE USER'S OWN FILES — the typed chat and the Live call both use it, so a
    * spoken „montage these" is exactly a typed one. Every clip and photo goes on the timeline in the order given, the first
@@ -6569,6 +6649,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // it was planned as a brief of its own and a different film began). The film is planned again from its own brief,
     // length, frame and references, with the improvement asked for (lib/chat/refineRequest); the board is free and its
     // Generate is the charge. A picture or an avatar gets Agent G's card at its price. Anything else goes on as before.
+    // „შეცვალე მე-2 სცენა …" RIGHT AFTER A FILM is ONE scene of that film shot again at the scene's price, not a new film
+    // (lib/chat/filmSceneRedoClient). Agent G asks with the price first. A film past its day, or words that name no single
+    // scene, go on as before.
+    if (text && !opts?.confirmed && !opts?.explicit && !opts?.fromLive && attachments.length === 0 && (mode === 'chat' || mode === 'video')) {
+      let lastFilm: Msg | undefined;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i]!;
+        if (m.role === 'assistant' && !m.notice) { lastFilm = m; break; }
+      }
+      const ask = lastFilm?.filmTokenId && lastFilm.videoUrl ? sceneRedoAsk(text, lastFilm.filmSceneCount ?? lastFilm.filmClips?.length ?? 0) : null;
+      if (lastFilm && ask && (await askSceneRedo(lastFilm, ask.ordinal, ask.note, text))) {
+        persistChatTurn('user', text);
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        return;
+      }
+    }
     const refine = text && !opts?.confirmed && !opts?.explicit && !opts?.fromLive && attachments.length === 0 ? refineChange(text) : null;
     if (refine) {
       let lastIdx = -1;
@@ -7664,7 +7760,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     await streamChat([...messages, userMsg]);
-  }, [productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
+  }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -9402,6 +9498,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // 2) The priced question before a charged edit of an attached video, and Agent G's plan cards: Create / Start.
     if (last.id && mode === 'chat') {
       if (last.remixAsk && !last.remixAsk.done && (!said || said === 'video')) { void confirmChatRemix(last.id); return true; }
+      if (last.sceneRedoAsk && !last.sceneRedoAsk.done && (!said || said === 'video')) { void confirmSceneRedo(last.id); return true; }
       if (last.montage?.phase === 'quoted') { void confirmAgentMontage(last.id); return true; }
       if (last.audioJob?.phase === 'quoted') { void confirmAgentAudio(last.id); return true; }
       if (last.editJob?.phase === 'quoted') { void confirmAgentEdit(last.id); return true; }
@@ -9921,7 +10018,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         </div>
                         {/* P10 — preview which scenes change vs reuse, then Confirm/Cancel. */}
                         {remixPreviewIdx === i && (() => {
-                          const totalScenes = m.filmClips!.length;
+                          const totalScenes = m.filmSceneCount ?? m.filmClips!.length;
                           const change = parseRemixScenes(remixDrafts[i] ?? '', totalScenes);
                           const reuse = Array.from({ length: totalScenes }, (_, k) => k + 1).filter((n) => !change.includes(n));
                           return (
@@ -9935,7 +10032,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                                 <p className="text-app-muted">{locale === 'en' ? 'The AI will pick the scene(s) to re-render from your edit; the rest are reused.' : locale === 'ru' ? 'ИИ выберет сцену(ы) для перерисовки; остальные переиспользуются.' : 'AI აირჩევს გადასარენდერებელ სცენას; დანარჩენი ხელახლა გამოიყენება.'}</p>
                               )}
                               <div className="flex items-center gap-1.5">
-                                <button type="button" onClick={() => { setRemixPreviewIdx(null); void remixFilm(i); }}
+                                <button type="button" onClick={() => {
+                                  setRemixPreviewIdx(null);
+                                  // One scene of a film the server still keeps: shot again at that scene's price (Agent G asks first).
+                                  const draft = (remixDrafts[i] ?? '').trim();
+                                  if (m.filmTokenId && change.length === 1 && draft) {
+                                    void askSceneRedo(m, change[0]!, draft, draft).then((asked) => {
+                                      if (asked) setRemixDrafts((d) => ({ ...d, [i]: '' }));
+                                      else void remixFilm(i);
+                                    });
+                                    return;
+                                  }
+                                  void remixFilm(i);
+                                }}
                                   className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 active:scale-[0.98]">
                                   <Check size={13} /> {locale === 'en' ? 'Confirm' : locale === 'ru' ? 'Подтвердить' : 'დადასტურება'}
                                 </button>
@@ -10533,10 +10642,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.remixAsk && m.id && (
                   <AgentGCard card={{ kind: 'confirm', target: 'video', madeIn: 'chat', prompt: '', credits: m.remixAsk.credits, done: m.remixAsk.done }} locale={locale} stale={mode !== 'chat'} onConfirm={() => { void confirmChatRemix(m.id!); }} onEdit={() => editChatRemix(m.id!)} />
                 )}
+                {m.role === 'assistant' && m.sceneRedoAsk && m.id && (
+                  <AgentGCard card={{ kind: 'confirm', target: 'video', madeIn: 'chat', prompt: '', credits: m.sceneRedoAsk.credits, done: m.sceneRedoAsk.done }} locale={locale} stale={false} onConfirm={() => { void confirmSceneRedo(m.id!); }} onEdit={() => editSceneRedo(m.id!)} />
+                )}
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

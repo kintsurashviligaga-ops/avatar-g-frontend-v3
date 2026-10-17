@@ -48,6 +48,8 @@ import { encodeFilmRef } from './filmTaskRef';
 import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid, getFilmStartReplay, recordFilmStartReplay, recordFilmCaptions } from './filmStatusStore';
 import { filmChargeRef as filmChargeRefFor, recordFilmBilling, recordFilmScenes, filmStartKey } from './filmBilling';
 import { filmSceneShares } from './filmSceneRefund';
+import { saveFilmSceneBook } from './filmSceneBook';
+import type { FilmBookScene } from './filmSceneRedo';
 import { claimPaidStartKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { generateCheckedFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type CheckedFilmVoiceover, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
@@ -1343,6 +1345,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   let clips: FilmClipResult[];
   // True once the later scenes wait on the sequential chain (lib/chat/filmChain): the token says so, and the poll advances it.
   let filmChained = false;
+  // Every scene's own clip request and storyboard frame, kept for a scene redo (lib/chat/filmSceneRedo) once the film is out.
+  let bookScenes: FilmBookScene[] | null = null;
   try {
     // PREFER approved storyboard frames (from /api/film/storyboard) as the
     // per-scene identity anchors: the user reviewed them, so the render MATCHES
@@ -1454,6 +1458,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         }
       }
     }
+    bookScenes = plan.scenes.map((scene, i) => {
+      const req = buildFilmClipRequest(scene, plan.shared);
+      return { ordinal: scene.ordinal, seed: scene.seed, userPrompt: req.userPrompt, selectedOptions: req.selectedOptions, storyboardFrame: sceneFrames[i] ?? null };
+    });
     if (chained) {
       clips = chained;
       filmChained = true;
@@ -1711,6 +1719,28 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // async refund, as before.
     const shares = filmSceneShares(clips, perSceneCredits(filmQuoteTaken, Math.max(1, plan.scenes.length)));
     if (shares.length > 0) await recordFilmScenes(input.userId, filmTokenId, shares).catch(() => 'unavailable');
+  }
+  // The film's scene book: what one scene costs and how each was asked for, so the owner can have ONE scene rendered again
+  // at that scene's price and cut back into this film (owner's tap 2026-10-17 14:26:55Z, "სცენის ფასი"). Fail-open: without
+  // it a redo is simply not offered for this film.
+  if (input.userId && input.userId !== 'anonymous' && bookScenes) {
+    await saveFilmSceneBook({
+      v: 1,
+      tokenId: filmTokenId,
+      uid: input.userId,
+      sessionId: input.sessionId,
+      locale: input.locale,
+      compositeId,
+      videoModel: effectiveVideoModel ?? null,
+      forecast: { wholesaleGel: clipForecast.wholesaleGel, retailGel: clipForecast.retailGel },
+      scenePrice: videoCredits({
+        seconds: grid.clipSec,
+        quality: plan.shared.veo?.tier ?? STUDIO_DEFAULT_VEO_TIER,
+        mode: input.metadata?.musicVideoMode ? 'musicvideo' : 'documentary',
+      }),
+      scenes: bookScenes,
+      createdAt: Date.now(),
+    }).catch(() => false);
   }
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so

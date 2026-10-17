@@ -13,6 +13,11 @@ export interface AssembleActor {
   uid: string;
   /** How long the route may run for this request (the sweep's own budget, not the route's 600 s). */
   budgetMs: number;
+  /**
+   * The stitch is already paid for by its caller: a scene redo charged the scene's price itself (lib/chat/filmSceneRedo).
+   * It uses none of the film's stitch waivers and bills nothing.
+   */
+  covered?: boolean;
 }
 
 const actors = new WeakMap<Request, AssembleActor>();
