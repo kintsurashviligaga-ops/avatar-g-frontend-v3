@@ -156,8 +156,14 @@ export function restitchSegments(
 
 /**
  * The stitch body that cuts the film again: the last stitch's choices with the new segments, the same music (never
- * composed again), and the film's token. A film that gained a scene drops its final-length contract, which was cut for
- * the scenes it had.
+ * composed again), the film's brief and the film's token. A film that gained a scene drops its final-length contract,
+ * which was cut for the scenes it had.
+ *
+ * ⚠️ THE BRIEF STAYS WITH THE MUSIC. The assembler reads `scorePrompt` for far more than a score: the colour grade (a
+ * night brief → the night LUT), music-video mode and its lower-third, a commercial's overlay, and the Library row's
+ * prompt. It was dropped whenever the music was kept, so the redone film re-graded the scenes the user kept (live E2E
+ * 2026-10-17: "ღამის თბილისი" came back in the default teal-orange instead of the night grade). A recorded `musicUrl`
+ * wins over composing in the assembler, so the brief never scores the film again.
  */
 export function restitchBody(record: FilmStitchRecord, segments: StitchSegment[], inserted: boolean): Record<string, unknown> {
   const { scorePrompt: _score, finalDurationSec, segments: _old, filmTokenId: _t, musicUrl: _m, ...rest } = record.body;
@@ -165,7 +171,8 @@ export function restitchBody(record: FilmStitchRecord, segments: StitchSegment[]
     ...rest,
     segments,
     filmTokenId: record.tokenId,
-    ...(record.musicUrl ? { musicUrl: record.musicUrl } : typeof _score === 'string' && _score ? { scorePrompt: _score } : {}),
+    ...(typeof _score === 'string' && _score ? { scorePrompt: _score } : {}),
+    ...(record.musicUrl ? { musicUrl: record.musicUrl } : {}),
     ...(!inserted && typeof finalDurationSec === 'number' ? { finalDurationSec } : {}),
   };
 }
