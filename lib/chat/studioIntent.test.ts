@@ -18,6 +18,12 @@ describe('the four services that had no sentence path at all', () => {
     expect(detectStudioIntent('გააკეთე 3D მოდელი')?.service).toBe('model3d');
   });
 
+  it('„let\'s make": „გავაკეთოთ ავატარი" / „შევქმნათ პრეზენტაცია" (GG\'s plan 2026-10-17 11:28Z)', () => {
+    expect(detectStudioIntent('გავაკეთოთ ავატარი')?.service).toBe('avatar');
+    expect(detectStudioIntent('შევქმნათ პრეზენტაცია ხელოვნურ ინტელექტზე')?.service).toBe('presentation');
+    expect(detectStudioIntent('რა გავაკეთოთ ავატარზე?')).toBeNull();
+  });
+
   it('routes Georgian object-first, verb-last requests (Master Task §52)', () => {
     const dub = detectStudioIntent('ამ ვიდეოს ხმა ქართულად გადამითარგმნე.');
     expect(dub?.service).toBe('dubbing');

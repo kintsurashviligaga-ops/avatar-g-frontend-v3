@@ -47,6 +47,9 @@ export const LIVE_ACTION_NAMES = [
   'stop',
   'scroll_chat',
   'open_panel',
+  // 2026-10-17 (GG: „ჩაკეტე პანელი" — open, close … the panels by voice at any moment, in one chat): the close that was
+  // missing. The same command a typed „close the panel" is (lib/chat/panelCommand); the conversation stays the same.
+  'close_panel',
   'call_view',
   'show_code',
   'open_url',
@@ -98,6 +101,10 @@ export type LiveChatModel = (typeof LIVE_CHAT_MODELS)[number];
 /** Panels a call may open. `settings` = the open studio's own settings panel. */
 export const LIVE_PANELS = ['settings', 'credits', 'persona', 'search', 'history'] as const;
 export type LivePanel = (typeof LIVE_PANELS)[number];
+
+/** What close_panel closes: `settings` = the open studio's settings (the studio stays); `tool` = the studio, back to the chat. */
+export const LIVE_CLOSE_TARGETS = ['settings', 'tool'] as const;
+export type LiveCloseTarget = (typeof LIVE_CLOSE_TARGETS)[number];
 
 export const LIVE_STOP_TARGETS = ['reply', 'generation', 'all'] as const;
 export type LiveStopTarget = (typeof LIVE_STOP_TARGETS)[number];
@@ -393,6 +400,16 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
     },
   },
   {
+    name: 'close_panel',
+    description: 'Close something on screen: settings (the open studio\'s settings panel; the studio stays open) or tool (close '
+      + 'the open studio and go back to the chat, in the same conversation). Use it when the user says close, hide or exit.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { what: { type: 'STRING', enum: [...LIVE_CLOSE_TARGETS], description: 'What to close.' } },
+      required: ['what'],
+    },
+  },
+  {
     name: 'call_view',
     description: 'Change how this call is shown: "screen" shrinks the call into a slim bar so the user sees the app while you '
       + 'talk; "full" brings the full call screen back. The call itself continues either way.',
@@ -652,7 +669,7 @@ export const LIVE_ACTIONS_RULE = [
   'To open a website, a video or search results in the browser, call open_url, e.g. with',
   'https://www.google.com/search?q=... or https://www.youtube.com/results?search_query=...; it shows a link the user taps.',
   'open_studio, new_chat, set_chat_model, stop, scroll_chat,',
-  'open_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
+  'open_panel, close_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
   'You also have hands on the screen: when the user says click, press, open, choose, switch or type, do it with click and',
   'type_text, using the control ids get_screen_state lists (call it first; ids change when the screen changes). They never',
   'spend credits, pay, delete or sign out — those are refused, and a generation is prepared with prepare_generation and',
@@ -712,6 +729,7 @@ export interface SetChatModelAction { type: 'set_chat_model'; model: LiveChatMod
 export interface StopAction { type: 'stop'; what: LiveStopTarget }
 export interface ScrollChatAction { type: 'scroll_chat'; to: LiveScrollTarget }
 export interface OpenPanelAction { type: 'open_panel'; panel: LivePanel }
+export interface ClosePanelAction { type: 'close_panel'; what: LiveCloseTarget }
 export interface CallViewAction { type: 'call_view'; view: LiveCallView }
 /** A link the user taps to open in a new tab: `url` is a normalised public http(s) address (see validateLiveUrl). */
 export interface OpenUrlAction { type: 'open_url'; url: string; title?: string }
@@ -770,7 +788,7 @@ export interface MusicStudioAction {
 }
 export type LiveAction =
   | GetScreenStateAction | PrepareGenerationAction | UpdateSettingsAction | StartGenerationAction | OpenStudioAction
-  | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | CallViewAction
+  | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | ClosePanelAction | CallViewAction
   | ShowCodeAction | OpenUrlAction | EndCallAction
   | ClickAction | TypeTextAction | DownloadAction | UseResultAction | MontageAction | ReadWebpageAction | AskAgentGAction
   | ExtractAudioAction | AgentTaskAction | MusicStudioAction;
@@ -1228,6 +1246,12 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     const panel = isObj(args) ? asEnum(own(args, 'panel'), LIVE_PANELS) : null;
     if (!panel) return fail('invalid_args', 'Unknown panel.', 'panel', LIVE_PANELS);
     return { ok: true, action: { type: 'open_panel', panel } };
+  },
+
+  close_panel(args) {
+    const what = isObj(args) ? asEnum(own(args, 'what'), LIVE_CLOSE_TARGETS) : null;
+    if (!what) return fail('invalid_args', 'Say what to close: settings or tool.', 'what', LIVE_CLOSE_TARGETS);
+    return { ok: true, action: { type: 'close_panel', what } };
   },
 
   call_view(args) {

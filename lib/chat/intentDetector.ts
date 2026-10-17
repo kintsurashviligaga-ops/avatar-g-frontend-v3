@@ -271,9 +271,10 @@ export function detectIntent(
 
 /** Generate verbs as stems: the imperative („დამიხატე"), the formal plural („დამიხატეთ") and the form after „შეგიძლია"
  *  („დამიხატო", „შემიქმნა") all share them. */
-const KA_GEN_VERB = 'გამიკეთ|გააკეთ|შემიქმენ|შემიქმნ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|დამიმზად|მიმზად|მომიმზად|მოამზად|გადამიღ|გადაიღ|შემიდგინ|დამიწერ|დაწერ|შემითხზ|დამირთ|დამიკომპონ';
+// „გავაკეთოთ" / „შევქმნათ" (let's make / create; GG's plan 2026-10-17 11:28Z): the first-person plural of the same order.
+const KA_GEN_VERB = 'გამიკეთ|გააკეთ|გავაკეთ|შევქმნ|შემიქმენ|შემიქმნ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|დამიმზად|მიმზად|მომიმზად|მოამზად|გადამიღ|გადაიღ|შემიდგინ|დამიწერ|დაწერ|შემითხზ|დამირთ|დამიკომპონ';
 /** The make-verbs a video is asked with. Not the writing verbs: „დამიწერე სცენარი ვიდეოზე" asks for a text. */
-const KA_VIDEO_VERB = 'გამიკეთ|გააკეთ|შემიქმენ|შემიქმნ|შექმენ|დამიგენერირ|დააგენერირ|დაგენერირ|დამიმზად|მომიმზად|მოამზად|გადამიღ|გადაიღ';
+const KA_VIDEO_VERB = 'გამიკეთ|გააკეთ|გავაკეთ|შევქმნ|შემიქმენ|შემიქმნ|შექმენ|დამიგენერირ|დააგენერირ|დაგენერირ|დამიმზად|მომიმზად|მოამზად|გადამიღ|გადაიღ';
 /** Verbs that only ever mean „make me a picture / a clip / a track"; the others (do, prepare, write) need a media noun. */
 const KA_MEDIA_ONLY_VERB = /^(?:დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|გადამიღ|გადაიღ|შემითხზ|დამიკომპონ)/;
 /** Georgian writing verbs, in the imperative, formal and subjunctive forms („დაწერე", „დამიწერეთ", „დამიწერო"). */

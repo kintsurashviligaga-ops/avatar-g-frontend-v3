@@ -164,6 +164,7 @@ import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
 import { aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference, orientationForAspect } from '@/lib/chat/chatConsent';
+import { decidePanelCommand, panelCommand, panelCommandReply, type CommandPanel, type PanelCommand } from '@/lib/chat/panelCommand';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { shootKindForTool, shootOfferText, shootWire, productAdOfferText, productAdPhotoAsk, PRODUCT_PHOTO_WAIT_MS } from '@/lib/chat/chatShoot';
 import type { StudioWire } from '@/lib/studio/shootWire';
@@ -5691,6 +5692,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /** A yes to what Agent G proposed last (lib/chat/chatConsent): presses that card's button or starts the offer. Assigned
    *  below with agentTurnRef (it presses card handlers declared after send). true = the yes was used here. */
   const consentRef = useRef<(text: string) => boolean>(() => false);
+  /** A command of lib/chat/panelCommand carried out on screen (open · close a tool or a panel); what Agent G says it did comes
+   *  back in `locale`. Assigned every render below, so it reads the tool and the panels as they are now. */
+  const panelCommandRef = useRef<(cmd: PanelCommand, locale: string) => string>(() => '');
   /** chat_send while another tool was open: sent once the chat is on screen (the send path reads the mode it renders with). */
   const pendingLiveChatRef = useRef<string | null>(null);
   useEffect(() => {
@@ -6602,6 +6606,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // A long recording is what the whole-file analysis is for: it goes up and Gemini reads it by reference.
       const analyze = mode === 'chat' && agentAnalyzeOn && analyzeAsk(text, kinds)?.source === 'file';
       if (!montage && !remix && !extract && !run && !analyze) { toast.error(trackTooBigText(locale)); return; }
+      }
+    }
+    // THE STUDIO'S OWN CONTROLS, IN ANY TOOL (GG's plan 2026-10-17 11:28Z, item 1; lib/chat/panelCommand). „გახსენი ვიდეო",
+    // „გავაკეთოთ ავატარი", „ჩაკეტე პანელი", „დაბრუნდი ჩატში", typed or dictated: read before anything takes the words as a
+    // prompt. The composer stays in the last result's tool and every open-route below runs in plain chat only, so after a
+    // first film „გახსენი ავატარი" was the Video tool's next brief and nothing closed a panel. The tool changes in THIS
+    // conversation (applyTool, never a new session): the thread, its results and Agent G's context stay. A pending question
+    // of Agent G's is over (the user moved on). In plain chat a bare make-verb („make an image") stays with the chat's own
+    // routers, which clarify it there (GG 2026-10-16: every service in the chat).
+    if (text && attachments.length === 0 && !opts?.confirmed && !opts?.explicit && !opts?.target && !opts?.studio) {
+      const cmd = panelCommand(text);
+      if (cmd && !(cmd.kind === 'open' && cmd.via === 'make' && activeToolRef.current === 'chat')) {
+        gatePendingRef.current = null;
+        const said = panelCommandRef.current(cmd, locale);
+        setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: said }]);
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        return;
       }
     }
     // AGENT G READS THE MESSAGE FIRST (lib/agent/chatTurn). „Stop", „where are you?", „go on", a change to the montage
@@ -8485,6 +8506,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const turn = [...messagesRef.current].reverse().find((m) => m.role === 'user' && (m.medias?.length || m.files?.length));
     return turn ? (turn.medias?.length ? pick(turn.medias) : (turn.files ?? []).map((f) => f.path).filter((p): p is string => !!p)) : [];
   });
+  /** The panels outside the tools: the credits sheet, the persona picker, the chat search, the history (ChatChrome listens). */
+  const openSidePanel = (panel: Exclude<CommandPanel, 'settings'>) => {
+    if (panel === 'credits') window.dispatchEvent(new CustomEvent('myavatar:open-credits'));
+    else if (panel === 'persona') window.dispatchEvent(new Event(OPEN_PERSONA_EVENT));
+    else if (panel === 'search') window.dispatchEvent(new CustomEvent('myavatar:open-search'));
+    else window.dispatchEvent(new CustomEvent('myavatar:open-sidebar'));
+  };
   liveApiRef.current = (d: LiveActionEventDetail): boolean => {
     const reply = (r: LiveStudioReply) => { d.reply = r; };
     const signedOut = typeof document !== 'undefined' && document.documentElement.dataset.authed === '0';
@@ -8588,10 +8616,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (d.panel === 'settings') {
           if (activeTool === 'chat') { reply({ ok: false, error: 'no_settings', message: 'The chat has no settings panel; change its model with set_chat_model.' }); return true; }
           openSettings();
-        } else if (d.panel === 'credits') window.dispatchEvent(new CustomEvent('myavatar:open-credits'));
-        else if (d.panel === 'persona') window.dispatchEvent(new Event(OPEN_PERSONA_EVENT));
-        else if (d.panel === 'search') window.dispatchEvent(new CustomEvent('myavatar:open-search'));
-        else if (d.panel === 'history') window.dispatchEvent(new CustomEvent('myavatar:open-sidebar'));
+        } else openSidePanel(d.panel);
+        return true;
+      }
+      case 'close_panel': {
+        // „ჩაკეტე პანელი" in a call: the same command a typed one is (lib/chat/panelCommand), told back in English to the model.
+        reply({ ok: true, message: panelCommandRef.current({ kind: 'close', what: d.what === 'settings' ? 'settings' : 'tool' }, 'en').replace(/\*\*/g, '') });
         return true;
       }
       case 'download': {
@@ -9530,6 +9560,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setGateFrom(messages.length);
     if (!isDesktop) setOptionsOpen(false);
     return true;
+  };
+
+  panelCommandRef.current = (cmd: PanelCommand, replyLocale: string): string => {
+    const settingsOpen = !chatOnly && (isDesktop ? panelOpen : optionsOpen);
+    const { act, outcome } = decidePanelCommand(cmd, { tool: activeToolRef.current, settingsOpen });
+    if (act.tool) {
+      applyTool(act.tool);
+      // The avatar's next step is its settings (the face, the voice, the frame), as the chat's own avatar route shows them.
+      if (act.tool === 'avatar') setOptionsOpen(true);
+    }
+    if (act.settings === 'open') { if (isDesktop) setPanelOpen(true); else setOptionsOpen(true); }
+    if (act.settings === 'close') { setPanelOpen(false); setOptionsOpen(false); }
+    if (act.panel) openSidePanel(act.panel);
+    return panelCommandReply(outcome, replyLocale, (t) => toolName(t, replyLocale));
   };
 
   agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {

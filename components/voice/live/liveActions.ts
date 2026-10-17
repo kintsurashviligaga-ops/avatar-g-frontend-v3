@@ -783,6 +783,7 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
     case 'new_chat':
     case 'scroll_chat':
     case 'open_panel':
+    case 'close_panel':
     case 'stop': {
       const detail: LiveActionEventDetail = { ...action };
       if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
@@ -791,6 +792,7 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         ?? (action.type === 'new_chat' ? 'Started a new, empty chat on screen.'
           : action.type === 'scroll_chat' ? `Scrolled the chat ${action.to === 'top' || action.to === 'bottom' ? `to the ${action.to}` : action.to}.`
             : action.type === 'open_panel' ? `Opened the ${action.panel} panel on screen.`
+              : action.type === 'close_panel' ? `Closed the ${action.what === 'settings' ? 'settings' : 'studio'} on screen.`
               : 'Stopped.');
       // T4: stopping the generations also stops a start still counting down (it never reached the studio).
       const stopsRuns = action.type === 'stop' && action.what !== 'reply';

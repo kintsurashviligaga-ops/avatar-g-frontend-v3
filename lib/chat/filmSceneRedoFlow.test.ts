@@ -62,6 +62,7 @@ function fake(over: Partial<RedoDeps> = {}, opts: { book?: FilmSceneBook | null;
     submit: async (...a) => { submits.push(a); return { status: 'queued', taskRef: 'task-1' }; },
     pollTask: async () => ({ status: 'pending', url: null }),
     veoVerdict: async () => 'unknown',
+    renewLink: async (u) => u,
     stitch: async (body) => { stitches.push(body); return { status: 200, url: 'https://store.example/master-2.mp4', error: null }; },
     isBudgetRefusal: (e) => typeof e === 'string' && e.startsWith('budget_exceeded:'),
     budgetMessage: () => 'daily limit reached',
@@ -268,6 +269,42 @@ describe('stitch', () => {
     // The scene's price covered the stitch: nothing more is charged.
     expect(d.charges).toHaveLength(1);
     expect(d.claims.has(`s:${TOKEN}`)).toBe(false);
+  });
+
+  test('a redo cut hours after the film: every link the stitch names is renewed first (the narration’s expire in 2 h)', async () => {
+    // Live E2E 2026-10-17: film B was cut at 17:49Z and redone at 19:48Z; its narration link had expired, so the
+    // assembler refused the stitch with media_not_yours (502 stitch_failed) and no later try could succeed.
+    const renewed: string[] = [];
+    const d = fake({ renewLink: async (u) => { renewed.push(u); return `${u}?token=fresh`; } }, {
+      record: stitchRecord({
+        body: {
+          voiceoverUrl: 'https://store.example/vo.mp3', sfxUrl: 'https://store.example/sfx.mp3', orientation: 'vertical',
+          dialogueStems: [{ speaker: 'A', url: 'https://store.example/a.mp3' }],
+        },
+      }),
+    });
+    await readyRedo(d);
+    expect((await stitchSceneRedo('user-1', { tokenId: TOKEN, ordinal: 2 }, d)).status).toBe(200);
+    expect(d.stitches[0]).toMatchObject({
+      musicUrl: 'https://store.example/score.mp3?token=fresh',
+      voiceoverUrl: 'https://store.example/vo.mp3?token=fresh',
+      sfxUrl: 'https://store.example/sfx.mp3?token=fresh',
+      dialogueStems: [{ speaker: 'A', url: 'https://store.example/a.mp3?token=fresh' }],
+      orientation: 'vertical',
+      segments: [
+        { url: 'https://clips.example/1.mp4?token=fresh', durationSec: 8, ordinal: 1 },
+        { url: 'https://clips.example/2-new.mp4?token=fresh', durationSec: 8, ordinal: 2 },
+        { url: 'https://clips.example/3.mp4?token=fresh', durationSec: 8, ordinal: 3 },
+      ],
+    });
+    expect(renewed).toHaveLength(7);
+  });
+
+  test('a link that cannot be renewed is handed over as it was (the assembler decides), and the cut still runs', async () => {
+    const d = fake({ renewLink: async (u) => { if (u.includes('vo.mp3')) throw new Error('storage down'); return u.includes('score') ? '' : u; } });
+    await readyRedo(d);
+    expect((await stitchSceneRedo('user-1', { tokenId: TOKEN, ordinal: 2 }, d)).status).toBe(200);
+    expect(d.stitches[0]).toMatchObject({ voiceoverUrl: 'https://store.example/vo.mp3', musicUrl: 'https://store.example/score.mp3' });
   });
 
   test('a scene Google had failed goes back into its gap', async () => {

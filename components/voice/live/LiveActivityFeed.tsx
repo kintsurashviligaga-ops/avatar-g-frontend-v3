@@ -18,7 +18,7 @@
  * how it ended — so the dock can show a spinner, then a check.
  */
 import {
-  AlertCircle, ArrowUpDown, Bot, Check, Clapperboard, Code2, Cpu, Eye, FileAudio, Globe, Loader2, MessageSquare, Monitor, PanelRight, PhoneOff, Play,
+  AlertCircle, ArrowUpDown, Bot, Check, Clapperboard, Code2, Cpu, Eye, FileAudio, Globe, Loader2, MessageSquare, Monitor, PanelRight, PanelRightClose, PhoneOff, Play,
   MessageSquarePlus, Search, SlidersHorizontal, Sparkles, Square, Wand2, X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -68,6 +68,7 @@ const S: Record<Locale, Strings> = {
       stop: { running: 'ვაჩერებ', done: 'შეჩერდა' },
       scroll_chat: { running: 'ჩატს ვაგორებ', done: 'ჩატი გადავაგორე' },
       open_panel: { running: 'პანელს ვხსნი', done: 'პანელი გაიხსნა' },
+      close_panel: { running: 'პანელს ვხურავ', done: 'პანელი დაიხურა' },
       call_view: { running: 'ხედს ვცვლი', done: 'ხედი შეიცვალა' },
       open_url: { running: 'ბმულს ვამზადებ', done: 'ბმული ეკრანზეა — შეეხე' },
       ask_agent_g: { running: 'აგენტი G იკვლევს', done: 'აგენტი G-ის პასუხი მზადაა' },
@@ -102,6 +103,7 @@ const S: Record<Locale, Strings> = {
       stop: { running: 'Stopping', done: 'Stopped' },
       scroll_chat: { running: 'Scrolling the chat', done: 'Scrolled' },
       open_panel: { running: 'Opening a panel', done: 'Panel open' },
+      close_panel: { running: 'Closing a panel', done: 'Panel closed' },
       call_view: { running: 'Changing the view', done: 'View changed' },
       open_url: { running: 'Getting the link ready', done: 'Link on screen — tap it' },
       ask_agent_g: { running: 'Agent G is researching', done: 'Agent G answered' },
@@ -134,6 +136,7 @@ const S: Record<Locale, Strings> = {
       stop: { running: 'Останавливаю', done: 'Остановлено' },
       scroll_chat: { running: 'Прокручиваю чат', done: 'Прокручено' },
       open_panel: { running: 'Открываю панель', done: 'Панель открыта' },
+      close_panel: { running: 'Закрываю панель', done: 'Панель закрыта' },
       call_view: { running: 'Меняю вид', done: 'Вид изменён' },
       open_url: { running: 'Готовлю ссылку', done: 'Ссылка на экране — нажмите' },
       ask_agent_g: { running: 'Агент G изучает вопрос', done: 'Агент G ответил' },
@@ -164,6 +167,7 @@ const TOOL_ICON: Record<string, ReactNode> = {
   stop: <Square size={16} aria-hidden />,
   scroll_chat: <ArrowUpDown size={16} aria-hidden />,
   open_panel: <PanelRight size={16} aria-hidden />,
+  close_panel: <PanelRightClose size={16} aria-hidden />,
   call_view: <Monitor size={16} aria-hidden />,
   open_url: <Globe size={16} aria-hidden />,
   ask_agent_g: <Bot size={16} aria-hidden />,

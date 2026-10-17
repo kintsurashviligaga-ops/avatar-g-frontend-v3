@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { pollVeoClip } from '@/lib/veo/engine';
+import { renewLibraryLink } from '@/lib/orchestrator/storage-adapter';
 import { actAs } from '@/lib/video/assembleActor';
 import { budgetReasonOf, budgetRefusalMessage, isBudgetRefusal } from '@/lib/services/billing/budgetMessage';
 import { ServiceManager } from './ServiceManager';
@@ -82,6 +83,8 @@ export function liveRedoDeps(origin: string): RedoDeps {
       if (!operation) return null;
       return sceneVerdict(await pollVeoClip(operation));
     },
+
+    renewLink: (url) => renewLibraryLink(url),
 
     stitch: async (body, uid) => {
       const { POST } = await import('@/app/api/video/assemble/route');
