@@ -334,6 +334,23 @@ export async function reSignIfInternal(url: string, expiresSec: number = SIGNED_
 }
 
 /**
+ * A fresh signed link to one of OUR Library media objects (renders, uploads, studio: never the twin bucket) that a
+ * SERVER-KEPT record names; anything else, or a link that cannot be signed now, comes back as given.
+ *
+ * ⚠️ ONLY FOR A LINK THE SERVER ITSELF STORED after it passed the caller check (a film's delivered stitch, read back for
+ * its owner: lib/chat/filmSceneRedo). A link a request supplied goes through lib/security/callerMedia first.
+ */
+export async function renewLibraryLink(
+  url: string,
+  expiresSec: number = SIGNED_URL_TTL_SEC,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
+  const ref = describeSupabaseObjectUrl(url, env);
+  if (!ref || ref.access !== 'sign' || !ownStorageHosts(env).has(ref.host) || !libraryMediaBuckets(env).has(ref.bucket)) return url;
+  return (await createSignedAssetUrl(ref.bucket, ref.path, expiresSec)) ?? url;
+}
+
+/**
  * Upload a base64 fragment + return its signed URL.
  *
  * `expiresSec` defaults to the 15-minute internal-fragment TTL, but callers

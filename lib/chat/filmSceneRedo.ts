@@ -177,6 +177,38 @@ export function restitchBody(record: FilmStitchRecord, segments: StitchSegment[]
   };
 }
 
+/** The keys of a stitch body that name a sound the assembler fetches (with the segments and stems: all its own-media check reads). */
+const LINK_KEYS = ['customAudioUrl', 'musicUrl', 'voiceoverUrl', 'sfxUrl'] as const;
+
+/**
+ * The stitch body with every media link in it renewed by `renew` (a link it cannot renew is handed over as it was).
+ *
+ * ⚠️ A FILM'S NARRATION IS STORED BEHIND A 2-HOUR LINK (lib/chat/filmVoiceover), and the assembler refuses a link of ours
+ * that has expired unless a Library row holds that object (lib/security/callerMedia). So a redo cut more than two hours
+ * after the film was refused with media_not_yours and could never succeed (live E2E 2026-10-17: film B, cut at 17:49Z,
+ * redone at 19:48Z). These links come from the film's own delivered stitch, kept by the server for its owner, and each
+ * passed that same check when the film was cut.
+ */
+export async function withRenewedLinks(
+  body: Record<string, unknown>,
+  renew: (url: string) => Promise<string>,
+): Promise<Record<string, unknown>> {
+  const one = async (v: unknown): Promise<unknown> => {
+    if (typeof v !== 'string' || !v) return v;
+    return (await renew(v).catch(() => v)) || v;
+  };
+  const urls = async (list: unknown): Promise<unknown> => (Array.isArray(list)
+    ? Promise.all(list.map(async (s: unknown) => (s && typeof s === 'object' && 'url' in s
+      ? { ...(s as Record<string, unknown>), url: await one((s as { url: unknown }).url) }
+      : s)))
+    : list);
+  const out: Record<string, unknown> = { ...body };
+  for (const k of LINK_KEYS) if (out[k] !== undefined) out[k] = await one(out[k]);
+  if (out.segments !== undefined) out.segments = await urls(out.segments);
+  if (out.dialogueStems !== undefined) out.dialogueStems = await urls(out.dialogueStems);
+  return out;
+}
+
 /** The keys of a stitch body that are kept for a redo; everything else (and anything unknown) is left out. */
 const KEPT_BODY_KEYS = [
   'voiceoverUrl', 'dialogueStems', 'musicUrl', 'noMusic', 'sfxUrl', 'globalRender', 'orientation', 'scorePrompt',

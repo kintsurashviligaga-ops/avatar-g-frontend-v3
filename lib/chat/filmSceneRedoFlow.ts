@@ -15,6 +15,7 @@ import {
   redoSeed,
   restitchBody,
   restitchSegments,
+  withRenewedLinks,
   type FilmRedoJob,
   type FilmSceneBook,
   type FilmStitchRecord,
@@ -47,6 +48,8 @@ export interface RedoDeps {
   pollTask(taskRef: string, sessionId: string): Promise<{ status: 'succeeded' | 'failed' | 'pending'; url: string | null }>;
   /** Google's own word on a Veo render (R3-A, lib/chat/filmSceneRefund), or null for a render on another engine. */
   veoVerdict(taskRef: string): Promise<'failed' | 'rendered' | 'unknown' | null>;
+  /** A fresh link to one of our stored media objects; any other link as it was. */
+  renewLink(url: string): Promise<string>;
   /** Stitch the film from `body` for its owner, as a stitch the redo has already paid for. */
   stitch(body: Record<string, unknown>, uid: string): Promise<{ status: number; url: string | null; error: string | null }>;
   isBudgetRefusal(error: string | undefined): boolean;
@@ -227,7 +230,9 @@ export async function stitchSceneRedo(uid: string, input: { tokenId: unknown; or
 
     const stitching: FilmRedoJob = { ...job, status: 'stitching', error: null, updatedAt: deps.now() };
     await deps.saveJob(stitching);
-    const out = await deps.stitch(restitchBody(record, cut.segments, cut.inserted), uid)
+    // The film's links are renewed first: its narration's expire two hours after it was made (withRenewedLinks).
+    const out = await withRenewedLinks(restitchBody(record, cut.segments, cut.inserted), deps.renewLink)
+      .then((body) => deps.stitch(body, uid))
       .catch((e: unknown) => ({ status: 0, url: null, error: e instanceof Error ? e.message : String(e) }));
     if (out.status >= 200 && out.status < 300 && out.url) {
       const done: FilmRedoJob = { ...stitching, status: 'done', masterUrl: out.url, updatedAt: deps.now() };
