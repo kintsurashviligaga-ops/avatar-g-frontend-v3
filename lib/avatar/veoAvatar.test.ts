@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { avatarVoiceByElevenLabs, avatarVoicePath, avatarVoicedPath, buildVeoAvatarPrompt, parseVeoAvatarRequest, veoAvatarCredits, VEO_AVATAR_SPEECH_MAX } from './veoAvatar';
+import { avatarVoiceByElevenLabs, avatarVoicePath, avatarVoicedPath, buildVeoAvatarPrompt, parseVeoAvatarRequest, veoAvatarCredits, VEO_AVATAR_NEGATIVE, VEO_AVATAR_SPEECH_MAX } from './veoAvatar';
 import { videoCredits } from '../credits/videoPricing';
 
 describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
@@ -48,5 +48,10 @@ describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
   it('the line and the voiced clip sit at fixed paths named by the job', () => {
     expect(avatarVoicePath('abc')).toBe('avatar-veo/abc/voice.mp3');
     expect(avatarVoicedPath('abc')).toBe('avatar-veo/abc/voiced.mp4');
+  });
+
+  it('the negative prompt asks away music under the words, in nouns only', () => {
+    expect(VEO_AVATAR_NEGATIVE).toContain('background music');
+    expect(VEO_AVATAR_NEGATIVE).not.toMatch(/\b(no|don't|without|never)\b/i);
   });
 });

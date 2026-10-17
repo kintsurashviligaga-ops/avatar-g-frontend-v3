@@ -4,7 +4,7 @@
  * sync does not match at all" (Veo had rendered a silent "talking" clip and the line was laid from 0 s); tap 10:22Z
  * „Veo ლაპარაკობს": Veo says the line in Latin letters and the line replaces its voice, phrase by phrase.
  */
-import { DUB_TEMPO_MAX, DUB_TEMPO_MIN, describeDub, dropIsolatedBlips, dubFilter, frameLevelsDb, georgianToLatin, mergeSpansTo, planDub, speechSpans, type Span } from './speechMatch';
+import { DUB_TEMPO_MAX, DUB_TEMPO_MIN, RUN_GAP_SEC, describeDub, dropIsolatedBlips, dubFilter, frameLevelsDb, georgianToLatin, levelProfile, mergeSpansTo, planDub, speechRun, speechSpans, type Span } from './speechMatch';
 
 describe('georgianToLatin', () => {
   it('reads the Production line in Latin letters, punctuation and spaces kept', () => {
@@ -35,6 +35,31 @@ describe('speechSpans', () => {
   it('a music bed far under the voice is not speech', () => {
     // The 30 ms average lets a -40 dB bed widen the edge by one frame, never more.
     expect(speechSpans(levels(3, [[1, 2]], -40))).toEqual([{ start: 0.96, end: 2.04 }]);
+  });
+  // Production 2026-10-17 11:14Z: "veo 0.44–8.00" — Veo's sound under and after its words was within 24 dB of them.
+  it('a bed close under the voice is not speech either: speech stands above the track\'s own quiet', () => {
+    expect(speechSpans(levels(8, [[0.44, 3.2]], -28))).toEqual([{ start: 0.41, end: 3.23 }]);
+  });
+  it('a track that is all voice is still all voice', () => {
+    expect(speechSpans(levels(3, [[0, 3]]))).toEqual([{ start: 0, end: 3 }]);
+  });
+});
+
+describe('speechRun', () => {
+  it('keeps the run of Veo\'s sound closest to the line\'s length, dropping a laugh well after the words', () => {
+    const veo: Span[] = [{ start: 0.41, end: 3.23 }, { start: 6.77, end: 7.63 }];
+    expect(speechRun(veo, 2.3)).toEqual([{ start: 0.41, end: 3.23 }]);
+    // And a breath well before them.
+    expect(speechRun([{ start: 0.1, end: 0.2 }, { start: 0.9, end: 3.5 }], 2.6)).toEqual([{ start: 0.9, end: 3.5 }]);
+  });
+  it('a pause both voices make stays inside, and pauses shorter than RUN_GAP_SEC never split', () => {
+    const two: Span[] = [{ start: 0.5, end: 1.2 }, { start: 2.0, end: 3.5 }];
+    expect(speechRun(two, 3)).toEqual(two);
+    const close: Span[] = [{ start: 0.5, end: 1.2 }, { start: 1.2 + RUN_GAP_SEC - 0.05, end: 3 }];
+    expect(speechRun(close, 0.7)).toEqual(close);
+  });
+  it('the earliest run wins a tie', () => {
+    expect(speechRun([{ start: 0, end: 1 }, { start: 3, end: 4 }], 1)).toEqual([{ start: 0, end: 1 }]);
   });
 });
 
@@ -88,6 +113,15 @@ describe('planDub', () => {
     // Never every phrase.
     expect(dropIsolatedBlips([{ start: 0, end: 0.2 }, { start: 1, end: 1.2 }], 1)).toHaveLength(1);
   });
+  // Production 2026-10-17 11:14Z laid the line "0.06→0.44×0.6" over all 8 s: the voice ran a second past the mouth.
+  it('the Production shape: the line goes onto Veo\'s words, not over the laugh after them, at a natural speed', () => {
+    const p = planDub([{ start: 0.06, end: 2.32 }], [{ start: 0.41, end: 3.23 }, { start: 6.77, end: 7.63 }], 8)!;
+    expect(p).toEqual([{ from: 0.06, to: 2.32, at: 0.41, tempo: 0.801 }]);
+    expect(p[0]!.at + (p[0]!.to - p[0]!.from) / p[0]!.tempo).toBeLessThan(3.25);
+  });
+  it('a voice is never slowed below 80%: 60% sounded drawn out and ran past the mouth', () => {
+    expect(DUB_TEMPO_MIN).toBeGreaterThanOrEqual(0.8);
+  });
   it('no speech on either side → null (the line is laid from the start, as before)', () => {
     expect(planDub([], [{ start: 0, end: 1 }], 8)).toBeNull();
     expect(planDub([{ start: 0, end: 1 }], [], 8)).toBeNull();
@@ -97,15 +131,20 @@ describe('planDub', () => {
 describe('dubFilter', () => {
   it('one phrase: trimmed, stretched, faded, delayed and padded to the clip', () => {
     expect(dubFilter([{ from: 0.1, to: 1.1, at: 0.5, tempo: 0.8 }], '1:a', 8)).toBe(
-      '[1:a]atrim=start=0.100:end=1.100,asetpts=PTS-STARTPTS,atempo=0.8000,afade=t=in:d=0.01,afade=t=out:st=1.240:d=0.01,adelay=500:all=1[p0];[p0]apad=whole_dur=8[voice]',
+      '[1:a]atrim=start=0.100:end=1.100,asetpts=PTS-STARTPTS,atempo=0.8000,afade=t=in:d=0.01,afade=t=out:st=1.240:d=0.01,adelay=500:all=1,asetpts=N/SR/TB[p0];[p0]apad=whole_dur=8[voice]',
     );
   });
   it('several phrases: the input is split, each placed, then mixed at full level', () => {
     const g = dubFilter([{ from: 0, to: 1, at: 0.2, tempo: 1 }, { from: 1.3, to: 2, at: 1.6, tempo: 1.2 }], '1:a', 8);
     expect(g.startsWith('[1:a]asplit=2[s0][s1];[s0]atrim=start=0.000:end=1.000')).toBe(true);
-    expect(g).toContain('adelay=1600:all=1[p1]');
+    expect(g).toContain('adelay=1600:all=1,asetpts=N/SR/TB[p1]');
     expect(g.endsWith('[p0][p1]amix=inputs=2:normalize=0:duration=longest,asetpts=N/SR/TB,apad=whole_dur=8[voice]')).toBe(true);
   });
+});
+
+it('levelProfile gives the loudness every half second, in whole dB', () => {
+  expect(levelProfile(levels(1.5, [[0.5, 1]], -40))).toBe('-40 -12 -40');
+  expect(levelProfile([])).toBe('');
 });
 
 it('describeDub names the spans and the laying, never words or links', () => {

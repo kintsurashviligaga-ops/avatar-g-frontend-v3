@@ -63,6 +63,11 @@ export interface SpanOptions {
   belowPeakDb?: number;
   /** Never counts anything quieter than this as speech (room tone, a fade). */
   floorDb?: number;
+  /**
+   * Nor anything within this many dB of the track's bed: the level it sits at a fifth of the time. Veo puts sound under
+   * and after its words (Production 2026-10-17 11:14Z: the whole 8 s read as speech, the mouth stopped at 3.2 s).
+   */
+  aboveBedDb?: number;
   /** A pause shorter than this is inside a phrase, not between two. */
   minGapSec?: number;
   /** A sound shorter than this is a click or a breath. */
@@ -81,8 +86,11 @@ export function speechSpans(levels: readonly number[], o: SpanOptions = {}): Spa
     return w.reduce((a, b) => a + b, 0) / w.length;
   });
   const peak = Math.max(...smooth);
-  const threshold = Math.max(peak - (o.belowPeakDb ?? 24), o.floorDb ?? -50);
-  if (peak < (o.floorDb ?? -50)) return [];
+  const floor = o.floorDb ?? -50;
+  if (peak < floor) return [];
+  // Above the bed, but always within 10 dB of the peak, so a track that is all voice still has its voice.
+  const bed = percentile(smooth, 0.2);
+  const threshold = Math.min(peak - 10, Math.max(peak - (o.belowPeakDb ?? 24), floor, bed + (o.aboveBedDb ?? 8)));
   const runs: Span[] = [];
   let from = -1;
   smooth.forEach((db, i) => {
@@ -128,10 +136,37 @@ export interface DubPiece { from: number; to: number; at: number; tempo: number 
  * Past these a voice stops sounding like a person (and Veo's phrase was likely another phrase): the piece is clamped
  * and lands on its onset only.
  */
-export const DUB_TEMPO_MIN = 0.6;
+export const DUB_TEMPO_MIN = 0.8;
 export const DUB_TEMPO_MAX = 1.7;
 /** At most this many phrases are matched one to one; a longer line is matched as one. */
 const MAX_PIECES = 12;
+/** A silence this long splits Veo's sound into runs: its words, and what came before or after them. */
+export const RUN_GAP_SEC = 0.6;
+
+/**
+ * The run of Veo's sound that is the line: Veo's phrases split at silences of RUN_GAP_SEC or more, and the run of
+ * consecutive ones whose length is closest to the line's (by ratio; the earliest wins a tie). A laugh or a sound well
+ * after the words is then not stretched over (Production 2026-10-17 11:14Z), and a pause both voices make stays inside.
+ */
+export function speechRun(spans: readonly Span[], lineSec: number): Span[] {
+  if (spans.length <= 1 || !(lineSec > 0)) return spans.map((s) => ({ ...s }));
+  const runs: Span[][] = [];
+  for (const s of spans) {
+    const last = runs[runs.length - 1];
+    if (last && s.start - last[last.length - 1]!.end < RUN_GAP_SEC) last.push({ ...s });
+    else runs.push([{ ...s }]);
+  }
+  let best: [number, number] = [0, runs.length - 1];
+  let bestCost = Infinity;
+  for (let i = 0; i < runs.length; i++) {
+    for (let j = i; j < runs.length; j++) {
+      const sec = runs[j]![runs[j]!.length - 1]!.end - runs[i]![0]!.start;
+      const cost = Math.abs(Math.log(Math.max(0.05, sec) / lineSec));
+      if (cost < bestCost - 1e-9) { bestCost = cost; best = [i, j]; }
+    }
+  }
+  return runs.slice(best[0], best[1] + 1).flat();
+}
 
 /**
  * Veo's sounds that are not the line: short and standing apart (a breath, a laugh, a click after the words). Dropped
@@ -149,13 +184,14 @@ export function dropIsolatedBlips(spans: readonly Span[], keep: number, maxSec =
 }
 
 /**
- * Each phrase of the line onto the phrase Veo's mouth said, in order. Veo's stray sounds go first, then the side with
- * more pauses is merged down to the other's count. Null when either side has no speech: the caller lays the line from
- * the start, as before.
+ * Each phrase of the line onto the phrase Veo's mouth said, in order. Veo's run that is the line is picked first
+ * (speechRun), then its stray sounds go, then the side with more pauses is merged down to the other's count. Null
+ * when either side has no speech: the caller lays the line from the start, as before.
  */
 export function planDub(line: readonly Span[], veoSpans: readonly Span[], clipSec: number): DubPiece[] | null {
   if (line.length === 0 || veoSpans.length === 0) return null;
-  const veo = veoSpans.length > line.length ? dropIsolatedBlips(veoSpans, line.length) : veoSpans;
+  const said = speechRun(veoSpans, line[line.length - 1]!.end - line[0]!.start);
+  const veo = said.length > line.length ? dropIsolatedBlips(said, line.length) : said;
   let n = Math.min(line.length, veo.length);
   if (n > MAX_PIECES) n = 1;
   const l = mergeSpansTo(line, n);
@@ -183,7 +219,9 @@ export function dubFilter(pieces: readonly DubPiece[], input: string, clipSec: n
     const dur = (p.to - p.from) / p.tempo;
     const fades = dur > 0.05 ? `,afade=t=in:d=0.01,afade=t=out:st=${(dur - 0.01).toFixed(3)}:d=0.01` : '';
     const ms = Math.round(p.at * 1000);
-    return `[${src}]atrim=start=${p.from.toFixed(3)}:end=${p.to.toFixed(3)},asetpts=PTS-STARTPTS,${atempoChain(p.tempo)}${fades},adelay=${ms}:all=1[${out}]`;
+    // adelay's lead-in after a trim carries no timestamps (ffmpeg 7: the first frames read NOPTS), and an MP4's AAC
+    // track then starts the voice at 0 s: renumbered from its samples, the silence before the phrase is kept.
+    return `[${src}]atrim=start=${p.from.toFixed(3)}:end=${p.to.toFixed(3)},asetpts=PTS-STARTPTS,${atempoChain(p.tempo)}${fades},adelay=${ms}:all=1,asetpts=N/SR/TB[${out}]`;
   };
   if (pieces.length === 1) return `${chain(pieces[0]!, input, 'p0')};[p0]apad=whole_dur=${sec}[voice]`;
   const split = `[${input}]asplit=${pieces.length}${pieces.map((_, i) => `[s${i}]`).join('')}`;
@@ -194,11 +232,28 @@ export function dubFilter(pieces: readonly DubPiece[], input: string, clipSec: n
   return [split, ...chains, mix].join(';');
 }
 
+/** A track's loudness every `stepSec`, in whole dB, for the logs: what was under and after the words. */
+export function levelProfile(levels: readonly number[], stepSec = 0.5, frameSec = LEVEL_FRAME_SEC): string {
+  const per = Math.max(1, Math.round(stepSec / frameSec));
+  const out: string[] = [];
+  for (let i = 0; i < levels.length; i += per) {
+    const w = levels.slice(i, i + per);
+    out.push(String(Math.round(w.reduce((a, b) => a + b, 0) / w.length)));
+  }
+  return out.join(' ');
+}
+
 /** One line for the logs: where each voice spoke and how the line was laid. No words, no URLs. */
 export function describeDub(line: readonly Span[], veo: readonly Span[], pieces: readonly DubPiece[] | null): string {
   const spans = (s: readonly Span[]) => s.map((x) => `${x.start.toFixed(2)}–${x.end.toFixed(2)}`).join(' ') || 'none';
   const laid = pieces ? pieces.map((p) => `${p.from.toFixed(2)}→${p.at.toFixed(2)}×${p.tempo}`).join(' ') : 'from 0 (no match)';
   return `line ${spans(line)} | veo ${spans(veo)} | laid ${laid}`;
+}
+
+/** The value `q` of the way up the sorted levels (0 = quietest). */
+function percentile(values: readonly number[], q: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * (sorted.length - 1))))]!;
 }
 
 function round3(x: number): number {

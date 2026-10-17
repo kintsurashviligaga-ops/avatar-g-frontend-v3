@@ -17,7 +17,7 @@ import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { ASPECT_DIMS as SHARED_ASPECT_DIMS, GRADE_VF, atempoChain, type GradeStyle } from '@/lib/video/editFilters';
 import { soundMixGraph } from '@/lib/services/montage/montageSound';
-import { describeDub, dubFilter, frameLevelsDb, planDub, speechSpans } from '@/lib/avatar/speechMatch';
+import { describeDub, dubFilter, frameLevelsDb, levelProfile, planDub, speechSpans } from '@/lib/avatar/speechMatch';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -223,7 +223,7 @@ export async function muxVoiceOntoClip(
     const veoSpans = veo ? speechSpans(veo) : [];
     const pieces = planDub(lineSpans, veoSpans, seconds);
     // eslint-disable-next-line no-console
-    console.warn('[avatar.voice] dub:', describeDub(lineSpans, veoSpans, pieces));
+    console.warn('[avatar.voice] dub:', describeDub(lineSpans, veoSpans, pieces), '| veo dB/0.5s', veo ? levelProfile(veo) : 'none');
     await exec(BIN, [
       '-y', '-i', videoUrl, '-i', voiceUrl,
       '-filter_complex', pieces ? dubFilter(pieces, '1:a', seconds) : `[1:a]apad=whole_dur=${sec}[voice]`,
@@ -242,10 +242,13 @@ export async function muxVoiceOntoClip(
   }
 }
 
-/** A track's levels (lib/avatar/speechMatch), read from its first audio stream as 16 kHz mono; null when it has none. */
+/**
+ * A track's levels (lib/avatar/speechMatch), read from its first audio stream as 16 kHz mono in the voice band (120 Hz
+ * to 4 kHz, so a bass line or a hum under Veo's words does not read as speech); null when it has none.
+ */
 async function speechLevels(bin: string, url: string, pcmPath: string): Promise<number[] | null> {
   try {
-    await exec(bin, ['-y', '-v', 'error', '-i', url, '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-f', 's16le', pcmPath], { maxBuffer: 1 << 24, timeout: 60_000 });
+    await exec(bin, ['-y', '-v', 'error', '-i', url, '-map', '0:a:0', '-af', 'highpass=f=120,lowpass=f=4000', '-ac', '1', '-ar', '16000', '-f', 's16le', pcmPath], { maxBuffer: 1 << 24, timeout: 60_000 });
     const buf = await readFile(pcmPath);
     if (buf.byteLength < 320) return null;
     const pcm = new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 2));
