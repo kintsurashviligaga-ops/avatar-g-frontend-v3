@@ -154,39 +154,26 @@ test('a delivered clip past the cap is still delivered, not refunded (the cap on
   expect(refundDebitByRef).not.toHaveBeenCalled();
 });
 
-// ─── a talking avatar voiced by ElevenLabs (GG 2026-10-17 07:54Z), lip-synced by sync.so (12:29Z) ───────────────
+// ─── a talking avatar voiced by ElevenLabs (GG 2026-10-17 07:54Z) ─────────────────────────────────────────────────
 
 test('voiced avatar: the clip is shown WITH its line — the voiced file, filed in the Library as an avatar', async () => {
   (pollScene as jest.Mock).mockResolvedValue({ state: 'ready', url: 'https://signed.example/silent.mp4' });
-  (deliverVoicedAvatar as jest.Mock).mockResolvedValue({ state: 'ready', url: 'https://signed.example/voiced.mp4' });
+  (deliverVoicedAvatar as jest.Mock).mockResolvedValue('https://signed.example/voiced.mp4');
   const j = await (await get(polledId(UID, 60_000, '9:16', true).id)).json();
   expect(j).toEqual({ success: true, done: true, state: 'ready', videoUrl: 'https://signed.example/voiced.mp4' });
   expect(deliverVoicedAvatar).toHaveBeenCalledWith('https://signed.example/silent.mp4', UUID);
-  expect((recordCompletedFilm as jest.Mock).mock.calls[0]![0]).toMatchObject({
-    id: genjutsuJobId(UUID), url: 'https://signed.example/voiced.mp4', subtype: 'avatar', prompt: 'Avatar', orientation: 'vertical',
-    result: { voice: 'elevenlabs', lipsync: 'sync.so' },
-  });
+  expect((recordCompletedFilm as jest.Mock).mock.calls[0]![0]).toMatchObject({ id: genjutsuJobId(UUID), url: 'https://signed.example/voiced.mp4', subtype: 'avatar', prompt: 'Avatar', orientation: 'vertical' });
 });
 
 test('voiced avatar: a clip whose line is not on it yet is never shown silent — "delivering", then refunded at the cap', async () => {
   (pollScene as jest.Mock).mockResolvedValue({ state: 'ready', url: 'https://signed.example/silent.mp4' });
-  (deliverVoicedAvatar as jest.Mock).mockResolvedValue({ state: 'pending' });
+  (deliverVoicedAvatar as jest.Mock).mockResolvedValue(null);
   expect(await (await get(polledId(UID, 60_000, '9:16', true).id)).json()).toEqual({ success: true, done: false, state: 'delivering' });
   expect(recordCompletedFilm).not.toHaveBeenCalled();
   expect(refundDebitByRef).not.toHaveBeenCalled();
   const { id, ref } = polledId(UID, GENJUTSU_HARD_CAP_MS + 5_000, '9:16', true);
   expect(await (await get(id)).json()).toMatchObject({ done: true, state: 'failed', refunded: true });
   expect(refundDebitByRef).toHaveBeenCalledWith(UID, ref);
-});
-
-test('voiced avatar: a lip sync sync.so refused or failed is refunded at once, not left open to the cap', async () => {
-  (pollScene as jest.Mock).mockResolvedValue({ state: 'ready', url: 'https://signed.example/silent.mp4' });
-  (deliverVoicedAvatar as jest.Mock).mockResolvedValue({ state: 'failed', reason: 'sync.so generation_failed' });
-  const { id, ref } = polledId(UID, 60_000, '9:16', true);
-  expect(await (await get(id)).json()).toEqual({ success: true, done: true, state: 'failed', error: 'generation_failed', refunded: true });
-  expect(refundDebitByRef).toHaveBeenCalledWith(UID, ref);
-  expect(failJob).toHaveBeenCalledWith(genjutsuJobId(UUID), 'sync.so generation_failed');
-  expect(recordCompletedFilm).not.toHaveBeenCalled();
 });
 
 test('an unvoiced scene never goes through the voice leg', async () => {

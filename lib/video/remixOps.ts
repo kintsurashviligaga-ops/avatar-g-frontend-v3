@@ -17,6 +17,7 @@ import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { ASPECT_DIMS as SHARED_ASPECT_DIMS, GRADE_VF, atempoChain, type GradeStyle } from '@/lib/video/editFilters';
 import { soundMixGraph } from '@/lib/services/montage/montageSound';
+import { describeDub, dubFilter, frameLevelsDb, levelProfile, planDub, speechSpans } from '@/lib/avatar/speechMatch';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -194,26 +195,47 @@ export async function muxAudioOntoVideo(
 }
 
 /**
- * The talking avatar's ElevenLabs line with `padSec` of silence after it, as WAV (lib/avatar/voicedClip). sync.so cuts
- * the clip to the line's length (lib/providers/syncso, `sync_mode: bounce`), so this silence is where the mouth it
- * draws closes and the face holds before the end — the voice itself is never stretched or cut. Hosted at `dest`; null on
- * any miss (the caller then sends the line as it is).
+ * The talking avatar's ElevenLabs line laid over its Veo clip (lib/avatar/veoAvatar, GG's ElevenLabs choice 2026-10-17).
+ * Veo SAID the line itself (in Latin letters, GG's tap 10:22Z „Veo ლაპარაკობს"), so its mouth follows its own voice:
+ * that voice is dropped and the line, cut at its pauses, is laid phrase by phrase onto where Veo spoke
+ * (lib/avatar/speechMatch). A clip with no voice of its own (the silent clips before) gets the line from its start.
+ * Unlike 'replace' above, the PICTURE decides the length: a 3 s line under an 8 s clip is padded with silence to
+ * `seconds` (`apad=whole_dur`), never the clip cut to 3 s by `-shortest`; a line a hair longer than the clip ends with
+ * it (`-t`). The picture is stream-copied when it can be. Hosted at `dest` — a fixed path, so a repeat poll re-signs
+ * one object instead of muxing again. Null on any miss.
  */
-export async function padVoiceTail(voiceUrl: string, padSec: number, dest: { bucket: string; path: string }): Promise<string | null> {
-  if (!BIN || !voiceUrl || !(padSec > 0)) return null;
+export async function muxVoiceOntoClip(
+  videoUrl: string,
+  voiceUrl: string,
+  seconds: number,
+  dest: { bucket: string; path: string },
+): Promise<string | null> {
+  if (!BIN || !videoUrl || !voiceUrl || !(seconds > 0)) return null;
   let dir: string | null = null;
   try {
-    dir = await mkdtemp(join(tmpdir(), 'avatar-tail-'));
-    const out = join(dir, 'line.wav');
+    dir = await mkdtemp(join(tmpdir(), 'avatar-voice-'));
+    const out = join(dir, 'out.mp4');
+    const vcodec = (await videoStreamIsMp4Copyable(videoUrl)) ? ['-c:v', 'copy'] : X264;
+    const sec = String(Number(seconds.toFixed(3)));
+    const line = await speechLevels(BIN, voiceUrl, join(dir, 'line.pcm'));
+    const veo = await speechLevels(BIN, videoUrl, join(dir, 'veo.pcm'));
+    const lineSpans = line ? speechSpans(line) : [];
+    const veoSpans = veo ? speechSpans(veo) : [];
+    const pieces = planDub(lineSpans, veoSpans, seconds);
+    // eslint-disable-next-line no-console
+    console.warn('[avatar.voice] dub:', describeDub(lineSpans, veoSpans, pieces), '| veo dB/0.5s', veo ? levelProfile(veo) : 'none');
     await exec(BIN, [
-      '-y', '-i', voiceUrl, '-af', `apad=pad_dur=${Number(padSec.toFixed(3))}`, '-ac', '1', '-ar', '44100', '-c:a', 'pcm_s16le', out,
-    ], { maxBuffer: 1 << 24, timeout: 60_000 });
+      '-y', '-i', videoUrl, '-i', voiceUrl,
+      '-filter_complex', pieces ? dubFilter(pieces, '1:a', seconds) : `[1:a]apad=whole_dur=${sec}[voice]`,
+      '-map', '0:v:0', '-map', '[voice]',
+      ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-t', sec, '-movflags', '+faststart', out,
+    ], { maxBuffer: 1 << 26, timeout: 90_000 });
     const buf = await readFile(out);
     if (buf.byteLength < 1_024) return null;
-    return await uploadBufferAndSign(dest.bucket, dest.path, buf, 'audio/wav', 21_600);
+    return await uploadBufferAndSign(dest.bucket, dest.path, buf, 'video/mp4', 604_800);
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn('[avatar.voice] tail failed:', err instanceof Error ? err.message : err);
+    console.warn('[avatar.voice] mux failed:', err instanceof Error ? err.message : err);
     return null;
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -221,31 +243,18 @@ export async function padVoiceTail(voiceUrl: string, padSec: number, dest: { buc
 }
 
 /**
- * The finished talking avatar: sync.so's lip-synced picture with OUR line as its sound, exactly as ElevenLabs spoke it
- * (natural speed, the tail silence included), whatever track sync.so's file carries. The length is the shorter of the
- * two (`-shortest`), which sync.so already made the line's. The picture is stream-copied when it can be, and the file is
- * made web-ready (`+faststart`). Hosted at `dest` — a fixed path, so a repeat poll re-signs one object. Null on any miss.
+ * A track's levels (lib/avatar/speechMatch), read from its first audio stream as 16 kHz mono in the voice band (120 Hz
+ * to 4 kHz, so a bass line or a hum under Veo's words does not read as speech); null when it has none.
  */
-export async function laySyncedVoice(videoUrl: string, voiceUrl: string, dest: { bucket: string; path: string }): Promise<string | null> {
-  if (!BIN || !videoUrl || !voiceUrl) return null;
-  let dir: string | null = null;
+async function speechLevels(bin: string, url: string, pcmPath: string): Promise<number[] | null> {
   try {
-    dir = await mkdtemp(join(tmpdir(), 'avatar-synced-'));
-    const out = join(dir, 'out.mp4');
-    const vcodec = (await videoStreamIsMp4Copyable(videoUrl)) ? ['-c:v', 'copy'] : X264;
-    await exec(BIN, [
-      '-y', '-i', videoUrl, '-i', voiceUrl, '-map', '0:v:0', '-map', '1:a:0',
-      ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
-    ], { maxBuffer: 1 << 26, timeout: 90_000 });
-    const buf = await readFile(out);
-    if (buf.byteLength < 1_024) return null;
-    return await uploadBufferAndSign(dest.bucket, dest.path, buf, 'video/mp4', 604_800);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[avatar.voice] synced mux failed:', err instanceof Error ? err.message : err);
+    await exec(bin, ['-y', '-v', 'error', '-i', url, '-map', '0:a:0', '-af', 'highpass=f=120,lowpass=f=4000', '-ac', '1', '-ar', '16000', '-f', 's16le', pcmPath], { maxBuffer: 1 << 24, timeout: 60_000 });
+    const buf = await readFile(pcmPath);
+    if (buf.byteLength < 320) return null;
+    const pcm = new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 2));
+    return frameLevelsDb(pcm, 16_000);
+  } catch {
     return null;
-  } finally {
-    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 

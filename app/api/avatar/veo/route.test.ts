@@ -47,7 +47,7 @@ const post = (body: unknown) => new NextRequest('https://myavatar.ge/api/avatar/
 
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env = { ...ENV, GENJUTSU_CHARGE_SECRET: 'test-genjutsu-secret', SYNC_API_KEY: 'test-sync-key' };
+  process.env = { ...ENV, GENJUTSU_CHARGE_SECRET: 'test-genjutsu-secret' };
   delete process.env.AVATAR_VEO_PUBLIC;
   (authedClientFromRequest as jest.Mock).mockResolvedValue({ user: { id: UID } });
   (isAdminIdentity as jest.Mock).mockResolvedValue(true);
@@ -105,7 +105,6 @@ test('Georgian words: the ElevenLabs line is made BEFORE the charge, Veo says it
   expect(res.status).toBe(202);
   const j = await res.json();
   expect(j.voice).toBe('ElevenLabs');
-  expect(j.lipsync).toBe('sync.so');
   const line = (speakAvatarLine as jest.Mock).mock.calls[0][0];
   expect(line.text).toBe('გამარჯობა, მე ვარ შენი ავატარი');
   expect(line.gender).toBe('male');
@@ -143,22 +142,6 @@ test('Georgian words with no voice, or a line longer than the clip: refused, not
   expect(deductCredits).not.toHaveBeenCalled();
   expect(createJob).not.toHaveBeenCalled();
   expect(submitScene).not.toHaveBeenCalled();
-});
-
-// GG 2026-10-17 12:29Z: the mouth is sync.so's, with no fallback to the Veo dub. No key → no Georgian avatar, and nothing
-// is spent finding that out: no ElevenLabs line, no charge, no Veo clip.
-test('Georgian words with no lip-sync key: refused before the voice, the charge and the submit; other languages still run', async () => {
-  delete process.env.SYNC_API_KEY;
-  const res = await POST(post(BODY));
-  expect(res.status).toBe(503);
-  expect(await res.json()).toMatchObject({ error: 'lipsync_unavailable', refunded: false });
-  expect(speakAvatarLine).not.toHaveBeenCalled();
-  expect(deductCredits).not.toHaveBeenCalled();
-  expect(createJob).not.toHaveBeenCalled();
-  expect(submitScene).not.toHaveBeenCalled();
-  const en = await POST(post(EN_BODY));
-  expect(en.status).toBe(202);
-  expect((await en.json()).lipsync).toBeUndefined();
 });
 
 test('GET: open and its price for an admin, closed for an ordinary account and for a visitor', async () => {

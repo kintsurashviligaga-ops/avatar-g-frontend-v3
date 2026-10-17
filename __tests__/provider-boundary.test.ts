@@ -13,7 +13,6 @@
  *  1. no runtime file outside the list for a vendor references that vendor (a new file → fail; route it through a
  *     Google / ElevenLabs engine instead);
  *  2. every listed file still references it (a stale entry → fail; delete the line, so the list only shrinks).
- * A vendor is added only by the owner's word, cited where it is listed (syncso: lip sync, GG 2026-10-17 12:29Z).
  */
 import ts from 'typescript';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -52,8 +51,6 @@ const VENDORS: Record<string, { hosts: RegExp; sdks?: string[] }> = {
   pollinations: { hosts: /\bpollinations\.ai\b/ },
   tavily: { hosts: /\b(api\.)?tavily\.com\b/ },
   fal: { hosts: /\b(queue\.)?fal\.(run|ai)\b/, sdks: ['@fal-ai/client', '@fal-ai/serverless-client'] },
-  // The owner widened R7 for lip sync only (GG, 2026-10-17 12:29Z): the talking avatar's mouth, in one file.
-  syncso: { hosts: /\bapi\.sync\.so\b/ },
 };
 
 function walk(p: string, out: string[]): string[] {

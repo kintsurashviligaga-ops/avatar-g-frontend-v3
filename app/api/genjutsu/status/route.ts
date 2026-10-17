@@ -17,10 +17,10 @@
  * refund is by ref (what the LEDGER shows, once as `${ref}:refund`), so this poll, a repeat poll and the render drainer
  * collapse to ONE credit-back. A finished clip is re-hosted at a fixed path, so a re-poll re-signs the same object.
  *
- * ⚠️ A VOICED AVATAR (`::v` in the signed id, app/api/avatar/veo) is shown only WITH its ElevenLabs line: sync.so
- * redraws Veo's mouth to the line stored before the charge, at its natural speed and length (lib/avatar/voicedClip,
- * GG's 2026-10-17 12:29Z decision). Until that lands the job reads `delivering` — never a silent avatar; a lip sync
- * sync.so refuses or fails is refunded at once, and the hard cap below still refunds one that never arrives.
+ * ⚠️ A VOICED AVATAR (`::v` in the signed id, app/api/avatar/veo) is shown only WITH its ElevenLabs line: Veo's own
+ * voice is replaced by the line stored before the charge, fitted onto where Veo spoke (lib/avatar/voicedClip), and until
+ * that lands the job reads `delivering` — never a silent avatar, and the hard cap below still refunds one that never
+ * gets its voice.
  *
  * ⚠️ maxDuration 120 here; vercel.json's `app/api/**` glob (15 s) overrides it unless `app/api/genjutsu/**` is added
  * there, and the Gemini-transport watermark crop needs ffmpeg-static traced for this route (next.config.js
@@ -88,9 +88,7 @@ async function veoScene(id: string, userId: string): Promise<NextResponse> {
 
   if (progress.state === 'ready') {
     // A voiced avatar is its clip WITH its line; a miss is "still delivering" until the cap below.
-    const voiced = job.voiced ? (uuid ? await deliverVoicedAvatar(progress.url, uuid) : { state: 'pending' as const }) : null;
-    if (voiced?.state === 'failed') return giveUp('generation_failed', voiced.reason);
-    const url = voiced ? (voiced.state === 'ready' ? voiced.url : null) : progress.url;
+    const url = job.voiced ? (uuid ? await deliverVoicedAvatar(progress.url, uuid) : null) : progress.url;
     if (url) {
       // File it in the Library once: a re-poll of a finished job must not re-fire the completion notification.
       const snap = rowId ? await jobSnapshot(rowId) : null;
@@ -98,7 +96,7 @@ async function veoScene(id: string, userId: string): Promise<NextResponse> {
         await recordCompletedFilm(job.voiced
           ? {
             id: rowId, userId, url, prompt: 'Avatar', orientation: job.aspect === '9:16' ? 'vertical' : 'landscape',
-            result: { url, kind: 'video', op: 'avatar', voice: 'elevenlabs', lipsync: 'sync.so' }, subtype: 'avatar',
+            result: { url, kind: 'video', op: 'avatar', voice: 'elevenlabs' }, subtype: 'avatar',
           }
           : {
             id: rowId, userId, url, prompt: 'VFX scene', orientation: job.aspect === '9:16' ? 'vertical' : 'landscape',
