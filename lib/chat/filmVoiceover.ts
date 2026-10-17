@@ -38,6 +38,7 @@ import { resolveVoiceId, personaToGender, toneToVoiceSettings, type VoiceLanguag
 import { uploadAndSign, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { mp3DurationSec } from '@/lib/audio/mp3Duration';
 import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
+import { isLastingVoiceRefusal } from '@/lib/elevenlabs/account';
 
 /**
  * Strong-signal commentator / narration intent across Georgian, English and
@@ -238,6 +239,9 @@ async function synthesizeVoiceover(
   // PHASE 2 L1 — optional tone-driven voice-setting nudges, merged OVER the model
   // defaults. Empty/{} → byte-identical to the previous behaviour.
   extraVoiceSettings?: Record<string, number>,
+  // Told each ElevenLabs refusal's HTTP status (0 when no answer came), so a caller can tell a plan / key refusal from
+  // a passing outage.
+  onRefusal?: (status: number) => void,
 ): Promise<{ base64: string; contentType: string } | null> {
   const georgian = isGeorgianText(text);
   const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -294,6 +298,7 @@ async function synthesizeVoiceover(
               // the cause (the key's ID set where the key belongs) was only found in the Music leg's warning.
               // eslint-disable-next-line no-console
               console.warn(`[tts] ElevenLabs ${m} refused: ${await elevenLabsRefusal(res)}`);
+              onRefusal?.(res.status);
             }
             // else: try the next model in the chain (e.g. eleven_v3 not enabled on this account)
           }
@@ -302,6 +307,7 @@ async function synthesizeVoiceover(
         if (out) return out;
       } catch {
         /* fall through to the explicit miss below */
+        onRefusal?.(0); // a timeout or a dropped connection: no answer, so never a lasting one
       } finally {
         clearTimeout(timer);
       }
@@ -340,16 +346,21 @@ export async function textToHostedSpeech(text: string, voiceId?: string | null):
  * The talking avatar's line (app/api/avatar/veo, GG's 2026-10-17 07:54Z choice: its Georgian is ElevenLabs', the picture
  * Veo's). ONE request in the voice of the chosen gender — the cloned native-Georgian voice for a Georgian line — hosted at
  * `path` (a fixed path, so the status route finds it again by the job alone), with how long it plays: the route refuses a
- * line longer than the clip BEFORE it charges. Null on any miss (no key, a refusal, empty audio, a failed upload).
+ * line longer than the clip BEFORE it charges. `{ off: true }` when ElevenLabs refused it for good (a plan without the
+ * cloned voices, a spent quota, a wrong key); null on any other miss (no key, an outage, empty audio, a failed upload).
  */
-export async function speakAvatarLine(opts: { text: string; gender?: 'male' | 'female' | null; path: string }): Promise<{ url: string; seconds: number } | null> {
+export async function speakAvatarLine(opts: { text: string; gender?: 'male' | 'female' | null; path: string }): Promise<{ url: string; seconds: number } | { off: true } | null> {
   try {
     const text = sanitizeSpokenText(opts.text).trim();
     if (!text) return null;
     const voiceId = opts.gender ? pickNarratorVoiceId(opts.gender) : pickGeorgianVoiceId(text);
     const gender: TtsGender = opts.gender ? (opts.gender === 'male' ? 'MALE' : 'FEMALE') : genderForPersona(detectPersona(text));
-    const audio = await synthesizeVoiceover(text, voiceId, gender);
-    if (!audio) return null;
+    const refusals: number[] = [];
+    const audio = await synthesizeVoiceover(text, voiceId, gender, undefined, (status) => { refusals.push(status); });
+    // Every model ElevenLabs was asked refused in a way a retry cannot change (2026-10-17 09:31Z: `401
+    // subscription_required / ivc_not_permitted` — the plan does not allow the cloned Georgian voices): the voice is
+    // off, and the user is not told to "try in a minute".
+    if (!audio) return refusals.length > 0 && refusals.every(isLastingVoiceRefusal) ? { off: true } : null;
     const buf = Buffer.from(audio.base64, 'base64');
     const seconds = mp3DurationSec(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
     if (seconds === null) return null;

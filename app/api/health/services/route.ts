@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminKeyHeaderMatches } from '@/lib/security/opsAccess';
 import { isAdmin } from '@/lib/auth/adminGuard';
+import { describeElevenLabsAccount, elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -171,10 +172,10 @@ export async function GET(req: NextRequest) {
         headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY! },
       });
       if (!r.ok) return { ok: false, message: `${r.status} ${r.statusText}` };
-      const j = (await r.json().catch(() => ({}))) as { subscription?: { character_count?: number; character_limit?: number } };
-      const used = j.subscription?.character_count ?? 0;
-      const limit = j.subscription?.character_limit ?? 0;
-      return { ok: true, message: `${r.status} OK · ${used}/${limit} chars used` };
+      // The key is not the voice: the plan must allow the cloned Georgian voices and have characters left
+      // (2026-10-17 09:31Z, `401 subscription_required / ivc_not_permitted` while this said OK).
+      const account = readElevenLabsAccount(await r.json().catch(() => null));
+      return { ok: elevenLabsVoiceState(account) === 'ok', message: `${r.status} · ${describeElevenLabsAccount(account)}`.slice(0, 160) };
     }),
 
     // ── Avatar / Talking Head ──────────────────────────────────────────────

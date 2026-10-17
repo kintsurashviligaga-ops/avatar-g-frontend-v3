@@ -5,6 +5,7 @@ import { geminiTierModel } from '@/lib/ai/google/models';
 import { veoTransport } from '@/lib/veo/engine';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { checkVertexAuth } from '@/lib/veo/authCheck';
+import { describeElevenLabsAccount, elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
 import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
 
 export const dynamic = 'force-dynamic';
@@ -135,14 +136,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return { provider: 'replicate', configured: true, ok: r.ok, detail: r.ok ? `account ${j.username ?? 'ok'}` : `HTTP ${r.status}` };
     }),
 
-    // ELEVENLABS — every text-to-speech leg in the product. Reports the remaining character quota,
-    // because an EXHAUSTED account is valid-but-useless and looks like a working key everywhere else.
+    // ELEVENLABS — every text-to-speech leg in the product. Reports the plan, whether it allows the cloned Georgian
+    // voices, and the characters left: an account whose plan has no cloning, or no characters, is valid-but-useless and
+    // looks like a working key everywhere else (2026-10-17 09:31Z: `401 subscription_required / ivc_not_permitted`).
     probe('elevenlabs', process.env.ELEVENLABS_API_KEY, async (k) => {
       const r = await get('https://api.elevenlabs.io/v1/user', { headers: { 'xi-api-key': k } });
       if (!r.ok) return { provider: 'elevenlabs', configured: true, ok: false, detail: `HTTP ${r.status}` };
-      const j = (await r.json()) as { subscription?: { character_limit?: number; character_count?: number } };
-      const left = (j.subscription?.character_limit ?? 0) - (j.subscription?.character_count ?? 0);
-      return { provider: 'elevenlabs', configured: true, ok: left > 0, detail: `${left} characters left` };
+      const account = readElevenLabsAccount(await r.json().catch(() => null));
+      return { provider: 'elevenlabs', configured: true, ok: elevenLabsVoiceState(account) === 'ok', detail: describeElevenLabsAccount(account) };
     }),
 
     probe('heygen', process.env.HEYGEN_API_KEY, async (k) => {
