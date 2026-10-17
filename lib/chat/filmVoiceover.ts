@@ -613,6 +613,18 @@ export async function generateDialogueStems(opts: {
 }
 
 /**
+ * ⚠️ ElevenLabs refuses a sound-generation `text` over 450 characters (`400 text_too_long`): the brief was cut at 280 but
+ * the fixed words around it add 181, so a full brief sent 461 and the film lost its whole ambience bed (live E2E
+ * 2026-10-17, film B). The brief now gets only the room the fixed words leave.
+ */
+export const SFX_TEXT_MAX = 450;
+const SFX_HEAD = 'Cinematic, immersive sound design and ambience for this film scene: ';
+const SFX_TAIL = '. Layered environmental sound effects and foley that fit the location and action. No music, no melody, no speech.';
+export function sfxPromptText(brief: string): string {
+  return `${SFX_HEAD}${brief.slice(0, SFX_TEXT_MAX - SFX_HEAD.length - SFX_TAIL.length)}${SFX_TAIL}`;
+}
+
+/**
  * Synthesise a cinematic SOUND-DESIGN / ambience track via the ElevenLabs
  * sound-generation API (text → layered SFX, foley, atmosphere). The FFmpeg master
  * mixes this UNDER the music so the film has real environmental sound, not just a
@@ -623,9 +635,7 @@ async function synthesizeSfx(brief: string, totalSec: number): Promise<{ base64:
   if (!apiKey) return null;
   // The sound-generation endpoint caps at 22s; ask for as much as fits the film.
   const duration = Math.max(8, Math.min(22, Math.round(totalSec)));
-  const text =
-    `Cinematic, immersive sound design and ambience for this film scene: ${brief.slice(0, 280)}. ` +
-    `Layered environmental sound effects and foley that fit the location and action. No music, no melody, no speech.`;
+  const text = sfxPromptText(brief);
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 40_000);
   try {

@@ -662,7 +662,8 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       const segs = alignmentToCaptionSegments(m.captionAlignment);
       const pre = segs.length ? await probeMaster(bin, out) : null;
       if (pre?.width && pre?.height) {
-        const captioned = await burnCaptionSegments(out, segs, { width: pre.width, height: pre.height });
+        // The cap is spread over the master's real length: the narration (and so the last caption) often ends first.
+        const captioned = await burnCaptionSegments(out, segs, { width: pre.width, height: pre.height, durationSec: pre.actualDurSec ?? deliverSec });
         if (captioned) {
           await writeFile(out, captioned);
           // eslint-disable-next-line no-console
@@ -716,7 +717,11 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // surfacing as the misleading "Storage not configured" error. uploadBufferAndSign
     // streams the Buffer and retries once on a transient failure.
     const url = await uploadBufferAndSign(RENDER_BUCKET, objectPath, data, 'video/mp4', 604_800);
-    if (!url) throw new Error('master upload failed (storage rejected the file or is unavailable — check service-role key + project upload size limit)');
+    if (!url) {
+      // The operator's hint stays in the log; the film's error card shows the sentence below (lib/ui/opFailure).
+      console.error(`[assemble] master upload failed: ${(data.byteLength / 1048576).toFixed(1)} MB to ${RENDER_BUCKET} (storage refused the file or is unavailable: check the service-role key and the project upload size limit)`);
+      throw new Error('The finished film could not be saved to storage.');
+    }
     return { url, qa };
   } finally {
     await rm(dir, { recursive: true, force: true });

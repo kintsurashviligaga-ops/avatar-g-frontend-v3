@@ -337,6 +337,11 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const sfxIdx = opts.hasSfx ? ai++ : null;
   const bg = [musicIdx, sfxIdx].filter((x): x is number => x !== null);
   const duck = Math.max(0, Math.min(1, opts.duckPct / 100));
+  // ⚠️ THE VOICE KEY RUNS THE WHOLE FILM. `sidechaincompress` ends when its key ends, so a 4 s narration keying the bed of a
+  // 16 s film cut the music (and the sfx) at 4 s, and the final `apad` filled the remaining 12 s with digital silence
+  // (live E2E 2026-10-17, film B: the narration and the score both stopped at 4.5 s). The voice is padded with silence to
+  // the film's length first, so the bed plays on, un-ducked, after the last word.
+  const voiceKeyPad = `apad=whole_dur=${targetDur.toFixed(2)}`;
 
   // Music-video song-master ducking: a deep, SMOOTH sidechain duck of the SFX bed
   // keyed off the song so the secondary backing drops ~−12 dB whenever the song's
@@ -394,7 +399,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
       // PHASE 27 (VECTOR 1) — the VOICE now keys TWO sidechain ducks (music AND sfx), so it is split
       // 3 ways: two keys + the audible copy. (Was asplit=2 with SFX riding a static gain, which risked
       // a loud soundscape — crowd roar / wind — drowning the ElevenLabs narration.)
-      parts.push(`[${voiceIdx}:a]asplit=3[vkeym][vkeys][vraw]`);
+      parts.push(`[${voiceIdx}:a]${voiceKeyPad},asplit=3[vkeym][vkeys][vraw]`);
       parts.push(`[vraw]volume=1.0[vmix]`);
       parts.push(`[musv][vkeym]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[musduck]`);
       // SFX ducked under the vocal: same threshold/ratio as music, a slightly slower 300ms release so the
@@ -432,7 +437,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     // dB→ratio via the SHARED duckRatio() map (identical to the 3-track path above). −12→12 · −18→17 · −6→8.
     const ratio = duckRatio(opts.duckDb, duck);
     if (smart) {
-      parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
+      parts.push(`[${voiceIdx}:a]${voiceKeyPad},asplit=2[vkey][vraw]`);
       parts.push(`[vraw]volume=1.25[vmix]`);
       parts.push(`${bgLabel}volume=0.6[bglow]`);
       parts.push(`[bglow][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[bgduck]`);
