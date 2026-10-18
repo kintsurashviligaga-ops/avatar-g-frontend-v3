@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Check, Clock, X } from 'lucide-react';
 import { LoadingLoop } from './LoadingLoop';
+import { easedPct } from './LoadingCard';
 
 /**
  * THE loading card. One shape for every service that makes the user wait.
@@ -106,17 +107,8 @@ export const PROGRESS_TARGET: Record<ProgressKind, number> = {
   editor: 150,
 };
 
-/**
- * The eased curve the card draws, exported so any surface can pace a bar the same way.
- *
- * Asymptotic toward 95: fast at the start, never arriving. That "never arriving" is the point — a bar
- * that reaches its ceiling and stops incrementing looks IDENTICAL to a crashed render, and the user's
- * next move is to reload and lose the work.
- */
-export function easedPct(elapsedSec: number, targetSec: number): number {
-  const t = Math.max(1, targetSec);
-  return Math.min(95, Math.round((1 - Math.exp(-Math.max(0, elapsedSec) / (t / 2.4))) * 100));
-}
+/** The eased curve (./LoadingCard, the one loading card), re-exported for the surfaces that pace a number with it. */
+export { easedPct };
 
 /** m:ss — exported because the composer's inline status line formats the same clock. */
 export function fmtClock(sec: number): string {
