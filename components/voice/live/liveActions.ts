@@ -889,8 +889,10 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
       if (action.submit) {
         // ⚠️ Enter in the studio's composer RUNS the open tool — a paid generation everywhere but the chat.
         const composer = el.getAttribute('data-testid') === 'composer-input';
-        const form = el.closest('form');
-        const paidForm = !!form && Array.from(form.querySelectorAll('button,[role="button"],input[type="submit"]')).some((b) => ui.guard(b as HTMLElement) === 'spend');
+        // A studio's Create screen is no <form>, and its own prompt starts the priced run on Enter too (the music prompt did,
+        // 2026-10-18): any other field is held while a priced button shares its form or sheet, or the page when it has none.
+        const scope = el.closest('form, [role="dialog"]') ?? el.ownerDocument.body;
+        const paidForm = !composer && Array.from(scope.querySelectorAll('button,[role="button"],input[type="submit"]')).some((b) => ui.guard(b as HTMLElement) === 'spend');
         if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — the user presses the priced button to start it.';
         else if (paidForm) held = ' It was NOT submitted: that form starts a paid generation — ask the user to tap it.';
         else { ui.submit(el); submitted = true; }

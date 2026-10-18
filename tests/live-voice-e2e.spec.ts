@@ -148,13 +148,13 @@ test.describe('voice mode, end to end', () => {
     const refused = await live.call('click', { target: priced!.id });
     expect(refused).toMatchObject({ ok: false, error: 'needs_user_spend' });
 
-    // 4 — typing into the studio's prompt works; Enter there would start a paid run, so it is held.
-    const placeholder = (await page.getByTestId('composer-input').getAttribute('placeholder')) ?? '';
-    const box = (await screen()).controls.find((c) => c.role === 'textbox' && placeholder.startsWith(c.name.replace(/…$/, '')));
+    // 4 — typing into the studio's prompt works; Enter there would start a paid run, so it is held. Since the prompt-first
+    // forms (PR #98) the description lives in the studio's own Create screen ("აღწერე სიმღერა"), not in the composer.
+    const box = (await screen()).controls.find((c) => c.role === 'textbox' && c.name.startsWith('აღწერე სიმღერა'));
     expect(box).toBeTruthy();
     const typed = await live.call('type_text', { target: box!.id, text: 'მშვიდი პიანინო წვიმაში', submit: 'on' });
     expect(typed).toMatchObject({ ok: true, summary: expect.stringMatching(/NOT submitted/) });
-    await expect(page.getByTestId('composer-input')).toHaveValue('მშვიდი პიანინო წვიმაში');
+    await expect(page.getByRole('textbox', { name: 'აღწერე სიმღერა' })).toHaveValue('მშვიდი პიანინო წვიმაში');
 
     // 5 — a website is read (title, text, links) and put on screen as a link to tap.
     const read = await live.call('read_webpage', { url: 'example.ge' });
