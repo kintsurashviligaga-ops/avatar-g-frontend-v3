@@ -133,16 +133,19 @@ export async function recordMusicUsage(model: string = lyriaModel()): Promise<vo
 /**
  * Generate a Lyria 3 track (instrumental OR vocal song). Returns { base64, mime } or null on ANY miss; the
  * caller turns null into its own explicit failure (no other engine runs behind Lyria, R7). Never throws.
+ * `model` (default lyriaModel()) is the clip or Pro: both go over the same transport — Vertex :generateContent when
+ * GEMINI_TRANSPORT=vertex, the Interactions API otherwise.
  */
-export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean }): Promise<LyriaTrack | null> {
+export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean; model?: string }): Promise<LyriaTrack | null> {
   const key = resolveGeminiKey();
+  const model = args.model?.trim() || lyriaModel();
   if (googleTransportBlocker(key) || !args.prompt?.trim()) return null;
 
   // BUDGET GATE (Master Task §2.1.1). Music is a real per-track provider charge, so it passes the same
   // guard as image/video. A refusal returns null — the SAME shape every other miss returns here — so the
   // caller's existing failure path (502 + refund) handles it without a new error path. `guardedCall` books the cost
   // only on success, and fails OPEN if the guard itself is broken.
-  if (!(await musicWithinBudget())) {
+  if (!(await musicWithinBudget(model))) {
     // eslint-disable-next-line no-console
     console.warn('[lyria] refused by the platform budget guard → the request fails (no fallback, R7)');
     return null;
@@ -156,7 +159,7 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
 
   try {
     const res = googleTransportKind() === 'vertex'
-      ? await googleModelFetch(lyriaModel(), 'generateContent', {
+      ? await googleModelFetch(model, 'generateContent', {
           method: 'POST',
           cache: 'no-store',
           body: JSON.stringify(buildLyriaVertexBody(input)),
@@ -166,26 +169,26 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
           cache: 'no-store',
-          body: JSON.stringify({ model: lyriaModel(), input, response_format: { type: 'audio' } }),
+          body: JSON.stringify({ model, input, response_format: { type: 'audio' } }),
           signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
         });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, status: res.status, detail: body, model: lyriaModel() });
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, status: res.status, detail: body, model });
       return null;
     }
     const j = await res.json().catch(() => null);
     const audio = extractAudio(j);
     if (!audio) {
-      reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: 'response carried no audio', model: lyriaModel() });
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: 'response carried no audio', model });
       return null;
     }
     // Book the spend AFTER a real track came back — a failed/empty generation costs us nothing, and
     // charging the envelope for it would slowly starve the budget on a misbehaving provider.
-    void recordMusicUsage();
+    void recordMusicUsage(model);
     return audio;
   } catch (e) {
-    reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: e instanceof Error ? e.message : String(e), model: lyriaModel() });
+    reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: e instanceof Error ? e.message : String(e), model });
     return null;
   }
 }

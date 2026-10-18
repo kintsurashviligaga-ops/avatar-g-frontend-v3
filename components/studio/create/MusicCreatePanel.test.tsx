@@ -23,6 +23,7 @@ const STATUS = {
   },
   references: { cover: true, voice: true },
   chain: ['lyria', 'elevenlabs-music', 'musicgen'],
+  lengths: [30, 60, 90, 0], // Lyria 3 Pro verified: every panel length is made
 };
 
 const STYLE_OPTIONS = [
@@ -182,6 +183,22 @@ test('the price on Create is the shared quote: 30 s → 5, 60 s → 8, 90 s → 
     unmount();
   }
   expect([30, 60, 90].map((s) => quoteCredits({ tool: 'music', seconds: s }))).toEqual([5, 8, 12]);
+});
+
+test('without Lyria 3 Pro the length list offers 30 s alone, and a kept longer choice falls back to 30 s', async () => {
+  fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond({ ...STATUS, lengths: [30] }) : respond({})));
+  render(<Host over={{ duration: 0 }} />);
+  await waitFor(() => expect(price()).toBe(quoteCredits({ tool: 'music', seconds: 30 })));
+  fireEvent.click(screen.getByTestId('music-tile-length'));
+  const options = within(screen.getByTestId('music-tile-length-list')).getAllByRole('option');
+  expect(options.map((o) => o.textContent)).toEqual([expect.stringContaining('30')]);
+});
+
+test('with Lyria 3 Pro verified every length is offered, Full song included', async () => {
+  render(<Host />);
+  await act(async () => { await Promise.resolve(); });
+  fireEvent.click(screen.getByTestId('music-tile-length'));
+  expect(within(screen.getByTestId('music-tile-length-list')).getAllByRole('option')).toHaveLength(4);
 });
 
 test('a cover is a flat 30 s: the price ignores the length picker and the length tile says it is fixed', async () => {

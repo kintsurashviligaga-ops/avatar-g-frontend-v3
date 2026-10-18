@@ -3,6 +3,7 @@
  * it and a test can pin it. The user's prompt and lyrics go through verbatim (no translation, no rewriting); the
  * structured choices become short English directions after them.
  */
+import { musicLengthDirection } from '@/lib/studio/musicEngines';
 import type { MusicPlan, MusicRequest } from './contracts';
 
 const LANG_NAME = { ka: 'Georgian', en: 'English', ru: 'Russian' } as const;
@@ -21,6 +22,9 @@ export function directions(r: MusicRequest): string[] {
     if (v) out.push(v);
     if (r.lyricsLanguage) out.push(`Sung in ${LANG_NAME[r.lyricsLanguage]}`);
   }
+  // Lyria 3 Pro has no length field: a track over 30 s is steered to its length here (empty for the clip's 30 s).
+  const length = musicLengthDirection(r.durationSec);
+  if (length) out.push(length);
   return out;
 }
 
