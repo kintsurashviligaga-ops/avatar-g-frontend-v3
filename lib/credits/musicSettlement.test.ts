@@ -45,6 +45,19 @@ describe('settlement — the Lyria overcharge', () => {
     expect(settleMusicCharge(60, 59.2)).toEqual({ settledSec: 60, overcharged: false });
   });
 
+  it('Lyria 3 Pro lands a little short (Production 2026-10-18): 58.1 s for 60 s and 87.6 s for 90 s keep their tier', () => {
+    expect(settleMusicCharge(60, 58.1)).toEqual({ settledSec: 60, overcharged: false });
+    expect(settleMusicCharge(90, 87.6)).toEqual({ settledSec: 90, overcharged: false });
+    expect(settleMusicCharge(90, 172.4)).toEqual({ settledSec: 90, overcharged: false });
+  });
+
+  it('the 10 % margin ends at 54 s and 81 s: a track further short still settles down', () => {
+    expect(settleMusicCharge(60, 54)).toEqual({ settledSec: 60, overcharged: false });
+    expect(settleMusicCharge(60, 53.5)).toEqual({ settledSec: 30, overcharged: true });
+    expect(settleMusicCharge(90, 81)).toEqual({ settledSec: 90, overcharged: false });
+    expect(settleMusicCharge(90, 80)).toEqual({ settledSec: 60, overcharged: true });
+  });
+
   it('a LONGER track than paid for is never charged more — settling only ever refunds', () => {
     expect(settleMusicCharge(30, 120).settledSec).toBe(30);
     expect(settleMusicCharge(30, 120).overcharged).toBe(false);
