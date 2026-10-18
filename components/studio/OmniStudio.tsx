@@ -17,11 +17,13 @@ import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { HomeQuickStart } from './HomeQuickStart';
-import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
 import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
+import { LoadingCard } from '@/components/studio/ui/LoadingCard';
+import { ReplyMoreMenu, type ReplyMoreItem } from '@/components/studio/ui/ReplyMoreMenu';
+import { MODEL3D_LOCKED } from '@/lib/studio/model3dLock';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { isChargedRemixOp, remixAskText, remixOpCredits } from '@/lib/video/remixCharge';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
@@ -115,7 +117,8 @@ import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/us
 /** The avatar gallery's first card: opens the user's own face photo picker (it is not a preset). */
 const OWN_PHOTO_CARD_ID = 'own-photo';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
-import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
+import { isAdImageMime, AD_IMAGE_MAX_BYTES, AD_IMAGE_MIME, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
+import { placeProductShots, readAsDataUrl, type ProductShots } from '@/lib/ads/productShots';
 import { track } from '@/lib/analytics/track';
 import { serviceForTool, trackGenerationCompleted, trackGenerationConfirmed, trackGenerationFailed, trackQuoteShown, trackResultSaved, trackServiceOpened, type ServiceSurface } from '@/lib/analytics/serviceEvents';
 import { ensureNotificationPermission, fireCompletionNotification } from '@/lib/notify/browserNotify';
@@ -190,13 +193,14 @@ import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
 import { planChatTurn, wordsAreForChat, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
-import { askReply, replacedNote } from '@/lib/agent/intentReply';
+import { askReply, replacedNote, retiredReply } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, resumeAgentAudio, runAgentAudio, type AudioClientRun } from '@/lib/agent/media/audioClient';
 import { findLinks } from '@/lib/agent/media/audioSource';
 import { peekTask, type FollowDeps } from '@/lib/agent/media/jobFollow';
 import { notStartedText, persistAudio, persistEdit, persistMontage, persistRun, restoreAgentCards } from '@/lib/agent/media/cardPersist';
 import { KEEP_OPEN_CHAT_EVENT } from '@/lib/chat/keepOpenChat';
+import { readTabChat, readTabDraft, writeTabChat, writeTabDraft } from '@/lib/chat/tabChat';
 import { newestWorkingCard } from '@/lib/agent/media/workingCard';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { toolGroups } from '@/lib/catalog/nav';
@@ -252,6 +256,8 @@ type Lang = 'ka' | 'en' | 'ru';
 /** "Soon" badge for a service that has no working backend yet. Kept as a local three-key map rather than
  *  widening this file's 100-key COPY interface for a single word. */
 const SOON_LABEL: Record<Lang, string> = { ka: 'მალე', en: 'Soon', ru: 'Скоро' };
+/** The product ad's pickers offer only what the ad takes (lib/ads/adInputValidation): JPG, PNG, WebP. */
+const AD_IMAGE_ACCEPT = AD_IMAGE_MIME.join(',');
 
 /** A studio's name in a chat line: the one tool-name source (lib/studio/tools TOOL_META), so the chat says what the sidebar says. */
 const serviceLabel = (id: string, locale: string): string => (isToolId(id) ? toolName(id, locale) : id);
@@ -391,6 +397,7 @@ export const COPY: Record<Lang, {
   modeSurgical: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
   /** The cut-off reply's button, and the user turn it sends. */ continueReply: string; cutShort: string;
+  /** A reply stopped with Stop: its status line and its button (the turn it sends is `continueReply`). */ stoppedReply: string; continueAction: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string; sbAnchorLocked: string; sbPipeScript: string; sbPipeBoard: string; sbPipeRender: string; sbCompiling: string; sbReady: string; sbAutoFill: string; sbRenderNote: string; sbDrag: string;
@@ -418,7 +425,7 @@ export const COPY: Record<Lang, {
     modeSurgical: 'რედაქტორი',
     generatingLipsync: 'ავატარი იქმნება…', lipsyncFailed: 'ავატარი ვერ შეიქმნა.', lipsyncNeedFiles: 'მიამაგრე ფოტო და ტექსტი (ან აუდიო).', lipsyncAuth: 'ავატარისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: 'თავიდან ცდა', elapsedHint: 'გავიდა', greeting: STUDIO_EMPTY.ka.greeting, attachHint: 'დამატება',
-    continueReply: 'გააგრძელე', cutShort: 'პასუხი სიგრძის ლიმიტზე შეწყდა.',
+    continueReply: 'გააგრძელე', cutShort: 'პასუხი სიგრძის ლიმიტზე შეწყდა.', stoppedReply: 'პასუხი შეჩერებულია', continueAction: 'გაგრძელება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე სცენებს — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და კადრები იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება', sbReady: 'მზადაა', sbAutoFill: 'ავტომატურად შეიქმნება', sbRenderNote: 'რენდერს რამდენიმე წუთი სჭირდება — შეტყობინებას მიიღებ, როცა მზად იქნება', sbDrag: 'გადაათრიე გადასაწყობად',
@@ -444,7 +451,7 @@ export const COPY: Record<Lang, {
     modeSurgical: 'Editor',
     generatingLipsync: 'Creating your Avatar…', lipsyncFailed: 'Avatar creation failed.', lipsyncNeedFiles: 'Attach a photo and a script (or audio).', lipsyncAuth: 'Sign in first to use Avatar.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: 'Try again', elapsedHint: 'elapsed', greeting: STUDIO_EMPTY.en.greeting, attachHint: 'Add',
-    continueReply: 'Continue', cutShort: 'The answer stopped at its length limit.',
+    continueReply: 'Continue', cutShort: 'The answer stopped at its length limit.', stoppedReply: 'Response stopped', continueAction: 'Continue',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes', sbReady: 'ready', sbAutoFill: 'auto-generates at render', sbRenderNote: "Render takes a few minutes — you'll be notified when it's ready", sbDrag: 'Drag to reorder',
@@ -470,7 +477,7 @@ export const COPY: Record<Lang, {
     modeSurgical: 'Редактор',
     generatingLipsync: 'Создаю аватар…', lipsyncFailed: 'Не удалось создать аватар.', lipsyncNeedFiles: 'Прикрепите фото и текст (или аудио).', lipsyncAuth: 'Войдите, чтобы использовать Аватар.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: 'Повторить', elapsedHint: 'прошло', greeting: STUDIO_EMPTY.ru.greeting, attachHint: 'Добавить',
-    continueReply: 'Продолжить', cutShort: 'Ответ остановился на пределе длины.',
+    continueReply: 'Продолжить', cutShort: 'Ответ остановился на пределе длины.', stoppedReply: 'Ответ остановлен', continueAction: 'Продолжить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите сцены — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и кадры…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен', sbReady: 'готово', sbAutoFill: 'создастся при рендере', sbRenderNote: 'Рендер займёт несколько минут — вы получите уведомление, когда всё будет готово', sbDrag: 'Перетащите для порядка',
@@ -1139,6 +1146,9 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   chatNotice?: ModeNotice;
   /** The reply stopped at the output-token limit (the route's `{truncated}`): the last reply offers "Continue". */
   truncated?: boolean;
+  /** The user stopped this reply mid-answer (Stop, or leaving the chat while it streamed): it says „პასუხი შეჩერებულია“,
+   *  and the last such reply offers „გაგრძელება“ (the owner's PRD, 2026-10-18). Set only when some text had arrived. */
+  stopped?: boolean;
   /** This failure would only fail again (a policy refusal, a safety stop): no Retry button. */
   noRetry?: boolean;
   /** The reply failed mid-answer: its text ends with the chat's own „\n\n⚠️ …" line, which the model must not get. */
@@ -1400,11 +1410,13 @@ function forgetConversationSid(uid: string | null, cid?: string): void {
 }
 
 /**
- * ONE-SHOT resume handoff. The app must land on a FRESH, EMPTY chat on every open and every refresh —
- * the way ChatGPT and Gemini do — instead of dropping the user back inside whatever they last said.
- * Past chats are not lost: they stay in the sidebar History and are opened EXPLICITLY, which writes the
- * id here. `currentConversationId()` consumes and deletes it, so the resume applies exactly once and the
- * next reload is a clean slate again.
+ * ONE-SHOT resume handoff. The app lands on a FRESH, EMPTY chat on every open — a new tab, a new visit — the way
+ * ChatGPT and Gemini do, instead of dropping the user back inside whatever they last said days ago. Past chats are not
+ * lost: they stay in the sidebar History and are opened EXPLICITLY, which writes the id here.
+ * `currentConversationId()` consumes and deletes it, so the resume applies exactly once.
+ *
+ * A reload of the SAME tab is not a new open: it comes back to that tab's chat and its unsent text (lib/chat/tabChat;
+ * the owner's PRD of 2026-10-18, 2.5 — until then a refresh, too, was a clean slate and lost both).
  */
 export const OMNI_RESUME_KEY = 'myavatar-omni-resume';
 const HISTORY_MAX = 80;  // max turns kept per conversation
@@ -1461,6 +1473,12 @@ function currentConversationId(): string {
       window.localStorage.setItem(OMNI_CURRENT_ID_KEY, resume);
       return resume;
     }
+    // A reload of this tab: the chat it had open (sessionStorage, so it ends with the tab).
+    const tab = readTabChat(currentUid());
+    if (tab) {
+      window.localStorage.setItem(OMNI_CURRENT_ID_KEY, tab);
+      return tab;
+    }
     // Otherwise: always a new, empty conversation. Reading OMNI_CURRENT_ID_KEY here is what used to
     // strand people inside a days-old thread on every visit. An empty chat is never written to History
     // (upsertConversation drops zero-message entries), so this creates no clutter.
@@ -1484,6 +1502,15 @@ function dropRef(spec: RegenSpec): RegenSpec {
   }
   return spec;
 }
+/**
+ * The streaming reply `sid` settled: the text that had arrived, marked stopped (it shows „პასუხი შეჩერებულია“ and
+ * Continue), or the stopped note when nothing had. Pure: Stop, a conversation switch and a reload all settle with it.
+ */
+function settleReply(msgs: Msg[], sid: string, partial: string, stoppedNote: string): Msg[] {
+  const arrived = !!partial.trim();
+  const text = arrived ? partial : `⏹ ${stoppedNote}`;
+  return msgs.map((m) => (m.id === sid ? { ...m, text, ...(arrived ? { stopped: true } : {}) } : m));
+}
 function leanMessages(messages: Msg[]): Msg[] {
   return messages
     .filter((m, i) => !(i === messages.length - 1 && m.role === 'assistant' && !m.text && !m.imageUrl && !m.audioUrl && !m.videoUrl))
@@ -1503,6 +1530,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.musicDraft ? { musicDraft: m.musicDraft } : {}),
       ...(m.notice ? { notice: true } : {}),
       ...(m.errorTail ? { errorTail: true } : {}),
+      ...(m.stopped ? { stopped: true } : {}),
       // A reply's sources are a few short links — kept, so its source chips survive a reload like the reply itself.
       ...(m.sources?.length ? { sources: m.sources.slice(0, 8) } : {}),
       // The attachment bytes are never stored; WHAT was attached is, so after a reload the model is told a photo or a PDF
@@ -1986,13 +2014,7 @@ export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCre
           <span aria-hidden className={`h-px flex-1 ${streaming ? 'bg-app-border/20' : 'bg-gradient-to-r from-app-accent/40 to-app-accent/60'}`} />
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${streaming ? 'bg-app-elevated text-app-muted/60 ring-app-border/15' : 'bg-app-accent/15 text-app-accent ring-app-accent/40'}`}><Film size={10} /> {t.sbPipeRender}</span>
         </div>
-        {/* Live frame-load progress — a hue-shifting bar (azure → compiling-core hue) fills as
-            each scene's frame streams in. */}
-        {streaming && (
-          <div className="mx-4 mb-2 h-1.5 overflow-hidden rounded-full bg-app-border/15">
-            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.round(prog * 100))}%`, background: `linear-gradient(90deg, #2563eb, ${coreColor})` }} />
-          </div>
-        )}
+        {/* Frame-load progress is the header's own count („N/M frames"); no bar (the owner's PRD, 2026-10-18). */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sb.scenes.map((s, i) => (
@@ -2138,8 +2160,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // code below, which runs before either is declared.
   const activeToolRef = useRef<ToolId>('chat');
   const applyToolRef = useRef<((id: ToolId) => void) | null>(null);
-  // Chat-history panel (list of past conversations) open state.
-  const [input, setInput] = useState('');
+  // The composer's text. A reload of this tab brings back what was typed and not sent (lib/chat/tabChat).
+  const [input, setInput] = useState(() => readTabDraft(currentUid()));
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
   // The composer's files belong to the conversation they were attached in (Video Core round 3, browser finding
@@ -2486,8 +2508,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setStreamingId(null);
     chatStop(); // aborts the fetch and FLUSHES the store, so the snapshot below holds every token that arrived
     const partial = chat.store.getSnapshot().text;
-    const text = partial.trim() ? partial : `⏹ ${t.stopped}`;
-    return (msgs) => msgs.map((m) => (m.id === sid ? { ...m, text } : m));
+    return (msgs) => settleReply(msgs, sid, partial, t.stopped);
   }, [chat.store, chatStop, t.stopped]);
   // Always-current mirror of `busy || storyboardBusy || remixBusy` (set by the loading-bar
   // effect below) so the legacy single-render entry points can reject a second parallel run
@@ -3288,6 +3309,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     window.addEventListener(KEEP_OPEN_CHAT_EVENT, keep);
     return () => window.removeEventListener(KEEP_OPEN_CHAT_EVENT, keep);
   }, []);
+  // A RELOAD KEEPS THE CHAT AND THE DRAFT (lib/chat/tabChat; the owner's PRD of 2026-10-18, 2.5). This tab remembers which
+  // chat it has open, and the composer's text a beat after typing stops.
+  useEffect(() => { writeTabChat(currentUid(), conversationId); }, [conversationId]);
+  const inputNowRef = useRef(input);
+  inputNowRef.current = input;
+  useEffect(() => {
+    const id = window.setTimeout(() => writeTabDraft(currentUid(), input), 250);
+    return () => window.clearTimeout(id);
+  }, [input]);
+  // ⚠️ A RELOAD MID-ANSWER LOST THE TURN. The autosave waits for the reply to finish (`!busy`), so the question just asked
+  // and the reply arriving were never written, and the reloaded tab came back without them. On the way out the thread is
+  // saved as it stands, the streaming reply settled to what had arrived and marked stopped, so it returns with
+  // „პასუხი შეჩერებულია“ and Continue. The draft is written at once too: the debounce above may not have fired.
+  useEffect(() => {
+    const away = () => {
+      writeTabDraft(currentUid(), inputNowRef.current);
+      const msgs = messagesRef.current;
+      if (!msgs.length || hydratingRef.current === conversationIdRef.current) return;
+      const sid = streamingIdRef.current;
+      upsertConversation(conversationIdRef.current, sid ? settleReply(msgs, sid, chat.store.getSnapshot().text, t.stopped) : msgs, activeToolRef.current);
+    };
+    window.addEventListener('pagehide', away);
+    return () => window.removeEventListener('pagehide', away);
+  }, [chat.store, t.stopped]);
   useEffect(() => {
     if (openedEmptyCloudRef.current) void resumeConversation(conversationIdRef.current);
     // Mount only: the handoff is one-shot.
@@ -4474,24 +4519,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     return false;
   }, [locale]);
-  const onProductPhoto = useCallback((file: File) => {
-    if (rejectAdImage(file)) return;
-    const reader = new FileReader();
-    reader.onload = () => setProductImage(typeof reader.result === 'string' ? reader.result : null);
-    reader.readAsDataURL(file);
-  }, [rejectAdImage]);
-  // Multi-shot: append an EXTRA product photo. STEP 2.1 caps the ad at MAX_AD_IMAGES
-  // (3) total = primary + (MAX_AD_IMAGES-1) extras; each clip rotates a different shot.
-  const addProductShot = useCallback((file: File) => {
-    if (rejectAdImage(file)) return;
-    if (productImages.length >= MAX_AD_IMAGES - 1) {
-      setShareToast(locale === 'en' ? `Up to ${MAX_AD_IMAGES} images` : locale === 'ru' ? `До ${MAX_AD_IMAGES} изображений` : `მაქს ${MAX_AD_IMAGES} სურათი`);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setProductImages((prev) => (typeof reader.result === 'string' && prev.length < MAX_AD_IMAGES - 1 ? [...prev, reader.result] : prev));
-    reader.readAsDataURL(file);
-  }, [rejectAdImage, productImages.length, locale]);
+  // THE PRODUCT PHOTO QUEUE (the owner's PRD, 2026-10-18: three reference photos must all arrive). STEP 2.1 caps the ad
+  // at MAX_AD_IMAGES (3) = the primary + (MAX_AD_IMAGES-1) extra angles; each clip rotates a different shot. Every
+  // picker takes several files; a pick is read whole and placed in ONE step (lib/ads/productShots), and picks run one
+  // after another. It used to be one file per pick, placed when its FileReader finished: a second quick pick still saw
+  // no primary and replaced the first photo, and a photo past the limit vanished without a word.
+  const productShotsRef = useRef<ProductShots>({ primary: null, extras: [] });
+  useEffect(() => { productShotsRef.current = { primary: productImage, extras: productImages }; }, [productImage, productImages]);
+  const productQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const addProductPhotos = useCallback((list: FileList | readonly File[] | null | undefined) => {
+    const files = Array.from(list ?? []).filter((f) => !rejectAdImage(f));
+    if (!files.length) return;
+    productQueueRef.current = productQueueRef.current.then(async () => {
+      const urls = (await Promise.all(files.map(readAsDataUrl))).filter((u): u is string => !!u);
+      const next = placeProductShots(productShotsRef.current, urls);
+      productShotsRef.current = { primary: next.primary, extras: next.extras };
+      setProductImage(next.primary);
+      setProductImages(next.extras);
+      if (next.overflow > 0) setShareToast(locale === 'en' ? `Up to ${MAX_AD_IMAGES} images` : locale === 'ru' ? `До ${MAX_AD_IMAGES} изображений` : `მაქს ${MAX_AD_IMAGES} სურათი`);
+    }).catch(() => { /* a read that failed places nothing; the next pick still runs */ });
+  }, [rejectAdImage, locale]);
 
   // Patch an existing chat bubble by id — the basis of PER-JOB result isolation: every queue
   // flow finalizes/updates its OWN bubble by id without ever touching another job's bubble.
@@ -5762,8 +5809,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // before because getConversations/getMessages always returned [] against the broken schema —
         // fixing the schema switched this on, and the app stopped opening on a clean slate.
         //
-        // `currentConversationId()` states the intended rule outright: "The app must land on a FRESH,
-        // EMPTY chat on every open and every refresh — the way ChatGPT and Gemini do." Cross-device
+        // `currentConversationId()` states the intended rule outright: the app lands on a FRESH, EMPTY
+        // chat on every open, the way ChatGPT and Gemini do (a reload of the same tab keeps that tab's
+        // chat, lib/chat/tabChat — never the account's last server session). Cross-device
         // continuity means your past chats APPEAR IN HISTORY, not that you are dumped back into the last
         // one. Both halves of that already exist and are the right mechanism: the sidebar sync below
         // merges the account's server sessions as "cloud" entries, and opening one EXPLICITLY lazy-loads
@@ -7045,6 +7093,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); stopDictationEcho();
       return;
     }
+    if (studio && (studio.service === 'dubbing' || studio.service === 'presentation')) {
+      // Taken out of the product (GG's PRD 2026-10-18): said plainly, no panel opens; the files stay for another ask.
+      const reply = retiredReply(studio.service === 'dubbing' ? 'voice.dubbing' : 'design.presentation', locale);
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply, notice: true }]);
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      return;
+    }
     if (studio) {
       // THE TALKING AVATAR RUNS IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat; 2026-10-17 07:39Z: „შექმენი
       // ავატარი რომელიც ამბობს ქართულად: …" made nothing). An order that names its line gets Agent G's card where the Veo
@@ -7372,6 +7427,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Patch the pending bubble so the panel shows the op-specific stages + ETA.
         if (mine() && intent.op) patchMsgById(bubbleId, (m) => (m.videoUrl ? m : { ...m, remixOpKind: intent.op }));
         const op = intent.op || 'color_grade';
+        if (op === 'face_swap') {
+          // The character swap left the product (GG's PRD 2026-10-18): said plainly; nothing is uploaded or charged.
+          patch({ role: 'assistant', text: retiredReply('video.character-swap', locale), notice: true });
+          return;
+        }
 
         // ── 🎵 MUSIC / REDUB NEED A TRACK, AND THE CHAT PATH NEVER LOOKED FOR ONE. ───────────────────
         // The advertised 🎵 Music chip pre-fills "add background music", which classifies as add_music,
@@ -8574,11 +8634,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return true;
       }
       case 'prepare_generation': {
-        // A deck or a 3D model: the studio panel opens with the topic / description filled in (its own Create runs it).
-        if (d.tool === 'presentation' || d.tool === 'model3d') {
+        // A 3D model: not open yet (lib/studio/model3dLock) — said, not opened onto a locked form.
+        if (d.tool === 'model3d' && MODEL3D_LOCKED) {
+          reply({ ok: false, error: 'not_available', message: '3D models are not open yet: the 3D form is locked and marked "soon". Tell the user it is coming soon; nothing was started.' });
+          return true;
+        }
+        // A 3D model: the studio panel opens with the description filled in (its own Create runs it).
+        if (d.tool === 'model3d') {
           selectTool(d.tool, 'voice');
           setStudioPrefill({ topic: d.prompt.slice(0, 2000) });
-          reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
+          reply({ ok: true, tool: d.tool, applied: { description: true } });
           return true;
         }
         // ⚠️ GG 2026-10-18: „დავალებას ლაივ ჩატში რომ იღებს, ის უნდა ჩანდეს როგორ კეთდება … აღარ უნდა მჭირდებოდეს გადასვლა".
@@ -10445,9 +10510,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <>
                       {m.chatNotice && <ModeNoticeLine reason={m.chatNotice} lang={locale} />}
                       {typeof m.videoProgress === 'number' && !m.videoUrl && (
-                        <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
-                          <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
-                        </div>
+                        // THE loading card (one quiet percentage, no bar: the owner's PRD, 2026-10-18).
+                        <LoadingCard locale={locale} label={locale === 'en' ? 'Video' : locale === 'ru' ? 'Видео' : 'ვიდეო'} pct={m.videoProgress} className="mb-2" />
                       )}
                       {displayText && <Markdown locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'}>{displayText}</Markdown>}
                       {/* Google Search grounding: the pages the answer was built from, as compact chips. */}
@@ -10702,11 +10766,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </button>
                   </div>
                 )}
-                {/* The reply's action row, in Gemini's order: 👍 · 👎 · regenerate (the last reply) · share · copy — plus
-                    read-aloud (our Georgian TTS, a product feature Gemini hides behind ⋮) — and, closing the row, the
-                    model that ACTUALLY answered, small and muted. The last reply's row is always visible (Gemini);
-                    earlier ones appear on hover / keyboard focus where there is a hover, and stay visible on touch.
-                    No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
+                {/* The reply's action row, in Gemini's order of what stays on screen: copy · listen · ⋯ more. The owner's PRD
+                    (2026-10-18) keeps only these three icons under a reply; 👍 · 👎 · regenerate (the last reply) · share
+                    are behind ⋯ (ReplyMoreMenu). Closing the row, the model that ACTUALLY answered, small and muted. The
+                    last reply's row is always visible (Gemini); earlier ones appear on hover / keyboard focus where there
+                    is a hover, and stay visible on touch. No scale-on-hover (docs/DESIGN.md §5): a state layer and a
+                    colour, 44 px on touch. */}
                 {m.role === 'assistant' && m.text && !m.researchId && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
                   const isLast = i === messages.length - 1;
                   const act = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
@@ -10717,26 +10782,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   const good = locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი';
                   const bad = locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი';
                   const copyWord = locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება';
-                  const readWord = locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა';
+                  const readWord = locale === 'en' ? 'Listen' : locale === 'ru' ? 'Слушать' : 'მოსმენა';
+                  const canRedo = isLast && !busy && agentRedo(m, messages[i - 1], { montage: agentMontageOn, audio: agentAudioOn, edit: agentEditOn }).kind !== 'none';
+                  const more: ReplyMoreItem[] = [
+                    { id: 'good', label: good, icon: ThumbsUp, checked: ratedIdx[i] === 'up', onSelect: () => rateMsg(i, 'up', m.text) },
+                    { id: 'bad', label: bad, icon: ThumbsDown, checked: ratedIdx[i] === 'down', onSelect: () => rateMsg(i, 'down', m.text) },
+                    ...(canRedo ? [{ id: 'redo', label: t.regenerate, icon: RotateCcw, onSelect: () => regenerateReply() }] : []),
+                    { id: 'share', label: t.share, icon: Share2, onSelect: () => void shareReply(m.text, i) },
+                  ];
                   return (
                     // -ml-2.5: the first icon (not its 40 px state layer) lines up with the reply's text edge.
                     <div className={`-ml-2.5 mt-2 flex min-w-0 items-center gap-0.5 text-app-muted transition-opacity duration-200 ${isLast ? '' : '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100'}`}>
-                      <button type="button" onClick={() => rateMsg(i, 'up', m.text)} aria-label={good} title={good} aria-pressed={ratedIdx[i] === 'up'}
-                        className={`${act} ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}>
-                        <ThumbsUp size={18} aria-hidden="true" />
-                      </button>
-                      <button type="button" onClick={() => rateMsg(i, 'down', m.text)} aria-label={bad} title={bad} aria-pressed={ratedIdx[i] === 'down'}
-                        className={`${act} ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}>
-                        <ThumbsDown size={18} aria-hidden="true" />
-                      </button>
-                      {isLast && !busy && agentRedo(m, messages[i - 1], { montage: agentMontageOn, audio: agentAudioOn, edit: agentEditOn }).kind !== 'none' && (
-                        <button type="button" onClick={() => regenerateReply()} aria-label={t.regenerate} title={t.regenerate} className={act}>
-                          <RotateCcw size={18} aria-hidden="true" />
-                        </button>
-                      )}
-                      <button type="button" onClick={() => void shareReply(m.text, i)} aria-label={t.share} title={t.share} className={act}>
-                        <Share2 size={18} aria-hidden="true" />
-                      </button>
                       <button type="button" onClick={() => void copyMsg(m.text, i)} aria-label={copyWord} title={copyWord}
                         className={`${act} ${copiedIdx === i ? 'text-app-accent' : ''}`}>
                         {copiedIdx === i ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
@@ -10749,10 +10805,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           : <Volume2 size={18} aria-hidden="true" />}
                       </button>
                       )}
+                      <ReplyMoreMenu locale={locale} items={more} triggerClassName={act} />
                       {modelLabel && (
                         <span data-testid="reply-model" title={modelLabel}
                           className="ml-auto min-w-0 truncate pl-2 text-[12px] font-medium tabular-nums text-app-muted">
-                          {/* A phone's action row has six icons before it: „Gemini 3.8 Flash" was cut to „Gemini 3…". There the
+                          {/* A phone's action row used to have six icons before it: „Gemini 3.8 Flash" was cut to „Gemini 3…". There the
                               family name steps aside (the header says „3.8 Flash" the same way); the text and the tooltip keep it. */}
                           {modelLabel.startsWith('Gemini ')
                             ? <><span className="hidden sm:inline">Gemini </span>{modelLabel.slice('Gemini '.length)}</>
@@ -10776,6 +10833,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     >
                       <ChevronsRight size={16} aria-hidden="true" /> {t.continueReply}
                     </button>
+                  </div>
+                )}
+                {/* A reply the user stopped says so (the owner's PRD, 2026-10-18: „პასუხი შეჩერებულია“), so a half answer
+                    never passes for a finished one; the last one offers „გაგრძელება“, which asks the model to go on from
+                    its own cut-off text exactly as the length-limit Continue does. */}
+                {m.role === 'assistant' && m.stopped && !m.truncated && (
+                  <div data-testid="reply-stopped" className={`mt-2 flex flex-wrap items-center gap-2 text-app-muted ${chatSmallText(locale)}`}>
+                    <span className="inline-flex items-center gap-1.5"><Square size={12} aria-hidden="true" className="fill-current" />{t.stoppedReply}</span>
+                    {i === messages.length - 1 && !busy && (
+                      <button
+                        type="button"
+                        onClick={() => continueChat()}
+                        data-testid="reply-stopped-continue"
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-elevated px-4 font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:min-h-[36px]"
+                      >
+                        <ChevronsRight size={16} aria-hidden="true" /> {t.continueAction}
+                      </button>
+                    )}
                   </div>
                 )}
                 {/* Retry — the last reply errored; re-run the same turn cleanly. */}
@@ -10908,6 +10983,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const settingsWord = locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები';
   const closeWord = locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა';
   const changeToolWord = locale === 'en' ? 'Change tool' : locale === 'ru' ? 'Сменить инструмент' : 'ხელსაწყოს შეცვლა';
+  const backToChatWord = locale === 'en' ? 'Back to chat' : locale === 'ru' ? 'Вернуться в чат' : 'ჩატში დაბრუნება';
   // The video tool brings its OWN header (tool name + switcher + ✕), model card and price, so the generic service card below
   // and the sheet's „Settings" header step aside for it (components/studio/create/VideoCreatePanel).
   const videoCreate = activeTool === 'video';
@@ -10915,6 +10991,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const toolEntry = (id: ToolId): ToolEntry => ({
     id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
     ...(liveTool(id) ? {} : { disabled: true, tag: SOON_LABEL[locale] }),
+    // 3D opens to its locked form (lib/studio/model3dLock), so it is tagged, not disabled: the form says why.
+    ...(id === 'model3d' && MODEL3D_LOCKED ? { tag: SOON_LABEL[locale] } : {}),
   });
   // THE ONE ATTACH BUTTON — the composer's paperclip, beside „+" (it used to sit inside the „+" sheet, two taps away):
   // one picker per tool — the phone's own picker offers the library, the camera and files from it. A tool that takes TWO kinds (a face photo + a video / an audio track) gets
@@ -11337,14 +11415,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       <span className="text-[10.5px] text-app-muted">{locale === 'en' ? 'It becomes the locked foreground' : locale === 'ru' ? 'Станет фиксированным передним планом' : 'დარჩება ფიქსირებულ წინა პლანზე'}</span>
                     </>
                   )}
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onProductPhoto(f); }} />
+                  <input type="file" accept={AD_IMAGE_ACCEPT} multiple className="hidden" onChange={(e) => { addProductPhotos(e.target.files); e.target.value = ''; }} />
                 </label>
-                {/* Multi-shot — extra product photos. Each clip in a 30/60s ad anchors a
-                    different angle (rotated), so the ad shows the product from several sides. */}
+                {/* Multi-shot — extra product photos. Each clip of the ad anchors a different angle (rotated), so the ad
+                    shows the product from several sides. */}
                 {productImage && (
                   <div>
                     <span className="mb-1.5 block text-[11px] text-app-muted">
-                      {locale === 'en' ? `Shots ${1 + productImages.length}/${MAX_AD_IMAGES} — more angles (30/60s)` : locale === 'ru' ? `Кадры ${1 + productImages.length}/${MAX_AD_IMAGES} — больше ракурсов` : `კადრები ${1 + productImages.length}/${MAX_AD_IMAGES} — მეტი რაკურსი (30/60წმ)`}
+                      {locale === 'en' ? `Shots ${1 + productImages.length}/${MAX_AD_IMAGES} — more angles` : locale === 'ru' ? `Кадры ${1 + productImages.length}/${MAX_AD_IMAGES} — больше ракурсов` : `კადრები ${1 + productImages.length}/${MAX_AD_IMAGES} — მეტი რაკურსი`}
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -11360,7 +11438,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {productImages.length < MAX_AD_IMAGES - 1 && (
                         <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-app-border/30 bg-app-bg/40 text-app-muted transition hover:border-app-accent/40 hover:text-app-accent">
                           <Plus size={16} />
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) addProductShot(f); e.target.value = ''; }} />
+                          <input type="file" accept={AD_IMAGE_ACCEPT} multiple className="hidden" onChange={(e) => { addProductPhotos(e.target.files); e.target.value = ''; }} />
                         </label>
                       )}
                     </div>
@@ -11976,18 +12054,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           />
         ) : imageDesk || imageWorkspace ? null : messages.length === 0 && !musicPane ? (videoStage ? null : (
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
-            {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
-                the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
-            </div>
             {/* THE HOME IS THE GREETING, THE BOX AND ITS FOUR QUICK BUTTONS (owner, 2026-10-02: no sub line, no starter
                 chips; GG's UI plan, 2026-10-18: the four quick actions under the box — HomeQuickStart).
-                The greeting carries its own soft halo of the brand blue as a layered text-shadow — a separate glow box
-                (tried first) made the feed scroll and cut a hard edge above the box, because anything that sticks out
-                of a scroll container is scrollable overflow and a shadow is not. It rises in once, and not at all under
-                reduced motion. */}
+                A CALM GROUND (the owner's PRD of 2026-10-18, 2.5: „ტექსტის უკან მუდმივი ნათება უნდა მოიხსნას"): the 8 %
+                night-street plate that sat behind the greeting and the blue halo the heading carried as a text-shadow
+                are gone. The greeting rises in once, and not at all under reduced motion. */}
             <div className="relative space-y-3 motion-safe:[animation:agSlideUp_0.7s_cubic-bezier(0.2,0.7,0.2,1)_both]">
               {personalGreeting && (
                 <p data-testid="personal-greeting" className="bg-gradient-to-r from-app-accent to-app-text bg-clip-text pb-1 text-[18px] font-medium leading-[1.4] text-transparent sm:text-[20px]">
@@ -11996,7 +12067,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               )}
               {/* The locked greeting (docs/DESIGN.md §7). Solid ink, never gradient text: forced-colors mode strips the
                   background a clipped gradient needs and would leave the page's one heading invisible. */}
-              <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text [text-shadow:0_0_28px_rgb(var(--app-accent)/0.38),0_0_80px_rgb(var(--app-accent)/0.22)] sm:text-[48px]">{t.greeting}</h1>
+              <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text sm:text-[48px]">{t.greeting}</h1>
               {/* In a TOOL (never the chat home, whose screen stays the greeting and the box): one quiet line saying where you
                   are and what this tool does — the panel beside it is the how. Without it every tool without a result pane of
                   its own opened on the home page's words alone. */}
@@ -12383,11 +12454,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           void ingestFiles(files, { scriptInVideo: false });
         }} />
         {/* „+" → Photos on the product tool: the product photo (then extra angles). */}
-        <input ref={productPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
-          const f = e.target.files?.[0];
+        <input ref={productPhotoRef} type="file" accept={AD_IMAGE_ACCEPT} multiple className="hidden" onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
           e.target.value = '';
-          if (!f) return;
-          if (productImage) addProductShot(f); else onProductPhoto(f);
+          addProductPhotos(files);
         }} />
         {/* „+" → Files on the remix tool: the source video. */}
         <input ref={remixVideoRef} type="file" accept="video/*" className="hidden" onChange={(e) => {
@@ -12481,6 +12551,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 </span>
                 {/* The chevron is from `sm` up: a phone's width goes to the words. */}
                 <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 text-app-muted sm:block" />
+              </button>
+            )}
+            {/* ✕ — back to the conversation (the owner's PRD, 2026-10-18: once a service is open in the chat box, one
+                plain tap returns to the chat). selectTool('chat') brings the chat's own session back with it. */}
+            {!chatOnly && (
+              <button type="button" onClick={() => selectTool('chat', 'composer')} data-testid="tool-back-to-chat"
+                aria-label={backToChatWord} title={backToChatWord}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+                <X size={18} aria-hidden="true" />
               </button>
             )}
             {/* The persona in use, as Gemini shows a chosen Gem: tap the name to change it, ✕ to go back to the
@@ -12771,10 +12850,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
                 <X size={18} />
               </button>
-            </div>
-            {/* Live progress bar — pace ~150s (the real storyboard build) toward 95%. */}
-            <div className="mx-4 mb-1 h-1 overflow-hidden rounded-full bg-app-border/15">
-              <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100)))}%` }} />
             </div>
             {/* The storyboard being built: the loading loop in the film's own shape, the one picture of every
                 generation's wait (the owner's rule, 2026-10-17). It replaced six pulsing skeleton tiles. */}

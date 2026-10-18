@@ -71,16 +71,14 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     if (CREDIT_COSTS.chat_message === 0) expect(p).toContain('chat is free');
   });
 
-  it('quotes dubbing and decks only once the owner approved their exact price', () => {
+  it('never quotes dubbing or decks, approved price or not: both left the product (GG 2026-10-18)', () => {
     const saved = process.env.OWNER_APPROVED_PRICING;
-    delete process.env.OWNER_APPROVED_PRICING;
-    const off = build('en');
-    expect(off).toContain('dubbing and decks: not yet available');
-    expect(off).not.toContain(`dub ${cr(CREDIT_COSTS.dubbing_per_minute)}`);
-    process.env.OWNER_APPROVED_PRICING = `dubbing:${CREDIT_COSTS.dubbing_per_minute},presentation:${CREDIT_COSTS.presentation_deck}`;
-    const on = build('en');
-    expect(on).toContain(`dub ${cr(CREDIT_COSTS.dubbing_per_minute)}/min; deck ${cr(CREDIT_COSTS.presentation_deck)}`);
-    expect(on).not.toContain('not yet available');
+    for (const approved of [undefined, `dubbing:${CREDIT_COSTS.dubbing_per_minute},presentation:${CREDIT_COSTS.presentation_deck}`]) {
+      if (approved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = approved;
+      const p = build('en');
+      expect(p).not.toContain(`dub ${cr(CREDIT_COSTS.dubbing_per_minute)}`);
+      expect(p).not.toContain(`deck ${cr(CREDIT_COSTS.presentation_deck)}`);
+    }
     if (saved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = saved;
   });
 
@@ -195,17 +193,20 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     expect(VEO_AVATAR_PROMPT_CREDITS).toBe(veoAvatarCredits());
   });
 
-  it('lists dubbing and decks as tools only once the owner approved their price', () => {
+  it.each(LOCALES)('names the retired tools as no longer offered, never as a tool or as „not yet" (%s)', (locale) => {
     const saved = process.env.OWNER_APPROVED_PRICING;
-    delete process.env.OWNER_APPROVED_PRICING;
-    const off = build('en');
-    expect(notYetNames(off)).toEqual(expect.arrayContaining([TOOL_META.dubbing.name.en, TOOL_META.presentation.name.en]));
-    expect(toolLine(off, 'dubbing', 'en')).toBe(false);
     process.env.OWNER_APPROVED_PRICING = `dubbing:${CREDIT_COSTS.dubbing_per_minute},presentation:${CREDIT_COSTS.presentation_deck}`;
-    const on = build('en');
-    expect(toolLine(on, 'dubbing', 'en')).toBe(true);
-    expect(toolLine(on, 'presentation', 'en')).toBe(true);
-    expect(notYetNames(on)).not.toContain(TOOL_META.dubbing.name.en);
+    for (const mediaGoogleOnly of [true, false]) {
+      const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly });
+      const gone = p.match(/^NO LONGER OFFERED: (.*?)\. If asked/m)?.[1]?.split(', ') ?? [];
+      for (const id of ['swap', 'motion', 'dubbing', 'presentation'] as const) {
+        expect({ id, listed: toolLine(p, id, locale) }).toEqual({ id, listed: false });
+        expect(notYetNames(p)).not.toContain(TOOL_META[id].name[locale]);
+        expect(gone).toContain(TOOL_META[id].name[locale]);
+      }
+      // The touch-up is reached by attaching a video: it is a tool line, not a retired one.
+      expect(gone).not.toContain(TOOL_META.remix.name[locale]);
+    }
     if (saved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = saved;
   });
 
@@ -229,8 +230,6 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     const gated = new Set([...policy.matchAll(/\{ file: '([^']+)'/g)].map((m) => m[1]));
     const route: Record<(typeof OUTSIDE_ENGINE_TOOLS)[number], string> = {
       avatar: 'app/api/video/lipsync/route.ts',
-      swap: 'app/api/video/remix/route.ts',
-      motion: 'app/api/motion-control/route.ts',
       model3d: 'app/api/v2/model3d/create/route.ts',
     } as never;
     for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, gated: gated.has(route[id]) }).toEqual({ id, gated: true });
@@ -355,7 +354,10 @@ describe('buildPlatformPrompt — locale variants', () => {
     const ui = PLATFORM_UI_LABELS[locale];
     for (const label of [ui.toolsSheet, ui.attach, ui.liveVoice, ui.topUp]) expect(p).toContain(`"${label}"`);
     // The side menu's headings come from the catalog nav, not a copy.
-    for (const g of ['create', 'work'] as const) expect(p).toContain(`"${NAV_GROUP_LABEL[g][locale]}"`);
+    for (const g of ['create', 'work'] as const) {
+      const drawn = toolGroups().some((x) => x.group === g);
+      expect({ g, named: p.includes(`"${NAV_GROUP_LABEL[g][locale]}"`) }).toEqual({ g, named: drawn });
+    }
   });
 
   it.each(LOCALES)('lists the %s tools under the side menu\'s categories and names what is not available yet', (locale) => {

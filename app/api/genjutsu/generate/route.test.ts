@@ -75,7 +75,7 @@ const OPEN = { op: 'x', open: true, reason: 'ok' };
 const SHUT = { op: 'x', open: false, reason: 'flag_off' };
 const status = (over: Record<string, unknown> = {}) => ({ scene: OPEN, motion: SHUT, swap: SHUT, ...over });
 
-const SCENE = { op: 'scene', preset: 'fire', references: photos(12), referencesTotal: 12 };
+const SCENE = { op: 'scene', preset: 'fire', references: photos(3), referencesTotal: 3 };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -118,6 +118,15 @@ test('an invalid request is 400 with every reason — and costs nothing', async 
   expect((await res.json()).issues).toEqual([{ path: 'preset', code: 'preset_or_prompt' }]);
   expect(deductCredits).not.toHaveBeenCalled();
   expect(claimDailySlot).not.toHaveBeenCalled();
+});
+
+test('a 4th photo is 400 too_many_references before anything is signed, reserved or rendered (Veo 3.1 takes 3)', async () => {
+  const res = await POST(post({ ...SCENE, references: photos(4), referencesTotal: 4 }));
+  expect(res.status).toBe(400);
+  expect((await res.json()).issues).toContainEqual({ path: 'references', code: 'too_many_references' });
+  expect(signOwnedPaths).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(submitScene).not.toHaveBeenCalled();
 });
 
 test('a locked op is 423 and never reaches the ledger or a provider', async () => {
@@ -182,11 +191,11 @@ test('the returned jobId carries a charge token naming exactly this reservation 
   expect(body).toMatchObject({ success: true, op: 'scene', credits: FAST, engine: 'Veo 3.1 Fast' });
 });
 
-test('the SERVER picks the photos: 12 sent, Veo receives the best 3 (one per role, in priority order) and only those are signed', async () => {
+test('the SERVER orders the photos: 3 sent, Veo receives them in priority order (one per role) and only those are signed', async () => {
   const body = await (await POST(post(SCENE))).json();
-  expect(body).toMatchObject({ refsUsed: 3, refsTotal: 12 });
+  expect(body).toMatchObject({ refsUsed: 3, refsTotal: 3 });
   const signedPaths = (signOwnedPaths as jest.Mock).mock.calls[0]![1] as string[];
-  // photos(12): roles cycle wardrobe, product, character — the first of each is p2 (character), p1 (product), p0 (wardrobe).
+  // photos(3): p0 wardrobe, p1 product, p2 character — Veo gets the character first, then the product, then the outfit.
   expect(signedPaths).toEqual([mine('p2.jpg'), mine('p1.jpg'), mine('p0.jpg')]);
   const sent = (submitScene as jest.Mock).mock.calls[0]![0];
   expect(sent.referenceUrls).toHaveLength(3);

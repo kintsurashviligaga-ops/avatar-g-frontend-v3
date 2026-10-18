@@ -147,9 +147,9 @@ export const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
     ru: [`${BASIC.videos} видеоклипа до 8с (Veo 3.1, нативное аудио)`, `${BASIC.images} кинематографичных изображений`, `${BASIC.music} музыкальных треков (Lyria 3)`, 'Синтез голоса на грузинском'],
   },
   pro: {
-    ka: [`${PRO.videos} ვიდეო კლიპი (Veo 3.1)`, `${PRO.images} უზადო სურათი`, `${PRO.music} მუსიკალური ტრეკი (Lyria 3)`, 'დუბლაჟი და ავატარები', 'სრული წვდომა Agent G-ზე'],
-    en: [`${PRO.videos} video clips (Veo 3.1)`, `${PRO.images} flawless images`, `${PRO.music} music tracks (Lyria 3)`, 'Dubbing & avatars', 'Full access to Agent G'],
-    ru: [`${PRO.videos} видеоклипов (Veo 3.1)`, `${PRO.images} безупречных изображений`, `${PRO.music} музыкальных треков (Lyria 3)`, 'Дубляж и аватары', 'Полный доступ к Agent G'],
+    ka: [`${PRO.videos} ვიდეო კლიპი (Veo 3.1)`, `${PRO.images} უზადო სურათი`, `${PRO.music} მუსიკალური ტრეკი (Lyria 3)`, 'მოლაპარაკე ავატარები', 'სრული წვდომა Agent G-ზე'],
+    en: [`${PRO.videos} video clips (Veo 3.1)`, `${PRO.images} flawless images`, `${PRO.music} music tracks (Lyria 3)`, 'Talking avatars', 'Full access to Agent G'],
+    ru: [`${PRO.videos} видеоклипов (Veo 3.1)`, `${PRO.images} безупречных изображений`, `${PRO.music} музыкальных треков (Lyria 3)`, 'Говорящие аватары', 'Полный доступ к Agent G'],
   },
   business: {
     ka: [`${BUSINESS.videos} ვიდეო კლიპი (Veo 3.1)`, `${BUSINESS.images} დეტალური სურათი`, `${BUSINESS.music} მუსიკალური ტრეკი (Lyria 3)`, 'გუნდური ბიბლიოთეკები', 'პრიორიტეტული რენდერი', 'VIP მხარდაჭერა'],

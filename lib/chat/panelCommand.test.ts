@@ -23,7 +23,7 @@ describe('commands, ka · en · ru', () => {
     ['გამიხსენი სურათი', { kind: 'open', tool: 'image', via: 'open' }],
     ['ვიდეოს მონტაჟი გამიხსენი', { kind: 'open', tool: 'montage', via: 'open' }],
     ['გადადი მუსიკაზე', { kind: 'open', tool: 'music', via: 'open' }],
-    ['გთხოვ, გახსენი პრეზენტაცია.', { kind: 'open', tool: 'presentation', via: 'open' }],
+    ['გთხოვ, გახსენი 3D მოდელი.', { kind: 'open', tool: 'model3d', via: 'open' }],
     ['მოდი ავატარი გავაკეთოთ', { kind: 'open', tool: 'avatar', via: 'make' }],
     ['დახურე პარამეტრები', { kind: 'close', what: 'settings' }],
     ['დახურე ვიდეო', { kind: 'close', what: 'tool', tool: 'video' }],
@@ -54,6 +54,12 @@ describe('commands, ka · en · ru', () => {
   test.each(cases)('%s', (text, want) => {
     expect(panelCommand(text)).toEqual(want);
   });
+});
+
+test('a retired tool is no command: its words go on to the routers, which say it is gone (GG 2026-10-18)', () => {
+  for (const t of ['გთხოვ, გახსენი პრეზენტაცია.', 'open dubbing', 'открой замену персонажа', 'გახსენი მოძრაობის გადატანა']) {
+    expect([t, panelCommand(t)]).toEqual([t, null]);
+  }
 });
 
 test('every tool opens by its own name, in every language the studio speaks', () => {
@@ -115,9 +121,9 @@ describe('what the studio does', () => {
       .toEqual({ act: { tool: 'chat' }, outcome: { did: 'closed-tool', tool: 'video' } });
   });
 
-  test('a studio that is its panel closes as a whole (dubbing, the editor)', () => {
-    expect(decidePanelCommand({ kind: 'close', what: 'settings' }, screen('dubbing', true)))
-      .toEqual({ act: { tool: 'chat' }, outcome: { did: 'closed-tool', tool: 'dubbing' } });
+  test('a studio that is its panel closes as a whole (3D, the editor)', () => {
+    expect(decidePanelCommand({ kind: 'close', what: 'settings' }, screen('model3d', true)))
+      .toEqual({ act: { tool: 'chat' }, outcome: { did: 'closed-tool', tool: 'model3d' } });
     expect(decidePanelCommand({ kind: 'close', what: 'panel' }, screen('montage', false)).act).toEqual({ tool: 'chat' });
   });
 
@@ -146,7 +152,7 @@ describe('what Agent G says', () => {
   test('opened, in the UI language, with the next step for a generator', () => {
     expect(panelCommandReply({ did: 'opened', tool: 'video' }, 'ka', name)).toBe('გავხსენი **ვიდეო**. მითხარი, რაზე იყოს ფილმი.');
     expect(panelCommandReply({ did: 'opened', tool: 'avatar' }, 'en', (t) => toolName(t, 'en'))).toBe('Opened **Avatar**. Write what the avatar says, or attach a photo.');
-    expect(panelCommandReply({ did: 'opened', tool: 'dubbing' }, 'ru', (t) => toolName(t, 'ru'))).toBe('Открыл **Дубляж**.');
+    expect(panelCommandReply({ did: 'opened', tool: 'montage' }, 'ru', (t) => toolName(t, 'ru'))).toBe(`Открыл **${toolName('montage', 'ru')}**.`);
   });
   test('closed and nothing-to-close', () => {
     expect(panelCommandReply({ did: 'closed-tool', tool: 'video' }, 'ka', name)).toBe('დავხურე **ვიდეო**, ჩატში ვართ.');

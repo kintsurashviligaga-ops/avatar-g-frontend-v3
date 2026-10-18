@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { Download, Share2, Check, Loader2, FolderPlus } from 'lucide-react';
+import { Share2, Check, Loader2, FolderPlus } from 'lucide-react';
+import { DownloadButton } from './DownloadButton';
 import { ICON_BTN } from './tokens';
 import { saveMedia } from '@/lib/media/saveMedia';
 
@@ -68,17 +69,8 @@ export function ResultActions({
   onNote?: (msg: string) => void;
 }) {
   const t = COPY[locale] ?? COPY.ka;
-  const [busy, setBusy] = useState<'dl' | 'save' | null>(null);
+  const [busy, setBusy] = useState<'save' | null>(null);
   const [saved, setSaved] = useState(false);
-
-  const download = useCallback(async () => {
-    setBusy('dl');
-    try {
-      await saveMedia(url, `myavatar-${kind}-${Date.now()}`, { fallbackExt: extFor(url, kind) });
-    } finally {
-      setBusy(null);
-    }
-  }, [url, kind]);
 
   const share = useCallback(async () => {
     const nav = navigator as Navigator & { share?: (d: { url?: string; title?: string }) => Promise<void> };
@@ -111,9 +103,7 @@ export function ResultActions({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <button type="button" onClick={download} disabled={busy === 'dl'} className={ICON_BTN} aria-label={t.download} title={t.download}>
-        {busy === 'dl' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-      </button>
+      <DownloadButton url={url} locale={locale} label={t.download} name={`myavatar-${kind}-${Date.now()}`} fallbackExt={extFor(url, kind)} />
       <button type="button" onClick={share} className={ICON_BTN} aria-label={t.share} title={t.share}>
         <Share2 size={15} />
       </button>

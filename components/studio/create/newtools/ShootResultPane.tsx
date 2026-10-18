@@ -17,7 +17,7 @@
 import { useEffect, useState } from 'react';
 import { Clapperboard, Move3d, RefreshCw, SlidersHorizontal, Sparkle, Trash2, X } from 'lucide-react';
 import { ResultCard, type ResultState } from '@/components/studio/ui/ResultCard';
-import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
+import { LoadingCard } from '@/components/studio/ui/LoadingCard';
 import { ResultActions } from '@/components/studio/ui/ResultActions';
 import { NOTE_BASE, NOTE_TONE } from '@/components/studio/ui/tokens';
 import { creditsLabel } from '@/lib/credits/quote';
@@ -61,15 +61,11 @@ const ACTION_BTN =
 
 // ─── The 3D plan under a tile ─────────────────────────────────────────────────────────────────────────────────────
 
-function PlanCard({ plan, copy }: { plan: PlanState; copy: ShootCopy }) {
+function PlanCard({ plan, copy, locale }: { plan: PlanState; copy: ShootCopy; locale: string }) {
   if (plan.status === 'running') {
     return (
-      <div data-testid="plan-running" role="status" className="space-y-2 rounded-2xl bg-app-elevated/50 p-4 ring-1 ring-app-border/10">
-        <div aria-hidden="true" data-testid="plan-running-loop" className="relative h-[120px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15"><LoadingLoop /></div>
-        <p className="text-[13px] font-medium text-app-text">{copy.plan3dBusy}</p>
-        <div className="h-[3px] overflow-hidden rounded-full bg-app-border/20" role="progressbar" aria-label={copy.plan3dBusy} aria-valuemin={0} aria-valuemax={100} aria-valuenow={plan.pct}>
-          <div className="h-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, plan.pct)}%` }} />
-        </div>
+      <div data-testid="plan-running" role="status">
+        <LoadingCard locale={locale} label={copy.plan3dBusy} pct={plan.pct} className="max-w-none" />
       </div>
     );
   }
@@ -210,7 +206,7 @@ export function ShootResultPane(p: ShootPaneProps) {
             <div className={`grid gap-3 ${cols}`}>
               {run.tiles.map((t) => <Tile key={t.id} run={run} tile={t} now={now} copy={copy} locale={p.locale} p={p} />)}
             </div>
-            {plans.map((t) => <PlanCard key={`plan-${t.id}`} plan={t.plan!} copy={copy} />)}
+            {plans.map((t) => <PlanCard key={`plan-${t.id}`} plan={t.plan!} copy={copy} locale={p.locale} />)}
           </section>
         );
       })}

@@ -27,6 +27,35 @@ export const HISTORY_ACTIONS = [
 ] as const;
 export type HistoryAction = (typeof HISTORY_ACTIONS)[number];
 
+export interface HistoryLabel { emoji: string; ka: string; en: string; ru: string }
+
+/** What the history shows for each action, in the three languages. Typed by HistoryAction: an action without a label
+ *  does not compile. Shared by Settings → History and the chat's profile sheet. */
+export const HISTORY_LABEL: Record<HistoryAction, HistoryLabel> = {
+  video: { emoji: '🎬', ka: 'ვიდეო', en: 'Video', ru: 'Видео' },
+  music: { emoji: '🎵', ka: 'მუსიკა', en: 'Music', ru: 'Музыка' },
+  image: { emoji: '🖼', ka: 'სურათი', en: 'Image', ru: 'Фото' },
+  avatar: { emoji: '🎭', ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
+  remix: { emoji: '🎞', ka: 'რემიქსი', en: 'Remix', ru: 'Ремикс' },
+  voice: { emoji: '🎙', ka: 'ხმა', en: 'Voice', ru: 'Голос' },
+  interior: { emoji: '🛋', ka: 'ინტერიერი', en: 'Interior', ru: 'Интерьер' },
+  research: { emoji: '🔎', ka: 'კვლევა', en: 'Research', ru: 'Исследование' },
+  chat: { emoji: '💬', ka: 'ჩატი', en: 'Chat', ru: 'Чат' },
+  topup: { emoji: '💳', ka: 'შევსება', en: 'Top-up', ru: 'Пополнение' },
+  subscription: { emoji: '⭐', ka: 'გამოწერა', en: 'Subscription', ru: 'Подписка' },
+  refund: { emoji: '↩', ka: 'დაბრუნება', en: 'Refund', ru: 'Возврат' },
+  reversal: { emoji: '⤺', ka: 'გადახდის გაუქმება', en: 'Payment reversed', ru: 'Отмена платежа' },
+  bonus: { emoji: '🎁', ka: 'ბონუსი', en: 'Bonus', ru: 'Бонус' },
+  adjustment: { emoji: '🛠', ka: 'კორექტირება', en: 'Adjustment', ru: 'Корректировка' },
+  usage: { emoji: '⚙', ka: 'გამოყენება', en: 'Usage', ru: 'Использование' },
+  credit: { emoji: '➕', ka: 'ჩარიცხვა', en: 'Credit', ru: 'Зачисление' },
+};
+
+/** The label of an action as the history API returned it; anything unknown reads as itself, never blank. */
+export function historyLabel(action: string): HistoryLabel {
+  return (HISTORY_LABEL as Record<string, HistoryLabel>)[action] ?? { emoji: '•', ka: action, en: action, ru: action };
+}
+
 /** Ref prefix → spend label. */
 const SPEND_KIND: Record<string, HistoryAction> = {
   video: 'video', film: 'video', assemble: 'video', 'assemble-single': 'video', longform: 'video', studio: 'video',

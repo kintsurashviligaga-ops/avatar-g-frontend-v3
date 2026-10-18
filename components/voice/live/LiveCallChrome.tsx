@@ -14,14 +14,12 @@
  *   LiveBottomScrim the scrim under the control row
  *   LiveTopBar      the live dot + „ცოცხალი ზარი“ on the left, round 44 px buttons on the right
  *   LiveTopToggle   one of those round buttons, as a toggle (captions)
- *   LiveStatusLine  the compact waveform beside the quiet status line
+ *   LiveStatusLine  the call's status, read to screen readers (on screen the pulsing logo says it)
  *   LiveErrorPanel  icon · headline · the reason · a hint · the browser's error name · actions
  *   LiveControlRow  the bottom row of LiveControls (round 56 px glass buttons, each with its word)
  */
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 
-import { LiveWaveform, type LiveOrbState } from './LiveOrb';
-import type { LiveLevels } from './useGeminiLiveSession';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -134,27 +132,20 @@ export function LiveTopToggle({ label, pressed, onClick, icon }: LiveTopTogglePr
 }
 
 export interface LiveStatusLineProps {
-  /** The orb's state; the waveform follows it (still while muted). */
-  state: LiveOrbState;
-  muted?: boolean;
-  getLevels?: () => LiveLevels;
   /** The localized status („უკავშირდება…“, "Listening"…), announced politely. */
   label: string;
-  locale: Locale;
   className?: string;
 }
 
-/** Quiet on purpose: the orb carries the state; the line names it, and the waveform says who is talking. */
-export function LiveStatusLine({ state, muted = false, getLevels, label, locale, className = '' }: LiveStatusLineProps) {
+/**
+ * The call's status for screen readers only. On screen the agent's logo alone says it, by how it pulses (the owner's PRD
+ * of 2026-10-18, 2.5: „ეკრანზე უნდა იყოს მხოლოდ აგენტის ლოგო“); this used to be a visible line with a waveform beside it.
+ */
+export function LiveStatusLine({ label, className = '' }: LiveStatusLineProps) {
   return (
-    <div className={`relative z-10 flex items-center gap-2.5 ${className}`}>
-      <span data-testid="live-waveform" className="flex items-center">
-        <LiveWaveform compact state={muted ? 'idle' : state} getLevels={getLevels} />
-      </span>
-      <span data-testid="live-status" aria-live="polite" className={`${liveQuietText(locale)} font-medium leading-[1.6] text-app-muted`}>
-        {label}
-      </span>
-    </div>
+    <p data-testid="live-status" aria-live="polite" className={`sr-only ${className}`}>
+      {label}
+    </p>
   );
 }
 

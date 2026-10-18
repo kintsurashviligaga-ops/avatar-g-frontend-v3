@@ -1,6 +1,7 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { productAdCredits } from '@/lib/credits/quote';
 
 /**
  * THE PRODUCT AD RUNS IN THE CHAT — in a real browser, with the provider routes mocked (nothing is generated or charged).
@@ -16,6 +17,8 @@ import { join } from 'path';
  */
 
 const PHOTO = readFileSync(join(__dirname, 'fixtures', 'photo.png'));
+/** The card's price is the price book's (lib/credits/quote): an 8 s product ad is a Fast film of that length. */
+const AD_8S = productAdCredits(8);
 
 async function seed(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -92,7 +95,7 @@ test.describe('the product ad runs in the chat', () => {
     await say(page, 'make a product ad for my sneakers');
 
     await expect(page.locator('[data-testid="agent-g-card"][data-kind="confirm"]')).toBeVisible({ timeout: 10_000 });
-    expect(Number(await page.getByTestId('agent-g-confirm').getAttribute('data-price'))).toBe(25);
+    expect(Number(await page.getByTestId('agent-g-confirm').getAttribute('data-price'))).toBe(AD_8S);
     await expect(page.getByText('product ad video from your photo: 8 s, 9:16, style „Luxury"', { exact: false })).toBeVisible();
     expect(calls.remix).toHaveLength(0);
     expect(calls.chat).toBe(0);
@@ -119,7 +122,7 @@ test.describe('the product ad runs in the chat', () => {
     await expect(page.getByTitle('sneakers.png')).toBeVisible({ timeout: 10_000 });
     await sendPhotoAlone(page);
     await expect(page.locator('[data-testid="agent-g-card"][data-kind="confirm"]')).toBeVisible({ timeout: 10_000 });
-    expect(Number(await page.getByTestId('agent-g-confirm').getAttribute('data-price'))).toBe(25);
+    expect(Number(await page.getByTestId('agent-g-confirm').getAttribute('data-price'))).toBe(AD_8S);
     expect(calls.remix).toHaveLength(0);
 
     await page.getByTestId('agent-g-confirm').click();

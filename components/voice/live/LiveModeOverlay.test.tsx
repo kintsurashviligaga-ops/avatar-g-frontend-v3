@@ -1,9 +1,10 @@
 /**
  * The Live screen: localized (ka/en/ru) 44 px controls, toggle state for assistive tech, error + retry, Escape ends
- * the call; captions expose only closed lines to screen readers; the orb follows the right level per state, runs
- * on requestAnimationFrame with transforms only, and stands still under prefers-reduced-motion.
+ * the call; captions expose only closed lines to screen readers; the agent's logo alone in the middle (the owner's PRD of
+ * 2026-10-18), pulsing by status: it follows the right level per state, beats while thinking, breathes while connecting,
+ * runs on requestAnimationFrame with transforms only, and stands still under prefers-reduced-motion.
  * Gemini Live frame: portalled onto <body>, pinned dark, above every toast/tray; a mic failure names the MICROPHONE
- * (never "connection dropped") with the browser's error name; captions toggle; the audio-driven waveform.
+ * (never "connection dropped") with the browser's error name; captions toggle (off at the start); the dock's waveform.
  */
 import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -12,7 +13,8 @@ import LiveCaptions, { tailText } from './LiveCaptions';
 import { LIVE_DOCK_STRINGS } from './LiveDock';
 import LiveModeOverlay, { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './LiveModeOverlay';
 import LiveOrb, {
-  CONNECT_BREATH_DEPTH, CONNECT_BREATH_MS, LiveWaveform, WAVE_REST, connectBreath, connectProgress, orbStateFor, orbTarget, waveLevel,
+  CONNECT_BREATH_MS, LIVE_LOGO_SRC, LiveWaveform, PULSE_DEPTH, THINK_BEAT_MS, WAVE_REST, connectBreath, orbScale, orbStateFor, orbTarget,
+  thinkBeat, waveLevel,
 } from './LiveOrb';
 import type { LiveCaption, LiveErrorCode } from './useGeminiLiveSession';
 
@@ -63,13 +65,15 @@ describe('LiveModeOverlay', () => {
     ['ka', 'უკავშირდება…', 'ცოცხალი ზარი'],
     ['en', 'Connecting…', 'Live call'],
     ['ru', 'Подключение…', 'Живой звонок'],
-  ] as const)('%s: connecting reads in the UI language, beside the waveform, under the breathing rocket', (locale, connecting, label) => {
+  ] as const)('%s: connecting is read in the UI language (to screen readers) while the logo breathes', (locale, connecting, label) => {
     expect(LIVE_OVERLAY_STRINGS[locale].status.connecting).toBe(connecting);
     render(<LiveModeOverlay locale={locale} status="connecting" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
-    expect(screen.getByTestId('live-status').textContent).toBe(connecting);
+    const status = screen.getByTestId('live-status');
+    expect(status.textContent).toBe(connecting);
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.className).toMatch(/\bsr-only\b/); // on screen the logo says it
     expect(screen.getByTestId('live-call-label').textContent).toBe(label);
     expect(screen.getByRole('img', { name: connecting }).getAttribute('data-state')).toBe('connecting');
-    expect(screen.getByTestId('live-orb-arc').className).toMatch(/\bopacity-100\b/);
   });
 
   it('stop-speaking joins the row only while the agent speaks', () => {
@@ -82,26 +86,24 @@ describe('LiveModeOverlay', () => {
     expect(screen.getByTestId('live-stop-speaking').textContent).toBe(LIVE_OVERLAY_STRINGS.en.stopShort);
   });
 
-  it('the agent is the rocket: in the orb (whole, centred, never cropped) and large and faint behind it — no photo', () => {
-    const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
+  it('only the agent\'s logo on screen (the PRD of 2026-10-18): the sphere, whole; no backdrop, waveform, words or photo', () => {
+    const caps: LiveCaption[] = [{ id: 'a0', role: 'assistant', text: 'hello there', final: true }];
+    const { rerender } = render(<LiveModeOverlay locale="en" status="speaking" captions={caps} muted={false} cameraOn={false} {...handlers()} />);
     const dialog = screen.getByRole('dialog');
-    const rocket = dialog.querySelector<HTMLImageElement>('[data-testid="live-orb-rocket"]')!;
-    expect(rocket.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(rocket.getAttribute('srcset')).toBe('/brand/rocket-mark.png 256w, /brand/rocket-mark-512.png 512w');
-    expect(rocket.className).toMatch(/\bobject-contain\b/);
-    expect(rocket.className).toMatch(/inset-\[15%\].*h-\[70%\].*w-\[70%\]/);
-    const backdrop = dialog.querySelector('[data-testid="live-orb-backdrop"]')!;
-    expect(backdrop).not.toBeNull();
-    expect(backdrop.className).toMatch(/aspect-square/);
-    expect(backdrop.className).toMatch(/w-\[min\(92vw,34rem\)\]/); // always whole on a phone
-    expect(backdrop.querySelector('img')!.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(backdrop.querySelector('img')!.className).toMatch(/\bobject-contain\b/);
-    // Every picture on the call is the rocket (the enrolled-avatar photo is gone).
-    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/rocket-mark/);
-    // With the camera on, the camera is the background.
+    const logo = dialog.querySelector<HTMLImageElement>('[data-testid="live-orb-logo"]')!;
+    expect(logo.getAttribute('src')).toBe(LIVE_LOGO_SRC);
+    expect(logo.getAttribute('srcset')).toBe('/brand/agent-orb-256.webp 256w, /brand/agent-orb-512.webp 512w');
+    expect(logo.className).toMatch(/\bobject-contain\b/);
+    // The one picture on the call is the logo: no faint rocket behind it, no enrolled-avatar photo.
+    expect(Array.from(dialog.querySelectorAll('img')).map((i) => i.getAttribute('src'))).toEqual([LIVE_LOGO_SRC]);
+    expect(dialog.querySelector('[data-testid="live-orb-backdrop"]')).toBeNull();
+    expect(dialog.querySelector('[data-testid="live-orb-arc"]')).toBeNull();
+    expect(dialog.querySelector('[data-testid="live-waveform"]')).toBeNull();
+    // No words in the middle until asked for: the captions start off.
+    expect(screen.queryByText('hello there')).toBeNull();
+    // With the camera on, the camera is the background and the logo stays.
     rerender(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn {...handlers()} />);
-    expect(screen.getByRole('dialog').querySelector('[data-testid="live-orb-backdrop"]')).toBeNull();
-    expect(screen.getByRole('dialog').querySelector('[data-testid="live-orb-rocket"]')).not.toBeNull();
+    expect(screen.getByRole('dialog').querySelector('[data-testid="live-orb-logo"]')).not.toBeNull();
   });
 
   it('toggles expose aria-pressed and call their handlers; flip only while the camera is on', () => {
@@ -203,30 +205,36 @@ describe('LiveModeOverlay', () => {
     expect(dialog.className).toMatch(/\bz-\[130\]/);
   });
 
-  it('captions toggle: pressed by default, hides the captions when off; absent without captions', () => {
+  it('captions toggle: off at the start (the logo alone), on shows the captions; absent without captions', () => {
     const s = LIVE_OVERLAY_STRINGS.en;
     const caps: LiveCaption[] = [{ id: 'a0', role: 'assistant', text: 'hello there', final: true }];
     const { rerender } = render(<LiveModeOverlay locale="en" status="speaking" captions={caps} muted={false} cameraOn={false} {...handlers()} />);
     const toggle = screen.getByRole('button', { name: s.captions });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.queryByText('hello there')).toBeNull();
+    fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText('hello there')).toBeTruthy();
     fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
     expect(screen.queryByText('hello there')).toBeNull();
     rerender(<LiveModeOverlay locale="en" status="speaking" captions={caps} muted={false} cameraOn={false} {...handlers()} showCaptions={false} />);
     expect(screen.queryByRole('button', { name: s.captions })).toBeNull();
   });
 
-  it('mute inverts when active (the toggle grammar), and the waveform goes still', () => {
+  it('mute inverts when active (the toggle grammar), and the logo rests instead of listening', () => {
     const s = LIVE_OVERLAY_STRINGS.en;
+    const logoState = () => screen.getByRole('img', { name: s.status.listening }).getAttribute('data-state');
     const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted cameraOn={false} {...handlers()} />);
     const circle = () => screen.getByRole('button', { name: s.mute }).querySelector('[data-circle]')!.className;
     expect(circle()).toMatch(/\bbg-app-text\b.*\btext-app-bg\b/);
-    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('idle');
+    expect(logoState()).toBe('idle');
     rerender(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
     expect(circle()).not.toMatch(/\bbg-app-text\b/);
     expect(circle()).toMatch(/bg-white\/\[0\.09\]/); // glass when off
-    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('listening');
+    expect(logoState()).toBe('listening');
+    // Muted, the agent's own voice still moves it.
+    rerender(<LiveModeOverlay locale="en" status="speaking" captions={[]} muted cameraOn={false} {...handlers()} />);
+    expect(screen.getByRole('img', { name: s.status.speaking }).getAttribute('data-state')).toBe('speaking');
   });
 
   it('a blocked audio context shows "tap to turn on sound", which resumes it inside the tap', () => {
@@ -299,6 +307,18 @@ describe('LiveOrb', () => {
       matches: reduce && q.includes('reduce'), media: q, addEventListener: jest.fn(), removeEventListener: jest.fn(),
     })) as unknown as typeof window.matchMedia;
   };
+  const scaleOf = (el: HTMLElement) => Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 'NaN');
+  /** Run the orb's loop for `ms` at `fps`, recording the logo's scale each frame. */
+  const run = (frames: FrameRequestCallback[], logo: () => HTMLElement, from: number, ms: number, fps = 50) => {
+    const out: number[] = [];
+    act(() => {
+      for (let t = from; t <= from + ms; t += 1000 / fps) {
+        frames[frames.length - 1]!(t);
+        out.push(scaleOf(logo()));
+      }
+    });
+    return out;
+  };
 
   it('maps call status to orb state', () => {
     expect(orbStateFor('reconnecting')).toBe('connecting');
@@ -307,35 +327,98 @@ describe('LiveOrb', () => {
     expect(orbStateFor('error')).toBe('error');
   });
 
-  it('follows the INPUT level while listening and the OUTPUT level while speaking', () => {
+  it('follows the INPUT level while listening and the OUTPUT level while speaking; its own rhythm otherwise', () => {
     const lv = { input: 0.7, output: 0.3 };
     expect(orbTarget('listening', lv, 0)).toBe(0.7);
     expect(orbTarget('speaking', lv, 0)).toBe(0.3);
     expect(orbTarget('speaking', { input: 1, output: 0 }, 0)).toBeGreaterThan(0); // alive between syllables
+    expect(orbTarget('thinking', lv, 90)).toBeCloseTo(thinkBeat(90), 10);
+    expect(orbTarget('connecting', lv, 800)).toBeCloseTo(connectBreath(800), 10);
     expect(orbTarget('idle', lv, 0)).toBe(0);
     expect(orbTarget('error', lv, 0)).toBe(0);
   });
 
-  it('animates with requestAnimationFrame writing transforms only', () => {
+  it('pulses by status: the voice moves it most, its own rhythms gently, idle and error not at all', () => {
+    expect(PULSE_DEPTH.speaking).toBeGreaterThan(PULSE_DEPTH.listening);
+    expect(PULSE_DEPTH.listening).toBeGreaterThan(PULSE_DEPTH.thinking);
+    expect(PULSE_DEPTH.thinking).toBeGreaterThan(0);
+    expect(PULSE_DEPTH.connecting).toBeGreaterThan(0);
+    expect(PULSE_DEPTH.idle).toBe(0);
+    expect(PULSE_DEPTH.error).toBe(0);
+    expect(orbScale('speaking', 1)).toBeCloseTo(1 + PULSE_DEPTH.speaking, 10);
+    expect(orbScale('speaking', 0)).toBe(1);
+    expect(orbScale('listening', 5)).toBeCloseTo(1 + PULSE_DEPTH.listening, 10); // clamped
+    expect(orbScale('thinking', Number.NaN)).toBe(1);
+    expect(orbScale('error', 1)).toBe(1);
+  });
+
+  it('connecting breathes: a 1.6 s cycle, at rest at both ends', () => {
+    expect(CONNECT_BREATH_MS).toBe(1600);
+    expect(connectBreath(0)).toBeCloseTo(0, 10);
+    expect(connectBreath(800)).toBeCloseTo(1, 10);
+    expect(connectBreath(1600)).toBeCloseTo(0, 10);
+    for (let ts = 0; ts <= 4000; ts += 37) {
+      expect(connectBreath(ts)).toBeGreaterThanOrEqual(0);
+      expect(connectBreath(ts)).toBeLessThanOrEqual(1);
+    }
+    expect(connectBreath(Number.NaN)).toBe(0);
+  });
+
+  it('thinking is a heartbeat: a strong beat, a softer one, then rest, every 1.1 s', () => {
+    expect(THINK_BEAT_MS).toBe(1100);
+    expect(thinkBeat(90)).toBeGreaterThan(0.95);
+    expect(thinkBeat(330)).toBeGreaterThan(0.5);
+    expect(thinkBeat(330)).toBeLessThan(thinkBeat(90));
+    expect(thinkBeat(210)).toBeLessThan(thinkBeat(330)); // the dip between the two beats
+    expect(thinkBeat(800)).toBeLessThan(0.01); // the rest
+    expect(thinkBeat(90 + THINK_BEAT_MS)).toBeCloseTo(thinkBeat(90), 10);
+    expect(thinkBeat(-1010)).toBeCloseTo(thinkBeat(90), 10);
+    expect(thinkBeat(Number.NaN)).toBe(0);
+  });
+
+  it('animates with requestAnimationFrame writing transforms only: the logo and its halo swell with the voice', () => {
     mockReducedMotion(false);
     const frames: FrameRequestCallback[] = [];
     jest.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => { frames.push(cb); return frames.length; });
     jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
     const { container, unmount } = render(<LiveOrb state="listening" getLevels={() => ({ input: 1, output: 0 })} label="Listening" />);
     expect(frames.length).toBeGreaterThan(0);
-    act(() => { for (let i = 0; i < 5; i++) frames[frames.length - 1]!(16 * (i + 1)); });
-    const layers = Array.from(container.querySelectorAll<HTMLDivElement>('[aria-hidden]'));
-    const scaled = layers.map((l) => l.style.transform).filter((t) => /scale\(1\.\d*[1-9]/.test(t));
-    expect(scaled.length).toBeGreaterThanOrEqual(2); // halo + core grew with the voice
-    for (const l of layers) {
-      expect(l.style.width).toBe('');
-      expect(l.style.height).toBe('');
-      expect(l.style.opacity).toBe('');
+    act(() => { for (let i = 0; i < 8; i++) frames[frames.length - 1]!(16 * (i + 1)); });
+    const logo = container.querySelector<HTMLElement>('[data-testid="live-orb-logo"]')!;
+    const halo = container.querySelector<HTMLElement>('[data-testid="live-orb-halo"]')!;
+    expect(scaleOf(logo)).toBeGreaterThan(1.1);
+    expect(scaleOf(logo)).toBeLessThanOrEqual(1 + PULSE_DEPTH.listening + 1e-9);
+    expect(scaleOf(halo)).toBeGreaterThan(1.2);
+    for (const el of [logo, halo]) {
+      expect(el.style.width).toBe('');
+      expect(el.style.height).toBe('');
+      expect(el.style.opacity).toBe('');
     }
+    unmount();
+    expect(logo.style.transform).toBe('translateZ(0) scale(1)');
+  });
+
+  it('thinking beats twice and rests; connecting swells once per breath — gently, never past its depth', () => {
+    mockReducedMotion(false);
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => { frames.push(cb); return frames.length; });
+    jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    const { container, rerender, unmount } = render(<LiveOrb state="thinking" label="Thinking" />);
+    const logo = () => container.querySelector<HTMLElement>('[data-testid="live-orb-logo"]')!;
+    const beat = run(frames, logo, 0, THINK_BEAT_MS * 3);
+    expect(Math.max(...beat)).toBeGreaterThan(1 + PULSE_DEPTH.thinking * 0.7);
+    expect(Math.max(...beat)).toBeLessThanOrEqual(1 + PULSE_DEPTH.thinking + 1e-9);
+    // It comes back to rest between beats (a pulse, not a held swell).
+    expect(Math.min(...beat.slice(beat.length / 3))).toBeLessThan(1.01);
+    rerender(<LiveOrb state="connecting" label="Connecting" />);
+    const breath = run(frames, logo, 10_000, CONNECT_BREATH_MS * 3);
+    expect(Math.max(...breath)).toBeGreaterThan(1 + PULSE_DEPTH.connecting * 0.8);
+    expect(Math.max(...breath)).toBeLessThanOrEqual(1 + PULSE_DEPTH.connecting + 1e-9);
+    expect(Math.min(...breath.slice(breath.length / 3))).toBeLessThan(1.01);
     unmount();
   });
 
-  it('stands still under prefers-reduced-motion (no animation frame is ever requested)', () => {
+  it('stands still under prefers-reduced-motion (no animation frame is ever requested); the label still says the state', () => {
     mockReducedMotion(true);
     const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
     render(<LiveOrb state="speaking" getLevels={() => ({ input: 0, output: 1 })} label="Speaking" />);
@@ -347,118 +430,42 @@ describe('LiveOrb', () => {
     mockReducedMotion(false);
     const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
     render(<LiveOrb state="error" label="Error" />);
+    render(<LiveOrb state="idle" label="Idle" />);
     expect(raf).not.toHaveBeenCalled();
   });
 
-  it('one hue, one glow: the core has no shadow; the single halo is the blurred accent; the disc is lit by the accent', () => {
+  it('one glow besides the logo\'s own: a single blurred accent halo, no shadows', () => {
     mockReducedMotion(true);
     const { container } = render(<LiveOrb state="speaking" label="Speaking" />);
-    const layers = Array.from(container.querySelectorAll<HTMLDivElement>('[aria-hidden]'));
-    expect(layers.filter((l) => /\bblur-3xl\b/.test(l.className))).toHaveLength(1);
-    expect(layers.some((l) => /shadow-/.test(l.className))).toBe(false);
-    expect(container.innerHTML).toMatch(/rgb\(var\(--app-accent\)\/0\.42\)/);
+    expect(container.querySelectorAll('[class*="blur-"]')).toHaveLength(1);
+    expect(container.querySelector('[data-testid="live-orb-halo"]')!.className).toMatch(/\bbg-app-accent\/20\b/);
+    expect(container.innerHTML).not.toMatch(/shadow-/);
   });
 
-  it.each([36, 40, 88, 136, 168, 208])('the rocket sits whole on the disc at %i px, and asks for the raster it needs', (size) => {
+  it.each([36, 40, 88, 136, 168, 208])('the logo is whole at %i px and asks for the raster it needs', (size) => {
     mockReducedMotion(true);
     const { container } = render(<LiveOrb state="listening" size={size} label="Listening" />);
-    const rocket = container.querySelector<HTMLImageElement>('[data-testid="live-orb-rocket"]')!;
-    expect(rocket.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(rocket.getAttribute('alt')).toBe('');
-    // 70 % of the core, centred, object-contain: the corner-to-corner mark stays inside the circle at every size.
-    expect(rocket.className).toMatch(/\bobject-contain\b/);
-    expect(rocket.className).toMatch(/inset-\[15%\]/);
-    expect(rocket.getAttribute('sizes')).toBe(`${Math.max(16, Math.round(size * 0.76 * 0.7))}px`);
-    expect(rocket.closest('[aria-hidden]')!.className).toMatch(/\boverflow-hidden\b.*\brounded-full\b/);
+    const logo = container.querySelector<HTMLImageElement>('[data-testid="live-orb-logo"]')!;
+    expect(logo.getAttribute('src')).toBe(LIVE_LOGO_SRC);
+    expect(logo.getAttribute('alt')).toBe('');
+    expect(logo.className).toMatch(/\bobject-contain\b/);
+    expect(logo.className).toMatch(/\binset-0\b.*\bh-full\b.*\bw-full\b/);
+    expect(logo.getAttribute('sizes')).toBe(`${size}px`);
     expect((container.firstElementChild as HTMLElement).style.width).toBe(`${size}px`);
-    // No backdrop unless asked (the dock has none).
-    expect(container.querySelector('[data-testid="live-orb-backdrop"]')).toBeNull();
+    expect(container.querySelectorAll('img')).toHaveLength(1);
   });
 
-  it('connecting breathes: a 2 s cycle, at rest at both ends, never past 3 %', () => {
-    expect(CONNECT_BREATH_MS).toBe(2000);
-    expect(CONNECT_BREATH_DEPTH).toBeLessThanOrEqual(0.03);
-    expect(connectBreath(0)).toBeCloseTo(0, 10);
-    expect(connectBreath(1000)).toBeCloseTo(1, 10);
-    expect(connectBreath(2000)).toBeCloseTo(0, 10);
-    for (let ts = 0; ts <= 4000; ts += 37) {
-      expect(connectBreath(ts)).toBeGreaterThanOrEqual(0);
-      expect(connectBreath(ts)).toBeLessThanOrEqual(1);
-    }
-    expect(connectBreath(Number.NaN)).toBe(0);
-  });
-
-  it('the connecting arc shows progress: a tenth at once, growing with the wait, held at 92 %', () => {
-    expect(connectProgress(0)).toBeCloseTo(0.1, 5);
-    let prev = 0;
-    for (const ms of [0, 250, 1000, 3000, 6000, 12_000, 60_000]) {
-      const p = connectProgress(ms);
-      expect(p).toBeGreaterThanOrEqual(prev);
-      prev = p;
-    }
-    expect(connectProgress(3000)).toBeGreaterThan(0.55);
-    expect(connectProgress(600_000)).toBeLessThanOrEqual(0.92);
-    expect(connectProgress(-5)).toBeCloseTo(0.1, 5);
-  });
-
-  it('connecting: the orb swells and brightens within 3 % and the arc grows over its track (paint and transform only)', () => {
-    mockReducedMotion(false);
-    const frames: FrameRequestCallback[] = [];
-    jest.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => { frames.push(cb); return frames.length; });
-    jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
-    const { container, rerender, unmount } = render(<LiveOrb state="connecting" label="Connecting" />);
-    const arc = () => container.querySelector('[data-testid="live-orb-arc"] circle:last-child')!;
-    const arcLength = () => Number(arc().getAttribute('stroke-dasharray')!.split(' ')[0]);
-    const core = () => container.querySelector('[data-testid="live-orb-rocket"]')!.parentElement as HTMLElement;
-    const scales: number[] = [];
-    const opacities: number[] = [];
-    act(() => {
-      for (let i = 0; i <= 150; i++) {
-        frames[frames.length - 1]!(i * 40); // 6 s at 25 fps: three breaths
-        scales.push(Number(/scale\(([\d.]+)\)/.exec(core().style.transform)![1]));
-        opacities.push(Number(core().style.opacity));
-      }
-    });
-    expect(Math.max(...scales)).toBeLessThanOrEqual(1.03 + 1e-9);
-    expect(Math.max(...scales)).toBeGreaterThan(1.02); // it does breathe
-    expect(Math.min(...opacities)).toBeGreaterThanOrEqual(0.97 - 1e-9);
-    expect(Math.max(...opacities)).toBeLessThanOrEqual(1);
-    expect(arcLength()).toBeGreaterThan(70); // ~6 s in: most of the ring
-    expect(arcLength()).toBeLessThanOrEqual(92);
-    // The faint track is on while connecting, and the whole ring is one hue (the accent).
-    expect(container.querySelector('[data-testid="live-orb-arc"] circle')!.getAttribute('class')).toMatch(/stroke-app-accent\/15.*opacity-100/);
-    expect(arc().getAttribute('class')).toMatch(/stroke-app-accent\/80/);
-    // Connected: the breath settles back and lets go of the opacity; the arc goes back to a quarter and hides.
-    rerender(<LiveOrb state="listening" label="Listening" getLevels={() => ({ input: 0, output: 0 })} />);
-    act(() => { for (let i = 0; i < 80; i++) frames[frames.length - 1]!(7000 + i * 16); });
-    expect(core().style.opacity).toBe('');
-    expect(arcLength()).toBe(25);
-    expect(container.querySelector('[data-testid="live-orb-arc"]')!.className).toMatch(/\bopacity-0\b/);
-    unmount();
-  });
-
-  it('connecting under prefers-reduced-motion: no breath, no frame, a still quarter arc on its track', () => {
+  it('idle dims the logo and an error greys it; live states show it in full', () => {
     mockReducedMotion(true);
-    const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
-    const { container } = render(<LiveOrb state="connecting" label="Connecting" />);
-    expect(raf).not.toHaveBeenCalled();
-    const ring = container.querySelector('[data-testid="live-orb-arc"]')!;
-    expect(ring.className).toMatch(/\bopacity-100\b/);
-    expect(ring.querySelector('circle:last-child')!.getAttribute('stroke-dasharray')).toBe('25.0 100');
-    expect((container.querySelector('[data-testid="live-orb-rocket"]')!.parentElement as HTMLElement).style.opacity).toBe('');
-  });
-
-  it('idle dims the rocket and an error greys it; live states show it in full', () => {
-    mockReducedMotion(true);
-    const rocketCls = (state: 'idle' | 'error' | 'speaking') => {
+    const logoCls = (state: 'idle' | 'error' | 'speaking') => {
       const { container, unmount } = render(<LiveOrb state={state} label={state} />);
-      const cls = container.querySelector('[data-testid="live-orb-rocket"]')!.className;
+      const cls = container.querySelector('[data-testid="live-orb-logo"]')!.className;
       unmount();
       return cls;
     };
-    expect(rocketCls('idle')).toMatch(/opacity-60/);
-    expect(rocketCls('error')).toMatch(/\bgrayscale\b/);
-    expect(rocketCls('speaking')).not.toMatch(/opacity-|grayscale/);
+    expect(logoCls('idle')).toMatch(/opacity-60/);
+    expect(logoCls('error')).toMatch(/\bgrayscale\b/);
+    expect(logoCls('speaking')).not.toMatch(/opacity-\d|grayscale/);
   });
 });
 

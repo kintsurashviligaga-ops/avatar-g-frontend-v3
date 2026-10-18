@@ -1,11 +1,11 @@
 /**
  * lib/genjutsu/selection.ts — WHICH of the user's reference photos an engine really receives.
  *
- * ⚠️ THE DROPZONE TAKES 40 PHOTOS AND NO ENGINE TAKES 40. Google Veo 3.1 takes up to 3 asset images, Kling 3 Motion
- * Control takes 1, Higgsfield's Genjutsu a handful. The honest design is not to pretend: the user may pick up to 40
- * (to keep one library of a character, a product and a wardrobe), the engine is handed the best few by the rule below,
- * and the panel says "Using 3 of 12 — Veo takes up to 3" BEFORE the user pays. Nothing here ever returns more than
- * `cap`, and nothing downstream may claim more photos were used than `used.length`.
+ * The dropzone takes 3 photos (lib/genjutsu/limits MAX_REFERENCES): Google Veo 3.1's own limit, and Veo is the only
+ * engine open (engines ALLOWED_ENGINE_PROVIDERS), so today every picked photo is used. An engine that takes fewer is
+ * handed the best of them by the rule below, and the panel says "Using n of m" BEFORE the user pays. Nothing here ever
+ * returns more than `cap`, and nothing downstream may claim more photos were used than `used.length`. (Until
+ * 2026-10-18 the dropzone took 40; the owner's PRD cut it to what Veo really receives.)
  *
  * THE RULE (documented, deterministic, the same function in the browser's preview and on the server):
  *   1. ROLE PASS — walk the roles in priority order (character → product → wardrobe) and take the FIRST photo of each

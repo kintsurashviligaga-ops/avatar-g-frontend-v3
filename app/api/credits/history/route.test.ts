@@ -28,7 +28,7 @@ jest.mock('../../../../lib/supabase/server', () => ({
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
-import { HISTORY_ACTIONS } from '../../../../lib/billing/creditHistory';
+import { HISTORY_ACTIONS, HISTORY_LABEL, historyLabel } from '../../../../lib/billing/creditHistory';
 
 const req = (qs = '') => new NextRequest(`https://myavatar.ge/api/credits/history${qs}`);
 
@@ -79,8 +79,15 @@ test('POST /api/credits/record no longer exists and no client code calls it', ()
   }
 });
 
-test('the Settings history has a label for every action the ledger mapping can produce', () => {
+test('the history has a label for every action the ledger mapping can produce, in all three languages', () => {
+  for (const a of HISTORY_ACTIONS) {
+    const label = historyLabel(a);
+    expect(label).toBe(HISTORY_LABEL[a]);
+    for (const lang of ['ka', 'en', 'ru'] as const) expect(label[lang].trim()).not.toBe('');
+    expect(label.emoji).not.toBe('•');
+  }
+  // Settings and the chat's profile sheet both read the shared table, not a copy of their own.
   const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'components', 'settings', 'SettingsView.tsx'), 'utf8');
-  const table = src.slice(src.indexOf('const ACTION_LABEL'), src.indexOf('function CreditHistorySection'));
-  for (const a of HISTORY_ACTIONS) expect(table).toMatch(new RegExp(`\\n\\s*${a}: \\{ emoji:`));
+  expect(src).toMatch(/historyLabel\(it\.action\)/);
+  expect(src).not.toMatch(/const ACTION_LABEL/);
 });

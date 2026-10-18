@@ -7,8 +7,11 @@
  * The browser polls that route for exactly this long (the talking avatar in components/studio/OmniStudio). */
 export const GENJUTSU_HARD_CAP_MS = 12 * 60_000;
 
-/** The reference dropzone's cap — what the user may PICK. What an engine RECEIVES is smaller (engines.ts). */
-export const MAX_REFERENCES = 40;
+/**
+ * The reference dropzone's cap — what the user may PICK. Google Veo 3.1 takes up to 3 reference images, so the
+ * dropzone takes 3 too (the owner's PRD, 2026-10-18): a photo the engine would never receive is not offered.
+ */
+export const MAX_REFERENCES = 3;
 
 /** The source video, in seconds. Kling 3 Motion Control documents 3–30 s; Genjutsu trims anything past 30 s. */
 export const SOURCE_VIDEO_MIN_SEC = 3;

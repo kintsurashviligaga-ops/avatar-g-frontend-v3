@@ -86,7 +86,8 @@ test('a server job with no percent prints no "%" in the tray — no time-eased e
   expect(screen.getByText('Joining the shots')).toBeTruthy();
   expect(container.textContent ?? '').not.toMatch(/\d+\s*%/);
   expect(container.textContent ?? '').not.toMatch(/remaining/i);
-  expect(container.querySelector('[data-progress="indeterminate"]')).not.toBeNull();
+  // The one loading card (PRD 2026-10-18) draws no bar at all; the progressbar role carries no number either.
+  expect(container.querySelector('[role="progressbar"]')?.hasAttribute('aria-valuenow')).toBe(false);
 });
 
 test('a server job that does report a percent still shows that percent', () => {

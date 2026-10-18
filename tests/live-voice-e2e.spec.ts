@@ -58,17 +58,16 @@ test.describe('voice mode, end to end', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect.poll(() => toolOnScreen(live)).toBe('video');
 
-    // 3b first — another service: a presentation opens with its topic filled in; its own Create button runs it.
+    // 3b first — other services. The 3D model tool is locked (the owner's PRD, 2026-10-18; lib/studio/model3dLock): the call
+    // says it is not open yet and opens nothing, so the studio on screen stays. The retired deck studio is out of the call's
+    // reach (GG 2026-10-18).
+    const model = await live.call('prepare_generation', { tool: 'model3d', prompt: 'ხის სკამი' });
+    expect(model.ok).toBe(false);
+    expect(model.error).toBe('not_available');
+    expect(String(model.message)).toMatch(/not open yet/);
+    await expect.poll(() => toolOnScreen(live)).toBe('video');
     const deck = await live.call('prepare_generation', { tool: 'presentation', prompt: 'საქართველოს ღვინის 8000 წელი' });
-    expect(deck.ok).toBe(true);
-    expect(String(deck.summary)).toMatch(/press Create/);
-    // The deck's panel is a dynamic chunk (ServiceParamsPanel) the dev server compiles on its first use: the topic lands the
-    // moment that chunk arrives, 2–3 s here and past the default 5 s on a CI runner (run 38959203433). Production serves
-    // it prebuilt. The wait covers the compile; the assertion is unchanged.
-    await expect.poll(async () => page.locator('textarea').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value)), { timeout: 20_000 }).toContain('საქართველოს ღვინის 8000 წელი');
-    await expect.poll(() => toolOnScreen(live)).toBe('presentation');
-    const deckStart = await live.call('start_generation', { confirmed: 'yes' });
-    expect(deckStart.ok).toBe(false); // a deck is made by its panel's Create, never by a voice start
+    expect(deck.ok).toBe(false);
 
     // 3 — an image order: it goes to the CHAT (the user watches it there, no studio panel), and Agent G's card shows the
     // price; the model reads it as what waits for the yes.
@@ -102,9 +101,9 @@ test.describe('voice mode, end to end', () => {
     live.say('მზად არის, ეკრანზეა.');
     await expect(page.getByTestId('live-dock-line')).toContainText('მზად არის', { timeout: 10_000 });
 
-    // 7 — the dock says who is on the call: the rocket, "Agent G", and a calm End pill (not a red ✕).
+    // 7 — the dock says who is on the call: the agent's logo, "Agent G", and a calm End pill (not a red ✕).
     const dock = page.getByTestId('live-dock');
-    await expect(dock.locator('img[src*="rocket-mark"]').first()).toBeVisible();
+    await expect(dock.locator('img[src*="agent-orb"]').first()).toBeVisible();
     await expect(dock).toContainText('Agent G');
     await expect(page.getByTestId('live-dock-end')).toContainText('დასრულება');
 

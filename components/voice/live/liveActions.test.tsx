@@ -456,15 +456,15 @@ describe('useLiveActions', () => {
   });
 });
 
-describe('prepare_generation for a deck or a 3D model', () => {
-  it('opens the studio with the topic and tells the model the user presses Create there (no start_generation)', () => {
+describe('prepare_generation for a 3D model', () => {
+  it('opens the studio with the description and tells the model the user presses Create there (no start_generation)', () => {
     const dispatched: Array<{ type: string; reply?: unknown }> = [];
     const env = {
-      dispatchAction: (d: { type: string; reply?: unknown }) => { dispatched.push(d); d.reply = { ok: true, tool: 'presentation' }; return true; },
+      dispatchAction: (d: { type: string; reply?: unknown }) => { dispatched.push(d); d.reply = { ok: true, tool: 'model3d' }; return true; },
       openArtifact: () => true,
     };
-    const out = executeLiveToolCall({ id: 'p1', name: 'prepare_generation', args: { tool: 'presentation', prompt: 'საქართველოს ღვინის ისტორია' } }, env as never);
-    expect(dispatched[0]).toMatchObject({ type: 'prepare_generation', tool: 'presentation', prompt: 'საქართველოს ღვინის ისტორია' });
+    const out = executeLiveToolCall({ id: 'p1', name: 'prepare_generation', args: { tool: 'model3d', prompt: 'ხის სკამი' } }, env as never);
+    expect(dispatched[0]).toMatchObject({ type: 'prepare_generation', tool: 'model3d', prompt: 'ხის სკამი' });
     const r = out.response.response as { ok: boolean; summary: string };
     expect(r.ok).toBe(true);
     expect(r.summary).toMatch(/press Create/);

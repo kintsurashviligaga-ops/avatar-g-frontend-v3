@@ -302,11 +302,12 @@ async function archive(page: Page): Promise<Array<{ key: string; uid: string | n
   });
 }
 
-// The product rule (components/studio/OmniStudio currentConversationId): every open and every reload lands on a FRESH,
-// EMPTY chat; past threads are in History and come back only when the user opens one. So a reload mid-render shows an
-// empty chat, and opening the thread from History re-mounts the card, which finds its job by the id it remembered
-// (MusicStudioCard recall) and follows it to the end — no second job, no second debit.
-test('reload while it composes → fresh chat; the thread opened from History returns the card to the SAME job, one debit', async ({ page }, info) => {
+// The product rule (components/studio/OmniStudio currentConversationId, lib/chat/tabChat): a new open lands on a FRESH,
+// EMPTY chat, and a reload of the same tab keeps that tab's chat (the owner's PRD of 2026-10-18, 2.5 — until then a reload
+// was a fresh chat too, and the thread came back only from History). So a reload mid-render shows the same thread, and its
+// card finds its job by the id it remembered (MusicStudioCard recall) and follows it to the end — no second job, no second
+// debit.
+test('reload while it composes → the same chat; its card returns to the SAME job, one debit', async ({ page }, info) => {
   const user = projectUser(info);
   await openStudio(page);
   const before = await balanceOf(user.id);
@@ -324,14 +325,11 @@ test('reload while it composes → fresh chat; the thread opened from History re
   const savedAfter = await archive(page);
   evidence(`music-reload-archive-${tag(info)}`, { jobId, savedBefore, savedAfter });
   expect(savedAfter.some((c) => c.title.includes(prompt))).toBe(true);
-  await expect(cards(page)).toHaveCount(0);
-  // Open the thread from History the way the user does (on the phone the menu opens first).
-  const menu = page.getByRole('button', { name: 'Menu', exact: true });
-  if (await menu.isVisible()) await menu.click();
-  await page.getByRole('button', { name: prompt }).first().click();
+  // The reloaded tab is in the same thread: the card is back on screen by itself, with no History pick.
   const back = page.locator(`[data-testid="music-card"][data-job-id="${jobId}"]`);
   await expect(back).toHaveAttribute('data-phase', 'completed', { timeout: 120_000 });
   await expect(back.locator('audio')).toHaveCount(1);
+  await expect(cards(page)).toHaveCount(1);
   expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-MUSIC_PRICE]);
   expect(await balanceOf(user.id)).toBe(before - MUSIC_PRICE);
   const jobs = await rows<{ id: string }>(`generation_jobs?user_id=eq.${user.id}&service_type=eq.music&params->>prompt=eq.${encodeURIComponent(prompt)}&select=id`);

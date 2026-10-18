@@ -22,7 +22,7 @@ import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Music2, PenSquare, Search, Wallet,
+  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Music2, PenSquare, Search, Wallet,
 } from 'lucide-react';
 import { TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
@@ -67,6 +67,7 @@ import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './Pers
 import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
+import { ProfileSheet } from '@/components/account/ProfileSheet';
 import { paymentReturnMessage, pollBogOrder } from '@/lib/billing/bogCheckoutClient';
 import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
 import AuthModal from '@/components/chat/AuthModal';
@@ -165,9 +166,23 @@ const LANGS = [
   { code: 'ru', flag: '🇷🇺', label: 'РУС' },
 ] as const;
 
-function LanguageSwitcher({ locale, up = false }: { locale: string; up?: boolean }) {
+/**
+ * The same page in another language. The chat on screen (and an Agent G card running in it) is handed to the new
+ * mount (keepOpenChat) instead of being left behind for an empty one. Used by the top-bar switcher and the profile.
+ */
+function useSwitchLocale(locale: string) {
   const router = useRouter();
   const pathname = usePathname();
+  return useCallback((code: string) => {
+    if (code === locale) return;
+    const next = (pathname || `/${locale}/dashboard`).replace(/^\/(ka|en|ru)(?=\/|$)/, `/${code}`);
+    keepOpenChat();
+    router.push(next.startsWith(`/${code}`) ? next : `/${code}/dashboard`);
+  }, [locale, pathname, router]);
+}
+
+function LanguageSwitcher({ locale, up = false }: { locale: string; up?: boolean }) {
+  const switchLocale = useSwitchLocale(locale);
   const [open, setOpen] = useState(false);
   const langClamp = useViewportClamp(open);
   const current = LANGS.find((l) => l.code === locale) ?? LANGS[0];
@@ -202,12 +217,7 @@ function LanguageSwitcher({ locale, up = false }: { locale: string; up?: boolean
   }, [open]);
   const go = (code: string) => {
     setOpen(false);
-    if (code === locale) return;
-    const next = (pathname || `/${locale}/dashboard`).replace(/^\/(ka|en|ru)(?=\/|$)/, `/${code}`);
-    // The same page under another locale mounts the studio afresh: the chat on screen (and an Agent G card running in it)
-    // is handed to that mount instead of being left behind for an empty one.
-    keepOpenChat();
-    router.push(next.startsWith(`/${code}`) ? next : `/${code}/dashboard`);
+    switchLocale(code);
   };
   return (
     <div className="relative" ref={wrapRef}>
@@ -267,6 +277,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [sheet, setSheet] = useState<null | 'library'>(null);
   const router = useRouter();
   const pathname = usePathname();
+  const switchLocale = useSwitchLocale(locale);
   // Seeded from the SERVER-rendered session (dashboard page.tsx → ServiceHub → here) so the generation
   // gate on <html> is never published as '0' while the client-side getUser() round-trip is in flight —
   // that window made an ALREADY-SIGNED-IN user who tapped send get the sign-in modal. getUser() and
@@ -277,12 +288,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // localStorage read; the effect flips it false for users who haven't seen it.
   const [welcomed, setWelcomed] = useState(true);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
-  // Profile editing (#3) + GDPR data export (#4).
+  // The profile sheet (components/account/ProfileSheet: the name, the account's details, language, balance, password,
+  // the data export, deletion).
   const [profileOpen, setProfileOpen] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   const [firstName, setFirstName] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [savingProfile, setSavingProfile] = useState(false);
   // Profile photo (FIX 2): current URL + in-flight upload state + the hidden file input.
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   // A non-null avatarUrl can still fail to LOAD (restricted-public bucket → 403, stale/deleted
@@ -296,7 +306,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [avatarError, setAvatarError] = useState<string | null>(null);
   // Iteration 4 — checkout return feedback (success / declined / cancelled), self-contained toast.
   const [payNotice, setPayNotice] = useState<{ text: string; ok: boolean } | null>(null);
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   // Ref (not state) so the async DB-read closure sees the CURRENT value: true while an upload is in flight,
   // to stop an auth-transition read from clobbering the optimistic/just-uploaded photo. lastAvatarUserId
   // de-dupes reads so we only refetch on a genuine account change, not on every token refresh / tab focus.
@@ -673,7 +682,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // so the drawer keeps its persistent-desktop role and only becomes a modal here.)
   const sidebarDialogRef = useDialogA11y<HTMLElement>(sidebarOpen, () => setSidebarOpen(false));
   const settingsDialogRef = useDialogA11y<HTMLElement>(menuOpen, () => setMenuOpen(false));
-  const profileDialogRef = useDialogA11y<HTMLDivElement>(profileOpen, () => setProfileOpen(false));
   // The drawer is a modal ONLY at mobile width; at >=md it's the persistent sidebar.
   // If it's open and the viewport crosses to desktop (rotate/resize/foldable), drop the
   // modal state so it sheds role=dialog/aria-modal and releases the focus trap.
@@ -921,17 +929,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     } catch { /* ignore */ }
     window.dispatchEvent(new Event('myavatar:conversations-updated'));
   }, [onDashboard, locale, OMNI_CONVERSATIONS_KEY]);
-
-  // Save the display name to Supabase user_metadata (#3).
-  const saveProfile = useCallback(async () => {
-    setSavingProfile(true);
-    try {
-      await createBrowserClient().auth.updateUser({ data: { name: displayName.trim() } });
-      setUserName(displayName.trim() || null);
-      setProfileOpen(false);
-    } catch { /* keep modal open on failure */ }
-    finally { setSavingProfile(false); }
-  }, [displayName]);
 
   // FIX 2 — profile photo upload: read the file as a data URL → POST to /api/profile/avatar
   // (service-role upload to the public `avatars` bucket + profiles.avatar_url) → reflect it
@@ -1550,7 +1547,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                       <p className="truncate text-[14px] font-medium text-app-text">{userName || userEmail}</p>
                     </div>
                   </div>
-                  <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
+                  <button type="button" onClick={() => { setMenuOpen(false); setProfileOpen(true); }} className={drawerRow} data-testid="settings-profile"><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
                   <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow} data-tour={TWIN_ENABLED ? 'twin' : undefined}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
                   <button type="button" onClick={async () => { try { await signOutAndClear(createBrowserClient()); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
@@ -1606,41 +1603,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         onClose={() => { setCreditsOpen(false); void refreshBalance(); }}
         onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
       />
-      {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
-      {profileOpen && (
-        <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setProfileOpen(false)}>
-          <div ref={profileDialogRef} role="dialog" aria-modal="true" aria-label={locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-app-surface p-4 shadow-[0_0_60px_rgba(0,0,0,0.4)]">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-[15px] font-semibold text-app-text">{locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'}</span>
-              <button type="button" onClick={() => setProfileOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
-            </div>
-            {/* Profile photo (FIX 2) — click to upload; service-role route stores it. */}
-            <div className="mb-4 flex flex-col items-center gap-2">
-              <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy} aria-label="Change photo"
-                className="group relative h-20 w-20 overflow-hidden rounded-full bg-app-accent/15 ring-2 ring-app-border/15 transition hover:ring-app-accent/40">
-                {avatarUrl && !avatarBroken ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setAvatarBroken(true)} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center text-[26px] font-bold uppercase text-app-accent">{userName?.[0] || userEmail?.[0] || 'U'}</span>
-                )}
-                <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
-                  {avatarBusy ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Camera className="h-5 w-5 text-white" />}
-                </span>
-              </button>
-              <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy}
-                className="text-[12px] font-medium text-app-accent transition hover:opacity-80 disabled:opacity-50">
-                {avatarBusy ? (locale === 'en' ? 'Uploading…' : locale === 'ru' ? 'Загрузка…' : 'იტვირთება…') : (locale === 'en' ? 'Change photo' : locale === 'ru' ? 'Сменить фото' : 'ფოტოს შეცვლა')}
-              </button>
-              <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadAvatar(f); e.target.value = ''; }} />
-            </div>
-            <p className="mb-1.5 text-[12px] text-app-muted">{locale === 'en' ? 'Display name' : locale === 'ru' ? 'Отображаемое имя' : 'სახელი'}</p>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={60} placeholder={userEmail ?? ''} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
-            <button type="button" onClick={() => void saveProfile()} disabled={savingProfile} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-2.5 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">{savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {locale === 'en' ? 'Save' : locale === 'ru' ? 'Сохранить' : 'შენახვა'}</button>
-          </div>
-        </div>
-      )}
+      <ProfileSheet open={profileOpen} locale={lang} onClose={() => setProfileOpen(false)}
+        name={userName} email={userEmail} onNameSaved={(n) => setUserName(n)}
+        avatarUrl={avatarUrl} avatarBroken={avatarBroken} onAvatarBroken={() => setAvatarBroken(true)} avatarBusy={avatarBusy}
+        onPickPhoto={(f) => void uploadAvatar(f)}
+        balance={balanceGel} onTopUp={() => { setProfileOpen(false); setCreditsOpen(true); }}
+        liveAvatarLabel={TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}
+        onLiveAvatar={() => setAvatarEnrollOpen(true)}
+        onLanguage={(code) => { setProfileOpen(false); switchLocale(code); }}
+        onSignOut={() => { void signOutAndClear(createBrowserClient()).catch(() => { /* the auth listener clears state */ }); }} />
       <AuthModal open={authOpen} locale={lang} initialMode={authMode} initialError={authError} returnTo={authReturnTo} plan={authPlan}
         onClose={() => { setAuthOpen(false); setAuthError(null); setAuthReturnTo(null); setAuthPlan(null); }}
         onAuthed={() => {

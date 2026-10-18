@@ -79,24 +79,26 @@ test.describe('Video Core — One Window navigation', () => {
     await expect(page.getByTestId('composer-input')).toBeVisible();
   });
 
-  test('a reload opens a fresh chat; the conversation is in History and reopens from there', async ({ page, isMobile }, info) => {
+  // The owner's PRD of 2026-10-18 (2.5): a refresh loses neither the conversation nor the text not yet sent. Until then a
+  // reload opened a fresh chat by design and this test pinned that; a new tab or visit still does (lib/chat/tabChat).
+  test('a reload keeps this tab\'s chat and the unsent draft; the conversation is in History too', async ({ page, isMobile }, info) => {
     const calls = await openStudio(page, { reply: 'Hello from the mocked model.' });
     await say(page, 'hello there, remember me');
     await expect(page.getByText('Hello from the mocked model.')).toBeVisible({ timeout: 20_000 });
     expect(calls.chat).toHaveLength(1);
+    await page.getByTestId('composer-input').fill('half a thought, not sent');
+    await page.waitForTimeout(500); // the draft is written a beat after typing stops (and again on the way out)
     await page.reload();
     await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 60_000 });
     await pinSignedIn(page);
-    await page.waitForTimeout(500);
-    const threadKept = await page.getByText('Hello from the mocked model.').isVisible().catch(() => false);
-    recordFinding(info, 'nav-reload-conversation', `After a reload the thread is ${threadKept ? 'restored in place' : 'EMPTY: the studio opens a new, empty conversation on every visit by design (components/studio/OmniStudio.tsx:1440-1455 currentConversationId — only an explicit History pick, OMNI_RESUME_KEY, reopens one)'}; the conversation is listed in History.`);
-    // History holds it (title = the first words), and reopening it brings the turn back.
-    await openSidebar(page, isMobile);
-    const row = page.getByRole('button', { name: 'hello there, remember me' }).first();
-    await expect(row).toBeVisible({ timeout: 10_000 });
-    await row.click();
     await expect(page.getByText('Hello from the mocked model.')).toBeVisible({ timeout: 10_000 });
     await expect(userBubble(page, 'hello there, remember me')).toBeVisible();
+    await expect(page.getByTestId('composer-input')).toHaveValue('half a thought, not sent');
+    recordFinding(info, 'nav-reload-conversation', 'After a reload the thread and the unsent draft are back in place (lib/chat/tabChat); the conversation is listed in History.');
+    expect(calls.chat).toHaveLength(1); // a reload re-sends nothing
+    // History holds it (title = the first words).
+    await openSidebar(page, isMobile);
+    await expect(page.getByRole('button', { name: 'hello there, remember me' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('switching conversations in the sidebar keeps results scoped: a new session shows none, reopening shows them again', async ({ page, isMobile }, info) => {

@@ -136,10 +136,12 @@ describe('the other sentences', () => {
     expect(planChatTurn('ამ ვიდეოდან ამოიღე ხმა MP3-ად.', snap({ attachments: ['video'] })).kind).toBe('pass');
     expect(planChatTurn('ამ ვიდეოდან ამოიღე ხმა MP3-ად.', snap()).kind).toBe('say');
   });
-  test('„გააკეთე 20-წამიანი რეკლამა", „ეს ფოტო გააცოცხლე" (with a photo), „ეს ვიდეო რუსულად გაახმოვანე" go on to their doors', () => {
+  test('„გააკეთე 20-წამიანი რეკლამა" and „ეს ფოტო გააცოცხლე" (with a photo) go on to their doors; a dub is answered', () => {
     expect(planChatTurn('გააკეთე 20-წამიანი რეკლამა.', snap()).kind).toBe('pass');
     expect(planChatTurn('ეს ფოტო გააცოცხლე.', snap({ attachments: ['image'] })).kind).toBe('pass');
-    expect(planChatTurn('ეს ვიდეო რუსულად გაახმოვანე.', snap({ attachments: ['video'] })).kind).toBe('pass');
+    // Dubbing left the product (GG 2026-10-18): said plainly, the video stays in the box for another ask.
+    const dub = planChatTurn('ეს ვიდეო რუსულად გაახმოვანე.', snap({ attachments: ['video'] }));
+    expect(dub).toMatchObject({ kind: 'say', text: expect.stringContaining('დუბლაჟი MyAvatar.ge-ზე აღარ არის') });
   });
   test('„სუბტიტრები დაამატე" with no video asks for it; „წინა შედეგს ფერები შეუცვალე" says plainly it cannot yet', () => {
     expect(planChatTurn('სუბტიტრები დაამატე.', snap()).kind).toBe('say');

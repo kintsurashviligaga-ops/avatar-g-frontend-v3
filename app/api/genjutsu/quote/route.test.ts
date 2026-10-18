@@ -2,7 +2,7 @@
 /**
  * POST /api/genjutsu/quote — the number the panel puts on the Generate button. For `scene` it is lib/genjutsu/pricing (the
  * function /generate charges with); for the Higgsfield ops it is the studio saga's LIVE quote, never a local guess.
- * Every answer also says how many photos the engine really receives, so "Using 3 of 12" is known before anyone pays.
+ * Every answer also says how many photos the engine really receives, so "Using 1 of 3" is known before anyone pays.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn() }));
@@ -53,8 +53,8 @@ test('a guest gets 401; a spent estimate window gets 429', async () => {
 });
 
 test('scene: the price is lib/genjutsu/pricing — the price book\'s Fast and Standard clip — with the photo count the engine really takes', async () => {
-  const fast = await (await POST(post({ op: 'scene', preset: 'fire', references: photos(12), referencesTotal: 12 }))).json();
-  expect(fast).toMatchObject({ success: true, op: 'scene', credits: clipCredits('fast'), source: 'local', refsUsed: 3, refsTotal: 12, cap: 3 });
+  const fast = await (await POST(post({ op: 'scene', preset: 'fire', references: photos(3), referencesTotal: 3 }))).json();
+  expect(fast).toMatchObject({ success: true, op: 'scene', credits: clipCredits('fast'), source: 'local', refsUsed: 3, refsTotal: 3, cap: 3 });
   const std = await (await POST(post({ op: 'scene', preset: 'fire', quality: 'standard' }))).json();
   expect(std).toMatchObject({ credits: clipCredits('standard'), refsUsed: 0, refsTotal: 0 });
   expect(getStudioRuntime).not.toHaveBeenCalled(); // a local price never calls the provider
@@ -66,14 +66,23 @@ test('a locked op is 423, an invalid body 400', async () => {
   expect((await POST(post({ op: 'scene' }))).status).toBe(400);
 });
 
+test('a 4th photo is refused before anything is priced: Veo 3.1 takes 3', async () => {
+  const four = await POST(post({ op: 'scene', preset: 'fire', references: photos(4), referencesTotal: 4 }));
+  expect(four.status).toBe(400);
+  expect(JSON.stringify(await four.json())).toContain('too_many_references');
+  const total = await POST(post({ op: 'scene', preset: 'fire', references: photos(3), referencesTotal: 12 }));
+  expect(total.status).toBe(400); // an inflated "of N" never reaches the button either
+  expect(signOwnedPaths).not.toHaveBeenCalled();
+});
+
 const VIDEO = { path: mine('v.mp4'), durationSec: 12, sizeBytes: 9_000_000 };
-const MOTION = { op: 'motion', preset: 'fire', video: VIDEO, references: photos(4), referencesTotal: 4 };
+const MOTION = { op: 'motion', preset: 'fire', video: VIDEO, references: photos(3), referencesTotal: 3 };
 
 test('motion: the price is the saga\'s LIVE quote — one character image goes to the model, never a local number', async () => {
   const quote = jest.fn(async () => ({ ok: true, price: { credits: 72, gel: 7.2, usd: 2 } }));
   (getStudioRuntime as jest.Mock).mockReturnValue({ saga: { quote } });
   const j = await (await POST(post(MOTION))).json();
-  expect(j).toMatchObject({ success: true, op: 'motion', credits: 72, gel: 7.2, display: '7.20 ₾', source: 'provider-quote', refsUsed: 1, refsTotal: 4, cap: 1 });
+  expect(j).toMatchObject({ success: true, op: 'motion', credits: 72, gel: 7.2, display: '7.20 ₾', source: 'provider-quote', refsUsed: 1, refsTotal: 3, cap: 1 });
   // The provider's own USD cost (our margin) is never on the wire.
   expect(JSON.stringify(j)).not.toContain('usd');
   const [modelId, input] = quote.mock.calls[0] as unknown as [string, Record<string, unknown>];

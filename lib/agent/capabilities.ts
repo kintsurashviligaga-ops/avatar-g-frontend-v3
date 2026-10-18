@@ -84,13 +84,18 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
     routes: ['/api/video/remix'], engine: 'roop on Replicate; MEDIA_GOOGLE_ONLY refuses it',
     pricing: { key: 'swap', charge: 'charged' }, approval: 'panel-button', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'signed intent per charge', cancel: 'client-abort', qc: null, artifact: 'video', library: 'filed',
-    label: 'BLOCKED_OWNER',
+    // DEPRECATED: out of the UI and of Agent G's routing (GG's PRD 2026-10-18, „სრულად ამოსაღები"); the route stays so a job
+    // already started finishes or refunds. lib/agent/intentReply answers a request for it plainly.
+    label: 'DEPRECATED',
   }),
   'video.motion': c({
     id: 'video.motion', serviceId: 'video.motion', does: 'A photo moves the way the user describes',
     routes: ['/api/motion-control', '/api/motion-control/status'], engine: 'Kling image-to-video on Replicate; MEDIA_GOOGLE_ONLY refuses it',
     pricing: { key: 'motion', charge: 'charged' }, approval: 'panel-button', timeoutSec: 300, retry: 'refund-on-miss',
-    idempotency: 'one prediction per press', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
+    idempotency: 'one prediction per press', cancel: 'none', qc: null, artifact: 'video', library: 'filed',
+    // DEPRECATED: out of the UI and of Agent G's routing (GG's PRD 2026-10-18, „სრულად ამოსაღები"); the route stays so a job
+    // already started finishes or refunds. lib/agent/intentReply answers a request for it plainly.
+    label: 'DEPRECATED',
   }),
   'video.vfx': c({
     id: 'video.vfx', serviceId: 'video.vfx', does: 'One-tap VFX effects for a photo',
@@ -167,7 +172,10 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
     routes: ['/api/v2/dubbing/start'], engine: 'ElevenLabs Scribe + TTS, Gemini translation; Demucs on Replicate for the background',
     // OFF until OWNER_APPROVED_PRICING names its price (proposed 10 cr per started minute, measured on the server).
     pricing: { key: null, charge: 'not-charged-yet' }, approval: 'panel-button', timeoutSec: 600, retry: 'none',
-    idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
+    idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null, artifact: 'video', library: 'filed',
+    // DEPRECATED: out of the UI and of Agent G's routing (GG's PRD 2026-10-18, „სრულად ამოსაღები"); the route stays so a job
+    // already started finishes or refunds. lib/agent/intentReply answers a request for it plainly.
+    label: 'DEPRECATED',
   }),
   'text.write': c({
     id: 'text.write', serviceId: 'text.write', does: 'Articles, scripts, ad copy, posts, translation',
@@ -180,7 +188,10 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
     // OFF until OWNER_APPROVED_PRICING names its price (proposed 15 cr per deck).
     routes: ['/api/v2/presentation/build'], engine: 'Gemini outline + Imagen', pricing: { key: null, charge: 'not-charged-yet' },
     approval: 'panel-button', timeoutSec: 300, retry: 'none', idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null,
-    artifact: 'file', library: 'filed', label: 'BLOCKED_OWNER',
+    artifact: 'file', library: 'filed',
+    // DEPRECATED: out of the UI and of Agent G's routing (GG's PRD 2026-10-18, „სრულად ამოსაღები"); the route stays so a job
+    // already started finishes or refunds. lib/agent/intentReply answers a request for it plainly.
+    label: 'DEPRECATED',
   }),
   'design.model3d': c({
     id: 'design.model3d', serviceId: 'design.model3d', does: 'A 3D model from text or a photo',
@@ -249,3 +260,6 @@ export const capabilityRuns = (id: CapabilityId): boolean => {
   const cap = CAPABILITIES[id];
   return cap.routes.length > 0 && cap.label !== 'MISSING' && cap.label !== 'DISABLED' && cap.label !== 'DEPRECATED';
 };
+
+/** Taken out of the product (its route kept for jobs already running): Agent G says so instead of routing it anywhere. */
+export const capabilityRetired = (id: CapabilityId): boolean => CAPABILITIES[id].label === 'DEPRECATED';

@@ -10,6 +10,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import type { LiveStep } from './LiveActivityFeed';
 import LiveDock, { LIVE_DOCK_STRINGS, LiveRunBanner } from './LiveDock';
+import { LIVE_LOGO_SRC } from './LiveOrb';
 
 const base = {
   locale: 'en' as const,
@@ -52,8 +53,8 @@ describe('LiveDock', () => {
     expect(dock).toHaveTextContent(t.callLabel);
     expect(dock).toHaveTextContent('Agent G');
     expect(dock).toHaveTextContent('STATUS');
-    // The agent is the rocket, in the orb.
-    expect(dock.querySelector('[data-testid="live-orb-rocket"]')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
+    // The agent is its logo.
+    expect(dock.querySelector('[data-testid="live-orb-logo"]')?.getAttribute('src')).toBe(LIVE_LOGO_SRC);
     // Every control is a ≥ 44 px target with a name in the language.
     for (const name of [t.mute, t.expand, t.end]) {
       expect(screen.getByRole('button', { name }).className).toMatch(/\bh-\[44px\]/);

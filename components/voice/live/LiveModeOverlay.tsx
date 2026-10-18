@@ -2,8 +2,15 @@
 
 /**
  * LiveModeOverlay — the full-screen Live call in the Gemini Live frame: a dark screen with "Live" and a captions
- * toggle on top, the orb and one quiet status line in the middle, captions under it, and a floating pill of controls
- * at the bottom (camera · flip · waveform · mute · host extras · End). Pure presentation: every action is a prop, all
+ * toggle on top, the agent's logo alone in the middle, and a floating row of controls at the bottom (camera · mute ·
+ * host extras · End).
+ *
+ * ONLY THE LOGO (the owner's PRD of 2026-10-18, 2.5: „ლაივ ხმოვანი რეჟიმის გახსნისას ეკრანზე უნდა იყოს მხოლოდ აგენტის
+ * ლოგო, რომელსაც ექნება იმპულსური ფეთქვის (პულსაციის) ანიმაცია სტატუსების მიხედვით“). The logo pulses by status
+ * (LiveOrb); the status words are read to screen readers only (LiveStatusLine); captions start OFF and the toggle on top
+ * brings them back; muted, the logo rests while it would be listening. What still appears is what asks for a tap or
+ * reports work under way: the agent's action cards, a pending run with its cancel, the live activity, "tap to turn on
+ * sound", and the error screen. Pure presentation: every action is a prop, all
  * state comes from useGeminiLiveSession / useLiveCamera in the host (components/voice/GeminiLiveConversation.tsx),
  * except the captions toggle and the copy-link feedback, which are view state.
  *
@@ -28,8 +35,8 @@
  * The dialog takes focus on open, traps Tab and ends the call on Escape (hooks/useDialogA11y). Georgian copy elsewhere
  * never goes below 16 px / 1.6.
  *
- * THE AGENT IS THE ROCKET: the orb carries the brand mark, and with the camera off the same rocket stands large and faint
- * behind it (LiveOrb `backdrop`). The user's enrolled avatar poster is no longer shown here.
+ * THE AGENT IS ITS LOGO: the rocket in the glowing blue sphere (LiveOrb). The user's enrolled avatar poster is no longer
+ * shown here, and the large faint rocket that stood behind the orb is gone with the PRD above.
  *
  * VOICE-TO-ACTION: with `onOpenAction`, a strip of LiveActionCards sits above the controls — what the agent just did
  * (prepared a prompt, opened a studio, put code on screen), newest first, at most three. While it holds cards the
@@ -424,13 +431,16 @@ export default function LiveModeOverlay({
   const isDocked = docked && !(status === 'error' && !!error);
   // The dialog behaviour (focus trap, Escape hangs up) belongs to the FULL screen only: docked, the page is the user's.
   const dialogRef = useDialogA11y<HTMLDivElement>(!isDocked, onEnd);
-  const [captionsOn, setCaptionsOn] = useState(true);
+  // Off at the start: the screen is the logo alone (the PRD of 2026-10-18); the toggle brings the words back.
+  const [captionsOn, setCaptionsOn] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
 
   const isError = status === 'error' && !!error;
   const orbState = orbStateFor(status);
+  // Muted, the agent cannot hear: the logo rests instead of waiting for a voice that will not come.
+  const logoState = muted && orbState === 'listening' ? 'idle' : orbState;
   const statusLabel = t.status[status];
   // Links the user hid (or already opened) from the dock; the full screen keeps its cards.
   const [dismissedLinks, setDismissedLinks] = useState<ReadonlySet<string>>(() => new Set());
@@ -559,16 +569,15 @@ export default function LiveModeOverlay({
       {isError ? errorPanel : (
         <>
           <LiveOrb
-            state={orbState}
+            state={logoState}
             getLevels={getLevels}
             // A step smaller per strip on screen (the cards, the agent's steps), so the captions keep their room.
             size={cameraOn ? 88 : actionsShown && activityShown ? 136 : actionsShown || activityShown ? 168 : 208}
             label={statusLabel}
-            backdrop={!cameraOn}
-            className="relative z-10 mb-6"
+            className="relative z-10"
           />
 
-          <LiveStatusLine state={orbState} muted={muted} getLevels={getLevels} label={statusLabel} locale={locale} />
+          <LiveStatusLine label={statusLabel} />
 
           {audioBlocked && onResumeAudio && (
             <button type="button" onClick={onResumeAudio} className={`relative z-10 mt-4 ${livePrimaryButtonClass(locale)}`}>

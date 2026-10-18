@@ -87,7 +87,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     const prep = byName.prepare_generation!.parameters!;
     expect(Object.keys(prep.properties!)).toEqual(['tool', 'prompt', 'aspectRatio', 'durationSec', 'style']);
     expect(prep.required).toEqual(['tool', 'prompt']);
-    expect(prep.properties!.tool!.enum).toEqual(['video', 'image', 'music', 'avatar', 'presentation', 'model3d']);
+    expect(prep.properties!.tool!.enum).toEqual(['video', 'image', 'music', 'avatar', 'model3d']);
     expect(prep.properties!.aspectRatio!.enum).toEqual([...LIVE_ASPECT_RATIOS]);
     expect(prep.properties!.durationSec!.type).toBe('INTEGER');
     const code = byName.show_code!.parameters!;
@@ -299,8 +299,12 @@ describe('validateLiveToolCall — the screen-control functions', () => {
     for (const t of ALL_TOOLS) expect(ok('open_studio', { tool: t })).toEqual({ type: 'open_studio', tool: t });
     expect(ok('open_studio', { tool: 'Photographer' })).toEqual({ type: 'open_studio', tool: 'photoshoot' });
     expect(ok('open_studio', { tool: 'video editor' })).toEqual({ type: 'open_studio', tool: 'montage' });
-    expect(ok('open_studio', { tool: 'slides' })).toEqual({ type: 'open_studio', tool: 'presentation' });
     expect(err('open_studio', { tool: 'settings' })).toMatchObject({ field: 'tool' });
+    // The retired tools are not in the call's reach (GG 2026-10-18), by id or by a spoken alias.
+    for (const t of ['swap', 'character_swap', 'motion', 'dubbing', 'dub', 'presentation', 'slides', 'deck']) {
+      expect(err('open_studio', { tool: t })).toMatchObject({ field: 'tool' });
+    }
+    expect(err('prepare_generation', { tool: 'presentation', prompt: 'Georgian wine' })).toMatchObject({ field: 'tool' });
   });
 
   it('update_settings: at least one setting, each validated like prepare_generation; instrumental is on/off', () => {

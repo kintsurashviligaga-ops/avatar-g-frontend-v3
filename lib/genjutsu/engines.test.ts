@@ -5,7 +5,7 @@
 import { MAX_UPLOAD_BYTES } from '@/components/studio/ui/useUpload';
 import { MAX_REFS, klingMotionInput } from '@/lib/providers/higgsfield/models';
 import { VEO_MODELS } from '@/lib/veo/capabilities';
-import { ENGINES, MOTION_REFERENCE_CAP, SWAP_REFERENCE_CAP, VEO_REFERENCE_CAP, modelLabel, qualityFor } from './engines';
+import { ENGINES, MOTION_REFERENCE_CAP, SWAP_REFERENCE_CAP, VEO_REFERENCE_CAP, engineAllowed, modelLabel, qualityFor } from './engines';
 import { MAX_REFERENCES, SOURCE_VIDEO_MAX_BYTES, SOURCE_VIDEO_MAX_SEC, SOURCE_VIDEO_MIN_SEC } from './limits';
 
 test('Veo takes up to 3 asset images — read from the engine\'s own capability table, on both transports', () => {
@@ -23,12 +23,14 @@ test('Kling Motion Control takes ONE image — its schema has a single image_url
 
 test('the swap cap is the studio-wide reference policy (MAX_REFS), below the provider\'s own maximum', () => {
   expect(SWAP_REFERENCE_CAP).toBe(MAX_REFS);
-  expect(MAX_REFS).toBeLessThanOrEqual(MAX_REFERENCES);
+  // Swap runs on Higgsfield, closed by the Google-only rule, so no user can reach its 5 through the 3-photo dropzone.
+  expect(engineAllowed('swap')).toBe(false);
 });
 
-test('the dropzone may hold more than any engine takes — that is what the selection rule is for', () => {
-  expect(MAX_REFERENCES).toBe(40);
-  for (const e of Object.values(ENGINES)) expect(e.maxRefs).toBeLessThan(MAX_REFERENCES);
+test('the dropzone takes exactly what Veo 3.1 takes (the owner\'s PRD 2026-10-18: 40 photos → 3), and no open engine more', () => {
+  expect(MAX_REFERENCES).toBe(VEO_REFERENCE_CAP);
+  expect(MAX_REFERENCES).toBe(3);
+  for (const e of Object.values(ENGINES)) if (engineAllowed(e.op)) expect(e.maxRefs).toBeLessThanOrEqual(MAX_REFERENCES);
 });
 
 test('the source video is 3–30 s and its size ceiling is the upload hook\'s own (a file the browser allows is never refused as too large)', () => {

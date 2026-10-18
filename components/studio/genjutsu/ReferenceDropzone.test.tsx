@@ -1,7 +1,8 @@
 /**
- * The reference dropzone: up to 40 photos, a role chip on each, reorder / remove, the "12 / 40" count, and the
- * "Using 3 of 12" line read BEFORE paying. Decode (canvas) and upload are injected — jsdom has neither — so what is
- * pinned is behaviour: the 40 cap, the checks, the order, and the lazy upload of ONLY the used photos.
+ * The reference dropzone: as many photos as Veo 3.1 takes (3, the owner's PRD 2026-10-18), a role chip on each,
+ * reorder / remove, the "1 / 3" count, and the "Using N of M" line read BEFORE paying. Decode (canvas) and upload are
+ * injected — jsdom has neither — so what is pinned is behaviour: the cap, the checks, the order, and the lazy upload of
+ * ONLY the used photos. The mechanism is exercised at a wide cap (WIDE, 40) as well, where picking and using differ.
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { selectReferences } from '@/lib/genjutsu/selection';
@@ -26,7 +27,10 @@ const okDecode = async (): Promise<DownscaleResult> => ({ ok: true, blob: new Bl
 let upload: jest.Mock;
 let api: ReturnType<typeof useReferencePhotos> | null = null;
 
-function Harness({ cap = 3, engine = 'Google Veo 3.1', options = {} }: { cap?: number; engine?: string; options?: UseReferencePhotosOptions }) {
+/** The hook's own cap logic at a cap wider than the engine's, where "picked" and "used" differ. */
+const WIDE: UseReferencePhotosOptions = { max: 40 };
+
+function Harness({ cap = 3, engine = 'Google Veo 3.1', options = WIDE }: { cap?: number; engine?: string; options?: UseReferencePhotosOptions }) {
   const r = useReferencePhotos({ decode: okDecode, upload, ...options });
   api = r;
   const sel = selectReferences(r.photos.map((p) => ({ id: p.id, role: p.role })), cap);
@@ -50,10 +54,18 @@ beforeEach(() => {
   (URL.revokeObjectURL as jest.Mock).mockClear();
 });
 
-test('it starts empty: "0 / 40" and the engine\'s cap stated up front', () => {
-  render(<Harness />);
-  expect(count()).toBe('0 / 40');
+test('it starts empty: "0 / 3" — the dropzone takes what Veo 3.1 takes — and the engine\'s cap stated up front', () => {
+  render(<Harness options={{}} />);
+  expect(count()).toBe('0 / 3');
   expect(screen.getByTestId('vfx-refs-policy').textContent).toBe('Google Veo 3.1 takes up to 3 photos');
+});
+
+test('the product cap: a fourth photo never lands, and the user is told it was left out', async () => {
+  render(<Harness options={{}} />);
+  await addFiles(files(4));
+  await waitFor(() => expect(count()).toBe('3 / 3'));
+  expect(screen.getByTestId('vfx-refs-notes').textContent).toContain('Limit is 3 photos — 1 skipped');
+  expect(input().disabled).toBe(true);
 });
 
 test('the picker input is a SIBLING of its label, never a child (a nested input bubbles its click back and iOS cancels the picker)', () => {
@@ -141,7 +153,7 @@ test('remove and "remove all" empty the grid and the count, and free the thumbna
 
 test('files an engine cannot read are refused with their NAME and a reason — they never reach the grid', async () => {
   const decode = jest.fn(async (f: File): Promise<DownscaleResult> => (f.name === 'tiny.jpg' ? { ok: false, reason: 'small' } : f.name === 'broken.jpg' ? { ok: false, reason: 'unreadable' } : okDecode()));
-  render(<Harness options={{ decode }} />);
+  render(<Harness options={{ ...WIDE, decode }} />);
   await addFiles([file('ok.jpg'), file('notes.pdf', 'application/pdf'), bigFile('huge.jpg', 30 * 1024 * 1024), file('tiny.jpg'), file('broken.jpg')]);
   await waitFor(() => expect(count()).toBe('1 / 40'));
   const notes = screen.getByTestId('vfx-refs-notes').textContent!;

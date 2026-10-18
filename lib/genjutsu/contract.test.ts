@@ -1,6 +1,6 @@
 /**
  * The request contract. The two rules the owner set are pinned here: the source video is 3–30 s (and bounded in
- * size) and a request carries at most 40 reference photos — plus the rule that only OUR storage paths cross the wire.
+ * size) and a request carries at most 3 reference photos — plus the rule that only OUR storage paths cross the wire.
  */
 import { MAX_REFERENCES, SOURCE_VIDEO_MAX_BYTES } from './limits';
 import { isStoragePath, ownsUploadPath, parseGenjutsuRequest, type IssueCode } from './contract';
@@ -63,12 +63,12 @@ test('motion and swap need a video; a scene must not carry one', () => {
   expect(codes({ op: 'scene', preset: 'fire', video: video() })).toContain('video_not_allowed');
 });
 
-test('up to 40 reference photos; a 41st is refused', () => {
-  const forty = Array.from({ length: MAX_REFERENCES }, (_, i) => photo(i));
-  const r = parseGenjutsuRequest({ op: 'scene', preset: 'fire', references: forty });
+test('up to 3 reference photos (what Veo 3.1 takes); a 4th is refused', () => {
+  const all = Array.from({ length: MAX_REFERENCES }, (_, i) => photo(i));
+  const r = parseGenjutsuRequest({ op: 'scene', preset: 'fire', references: all });
   expect(r.ok).toBe(true);
-  if (r.ok) expect(r.value.references).toHaveLength(40);
-  expect(codes({ op: 'scene', preset: 'fire', references: [...forty, photo(41)] })).toContain('too_many_references');
+  if (r.ok) expect(r.value.references).toHaveLength(3);
+  expect(codes({ op: 'scene', preset: 'fire', references: [...all, photo(4)] })).toContain('too_many_references');
 });
 
 test('motion needs a CHARACTER photo to move; swap needs any photo', () => {
@@ -102,11 +102,11 @@ test('the upload-prefix owner rule: a path is the caller\'s only under their own
 });
 
 test('referencesTotal can never be below what was sent, nor above the dropzone cap', () => {
-  const r = parseGenjutsuRequest({ op: 'scene', preset: 'fire', references: [photo(1), photo(2)], referencesTotal: 12 });
-  expect(r.ok && r.value.referencesTotal).toBe(12);
+  const r = parseGenjutsuRequest({ op: 'scene', preset: 'fire', references: [photo(1), photo(2)], referencesTotal: 3 });
+  expect(r.ok && r.value.referencesTotal).toBe(3);
   const low = parseGenjutsuRequest({ op: 'scene', preset: 'fire', references: [photo(1), photo(2)], referencesTotal: 1 });
   expect(low.ok && low.value.referencesTotal).toBe(2);
-  expect(codes({ op: 'scene', preset: 'fire', referencesTotal: 41 })).toContain('invalid_body');
+  expect(codes({ op: 'scene', preset: 'fire', referencesTotal: MAX_REFERENCES + 1 })).toContain('invalid_body');
 });
 
 test('expectedCredits and confirmedGel must be sane numbers', () => {

@@ -194,7 +194,7 @@ export function ImageWorkspace({ access, locale, initialPrompt = '', onClose }: 
   const activeQuote = batch[0]?.quote;
   const expiry = activeQuote ? new Date(Math.min(...batch.map(x => x.quote.expiresAt))).toLocaleTimeString(locale === 'ka' ? 'ka-GE' : locale) : '';
   const shown = compare && source ? source : selected;
-  return <section data-testid="image-workspace" aria-label={c.t('title')} className="min-w-0 space-y-5 bg-black p-4 text-white sm:p-5">
+  return <section data-testid="image-workspace" aria-label={c.t('title')} className="min-w-0 space-y-5 bg-[#0D1016] p-4 text-white sm:p-5">
     <header className="flex min-w-0 items-center justify-between gap-3">
       <h2 className="min-w-0 break-words text-lg font-semibold leading-snug">{c.t('title')}</h2>
       <button type="button" className={button + ' shrink-0'} onClick={onClose}>{c.t('close')}</button>

@@ -14,18 +14,15 @@ describe('toolGroups — the studio menus come from the catalog', () => {
     expect(groups[0]).toMatchObject({ id: 'agent-g', group: 'agent', tools: ['chat'] });
   });
 
-  it('groups the tools by catalog category, CREATE before WORK', () => {
+  it('groups the tools by catalog category; no WORK heading is left once dubbing and decks went (GG 2026-10-18)', () => {
     expect(groups.map((g) => [g.id, g.tools])).toEqual([
       ['agent-g', ['chat']],
-      ['video', ['video', 'product', 'swap', 'motion', 'vfx', 'montage']],
+      ['video', ['video', 'product', 'vfx', 'montage']],
       ['image-photo', ['image', 'photoshoot', 'interior', 'photo', 'model3d']],
       ['avatar', ['avatar']],
       ['music', ['music']],
-      ['voice-audio', ['dubbing']],
-      ['design', ['presentation']],
     ]);
-    const order = groups.map((g) => g.group);
-    expect(order.lastIndexOf('create')).toBeLessThan(order.indexOf('work'));
+    expect(groups.map((g) => g.group)).not.toContain('work');
   });
 
   it('never draws a category whose only runtime is the chat', () => {
@@ -33,17 +30,15 @@ describe('toolGroups — the studio menus come from the catalog', () => {
   });
 
   it('finds the group of a tool', () => {
-    expect(groupOfTool('dubbing')?.id).toBe('voice-audio');
     expect(groupOfTool('model3d')?.id).toBe('image-photo');
-    expect(groupOfTool('presentation')?.id).toBe('design');
+    expect(groupOfTool('montage')?.id).toBe('video');
     expect(groupOfTool('chat')?.id).toBe('agent-g');
   });
 
-  it('gives „Music video" a row of its own under Video (a mode found only inside the panel was not found), and nothing else', () => {
+  it('keeps „Music video" out of the side menu: it is a mode of the Video tool (GG 2026-10-18), and no other mode has a row', () => {
     const video = groups.find((g) => g.id === 'video');
     expect(video?.tools[0]).toBe('video');
-    expect(video?.modeServices).toEqual(['video.music-video']);
-    expect(groups.filter((g) => g.id !== 'video').flatMap((g) => g.modeServices)).toEqual([]);
+    expect(groups.flatMap((g) => g.modeServices)).toEqual([]);
   });
 
   it('labels every group in ka, en and ru', () => {
@@ -51,10 +46,9 @@ describe('toolGroups — the studio menus come from the catalog', () => {
     for (const t of Object.values(NAV_GROUP_LABEL)) expect(t.ka && t.en && t.ru).toBeTruthy();
   });
 
-  it('names the categories for what they open, and offers no video remix (GG 2026-10-18)', () => {
-    const label = (id: string) => groups.find((g) => g.id === id)?.label;
-    expect(label('voice-audio')).toEqual({ ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' });
-    expect(label('design')).toEqual({ ka: 'პრეზენტაციები', en: 'Presentations', ru: 'Презентации' });
-    expect(groups.flatMap((g) => g.tools)).not.toContain('remix');
+  it('offers no retired tool, and no category left empty by them (GG 2026-10-18)', () => {
+    const tools = groups.flatMap((g) => g.tools);
+    for (const id of ['remix', 'swap', 'motion', 'dubbing', 'presentation']) expect(tools).not.toContain(id);
+    for (const id of ['voice-audio', 'design']) expect(groups.some((g) => g.id === id)).toBe(false);
   });
 });

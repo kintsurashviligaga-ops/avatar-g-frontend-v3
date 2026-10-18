@@ -42,6 +42,7 @@ import { peekTask } from '@/lib/agent/media/jobFollow';
 import { GenerateButton } from './ui/GenerateButton';
 import { openTopUp, useShortBalance } from './ui/useShortBalance';
 import { quoteCredits } from '@/lib/credits/quote';
+import { MODEL3D_LOCKED } from '@/lib/studio/model3dLock';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -67,7 +68,7 @@ const COPY = {
     confirmCharge: 'ჩამოგეჭრება', creditsWord: 'კრედიტი', confirmRun: 'დადასტურება', cancelQuote: 'გაუქმება', unpersisted: 'შედეგი მზადაა, მაგრამ ბიბლიოთეკაში ვერ შევინახეთ — ჩამოტვირთე ახლავე.',
     close: 'დახურვა', run: 'შექმნა', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)', deckTheme: 'იერსახე', themeDark: 'მუქი', themeLight: 'ღია', advanced: 'დამატებითი პარამეტრები', exclude: 'რა არ გინდა', excludeHint: 'მაგ. ტექსტი, ადამიანი, ფონი…', excludeSet: 'მითითებულია', sourceLang: 'ორიგინალის ენა', autoDetect: 'ავტომატური',
     keepOpen: 'რამდენიმე წუთი სჭირდება — არ დახუროთ გვერდი.',
-    dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი',
+    dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი', soon: 'მალე', locked3d: '3D მოდელები მალე ჩაირთვება — ფორმა ჯერ დაბლოკილია.',
     duration: 'ხანგრძლივობა', sourceVideo: 'ვიდეოს ბმული', targetLang: 'სამიზნე ენა', keepBg: 'ფონური ხმა', subs: 'სუბტიტრები',
     topic: 'თემა', slides: 'სლაიდები', deckLang: 'ენა', withImages: 'სურათებით',
     fromText: 'ტექსტიდან', fromImage: 'ფოტოდან', describe: 'აღწერა', photoUrl: 'ფოტოს ბმული',
@@ -91,7 +92,7 @@ const COPY = {
     confirmCharge: 'You will be charged', creditsWord: 'credits', confirmRun: 'Confirm', cancelQuote: 'Cancel', unpersisted: 'The result is ready but could not be saved to your Library — download it now.',
     close: 'Close', run: 'Create', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
     keepOpen: 'This takes a few minutes — keep the page open.',
-    dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D model',
+    dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D model', soon: 'Soon', locked3d: '3D models are coming soon — this form is locked for now.',
     duration: 'Duration', sourceVideo: 'Video URL', targetLang: 'Target language', keepBg: 'Background audio', subs: 'Subtitles',
     topic: 'Topic', slides: 'Slides', deckLang: 'Language', withImages: 'With images',
     fromText: 'From text', fromImage: 'From photo', describe: 'Description', photoUrl: 'Photo URL',
@@ -115,7 +116,7 @@ const COPY = {
     confirmCharge: 'Будет списано', creditsWord: 'кредитов', confirmRun: 'Подтвердить', cancelQuote: 'Отмена', unpersisted: 'Результат готов, но не сохранён в библиотеке — скачайте его сейчас.',
     close: 'Закрыть', run: 'Создать', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
     keepOpen: 'Это займёт несколько минут — не закрывайте страницу.',
-    dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель',
+    dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель', soon: 'Скоро', locked3d: '3D-модели скоро появятся — форма пока заблокирована.',
     duration: 'Длительность', sourceVideo: 'Ссылка на видео', targetLang: 'Целевой язык', keepBg: 'Фоновый звук', subs: 'Субтитры',
     topic: 'Тема', slides: 'Слайды', deckLang: 'Язык', withImages: 'С изображениями',
     fromText: 'Из текста', fromImage: 'Из фото', describe: 'Описание', photoUrl: 'Ссылка на фото',
@@ -447,7 +448,7 @@ export function ServiceParamsPanel({
   }, [t]);
 
   async function run(confirmed?: { token: string; jobId: string }) {
-    if (busy) return;
+    if (busy || (service === 'model3d' && MODEL3D_LOCKED)) return;
     setBusy(true);
     setError(null);
     setQuote(null);
@@ -706,7 +707,16 @@ export function ServiceParamsPanel({
       )}
 
       {service === 'model3d' && (
-        <div className="space-y-2.5">
+        // Locked (lib/studio/model3dLock): the form is on screen so the tool can be seen, and the fieldset disables
+        // every chip, field, toggle and the photo picker in it.
+        <fieldset disabled={MODEL3D_LOCKED} data-testid="model3d-form" className="min-w-0 space-y-2.5">
+          {MODEL3D_LOCKED && (
+            <div data-testid="model3d-locked" role="note" className="flex items-start gap-2 rounded-2xl bg-app-elevated/60 px-3 py-2.5 text-[13px] text-app-muted ring-1 ring-app-border/10">
+              <span className="shrink-0 rounded-full bg-app-accent/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-app-accent">{t.soon}</span>
+              <span className="min-w-0">{t.locked3d}</span>
+            </div>
+          )}
+          <div className={`space-y-2.5 ${MODEL3D_LOCKED ? 'pointer-events-none select-none opacity-50' : ''}`}>
           <Group>
             <ChipGroup
               value={mode3d}
@@ -728,7 +738,7 @@ export function ServiceParamsPanel({
                   title={img3dFile ? img3dFile : t.pickPhoto}
                   hint={t.photoHint}
                   filled={Boolean(imageUrl3d)}
-                  disabled={img3dUpload.busy}
+                  disabled={MODEL3D_LOCKED || img3dUpload.busy}
                   onFiles={async (files) => {
                     const f = files[0];
                     if (!f) return;
@@ -778,7 +788,8 @@ export function ServiceParamsPanel({
               {`${t.openScene} · ${sceneCount}`}
             </GhostButton>
           )}
-        </div>
+          </div>
+        </fieldset>
       )}
 
       {quote && !busy ? (
@@ -792,7 +803,7 @@ export function ServiceParamsPanel({
         </div>
       ) : service === 'model3d' ? (
         <div className="mt-3">
-          <GenerateButton label={t.run} credits={credits3d} loading={busy} loadingLabel={t.working} disabled={!canRun}
+          <GenerateButton label={t.run} credits={credits3d} loading={busy} loadingLabel={t.working} disabled={MODEL3D_LOCKED || !canRun}
             insufficient={short3d} locale={lang} onClick={() => { if (short3d) openTopUp(); else void run(); }}
             testId="model3d-generate" service="design.model3d" />
         </div>

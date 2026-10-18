@@ -79,11 +79,13 @@ describe('the brand tokens the wordmark relies on', () => {
     expect(tw).toContain("lime: 'rgb(var(--brand-lime) / <alpha-value>)'");
   });
 
-  test('dark accent is the rocket blue on true black; the light theme uses the rocket body blue (readable on white)', () => {
+  test('dark accent is the rocket blue on the #0D1016 canvas; the light theme uses the rocket body blue (readable on white)', () => {
     const dark = css.slice(css.indexOf(":root,\n[data-theme='dark']"), css.indexOf("[data-theme='light'] {"));
     const light = css.slice(css.indexOf("[data-theme='light'] {"));
     expect(dark).toContain('--app-accent: 51 143 232;');
-    expect(dark).toContain('--app-bg: 0 0 0;');
+    // The owner's PRD of 2026-10-18 (2.5): canvas #0D1016, text field #191F2A (true black before).
+    expect(dark).toContain('--app-bg: 13 16 22;');
+    expect(dark).toContain('--app-elevated: 25 31 42;');
     expect(light).toContain('--app-accent: 24 115 202;');
   });
 

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { creditsToGel } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
+import { historyLabel } from '@/lib/billing/creditHistory';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
 import { ConnectionsSection } from './ConnectionsSection';
@@ -413,25 +414,6 @@ function ApiUsageSection({ t, loc, account }: { t: Copy['usage']; loc: Locale; a
 // ── Credit history (last 10 transactions) ──────────────────────────────────
 
 interface HistoryItem { action: string; creditsDelta: number; createdAt: string }
-const ACTION_LABEL: Record<string, { emoji: string; ka: string; en: string; ru: string }> = {
-  video: { emoji: '🎬', ka: 'ვიდეო', en: 'Video', ru: 'Видео' },
-  music: { emoji: '🎵', ka: 'მუსიკა', en: 'Music', ru: 'Музыка' },
-  image: { emoji: '🖼', ka: 'სურათი', en: 'Image', ru: 'Фото' },
-  avatar: { emoji: '🎭', ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
-  remix: { emoji: '🎞', ka: 'რემიქსი', en: 'Remix', ru: 'Ремикс' },
-  voice: { emoji: '🎙', ka: 'ხმა', en: 'Voice', ru: 'Голос' },
-  interior: { emoji: '🛋', ka: 'ინტერიერი', en: 'Interior', ru: 'Интерьер' },
-  research: { emoji: '🔎', ka: 'კვლევა', en: 'Research', ru: 'Исследование' },
-  chat: { emoji: '💬', ka: 'ჩატი', en: 'Chat', ru: 'Чат' },
-  topup: { emoji: '💳', ka: 'შევსება', en: 'Top-up', ru: 'Пополнение' },
-  subscription: { emoji: '⭐', ka: 'გამოწერა', en: 'Subscription', ru: 'Подписка' },
-  refund: { emoji: '↩', ka: 'დაბრუნება', en: 'Refund', ru: 'Возврат' },
-  reversal: { emoji: '⤺', ka: 'გადახდის გაუქმება', en: 'Payment reversed', ru: 'Отмена платежа' },
-  bonus: { emoji: '🎁', ka: 'ბონუსი', en: 'Bonus', ru: 'Бонус' },
-  adjustment: { emoji: '🛠', ka: 'კორექტირება', en: 'Adjustment', ru: 'Корректировка' },
-  usage: { emoji: '⚙', ka: 'გამოყენება', en: 'Usage', ru: 'Использование' },
-  credit: { emoji: '➕', ka: 'ჩარიცხვა', en: 'Credit', ru: 'Зачисление' },
-};
 
 function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {
   const [items, setItems] = useState<HistoryItem[] | null>(null);
@@ -467,7 +449,7 @@ function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {
       {state === 'ok' && items && (
         <ul className="divide-y divide-app-border/30">
           {items.map((it, i) => {
-            const meta = ACTION_LABEL[it.action] ?? { emoji: '•', ka: it.action, en: it.action, ru: it.action };
+            const meta = historyLabel(it.action);
             const positive = it.creditsDelta > 0;
             return (
               <li key={i} className="flex items-center justify-between gap-3 py-2.5 text-sm">

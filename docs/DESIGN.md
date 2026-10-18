@@ -14,12 +14,12 @@ A guest must understand "video studio" within three seconds of landing. The pict
 
 | Token | Value | Use |
 |---|---|---|
-| ink | **`#000000`** (`--app-bg`) — true black since 2026-10-01 (§13) | page background |
-| surface | `#111114` / `#1C1C21` (`--app-surface` / `--app-elevated`) | panels, the composer, cards |
+| ink | **`#0D1016`** (`--app-bg`) — the owner's PRD of 2026-10-18 (true black from 2026-10-01, §13) | page background |
+| surface | `#141922` / **`#191F2A`** (`--app-surface` / `--app-elevated`) | panels, cards; `#191F2A` is the text field (the composer), per the same PRD |
 | hairline | white 8–12 % | borders; never a coloured border |
 | text | `#F0F0F5` (`--app-text`) | headings and body |
-| muted | `#A0A0AF` (`--app-muted`) | secondary text: 7.7:1 on ink, 7.0:1 on surface. Never below AA (4.5:1) |
-| **accent** | **`#338FE8`** (`--app-accent`) — the rocket's blue (§13; was `#00E5FF`) | **the only accent**: the primary CTA, focus rings, `.ge`, active states, small badges. 6.2:1 on black as text; ink text on it reads 6.2:1. `--app-accent-deep` `#1873CA` (the rocket's body) is for glows and large fills only |
+| muted | `#A0A0AF` (`--app-muted`) | secondary text: 7.4:1 on ink, 6.8:1 on surface, 6.4:1 in the text field. Never below AA (4.5:1) |
+| **accent** | **`#338FE8`** (`--app-accent`) — the rocket's blue (§13; was `#00E5FF`) | **the only accent**: the primary CTA, focus rings, `.ge`, active states, small badges. 5.7:1 on the ink as text (4.9:1 in the text field); black text on it reads 6.2:1. `--app-accent-deep` `#1873CA` (the rocket's body) is for glows and large fills only |
 
 **One accent only.** The brand sheet's lime (`#C5FF00`) and gold (`#D4AF37`) are brand-sheet colours, not UI colours. The product UI uses the rocket blue and neutrals only (cyan survives as the flame's colour in status/success tones). If a second colour seems necessary, the hierarchy is wrong. (`--app-gold` still exists as a token for older surfaces. New UI does not use it.)
 

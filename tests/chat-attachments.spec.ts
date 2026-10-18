@@ -138,7 +138,7 @@ test.describe('the chat reads what it is given', () => {
     expect(bodies).toEqual([]);
   });
 
-  // A CHARGED edit (here: a face swap, 15 credits) waits for Agent G's Create with the price on it — every other paid chat
+  // A CHARGED edit (here: a background removal, 15 credits) waits for Agent G's Create with the price on it — every other paid chat
   // order already did. Nothing runs or is charged before the tap; the clip itself uploads once, when it is picked (upload on
   // select, owner 2026-10-11), and the tap uses that stored copy. Edit hands the words and the clip back.
   async function mockRemix(page: Page, op: string): Promise<{ intent: unknown[]; remix: Array<Record<string, unknown>>; uploads: number[] }> {
@@ -159,24 +159,37 @@ test.describe('the chat reads what it is given', () => {
 
   test('a CHARGED edit waits for Agent G\'s Create with the price on it; nothing runs before the tap, and the clip uploads once', async ({ page }) => {
     await mockChat(page);
-    const calls = await mockRemix(page, 'face_swap');
+    const calls = await mockRemix(page, 'background_remove');
     await openChat(page, { ownUploads: true });
     await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.webm', mimeType: 'video/webm', buffer: CLIP });
     await expect(page.getByTitle('clip.webm')).toBeVisible();
-    await send(page, 'შეცვალე პერსონაჟი ამ ვიდეოში');
+    await send(page, 'ამ ვიდეოს ფონი მოაშორე');
     const create = page.getByTestId('agent-g-confirm');
     await expect(create).toBeVisible({ timeout: 15_000 });
     await expect(create).toHaveAttribute('data-price', '15');
     // The question names the file and the engine (an outside service, not Google or ElevenLabs).
-    await expect(page.getByText(/^ვიდეოს ეს რედაქტირება, „პერსონაჟის შეცვლა", 15 კრედიტი ღირს\. ფაილები: clip\.webm\. ძრავა: გარე სერვისი .*დავიწყო\?$/)).toBeVisible();
+    await expect(page.getByText(/^ვიდეოს ეს რედაქტირება, „ფონის მოცილება", 15 კრედიტი ღირს\. ფაილები: clip\.webm\. ძრავა: გარე სერვისი .*დავიწყო\?$/)).toBeVisible();
     expect(calls.uploads).toEqual([1]);
     expect(calls.remix).toEqual([]);
     await create.click();
     await expect.poll(() => calls.remix.length, { timeout: 15_000 }).toBe(1);
     expect(calls.uploads).toEqual([1]);
-    expect(calls.remix[0]).toMatchObject({ op: 'face_swap', videoUrl: 'omni-uploads/u/clip-1' });
+    expect(calls.remix[0]).toMatchObject({ op: 'background_remove', videoUrl: 'omni-uploads/u/clip-1' });
     await expect(page.getByTestId('agent-g-confirm')).toHaveCount(0);   // the card is spent: a second tap cannot run it again
     await expect(page.locator('video[src^="https://e2e-media.supabase.co/swapped.mp4"]')).toBeAttached({ timeout: 15_000 });
+  });
+
+  test('a character swap asked in the chat is answered plainly: it left the product (GG 2026-10-18), nothing runs or is charged', async ({ page }) => {
+    await mockChat(page);
+    const calls = await mockRemix(page, 'face_swap');
+    await openChat(page, { ownUploads: true });
+    await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.webm', mimeType: 'video/webm', buffer: CLIP });
+    await expect(page.getByTitle('clip.webm')).toBeVisible();
+    await send(page, 'შეცვალე პერსონაჟი ამ ვიდეოში');
+    await expect(page.getByText('პერსონაჟის შეცვლა MyAvatar.ge-ზე აღარ არის', { exact: false })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('agent-g-confirm')).toHaveCount(0);
+    expect(calls.remix).toEqual([]);
+    expect(calls.uploads).toEqual([1]);   // the upload on select, and no other
   });
 
   test('Edit on the price card runs nothing and puts the words and the clip back in the composer', async ({ page }) => {
