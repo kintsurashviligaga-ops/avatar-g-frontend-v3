@@ -4,6 +4,7 @@
  * structured choices become short English directions after them.
  */
 import type { MusicPlan, MusicRequest } from './contracts';
+import { styleForBrief } from '@/lib/ai/musicGenreWords';
 
 const LANG_NAME = { ka: 'Georgian', en: 'English', ru: 'Russian' } as const;
 const TEMPO = { slow: 'slow tempo', medium: 'medium tempo', fast: 'fast, upbeat tempo' } as const;
@@ -11,7 +12,9 @@ const VOCAL = { auto: '', female: 'female lead vocal', male: 'male lead vocal', 
 
 export function directions(r: MusicRequest): string[] {
   const out: string[] = [];
-  if (r.genre?.trim()) out.push(`Genre: ${r.genre.trim()}`);
+  // The user's own words win: a genre chip their prompt contradicts is left out (lib/ai/musicGenreWords).
+  const genre = styleForBrief(r.genre, r.prompt);
+  if (genre) out.push(`Genre: ${genre}`);
   if (r.mood?.trim()) out.push(`Mood: ${r.mood.trim()}`);
   if (r.bpm) out.push(`Around ${r.bpm} BPM`);
   else if (r.tempo) out.push(TEMPO[r.tempo]);

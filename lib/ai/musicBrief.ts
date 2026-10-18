@@ -65,11 +65,14 @@ export interface MusicBrief {
   directivesDropped?: number;
 }
 
+import { styleForBrief } from './musicGenreWords';
+
 const clean = (s: string | undefined): string => (typeof s === 'string' ? s.trim() : '');
 
 export function buildMusicBrief(input: MusicBriefInput): MusicBrief {
   const userPrompt = clean(input.prompt);
-  const style = clean(input.style);
+  // The user's own words win: a panel style their description contradicts is left out (lib/ai/musicGenreWords).
+  const style = styleForBrief(clean(input.style), userPrompt);
   // One line, and no trailing full stop of its own (the suffix adds one) — whatever the caller passed.
   const descriptor = clean(input.templateDescriptor).replace(/\s+/g, ' ').replace(/[.\s]+$/, '');
   const vocals = clean(input.vocalDescriptor);
