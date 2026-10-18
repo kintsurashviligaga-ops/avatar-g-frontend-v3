@@ -100,7 +100,7 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
       const mod = require('./platformPrompt') as typeof import('./platformPrompt');
       const p = mod.buildPlatformPrompt({ locale: 'en', now: NOW });
       expect(p).toContain('video 31 cr (3.10 ₾) <60 s');
-      expect(p).toContain('remix 17 cr (1.70 ₾)');
+      expect(p).toContain('video touch-up 17 cr (1.70 ₾)');
       expect(p).not.toContain(cr(CREDIT_COSTS.video_30s) + ' <60 s');
     });
     jest.dontMock('../credits/pricing');
@@ -152,9 +152,10 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     expect(p).not.toContain('talking avatar');
     expect(p).not.toContain('film lip-sync');
     expect(p).not.toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
-    // Remix stays: its ffmpeg ops run; the line says which edits are closed.
-    expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (trim, captions, voice-over, music, colour, speed only; restyle, background and redub not available yet)`);
-    expect(p).toContain(`remix ${cr(CREDIT_COSTS.remix_video)}`);
+    // The touch-up has no menu row (GG 2026-10-18): it is named with the way to reach it, and its ffmpeg ops stay priced.
+    expect(toolLine(p, 'remix', locale)).toBe(false);
+    expect(p).toContain(`${TOOL_META.remix.name[locale]} (no menu row): attach one video in this chat`);
+    expect(p).toContain(`video touch-up ${cr(CREDIT_COSTS.remix_video)}`);
     expect(p).toContain('say plainly it is not available yet (nothing is charged)');
     expect(p.length).toBeLessThanOrEqual(5000);
   });

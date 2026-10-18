@@ -100,12 +100,14 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
   const cc = musicCreateCopy(locale);
 
   // ── view state ────────────────────────────────────────────────────────────────────────────────────────
-  const [uiMode, setUiModeState] = useState<MusicUiMode>('advanced');
+  // Simple first (GG 2026-10-18): one description and Create; lyrics, the 19 genres and the sliders are Advanced's. A person who
+  // chose Advanced gets it back (the key is written only by their own tap).
+  const [uiMode, setUiModeState] = useState<MusicUiMode>('simple');
   useEffect(() => {
     try {
       const v = window.localStorage.getItem(UI_MODE_KEY);
       if (v === 'simple' || v === 'advanced') setUiModeState(v);
-    } catch { /* private mode — Advanced */ }
+    } catch { /* private mode — Simple */ }
   }, []);
   const setUiMode = useCallback((m: MusicUiMode) => {
     setUiModeState(m);
@@ -283,9 +285,6 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
           onChange={p.onStyleText}
           instrumental={p.instrumental}
           onInstrumental={toggleInstrumental}
-          chips={p.styles}
-          onChips={p.onStyles}
-          chipOptions={p.styleOptions}
           wandBusy={styleBusy}
           onWand={() => void runStyleWand(setStyleNote)}
           note={styleNote}

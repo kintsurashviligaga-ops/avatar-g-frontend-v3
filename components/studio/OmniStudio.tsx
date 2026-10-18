@@ -3620,7 +3620,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   useEffect(() => {
     const onSet = (e: Event) => {
       const d = (e as CustomEvent).detail;
-      if (d === 'chat' || d === 'image' || d === 'music' || d === 'video' || d === 'lipsync' || d === 'remix') {
+      // Not 'remix': its panel left every menu (lib/studio/tools.ts PRIMARY_TOOLS).
+      if (d === 'chat' || d === 'image' || d === 'music' || d === 'video' || d === 'lipsync') {
         setMode(d);
         if (d !== 'chat') setOptionsOpen(true);
       }
@@ -12324,7 +12325,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {mode === 'chat' && !montageChipOn && attachments.filter((a) => isVideo(a.mimeType)).length === 1 && (
           <div className="mb-2 space-y-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
-              {locale === 'en' ? 'Video Remix Mode' : locale === 'ru' ? 'Режим ремикса видео' : 'ვიდეო რემიქსის რეჟიმი'}
+              {toolName('remix', locale)}
             </span>
             <div className="flex flex-wrap gap-1.5">
               {([

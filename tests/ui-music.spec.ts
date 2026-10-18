@@ -17,13 +17,15 @@ const STATUS = {
   chain: ['lyria', 'elevenlabs-music', 'musicgen'],
 };
 
-async function open(page: Page) {
-  await page.addInitScript(() => {
+/** `advanced` (the default here) opens the screen as someone who chose Advanced; a first visit opens Simple (GG 2026-10-18). */
+async function open(page: Page, { advanced = true }: { advanced?: boolean } = {}) {
+  await page.addInitScript((adv) => {
     try {
       localStorage.setItem('myavatar-cookie-consent', 'necessary');
       localStorage.setItem('myavatar:tour-seen', '1');
+      if (adv) localStorage.setItem('myavatar:music-ui-mode', 'advanced');
     } catch { /* private mode */ }
-  });
+  }, advanced);
   await page.route('**/api/ai/music/engines', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(STATUS) }));
   await page.goto('/en/dashboard?tool=music', { waitUntil: 'load' });
 }
@@ -88,6 +90,15 @@ test.describe('music create · phone 375×812', () => {
       expect(box.height, id).toBeGreaterThanOrEqual(43.5);
       expect(box.width, id).toBeGreaterThanOrEqual(43.5);
     }
+    await noHorizontalScroll(page);
+  });
+
+  test('a first visit opens in Simple: one description card and Create, no genre wall', async ({ page }) => {
+    await open(page, { advanced: false });
+    await expect(page.getByTestId('options-sheet')).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByTestId('music-simple')).toBeVisible();
+    for (const gone of ['music-lyrics', 'music-styles-card', 'music-more', 'music-style-chips']) await expect(page.getByTestId(gone)).toHaveCount(0);
+    await expect(page.getByTestId('music-create')).toHaveAttribute('data-price', '5');
     await noHorizontalScroll(page);
   });
 

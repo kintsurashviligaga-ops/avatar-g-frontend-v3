@@ -40,6 +40,8 @@ export async function openStudio(page: Page, locale: 'en' | 'ka' | 'ru' = 'en', 
       localStorage.setItem('myavatar-cookie-consent', 'necessary');
       localStorage.setItem('myavatar:tour-seen', '1');
       localStorage.setItem('myavatar:welcomed', '1');
+      // These journeys drive the Lyrics and Styles fields: Advanced, as someone who chose it (a first visit opens Simple).
+      localStorage.setItem('myavatar:music-ui-mode', 'advanced');
     } catch { /* private mode */ }
   });
   await page.goto(`/${locale}/dashboard?tool=${tool}`);

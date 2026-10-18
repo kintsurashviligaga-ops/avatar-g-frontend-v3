@@ -9,7 +9,7 @@ import { test, expect, type Page } from '@playwright/test';
  *   · the Photographer's and Interior designer's option rows wrap, so no chip is ever cut by the edge;
  *   · a carousel that has more cards says so (an arrow), and has none once it reaches the end.
  */
-const TOOLS = ['video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'remix', 'product', 'swap', 'vfx', 'motion', 'dubbing', 'model3d', 'presentation'];
+const TOOLS = ['video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'product', 'swap', 'vfx', 'motion', 'dubbing', 'model3d', 'presentation'];
 
 test.use({ viewport: { width: 1024, height: 800 } });
 

@@ -1136,7 +1136,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 : genService === 'music' ? (lang === 'en' ? 'Music' : lang === 'ru' ? 'Музыка' : 'მუსიკა')
                 : genService === 'lipsync' ? (lang === 'en' ? 'Avatar' : lang === 'ru' ? 'Аватар' : 'ავატარი')
                 : genService === 'product' ? (lang === 'en' ? 'Product ad' : lang === 'ru' ? 'Реклама' : 'რეკლამა')
-                : genService === 'remix' ? (lang === 'en' ? 'Remix' : lang === 'ru' ? 'Ремикс' : 'რემიქსი')
+                : genService === 'remix' ? TOOL_META.remix.name[lang]
                 : (lang === 'en' ? 'Working' : lang === 'ru' ? 'Работаю' : 'მუშავდება')}…
             </div>
           )}

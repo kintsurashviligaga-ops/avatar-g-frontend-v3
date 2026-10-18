@@ -94,7 +94,7 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
     // silently claim to have run.
     id: 'dubbing', icon: '🎙', live: true, target: { kind: 'path', path: '/dubbing' },
     name: { ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' },
-    tagline: { ka: 'ხმის კლონი და თარგმანი', en: 'Voice clone and translation', ru: 'Клон голоса и перевод' },
+    tagline: { ka: 'ვიდეო სხვა ენაზე', en: 'A video in another language', ru: 'Видео на другом языке' },
   },
   {
     // Live: backed by Replicate (TRELLIS), not Meshy — Meshy had no API key on any environment, so it

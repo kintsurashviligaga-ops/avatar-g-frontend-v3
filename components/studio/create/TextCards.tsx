@@ -224,16 +224,16 @@ export function StylesCard(p: StylesCardProps) {
   );
 }
 
-/** Simple mode: ONE card — the description, the track type and the style row — and nothing else. */
+/**
+ * Simple mode: ONE card — the description and the track type — and nothing else. The 19 genre chips are Advanced's Styles card
+ * (GG 2026-10-18: a wall of genres is a professional setting); the genres already picked still ride along.
+ */
 export function SimpleCard(p: {
   locale: string;
   value: string;
   onChange: (v: string) => void;
   instrumental: boolean;
   onInstrumental: () => void;
-  chips: string[];
-  onChips: (next: string[]) => void;
-  chipOptions: ReadonlyArray<{ id: string; label: string }>;
   wandBusy: boolean;
   onWand: () => void;
   note: CardNote;
@@ -251,9 +251,6 @@ export function SimpleCard(p: {
       <NoteLine note={p.note} testId="music-simple-note" />
       <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
         <InstrumentalPill locale={p.locale} on={p.instrumental} onToggle={p.onInstrumental} />
-      </div>
-      <div className="mt-2 flex min-w-0 items-center">
-        <StyleChipStrip locale={p.locale} options={p.chipOptions} value={p.chips} onChange={p.onChips} />
       </div>
       {p.keptLyrics > 0 && !p.instrumental && (
         <p data-testid="music-simple-lyrics-note" className="mt-2 text-[11.5px] leading-snug text-app-muted">{cc.lyricsKept(p.keptLyrics)}</p>

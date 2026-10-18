@@ -134,7 +134,7 @@ export function ResultCard({
       >
         {state === 'ready' && media ? (
           media.type === 'video' ? (
-            <video src={media.url} poster={media.poster ?? undefined} controls playsInline preload="metadata" className="h-full w-full bg-black object-contain" />
+            <video src={media.url} poster={media.poster ?? undefined} controls playsInline preload="metadata" aria-label={`${kindLabel} · ${c.ready}`} className="h-full w-full bg-black object-contain" />
           ) : onOpen ? (
             <button type="button" onClick={onOpen} className="block h-full w-full cursor-zoom-in" aria-label={c.open}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
