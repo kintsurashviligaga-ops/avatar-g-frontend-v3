@@ -226,22 +226,24 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     expect(calls.run).toHaveLength(1);
   });
 
-  test('a reload mid-render opens a fresh chat; reopened from History, the chat takes its card back and gets the master', async ({ page }) => {
+  // The owner's PRD of 2026-10-18 (2.5): a refresh keeps the conversation. Until then a reload opened a fresh chat and the
+  // card came back only from History; now the same tab reopens its chat and the card takes its job back in place.
+  test('a reload mid-render keeps the chat; its card takes the job back in place and gets the master', async ({ page }) => {
     const calls = await open(page, true, { stay: true });
     await startAndRun(page);
 
     await page.reload();
     await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 45_000 });
-    // A reload lands on a fresh chat, by design.
-    await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
-
-    // The job finished while the chat was closed: opening it reads the job at once and puts the master in its bubble.
-    await delivered(page);
-    await page.getByRole('button', { name: 'cut these to the music' }).first().click();
     const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveCount(1, { timeout: 20_000 });
+    await expect(card).toHaveAttribute('data-phase', 'running', { timeout: 20_000 });
+
+    // The job ends while the reloaded page follows it: the master lands in the same bubble.
+    await delivered(page);
     await expect(card).toHaveAttribute('data-phase', 'done', { timeout: 20_000 });
     await expect(page.locator('video[src^="https://e2e-media.supabase.co/agent-montage.mp4"]')).toBeAttached();
     await expect(page.getByText(/Ready: 20 s, cut to your track/)).toBeVisible();
+    // The chat is in History too, and following the job sent nothing new.
     expect(calls.run).toHaveLength(1);
   });
 

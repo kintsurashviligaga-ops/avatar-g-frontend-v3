@@ -10,8 +10,9 @@ import {
  *
  *   · a running montage shows the STAGE the server named (the active step on the card); when the server sends no percent
  *     (pct null) the card prints no "%" — no estimate dressed as a measurement; Stop is offered while it runs;
- *   · after a reload the running job is in the job tray exactly once (GET /api/tasks?active=1), with no card in the fresh
- *     chat — and the tray row must not print a percent the server never sent (asserted; see the test.fail() reason);
+ *   · after a reload the tab's chat is kept and its card takes the running job back (the PRD of 2026-10-18), not also
+ *     shown in the tray; in a new visit the job is in the job tray exactly once (GET /api/tasks?active=1), with no card in
+ *     the fresh chat — and the tray row must not print a percent the server never sent;
  *   · the error states: a montage whose result failed its check (task error qc_failed) says so and shows nothing; its
  *     Retry re-quotes exactly once. The film path's /api/video/assemble answering 502 qc_rejected or 422 music_unreadable
  *     is shown as the server's own reason on an error card with Try again (which plans the storyboard again, never
@@ -28,6 +29,14 @@ async function montageRunning(page: import('@playwright/test').Page): Promise<vo
   await expect(page.getByTestId('agent-montage-card')).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
   await page.getByTestId('agent-montage-start').click();
   await expect(page.getByTestId('agent-montage-card')).toHaveAttribute('data-phase', 'running', { timeout: 10_000 });
+}
+
+/** A new visit to the studio: a new tab starts with empty sessionStorage, so it opens a fresh chat (lib/chat/tabChat). */
+async function newVisit(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(() => window.sessionStorage.clear());
+  await page.reload();
+  await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 60_000 });
+  await pinSignedIn(page);
 }
 
 async function filmToAssemble(page: import('@playwright/test').Page, isMobile: boolean): Promise<void> {
@@ -55,7 +64,9 @@ test.describe('Video Core — job cards', () => {
     recordFinding(info, 'card-progressbar-no-pct', `With pct null from the server the running montage card prints no "%" (stage "Joining the shots" on the active step); its progressbar reports aria-valuenow=${now} (seeded 0 by confirmAgentMontage, never advanced without a server pct).`);
   });
 
-  test('after a reload the running job is in the tray exactly once (live), no card in the fresh chat', async ({ page }) => {
+  // The owner's PRD of 2026-10-18 (2.5): a reload of the tab keeps its chat, so the card is back and takes the job over; a
+  // new visit (a new tab: its sessionStorage starts empty) still opens a fresh chat, where the tray is the job's only place.
+  test('after a reload the running job shows once: its card is back in the kept chat, not also in the tray', async ({ page }) => {
     const calls = await openStudio(page, { taskViews: [taskView({ status: 'running', stage: 'stitch', pct: null, attempt: 1, cancellable: true })], live: true });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await montageRunning(page);
@@ -63,6 +74,20 @@ test.describe('Video Core — job cards', () => {
     await page.reload();
     await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 60_000 });
     await pinSignedIn(page);
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'running', { timeout: 20_000 });
+    await page.waitForTimeout(2_000);
+    await expect(card).toHaveCount(1); // still once after more polls
+    await expect(page.getByTestId('job-tray').getByText('Agent G · montage')).toHaveCount(0);
+    expect(calls.run).toHaveLength(1); // nothing re-sent
+  });
+
+  test('in a new visit the running job is in the tray exactly once (live), no card in the fresh chat', async ({ page }) => {
+    const calls = await openStudio(page, { taskViews: [taskView({ status: 'running', stage: 'stitch', pct: null, attempt: 1, cancellable: true })], live: true });
+    await page.waitForTimeout(ROUTE_CHECK_MS);
+    await montageRunning(page);
+    expect(calls.run).toHaveLength(1);
+    await newVisit(page);
     const tray = page.getByTestId('job-tray');
     await expect(tray).toBeVisible({ timeout: 20_000 });
     await expect(tray.getByText('Agent G · montage')).toHaveCount(1);
@@ -78,9 +103,7 @@ test.describe('Video Core — job cards', () => {
     await openStudio(page, { taskViews: [taskView({ status: 'running', stage: 'stitch', pct: null, attempt: 1, cancellable: true })], live: true });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await montageRunning(page);
-    await page.reload();
-    await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 60_000 });
-    await pinSignedIn(page);
+    await newVisit(page);
     const tray = page.getByTestId('job-tray');
     await expect(tray).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(3_000);

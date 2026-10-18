@@ -47,6 +47,42 @@ async function sendTurn(page: Page, text: string): Promise<void> {
   await box.press('Enter');
 }
 
+/**
+ * A first reply that streams two paragraphs and then HANGS (never closes) until Stop; later calls answer „ახალი პასუხი.“.
+ * Only an in-page fetch can hold a stream open (page.route needs the whole body up front). Every request body is kept
+ * in `window.__chatBodies`.
+ */
+async function holdFirstReply(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const realFetch = window.fetch.bind(window);
+    const bodies: unknown[] = [];
+    (window as unknown as { __chatBodies: unknown[] }).__chatBodies = bodies;
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.includes('/api/chat/gemini')) return realFetch(input, init);
+      try { bodies.push(JSON.parse(String(init?.body ?? 'null'))); } catch { bodies.push(null); }
+      const enc = new TextEncoder();
+      const frame = (f: unknown) => enc.encode(`data: ${JSON.stringify(f)}\n\n`);
+      const first = bodies.length === 1;
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(frame({ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }));
+          if (first) {
+            c.enqueue(frame({ text: 'პირველი აბზაცი უკვე ჩანს.\n\n' }));
+            c.enqueue(frame({ text: 'მეორე აბზაციც.' }));
+            init?.signal?.addEventListener('abort', () => { try { c.error(new DOMException('aborted', 'AbortError')); } catch { /* closed */ } });
+            return; // hangs until Stop
+          }
+          c.enqueue(frame({ text: 'ახალი პასუხი.' }));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
+          c.close();
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } }));
+    };
+  });
+}
+
 test.describe('chat streaming (mocked SSE)', () => {
   test('a streamed reply lands as markdown, code, sources and the model that answered', async ({ page }) => {
     let body: { protocol?: number; mode?: string; tier?: string; messages?: Array<{ role: string; content: unknown }> } | null = null;
@@ -95,35 +131,7 @@ test.describe('chat streaming (mocked SSE)', () => {
 
   test('Stop mid-stream keeps the text already read, and the next turn streams normally', async ({ page }) => {
     await openChat(page);
-    // A reply that streams two paragraphs and then HANGS (never closes) — only an in-page fetch can hold a stream
-    // open; page.route needs the whole body up front. The second call answers normally.
-    await page.evaluate(() => {
-      const realFetch = window.fetch.bind(window);
-      let n = 0;
-      window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        if (!url.includes('/api/chat/gemini')) return realFetch(input, init);
-        n += 1;
-        const enc = new TextEncoder();
-        const frame = (f: unknown) => enc.encode(`data: ${JSON.stringify(f)}\n\n`);
-        const first = n === 1;
-        const stream = new ReadableStream<Uint8Array>({
-          start(c) {
-            c.enqueue(frame({ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }));
-            if (first) {
-              c.enqueue(frame({ text: 'პირველი აბზაცი უკვე ჩანს.\n\n' }));
-              c.enqueue(frame({ text: 'მეორე აბზაციც.' }));
-              init?.signal?.addEventListener('abort', () => { try { c.error(new DOMException('aborted', 'AbortError')); } catch { /* closed */ } });
-              return; // hangs until Stop
-            }
-            c.enqueue(frame({ text: 'ახალი პასუხი.' }));
-            c.enqueue(enc.encode('data: [DONE]\n\n'));
-            c.close();
-          },
-        });
-        return Promise.resolve(new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } }));
-      };
-    });
+    await holdFirstReply(page);
     await sendTurn(page, 'მომიყევი საქართველოს ისტორიაზე');
     await expect(page.getByText('პირველი აბზაცი უკვე ჩანს.')).toBeVisible({ timeout: 15_000 });
 
@@ -132,10 +140,63 @@ test.describe('chat streaming (mocked SSE)', () => {
     await expect(page.getByText('პირველი აბზაცი უკვე ჩანს.')).toBeVisible();
     await expect(page.getByText('მეორე აბზაციც.')).toBeVisible();
     await expect(page.getByText('⏹ შეჩერდა')).toHaveCount(0);
+    // …and says it was stopped (the owner's PRD, 2026-10-18), so a half answer never passes for a finished one.
+    await expect(page.getByTestId('reply-stopped')).toContainText('პასუხი შეჩერებულია');
 
     await sendTurn(page, 'რა არის საქართველოს დედაქალაქი?');
     await expect(page.getByText('ახალი პასუხი.')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('პირველი აბზაცი უკვე ჩანს.')).toBeVisible();
+    // Only the LAST reply offers to go on: the new answer finished, so the stopped one keeps its note and no button.
+    await expect(page.getByTestId('reply-stopped')).toHaveCount(1);
+    await expect(page.getByTestId('reply-stopped-continue')).toHaveCount(0);
+  });
+
+  test('„გაგრძელება“ under a stopped reply asks the model to go on from its own text', async ({ page }) => {
+    await openChat(page);
+    await holdFirstReply(page);
+    await sendTurn(page, 'მომიყევი საქართველოს ისტორიაზე');
+    await expect(page.getByText('მეორე აბზაციც.')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'შეჩერება' }).first().click();
+
+    const go = page.getByTestId('reply-stopped-continue');
+    await expect(go).toHaveText('გაგრძელება');
+    await go.click();
+    await expect(page.getByText('ახალი პასუხი.')).toBeVisible({ timeout: 15_000 });
+    await expect(go).toHaveCount(0);
+    // The continue turn carries the stopped text as the model's own last answer, then the Continue line.
+    const bodies = await page.evaluate(() => (window as unknown as { __chatBodies: Array<{ messages: Array<{ role: string; content: unknown }> }> }).__chatBodies);
+    expect(bodies).toHaveLength(2);
+    const msgs = bodies[1]!.messages;
+    expect(msgs[msgs.length - 1]).toMatchObject({ role: 'user' });
+    expect(JSON.stringify(msgs[msgs.length - 1]!.content)).toContain('გააგრძელე');
+    expect(msgs[msgs.length - 2]!.role).toMatch(/assistant|model/);
+    expect(JSON.stringify(msgs[msgs.length - 2]!.content)).toContain('მეორე აბზაციც.');
+  });
+
+  test('under a reply: copy, listen and ⋯ — rating, regenerate and share live behind ⋯', async ({ page }) => {
+    await page.route('**/api/chat/gemini', (route: Route) => route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' },
+      body: sse([{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: 'მოკლე პასუხი.' }, '[DONE]']),
+    }));
+    await openChat(page);
+    await sendTurn(page, 'გამარჯობა');
+    await expect(page.getByText('მოკლე პასუხი.')).toBeVisible({ timeout: 15_000 });
+
+    const row = page.getByTestId('reply-model').first().locator('..');
+    await expect(row.getByRole('button')).toHaveCount(3);
+    for (const name of ['კოპირება', 'მოსმენა', 'მეტი']) await expect(row.getByRole('button', { name, exact: true })).toBeVisible();
+    for (const name of ['კარგი პასუხი', 'ცუდი პასუხი', 'გაზიარება']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+
+    await row.getByRole('button', { name: 'მეტი', exact: true }).click();
+    const menu = page.getByTestId('reply-more-menu');
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitemcheckbox', { name: 'კარგი პასუხი' })).toBeVisible();
+    await expect(menu.getByRole('menuitemcheckbox', { name: 'ცუდი პასუხი' })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'გაზიარება' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(row.getByRole('button', { name: 'მეტი', exact: true })).toBeFocused();
   });
 
   test('an error frame renders a localized error, never raw provider text', async ({ page }) => {
@@ -327,5 +388,41 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     await page.getByTestId('composer-input').fill('გამარჯობა');
     await expect(page.getByRole('button', { name: 'გაგზავნა' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'ცოცხალი ხმა' })).toHaveCount(0);
+  });
+});
+
+test.describe('persona (the owner\'s PRD of 2026-10-18: a persona must really change the system prompt)', () => {
+  test('the persona picked in the menu travels with the very next turn; „ნაგულისხმევი“ sends none', async ({ page }) => {
+    const bodies: Array<{ personaId?: string; customPersona?: unknown }> = [];
+    await page.route('**/api/chat/gemini', (route) => {
+      bodies.push(route.request().postDataJSON());
+      return route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+        body: sse([{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: `პასუხი ${bodies.length}.` }, '[DONE]']),
+      });
+    });
+    await openChat(page);
+    const pick = async (name: string) => {
+      await page.getByRole('button', { name: /^პერსონა/ }).filter({ visible: true }).first().click();
+      const picker = page.getByRole('dialog', { name: 'პერსონა' });
+      await picker.getByRole('button', { name: new RegExp(`^${name}`) }).first().click();
+      await expect(picker).toBeHidden();
+    };
+
+    await sendTurn(page, 'პირველი');
+    await expect(page.getByText('პასუხი 1.')).toBeVisible({ timeout: 15_000 });
+    expect(bodies[0]).not.toHaveProperty('personaId');
+
+    await pick('რეჟისორი');
+    await sendTurn(page, 'მეორე');
+    await expect(page.getByText('პასუხი 2.')).toBeVisible({ timeout: 15_000 });
+    expect(bodies[1]).toMatchObject({ personaId: 'film-director' });
+    expect(bodies[1]).not.toHaveProperty('customPersona'); // a built-in travels as an id the server knows
+
+    await pick('ნაგულისხმევი');
+    await sendTurn(page, 'მესამე');
+    await expect(page.getByText('პასუხი 3.')).toBeVisible({ timeout: 15_000 });
+    expect(bodies[2]).not.toHaveProperty('personaId');
   });
 });

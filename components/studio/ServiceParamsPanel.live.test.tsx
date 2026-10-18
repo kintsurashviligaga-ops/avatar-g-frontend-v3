@@ -9,6 +9,9 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 jest.mock('../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
+// The 3D mechanics as they run once the tool opens; the lock itself (the owner's PRD, 2026-10-18) is pinned in
+// ServiceParamsPanel.model3dLock.test.tsx.
+jest.mock('../../lib/studio/model3dLock', () => ({ MODEL3D_LOCKED: false }));
 jest.mock('../../lib/services/model3d/model3dPlan', () => ({
   ...jest.requireActual('../../lib/services/model3d/model3dPlan'),
   pollDelayMs: () => 0,
