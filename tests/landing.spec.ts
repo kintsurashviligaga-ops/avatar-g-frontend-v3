@@ -472,12 +472,22 @@ for (const vp of VIEWPORTS) {
       expect(png[25]).toBe(6); // PNG colour type 6: it has an alpha channel
     });
 
-    test('the brand plate loads, and nothing overlaps or leaves the screen', async ({ page, request }) => {
+    // The owner's PRD of 2026-10-18 (2.5): no permanent glow behind the text, a #0D1016 ground and a #191F2A text field.
+    test('a calm home: no plate or halo behind the greeting, the PRD colours, and nothing overlaps or leaves the screen', async ({ page }) => {
       await openDashboard(page, '/ka/dashboard?tool=chat');
-      const plate = page.locator('img[src="/brand/v1/dashboard-plate.jpg"]');
-      await expect(plate).toHaveCount(1);
-      await expect.poll(() => plate.evaluate((i: HTMLImageElement) => (i.complete ? i.naturalWidth : 0))).toBeGreaterThan(0);
-      expect((await request.get('/brand/v1/dashboard-plate.jpg')).status()).toBe(200);
+      await expect(page.locator('img[src="/brand/v1/dashboard-plate.jpg"]')).toHaveCount(0);
+      const heading = page.getByRole('heading', { level: 1 });
+      await expect(heading).toBeVisible();
+      expect(await heading.evaluate((el) => getComputedStyle(el).textShadow)).toBe('none');
+      expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(13, 16, 22)');
+      expect(await page.getByTestId('composer-input').evaluate((el) => {
+        // The text field is the composer's box: the nearest ancestor that paints a background.
+        for (let n: HTMLElement | null = el as HTMLElement; n; n = n.parentElement) {
+          const bg = getComputedStyle(n).backgroundColor;
+          if (bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
+        }
+        return null;
+      })).toBe('rgb(25, 31, 42)');
 
       const header = (await page.locator('header').filter({ visible: true }).first().boundingBox())!;
       const h1 = (await page.getByRole('heading', { level: 1 }).boundingBox())!;

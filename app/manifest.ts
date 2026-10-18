@@ -4,8 +4,8 @@ import type { MetadataRoute } from 'next';
  * The ONE web app manifest, served at /manifest.webmanifest and linked by Next itself (no layout declares a
  * `manifest`). public/manifest.json — a second manifest the [locale] layout linked instead — is gone.
  *
- * "Add to Home Screen" on iOS and Android runs the studio standalone: no browser chrome, the true-black ground of the
- * app (app/globals.css --app-bg #000, the viewport's theme-color) under the launch screen.
+ * "Add to Home Screen" on iOS and Android runs the studio standalone: no browser chrome, the dark ground of the
+ * app (app/globals.css --app-bg #0D1016, the viewport's theme-color) under the launch screen.
  *
  * ⚠️ `start_url` stays /ka/dashboard (docs/DESIGN.md §9 lists it as a route invariant), and `id` pins the app's
  * identity to it: Chrome keys an installed PWA on `id`, which defaults to start_url — change start_url without an `id`
@@ -23,8 +23,8 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
-    background_color: '#000000',
-    theme_color: '#000000',
+    background_color: '#0D1016',
+    theme_color: '#0D1016',
     lang: 'ka',
     dir: 'ltr',
     categories: ['productivity', 'social', 'utilities', 'photo', 'entertainment'],

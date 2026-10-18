@@ -89,7 +89,7 @@ for (const locale of ['en', 'ka', 'ru']) {
     expect(await workspace.locator('input:not([type=file]), textarea, select').evaluateAll(els =>
       els.every(el => parseFloat(getComputedStyle(el).fontSize) >= 16))).toBe(true);
     expect(await workspace.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-    expect(await workspace.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(0, 0, 0)');
+    expect(await workspace.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(13, 16, 22)'); // the canvas #0D1016
     await page.screenshot({ path: evidence + '/image-workspace-' + locale + '.png' });
     await openStudio(page, locale); // a fresh load in the same tab: the batch comes back from the tab's storage
     await expect(page.getByTestId('image-job')).toContainText(c.stage('generating'));

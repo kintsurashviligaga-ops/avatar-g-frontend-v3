@@ -9,14 +9,16 @@
 
 :root,
 [data-theme='dark'] {
-  /* 2026-10-01 (docs/DESIGN.md §13): TRUE black, and the rocket's own blue as the one accent. */
-  --app-bg: 0 0 0;             /* true black */
-  --app-surface: 17 17 20;
-  --app-elevated: 28 28 33;
+  /* The owner's PRD of 2026-10-18 (2.5): the canvas is #0D1016 and the text field #191F2A (it was true black, §13 of
+     docs/DESIGN.md, since 2026-10-01). The surfaces step up from the canvas in the same blue-grey; the rocket's blue
+     stays the one accent. */
+  --app-bg: 13 16 22;          /* #0D1016 */
+  --app-surface: 20 25 34;     /* #141922 */
+  --app-elevated: 25 31 42;    /* #191F2A: the composer, menus, cards */
   --app-border: 255 255 255;
   --app-text: 240 240 245;
   --app-muted: 160 160 175;
-  --app-accent: 51 143 232;    /* rocket blue #338FE8 — 6.2:1 on black as text, and ink text on it reads 6.2:1 */
+  --app-accent: 51 143 232;    /* rocket blue #338FE8 — 5.7:1 on the canvas as text (4.9:1 in the text field); black text on it reads 6.2:1 */
   --app-accent-deep: 24 115 202; /* the rocket's body #1873CA — glows, gradients, large fills (not small text) */
   --app-neon: 51 143 232;
   --app-success: 34 211 238;  /* cyan, not green — black/white/cyan palette */
@@ -28,9 +30,9 @@
      Deep charcoal canvas, zinc-800 borders, zinc-100 text. Keeps the cyan
      accent for status/active elements but holds it back from being the
      primary tone. */
-  --color-bg: #000000;
-  --color-surface: #0a0a0a;
-  --color-elevated: #111111;
+  --color-bg: #0D1016;
+  --color-surface: #141922;
+  --color-elevated: #191F2A;
   --color-border: rgba(63, 63, 70, 0.6);   /* zinc-700/60 */
   --color-border-hover: rgba(82, 82, 91, 0.7); /* zinc-600/70 */
   --color-text: #fafafa;                    /* zinc-50 */
@@ -39,7 +41,7 @@
   --color-text-tertiary: rgba(212, 212, 216, 0.55); /* zinc-300/55 */
   --color-accent: #338FE8;
   --color-accent-soft: rgba(51,143,232,0.10);
-  --nav-bg: rgba(3, 3, 3, 0.92);
+  --nav-bg: rgba(13, 16, 22, 0.92);
   --nav-border: rgba(39, 39, 42, 0.7);      /* zinc-800/70 */
   --card-bg: rgba(255, 255, 255, 0.025);
   --card-hover: rgba(255, 255, 255, 0.05);
@@ -50,7 +52,7 @@
   --input-bg: rgba(255, 255, 255, 0.03);
   --input-border: rgba(63, 63, 70, 0.6);
   --input-focus: rgba(51, 143, 232, 0.45);
-  --sidebar-bg: rgba(7, 7, 7, 0.96);
+  --sidebar-bg: rgba(13, 16, 22, 0.96);
   --hero-glow-primary: rgba(51, 143, 232, 0.08);
 
   /* Neo-Cosmic Futurism — extended palette */
@@ -58,7 +60,7 @@
   --color-cyan-dim: rgba(51, 143, 232, 0.15);
   --color-violet: #0ea5e9;
   --color-violet-dim: rgba(14, 165, 233, 0.15);
-  --color-bg-deep: #000000;
+  --color-bg-deep: #0D1016;
   --color-bg-card: rgba(255, 255, 255, 0.04);
   --color-bg-card-hover: rgba(255, 255, 255, 0.07);
   --color-border-cyan: rgba(51, 143, 232, 0.12);
@@ -159,7 +161,7 @@
   --color-error: #dc2626;
 }
 
-/* Flip the hardcoded root canvas (html/body default to #000) under light. */
+/* Flip the hardcoded root canvas (html/body default to #0D1016) under light. */
 html[data-theme='light'] {
   background-color: #f7f8fa;
 }
@@ -213,7 +215,7 @@ html {
   max-width: 100vw;
   overflow-x: hidden;
   scroll-behavior: smooth;
-  background-color: #0A0A0A; /* brand ink */
+  background-color: #0D1016; /* the canvas (--app-bg), so an overscroll shows no other black */
   /* Comfortable global base for readability on mobile (Georgian + Latin). Raising
      the root from the 16px default scales every rem-based size + spacing ~6%
      app-wide without touching component layout maths; `overflow-x: hidden` above
@@ -267,7 +269,7 @@ body {
   height: 100%;
   min-height: var(--app-screen-height);
   color: var(--color-text);
-  background-color: #000000;
+  background-color: #0D1016;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.65;
