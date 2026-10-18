@@ -1,8 +1,9 @@
 /**
- * The ElevenLabs fallback (tier 3 of ChatChrome's voice cascade) wears the Gemini Live call's screen: the rocket orb
- * with the large faint rocket behind it, „ცოცხალი ზარი“, the status line with the waveform, the captions, and the round
- * glass row (Mute · End) — portalled, pinned dark, a dialog. The session underneath is unchanged: auto-start on a
- * running context (else one tap), tap-to-end-turn, transcribe → chat → TTS through the context, hands-free re-arm.
+ * The ElevenLabs fallback (tier 3 of ChatChrome's voice cascade) wears the Gemini Live call's screen: the agent's logo
+ * alone, pulsing by status (the owner's PRD of 2026-10-18), „ცოცხალი ზარი“, the status read to screen readers, the
+ * captions (off until asked for), and the round glass row (Mute · End) — portalled, pinned dark, a dialog. The session
+ * underneath is unchanged: auto-start on a running context (else one tap), tap-to-end-turn, transcribe → chat → TTS
+ * through the context, hands-free re-arm.
  * Mute switches the mic track off. Driven through a fake Web Audio + MediaRecorder + fetch.
  */
 import '@testing-library/jest-dom';
@@ -10,6 +11,7 @@ import { StrictMode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
+import { LIVE_LOGO_SRC } from './live/LiveOrb';
 import VoiceConversation, { VOICE_CONVERSATION_STRINGS, voiceOrbState } from './VoiceConversation';
 import { budgetRefusalMessage } from '../../lib/services/billing/budgetMessage';
 
@@ -123,13 +125,16 @@ describe('VoiceConversation — the Live call screen', () => {
     expect(dialog.className).toMatch(/\bz-\[130\]/);
   });
 
-  it.each(['ka', 'en', 'ru'] as const)('%s: the rocket is the agent — in the orb and large and faint behind it; „Live call“ top-left', async (locale) => {
+  it.each(['ka', 'en', 'ru'] as const)('%s: the agent is its logo, alone on screen; „Live call“ top-left', async (locale) => {
     await renderVoice(locale);
     const dialog = screen.getByRole('dialog');
     expect(screen.getByTestId('live-call-label').textContent).toBe(LIVE_OVERLAY_STRINGS[locale].live);
-    expect(dialog.querySelector('[data-testid="live-orb-rocket"]')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(dialog.querySelector('[data-testid="live-orb-backdrop"] img')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/rocket-mark/);
+    expect(dialog.querySelector('[data-testid="live-orb-logo"]')?.getAttribute('src')).toBe(LIVE_LOGO_SRC);
+    const imgs = Array.from(dialog.querySelectorAll('img'));
+    expect(imgs).toHaveLength(1);
+    // No faint second copy behind it, no visible status line or waveform beside it.
+    expect(dialog.querySelector('[data-testid="live-waveform"]')).toBeNull();
+    expect(screen.getByTestId('live-status').className).toMatch(/\bsr-only\b/);
   });
 
   it('the metaball canvas and its crimson / violet are gone: one hue, one halo', async () => {
@@ -137,16 +142,16 @@ describe('VoiceConversation — the Live call screen', () => {
     const dialog = screen.getByRole('dialog');
     expect(dialog.querySelector('canvas')).toBeNull();
     expect(dialog.innerHTML).not.toMatch(/rose-|violet|purple|fuchsia|crimson|255,\s*0,\s*60|209,\s*0,\s*209/);
-    expect(dialog.querySelectorAll('.blur-3xl')).toHaveLength(1);
+    expect(dialog.querySelectorAll('[data-testid="live-orb-halo"]')).toHaveLength(1);
   });
 
-  it('auto-starts on a running context and listens: the status line, the waveform, Mute · End', async () => {
+  it('auto-starts on a running context and listens: the status (to screen readers), the listening logo, Mute · End', async () => {
     await renderVoice('ka');
     const live = LIVE_OVERLAY_STRINGS.ka;
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('dialog').getAttribute('data-voice-status')).toBe('listening');
     expect(screen.getByTestId('live-status').textContent).toBe(live.status.listening);
-    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('listening');
+    expect(screen.getByTestId('voice-orb').querySelector('[role="img"]')!.getAttribute('data-state')).toBe('listening');
     const row = screen.getByTestId('live-controls');
     const controls = Array.from(row.querySelectorAll<HTMLButtonElement>('button[data-control]'));
     expect(controls.map((b) => b.getAttribute('aria-label'))).toEqual([live.mute, live.end]);
@@ -156,7 +161,7 @@ describe('VoiceConversation — the Live call screen', () => {
     expect(screen.getByText(VOICE_CONVERSATION_STRINGS.ka.hint).className).toMatch(/text-\[16px\]/);
   });
 
-  it('connecting: „უკავშირდება…“ under the breathing rocket while the context comes up', async () => {
+  it('connecting: „უკავშირდება…“ is announced and the logo breathes while the context comes up', async () => {
     ctxState = 'suspended';
     const pending = new Promise<void>(() => {});
     const Ctx = class extends FakeAudioContext { resume = jest.fn(() => pending); };
@@ -164,9 +169,8 @@ describe('VoiceConversation — the Live call screen', () => {
     render(<VoiceConversation locale="ka" onClose={jest.fn()} />);
     await flush();
     expect(screen.getByTestId('live-status').textContent).toBe('უკავშირდება…');
-    // The orb is decoration while connecting (the status line speaks); it carries the state and the breath.
+    // The logo carries the state (it breathes while connecting); the words are for screen readers.
     expect(screen.getByTestId('voice-orb').querySelector('[role="img"]')!.getAttribute('data-state')).toBe('connecting');
-    expect(screen.getByTestId('live-orb-arc').className).toMatch(/\bopacity-100\b/);
   });
 
   it('a suspended context (iOS) waits for one tap: Ready + „Tap to start“, and the tap starts the session', async () => {
@@ -185,7 +189,7 @@ describe('VoiceConversation — the Live call screen', () => {
     expect(screen.getByTestId('live-status').textContent).toBe(LIVE_OVERLAY_STRINGS.en.status.listening);
   });
 
-  it('mute switches the mic track off (and back), inverts the button and stills the waveform', async () => {
+  it('mute switches the mic track off (and back), inverts the button and rests the logo', async () => {
     await renderVoice('en');
     const live = LIVE_OVERLAY_STRINGS.en;
     const mute = screen.getByRole('button', { name: live.mute });
@@ -194,9 +198,10 @@ describe('VoiceConversation — the Live call screen', () => {
     expect(track.enabled).toBe(false);
     expect(mute.getAttribute('aria-pressed')).toBe('true');
     expect(mute.querySelector('[data-circle]')!.className).toMatch(/\bbg-app-text\b.*\btext-app-bg\b/);
-    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('idle');
+    expect(screen.getByTestId('voice-orb').querySelector('[role="img"]')!.getAttribute('data-state')).toBe('idle');
     fireEvent.click(mute);
     expect(track.enabled).toBe(true);
+    expect(screen.getByTestId('voice-orb').querySelector('[role="img"]')!.getAttribute('data-state')).toBe('listening');
   });
 
   it('End and Escape both hang up', async () => {
@@ -223,7 +228,7 @@ describe('VoiceConversation — the Live call screen', () => {
     expect(screen.getByTestId('live-status').textContent).toBe(live.status.listening);
   });
 
-  it('a turn, tap-to-end: the tap ends the turn, the reply is spoken through the context, the captions show both lines', async () => {
+  it('a turn, tap-to-end: the tap ends the turn, the reply is spoken through the context; captions, once on, show both lines', async () => {
     sourceThrows = true; // no VAD graph → the tap-to-talk fallback (the orb's tap is the endpoint)
     await renderVoice('ka');
     const t = VOICE_CONVERSATION_STRINGS.ka;
@@ -233,9 +238,15 @@ describe('VoiceConversation — the Live call screen', () => {
     await flush();
     await flush();
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/api/voice/transcribe', '/api/voice/chat', '/api/tts/gemini']);
+    // No persona picked: none is sent, and the TTS keeps its own default voice.
+    expect(JSON.parse(String((fetchMock.mock.calls[1]![1] as RequestInit).body))).not.toHaveProperty('personaId');
+    expect(JSON.parse(String((fetchMock.mock.calls[2]![1] as RequestInit).body))).not.toHaveProperty('voice');
     expect(sources).toHaveLength(1);
     expect(sources[0]!.start).toHaveBeenCalled();
     expect(screen.getByTestId('live-status').textContent).toBe(live.status.speaking);
+    // Captions start off (only the logo on screen); the toggle on top brings them in.
+    expect(screen.queryByRole('log')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: live.captions }));
     const log = screen.getByRole('log');
     expect(log).toHaveTextContent('გამარჯობა');
     expect(log).toHaveTextContent('სალამი, რით დაგეხმარო?');
@@ -246,6 +257,44 @@ describe('VoiceConversation — the Live call screen', () => {
     await act(async () => { sources[0]!.onended?.(); });
     await flush();
     expect(screen.getByTestId('live-status').textContent).toBe(live.status.listening);
+  });
+
+  it('the persona the chat uses answers on the call too: its id goes to the chat leg, its voice to the TTS', async () => {
+    window.localStorage.setItem('myavatar:persona', 'film-director');
+    try {
+      sourceThrows = true;
+      fetchMock.mockImplementation(async (url: string): Promise<unknown> => {
+        if (url === '/api/voice/chat') return json(200, { reply: 'კადრი პირველი.', locale: 'ka', voice: 'Charon' });
+        return defaultFetch(url);
+      });
+      await renderVoice('ka');
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: VOICE_CONVERSATION_STRINGS.ka.endTurn })); });
+      await flush();
+      await flush();
+      const bodyOf = (u: string) => JSON.parse(String((fetchMock.mock.calls.find(([url]) => url === u)![1] as RequestInit).body));
+      expect(bodyOf('/api/voice/chat')).toMatchObject({ personaId: 'film-director' });
+      expect(bodyOf('/api/voice/chat').customPersona).toBeUndefined();
+      expect(bodyOf('/api/tts/gemini')).toMatchObject({ text: 'კადრი პირველი.', voice: 'Charon' });
+    } finally {
+      window.localStorage.removeItem('myavatar:persona');
+    }
+  });
+
+  it('a custom persona travels whole (the server re-validates it)', async () => {
+    const mine = { id: 'custom:poet', name: 'Poet', directive: 'Answer in rhyme.' };
+    window.localStorage.setItem('myavatar:persona', mine.id);
+    window.localStorage.setItem('myavatar:personas:custom', JSON.stringify([mine]));
+    try {
+      sourceThrows = true;
+      await renderVoice('ka');
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: VOICE_CONVERSATION_STRINGS.ka.endTurn })); });
+      await flush();
+      const chat = fetchMock.mock.calls.find(([u]) => u === '/api/voice/chat')!;
+      expect(JSON.parse(String((chat[1] as RequestInit).body))).toMatchObject({ personaId: mine.id, customPersona: mine });
+    } finally {
+      window.localStorage.removeItem('myavatar:persona');
+      window.localStorage.removeItem('myavatar:personas:custom');
+    }
   });
 
   it('a rate limit stops the loop with its own reason', async () => {

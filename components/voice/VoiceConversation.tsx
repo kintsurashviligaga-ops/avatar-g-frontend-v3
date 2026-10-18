@@ -30,10 +30,9 @@
  * THE SCREEN IS THE LIVE CALL'S (the owner, 2026-10-03: "the rocket logo on the Live chat, as here, for users too").
  * ⚠️ This used to be its own screen: a canvas metaball orb that went crimson → violet while speaking (the banned "AI
  * purple" and glow soup, docs/DESIGN.md §6), no rocket, an unlocalized ✕. It now draws the Gemini Live call's pieces
- * (components/voice/live/LiveCallChrome.tsx): the rocket orb with its one audio-reactive halo (LiveOrb, fed by this
- * session's analysers through `getLevels`), the large faint rocket behind it, „ცოცხალი ზარი“ top-left with the
- * captions toggle, the status line with the compact waveform, the rolling captions, and the round 56 px glass row —
- * Mute · End. The status words are the Live screen's (LIVE_OVERLAY_STRINGS), so „უკავშირდება…“ reads the same on both.
+ * (components/voice/live/LiveCallChrome.tsx): the agent's logo alone, pulsing by status (LiveOrb, fed by this
+ * session's analysers through `getLevels`; the owner's PRD of 2026-10-18), „ცოცხალი ზარი“ top-left with the captions
+ * toggle (captions start off), the status read to screen readers, and the round 56 px glass row — Mute · End. The status words are the Live screen's (LIVE_OVERLAY_STRINGS), so „უკავშირდება…“ reads the same on both.
  * Mute disables the mic track: the recorder and the VAD hear silence, so a muted user neither ends a turn nor barges in.
  * Like the Live screen it is portalled onto <body>, pinned dark, at z-[130], and is a dialog: focus moves in, Tab is
  * trapped, Escape ends the call.
@@ -70,6 +69,8 @@ import {
 } from './live/LiveCallChrome';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
+import { loadCustomPersonas, loadSelectedPersonaId } from '@/components/studio/PersonaPicker';
+import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import LiveOrb, { type LiveOrbState } from './live/LiveOrb';
 import type { LiveCaption, LiveLevels } from './live/useGeminiLiveSession';
 
@@ -191,7 +192,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   const budgetReasonRef = useRef<string | null>(null);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
-  const [captionsOn, setCaptionsOn] = useState(true);
+  // Off at the start, as on the Gemini Live screen: the agent's logo alone (the owner's PRD of 2026-10-18, 2.5).
+  const [captionsOn, setCaptionsOn] = useState(false);
 
   // ── Mic + Web-Audio graph (persistent across turns) ──
   const streamRef = useRef<MediaStream | null>(null);
@@ -215,7 +217,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   const ttsAbortRef = useRef<AbortController | null>(null);
   const turnAbortRef = useRef<AbortController | null>(null);
 
-  // ── The orb's levels (read by LiveOrb + LiveWaveform once per animation frame each) ──
+  // ── The logo's levels (read by LiveOrb once per animation frame) ──
   const levelBufRef = useRef<Uint8Array | null>(null);
   const levelCacheRef = useRef<{ at: number; value: LiveLevels }>({ at: -1, value: NO_LEVELS });
 
@@ -276,7 +278,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   }, []);
 
   // ── The orb's levels: the MIC while listening (zero while muted), the TTS output while speaking, nothing otherwise.
-  //    LiveOrb and LiveWaveform each read once per frame, so one analyser read serves both (8 ms cache). ──
+  //    LiveOrb reads once per frame; the 8 ms cache keeps a second reader in the same frame to one analyser read. ──
   const getLevels = useCallback((): LiveLevels => {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const cache = levelCacheRef.current;
@@ -405,15 +407,25 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
 
       // 2) LLM reply — a bulletproof SYNCHRONOUS full response (PHASE 35: the Phase-33 sentence-streaming
       //    layer was rolled back). Await the WHOLE reply, then speak it as one unbroken TTS buffer.
+      // The persona the chat uses answers on this call too, as on the Gemini Live tier (the owner's PRD of 2026-10-18:
+      // a persona must really change the system prompt — this tier used to send none, so every call here was the
+      // default assistant). Read per turn, so a change in the picker applies to the next one; a custom persona lives
+      // only in this browser, so the whole object travels and the server re-validates it.
+      const personaId = loadSelectedPersonaId();
+      const customPersona = personaId.startsWith('custom:') ? loadCustomPersonas().find((p) => p.id === personaId) : undefined;
       const cr = await fetch('/api/voice/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ text: said, locale: lang, history: historyRef.current }),
+        body: JSON.stringify({
+          text: said, locale: lang, history: historyRef.current,
+          ...(personaId ? { personaId } : {}),
+          ...(customPersona ? { customPersona } : {}),
+        }),
         signal: turnSignal(25_000, turnSig),
       }).catch(() => null);
       if (stale()) return;
       if (cr && cr.status === 401) { go('error'); setError('failed'); return; } // signed out → stop, don't loop
       if (cr && cr.status === 429) { go('error'); setError('rate_limited'); return; } // rate-limited → stop, don't re-pay STT in a loop
-      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string; locale?: string; code?: string; budgetReason?: string } | null) : null;
+      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string; locale?: string; voice?: string; code?: string; budgetReason?: string } | null) : null;
       // The platform's daily AI limit: the spoken reply would need TTS, which the same limit refuses, so the call
       // stopped on "no answer" (2026-10-16). Say which limit stopped it and when it lifts, and stop the loop.
       if (cj?.code === 'budget') { budgetReasonRef.current = cj.budgetReason ?? null; go('error'); setError('budget'); return; }
@@ -421,6 +433,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       // The server answers in the language actually SPOKEN (detected from the transcript), which may differ from the
       // UI locale — use THAT locale for TTS so the voice + engine match the reply (Russian speech → Russian voice).
       const spokenLocale: Lang = cj?.locale === 'en' || cj?.locale === 'ru' || cj?.locale === 'ka' ? cj.locale : lang;
+      const replyVoice = cj?.voice && (PERSONA_VOICES as readonly string[]).includes(cj.voice) ? cj.voice : null;
       if (stale()) return;
       if (!answer) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
       setTurn((p) => ({ ...p, reply: answer }));
@@ -434,7 +447,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       try {
         const res = await fetch('/api/tts/gemini', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ text: answer, locale: spokenLocale }), signal: turnSignal(30_000, ttsSig),
+          // The voice the chat route picked (the persona's, Georgian-verified) — passed straight on, as its contract says.
+          body: JSON.stringify({ text: answer, locale: spokenLocale, ...(replyVoice ? { voice: replyVoice } : {}) }), signal: turnSignal(30_000, ttsSig),
         });
         if (res.status === 503) {
           const ej = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -656,6 +670,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   }, [turn]);
 
   const orbState = voiceOrbState(status);
+  // Muted, the agent cannot hear: the logo rests instead of waiting for a voice that will not come.
+  const logoState = muted && orbState === 'listening' ? 'idle' : orbState;
   const statusLabel = status === 'off' ? live.status.idle
     : status === 'resume' ? t.paused
       : status === 'error' ? t.stopped // never "connection dropped": a mic failure is not a network one
@@ -702,10 +718,10 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
             data-testid="voice-orb"
             className="relative z-10 mb-6 touch-manipulation rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 disabled:cursor-default"
           >
-            <LiveOrb state={orbState} getLevels={getLevels} size={208} label={statusLabel} backdrop />
+            <LiveOrb state={logoState} getLevels={getLevels} size={208} label={statusLabel} />
           </button>
 
-          <LiveStatusLine state={orbState} muted={muted} getLevels={getLevels} label={statusLabel} locale={lang} />
+          <LiveStatusLine label={statusLabel} />
 
           {(status === 'off' || status === 'resume') && (
             <button type="button" onClick={onMicTap} data-testid="voice-start" className={`relative z-10 mt-4 ${livePrimaryButtonClass(lang)}`}>

@@ -26,6 +26,7 @@ import GeminiLiveConversation from './GeminiLiveConversation';
 import { LIVE_ACTION_STRINGS } from './live/LiveActionCards';
 import { LIVE_END_CALL_GRACE_MS, LIVE_END_CALL_MAX_WAIT_MS } from './live/liveActions';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
+import { LIVE_LOGO_SRC } from './live/LiveOrb';
 
 class FakeSocket {
   static OPEN = 1; static CLOSED = 3;
@@ -298,12 +299,11 @@ describe('voice-to-action', () => {
     }
   });
 
-  test('the call shows the rocket, never the user\'s enrolled avatar photo (no /api/avatar/core request)', async () => {
+  test('the call shows the agent\'s logo, never the user\'s enrolled avatar photo (no /api/avatar/core request)', async () => {
     await connectedCall();
     const dialog = screen.getByRole('dialog');
-    expect(dialog.querySelector('[data-testid="live-orb-rocket"]')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(dialog.querySelector('[data-testid="live-orb-backdrop"]')).not.toBeNull();
-    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/rocket-mark/);
+    expect(dialog.querySelector('[data-testid="live-orb-logo"]')?.getAttribute('src')).toBe(LIVE_LOGO_SRC);
+    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/agent-orb/);
     expect((g.fetch as jest.Mock).mock.calls.some((c) => c[0] === '/api/avatar/core')).toBe(false);
   });
 

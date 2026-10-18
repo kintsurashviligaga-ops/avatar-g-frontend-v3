@@ -7,7 +7,7 @@
  * AudioWorklet capture, playback queue, barge-in, resumption, captions, transcript sink), the camera in useLiveCamera,
  * and the screen in components/voice/live/LiveModeOverlay.tsx. This file wires them together, builds the spoken
  * persona and owns the voice switch. (It no longer loads the user's enrolled avatar poster: the agent on the call is
- * the rocket — LiveOrb — not a photo of the user.)
+ * its logo — LiveOrb — not a photo of the user.)
  *
  * CONTRACT WITH ChatChrome (unchanged): props `userId`, `locale`, `systemInstruction`, `gender`, `onClose`,
  * `onUnavailable`. A 503 from the token mint (GEMINI_LIVE_ENABLED kill switch off, key missing, mint failed) calls
@@ -267,7 +267,7 @@ export default function GeminiLiveConversation({
 
   // ⚠️ The call used to fetch the user's enrolled avatar poster (/api/avatar/core) and show it inside the orb and as a
   // blurred backdrop — on the owner's phone, a cropped photo of a man as the face of the AGENT. The agent is MyAvatar's:
-  // the orb and the backdrop carry the rocket (LiveOrb), and that request is gone.
+  // the call shows the agent's logo (LiveOrb), and that request is gone.
 
   const endCall = useCallback(() => {
     stopCamera();

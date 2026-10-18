@@ -1,33 +1,26 @@
 'use client';
 
 /**
- * LiveOrb — the Live call's one visual signal. It swells with the USER's voice while listening and with the MODEL's
- * voice while speaking, turns a slow arc while thinking, and goes still on error. While CONNECTING the rocket orb
- * breathes (scale and opacity within 3 %, one 2 s cycle) and the arc around it runs over a faint track, growing with
- * the time spent connecting — the wait reads as progress, not as a frozen screen. Both the Gemini Live call and the
- * ElevenLabs fallback (VoiceConversation) draw this orb, so every user sees the same agent.
- * LiveWaveform — the five accent bars in the control pill, driven by the same levels.
+ * LiveOrb — the Live call's one visual signal: the agent's logo, and nothing else, pulsing by status (the owner's PRD of
+ * 2026-10-18, 2.5: „ლაივ ხმოვანი რეჟიმის გახსნისას ეკრანზე უნდა იყოს მხოლოდ აგენტის ლოგო, რომელსაც ექნება იმპულსური
+ * ფეთქვის (პულსაციის) ანიმაცია სტატუსების მიხედვით“). The logo is the owner's own image, the rocket in a glowing blue
+ * sphere, cut out by design/brand/agent-orb/extract.py and never redrawn. How it pulses says what the call is doing:
+ *
+ *   · connecting — a slow breath (one swell every 1.6 s): the call is on its way;
+ *   · listening  — it swells with the USER's voice;
+ *   · thinking   — a heartbeat, two quick beats and a rest: the agent is working;
+ *   · speaking   — it swells with the AGENT's voice;
+ *   · idle       — still and dimmed; error — still, dimmed and grey.
+ *
+ * Both the Gemini Live call and the ElevenLabs fallback (VoiceConversation) draw this orb, and the dock draws it small,
+ * so every user sees the same agent at every size. It replaced the rocket on a dark disc, the arc that turned around it
+ * and the large faint rocket behind it: the PRD asks for the logo alone.
+ * LiveWaveform — the five accent bars in the dock, driven by the same levels.
  *
  * Performance contract: one requestAnimationFrame loop per component that writes `transform` on refs — no React state
- * per frame, no layout properties, nothing that re-renders the call screen 60 times a second. The loops only run in
- * the animated states and stop entirely under prefers-reduced-motion (the state then reads from the label).
- *
- * Look (docs/DESIGN.md §6 exception for Live): ONE hue — accent → cyan-500 → cyan-dim — and exactly ONE
- * audio-reactive halo behind the core. ⚠️ The core used to carry `shadow-2xl` (a second glow) and its gradient ran
- * accent → neon, which are the same colour in the dark theme: a flat disc with two glows. The depth now comes from
- * the cyan shades of the one hue.
- *
- * ⚠️ The old Live screen animated the avatar portrait EVEN under prefers-reduced-motion ("movement is the whole
- * point of a live avatar"). This orb deliberately does not: a user who asked the OS for less motion gets a still
- * orb, and the status line still says who is talking.
- *
- * ⚠️ THE ROCKET IS THE AGENT (the owner's brief, 2026-10-03). The orb used to show the user's enrolled avatar poster —
- * on the owner's phone, a photo of a man inside the orb and blurred into a cropped photo behind it. The agent the user
- * talks to is MyAvatar's, so its face is the brand mark: the transparent rocket (public/brand/rocket-mark*.png, never
- * redrawn) sits on a dark glass disc, `object-contain` with padding, so it is never cropped or stretched at any size
- * from the dock's 40 px to the call's 208 px; `srcSet` picks the 256 or the 512 px raster for the pixels it needs.
- * `backdrop` adds the same rocket large and faint behind the orb, on a soft wash of the rocket's blue — static (no
- * motion to reduce), one hue, under the one audio-reactive halo.
+ * per frame, no layout properties, nothing that re-renders the call screen 60 times a second. The loop only runs in the
+ * animated states and stops entirely under prefers-reduced-motion: a user who asked the OS for less motion gets a still
+ * logo, and the call's status line (read to screen readers) still says who is talking.
  */
 import { useEffect, useRef, useState } from 'react';
 
@@ -53,26 +46,8 @@ export function orbStateFor(status: LiveStatus): LiveOrbState {
 
 const ZERO: LiveLevels = { input: 0, output: 0 };
 
-/** The level the orb follows in a state (0..1), plus the idle motion that keeps it alive between words. */
-export function orbTarget(state: LiveOrbState, levels: LiveLevels, ts: number): number {
-  switch (state) {
-    case 'listening':
-      return Math.min(1, Math.max(0, levels.input));
-    case 'speaking':
-      // A small floor so the orb visibly "talks" through the quiet gaps between syllables.
-      return Math.min(1, Math.max(0.06, levels.output));
-    case 'thinking':
-      return 0.05 + 0.04 * Math.sin(ts / 260);
-    // Connecting has no voice to follow: the orb breathes instead (connectBreath, applied on top in the loop).
-    default:
-      return 0;
-  }
-}
-
-/** One breath while connecting (docs/voice/LIVE_ACTIONS.md, "The screen"): a 2 s cycle … */
-export const CONNECT_BREATH_MS = 2000;
-/** … that swells the orb and lifts its opacity by at most 3 % — alive, never pulsing (DESIGN.md §5/§6). */
-export const CONNECT_BREATH_DEPTH = 0.03;
+/** One breath while connecting: a 1.6 s cycle … */
+export const CONNECT_BREATH_MS = 1600;
 
 /** The breath at time `ts` (ms), 0..1: a cosine, so it starts and ends at rest and has no edge to snap on. */
 export function connectBreath(ts: number): number {
@@ -80,23 +55,49 @@ export function connectBreath(ts: number): number {
   return 0.5 - 0.5 * Math.cos((2 * Math.PI * ts) / CONNECT_BREATH_MS);
 }
 
-const CONNECT_ARC_MIN = 0.1;
-const CONNECT_ARC_MAX = 0.92;
-const CONNECT_ARC_TAU_MS = 3000;
+/** The heartbeat while thinking: two quick beats and a rest, every 1.1 s. */
+export const THINK_BEAT_MS = 1100;
 
-/**
- * How much of the ring the arc covers while connecting (0..1), from the time spent connecting: a tenth at once, fast
- * at first and slower after (63 % of the way in 3 s), held at 92 % until the call is up — the product's elapsed ÷ cap
- * progress (DESIGN.md §8, ResultCard). A connect that takes a while visibly advances instead of spinning in place.
- */
-export function connectProgress(elapsedMs: number): number {
-  const e = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
-  return Math.min(CONNECT_ARC_MAX, CONNECT_ARC_MIN + (CONNECT_ARC_MAX - CONNECT_ARC_MIN) * (1 - Math.exp(-e / CONNECT_ARC_TAU_MS)));
+/** The beat at time `ts` (ms), 0..1: a strong beat, a softer one a quarter of a second later, then rest. */
+export function thinkBeat(ts: number): number {
+  if (!Number.isFinite(ts)) return 0;
+  const p = ((ts % THINK_BEAT_MS) + THINK_BEAT_MS) % THINK_BEAT_MS;
+  const beat = (at: number, width: number) => Math.exp(-(((p - at) / width) ** 2));
+  return Math.min(1, beat(90, 55) + 0.6 * beat(330, 60));
 }
 
-/** The arc's length while thinking, and under reduced motion (a still spinner): a quarter of the ring. */
-const ARC_REST = 0.25;
-const dash = (fraction: number) => `${(fraction * 100).toFixed(1)} 100`;
+/** How far into its pulse the logo is in a state (0..1): the voice it follows, or its own rhythm. */
+export function orbTarget(state: LiveOrbState, levels: LiveLevels, ts: number): number {
+  switch (state) {
+    case 'listening':
+      return Math.min(1, Math.max(0, levels.input));
+    case 'speaking':
+      // A small floor so the logo visibly "talks" through the quiet gaps between syllables.
+      return Math.min(1, Math.max(0.06, levels.output));
+    case 'thinking':
+      return thinkBeat(ts);
+    case 'connecting':
+      return connectBreath(ts);
+    default:
+      return 0;
+  }
+}
+
+/** How much a full pulse swells the logo, per state: the voice moves it most, the call's own rhythms gently. */
+export const PULSE_DEPTH: Record<LiveOrbState, number> = {
+  idle: 0,
+  connecting: 0.06,
+  listening: 0.14,
+  thinking: 0.07,
+  speaking: 0.18,
+  error: 0,
+};
+
+/** The logo's scale for a pulse (0..1) in a state. */
+export function orbScale(state: LiveOrbState, pulse: number): number {
+  const p = Number.isFinite(pulse) ? Math.min(1, Math.max(0, pulse)) : 0;
+  return 1 + PULSE_DEPTH[state] * p;
+}
 
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 
@@ -128,39 +129,19 @@ export interface LiveOrbProps {
   state: LiveOrbState;
   /** Read once per animation frame; must be cheap (useGeminiLiveSession().getLevels is). */
   getLevels?: () => LiveLevels;
-  /** Diameter in CSS px. */
+  /** Width and height in CSS px (the logo's glow included). */
   size?: number;
   /** Accessible name, e.g. the localized status ("Listening"). */
   label?: string;
-  /** The full call's backdrop: the rocket large and faint behind the orb, on a soft wash of its blue. */
-  backdrop?: boolean;
   className?: string;
 }
 
-/** The brand mark, transparent (made by design/brand/rocket/extract.py — never redrawn). */
-export const LIVE_ROCKET_SRC = '/brand/rocket-mark-512.png';
-const LIVE_ROCKET_SRCSET = '/brand/rocket-mark.png 256w, /brand/rocket-mark-512.png 512w';
-/** The rocket's box inside the core: 70 % of it, centred — the mark runs corner to corner, and a square of 70 % of a
- *  circle's diameter keeps its corners inside the circle, so the nose and the flame are never clipped. */
-const ROCKET_FILL = 0.7;
-/** The core is the orb minus its 12 % ring of breathing room on each side. */
-const CORE_FILL = 0.76;
+/** The agent's logo, transparent around its glow (design/brand/agent-orb/extract.py — never redrawn). */
+export const LIVE_LOGO_SRC = '/brand/agent-orb-512.webp';
+const LIVE_LOGO_SRCSET = '/brand/agent-orb-256.webp 256w, /brand/agent-orb-512.webp 512w';
 
-/**
- * The disc the rocket sits on, per state. Dark glass lit from above by the rocket's own blue — one hue at every live
- * state; idle goes neutral and error red. (The old core was a blue gradient: the blue rocket would vanish on it.)
- */
-const LIVE_DISC = 'bg-[radial-gradient(circle_at_50%_28%,rgb(var(--app-accent)/0.42),rgb(var(--app-accent-deep)/0.2)_48%,rgb(8_12_20/0.96)_78%)] ring-app-accent/45';
-const CORE_TONE: Record<LiveOrbState, string> = {
-  idle: 'bg-app-elevated ring-white/10',
-  connecting: 'bg-[radial-gradient(circle_at_50%_28%,rgb(var(--app-accent)/0.22),rgb(8_12_20/0.96)_74%)] ring-app-accent/25',
-  listening: LIVE_DISC,
-  thinking: LIVE_DISC,
-  speaking: LIVE_DISC,
-  error: 'bg-[radial-gradient(circle_at_50%_28%,rgb(var(--app-danger)/0.3),rgb(8_12_20/0.96)_74%)] ring-app-danger/40',
-};
-/** The rocket itself dims when nothing is live, and loses its colour on an error. */
-const ROCKET_TONE: Record<LiveOrbState, string> = {
+/** The logo rests dimmed when nothing is live and loses its colour on an error; live, it is shown in full. */
+const LOGO_TONE: Record<LiveOrbState, string> = {
   idle: 'opacity-60',
   connecting: 'opacity-80',
   listening: '',
@@ -169,20 +150,19 @@ const ROCKET_TONE: Record<LiveOrbState, string> = {
   error: 'opacity-50 grayscale',
 };
 
+/** One soft halo of the accent under the logo, which swells with it. */
 const HALO_TONE: Record<LiveOrbState, string> = {
   idle: 'bg-transparent',
   connecting: 'bg-app-accent/10',
   listening: 'bg-app-accent/20',
   thinking: 'bg-app-accent/20',
   speaking: 'bg-app-accent/20',
-  error: 'bg-app-danger/10',
+  error: 'bg-transparent',
 };
 
-export default function LiveOrb({ state, getLevels, size = 208, label, backdrop = false, className = '' }: LiveOrbProps) {
+export default function LiveOrb({ state, getLevels, size = 208, label, className = '' }: LiveOrbProps) {
   const haloRef = useRef<HTMLDivElement | null>(null);
-  const ringRef = useRef<HTMLDivElement | null>(null);
-  const arcRef = useRef<SVGCircleElement | null>(null);
-  const coreRef = useRef<HTMLDivElement | null>(null);
+  const logoRef = useRef<HTMLImageElement | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
   const levelsRef = useRef(getLevels);
@@ -192,72 +172,31 @@ export default function LiveOrb({ state, getLevels, size = 208, label, backdrop 
 
   useEffect(() => {
     const halo = haloRef.current;
-    const ring = ringRef.current;
-    const arc = arcRef.current;
-    const core = coreRef.current;
+    const logo = logoRef.current;
     const reset = () => {
       if (halo) halo.style.transform = 'translateZ(0) scale(1)';
-      if (core) { core.style.transform = 'translateZ(0) scale(1)'; core.style.opacity = ''; }
-      if (ring) ring.style.transform = 'rotate(0deg)';
-      if (arc) arc.setAttribute('stroke-dasharray', dash(ARC_REST));
+      if (logo) logo.style.transform = 'translateZ(0) scale(1)';
     };
     if (!animated || typeof requestAnimationFrame !== 'function') { reset(); return undefined; }
 
     let raf = 0;
     let eased = 0;
-    let angle = 0;
-    let last = -1;
-    // How much of the connecting breath applies (0..1). It eases in and out with the state, so arriving at
-    // "listening" mid-breath settles over a few frames instead of snapping back 3 %.
-    let breathWeight = 0;
-    let connectSince = -1;
-    let arcDash = '';
     const tick = (ts: number) => {
-      const dt = last < 0 ? 16 : Math.min(64, ts - last);
-      last = ts;
       const st = stateRef.current;
       let levels = ZERO;
       try { levels = levelsRef.current?.() ?? ZERO; } catch { levels = ZERO; }
       const target = orbTarget(st, levels, ts);
-      // Fast attack, slow release: syllables pop, silence settles instead of snapping shut.
-      eased += (target - eased) * (target > eased ? 0.45 : 0.14);
-      breathWeight += ((st === 'connecting' ? 1 : 0) - breathWeight) * 0.12;
-      const breathing = breathWeight > 0.001;
-      const breath = breathing ? connectBreath(ts) * breathWeight : 0;
-      const swell = 1 + CONNECT_BREATH_DEPTH * breath;
-      if (core) {
-        core.style.transform = `translateZ(0) scale(${((1 + eased * 0.22) * swell).toFixed(4)})`;
-        // At rest the disc sits 3 % down and breathes up to full; outside a connect the style is left alone.
-        core.style.opacity = breathing ? (1 - CONNECT_BREATH_DEPTH * breathWeight + CONNECT_BREATH_DEPTH * breath).toFixed(4) : '';
-      }
-      if (halo) halo.style.transform = `translateZ(0) scale(${((1 + eased * 0.7) * swell).toFixed(4)})`;
-      if (st === 'connecting') {
-        if (connectSince < 0) connectSince = ts;
-      } else {
-        connectSince = -1;
-      }
-      if (ring && (st === 'thinking' || st === 'connecting')) {
-        // One turn per breath while connecting (2 s), faster while thinking.
-        angle = (angle + dt * (st === 'thinking' ? 0.24 : 360 / CONNECT_BREATH_MS)) % 360;
-        ring.style.transform = `rotate(${angle.toFixed(2)}deg)`;
-      }
-      if (arc) {
-        const next = dash(st === 'connecting' ? connectProgress(ts - connectSince) : ARC_REST);
-        if (next !== arcDash) { arc.setAttribute('stroke-dasharray', next); arcDash = next; }
-      }
+      // A voice pops on and settles off (fast attack, slow release); the call's own rhythms are followed closely, so a
+      // heartbeat keeps its two beats.
+      const rhythm = st === 'thinking' || st === 'connecting';
+      eased += (target - eased) * (target > eased ? 0.5 : rhythm ? 0.35 : 0.14);
+      if (logo) logo.style.transform = `translateZ(0) scale(${orbScale(st, eased).toFixed(4)})`;
+      if (halo) halo.style.transform = `translateZ(0) scale(${(1 + eased * 0.5).toFixed(4)})`;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => { cancelAnimationFrame(raf); reset(); };
   }, [animated]);
-
-  const showArc = state === 'thinking' || state === 'connecting';
-  // The arc is 2 px at every size: the ring box is the orb plus 6 px each side, drawn in a 100-unit viewBox.
-  const arcStroke = Math.round((2 * 100 * 1000) / (size + 12)) / 1000;
-  const arcRadius = Math.round((50 - arcStroke / 2) * 1000) / 1000;
-  // The rocket's rendered width in CSS px: `sizes` lets the browser take the 256 px raster for the dock and the 512 px
-  // one for the full call on a 3x screen — crisp at both ends without shipping 512 px to a 40 px orb.
-  const rocketPx = Math.max(16, Math.round(size * CORE_FILL * ROCKET_FILL));
 
   return (
     <div
@@ -267,86 +206,30 @@ export default function LiveOrb({ state, getLevels, size = 208, label, backdrop 
       className={`relative shrink-0 ${className}`}
       style={{ width: size, height: size }}
     >
-      {backdrop && (
-        // Centred on the orb, so it follows the orb wherever the call's layout puts it; at most 92 % of the screen's
-        // width, so the rocket is always whole — a background, never a cropped photo. Static: nothing to reduce.
-        <div
-          aria-hidden
-          data-testid="live-orb-backdrop"
-          className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[min(92vw,34rem)] -translate-x-1/2 -translate-y-1/2"
-        >
-          <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,rgb(var(--app-accent-deep)/0.26)_0%,rgb(var(--app-accent-deep)/0.08)_42%,transparent_68%)]" />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={LIVE_ROCKET_SRC}
-            alt=""
-            width={512}
-            height={512}
-            decoding="async"
-            draggable={false}
-            className="absolute inset-[6%] h-[88%] w-[88%] select-none object-contain opacity-[0.07]"
-          />
-        </div>
-      )}
-      {/* The one halo: a blurred disc of the accent that breathes with the voice. */}
+      {/* The one halo: a blurred disc of the accent under the sphere, swelling with the pulse. */}
       <div
         ref={haloRef}
         aria-hidden
-        className={`absolute inset-0 rounded-full blur-3xl transition-colors duration-300 ${HALO_TONE[state]}`}
+        data-testid="live-orb-halo"
+        className={`absolute inset-[18%] rounded-full blur-2xl transition-colors duration-300 ${HALO_TONE[state]}`}
         style={{ willChange: animated ? 'transform' : undefined }}
       />
-      {/* Arc: turns while connecting / thinking. Connecting, it runs over a faint track and grows with the time spent
-          connecting (connectProgress), so the wait shows progress; thinking, it is a quarter ring. Still under reduced
-          motion (a quarter, on the track while connecting). One hue: the accent and a faint accent track. */}
-      <div
-        ref={ringRef}
-        aria-hidden
-        data-testid="live-orb-arc"
-        className={`absolute -inset-1.5 rounded-full transition-opacity duration-300 ${showArc ? 'opacity-100' : 'opacity-0'}`}
-        style={{ willChange: animated && showArc ? 'transform' : undefined }}
-      >
-        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90 overflow-visible" fill="none">
-          <circle
-            cx="50"
-            cy="50"
-            r={arcRadius}
-            strokeWidth={arcStroke}
-            className={`stroke-app-accent/15 transition-opacity duration-300 ${state === 'connecting' ? 'opacity-100' : 'opacity-0'}`}
-          />
-          <circle
-            ref={arcRef}
-            cx="50"
-            cy="50"
-            r={arcRadius}
-            strokeWidth={arcStroke}
-            pathLength={100}
-            strokeDasharray={dash(ARC_REST)}
-            strokeLinecap="round"
-            className="stroke-app-accent/80"
-          />
-        </svg>
-      </div>
-      {/* Core: the dark glass disc with the rocket on it. No shadow — the halo is the only glow. */}
-      <div
-        ref={coreRef}
-        aria-hidden
-        className={`absolute inset-[12%] overflow-hidden rounded-full ring-1 transition-colors duration-300 ${CORE_TONE[state]}`}
+      {/* The logo itself: whole at every size (object-contain), the raster the pixels need (`sizes`). */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        ref={logoRef}
+        src={LIVE_LOGO_SRC}
+        srcSet={LIVE_LOGO_SRCSET}
+        sizes={`${Math.max(16, Math.round(size))}px`}
+        alt=""
+        width={512}
+        height={512}
+        decoding="async"
+        draggable={false}
+        data-testid="live-orb-logo"
+        className={`absolute inset-0 h-full w-full select-none object-contain transition-opacity duration-300 ${LOGO_TONE[state]}`}
         style={{ willChange: animated ? 'transform' : undefined }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={LIVE_ROCKET_SRC}
-          srcSet={LIVE_ROCKET_SRCSET}
-          sizes={`${rocketPx}px`}
-          alt=""
-          width={512}
-          height={512}
-          decoding="async"
-          draggable={false}
-          data-testid="live-orb-rocket"
-          className={`absolute inset-[15%] h-[70%] w-[70%] select-none object-contain transition-opacity duration-300 ${ROCKET_TONE[state]}`}
-        />
-      </div>
+      />
     </div>
   );
 }

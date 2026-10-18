@@ -59,17 +59,13 @@ test.describe('voice mode, end to end', () => {
     }).toBe('წითელი მელია თოვლში');
     await expect.poll(() => toolOnScreen(live)).toBe('image');
 
-    // 3b — another service: a 3D model opens with its description filled in; its own Create button runs it.
+    // 3b — another service: the 3D model tool is locked (the owner's PRD, 2026-10-18; lib/studio/model3dLock). The call
+    // says it is not open yet and opens nothing: the image the agent prepared stays on screen.
     const model = await live.call('prepare_generation', { tool: 'model3d', prompt: 'ხის სკამი' });
-    expect(model.ok).toBe(true);
-    expect(String(model.summary)).toMatch(/press Create/);
-    // The 3D panel is a dynamic chunk (ServiceParamsPanel) the dev server compiles on its first use: the description lands
-    // the moment that chunk arrives, 2–3 s here and past the default 5 s on a CI runner (run 38959203433). Production
-    // serves it prebuilt. The wait covers the compile; the assertion is unchanged.
-    await expect.poll(async () => page.locator('textarea').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value)), { timeout: 20_000 }).toContain('ხის სკამი');
-    await expect.poll(() => toolOnScreen(live)).toBe('model3d');
-    const modelStart = await live.call('start_generation', { confirmed: 'yes' });
-    expect(modelStart.ok).toBe(false); // a 3D model is made by its panel's Create, never by a voice start
+    expect(model.ok).toBe(false);
+    expect(model.error).toBe('not_available');
+    expect(String(model.message)).toMatch(/not open yet/);
+    await expect.poll(() => toolOnScreen(live)).toBe('image');
     // The retired deck studio is out of the call's reach (GG 2026-10-18).
     const deck = await live.call('prepare_generation', { tool: 'presentation', prompt: 'საქართველოს ღვინის 8000 წელი' });
     expect(deck.ok).toBe(false);
@@ -93,9 +89,9 @@ test.describe('voice mode, end to end', () => {
     live.say('მზად არის, ეკრანზეა.');
     await expect(page.getByTestId('live-dock-line')).toContainText('მზად არის', { timeout: 10_000 });
 
-    // 7 — the dock says who is on the call: the rocket, "Agent G", and a calm End pill (not a red ✕).
+    // 7 — the dock says who is on the call: the agent's logo, "Agent G", and a calm End pill (not a red ✕).
     const dock = page.getByTestId('live-dock');
-    await expect(dock.locator('img[src*="rocket-mark"]').first()).toBeVisible();
+    await expect(dock.locator('img[src*="agent-orb"]').first()).toBeVisible();
     await expect(dock).toContainText('Agent G');
     await expect(page.getByTestId('live-dock-end')).toContainText('დასრულება');
 
