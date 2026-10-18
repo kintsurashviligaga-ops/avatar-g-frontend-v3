@@ -89,6 +89,11 @@ async function loadDbFlags(): Promise<Map<string, boolean>> {
   }
 }
 
+/** The DB overrides as one cached map (flag_name → enabled), for callers that read several rows at once. */
+export async function readDbOverrides(): Promise<ReadonlyMap<string, boolean>> {
+  return loadDbFlags();
+}
+
 /** Force the next read to re-query the DB (call after an admin write). */
 export function invalidateFlagCache(): void {
   cache = null;

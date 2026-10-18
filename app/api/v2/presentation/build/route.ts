@@ -8,6 +8,7 @@ import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guarded
 import { creditCostFor, CREDIT_COSTS } from '@/lib/credits/pricing';
 import { ownerApprovedPrice, issueServiceQuote, wantsToConfirm } from '@/lib/billing/paidServiceGate';
 import { startConfirmedJob, persistCompletion } from '@/lib/orchestrator/confirmedJob';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,6 +32,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('presentation');
+  if (serviceOff) return serviceOff;
 
   const body = await req.json().catch(() => null);
   const parsed = validateDeckRequest(body);

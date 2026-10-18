@@ -33,6 +33,7 @@ import { randomUUID } from 'crypto';
 import { createJob, failJob, recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { reportError } from '@/lib/observability/report-error';
 import { settleParams } from '@/lib/orchestrator/unpolledSettle';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 // Resolve an incoming media reference to a provider-fetchable https URL:
 //  • external https → passed through · one of OUR objects (a signed URL, or a BARE storage path from
@@ -187,6 +188,10 @@ export async function POST(req: NextRequest) {
   // before any charge. Off (the default) → no-op.
   const outside = refuseOutsideEngine(req);
   if (outside) return outside;
+  // Admin service switch (lib/server/serviceSwitches): a film's dialogue pass belongs to Video, anything else to Avatar.
+  const lipsyncKind = ((await req.clone().json().catch(() => ({}))) as { kind?: unknown }).kind;
+  const serviceOff = await serviceOffResponse(lipsyncKind === 'film' ? 'video' : 'avatar');
+  if (serviceOff) return serviceOff;
   const rl = await checkRateLimit(req, RATE_LIMITS.WRITE); if (rl) return rl;
   // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate), before anything that costs money. This route spends ElevenLabs
   // (TTS) and HeyGen/Replicate (render) on the platform's keys, and its balance gate only ever applied to a

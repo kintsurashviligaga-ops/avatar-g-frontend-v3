@@ -49,6 +49,7 @@ import { REFERENCE_URL_TTL_SEC } from '@/lib/studio/media';
 import { getStudioRuntime } from '@/lib/studio/runtime';
 import { readJson, sagaError } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -108,6 +109,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const outside = refuseOutsideEngine(req);
     if (outside) return outside;
   }
+    // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+    const serviceOff = await serviceOffResponse('vfx');
+    if (serviceOff) return serviceOff;
 
   // 4. How often. Per account (an IP rotation must not defeat a cap on a cost-bearing mint).
   const limited = await checkRateLimitByKey(userId, GENJUTSU_RATE);

@@ -12,7 +12,7 @@ import type { SupportChatWithUser, SupportMessage } from '@/types/support';
  * stranger. `{m.body}` only: no dangerouslySetInnerHTML, no markdown, no linkify. Stored XSS here is
  * privilege escalation, not defacement.
  *
- * Polling, not Realtime: this panel is only mounted while an admin is looking at it, so a 10s poll costs
+ * Polling, not Realtime: this panel is only mounted while an admin is looking at it, so a 3–5 s poll costs
  * nothing when nobody is watching and needs no subscription lifecycle to get wrong. The user's widget is
  * the side that benefits from a push.
  */
@@ -23,6 +23,9 @@ const STATUSES = [
   { id: 'closed', label: 'დახურული' },
   { id: 'all', label: 'ყველა' },
 ] as const;
+
+const LIST_POLL_MS = 5_000;
+const THREAD_POLL_MS = 3_000;
 
 type StatusFilter = (typeof STATUSES)[number]['id'];
 
@@ -64,8 +67,19 @@ export function SupportInbox() {
     setMessages(j.messages ?? []);
   }, []);
 
-  useEffect(() => { void loadList(); const t = setInterval(() => void loadList(), 10_000); return () => clearInterval(t); }, [loadList]);
-  useEffect(() => { if (!selected) return; void loadThread(selected); const t = setInterval(() => void loadThread(selected), 10_000); return () => clearInterval(t); }, [selected, loadThread]);
+  // Live-chat pace while the admin is looking (a customer's message shows within a few seconds); a hidden tab skips
+  // the poll, so an idle panel costs nothing.
+  useEffect(() => {
+    void loadList();
+    const t = setInterval(() => { if (document.visibilityState === 'visible') void loadList(); }, LIST_POLL_MS);
+    return () => clearInterval(t);
+  }, [loadList]);
+  useEffect(() => {
+    if (!selected) return;
+    void loadThread(selected);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') void loadThread(selected); }, THREAD_POLL_MS);
+    return () => clearInterval(t);
+  }, [selected, loadThread]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
 
   const reply = async () => {

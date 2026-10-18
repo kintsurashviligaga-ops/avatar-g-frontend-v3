@@ -20,6 +20,7 @@ import 'server-only';
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export type GenKind = 'image' | 'music' | 'video' | 'avatar';
 
@@ -76,6 +77,12 @@ export async function guardGeneration(
         { status: 401 },
       ),
     };
+  }
+
+  if (opts.gate !== false) {
+    // Admin service switch (lib/server/serviceSwitches): the legacy vendor routes start the same media kinds.
+    const serviceOff = await serviceOffResponse(kind);
+    if (serviceOff) return { ok: false, response: serviceOff };
   }
 
   if (opts.gate !== false) {

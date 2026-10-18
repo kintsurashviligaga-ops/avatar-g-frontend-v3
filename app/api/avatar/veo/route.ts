@@ -40,6 +40,7 @@ import { removeStorageObjects } from '@/lib/orchestrator/storage-adapter';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { readJson } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -74,6 +75,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const userId = user?.id ?? null;
   if (!userId || mustSignInToGenerate(userId)) return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('avatar');
+  if (serviceOff) return serviceOff;
   if (!veoAvatarPublic() && !(await isAdminIdentity(user).catch(() => false))) return fail(423, 'locked', { op: 'avatar' });
 
   const parsed = parseVeoAvatarRequest(await readJson(req));
