@@ -149,9 +149,9 @@ export const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
     ru: ['4 видеоклипа до 8с (Veo 3.1, нативное аудио)', '40 кинематографичных изображений', '10 музыкальных треков (Lyria 3)', 'Синтез голоса на грузинском'],
   },
   pro: {
-    ka: ['8 ვიდეო კლიპი (Veo 3.1)', '100 უზადო სურათი', '25 მუსიკალური ტრეკი (Lyria 3)', 'დუბლაჟი და ავატარები', 'სრული წვდომა Agent G-ზე'],
-    en: ['8 video clips (Veo 3.1)', '100 flawless images', '25 music tracks (Lyria 3)', 'Dubbing & avatars', 'Full access to Agent G'],
-    ru: ['8 видеоклипов (Veo 3.1)', '100 безупречных изображений', '25 музыкальных треков (Lyria 3)', 'Дубляж и аватары', 'Полный доступ к Agent G'],
+    ka: ['8 ვიდეო კლიპი (Veo 3.1)', '100 უზადო სურათი', '25 მუსიკალური ტრეკი (Lyria 3)', 'მოლაპარაკე ავატარები', 'სრული წვდომა Agent G-ზე'],
+    en: ['8 video clips (Veo 3.1)', '100 flawless images', '25 music tracks (Lyria 3)', 'Talking avatars', 'Full access to Agent G'],
+    ru: ['8 видеоклипов (Veo 3.1)', '100 безупречных изображений', '25 музыкальных треков (Lyria 3)', 'Говорящие аватары', 'Полный доступ к Agent G'],
   },
   // ⚠️ THESE NUMBERS MUST TRACK PRICING_TIERS[business].creditCeiling, AND ONCE THEY DID NOT. When Business
   // was rebalanced to {16, 60, 250} to give it a real per-dollar advantage over Pro, this hand-written

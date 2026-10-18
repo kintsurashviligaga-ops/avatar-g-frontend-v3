@@ -59,17 +59,20 @@ test.describe('voice mode, end to end', () => {
     }).toBe('წითელი მელია თოვლში');
     await expect.poll(() => toolOnScreen(live)).toBe('image');
 
-    // 3b — another service: a presentation opens with its topic filled in; its own Create button runs it.
+    // 3b — another service: a 3D model opens with its description filled in; its own Create button runs it.
+    const model = await live.call('prepare_generation', { tool: 'model3d', prompt: 'ხის სკამი' });
+    expect(model.ok).toBe(true);
+    expect(String(model.summary)).toMatch(/press Create/);
+    // The 3D panel is a dynamic chunk (ServiceParamsPanel) the dev server compiles on its first use: the description lands
+    // the moment that chunk arrives, 2–3 s here and past the default 5 s on a CI runner (run 38959203433). Production
+    // serves it prebuilt. The wait covers the compile; the assertion is unchanged.
+    await expect.poll(async () => page.locator('textarea').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value)), { timeout: 20_000 }).toContain('ხის სკამი');
+    await expect.poll(() => toolOnScreen(live)).toBe('model3d');
+    const modelStart = await live.call('start_generation', { confirmed: 'yes' });
+    expect(modelStart.ok).toBe(false); // a 3D model is made by its panel's Create, never by a voice start
+    // The retired deck studio is out of the call's reach (GG 2026-10-18).
     const deck = await live.call('prepare_generation', { tool: 'presentation', prompt: 'საქართველოს ღვინის 8000 წელი' });
-    expect(deck.ok).toBe(true);
-    expect(String(deck.summary)).toMatch(/press Create/);
-    // The deck's panel is a dynamic chunk (ServiceParamsPanel) the dev server compiles on its first use: the topic lands the
-    // moment that chunk arrives, 2–3 s here and past the default 5 s on a CI runner (run 38959203433). Production serves
-    // it prebuilt. The wait covers the compile; the assertion is unchanged.
-    await expect.poll(async () => page.locator('textarea').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value)), { timeout: 20_000 }).toContain('საქართველოს ღვინის 8000 წელი');
-    await expect.poll(() => toolOnScreen(live)).toBe('presentation');
-    const deckStart = await live.call('start_generation', { confirmed: 'yes' });
-    expect(deckStart.ok).toBe(false); // a deck is made by its panel's Create, never by a voice start
+    expect(deck.ok).toBe(false);
     // back to the image the agent prepared
     await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში', aspectRatio: '9:16' });
     await expect.poll(() => toolOnScreen(live)).toBe('image');
@@ -148,13 +151,13 @@ test.describe('voice mode, end to end', () => {
     const refused = await live.call('click', { target: priced!.id });
     expect(refused).toMatchObject({ ok: false, error: 'needs_user_spend' });
 
-    // 4 — typing into the studio's prompt works; Enter there would start a paid run, so it is held.
-    const placeholder = (await page.getByTestId('composer-input').getAttribute('placeholder')) ?? '';
-    const box = (await screen()).controls.find((c) => c.role === 'textbox' && placeholder.startsWith(c.name.replace(/…$/, '')));
+    // 4 — typing into the studio's prompt works; Enter there would start a paid run, so it is held. Since the prompt-first
+    // forms (PR #98) the description lives in the studio's own Create screen ("აღწერე სიმღერა"), not in the composer.
+    const box = (await screen()).controls.find((c) => c.role === 'textbox' && c.name.startsWith('აღწერე სიმღერა'));
     expect(box).toBeTruthy();
     const typed = await live.call('type_text', { target: box!.id, text: 'მშვიდი პიანინო წვიმაში', submit: 'on' });
     expect(typed).toMatchObject({ ok: true, summary: expect.stringMatching(/NOT submitted/) });
-    await expect(page.getByTestId('composer-input')).toHaveValue('მშვიდი პიანინო წვიმაში');
+    await expect(page.getByRole('textbox', { name: 'აღწერე სიმღერა' })).toHaveValue('მშვიდი პიანინო წვიმაში');
 
     // 5 — a website is read (title, text, links) and put on screen as a link to tap.
     const read = await live.call('read_webpage', { url: 'example.ge' });

@@ -2,14 +2,17 @@
  * The studio's one tool list (docs/DESIGN.md §8) — the sidebar, the „+" sheet and the settings' service card all
  * read it, so a service can never be reachable from one door and missing from another.
  */
-import { ALL_TOOLS, MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub } from './tools';
+import { ALL_TOOLS, MORE_TOOLS, PRIMARY_TOOLS, RETIRED_TOOLS, TOOL_META, isToolId, toolName, toolSub } from './tools';
 
 describe('studio tools', () => {
   it('chat first (the hub), video leading the generators, and every service the studio had is still here', () => {
     expect(PRIMARY_TOOLS[0]).toBe('chat');
     expect(PRIMARY_TOOLS[1]).toBe('video');
-    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'interior', 'model3d', 'montage', 'motion', 'music', 'photo', 'photoshoot', 'presentation', 'product', 'swap', 'vfx', 'video'].sort());
+    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'image', 'interior', 'model3d', 'montage', 'music', 'photo', 'photoshoot', 'product', 'vfx', 'video'].sort());
     expect(isToolId('remix')).toBe(false); // retired from every menu (GG 2026-10-18); the chat's touch-up lane keeps the id
+    // GG's PRD (2026-10-18): character swap, motion transfer, dubbing and presentation come out of the studio entirely.
+    for (const id of ['swap', 'motion', 'dubbing', 'presentation']) expect(isToolId(id)).toBe(false);
+    for (const id of RETIRED_TOOLS) expect(ALL_TOOLS).not.toContain(id);
     expect(new Set(ALL_TOOLS).size).toBe(PRIMARY_TOOLS.length + MORE_TOOLS.length); // no tool in both lists
   });
 
@@ -27,7 +30,7 @@ describe('studio tools', () => {
   it('VFX sits one level down beside the other video variants, in all three languages, and its line promises nothing that is not open', () => {
     expect(MORE_TOOLS).toContain('vfx');
     expect(PRIMARY_TOOLS).not.toContain('vfx');
-    expect(MORE_TOOLS.indexOf('vfx')).toBe(MORE_TOOLS.indexOf('swap') + 1); // next to product ad and character swap, the other video tabs
+    expect(MORE_TOOLS.indexOf('vfx')).toBe(MORE_TOOLS.indexOf('product') + 1); // next to product ad, the other video tab
     expect(isToolId('vfx')).toBe(true);
     expect(toolName('vfx', 'en')).toBe('VFX effects');
     for (const l of ['ka', 'en', 'ru'] as const) expect(toolSub('vfx', l)).not.toMatch(/motion transfer|მოძრაობის გადატანა|перенос движения/i);

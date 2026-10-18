@@ -102,7 +102,7 @@ describe('serviceHref — one studio link per service', () => {
     expect(serviceHref('video.generate', 'ka')).toBe('/ka/dashboard?tool=video');
     expect(serviceHref('video.generate', 'en', 'documentary')).toBe('/en/dashboard?tool=video&mode=documentary');
     expect(serviceHref('video.music-video', 'ru')).toBe('/ru/dashboard?tool=video&mode=musicvideo');
-    expect(serviceHref('voice.dubbing', 'ka')).toBe('/ka/dashboard?tool=dubbing');
+    expect(serviceHref('image.interior', 'ka')).toBe('/ka/dashboard?tool=interior');
   });
 
   it('gives a shortcut the same link as its canonical service', () => {
@@ -122,18 +122,14 @@ describe('resolveService — Agent G intent and search', () => {
   const cases: [string, string][] = [
     ['make a music video for my song', 'video.music-video'],
     ['მუსიკალური ვიდეო გამიკეთე', 'video.music-video'],
-    ['ამ ვიდეოს ხმა ქართულად გადამითარგმნე', 'voice.dubbing'],
-    ['переведи это видео, нужен дубляж', 'voice.dubbing'],
     ['მუსიკა დამირემიქსე', 'music.remix'],
     ['create a product ad for my sneakers', 'video.product-ad'],
     ['lip sync this photo to my voice', 'avatar.talking'],
-    ['swap the character in this clip', 'video.character-swap'],
     ['write a podcast script about Tbilisi', 'text.write'],
     ['text to video about the sea', 'video.generate'],
     ['დახატე მთები', 'image.generate'],
     ['напиши песню', 'music.generate'],
     ['find the news about AI', 'research.web-search'],
-    ['make me a presentation on climate', 'design.presentation'],
   ];
   it.each(cases)('%s → %s', (text, id) => {
     expect(resolveService(text)?.id).toBe(id);
@@ -142,6 +138,16 @@ describe('resolveService — Agent G intent and search', () => {
   it('never resolves to the video remix, which left every menu (GG 2026-10-18); Agent G sends these words to the touch-up', () => {
     for (const t of ['remix this video with captions', 'ეს ვიდეო დამირემიქსე', 'сделай ремикс видео']) {
       expect(resolveService(t)?.id).not.toBe('video.remix');
+    }
+  });
+
+  it('never resolves to a service taken out of the product (GG 2026-10-18); Agent G answers those plainly', () => {
+    const retired = ['voice.dubbing', 'design.presentation', 'video.character-swap', 'video.motion'];
+    for (const t of [
+      'ამ ვიდეოს ხმა ქართულად გადამითარგმნე', 'переведи это видео, нужен дубляж', 'swap the character in this clip',
+      'make me a presentation on climate', 'use motion transfer on my photo', 'პრეზენტაცია გამიკეთე',
+    ]) {
+      expect(retired).not.toContain(resolveService(t)?.id);
     }
   });
 
@@ -162,8 +168,8 @@ describe('resolveService — Agent G intent and search', () => {
   });
 
   it('a medium word („video") never outranks the service the sentence names', () => {
-    expect(resolveService('swap the character in this video')?.id).toBe('video.character-swap');
     expect(resolveService('add vfx to my video')?.id).toBe('video.vfx');
+    expect(resolveService('create a product ad for my video')?.id).toBe('video.product-ad');
   });
 
   it('a subject noun is not a service: no misroute into a panel', () => {
@@ -203,7 +209,8 @@ describe('searchServices — the §51 search box', () => {
     expect(ids('реклам')).toEqual(['video.product-ad']);
     expect(ids('ავატ')).toEqual(['avatar.talking']);
     expect(ids('lip')).toEqual(['avatar.talking']);
-    expect(ids('dub')).toEqual(['voice.dubbing']);
+    // Dubbing left the product (GG 2026-10-18): the box no longer finds it.
+    expect(ids('dub')).toEqual([]);
   });
 
   it('accepts inflected Georgian and Russian words, like Agent G does', () => {

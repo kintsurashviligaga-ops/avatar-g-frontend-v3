@@ -143,7 +143,8 @@ export const VIDEO_LANES: readonly VideoLaneContract[] = [
     note: 'ffmpeg ops are local; several ops call non-Google providers (B6). No frame-exact QC on its outputs yet.',
   },
   {
-    id: 'motion', service: null, tools: ['motion'], capabilities: ['video.motion'],
+    // No studio tool since GG's PRD 2026-10-18 (Motion transfer left every menu, lib/studio/tools.ts RETIRED_TOOLS).
+    id: 'motion', service: null, tools: [], capabilities: ['video.motion'],
     entry: 'the Motion tool: a photo moves as described (an i2v op on the remix route)',
     routes: ['app/api/video/remix/route.ts'], modules: ['lib/video/remixOps.ts'],
     duration: 'native', approval: 'panel', qc: 'none', billing: 'per-op',
@@ -151,7 +152,8 @@ export const VIDEO_LANES: readonly VideoLaneContract[] = [
     note: 'Provider policy B6; not changed here.',
   },
   {
-    id: 'swap', service: null, tools: ['swap'], capabilities: ['video.character-swap'],
+    // No studio tool since GG's PRD 2026-10-18 (Character swap left every menu, lib/studio/tools.ts RETIRED_TOOLS).
+    id: 'swap', service: null, tools: [], capabilities: ['video.character-swap'],
     entry: 'the Swap tool: another face / character in a video (the remix route’s `character` op)',
     routes: ['app/api/video/remix/route.ts'], modules: ['lib/video/remixOps.ts'],
     duration: 'native', approval: 'panel', qc: 'none', billing: 'per-op',

@@ -35,12 +35,11 @@ const MAX_WORDS = 8;
 const L = '\\p{L}*';
 const re = (alts: string) => new RegExp(`^(?:${alts})$`, 'u');
 
-/** Several words that name one tool. Read before the single words, so „ვიდეოს მონტაჟი" is not Video and Montage at once. */
+/** Several words that name one tool. Read before the single words, so „ვიდეოს მონტაჟი" is not Video and Montage at once.
+ *  No character swap, motion transfer, dubbing or presentation: those left the studio (lib/studio/tools.ts RETIRED_TOOLS). */
 const PHRASES: ReadonlyArray<{ tool: ToolId; re: RegExp }> = ([
   ['montage', `ვიდეო(?:ს)?\\s+მონტაჟ${L}|ვიდეო\\s+რედაქტორ${L}|video\\s+(?:editing|editor)|видео\\s*монтаж${L}|видеоредактор${L}|редактор\\s+видео`],
   ['product', `პროდუქტ(?:ის)?\\s+რეკლამ${L}|product\\s+ads?|реклам${L}\\s+продукт${L}`],
-  ['swap', `პერსონაჟ(?:ის)?\\s+(?:შეცვლ|ჩანაცვლებ)${L}|(?:character|face)\\s+swap|замен${L}\\s+персонаж${L}`],
-  ['motion', `მოძრაობ(?:ის)?\\s+გადატან${L}|motion\\s+transfer|перенос${L}\\s+движени${L}`],
   ['photo', `ფოტო(?:ებ)?(?:ის)?\\s+(?:შერჩევ|არჩევ)${L}|photo\\s+culling|отбор${L}\\s+фото`],
   ['interior', `ინტერიერ(?:ის)?\\s+დიზაინერ${L}|interior\\s+designer|дизайнер${L}\\s+интерьер${L}`],
   ['model3d', `3\\s*d[\\s-]*(?:მოდელ${L}|models?|модел${L})`],
@@ -56,15 +55,11 @@ const TOOL_WORDS: ReadonlyArray<{ tool: ToolId; re: RegExp }> = ([
   ['music', `მუსიკ${L}|სიმღერ${L}|music|song|songs|музык${L}|песн${L}`],
   ['avatar', `ავატარ${L}|avatar|avatars|аватар${L}`],
   ['montage', `მონტაჟ${L}|რედაქტორ${L}|montage|editor|editing|монтаж${L}|видеомонтаж${L}|редактор${L}`],
-  ['dubbing', `დუბლაჟ${L}|დუბლირებ${L}|dubbing|dub|дубляж${L}`],
-  ['presentation', `პრეზენტაცი${L}|სლაიდ${L}|presentation|presentations|slides|deck|презентаци${L}|слайд${L}`],
   ['model3d', `3d`],
   ['vfx', `vfx|ეფექტ${L}|effects|эффект${L}`],
   ['interior', `ინტერიერ${L}|interior|интерьер${L}`],
   ['photoshoot', `ფოტოგრაფ${L}|ფოტოსესი${L}|photographer|photoshoot|фотограф${L}|фотосесси${L}`],
   ['product', `რეკლამ${L}|ad|ads|реклам${L}`],
-  ['swap', `swap`],
-  ['motion', `motion`],
   ['photo', `culling`],
 ] as const).map(([tool, alts]) => ({ tool, re: re(alts) }));
 
@@ -190,7 +185,7 @@ export interface PanelAct {
 }
 
 /** Tools whose whole screen is a panel of its own: closing „the panel" closes the tool. */
-const PANEL_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['dubbing', 'model3d', 'presentation', 'interior', 'photoshoot', 'montage', 'photo']);
+const PANEL_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['model3d', 'interior', 'photoshoot', 'montage', 'photo']);
 
 export function decidePanelCommand(cmd: PanelCommand, screen: PanelScreen): { act: PanelAct; outcome: PanelOutcome } {
   const here = screen.tool;
@@ -210,7 +205,7 @@ export function decidePanelCommand(cmd: PanelCommand, screen: PanelScreen): { ac
     case 'close': {
       if (cmd.what === 'tool' && cmd.tool && cmd.tool !== here) return { act: {}, outcome: { did: 'not-open', tool: cmd.tool } };
       if (here === 'chat') return { act: {}, outcome: { did: 'nothing' } };
-      // A studio that IS its panel (dubbing, a deck, the editor …) closes as a whole, whatever was named.
+      // A studio that IS its panel (3D, the editor …) closes as a whole, whatever was named.
       if (PANEL_TOOLS.has(here) || cmd.what === 'tool') return { act: { tool: 'chat' }, outcome: { did: 'closed-tool', tool: here } };
       if (screen.settingsOpen) return { act: { settings: 'close' }, outcome: { did: 'closed-settings' } };
       // „Close the panel" with the settings already put away: the tool itself. „Close the settings": nothing left to close.

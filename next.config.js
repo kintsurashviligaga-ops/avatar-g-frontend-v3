@@ -376,7 +376,8 @@ const nextConfig = {
       ['about', '/:locale/landing'], ['blog', '/:locale/landing'], ['careers', '/:locale/landing'],
       ['contact', '/:locale/support'],
       ['config', '/:locale/settings'], ['config/:path*', '/:locale/settings'],
-      ['3d', tool('model3d')], ['dubbing', tool('dubbing')], ['montage', tool('montage')], ['slides', tool('presentation')],
+      // Dubbing and the deck studio left the product (GG's PRD 2026-10-18): their old pages land in the studio's chat.
+      ['3d', tool('model3d')], ['dubbing', '/:locale/dashboard'], ['montage', tool('montage')], ['slides', '/:locale/dashboard'],
       ['dashboard/:legacy(agent-g|business-agent|executive-agent|copy|fulfillment|workflows|analytics)', '/:locale/dashboard'],
       ['dashboard/avatar', tool('avatar')], ['dashboard/image', tool('image')], ['dashboard/music', tool('music')],
       ['dashboard/video', tool('video')],

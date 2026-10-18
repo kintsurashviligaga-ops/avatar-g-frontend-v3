@@ -27,9 +27,13 @@ export type ToolLang = 'ka' | 'en' | 'ru';
 // frame, so „ვიდეოს რემიქსი" promised an edit it did not make. It stays a ToolId only for the chat's „edit this attached
 // video" lane (subtitles, colour, music, text, trim, speed: /api/video/remix), which names itself by TOOL_META below.
 // Not in ALL_TOOLS, so no menu, deep link, sidebar event, Live voice or panel command can open its panel.
+// ⚠️ `swap`, `motion`, `dubbing` AND `presentation` ARE RETIRED THE SAME WAY (GG's PRD, 2026-10-18: „სრულად ამოსაღები").
+// They stay ToolIds so old code paths still type-check; their API routes stay so a job already started finishes or refunds.
 export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar'];
-/** Tools that live one level down: video variants, motion, the four full studios and the photo culling workspace. */
-export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'vfx', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo'];
+/** Tools that live one level down: video variants, the full studios and the photo culling workspace. */
+export const MORE_TOOLS: readonly ToolId[] = ['product', 'vfx', 'montage', 'model3d', 'photo'];
+/** Out of every menu, deep link, Live voice tool and chat route (GG 2026-10-18). Kept as a list so tests and guards can name them. */
+export const RETIRED_TOOLS: readonly ToolId[] = ['remix', 'swap', 'motion', 'dubbing', 'presentation'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
 
 export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n }> = {

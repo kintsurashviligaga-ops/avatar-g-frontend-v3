@@ -194,7 +194,7 @@ import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
 import { planChatTurn, wordsAreForChat, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
-import { askReply, replacedNote } from '@/lib/agent/intentReply';
+import { askReply, replacedNote, retiredReply } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, resumeAgentAudio, runAgentAudio, type AudioClientRun } from '@/lib/agent/media/audioClient';
 import { findLinks } from '@/lib/agent/media/audioSource';
@@ -7049,6 +7049,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); stopDictationEcho();
       return;
     }
+    if (studio && (studio.service === 'dubbing' || studio.service === 'presentation')) {
+      // Taken out of the product (GG's PRD 2026-10-18): said plainly, no panel opens; the files stay for another ask.
+      const reply = retiredReply(studio.service === 'dubbing' ? 'voice.dubbing' : 'design.presentation', locale);
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply, notice: true }]);
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      return;
+    }
     if (studio) {
       // THE TALKING AVATAR RUNS IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat; 2026-10-17 07:39Z: „შექმენი
       // ავატარი რომელიც ამბობს ქართულად: …" made nothing). An order that names its line gets Agent G's card where the Veo
@@ -7360,6 +7367,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Patch the pending bubble so the panel shows the op-specific stages + ETA.
         if (mine() && intent.op) patchMsgById(bubbleId, (m) => (m.videoUrl ? m : { ...m, remixOpKind: intent.op }));
         const op = intent.op || 'color_grade';
+        if (op === 'face_swap') {
+          // The character swap left the product (GG's PRD 2026-10-18): said plainly; nothing is uploaded or charged.
+          patch({ role: 'assistant', text: retiredReply('video.character-swap', locale), notice: true });
+          return;
+        }
 
         // ── 🎵 MUSIC / REDUB NEED A TRACK, AND THE CHAT PATH NEVER LOOKED FOR ONE. ───────────────────
         // The advertised 🎵 Music chip pre-fills "add background music", which classifies as add_music,
@@ -8535,11 +8547,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return true;
       }
       case 'prepare_generation': {
-        // A deck or a 3D model: the studio panel opens with the topic / description filled in (its own Create runs it).
-        if (d.tool === 'presentation' || d.tool === 'model3d') {
+        // A 3D model: the studio panel opens with the description filled in (its own Create runs it).
+        if (d.tool === 'model3d') {
           selectTool(d.tool, 'voice');
           setStudioPrefill({ topic: d.prompt.slice(0, 2000) });
-          reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
+          reply({ ok: true, tool: d.tool, applied: { description: true } });
           return true;
         }
         selectTool(d.tool, 'voice');

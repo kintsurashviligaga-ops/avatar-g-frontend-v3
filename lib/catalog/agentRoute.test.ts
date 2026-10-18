@@ -9,15 +9,22 @@ describe('routeAgentIntent — chat requests for a panel tool open that tool', (
   it.each([
     ['make a product ad for my sneakers', 'video.product-ad', 'product'],
     ['გამიკეთე რეკლამა ჩემი პროდუქტისთვის', 'video.product-ad', 'product'],
-    ['swap the character in this video', 'video.character-swap', 'swap'],
-    ['ამ ბიჭით იგივე ვიდეო გააკეთე', 'video.character-swap', 'swap'],
     ['add vfx explosion to my photo', 'video.vfx', 'vfx'],
     ['redesign my living room in scandinavian style', 'image.interior', 'interior'],
     ['ჩემი ოთახის ინტერიერი გადააკეთე', 'image.interior', 'interior'],
     ['сделай фотосессию из моих фото', 'image.photoshoot', 'photoshoot'],
-    ['use motion transfer on my photo', 'video.motion', 'motion'],
   ])('%s → %s', (text, id, tool) => {
     expect(open(text)).toEqual([id, tool]);
+  });
+});
+
+describe('routeAgentIntent — the retired tools open nothing (GG 2026-10-18)', () => {
+  it.each([
+    'swap the character in this video', 'ამ ბიჭით იგივე ვიდეო გააკეთე', 'use motion transfer on my photo',
+    'dub this video into Russian', 'make me a presentation on climate',
+  ])('%s', (text) => {
+    const r = routeAgentIntent(text);
+    expect(r?.kind === 'open' ? r.tool : 'nothing').not.toMatch(/^(swap|motion|dubbing|presentation)$/);
   });
 });
 

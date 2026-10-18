@@ -43,7 +43,7 @@ const DASHBOARD_SERVICE_ROUTE_RESOLUTION: Array<{ title: string; alias: string; 
 
 /** The modes the composer offers today, in order. Read out of a running browser, not from memory. */
 const COMPOSER_MODES = [
-  'Chat', 'Image', 'Music', 'Video', 'Avatar', 'Video editing', 'Dubbing', '3D model', 'Presentation',
+  'Chat', 'Image', 'Music', 'Video', 'Avatar', 'Video editing', '3D model',
 ] as const;
 
 // ─── Dashboard-first routing ──────────────────────────────────────

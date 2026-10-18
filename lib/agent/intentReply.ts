@@ -7,10 +7,12 @@
  *   control      stop · status · continue: about work in flight, in any tool;
  *   requote      a new frame shape, length or music start for the montage plan on screen;
  *   ask          a request missing its input (no track, no source, no photo, no video): Agent G asks, nothing runs;
- *   unsupported  an edit there is no route for yet (a new frame shape, a music offset, an edit of a previous result):
- *                Agent G says so plainly instead of making something else.
+ *   unsupported  an edit there is no route for yet (a new frame shape, a music offset, an edit of a previous result), or a
+ *                service taken out of the product (dubbing, presentations, character swap, motion transfer: GG's PRD
+ *                2026-10-18): Agent G says so plainly instead of making something else.
  */
-import type { AgentIntent, Lang } from './contracts';
+import { capabilityRetired } from './capabilities';
+import type { AgentIntent, CapabilityId, Lang } from './contracts';
 
 export type ActIntent = Extract<AgentIntent, { kind: 'act' }>;
 export type Interception = 'requote' | 'ask' | 'unsupported' | null;
@@ -26,6 +28,7 @@ export interface InterceptContext {
 /** Does the chat answer this act itself (and how), or does it go on to the existing doors? */
 export function interceptAct(i: ActIntent, ctx: InterceptContext): Interception {
   if (ctx.mode !== 'chat') return null;
+  if (retiredAsk(i)) return 'unsupported';
   if (i.capability === 'agent.montage') {
     if (!ctx.montageOn) return null;
     if (i.target === 'pending') return 'requote';
@@ -148,8 +151,32 @@ export function askReply(i: ActIntent, locale: string): string {
 }
 
 /** An edit with no route yet: said plainly, with the way that works today. */
+/** A retired service, or the remix's character op (the character swap by another door). */
+const retiredAsk = (i: ActIntent): CapabilityId | null =>
+  capabilityRetired(i.capability) ? i.capability
+    : i.capability === 'video.remix' && i.params.editOp === 'character' ? 'video.character-swap' : null;
+
+const RETIRED_NAME: Partial<Record<CapabilityId, { ka: string; en: string; ru: string }>> = {
+  'voice.dubbing': { ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' },
+  'design.presentation': { ka: 'პრეზენტაციები', en: 'Presentations', ru: 'Презентации' },
+  'video.character-swap': { ka: 'პერსონაჟის შეცვლა', en: 'Character swap', ru: 'Замена персонажа' },
+  'video.motion': { ka: 'მოძრაობის გადატანა', en: 'Motion transfer', ru: 'Перенос движения' },
+};
+
+/** What Agent G says to a request for a service taken out of the product: plainly, with what it does make. */
+export function retiredReply(capability: CapabilityId, locale: string): string {
+  const lang = pick(locale);
+  const n = RETIRED_NAME[capability] ?? { ka: 'ეს სერვისი', en: 'This service', ru: 'Этот сервис' };
+  return L(lang,
+    `${n.ka} MyAvatar.ge-ზე აღარ არის, ამიტომ ამას ვერ გავაკეთებ. ვიდეოს, სურათს, მუსიკას, ავატარს ან მონტაჟს სიამოვნებით გავაკეთებ.`,
+    `${n.en} is no longer part of MyAvatar.ge, so I can't do that. I can make a video, an image, music, an avatar or a montage.`,
+    `${n.ru} больше нет в MyAvatar.ge, поэтому это я сделать не могу. Могу сделать видео, изображение, музыку, аватар или монтаж.`);
+}
+
 export function unsupportedReply(i: ActIntent, locale: string): string {
   const lang = pick(locale);
+  const retired = retiredAsk(i);
+  if (retired) return retiredReply(retired, locale);
   const op = i.params.editOp;
   if (op === 'aspect') {
     return L(lang, `ვიდეოს ფორმატის შეცვლა (${i.params.aspect ?? '9:16'}) ჩატში ჯერ არ შემიძლია. ახლა ასე გამოვა: „ვიდეოს მონტაჟში“ გახსენი, იქ ფორმატი აირჩიე; ან დაურთე კლიპები და მუსიკა — ბითზე მონტაჟს იმ ფორმატში დავჭრი.`, `I cannot change a video's frame shape (${i.params.aspect ?? '9:16'}) in the chat yet. What works today: open Video editing and pick the format there, or attach your clips and a track and I will cut them on the beat in that format.`, `Сменить формат видео (${i.params.aspect ?? '9:16'}) в чате я пока не могу. Сейчас так: откройте «Видеомонтаж» и выберите формат там, или прикрепите клипы и трек — я смонтирую их в бит в этом формате.`);

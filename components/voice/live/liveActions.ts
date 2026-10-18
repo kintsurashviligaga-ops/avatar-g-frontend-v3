@@ -674,13 +674,13 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
       if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO }) };
       if (detail.reply?.ok === false) return refused(answer, detail.reply, 'The studio could not prepare it.');
       const studio = STUDIO_NAME[action.tool] ?? action.tool;
-      // A deck or a 3D model is made by its panel's own Create button (it prices the run there): start_generation does
-      // not run these studios, so the model is told to hand the last step to the user.
-      if (action.tool === 'presentation' || action.tool === 'model3d') {
+      // A 3D model is made by its panel's own Create button (it prices the run there): start_generation does not run
+      // that studio, so the model is told to hand the last step to the user.
+      if (action.tool === 'model3d') {
         return {
           response: answer({
             ok: true,
-            summary: `Opened the ${studio} studio on screen with the ${action.tool === 'presentation' ? 'topic' : 'description'} filled in. `
+            summary: `Opened the ${studio} studio on screen with the description filled in. `
               + 'Nothing was generated and no credits were spent. Tell the user to check it and press Create in that panel — '
               + 'its price is on the button; start_generation does not run this studio.',
           }),
@@ -889,8 +889,10 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
       if (action.submit) {
         // ⚠️ Enter in the studio's composer RUNS the open tool — a paid generation everywhere but the chat.
         const composer = el.getAttribute('data-testid') === 'composer-input';
-        const form = el.closest('form');
-        const paidForm = !!form && Array.from(form.querySelectorAll('button,[role="button"],input[type="submit"]')).some((b) => ui.guard(b as HTMLElement) === 'spend');
+        // A studio's Create screen is no <form>, and its own prompt starts the priced run on Enter too (the music prompt did,
+        // 2026-10-18): any other field is held while a priced button shares its form or sheet, or the page when it has none.
+        const scope = el.closest('form, [role="dialog"]') ?? el.ownerDocument.body;
+        const paidForm = !composer && Array.from(scope.querySelectorAll('button,[role="button"],input[type="submit"]')).some((b) => ui.guard(b as HTMLElement) === 'spend');
         if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — the user presses the priced button to start it.';
         else if (paidForm) held = ' It was NOT submitted: that form starts a paid generation — ask the user to tap it.';
         else { ui.submit(el); submitted = true; }

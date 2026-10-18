@@ -6,7 +6,7 @@ import { test, expect, type Page } from '@playwright/test';
  * not be found in the Video service). In a real browser:
  *   · the retired addresses land in the studio's own tools: /studio → home, #film → Video, #lipsync → Avatar, #hub → chat;
  *   · the sidebar has no Studio Beta row and no Connectors & plugins row;
- *   · „Music video" is a sidebar row of its own under Video, and it opens the Video panel with Music video picked;
+ *   · „Music video" has no sidebar row (GG 2026-10-18: it lives inside Video), and no retired tool has one either;
  *   · the Video panel shows Film | Music video at its top, and a tap switches it.
  */
 
@@ -43,7 +43,7 @@ test('the retired addresses land in the studio\'s own tools', async ({ page }) =
   }
 });
 
-test('the sidebar has no Studio Beta and no Connectors & plugins; Music video has its own row and opens in music-video mode', async ({ page }) => {
+test('the sidebar has no Studio Beta, no Connectors & plugins, no Music video row and no retired tool (GG 2026-10-18)', async ({ page }) => {
   test.setTimeout(240_000);
   await quiet(page);
   await page.goto('/en/dashboard');
@@ -54,15 +54,10 @@ test('the sidebar has no Studio Beta and no Connectors & plugins; Music video ha
   await expect(sidebar.getByText(/Studio\s*Beta/i)).toHaveCount(0);
   await expect(sidebar.getByText(/Connectors|Plugins/i)).toHaveCount(0);
 
-  const row = page.getByTestId('sidebar-service-video.music-video');
-  await expect(row).toBeVisible();
-  await expect(row).toHaveText(/Music video/);
-  await row.click();
-
-  await expect.poll(() => tool(page), { timeout: 30_000 }).toBe('video');
-  const panel = page.getByTestId('video-create-panel').filter({ visible: true }).first();
-  await expect(panel).toBeVisible({ timeout: 30_000 });
-  await expect(panel.getByTestId('video-mode-musicvideo')).toHaveAttribute('aria-checked', 'true');
+  // Music video lives inside the Video tool (its Film | Music video switch, next test), not as a row of its own.
+  await expect(page.getByTestId('sidebar-service-video.music-video')).toHaveCount(0);
+  for (const id of ['swap', 'motion', 'dubbing', 'presentation', 'remix']) await expect(page.locator(`[data-tour="tool-${id}"]`)).toHaveCount(0);
+  await expect(sidebar.getByText(/^(Dubbing|Presentations?|Character swap|Motion transfer)$/)).toHaveCount(0);
 });
 
 test('the Video panel shows Film | Music video at its top, and a tap switches it', async ({ page }) => {

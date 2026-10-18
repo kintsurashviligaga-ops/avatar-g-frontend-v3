@@ -117,8 +117,9 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     description: l('სიმღერიდან ვიდეოკლიპი', 'A clip for your song', 'Клип для вашей песни'),
     modes: [{ id: 'musicvideo', label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'), query: { mode: 'musicvideo' } }],
     shortcuts: ['music'],
-    // A row of its own under Video in the sidebar (lib/catalog/nav.ts modeServices): the mode was not findable otherwise.
-    visibleInSidebar: true,
+    // NOT a row of its own in the left menu (GG's PRD 2026-10-18): Video's own „მუსიკალური კლიპი" button opens it, and a
+    // second door in the sidebar only weighed the menu down. The search, the music shortcut and Agent G still reach it.
+    visibleInSidebar: false,
     aliases: ['music video', 'მუსიკალური ვიდეო', 'მუსიკალური კლიპი', 'კლიპი', 'ვიდეოკლიპი', 'клип', 'музыкальный клип', 'музыкальное видео'],
   }),
   svc({
@@ -130,7 +131,10 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['product ad', 'ad', 'advert', 'advertisement', 'promo video', 'რეკლამა', 'პროდუქტის რეკლამა', 'სარეკლამო ვიდეო', 'реклама', 'реклама продукта', 'рекламный ролик'],
   }),
   svc({
-    id: 'video.character-swap', category: 'video', order: 13, tool: 'swap', pricingKey: 'swap', status: 'live',
+    // Hidden (GG's PRD 2026-10-18, „სრულად ამოსაღები"): out of every menu, the search and Agent G's routing — see
+    // lib/studio/tools.ts RETIRED_TOOLS. The route stays so a job already started can finish or refund.
+    id: 'video.character-swap', category: 'video', order: 13, tool: 'swap', pricingKey: 'swap', status: 'hidden',
+    agentCallable: false, visibleInTools: false, visibleInServices: false,
     boundary: 'violation', boundaryNote: 'roop via Replicate (/api/video/remix `character`, quotes and charges remix 15); a miss refunds, no engine switch; MEDIA_GOOGLE_ONLY refuses it. The VFX panel\'s swap (Kling via Higgsfield) is off behind its flags',
     label: l('პერსონაჟის შეცვლა', 'Character swap', 'Замена персонажа'),
     description: l('ვიდეოში სხვა სახე ან პერსონაჟი', 'Put another face or character in a video', 'Другое лицо или персонаж в видео'),
@@ -138,7 +142,10 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['character swap', 'face swap', 'swap the character', 'swap character', 'swap the face', 'swap face', 'სახის შეცვლა', 'პერსონაჟის შეცვლა', 'замена лица', 'замена персонажа', 'ამ ბიჭით', 'ამ გოგოთი'],
   }),
   svc({
-    id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'live',
+    // Hidden (GG's PRD 2026-10-18, „სრულად ამოსაღები"): out of every menu, the search and Agent G's routing — see
+    // lib/studio/tools.ts RETIRED_TOOLS. The route stays so a job already started can finish or refund.
+    id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'hidden',
+    agentCallable: false, visibleInTools: false, visibleInServices: false,
     boundary: 'violation', boundaryNote: 'Kling image-to-video via Replicate (/api/motion-control); MEDIA_GOOGLE_ONLY refuses it',
     label: l('მოძრაობის გადატანა', 'Motion transfer', 'Перенос движения'),
     // ⚠️ Says what runs: a photo + a written motion (Kling image-to-video). It used to promise "like a reference video",
@@ -234,7 +241,10 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   // ── VOICE & AUDIO ─────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
-    id: 'voice.dubbing', category: 'voice-audio', order: 50, tool: 'dubbing', pricingKey: null, status: 'live', boundary: 'violation',
+    // Hidden (GG's PRD 2026-10-18, „სრულად ამოსაღები"): out of every menu, the search and Agent G's routing — see
+    // lib/studio/tools.ts RETIRED_TOOLS. The route stays so a job already started can finish or refund.
+    id: 'voice.dubbing', category: 'voice-audio', order: 50, tool: 'dubbing', pricingKey: null, status: 'hidden', boundary: 'violation',
+    agentCallable: false, visibleInTools: false, visibleInServices: false,
     boundaryNote: 'ElevenLabs Scribe + Gemini translation + TTS; the background split is Replicate Demucs (on by default; MEDIA_GOOGLE_ONLY keeps the original bed); route charges nothing yet (dubbing/start/route.ts)',
     label: l('დუბლაჟი', 'Dubbing', 'Дубляж'),
     description: l('ვიდეო სხვა ენაზე, შენი ხმით', 'Your video in another language', 'Ваше видео на другом языке'),
@@ -259,7 +269,10 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   // ── DESIGN ────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
-    id: 'design.presentation', category: 'design', order: 70, tool: 'presentation', pricingKey: null, status: 'live', boundary: 'google',
+    // Hidden (GG's PRD 2026-10-18, „სრულად ამოსაღები"): out of every menu, the search and Agent G's routing — see
+    // lib/studio/tools.ts RETIRED_TOOLS. The route stays so a job already started can finish or refund.
+    id: 'design.presentation', category: 'design', order: 70, tool: 'presentation', pricingKey: null, status: 'hidden', boundary: 'google',
+    agentCallable: false, visibleInTools: false, visibleInServices: false,
     boundaryNote: 'Gemini outline + Imagen; route charges nothing yet',
     label: l('პრეზენტაცია', 'Presentation', 'Презентация'),
     description: l('თემიდან მზა სლაიდები', 'Slides from a topic', 'Слайды по теме'),

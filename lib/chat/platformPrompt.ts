@@ -26,9 +26,8 @@
  * the prompt never offers what the route will refuse. The date line is computed per call so a cached prompt can never
  * serve yesterday's date.
  */
-import { ownerApprovedPrice } from '@/lib/billing/pricingApproval';
 import { googleOnlySwitch } from '@/lib/env/providerBoundary';
-import { TOOL_META, type ToolId } from '@/lib/studio/tools';
+import { RETIRED_TOOLS, TOOL_META, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { SERVICE_CATALOG } from '@/lib/catalog/services';
 import { CREDIT_COSTS, CREDIT_VALUE_GEL, creditsToGel } from '@/lib/credits/pricing';
@@ -101,10 +100,13 @@ const FILM_EXAMPLE_SECONDS = [8, 24, 48] as const;
 
 /**
  * The tools whose every engine is outside Google + ElevenLabs. Under MEDIA_GOOGLE_ONLY (default ON, on in Production) their
- * routes refuse before any charge (lib/providers/mediaPolicy GATED_ENTRIES: lipsync / heygen, remix `character`,
- * motion-control, model3d); the test pins each to its gated route.
+ * routes refuse before any charge (lib/providers/mediaPolicy GATED_ENTRIES: lipsync / heygen, model3d); the test pins each
+ * to its gated route. Character swap and motion transfer left the product instead (RETIRED_TOOLS).
  */
-export const OUTSIDE_ENGINE_TOOLS: readonly ToolId[] = ['avatar', 'swap', 'motion', 'model3d'];
+export const OUTSIDE_ENGINE_TOOLS: readonly ToolId[] = ['avatar', 'model3d'];
+
+/** Taken out of the product (GG's PRD 2026-10-18); the video touch-up is not among them: it is reached by attaching a video. */
+const GONE_TOOLS: readonly ToolId[] = RETIRED_TOOLS.filter((id) => id !== 'remix');
 
 /**
  * The Veo talking avatar (/api/avatar/veo, lib/avatar/veoAvatar): one 8 s Fast Veo clip, priced as one. It reopens the
@@ -131,17 +133,12 @@ const touchUpLine = (loc: PlatformPromptLocale, mediaGoogleOnly: boolean): strin
 
 /**
  * ⚠️ A CLOSED TOOL MUST NOT BE OFFERED (owner's sweep 2026-10-16: the chat should say plainly which service is closed). The
- * prompt listed and priced the talking avatar, character swap, motion transfer and 3D model while their routes refused
- * every run, and listed dubbing and decks, which refuse until the owner approves their price (lib/billing/paidServiceGate).
- * So the chat could offer a priced avatar that the studio then turned down. Closed tools leave the tool list and PRICES
- * and are named with the not-yet services instead.
+ * prompt listed and priced the talking avatar and 3D model while their routes refused every run, so the chat could offer a
+ * priced avatar that the studio then turned down. Closed tools leave the tool list and PRICES and are named with the
+ * not-yet services instead.
  */
 function closedTools({ mediaGoogleOnly, veoAvatar }: Gates): ToolId[] {
-  return [
-    ...(mediaGoogleOnly ? OUTSIDE_ENGINE_TOOLS.filter((id) => !(id === 'avatar' && veoAvatar)) : []),
-    ...(ownerApprovedPrice('dubbing', CREDIT_COSTS.dubbing_per_minute) ? [] : ['dubbing' as const]),
-    ...(ownerApprovedPrice('presentation', CREDIT_COSTS.presentation_deck) ? [] : ['presentation' as const]),
-  ];
+  return mediaGoogleOnly ? OUTSIDE_ENGINE_TOOLS.filter((id) => !(id === 'avatar' && veoAvatar)) : [];
 }
 
 /** The tools under the side menu's own categories (lib/catalog/nav), so the model names the place a person will look. */
@@ -175,6 +172,10 @@ function notYetLine(loc: PlatformPromptLocale, closed: readonly ToolId[]): strin
     : '';
 }
 
+/** The retired tools by name, so a request for one gets „MyAvatar.ge no longer has it", never „not yet" or an improvisation. */
+const goneLine = (loc: PlatformPromptLocale): string =>
+  `NO LONGER OFFERED: ${GONE_TOOLS.map((id) => TOOL_META[id].name[loc]).join(', ')}. If asked, say plainly MyAvatar.ge no longer has it and name the closest tool above.`;
+
 /**
  * ⚠️ THE DURATION BANDS ARE creditCostFor's, NOT THE KEY NAMES'. `video_30s` / `music_60s` read like "the price of a
  * 30-second video", but the routes that charge through creditCostFor bill anything under 60 s at video_30s and 60 s or
@@ -198,21 +199,13 @@ function priceBlock(topUp: string, closed: readonly ToolId[], { mediaGoogleOnly 
   const packs = BOG_TOPUP_PACKS_GEL.map((g) => `${g} ₾ = ${topupCredits(g)} cr`).join(', ');
   const fast = FILM_EXAMPLE_SECONDS.map((sec) => `${sec} s ${videoQuote({ seconds: sec, tier: 'fast', mode: 'documentary' })}`).join(', ');
   const pct = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
-  // Dubbing and decks run only once the owner approved their price (lib/billing/paidServiceGate); until then the
-  // assistant must not quote a number the product will refuse to charge.
-  const gated = [
-    ownerApprovedPrice('dubbing', C.dubbing_per_minute) ? `dub ${cr(C.dubbing_per_minute)}/min` : null,
-    ownerApprovedPrice('presentation', C.presentation_deck) ? `deck ${cr(C.presentation_deck)}` : null,
-  ];
-  const off = [gated[0] ? null : 'dubbing', gated[1] ? null : 'decks'].filter(Boolean);
-  const dubDeck = [...gated.filter(Boolean), ...(off.length ? [`${off.join(' and ')}: not yet available`] : [])].join('; ');
   return [
     `PRICES (cr = credits; 1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾; ${chat}): image ${cr(C.image_generate)} each;`,
     `film: Fast ${fast} cr; Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)};`,
     // The film's lip-sync pass is the old avatar engine (/api/video/lipsync), which the switch refuses; the Veo avatar is
     // its own 8 s clip at the Veo price.
     `${mediaGoogleOnly ? '' : `film lip-sync +${quoteCredits({ tool: 'avatar' })} cr; `}chat clip/product ad: video ${cr(C.video_30s)} <60 s, ${cr(C.video_60s)} ≥60 s; music ${cr(C.music_30s)} <60 s,`,
-    `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${mediaGoogleOnly ? `${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip` : cr(C.avatar_30s)}; ` : ''}video touch-up ${cr(C.remix_video)}; ${open('model3d') ? `3D model ${cr(C.model3d)}; ` : ''}${dubDeck}.`,
+    `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${mediaGoogleOnly ? `${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip` : cr(C.avatar_30s)}; ` : ''}video touch-up ${cr(C.remix_video)}${open('model3d') ? `; 3D model ${cr(C.model3d)}` : ''}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote prices only in credits and lari and only these numbers; for anything not listed, do not guess.`,
   ].join(' ');
 }
@@ -257,6 +250,9 @@ export function buildPlatformPrompt(opts: {
     veoAvatar: opts?.veoAvatar === true,
   };
   const closed = closedTools(gates);
+  // The side menu's headings that have rows (the Work heading went with dubbing and decks, GG 2026-10-18).
+  const sections = (['create', 'work'] as const).filter((g) => toolGroups().some((x) => x.group === g))
+    .map((g) => `"${NAV_GROUP_LABEL[g][loc]}"`).join(' / ');
 
   return [
     // ⚠️ THE SELF-INTRODUCTION IS IN THE REPLY'S LANGUAGE. It used to be quoted in English for every locale, and the model
@@ -290,14 +286,14 @@ export function buildPlatformPrompt(opts: {
 
     `FORMAT: Fit the length to the question — a simple or casual question gets one to three plain sentences, no headings. Use Markdown only when structure helps: short ## headings, bullet or numbered lists, tables for comparisons, fenced code blocks with a language tag for all code, LaTeX maths in $…$ or $$…$$. Answer first; no filler, no restating the question, no generic disclaimers.`,
 
-    `STUDIO TOOLS by side-menu category (name — what it does · Google engine):\n${toolLines(loc, closed, gates)}\n${notYetLine(loc, closed)}\nVoice: "${ui.liveVoice}" starts a live spoken chat for signed-in users (Gemini Live); replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
+    `STUDIO TOOLS by side-menu category (name — what it does · Google engine):\n${toolLines(loc, closed, gates)}\n${notYetLine(loc, closed)}\n${goneLine(loc)}\nVoice: "${ui.liveVoice}" starts a live spoken chat for signed-in users (Gemini Live); replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
 
     // ⚠️ IT SENT PEOPLE TO A TOOL FOR WHAT THE CHAT DOES ITSELF (Production 2026-10-16, GG's iPhone): „კი შექმენი სურათი 9:16
     // ფორმატის" got „I can't generate in the chat — open the Image tool via +, attach the photo again, pick 9:16, paste this".
     // GG's rule (18:20Z): every service runs in the chat, and once Agent G has clarified and the user agrees, it starts. The
     // studio starts an image or a song on the yes to a quoted, priced offer (lib/chat/offeredPrompt + chatConsent), and a film
     // opens its storyboard; so the model offers in exactly that shape and never points at a menu for those three.
-    `HANDING OFF: You cannot start, queue or finish a render yourself; the studio starts it in this chat once the user agrees. For an image, song or film never send them to a tool, a menu or the + button, and never ask them to attach again a file that is already in this chat. Missing key details? Ask up to two short questions. Otherwise offer once: format or length, one prompt in quotes (English for an image or film; "the reference image" when it uses their photo), its price from PRICES (one image is ${CREDIT_COSTS.image_generate} credits), ending with exactly this question: "${START_QUESTION[loc]}". A film opens its priced storyboard first. Other tools open from "${ui.toolsSheet}" (+) or "${NAV_GROUP_LABEL.create[loc]}" / "${NAV_GROUP_LABEL.work[loc]}" in the side menu; files attach with "${ui.attach}". The result shows here: never claim anything is processing, or a result you have not seen. Never reply with JSON, commands or routing payloads.`,
+    `HANDING OFF: You cannot start, queue or finish a render yourself; the studio starts it in this chat once the user agrees. For an image, song or film never send them to a tool, a menu or the + button, and never ask them to attach again a file that is already in this chat. Missing key details? Ask up to two short questions. Otherwise offer once: format or length, one prompt in quotes (English for an image or film; "the reference image" when it uses their photo), its price from PRICES (one image is ${CREDIT_COSTS.image_generate} credits), ending with exactly this question: "${START_QUESTION[loc]}". A film opens its priced storyboard first. Other tools open from "${ui.toolsSheet}" (+) or ${sections} in the side menu; files attach with "${ui.attach}". The result shows here: never claim anything is processing, or a result you have not seen. Never reply with JSON, commands or routing payloads.`,
 
     priceBlock(ui.topUp, closed, gates),
   ].join('\n\n');

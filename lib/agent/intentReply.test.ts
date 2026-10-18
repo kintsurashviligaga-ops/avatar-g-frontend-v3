@@ -5,7 +5,7 @@
  */
 import { classifyAgentIntent, type IntentInput } from './intent';
 import {
-  askReply, continueReply, interceptAct, mergeMontagePrompt, replacedNote, statusReply, stopReply, unsupportedReply,
+  askReply, continueReply, interceptAct, mergeMontagePrompt, replacedNote, retiredReply, statusReply, stopReply, unsupportedReply,
   type ActIntent, type InterceptContext,
 } from './intentReply';
 
@@ -73,9 +73,25 @@ describe('interceptAct: the chat takes over only what it can answer honestly', (
     expect(askReply(i, 'ka')).toMatch(/ვიდეო/);
   });
 
-  test('a 20-second ad and a dub go on to their existing doors', () => {
+  test('a 20-second ad goes on to its existing door', () => {
     expect(interceptAct(act({ text: 'გააკეთე 20-წამიანი რეკლამა.' }), ON)).toBeNull();
-    expect(interceptAct(act({ text: 'ეს ვიდეო რუსულად გაახმოვანე.', attachments: ['video'] }), ON)).toBeNull();
+  });
+
+  test('a dub, a deck or a character swap is answered plainly: those services left the product (GG 2026-10-18)', () => {
+    const cases: Array<[IntentInput, string]> = [
+      [{ text: 'ეს ვიდეო რუსულად გაახმოვანე.', attachments: ['video'] }, 'დუბლაჟი'],
+      [{ text: 'Dub this video into Russian', attachments: ['video'], locale: 'en' }, 'Dubbing'],
+      [{ text: 'გამიკეთე პრეზენტაცია საქართველოზე' }, 'პრეზენტაციები'],
+      [{ text: 'ამ ვიდეოში პერსონაჟი შეცვალე', attachments: ['video'] }, 'პერსონაჟის შეცვლა'],
+    ];
+    for (const [input, name] of cases) {
+      const i = act(input);
+      expect({ text: input.text, how: interceptAct(i, ON) }).toEqual({ text: input.text, how: 'unsupported' });
+      expect(unsupportedReply(i, input.locale ?? 'ka')).toContain(name);
+    }
+    expect(retiredReply('video.motion', 'ru')).toMatch(/^Перенос движения больше нет в MyAvatar\.ge/);
+    // In a focus tool the tool's own flow keeps the words, as before.
+    expect(interceptAct(act({ text: 'ეს ვიდეო რუსულად გაახმოვანე.', attachments: ['video'] }), { ...ON, mode: 'video' })).toBeNull();
   });
 
   test('a focus tool keeps its own flow: nothing is taken over outside the chat', () => {

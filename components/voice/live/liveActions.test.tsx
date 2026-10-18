@@ -425,15 +425,15 @@ describe('useLiveActions', () => {
   });
 });
 
-describe('prepare_generation for a deck or a 3D model', () => {
-  it('opens the studio with the topic and tells the model the user presses Create there (no start_generation)', () => {
+describe('prepare_generation for a 3D model', () => {
+  it('opens the studio with the description and tells the model the user presses Create there (no start_generation)', () => {
     const dispatched: Array<{ type: string; reply?: unknown }> = [];
     const env = {
-      dispatchAction: (d: { type: string; reply?: unknown }) => { dispatched.push(d); d.reply = { ok: true, tool: 'presentation' }; return true; },
+      dispatchAction: (d: { type: string; reply?: unknown }) => { dispatched.push(d); d.reply = { ok: true, tool: 'model3d' }; return true; },
       openArtifact: () => true,
     };
-    const out = executeLiveToolCall({ id: 'p1', name: 'prepare_generation', args: { tool: 'presentation', prompt: 'საქართველოს ღვინის ისტორია' } }, env as never);
-    expect(dispatched[0]).toMatchObject({ type: 'prepare_generation', tool: 'presentation', prompt: 'საქართველოს ღვინის ისტორია' });
+    const out = executeLiveToolCall({ id: 'p1', name: 'prepare_generation', args: { tool: 'model3d', prompt: 'ხის სკამი' } }, env as never);
+    expect(dispatched[0]).toMatchObject({ type: 'prepare_generation', tool: 'model3d', prompt: 'ხის სკამი' });
     const r = out.response.response as { ok: boolean; summary: string };
     expect(r.ok).toBe(true);
     expect(r.summary).toMatch(/press Create/);
@@ -528,6 +528,25 @@ describe('the hands: click · type_text · download · use_result · montage · 
     const sent = executeLiveToolCall(call('t2', 'type_text', { target: 'Prompt', text: 'გამარჯობა', submit: 'on' }), handsEnv().env);
     expect(keys).toEqual(['Enter']);
     expect(sent.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/submitted/) });
+  });
+
+  test('type_text holds Enter in a studio\'s own prompt while a priced button is on the page; a plain field still submits', () => {
+    // The music Create screen (2026-10-18): its prompt is no composer and sits in no <form>, and Enter there started the run.
+    document.body.innerHTML = '<div><textarea aria-label="აღწერე სიმღერა"></textarea></div><div><button data-price="5">შექმნა</button></div>';
+    const ta = document.querySelector('textarea')!;
+    const keys: string[] = [];
+    ta.addEventListener('keydown', (e) => keys.push((e as KeyboardEvent).key));
+    document.documentElement.dataset.tool = 'music';
+    const held = executeLiveToolCall(call('t3', 'type_text', { target: 'აღწერე სიმღერა', text: 'ბლუზი', submit: 'on' }), handsEnv().env);
+    expect(ta.value).toBe('ბლუზი');
+    expect(keys).toEqual([]);
+    expect(held.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/NOT submitted.*ask the user to tap it/) });
+    document.body.innerHTML = '<input aria-label="ძებნა" />';
+    const search = document.querySelector('input')!;
+    search.addEventListener('keydown', (e) => keys.push((e as KeyboardEvent).key));
+    const sent = executeLiveToolCall(call('t4', 'type_text', { target: 'ძებნა', text: 'ზღვა', submit: 'on' }), handsEnv().env);
+    expect(keys).toEqual(['Enter']);
+    expect(sent.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/and submitted it/) });
   });
 
   test('type_text never fills a password', () => {
