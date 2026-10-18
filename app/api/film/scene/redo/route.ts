@@ -1,6 +1,7 @@
 /**
  * /api/film/scene/redo — ONE scene of the caller's own chat film, rendered again at that scene's price (lib/chat/filmSceneRedo;
- * the owner's tap 2026-10-17 14:26:55Z, "სცენის ფასი": 8 s on Fast = 25 credits, given back when Google fails the render).
+ * the owner's tap 2026-10-17 14:26:55Z, "სცენის ფასი": lib/credits/priceBook sceneCredits, 71 credits for 8 s on Fast since
+ * the 100 %-profit rule of 2026-10-18; given back when Google fails the render).
  *
  *   GET  ?filmTokenId=…&ordinal=…&quote=1  what it costs (the priced question shows it) → { price, scenes }
  *   POST { filmTokenId, ordinal, note?, expectedPrice? }  charge the scene's price (never more than the price shown) and send

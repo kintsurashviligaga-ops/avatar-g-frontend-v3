@@ -148,7 +148,7 @@ describe('the price is ON the button, and it is the quote', () => {
     expect(low.p.onTopUp).toHaveBeenCalledTimes(1);
     expect(low.p.onGenerate).not.toHaveBeenCalled();
     low.unmount();
-    const ok = show({ prompt: 'a fox', balance: 2 });
+    const ok = show({ prompt: 'a fox', balance: quoteCredits({ tool: 'image', count: 1 }) });
     expect(generate().textContent).toContain('Generate');
     fireEvent.click(generate());
     expect(ok.p.onGenerate).toHaveBeenCalledTimes(1);
@@ -163,7 +163,8 @@ describe('the price is ON the button, and it is the quote', () => {
   });
 
   test('a ×4 batch that the balance cannot cover is "Top up" at ×4 but not at ×1', () => {
-    const { rerenderWith } = show({ prompt: 'x', balance: 3, count: 1 });
+    // Enough for one image, short of four.
+    const { rerenderWith } = show({ prompt: 'x', balance: quoteCredits({ tool: 'image', count: 1 }) + 1, count: 1 });
     expect(generate().textContent).toContain('Generate');
     rerenderWith({ count: 4 });
     expect(generate().textContent).toContain('Top up');

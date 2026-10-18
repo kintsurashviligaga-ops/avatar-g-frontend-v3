@@ -161,6 +161,7 @@ import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './
 import { handleMusicVoice } from './music/musicVoiceBridge';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
+import { remixSceneCredits } from '@/lib/credits/priceBook';
 import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
@@ -7389,11 +7390,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const job: ChatRemixJob = { op, params: intent.params || {}, text, caption, videoAtt, audioAtt: audioAtt ?? null, attachments: sent };
         // ── A CHARGED EDIT WAITS FOR AGENT G'S CREATE. ───────────────────────────────────────────────
         // Every other paid chat order stops at Agent G's card with its price; this one used to classify the sentence and
-        // spend 15 credits on whatever op came back. A charged op (lib/video/remixCharge — the route's own list) now shows
-        // the edit and its price first; nothing is uploaded or charged until Create. The free ffmpeg ops run at once.
+        // spend credits on whatever op came back. A charged op (lib/video/remixCharge — the route's own list and prices)
+        // now shows the edit and its price first; nothing is uploaded or charged until Create. The free ffmpeg ops run at once.
         if (isChargedRemixOp(op)) {
           if (!mine()) return;
-          const credits = remixOpCredits();
+          const credits = remixOpCredits(op);
           remixAsksRef.current.set(bubbleId, job);
           patch({ role: 'assistant', text: remixAskText(op, credits, locale, [videoAtt.name || 'video', ...(audioAtt && (op === 'add_music' || op === 'music' || op === 'redub') ? [audioAtt.name || 'audio'] : [])]), remixAsk: { credits } });
           trackQuoteShown(serviceForTool('remix'), credits, 'agent-card');
@@ -10099,6 +10100,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                               ) : (
                                 <p className="text-app-muted">{locale === 'en' ? 'The AI will pick the scene(s) to re-render from your edit; the rest are reused.' : locale === 'ru' ? 'ИИ выберет сцену(ы) для перерисовки; остальные переиспользуются.' : 'AI აირჩევს გადასარენდერებელ სცენას; დანარჩენი ხელახლა გამოიყენება.'}</p>
                               )}
+                              {/* The price /api/pipeline/remix reserves: one Veo clip per re-rendered scene (lib/credits/priceBook). */}
+                              {(() => {
+                                const per = creditsLabel(remixSceneCredits(m.filmClipSec ?? 8), locale);
+                                return <p className="text-app-muted">{locale === 'en' ? `Price: ${per} per re-rendered scene.` : locale === 'ru' ? `Цена: ${per} за каждую перерисованную сцену.` : `ფასი: ${per} თითო გადარენდერებულ სცენაზე.`}</p>;
+                              })()}
                               <div className="flex items-center gap-1.5">
                                 <button type="button" onClick={() => {
                                   setRemixPreviewIdx(null);

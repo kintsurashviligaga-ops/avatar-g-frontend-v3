@@ -39,9 +39,8 @@ import { isAdminUser } from '@/lib/chat/filmComposite';
 import { deductCreditsOnce, refundCredits } from '@/lib/orchestrator/ledger';
 import { replayRefusedBody } from '@/lib/api/billingCopy';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
-import { CREDIT_COSTS } from '@/lib/credits/pricing';
 import { quoteCredits } from '@/lib/credits/quote';
-import { CHARGED_REMIX_OPS, canonicalRemixOp } from '@/lib/video/remixCharge';
+import { CHARGED_REMIX_OPS, canonicalRemixOp, remixOpCredits } from '@/lib/video/remixCharge';
 import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { isGoogleOnly } from '@/lib/veo/policy';
@@ -153,7 +152,7 @@ export async function POST(req: NextRequest) {
 
   // AUTH + CREDIT GATE (audit HIGH): remix reached paid providers with NO auth or credit
   // check — an anonymous free bypass. Paid ops now REQUIRE a signed-in user; the standard
-  // paid edits debit CREDIT_COSTS.remix_video up front (matching the client's on-submit credit
+  // paid edits debit remixOpCredits(op) up front (matching the client's on-submit credit
   // toast). Free local ffmpeg ops (trim/captions/color_grade/speed/stabilize/watermark) are untouched.
   // productad ALSO debits now (audit: it reached paid Kling with zero server-side charge) — see
   // the once-per-ad gate below; it keeps its opt-in ad-budget guard (checkAdBudget) on top.
@@ -252,7 +251,7 @@ export async function POST(req: NextRequest) {
   const productAdPrimary = op === 'productad' && !productAdSecondaryClip;
   const chargeAmount = productAdPrimary
     ? quoteCredits({ tool: 'product', seconds: Number(body.productDurationSec) })
-    : CREDIT_COSTS.remix_video;
+    : remixOpCredits(op);
   // ⚠️ TWO COMPOUNDING HOLES LIVED HERE, AND THEY PAID OUT TOGETHER.
   //
   // (a) `chargeAmount` is CLIENT-STEERED — `productDurationSec` picks the ad's length, and so its price —

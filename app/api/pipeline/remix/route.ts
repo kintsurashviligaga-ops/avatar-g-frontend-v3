@@ -32,7 +32,8 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
-import { creditCostFor } from '@/lib/credits/pricing';
+import { remixSceneCredits } from '@/lib/credits/priceBook';
+import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -108,7 +109,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   // the original film unchanged and costs nothing.
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id)) return json(signInToGenerateBody(), 401);
-  const remixCost = creditCostFor('remix');
 
   const stamp = Date.now();
 
@@ -167,6 +167,15 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (remix.editedScenes.length === 0) {
     return json({ success: false, message: `I couldn’t map “${editRequest}” to a scene. Try e.g. “make scene 2 darker” or “change the ending’s lighting”.` }, 200);
   }
+  // Re-render ONLY the edited scenes (the rest are reused verbatim), capped so the worst case stays inside the 300s
+  // function ceiling even on a broad edit.
+  const MAX_EDIT_SCENES = 4;
+  const edits = remix.editedScenes.slice(0, MAX_EDIT_SCENES);
+  // ⚠️ PRICED PER RE-RENDERED SCENE. A flat 15 credits bought up to four Veo clips (~3 ₾ of cost each). Each edited scene
+  // now pays its own Veo clip — the seconds Veo renders on the tier it renders on (Fast, the studio default, unless the
+  // plan names one) — from lib/credits/priceBook, the owner's 100 %-profit rule.
+  const veoPlan = plan.shared.veo;
+  const remixCost = edits.length * remixSceneCredits(gridClipSec, veoPlan?.tier ?? STUDIO_DEFAULT_VEO_TIER, veoPlan?.referenceMode === 'reference');
 
   // Reserve the remix price up front (deduct_credits refuses an overdraw). Admin/demo callers without a user id pay
   // nothing. The ref is per request; the refund below pays back exactly what the ledger shows under it.
@@ -191,11 +200,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // with the reservation still taken. It now gives the credits back first.
   try {
 
-  // 3. Re-render ONLY the edited scenes (the rest are reused verbatim). Capped +
-  //    run in PARALLEL so wall-clock ≈ one scene's render (not the sum), keeping
-  //    the worst case inside the 300s function ceiling even on a broad edit.
-  const MAX_EDIT_SCENES = 4;
-  const edits = remix.editedScenes.slice(0, MAX_EDIT_SCENES);
+  // 3. Re-render the edited scenes in PARALLEL so wall-clock ≈ one scene's render (not the sum).
   const sm = new ServiceManager();
   const rerendered = new Map<number, string>();
   await Promise.all(

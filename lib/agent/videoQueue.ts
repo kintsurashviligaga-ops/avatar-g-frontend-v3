@@ -2,7 +2,8 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
-import { STUDIO_DEFAULT_VEO_TIER, videoCredits } from '@/lib/credits/videoPricing';
+import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
+import { veoSecondsCredits } from '@/lib/credits/priceBook';
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
 import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
@@ -235,8 +236,8 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
   // ⚠️ CHARGE HERE, NOT AT ENQUEUE, AND UNDER THIS ITEM'S OWN REF. `agentq:<item id>` is unique per row
   // and the column is UNIQUE, so a retried drain re-uses the same ref and deduct_credits — which is
   // idempotent on it — refuses to charge again.
-  // The studio's own quote for one clip on the tier it renders on (below), so a price change reaches this route too.
-  const cost = videoCredits({ seconds: VIDEO_SECONDS, quality: STUDIO_DEFAULT_VEO_TIER });
+  // The price book's bare clip of this length on the tier it renders on (below), so a price change reaches this route too.
+  const cost = veoSecondsCredits(VIDEO_SECONDS, STUDIO_DEFAULT_VEO_TIER);
   const ref = `agentq:${item.id}`;
   const debit = await deductCredits(userId, cost, ref);
   if (!debit.ok) {

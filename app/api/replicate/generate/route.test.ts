@@ -12,7 +12,7 @@ jest.mock('../../../../lib/api/generationGuard', () => ({
 jest.mock('../../../../lib/replicate/client', () => ({ createPrediction: jest.fn(), pollPrediction: jest.fn() }));
 jest.mock('../../../../lib/orchestrator/ledger', () => ({
   deductCredits: jest.fn(),
-  refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 25 })),
+  refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 75 })),
 }));
 
 import { NextRequest } from 'next/server';
@@ -20,6 +20,7 @@ import { POST } from './route';
 import { guardGeneration } from '../../../../lib/api/generationGuard';
 import { createPrediction, pollPrediction } from '../../../../lib/replicate/client';
 import { deductCredits, refundDebitByRef } from '../../../../lib/orchestrator/ledger';
+import { creditCostFor } from '../../../../lib/credits/pricing';
 
 const ENV = { ...process.env };
 const post = (body: unknown) => POST(new NextRequest('https://myavatar.ge/api/replicate/generate', {
@@ -38,7 +39,7 @@ afterAll(() => { process.env = ENV; });
 test('the service’s price is reserved BEFORE the paid create (it used to render free)', async () => {
   const res = await post(VIDEO);
   expect(res.status).toBe(200);
-  expect(deductCredits).toHaveBeenCalledWith('user-1', 25, expect.stringMatching(/^replicate:gen:video:[0-9a-f-]{36}:user-1$/));
+  expect(deductCredits).toHaveBeenCalledWith('user-1', creditCostFor('video'), expect.stringMatching(/^replicate:gen:video:[0-9a-f-]{36}:user-1$/));
   expect((deductCredits as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan((createPrediction as jest.Mock).mock.invocationCallOrder[0]!);
   // The id the client polls carries the charge token.
   expect((await res.json()).id).toMatch(/^pred-9~rg1\./);

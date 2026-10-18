@@ -59,6 +59,7 @@ import { POST } from './route';
 import { promptToEnglish } from '../../../../lib/ai/promptToEnglish';
 import { debitExistsForRef, deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
 import { releaseIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
+import { creditCostFor } from '../../../../lib/credits/pricing';
 
 const post = (body: unknown, locale?: string) =>
   new NextRequest('https://myavatar.ge/api/ai/music', {
@@ -134,7 +135,7 @@ test('a failed render after a charge reports refunded:true — and never the pro
   const j = await res.json();
   expect(j).toMatchObject({ success: false, refunded: true });
   expect(refundCredits).toHaveBeenCalledTimes(1);
-  expect((refundCredits as jest.Mock).mock.calls[0]).toEqual(['user-1', 5, expect.stringMatching(/^music:job-1:.*:refund$/)]);
+  expect((refundCredits as jest.Mock).mock.calls[0]).toEqual(['user-1', creditCostFor('music', { seconds: BODY.durationSec }), expect.stringMatching(/^music:job-1:.*:refund$/)]);
   expect(JSON.stringify(j)).not.toMatch(/replicate|billing|402/i);
 });
 

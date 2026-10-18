@@ -16,17 +16,17 @@ export function billableCreditCost(intent: IntentCategory): number {
   switch (intent) {
     case 'image_generation':
     case 'photo_edit':
-      return creditCostFor('image');       // 2 credits (0.20 GEL)
+      return creditCostFor('image');       // the price book's image (lib/credits/priceBook)
     case 'avatar_generation':
-      return creditCostFor('avatar');       // 20 credits
+      return creditCostFor('avatar');       // one 8 s Fast scene
     case 'music_generation':
-      return creditCostFor('music');        // 5 credits (30s)
+      return creditCostFor('music');        // a 30 s track
     case 'video_generation':
       // ⚠️ THIS WAS 0 ON THE PREMISE THAT "film-composite already charges per clip". A single chat clip never
       // enters the film pipeline, and that per-clip debit calls debit_wallet_gel, which does not exist on the
       // production database — so a signed-in user's chat video was a free Veo render ($0.40/s on Standard).
       // Priced as the studio prices its shortest video (8 s), charged once on the successful poll.
-      return creditCostFor('video', { seconds: 8 }); // 25 credits
+      return creditCostFor('video', { seconds: 8 }); // an 8 s Fast film
     default:
       return 0;                              // text/other → free
   }

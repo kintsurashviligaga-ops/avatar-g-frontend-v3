@@ -21,6 +21,7 @@ jest.mock('../../../../lib/studio/runtime', () => ({ getStudioRuntime: jest.fn()
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
+import { clipCredits } from '../../../../lib/credits/priceBook';
 import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { opStatuses } from '../../../../lib/genjutsu/capabilities';
 import { signOwnedPaths } from '../../../../lib/genjutsu/serverCommon';
@@ -51,11 +52,11 @@ test('a guest gets 401; a spent estimate window gets 429', async () => {
   expect((await POST(post({ op: 'scene', preset: 'fire' }))).status).toBe(429);
 });
 
-test('scene: the price is lib/genjutsu/pricing — Fast 25, Standard 83 — with the photo count the engine really takes', async () => {
+test('scene: the price is lib/genjutsu/pricing — the price book\'s Fast and Standard clip — with the photo count the engine really takes', async () => {
   const fast = await (await POST(post({ op: 'scene', preset: 'fire', references: photos(12), referencesTotal: 12 }))).json();
-  expect(fast).toMatchObject({ success: true, op: 'scene', credits: 25, source: 'local', refsUsed: 3, refsTotal: 12, cap: 3 });
+  expect(fast).toMatchObject({ success: true, op: 'scene', credits: clipCredits('fast'), source: 'local', refsUsed: 3, refsTotal: 12, cap: 3 });
   const std = await (await POST(post({ op: 'scene', preset: 'fire', quality: 'standard' }))).json();
-  expect(std).toMatchObject({ credits: 83, refsUsed: 0, refsTotal: 0 });
+  expect(std).toMatchObject({ credits: clipCredits('standard'), refsUsed: 0, refsTotal: 0 });
   expect(getStudioRuntime).not.toHaveBeenCalled(); // a local price never calls the provider
 });
 

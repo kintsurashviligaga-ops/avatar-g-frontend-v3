@@ -259,6 +259,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // A sign-in deep link (/{lang}/dashboard?auth=login&redirect=…&error=… — lib/routing/signIn.ts) carries where to go
   // afterwards and, from a failed OAuth round-trip, what went wrong. Held only while that sheet is open.
   const [authReturnTo, setAuthReturnTo] = useState<string | null>(null);
+  /** The plan a pricing-page click named (?plan=): the sign-up sheet says what it costs instead of „free". */
+  const [authPlan, setAuthPlan] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   // Library opens IN-WINDOW in this slide-over. The legal documents open as their own pages in a new tab
   // (lib/legal/links.ts) — the real localized text, never an iframe or a placeholder modal.
@@ -382,6 +384,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           } else {
             setAuthReturnTo(link.redirect);
             setAuthError(link.error);
+            setAuthPlan(link.plan);
             setAuthMode(link.mode === 'signup' ? 'signup' : 'login');
             setAuthOpen(true);
           }
@@ -1638,10 +1641,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           </div>
         </div>
       )}
-      <AuthModal open={authOpen} locale={lang} initialMode={authMode} initialError={authError} returnTo={authReturnTo}
-        onClose={() => { setAuthOpen(false); setAuthError(null); setAuthReturnTo(null); }}
+      <AuthModal open={authOpen} locale={lang} initialMode={authMode} initialError={authError} returnTo={authReturnTo} plan={authPlan}
+        onClose={() => { setAuthOpen(false); setAuthError(null); setAuthReturnTo(null); setAuthPlan(null); }}
         onAuthed={() => {
-          setAuthOpen(false); setAuthError(null);
+          setAuthOpen(false); setAuthError(null); setAuthPlan(null);
           // Signed in from a deep link that named a destination (e.g. /memory sent them here): go there.
           if (authReturnTo) { const to = authReturnTo; setAuthReturnTo(null); window.location.assign(to); return; }
           void refreshBalance();

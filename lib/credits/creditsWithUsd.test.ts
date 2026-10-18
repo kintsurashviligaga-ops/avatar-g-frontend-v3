@@ -1,5 +1,5 @@
 /**
- * The spend toast's two lines (−2 credits, balance N credits) — GG 2026-10-16: the interior design toast read
+ * The spend toast's two lines (−5 credits, balance N credits) — GG 2026-10-16: the interior design toast read
  * "ბალანსი 8560 კრედიტი ($317.04)" for a wallet of 856 credits, because the credit balance was converted as if it
  * were GEL. The toast now formats both lines with creditsWithUsd.
  */
@@ -15,7 +15,8 @@ describe('creditsWithUsd', () => {
   });
 
   it('prices one image render the way the route charges it', () => {
-    expect(creditsWithUsd(creditCostFor('image'))).toBe('2 კრედიტი ($0.07)');
+    // One image is the price book's 5 credits (lib/credits/priceBook), 0.50 ₾.
+    expect(creditsWithUsd(creditCostFor('image'))).toBe('5 კრედიტი ($0.19)');
   });
 
   it('never prints NaN or a negative balance', () => {

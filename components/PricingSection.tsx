@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { PRICING_TIERS, type PricingTierId } from '@/lib/billing/pricingConfig'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { signInPath } from '@/lib/routing/signIn';
+import { PLAN_NAME, planPriceLabel } from '@/lib/billing/planLabel';
 
 // DAY-6 pricing reconciliation — the visible page renders the SINGLE SOURCE OF TRUTH tiers
 // (lib/billing/pricingConfig.ts: Starter 38 / Pro Creator 299 / Studio Annual 899 GEL). Features are
@@ -31,14 +32,6 @@ const LABELS: Record<Lang, {
         videos: 'видео', music: 'музыкальных трека', images: 'storyboard-изображений', credits: 'кредитов включено', perMonth: 'в месяц' },
 }
 
-// PHASE 37.1 — localized tier NAMES (pricingConfig keeps the English canonical; the visible name is
-// localized here so the Georgian locale reads natively premium: სტარტერი · პრო კრეატორი · სტუდიური წლიური).
-const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
-  free: { en: 'Free', ka: 'უფასო', ru: 'Бесплатно' },
-  basic: { en: 'Basic', ka: 'საბაზისო', ru: 'Базовый' },
-  pro: { en: 'Pro', ka: 'პრო', ru: 'Про' },
-  business: { en: 'Business', ka: 'ბიზნესი', ru: 'Бизнес' },
-}
 // A one-line premium sub-label per tier (who it's for).
 const TIER_TAGLINE: Record<PricingTierId, Record<Lang, string>> = {
   free: { en: 'To try it out', ka: 'გასაცნობად', ru: 'Чтобы попробовать' },
@@ -80,7 +73,9 @@ export function PricingSection() {
           {PRICING_TIERS.map((tier, index) => {
             const isPopular = tier.id === 'pro'
             const period = tier.billing === 'annual' ? labels.year : labels.month
-            const name = TIER_NAME[tier.id][locale]
+            const name = PLAN_NAME[tier.id][locale]
+            // ₾ first on the Georgian page (what the BOG checkout charges), $ first in English and Russian (lib/billing/planLabel).
+            const price = planPriceLabel(tier, locale)
             const tagline = TIER_TAGLINE[tier.id][locale]
             const features: { count: string | number; label: string }[] = [
               { count: tier.creditCeiling.videos, label: labels.videos },
@@ -142,15 +137,15 @@ export function PricingSection() {
                 {/* Price — the dominant element, sized to FIT the narrowest card the container rules allow (≥ 245 px),
                     a step larger once the row is wide. The period never splits from itself (nowrap) but the row wraps, so
                     on the narrowest card „/თვე" drops under the number instead of spilling out of the frame.
-                    The "$N" stays ONE span so textContent reads '$99' (PricingSection.test.tsx pins it). */}
+                    The main price stays ONE span so textContent reads '54 ₾' / '$19.99' (PricingSection.test.tsx pins it). */}
                 <div className="mb-6 mt-5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1">
                   <span
                     className={`min-w-0 font-black leading-none tracking-[-0.035em] ${isPopular ? 'text-[46px] [@container(min-width:1180px)]:text-[52px]' : 'text-[42px] [@container(min-width:1180px)]:text-[48px]'}`}
                     style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', ...(isPopular ? { textShadow: '0 0 28px rgb(var(--app-accent) / 0.3)' } : {}) }}
-                  >{`$${tier.priceUsd}`}</span>
+                  >{price.main}</span>
                   <span className="whitespace-nowrap text-[13px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{period}</span>
-                  {tier.priceGel > 0 && (
-                    <span className="basis-full text-[12.5px] font-medium tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>{`≈ ${tier.priceGel} ₾`}</span>
+                  {price.sub && (
+                    <span className="basis-full text-[12.5px] font-medium tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>{price.sub}</span>
                   )}
                 </div>
 
@@ -178,14 +173,14 @@ export function PricingSection() {
                 <Link
                   href={signInPath(locale, { mode: 'signup', plan: tier.id })}
                   data-iap-external
-                  aria-label={`${name} — ${tier.priceUsd > 0 ? `$${tier.priceUsd}${period}` : labels.ctaFree}`}
+                  aria-label={`${name} — ${tier.priceUsd > 0 ? `${price.main}${period}` : labels.ctaFree}`}
                   className={`mt-auto flex min-h-[52px] w-full min-w-0 items-center justify-center rounded-xl px-4 py-3 text-center text-[15px] leading-snug transition-[filter,background-color] duration-200 [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-[inherit] after:content-[''] ${isPopular ? 'font-bold hover:brightness-110' : 'bg-white/[0.025] font-semibold hover:bg-white/[0.06]'}`}
                   style={isPopular
                     ? { background: 'linear-gradient(180deg, rgb(var(--app-accent)) 0%, rgb(var(--app-accent-deep)) 100%)', color: 'rgb(var(--app-bg))', boxShadow: '0 10px 26px -6px rgb(var(--app-accent) / 0.5), 0 1px 0 0 rgba(255,255,255,0.35) inset' }
                     // The resting fill is a CLASS (above), so its hover can win — an inline background never let it.
                     : { color: 'var(--color-text)', border: '1px solid var(--pricing-contour-pop)' }}
                 >
-                  {tier.priceUsd > 0 ? `${labels.ctaPaid} · $${tier.priceUsd}` : labels.ctaFree}
+                  {tier.priceUsd > 0 ? `${labels.ctaPaid} · ${price.main}` : labels.ctaFree}
                 </Link>
               </motion.div>
             )

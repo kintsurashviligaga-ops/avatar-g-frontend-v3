@@ -6,14 +6,13 @@
  * `price_changed`, before anything is taken) when the browser's `expectedCredits` differs from the server's, so a stale
  * bundle can never bill a different amount than it displayed.
  *
- * THE COST MATH (scene = ONE Veo clip, so it is priced as one film clip — never its own invented number):
- *   scene  = videoCredits({ seconds: 8, quality })                    (lib/credits/videoPricing)
- *          · Fast     8 s → ceil(8 × 3.125 × 1.0) = 25 credits  = 2.50 ₾ ≈ $0.93   vs Veo Fast     $0.12/s × 8 = $0.96
- *          · Standard 8 s → ceil(8 × 3.125 × 3.3) = 83 credits  = 8.30 ₾ ≈ $3.07   vs Veo Standard $0.40/s × 8 = $3.20
+ * THE COST MATH (scene = ONE bare Veo clip, so it is the price book's clip — never its own invented number):
+ *   scene  = clipCredits(quality)                                      (lib/credits/priceBook)
+ *          · Fast     8 s → 64 credits  = 6.40 ₾ ≈ $2.37   vs Veo Fast     $0.12/s × 8 = $0.96 (twice the full cost + fee)
+ *          · Standard 8 s → 213 credits = 21.30 ₾ ≈ $7.89  vs Veo Standard $0.40/s × 8 = $3.20
  *   A reference photo is conditioning, not a billed unit — Google prices the clip by its seconds — so `refsUsed` does
  *   not move the price (it is in the signature because an engine that bills per reference would need it here, and so
- *   a caller can never forget to say how many were used). The margin is exactly the film's: a pay-as-you-go clip sells
- *   within a few percent of cost, a PLAN credit carries the margin (see the note in lib/credits/videoPricing).
+ *   a caller can never forget to say how many were used).
  *
  * `motion` and `swap` are PROVIDER-QUOTED: Higgsfield bills them per second of video with live discounts (Kling 3 MC
  * Std lists $0.126/s and was 50 % off on 2026-10-02; Genjutsu object-swap lists $0.318 / $0.681 / $1.632 per second at
@@ -23,9 +22,9 @@
  * panel shows no price until POST /api/genjutsu/quote has answered. An invented local estimate would be a number on
  * the button that is not the number on the bill.
  */
-import { videoCredits, type VideoQuality } from '@/lib/credits/videoPricing';
+import { clipCredits } from '@/lib/credits/priceBook';
+import type { VideoQuality } from '@/lib/credits/videoPricing';
 import { ENGINES, qualityFor } from './engines';
-import { SCENE_SECONDS } from './limits';
 import type { GenjutsuOp, GenjutsuQuality } from './types';
 
 export interface GenjutsuPriceInput {
@@ -44,7 +43,7 @@ export function genjutsuCredits(input: GenjutsuPriceInput): number | null {
   if (ENGINES[input.op].pricing !== 'local') return null;
   // scene → Veo Fast | Standard. Lite takes no reference images, so it is not offered and not priced.
   const q = qualityFor('scene', input.quality);
-  return videoCredits({ seconds: SCENE_SECONDS, quality: VEO_QUALITY[q === 'standard' ? 'standard' : 'fast'] });
+  return clipCredits(VEO_QUALITY[q === 'standard' ? 'standard' : 'fast']);
 }
 
 /** Whether the credits shown for an op are this module's own price or the provider's live quote. */

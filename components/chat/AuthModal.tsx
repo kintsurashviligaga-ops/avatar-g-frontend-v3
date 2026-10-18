@@ -36,6 +36,7 @@ import { formatPhone, parseIdentifier } from '@/lib/auth/identifier';
 import { isAccountStatus, type AccountStatus } from '@/lib/auth/accountStatus';
 import { legalHref } from '@/lib/legal/links';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
+import { PLAN_NAME, paidPlanById, planPriceLabel } from '@/lib/billing/planLabel';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -66,12 +67,15 @@ interface AuthModalProps {
   initialError?: string | null;
   /** Where a ROUND-TRIP (Google, an old reset link) returns to. Must already be safe (safeInternalPath). */
   returnTo?: string | null;
+  /** The plan the person clicked on the pricing page (`?plan=`), when the sheet opened from it. */
+  plan?: string | null;
 }
 
 const COPY = {
   ka: {
     titleLogin: 'შესვლა MyAvatar-ში', titleSignup: 'შექმენი ანგარიში',
     subSignup: 'უფასოა. ბალანსი და შენი ყველა ნამუშევარი — ერთ ადგილას.',
+    subSignupPlan: (plan: string, price: string, credits: number) => `„${plan}“: გადასახდელია ${price} თვეში, ${credits} კრედიტი. ჯერ ანგარიში შექმენი, შემდეგ გადახდის ფანჯარა გაიხსნება.`,
     google: 'Google-ით გაგრძელება', phone: 'ტელეფონით გაგრძელება', emailInstead: 'ელფოსტით გაგრძელება', or: 'ან',
     email: 'ელფოსტა', phoneNumber: 'ტელეფონის ნომერი', phoneHint: 'მაგ. 599 12 34 56',
     cont: 'გაგრძელება',
@@ -105,6 +109,7 @@ const COPY = {
   en: {
     titleLogin: 'Log in to MyAvatar', titleSignup: 'Create your account',
     subSignup: "It's free. Your balance and everything you make, in one place.",
+    subSignupPlan: (plan: string, price: string, credits: number) => `${plan}: ${price} a month to pay, ${credits} credits. Create your account first; the payment window opens next.`,
     google: 'Continue with Google', phone: 'Continue with phone', emailInstead: 'Continue with email', or: 'or',
     email: 'Email', phoneNumber: 'Phone number', phoneHint: 'With the country code, e.g. +995 599 12 34 56',
     cont: 'Continue',
@@ -138,6 +143,7 @@ const COPY = {
   ru: {
     titleLogin: 'Вход в MyAvatar', titleSignup: 'Создайте аккаунт',
     subSignup: 'Бесплатно. Баланс и все ваши работы — в одном месте.',
+    subSignupPlan: (plan: string, price: string, credits: number) => `«${plan}»: к оплате ${price} в месяц, ${credits} кредитов. Сначала создайте аккаунт, затем откроется окно оплаты.`,
     google: 'Продолжить с Google', phone: 'Продолжить по телефону', emailInstead: 'Продолжить по e-mail', or: 'или',
     email: 'Эл. почта', phoneNumber: 'Номер телефона', phoneHint: 'С кодом страны, напр. +995 599 12 34 56',
     cont: 'Продолжить',
@@ -212,8 +218,14 @@ function entryOf(m: AuthEntry | undefined): { flow: Flow; step: Step } {
   return { flow: 'login', step: 'start' };
 }
 
-export default function AuthModal({ open, locale, onClose, onAuthed, initialMode = 'login', initialError = null, returnTo = null }: AuthModalProps) {
+export default function AuthModal({ open, locale, onClose, onAuthed, initialMode = 'login', initialError = null, returnTo = null, plan = null }: AuthModalProps) {
   const t: Copy = COPY[locale] ?? COPY.ka;
+  // ⚠️ A PAID PLAN IS NOT FREE (owner, PRD v2 §1.2). Someone who clicked a paid plan read „უფასოა" here; the sheet now
+  // names what they will pay for the plan they picked (the ₾ the BOG checkout charges first on the Georgian page).
+  const paidPlan = paidPlanById(plan);
+  const signupLine = paidPlan
+    ? t.subSignupPlan(PLAN_NAME[paidPlan.id][locale] ?? PLAN_NAME[paidPlan.id].ka, planPriceLabel(paidPlan, locale).main, paidPlan.creditsIncluded)
+    : t.subSignup;
   const router = useRouter();
   const reduceMotion = useReducedMotion();
   const titleId = useId();
@@ -680,7 +692,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             {/* ── 1 · the way in ── */}
             {step === 'start' && (
               <div className="mt-2">
-                {flow === 'signup' && <p className="text-[14px] leading-relaxed text-app-muted">{t.subSignup}</p>}
+                {flow === 'signup' && <p className="text-[14px] leading-relaxed text-app-muted" data-testid="auth-signup-sub">{signupLine}</p>}
                 <div className="mt-6 space-y-3">
                   {googleEnabled && (
                     <button type="button" onClick={() => void handleGoogle()} disabled={busy} data-testid="auth-google"

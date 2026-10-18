@@ -270,13 +270,14 @@ describe('a paid primary is recent and covers only the length it paid for', () =
   });
 
   it('the paid length decides how many clips ride on the primary', () => {
-    // Today's Production price (25 credits at every offered length): any paid ad covers six clips, as on main.
-    expect(PRODUCT_AD_PRICING).toBe('production');
-    expect([PAID_8, PAID_24, PAID_48]).toEqual([25, 25, 25]);
-    expect(maxSecondarySceneIndexFor(PAID_8)).toBe(5);
-    expect(maxSecondarySceneIndexFor(PAID_8 - 1)).toBe(0);
+    // The length rule is live (PRD v2 §1.1, 2026-10-18): an ad costs a Fast film of its length, 75 / 217 / 430 credits.
+    expect(PRODUCT_AD_PRICING).toBe('length');
+    expect([PAID_8, PAID_24, PAID_48]).toEqual([75, 217, 430]);
+    // 8 s → the primary only, 24 s → 3 clips, 48 s → 6 — under the live default as well as the named rule.
+    expect(maxSecondarySceneIndexFor(PAID_8)).toBe(0);
+    expect(maxSecondarySceneIndexFor(PAID_24)).toBe(2);
+    expect(maxSecondarySceneIndexFor(PAID_48)).toBe(5);
     expect(maxSecondarySceneIndexFor(0)).toBe(0);
-    // The audit's length rule, once the owner approves it: 8 s → the primary only, 24 s → 3 clips, 48 s → 6.
     const paid = (seconds: number) => productAdCredits(seconds, 'length');
     expect(maxSecondarySceneIndexFor(paid(8), 'length')).toBe(0);
     expect(maxSecondarySceneIndexFor(paid(24) - 1, 'length')).toBe(0);
@@ -292,7 +293,7 @@ describe('a paid primary is recent and covers only the length it paid for', () =
     const none = deps({ reads: [0] });
     await expect(gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 1 }, none.d)).resolves.toMatchObject({ ok: false, status: 402 });
     expect(none.calls.claims).toHaveLength(0);
-    // A paid ad (a 48 s ad at today's price) covers clip 5, never 6.
+    // A paid 48 s ad covers clip 5, never 6.
     await expect(gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 5 }, deps({ reads: [PAID_48] }).d)).resolves.toMatchObject({ ok: true, sceneIndex: 5 });
     const { d, calls } = deps({ reads: [PAID_48, PAID_48] });
     await expect(gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 6 }, d)).resolves.toMatchObject({ ok: false, status: 402, reason: 'unpaid' });

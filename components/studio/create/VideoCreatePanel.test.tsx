@@ -163,8 +163,9 @@ describe('the number on the Generate button is the quote', () => {
 
   test('the price follows every change on screen, and the button names it for a screen reader', () => {
     const { rerender } = setup({ seconds: 8 });
-    expect(price()).toBe('25');
-    expect(gen().getAttribute('aria-label')).toBe('Generate — 25 credits');
+    const eight = quoteCredits({ tool: 'video', seconds: 8, quality: 'fast' });
+    expect(price()).toBe(String(eight));
+    expect(gen().getAttribute('aria-label')).toBe(`Generate — ${eight} credits`);
     rerender({ seconds: 96 });
     expect(price()).toBe(String(quoteCredits({ tool: 'video', seconds: 96, quality: 'fast' })));
     rerender({ seconds: 96, plan: initialVeoPlan({ tier: 'standard' }) });
@@ -204,7 +205,7 @@ describe('free · insufficient · empty', () => {
   test('a balance below the price turns the tap into the top-up, keeps the price visible, and never starts the film', () => {
     const { calls } = setup({ seconds: 24 }, { balanceCredits: 10 });
     expect(gen().textContent).toContain('Top up');
-    expect(gen().textContent).toContain('75');
+    expect(gen().textContent).toContain(String(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast' })));
     fireEvent.click(gen());
     expect(calls.onTopUp).toHaveBeenCalledTimes(1);
     expect(calls.onGenerate).not.toHaveBeenCalled();
@@ -555,7 +556,7 @@ describe('the other languages', () => {
   test.each(['ka', 'ru'])('%s: the panel renders its own words, and the price is the same number', (locale) => {
     setup({ locale });
     expect(screen.getByTestId('video-sound').textContent).toBe(locale === 'ka' ? 'ხმით' : 'Со звуком');
-    expect(price()).toBe('75');
+    expect(price()).toBe(String(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast' })));
     expect(screen.getByTestId('video-prompt-input').getAttribute('placeholder')).not.toMatch(/Describe the shot/);
   });
 });

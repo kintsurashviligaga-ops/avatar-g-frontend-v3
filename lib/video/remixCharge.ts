@@ -7,6 +7,7 @@
  * the route's names, so "add_music" and "music" are one op with one price.
  */
 import { creditCostFor } from '@/lib/credits/pricing';
+import { PRICE_BOOK } from '@/lib/credits/priceBook';
 
 export const REMIX_OP_ALIASES: Readonly<Record<string, string>> = {
   add_music: 'music', face_swap: 'character', character_swap: 'character', add_text_overlay: 'captions', add_subtitles: 'captions',
@@ -18,8 +19,12 @@ export const canonicalRemixOp = (raw: string): string => REMIX_OP_ALIASES[raw] ?
 
 export const isChargedRemixOp = (raw: string): boolean => CHARGED_REMIX_OPS.has(canonicalRemixOp(raw));
 
-/** What a charged remix op costs (every one but the product ad, which is billed as a video and never comes from the chat). */
-export const remixOpCredits = (): number => creditCostFor('remix');
+/**
+ * What a charged remix op costs (every one but the product ad, which is billed as a video and never comes from the chat):
+ * laying the user's own track under a clip is FFmpeg alone (the price book's remixMusic); every other charged op is priced
+ * as the voice-over, the dearest of them (creditCostFor('remix')). No op named = the voice-over's price.
+ */
+export const remixOpCredits = (op?: string): number => (op && canonicalRemixOp(op) === 'music' ? PRICE_BOOK.remixMusic : creditCostFor('remix'));
 
 type L = { ka: string; en: string; ru: string };
 const OP_LABEL: Record<string, L> = {

@@ -40,9 +40,9 @@ export function productAdSecondariesKey(jobId: string): string {
  * The highest clip index the PAID length covers: the longest offered length the net debit pays for
  * (lib/credits/quote productAdCredits), in 8 s clips, minus the primary.
  *
- * Under today's Production price every length costs 25 credits, so any paid ad covers six clips, as on main. Under the
- * audit's length rule (PRODUCT_AD_PRICING = 'length') an 8 s price covers the primary only, 24 s three clips, 48 s six,
- * so the 48 s ad's five extra Veo clips can no longer ride on a one-clip price.
+ * Under the length rule (PRODUCT_AD_PRICING = 'length', live with the price book) an 8 s price covers the primary only,
+ * 24 s three clips, 48 s six, so the 48 s ad's five extra Veo clips can no longer ride on a one-clip price. (Under the old
+ * flat price every length cost the same, so any paid ad covered six clips.)
  */
 export function maxSecondarySceneIndexFor(netPaid: number, rule: ProductAdPricing = PRODUCT_AD_PRICING): number {
   for (const len of [...PRODUCT_AD_LENGTHS].reverse()) {

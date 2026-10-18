@@ -108,19 +108,19 @@ test('a photoshoot preset pick writes the aspect chip (its suggested shape); the
 test('the price ON the button is the image route\'s function: photos x renders x creditCostFor(image)', async () => {
   render(<Harness tool="interior" />);
   const btn = () => screen.getByTestId('interior-generate');
-  expect(btn().getAttribute('data-price')).toBe(String(creditCostFor('image'))); // 2, one render
+  expect(btn().getAttribute('data-price')).toBe(String(creditCostFor('image'))); // one render
   fireEvent.click(screen.getByTestId('interior-chip-count'));
-  expect(within(screen.getByTestId('interior-options-count')).getAllByRole('radio').map((r) => r.textContent)).toEqual([
-    '1 image2 credits', '2 images4 credits', '3 images6 credits', '4 images8 credits', // every row carries its price
-  ]);
+  expect(within(screen.getByTestId('interior-options-count')).getAllByRole('radio').map((r) => r.textContent)).toEqual(
+    [1, 2, 3, 4].map((n) => `${n} image${n > 1 ? 's' : ''}${creditCostFor('image', { count: n })} credits`), // every row carries its price
+  );
   fireEvent.click(within(screen.getByTestId('interior-options-count')).getByRole('radio', { name: /3 images/ }));
   expect(btn().getAttribute('data-price')).toBe(String(creditCostFor('image', { count: 3 })));
-  // Two photos x three renders = six renders = 12 credits.
+  // Two photos x three renders = six renders = six images' price.
   const input = screen.getByTestId('interior-file') as HTMLInputElement;
   await act(async () => { fireEvent.change(input, { target: { files: [photo(), photo()] } }); });
   await waitFor(() => expect(screen.getAllByTestId('interior-photo')).toHaveLength(2));
   expect(btn().getAttribute('data-price')).toBe(String(creditCostFor('image', { count: 6 })));
-  expect(btn().getAttribute('data-price')).toBe('12');
+  expect(btn().getAttribute('data-price')).toBe(String(6 * creditCostFor('image')));
 });
 
 test('a guest is sent to sign-in before ANYTHING is submitted — no request, no job', () => {
@@ -134,12 +134,12 @@ test('a guest is sent to sign-in before ANYTHING is submitted — no request, no
 });
 
 test('a short balance turns the button into Top up, and the tap opens the top-up instead of a render', () => {
-  useCreditsBalance.setState({ balance: 0.1, fetchedAt: Date.now(), inflight: null }); // 0.1 GEL = 1 credit < 2
+  useCreditsBalance.setState({ balance: 0.1, fetchedAt: Date.now(), inflight: null }); // 0.1 GEL = 1 credit, under one image
   render(<Harness tool="photoshoot" />);
   fireEvent.click(screen.getByRole('radio', { name: 'Food' }));
   const btn = screen.getByTestId('photoshoot-generate');
   expect(btn.textContent).toContain('Top up');
-  expect(btn.getAttribute('data-price')).toBe('2'); // the price stays visible
+  expect(btn.getAttribute('data-price')).toBe(String(creditCostFor('image'))); // the price stays visible
   fireEvent.click(btn);
   expect(events).toEqual(['myavatar:open-credits']);
   expect(useJobQueue.getState().jobs).toHaveLength(0);

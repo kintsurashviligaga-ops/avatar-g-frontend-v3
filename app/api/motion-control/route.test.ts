@@ -23,7 +23,7 @@ jest.mock('../../../lib/orchestrator/jobs', () => ({ createJob: jest.fn(async ()
 jest.mock('../../../lib/orchestrator/ledger', () => ({
   hasSufficientBalance: jest.fn(async () => true),
   deductCredits: jest.fn(async () => ({ ok: true })),
-  refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 15 })),
+  refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 5 })),
 }));
 jest.mock('../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
@@ -32,6 +32,10 @@ import { klingSubmit } from '../../../lib/ai/klingClient';
 import { createJob } from '../../../lib/orchestrator/jobs';
 import { deductCredits, refundDebitByRef } from '../../../lib/orchestrator/ledger';
 import { motionChargeForPolledId } from '../../../lib/services/motion/chargeToken';
+import { creditCostFor } from '../../../lib/credits/pricing';
+
+/** The motion transfer's price: the route reserves creditCostFor('remix'), the number the Motion button shows. */
+const MOTION = creditCostFor('remix');
 
 const ENV = { ...process.env };
 const BODY = { characterImageUrl: 'data:image/png;base64,AAAA', motionPrompt: 'dancing', duration: 5, aspectRatio: '9:16' };
@@ -55,7 +59,7 @@ test('the reservation lands BEFORE the paid submit, under a fresh server ref', a
   expect(order[0]).toBeLessThan(order[1]!);
   const [uid, amount, ref] = (deductCredits as jest.Mock).mock.calls[0];
   expect(uid).toBe('user-1');
-  expect(amount).toBe(15);
+  expect(amount).toBe(MOTION);
   expect(ref).toMatch(/^motion:reserve:[0-9a-f-]{36}:user-1$/);
 });
 
@@ -70,7 +74,7 @@ test('the job row is AWAITED, born processing, and carries `_settle` for the cro
   expect(createJob).toHaveBeenCalledTimes(1);
   const row = (createJob as jest.Mock).mock.calls[0][0];
   expect(row).toMatchObject({ id: 'motion:pred-abc', userId: 'user-1', status: 'processing' });
-  expect(row.params._settle).toEqual({ v: 1, kind: 'motion', job: 'pred-abc', ref: (deductCredits as jest.Mock).mock.calls[0][2], credits: 15 });
+  expect(row.params._settle).toEqual({ v: 1, kind: 'motion', job: 'pred-abc', ref: (deductCredits as jest.Mock).mock.calls[0][2], credits: MOTION });
   expect(row.params._reserve).toBeUndefined();
 });
 
@@ -104,7 +108,7 @@ test('a submit that throws refunds the reservation through the ledger and never 
   expect(res.status).toBe(502);
   const j = await res.json();
   const ref = (deductCredits as jest.Mock).mock.calls[0][2];
-  expect(refundDebitByRef).toHaveBeenCalledWith('user-1', ref, 15);
+  expect(refundDebitByRef).toHaveBeenCalledWith('user-1', ref, MOTION);
   expect(j.refunded).toBe(true);
   expect(JSON.stringify(j)).not.toMatch(/replicate|billing/i);
   expect(createJob).not.toHaveBeenCalled();
