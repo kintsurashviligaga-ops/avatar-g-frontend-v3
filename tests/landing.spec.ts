@@ -343,7 +343,8 @@ for (const vp of VIEWPORTS) {
       await video.click();
       await expect(page.getByTestId('tool-sheet')).toHaveCount(0); // the sheet closed
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
-      await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
+      // Picking it again opens its Create screen again (a desktop's panel, a phone's sheet), and that holds the description.
+      await expect(page.getByTestId('video-prompt-input').filter({ visible: true })).toBeVisible();
     });
 
     test('with text in the box, Send takes the live-voice slot', async ({ page }) => {
@@ -492,7 +493,8 @@ test.describe('guest dashboard · desktop is a studio', () => {
 
   test('navigation, the session and its settings side by side — Google AI Studio’s three columns', async ({ page }) => {
     // A tool that keeps the generic settings panel (the Create screens of video / image / music draw their own header).
-    await openDashboard(page, '/ka/dashboard?tool=remix');
+    // The remix was that tool until it left every menu and deep link (GG's UI plan, 2026-10-18); the product ad is now.
+    await openDashboard(page, '/ka/dashboard?tool=product');
     const nav = (await page.locator('aside[aria-label="მენიუ"]').boundingBox())!;
     const bar = page.locator('header').filter({ visible: true });
     await expect(bar).toHaveCount(1); // the studio's own title bar; the phone header steps aside
@@ -501,7 +503,7 @@ test.describe('guest dashboard · desktop is a studio', () => {
     const settings = page.locator('#studio-settings');
     await expect(settings).toBeVisible();
     // ONE header: the tool's name (▾ switches the tool) — not a „Settings" title with the tool on a card under it.
-    await expect(settings.getByRole('heading', { name: /რემიქსი/ })).toBeVisible();
+    await expect(settings.getByRole('heading', { name: /პროდუქტის რეკლამა/ })).toBeVisible();
     await expect(settings.getByRole('heading', { name: 'პარამეტრები' })).toHaveCount(0);
     const right = (await settings.boundingBox())!;
     expect(nav.x + nav.width).toBeLessThanOrEqual(title.x + 1);

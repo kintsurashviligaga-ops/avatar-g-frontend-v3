@@ -113,8 +113,8 @@ export function UploadCard({ photos, max, title, limit, note, notice, copy, onFi
 
 // ─── The prompt card ─────────────────────────────────────────────────────────────────────────────────────────────
 
-export function PromptCard({ value, onChange, placeholder, copy, testId }: {
-  value: string; onChange: (v: string) => void; placeholder: string; copy: ShootCopy; testId: string;
+export function PromptCard({ value, onChange, placeholder, testId }: {
+  value: string; onChange: (v: string) => void; placeholder: string; testId: string;
 }) {
   const id = useId();
   return (

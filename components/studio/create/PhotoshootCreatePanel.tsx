@@ -57,7 +57,7 @@ export function PhotoshootCreatePanel(p: PhotoshootPanelProps) {
   return (
     <div data-testid="photoshoot-panel" className="space-y-4 pb-1">
       <PanelHeader Icon={Camera} title={toolName('photoshoot', p.locale)} copy={copy} onSwitch={p.onSwitchTool} onClose={p.onClose} testId="photoshoot" />
-      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} copy={copy} testId="photoshoot" />
+      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} testId="photoshoot" />
       <UploadCard photos={p.form.photos} max={SHOOT_MAX_PHOTOS} title={c.uploadTitle} limit={c.uploadLimit} note={p.form.photos.length ? c.uploadNoteWithPhoto : c.uploadNote}
         notice={p.notice} copy={copy} onFiles={p.onAddPhotos} onRemove={p.onRemovePhoto} testId="photoshoot" />
       <TemplateCarousel label={c.carousel} testId="photoshoot-presets" scrollLabels={{ prev: copy.prev, next: copy.next }} Icon={Camera}

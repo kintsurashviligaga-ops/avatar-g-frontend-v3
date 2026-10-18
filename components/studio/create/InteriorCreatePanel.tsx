@@ -50,7 +50,7 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
   return (
     <div data-testid="interior-panel" className="space-y-4 pb-1">
       <PanelHeader Icon={Armchair} title={toolName('interior', p.locale)} copy={copy} onSwitch={p.onSwitchTool} onClose={p.onClose} testId="interior" />
-      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} copy={copy} testId="interior" />
+      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} testId="interior" />
       <UploadCard photos={p.form.photos} max={SHOOT_MAX_PHOTOS} title={c.uploadTitle} limit={c.uploadLimit} note={p.form.photos.length ? c.uploadNoteWithPhoto : c.uploadNote}
         notice={p.notice} copy={copy} onFiles={p.onAddPhotos} onRemove={p.onRemovePhoto} testId="interior" />
       <ChipScroller label={copy.roomType} testId="interior-room"

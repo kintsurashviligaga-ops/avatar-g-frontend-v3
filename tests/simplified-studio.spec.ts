@@ -36,9 +36,10 @@ test('the retired addresses land in the studio\'s own tools', async ({ page }) =
     await page.goto(`/en/dashboard#${hash}`);
     await expect.poll(() => tool(page), { timeout: 45_000 }).toBe(want);
     expect(new URL(page.url()).hash, `#${hash} is dropped from the address`).toBe('');
-    // No three-card hub, no film director: the studio's composer is the page.
+    // No three-card hub, no film director: the studio's composer is the page (in Video its description is on the panel,
+    // and the composer's own box steps aside while that panel is open — GG, 2026-10-18).
     await expect(page.getByText('Choose a service')).toHaveCount(0);
-    await expect(page.locator('textarea').first()).toBeVisible();
+    await expect(page.locator('textarea').filter({ visible: true }).first()).toBeVisible();
   }
 });
 
