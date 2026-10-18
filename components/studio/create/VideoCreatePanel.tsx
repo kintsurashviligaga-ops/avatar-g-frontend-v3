@@ -1,43 +1,33 @@
 'use client';
 
 /**
- * VideoCreatePanel — the video tool's create screen (ref4 / ref5), one component for the phone's sheet and the desktop's
- * right column (the same element, only the surrounding scroll container differs).
+ * VideoCreatePanel — the video tool's settings, one component for the phone's sheet and the desktop's right column.
  *
- * Order, top to bottom (GG 2026-10-18, „ეტაპობრივი გამჟღავნება"): header (tool name + tool switcher, ✕) → Film | Music
- * video switch → Prompt (+ "@ Elements", 🔊 On/Off) → "Add references" (images → the film's reference frames, audio → the
- * soundtrack) → [length] [format] tiles → disclosures (Story & style · Voice & music · Advanced settings) → Generate ✦ N,
- * pinned. ADVANCED SETTINGS, closed until tapped, holds everything technical: the HERO model card ("✎ Change"), the
- * quality row (Lite · Fast · Max quality, each with its price), the resolution tile and the Veo camera controls. Shut, its
- * summary names the model and the resolution, so the choice on the button is never a secret.
+ * GG 2026-10-18 („ზედმეტი ფუნქციები წაშალე… პრომპტი ჩატის ველში უნდა ჩაიწეროს"): THE PROMPT LIVES ONLY IN THE CHAT
+ * COMPOSER, and the composer's Send (its price on it — the same videoQuote) starts the film through the same runTool/send
+ * path the panel's Generate used. The panel keeps only what changes the film, as short rows of dropdowns and switches:
+ * header → Film | Music video → [length] [format] → Quality (priced select) · Sound · Narrator · Music · Subtitles (film) /
+ * Lip-sync (music video, priced) → the optional photos (and a song). No disclosures, no second prompt box, no Generate —
+ * except where a Higgsfield model is picked (its saga's own priced button, reading the composer's text).
  *
- * ⚠️ NOTHING THE CINEMA TAB HAD IS GONE. Mode, effect, transitions, voices, dialogue, lip-sync, the master script, the
- * templates, the scene frames, the storyboard and the Veo camera controls are the three disclosures' content — OmniStudio
- * passes the very same blocks in as `story`, `voice` and `advanced`, so they keep their state and their behaviour.
+ * Script, dialogue, lyrics, per-scene action, effect and camera are no longer panel controls: the user types them in the
+ * prompt, or attaches a .txt / .pdf / .docx in the composer (extractScriptText). Their state keeps its defaults.
  *
- * THE MODEL is the studio's one ModelPicker (components/studio/ui/ModelPicker): Google first — Veo 3.1 Lite · Fast · Max
- * quality, which the film route runs (`veo.tier` — the tier IS the model; Fast is the default) — then the Higgsfield video
- * models, open where this deployment can run them and dimmed with why where it cannot. "✎ Change", the Model row and the
- * resolution tile open it. The film / music-video switch sits on the panel itself, under the header. The pick is remembered in this browser
- * (lib/studio/modelPick) and re-applied when the panel mounts; whatever changes the tier (the quality row, the desktop table)
- * is remembered too. No price in it — the price is on Generate.
+ * THE MODEL: the Quality select names the three Veo 3.1 tiers (the tier IS the model; Fast is the default) with their
+ * prices; „Other models…" opens the studio's one ModelPicker (the Higgsfield video models, open where this deployment runs
+ * them). The pick is remembered in this browser (lib/studio/modelPick) and re-applied when the panel mounts.
  *
- * A HIGGSFIELD PICK renders one clip through the studio saga (HiggsfieldGenerate: the server's price on the button, the tap
- * confirms it) instead of the Veo film: the hero and the Model row name it, the Veo tier row steps aside, and the line above
- * the button says the length that model really renders (Kling: 3–15 s).
- *
- * ⚠️ THE NUMBER ON THE BUTTON IS THE QUOTE (lib/video/createPanel.videoQuote → quoteCredits → videoCredits) for exactly the
- * seconds, tier and mode on screen; the server charges the film through the same function. No request carries a price.
- * `free` shows only for ONE short clip (≤ 8 s) while the trial slot is left; `insufficient` turns the tap into the top-up.
+ * ⚠️ EVERY PRICE HERE IS THE QUOTE (lib/video/createPanel.videoQuote → quoteCredits) for the seconds, tier and mode on
+ * screen; the server charges the film through the same function. No request carries a price.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { GenerateButton } from '@/components/studio/ui/GenerateButton';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ModelPicker } from '@/components/studio/ui/ModelPicker';
 import { catalogueEntry, catalogueLang, tierForVideoModel, videoModelForTier, type ModelRunner } from '@/lib/providers/catalogue';
 import { pickerRows, useModelPick } from '@/lib/studio/modelPick';
 import { useCatalogueStatus } from '@/components/studio/ui/useCatalogueStatus';
+import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { HiggsfieldGenerate } from './HiggsfieldGenerate';
-import { videoQuote, freeSlotApplies, lipsyncAddOnNote, insertPromptToken, openDuration, videoResolution, type VideoCapabilities } from '@/lib/video/createPanel';
+import { lipsyncAddOnNote, openDuration, type VideoCapabilities } from '@/lib/video/createPanel';
 import { activePlan, describeDurationPlan } from '@/lib/video/durationContract';
 import { planNotices, type VeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
 import type { VideoMode } from '@/lib/credits/videoPricing';
@@ -45,8 +35,7 @@ import type { OutputFormat } from '@/lib/veo/types';
 import type { VeoEngineInfo } from '../video/VeoParametersPanel';
 import { VideoDurationSheet, VideoFormatSheet, VideoModeChoice } from './VideoPickers';
 import {
-  VideoCreateHeader, VideoDisclosure, VideoGenerateBar, VideoHero, VideoPromptCard, VideoQualityRow, VideoRefsCard,
-  VideoResolutionTile, VideoTiles, modelRowName,
+  CARD, VideoCreateHeader, VideoGenerateBar, VideoQualitySelect, VideoRefsRow, VideoSelect, VideoSettingRow, VideoSwitch, VideoTiles,
 } from './videoCreateParts';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
 
@@ -64,22 +53,31 @@ export interface VideoCreateRefs {
   onRemoveAudio: () => void;
 }
 
+/** What the panel still needs to say about money (the Veo film itself starts from the composer's priced Send). */
 export interface VideoCreateGenerate {
-  /** Start the film — the same entry the composer's Send uses (guest gate and all). */
-  onGenerate: () => void;
-  /** A film or storyboard is already being made. */
-  busy: boolean;
-  /** There is something to make a film from (a prompt, a script or scene frames). */
-  canGenerate: boolean;
-  /** Whole credits, or null when unknown (a guest, or not read yet). Display-only. */
+  /** Whole credits, or null when unknown (a guest, or not read yet). Display-only — a Higgsfield pick's button reads it. */
   balanceCredits: number | null;
-  /** First-video slots left, or null when unknown. */
-  freeFilmsRemaining: number | null;
   /** Open the shell's top-up. */
   onTopUp: () => void;
   /** The lip-sync pass this film would run, in credits (lib/video/createPanel.lipsyncAddOnCredits): its own charge,
-   *  named under Generate beside the film's number. 0 or absent → this film runs none. */
+   *  named under the switches. 0 or absent → this film runs none. */
   lipsyncCredits?: number;
+  /** Put the cursor in the chat box (a Higgsfield tap with nothing typed). */
+  onNeedPrompt?: () => void;
+}
+
+/** The film's sound switches — each bound to the studio's own state, so the request reads them unchanged. */
+export interface VideoCreateAudio {
+  narration: boolean;
+  onNarration: (on: boolean) => void;
+  narratorGender: 'female' | 'male';
+  onNarratorGender: (g: 'female' | 'male') => void;
+  music: boolean;
+  onMusic: (on: boolean) => void;
+  subtitles: boolean;
+  onSubtitles: (on: boolean) => void;
+  lipsync: boolean;
+  onLipsync: (on: boolean) => void;
 }
 
 export interface VideoCreatePanelProps {
@@ -98,11 +96,11 @@ export interface VideoCreatePanelProps {
   onSeconds: (s: number) => void;
   format: OutputFormat;
   onFormat: (f: OutputFormat) => void;
+  /** The chat box's text (read-only here): a Higgsfield pick's button sends it. */
   prompt: string;
-  onPrompt: (v: string) => void;
-  placeholder?: string;
   refs: VideoCreateRefs;
   generate: VideoCreateGenerate;
+  audio: VideoCreateAudio;
   /** The lengths the server can render today (already limited to what the studio can order). */
   caps: VideoCapabilities;
   /** Video Core v1.0 §4 — the length the user asked for in words when it is off the grid (OmniStudio videoRequestedSec):
@@ -110,15 +108,6 @@ export interface VideoCreatePanelProps {
   requestedSec?: number | null;
   /** The plan's join model (lib/video/durationContract joinOverlapFor): 0 with cuts, 1 s per soft join — the scenes are counted from the stitched length. */
   joinOverlapSec?: number;
-  story: ReactNode;
-  voice: ReactNode;
-  advanced: ReactNode;
-  /** Shown under the Film | Music video switch while Music video is picked (the clip's genre and light). */
-  musicLook?: ReactNode;
-  storySummary?: string;
-  voiceSummary?: string;
-  storyOpenWhen?: boolean;
-  voiceOpenWhen?: boolean;
 }
 
 type Sheet = 'duration' | 'format' | 'model' | null;
@@ -127,10 +116,8 @@ type Sheet = 'duration' | 'format' | 'model' | null;
 const FILM_RUNNERS: readonly ModelRunner[] = ['film', 'studio'];
 
 export function VideoCreatePanel(p: VideoCreatePanelProps) {
-  const { locale, plan, dispatch, mode, seconds, format, prompt, refs, generate, caps } = p;
+  const { locale, plan, dispatch, mode, seconds, format, prompt, refs, generate, caps, audio } = p;
   const [sheet, setSheet] = useState<Sheet>(null);
-  const [needed, setNeeded] = useState(false);
-  const promptRef = useRef<HTMLTextAreaElement>(null);
 
   // A stored, typed or templated length that is off the grid — or locked — never stays selected.
   useEffect(() => {
@@ -139,19 +126,16 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
     // p.onSeconds is a state setter in the caller; seconds/caps are what decide whether it must run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seconds, caps]);
-  useEffect(() => { if (prompt.trim()) setNeeded(false); }, [prompt]);
 
   const tier = plan.tier;
-  const credits = videoQuote({ seconds, tier, mode });
-  const resolution = videoResolution(seconds);
   // The three lengths of an off-grid request — said only when there IS a trim to say (an on-grid ask is one length, the tile's).
   const requestPlan = activePlan(p.requestedSec, seconds, caps, { joinOverlapSec: p.joinOverlapSec ?? 0 });
   const finalPlan = requestPlan && requestPlan.deviation === 'trim' ? requestPlan : null;
 
   // ── the remembered model ────────────────────────────────────────────────────────────────────────────────────────────
   // The film's tier lives in the studio's Veo plan; this browser's pick lives in lib/studio/modelPick. A stored pick is
-  // applied when it arrives (after hydration, or from another tab); any later tier change — this sheet, the quality row,
-  // the desktop table — is stored. Neither effect writes what the other just read, so they cannot ping-pong.
+  // applied when it arrives (after hydration, or from another tab); any later tier change is stored. Neither effect writes
+  // what the other just read, so they cannot ping-pong.
   const [storedModel, setStoredModel] = useModelPick('video');
   useEffect(() => {
     const t = tierForVideoModel(storedModel);
@@ -176,76 +160,93 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
     if (status && storedIsStudio && !hf) setStoredModel(videoModelForTier(plan.tier).id);
   }, [status, storedIsStudio, hf, plan.tier, setStoredModel]);
   const hfName = hf ? hf.label[catalogueLang(locale)] : undefined;
-  const hfHints = useMemo(() => ({ aspect: format, seconds, sound: plan.nativeAudio || !(p.engine?.audioToggle ?? false) }), [format, seconds, plan.nativeAudio, p.engine?.audioToggle]);
-  const free = freeSlotApplies(generate.freeFilmsRemaining, seconds);
-  const insufficient = !free && generate.balanceCredits !== null && generate.balanceCredits < credits;
   const audioToggle = p.engine?.audioToggle ?? false;
+  const soundOn = plan.nativeAudio || !audioToggle;
+  const hfHints = useMemo(() => ({ aspect: format, seconds, sound: soundOn }), [format, seconds, soundOn]);
   const croppedNotes = planNotices({ ...plan, format }, { audioToggle }).filter((n) => n.id === 'cropped').map((n) => n[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka']);
-
-  const insertToken = useCallback((token: string) => {
-    const el = promptRef.current;
-    const r = insertPromptToken(prompt, el?.selectionStart ?? prompt.length, el?.selectionEnd ?? prompt.length, token);
-    p.onPrompt(r.value);
-    requestAnimationFrame(() => { el?.focus(); try { el?.setSelectionRange(r.caret, r.caret); } catch { /* an unfocusable box */ } });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prompt, p.onPrompt]);
-
-  const onGenerate = () => {
-    if (insufficient) { generate.onTopUp(); return; }
-    if (!generate.canGenerate) { setNeeded(true); promptRef.current?.focus(); return; }
-    setNeeded(false);
-    generate.onGenerate();
-  };
+  const film = mode !== 'musicvideo';
+  const narrator: 'off' | 'female' | 'male' = audio.narration ? audio.narratorGender : 'off';
+  const lipsyncPrice = creditsLabel(quoteCredits({ tool: 'avatar' }), locale);
 
   return (
     <div data-testid="video-create-panel" className="space-y-3">
       <VideoCreateHeader locale={locale} title={p.toolName} onSwitchTool={p.onSwitchTool} onClose={p.onClose} />
       <VideoModeChoice locale={locale} mode={mode} onMode={p.onMode} />
-      {mode === 'musicvideo' && p.musicLook}
-      {/* No Create | Extend tabs: Extend is not open yet (Veo continues a clip from its last frame; until that path is ready a
-          long film is made with the length picker), and a whole tab that only said „soon" was the first thing under the model. */}
-      <div className="space-y-3">
-          <VideoPromptCard
-            locale={locale} value={prompt} onChange={p.onPrompt} placeholder={p.placeholder ?? vc(VIDEO_COPY.placeholder, locale)} textareaRef={promptRef}
-            images={refs.images} onInsertToken={insertToken} onAddImage={refs.onAddImage}
-            soundOn={plan.nativeAudio || !audioToggle} soundLocked={!audioToggle}
-            onToggleSound={() => dispatch({ type: 'nativeAudio', on: !plan.nativeAudio })} needed={needed} />
-          <VideoRefsCard locale={locale} images={refs.images} maxImages={refs.max} onAddImage={refs.onAddImage} onRemoveImage={refs.onRemoveImage}
-            audio={refs.audio} audioBusy={refs.audioBusy} onAddAudio={refs.onAddAudio} onRemoveAudio={refs.onRemoveAudio} />
-          <VideoTiles locale={locale} seconds={seconds} format={format} onLength={() => setSheet('duration')} onFormat={() => setSheet('format')} />
-          {finalPlan && (
-            <p data-testid="video-duration-plan" data-final={finalPlan.finalSec} data-native={finalPlan.nativeSec} data-frames={finalPlan.finalFrames}
-              className="rounded-2xl bg-app-elevated/70 px-3.5 py-2.5 text-[12.5px] leading-snug tabular-nums text-app-muted">
-              {describeDurationPlan(finalPlan, locale)}
-            </p>
-          )}
+      <VideoTiles locale={locale} seconds={seconds} format={format} onLength={() => setSheet('duration')} onFormat={() => setSheet('format')} />
+      {finalPlan && (
+        <p data-testid="video-duration-plan" data-final={finalPlan.finalSec} data-native={finalPlan.nativeSec} data-frames={finalPlan.finalFrames}
+          className="rounded-2xl bg-app-elevated/70 px-3.5 py-2.5 text-[12.5px] leading-snug tabular-nums text-app-muted">
+          {describeDurationPlan(finalPlan, locale)}
+        </p>
+      )}
 
-          <VideoDisclosure id="story" title={vc(VIDEO_COPY.story, locale)} summary={p.storySummary} openWhen={p.storyOpenWhen}>{p.story}</VideoDisclosure>
-          <VideoDisclosure id="voice" title={vc(VIDEO_COPY.voice, locale)} summary={p.voiceSummary} openWhen={p.voiceOpenWhen}>{p.voice}</VideoDisclosure>
-          <VideoDisclosure id="advanced" title={vc(VIDEO_COPY.advanced, locale)} summary={`${hfName ?? modelRowName(tier)} · ${resolution}`}>
-            <VideoHero locale={locale} tier={tier} mode={mode} format={format} seconds={seconds} onChange={() => setSheet('model')} {...(hfName ? { title: hfName } : {})} />
-            {/* Veo's three tiers ARE Veo models; with a Higgsfield model picked they would be a second, contradicting choice. */}
-            {!hf && <VideoQualityRow locale={locale} tier={tier} mode={mode} seconds={seconds} onTier={(t) => dispatch({ type: 'tier', tier: t })} />}
-            <VideoResolutionTile locale={locale} resolution={resolution} onClick={() => setSheet('model')} />
-            {p.advanced}
-          </VideoDisclosure>
+      <div data-testid="video-settings" className={`${CARD} divide-y divide-app-border/10 py-1`}>
+        <VideoSettingRow label={vc(VIDEO_COPY.quality, locale)}>
+          <VideoQualitySelect locale={locale} tier={tier} mode={mode} seconds={seconds} otherName={hfName}
+            onTier={(t) => { if (hf) setStoredModel(videoModelForTier(t).id); dispatch({ type: 'tier', tier: t }); }}
+            onOtherModels={() => setSheet('model')} />
+        </VideoSettingRow>
+        <VideoSettingRow label={vc(VIDEO_COPY.sound, locale)} sub={vc(soundOn ? VIDEO_COPY.on : VIDEO_COPY.off, locale)}>
+          <VideoSwitch label={vc(VIDEO_COPY.sound, locale)} on={soundOn} onChange={(on) => dispatch({ type: 'nativeAudio', on })} testId="video-sound"
+            locked={!audioToggle} lockedReason={vc(VIDEO_COPY.soundLocked, locale)} />
+        </VideoSettingRow>
+        {film ? (
+          <>
+            <VideoSettingRow label={vc(VIDEO_COPY.narrator, locale)}>
+              <VideoSelect label={vc(VIDEO_COPY.narrator, locale)} value={narrator} testId="video-narrator"
+                options={[
+                  { value: 'off', label: vc(VIDEO_COPY.narratorOff, locale) },
+                  { value: 'female', label: vc(VIDEO_COPY.female, locale) },
+                  { value: 'male', label: vc(VIDEO_COPY.male, locale) },
+                ]}
+                onChange={(v) => {
+                  if (v === 'off') { audio.onNarration(false); return; }
+                  audio.onNarratorGender(v);
+                  audio.onNarration(true);
+                }} />
+            </VideoSettingRow>
+            <VideoSettingRow label={vc(VIDEO_COPY.music, locale)}>
+              <VideoSwitch label={vc(VIDEO_COPY.music, locale)} on={audio.music} onChange={audio.onMusic} testId="video-music" />
+            </VideoSettingRow>
+            {audio.narration && (
+              <VideoSettingRow label={vc(VIDEO_COPY.subtitles, locale)}>
+                <VideoSwitch label={vc(VIDEO_COPY.subtitles, locale)} on={audio.subtitles} onChange={audio.onSubtitles} testId="video-subtitles" />
+              </VideoSettingRow>
+            )}
+          </>
+        ) : (
+          <VideoSettingRow label={vc(VIDEO_COPY.lipsync, locale)} sub={vc(VIDEO_COPY.lipsyncSub(lipsyncPrice), locale)}>
+            <VideoSwitch label={vc(VIDEO_COPY.lipsync, locale)} on={audio.lipsync} onChange={audio.onLipsync} testId="video-lipsync" />
+          </VideoSettingRow>
+        )}
+        <VideoRefsRow locale={locale} images={refs.images} maxImages={refs.max} onAddImage={refs.onAddImage} onRemoveImage={refs.onRemoveImage}
+          audio={refs.audio} audioBusy={refs.audioBusy} onAddAudio={refs.onAddAudio} onRemoveAudio={refs.onRemoveAudio} />
+      </div>
 
-          <VideoGenerateBar surface={p.surface}>
-            {hf ? (
-              <HiggsfieldGenerate locale={locale} modelId={hf.id} service="video" label={vc(VIDEO_COPY.generate, locale)} prompt={prompt}
-                hints={hfHints} images={refs.images} balanceCredits={generate.balanceCredits} onTopUp={generate.onTopUp}
-                onNeedPrompt={() => { setNeeded(true); promptRef.current?.focus(); }} buttonTestId="video-generate" />
-            ) : (
-              <GenerateButton service="video.generate" label={vc(VIDEO_COPY.generate, locale)} credits={credits} free={free} insufficient={insufficient}
-                loading={generate.busy} loadingLabel={vc(VIDEO_COPY.rendering, locale)} locale={locale} onClick={onGenerate} testId="video-generate" />
-            )}
-            {!hf && (generate.lipsyncCredits ?? 0) > 0 && (
-              <p data-testid="video-lipsync-addon" data-credits={generate.lipsyncCredits} className="mt-1.5 text-center text-[11px] leading-snug text-app-muted">
-                {lipsyncAddOnNote(generate.lipsyncCredits ?? 0, locale)}
-              </p>
-            )}
-          </VideoGenerateBar>
-        </div>
+      {!hf && (generate.lipsyncCredits ?? 0) > 0 && (
+        <p data-testid="video-lipsync-addon" data-credits={generate.lipsyncCredits} className="px-1 text-[11.5px] leading-snug text-app-muted">
+          {lipsyncAddOnNote(generate.lipsyncCredits ?? 0, locale)}
+        </p>
+      )}
+
+      {hf ? (
+        // A Higgsfield model renders through the studio saga: its server's price on its own button, the tap confirms it.
+        // It sends the chat box's text — there is no second prompt box.
+        <VideoGenerateBar surface={p.surface}>
+          <HiggsfieldGenerate locale={locale} modelId={hf.id} service="video" label={vc(VIDEO_COPY.generate, locale)} prompt={prompt}
+            hints={hfHints} images={refs.images} balanceCredits={generate.balanceCredits} onTopUp={generate.onTopUp}
+            onNeedPrompt={() => generate.onNeedPrompt?.()} buttonTestId="video-generate" />
+        </VideoGenerateBar>
+      ) : (
+        <p data-testid="video-prompt-hint" className="px-1 text-[12.5px] leading-snug text-app-muted">{vc(VIDEO_COPY.promptInChat, locale)}</p>
+      )}
+      {p.surface === 'sheet' && !hf && (
+        // The phone's sheet covers the chat box: „Done" closes it, back to the box and its priced Send.
+        <button type="button" onClick={p.onClose} data-testid="video-settings-done"
+          className="flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-app-elevated px-5 text-[15px] font-semibold text-app-text ring-1 ring-app-border/15 transition-colors hover:bg-app-elevated/70">
+          {vc(VIDEO_COPY.done, locale)}
+        </button>
+      )}
 
       <VideoDurationSheet open={sheet === 'duration'} onClose={() => setSheet(null)} locale={locale} seconds={seconds} onChange={p.onSeconds} caps={caps} tier={tier} mode={mode} requestedSec={p.requestedSec ?? null} joinOverlapSec={p.joinOverlapSec ?? 0} />
       <VideoFormatSheet open={sheet === 'format'} onClose={() => setSheet(null)} locale={locale} format={format} onChange={p.onFormat} musicVideo={mode === 'musicvideo'} notes={croppedNotes} />

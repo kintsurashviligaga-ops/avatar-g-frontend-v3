@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { fingerprintBoard, isFingerprint, renderScriptsFor, type BoardLike } from '@/lib/video/storyboard/revision';
-import { openStudio, openVideoTool, waitForBoard, cancelStoryboard, shot, recordFinding, revisionMismatch, REVISION_MISMATCH_MESSAGE, SB_TITLE, ROUTE_CHECK_MS } from './_shared';
+import { quoteCredits } from '@/lib/credits/quote';
+import { openStudio, openVideoTool, waitForBoard, cancelStoryboard, shot, recordFinding, revisionMismatch, REVISION_MISMATCH_MESSAGE, SB_TITLE, ROUTE_CHECK_MS, typeFilmPrompt, sendFilm } from './_shared';
 
 /**
  * THE RENDER IS APPROVED FROM A REVISION — Video Core v1.0 §5, in a real browser, every route mocked:
@@ -24,8 +25,8 @@ test.describe('Video Core — storyboard approval and revision_mismatch', () => 
     const calls = await openStudio(page, { orchestrate: () => revisionMismatch() });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await openVideoTool(page, isMobile);
-    await page.getByTestId('video-prompt-input').fill(PROMPT);
-    await page.getByTestId('video-generate').click();
+    await typeFilmPrompt(page, PROMPT);
+    await sendFilm(page);
     await waitForBoard(page, 'en', 3);
     expect(calls.storyboard.filter((b) => b.planOnly)).toHaveLength(1);
     expect(calls.storyboard.filter((b) => b.sceneOrdinal)).toHaveLength(3); // one frame per scene, no retries
@@ -82,8 +83,8 @@ test.describe('Video Core — storyboard approval and revision_mismatch', () => 
     const calls = await openStudio(page, { director: true });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await openVideoTool(page, isMobile);
-    await page.getByTestId('video-prompt-input').fill(PROMPT);
-    await page.getByTestId('video-generate').click();
+    await typeFilmPrompt(page, PROMPT);
+    await sendFilm(page);
     await waitForBoard(page, 'en', 3);
     const scene2 = page.getByLabel('Scene 2', { exact: true });
     await scene2.fill(EDITED);
@@ -125,22 +126,21 @@ test.describe('Video Core — a short film is one shorter clip everywhere it is 
   // Found in the paid Production run of 2026-10-15: a 4 s film rendered as ONE 4 s Veo clip (dispatch clipSec 4, a 4.01 s
   // MP4, quoted 13 credits) while the board's scene tile and the Scenes & camera drawer both still said 8 s. The storyboard
   // route plans on the 8 s grid (clipSec 8, as mocked here); the board narrows it to the picked length.
-  test('a 4 s pick: the board header, the scene tile and the Scenes & camera drawer all say 4 s, and the dispatch asks for 4 s', async ({ page, isMobile }) => {
+  // (GG 2026-10-18: the Scenes & camera drawer left the panel; the length tile and the chat box's priced Send say it now.)
+  test('a 4 s pick: the length tile, the Send\'s price, the board header and the scene tile all say 4 s, and the dispatch asks for 4 s', async ({ page, isMobile }) => {
     const calls = await openStudio(page, { orchestrate: () => revisionMismatch() });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await openVideoTool(page, isMobile);
-    await page.getByTestId('video-prompt-input').fill(PROMPT);
     await page.getByTestId('video-tile-length').click();
     await expect(page.getByTestId('video-duration-sheet')).toBeVisible();
     await page.getByTestId('video-preset-4').click();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('video-duration-sheet')).toBeHidden();
+    await expect(page.getByTestId('video-tile-length')).toHaveText('4s');
 
-    const advanced = page.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
-    if ((await advanced.getAttribute('aria-expanded')) === 'false') await advanced.click();
-    await expect(page.getByTestId('veo-parameters').getByRole('button', { name: /Scenes & camera/ })).toContainText('1 × 4s');
-
-    await page.getByTestId('video-generate').click();
+    await typeFilmPrompt(page, PROMPT);
+    await expect(page.getByTestId('run-button')).toHaveAttribute('data-price', String(quoteCredits({ tool: 'video', seconds: 4, quality: 'fast' })));
+    await sendFilm(page);
     await waitForBoard(page, 'en', 1);
     expect(calls.storyboard.filter((b) => b.planOnly).map((b) => b.sceneCount)).toEqual([1]);
     await expect(page.getByText('4s · 1×4s', { exact: true })).toBeVisible();

@@ -439,3 +439,133 @@ export function VideoGenerateBar({ surface, children }: { surface: 'sheet' | 'pa
   );
 }
 
+
+// ── The compact settings list (GG 2026-10-18: „მხოლოდ საჭირო ღილაკები… ადგილის დაზოგვით ჩამოსაშლელები") ─────────────
+
+/** One labelled row of the settings card: the name on the left, its control (a select or a switch) on the right. */
+export function VideoSettingRow({ label, sub, children, testId }: { label: string; sub?: string; children: ReactNode; testId?: string }) {
+  return (
+    <div data-testid={testId} className="flex min-h-[48px] items-center justify-between gap-3 px-3.5 py-1.5">
+      <span className="min-w-0">
+        <span className="block text-[14px] font-medium leading-tight text-app-text">{label}</span>
+        {sub ? <span className="mt-0.5 block text-[11.5px] leading-tight text-app-muted">{sub}</span> : null}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/** A native select — the phone's own picker, the smallest dropdown there is. */
+export function VideoSelect<T extends string>({ label, value, options, onChange, testId, disabled }: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string; disabled?: boolean }[];
+  onChange: (v: T) => void;
+  testId: string;
+  disabled?: boolean;
+}) {
+  return (
+    <span className="relative inline-flex min-w-0 max-w-[62%] shrink-0">
+      <select aria-label={label} value={value} disabled={disabled} data-testid={testId} onChange={(e) => onChange(e.target.value as T)}
+        className="min-h-[44px] w-full min-w-0 cursor-pointer appearance-none truncate rounded-xl border border-app-border/15 bg-app-bg/55 py-2 pl-3 pr-8 text-[14px] font-medium tabular-nums text-app-text outline-none transition-colors hover:bg-app-bg/80 focus-visible:ring-2 focus-visible:ring-app-accent/50 disabled:cursor-not-allowed disabled:opacity-55">
+        {options.map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
+      </select>
+      <ChevronDown size={15} aria-hidden="true" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-app-muted" />
+    </span>
+  );
+}
+
+/** An on / off switch. `locked` keeps it in its place, disabled, with the reason as its title. */
+export function VideoSwitch({ label, on, onChange, testId, locked, lockedReason }: {
+  label: string; on: boolean; onChange: (on: boolean) => void; testId: string; locked?: boolean; lockedReason?: string;
+}) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} title={locked ? lockedReason : undefined} disabled={locked}
+      data-testid={testId} onClick={() => onChange(!on)}
+      className="relative flex h-11 w-14 shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-55">
+      <span aria-hidden="true" className={cx('relative block h-6 w-11 rounded-full transition-colors', on ? 'bg-app-accent' : 'bg-app-border/40')}>
+        <span className={cx('absolute top-[3px] block h-[18px] w-[18px] rounded-full bg-white shadow transition-[left]', on ? 'left-[23px]' : 'left-[3px]')} />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The quality (= the Veo model) as one select, each tier with its price at THIS length and mode — the same quote the
+ * composer's Send carries. „Other models…" opens the studio's ModelPicker (the Higgsfield models, where this deployment
+ * runs them); a picked one is named as the selected option.
+ */
+export function VideoQualitySelect({ locale, tier, mode, seconds, onTier, otherName, onOtherModels }: {
+  locale: string;
+  tier: VideoQuality;
+  mode: VideoMode;
+  seconds: number;
+  onTier: (t: VideoQuality) => void;
+  /** A picked model that is not a Veo tier: its name (selected). */
+  otherName?: string;
+  onOtherModels: () => void;
+}) {
+  const order: VideoQuality[] = ['lite', 'fast', 'standard'];
+  const OTHER = '__other';
+  const PICKED = '__picked';
+  const options = [
+    ...order.map((t) => ({ value: t as string, label: `${tierName(t, locale)} · ✦ ${videoQuote({ seconds, tier: t, mode })}` })),
+    ...(otherName ? [{ value: PICKED, label: otherName }] : []),
+    { value: OTHER, label: vc(VIDEO_COPY.otherModels, locale) },
+  ];
+  return (
+    <VideoSelect label={vc(VIDEO_COPY.quality, locale)} value={otherName ? PICKED : tier} options={options} testId="video-quality"
+      onChange={(v) => {
+        if (v === OTHER) { onOtherModels(); return; }
+        if (v === 'lite' || v === 'fast' || v === 'standard') onTier(v);
+      }} />
+  );
+}
+
+/** The optional reference photos (and a song for a music video) in one short row: thumbnails, then „+ photo" and „♪". */
+export function VideoRefsRow({ locale, images, maxImages, onAddImage, onRemoveImage, audio, audioBusy, onAddAudio, onRemoveAudio }: VideoRefsProps) {
+  const full = images.length >= maxImages;
+  const small = 'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-dashed border-app-border/35 bg-app-bg/40 text-app-text/80 transition-colors hover:bg-app-bg/70 disabled:cursor-not-allowed disabled:opacity-40';
+  return (
+    <div data-testid="video-references" className="px-3.5 py-2">
+      <p className="text-[14px] font-medium leading-tight text-app-text">
+        {vc(VIDEO_COPY.photos, locale)} <span className="text-[11.5px] font-normal text-app-muted">· {vc(VIDEO_COPY.photosOptional, locale)} · {images.length}/{maxImages}</span>
+      </p>
+      <ul className="mt-2 flex flex-wrap items-center gap-2" data-testid="video-reference-list">
+        {images.map((src, i) => (
+          <li key={`${i}-${src.slice(-12)}`} className="relative h-11 w-11 shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a data: URL the user just picked */}
+            <img src={src} alt={`${vc(VIDEO_COPY.imageAlt, locale)} ${i + 1}`} className="h-full w-full rounded-xl object-cover ring-1 ring-app-border/20" />
+            <button type="button" onClick={() => onRemoveImage(i)} aria-label={`${vc(VIDEO_COPY.remove, locale)} ${referenceToken(i)}`}
+              className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/20 hover:text-app-text before:absolute before:-inset-3 before:content-['']">
+              <X size={11} aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+        {audio && (
+          <li className="relative flex h-11 max-w-[180px] items-center gap-1.5 rounded-xl bg-app-accent/10 px-2.5 ring-1 ring-app-accent/30" title={vc(VIDEO_COPY.audioMakesMusicVideo, locale)}>
+            <Music2 size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
+            <span className="min-w-0 truncate text-[12px] font-medium text-app-text">{audio.name}</span>
+            <button type="button" onClick={onRemoveAudio} aria-label={`${vc(VIDEO_COPY.remove, locale)} ${audio.name}`}
+              className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/20 hover:text-app-text before:absolute before:-inset-3 before:content-['']">
+              <X size={11} aria-hidden="true" />
+            </button>
+          </li>
+        )}
+        <li>
+          <button type="button" onClick={onAddImage} disabled={full} aria-label={vc(VIDEO_COPY.addImage, locale)} title={full ? vc(VIDEO_COPY.refsFull, locale) : vc(VIDEO_COPY.addImage, locale)} data-testid="video-add-image" className={small}>
+            <ImagePlus size={18} aria-hidden="true" />
+          </button>
+        </li>
+        {!audio && (
+          <li>
+            <button type="button" onClick={onAddAudio} disabled={audioBusy} aria-label={vc(VIDEO_COPY.addAudio, locale)} title={vc(VIDEO_COPY.addAudio, locale)} data-testid="video-add-audio" className={small}>
+              <Music2 size={18} aria-hidden="true" />
+            </button>
+          </li>
+        )}
+      </ul>
+      {full && images.length > 0 && <p className="mt-1.5 text-[11px] leading-snug text-app-muted">{vc(VIDEO_COPY.refsFull, locale)}</p>}
+    </div>
+  );
+}
