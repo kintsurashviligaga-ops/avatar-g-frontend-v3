@@ -90,11 +90,6 @@ import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
 import type { ChatSource, ChatStreamSnapshot, ChatStreamStore } from '@/components/chat/chatStreamStore';
 import { serializeHistory } from '@/lib/chat/historySerializer';
-// ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
-// initial dashboard paint, so lazy-load them (ssr:false) to keep their ~540 lines of JS
-// out of the first-load bundle. A tiny placeholder holds layout until the chunk lands.
-const FilmDirectorConsole = dynamic(() => import('./FilmDirectorConsole'), { ssr: false, loading: () => <div className="h-24" /> });
-const RemixStudioConsole = dynamic(() => import('./RemixStudioConsole'), { ssr: false, loading: () => <div className="h-24" /> });
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
@@ -9849,6 +9844,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Agent G's note belongs to the tool it was made in: leaving the mode (or starting a new thread) retires it.
   useEffect(() => { setGateFrom(null); }, [mode]);
 
+  /** A Montage export is running / the editor was closed while it ran (MontageStudio onExportStart · onExportEnd). */
+  const montageExportingRef = useRef(false);
+  const montageExportLeftRef = useRef(false);
   const messageList = useMemo(() => (
           messages.map((m, i) => (
             <div key={i} className={`group flex motion-safe:animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -10200,10 +10198,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   // A remix/product-ad bubble in flight — product-ad runs through the QUEUE (no `busy`), so it
                   // gets its inline staged console here too instead of only the floating tray.
                   const isInflightRemix = m.role === 'assistant' && !!m.remixOpKind && !m.videoUrl && !m.audioUrl && !m.text?.startsWith('⚠️');
-                  // FIX 6 — a remix op (panel OR chat-attached) gets the Remix Studio
-                  // staged-timer console. Checked first so it wins in chat mode too.
+                  // A remix op or a product ad in flight gets the same loading card as every other render (GG 2026-10-18:
+                  // the old staged-timer console, RemixStudioConsole, is retired from the UI with the director's console).
                   if ((pending || isInflightRemix) && m.remixOpKind) {
-                    return <RemixStudioConsole op={m.remixOpKind} elapsed={elapsed} locale={locale} onCancel={stop} stopLabel={t.stop} />;
+                    return (
+                      <ResultCard
+                        kind="video"
+                        aspect={ORIENT_ASPECT[m.orientation ?? videoOrientation]}
+                        state="rendering"
+                        locale={locale}
+                        elapsedSec={elapsed}
+                        capSec={PROGRESS_TARGET.video}
+                        stage={m.text}
+                        onCancel={() => cancelBubbleJob(m)}
+                      />
+                    );
                   }
                   // Generative modes get the live staged progress card (bar + clock +
                   // narrated steps) — the real "loading process". Chat gets typing dots.
@@ -10264,13 +10273,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           poster={m.storyboard?.find((s) => s.frameUrl)?.frameUrl ?? null}
                           // This bubble's own job — its queue job when it has one, else the foreground render.
                           onCancel={() => cancelBubbleJob(m)}
-                        >
-                          {/* The Master-Prompt Director's Console — the 9-agent crew, live, driven by the real
-                              film-pipeline matrix — stays one tap away under the tile rather than being lost. */}
-                          {kind === 'video' ? (
-                            <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={cardCap} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
-                          ) : null}
-                        </ResultCard>
+                        />
+                        {/* GG 2026-10-18: the old Director's Console (9-agent crew under „Details") is retired from the UI;
+                            the loading card above is the one progress view. */}
                       </div>
                     );
                   }
@@ -10752,7 +10757,27 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const orientation = aspect === '9:16' ? 'vertical' as const : aspect === '1:1' ? 'square' as const : 'landscape' as const;
               setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl, orientation }]);
             }}
-            onExit={() => { setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setMode('chat'); }}
+            onExportEnd={(ok) => {
+              const left = montageExportLeftRef.current;
+              montageExportLeftRef.current = false;
+              montageExportingRef.current = false;
+              // Only the chat's own word when the editor was closed mid-export: a success lands as the video above.
+              if (left && !ok) {
+                const failed = locale === 'en' ? 'The montage export did not finish. Open Montage and export again.' : locale === 'ru' ? 'Экспорт монтажа не завершился. Откройте Монтаж и экспортируйте снова.' : 'მონტაჟის ექსპორტი ვერ დასრულდა. გახსენი მონტაჟი და ხელახლა დააექსპორტე.';
+                setMessages((prev) => [...prev, { role: 'assistant', text: `⚠️ ${failed}`, notice: true }]);
+              }
+            }}
+            onExportStart={() => { montageExportingRef.current = true; }}
+            onExit={() => {
+              // An export still running keeps going (GG 2026-10-18: no tray card, no second process): the chat says so,
+              // and the film lands here when it is ready.
+              if (montageExportingRef.current) {
+                montageExportLeftRef.current = true;
+                const note = locale === 'en' ? 'The montage is still exporting; it will appear here when it is ready.' : locale === 'ru' ? 'Монтаж ещё экспортируется; он появится здесь, когда будет готов.' : 'მონტაჟი ჯერ ექსპორტდება; როცა მზად იქნება, აქ გამოჩნდება.';
+                setMessages((prev) => [...prev, { role: 'assistant', text: note, notice: true }]);
+              }
+              setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setMode('chat');
+            }}
           />
         </div>
       );
