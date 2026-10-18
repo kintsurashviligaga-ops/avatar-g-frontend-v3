@@ -405,6 +405,25 @@ export async function ensureVideoPanel(page: Page): Promise<void> {
   await expect(panel).toBeVisible({ timeout: 10_000 });
 }
 
+/**
+ * The film's words go in the CHAT BOX (GG 2026-10-18: the Video panel has no prompt of its own). On a phone the panel is
+ * a sheet over the box: its „Done" closes it first. The box stays beside the open panel on a desktop.
+ */
+export async function typeFilmPrompt(page: Page, text: string): Promise<void> {
+  const done = page.getByTestId('video-settings-done');
+  if (await done.isVisible().catch(() => false)) await done.click();
+  const box = page.getByTestId('composer-input');
+  await expect(box).toBeVisible({ timeout: 10_000 });
+  await box.fill(text);
+}
+
+/** The chat box's priced Send — the film's one button (it replaced the panel's Generate). */
+export async function sendFilm(page: Page): Promise<void> {
+  const send = page.getByTestId('run-button');
+  await expect(send).toBeVisible({ timeout: 10_000 });
+  await send.click();
+}
+
 export interface Finding { id: string; project: string; spec: string; test: string; text: string }
 
 /** An observation that is not a failure: in the test's annotations and in the evidence folder's findings.json. */

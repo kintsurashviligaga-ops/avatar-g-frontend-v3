@@ -62,7 +62,10 @@ for (const [name, viewport, phone] of [['desktop 1280×800', DESKTOP, false], ['
       await page.getByTestId('composer-input').fill(WORDS);
       await page.getByTestId('home-quick-video').click();
       await expect.poll(() => tool(page)).toBe('video');
-      await expect(page.getByTestId('video-prompt-input').filter({ visible: true })).toHaveValue(WORDS);
+      // GG 2026-10-18: Video's words stay in the chat box (its panel has no prompt of its own).
+      await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
+      await expect(page.getByTestId('composer-input')).toHaveValue(WORDS);
+      await expect(page.getByTestId('video-prompt-input')).toHaveCount(0);
       await expect(page.getByTestId('home-quick')).toHaveCount(0); // a tool, not the chat home
       expect(posts).toEqual([]);
     });
@@ -93,6 +96,20 @@ test.describe('desktop: one description box', () => {
     await expect(page.getByTestId('run-button')).toBeVisible(); // Agent G's line, with its Send
     await chip.click(); // and back
     await expect(page.getByTestId('composer-input')).toBeHidden();
+    expect(posts).toEqual([]);
+  });
+
+  test('Video: the box and its priced Send stay beside the open panel — the words are typed there, one button (GG, 2026-10-18)', async ({ page }) => {
+    const posts = await open(page);
+    await page.getByTestId('composer-input').fill(WORDS);
+    await page.getByTestId('home-quick-video').click();
+    await expect.poll(() => tool(page)).toBe('video');
+    await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
+    await expect(page.getByTestId('composer-input')).toBeVisible();
+    await expect(page.getByTestId('composer-input')).toHaveValue(WORDS);
+    // 24 s on Fast: the quote the panel's Generate used to show is on the Send now; the panel has no Generate.
+    await expect(page.getByTestId('run-button')).toHaveAttribute('data-price', '75');
+    await expect(page.getByTestId('video-generate')).toHaveCount(0);
     expect(posts).toEqual([]);
   });
 
