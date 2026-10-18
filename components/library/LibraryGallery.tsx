@@ -10,12 +10,13 @@
  * schema change is needed. Mobile-first grid, Georgian default copy.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight, Move3d } from 'lucide-react';
 import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { SHOOT_COPY } from '@/components/studio/create/newtools/copy';
 import { PlanView } from '@/components/studio/create/newtools/PlanView';
+import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -124,6 +125,12 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const [favs, setFavs] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openPlan, setOpenPlan] = useState<string | null>(null);
+  // Files that would not load. The first failure fetches the page again once, quietly (every link in it is minted
+  // fresh, which mends a page left open past its links' 24 h); a file that fails again shows MediaUnavailable.
+  const [failed, setFailed] = useState<Set<string>>(new Set());
+  const [refetch, setRefetch] = useState(0);
+  const quietRef = useRef(false);
+  const autoRetriedRef = useRef(false);
 
   // Load favorites from localStorage once.
   useEffect(() => {
@@ -150,7 +157,8 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   // Fetch the current tab/page. Favorites fetch a wider window (all kinds) then filter.
   useEffect(() => {
     let alive = true;
-    setLoading(true);
+    if (!quietRef.current) setLoading(true);
+    quietRef.current = false;
     const isFav = tab === 'favorites';
     const qs = new URLSearchParams();
     if (!isFav) { qs.set('kind', TAB_KIND[tab]); qs.set('limit', String(PAGE_SIZE)); qs.set('offset', String(page * PAGE_SIZE)); }
@@ -162,11 +170,18 @@ export default function LibraryGallery({ locale }: { locale: string }) {
         // Favorites are filtered in render (off `favs`), so toggling a star never
         // re-fetches — the effect only depends on tab + page.
         setItems(Array.isArray(j.items) ? j.items : []);
+        setFailed(new Set());
       })
       .catch(() => { if (alive) setItems([]); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [tab, page]);
+  }, [tab, page, refetch]);
+
+  const reload = useCallback(() => { quietRef.current = true; setRefetch((n) => n + 1); }, []);
+  const onMediaError = useCallback((id: string) => {
+    setFailed((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+    if (!autoRetriedRef.current) { autoRetriedRef.current = true; reload(); }
+  }, [reload]);
 
   // Favorites tab filters the fetched window by the local set, then paginates locally.
   // PHASE 6.3 — client-side search over the loaded items (prompt + kind match). Applied on
@@ -247,22 +262,23 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                   <div className={`relative w-full overflow-hidden bg-app-bg/60 ${it.orientation === 'vertical' ? 'aspect-[9/16]' : isMusic ? 'aspect-square' : 'aspect-video'}`}>
                     {/* #t=0.1 makes the browser seek to 0.1s and paint THAT frame as the
                         poster — without it many browsers show a black thumbnail until play. */}
-                    {isVideo && <video src={`${it.url}#t=0.1`} controls playsInline preload="metadata" className="h-full w-full object-cover" />}
+                    {failed.has(it.id) && <MediaUnavailable lang={lang} onRetry={reload} />}
+                    {isVideo && !failed.has(it.id) && <video src={`${it.url}#t=0.1`} controls playsInline preload="metadata" onError={() => onMediaError(it.id)} className="h-full w-full object-cover" />}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    {isImage && <img src={it.url} alt={it.prompt ?? 'image'} className="h-full w-full object-cover" loading="lazy" />}
+                    {isImage && !failed.has(it.id) && <img src={it.url} alt={it.prompt ?? 'image'} onError={() => onMediaError(it.id)} className="h-full w-full object-cover" loading="lazy" />}
                     {it.plan && (
                       <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur">
                         <Move3d size={12} aria-hidden="true" /> {t.plan}
                       </span>
                     )}
-                    {isMusic && (
+                    {isMusic && !failed.has(it.id) && (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3">
                         <Music2 size={28} className="text-app-accent" />
-                        <audio src={it.url} controls className="w-full" preload="none" />
+                        <audio src={it.url} controls className="w-full" preload="none" onError={() => onMediaError(it.id)} />
                       </div>
                     )}
                     {/* Favorite star */}
-                    <button type="button" onClick={() => toggleFav(it.id)} aria-label="favorite"
+                    <button type="button" onClick={() => toggleFav(it.id)} aria-label={t.tabs.favorites} aria-pressed={favs.has(it.id)}
                       className={`absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 backdrop-blur transition ${favs.has(it.id) ? 'text-yellow-400' : 'text-white/80 hover:text-white'}`}>
                       <Star size={15} fill={favs.has(it.id) ? 'currentColor' : 'none'} />
                     </button>

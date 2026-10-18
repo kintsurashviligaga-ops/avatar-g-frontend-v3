@@ -22,6 +22,7 @@ import {
   describeSupabaseObjectUrl,
   libraryMediaBuckets,
   ownStorageHosts,
+  provenOwnSignedLink,
   verifyFileableUrl,
 } from '@/lib/orchestrator/storage-adapter';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
@@ -55,13 +56,16 @@ function pickPlan(row: GenerationJobRow): LibraryItem['plan'] | undefined {
 
 /**
  * May this row's stored storage URL be re-signed? Producer rows carry server-generated URLs. A MANUAL save carries a
- * URL the caller chose, so it is re-signed only when POST proved it readable (params.storage_verified) — rows filed
- * before that check existed keep their stored URL and simply expire with it.
+ * URL the caller chose, so it is re-signed only when POST proved it readable (params.storage_verified). A row filed
+ * before that check existed is re-signed once its stored token proves the link was ours (provenOwnSignedLink, in GET).
  */
 function mayResign(row: GenerationJobRow): boolean {
   const params = (row.params ?? {}) as Record<string, unknown>;
   return params.source !== 'manual-save' || params.storage_verified === true;
 }
+
+/** How many legacy manual saves one page proves (one ranged GET each, in parallel). A page is at most 60 rows. */
+const LEGACY_PROOFS_PER_PAGE = 60;
 
 /** A completed job exposes its media either as a signed_url or inside result.url. */
 function pickUrl(row: GenerationJobRow): string | null {
@@ -107,12 +111,14 @@ export async function GET(req: NextRequest) {
     // else never reaches the signer below even if that filter is ever dropped.
     const owned = (data as GenerationJobRow[]).filter((row) => row.user_id === uid);
     const resignable = new Set<number>(); // indices into `rows`
+    const unproven = new Map<number, GenerationJobRow>(); // legacy manual saves, proven below or left as stored
     const rows: LibraryItem[] = [];
     for (const row of owned) {
       const url = pickUrl(row);
       if (!url) continue; // a completed row with no media is not a Library item
       const params = (row.params ?? {}) as Record<string, unknown>;
       if (mayResign(row)) resignable.add(rows.length);
+      else unproven.set(rows.length, row);
       const plan = pickPlan(row);
       rows.push({
         id: row.id,
@@ -144,6 +150,20 @@ export async function GET(req: NextRequest) {
     // expires — re-signing it would turn a guessed private path into a working link) on OUR project host (any
     // `*.supabase.co` parses, and another tenant can have a `renders` bucket too), in one of OUR media buckets, on a
     // row whose URL we wrote or verified (mayResign).
+    // A manual save filed before POST probed it is re-signed once its own stored token proves the link was ours
+    // (provenOwnSignedLink); the proof is written back so the next read skips the probe. Bounded per page.
+    const legacy = [...unproven.entries()].slice(0, LEGACY_PROOFS_PER_PAGE);
+    const svc = legacy.length ? createServiceRoleClient() : null;
+    await Promise.all(legacy.map(async ([i, row]) => {
+      const item = rows[i];
+      if (!item || !(await provenOwnSignedLink(item.url))) return;
+      resignable.add(i);
+      const params = (row.params ?? {}) as Record<string, unknown>;
+      try {
+        await svc?.from('generation_jobs').update({ params: { ...params, storage_verified: true } }).eq('id', row.id).eq('user_id', uid);
+      } catch { /* the proof is simply repeated on the next read */ }
+    }));
+
     const hosts = ownStorageHosts();
     const buckets = libraryMediaBuckets();
     const byBucket = new Map<string, Map<string, number[]>>(); // bucket → path → indices into `rows`

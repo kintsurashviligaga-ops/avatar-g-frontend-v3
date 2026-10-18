@@ -62,3 +62,20 @@ test('Georgian and Russian copy', async () => {
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Фото/ })); });
   expect(screen.getByText('Открыть 3D-план')).toBeTruthy();
 });
+
+// Live 2026-10-18: expired links made the browser show "Unable to play media" on Library videos. A file that will not
+// load now fetches the page again once (fresh links) and, if it still fails, says so in words with a retry.
+test('a video that will not load: one quiet refetch, then a plain message with a retry', async () => {
+  await act(async () => { render(<LibraryGallery locale="ka" />); });
+  expect(requested).toHaveLength(1);
+  await act(async () => { fireEvent.error(document.querySelector('video') as HTMLVideoElement); });
+  expect(requested).toHaveLength(2); // the quiet refetch: fresh links for the whole page
+  expect(document.querySelector('video')).toBeTruthy(); // the refetched item gets another chance
+  await act(async () => { fireEvent.error(document.querySelector('video') as HTMLVideoElement); });
+  expect(requested).toHaveLength(2); // no refetch loop
+  expect(screen.getByTestId('media-unavailable').textContent).toContain('ფაილი ვერ ჩაიტვირთა.');
+  expect(document.querySelector('video')).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /თავიდან ცდა/ })); });
+  expect(requested).toHaveLength(3);
+  expect(screen.queryByTestId('media-unavailable')).toBeNull();
+});
