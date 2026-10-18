@@ -22,6 +22,7 @@ import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
 import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
+import { LoadingCard } from '@/components/studio/ui/LoadingCard';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { isChargedRemixOp, remixAskText, remixOpCredits } from '@/lib/video/remixCharge';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
@@ -1996,13 +1997,7 @@ export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCre
           <span aria-hidden className={`h-px flex-1 ${streaming ? 'bg-app-border/20' : 'bg-gradient-to-r from-app-accent/40 to-app-accent/60'}`} />
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${streaming ? 'bg-app-elevated text-app-muted/60 ring-app-border/15' : 'bg-app-accent/15 text-app-accent ring-app-accent/40'}`}><Film size={10} /> {t.sbPipeRender}</span>
         </div>
-        {/* Live frame-load progress — a hue-shifting bar (azure → compiling-core hue) fills as
-            each scene's frame streams in. */}
-        {streaming && (
-          <div className="mx-4 mb-2 h-1.5 overflow-hidden rounded-full bg-app-border/15">
-            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.round(prog * 100))}%`, background: `linear-gradient(90deg, #2563eb, ${coreColor})` }} />
-          </div>
-        )}
+        {/* Frame-load progress is the header's own count („N/M frames"); no bar (the owner's PRD, 2026-10-18). */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sb.scenes.map((s, i) => (
@@ -10355,9 +10350,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <>
                       {m.chatNotice && <ModeNoticeLine reason={m.chatNotice} lang={locale} />}
                       {typeof m.videoProgress === 'number' && !m.videoUrl && (
-                        <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
-                          <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
-                        </div>
+                        // THE loading card (one quiet percentage, no bar: the owner's PRD, 2026-10-18).
+                        <LoadingCard locale={locale} label={locale === 'en' ? 'Video' : locale === 'ru' ? 'Видео' : 'ვიდეო'} pct={m.videoProgress} className="mb-2" />
                       )}
                       {displayText && <Markdown locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'}>{displayText}</Markdown>}
                       {/* Google Search grounding: the pages the answer was built from, as compact chips. */}
@@ -13035,10 +13029,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
                 <X size={18} />
               </button>
-            </div>
-            {/* Live progress bar — pace ~150s (the real storyboard build) toward 95%. */}
-            <div className="mx-4 mb-1 h-1 overflow-hidden rounded-full bg-app-border/15">
-              <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100)))}%` }} />
             </div>
             {/* The storyboard being built: the loading loop in the film's own shape, the one picture of every
                 generation's wait (the owner's rule, 2026-10-17). It replaced six pulsing skeleton tiles. */}

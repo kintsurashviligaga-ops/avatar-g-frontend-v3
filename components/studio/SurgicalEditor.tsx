@@ -21,7 +21,8 @@ import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './ui/tokens';
 import { Slider } from './ui/controls';
 import { easedPct } from './ui/GenerationProgress';
-import { LoadingLoop } from './ui/LoadingLoop';
+import { LoadingCard } from './ui/LoadingCard';
+import { DownloadButton } from './ui/DownloadButton';
 import { describeOpFailure } from '@/lib/ui/opFailure';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
 import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
@@ -39,16 +40,6 @@ const MAX_CLIPS = 35;
 // sixth clip and got a toast, which is exactly the "hidden limitation" complaint.
 const MAX_SEQ_CLIPS = 12;
 const MASK_CAP = 1536;
-
-// Agent G granular reasoning steps shown in the editor's processing overlay (mirrors the chat overlay's 5 steps).
-const EDITOR_STEPS: { icon: string; ka: string; en: string; ru: string }[] = [
-  { icon: '🔍', ka: 'მიმდინარეობს ბრძანების ანალიზი…', en: 'Parsing command parameters…', ru: 'Разбираю параметры…' },
-  { icon: '⚙️', ka: 'AI მოდელების ინიციალიზაცია…', en: 'Spinning up specialized models…', ru: 'Запускаю нейромодели…' },
-  { icon: '🎨', ka: 'მიმდინარეობს კრეატიული გენერაცია…', en: 'Rendering creative modifications…', ru: 'Генерирую изменения…' },
-  { icon: '💾', ka: 'ფაილი ინახება ბიბლიოთეკაში…', en: 'Securely persisting final asset…', ru: 'Надёжно сохраняю результат…' },
-  { icon: '🚀', ka: 'მზადაა! სამუშაო სივრცე ახლდება…', en: 'Content ready. Refreshing workspace…', ru: 'Готово! Обновляю область…' },
-];
-const stepForPct = (p: number) => (p < 15 ? 0 : p < 35 ? 1 : p < 75 ? 2 : p < 95 ? 3 : 4);
 
 interface Copy {
   title: string; subtitle: string; drop: string; dropHint: string; dropHintAudio: string; pick: string;
@@ -1620,7 +1611,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               <div className="space-y-2 rounded-xl border border-app-accent/25 bg-app-surface/60 p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] font-semibold text-app-accent">{t.result}</span>
-                  <a href={result.url} download className="inline-flex items-center gap-1 rounded-lg bg-app-elevated px-3 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15"><Download size={12} />{t.download}</a>
+                  <DownloadButton url={result.url} locale={locale} variant="pill" label={t.download} name={`myavatar-edit-${Date.now()}`} fallbackExt={result.kind === 'image' ? 'png' : result.kind === 'audio' ? 'mp3' : 'mp4'} />
                 </div>
                 {result.kind === 'image'
                   // eslint-disable-next-line @next/next/no-img-element
@@ -1643,25 +1634,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       {(exporting || successAsset) && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
           {exporting ? (
-            <div className="w-full max-w-[360px] rounded-2xl border border-app-border/20 bg-app-surface p-5 shadow-2xl">
-              <div aria-hidden="true" data-testid="editor-export-loop" className="relative mb-3 h-[140px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15"><LoadingLoop /></div>
-              <div className="mb-3 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.15em] text-app-accent"><Sparkles size={13} />G-Agent</div>
-              {/* Granular 5-step reasoning card, active step derived from the live progress. */}
-              <div className="mb-3 flex flex-col gap-1.5">
-                {EDITOR_STEPS.map((ph, i) => {
-                  const cur = stepForPct(exportPct);
-                  const state = i < cur ? 'done' : i === cur ? 'active' : 'pending';
-                  return (
-                    <div key={i} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] transition-all ${state === 'active' ? 'bg-app-accent/12 text-app-text ring-1 ring-app-accent/30' : state === 'done' ? 'text-app-muted/70' : 'text-app-muted/40'}`}>
-                      <span className="text-[15px] leading-none">{state === 'done' ? '✅' : ph.icon}</span>
-                      <span className="min-w-0 flex-1 font-medium">{norm(locale) === 'en' ? ph.en : norm(locale) === 'ru' ? ph.ru : ph.ka}</span>
-                      {state === 'active' && <span aria-hidden="true" className="h-[7px] w-[7px] shrink-0 rounded-full bg-app-accent" />}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-app-elevated"><div className="h-full rounded-full transition-all duration-300" style={{ width: `${exportPct}%`, background: 'linear-gradient(90deg, rgb(34,211,238), rgb(6,182,212))' }} /></div>
-              <div className="mt-2 text-[11px] tabular-nums text-app-muted">{exportPct}%</div>
+            // THE loading card: the loop and one quiet percentage — no bar, no step list (the owner's PRD, 2026-10-18).
+            <div data-testid="editor-export-loop" className="w-full max-w-[360px] shadow-2xl">
+              <LoadingCard locale={norm(locale)} label={t.exporting} pct={exportPct} className="max-w-none" />
             </div>
           ) : successAsset ? (
             <div className="w-full max-w-[360px] rounded-2xl border border-app-border/20 bg-app-surface p-5 shadow-2xl">

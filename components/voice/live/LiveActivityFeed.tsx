@@ -320,16 +320,10 @@ export default function LiveActivityFeed({ activity, jobs = [], locale = 'ka', m
           {jobRows.map((j) => (
             <div key={j.id} className="py-0.5">
               <div className={`flex items-center justify-between gap-2 ${text} leading-[1.6] text-app-text`}>
-                {/* The one loading picture every generation shows (the owner's blue wave, 2026-10-17). */}
+                {/* The one loading picture every generation shows (the owner's blue wave) and its percentage, no bar (PRD 2026-10-18). */}
                 <span aria-hidden data-testid="live-job-loop" className="relative h-8 w-[18px] shrink-0 overflow-hidden rounded-md bg-black ring-1 ring-white/10"><LoadingLoop /></span>
                 <span className="min-w-0 flex-1 truncate">{j.label}</span>
                 <span className="shrink-0 tabular-nums text-app-muted">{j.pct === null ? t.queued : `${Math.round(j.pct)}%`}</span>
-              </div>
-              <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/10" aria-hidden>
-                <div
-                  className={`h-full rounded-full bg-app-accent transition-[width] duration-500 ${j.pct === null ? 'w-0' : ''}`}
-                  style={j.pct === null ? undefined : { width: `${Math.max(4, Math.min(100, j.pct))}%` }}
-                />
               </div>
             </div>
           ))}

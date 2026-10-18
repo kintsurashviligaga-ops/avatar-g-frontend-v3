@@ -1,18 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Download, Film, Image as ImageIcon, ImagePlus, Maximize2, Music2, RotateCcw, ScanFace, X } from 'lucide-react';
-import { LoadingLoop } from './LoadingLoop';
+import { AlertTriangle, Film, Image as ImageIcon, ImagePlus, Maximize2, Music2, RotateCcw, ScanFace, X } from 'lucide-react';
+import { DownloadButton } from './DownloadButton';
+import { LoadingCard } from './LoadingCard';
 
 /**
  * ResultCard — one tile for a generation from the moment it is asked for to the moment it is on screen:
  * queued → rendering → finalizing → ready (or error). The tile has the RESULT's shape from the start (a 9:16
  * video is a 9:16 tile while it renders), so the feed does not jump when the media arrives, and what the user
- * watches while waiting is the loading loop (./LoadingLoop: the owner's blue wave clip,
- * 2026-10-17) under a thin accent bar — not a spinner (docs/DESIGN.md §5, §8).
+ * watches while waiting is THE loading card (./LoadingCard: the owner's blue-wave loop and one quiet percentage, no
+ * bar, the PRD of 2026-10-18) — not a spinner (docs/DESIGN.md §5, §8).
  *
  * Honest progress, same rules as GenerationProgress: a server-reported percent wins; otherwise elapsed / cap,
- * held at 92 % until the job is actually ready. The bar never claims "done" on a guess.
+ * held at 92 % until the job is actually ready. The number never claims "done" on a guess.
  *
  * Presentation only: it owns no job and polls nothing. The caller passes the state it already has (the
  * message, the batch tile) and the handlers that already exist (stop, retry, lightbox, the video bridge).
@@ -109,10 +110,8 @@ export function ResultCard({
   const shown = resultPct({ state, pct, elapsedSec, capSec });
   const working = state === 'queued' || state === 'rendering' || state === 'finalizing';
   const kindLabel = KIND[lang][kind];
-  // «ვიდეო · 9:16 · 12%» — music has no frame, so no ratio in its caption.
-  const parts = [kindLabel, kind === 'music' ? null : aspect, state === 'queued' ? c.queued : working ? `${shown}%` : null].filter(Boolean);
-  const caption = parts.join(' · ');
-  const secondLine = state === 'finalizing' ? c.finalizing : stage?.replace(/^⚠️\s*/, '').trim();
+  // «ვიდეო · 9:16» over the card's own percentage — music has no frame, so no ratio in its caption.
+  const caption = [kindLabel, kind === 'music' ? null : aspect].filter(Boolean).join(' · ');
   const oneLineError = (error ?? '').replace(/^⚠️\s*/, '').split('\n')[0]?.trim() || c.failed;
   const Icon = KIND_ICON[kind];
 
@@ -145,8 +144,18 @@ export function ResultCard({
             <img src={media.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
           )
         ) : working ? (
-          // Queued, rendering, finalizing: the loading loop fills the tile in the result's own shape.
-          <LoadingLoop />
+          // Queued, rendering, finalizing: the loading card fills the tile in the result's own shape.
+          <LoadingCard
+            variant="fill"
+            locale={lang}
+            label={caption}
+            stage={size === 'tile' ? undefined : stage}
+            state={state === 'rendering' ? 'running' : state}
+            pct={shown}
+            onCancel={onCancel}
+            cancelLabel={c.cancel}
+            announce={false}
+          />
         ) : (
           <>
             {/* The plate: a faint frame when there is one, a quiet shimmer always — never an empty spinner. */}
@@ -166,29 +175,11 @@ export function ResultCard({
             {onOpen && media.type === 'video' && (
               <button type="button" onClick={onOpen} aria-label={c.open} title={c.open} className={btn}><Maximize2 size={16} /></button>
             )}
-            <a href={media.url} download target="_blank" rel="noopener noreferrer" aria-label={c.download} title={c.download} className={btn}><Download size={16} /></a>
+            <DownloadButton url={media.url} locale={lang} variant="overlay" label={c.download} name={`myavatar-${kind}-${Date.now()}`} fallbackExt={media.type === 'video' ? 'mp4' : 'png'} />
             {onUseAsRef && (
               <button type="button" onClick={onUseAsRef} aria-label={c.useAsRef} title={c.useAsRef} className={btn}><ImagePlus size={16} /></button>
             )}
           </div>
-        )}
-
-        {/* Working: cancel (44 px), caption, thin accent bar. */}
-        {working && (
-          <>
-            {onCancel && (
-              <button type="button" onClick={onCancel} aria-label={c.cancel} title={c.cancel} className={`absolute right-2 top-2 z-10 ${btn}`}>
-                <X size={16} />
-              </button>
-            )}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pb-3 pt-8">
-              <p className="truncate text-[12.5px] font-medium tabular-nums text-white/90">{caption}</p>
-              {secondLine && size !== 'tile' && <p className="mt-0.5 truncate text-[11px] text-white/55">{secondLine}</p>}
-            </div>
-            <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/10" role="progressbar" aria-label={caption} aria-valuemin={0} aria-valuemax={100} aria-valuenow={shown}>
-              <div className="h-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(state === 'queued' ? 0 : 3, shown)}%` }} />
-            </div>
-          </>
         )}
 
         {/* Error: one line, retry, dismiss. */}

@@ -26,10 +26,12 @@ describe('resultPct — honest progress', () => {
 });
 
 describe('ResultCard', () => {
-  it('renders a rendering video as a 9:16 tile with «ვიდეო · 9:16 · 12%», a bar and a 44 px cancel', () => {
+  it('renders a rendering video as a 9:16 tile: the loading card with «ვიდეო · 9:16» and «12%», no bar, a 44 px cancel', () => {
     const onCancel = jest.fn();
     const { container } = render(<ResultCard kind="video" aspect="9:16" state="rendering" locale="ka" pct={12} onCancel={onCancel} />);
-    expect(screen.getByText('ვიდეო · 9:16 · 12%')).toBeTruthy();
+    expect(screen.getByText('ვიდეო · 9:16')).toBeTruthy();
+    expect(screen.getByTestId('loading-card-pct').textContent).toBe('12%');
+    expect([...container.querySelectorAll<HTMLElement>('*')].some((el) => /%$/.test(el.style.width))).toBe(false);
     const tile = container.querySelector('[data-testid="result-card"] > div') as HTMLElement;
     expect(tile.style.aspectRatio).toBe('9 / 16');
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('12');
@@ -55,7 +57,9 @@ describe('ResultCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use as reference' }));
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onUseAsRef).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('link', { name: 'Download' }).getAttribute('href')).toBe('https://x.test/a.png');
+    // Saved through saveMedia, never a cross-origin <a download> the browser ignores.
+    expect(screen.queryByRole('link', { name: 'Download' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Download' }).getAttribute('data-testid')).toBe('download-button');
   });
 
   it('shows a ready video as a real <video>', () => {
@@ -75,10 +79,12 @@ describe('ResultCard', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it('says «რიგში» when queued, with the bar at zero', () => {
+  it('says «რიგში» when queued, with no number', () => {
     render(<ResultCard kind="video" aspect="16:9" state="queued" locale="ka" pct={50} />);
-    expect(screen.getByText('ვიდეო · 16:9 · რიგში')).toBeTruthy();
-    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+    expect(screen.getByText('ვიდეო · 16:9')).toBeTruthy();
+    expect(screen.getByText('რიგში')).toBeTruthy();
+    expect(screen.queryByTestId('loading-card-pct')).toBeNull();
+    expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false);
   });
 
   it('announces state changes politely, not every percent', () => {
@@ -93,7 +99,8 @@ describe('ResultCard', () => {
 
   it('music has no frame ratio in its caption and stays square', () => {
     const { container } = render(<ResultCard kind="music" aspect="9:16" state="rendering" locale="en" pct={30} />);
-    expect(screen.getByText('Music · 30%')).toBeTruthy();
+    expect(screen.getByText('Music')).toBeTruthy();
+    expect(screen.getByTestId('loading-card-pct').textContent).toBe('30%');
     expect((container.querySelector('[data-testid="result-card"] > div') as HTMLElement).style.aspectRatio).toBe('1 / 1');
   });
 });

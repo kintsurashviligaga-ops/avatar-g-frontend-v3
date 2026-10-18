@@ -89,13 +89,18 @@ describe('LoadingCard', () => {
     expect(screen.getByTestId('loading-card-pct').textContent).toBe('10%');
   });
 
-  it('announces a state change once, not every percent tick', () => {
-    const { container, rerender } = render(<LoadingCard locale="en" label="Image" pct={10} />);
+  it('announces a state change once, not every percent tick, and never repeats the label', () => {
+    const { container, rerender } = render(<LoadingCard locale="en" label="Image" state="queued" />);
     const live = () => container.querySelector('[aria-live="polite"]')?.textContent;
-    expect(live()).toBe('Image: In progress');
+    expect(live()).toBe(''); // the first state is on screen; the region speaks only when it changes
+    rerender(<LoadingCard locale="en" label="Image" pct={10} />);
+    expect(live()).toBe('In progress');
     rerender(<LoadingCard locale="en" label="Image" pct={11} />);
-    expect(live()).toBe('Image: In progress');
+    expect(live()).toBe('In progress');
     rerender(<LoadingCard locale="en" label="Image" state="finalizing" />);
-    expect(live()).toBe('Image: Finishing…');
+    expect(live()).toBe('Finishing…');
+    // The label is on screen once: the progressbar carries it as its name, the live line only the state.
+    expect(screen.getAllByText(/Image/)).toHaveLength(1);
+    expect(screen.getByRole('progressbar', { name: 'Image' })).toBeTruthy();
   });
 });

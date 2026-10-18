@@ -382,7 +382,9 @@ for (const vp of VIEWPORTS) {
       await startImageJob(page);
       const card = page.getByTestId('result-card');
       await expect(card).toHaveAttribute('data-state', 'rendering');
-      await expect(card.getByText(/^სურათი · 9:16 · \d+%$/)).toBeVisible();
+      // The one loading card (PRD 2026-10-18): what is made and its shape, one quiet percentage, no bar.
+      await expect(card.getByText('სურათი · 9:16', { exact: true })).toBeVisible();
+      await expect(card.getByTestId('loading-card-pct')).toHaveText(/^\d+%$/);
       expect(await card.locator('div').first().evaluate((el) => (el as HTMLElement).style.aspectRatio)).toBe('9 / 16');
       await expect(card.getByRole('progressbar')).toBeAttached();
       // The loading loop (components/studio/ui/LoadingLoop) fills the tile and actually plays, muted and inline.

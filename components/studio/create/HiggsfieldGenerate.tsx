@@ -20,8 +20,9 @@
  * pass through a function) and reach the model as signed URLs (lib/studio/media).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, ExternalLink, X } from 'lucide-react';
+import { ExternalLink, X } from 'lucide-react';
 import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
+import { DownloadButton } from '@/components/studio/ui/DownloadButton';
 import { GenerateButton } from '@/components/studio/ui/GenerateButton';
 import { describeServiceError } from '@/components/studio/ui/serviceError';
 import { uploadFileToStorage } from '@/components/studio/ui/useUpload';
@@ -223,8 +224,7 @@ export function HiggsfieldGenerate(p: HiggsfieldGenerateProps) {
             <span className="flex shrink-0 items-center gap-1">
               <a href={job.outputUrls[0]} target="_blank" rel="noreferrer" aria-label={c('open')} title={c('open')}
                 className="flex h-11 w-11 items-center justify-center rounded-xl text-app-text hover:bg-app-elevated"><ExternalLink size={17} aria-hidden="true" /></a>
-              <a href={job.outputUrls[0]} download aria-label={c('download')} title={c('download')}
-                className="flex h-11 w-11 items-center justify-center rounded-xl text-app-text hover:bg-app-elevated"><Download size={17} aria-hidden="true" /></a>
+              <DownloadButton url={job.outputUrls[0]} locale={p.locale} label={c('download')} name={`myavatar-${Date.now()}`} />
             </span>
           ) : CANCELABLE.has(job.status) ? (
             <button type="button" onClick={() => void gen.cancel()} className="min-h-[44px] shrink-0 rounded-xl px-3 text-[13px] font-semibold text-app-text hover:bg-app-elevated">{c('cancel')}</button>

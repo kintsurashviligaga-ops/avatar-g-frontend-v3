@@ -10,7 +10,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, Film, Hand, Image as ImageIcon, Mic, Minus, Music2, Sparkles, Square, X } from 'lucide-react';
 import { clockText, type StepState, type TaskCardModel } from '@/lib/agent/media/taskSteps';
-import { LoadingLoop } from './ui/LoadingLoop';
+import { LoadingCard } from './ui/LoadingCard';
 
 type Lang = 'ka' | 'en' | 'ru';
 const L: Record<Lang, { fold: string; unfold: string; steps: string; files: string; state: Record<StepState, string> }> = {
@@ -108,16 +108,10 @@ export function AgentTaskCard({
         <ChevronDown size={16} aria-hidden="true" className={`shrink-0 text-app-muted transition-transform duration-200 ${folded ? '' : 'rotate-180'}`} />
       </button>
 
-      {/* While Agent G works, the loading loop: every generation's wait looks the same. */}
+      {/* While Agent G works, THE loading card: the loop and one quiet percentage, no bar (the owner's PRD, 2026-10-18). */}
       {model.status === 'working' && !folded ? (
-        <div aria-hidden="true" data-testid={`${testId}-loop`} className="relative mx-4 mb-3 h-[140px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
-          <LoadingLoop />
-        </div>
-      ) : null}
-
-      {model.pct !== null ? (
-        <div className="mx-4 h-1 overflow-hidden rounded-full bg-app-border/20" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={model.pct} aria-label={model.title}>
-          <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(3, model.pct)}%` }} />
+        <div data-testid={`${testId}-loop`} className="mx-4 mb-3">
+          <LoadingCard locale={lang} label={model.title} pct={model.pct} measuredOnly announce={false} className="max-w-none" />
         </div>
       ) : null}
 

@@ -93,12 +93,14 @@ export interface LoadingCardProps {
   aspect?: string;
   /** Leave the loop out where one is already on screen right above (one wait never shows two loops). */
   picture?: boolean;
+  /** Off where the caller already announces the job's states (ResultCard), so a screen reader hears them once. */
+  announce?: boolean;
   className?: string;
 }
 
 export function LoadingCard({
   locale, label, stage, state = 'running', queuePosition, pct, elapsedSec, targetSec, measuredOnly, holdPct,
-  onCancel, cancelLabel, variant = 'card', aspect, picture = true, className = '',
+  onCancel, cancelLabel, variant = 'card', aspect, picture = true, announce: speak = true, className = '',
 }: LoadingCardProps) {
   const lang: Lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const c = COPY[lang];
@@ -109,10 +111,12 @@ export function LoadingCard({
   const name = label?.trim() || c.running;
   const cancelText = cancelLabel || c.cancel;
 
-  // Announce STATE changes, not percent ticks: "12%, 13%, 14%" read aloud is noise.
-  const announce = `${name}: ${state === 'queued' ? c.queued : state === 'finalizing' ? c.finalizing : c.running}`;
+  // Announce STATE changes, not percent ticks: "12%, 13%, 14%" read aloud is noise. The region mounts empty (a live
+  // region is only heard when it changes, and the first state is on screen already) and says the state alone: the
+  // progressbar carries the label as its name, and a second copy would be read, and matched, twice.
+  const announce = state === 'queued' ? c.queued : state === 'finalizing' ? c.finalizing : c.running;
   const [liveText, setLiveText] = useState('');
-  const last = useRef<string | null>(null);
+  const last = useRef(announce);
   useEffect(() => {
     if (last.current !== announce) { last.current = announce; setLiveText(announce); }
   }, [announce]);
@@ -154,7 +158,7 @@ export function LoadingCard({
             <X size={16} />
           </button>
         )}
-        <p className="sr-only" aria-live="polite">{liveText}</p>
+        {speak && <p className="sr-only" aria-live="polite">{liveText}</p>}
       </div>
     );
   }
@@ -175,7 +179,7 @@ export function LoadingCard({
           {number && status && <span className="min-w-0 truncate pb-0.5 text-right text-[11.5px] text-white/60">{status}</span>}
         </div>
       </div>
-      <p className="sr-only" aria-live="polite">{liveText}</p>
+      {speak && <p className="sr-only" aria-live="polite">{liveText}</p>}
     </>
   );
 

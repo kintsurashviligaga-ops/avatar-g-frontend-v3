@@ -1,33 +1,18 @@
 'use client';
 
-import { AlertTriangle, Check, Clock, X } from 'lucide-react';
-import { LoadingLoop } from './LoadingLoop';
-import { easedPct } from './LoadingCard';
+import { AlertTriangle, Check, X } from 'lucide-react';
+import { LoadingCard, easedPct } from './LoadingCard';
 
 /**
- * THE loading card. One shape for every service that makes the user wait.
+ * Every job state in one place, for the surfaces that track a job (the tray, a panel, the consoles).
  *
- * ⚠️ WHY THIS MOVED OUT OF OmniStudio. It lived there and served exactly four kinds — image, music,
- * video, lipsync — so those four got a real progress experience (a big live percentage, the stage being
- * worked on, a checklist of what is done and what is left, and an estimate of the time remaining) while
- * montage, dubbing, presentation, 3D and the editor got a thin indeterminate bar with a single label,
- * or nothing at all. Same product, same wait, two completely different answers to "is this working?".
+ * While the job waits or runs it draws THE loading card (./LoadingCard): the blue-wave loop and one quiet percentage,
+ * no progress bar, no stage checklist, no remaining-time guess (the owner's PRD, 2026-10-18). Once it is over it draws
+ * one line: ready (100 %), the real failure reason, or stopped.
  *
- * A wait with no feedback is indistinguishable from a hang. That is the whole reason these renders felt
- * broken: a montage that takes four minutes behind a 2px bar with no number reads as frozen long before
- * it reads as slow.
- *
- * TWO HONESTY RULES, both load-bearing:
- *
- *  1. THE BAR NEVER REACHES 100% ON A GUESS. It eases asymptotically toward 95% and completes only when
- *     the caller swaps the card for the real asset. A bar that hits 100% and then sits there is worse
- *     than no bar — it says "done" while the user waits, and the next thing they do is reload and lose
- *     the render.
- *  2. THE ESTIMATE IS PACED TO THE REAL WALL-CLOCK, per service. A number that expires while the job is
- *     still running teaches the user to distrust every number the product shows them.
- *
- * When the pipeline reports its own stage (the v2 services publish one to the job row), that text takes
- * over the headline — a real stage beats an interpolated guess.
+ * The number is honest (LoadingCard's loadingPct): a measured percent wins; otherwise the elapsed time eases toward 95
+ * against a per-service target (PROGRESS_TARGET, measured, not guessed) and never arrives, so the card never says
+ * "done" while the user waits. A stage the pipeline reported is printed as the card's second line.
  */
 
 export type ProgressKind =
@@ -35,51 +20,6 @@ export type ProgressKind =
   | 'remix' | 'montage' | 'dubbing' | 'presentation' | 'model3d' | 'editor';
 
 type Lang = 'ka' | 'en' | 'ru';
-
-/**
- * Stage narration per service.
- *
- * These are what the user reads while waiting, so they name the WORK, not the implementation: "mixing
- * the voices", not "ffmpeg pass 2". Each list is ordered and the card walks it in step with the bar.
- */
-export const STAGES: Record<Lang, Record<ProgressKind, string[]>> = {
-  ka: {
-    image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
-    music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
-    video: ['სცენარს ვშლი…', 'აუდიო & SFX…', 'ხმა…', 'ვიდეო კადრები…', 'მასტერინგი…', 'გრაფიკა…'],
-    lipsync: ['ფოტოს ვამზადებ…', 'ავატარი ცოცხლდება…', 'ვასრულებ…'],
-    remix: ['ვიდეოს ვამზადებ…', 'ცვლილებას ვამუშავებ…', 'ვასრულებ…'],
-    montage: ['კადრებს ვამზადებ…', 'გადასვლებს ვაწყობ…', 'ხმას ვურევ…', 'ვასრულებ…'],
-    dubbing: ['ხმას ვაცალკევებ…', 'ტექსტს ვშიფრავ…', 'ვთარგმნი…', 'ხმას ვქმნი…', 'ვასინქრონებ…', 'ვურევ…'],
-    presentation: ['გეგმას ვაწყობ…', 'სლაიდებს ვწერ…', 'ვხატავ…', 'ვასრულებ…'],
-    model3d: ['რეფერენსს ვამზადებ…', 'ფორმას ვაშენებ…', 'ტექსტურას ვადებ…', 'ვასრულებ…'],
-    editor: ['ფაილებს ვამზადებ…', 'მონტაჟს ვაწყობ…', 'ვარენდერებ…', 'ვასრულებ…'],
-  },
-  en: {
-    image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
-    music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
-    video: ['Scripting…', 'Audio SFX…', 'Voice…', 'Video clips…', 'Mastering…', 'Graphics…'],
-    lipsync: ['Preparing the photo…', 'Bringing the avatar to life…', 'Finishing up…'],
-    remix: ['Preparing the video…', 'Applying the change…', 'Finishing up…'],
-    montage: ['Preparing the shots…', 'Building the transitions…', 'Mixing the audio…', 'Finishing up…'],
-    dubbing: ['Extracting the audio…', 'Transcribing…', 'Translating…', 'Synthesising the voice…', 'Syncing…', 'Mixing…'],
-    presentation: ['Outlining…', 'Writing the slides…', 'Rendering…', 'Finishing up…'],
-    model3d: ['Preparing the reference…', 'Building the mesh…', 'Texturing…', 'Finishing up…'],
-    editor: ['Uploading the clips…', 'Assembling the edit…', 'Rendering…', 'Finishing up…'],
-  },
-  ru: {
-    image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
-    music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
-    video: ['Сценарий…', 'Аудио и SFX…', 'Голос…', 'Видео-клипы…', 'Мастеринг…', 'Графика…'],
-    lipsync: ['Готовлю фото…', 'Оживляю аватар…', 'Завершаю…'],
-    remix: ['Готовлю видео…', 'Применяю изменение…', 'Завершаю…'],
-    montage: ['Готовлю кадры…', 'Строю переходы…', 'Свожу звук…', 'Завершаю…'],
-    dubbing: ['Извлекаю звук…', 'Расшифровываю…', 'Перевожу…', 'Синтезирую голос…', 'Синхронизирую…', 'Свожу…'],
-    presentation: ['Составляю план…', 'Пишу слайды…', 'Рисую…', 'Завершаю…'],
-    model3d: ['Готовлю референс…', 'Строю модель…', 'Накладываю текстуру…', 'Завершаю…'],
-    editor: ['Загружаю клипы…', 'Собираю монтаж…', 'Рендерю…', 'Завершаю…'],
-  },
-};
 
 /**
  * Wall-clock target per service, in seconds — what the "remaining" figure is paced against.
@@ -117,11 +57,18 @@ export function fmtClock(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** Terminal + queued wording, so this card can own EVERY state a job can be in, not just "running". */
-const STATE_COPY: Record<Lang, { queued: (n: number) => string; done: string; failed: string; canceled: string; cancel: string; running: string }> = {
-  ka: { queued: (n) => `რიგში: #${n}`, done: 'მზადაა', failed: 'ვერ მოხერხდა', canceled: 'შეჩერდა', cancel: 'გაუქმება', running: 'მიმდინარეობს' },
-  en: { queued: (n) => `In queue: #${n}`, done: 'Ready', failed: 'Failed', canceled: 'Stopped', cancel: 'Cancel', running: 'In progress' },
-  ru: { queued: (n) => `В очереди: #${n}`, done: 'Готово', failed: 'Не удалось', canceled: 'Остановлено', cancel: 'Отмена', running: 'В процессе' },
+/** Terminal wording: the card owns EVERY state a job can be in, not just "running". */
+const STATE_COPY: Record<Lang, { done: string; failed: string; canceled: string }> = {
+  ka: { done: 'მზადაა', failed: 'ვერ მოხერხდა', canceled: 'შეჩერდა' },
+  en: { done: 'Ready', failed: 'Failed', canceled: 'Stopped' },
+  ru: { done: 'Готово', failed: 'Не удалось', canceled: 'Остановлено' },
+};
+
+/** What each kind is called on the card when the caller gives no title. */
+const KIND_LABEL: Record<Lang, Record<ProgressKind, string>> = {
+  ka: { image: 'სურათი', music: 'მუსიკა', video: 'ვიდეო', lipsync: 'ავატარი', remix: 'ვიდეოს რედაქტირება', montage: 'მონტაჟი', dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი', editor: 'რედაქტორი' },
+  en: { image: 'Image', music: 'Music', video: 'Video', lipsync: 'Avatar', remix: 'Video edit', montage: 'Montage', dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D model', editor: 'Editor' },
+  ru: { image: 'Изображение', music: 'Музыка', video: 'Видео', lipsync: 'Аватар', remix: 'Правка видео', montage: 'Монтаж', dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель', editor: 'Редактор' },
 };
 
 /**
@@ -159,28 +106,23 @@ export function GenerationProgress({
   /** Overrides the card's own wording — a caller that already localises "Stop" keeps its label. */
   cancelLabel?: string;
   /**
-   * A service-specific body, rendered in place of the generic stage checklist.
-   *
-   * ⚠️ THIS EXISTS SO UNIFYING THE LOOK DOES NOT COST INFORMATION. The film console shows a nine-agent
-   * crew grid and the remix console shows a weighted stage list; both are richer than a checklist and
-   * neither could survive being replaced by this card wholesale. Sharing the SHELL — the card chrome, the
-   * live percentage, the bar, the clock and the cancel button — is what makes every service look like one
-   * product. Sharing the BODY would just delete what each service knows about itself.
+   * A service-specific body under the card (the remix console's weighted stage list), so unifying the look does not
+   * cost what a service knows about itself.
    */
   children?: React.ReactNode;
-  /** A stage the PIPELINE reported — takes over the headline, because it is real. */
+  /** A stage the PIPELINE reported — the card's second line, because it is real. */
   status?: string;
   locale: Lang;
   /** Override the eased target, e.g. a heavier image tier. */
   targetSec?: number;
   /** A real server-reported percentage. Beats the time-based estimate when present. */
   pct?: number;
-  /** Drops the stage checklist — for tight surfaces like an in-chat panel. */
+  /** The card's one-line row shape — for tight surfaces like the job tray or an in-chat panel. */
   compact?: boolean;
   /**
    * Print only what the server measured. A job the server runs and reports on (the tray's observed rows) has
-   * no local clock worth easing: with no server percent the card shows no number, no remaining-time guess
-   * and an indeterminate bar, and the headline is the server's stage or a plain "in progress". Off by
+   * no local clock worth easing: with no server percent the card shows no number, only the server's stage or a
+   * plain "in progress". Off by
    * default, so every studio that runs its own work keeps the eased estimate it was designed with.
    */
   measuredOnly?: boolean;
@@ -190,136 +132,53 @@ export function GenerationProgress({
    */
   loop?: boolean;
 }) {
-  const stages = STAGES[locale][kind];
   const target = targetSec ?? PROGRESS_TARGET[kind];
-  // Eased growth: fast at first, asymptotic toward 95%, so it never "finishes" ahead of the asset.
-  const eased = easedPct(elapsed, target);
-  const measured = typeof pctOverride === 'number' && Number.isFinite(pctOverride) && pctOverride > 0;
-  const pct = measured ? Math.min(99, Math.round(pctOverride as number)) : eased;
-  // No server percent on a measured-only card: nothing to print while it runs (Video Core round 3, no fake %).
-  const unmeasured = measuredOnly && !measured && state === 'running';
-  // Video's bands are deliberately uneven — clip generation dominates 50–85% of the real time, so an
-  // even split would park the label on the wrong stage for minutes.
-  const stageIdx = kind === 'video'
-    ? (pct < 20 ? 0 : pct < 35 ? 1 : pct < 50 ? 2 : pct < 85 ? 3 : pct < 95 ? 4 : 5)
-    : Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
   const sc = STATE_COPY[locale] ?? STATE_COPY.ka;
-  const running = state === 'running';
-  const working = running || state === 'queued';
-  // Terminal states show 100 — the work IS over — while `running` keeps the honest sub-95 estimate.
-  const shownPct = state === 'done' ? 100 : state === 'queued' ? 0 : running ? pct : 100;
-  const headline = !running
-    ? (state === 'queued' ? sc.queued(queuePosition ?? 1)
-      : state === 'done' ? sc.done
-      : state === 'failed' ? (error?.trim() ? error.trim().slice(0, 90) : sc.failed)
-      : sc.canceled)
-    : (status && status.trim() ? status.trim() : unmeasured ? sc.running : stages[stageIdx]);
-  const remaining = Math.max(0, Math.round(target - elapsed));
-  const remLabel = locale === 'en' ? 'remaining' : locale === 'ru' ? 'осталось' : 'დარჩა';
-  const tone = state === 'failed' ? 'text-red-500'
-    : state === 'done' ? 'text-emerald-500'
-    : state === 'canceled' ? 'text-app-muted'
-    : 'text-app-accent';
-  const bar = state === 'failed' ? 'bg-red-500'
-    : state === 'done' ? 'bg-emerald-500'
-    : state === 'canceled' ? 'bg-app-border/50'
-    : 'bg-gradient-to-r from-app-accent/75 to-app-accent';
+  const working = state === 'running' || state === 'queued';
+  const label = title?.trim() || KIND_LABEL[locale]?.[kind] || KIND_LABEL.ka[kind];
 
+  if (working) {
+    // THE loading card (./LoadingCard): the blue-wave loop and one quiet percentage, no bar (the owner's PRD, 2026-10-18).
+    // Only a stage the pipeline reported is printed; a narrated guess is not.
+    return (
+      <div className={`${compact ? 'w-full' : 'w-full max-w-[min(86vw,440px)]'} space-y-2`}>
+        <LoadingCard
+          locale={locale}
+          label={label}
+          stage={[subtitle, status].filter((x) => x && x.trim()).join(' · ') || undefined}
+          state={state === 'queued' ? 'queued' : 'running'}
+          queuePosition={queuePosition}
+          pct={pctOverride}
+          elapsedSec={elapsed}
+          targetSec={target}
+          measuredOnly={measuredOnly}
+          onCancel={onCancel}
+          cancelLabel={cancelLabel}
+          variant={compact ? 'row' : 'card'}
+          picture={loop}
+        />
+        {children}
+      </div>
+    );
+  }
+
+  // Over: one quiet line, no bar. Terminal states show 100 for done (the work IS over).
+  const headline = state === 'done' ? sc.done
+    : state === 'failed' ? (error?.trim() ? error.trim().slice(0, 90) : sc.failed)
+    : sc.canceled;
+  const tone = state === 'failed' ? 'text-red-500' : state === 'done' ? 'text-emerald-500' : 'text-app-muted';
+  const Icon = state === 'done' ? Check : state === 'failed' ? AlertTriangle : X;
   return (
-    // `compact` fills its container (the tray is a fixed-width panel); otherwise the card is clamped so a
-    // desktop bubble does not stretch a progress card to the full width of the conversation.
-    <div className={`${compact ? 'w-full' : 'w-full max-w-[min(86vw,440px)]'} space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-4 shadow-[0_10px_34px_rgba(0,0,0,0.20)]`}>
-      {(title || subtitle) && (
-        <div className="min-w-0">
-          {title && <p className="truncate text-[12.5px] font-semibold text-app-text" title={title}>{title}</p>}
-          {subtitle && <p className="truncate text-[10px] font-medium uppercase tracking-wider text-app-muted/70">{subtitle}</p>}
-        </div>
-      )}
-      {/* THE loading picture (the owner's rule, 2026-10-17: every generation shows only this card): while the job
-          waits or runs, the loop fills the card's head. No spinner anywhere on the card. */}
-      {loop && working && !compact && (
-        <div aria-hidden="true" data-testid="generation-progress-loop" className="relative h-[150px] w-full overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
-          <LoadingLoop />
-        </div>
-      )}
-      <div className="flex items-end justify-between gap-3">
-        <div className="flex min-w-0 items-end gap-3">
-          {/* A compact row (the job tray, a panel) carries the same loop as a small tile. */}
-          {loop && working && compact && (
-            <div aria-hidden="true" data-testid="generation-progress-loop" className="relative h-[52px] w-[30px] shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-app-border/15">
-              <LoadingLoop />
-            </div>
-          )}
-          <div className="min-w-0">
-            {!unmeasured && (
-              <div className="flex items-baseline gap-1">
-                <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{shownPct}</span>
-                <span className="text-[17px] font-semibold text-app-muted">%</span>
-              </div>
-            )}
-            <span className={`mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium ${tone}`}>
-              {running ? null
-                : state === 'queued' ? <Clock size={13} className="shrink-0" />
-                : state === 'done' ? <Check size={13} className="shrink-0" />
-                : state === 'failed' ? <AlertTriangle size={13} className="shrink-0" />
-                : <X size={13} className="shrink-0" />}
-              <span className="truncate">{headline}</span>
-            </span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-end gap-2">
-          {running && !unmeasured && (
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-app-muted/70">{remLabel}</p>
-              <p className="text-[15px] font-semibold tabular-nums text-app-text">{remaining > 0 ? `~${fmtClock(remaining)}` : '…'}</p>
-            </div>
-          )}
-          {onCancel && (running || state === 'queued') && (
-            <button
-              type="button"
-              onClick={onCancel}
-              aria-label={cancelLabel || sc.cancel}
-              title={cancelLabel || sc.cancel}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
-            >
-              <X size={15} />
-            </button>
-          )}
-        </div>
+    <div className={`${compact ? 'w-full' : 'w-full max-w-[min(86vw,440px)]'} flex min-h-[56px] items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 px-3.5 py-2`} data-state={state}>
+      <div className="min-w-0 flex-1">
+        {title && <p className="truncate text-[13px] font-medium text-app-text" title={title}>{title}</p>}
+        <span className={`inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium ${tone}`}>
+          <Icon size={13} className="shrink-0" aria-hidden="true" />
+          <span className="truncate">{headline}</span>
+        </span>
       </div>
-
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-app-border/15">
-        {unmeasured ? (
-          // Indeterminate: it moves, it measures nothing, and assistive tech is not handed a number either.
-          <div data-progress="indeterminate" className={`h-full w-1/3 animate-pulse rounded-full ${bar}`} />
-        ) : (
-          <div
-            className={`h-full rounded-full transition-[width] duration-700 ease-out ${bar}`}
-            style={{ width: `${state === 'queued' ? 8 : Math.max(6, shownPct)}%` }}
-          />
-        )}
-      </div>
-
-      {children}
-
-      {!children && !compact && running && (
-        <ul className="space-y-1.5 pt-0.5">
-          {stages.map((s, i) => {
-            const state = i < stageIdx ? 'done' : i === stageIdx ? 'active' : 'pending';
-            return (
-              <li key={i} className={`flex items-center gap-2.5 text-[12.5px] ${state === 'pending' ? 'text-app-muted/45' : state === 'active' ? 'font-medium text-app-text' : 'text-app-muted'}`}>
-                {state === 'done' ? (
-                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Check size={12} className="text-app-accent" /></span>
-                ) : state === 'active' ? (
-                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><span className="h-[7px] w-[7px] rounded-full bg-app-accent" /></span>
-                ) : (
-                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center"><span className="h-[13px] w-[13px] rounded-full border border-app-border/30" /></span>
-                )}
-                <span className="truncate">{s}</span>
-              </li>
-            );
-          })}
-        </ul>
+      {state === 'done' && (
+        <span className="shrink-0 tabular-nums text-[15px] font-light text-app-text">100<span className="text-[11px] opacity-60">%</span></span>
       )}
     </div>
   );

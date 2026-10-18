@@ -14,15 +14,20 @@ import { render, screen } from '@testing-library/react';
 import { GenerationProgress } from './GenerationProgress';
 
 describe('the card owns every job state, not just "running"', () => {
-  it('shows a live percentage and the remaining estimate while running', () => {
-    render(<GenerationProgress kind="image" locale="en" elapsed={10} />);
+  it('shows the one loading card while running: a live percentage, no bar, no remaining-time guess (PRD 2026-10-18)', () => {
+    const { container } = render(<GenerationProgress kind="image" locale="en" elapsed={10} />);
+    expect(screen.getByTestId('loading-card')).toBeTruthy();
     expect(screen.getByText('%')).toBeTruthy();
-    expect(screen.getByText('remaining')).toBeTruthy();
+    expect(screen.getByText('Image')).toBeTruthy();
+    expect(screen.queryByText('remaining')).toBeNull();
+    expect(container.querySelector('ul')).toBeNull();
+    expect([...container.querySelectorAll<HTMLElement>('*')].some((el) => /%$/.test(el.style.width))).toBe(false);
   });
 
   it('shows the queue position instead of a fake percentage when queued', () => {
     render(<GenerationProgress kind="image" locale="en" elapsed={0} state="queued" queuePosition={3} />);
-    expect(screen.getByText('In queue: #3')).toBeTruthy();
+    expect(screen.getByText('Queued · #3')).toBeTruthy();
+    expect(screen.queryByText('%')).toBeNull();
     // ⚠️ A queued job has not started, so it must NOT advertise time remaining — that estimate would be
     // counting down against work that is not happening yet.
     expect(screen.queryByText('remaining')).toBeNull();
@@ -82,9 +87,21 @@ describe('what the tray needs from it', () => {
     expect(bubble.firstElementChild?.className).toContain('max-w-[min(86vw,440px)]');
   });
 
-  it('drops the stage checklist in compact form but keeps the number and the bar', () => {
+  it('is the card\'s one-line row in compact form, number kept', () => {
     const { container } = render(<GenerationProgress kind="image" locale="en" elapsed={12} compact />);
-    expect(container.querySelector('ul')).toBeNull();
+    expect(container.querySelector('[data-variant="row"]')).not.toBeNull();
+    expect(screen.getByText('%')).toBeTruthy();
+  });
+
+  it('a pipeline stage and the console\'s subtitle are the card\'s second line', () => {
+    render(<GenerationProgress kind="remix" locale="en" elapsed={3} title="Video edit" subtitle="Colour grade" status="Applying the change" pct={40} />);
+    expect(screen.getByText('Colour grade · Applying the change')).toBeTruthy();
+    expect(screen.getByText('40')).toBeTruthy();
+  });
+
+  it('draws no loop where one is already on screen (loop={false})', () => {
+    const { container } = render(<GenerationProgress kind="video" locale="en" elapsed={3} loop={false} />);
+    expect(container.querySelector('[data-testid="loading-loop-poster"]')).toBeNull();
     expect(screen.getByText('%')).toBeTruthy();
   });
 });
@@ -101,12 +118,12 @@ describe('localisation', () => {
 });
 
 describe('measured only (the tray\'s server-observed jobs, Video Core round 3)', () => {
-  it('with no server percent it prints no number, no remaining guess, and an indeterminate bar', () => {
-    const { container } = render(<GenerationProgress kind="video" locale="en" elapsed={40} measuredOnly />);
+  it('with no server percent it prints no number and no guess, only that it is in progress', () => {
+    render(<GenerationProgress kind="video" locale="en" elapsed={40} measuredOnly />);
     expect(screen.queryByText('%')).toBeNull();
     expect(screen.queryByText('remaining')).toBeNull();
     expect(screen.getByText('In progress')).toBeTruthy();
-    expect(container.querySelector('[data-progress="indeterminate"]')).not.toBeNull();
+    expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false);
   });
   it('the server\'s stage still heads the card', () => {
     render(<GenerationProgress kind="video" locale="ka" elapsed={40} measuredOnly status="კადრების შეერთება" />);
