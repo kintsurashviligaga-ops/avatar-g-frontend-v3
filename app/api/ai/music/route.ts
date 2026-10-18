@@ -30,6 +30,7 @@ import {
   type MusicControls, type MusicControlsReport, type MusicEngineId,
 } from '@/lib/ai/musicControls';
 import { isMusicEngineId } from '@/lib/studio/musicEngines';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 /**
  * Assistant music generation.
@@ -329,6 +330,9 @@ export async function POST(req: NextRequest) {
   // key would not crash, which quietly made guest generation a supported path.
   const musicGate = requireAuthForGeneration(rUser?.id ?? null);
   if (musicGate.response) return musicGate.response;
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('music');
+  if (serviceOff) return serviceOff;
 
   // The in-flight MUTEX stays fail-open: a Redis blip only loses the double-click guard, never money. (Neither helper
   // throws today; the guard is for a future one that does.)

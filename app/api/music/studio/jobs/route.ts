@@ -10,6 +10,7 @@ import { liveMusicDeps } from '@/lib/music/studio/live';
 import { musicErrorResponse, musicUser, readJson } from '@/lib/music/studio/http';
 import { newWorkerId } from '@/lib/agent/media/montageLive';
 import { runAfterResponse } from '@/lib/platform/afterResponse';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
   // five starts a minute — and the free edits drew from the same bucket.
   const who = await musicUser(req);
   if ('response' in who) return who.response;
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('music');
+  if (serviceOff) return serviceOff;
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE, who.userId);
   if (rl) return rl;
   try {

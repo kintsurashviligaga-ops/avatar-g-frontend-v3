@@ -64,7 +64,7 @@ export function SupportChat({ locale }: { locale: string }) {
   // Poll while the page is visible — a reply should appear without a reload, and a background tab costs nothing.
   useEffect(() => {
     void load();
-    const id = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 8000);
+    const id = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 4000);
     return () => clearInterval(id);
   }, [load]);
 
