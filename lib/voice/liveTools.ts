@@ -287,9 +287,10 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'prepare_generation',
     description:
-      'Prepare a creation in a MyAvatar studio: switch to that studio and fill in the prompt (and optionally the shape, '
-      + 'length and style) on screen. It does NOT start the generation and spends no credits. Its answer includes the '
-      + 'price: tell it to the user and ask whether to start.',
+      'Give Agent G a creation order IN THE CHAT on screen: the prompt is written into the chat as the user\'s request '
+      + '(with the shape, length and style applied), and Agent G answers there with questions or its price card (a video '
+      + 'gets a storyboard to approve). It does NOT start anything and spends no credits. Then call get_screen_state: tell '
+      + 'the user what waitingForYes costs and ask whether to start; their own clear yes starts it (start_generation).',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -323,9 +324,9 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'start_generation',
     description:
-      'A paid generation never starts by voice: this answers ui_confirmation_required and starts nothing. The user '
-      + 'starts it by pressing the priced button on screen, so after prepare_generation tell them the price and that they '
-      + 'press its button to start. A video first gets a storyboard the user approves.',
+      'Start what is waiting for a yes in the chat (get_screen_state waitingForYes: Agent G\'s price card, or a film\'s '
+      + 'storyboard). Call it only after you told the user that price in this call and THEY clearly said yes. A short '
+      + 'countdown runs on screen first and their own words are checked; your call is never the approval.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -582,8 +583,8 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       + 'the chat (nothing is downloaded yet): give url when the user said or pasted the link; without url it uses the video '
       + 'or audio file attached in the composer, else the newest link the user sent in the chat. Links from video platforms '
       + '(YouTube, TikTok, Instagram, Facebook, Vimeo and the like) are refused by their terms: never look for a way around '
-      + 'that; tell the user to upload their own or a licensed file (the card has the button). "start" never starts it by voice '
-      + '(it answers ui_confirmation_required, the same as agent_task start): the user presses the card\'s button; when the '
+      + 'that; tell the user to upload their own or a licensed file (the card has the button). "start": only after you told the user '
+      + 'what the plan does and THEY clearly said yes (a countdown runs and the app checks their own words, never yours; they can also press the card\'s button); when the '
       + 'plan says the rights are unverified, tell them that starting confirms the file is theirs or licensed to them. "stop": cancel the '
       + 'extraction that is running.',
     parameters: {
@@ -602,8 +603,8 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       'Agent G\'s plans and tasks in the chat: an MP3 out of a file or link, a montage (clips cut to music into one video), '
       + 'an edit of the user\'s video (trim, reframe, colour, sound, caption). A plan is made by extract_audio plan or by '
       + 'asking in the chat (chat_send); each plan reaches you as an [App] note with its number and facts, and waits as a '
-      + 'card in the chat. action "start" never starts anything by voice: it answers ui_confirmation_required, and the user '
-      + 'starts the plan with its card\'s button after you told them what it does. "stop": stop plan `plan` while it runs, or every running Agent G task when omitted. "status": what each plan '
+      + 'card in the chat. action "start" starts plan `plan` only after you told the user what it does and THEY clearly said '
+      + 'yes: a countdown runs and the app checks its transcript of the user, never your word (they can also press the card\'s button). "stop": stop plan `plan` while it runs, or every running Agent G task when omitted. "status": what each plan '
       + 'and task is doing now (call it when the user asks, or before you start a plan you have no note for).',
     parameters: {
       type: 'OBJECT',
@@ -658,8 +659,8 @@ export const LIVE_ACTIONS_RULE = [
   'ACTIONS: you can operate the MyAvatar app on the user\'s screen through your functions while you talk.',
   'Call get_screen_state whenever the user refers to the screen, a result, a price or "this", before you answer.',
   'prepare_generation and update_settings fill and tune a studio; they never spend credits. Their answer gives the price:',
-  'say it and tell the user they start it by pressing its button on screen. A spoken yes never starts or charges anything:',
-  'start_generation and every "start" action answer ui_confirmation_required. Never start a generation on your own initiative.',
+  'say it and ask. Only when the user THEMSELVES clearly says yes to that price, call start_generation: a short countdown',
+  'runs on screen and the app checks their own words, never yours. Never start a generation on your own initiative.',
   'When the user wants an image, video, music or an avatar and agrees to a prompt, call prepare_generation with that prompt',
   'right away instead of asking "shall we start?". For an avatar the prompt is only the words it says; put "female" or',
   '"male" in style for its voice. Never say the system is processing, generating or almost done unless',
@@ -673,10 +674,10 @@ export const LIVE_ACTIONS_RULE = [
   'You also have hands on the screen: when the user says click, press, open, choose, switch or type, do it with click and',
   'type_text, using the control ids get_screen_state lists (call it first; ids change when the screen changes). They never',
   'spend credits, pay, delete or sign out — those are refused, and a generation is prepared with prepare_generation and',
-  'started by the user\'s own tap on its priced button. download saves a result to the device. use_result moves a result into another tool, and montage',
+  'started with start_generation after the user\'s own clear yes. download saves a result to the device. use_result moves a result into another tool, and montage',
   'combines videos and music and trims the music, for free. Carry out multi-step requests step by step, e.g. "make music,',
-  'then a video, then put the music on it from 0:30": prepare the music and the video and tell each price (the user taps',
-  'each one\'s button to start it); when both are ready, montage open with videos "latest", music "latest", musicStartSec 30, then montage export.',
+  'then a video, then put the music on it from 0:30": prepare the music and the video and tell each price and start each',
+  'one only on its own clear yes); when both are ready, montage open with videos "latest", music "latest", musicStartSec 30, then montage export.',
   'Files the user ATTACHED (get_screen_state lists them under attachments, by number and name) are theirs to use: to cut',
   'them together call montage open with source "attached" — all of them, in their order; never say you cannot see them.',
   'Messages that start with [App] come from the app, not the user: they say when a generation finished or failed —',
@@ -688,13 +689,13 @@ export const LIVE_ACTIONS_RULE = [
   'answer briefly in their language.',
   'When the user wants the sound or an MP3 out of a video or audio link or file, call extract_audio with action "plan";',
   'say what the plan card says (and, for unverified rights, that starting confirms the file is theirs or licensed), and',
-  'that they start it with the card\'s button. It is free. A video platform link is refused: offer the',
+  'start it (agent_task start) on their clear yes. It is free. A video platform link is refused: offer the',
   'upload instead, never a workaround.',
   'Agent G\'s plans (an MP3, a montage of clips to music, an edit of the user\'s video) come to you as [App] notes with a',
-  'plan number: tell the user what the plan does and that they start it with the card\'s button. agent_task "stop" stops a',
+  'plan number: tell the user what the plan does and ask; on their clear yes call agent_task start. agent_task "stop" stops a',
   'running one, "status" says what each is doing.',
-  'No start is ever made by voice — start_generation, extract_audio start and agent_task start answer',
-  'ui_confirmation_required: the user presses the button on screen. Never say something started unless the screen shows it.',
+  'The app checks its transcript of the user, never your word: if an [App] note says nothing was started, ask the user',
+  'again plainly; never say it started. Never say something started unless the screen shows it.',
   'For music made with Music Studio use music_studio: "plan" puts a priced card on screen — tell the user the price from',
   'the card (status) and that they start it by tapping Create; you can never start it or charge for it. Edits, joins and',
   'downloads of the tracks are free; "cancel" stops the music being made and returns the credits.',
@@ -808,6 +809,8 @@ export interface LiveStudioReply {
   priceCredits?: number;
   /** Settings the studio really applied, e.g. { aspectRatio: '9:16', durationSec: 24 }. */
   applied?: Record<string, unknown>;
+  /** prepare_generation: the order went into the chat (Agent G's card answers there), not into a studio panel. */
+  inChat?: boolean;
   /** get_screen_state: what is on screen. */
   state?: Record<string, unknown>;
   /** start_generation: which studio will run. */

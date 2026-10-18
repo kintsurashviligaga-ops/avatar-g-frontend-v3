@@ -207,16 +207,15 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await shot(page, `${phone ? 'phone' : 'desktop'}-higgsfield-done`);
     });
 
-    test('video: the hero\'s Change opens the model picker (the film / music-video switch stays on the panel); a Veo pick changes the film\'s model and survives a reload', async ({ page }) => {
+    test('video: „Other models…" in the Quality select opens the model picker (the film / music-video switch stays on the panel); a Veo pick changes the film\'s model and survives a reload', async ({ page }) => {
       await mockCatalogue(page);
       await openTool(page, 'video', 'video-create-panel');
       const panel = page.getByTestId('video-create-panel').filter({ visible: true }).first();
-      // Advanced settings (GG 2026-10-18) holds the model card, the quality row and the resolution: opened only if shut.
-      const adv = panel.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
-      if ((await adv.getAttribute('aria-expanded')) === 'false') await adv.click();
-      await expect(panel.getByTestId('video-hero-title')).toHaveText('VEO 3.1 FAST');
+      // GG 2026-10-18: no hero card and no Advanced section — the Quality select names the Veo tier, priced.
+      const quality = panel.getByTestId('video-quality');
+      await expect(quality).toHaveValue('fast');
 
-      await panel.getByTestId('video-hero-change').click();
+      await quality.selectOption('__other');
       const sheet = page.getByRole('dialog', { name: 'Model' });
       await expect(sheet.getByTestId('video-mode-choice')).toHaveCount(0);
       await expect(panel.getByTestId('video-mode-choice')).toBeVisible();
@@ -228,14 +227,12 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
 
       await sheet.locator('[data-model="google/veo-3.1-lite"]').click();
       await expect(sheet).toBeHidden();
-      await expect(panel.getByTestId('video-hero-title')).toHaveText('VEO 3.1 LITE');
-      await expect(panel.getByTestId('video-model-row')).toHaveCount(0); // one place names the model: the hero
+      await expect(quality).toHaveValue('lite');
+      await expect(panel.getByTestId('video-hero')).toHaveCount(0); // one place names the model: the Quality select
 
       await openTool(page, 'video', 'video-create-panel');
       const again = page.getByTestId('video-create-panel').filter({ visible: true }).first();
-      const adv2 = again.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
-      if ((await adv2.getAttribute('aria-expanded')) === 'false') await adv2.click();
-      await expect(again.getByTestId('video-hero-title')).toHaveText('VEO 3.1 LITE');
+      await expect(again.getByTestId('video-quality')).toHaveValue('lite');
     });
   });
 }

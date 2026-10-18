@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openStudio, openVideoTool, waitForBoard, ROUTE_CHECK_MS } from './video-core/_shared';
+import { openStudio, openVideoTool, waitForBoard, ROUTE_CHECK_MS, typeFilmPrompt, sendFilm } from './video-core/_shared';
 
 /**
  * GG's plan 2026-10-17 11:28Z, item 1, in a real browser with every route mocked (nothing is generated, nothing is
@@ -31,11 +31,11 @@ test.describe('the studio’s controls by text, after a first result (GG, 2026-1
     const calls = await openStudio(page, { assemble: { status: 200, body: { url: FILM_URL, qa: null } } });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await openVideoTool(page, false);
-    await page.getByTestId('video-prompt-input').fill(BRIEF);
+    await typeFilmPrompt(page, BRIEF);
     await page.getByTestId('video-tile-length').click();
     await page.getByTestId('video-preset-4').click();
     await page.keyboard.press('Escape');
-    await page.getByTestId('video-generate').click();
+    await sendFilm(page);
     await waitForBoard(page, 'en', 1);
     await page.getByTestId('storyboard-generate').click();
     await expect.poll(() => calls.assemble.length, { timeout: 30_000 }).toBe(1);

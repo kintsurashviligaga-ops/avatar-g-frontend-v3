@@ -69,6 +69,25 @@ export const VIDEO_COPY = {
   generate: T('შექმნა', 'Generate', 'Создать'),
   rendering: T('იქმნება…', 'Rendering…', 'Создаётся…'),
 
+  // GG 2026-10-18 („ზედმეტი წაშალე"): the prompt is typed in the chat box; the panel keeps only the switches that matter.
+  promptInChat: T(
+    'ვიდეო აღწერე ჩატის ველში ქვემოთ და დააჭირე გაგზავნას',
+    'Describe the video in the chat box below and press Send',
+    'Опишите видео в поле чата ниже и нажмите «Отправить»',
+  ),
+  settings: T('პარამეტრები', 'Settings', 'Параметры'),
+  otherModels: T('სხვა მოდელები…', 'Other models…', 'Другие модели…'),
+  narrator: T('დიქტორი', 'Narrator', 'Диктор'),
+  narratorOff: T('გამორთული', 'Off', 'Выкл'),
+  female: T('ქალი', 'Female', 'Женский'),
+  male: T('კაცი', 'Male', 'Мужской'),
+  music: T('მუსიკა', 'Music', 'Музыка'),
+  subtitles: T('სუბტიტრები', 'Subtitles', 'Субтитры'),
+  lipsync: T('ტუჩების სინქრონი', 'Lip-sync', 'Синхрон губ'),
+  lipsyncSub: (credits: string): L3 => T(`+${credits}, ჩავარდნისას ბრუნდება`, `+${credits}, returned if it fails`, `+${credits}, при сбое возвращаются`),
+  photos: T('ფოტოები', 'Photos', 'Фото'),
+  photosOptional: T('არჩევითი', 'optional', 'необязательно'),
+
   // disclosures
   story: T('ისტორია და სტილი', 'Story & style', 'История и стиль'),
   voice: T('ხმა და მუსიკა', 'Voice & music', 'Голос и музыка'),

@@ -29,7 +29,8 @@ import {
   musicControlsReport, musicStyleLine, parseMusicControls, promptDirectives,
   type MusicControls, type MusicControlsReport, type MusicEngineId,
 } from '@/lib/ai/musicControls';
-import { isMusicEngineId } from '@/lib/studio/musicEngines';
+import { isMusicEngineId, LYRIA_CLIP_MAX_SEC, LYRIA_PRO_MODEL, lyriaModelForSec, musicLengthDirection, musicTargetSec, offeredMusicLengths } from '@/lib/studio/musicEngines';
+import { lyriaProMaxSec } from '@/lib/music/studio/capabilities';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 /**
@@ -42,7 +43,10 @@ import { serviceOffResponse } from '@/lib/server/serviceSwitches';
  *
  * Engine (composeTrackUrl) — ONE engine per request, for BOTH vocal songs and instrumentals (Lyria 3 generates
  * full songs with vocals + lyrics, so there's no vocal/instrumental switching):
- *   Auto → Google Lyria 3 (Gemini music) ONLY. No failover (PROJECT_MASTER R7): a Lyria error, timeout or open
+ *   Auto → Google Lyria 3 (Gemini music) ONLY: Lyria 3 Clip up to 30 s, Lyria 3 Pro for 60 s / 90 s / Full song (owner,
+ *   GG 2026-10-18; lib/studio/musicEngines). Pro is offered only once verified (MUSIC_LYRIA_PRO_VERIFIED +
+ *   MUSIC_LYRIA_PRO_SECONDS); until then a longer length is refused before any charge.
+ *   No failover (PROJECT_MASTER R7): a Lyria error, timeout or open
  *   breaker is this request's explicit failure — 502, the reserved credit refunded — never another engine's track.
  * Lyria is live-by-default when a Gemini key is present (kill-switch LYRIA_ENABLED=0). The Create screen's explicit
  * engine pick runs that one engine instead, under the same rule. MUSIC_PROVIDER=elevenlabs makes Udio unpickable.
@@ -68,9 +72,11 @@ export const maxDuration = 300;
 // Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
 // `controls` reaches the engines that take them natively (MusicGen always, Udio behind MUSIC_SUNO_PARAMS); for the
 // others the sliders are already sentences inside `brief`. Each attempt reports which, for the response.
-// `lengthSec` and `preferred` are kept in the signature for the callers; Lyria takes no length (the charge is settled
-// against the delivered track below) and only 'lyria' can be preferred — anything else is refused in POST.
-async function composeTrackUrl(brief: MusicBrief, _style: string, instrumental: boolean, _lengthSec = 30, controls?: MusicControls, _preferred?: MusicEngineId | null): Promise<{ url: string; engine: string; controls: MusicControlsReport }> {
+// `targetSec` picks the Lyria model: the clip up to 30 s, Pro above (lib/studio/musicEngines). Neither takes a length,
+// so Pro is steered to it by a direction ahead of the brief, and the charge is settled against the delivered track
+// below. `preferred` is kept in the signature for the callers; only 'lyria' can be preferred — anything else is
+// refused in POST.
+async function composeTrackUrl(brief: MusicBrief, _style: string, instrumental: boolean, targetSec = 30, controls?: MusicControls, _preferred?: MusicEngineId | null): Promise<{ url: string; engine: string; controls: MusicControlsReport }> {
   type Track = { url: string; engine: string; controls: MusicControlsReport };
   // `sent` is the EXACT text the engine was handed: `applied` asks whether a slider made it into the request.
   const report = (engine: MusicEngineId, sent: string): MusicControlsReport => musicControlsReport(engine, controls, sent);
@@ -79,30 +85,38 @@ async function composeTrackUrl(brief: MusicBrief, _style: string, instrumental: 
   // custom lyrics). The prompt already carries the lyrics (baked by the caller); we pass the instrumental
   // flag so Lyria steers vocals on/off. Returns base64 audio → hosted like the others. A miss is the
   // request's failure — nothing runs behind it.
+  const model = lyriaModelForSec(targetSec);
+  const pro = model === LYRIA_PRO_MODEL;
+  // First, so the 1500-char cut can never drop it.
+  const lengthDirection = musicLengthDirection(targetSec);
+  const prompt = lengthDirection ? `${lengthDirection}. ${brief.prompt}` : brief.prompt;
   const lyriaRun = async (): Promise<Track> => {
     // ⚠️ `lyrics` PASSED SEPARATELY — this argument existed all along and no caller ever used it, so the
     // user's words were folded into the prompt string and cut by its 1500-char slice. Given its own
     // field they keep their own budget AND get the [Verse]/[Chorus] tagging the model understands.
     const t = await generateLyriaTrack({
-      prompt: brief.prompt,
+      prompt,
       ...(brief.lyrics ? { lyrics: brief.lyrics } : {}),
       instrumental,
+      // The clip keeps the deployment's default (LYRIA_MODEL); Pro is named. Same transport for both.
+      ...(pro ? { model } : {}),
     });
     if (!t) throw new Error('Lyria did not return audio');
     const ext = /mpeg|mp3/i.test(t.mime) ? 'mp3' : /wav/i.test(t.mime) ? 'wav' : 'mp3';
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const url = await uploadAndSign('uploads', path, t.base64, t.mime, 604800);
-    if (url) return { url, engine: 'Lyria', controls: report('lyria', brief.prompt) };
+    if (url) return { url, engine: pro ? 'Lyria 3 Pro' : 'Lyria', controls: report('lyria', prompt) };
     throw new Error('Lyria host failed');
   };
 
   // ⚠️ GOOGLE LYRIA IS THE ONLY ENGINE (Music Studio v1, Phase 2 — the approved provider boundary: Google for music,
   // ElevenLabs only for permitted VOICE work). Udio, ElevenLabs Music and Replicate MusicGen used to be pickable here;
-  // they are gone from this route, and a request that names one is refused before any charge (see POST). One engine per
-  // request, no failover (R7): a Lyria miss is this request's explicit, refunded failure.
+  // they are gone from this route, and a request that names one is refused before any charge (see POST). One model per
+  // request, no failover (R7) — not even clip ↔ Pro: a miss is this request's explicit, refunded failure. Pro has its
+  // own breaker ('lyria-pro'), so its "high demand" 500s never trip the clip's.
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
   if (!hasLyriaProvider()) throw new Error('Lyria is not configured (no Gemini key, or LYRIA_ENABLED=0) — no fallback engine runs.');
-  const attempt: ProviderAttempt<Track> = { name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun };
+  const attempt: ProviderAttempt<Track> = { name: pro ? 'lyria-pro' : 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun };
 
   // ⚠️ A PLATFORM-KILLED LAMBDA REFUNDS NOTHING. A timeout the code chooses can refund; one the platform imposes cannot.
   // So the attempt's budget is capped by the same pool the old cascade shared (default 250s — 50s of headroom under
@@ -204,6 +218,9 @@ export async function POST(req: NextRequest) {
   // Canonical billed seconds (full-song 0→90; cover always renders ~30s→30) — the post-success
   // deduct uses this so the charge matches the pre-render gate AND the client toast.
   const billSeconds = audioReference ? 30 : (durationSec === 0 ? 90 : durationSec);
+  // The length the track is COMPOSED at (Full song ≈ 180 s on Lyria 3 Pro) — distinct from the billed tier above.
+  // ⚠️ PRICING QUESTION for the BOG/pricing thread: a Full song is still billed at the 90 s tier; no tier exists above it.
+  const targetSec = musicTargetSec(durationSec);
 
   if (!prompt) {
     return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
@@ -223,10 +240,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, code: 'unsupported', error: 'unsupported', message, url: null }, { status: 400 });
   }
 
+  // A length over 30 s is Lyria 3 Pro's, offered only within its verified length (MUSIC_LYRIA_PRO_VERIFIED +
+  // MUSIC_LYRIA_PRO_SECONDS). Refused before any charge rather than composed on the clip as a silent ~30 s track.
+  if (targetSec > LYRIA_CLIP_MAX_SEC && !(offeredMusicLengths(lyriaProMaxSec()) as number[]).includes(durationSec)) {
+    const l = billingLocale(req);
+    const message = l === 'en'
+      ? 'This length is not available yet: choose 30 seconds. You were not charged.'
+      : l === 'ru'
+        ? 'Эта длительность пока недоступна: выберите 30 секунд. Списания не было.'
+        : 'ეს ხანგრძლივობა ჯერ მიუწვდომელია: აირჩიე 30 წამი. თანხა არ ჩამოგეჭრა.';
+    return NextResponse.json({ success: false, code: 'unsupported', error: 'unsupported', message, url: null }, { status: 400 });
+  }
+
   // THE PLATFORM'S DAILY AI LIMIT, ASKED BEFORE ANY CHARGE. Lyria's own gate refused too, but only after the credit was
   // reserved, and its null came back as the generic "service unavailable" (2026-10-16): the person could not tell the
   // site's limit was spent, or when it lifts.
-  const budgetRefusal = await platformBudgetRefusal({ service: 'music', model: 'lyria-3', units: 1 });
+  const budgetRefusal = await platformBudgetRefusal({ service: 'music', model: targetSec > LYRIA_CLIP_MAX_SEC ? LYRIA_PRO_MODEL : 'lyria-3', units: 1 });
   if (budgetRefusal) {
     return NextResponse.json({
       success: false, code: 'platform_budget', error: 'platform_budget', budgetReason: budgetRefusal,
@@ -421,7 +450,7 @@ export async function POST(req: NextRequest) {
       // deliberately and then handing back a track that does not match them is the whole failure mode
       // this rewrite exists to end.
       briefTruncated = brief.truncated;
-      const composed = await composeTrackUrl(brief, style, makeInstrumental, durationSec, controls, preferredEngine);
+      const composed = await composeTrackUrl(brief, style, makeInstrumental, targetSec, controls, preferredEngine);
       providerAudioUrl = composed.url;
       engine = composed.engine;
       controlsReport = composed.controls;
@@ -452,7 +481,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── SETTLE THE CHARGE AGAINST WHAT ACTUALLY LANDED ───────────────────────────────────────────────
-    // The duration tier was reserved from what the user PICKED, but the primary engine (Lyria) takes no
+    // The duration tier was reserved from what the user PICKED, but neither Lyria model (Clip, or Pro for > 30 s) takes a
     // length at all — it is prompt-steered, its API has no duration field, and its output is uploaded
     // untrimmed. So "Full song" charged 12 credits and could return the same short clip the 30s setting
     // produces. The length cannot be forced on the engine, so the price is corrected instead: anything

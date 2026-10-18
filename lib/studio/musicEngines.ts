@@ -10,6 +10,7 @@
  * MusicGen (instrumental-only) cannot be picked for a song. Nothing here changes a price: every engine bills by length.
  */
 import type { MusicControlMode, MusicEngineId } from '@/lib/ai/musicControls';
+import { MUSIC_DURATIONS, type MusicDuration } from '@/lib/studio/musicQuote';
 
 export type { MusicEngineId };
 
@@ -44,6 +45,8 @@ export interface MusicEnginesStatus {
   references: { cover: boolean; voice: boolean };
   /** What Auto tries, in order: the configured engines that are not busy. */
   chain: MusicEngineId[];
+  /** The panel lengths (lib/studio/musicQuote MUSIC_DURATIONS, 0 = Full song) the server makes right now: see offeredMusicLengths. */
+  lengths: MusicDuration[];
 }
 
 const bool = (v: unknown): boolean => v === true;
@@ -63,7 +66,53 @@ export function parseMusicEnginesStatus(raw: unknown): MusicEnginesStatus | null
   }
   const refs = (r.references && typeof r.references === 'object' ? r.references : {}) as { cover?: unknown; voice?: unknown };
   const chain = Array.isArray(r.chain) ? r.chain.filter(isMusicEngineId) : [];
-  return { engines, references: { cover: bool(refs.cover), voice: bool(refs.voice) }, chain };
+  // An older server sent no `lengths`: only the clip's 30 s is certain then.
+  const lens = (raw as { lengths?: unknown }).lengths;
+  const lengths = Array.isArray(lens) ? MUSIC_DURATIONS.filter((d) => lens.includes(d)) : [];
+  return { engines, references: { cover: bool(refs.cover), voice: bool(refs.voice) }, chain, lengths: lengths.length ? lengths : [30] };
+}
+
+// ── Track length → Lyria model (owner decision, GG 2026-10-18) ─────────────────────────────────────────────────────
+// Lyria 3 Clip returns its own ~30 s and takes no length, so "Full song" / 60 s / 90 s came back ~30 s and were partly
+// refunded. Up to 30 s stays Clip; anything longer is Lyria 3 Pro, over the same Google transport (Vertex when
+// GEMINI_TRANSPORT=vertex). One model per request, no failover between them. Pro is offered only up to the length the
+// owner verified it at (MUSIC_LYRIA_PRO_VERIFIED + MUSIC_LYRIA_PRO_SECONDS, lib/music/studio/capabilities).
+
+export const LYRIA_CLIP_MODEL = 'lyria-3-clip-preview';
+export const LYRIA_PRO_MODEL = 'lyria-3-pro-preview';
+/** The clip model's own output length. */
+export const LYRIA_CLIP_MAX_SEC = 30;
+/**
+ * What "Full song" is composed as: a complete ~3-minute song, Lyria 3 Pro's ceiling. ⚠️ PRICING QUESTION (BOG/pricing
+ * thread): it is still BILLED at the 90 s tier (musicQuote, unchanged) — there is no tier above 90 s.
+ */
+export const FULL_SONG_TARGET_SEC = 180;
+
+/** The length a panel choice is composed at (0 = Full song). */
+export function musicTargetSec(duration: number): number {
+  return duration === 0 ? FULL_SONG_TARGET_SEC : duration;
+}
+
+/** The Lyria model for a target length: Clip up to 30 s, Pro above. */
+export function lyriaModelForSec(targetSec: number): string {
+  return targetSec > LYRIA_CLIP_MAX_SEC ? LYRIA_PRO_MODEL : LYRIA_CLIP_MODEL;
+}
+
+/** The panel lengths the server makes: the clip's (≤ 30 s) always, a longer one only within Pro's verified length (0 = not verified). */
+export function offeredMusicLengths(proMaxSec: number): MusicDuration[] {
+  return MUSIC_DURATIONS.filter((d) => musicTargetSec(d) <= LYRIA_CLIP_MAX_SEC || musicTargetSec(d) <= proMaxSec);
+}
+
+/**
+ * The length direction for Pro, which has no duration field either: the length is steered by the prompt, so the delivered
+ * track is measured and anything paid above its real tier is refunded (lib/credits/musicSettlement). Empty for the clip.
+ */
+export function musicLengthDirection(targetSec: number): string {
+  if (targetSec <= LYRIA_CLIP_MAX_SEC) return '';
+  if (targetSec >= FULL_SONG_TARGET_SEC) {
+    return 'A complete full-length song of about 3 minutes, with a full structure: intro, verses, choruses, a bridge and an outro';
+  }
+  return `About ${targetSec} seconds long, with a complete structure and a real ending`;
 }
 
 export type EngineAvailability = 'ready' | 'busy' | 'off' | 'unknown';

@@ -2,6 +2,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 import {
   openStudio, openSidebar, openVideoTool, waitForBoard, say, attachClipsAndTrack, shot, recordFinding, taskView, wav,
   CLIP, JOB_ID, MASTER_URL, QUOTE, QC_REJECTED, ROUTE_CHECK_MS,
+  typeFilmPrompt, sendFilm,
 } from './_shared';
 
 /**
@@ -160,8 +161,8 @@ test.describe('Video Core — upload, stop, download, library, phone, keyboard',
     const calls = await openStudio(page, { assemble: { status: 200, body: { url: FILM_URL, qa: null } } });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await openVideoTool(page, isMobile);
-    await page.getByTestId('video-prompt-input').fill('A quiet harbour at dawn, three fishing boats');
-    await page.getByTestId('video-generate').click();
+    await typeFilmPrompt(page, 'A quiet harbour at dawn, three fishing boats');
+    await sendFilm(page);
     await waitForBoard(page, 'en', 3);
     await page.getByTestId('storyboard-generate').click();
     await expect.poll(() => calls.assemble.length, { timeout: 30_000 }).toBe(1);
@@ -286,8 +287,8 @@ test.describe('Video Core — upload, stop, download, library, phone, keyboard',
     const calls = await openStudio(page, { assemble: QC_REJECTED });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await openVideoTool(page, false);
-    await page.getByTestId('video-prompt-input').fill('A quiet harbour at dawn, three fishing boats');
-    await page.getByTestId('video-generate').click();
+    await typeFilmPrompt(page, 'A quiet harbour at dawn, three fishing boats');
+    await sendFilm(page);
     await waitForBoard(page, 'en', 3);
     await page.getByTestId('storyboard-generate').click();
     const card = page.locator('[data-testid="result-card"][data-state="error"]');

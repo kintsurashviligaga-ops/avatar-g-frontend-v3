@@ -64,8 +64,8 @@ async function mockRoutes(page: Page): Promise<Calls> {
 
 async function type(page: Page, text: string): Promise<void> {
   const box = page.getByTestId('composer-input');
-  // On a desktop an open Image, Music or Video panel holds the description and the composer's box steps aside (GG's card,
-  // 2026-10-18): put the panel away, as a person does, to write to Agent G.
+  // On a desktop an open Image or Music panel holds the description and the composer's box steps aside (GG's card,
+  // 2026-10-18): put the panel away, as a person does, to write to Agent G. Video keeps its box beside the panel.
   if (await box.isHidden()) {
     await page.getByTestId('options-toggle').click();
     await expect(box).toBeVisible();
@@ -213,6 +213,8 @@ test.describe('the same door guards Music and Video', () => {
   test('Video: "hello" is answered in the thread — no storyboard is planned, nothing is rendered', async ({ page }) => {
     const seen = await mockSpendingRoutes(page);
     await openTool(page, 'video', 'video-create-panel');
+    // GG 2026-10-18: the video panel has no prompt; the chat box stays beside it, and Enter there still meets Agent G.
+    await expect(page.getByTestId('composer-input')).toBeVisible();
     await type(page, 'hello');
     await expect(page.getByText('Yes, I am here! What shall we create?').first()).toBeVisible({ timeout: 20_000 });
     expect(seen.chat).toBe(1);

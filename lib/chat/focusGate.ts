@@ -21,7 +21,7 @@
  * ⚠️ NO `\b`. It is ASCII-only: against Georgian or Cyrillic it never matches (the same trap that once killed every Russian
  * command in lib/chat/intentDetector). Everything here tokenises with Unicode property escapes instead.
  */
-import { splitAvatarScript } from '../avatar/scriptSplit';
+import { mergeAvatarScript, splitAvatarScript } from '../avatar/scriptSplit';
 import { isGenerativeCommand } from '@/lib/chat/intentDetector';
 import { isRefineWord } from './refineRequest';
 
@@ -42,6 +42,10 @@ export interface GateInput {
   hasAttachments?: boolean;
   /** The user pressed the panel's own Generate button (its price is on it) — that IS the confirmation. */
   explicit?: boolean;
+  /** Avatar: a recorded/uploaded voice track rides along — it is the line, so the text need not hold one. */
+  hasAudio?: boolean;
+  /** Avatar: Agent G just asked for the line, so this message IS the line — a „hello everyone" is not a greeting to Agent G. */
+  awaitingLine?: boolean;
 }
 
 // ─── Text helpers ───────────────────────────────────────────────────────────────
@@ -252,8 +256,10 @@ export function classifyFocusInput(input: GateInput): GateVerdict {
   const raw = input.text ?? '';
   if (!words(raw).length) return { kind: 'chat', reason: 'empty' };
 
-  // 1) Talking to Agent G — greeting, "are you there?", how are you, thanks, who are you.
-  const talk = talkReason(raw);
+  const avatarLineAsked = input.mode === 'avatar' && !!input.awaitingLine;
+  // 1) Talking to Agent G — greeting, "are you there?", how are you, thanks, who are you. (Not when Agent G asked for the
+  // avatar's line: „გამარჯობა ყველას" is then the line itself.)
+  const talk = avatarLineAsked ? null : talkReason(raw);
   if (talk) return { kind: 'chat', reason: talk };
 
   // 2) A question that is not an order to make something ("can you draw a fox?" IS an order: isGenerativeCommand sees it).
@@ -264,7 +270,12 @@ export function classifyFocusInput(input: GateInput): GateVerdict {
   const w = words(raw).length;
   const enough = !!input.hasAttachments || w >= need.words || core(raw).length >= need.chars;
 
+  // ⚠️ An avatar order with no line („შემიქმენი ავატარი", Production 2026-10-18) used to pass the length test and be
+  // confirmed — then the ORDER was spoken. With nothing to say, Agent G asks for the words (an attached voice track is them).
+  if (input.mode === 'avatar' && !input.hasAudio && !splitAvatarScript(raw).speech) return { kind: 'clarify' };
   if (input.explicit) return { kind: 'go' };      // the panel's Generate button, price on it
+  // The line Agent G asked for is the line, however short („გამარჯობა ყველას"): its card, not a second question.
+  if (avatarLineAsked) return { kind: 'confirm' };
   if (!enough) return { kind: 'clarify' };
   return input.mode === 'video' ? { kind: 'go' } : { kind: 'confirm' }; // a film already has its storyboard approval
 }
@@ -278,8 +289,12 @@ export function isConversational(text: string): boolean {
   return classifyFocusInput({ text, mode: 'image' }).kind === 'chat';
 }
 
-/** The original thin prompt plus the user's answer to Agent G's questions. */
-export function mergePrompt(base: string, answer: string): string {
+/**
+ * The original thin prompt plus the user's answer to Agent G's questions. An avatar's is a SCRIPT: the base's own words
+ * (the order stripped) plus the answer — „ავატარი, <line>" was spoken whole (Production 2026-10-18).
+ */
+export function mergePrompt(base: string, answer: string, mode?: GateMode): string {
+  if (mode === 'avatar') return mergeAvatarScript(base, answer) || answer.trim();
   const head = base.trim().replace(/[\s.,;:!?]+$/u, '');
   const tail = answer.trim();
   return head && tail ? `${head}, ${tail}` : head || tail;
