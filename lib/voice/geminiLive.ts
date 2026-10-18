@@ -94,6 +94,8 @@ import { LIVE_FUNCTION_DECLARATIONS, type LiveFunctionDeclaration } from './live
 // fail), so this native-audio model is the current default. The Live model ALLOWLIST lives in
 // lib/ai/google/models.ts (bare ids; resolveLiveModel) — this constant is the same model in the
 // `models/`-prefixed resource form the wire was verified with.
+import { turnDetection } from './experience/provider';
+
 export const DEFAULT_LIVE_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 
 // Built-in Google prebuilt voices for native audio (both verified live on the native-audio model). The
@@ -175,7 +177,8 @@ export function buildSetupMessage(config: GeminiLiveConfig): Record<string, unkn
   // silently before speaking, adding latency. Measured live: time-to-first-audio drops ~1700ms → ~1000ms
   // (≈40% snappier) with no quality loss on conversational replies. Speed matters more than deep
   // reasoning in a live call, matching the responsiveness of the official Gemini voice app.
-  const generationConfig: Record<string, unknown> = { responseModalities: modalities, thinkingConfig: { thinkingBudget: 0 } };
+  const generationConfig: Record<string, unknown> = { responseModalities: modalities };
+  if (takesThinkingBudget(toLiveModelResource(config.model || DEFAULT_LIVE_MODEL))) generationConfig.thinkingConfig = { thinkingBudget: 0 };
   // Select a built-in Google voice for native-audio output. Verified live: the v1alpha Constrained
   // (ephemeral-token) WS honors this client-sent speechConfig. Omitted entirely when no voiceName is set,
   // so the existing default-path behavior + test vectors are unchanged.
@@ -251,11 +254,14 @@ export interface BuildLiveSetupOptions {
   tools?: Array<LiveTool>;
   /** A caller's own function list, sent INSTEAD of the UI actions ('live_actions' is then ignored). */
   functionDeclarations?: readonly LiveDeclaration[];
+  /** Opt-in v2 turn detection; omitted by legacy clients. */
+  turnEagerness?: 'eager' | 'normal' | 'patient';
 }
 
 /** The BidiGenerateContentSetup payload (the value under `setup`, and the shape of the mint's
  *  `bidiGenerateContentSetup`). Only the fields this module emits are typed. */
 export interface LiveSetup {
+  realtimeInputConfig?: ReturnType<typeof turnDetection>;
   model: string;
   generationConfig: {
     responseModalities: LiveModality[];
@@ -331,6 +337,10 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
   if (takesThinkingBudget(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
 
   const setup: LiveSetup = { model, generationConfig };
+  if (opts.turnEagerness) {
+    const detection = turnDetection(model, opts.turnEagerness);
+    if (detection) setup.realtimeInputConfig = detection;
+  }
 
   const instruction = typeof opts?.systemInstruction === 'string' ? opts.systemInstruction : '';
   if (instruction.trim()) setup.systemInstruction = { parts: [{ text: instruction }] };

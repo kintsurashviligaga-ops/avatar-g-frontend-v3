@@ -33,7 +33,8 @@ function mount(locale: 'en' | 'ka' = 'en') {
   render(<ServiceParamsPanel service="model3d" locale={locale} onClose={() => {}} prefill={{ topic: 'an old clay jug' }} />);
 }
 async function pressRun(locale: 'en' | 'ka' = 'en') {
-  const runBtn = screen.getAllByRole('button').find((b) => b.textContent === (locale === 'en' ? 'Create' : 'შექმნა'))!;
+  const runBtn = screen.getByTestId('model3d-generate');
+  expect(runBtn.textContent).toContain(locale === 'en' ? 'Create' : 'შექმნა');
   await waitFor(() => expect((runBtn as HTMLButtonElement).disabled).toBe(false));
   await act(async () => { fireEvent.click(runBtn); });
 }

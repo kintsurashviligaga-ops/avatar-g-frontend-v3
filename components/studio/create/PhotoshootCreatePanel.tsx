@@ -2,9 +2,9 @@
 
 /**
  * PhotoshootCreatePanel — the PHOTOGRAPHER's settings, in the same creation grammar as the Interior designer's
- * (InteriorCreatePanel): header · a dashed card for your product / person photos (optional, up to 3 — each shot separately) ·
- * a carousel of shoot presets · the camera (lens · light · angle · depth of field, as chips) · the prompt card · the chip row
- * (aspect · quality · count) · the Generate pill with its price.
+ * (InteriorCreatePanel): header · the prompt card · a dashed card for your product / person photos (optional, up to 3 — each
+ * shot separately) · a carousel of shoot presets · Advanced settings, shut (the model, the resolution, the camera: lens ·
+ * light · angle · depth of field, as chips) · the chip row (aspect · count) · the Generate pill with its price.
  *
  * ⚠️ NOT THE `photo` TOOL. `photo` is on-device culling (no upload, no credits); this one makes new pictures and spends
  * credits per image. A pure view bound through props to useShootStudio — the price is the route's own function
@@ -18,8 +18,8 @@ import {
 import { templateLang } from '@/lib/studio/templates';
 import { toolName } from '@/lib/studio/tools';
 import { SHOOT_MAX_PHOTOS } from '@/lib/studio/shootQuote';
-import { ChipScroller, PanelHeader, PromptCard, UploadCard } from './newtools/PanelParts';
-import { ShootFooter } from './newtools/shared';
+import { ChipScroller, PanelHeader, ProSettings, PromptCard, UploadCard } from './newtools/PanelParts';
+import { ShootFooter, ShootQualityChip, shootQualityLabel } from './newtools/shared';
 import { TemplateCarousel } from './newtools/TemplateCarousel';
 import { SHOOT_COPY, shootLang } from './newtools/copy';
 import type { PhotoshootForm } from './newtools/useShootStudio';
@@ -49,9 +49,15 @@ export function PhotoshootCreatePanel(p: PhotoshootPanelProps) {
   const tl = templateLang(p.locale);
   const picked = photoshootTemplate(p.form.template);
   const preset = { value: null, label: copy.fromPreset } as const;
+  // A camera chip someone picked is named on the shut Advanced settings, so a choice is never hidden behind it.
+  const cameraPicks = [
+    LENS_OPTIONS.find((o) => o.id === p.form.lens), LIGHT_OPTIONS.find((o) => o.id === p.form.light),
+    ANGLE_OPTIONS.find((o) => o.id === p.form.angle), DOF_OPTIONS.find((o) => o.id === p.form.dof),
+  ].flatMap((o) => (o ? [o.label[lang]] : []));
   return (
     <div data-testid="photoshoot-panel" className="space-y-4 pb-1">
       <PanelHeader Icon={Camera} title={toolName('photoshoot', p.locale)} copy={copy} onSwitch={p.onSwitchTool} onClose={p.onClose} testId="photoshoot" />
+      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} testId="photoshoot" />
       <UploadCard photos={p.form.photos} max={SHOOT_MAX_PHOTOS} title={c.uploadTitle} limit={c.uploadLimit} note={p.form.photos.length ? c.uploadNoteWithPhoto : c.uploadNote}
         notice={p.notice} copy={copy} onFiles={p.onAddPhotos} onRemove={p.onRemovePhoto} testId="photoshoot" />
       <TemplateCarousel label={c.carousel} testId="photoshoot-presets" scrollLabels={{ prev: copy.prev, next: copy.next }} Icon={Camera}
@@ -61,20 +67,22 @@ export function PhotoshootCreatePanel(p: PhotoshootPanelProps) {
         activeId={p.form.template}
         onPick={(id) => { if (id) p.onPickPreset(id); else p.onPatch({ template: null }); }}
         addsLine={picked ? photoshootAddsLine(picked, tl) : null} emptyLine={c.carouselNone} />
-      <section data-testid="photoshoot-camera" aria-label={copy.lens} className="space-y-3 rounded-3xl bg-app-elevated/40 p-4 ring-1 ring-app-border/10">
-        <ChipScroller label={copy.lens} testId="photoshoot-lens" options={[preset, ...LENS_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
-          value={p.form.lens} onChange={(lens) => p.onPatch({ lens })} />
-        <ChipScroller label={copy.light} testId="photoshoot-light" options={[preset, ...LIGHT_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
-          value={p.form.light} onChange={(light) => p.onPatch({ light })} />
-        <ChipScroller label={copy.angle} testId="photoshoot-angle" options={[preset, ...ANGLE_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
-          value={p.form.angle} onChange={(angle) => p.onPatch({ angle })} />
-        <ChipScroller label={copy.dof} testId="photoshoot-dof" options={[preset, ...DOF_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
-          value={p.form.dof} onChange={(dof) => p.onPatch({ dof })} />
-      </section>
-      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} copy={copy} testId="photoshoot" />
+      <ProSettings copy={copy} summary={[copy.modelValue, shootQualityLabel(p.form.quality), ...cameraPicks].join(' · ')} testId="photoshoot">
+        <ShootQualityChip copy={copy} locale={p.locale} form={p.form} onQuality={(quality) => p.onPatch({ quality })} testId="photoshoot" />
+        <section data-testid="photoshoot-camera" aria-label={copy.lens} className="space-y-3">
+          <ChipScroller label={copy.lens} testId="photoshoot-lens" options={[preset, ...LENS_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
+            value={p.form.lens} onChange={(lens) => p.onPatch({ lens })} />
+          <ChipScroller label={copy.light} testId="photoshoot-light" options={[preset, ...LIGHT_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
+            value={p.form.light} onChange={(light) => p.onPatch({ light })} />
+          <ChipScroller label={copy.angle} testId="photoshoot-angle" options={[preset, ...ANGLE_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
+            value={p.form.angle} onChange={(angle) => p.onPatch({ angle })} />
+          <ChipScroller label={copy.dof} testId="photoshoot-dof" options={[preset, ...DOF_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
+            value={p.form.dof} onChange={(dof) => p.onPatch({ dof })} />
+        </section>
+      </ProSettings>
       <ShootFooter service="image.photoshoot" copy={copy} locale={p.locale} form={p.form} tiles={p.tiles} credits={p.credits} insufficient={p.insufficient}
         canGenerate={p.canGenerate} needSomething={c.needSomething} onGenerate={p.onGenerate} testId="photoshoot"
-        onAspect={(aspect) => p.onPatch({ aspect })} onQuality={(quality) => p.onPatch({ quality })} onCount={(count) => p.onPatch({ count })} />
+        onAspect={(aspect) => p.onPatch({ aspect })} onCount={(count) => p.onPatch({ count })} />
     </div>
   );
 }

@@ -10,8 +10,12 @@
 
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { paidWritesBlockedOnPreview } from '@/lib/env/previewIsolation';
 
 function client(): ReturnType<typeof createServiceRoleClient> | null {
+  // An unisolated Preview shares Production's database (lib/env/previewIsolation): no grant, refund or free-slot write
+  // from here. Every helper already degrades to null/false when the client is absent.
+  if (paidWritesBlockedOnPreview()) return null;
   try { return createServiceRoleClient(); } catch { return null; }
 }
 

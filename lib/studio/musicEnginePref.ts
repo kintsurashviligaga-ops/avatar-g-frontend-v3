@@ -8,7 +8,7 @@
  * again and ignores an engine it cannot run — a stale pick can never fail a render.
  */
 import { useCallback, useSyncExternalStore } from 'react';
-import { isMusicEnginePref, isMusicEngineId, type MusicEngineId, type MusicEnginePref } from './musicEngines';
+import { isMusicEnginePref, type MusicEngineId, type MusicEnginePref } from './musicEngines';
 
 export const MUSIC_ENGINE_KEY = 'myavatar:music-engine';
 
@@ -57,5 +57,8 @@ export function useMusicEnginePref(): readonly [MusicEnginePref, (p: MusicEngine
 /** The request-body field for the stored pick: `{ engine }` for a specific engine, nothing for Auto. */
 export function musicEngineField(): { engine?: MusicEngineId } {
   const p = getMusicEnginePref();
-  return isMusicEngineId(p) ? { engine: p } : {};
+  // ⚠️ Only Lyria may be named. The route refuses any other engine before charging (Google-only boundary), so a phone
+  // that kept an old „Udio" pick in its storage failed EVERY track while the desktop on Auto worked (Production
+  // 2026-10-16). A stored pick outside Google is treated as Auto.
+  return p === 'lyria' ? { engine: p } : {};
 }

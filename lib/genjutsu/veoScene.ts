@@ -25,7 +25,7 @@ import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabil
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
-import type { VeoAspect, VeoFailureReason, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
+import type { VeoAspect, VeoFailureReason, VeoResizeMode, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { stripBottomWatermark } from '@/lib/video/remixOps';
 import { SCENE_SECONDS } from './limits';
 import type { GenjutsuQuality } from './types';
@@ -59,6 +59,20 @@ export interface SceneSubmitInput {
   userId: string;
   /** Groups the Vertex GCS inputs/outputs of this scene. */
   sessionId: string;
+  /**
+   * The Veo avatar (lib/avatar/veoAvatar): the user's face photo as the clip's FIRST FRAME instead of references (Veo
+   * takes one or the other). A signed URL of our own storage, like the references.
+   */
+  startImageUrl?: string;
+  /** How the first frame fits the aspect when its shape differs (Vertex; Google's default letterboxes it). */
+  resizeMode?: VeoResizeMode;
+  /** Replaces the VFX scene's negative prompt (the avatar's own). */
+  negativePrompt?: string;
+  /**
+   * Veo's own sound; a silent clip is priced at Veo's silent rate. Default on — the voiced avatar keeps it too since
+   * 2026-10-17 10:22Z: Veo says the line so its mouth matches, and its voice is replaced on delivery (lib/avatar/speechMatch).
+   */
+  audio?: boolean;
 }
 
 export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit> {
@@ -66,13 +80,14 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
   if (!transport) return { ok: false, reason: 'not_configured', retryable: false };
   const tier: VeoTier = input.quality === 'standard' ? 'standard' : 'fast';
   const model = resolveModel(transport, tier);
+  const audio = input.audio !== false;
   try {
     const created = await guardedCall(
       {
         service: 'video',
         model,
         units: SCENE_SECONDS,
-        unitCostUsd: costPerSecondUsd(model, resolutionFor(SCENE_SECONDS), true, transport),
+        unitCostUsd: costPerSecondUsd(model, resolutionFor(SCENE_SECONDS), audio, transport),
         userId: input.userId,
         promptSummary: input.prompt.slice(0, 200),
         actualCost: submitActualCost,
@@ -84,9 +99,10 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
             aspect: input.aspect,
             // Reference mode pins the clip to 8 s (the engine would snap to it anyway); say so, so the price is the length.
             durationSec: SCENE_SECONDS,
-            generateAudio: true,
-            negativePrompt: SCENE_NEGATIVE_PROMPT,
-            ...(input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
+            generateAudio: audio,
+            negativePrompt: input.negativePrompt ?? SCENE_NEGATIVE_PROMPT,
+            ...(input.startImageUrl && input.resizeMode ? { resizeMode: input.resizeMode } : {}),
+            ...(input.startImageUrl ? { startImage: { kind: 'url' as const, url: input.startImageUrl } } : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
           },
           tier,
           sessionId: input.sessionId,

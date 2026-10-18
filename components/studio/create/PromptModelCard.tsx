@@ -26,13 +26,14 @@ export const PromptModelCard = forwardRef<HTMLTextAreaElement, {
   label: string;
   /** Cmd/Ctrl+Enter. */
   onSubmit?: () => void;
-  /** The "Model" row: its label, the current value and what opens the picker. */
-  modelLabel: string;
-  modelValue: string;
-  modelIcon: ReactNode;
+  /** The "Model" row: its label, the current value and what opens the picker. No `onOpenModel`, no row: the Image tool
+   *  keeps its model under Advanced settings since GG's 2026-10-18 plan. */
+  modelLabel?: string;
+  modelValue?: string;
+  modelIcon?: ReactNode;
   modelButtonRef?: React.Ref<HTMLButtonElement>;
   modelOpen?: boolean;
-  onOpenModel: () => void;
+  onOpenModel?: () => void;
   /** Round shortcuts (shown only when their handler is given). */
   onEnhance?: () => void;
   enhancing?: boolean;
@@ -107,7 +108,7 @@ export const PromptModelCard = forwardRef<HTMLTextAreaElement, {
         )}
       </div>
       {invalid && invalidMessage && <p id="create-prompt-hint" role="alert" className="px-5 pb-2 text-[12.5px] font-medium text-app-danger">{invalidMessage}</p>}
-      <button
+      {onOpenModel && <button
         ref={modelButtonRef}
         type="button"
         onClick={onOpenModel}
@@ -124,7 +125,7 @@ export const PromptModelCard = forwardRef<HTMLTextAreaElement, {
           {modelValue}
           <ChevronDown size={18} aria-hidden="true" className={`text-app-muted transition-transform ${modelOpen ? 'rotate-180' : ''}`} />
         </span>
-      </button>
+      </button>}
     </div>
   );
 });

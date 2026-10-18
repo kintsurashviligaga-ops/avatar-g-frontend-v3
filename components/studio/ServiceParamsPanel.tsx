@@ -39,6 +39,9 @@ import { useSceneStore } from './scene/sceneStore';
 import { GlbViewerSkeleton } from './glbFrame';
 import { LiveStatus, generationAnnouncement } from './ui/LiveStatus';
 import { peekTask } from '@/lib/agent/media/jobFollow';
+import { GenerateButton } from './ui/GenerateButton';
+import { openTopUp, useShortBalance } from './ui/useShortBalance';
+import { quoteCredits } from '@/lib/credits/quote';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -61,6 +64,7 @@ type Lang = 'ka' | 'en' | 'ru';
 
 const COPY = {
   ka: {
+    confirmCharge: 'ჩამოგეჭრება', creditsWord: 'კრედიტი', confirmRun: 'დადასტურება', cancelQuote: 'გაუქმება', unpersisted: 'შედეგი მზადაა, მაგრამ ბიბლიოთეკაში ვერ შევინახეთ — ჩამოტვირთე ახლავე.',
     close: 'დახურვა', run: 'შექმნა', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)', deckTheme: 'იერსახე', themeDark: 'მუქი', themeLight: 'ღია', advanced: 'დამატებითი პარამეტრები', exclude: 'რა არ გინდა', excludeHint: 'მაგ. ტექსტი, ადამიანი, ფონი…', excludeSet: 'მითითებულია', sourceLang: 'ორიგინალის ენა', autoDetect: 'ავტომატური',
     keepOpen: 'რამდენიმე წუთი სჭირდება — არ დახუროთ გვერდი.',
     dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი',
@@ -84,6 +88,7 @@ const COPY = {
     sceneRefused: 'სცენაზე ვერ დაემატა — სცენაში მაქსიმუმ {n} ობიექტი ეტევა.',
   },
   en: {
+    confirmCharge: 'You will be charged', creditsWord: 'credits', confirmRun: 'Confirm', cancelQuote: 'Cancel', unpersisted: 'The result is ready but could not be saved to your Library — download it now.',
     close: 'Close', run: 'Create', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
     keepOpen: 'This takes a few minutes — keep the page open.',
     dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D model',
@@ -107,6 +112,7 @@ const COPY = {
     sceneRefused: 'Could not add it to the scene — it holds up to {n} objects.',
   },
   ru: {
+    confirmCharge: 'Будет списано', creditsWord: 'кредитов', confirmRun: 'Подтвердить', cancelQuote: 'Отмена', unpersisted: 'Результат готов, но не сохранён в библиотеке — скачайте его сейчас.',
     close: 'Закрыть', run: 'Создать', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
     keepOpen: 'Это займёт несколько минут — не закрывайте страницу.',
     dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель',
@@ -255,7 +261,7 @@ export function ServiceParamsPanel({
    * Parameters mined from the chat sentence that opened this panel (lib/chat/studioIntent).
    *
    * Applied as INITIAL VALUES only — the user still reviews and presses the button, so a mis-parse costs
-   * a correction rather than a charge. Deliberately NOT auto-submitted: these services all spend credits,
+   * a correction rather than a charge. Deliberately NOT auto-submitted: dubbing and decks spend credits,
    * and "it started rendering because of something I typed in chat" is not a recoverable surprise.
    */
   prefill?: { targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string };
@@ -282,6 +288,8 @@ export function ServiceParamsPanel({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The server's signed price for THIS request (dubbing / decks): nothing is charged until the user presses Confirm.
+  const [quote, setQuote] = useState<{ token: string; jobId: string; credits: number } | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   // LIVE STAGE. Montage, dubbing and presentation each publish their per-leg stage to the job row while
   // they work, but the request is synchronous — so the browser only learned the job id once everything
@@ -438,17 +446,22 @@ export function ServiceParamsPanel({
     setError(t.failed);
   }, [t]);
 
-  async function run() {
+  async function run(confirmed?: { token: string; jobId: string }) {
     if (busy) return;
     setBusy(true);
     setError(null);
+    setQuote(null);
     setResult(null);
     setSlideIndex(null);
     setStage(null);
     setNote(null);
     setSceneMsg(null);
     // Name the job so the poller below can follow it while the synchronous request is still open.
-    const clientJobId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '';
+    // Dubbing and decks are quoted first: the job exists only once the quote is confirmed, under the quote's job id.
+    const quoted = service === 'dubbing' || service === 'presentation';
+    const clientJobId = quoted
+      ? (confirmed?.jobId ?? '')
+      : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '');
     const stop = { done: false };
     if (clientJobId && service !== 'model3d') { watchStage(clientJobId, stop); claimJob(clientJobId); }
     try {
@@ -478,10 +491,21 @@ export function ServiceParamsPanel({
 
       const res = await fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(clientJobId ? { ...body, clientJobId } : body),
+        body: JSON.stringify(
+          quoted ? (confirmed ? { ...body, quoteToken: confirmed.token, confirm: true } : body)
+            : clientJobId ? { ...body, clientJobId } : body,
+        ),
       });
       const j = await res.json().catch(() => null);
+      if (quoted && res.ok && j?.requiresConfirm && j?.quote?.token) {
+        // A price, not a run: show it and wait for the explicit Confirm.
+        setQuote({ token: String(j.quote.token), jobId: String(j.quote.jobId), credits: Number(j.quote.credits) });
+        return;
+      }
       if (!res.ok) {
+        // The gate's own codes first (unavailable / re-quote / not charged), then the step or message.
+        const coded = describeServiceError(j?.reason ?? j?.error, lang, '');
+        if (coded) { setError(coded); return; }
         // ⚠️ THIS PASTED THE PIPELINE'S ENGLISH MACHINE STEP AND THE PROVIDER'S ENGLISH SENTENCE INTO
         // GEORGIAN COPY. `[t.failed, j.step, j.message].join(' · ')` produced things like
         // "ვერ მოხერხდა · stitch · Request failed with status 502" — three registers at once, none of
@@ -501,6 +525,7 @@ export function ServiceParamsPanel({
         await poll3d(j.predictionId, j.jobId, typeof j?.charge === 'string' ? j.charge : '', typeof j?.referenceUrl === 'string' ? j.referenceUrl : undefined);
       } else {
         setResult(j as Result);
+        if (j?.persisted === false) setNote(t.unpersisted);
         // Post it to the conversation as well as showing it here, so closing the panel cannot destroy it.
         onDeliveredRef.current?.(service, j as Result);
       }
@@ -535,6 +560,10 @@ export function ServiceParamsPanel({
       : service === 'presentation' ? topic.trim().length >= 3
       : mode3d === 'text' ? prompt3d.trim().length >= 3 : Boolean(imageUrl3d.trim())
   );
+  // 3D is one flat price (/api/v2/model3d/create reserves creditCostFor('model3d')), shown ON its button. Dubbing and
+  // the deck keep their quote-then-confirm step, which states the price before the run.
+  const credits3d = service === 'model3d' ? quoteCredits({ tool: 'model3d' }) : 0;
+  const short3d = useShortBalance(credits3d);
 
   /**
    * Every page of the finished deck, COVER FIRST — one array driving both the thumbnail grid and the
@@ -752,9 +781,26 @@ export function ServiceParamsPanel({
         </div>
       )}
 
-      <PrimaryButton onClick={run} disabled={!canRun} loading={busy} full className="mt-3">
-        {busy ? t.working : t.run}
-      </PrimaryButton>
+      {quote && !busy ? (
+        <div className="mt-3 space-y-2" data-testid="service-quote">
+          <Note>{`${t.confirmCharge}: ${quote.credits} ${t.creditsWord}`}</Note>
+          {/* Paid: the live agent may not press this for the user (lib/voice live guard). */}
+          <PrimaryButton onClick={() => run({ token: quote.token, jobId: quote.jobId })} full data-live-guard="spend">
+            {t.confirmRun}
+          </PrimaryButton>
+          <GhostButton onClick={() => setQuote(null)}>{t.cancelQuote}</GhostButton>
+        </div>
+      ) : service === 'model3d' ? (
+        <div className="mt-3">
+          <GenerateButton label={t.run} credits={credits3d} loading={busy} loadingLabel={t.working} disabled={!canRun}
+            insufficient={short3d} locale={lang} onClick={() => { if (short3d) openTopUp(); else void run(); }}
+            testId="model3d-generate" service="design.model3d" />
+        </div>
+      ) : (
+        <PrimaryButton onClick={() => run()} disabled={!canRun} loading={busy} full className="mt-3">
+          {busy ? t.working : t.run}
+        </PrimaryButton>
+      )}
       {/* What a screen reader hears about the job: started, then ready or failed (never the percentage ticks). A 3D
           model is ready when its mesh is — the reference image that arrives first is still part of the wait. */}
       <LiveStatus text={generationAnnouncement(

@@ -22,6 +22,8 @@
  * folder's functions are capped at 60 s and a render is not.
  */
 import { NextResponse } from 'next/server';
+import { sweepImages } from '@/lib/image/studio/engine';
+import { liveImageDeps } from '@/lib/image/studio/live';
 import { isCronAuthorized } from '@/lib/api/cronAuth';
 import { agentMediaAccess } from '@/lib/agent/media/access';
 import { sweepMontageJobs } from '@/lib/agent/media/montageWorker';
@@ -57,8 +59,17 @@ export async function GET(req: Request): Promise<NextResponse> {
     const report = await sweepMontageJobs(liveMontageDeps(), { worker, work: true });
     const audio = await sweepAudioJobs(liveAudioDeps(), { worker, work: !report.worked });
     const edit = await sweepEditJobs(liveEditDeps(), { worker, work: !report.worked && !audio.worked });
+    let image: { waiting: number; exhausted: number; unsettled: number; unavailable?: boolean };
+    try {
+      image = await sweepImages(liveImageDeps(), worker, !report.worked && !audio.worked && !edit.worked);
+    } catch (e) {
+      reportError(e, { route: '/api/agent/media/sweep', lane: 'image-studio' });
+      opsMarker('error', 'image_studio_sweep_failure', {});
+      image = { waiting: 0, exhausted: 0, unsettled: 0, unavailable: true };
+    }
+    if (image.exhausted || image.unsettled) opsMarker('warn', 'image_studio_recovery', image);
     for (const a of sweepAlerts({ montage: report, audio, edit })) opsMarker(a.level, a.marker, a.data);
-    return NextResponse.json({ ok: true, ...report, audio, edit, runs });
+    return NextResponse.json({ ok: true, ...report, audio, edit, runs, image });
   } catch (e) {
     reportError(e, { route: '/api/agent/media/sweep' });
     opsMarker('error', 'agent_g_sweep_failure', { error: e instanceof Error ? e.message : String(e) });

@@ -124,54 +124,31 @@ describe('Auto — Lyria, and nothing behind it', () => {
 });
 
 describe('an explicit pick — that engine alone, the same rule', () => {
-  test('a picked engine that errors is the explicit failure: Lyria is never run behind it', async () => {
-    (composeElevenLabsMusic as jest.Mock).mockRejectedValue(new Error('ElevenLabs 429'));
-    await expectExplicitFailure({ ...BED, engine: 'elevenlabs-music' }, composeElevenLabsMusic as jest.Mock);
-  });
-
-  test('a picked engine whose breaker is open is the explicit failure — not a reroute to Lyria', async () => {
-    (isProviderTripped as jest.Mock).mockImplementation(async (p: string) => p === 'udio');
-    await expectExplicitFailure({ ...BED, engine: 'udio' }, null);
-  });
 });
 
-describe('"sing in my voice" — a missed conversion is said, not hidden', () => {
-  test('the trained voice failed → the composed song ships with `voiceApplied: false`', async () => {
-    const { getUserVoiceModel } = jest.requireMock('../../../../lib/audio/voiceModel') as { getUserVoiceModel: jest.Mock };
-    const { convertSongWithRvc } = jest.requireMock('../../../../lib/audio/rvc') as { convertSongWithRvc: jest.Mock };
-    getUserVoiceModel.mockResolvedValueOnce({ modelUrl: 'https://x.supabase.co/voice.zip' });
-    convertSongWithRvc.mockRejectedValueOnce(new Error('rvc timeout'));
-    const json = await (await POST(post({ ...BED, instrumental: false, lyrics: 'la la la', useMyVoice: true }))).json();
-    expect(json).toMatchObject({ success: true, voiceApplied: false });
-    expect(json.engine).not.toMatch(/your voice/i);
-  });
-
-  test('the trained voice converted → no `voiceApplied` flag', async () => {
-    const { getUserVoiceModel } = jest.requireMock('../../../../lib/audio/voiceModel') as { getUserVoiceModel: jest.Mock };
-    const { convertSongWithRvc } = jest.requireMock('../../../../lib/audio/rvc') as { convertSongWithRvc: jest.Mock };
-    getUserVoiceModel.mockResolvedValueOnce({ modelUrl: 'https://x.supabase.co/voice.zip' });
-    convertSongWithRvc.mockResolvedValueOnce('https://replicate.delivery/rvc.mp3');
-    const json = await (await POST(post({ ...BED, instrumental: false, lyrics: 'la la la', useMyVoice: true }))).json();
-    expect(json).toMatchObject({ success: true, engine: 'Your Voice (RVC)' });
-    expect(json).not.toHaveProperty('voiceApplied');
-  });
-});
-
-describe('MEDIA_GOOGLE_ONLY on — outside engines refuse before the reserve, Lyria still composes', () => {
-  beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; });
+describe.each([['MEDIA_GOOGLE_ONLY off (the default)', ''], ['MEDIA_GOOGLE_ONLY on', '1']])('%s — the provider boundary (Music Studio v1): only Lyria composes; everything else is refused before the reserve', (_l, flag) => {
+  beforeEach(() => { if (flag) process.env.MEDIA_GOOGLE_ONLY = flag; else delete process.env.MEDIA_GOOGLE_ONLY; });
 
   test.each([
     ['an Udio pick', { ...BED, engine: 'udio' }],
     ['a MusicGen pick', { ...BED, engine: 'musicgen' }],
+    ['an ElevenLabs Music pick', { ...BED, engine: 'elevenlabs-music' }],
+    ['a cover (reference track)', { ...BED, audioReference: 'https://cdn.example.com/track.mp3' }],
+    ['a sampled voice (MiniMax)', { ...BED, instrumental: false, lyrics: 'la la la', voiceReference: 'https://x.supabase.co/storage/v1/object/sign/uploads/u/v.mp3?token=t' }],
     ['sing in my voice (RVC)', { ...BED, instrumental: false, lyrics: 'la la la', useMyVoice: true }],
-  ])('%s → 503 google_only, nothing charged, no engine run', async (_label, body) => {
+  ])('%s → 400 unsupported, nothing charged, no engine run', async (_label, body) => {
     const res = await POST(post(body));
-    expect(res.status).toBe(503);
-    expect(await res.json()).toMatchObject({ success: false, code: 'google_only' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ success: false, code: 'unsupported' });
     expect(deductCredits).not.toHaveBeenCalled();
     for (const engine of [generateLyriaTrack, generateUdioTrack, composeElevenLabsMusic, generateMusic] as jest.Mock[]) {
       expect(engine).not.toHaveBeenCalled();
     }
+  });
+
+  test('an explicit Lyria pick is Lyria', async () => {
+    const json = await (await POST(post({ ...BED, engine: 'lyria' }))).json();
+    expect(json).toMatchObject({ success: true, engine: 'Lyria' });
   });
 
   test('Auto still runs Lyria', async () => {

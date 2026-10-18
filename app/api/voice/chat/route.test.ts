@@ -35,7 +35,7 @@ jest.mock('../../../../lib/ai/llmText', () => ({ llmText: jest.fn() }));
 
 jest.mock('../../../../lib/services/billing/chatBudget', () => {
   const actual = jest.requireActual('../../../../lib/services/billing/chatBudget');
-  return { ...actual, chatBudgetAllows: jest.fn(async () => true), bookChatUsage: jest.fn(async () => undefined) };
+  return { ...actual, chatBudgetRefusal: jest.fn(async () => null), bookChatUsage: jest.fn(async () => undefined) };
 });
 
 jest.mock('../../../../lib/chat/userMemory', () => ({
@@ -48,13 +48,14 @@ jest.mock('../../../../lib/chat/userMemory', () => ({
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { llmText } from '../../../../lib/ai/llmText';
-import { chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
+import { chatBudgetRefusal } from '../../../../lib/services/billing/chatBudget';
+import { budgetRefusalMessage } from '../../../../lib/services/billing/budgetMessage';
 import { buildProfilePreamble } from '../../../../lib/chat/userMemory';
 import { liveVoicePersona, voicePersona, voiceFallbackReply } from '../../../../lib/voice/voicePrompt';
 import { LIVE_SPOKEN_RULE } from '../../../../lib/agents/profile';
 
 const llmMock = llmText as jest.MockedFunction<typeof llmText>;
-const budgetMock = chatBudgetAllows as jest.MockedFunction<typeof chatBudgetAllows>;
+const budgetMock = chatBudgetRefusal as jest.MockedFunction<typeof chatBudgetRefusal>;
 const preambleMock = buildProfilePreamble as jest.MockedFunction<typeof buildProfilePreamble>;
 
 const post = (body: unknown) =>
@@ -72,7 +73,7 @@ beforeEach(() => {
   mockUser = { id: 'user-1' };
   delete process.env.AI_GOOGLE_ONLY;
   delete process.env.VOICE_GOOGLE_SEARCH;
-  budgetMock.mockResolvedValue(true);
+  budgetMock.mockResolvedValue(null);
   llmMock.mockResolvedValue('Sure — here is a short answer.');
 });
 
@@ -181,13 +182,22 @@ test('memory facts are prepended to the system block', async () => {
 });
 
 test('an exhausted budget is SPOKEN (localized) and the LLM is not called', async () => {
-  budgetMock.mockResolvedValueOnce(false);
+  budgetMock.mockResolvedValueOnce('daily_limit');
   const res = await POST(post({ text: 'hello there', locale: 'en' }));
   const j = await res.json();
   expect(res.status).toBe(200);
   expect(j.code).toBe('budget');
-  expect(j.reply).toMatch(/budget/i);
+  // Which limit and when it lifts (2026-10-16: "try again later" left the owner guessing).
+  expect(j.reply).toBe(budgetRefusalMessage('en', 'daily_limit'));
+  expect(j.budgetReason).toBe('daily_limit');
   expect(llmMock).not.toHaveBeenCalled();
+});
+
+test('a spent MONTHLY budget is named as the month, never as a 04:00 that will not come', async () => {
+  budgetMock.mockResolvedValueOnce('monthly_limit');
+  const j = await (await POST(post({ text: 'გამარჯობა', locale: 'ka' }))).json();
+  expect(j.reply).toBe(budgetRefusalMessage('ka', 'monthly_limit'));
+  expect(j.reply).not.toContain('04:00');
 });
 
 test('an LLM miss is the localized fallback, never empty', async () => {

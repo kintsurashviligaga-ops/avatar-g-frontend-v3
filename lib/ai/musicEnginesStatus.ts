@@ -15,11 +15,8 @@
  * exactly as the route itself would treat it).
  */
 import { hasLyriaProvider } from '@/lib/ai/lyriaMusic';
-import { hasUdioApiKey } from '@/lib/chat/mediaKeys';
-import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { isProviderTripped } from '@/lib/orchestrator/idempotency';
 import { controlModeFor } from '@/lib/ai/musicControls';
-import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { MUSIC_ENGINE_CHAIN, type MusicEngineId, type MusicEnginesStatus } from '@/lib/studio/musicEngines';
 
 export function replicateConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -28,14 +25,10 @@ export function replicateConfigured(env: NodeJS.ProcessEnv = process.env): boole
 
 /** True when the engine would be in the route's chain at all (a key / token / switch). */
 export function engineConfigured(id: MusicEngineId, env: NodeJS.ProcessEnv = process.env): boolean {
-  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): the route refuses Udio and MusicGen, so the picker shows them off.
-  if (isMediaGoogleOnly(env) && (id === 'udio' || id === 'musicgen')) return false;
-  switch (id) {
-    case 'lyria': return hasLyriaProvider();
-    case 'udio': return hasUdioApiKey(env) && env.MUSIC_PROVIDER !== 'elevenlabs';
-    case 'elevenlabs-music': return hasElevenLabsMusicKey(env);
-    case 'musicgen': return replicateConfigured(env);
-  }
+  void env;
+  // ⚠️ GOOGLE LYRIA ONLY (Music Studio v1, Phase 2). /api/ai/music refuses every other engine before the reserve, so the
+  // picker shows Udio, ElevenLabs Music and MusicGen as off whatever keys the deployment holds.
+  return id === 'lyria' ? hasLyriaProvider() : false;
 }
 
 export async function musicEnginesStatus(
@@ -49,11 +42,10 @@ export async function musicEnginesStatus(
     return [id, { configured, busy, controls: controlModeFor(id, env) }] as const;
   }));
   const engines = Object.fromEntries(rows) as MusicEnginesStatus['engines'];
-  // A cover (MusicGen-melody) and a sampled voice (MiniMax) are Replicate engines: off under MEDIA_GOOGLE_ONLY.
-  const replicate = replicateConfigured(env) && !isMediaGoogleOnly(env);
+  // A cover (MusicGen-melody) and a sampled voice (MiniMax) are Replicate engines, outside the provider boundary: off.
   return {
     engines,
-    references: { cover: replicate, voice: replicate },
+    references: { cover: false, voice: false },
     // ⚠️ AUTO IS LYRIA ALONE — the route no longer fails over (PROJECT_MASTER R7). This listed every configured engine
     // that was not busy, which was true while a Lyria miss rerouted down the chain; reported now, it would promise the
     // picker's "Auto" a fallback the route no longer runs. Empty when Lyria cannot run: Auto then fails explicitly.

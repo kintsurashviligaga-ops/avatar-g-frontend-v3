@@ -1,0 +1,25 @@
+{
+  "command": [
+    "node",
+    "node_modules/next/dist/bin/next",
+    "lint",
+    "--file",
+    "lib/image/studio/live.ts",
+    "--file",
+    "lib/image/studio/live.test.ts",
+    "--file",
+    "lib/platform/upstashEnv.ts",
+    "--file",
+    "lib/platform/upstashEnv.test.ts",
+    "--file",
+    "tests/video-core-live/image-contracts.spec.ts"
+  ],
+  "cwd": "/private/tmp/image-studio-main-fef867a6",
+  "deadlineSeconds": 90,
+  "startedAt": "2026-10-13T19:21:13.168468+00:00",
+  "timedOut": false,
+  "pid": 5506,
+  "exitCode": 0,
+  "elapsedSeconds": 1.265,
+  "finishedAt": "2026-10-13T19:21:14.433134+00:00"
+}

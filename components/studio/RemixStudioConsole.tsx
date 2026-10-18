@@ -13,7 +13,7 @@
  * video). Pure app-token palette so the dark theme + theming hold; sized
  * w-[min(88vw,460px)] so it never overflows a 375px phone.
  */
-import { Wand2, Loader2, Check, Upload, Paintbrush, Type, Music, Gauge, Scissors, Mic, Waves, UserCog, Film } from 'lucide-react';
+import { Wand2, Check, Upload, Paintbrush, Type, Music, Gauge, Scissors, Mic, Waves, UserCog, Film } from 'lucide-react';
 import { GenerationProgress } from './ui/GenerationProgress';
 
 type Loc = 'en' | 'ru' | 'ka';
@@ -132,7 +132,7 @@ export default function RemixStudioConsole({
               </span>
               <p className="min-w-0 flex-1 truncate text-[11.5px] font-semibold text-app-text">{stage.label[loc]}</p>
               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                {done ? <Check size={12} className="text-emerald-500" /> : active ? <Loader2 size={12} className="animate-spin text-app-accent" /> : <span className="h-[7px] w-[7px] rounded-full border border-app-muted/40" />}
+                {done ? <Check size={12} className="text-emerald-500" /> : active ? <span className="h-[7px] w-[7px] rounded-full bg-app-accent" /> : <span className="h-[7px] w-[7px] rounded-full border border-app-muted/40" />}
               </span>
             </div>
           );

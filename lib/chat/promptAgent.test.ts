@@ -1,4 +1,5 @@
-import { buildDirectorUserContent, coerceBrief, coerceSceneCamera, SYSTEM_PROMPT, TEMPLATE_NOTE_MAX, type PromptAgentInput } from './promptAgent';
+import { DEFAULT_REST_TIER_MODELS } from '@/lib/ai/google/models';
+import { buildDirectorUserContent, coerceBrief, coerceSceneCamera, promptAgentModel, SYSTEM_PROMPT, TEMPLATE_NOTE_MAX, type PromptAgentInput } from './promptAgent';
 
 const base: PromptAgentInput = {
   brief: 'a 30s blues clip', mode: 'music_video', sceneCount: 6, length: 30, effect: 'Cinematic', language: 'ka',
@@ -162,5 +163,52 @@ describe('the director speaks structured camera language (docs/VEO_ENGINE.md §5
     expect(SYSTEM_PROMPT).toContain('STRUCTURED CAMERA');
     expect(SYSTEM_PROMPT).toContain('push_in/pull_out = the camera physically moves');
     expect(SYSTEM_PROMPT).toContain('"camera": { "move": "push_in"');
+  });
+});
+
+/**
+ * The storyboard reports `scriptModel` from promptAgentModel(). The paid Production run of 2026-10-15 read a Claude id
+ * there while the script was written by Gemini (llmText has no other provider): the label came from a constant nothing
+ * used as a model.
+ */
+describe('promptAgentModel — names the Gemini model the director really uses', () => {
+  const saved = { g: process.env.VIDEO_GOOGLE_ONLY, d: process.env.VEO_DIRECTOR_MODEL, f: process.env.GEMINI_MODEL_FLASH };
+  const restore = (k: string, v: string | undefined) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; };
+  beforeEach(() => { delete process.env.VIDEO_GOOGLE_ONLY; delete process.env.VEO_DIRECTOR_MODEL; delete process.env.GEMINI_MODEL_FLASH; });
+  afterAll(() => { restore('VIDEO_GOOGLE_ONLY', saved.g); restore('VEO_DIRECTOR_MODEL', saved.d); restore('GEMINI_MODEL_FLASH', saved.f); });
+
+  it('Google-only with no director model → the flash tier (the Production setting)', () => {
+    expect(promptAgentModel()).toBe(DEFAULT_REST_TIER_MODELS.flash);
+  });
+
+  it('follows GEMINI_MODEL_FLASH like llmText does', () => {
+    process.env.GEMINI_MODEL_FLASH = 'gemini-3.7-flash';
+    expect(promptAgentModel()).toBe('gemini-3.7-flash');
+  });
+
+  it('Google-only with VEO_DIRECTOR_MODEL → that model', () => {
+    process.env.VEO_DIRECTOR_MODEL = 'gemini-3.1-pro-preview';
+    expect(promptAgentModel()).toBe('gemini-3.1-pro-preview');
+  });
+
+  it('a retired or malformed director model falls back to the flash tier, as generateWithGemini does', () => {
+    process.env.VEO_DIRECTOR_MODEL = 'gemini-1.5-pro';
+    expect(promptAgentModel()).toBe(DEFAULT_REST_TIER_MODELS.flash);
+    process.env.VEO_DIRECTOR_MODEL = 'models/../x?y';
+    expect(promptAgentModel()).toBe(DEFAULT_REST_TIER_MODELS.flash);
+  });
+
+  it('Google-only off → the director model is not passed, so the flash tier', () => {
+    process.env.VIDEO_GOOGLE_ONLY = '0';
+    process.env.VEO_DIRECTOR_MODEL = 'gemini-3.1-pro-preview';
+    expect(promptAgentModel()).toBe(DEFAULT_REST_TIER_MODELS.flash);
+  });
+
+  it('never a non-Gemini id', () => {
+    for (const g of [undefined, '0']) {
+      restore('VIDEO_GOOGLE_ONLY', g);
+      expect(promptAgentModel()).toMatch(/^gemini-/);
+      expect(promptAgentModel()).not.toMatch(/claude|haiku|sonnet/i);
+    }
   });
 });

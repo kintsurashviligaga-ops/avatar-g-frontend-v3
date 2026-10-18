@@ -108,7 +108,7 @@ export const SERVICE_WORKSPACE_CONFIGS: Record<string, ServiceWorkspaceConfig> =
     transfers: [
       { id: 'to-video', targetService: 'video', icon: '🎬', label: { en: 'Use in Video', ka: 'ვიდეოში', ru: 'В видео' }, description: { en: 'Send avatar to Video Generation', ka: 'ავატარის გაგზავნა ვიდეო სერვისში', ru: 'Отправить аватар в видео' } },
       { id: 'to-image', targetService: 'image', icon: '🖼️', label: { en: 'Create Poster', ka: 'პოსტერი', ru: 'Постер' }, description: { en: 'Use avatar in Image/Poster service', ka: 'ავატარით პოსტერის შექმნა', ru: 'Использовать в постере' } },
-      { id: 'to-shop', targetService: 'shop', icon: '🛒', label: { en: 'List in Shop', ka: 'მაღაზიაში', ru: 'В магазин' }, description: { en: 'Sell avatar in Digital Shop', ka: 'ავატარის გაყიდვა მაღაზიაში', ru: 'Продать в магазине' } },
+      { id: 'to-shop', targetService: 'shop', icon: '🛒', label: { en: 'List in Shop', ka: 'მაღაზიაში', ru: 'В магазин' }, description: { en: 'Write shop listing copy for it', ka: 'ლისტინგის ტექსტის დაწერა', ru: 'Написать текст карточки' } },
       { id: 'to-workflow', targetService: 'workflow', icon: '⚡', label: { en: 'Add to Workflow', ka: 'Workflow', ru: 'В воркфлоу' }, description: { en: 'Continue in automated workflow', ka: 'ავტომატიზებულ workflow-ში გაგრძელება', ru: 'В автоматизированный воркфлоу' } },
     ],
   },
@@ -339,7 +339,7 @@ export const SERVICE_WORKSPACE_CONFIGS: Record<string, ServiceWorkspaceConfig> =
     transfers: [
       { id: 'to-music', targetService: 'music', icon: '🎵', label: { en: 'Replace Audio', ka: 'აუდიო', ru: 'Аудио' }, description: { en: 'Replace video audio track', ka: 'აუდიო ტრეკის ჩანაცვლება', ru: 'Заменить аудиодорожку' } },
       { id: 'to-text', targetService: 'text', icon: '✍️', label: { en: 'Subtitles', ka: 'სუბტიტრები', ru: 'Субтитры' }, description: { en: 'Generate subtitle text', ka: 'სუბტიტრების გენერაცია', ru: 'Генерация субтитров' } },
-      { id: 'to-shop', targetService: 'shop', icon: '🛒', label: { en: 'Publish', ka: 'გამოქვეყნება', ru: 'Опубликовать' }, description: { en: 'Publish in Digital Shop', ka: 'ციფრულ მაღაზიაში', ru: 'В цифровой магазин' } },
+      { id: 'to-shop', targetService: 'shop', icon: '🛒', label: { en: 'Shop copy', ka: 'მაღაზიის ტექსტი', ru: 'Текст для магазина' }, description: { en: 'Write shop listing copy (no storefront hosting)', ka: 'ლისტინგის ტექსტი (ჰოსტინგი არ არის)', ru: 'Текст карточки (без хостинга)' } },
     ],
   },
 
@@ -445,7 +445,7 @@ export const SERVICE_WORKSPACE_CONFIGS: Record<string, ServiceWorkspaceConfig> =
     tools: [],
     transfers: [
       { id: 'to-editing', targetService: 'editing', icon: '✂️', label: { en: 'Edit', ka: 'რედაქტირება', ru: 'Редакция' }, description: { en: 'Edit media outputs', ka: 'მედია შედეგების რედაქტირება', ru: 'Редактировать' } },
-      { id: 'to-shop', targetService: 'shop', icon: '🛒', label: { en: 'Publish', ka: 'გამოქვეყნება', ru: 'Опубликовать' }, description: { en: 'Publish to Digital Shop', ka: 'მაღაზიაში გამოქვეყნება', ru: 'В магазин' } },
+      { id: 'to-shop', targetService: 'shop', icon: '🛒', label: { en: 'Shop copy', ka: 'მაღაზიის ტექსტი', ru: 'Текст для магазина' }, description: { en: 'Write shop listing copy (no storefront hosting)', ka: 'ლისტინგის ტექსტი (ჰოსტინგი არ არის)', ru: 'Текст карточки (без хостинга)' } },
     ],
   },
 
@@ -501,9 +501,9 @@ export const SERVICE_WORKSPACE_CONFIGS: Record<string, ServiceWorkspaceConfig> =
       { id: 'div-more', icon: '', label: { en: '', ka: '', ru: '' }, action: 'navigate', divider: true },
       { id: 'to-editing', icon: '✂️', label: { en: 'Video Editing', ka: 'ვიდეო ედიტინგი', ru: 'Видеомонтаж' }, action: 'transfer', target: 'editing' },
       { id: 'to-photo', icon: '📷', label: { en: 'Photo Enhancement', ka: 'ფოტოს გაუმჯობესება', ru: 'Улучшение фото' }, action: 'transfer', target: 'photo' },
-      { id: 'to-workflow', icon: '⚡', label: { en: 'Workflow Builder', ka: 'Workflow ბილდერი', ru: 'Конструктор воркфлоу' }, action: 'transfer', target: 'workflow' },
+      { id: 'to-workflow', icon: '⚡', label: { en: 'Workflow Planner', ka: 'ვორქფლოუს დაგეგმვა', ru: 'Планировщик воркфлоу' }, action: 'transfer', target: 'workflow' },
       { id: 'to-business', icon: '💼', label: { en: 'Business Intelligence', ka: 'ბიზნეს ინტელექტი', ru: 'Бизнес-аналитика' }, action: 'transfer', target: 'business' },
-      { id: 'to-shop', icon: '🛒', label: { en: 'Digital Shop', ka: 'ციფრული მაღაზია', ru: 'Цифровой магазин' }, action: 'transfer', target: 'shop' },
+      { id: 'to-shop', icon: '🛒', label: { en: 'Shop Content', ka: 'მაღაზიის კონტენტი', ru: 'Контент для магазина' }, action: 'transfer', target: 'shop' },
     ],
     quickActions: [
       { id: 'avatar', icon: '👤', label: { en: 'Create Avatar', ka: 'ავატარის შექმნა', ru: 'Создать аватар' }, prompt: 'I want to create a professional AI avatar. Guide me through all the options.' },
@@ -520,7 +520,7 @@ export const SERVICE_WORKSPACE_CONFIGS: Record<string, ServiceWorkspaceConfig> =
       { id: 'to-image', targetService: 'image', icon: '🖼️', label: { en: 'Image', ka: 'სურათი', ru: 'Изображение' }, description: { en: 'Open Image Generation', ka: 'სურათის გენერაციის გახსნა', ru: 'Открыть генерацию изображений' } },
       { id: 'to-music', targetService: 'music', icon: '🎵', label: { en: 'Music', ka: 'მუსიკა', ru: 'Музыка' }, description: { en: 'Open Music Production', ka: 'მუსიკის პროდაქშენის გახსნა', ru: 'Открыть музыкальный продакшн' } },
       { id: 'to-text', targetService: 'text', icon: '✍️', label: { en: 'Text', ka: 'ტექსტი', ru: 'Текст' }, description: { en: 'Open Text & Copy', ka: 'ტექსტის სერვისის გახსნა', ru: 'Открыть текст и копирайтинг' } },
-      { id: 'to-workflow', targetService: 'workflow', icon: '⚡', label: { en: 'Workflow', ka: 'Workflow', ru: 'Воркфлоу' }, description: { en: 'Open Workflow Builder', ka: 'Workflow ბილდერის გახსნა', ru: 'Открыть конструктор воркфлоу' } },
+      { id: 'to-workflow', targetService: 'workflow', icon: '⚡', label: { en: 'Workflow', ka: 'Workflow', ru: 'Воркфлоу' }, description: { en: 'Plan the steps (no automation runner yet)', ka: 'ნაბიჯების დაგეგმვა (ავტომატური გაშვება ჯერ არ არის)', ru: 'Спланировать шаги (автозапуска пока нет)' } },
     ],
   },
 
@@ -554,7 +554,7 @@ export const SERVICE_WORKSPACE_CONFIGS: Record<string, ServiceWorkspaceConfig> =
   /* ─── 14. SHOP ────────────────────────────────────────────────── */
   shop: {
     serviceId: 'shop',
-    welcomeHint: { en: 'Launch and manage digital storefronts', ka: 'გაუშვი ციფრული მაღაზია', ru: 'Запускайте цифровые магазины' },
+    welcomeHint: { en: 'Product descriptions and listing copy (no storefront hosting)', ka: 'პროდუქტის აღწერები და ლისტინგის ტექსტი (მაღაზიის ჰოსტინგი არ არის)', ru: 'Описания товаров и тексты карточек (без хостинга магазина)' },
     outputLabel: { en: 'Store Output', ka: 'მაღაზიის შედეგი', ru: 'Результат магазина' },
     menuItems: [
       { id: 'listing', icon: '📦', label: { en: 'Quick Listing', ka: 'განცხადება', ru: 'Объявление' }, action: 'preset', prompt: 'Create a product listing with AI-optimized content' },

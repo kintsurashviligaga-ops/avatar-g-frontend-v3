@@ -1,0 +1,196 @@
+# Music Studio v1.0 — real-backend browser E2E on an ISOLATED, throwaway Supabase (the Video Core harness, reused).
+#
+# The same runner-only stack as video-core-e2e-local.yml (Supabase CLI local stack, the Test Schema Baseline, a TLS
+# front on a reserved `.test` name, the fail-closed guard twice), `next start` of this branch with Music Studio switched
+# on, and Playwright (tests/music-studio-live): the One Window journey on a desktop and an iPhone-13 viewport, the Live
+# Voice tool-dispatch layer, and the API / Storage / RLS / billing checks.
+#
+# THE PROVIDER IS A STAND-IN. No AI provider credential exists in the job. MUSIC_STUDIO_E2E_FAKE_PROVIDER=1 makes the
+# server's Lyria call a synthetic ffmpeg tone (lib/music/studio/e2eProvider.ts — fail-closed: never on Vercel, never
+# with a hosted Supabase). Nothing here is evidence about Google Lyria; everything else (quote, ledger, worker, QC,
+# Storage, Library, edits, refunds) is the real code. Production is never touched; no GitHub secret is read.
+name: Music Studio E2E (isolated local Supabase)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: music-studio-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  music-live-e2e:
+    name: Music Studio live E2E (local Supabase, desktop + phone)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      SB_WORKDIR: e2e/video-core-live
+      E2E_HOST: supabase.video-core-e2e.test
+      E2E_IP: 1.2.3.4
+      NEXT_TELEMETRY_DISABLED: "1"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The action's own "latest" lookup is an anonymous API call, which a shared runner's address can exhaust (Preview
+      # run 38386454944 stopped there: "rate limit exceeded"). The job's token asks instead; the version is then pinned.
+      - name: Resolve the Supabase CLI's latest release (with this job's token)
+        id: supabase-cli
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="$(gh release view --repo supabase/cli --json tagName -q .tagName)"
+          echo "version=${v#v}" >> "$GITHUB_OUTPUT"
+          echo "Supabase CLI ${v}"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ steps.supabase-cli.outputs.version }}
+
+      - name: Map the reserved test host to this runner's loopback
+        run: |
+          sudo ip addr add "$E2E_IP/32" dev lo
+          echo "$E2E_IP $E2E_HOST" | sudo tee -a /etc/hosts >/dev/null
+          getent ahosts "$E2E_HOST"
+
+      - name: Start the throwaway Supabase stack
+        run: |
+          supabase --version
+          # The CLI prints the stack's keys at the end of `start`; the log is public, so only a redacted copy is shown.
+          if ! supabase start --workdir "$SB_WORKDIR" >sb-start.log 2>&1; then
+            sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#postgres(ql)?://[^ ]+#postgresql://***#g' sb-start.log
+            exit 1
+          fi
+          sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#postgres(ql)?://[^ ]+#postgresql://***#g' sb-start.log | tail -n 30
+          docker ps --format '{{.Names}}\t{{.Ports}}'
+
+      - name: Export the stack's own keys (masked) and the app's env
+        run: |
+          supabase status --workdir "$SB_WORKDIR" -o env >sb-status.env 2>/dev/null
+          get() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" sb-status.env | head -n1; }
+          echo "status keys: $(cut -d= -f1 sb-status.env | tr '\n' ' ')"
+          ANON=$(get ANON_KEY); SERVICE=$(get SERVICE_ROLE_KEY); DB=$(get DB_URL); API=$(get API_URL)
+          [ -n "$ANON" ] || ANON=$(get PUBLISHABLE_KEY)
+          [ -n "$SERVICE" ] || SERVICE=$(get SECRET_KEY)
+          if [ -z "$ANON" ] || [ -z "$SERVICE" ] || [ -z "$DB" ]; then echo "::error::supabase status gave no keys"; exit 1; fi
+          QUOTE=$(openssl rand -hex 32); CRON=$(openssl rand -hex 32)
+          for v in "$ANON" "$SERVICE" "$DB" "$QUOTE" "$CRON"; do echo "::add-mask::$v"; done
+          echo "local API_URL host: ${API#*://}"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=https://$E2E_HOST:54443"
+            echo "SUPABASE_URL=https://$E2E_HOST:54443"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE"
+            echo "E2E_DB_URL=$DB"
+            echo "AGENT_G_QUOTE_SECRET=$QUOTE"
+            echo "CRON_SECRET=$CRON"
+            echo "AGENT_G_MEDIA_EXEC=admin"
+            echo "VIDEO_DIRECTOR_RUNS=admin"
+            echo "VIDEO_CORE_LIVE_E2E=1"
+            echo "MUSIC_STUDIO_ENABLED=1"
+            echo "NEXT_PUBLIC_MUSIC_STUDIO_V1=1"
+            echo "MUSIC_STUDIO_E2E_FAKE_PROVIDER=1"
+          } >>"$GITHUB_ENV"
+          rm -f sb-status.env sb-start.log
+
+      - name: Reach the stack through the test host (forward if Docker bound loopback only)
+        run: |
+          probe() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$E2E_HOST:54321/auth/v1/health" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" || true; }
+          code=$(probe)
+          if [ "$code" != "200" ]; then
+            echo "direct: HTTP $code; starting a loopback forwarder $E2E_IP:54321 -> 127.0.0.1:54321"
+            nohup node e2e/video-core-live/scripts/forward.mjs "$E2E_IP" 54321 127.0.0.1 54321 >forward.log 2>&1 &
+            sleep 2; code=$(probe)
+          fi
+          echo "auth health via $E2E_HOST: HTTP $code"
+          [ "$code" = "200" ]
+
+      - name: Serve the stack over https (a CA made for this run only)
+        run: |
+          tls="$RUNNER_TEMP/video-core-e2e-tls"
+          bash e2e/video-core-live/scripts/make-tls.sh "$E2E_HOST" "$tls"
+          nohup node e2e/video-core-live/scripts/tls-front.mjs "$E2E_IP" 54443 "$E2E_IP" 54321 "$tls/leaf.pem" "$tls/leaf.key" >tls-front.log 2>&1 &
+          echo "NODE_EXTRA_CA_CERTS=$tls/ca.pem" >>"$GITHUB_ENV"
+          code=000
+          for _ in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --cacert "$tls/ca.pem" "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/health" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" || true)
+            [ "$code" = "200" ] && break; sleep 1
+          done
+          cat tls-front.log
+          echo "auth health via $NEXT_PUBLIC_SUPABASE_URL (certificate verified): HTTP $code"
+          [ "$code" = "200" ]
+
+      - name: Fail-closed guard (never Production, never hosted, only this machine)
+        run: |
+          for v in NEXT_PUBLIC_SUPABASE_URL SUPABASE_URL E2E_DB_URL; do
+            val="${!v}"
+            case "$val" in
+              *zwksnayknzggdcenqqxy*|*supabase.co*|*supabase.com*|*supabase.in*|*supabase.net*|*pooler.supabase*)
+                echo "::error::$v points at a hosted Supabase project; refusing"; exit 64 ;;
+            esac
+          done
+          case "$E2E_DB_URL" in *@127.0.0.1:*|*@localhost:*) ;; *) echo "::error::E2E_DB_URL is not on this machine"; exit 64 ;; esac
+          addrs=$(getent ahostsv4 "$E2E_HOST" | awk '{print $1}' | sort -u)
+          [ "$addrs" = "$E2E_IP" ] || { echo "::error::$E2E_HOST resolves to '$addrs', not $E2E_IP"; exit 64; }
+          ip -4 addr show dev lo | grep -q "inet $E2E_IP/32" || { echo "::error::$E2E_IP is not on this runner's loopback"; exit 64; }
+          echo "guard: isolated stack only"
+
+      - name: Apply the Test Schema Baseline (and verify RLS, RPC, triggers, storage, billing)
+        id: baseline
+        run: bash e2e/video-core-live/baseline/apply.sh "$E2E_DB_URL"
+
+      - name: Anon-key exposure check against the local stack
+        run: node scripts/check-db-exposure.mjs
+
+      - name: Build this branch against the local stack
+        run: npm run build
+
+      - name: Start the app (next start)
+        run: |
+          mkdir -p test-results/music-studio-live
+          nohup npx next start -p 3000 >test-results/music-studio-live/server.txt 2>&1 &
+          for _ in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3000/en && break; sleep 2; done
+          curl -s -o /dev/null -w 'GET /en → HTTP %{http_code}\n' http://localhost:3000/en
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright — Music Studio, real backend (stand-in provider), desktop + iPhone 13 + API
+        run: npx playwright test -c playwright.music-live.config.ts
+
+      - name: Stack logs on failure (redacted)
+        if: ${{ failure() }}
+        run: |
+          mkdir -p test-results/music-studio-live/stack-logs
+          for c in $(docker ps -a --format '{{.Names}}' | grep -i supabase); do
+            docker logs --tail 400 "$c" 2>&1 | sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g' >"test-results/music-studio-live/stack-logs/$c.txt" || true
+          done
+          tail -n 200 test-results/music-studio-live/server.txt || true
+          # Artifacts cannot always be fetched by whoever reads the run: each failure's page snapshot goes to the log too.
+          for f in $(find test-results/music-studio-live -name error-context.md | head -n 6); do
+            echo "::group::$f"
+            head -c 8000 "$f" | sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#https://[a-z0-9-]+\.trycloudflare\.com#https://<tunnel>#g'
+            echo "::endgroup::"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: music-studio-live-e2e
+          path: |
+            test-results/music-studio-live/
+            test-results/video-core-live/evidence/
+            !test-results/video-core-live/state/
+          retention-days: 14
+
+      - name: Stop the stack
+        if: ${{ always() }}
+        run: supabase stop --no-backup --workdir "$SB_WORKDIR" || true

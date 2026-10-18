@@ -5,7 +5,9 @@
  */
 import { LEASE_MS } from '@/lib/orchestrator/jobLease';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
-import { cancelMontageJob, enqueueMontageJob, quoteMontage } from './montageExec';
+import { cancelMontageJob, codeOfRowError, enqueueMontageJob, quoteMontage, viewOf } from './montageExec';
+import { errorText } from './montageChat';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { GAVE_UP, HOLD_ABANDONED, srcQcTimes, sweepMontageJobs, workMontageJob } from './montageWorker';
 import { FILES, MASTER_URL, TRACK, USER, balance, clip, fake, type Fake, type RenderOpts } from './testing/fakeMontageDeps';
 import { signQuote } from './quoteToken';
@@ -77,6 +79,26 @@ describe('work: one job, rendered under a lease', () => {
     expect(balance(f)).toBe(0);
     expect(await sweepMontageJobs(f.deps, { worker: 's', work: true })).toMatchObject({ waiting: [], gaveUp: [] });
     expect(f.renders).toHaveLength(1);
+  });
+
+  // 2026-10-16: the site's daily AI limit was spent and the card said only that the montage failed.
+  test('the platform budget refusing the render names its limit on the card, and the charge comes back', async () => {
+    for (const reason of ['daily_limit', 'monthly_limit'] as const) {
+      const f = fake({ render: async () => ({ ok: false, step: 'resolve', error: `budget_exceeded:${reason}` }) });
+      const id = await queued(f, 7);
+      expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ ran: true, outcome: 'failed' });
+      const row = f.store.rows.get(id)!;
+      expect(row).toMatchObject({ status: 'failed', error: `budget_exceeded: ${reason}` });
+      expect(viewOf(row)).toMatchObject({ status: 'failed', error: `budget_${reason}` });
+      for (const locale of ['ka', 'en', 'ru']) expect(errorText(`budget_${reason}`, locale)).toBe(budgetRefusalMessage(locale, reason));
+      expect(balance(f)).toBe(0);
+      expect(f.renders).toHaveLength(1);
+    }
+    expect(errorText('budget_daily_limit', 'ka')).toContain('04:00');
+    // An unknown reason, or none, reads as the daily limit (the common case); an ordinary failure is unchanged.
+    expect(codeOfRowError('budget_exceeded: something_new')).toBe('budget_daily_limit');
+    expect(codeOfRowError('budget_exceeded')).toBe('budget_daily_limit');
+    expect(codeOfRowError('render_failed: stitch: boom')).toBe('render_failed');
   });
 
   test('QC: a master without sound, of the wrong length, or without the music is not delivered', async () => {

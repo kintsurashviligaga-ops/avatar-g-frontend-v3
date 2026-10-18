@@ -1,0 +1,97 @@
+FAIL components/voice/live/useGeminiLiveSession.test.tsx
+  ✓ setup is the FIRST frame: parity setup (transcription, resumption, compression, tools) on the minted token (11 ms)
+  ✓ audio spoken before setupComplete is HELD and flushed in order right after it (2 ms)
+  ✓ local barge-in: user speech over the answer stops playback now and drops the rest of that answer (3 ms)
+  ✓ barging in on the BUFFERED tail (after turnComplete) stops playback but never swallows the next answer (1 ms)
+  ✓ the mint asks for everything the locked setup must carry: transcription, compression, the resumption handle (1 ms)
+  ✓ server interruption flushes playback; playback draining returns to listening (1 ms)
+  ✓ goAway resumes on a new socket with the latest handle — same token, audio held across the gap (55 ms)
+  ✓ goAway during an answer waits for the turn to finish on the old connection, then resumes (54 ms)
+  ✓ a dropped connection with no handle ends in connection_lost (retry offered), not a silent dead call (1 ms)
+  ✓ transcripts become captions (pending → final) and reach onTurn user-first at the turn boundary; usage is reported (2 ms)
+  ✓ onHeard: the user's own words as they stream (spoken and typed), and each exchange closing — never the model's (1 ms)
+  ✓ without an onTurn prop, closed turns are dispatched as the window transcript event (1 ms)
+  ✓ teardown releases everything: mic track, both AudioContexts, worklet, socket, playback (1 ms)
+  ✓ unmount mid-call releases the same resources
+  ✓ reentrancy: a double start is one call; End during the mint releases the mic that resolves afterwards (2 ms)
+  ✓ a handshake with no setupComplete times out and retries ONCE on the legacy wire; a second miss is an error (2 ms)
+  ✓ a rejected setup (socket closed before setupComplete) retries on the legacy wire and connects (55 ms)
+  ✓ 503 from the mint hands off via onUnavailable (the ChatChrome fallback contract): no socket, mic released (3 ms)
+  ✓ mint errors map to typed codes (401 → auth, 429 → rate_limited) (3 ms)
+  ✓ a server-built setup from the mint is sent as-is (resumption handle added), not rebuilt on the client (2 ms)
+  ✓ a tool call nobody handles is answered not_supported, so the model never waits forever (54 ms)
+  ✓ actions: the mint asks for the declarations; the host answers each call by id; a cancellation reaches the host (56 ms)
+  ✓ activity: a search shows its queries then its pages, a tool step runs then completes — and a new call starts empty (54 ms)
+  ✓ researchId: ONLY the id rides in the mint (the server loads the report for the owner); without it the field is absent (7 ms)
+  ✓ chatSessionId: only the id rides in a FRESH mint — from the option, else asked from the studio on screen; a resume never carries it (57 ms)
+  ✓ without the opt-in nothing asks for actions; parity:false mints with tools:false (lock = the tool-less frame) (1 ms)
+  ✓ a refused handshake WITH actions retries the parity wire WITHOUT them (captions kept), then the tool-less legacy wire (109 ms)
+  ✓ a mint that locked no declarations (actions:false) skips the pointless no-actions retry (53 ms)
+  ✓ the no-actions retry that connects keeps the parity wire: captions on, resumption asked (54 ms)
+  ✓ mute stops sending (and holds nothing), tells the server the stream ended, and zeroes the input level (1 ms)
+  ✓ a capture context the mic cannot join (Firefox) falls back to the native-rate context + JS downsampling (1 ms)
+  ✓ small helpers
+  ✓ transport denies spoken paid starts before the legacy host can execute them (54 ms)
+  ✕ style changes at listening without replacing context; voice applies only on the next call (1007 ms)
+  microphone
+    ✓ a denied mic: specific code + the browser's error name, NO socket, one telemetry report (1 ms)
+    ✓ NotFoundError with no audio inputs → mic_not_found (1 ms)
+    ✓ a busy device: other holders are asked to release BEFORE the first request, then 400 ms / 1 s back-off, then it connects
+    ✓ OverconstrainedError steps the constraints down and still connects (1 ms)
+    ✓ a getUserMedia that throws TypeError synchronously (in-app browser) → mic_in_app, never an uncaught throw (1 ms)
+    ✓ a getUserMedia that throws TypeError synchronously (desktop Chrome) → mic_unavailable, never an uncaught throw
+    ✓ no getUserMedia at all (an in-app WebView) → mic_in_app; an http page → mic_insecure (1 ms)
+    ✓ End during the busy back-off: no further request, the call stays closed (1 ms)
+    ✓ status stays "connecting" and no socket exists while the mic is pending; listening needs mic AND setupComplete (1 ms)
+    ✓ a mic granted more than 90 s after the mint gets a fresh token before the socket opens (1 ms)
+    ✓ a track that ends mid-call is re-acquired once; a second loss ends the call as mic_lost (1 ms)
+    ✓ a lost track whose re-acquire fails → mic_lost with the browser's reason (1 ms)
+    ✓ the capture worklet is PULLED: one output → a zero gain → the destination
+    ✓ Retry after mic_busy asks for release, waits 500 ms, then starts with the context made in the tap (1 ms)
+    ✓ the gesture prime is adopted: its context plays, its mic is used, no second getUserMedia (1 ms)
+    ✓ a failed prime continues the ladder instead of failing the call
+    ✓ a playback context that will not start without a gesture shows "tap to start"; resumeAudio clears it (1 ms)
+    ✓ mic helpers: failure kinds map to screen codes; every mic code is recognised as one
+  createPcmDownsampler
+    ✓ keeps speech-band audio at 1/3 the samples, continuous across chunk boundaries (8 ms)
+    ✓ removes content above the new Nyquist instead of folding it into the speech band (6 ms)
+    ✓ is the identity when no rate change is needed
+  buildLiveInstruction
+    ✓ default call: live persona + Google-only platform prompt + spoken-call rules, model-default temperature (11 ms)
+    ✓ an active persona adds its block once and sends its temperature
+    ✓ a persona override replaces only the live persona (1 ms)
+
+  ● style changes at listening without replacing context; voice applies only on the next call
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected substring: "coach"
+    Received string:    "[{\"realtimeInput\":{\"text\":\"[App] The user changed conversation style. Keep the current context.\\nVOICE PRESENTATION v1 (style only; platform truth, tools, permissions and pricing stay unchanged).\\nEncourage improvement with specific, appropriately challenging feedback.\\nDelivery: normal pace, natural expression, auto tone. Humor: light; sarcasm: off.\\nUsually speak 1–3 short sentences. Summarize long reports and offer detail on screen.\\nNever read Markdown punctuation, raw URLs, code or stage-direction tags. Explicit complete reading belongs to the separate Listen control; do not silently summarize a requested complete reading.\\nOptional amusement is contextual, never mandatory laughter. No humor or sarcasm during billing, security, safety, distress or serious complaints. Do not pretend to have human feelings; be transparent that you are AI.\\nFollow the language the user speaks, including KA/EN/RU switching.\\nVOICE FINANCIAL RULE: Speech, a spoken yes, a countdown and model claims NEVER authorize a paid job. Prepare or explain the quote and direct the user to the authenticated UI confirmation. Never claim a job started without a successful backend result. Barge-in stops speech only, never a durable Studio job.\"}}]"
+
+    Ignored nodes: comments, script, style
+    <html>
+      <head />
+      <body>
+        <div />
+      </body>
+    </html>
+
+      1222 |   expect(ws.sent).toHaveLength(sent);
+      1223 |   act(() => ws.receive({ serverContent: { interrupted: true } }));
+    > 1224 |   await waitFor(() => expect(JSON.stringify(ws.sent.slice(sent))).toContain('coach'));
+           |                                                                   ^
+      1225 |   expect(h.fetchImpl).toHaveBeenCalledTimes(1);
+      1226 |   expect(h.mintBodies[0].voice).toBe('Aoede');
+      1227 |   act(() => result.current.live.stop());
+
+      at toContain (components/voice/live/useGeminiLiveSession.test.tsx:1224:67)
+      at runWithExpensiveErrorDiagnosticsDisabled (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/@testing-library/dom/dist/config.js:47:12)
+      at checkCallback (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/@testing-library/dom/dist/wait-for.js:124:77)
+      at checkRealTimersCallback (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/@testing-library/dom/dist/wait-for.js:118:16)
+      at Timeout.task [as _onTimeout] (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/jsdom/lib/jsdom/browser/Window.js:579:19)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 57 passed, 58 total
+Snapshots:   0 total
+Time:        2.237 s
+Ran all test suites within paths "components/voice/live/useGeminiLiveSession.test.tsx".

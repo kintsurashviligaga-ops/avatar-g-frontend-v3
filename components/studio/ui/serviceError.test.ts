@@ -10,6 +10,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './serviceError';
+import { budgetRefusalMessage } from '../../../lib/services/billing/budgetMessage';
 
 const KA_FALLBACK = 'ვერ მოხერხდა';
 
@@ -51,6 +52,28 @@ describe('describeServiceError', () => {
       expect(describeServiceError(code, 'en', 'x')).not.toBe('x');
       expect(describeServiceError(code, 'ru', 'x')).toMatch(/[Ѐ-ӿ]/);
     }
+  });
+
+  it('says why a talking avatar was refused before its charge: no voice, or a line past its 8 seconds (2026-10-17)', () => {
+    for (const code of ['voice_unavailable', 'speech_too_long']) {
+      const ka = describeGenerationFailure({ success: false, error: code }, 'ka', KA_FALLBACK);
+      expect(ka).not.toBe(KA_FALLBACK);
+      expect(ka).toMatch(/თანხა არ ჩამოგეჭრა/);
+      expect(describeGenerationFailure({ success: false, error: code }, 'en', 'x')).toMatch(/not charged/);
+      expect(describeGenerationFailure({ success: false, error: code }, 'ru', 'x')).toMatch(/списания не было/);
+    }
+    expect(describeGenerationFailure({ success: false, error: 'speech_too_long', seconds: 9.4 }, 'ka', KA_FALLBACK)).toMatch(/8 წამ/);
+  });
+
+  it('a voice ElevenLabs refused for good is "off", and its copy never asks for a retry in a minute (2026-10-17 09:31Z)', () => {
+    const ka = describeGenerationFailure({ success: false, error: 'voice_off', refunded: false }, 'ka', KA_FALLBACK);
+    expect(ka).toMatch(/გამორთულია/);
+    expect(ka).toMatch(/თანხა არ ჩამოგეჭრა/);
+    expect(ka).not.toMatch(/წუთში|სცადე/);
+    const en = describeGenerationFailure({ success: false, error: 'voice_off' }, 'en', 'x');
+    expect(en).toMatch(/not charged/);
+    expect(en).not.toMatch(/minute|try again/i);
+    expect(describeGenerationFailure({ success: false, error: 'voice_off' }, 'ru', 'x')).not.toMatch(/минуту/);
   });
 
   it('matches the studio codes whole — a longer string that merely contains one is not claimed', () => {
@@ -169,5 +192,31 @@ describe('describeGenerationFailure — the refund notice is shown when, and onl
     expect(omni.match(/describeGenerationFailure\(j, locale, t\.imageFailed\)/g)?.length).toBe(2);
     expect(omni).toContain('describeGenerationFailure(j, locale, t.musicFailed)');
     expect(omni).toContain('describeGenerationFailure(j, locale, failMsg)');
+  });
+});
+
+describe('music option refusal (Production 2026-10-16)', () => {
+  it('the route\'s `unsupported` refusal is not read as a file-format error asking for MP3 or WAV', () => {
+    const msg = describeGenerationFailure({ success: false, code: 'unsupported', error: 'unsupported' }, 'ka', 'x');
+    expect(msg).not.toMatch(/MP3|WAV/);
+    expect(msg).toContain('Google');
+  });
+});
+
+describe('describeGenerationFailure — the platform\'s AI limit (2026-10-16)', () => {
+  it('shows the route\'s own sentence, which names the limit and when it lifts', () => {
+    const message = budgetRefusalMessage('ka', 'daily_limit');
+    expect(describeGenerationFailure({ success: false, code: 'platform_budget', message }, 'ka', KA_FALLBACK)).toBe(message);
+  });
+
+  it('wins over the refund notice: the sentence already says the balance was kept', () => {
+    const message = budgetRefusalMessage('en', 'daily_limit');
+    expect(describeGenerationFailure({ success: false, code: 'platform_budget', refunded: true, message }, 'en', 'x')).toBe(message);
+  });
+
+  it('a refusal without a message still names the limit, in the screen\'s language', () => {
+    expect(describeGenerationFailure({ success: false, error: 'platform_budget', budgetReason: 'monthly_limit' }, 'en', 'x'))
+      .toBe(budgetRefusalMessage('en', 'monthly_limit'));
+    expect(describeGenerationFailure({ success: false, code: 'platform_budget' }, 'ka', KA_FALLBACK)).toContain('04:00');
   });
 });

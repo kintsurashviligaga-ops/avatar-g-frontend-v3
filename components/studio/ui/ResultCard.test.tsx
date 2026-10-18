@@ -109,4 +109,14 @@ describe('ResultCard errorFull (the film\'s refusal reasons, Video Core round 3)
     render(<ResultCard kind="video" aspect="9:16" state="error" locale="en" error={why} />);
     expect(screen.getByText(why).className).toMatch(/line-clamp-2/);
   });
+  it('an error shows its warning icon only: the film icon no longer sits on the text (the ad film\'s card, 2026-10-15)', () => {
+    const { container, rerender } = render(<ResultCard kind="video" aspect="9:16" state="error" locale="en" error={why} errorFull />);
+    // A className replaces lucide's own classes, so the icons are told apart by theirs: the centred kind icon is the
+    // translucent one, the warning is text-app-warning.
+    const svgs = () => [...container.querySelectorAll('svg')].map((el) => el.getAttribute('class') ?? '');
+    expect(svgs()).toEqual(['text-app-warning']);
+    // The plate still shows the kind icon when there is no media and no error.
+    rerender(<ResultCard kind="video" aspect="9:16" state="ready" locale="en" />);
+    expect(svgs().some((c) => c.includes('top-1/2') && c.includes('text-app-text/20'))).toBe(true);
+  });
 });

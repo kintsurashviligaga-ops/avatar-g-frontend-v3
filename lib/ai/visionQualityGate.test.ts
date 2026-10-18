@@ -5,8 +5,13 @@ import {
   parseVisionVerdict,
   evaluateRenderQuality,
   visionQaEnabled,
+  evaluateSceneClips,
   VISION_QUALITY_FLOOR,
 } from './visionQualityGate';
+
+// The transport is server-only; the gate lazy-imports it only when no Gemini key is in the env (Vertex).
+const mockGoogleAiConfigured = jest.fn(() => false);
+jest.mock('./google/transport', () => ({ googleAiConfigured: () => mockGoogleAiConfigured() }));
 
 describe('scoreToGrade — score → grade (Phase 27 V2)', () => {
   test('maps score bands, with the floor as the F boundary', () => {
@@ -140,5 +145,97 @@ describe('evaluateRenderQuality — fail-open orchestration (injected deps)', ()
     expect(visionQaEnabled({ FILM_VISION_QA: '1' } as NodeJS.ProcessEnv)).toBe(true);
     expect(visionQaEnabled({ FILM_VISION_QA: '0' } as NodeJS.ProcessEnv)).toBe(false);
     expect(visionQaEnabled({} as NodeJS.ProcessEnv)).toBe(false);
+  });
+});
+
+describe('the default key check also asks the transport (a Vertex project has no Gemini key)', () => {
+  const KEYS = ['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY', 'GOOGLE_API_KEY'] as const;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => { for (const k of KEYS) { saved[k] = process.env[k]; delete process.env[k]; } });
+  afterEach(() => { for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
+
+  test('no key, Vertex configured → the gate runs', async () => {
+    mockGoogleAiConfigured.mockReturnValue(true);
+    const extract = jest.fn(async () => ['a']);
+    const v = await evaluateRenderQuality({ videoUrl: 'https://cdn/clip.mp4' }, { enabled: () => true, extract, score: async () => '{"score": 90, "issues": []}' });
+    expect(extract).toHaveBeenCalledTimes(1);
+    expect(v.ran).toBe(true);
+    expect(v.grade).toBe('A');
+  });
+
+  test('no key, no transport → skip("no_key") before any download', async () => {
+    mockGoogleAiConfigured.mockReturnValue(false);
+    const extract = jest.fn(async () => ['a']);
+    const v = await evaluateRenderQuality({ videoUrl: 'https://cdn/clip.mp4' }, { enabled: () => true, extract });
+    expect(v.reason).toBe('no_key');
+    expect(extract).not.toHaveBeenCalled();
+  });
+
+  test('an async keyPresent is awaited (a pending promise is not "present")', async () => {
+    const extract = jest.fn(async () => ['a']);
+    const v = await evaluateRenderQuality({ videoUrl: 'https://cdn/clip.mp4' }, { enabled: () => true, keyPresent: async () => false, extract });
+    expect(v.reason).toBe('no_key');
+    expect(extract).not.toHaveBeenCalled();
+  });
+});
+
+describe('evaluateSceneClips — each scene graded on its own (audit item 3b)', () => {
+  const clips = [3, 1, 2].map((ordinal) => ({ ordinal, url: `https://cdn/clip-${ordinal}.mp4` }));
+  const verdicts: Record<string, string | null> = {
+    'clip-1': '{"score": 91, "issues": []}',
+    'clip-2': '{"score": 40, "issues": [{"code":"warp","severity":"critical","detail":"a melted hand"}]}',
+    'clip-3': '{"score": 64, "issues": [{"code":"drift","severity":"warn","detail":"palette jumps"}]}',
+  };
+  const deps = {
+    enabled: () => true,
+    keyPresent: () => true,
+    extract: async (url: string) => [url],
+    score: async (_prompt: string, frames: string[]) => verdicts[/clip-\d/.exec(frames[0])![0]] ?? null,
+  };
+
+  test('every scene is graded and reported in scene order, with issue codes only', async () => {
+    const out = await evaluateSceneClips(clips, { deadlineMs: 5_000 }, deps);
+    expect(out).toEqual([
+      { ordinal: 1, grade: 'A', score: 91, action: 'accept', issues: [] },
+      { ordinal: 2, grade: 'F', score: 40, action: 'rerender', issues: ['warp'] },
+      { ordinal: 3, grade: 'C', score: 64, action: 'accept', issues: ['drift'] },
+    ]);
+  });
+
+  test('a scene the gate skipped is left out, never reported as a pass', async () => {
+    const out = await evaluateSceneClips(clips, { deadlineMs: 5_000 }, { ...deps, score: async (_p: string, f: string[]) => (f[0].includes('clip-2') ? null : verdicts['clip-1']) });
+    expect(out.map((e) => e.ordinal)).toEqual([1, 3]);
+  });
+
+  test('off → nothing runs and nothing is reported', async () => {
+    const extract = jest.fn(async () => ['a']);
+    expect(await evaluateSceneClips(clips, { deadlineMs: 5_000 }, { ...deps, enabled: () => false, extract })).toEqual([]);
+    expect(extract).not.toHaveBeenCalled();
+  });
+
+  test('a scene still being graded at the deadline is dropped, and the deadline holds', async () => {
+    const slow = { ...deps, extract: async (url: string) => (url.includes('clip-2') ? new Promise<string[]>(() => {}) : [url]) };
+    const t0 = Date.now();
+    const out = await evaluateSceneClips(clips, { deadlineMs: 150, concurrency: 3 }, slow);
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    expect(out.map((e) => e.ordinal)).toEqual([1, 3]);
+  });
+
+  test('no more clips are downloaded at once than the concurrency allows', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const counted = {
+      ...deps,
+      extract: async (url: string) => {
+        inFlight += 1; peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 10));
+        inFlight -= 1;
+        return [url];
+      },
+    };
+    const many = Array.from({ length: 6 }, (_, i) => ({ ordinal: i + 1, url: `https://cdn/clip-${(i % 3) + 1}.mp4` }));
+    const out = await evaluateSceneClips(many, { deadlineMs: 5_000, concurrency: 2 }, counted);
+    expect(peak).toBe(2);
+    expect(out).toHaveLength(6);
   });
 });

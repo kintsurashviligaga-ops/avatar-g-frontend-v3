@@ -1,0 +1,17 @@
+[
+  {
+    "family": "inter",
+    "urls": 7,
+    "loaderIncompatibleUrls": []
+  },
+  {
+    "family": "montserrat",
+    "urls": 20,
+    "loaderIncompatibleUrls": []
+  },
+  {
+    "family": "georgian",
+    "urls": 28,
+    "loaderIncompatibleUrls": []
+  }
+]

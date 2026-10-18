@@ -125,7 +125,6 @@ describe('resolveService — Agent G intent and search', () => {
     ['ამ ვიდეოს ხმა ქართულად გადამითარგმნე', 'voice.dubbing'],
     ['переведи это видео, нужен дубляж', 'voice.dubbing'],
     ['მუსიკა დამირემიქსე', 'music.remix'],
-    ['remix this video with captions', 'video.remix'],
     ['create a product ad for my sneakers', 'video.product-ad'],
     ['lip sync this photo to my voice', 'avatar.talking'],
     ['swap the character in this clip', 'video.character-swap'],
@@ -138,6 +137,12 @@ describe('resolveService — Agent G intent and search', () => {
   ];
   it.each(cases)('%s → %s', (text, id) => {
     expect(resolveService(text)?.id).toBe(id);
+  });
+
+  it('never resolves to the video remix, which left every menu (GG 2026-10-18); Agent G sends these words to the touch-up', () => {
+    for (const t of ['remix this video with captions', 'ეს ვიდეო დამირემიქსე', 'сделай ремикс видео']) {
+      expect(resolveService(t)?.id).not.toBe('video.remix');
+    }
   });
 
   it('does not let a short alias match inside a longer word', () => {
@@ -166,7 +171,8 @@ describe('resolveService — Agent G intent and search', () => {
     expect(resolveService('გადათარგმნე ეს ტექსტი ინგლისურად')?.id).toBe('text.write');
     expect(resolveService('make a slow motion video')?.id).toBe('video.generate');
     expect(resolveService('a video in portrait format')?.id).toBe('video.generate');
-    expect(resolveService('ეს ვიდეო დამირემიქსე')?.id).toBe('video.remix');
+    // The video remix is hidden (GG 2026-10-18): a remix request never resolves to it.
+    expect(resolveService('ეს ვიდეო დამირემიქსე')?.id).not.toBe('video.remix');
   });
 
   it('returns null for empty or unrelated text', () => {
@@ -217,12 +223,12 @@ describe('searchServices — the §51 search box', () => {
     expect(video[0]).toBe('video.generate');
     expect(video.length).toBeLessThanOrEqual(6);
     expect(searchServices('video', 3)).toHaveLength(3);
-    for (const id of video.slice(0, 5)) expect(getService(id)?.category).toBe('video');
+    for (const id of video.slice(0, 4)) expect(getService(id)?.category).toBe('video');
   });
 
   it('shows a coming-soon service for what it is, after the usable ones — never a hidden or deprecated one', () => {
     expect(ids('audio remix')).toEqual(['music.remix']);
-    expect(ids('remix')).toEqual(['video.remix', 'music.remix']);
+    expect(ids('remix')).toEqual(['music.remix']); // the video remix is hidden (GG 2026-10-18)
     for (const q of ['video', 'music', 'code', 'remix', 'ფოტო', 'search']) {
       for (const s of searchServices(q)) expect(['live', 'beta', 'coming-soon']).toContain(s.status);
     }

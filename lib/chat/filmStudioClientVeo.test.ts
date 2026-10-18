@@ -159,10 +159,33 @@ describe('assemble — per-join transitions reach the assembler as globalRender.
     expect(assembleBody()).not.toHaveProperty('globalRender');
   });
 
-  it('segments carry the film’s own clip length and the status token rides along (no double charge on a re-stitch)', async () => {
+  it('segments carry the film’s own clip length, their scene number and the status token (no double charge on a re-stitch)', async () => {
     await run({ joinTransitions: ['cut', 'dissolve', 'cut'] });
     const body = assembleBody();
-    expect(body.segments).toEqual(readyMatrix().clips.map((c) => ({ url: c.url, durationSec: 8 })));
+    expect(body.segments).toEqual(readyMatrix().clips.map((c) => ({ url: c.url, durationSec: 8, ordinal: c.ordinal })));
     expect(body.filmTokenId).toBe('film_tok_1');
+  });
+});
+
+// Audit 2026-10-17 (GG): the assembler's music report was dropped on the way out, so a film every music provider missed
+// was delivered with no "no soundtrack" note. null (all missed) and a name (who scored it) both reach the studio.
+describe('the music report reaches the result', () => {
+  it('a film every music provider missed says so (null)', async () => {
+    (global.fetch as jest.Mock).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/orchestrate') {
+        return jsonResponse({ success: true, predictionId: 'film:union-token', predictionStatus: 'processing', metadata: { film: readyMatrix() } });
+      }
+      if (url === '/api/video/assemble') return jsonResponse({ url: MASTER_URL, musicUrl: null, scoreFallback: null });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const silent = await run();
+    expect(silent.ok).toBe(true);
+    expect(silent.scoreFallback).toBeNull();
+  });
+
+  it('a scored film keeps the scorer\'s name', async () => {
+    const scored = await run();
+    expect(scored.scoreFallback).toBe('lyria');
   });
 });

@@ -1,0 +1,24 @@
+PASS lib/image/studio/history.test.ts
+PASS lib/image/studio/commands.test.ts
+PASS __tests__/api-lockdown.test.ts
+PASS lib/image/studio/http.test.ts
+PASS lib/image/studio/engine.test.ts
+PASS lib/agent/capabilities.test.ts
+PASS lib/agent/tools/declarations.test.ts
+PASS lib/agent/react/bindLiveAgent.test.ts
+PASS lib/agent/tools/registry.test.ts
+PASS lib/agent/tools/googleSearch.test.ts
+PASS lib/image/studio/task.test.ts
+PASS lib/image/studio/quality.test.ts
+PASS lib/image/studio/live.test.ts
+PASS lib/image/studio/contracts.test.ts
+PASS lib/agent/tools/prepareInstagramPost.test.ts
+PASS lib/agent/tools/scrapeWebpage.test.ts
+PASS lib/image/studio/provider.test.ts
+
+Test Suites: 17 passed, 17 total
+Tests:       165 passed, 165 total
+Snapshots:   0 total
+Time:        3.499 s
+Ran all test suites matching lib/image/studio|lib/agent/tools|lib/agent/react/bindLiveAgent.test.ts|lib/agent/capabilities.test.ts|__tests__/api-lockdown.test.ts.
+Test results written to: docs/handoffs/image-studio/evidence/phase4-jest.json

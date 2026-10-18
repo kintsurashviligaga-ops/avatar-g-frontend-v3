@@ -89,6 +89,14 @@ export function quoteCredits(q: QuoteInput): number {
   }
 }
 
+/**
+ * One Motion Control press: the Kling render (/api/motion-control reserves creditCostFor('remix')), plus the lip-sync
+ * pass's own reservation when lip-sync speaks typed text (/api/video/lipsync reserves creditCostFor('avatar')).
+ */
+export function motionCredits({ lipsync = false }: { lipsync?: boolean } = {}): number {
+  return quoteCredits({ tool: 'motion' }) + (lipsync ? quoteCredits({ tool: 'avatar' }) : 0);
+}
+
 type Lang = 'ka' | 'en' | 'ru';
 const lang = (l: string | null | undefined): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
 

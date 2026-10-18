@@ -34,7 +34,6 @@ export interface ImageCreateCopy {
   templates: string;
   templatesPick: string;
   advanced: string;
-  advancedNone: string;
   style: string;
   negative: string;
   negativePlaceholder: string;
@@ -105,8 +104,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     modelTitle: 'მოდელი',
     templates: 'შაბლონები',
     templatesPick: 'აირჩიე საწყისი',
-    advanced: 'დამატებით',
-    advancedNone: 'სტილი, ნეგატიური პრომპტი, სცენარი',
+    advanced: 'პროფესიონალური პარამეტრები',
     style: 'სტილი',
     negative: 'ნეგატიური პრომპტი',
     negativePlaceholder: 'რა ავიცილოთ სურათში…',
@@ -165,8 +163,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     modelTitle: 'Model',
     templates: 'Templates',
     templatesPick: 'Pick a starting point',
-    advanced: 'Advanced',
-    advancedNone: 'Style, negative prompt, script',
+    advanced: 'Advanced settings',
     style: 'Style',
     negative: 'Negative prompt',
     negativePlaceholder: 'What to avoid in the image…',
@@ -225,8 +222,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     modelTitle: 'Модель',
     templates: 'Шаблоны',
     templatesPick: 'Выберите основу',
-    advanced: 'Дополнительно',
-    advancedNone: 'Стиль, негативный промпт, сценарий',
+    advanced: 'Профессиональные настройки',
     style: 'Стиль',
     negative: 'Негативный промпт',
     negativePlaceholder: 'Что исключить из изображения…',

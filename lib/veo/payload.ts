@@ -16,6 +16,7 @@ import type {
   VeoClipRequest,
   VeoDuration,
   VeoMedia,
+  VeoResizeMode,
   VeoResolution,
   VertexCameraControl,
 } from './types';
@@ -64,6 +65,8 @@ export interface VertexVeoParameters {
   negativePrompt?: string;
   personGeneration: PersonGeneration;
   generateAudio: boolean;
+  /** Image-to-video only: Google's default `pad` letterboxes a first frame of another shape. */
+  resizeMode?: VeoResizeMode;
   /** Only ever `true`: Veo 3.x refuses `false` (see buildVertexPayload). */
   enhancePrompt?: true;
   storageUri?: string;
@@ -247,6 +250,12 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
       throw new VeoPayloadError('cameraControl', 'cameraControl requires startImage');
     }
   }
+  if (req.resizeMode !== undefined) {
+    if (req.resizeMode !== 'pad' && req.resizeMode !== 'crop') {
+      throw new VeoPayloadError('resizeMode', `resizeMode must be pad or crop (got ${shown(req.resizeMode)})`);
+    }
+    if (!req.startImage) throw new VeoPayloadError('resizeMode', 'resizeMode requires startImage');
+  }
   if (typeof req.generateAudio !== 'boolean') {
     // Always stated, never left to a model default: it picks the per-second price (with-audio vs video-only rate).
     throw new VeoPayloadError('generateAudio', 'generateAudio must be true or false on Vertex');
@@ -278,6 +287,7 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
     ...(negativePrompt ? { negativePrompt } : {}),
     personGeneration,
     generateAudio: req.generateAudio,
+    ...(req.resizeMode !== undefined ? { resizeMode: req.resizeMode } : {}),
     // Never `false`: Veo 3.x on Vertex fails the whole operation with "Veo 3 prompt enhancement cannot be disabled"
     // (PROVEN 2026-10-08, operation 71e35314-…, GCP Part 0 T1). Omitted means Google's default, which is on; `true` is sent
     // only when asked for. The prompt still leaves us byte-for-byte; the rewrite happens inside Google.
@@ -289,8 +299,8 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
 
 /**
  * Gemini API `predictLongRunning` body — the production-proven shape of lib/ai/geminiVeo.ts. Fields this API does
- * not take are never sent: `generateAudio` (audio is always on), `enhancePrompt`, `storageUri`, `sampleCount` and
- * `cameraControl` (Vertex-schema only). The request's own personGeneration is ignored: live-probed 2026-07-25,
+ * not take are never sent: `generateAudio` (audio is always on), `enhancePrompt`, `storageUri`, `sampleCount`,
+ * `resizeMode` and `cameraControl` (Vertex-schema only). The request's own personGeneration is ignored: live-probed 2026-07-25,
  * `allow_all` is the only value this API accepts ('allow_adult' / 'dont_allow' → 400 "not supported").
  */
 export function buildGeminiPayload(req: VeoClipRequest): GeminiVeoPayload {

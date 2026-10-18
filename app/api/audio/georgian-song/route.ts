@@ -1,11 +1,12 @@
 /**
  * POST /api/audio/georgian-song — build a real GEORGIAN-vocal song for a music video.
- * Body: { brief, gender?, totalSec? } → { url } (Georgian rap/hook on the cloned KA
- * voice, mixed over a funk instrumental) or { url: null } on any miss (caller then
+ * Body: { brief, gender?, totalSec?, sceneSec? } → { url } (Georgian lyrics written from the brief on the cloned KA
+ * voice, mixed over an instrumental in the brief's genre) or { url: null } on any miss (caller then
  * falls back to the normal ElevenLabs Music path).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { generateGeorgianSong, diagnoseGeorgianSong } from '@/lib/audio/georgianSong';
+import { filmSongSeconds } from '@/lib/elevenlabs/music';
 import { applyApiGuards } from '@/lib/api/guard';
 import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -39,15 +40,18 @@ export async function POST(req: NextRequest) {
     if (capped) return capped;
   }
 
-  let body: { brief?: unknown; gender?: unknown; totalSec?: unknown; diag?: unknown };
+  let body: { brief?: unknown; gender?: unknown; totalSec?: unknown; sceneSec?: unknown; diag?: unknown };
   try {
-    body = (await req.json()) as { brief?: unknown; gender?: unknown; totalSec?: unknown; diag?: unknown };
+    body = (await req.json()) as { brief?: unknown; gender?: unknown; totalSec?: unknown; sceneSec?: unknown; diag?: unknown };
   } catch {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
   }
   const brief = typeof body.brief === 'string' ? body.brief.trim() : '';
   const gender: 'male' | 'female' = body.gender === 'male' ? 'male' : 'female';
-  const totalSec = Number.isFinite(Number(body.totalSec)) && Number(body.totalSec) > 0 ? Math.min(60, Number(body.totalSec)) : 30;
+  // The song runs under the whole film (it was capped at 60 s, so a longer music video lost its song at the end).
+  const totalSec = Number.isFinite(Number(body.totalSec)) && Number(body.totalSec) > 0 ? filmSongSeconds(Number(body.totalSec)) : 30;
+  // One scene's length, so the bed's tempo puts every cut on a bar line (lib/elevenlabs/music sceneAlignedBpm).
+  const sceneSec = Number.isFinite(Number(body.sceneSec)) && Number(body.sceneSec) >= 4 && Number(body.sceneSec) <= 8 ? Number(body.sceneSec) : undefined;
   if (!brief) return NextResponse.json({ url: null });
   // Diagnostic mode (gated): run each leg in isolation and report which fails + why,
   // so a prod miss can be localized (the main path fail-opens to null and hides it).
@@ -61,10 +65,17 @@ export async function POST(req: NextRequest) {
   // null silently drops the Georgian vocal to the English fallback. The legs are healthy,
   // so retry the whole build a few times before giving up — the 240s budget covers ~3
   // attempts (~32s each on success). Still strictly fail-open: null after all retries.
+  // A longer song takes longer, so a retry starts only while one more full attempt still fits the function's budget: one the
+  // platform kills half-way has already paid for its voice and music and returns nothing.
+  const startedAt = Date.now();
+  let lastAttemptMs = 0;
   let url: string | null = null;
   for (let attempt = 0; attempt < 3 && !url; attempt += 1) {
     if (req.signal?.aborted) break;
-    url = await generateGeorgianSong(brief, gender, totalSec, req.signal).catch(() => null);
+    if (attempt > 0 && Date.now() - startedAt + lastAttemptMs > (maxDuration - 15) * 1000) break;
+    const t0 = Date.now();
+    url = await generateGeorgianSong(brief, gender, totalSec, req.signal, sceneSec ? { sceneSec } : {}).catch(() => null);
+    lastAttemptMs = Date.now() - t0;
   }
   return NextResponse.json({ url });
 }

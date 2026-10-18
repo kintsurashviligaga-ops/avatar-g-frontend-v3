@@ -1,0 +1,24 @@
+PASS lib/image/studio/contracts.test.ts
+  ✓ keeps original Georgian whitespace and Unicode exactly; adds no style or translation (1 ms)
+  ✓ rejects unimplemented/client-controlled seed (3 ms)
+  ✓ rejects unimplemented/client-controlled negativePrompt
+  ✓ rejects unimplemented/client-controlled mask (1 ms)
+  ✓ rejects unimplemented/client-controlled credits
+  ✓ rejects unimplemented/client-controlled provider
+  ✓ rejects unimplemented/client-controlled referenceStrength
+  ✓ rejects excessive prompt rather than truncating (1 ms)
+  ✓ rejects empty prompt, arbitrary URL and duplicate reference IDs
+  ✓ edit needs suitable source roles
+  ✓ character_variation needs suitable source roles (1 ms)
+  ✓ product_scene needs suitable source roles
+  ✓ strict catalog refuses missing, unverified and disabled model instead of falling back (1 ms)
+  ✓ does not advertise enhance without an adapter
+  ✓ does not advertise composite without an adapter
+  ✓ refuses multiple outputs until independently settled batch jobs exist
+  ✓ preserves two reference roles and order; catches missing, reordered or changed references (5 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       17 passed, 17 total
+Snapshots:   0 total
+Time:        0.334 s
+Ran all test suites within paths "lib/image/studio/contracts.test.ts".

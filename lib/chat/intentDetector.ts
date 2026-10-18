@@ -260,6 +260,87 @@ export function detectIntent(
   return best;
 }
 
+// ─── Georgian orders (2026-10-16) ───────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ GEORGIAN PUTS THE VERB WHERE IT LIKES, AND THE GATE ONLY LOOKED AT THE START. The owner asked the chat for a picture, a
+// song and a video in the owner's own words and got a conversation back: „კატის სურათი დამიხატე" (a cat's picture — draw it),
+// „მუსიკა შემიქმენი", „სიმღერა დამიწერე სიყვარულზე", the formal „გთხოვთ დამიხატეთ", „შეგიძლია დამიხატო?" (can you draw
+// me…?), „მინდა კატის სურათი" (I want a picture of a cat). None LED with a verb, so none was an order, and the chat model —
+// which can start nothing — answered in words. Nothing is charged on any of these: the chat shows Agent G's card (its
+// questions or its price) and renders only on a tap, so reading an order too readily costs one card, never a credit.
+
+/** Generate verbs as stems: the imperative („დამიხატე"), the formal plural („დამიხატეთ") and the form after „შეგიძლია"
+ *  („დამიხატო", „შემიქმნა") all share them. */
+// „გავაკეთოთ" / „შევქმნათ" (let's make / create; GG's plan 2026-10-17 11:28Z): the first-person plural of the same order.
+const KA_GEN_VERB = 'გამიკეთ|გააკეთ|გავაკეთ|შევქმნ|შემიქმენ|შემიქმნ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|დამიმზად|მიმზად|მომიმზად|მოამზად|გადამიღ|გადაიღ|შემიდგინ|დამიწერ|დაწერ|შემითხზ|დამირთ|დამიკომპონ';
+/** The make-verbs a video is asked with. Not the writing verbs: „დამიწერე სცენარი ვიდეოზე" asks for a text. */
+const KA_VIDEO_VERB = 'გამიკეთ|გააკეთ|გავაკეთ|შევქმნ|შემიქმენ|შემიქმნ|შექმენ|დამიგენერირ|დააგენერირ|დაგენერირ|დამიმზად|მომიმზად|მოამზად|გადამიღ|გადაიღ';
+/** Verbs that only ever mean „make me a picture / a clip / a track"; the others (do, prepare, write) need a media noun. */
+const KA_MEDIA_ONLY_VERB = /^(?:დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|გადამიღ|გადაიღ|შემითხზ|დამიკომპონ)/;
+/** Georgian writing verbs, in the imperative, formal and subjunctive forms („დაწერე", „დამიწერეთ", „დამიწერო"). */
+const KA_WRITING_VERB = /^(?:დამიწერ|დაწერ|მომწერ|გადაწერ|გადამიწერ|შემიდგინ)(?:ე|ეთ|ო|ოთ)?(?=[\s,.!?]|$)/;
+/** Polite lead-ins: please (informal, formal), if possible, can you, come on. */
+const KA_POLITE = '(?:გთხოვთ?|გეთაყვა|თუ\\s+შეიძლება|თუ\\s+შეგიძლიათ?|შეგიძლიათ?|შეძლებთ?|მოდი|აბა|ახლა)[,\\s]+';
+const KA_LEAD_ORDER = new RegExp(`^\\s*(?:${KA_POLITE}){0,3}(?:${KA_GEN_VERB})`);
+/** What a person asks the studio to make, as noun stems. */
+const KA_MEDIA_NOUN = /სურათ|ფოტო|ნახატ|ილუსტრაცი|პორტრეტ|ლოგო|პოსტერ|ბანერ|გამოსახულებ|ვიდეო|კლიპ|ფილმ|რგოლ|რეკლამ|ანიმაცი|მუსიკ|სიმღერ|მელოდი|ტრეკ|საუნდტრეკ/;
+/** Words before the verb that make the sentence a question, a complaint, a memory or a refusal, never an order:
+ *  „რატომ ვერ გამიკეთე სურათი?", „სურათი ვერ გამიკეთე", „გუშინ რომ ვიდეო გამიკეთე", „ნუ დამიხატავ". */
+const KA_NOT_ORDER = /(?:^|[\s,])(?:რატომ|როგორ|რა|რას|რის|რით|სად|როდის|ვინ|ვის|რომელ\S*|რამდენ\S*|ხომ|რომ|არ|ვერ|ნუ|როცა|გუშინ|უკვე|თუ)(?=[\s,?!.]|$)/;
+/** „this / my …" right after „მინდა" is about a file that exists („მინდა ეს ფოტო…"), not a new one. */
+const KA_EXISTING = /(?:^|[\s,])(?:ეს|ამ|ამის|იმ|ჩემი|ჩემს|ჩემმა|ჩვენი)(?=[\s,?!.]|$)/;
+const kaTokens = (s: string): string[] => s.trim().split(/[\s,]+/u).filter(Boolean);
+
+/**
+ * „კატის სურათი დამიხატე", „მუსიკა შემიქმენი", „ლოგო დამიხატე ჩემი კაფესთვის": up to four words, then the generate verb.
+ * Those words must name what to make (a media noun) unless the verb itself can only mean a picture or a clip („კატა
+ * დამიხატე"); „დავალება გამიკეთე" (do my homework) and „ეს გამიკეთე" stay talk.
+ */
+export function isKaVerbFinalOrder(text: string): boolean {
+  const toks = kaTokens(text.replace(new RegExp(`^\\s*(?:${KA_POLITE}){1,3}`), ''));
+  for (let i = 1; i <= Math.min(4, toks.length - 1); i += 1) {
+    const verb = toks[i]!;
+    if (!new RegExp(`^(?:${KA_GEN_VERB})`).test(verb)) continue;
+    const before = toks.slice(0, i).join(' ');
+    if (KA_NOT_ORDER.test(before)) return false;
+    if (/ანალიზ|აღწერ/.test(text)) return false; // „ვიდეოს ანალიზი გამიკეთე" asks about a file
+    // A writing verb makes a song, never a picture or a clip: „ვიდეოსთვის სცენარი დაწერე" is a text for a video.
+    if (KA_WRITING_VERB.test(verb)) return /სიმღერ|მუსიკ|მელოდი|ტრეკ/.test(before);
+    return KA_MEDIA_NOUN.test(before) || KA_MEDIA_ONLY_VERB.test(verb);
+  }
+  return false;
+}
+
+/**
+ * „მინდა კატის სურათი", „მჭირდება ლოგო ჩემი კაფესთვის", „მინდა რომ დამიხატო ზღვა": a wish for something the studio makes.
+ * Not a wish to know, ask, learn, see, change or delete („მინდა გკითხო სურათზე", „მინდა ეს ფოტო წავშალო"), and not a
+ * question.
+ */
+export function isKaWishOrder(text: string): boolean {
+  const m = new RegExp(`^\\s*(?:${KA_POLITE}){0,2}(?:მინდა|მჭირდება|მინდოდა)(?:\\s+რომ)?[,\\s]+(.*)$`, 's').exec(text);
+  if (!m) return false;
+  const rest = m[1]!;
+  if (/[?？]\s*$/u.test(text)) return false;
+  if (/(?:^|\s)(?:ვიცოდე|გავიგო|გკითხო|გკითხოთ|ვკითხო|ვისწავლო|ვნახო|შევცვალო|წავშალო|ავტვირთო|გადმოვწერო|ვიყიდო|გავაუმჯობესო|ვთქვა|გითხრა|გაჩვენო)(?=[\s,.!]|$)/.test(rest)) return false;
+  const head = kaTokens(rest).slice(0, 5);
+  if (KA_NOT_ORDER.test(head.join(' '))) return false;
+  // Advice, ideas, an opinion or a text ABOUT a picture or a clip is talk: „მჭირდება რჩევა მუსიკალური კლიპისთვის".
+  if (head.some((t) => /^(?:რჩევ|იდე|აზრ|ინფორმაცი|დახმარებ|ახსნ|პასუხ|ტექსტ|სცენარ|წერილ|გეგმ|სია|ანალიზ|აღწერ)/.test(t))) return false;
+  // „მინდა ეს ფოტო…", „მინდა ჩემი სურათი…": the file that exists. („მჭირდება ლოგო ჩემი კაფესთვის" is a new logo.)
+  if (head[0] && (KA_EXISTING.test(head[0]) && (!/^ჩემ|^ჩვენ/.test(head[0]) || KA_MEDIA_NOUN.test(head[1] ?? '')))) return false;
+  return head.some((t) => KA_MEDIA_NOUN.test(t) || new RegExp(`^(?:${KA_GEN_VERB})`).test(t));
+}
+
+/**
+ * The words before the first Georgian make-verb make it a question, a refusal or a memory („გუშინ რომ ვიდეო გამიკეთე,
+ * მომეწონა" — the video you made me yesterday, I liked it). For readers that accept the make-verb anywhere in the sentence
+ * (lib/agent/intent's Georgian video lane).
+ */
+export function kaNotAnOrder(text: string): boolean {
+  const m = new RegExp(`(?:${KA_GEN_VERB})`).exec(text);
+  return !!m && KA_NOT_ORDER.test(text.slice(0, m.index));
+}
+
 /**
  * Dispatch-only ALLOWLIST for the AUTONOMOUS chat dispatch (OmniStudio send()). detectIntent's regex
  * banks are deliberately loose — bare model keywords ("flux"/"sdxl"), and `verb .* media-noun` — so a
@@ -288,15 +369,15 @@ export function isGenerativeCommand(text: string): boolean {
   // generative surface for those users. Unicode-aware end-of-token lookahead instead, `u` flag.
   // (lib/chat/studioIntent.ts documents this same trap in its own header — it was fixed there and not
   // here, which is why Russian worked through the studio panels but never through generation.)
-  const leadsLatin = /^\s*((please|can|could|would|will|you|u|kindly|пожалуйста)\s+){0,3}(make|create|generate|render|compose|design|draw|sketch|illustrate|produce|animate|paint|write|напиши|сделай|создай|сгенерируй|нарисуй|изобрази|набросай|сочини|придумай|собери)(?![\p{L}\p{N}])/iu.test(s);
+  const leadsLatin = /^\s*((please|can|could|would|will|you|u|kindly|пожалуйста|можешь|можете|ты|мне)\s+){0,3}(make|create|generate|render|compose|design|draw|sketch|illustrate|produce|animate|paint|write|напиши|сделай|создай|сгенерируй|нарисуй|изобрази|набросай|сочини|придумай|собери|нарисовать|сделать|создать|сгенерировать|сочинить|снять|сними)(?![\p{L}\p{N}])/iu.test(s);
   // Georgian imperative generate verbs (stems, so conjugations like -ე/-ავ/-ე match), optionally after a
   // polite "გთხოვ" / "თუ შეიძლება". Georgian script isn't \w, so this leads at ^ without \b. Covers the
   // common phrasings that were silently falling through to plain chat ("გამიკეთე სურათი", "დახატე …",
   // "შემიქმენი ვიდეო", "დააგენერირე …").
   // `დამიწერ`/`დაწერ` ("write me …") was missing, so `დამიწერე სიმღერა სიყვარულზე` — a plain request for
   // a song — never reached the music bank that already recognised it.
-  const leadsKa = /^\s*(გთხოვ\s+|თუ\s+შეიძლება\s+){0,2}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|დამიმზად|მიმზად|გადამიღ|გადაიღ|შემიდგინ|დამიწერ|დაწერ|შემითხზ|დამირთ)/.test(s);
-  if (!leadsLatin && !leadsKa) return false;
+  const leadsKa = KA_LEAD_ORDER.test(s);
+  if (!leadsLatin && !leadsKa && !isKaVerbFinalOrder(s) && !isKaWishOrder(s)) return false;
   // EXCLUDE a Georgian ANALYSIS/DESCRIPTION request that only leads with a GENERIC verb (გააკეთ/გამიკეთ =
   // "do/make"): "გააკეთე ფოტოს ანალიზი" / "აღწერე ეს ფოტო" must go to the vision chat stream, never a paid
   // render. A message carrying an analysis noun (ანალიზ/აღწერ) with NO generation-specific verb
@@ -346,6 +427,9 @@ const TEXT_DELIVERABLE = new RegExp([
   'напиши|написать|перепиши|переведи|объясни|перескажи',
 ].join('|'), 'i');
 
+/** A writing verb leads the message (ka · en · ru). */
+const WRITING_LEAD = /^\s*(?:(?:please|გთხოვთ?|пожалуйста)[,\s]+)?(?:write|rewrite|draft|translate|summari[sz]e|explain|paraphrase|proofread|დაწერ|დამიწერ|მომწერ|გადაწერ|გადამიწერ|თარგმნ|მითარგმნ|ახსენ|ამიხსენ|შეაჯამ|напиши|перепиши|переведи|объясни|перескажи)/iu;
+
 /**
  * The lane an imperative generate command belongs to, or null to leave it in the chat stream.
  *
@@ -367,9 +451,12 @@ export function resolveGenerativeLane(
   text: string,
   detected: DetectedIntent,
 ): 'image_generation' | 'video_generation' | 'music_generation' | 'avatar_generation' | null {
+  // „დამიწერე სცენარი ვიდეოზე", "write a script for the video", «напиши пост про фото»: a text ABOUT a picture or a video is
+  // written, never rendered (the video bank matches the bare noun). A song stays the music lane's ("write me a song").
+  const writes = WRITING_LEAD.test(text) || text.split(/[\s,]+/u).some((w) => KA_WRITING_VERB.test(w));
   if (detected.confidence >= 0.7) {
-    if (detected.intent === 'image_generation') return 'image_generation';
-    if (detected.intent === 'video_generation') return 'video_generation';
+    if (detected.intent === 'image_generation' && !writes) return 'image_generation';
+    if (detected.intent === 'video_generation' && !writes) return 'video_generation';
     if (detected.intent === 'music_generation') return 'music_generation';
     if (detected.intent === 'avatar_generation') return 'avatar_generation';
   }
@@ -378,4 +465,34 @@ export function resolveGenerativeLane(
   if (detected.intent !== 'text_chat') return null;
   if (TEXT_DELIVERABLE.test(text)) return null;
   return 'image_generation';
+}
+
+/**
+ * Chat-mode video intent (moved from components/studio/OmniStudio.tsx so it can be tested). A strong video brief in plain
+ * chat goes to the Video tool; a bare "video" mention does not — it needs a production cue (make a video, a music video, a
+ * short film, a 30-second clip), in en / ka / ru. It also keeps a music video out of the music lane: the music bank
+ * matches „მუსიკ" and would otherwise answer „მუსიკალური კლიპი გამიკეთე" with an audio-only track.
+ */
+export function isVideoIntent(s: string): boolean {
+  const raw = s || '';
+  const b = raw.toLowerCase();
+  if (/\b(music\s*video|video\s*clip|short\s*film|mini[\s-]?(movie|film))\b/.test(b)) return true;
+  if (/\b(make|create|generate|produce|render|build|do)\b[\s\S]{0,48}\bvideo\b/.test(b)) return true;
+  if (/\b(30|thirty)[\s-]?(second|sec|s)\b[\s\S]{0,40}\b(video|film|clip)\b/.test(b)) return true;
+  // Georgian: a music video by either name („მუსიკალური ვიდეო", „მუსიკალური კლიპი"), a generate verb then the video, or
+  // „ვიდეო / კლიპი" first with the verb after it („ვიდეო გამიკეთე ზღვაზე"). Never „ვიდეოსთვის" (FOR a video): „ვიდეოსთვის
+  // მუსიკა შემიქმენი" asks for the music.
+  if (/მუსიკალურ\S*\s*(?:ვიდეო|კლიპ)|ვიდეო\s*კლიპ|ფილმ/.test(raw)) return true;
+  if (new RegExp(`(?:${KA_VIDEO_VERB})[\\s\\S]{0,40}(?:ვიდეო|კლიპ)(?!\\S*თვის)`).test(raw)) return true;
+  if (new RegExp(`^\\s*(?:${KA_POLITE}){0,3}(?:\\S+\\s+){0,3}(?:ვიდეო|კლიპ)(?!\\S*თვის)\\S*\\s+(?:\\S+\\s+)?(?:${KA_VIDEO_VERB})`).test(raw)) return true;
+  if (/музыкальн\w*\s*клип|видеоклип|сними[\s\S]{0,30}видео|сделай[\s\S]{0,30}видео/.test(b)) return true;
+  return false;
+}
+
+/** A video whose point is a song: the Video tool opens in music-video mode. */
+export function isMusicVideoIntent(s: string): boolean {
+  const b = (s || '').toLowerCase();
+  return /\bmusic\s*video\b|\br&b\b|\brnb\b|\bsong\b|\bsinger\b|\bvocal|\blyric/.test(b)
+    || /მუსიკალურ\S*\s*(?:ვიდეო|კლიპ)|სიმღერ|მომღერ|ვოკალ|ვიდეო\s*კლიპ/.test(s || '')
+    || /музыкальн\w*\s*клип|видеоклип|песн\w|вокал|певиц/.test(b);
 }

@@ -6,11 +6,25 @@
  * (ok / degraded / down) without naming specific providers or leaking
  * env-var keys / latency details / error messages.
  *
+ * Each category asks the engine that actually serves it under the Google-only boundary (docs/VEO_ENGINE.md), with free
+ * calls only — nothing is generated or billed:
+ *   chat, image — the selected Google transport answers countTokens for the chat and the image model
+ *                 (lib/ai/google/transportCheck); music rides the same transport (Lyria);
+ *   video       — the keyless Vertex chain Veo uses: token, bucket, signing (lib/veo/authCheck);
+ *   voice       — ElevenLabs, and its plan: every Georgian voice is a cloned one (lib/elevenlabs/account);
+ *   avatar      — Veo for the picture AND the voice for its Georgian line.
+ * Until 2026-10-17 image / video / music asked Replicate and avatar asked HeyGen — engines the product no longer uses —
+ * and voice only asked whether the ElevenLabs key opened /v1/user: it read "6/6 ok" while ElevenLabs refused every
+ * Georgian line (`401 subscription_required / ivc_not_permitted`, the approved avatar test at 09:31Z).
+ *
  * Cached for 60 s in-memory per server instance to avoid hammering the
  * upstream providers from a chat drawer that may open frequently.
  */
 
 import { NextResponse } from 'next/server';
+import { checkGoogleTransport, type TransportCheck } from '@/lib/ai/google/transportCheck';
+import { checkVertexAuth, type VertexAuthCheck } from '@/lib/veo/authCheck';
+import { elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,26 +40,44 @@ interface Snapshot {
   totals: { ok: number; degraded: number; down: number; unconfigured: number };
 }
 
-const TIMEOUT_MS = 5000;
+const TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 60_000;
 let cached: { at: number; data: Snapshot } | null = null;
 
-async function pingTimeout(url: string, init: RequestInit = {}): Promise<boolean> {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+/** A check that does not answer in time reads as down — it never holds the drawer past the function's limit. */
+function inTime<T>(p: Promise<T>, late: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<T>((r) => { timer = setTimeout(() => r(late), TIMEOUT_MS); });
+  return Promise.race([p.catch(() => late), deadline]).finally(() => clearTimeout(timer));
+}
+
+async function voiceBucket(): Promise<Bucket> {
+  const key = process.env.ELEVENLABS_API_KEY?.trim();
+  if (!key) return 'unconfigured';
   try {
-    const r = await fetch(url, { ...init, signal: ctl.signal });
-    return r.ok;
+    const r = await fetch('https://api.elevenlabs.io/v1/user', { headers: { 'xi-api-key': key }, cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!r.ok) return 'down';
+    // The key opens the account; can its plan speak the cloned Georgian voices, and has it characters left?
+    return elevenLabsVoiceState(readElevenLabsAccount(await r.json().catch(() => null))) === 'ok' ? 'ok' : 'degraded';
   } catch {
-    return false;
-  } finally {
-    clearTimeout(t);
+    return 'down';
   }
 }
 
-async function probe(category: Category, envValue: string | undefined, run: () => Promise<boolean>): Promise<Bucket> {
-  if (!envValue?.trim()) return 'unconfigured';
-  try { return (await run()) ? 'ok' : 'down'; } catch { return 'down'; }
+function transportBucket(t: TransportCheck, index: number): Bucket {
+  if (!t.configured) return t.transport === 'invalid' ? 'down' : 'unconfigured';
+  return t.steps[index]?.ok ? 'ok' : 'down';
+}
+
+function vertexBucket(v: VertexAuthCheck): Bucket {
+  if (v.ok) return 'ok';
+  return v.steps[0] === 'config:missing' ? 'unconfigured' : 'down';
+}
+
+/** The avatar is Veo's picture with ElevenLabs' Georgian line: no Veo, no avatar; no voice, a Georgian line cannot be made. */
+function avatarBucket(video: Bucket, voice: Bucket): Bucket {
+  if (video !== 'ok') return video;
+  return voice === 'ok' ? 'ok' : 'degraded';
 }
 
 export async function GET() {
@@ -54,34 +86,16 @@ export async function GET() {
     return NextResponse.json(cached.data);
   }
 
-  const [chat, image, video, music, voice, avatar] = await Promise.all([
-    // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
-    probe('chat', process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY,
-      () => pingTimeout('https://generativelanguage.googleapis.com/v1beta/models', {
-        headers: { 'x-goog-api-key': process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY ?? '' },
-        redirect: 'manual',
-      })),
-    probe('image', process.env.REPLICATE_API_TOKEN,
-      () => pingTimeout('https://api.replicate.com/v1/account', {
-        headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN}` },
-      })),
-    probe('video', process.env.LTX_API_KEY ?? process.env.REPLICATE_API_TOKEN,
-      () => pingTimeout('https://api.replicate.com/v1/account', {
-        headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN ?? ''}` },
-      })),
-    probe('music', process.env.UDIO_API_KEY ?? process.env.REPLICATE_API_TOKEN,
-      () => pingTimeout('https://api.replicate.com/v1/account', {
-        headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN ?? ''}` },
-      })),
-    probe('voice', process.env.ELEVENLABS_API_KEY,
-      () => pingTimeout('https://api.elevenlabs.io/v1/user', {
-        headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY ?? '' },
-      })),
-    probe('avatar', process.env.HEYGEN_API_KEY,
-      () => pingTimeout('https://api.heygen.com/v2/voices', {
-        headers: { 'X-Api-Key': process.env.HEYGEN_API_KEY ?? '' },
-      })),
+  const [transport, vertex, voice] = await Promise.all([
+    inTime(checkGoogleTransport(), { transport: 'invalid', configured: true, ok: false, steps: [] } as TransportCheck),
+    inTime(checkVertexAuth(), { ok: false, steps: ['timeout'] } as VertexAuthCheck),
+    inTime(voiceBucket(), 'down' as Bucket),
   ]);
+  const chat = transportBucket(transport, 0);
+  const image = transportBucket(transport, 1);
+  const music = !transport.configured ? chat : transport.ok ? 'ok' : 'down';
+  const video = vertexBucket(vertex);
+  const avatar = avatarBucket(video, voice);
 
   const categories: Record<Category, Bucket> = { chat, image, video, music, voice, avatar };
   const totals = { ok: 0, degraded: 0, down: 0, unconfigured: 0 };

@@ -49,3 +49,16 @@ export function sanitizeStyle(raw: unknown): string {
 export function isKnownStyle(table: Readonly<Record<string, unknown>>, style: string): boolean {
   return !!style && Object.prototype.hasOwnProperty.call(table, style);
 }
+
+/**
+ * The film brief with the panel's style named once at its end: `A boat on a pond. Visual style: noir, cinematic.`
+ * The house word "cinematic" is added only when the style does not already say it, so the "Cinematic" pick no longer
+ * reads "cinematic, cinematic", and a brief that already ends a sentence gets no second full stop.
+ */
+export function withFilmStyle(brief: string, style: unknown): string {
+  const s = sanitizeStyle(style).toLowerCase();
+  if (!s) return brief;
+  const clause = /\bcinematic\b/.test(s) ? `Visual style: ${s}.` : `Visual style: ${s}, cinematic.`;
+  const head = brief.replace(/\s+$/, '');
+  return /[.!?…]$/.test(head) ? `${head} ${clause}` : `${head}. ${clause}`;
+}

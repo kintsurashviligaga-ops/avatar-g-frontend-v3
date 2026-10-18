@@ -31,6 +31,9 @@ import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { markFreeOutput } from '@/lib/billing/entitlements';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { firstUnreadableOwnUrl } from '@/lib/security/callerMedia';
+import { actorOf } from '@/lib/video/assembleActor';
+import { saveFilmStitchRecord } from '@/lib/chat/filmSceneBook';
+import { keptStitchBody } from '@/lib/chat/filmSceneRedo';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
@@ -38,13 +41,14 @@ import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { cutMasterToLength, isFinalCutRejected } from '@/lib/video/finalCut';
-import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
+import { type ElevenAlignment, wordsToAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
-import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
+import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt, filmSongSeconds } from '@/lib/elevenlabs/music';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
-import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
+import { evaluateRenderQuality, evaluateSceneClips, visionQaEnabled, type SceneQaEntry } from '@/lib/ai/visionQualityGate';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling, isFilmOwnedByAnother, readFilmCaptions } from '@/lib/chat/filmStatusStore';
 import { decideFilmWaiver, settleFilmWaiver, FILM_WAIVER_LEASE_SEC } from '@/lib/chat/filmBilling';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
@@ -146,6 +150,8 @@ const DISPATCH_TIMEOUT_MS = (() => {
 interface SegmentInput {
   url?: string;
   durationSec?: number;
+  /** The scene this clip is (1-based), so a scene redo can cut its new clip into the same place (lib/chat/filmSceneRedo). */
+  ordinal?: number;
   cameraMotion?: string | null;
   render?: Record<string, string | number | boolean>;
 }
@@ -207,6 +213,10 @@ interface AssembleBody {
   /** STEP 2.3 — ElevenLabs with-timestamps alignment → word-synced burned captions on
    *  the CPU-FFmpeg master (fail-open; absent → no captions, path unchanged). */
   captionAlignment?: ElevenAlignment | null;
+  /** The user asked for subtitles on a chat film (the panel's switch, or the brief in so many words; never on by default — the
+   *  owner's word 2026-10-17). With filmTokenId and no captionAlignment, the narration's words as Scribe timed them at the film's
+   *  start (lib/chat/filmVoiceCheck, kept 24 h for the film's owner only) are burned. Nothing kept → no subtitles, path unchanged. */
+  subtitles?: boolean;
   /** v357 — the structured film script (scriptSchema shape). Threaded to the assembler where
    *  (under FILM_AUDIO_MIX_ENABLED) its explicit muteWindows drive the hard-mute post-pass.
    *  Validated fail-open inside the assembler; absent/malformed → the master is unchanged. */
@@ -241,17 +251,40 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/**
+ * What a delivered film stitch was cut from (its scenes in order, its music and its choices), kept for the film's owner so one
+ * scene can later be rendered again and cut back into the same film (lib/chat/filmSceneRedo). Best-effort: without it a scene
+ * redo is simply not offered for this film.
+ */
+async function keepStitchRecord(filmTokenId: string, uid: string, segments: SegmentInput[], body: AssembleBody, musicUrl: string | null): Promise<void> {
+  const kept = segments
+    .filter((s): s is SegmentInput & { url: string } => typeof s.url === 'string' && s.url.length > 0)
+    .map((s) => ({
+      url: s.url,
+      ...(typeof s.durationSec === 'number' && Number.isFinite(s.durationSec) ? { durationSec: s.durationSec } : {}),
+      ...(typeof s.ordinal === 'number' && Number.isInteger(s.ordinal) && s.ordinal > 0 ? { ordinal: s.ordinal } : {}),
+    }));
+  await saveFilmStitchRecord({
+    v: 1, tokenId: filmTokenId, uid, segments: kept,
+    body: keptStitchBody(body as unknown as Record<string, unknown>),
+    musicUrl, at: Date.now(),
+  }).catch(() => false);
+}
+
 async function assembleImpl(req: NextRequest) {
   // Throttle the expensive stitch (5/min) — additive, fails open without Upstash, returns before any
   // billing/idempotency side-effect. Anonymous assemble stays allowed (product decision); only rate is capped.
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  // A server-made stitch (a film whose tab closed, lib/chat/filmFollowWorker) speaks for the film's owner and runs inside
+  // the sweep's budget; it has no cookie and is not throttled per caller (lib/video/assembleActor).
+  const actor = actorOf(req);
+  const rl = actor ? null : await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (rl) return rl;
   // v330 — function-entry timestamp so the synchronous audio legs + the dispatch
   // deadline stay collectively under maxDuration (300s). The dispatch timeout below is
   // made RELATIVE to time already consumed so it fires inside the function (→ saga
   // compensate releases credits) rather than letting the platform hard-kill the request.
   const fnT0 = Date.now();
-  const MAX_FN_MS = 600_000; // v331 — matches the raised maxDuration (was 300_000)
+  const MAX_FN_MS = actor ? actor.budgetMs : 600_000; // v331 — matches the raised maxDuration (was 300_000)
   let body: AssembleBody;
   try {
     body = (await req.json()) as AssembleBody;
@@ -285,8 +318,7 @@ async function assembleImpl(req: NextRequest) {
       return NextResponse.json({ error: 'invalid_media_url', message: 'Every clip and audio file must be a web (https) link.' }, { status: 400 });
     }
   }
-  const { user } = await authedClientFromRequest(req);
-  const uid = user?.id ?? null;
+  const uid = actor ? actor.uid : ((await authedClientFromRequest(req)).user?.id ?? null);
   // ⚠️ ANONYMOUS CALLERS USED TO REACH THE PAID RENDER AND BE BILLED NOTHING. Both billing branches
   // below carried `uid === null ? true` as "skip billing" — commented "anon trial" — so a caller with no
   // account consumed real Veo / Replicate / ElevenLabs spend that could never be charged, attributed or
@@ -382,6 +414,18 @@ async function assembleImpl(req: NextRequest) {
   // token the first time its waiver is honored (a paid token maps 1:1 to one downstream assemble).
   // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). Fail-open on the
   // STATUS/TRACKING side only — a store miss must fall back to billing normally (default false here).
+  // ⚠️ `filmTokenId` is CLIENT-SUPPLIED. A token whose status record names another payer is someone else's film: stamping
+  // it would hand them this master, take over its Library row and its re-stitch waiver. Refused before any claim or charge.
+  // (Store unreachable → null → allowed; recordCompletedFilm still refuses to touch a row another user owns.)
+  if (filmTokenId && isFilmOwnedByAnother(await getFilmStatus(filmTokenId), uid)) {
+    return NextResponse.json({ error: 'film_not_owned', message: 'This film belongs to another account.' }, { status: 403 });
+  }
+  // Subtitles the user asked for: the film's own narration, timed when it was made. Read before the idempotency key below, so a
+  // captioned stitch never replays an uncaptioned one. Owner-bound (readFilmCaptions returns another user's words to no one).
+  if (body.subtitles === true && !body.captionAlignment && filmTokenId && uid) {
+    const words = await readFilmCaptions(filmTokenId, uid).catch(() => null);
+    if (words?.length) body.captionAlignment = wordsToAlignment(words);
+  }
   const billedTokenForCheck = filmTokenId ?? billingToken;
   let filmAlreadyBilled = false;
   // How the waiver this attempt uses goes back when it delivers nothing: a durable lease is settled, a cache waiver restored.
@@ -396,7 +440,11 @@ async function assembleImpl(req: NextRequest) {
       cacheWaiver = false;
     }
   };
-  if (filmTokenId && uid && !(await isAdminUser(uid))) {
+  if (actor?.covered && filmTokenId && uid) {
+    // A scene redo (app/api/film/scene/redo/stitch) took the scene's price itself before it rendered; cutting its clip into the
+    // film is part of that price. It spends none of the film's stitch waivers, which stay for the user's own re-stitches.
+    filmAlreadyBilled = true;
+  } else if (filmTokenId && uid && !(await isAdminUser(uid))) {
     // ⚠️ A FILM'S PAYMENT IS DECIDED FROM DURABLE STORAGE, NOT FROM REDIS (Video Core v1.0 final hardening, Phase 1). The film's
     // quote was taken when it started; the ledger proves it, film_billing counts the stitches it covers, and a stitch leases
     // one for longer than this route can run. Redis is only a cache now: when it was down, expired or on another instance
@@ -511,9 +559,10 @@ async function assembleImpl(req: NextRequest) {
   // URLs, not durations) so the score gen can start without waiting on the re-sign.
   // Combined with the raised function budget (maxDuration 600s) the full 30s master
   // stitches comfortably inside the deadline even on a cold CPU node.
-  const audioTotalSec = Math.min(30, Math.max(8, Math.round(
-    segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0),
-  )));
+  // ⚠️ THE SONG RUNS UNDER THE WHOLE FILM. This was capped at 30 s (from when no film was longer), and the mix pads the bed
+  // with silence to the film's length, so a 32 s music video lost its song for the last 2 s and a 48 s one for 18 s. It is
+  // now the film's own length: the contracted final cut when there is one, else what the clips stitch to.
+  const audioTotalSec = filmSongSeconds(finalCut?.ok ? finalCut.finalSec : stitchSec);
 
   // AUDIO BED — VIDEO pipeline is ElevenLabs-ONLY (ISSUE 5). ElevenLabs is THE engine
   // for instrumentals + sung vocals (and ElevenLabs sound-generation already powers the
@@ -533,17 +582,24 @@ async function assembleImpl(req: NextRequest) {
 
     // ONE shared song spec (e.g. a sung Georgian R&B track for a music video, or an
     // instrumental film score) — the brief ElevenLabs Music composes from.
+    // The engine reads English: the brief goes to it translated (a Georgian brief quoted verbatim was noise to it, and
+    // the song ignored the theme). The song's language still follows what the user typed (buildElevenMusicPrompt).
+    const scoreBrief = typeof body.scorePrompt === 'string' ? body.scorePrompt : '';
+    const theme = scoreBrief.trim() ? await promptToEnglish(scoreBrief, 'music').catch(() => scoreBrief) : '';
     const { prompt, instrumental } = buildElevenMusicPrompt({
-      brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
+      brief: scoreBrief,
       totalSec: audioTotalSec,
       musicVideoMode,
       vocalGender: body.vocalGender,
+      theme,
+      sceneSec: clipSecOfRender,
     });
 
     // PRIMARY — ElevenLabs Music (instrumentals + sung vocals). Time-boxed.
     if (hasElevenLabsMusicKey()) {
       try {
-        const EL_MUSIC_BUDGET_MS = 90_000;
+        // A longer song takes longer to compose: about a second per second of song, never under the old 90 s.
+        const EL_MUSIC_BUDGET_MS = Math.min(200_000, Math.max(90_000, audioTotalSec * 1_000));
         const { audio, contentType } = await Promise.race([
           composeElevenLabsMusic({ prompt, lengthMs: audioTotalSec * 1000, instrumental }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('elevenlabs music timed out')), EL_MUSIC_BUDGET_MS)),
@@ -613,9 +669,10 @@ async function assembleImpl(req: NextRequest) {
           return NextResponse.json({ error: 'insufficient_credits', reason: 'insufficient_credits', message }, { status: 402 });
         }
       }
-    } else {
-      scFreeFilm = true; // anon trial / founder — no charge (mirrors saga bag.freeFilm)
     }
+    // D-C4: a covered stitch (anon trial, founder/admin, or a film paid up front) is NOT the free slot. `freeFilm` used to
+    // be set here too, so a paid film's response said `freeFilm: true` while the slot stayed untouched. `freeFilm` now
+    // means only "the one free video was spent"; `covered` says "this stitch needed no charge".
 
     try {
       const clipUrl = await reSignIfInternal(segments[0]!.url);
@@ -719,11 +776,12 @@ async function assembleImpl(req: NextRequest) {
       // eslint-disable-next-line no-console
       console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: producedSomething && !scSkipBilling && !scFreeFilm }));
       if (filmTokenId) await recordFilmMaster(filmTokenId, master, null, uid).catch(() => {});
+      if (filmTokenId && uid && master) await keepStitchRecord(filmTokenId, uid, segments, body, musicUrl);
       // The waiver this attempt leased is spent only by a master it actually changed; an untouched clip hands it back.
       await settleWaiver(producedSomething);
       // `freeFilm` reports whether the slot was actually SPENT. When nothing was produced it was handed
       // back above, so saying true here would tell the client their one free video is gone when it is not.
-      return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm && producedSomething, single: true });
+      return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm && producedSomething, covered: scSkipBilling, single: true });
     } catch (err) {
       // The waiver of a film paid upstream was taken above (a durable lease, or the cache's consumeFilmBilling) so a replay
       // cannot reuse it; this attempt delivered nothing, so it goes back — exactly as the multi-clip saga's compensate does. Without this a
@@ -855,8 +913,9 @@ async function assembleImpl(req: NextRequest) {
       name: 'reserve-credits',
       run: async (ctx) => {
         if (skipBilling) {
-          // Anonymous trial OR founder/admin — nothing to reserve, no charge.
-          ctx.bag.freeFilm = true;
+          // Anonymous trial, founder/admin, or a film paid up front — nothing to reserve, no charge. That is `covered`,
+          // not the free slot (D-C4): `freeFilm` is set only when consume_free_film actually spent it.
+          ctx.bag.covered = true;
           return null;
         }
         if (uid === null) return null; // unreachable past skipBilling — narrows uid to string
@@ -1086,6 +1145,7 @@ async function assembleImpl(req: NextRequest) {
   const qa = (bag.qa as QaReport | null | undefined) ?? null;
   const qaSummary = qa ? { pass: qa.pass, score: qa.score, grade: qa.grade, issues: qa.issues.map((i) => i.code) } : null;
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary, uid);
+  if (filmTokenId && uid && resultUrl) await keepStitchRecord(filmTokenId, uid, segments, body, resolvedMusicUrl);
   // The film's waiver is spent only now, by a delivered master (a crash before this line leaves the lease to expire).
   await settleWaiver(Boolean(resultUrl));
 
@@ -1095,18 +1155,34 @@ async function assembleImpl(req: NextRequest) {
   // action:'rerender' SIGNAL (an actual poll-time scene re-render needs the film-token param overhaul
   // flagged in Phase 23/26). Wrapped so it can never throw into the assemble saga.
   let visionQa: Awaited<ReturnType<typeof evaluateRenderQuality>> | null = null;
+  // Audit item 3b (2026-10-17): each scene clip is graded too, so a weak scene is named by its number and can be
+  // shot again at the scene's price (/api/film/scene/redo). Same switch, same 45 s bound, run beside the master.
+  let sceneQa: SceneQaEntry[] = [];
   if (visionQaEnabled() && resultUrl) {
     try {
       // Bound the WHOLE gate (frame extraction + the bare-fetch Gemini call) so a stalled provider or
       // ffmpeg can never PIN this route until maxDuration — a hang is not an error. On the race timeout
       // we simply skip QA (null). The deliverable master is already stamped (recordFilmMaster above).
-      visionQa = await Promise.race([
-        evaluateRenderQuality({ videoUrl: resultUrl }),
-        new Promise<null>((r) => setTimeout(() => r(null), 45_000)),
+      const sceneClips = signedSegments.length > 1
+        ? signedSegments.map((s, i) => {
+          const o = segments[i]?.ordinal;
+          return { url: s.url, ordinal: typeof o === 'number' && Number.isInteger(o) && o >= 1 && o <= 24 ? o : i + 1 };
+        })
+        : [];
+      [visionQa, sceneQa] = await Promise.all([
+        Promise.race([
+          evaluateRenderQuality({ videoUrl: resultUrl }),
+          new Promise<null>((r) => setTimeout(() => r(null), 45_000)),
+        ]),
+        evaluateSceneClips(sceneClips, { deadlineMs: 45_000 }).catch(() => []),
       ]);
       if (visionQa?.ran) {
         // eslint-disable-next-line no-console
         console.info(`[assemble][vision-qa] grade=${visionQa.grade} score=${visionQa.score} action=${visionQa.action} issues=${visionQa.issues.map((i) => i.code).join(',') || 'none'}`);
+      }
+      for (const q of sceneQa) {
+        // eslint-disable-next-line no-console
+        console.info(`[assemble][vision-qa] scene=${q.ordinal} grade=${q.grade} score=${q.score} action=${q.action} issues=${q.issues.join(',') || 'none'}`);
       }
     } catch { /* fail-open — the vision gate can never break assembly */ }
   }
@@ -1148,5 +1224,5 @@ async function assembleImpl(req: NextRequest) {
 
   // Return the resolved song URL so the client can drive a HeyGen singer-performance
   // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
-  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
+  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), ...(sceneQa.length ? { sceneQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), covered: Boolean(bag.covered), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
 }

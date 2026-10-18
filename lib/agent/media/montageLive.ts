@@ -17,6 +17,7 @@ import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { withFfmpegSignal } from '@/lib/video/ffmpegExec';
 import { montageUnits } from '@/lib/services/montage/montagePlan';
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
+import { BUDGET_ERROR_PREFIX } from '@/lib/services/billing/budgetMessage';
 import { supabaseLeaseStore } from '@/lib/orchestrator/jobLease';
 import { netDebitedForRef, refundCredits } from '@/lib/orchestrator/ledger';
 import { reserveProduce } from '@/lib/orchestrator/produceBilling';
@@ -69,7 +70,8 @@ export function liveMontageDeps(): MontageExecDeps {
         return await guardedCall({ service: 'montage', model: 'ffmpeg-local', units: montageUnits() }, () =>
           runMontage(req, { jobId: opts.jobId, signal: opts.signal, onStage: (step, pct) => opts.onStage(step, pct) }));
       } catch (e) {
-        if (e instanceof BudgetExceededError) return { ok: false, step: 'resolve', error: 'the platform budget for this period is exhausted' };
+        // The guard's reason rides along, so the card can say which limit it is and when it lifts (./montageWorker).
+        if (e instanceof BudgetExceededError) return { ok: false, step: 'resolve', error: `${BUDGET_ERROR_PREFIX}${e.reason}` };
         throw e;
       }
     },

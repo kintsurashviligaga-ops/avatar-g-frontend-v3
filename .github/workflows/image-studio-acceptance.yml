@@ -1,0 +1,152 @@
+name: Image Studio Acceptance
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: image-studio-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci
+  SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key-for-ci
+  NEXT_TELEMETRY_DISABLED: '1'
+jobs:
+  image-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Prove the PR branch itself; the separate verify job checks GitHub merge context.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Offline live-harness contracts (no provider requests)
+        run: |
+          mkdir -p evidence
+          set -o pipefail
+          timeout --kill-after=10s 60s node --test scripts/image-studio/live-e2e.test.mjs 2>&1 | tee evidence/harness.log
+      - name: Image Studio browser contracts (intercepted APIs)
+        env:
+          IMAGE_STUDIO_EVIDENCE_DIR: ${{ github.workspace }}/evidence
+        run: |
+          set -o pipefail
+          timeout --kill-after=10s 480s npx playwright test --config playwright.image-studio.config.ts 2>&1 | tee evidence/browser.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-studio-browser-${{ github.run_id }}
+          path: evidence/
+          retention-days: 14
+  isolated-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: local-only
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      LEASE_PG_REST_URL: http://127.0.0.1:54330
+      LEASE_PG_JWT_SECRET: isolated-ci-only-jwt-secret-not-a-real-environment-key
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Prove the PR branch itself; the separate verify job checks GitHub merge context.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Create disposable fixture and loopback PostgREST
+        run: |
+          PG_CONTAINER="${{ job.services.postgres.id }}"
+          mkdir -p evidence
+          docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < scripts/lease-isolation/schema.sql > evidence/schema.log 2>&1
+          docker run -d --name image-studio-rest --network host \
+            -e PGRST_DB_URI=postgres://authenticator:local-only@127.0.0.1:54329/postgres \
+            -e PGRST_DB_SCHEMAS=public -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET="$LEASE_PG_JWT_SECRET" -e PGRST_SERVER_PORT=54330 \
+            postgrest/postgrest:v12.2.3
+          for attempt in $(seq 1 30); do
+            if curl --max-time 2 -fsS "$LEASE_PG_REST_URL/" > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Lease before ledger hardening
+        run: bash scripts/image-studio/ci-db-suite.sh lease-before lib/agent/media/leaseIsolation.pg.test.ts
+      - name: Ledger before hardening
+        if: ${{ !cancelled() }}
+        env:
+          LEDGER_PHASE: before
+        run: bash scripts/image-studio/ci-db-suite.sh ledger-before lib/orchestrator/ledgerOnce.pg.test.ts
+      - name: Apply hardening only to disposable CI database
+        if: ${{ !cancelled() }}
+        run: |
+          PG_CONTAINER="${{ job.services.postgres.id }}"
+          # The before-phase deliberately creates duplicate refs to reproduce the old race.
+          # Save them, then clear only this disposable fixture before testing the after-state.
+          docker exec "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c "select user_id, metadata->>'ref' as ref, count(*) from credit_ledger where delta < 0 group by 1,2 having count(*) > 1" > evidence/before-duplicates.log
+          docker exec "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c "truncate table generation_jobs, credit_ledger, profiles" > evidence/phase-reset.log
+          docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/20261002d_ledger_ref_race_hardening.sql > evidence/hardening.log 2>&1
+          docker exec "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
+          sleep 2
+      - name: Ledger after hardening
+        if: ${{ !cancelled() }}
+        env:
+          LEDGER_PHASE: after
+        run: bash scripts/image-studio/ci-db-suite.sh ledger-after lib/orchestrator/ledgerOnce.pg.test.ts
+      - name: Lease after hardening
+        if: ${{ !cancelled() }}
+        run: bash scripts/image-studio/ci-db-suite.sh lease-after lib/agent/media/leaseIsolation.pg.test.ts
+      - name: Multi-step runs with real local FFmpeg
+        if: ${{ !cancelled() }}
+        run: bash scripts/image-studio/ci-db-suite.sh runs lib/agent/run/runIsolation.pg.test.ts
+      - name: Outbox store (delivery outlets mocked)
+        if: ${{ !cancelled() }}
+        run: bash scripts/image-studio/ci-db-suite.sh outbox lib/notifications/outboxIsolation.pg.test.ts
+      - name: Image Studio real queue and ledger (provider and Storage injected)
+        if: ${{ !cancelled() }}
+        run: bash scripts/image-studio/ci-db-suite.sh image lib/image/studio/imageIsolation.pg.test.ts
+      - name: Validate historical baseline diagnostic (expected failure, not release acceptance)
+        if: ${{ !cancelled() }}
+        run: |
+          timeout --kill-after=5s 90s git fetch --depth=1 --no-tags origin 30be5a2d96495f67134cad34796ce724a744bd28
+          mkdir -p "$RUNNER_TEMP/image-baseline"
+          git archive 30be5a2d96495f67134cad34796ce724a744bd28 | tar -x -C "$RUNNER_TEMP/image-baseline"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/image-baseline/node_modules"
+          cd "$RUNNER_TEMP/image-baseline"
+          trap 'cp -R evidence/. "$GITHUB_WORKSPACE/evidence/"' EXIT
+          set +e
+          bash "$GITHUB_WORKSPACE/scripts/image-studio/ci-db-suite.sh" lease-baseline lib/agent/media/leaseIsolation.pg.test.ts
+          baseline_exit=$?
+          set -e
+          node "$GITHUB_WORKSPACE/scripts/image-studio/check-baseline-diagnostic.mjs" "$baseline_exit" | tee evidence/baseline-verdict.log
+      - name: Save local service logs and stop owned container
+        if: always()
+        run: |
+          PG_CONTAINER="${{ job.services.postgres.id }}"
+          docker logs image-studio-rest > evidence/postgrest.log 2>&1 || true
+          docker logs "$PG_CONTAINER" > evidence/postgres.log 2>&1 || true
+          docker rm -f image-studio-rest || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-studio-isolated-db-${{ github.run_id }}
+          path: evidence/
+          retention-days: 14

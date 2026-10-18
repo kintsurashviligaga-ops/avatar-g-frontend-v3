@@ -114,12 +114,15 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
     artifact: 'video', library: 'filed', label: 'BUILT_NOT_PROVEN',
   }),
   'image.generate': c({
-    id: 'image.generate', serviceId: 'image.generate', does: 'Create or edit a picture',
-    routes: ['/api/nanobanana/image', '/api/ai/edit-photo', '/api/ai/upscale'],
-    engine: 'NanoBananaAI; chat images FLUX, a miss moves only to Google image; Edit and Upscale on Replicate',
-    pricing: { key: 'image', charge: 'charged' }, approval: 'agent-card', timeoutSec: 300, retry: 'refund-on-miss',
-    idempotency: 'one job per tile (the client queue)', cancel: 'client-abort', qc: null, artifact: 'image', library: 'filed',
-    label: 'BLOCKED_OWNER',
+    id: 'image.generate', serviceId: 'image.generate', does: 'Create or edit a picture in the Image Studio workspace',
+    routes: ['/api/image/jobs/quote', '/api/image/commands', '/api/image/jobs', '/api/image/jobs/[id]', '/api/image/jobs/[id]/cancel',
+      '/api/nanobanana/image', '/api/ai/edit-photo', '/api/ai/upscale'],
+    engine: 'New workspace: fixed Google transport, exact prompt, owner-scoped references; existing legacy tools retained separately',
+    pricing: { key: 'image', charge: 'charged' }, approval: 'plan-start', timeoutSec: 600, retry: 'refund-on-miss',
+    idempotency: 'one lease job and central debit per signed image quote; no automatic inference retry after ambiguous dispatch',
+    cancel: 'task-api', qc: 'decoded output, aspect and resolution checks; visual identity/adherence unverified',
+    artifact: 'image', library: 'filed', label: 'PARTIAL',
+    liveTool: { name: 'quote_image', confirms: 'image_run' },
   }),
   'image.photoshoot': c({
     id: 'image.photoshoot', serviceId: 'image.photoshoot', does: 'A studio photoshoot from the user\'s photos',
@@ -162,8 +165,9 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'voice.dubbing': c({
     id: 'voice.dubbing', serviceId: 'voice.dubbing', does: 'The user\'s video in another language',
     routes: ['/api/v2/dubbing/start'], engine: 'ElevenLabs Scribe + TTS, Gemini translation; Demucs on Replicate for the background',
+    // OFF until OWNER_APPROVED_PRICING names its price (proposed 10 cr per started minute, measured on the server).
     pricing: { key: null, charge: 'not-charged-yet' }, approval: 'panel-button', timeoutSec: 600, retry: 'none',
-    idempotency: 'job id reuse is refused', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'PARTIAL',
+    idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
   }),
   'text.write': c({
     id: 'text.write', serviceId: 'text.write', does: 'Articles, scripts, ad copy, posts, translation',
@@ -173,9 +177,10 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'design.presentation': c({
     id: 'design.presentation', serviceId: 'design.presentation', does: 'Slides from a topic',
+    // OFF until OWNER_APPROVED_PRICING names its price (proposed 15 cr per deck).
     routes: ['/api/v2/presentation/build'], engine: 'Gemini outline + Imagen', pricing: { key: null, charge: 'not-charged-yet' },
-    approval: 'panel-button', timeoutSec: 300, retry: 'none', idempotency: 'one deck per press', cancel: 'none', qc: null,
-    artifact: 'file', library: 'filed', label: 'PARTIAL',
+    approval: 'panel-button', timeoutSec: 300, retry: 'none', idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null,
+    artifact: 'file', library: 'filed', label: 'BLOCKED_OWNER',
   }),
   'design.model3d': c({
     id: 'design.model3d', serviceId: 'design.model3d', does: 'A 3D model from text or a photo',

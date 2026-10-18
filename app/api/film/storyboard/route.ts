@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { planFilmScenes, normalizeReferenceImages, splitStructuredScript, splitStructuredScriptScenes, planFilmGrid, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import { parseMasterScript } from '@/lib/pipeline/script/masterScript';
-import { runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
+import { promptAgentModel, runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
 import { describeCharacterFromImage } from '@/lib/gemini/image-analysis';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
@@ -38,18 +38,15 @@ import { generateGeminiImage } from '@/lib/ai/geminiImage';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveFilmTemplate } from '@/lib/studio/templateContext';
+import { MUSIC_VIDEO_PERSON_CLAUSE, REFERENCE_PERSON_CLAUSE, briefRestagesPhoto, storyFeaturesPerson } from '@/lib/chat/storyPerson';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
 const FAST_IMAGE_MODEL = /^(1|true|on|flux|flux-schnell)$/i.test((process.env.FAST_IMAGE_MODEL || '').trim());
 
-/** Prompt-Agent model for the STORYBOARD PREVIEW only (haiku ≈ 5–10s vs sonnet ≈ 80s for a
- *  6-scene brief). The actual film render (filmComposite) is untouched → keeps sonnet for the
- *  character-lock reasoning. Override with STORYBOARD_PROMPT_MODEL=claude-sonnet-4-6 for max
- *  preview quality. */
-const STORYBOARD_PROMPT_MODEL = process.env.STORYBOARD_PROMPT_MODEL ?? 'claude-haiku-4-5-20251001';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -61,7 +58,8 @@ export const maxDuration = 300;
 const SINGLE_SHOT_CLAUSE =
   'A single, unified, continuous cinematic film still. One isolated focused shot. Strictly single frame — ' +
   'NOT a collage, not split-screen, no grid, no multiple panels, no side-by-side frames, no borders, no ' +
-  'dividers, no picture-in-picture. Every object is realistically grounded and held by human hands where held.';
+  'dividers, no picture-in-picture, no on-screen text, captions, titles, labels or scene numbers. Every object is ' +
+  'realistically grounded and held by human hands where held.';
 const _STORYBOARD_FRAME_NEGATIVE =
   'split screen, collage, grid, panels, comic templates, comic book style, diptych, triptych, multiple ' +
   'angles, floating objects, ungrounded physics, borders, dividers, picture-in-picture, deformed face, ' +
@@ -405,6 +403,12 @@ export async function POST(req: NextRequest) {
   // Diagnostic — which provider produced each frame (returned in the response so a
   // benchmark can confirm flux-schnell is actually firing; the re-host hides the source URL).
   const frameSourceTally = { fluxSchnell: 0, nanobanana: 0, replicateFlux: 0, gemini: 0 };
+  // Set when the platform budget refused a frame: the board then says which limit and when it lifts, instead of
+  // promising the empty tile "fills in automatically" (it cannot while the limit holds) and retrying it.
+  let budgetRefusal: string | null = null;
+  const budgetFields = () => (budgetRefusal
+    ? { budgetRefused: true, budgetReason: budgetRefusal, budgetMessage: budgetRefusalMessage(locale, budgetRefusal) }
+    : {});
   // `look`: the template's film look, put at the HEAD of the frame prompt. Only for a scene prompt that came back
   // from the client: the board hands each scene's full prompt to the browser (`framePrompt`) and the frame call
   // returns it as `scenePrompt`, which is cut to 600 characters below, and the look sits in the style guide around
@@ -427,7 +431,7 @@ export async function POST(req: NextRequest) {
       const sceneEn = await promptToEnglish(scenePrompt, 'image');
       const head = look ? `Cinematic film still, ${aspect} composition, ${look}.` : `Cinematic film still, ${aspect} composition.`;
       const framePrompt = selfie
-        ? `${head} ${sceneEn} Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features and wardrobe as the reference. ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
+        ? `${head} ${sceneEn} ${musicVideo ? MUSIC_VIDEO_PERSON_CLAUSE : REFERENCE_PERSON_CLAUSE} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
         : `${head} ${sceneEn} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
       // GOOGLE-ONLY (docs/VEO_ENGINE.md §3): the frame comes straight from Gemini's image model, the selfie passed as
       // an inline reference so the same person is in every frame. No Replicate, no FLUX: a miss is an empty tile
@@ -443,6 +447,7 @@ export async function POST(req: NextRequest) {
         } catch (err) {
           if (!(err instanceof BudgetExceededError)) throw err;
           console.warn(`[storyboard] frame refused by the budget guard (${err.reason})`);
+          budgetRefusal = err.reason;
           return null;
         }
         if (!img) return null;
@@ -489,26 +494,54 @@ export async function POST(req: NextRequest) {
   // wardrobe. Fail-open: a miss returns null and the board falls back to per-scene
   // text generation (the prior, drift-prone behaviour).
   if (body.characterAnchor) {
-    const anchorPrompt =
+    // ⚠️ NO PERSON IN THE BRIEF → NO PORTRAIT (lib/chat/storyPerson.ts). The image model can only answer "a head-and-
+    // shoulders close-up of the main character" with a human, and every frame is then drawn with "the EXACT same person
+    // as the reference image": a boat-and-cat brief came back with an invented woman in every frame and every clip.
+    // Only a clear "no" skips it; an unknown answer keeps the anchor. The client already treats a null anchor as
+    // "no reference" (frames from text alone).
+    if (!selfie && (await storyFeaturesPerson(prompt)) === false) {
+      return NextResponse.json({ success: true, anchorUrl: null, anchorSkipped: 'no_person' });
+    }
+    // A music video's anchor shows the OUTFIT too (waist-up), because every frame then copies it (MUSIC_VIDEO_PERSON_CLAUSE).
+    const anchorPrompt = musicVideo
+      ? `Character reference portrait — a clean, evenly-lit waist-up shot of the SINGLE performer in this music video: "${prompt.slice(0, 600)}", ` +
+        `showing the face and the complete stage outfit and accessories clearly. Looking toward camera, neutral softly-blurred background, natural colours, photorealistic, sharp focus. ` +
+        `This is the DEFINITIVE reference for the entire video — the same face, hair and outfit in every shot.`
+      :
       `Character reference portrait — a clean, evenly-lit head-and-shoulders close-up of the SINGLE main character in this story: "${prompt.slice(0, 600)}". ` +
       `Looking toward camera, neutral softly-blurred background, photorealistic, sharp focus on the face. ` +
       `This is the DEFINITIVE identity reference for the entire film — one consistent person, exact same face, hair and wardrobe in every shot.`;
     const anchorUrl = await genFrame(anchorPrompt);
-    return NextResponse.json({ success: true, anchorUrl });
+    return NextResponse.json({ success: true, anchorUrl, ...(anchorUrl ? {} : budgetFields()) });
   }
 
   // Single-scene regeneration — the user asked to re-roll just one frame.
-  const sceneOrdinal = typeof body.sceneOrdinal === 'number' ? Math.floor(body.sceneOrdinal) : null;
-  if (sceneOrdinal && sceneOrdinal >= 1 && sceneOrdinal <= plan.scenes.length) {
-    const scene = plan.scenes[sceneOrdinal - 1]!;
+  // ⚠️ A FRAME CALL NEVER FALLS THROUGH TO THE WHOLE BOARD. The board's frame calls send no sceneCount, so `plan` here
+  // has the default FILM_SCENE_COUNT (3) scenes. Scene 4 of a 4-scene (32 s) board failed `ordinal <= plan.scenes.length`
+  // and ran the full-board path below: three more frames on the image quota, a whole board in the answer and no
+  // `frameUrl`, so tile 4 stayed empty on every 32 s board (2026-10-16, GG's ad test) and each re-roll repeated it.
+  // The frame is drawn from the scene prompt the board sends; the plan's own scene is only the fallback.
+  const sceneOrdinal = body.sceneOrdinal === undefined || body.sceneOrdinal === null ? null : Number(body.sceneOrdinal);
+  if (sceneOrdinal !== null) {
     // Honor a user-EDITED shot description (Storyboard scene editing) when present,
     // so re-rolling the frame reflects the user's own wording; else the planned shot.
     const customPrompt = typeof body.scenePrompt === 'string' && body.scenePrompt.trim() ? body.scenePrompt.trim().slice(0, 600) : null;
+    const ordinalOk = Number.isInteger(sceneOrdinal) && sceneOrdinal >= 1 && sceneOrdinal <= 12;
+    const scene = ordinalOk ? plan.scenes[sceneOrdinal - 1] : undefined;
+    if (!ordinalOk || (!scene && !customPrompt)) {
+      return NextResponse.json({ success: false, error: 'sceneOrdinal is out of range and no scenePrompt was sent' }, { status: 400 });
+    }
     // The planned `scene.prompt` already carries the look in full. A client prompt (the board's own, cut to 600, or a
     // user edit) may not, so the resolved look leads it, unless the text already holds it whole.
     const frameLook = customPrompt && template && !customPrompt.includes(template.look) ? template.look : undefined;
-    const frameUrl = await genFrame(customPrompt ?? scene.prompt, frameLook);
-    return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
+    // One retry, as the full board's second pass below does: the image model now and then answers
+    // finishReason=NO_IMAGE for an ordinary prompt. The board asks for each frame through this path, and one empty
+    // tile also switches frame chaining off for the whole film.
+    const shot = customPrompt ?? scene!.prompt; // the guard above: no planned scene → the board sent its own prompt
+    // A budget refusal is not retried: the second ask would get the same "no".
+    const first = await genFrame(shot, frameLook);
+    const frameUrl = first ?? (budgetRefusal ? null : await genFrame(shot, frameLook));
+    return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl, ...(frameUrl ? {} : budgetFields()) });
   }
 
   // SCRIPTS-ONLY — run JUST the LLM Script Agent and return the per-scene story
@@ -536,25 +569,25 @@ export async function POST(req: NextRequest) {
     const tPA = Date.now();
     // VISION PRE-EXTRACTION — read the actual uploaded person off the photo so the (text-only) agent locks the REAL
     // subject rather than inventing a stock persona. Fail-open (null) → the strong text instruction still applies.
-    const characterVisualId = selfie ? await describeCharacterFromImage(selfie, locale) : null;
+    const characterVisualId = selfie ? await describeCharacterFromImage(selfie, locale, prompt) : null;
     if (characterVisualId) console.log(`[storyboard] scriptsOnly vision character-lock: "${characterVisualId.slice(0, 120)}"`);
     const brief = await runPromptAgent({
       brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
       length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
-      model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
+      hasReferenceImage: refList.length > 0,
       ...(characterVisualId ? { characterVisualId } : {}),
       ...templateDirection,
     });
     const promptAgentMs = Date.now() - tPA;
     // eslint-disable-next-line no-console
-    console.log(`[storyboard] scriptsOnly prompt-agent (${STORYBOARD_PROMPT_MODEL}): ${promptAgentMs}ms`);
+    console.log(`[storyboard] scriptsOnly prompt-agent (${promptAgentModel()}): ${promptAgentMs}ms`);
     if (brief) {
       return NextResponse.json({
         success: true,
         sceneScripts: brief.scenes.map((s) => s.imagePrompt),
         character: brief.character.imagePromptFragment,
         masterBrief: brief,
-        scriptModel: STORYBOARD_PROMPT_MODEL,
+        scriptModel: promptAgentModel(),
         timings: { promptAgentMs },
       });
     }
@@ -573,7 +606,9 @@ export async function POST(req: NextRequest) {
     // render as per-scene anchors, so the film matches the uploaded images. A SINGLE
     // image stays a character-lock reference (unchanged behaviour).
     const anchorMode = hostedRefs.length >= 2;
-    const lockScene1Plan = !!selfie && !anchorMode; // single selfie → Scene 1 IS that exact image (V1)
+    // Single selfie → Scene 1 IS that exact image (V1), unless the brief puts the person somewhere else or in other
+    // clothes: then scene 1 is drawn like the others, the same face in the brief's scene (lib/chat/storyPerson.ts).
+    const lockScene1Plan = !!selfie && !anchorMode && (await briefRestagesPhoto(prompt)) !== true;
     return NextResponse.json({
       success: true,
       sessionId,
@@ -612,12 +647,12 @@ export async function POST(req: NextRequest) {
   // character + per-scene image prompts), fail-open to the haiku Script Agent, then
   // render all frames in one request. Fail-open: a miss leaves `plan` in place.
   const tPromptAgent = Date.now();
-  const characterVisualIdFull = selfie ? await describeCharacterFromImage(selfie, locale) : null;
+  const characterVisualIdFull = selfie ? await describeCharacterFromImage(selfie, locale, prompt) : null;
   if (characterVisualIdFull) console.log(`[storyboard] full vision character-lock: "${characterVisualIdFull.slice(0, 120)}"`);
   const masterBrief: MasterFilmBrief | null = await runPromptAgent({
     brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
     length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
-    model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
+    hasReferenceImage: refList.length > 0,
     ...(characterVisualIdFull ? { characterVisualId: characterVisualIdFull } : {}),
     ...templateDirection,
   });
@@ -642,20 +677,21 @@ export async function POST(req: NextRequest) {
   // the real person and the identity can never drift on the first shot. Only scenes 2..N are generated (each still
   // identity-locked to the selfie). We skip generating frame[0] entirely — no wasted flux call, no throwaway frame.
   // (With ≥2 uploads the anchorModeFull path below already maps every scene to its own uploaded frame.)
-  const lockScene1 = !!selfie && hostedRefs.length < 2;
+  // …unless the brief restages the person (another place or other clothes): the same rule as the planOnly board above.
+  const lockScene1 = !!selfie && hostedRefs.length < 2 && (await briefRestagesPhoto(prompt)) !== true;
   const frames = await mapWithConcurrency(storyPlan.scenes, frameConcurrency, (scene, i) =>
     (i === 0 && lockScene1) ? Promise.resolve<string | null>(selfie) : genFrame(scene.prompt));
   // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —
   // so the storyboard rarely shows a scene with a missing image ("not all scenes
   // generate"). One extra attempt per missing frame; still fail-soft to null.
   const missing = frames.map((f, i) => (f ? -1 : i)).filter((i) => i >= 0);
-  if (missing.length) {
+  if (missing.length && !budgetRefusal) {
     const retried = await mapWithConcurrency(missing.map((i) => storyPlan.scenes[i]!), frameConcurrency, (scene) => genFrame(scene.prompt));
     missing.forEach((sceneI, k) => { if (retried[k]) frames[sceneI] = retried[k]; });
   }
   const framesMs = Date.now() - tFrames;
   // eslint-disable-next-line no-console
-  console.log(`[storyboard] prompt-agent (${STORYBOARD_PROMPT_MODEL}): ${promptAgentMs}ms · frames: ${framesMs}ms · sources ${JSON.stringify(frameSourceTally)}`);
+  console.log(`[storyboard] prompt-agent (${promptAgentModel()}): ${promptAgentMs}ms · frames: ${framesMs}ms · sources ${JSON.stringify(frameSourceTally)}`);
 
   // ANCHOR MODE (full path) — ≥2 uploaded images override the generated frames as the
   // ordered per-scene anchors, mirroring the planOnly path.
@@ -677,6 +713,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
+    ...budgetFields(),
     sessionId,
     seed: storyPlan.shared.seed,
     orientation,
@@ -691,9 +728,9 @@ export async function POST(req: NextRequest) {
     // Diagnostic — provider that produced each frame (confirms flux-schnell vs the
     // NanoBanana/Replicate-FLUX fallback; the re-host hides it from the frame URLs).
     frameSources: frameSourceTally,
-    // Diagnostic — the Prompt-Agent model used + the script/frames time split (the script
-    // step was the dominant cost; haiku cuts it from ~80s to ~5-10s).
-    scriptModel: STORYBOARD_PROMPT_MODEL,
+    // Diagnostic — the Prompt-Agent model used (always Gemini: llmText has no other provider) + the
+    // script/frames time split.
+    scriptModel: promptAgentModel(),
     timings: { promptAgentMs, framesMs },
   });
 }

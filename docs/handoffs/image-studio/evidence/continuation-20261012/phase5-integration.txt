@@ -1,0 +1,22 @@
+PASS lib/image/studio/library.test.ts
+PASS components/studio/image/ImageWorkspace.test.tsx
+PASS components/library/LibraryGallery.test.tsx
+PASS lib/image/studio/history.test.ts
+PASS lib/image/studio/engine.test.ts
+PASS app/api/studio/library/route.test.ts
+PASS app/api/studio/library/delete.test.ts
+PASS lib/image/studio/http.test.ts
+PASS lib/image/studio/quality.test.ts
+PASS lib/image/studio/live.test.ts
+PASS lib/image/studio/task.test.ts
+PASS lib/image/studio/commands.test.ts
+PASS lib/image/studio/contracts.test.ts
+PASS lib/image/studio/provider.test.ts
+PASS lib/image/studio/client.test.ts
+
+Test Suites: 15 passed, 15 total
+Tests:       131 passed, 131 total
+Snapshots:   0 total
+Time:        1.069 s
+Ran all test suites matching lib/image/studio|components/studio/image|app/api/studio/library|components/library/LibraryGallery.test.tsx.
+Test results written to: docs/handoffs/image-studio/evidence/continuation-20261012/phase5-integration.json

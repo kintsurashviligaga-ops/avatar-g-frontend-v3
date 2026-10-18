@@ -21,6 +21,7 @@ import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './ui/tokens';
 import { Slider } from './ui/controls';
 import { easedPct } from './ui/GenerationProgress';
+import { LoadingLoop } from './ui/LoadingLoop';
 import { describeOpFailure } from '@/lib/ui/opFailure';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
 import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
@@ -503,6 +504,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     if (!initialAsset?.url || loadedAssetRef.current === initialAsset.url) return;
     loadedAssetRef.current = initialAsset.url;
     let cancelled = false;
+    let applied = false;
     void (async () => {
       try {
         const res = await fetch(initialAsset.url, { credentials: 'omit' });
@@ -513,6 +515,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : 'png';
         const file = new File([blob], `import-${Date.now()}.${ext}`, { type });
         if (cancelled) return;
+        applied = true;
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const nclip: Clip = { id, file, url: URL.createObjectURL(file), kind, name: file.name };
         const idx = Math.min(clipsRef.current.length, MAX_CLIPS - 1);
@@ -526,7 +529,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         });
       } catch { if (!cancelled) flash(t.failed); }
     })();
-    return () => { cancelled = true; };
+    // A run cancelled before its file landed gives the link back, so the next run loads it: React's dev Strict Mode
+    // mounts every effect twice, and without this the second run saw the link as loaded and the editor stayed empty.
+    return () => { cancelled = true; if (!applied && loadedAssetRef.current === initialAsset?.url) loadedAssetRef.current = null; };
   }, [initialAsset, flash, t.failed]);
 
   const resetDraft = useCallback(() => {
@@ -1639,7 +1644,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
           {exporting ? (
             <div className="w-full max-w-[360px] rounded-2xl border border-app-border/20 bg-app-surface p-5 shadow-2xl">
-              <div className="mb-3 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.15em] text-app-accent"><Sparkles size={13} className="animate-pulse" />G-Agent</div>
+              <div aria-hidden="true" data-testid="editor-export-loop" className="relative mb-3 h-[140px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15"><LoadingLoop /></div>
+              <div className="mb-3 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.15em] text-app-accent"><Sparkles size={13} />G-Agent</div>
               {/* Granular 5-step reasoning card, active step derived from the live progress. */}
               <div className="mb-3 flex flex-col gap-1.5">
                 {EDITOR_STEPS.map((ph, i) => {
@@ -1649,7 +1655,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                     <div key={i} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] transition-all ${state === 'active' ? 'bg-app-accent/12 text-app-text ring-1 ring-app-accent/30' : state === 'done' ? 'text-app-muted/70' : 'text-app-muted/40'}`}>
                       <span className="text-[15px] leading-none">{state === 'done' ? '✅' : ph.icon}</span>
                       <span className="min-w-0 flex-1 font-medium">{norm(locale) === 'en' ? ph.en : norm(locale) === 'ru' ? ph.ru : ph.ka}</span>
-                      {state === 'active' && <Loader2 size={13} className="shrink-0 animate-spin text-app-accent" />}
+                      {state === 'active' && <span aria-hidden="true" className="h-[7px] w-[7px] shrink-0 rounded-full bg-app-accent" />}
                     </div>
                   );
                 })}

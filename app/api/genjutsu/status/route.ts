@@ -17,6 +17,11 @@
  * refund is by ref (what the LEDGER shows, once as `${ref}:refund`), so this poll, a repeat poll and the render drainer
  * collapse to ONE credit-back. A finished clip is re-hosted at a fixed path, so a re-poll re-signs the same object.
  *
+ * ⚠️ A VOICED AVATAR (`::v` in the signed id, app/api/avatar/veo) is shown only WITH its ElevenLabs line: Veo's own
+ * voice is replaced by the line stored before the charge, fitted onto where Veo spoke (lib/avatar/voicedClip), and until
+ * that lands the job reads `delivering` — never a silent avatar, and the hard cap below still refunds one that never
+ * gets its voice.
+ *
  * ⚠️ maxDuration 120 here; vercel.json's `app/api/**` glob (15 s) overrides it unless `app/api/genjutsu/**` is added
  * there, and the Gemini-transport watermark crop needs ffmpeg-static traced for this route (next.config.js
  * outputFileTracingIncludes) — both are integrator actions listed in the branch report. Without the trace the clip is
@@ -27,6 +32,7 @@ import { genjutsuChargeForPolledId, genjutsuJobId, parseVeoJobId, uuidFromRef } 
 import { hfJobIdFromPublic, hfJobView } from '@/lib/genjutsu/hfMotion';
 import { GENJUTSU_HARD_CAP_MS, fail } from '@/lib/genjutsu/serverCommon';
 import { pollScene } from '@/lib/genjutsu/veoScene';
+import { deliverVoicedAvatar } from '@/lib/avatar/voicedClip';
 import { reportError } from '@/lib/observability/report-error';
 import { failJob, jobSnapshot, recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { refundDebitByRef } from '@/lib/orchestrator/ledger';
@@ -81,20 +87,29 @@ async function veoScene(id: string, userId: string): Promise<NextResponse> {
   }
 
   if (progress.state === 'ready') {
-    // File it in the Library once: a re-poll of a finished job must not re-fire the completion notification.
-    const snap = rowId ? await jobSnapshot(rowId) : null;
-    if (rowId && snap?.status !== 'completed') {
-      await recordCompletedFilm({
-        id: rowId, userId, url: progress.url, prompt: 'VFX scene', orientation: job.aspect === '9:16' ? 'vertical' : 'landscape',
-        result: { url: progress.url, kind: 'video', vfx: true, op: 'scene' }, subtype: 'vfx',
-      });
+    // A voiced avatar is its clip WITH its line; a miss is "still delivering" until the cap below.
+    const url = job.voiced ? (uuid ? await deliverVoicedAvatar(progress.url, uuid) : null) : progress.url;
+    if (url) {
+      // File it in the Library once: a re-poll of a finished job must not re-fire the completion notification.
+      const snap = rowId ? await jobSnapshot(rowId) : null;
+      if (rowId && snap?.status !== 'completed') {
+        await recordCompletedFilm(job.voiced
+          ? {
+            id: rowId, userId, url, prompt: 'Avatar', orientation: job.aspect === '9:16' ? 'vertical' : 'landscape',
+            result: { url, kind: 'video', op: 'avatar', voice: 'elevenlabs' }, subtype: 'avatar',
+          }
+          : {
+            id: rowId, userId, url, prompt: 'VFX scene', orientation: job.aspect === '9:16' ? 'vertical' : 'landscape',
+            result: { url, kind: 'video', vfx: true, op: 'scene' }, subtype: 'vfx',
+          });
+      }
+      return NextResponse.json({ success: true, done: true, state: 'ready', videoUrl: url }, { headers: noStore });
     }
-    return NextResponse.json({ success: true, done: true, state: 'ready', videoUrl: progress.url }, { headers: noStore });
   }
 
   // processing | delivering — but never forever.
   if (Date.now() - job.createdMs > GENJUTSU_HARD_CAP_MS) return giveUp('provider_unavailable', 'no delivered clip within the cap');
-  return NextResponse.json({ success: true, done: false, state: progress.state }, { headers: noStore });
+  return NextResponse.json({ success: true, done: false, state: progress.state === 'ready' ? 'delivering' : progress.state }, { headers: noStore });
 }
 
 // ─── Higgsfield (the studio saga) ───────────────────────────────────────────────────────────────────────────────

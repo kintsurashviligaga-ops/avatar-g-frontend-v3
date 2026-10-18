@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { generateImagenImages, hasGeminiImagenProvider, geminiImagenModel } from '@/lib/ai/geminiImagen';
 import type { ServiceType as BillingServiceType } from '@/lib/services/billing/costModel';
 import { z } from 'zod';
@@ -27,6 +28,7 @@ import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { hasRunwayProvider, runwayModel, createRunwayI2V, pollRunwayTask } from '@/lib/ai/runway';
 import { createVeoClip, pollVeoClip, transportOf, veoTransport } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
+import { veoSafetyCategory } from '@/lib/veo/safetyCodes';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
@@ -58,6 +60,16 @@ const REPLICATE_LTX_VIDEO_VERSION =
   process.env.REPLICATE_LTX_VIDEO_VERSION ||
   '8c47da666861d081eeb4d1261853087de23923a268a69b63febdf5dc1dee08e4';
 const TASK_REF_VERSION = 1;
+
+// Veo refusals already written to the log, per warm instance. Bounded: past the cap it starts over, which at worst
+// repeats a line.
+const loggedVeoDeclines = new Set<string>();
+function firstVeoDecline(key: string): boolean {
+  if (loggedVeoDeclines.has(key)) return false;
+  if (loggedVeoDeclines.size >= 500) loggedVeoDeclines.clear();
+  loggedVeoDeclines.add(key);
+  return true;
+}
 
 // PHASE 47 §3 — Radical agent recovery. A film clip's LTX dispatch is retried up
 // to 3 times with exponential backoff before the master agent falls back to the
@@ -327,7 +339,7 @@ export class ServiceManager {
           provider: 'replicate',
           operation,
           responseType: operation === 'text-to-image' ? 'image' : 'video',
-          message: 'The platform API budget for this period is exhausted. Please try again later.',
+          message: budgetRefusalMessage(request.locale, err.reason),
           predictionStatus: 'failed',
           metadata: {
             provider: 'replicate' as const,
@@ -1141,6 +1153,9 @@ export class ServiceManager {
     const cameraControl = move ? nativeCameraControl(move as CameraMove) : undefined; // unknown move → undefined
     const ordinal = Number.parseInt(this.getOption(opts, ['sceneOrdinal']) ?? '', 10);
     const media = (url: string): VeoMedia => ({ kind: 'url', url });
+    // Film frame chaining: the clip ENDS on the next scene's first frame (Veo first→last interpolation), so the
+    // cut to the next clip is a match cut instead of a jump in framing, light and pose. Only with a first frame.
+    const endFrame = !references.length && startImage ? this.getOption(opts, ['veoEndFrame']) : undefined;
 
     const result = await createVeoClip({
       request: {
@@ -1153,8 +1168,9 @@ export class ServiceManager {
         generateAudio: flag('veoGenerateAudio') ?? true,
         ...(flag('veoEnhancePrompt') ? { enhancePrompt: true } : {}),
         ...(negativePrompt ? { negativePrompt } : {}),
-        ...(references.length ? { referenceImages: references.map(media) } : startImage ? { startImage: media(startImage) } : {}),
-        ...(cameraControl ? { cameraControl } : {}),
+        ...(references.length ? { referenceImages: references.map(media) } : startImage ? { startImage: media(startImage), ...(endFrame ? { lastFrame: media(endFrame) } : {}) } : {}),
+        // The two frames already define the move; a native camera move on top would fight the interpolation.
+        ...(cameraControl && !endFrame ? { cameraControl } : {}),
       },
       ...(tier ? { tier } : {}),
       sessionId: request.sessionId,
@@ -1226,10 +1242,27 @@ export class ServiceManager {
       // it; the raw Veo file is key- or IAM-gated, so it can never be handed to the browser as-is.
       return failed(`${engine} post-processing failed.`);
     }
+    // ⚠️ GOOGLE'S REASON WAS THROWN AWAY HERE. Both branches returned a fixed sentence and logged nothing, so the ad film's
+    // scene 2 (2026-10-15) left only "generation failed" behind; the why (a likeness refusal, support code 15236754) had to
+    // be read back from Google by hand. The reason goes to the server log; the category (never the raw text, which can
+    // echo the prompt) goes to the film, which names the scene and the rule to the person who asked for it.
     if (r.state === 'filtered') {
-      return failed(`${engine} declined this scene under Google's safety rules. Rephrase it and render again.`, { veoFiltered: true });
+      const category = veoSafetyCategory(r.supportCodes);
+      // Once per operation: the film polls a finished operation on every tick, so the same refusal was written six times.
+      if (firstVeoDecline(`${operation}|${r.supportCodes.join(',')}`)) {
+        console.warn(`[veo] scene declined by Google (${category ?? 'unlisted code'}) op=${operation.slice(-40)} codes=${r.supportCodes.join(',') || 'none'}: ${r.reason}`);
+      }
+      const why = category === 'celebrity' ? ': Google judged the person to look like a well-known public figure' : category ? ` (${category.replace('_', ' ')})` : '';
+      return failed(`${engine} declined this scene under Google's safety rules${why}.`, {
+        veoFiltered: true,
+        veoSafetyCategory: category,
+        veoSupportCodes: r.supportCodes.slice(0, 4),
+      });
     }
-    if (r.state === 'failed') return failed(`${engine} generation failed.`);
+    if (r.state === 'failed') {
+      console.warn(`[veo] scene failed op=${operation.slice(-40)}${r.code !== undefined ? ` code=${r.code}` : ''}${r.finished ? ' (done)' : ''}: ${r.reason}`);
+      return failed(`${engine} generation failed.`);
+    }
     return {
       success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
       message: `${engine} rendering…`, predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,

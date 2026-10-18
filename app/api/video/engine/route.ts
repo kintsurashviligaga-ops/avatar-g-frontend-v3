@@ -7,6 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { isTruthyFlag } from '@/lib/env/flag';
+import { veoCapEnforced } from '@/lib/veo/dailyCap';
 import { veoTransport } from '@/lib/veo/engine';
 import { isGoogleOnly } from '@/lib/veo/policy';
 
@@ -26,6 +27,8 @@ export interface VideoEngineInfo {
   enhancePrompt: boolean;
   /** The schema-only cameraControl field is sent (Vertex + VEO_NATIVE_CAMERA_CONTROL=1); otherwise camera = prompt only. */
   nativeCameraControl: boolean;
+  /** The hard daily Veo ceiling (VEO_DAILY_LIMIT_USD) is configured on this deployment. Never the figure itself. */
+  dailyCap: boolean;
 }
 
 export async function GET() {
@@ -37,6 +40,7 @@ export async function GET() {
     audioToggle: vertex,
     enhancePrompt: false,
     nativeCameraControl: vertex && isTruthyFlag(process.env.VEO_NATIVE_CAMERA_CONTROL),
+    dailyCap: veoCapEnforced(),
   };
   return NextResponse.json(body, { headers: { 'Cache-Control': 'private, max-age=60' } });
 }

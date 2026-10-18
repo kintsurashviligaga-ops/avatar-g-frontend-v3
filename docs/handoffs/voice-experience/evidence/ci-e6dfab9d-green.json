@@ -1,0 +1,72 @@
+{
+  "sha": "e6dfab9dcd57ba133a16c66ca7b847c967fe7800",
+  "checks": [
+    {
+      "name": "Vercel Preview Comments",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/runs/115963617703"
+    },
+    {
+      "name": "billing on real Postgres",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38595707859/job/115962449905"
+    },
+    {
+      "name": "live E2E (local Supabase, desktop + phone)",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38595707859/job/115962449066"
+    },
+    {
+      "name": "simulated-browser",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38595707855/job/115962403819"
+    },
+    {
+      "name": "verify",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38595707862/job/115962276164"
+    },
+    {
+      "name": "preview-e2e",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38595709035/job/115961772162"
+    }
+  ],
+  "jobs": {
+    "115962403819": [
+      "2026-10-14T16:16:15.4245462Z Test Suites: 49 passed, 49 total",
+      "2026-10-14T16:16:15.4246043Z Tests:       1030 passed, 1030 total",
+      "2026-10-14T16:20:04.8808810Z   13 passed (3.8m)"
+    ],
+    "115962276164": [
+      "2026-10-14T16:20:54.4989187Z Test Suites: 7 skipped, 900 passed, 900 of 907 total",
+      "2026-10-14T16:20:54.4990468Z Tests:       67 skipped, 13888 passed, 13955 total",
+      "2026-10-14T16:22:22.2344362Z  \u2713 Compiled successfully"
+    ],
+    "115962449066": [
+      "2026-10-14T16:14:05.5398277Z  \u2713 Compiled successfully",
+      "2026-10-14T16:30:50.4087983Z   35 passed (15.7m)"
+    ],
+    "115962449905": [
+      "2026-10-14T16:12:32.0319063Z Test Suites: 1 passed, 1 total",
+      "2026-10-14T16:12:32.0319688Z Tests:       9 passed, 9 total",
+      "2026-10-14T16:12:33.5237051Z Test Suites: 1 passed, 1 total",
+      "2026-10-14T16:12:33.5238261Z Tests:       1 skipped, 7 passed, 8 total",
+      "2026-10-14T16:12:37.0896296Z Test Suites: 1 passed, 1 total",
+      "2026-10-14T16:12:37.0897403Z Tests:       1 skipped, 7 passed, 8 total",
+      "2026-10-14T16:12:39.6120433Z Test Suites: 1 passed, 1 total",
+      "2026-10-14T16:12:39.6120984Z Tests:       9 passed, 9 total",
+      "2026-10-14T16:13:07.4867001Z Test Suites: 1 passed, 1 total",
+      "2026-10-14T16:13:07.4867850Z Tests:       6 passed, 6 total",
+      "2026-10-14T16:13:09.7155675Z Test Suites: 1 passed, 1 total",
+      "2026-10-14T16:13:09.7156316Z Tests:       4 passed, 4 total",
+      "2026-10-14T16:13:11.1004444Z Test Suites: 1 passed, 1 total",
+      "2026-10-14T16:13:11.1005207Z Tests:       1 passed, 1 total",
+      "2026-10-14T16:13:15.9714459Z Test Suites: 1 passed, 1 total",
+      "2026-10-14T16:13:15.9714884Z Tests:       7 passed, 7 total"
+    ],
+    "115961772162": [
+      "2026-10-14T16:13:04.4788738Z   5 passed (1.6m)"
+    ]
+  }
+}

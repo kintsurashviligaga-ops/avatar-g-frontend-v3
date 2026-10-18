@@ -8,8 +8,8 @@ import { LoadingLoop } from './LoadingLoop';
  * ResultCard — one tile for a generation from the moment it is asked for to the moment it is on screen:
  * queued → rendering → finalizing → ready (or error). The tile has the RESULT's shape from the start (a 9:16
  * video is a 9:16 tile while it renders), so the feed does not jump when the media arrives, and what the user
- * watches while waiting is the loading loop (./LoadingLoop: the avatar forming out of light, the owner's clip,
- * 2026-10-09) under a thin accent bar — not a spinner (docs/DESIGN.md §5, §8).
+ * watches while waiting is the loading loop (./LoadingLoop: the owner's blue wave clip,
+ * 2026-10-17) under a thin accent bar — not a spinner (docs/DESIGN.md §5, §8).
  *
  * Honest progress, same rules as GenerationProgress: a server-reported percent wins; otherwise elapsed / cap,
  * held at 92 % until the job is actually ready. The bar never claims "done" on a guess.
@@ -134,7 +134,7 @@ export function ResultCard({
       >
         {state === 'ready' && media ? (
           media.type === 'video' ? (
-            <video src={media.url} poster={media.poster ?? undefined} controls playsInline preload="metadata" className="h-full w-full bg-black object-contain" />
+            <video src={media.url} poster={media.poster ?? undefined} controls playsInline preload="metadata" aria-label={`${kindLabel} · ${c.ready}`} className="h-full w-full bg-black object-contain" />
           ) : onOpen ? (
             <button type="button" onClick={onOpen} className="block h-full w-full cursor-zoom-in" aria-label={c.open}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -154,8 +154,9 @@ export function ResultCard({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={poster} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-md" />
             )}
+            {/* An error carries its own warning icon and text in the centre; the kind icon sat on top of that text. */}
             {state !== 'error' && <div aria-hidden="true" className="result-shimmer absolute inset-0" />}
-            <Icon aria-hidden="true" size={size === 'tile' ? 18 : 22} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-app-text/20" />
+            {state !== 'error' && <Icon aria-hidden="true" size={size === 'tile' ? 18 : 22} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-app-text/20" />}
           </>
         )}
 

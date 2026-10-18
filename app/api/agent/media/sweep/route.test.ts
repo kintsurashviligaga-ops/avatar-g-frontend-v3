@@ -27,6 +27,10 @@ const mockMarker = jest.fn();
 jest.mock('../../../../../lib/observability/reliability', () => ({ opsMarker: (...a: unknown[]) => mockMarker(...a) }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: () => false }));
 
+const mockImageSweep = jest.fn(async () => ({ waiting: 0, exhausted: 0, unsettled: 0 }));
+jest.mock('../../../../../lib/image/studio/engine', () => ({ sweepImages: (...args: unknown[]) => mockImageSweep(...(args as [])) }));
+jest.mock('../../../../../lib/image/studio/live', () => ({ liveImageDeps: () => ({ image: true }) }));
+
 import { GET } from './route';
 
 const ENV = { ...process.env };
@@ -72,6 +76,7 @@ test('open: one sweep of each queue as one worker, and their reports; a throw is
     audio: { gaveUp: [], waiting: ['x'], worked: { jobId: 'x', result: { ran: true, outcome: 'delivered', audioUrl: 'u' } } },
     edit: { gaveUp: [], waiting: [] },
     runs: { ticked: 2, ended: 1 },
+    image: { waiting: 0, exhausted: 0, unsettled: 0 },
   });
   expect(mockRunSweep).toHaveBeenCalledWith({ runs: true }, { limit: 10 });
   expect(mockSweep).toHaveBeenCalledWith({ live: true }, { worker: 'w-cron', work: true });
@@ -115,4 +120,26 @@ test('what the sweep cannot finish itself is raised as an alert line; a quiet sw
   mockSweep.mockRejectedValueOnce(new Error('db down'));
   expect((await call('Bearer s3cret')).status).toBe(500);
   expect(mockMarker).toHaveBeenCalledWith('error', 'agent_g_sweep_failure', { error: 'db down' });
+});
+
+test('image recovery runs one job only when the existing media lanes did not work', async () => {
+  process.env.AGENT_G_MEDIA_EXEC = 'on';
+  mockSweep.mockResolvedValue({ gaveUp: [], paid: [], waiting: [] });
+  mockAudioSweep.mockResolvedValue({ gaveUp: [], waiting: [] });
+  await call('Bearer s3cret');
+  expect(mockImageSweep).toHaveBeenCalledWith({ image: true }, 'w-cron', true);
+  mockEditSweep.mockResolvedValueOnce({ gaveUp: [], waiting: [], worked: { jobId: 'e', result: { ran: true } } } as never);
+  await call('Bearer s3cret');
+  expect(mockImageSweep).toHaveBeenLastCalledWith({ image: true }, 'w-cron', false);
+});
+
+test('image recovery failure is reported without failing the other media lanes', async () => {
+  process.env.AGENT_G_MEDIA_EXEC = 'on';
+  mockSweep.mockResolvedValue({ gaveUp: [], paid: [], waiting: [] });
+  mockAudioSweep.mockResolvedValue({ gaveUp: [], waiting: [] });
+  mockImageSweep.mockRejectedValueOnce(new Error('image unavailable'));
+  const result = await call('Bearer s3cret');
+  expect(result.status).toBe(200);
+  expect(await result.json()).toMatchObject({ image: { unavailable: true } });
+  expect(mockMarker).toHaveBeenCalledWith('error', 'image_studio_sweep_failure', {});
 });

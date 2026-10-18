@@ -65,6 +65,25 @@ test('submits ONE 8 s reference-to-video request: the references as our own URLs
   expect(SCENE_NEGATIVE_PROMPT).not.toMatch(/logo|\btext\b/i);
 });
 
+test('a scene asked for no sound renders silent at the silent rate; every other scene keeps its sound', async () => {
+  (veoTransport as jest.Mock).mockReturnValue('vertex');
+  await submitScene({ ...input, referenceUrls: [], startImageUrl: 'https://signed.example/face.jpg', audio: false });
+  expect((createVeoClip as jest.Mock).mock.calls[0]![0].request.generateAudio).toBe(false);
+  const silent = (guardedCall as jest.Mock).mock.calls[0]![0].unitCostUsd;
+  await submitScene({ ...input, referenceUrls: [], startImageUrl: 'https://signed.example/face.jpg' });
+  expect((createVeoClip as jest.Mock).mock.calls[1]![0].request.generateAudio).toBe(true);
+  expect(silent).toBeLessThan((guardedCall as jest.Mock).mock.calls[1]![0].unitCostUsd);
+});
+
+test('a first frame carries its resizeMode to the request; references never do', async () => {
+  await submitScene({ ...input, referenceUrls: [], startImageUrl: 'https://signed.example/face.jpg', resizeMode: 'crop' });
+  const withFace = (createVeoClip as jest.Mock).mock.calls[0]![0].request;
+  expect(withFace.startImage).toEqual({ kind: 'url', url: 'https://signed.example/face.jpg' });
+  expect(withFace.resizeMode).toBe('crop');
+  await submitScene({ ...input, resizeMode: 'crop' });
+  expect((createVeoClip as jest.Mock).mock.calls[1]![0].request.resizeMode).toBeUndefined();
+});
+
 test('Standard quality renders on the Standard tier; no photos means no referenceImages at all', async () => {
   await submitScene({ ...input, quality: 'standard', referenceUrls: [] });
   const arg = (createVeoClip as jest.Mock).mock.calls[0]![0];

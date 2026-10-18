@@ -3,7 +3,7 @@
 /**
  * MusicCreatePanel — the Music tool's Create screen, element for element as ref2:
  *
- *   title row  a Simple | Advanced switch · the engine pill (the real engine, or "Auto")
+ *   title row  a Simple | Advanced switch · the engine pill (the real engine, or "Auto"; in Simple only once an engine is picked)
  *   "+ Audio | + Voice"
  *   LYRICS card   — wand · textarea · [library] [✓ Instrumental] [camera] … [expand]
  *   STYLES card   — wand · textarea · [library] ‹style chips› [expand]
@@ -100,12 +100,14 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
   const cc = musicCreateCopy(locale);
 
   // ── view state ────────────────────────────────────────────────────────────────────────────────────────
-  const [uiMode, setUiModeState] = useState<MusicUiMode>('advanced');
+  // Simple first (GG 2026-10-18): one description and Create; lyrics, the 19 genres and the sliders are Advanced's. A person who
+  // chose Advanced gets it back (the key is written only by their own tap).
+  const [uiMode, setUiModeState] = useState<MusicUiMode>('simple');
   useEffect(() => {
     try {
       const v = window.localStorage.getItem(UI_MODE_KEY);
       if (v === 'simple' || v === 'advanced') setUiModeState(v);
-    } catch { /* private mode — Advanced */ }
+    } catch { /* private mode — Simple */ }
   }, []);
   const setUiMode = useCallback((m: MusicUiMode) => {
     setUiModeState(m);
@@ -249,7 +251,8 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
         locale={locale}
         uiMode={uiMode}
         onUiMode={setUiMode}
-        showEngine={!p.isDesktop}
+        // Simple keeps the engine out of sight while it is Auto; a picked engine stays named, so nothing runs unseen.
+        showEngine={!p.isDesktop && (!simple || pref !== 'auto')}
         engine={{
           label: enginePillLabel({ locale, pref, reference }),
           status,
@@ -283,9 +286,6 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
           onChange={p.onStyleText}
           instrumental={p.instrumental}
           onInstrumental={toggleInstrumental}
-          chips={p.styles}
-          onChips={p.onStyles}
-          chipOptions={p.styleOptions}
           wandBusy={styleBusy}
           onWand={() => void runStyleWand(setStyleNote)}
           note={styleNote}

@@ -21,6 +21,41 @@ import { GenerationProgress, type ProgressKind, type ProgressState } from './ui/
 
 type Lang = 'ka' | 'en' | 'ru';
 
+/**
+ * Rows the user closed with the tray's ✕. A render whose page died never writes its row again, so it stayed
+ * "1 active" on every device with nothing to close it (Production 2026-10-16, GG). Closing only HIDES it here (the
+ * job, its charge and its Library entry are untouched); kept a day per device, then forgotten.
+ */
+export const TRAY_HIDDEN_KEY = 'jobTray.hidden';
+const HIDDEN_TTL_MS = 24 * 60 * 60 * 1000;
+export function readHiddenJobs(now = Date.now()): Set<string> {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(TRAY_HIDDEN_KEY) || '{}') as Record<string, number>;
+    return new Set(Object.entries(raw).filter(([, at]) => typeof at === 'number' && now - at < HIDDEN_TTL_MS).map(([id]) => id));
+  } catch {
+    return new Set();
+  }
+}
+/** The tray folded to its header line (Production 2026-10-16, GG: "the user must be able to fold it"). Per device. */
+export const TRAY_COLLAPSED_KEY = 'jobTray.collapsed';
+function readCollapsed(): boolean {
+  try { return window.localStorage.getItem(TRAY_COLLAPSED_KEY) === '1'; } catch { return false; }
+}
+function rememberCollapsed(v: boolean): void {
+  try { window.localStorage.setItem(TRAY_COLLAPSED_KEY, v ? '1' : '0'); } catch { /* this page only */ }
+}
+export function rememberHiddenJobs(ids: readonly string[], now = Date.now()): void {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(TRAY_HIDDEN_KEY) || '{}') as Record<string, number>;
+    const kept: Record<string, number> = {};
+    for (const [id, at] of Object.entries(raw)) if (typeof at === 'number' && now - at < HIDDEN_TTL_MS) kept[id] = at;
+    for (const id of ids) kept[id] = now;
+    window.localStorage.setItem(TRAY_HIDDEN_KEY, JSON.stringify(kept));
+  } catch {
+    /* storage blocked: hidden for this page only */
+  }
+}
+
 
 function tr(locale: Lang) {
   const en = {
@@ -32,6 +67,9 @@ function tr(locale: Lang) {
     canceled: 'Canceled',
     cancel: 'Cancel',
     clear: 'Clear finished',
+    close: 'Hide renders',
+    collapse: 'Collapse renders',
+    expand: 'Show renders',
     waiting: 'Waiting for a free slot…',
     counts: (a: number, q: number) => `${a} active${q ? ` · ${q} queued` : ''}`,
   };
@@ -47,6 +85,9 @@ function tr(locale: Lang) {
       canceled: 'Отменено',
       cancel: 'Отмена',
       clear: 'Очистить',
+      close: 'Скрыть рендеры',
+      collapse: 'Свернуть рендеры',
+      expand: 'Показать рендеры',
       waiting: 'Ожидание свободного слота…',
     };
   }
@@ -61,6 +102,9 @@ function tr(locale: Lang) {
       canceled: 'გაუქმდა',
       cancel: 'გაუქმება',
       clear: 'გასუფთავება',
+      close: 'რენდერების დამალვა',
+      collapse: 'რენდერების ჩაკეცვა',
+      expand: 'რენდერების ჩვენება',
       waiting: 'ცდის თავისუფალ სლოტს…',
       counts: (a: number, q: number) => `${a} აქტიური${q ? ` · ${q} რიგში` : ''}`,
     };
@@ -142,7 +186,8 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   // VECTOR 2 — auto-dismiss a SUCCESSFUL render 4s after it lands, so the green "მზადაა" row never
   // lingers forever. Only HIDES it from the tray (the durable data log is untouched); failed /
   // canceled rows stay visible so the user can see + retry them.
-  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  const [dismissed, setDismissed] = useState<Set<string>>(() => (typeof window === 'undefined' ? new Set() : readHiddenJobs()));
+  const [collapsed, setCollapsed] = useState<boolean>(() => (typeof window === 'undefined' ? false : readCollapsed()));
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const doneKey = jobs.filter((j) => j.status === 'done').map((j) => j.id).sort().join(',');
   useEffect(() => {
@@ -182,7 +227,9 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
       root.style.setProperty('--job-tray-h', '0px');
       return;
     }
-    const publish = () => root.style.setProperty('--job-tray-h', `${el.offsetHeight + 20}px`);
+    // On a desktop the tray sits at the top right, clear of the thread's end: no room is kept for it there.
+    const atBottom = () => typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 768px)').matches;
+    const publish = () => root.style.setProperty('--job-tray-h', atBottom() ? `${el.offsetHeight + 20}px` : '0px');
     publish();
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish);
     ro?.observe(el);
@@ -194,6 +241,11 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
 
   if (!shown) return null;
 
+  const hideAll = () => {
+    const ids = visible.map((j) => j.id);
+    rememberHiddenJobs(ids);
+    setDismissed((prev) => new Set([...prev, ...ids]));
+  };
   const anyFinished = visible.some((j) => j.status === 'done' || j.status === 'failed' || j.status === 'canceled');
   const activeCount = visible.filter((j) => j.status === 'rendering').length;
   const queuedCount = visible.filter((j) => j.status === 'queued').length;
@@ -202,7 +254,11 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
     <div
       ref={trayRef}
       data-testid="job-tray"
-      className="pointer-events-auto fixed z-[60] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md"
+      data-collapsed={collapsed ? 'true' : 'false'}
+      // ⚠️ NOT IN THE MIDDLE OF THE WORK AREA ON A DESKTOP (Production 2026-10-16, GG: the cards floated mid-screen over
+      // the chat and covered the work). From md up the tray is a compact card in the top right corner, beside the
+      // settings column; on a phone it stays above the composer (below), where the thread keeps room for it.
+      className="pointer-events-auto fixed z-[60] w-[260px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md bottom-[var(--tray-bottom)] md:bottom-auto md:top-[4.25rem]"
       // ⚠️ ABOVE THE COMPOSER, NOT ON IT. This used to be `bottom-3`, which is precisely where the
       // composer sits — so an active render covered "Describe…" and the Options row and made the input
       // unreachable, while duplicating progress the chat already showed inline. --composer-h is
@@ -213,26 +269,39 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
       // resolves against the LAYOUT viewport, which does not shrink when the keyboard opens. Without it
       // the tray sits behind the keyboard exactly when the user is typing. 0 when the keyboard is shut.
       // --settings-w: on a desktop the studio's settings column is on the right edge; the tray floats beside it, not over it.
-      style={{ bottom: 'calc(var(--composer-h, 0px) + var(--kb-inset, 0px) + 1.25rem + env(safe-area-inset-bottom, 0px))', right: 'calc(var(--settings-w, 0px) + 0.75rem)' }}
+      style={{ ['--tray-bottom' as string]: 'calc(var(--composer-h, 0px) + var(--kb-inset, 0px) + 1.25rem + env(safe-area-inset-bottom, 0px))', right: 'calc(var(--settings-w, 0px) + 0.75rem)' }}
     >
-      <div className="mb-2 flex items-center justify-between px-0.5">
+      <div className={`${collapsed ? '' : 'mb-2 '}flex items-center justify-between px-0.5`}>
         <p className="text-[12px] font-bold text-app-text">
           {t.title}
           <span className="ml-1.5 font-medium text-app-muted tabular-nums">
             {activeCount + queuedCount > 0 ? t.counts(activeCount, queuedCount) : ''}
           </span>
         </p>
-        {anyFinished && (
-          <button type="button" onClick={clearFinished} className="tap-44 relative text-[10.5px] font-medium text-app-muted transition-colors hover:text-app-accent">
-            {t.clear}
+        <div className="flex items-center gap-2">
+          {anyFinished && (
+            <button type="button" onClick={clearFinished} className="tap-44 relative text-[10.5px] font-medium text-app-muted transition-colors hover:text-app-accent">
+              {t.clear}
+            </button>
+          )}
+          <button type="button" data-testid="job-tray-collapse" aria-expanded={!collapsed} aria-label={collapsed ? t.expand : t.collapse} title={collapsed ? t.expand : t.collapse}
+            onClick={() => setCollapsed((c) => { rememberCollapsed(!c); return !c; })}
+            className="tap-44 relative flex h-6 w-6 items-center justify-center rounded-full text-[12px] leading-none text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            {collapsed ? '▾' : '▴'}
           </button>
-        )}
+          <button type="button" data-testid="job-tray-close" aria-label={t.close} title={t.close} onClick={hideAll}
+            className="tap-44 relative flex h-6 w-6 items-center justify-center rounded-full text-[14px] leading-none text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            ×
+          </button>
+        </div>
       </div>
-      <div className="flex max-h-[46vh] flex-col gap-1.5 overflow-y-auto overscroll-contain">
-        {visible.map((job) => (
-          <JobRow key={job.id} job={job} locale={locale} onCancel={cancel} />
-        ))}
-      </div>
+      {!collapsed && (
+        <div className="flex max-h-[46vh] flex-col gap-1.5 overflow-y-auto overscroll-contain">
+          {visible.map((job) => (
+            <JobRow key={job.id} job={job} locale={locale} onCancel={cancel} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

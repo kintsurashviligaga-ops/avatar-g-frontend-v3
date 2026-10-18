@@ -24,6 +24,8 @@ export interface ScribeResult {
   segments: DubbingSegment[];
   /** ISO-639-1 code Scribe detected, when the caller asked for auto-detect. */
   detectedLanguage: string | null;
+  /** Every word heard, in order, with its timing (spacing entries left out): a film narration's check and subtitles. */
+  words?: Array<{ text: string; startSec: number; endSec: number }>;
 }
 
 /** Scribe returns word-level items; utterances are rebuilt from them by speaker + gap. */
@@ -76,7 +78,7 @@ export function groupWordsIntoSegments(words: readonly ScribeWord[]): DubbingSeg
  */
 export async function transcribeWithScribe(
   audio: Buffer,
-  opts: { languageCode?: string | null; diarize?: boolean } = {},
+  opts: { languageCode?: string | null; diarize?: boolean; timeoutMs?: number } = {},
 ): Promise<ScribeResult | null> {
   const key = (process.env.ELEVENLABS_API_KEY || '').trim();
   if (!key || !audio?.byteLength) return null;
@@ -96,7 +98,7 @@ export async function transcribeWithScribe(
         method: 'POST',
         headers: { 'xi-api-key': key },
         body: form,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(opts.timeoutMs ?? TIMEOUT_MS),
       });
       if (!res.ok) {
         const body = await res.text().catch(() => '');
@@ -119,6 +121,14 @@ export async function transcribeWithScribe(
         text,
         segments,
         detectedLanguage: typeof j.language_code === 'string' ? j.language_code : null,
+        words: words.flatMap((w) => {
+          const t = typeof w?.text === 'string' ? w.text.trim() : '';
+          const start = Number(w?.start);
+          const end = Number(w?.end);
+          return w?.type !== 'spacing' && t && Number.isFinite(start) && Number.isFinite(end) && end >= start
+            ? [{ text: t, startSec: start, endSec: end }]
+            : [];
+        }),
       };
     });
   } catch (err) {

@@ -27,7 +27,7 @@ jest.mock('../ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: s
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => null) }));
 jest.mock('./promptAgent', () => ({ runPromptAgent: jest.fn(async () => null) }));
 jest.mock('./filmVoiceover', () => ({
-  generateFilmVoiceover: jest.fn(async () => null),
+  generateCheckedFilmVoiceover: jest.fn(async () => null),
   generateDialogueVoiceover: jest.fn(async () => null),
   generateDialogueStems: jest.fn(async () => null),
   dialogueStemsViable: jest.fn(() => false),
@@ -235,6 +235,18 @@ describe('refunds: only what this request proves it did not deliver', () => {
     expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(25);
     expect(String((mockRefund.mock.calls[0] as unknown[])[2])).toMatch(/:refund:dispatch$/);
     expect((await getFilmPaid(statusTokenOf(res)))?.credits).toBe(50);
+  });
+
+  test('the daily Veo ceiling refusing scene 2 (engine `quota`, not retryable) → that scene is refunded at dispatch and never re-posted', async () => {
+    const capped = { success: false, predictionStatus: 'failed', metadata: { veoFailure: { reason: 'quota', retryable: false } } };
+    let n = 0;
+    mockExecute.mockImplementation(async () => (++n === 2 ? capped : queued(n)));
+    const res = await handleFilmComposite(input({ sceneCount: 2, veo: veo('fast') }));
+    expect(res.success).toBe(true);
+    expect(mockExecute).toHaveBeenCalledTimes(2); // one dispatch per scene: a ceiling refusal is not retried
+    expect(mockRefund).toHaveBeenCalledTimes(1);
+    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(25);
+    expect(String((mockRefund.mock.calls[0] as unknown[])[2])).toMatch(/:refund:dispatch$/);
   });
 
   test('a failed refund is never claimed: the charge stays recorded as taken', async () => {

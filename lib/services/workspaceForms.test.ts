@@ -220,3 +220,27 @@ describe('reading the answers', () => {
     expect(extractOutputUrl({ url: 'javascript:alert(1)' })).toBeNull();
   });
 });
+
+// Final P0/P1 repair run: the button carries the number the route charges (docs/DESIGN.md §7).
+describe('form prices come from the route that charges them', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { formCredits, actionLabelWithPrice, SERVICE_FORMS } = require('./workspaceForms');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { AI_AGENT_COSTS } = require('../credits/aiAgentCosts');
+
+  it('Software shows the /api/ai copy price in ka, en and ru', () => {
+    const software = SERVICE_FORMS.software;
+    expect(formCredits(software)).toBe(AI_AGENT_COSTS.copy);
+    expect(actionLabelWithPrice(software, 'ka')).toBe(`კოდის დაწერა · ${AI_AGENT_COSTS.copy} კრედიტი`);
+    expect(actionLabelWithPrice(software, 'en')).toBe(`Write the code · ${AI_AGENT_COSTS.copy} credits`);
+    expect(actionLabelWithPrice(software, 'ru')).toBe(`Написать код · ${AI_AGENT_COSTS.copy} кр.`);
+  });
+
+  it('free text routes print no price', () => {
+    for (const [slug, form] of Object.entries(SERVICE_FORMS) as [string, { route: { kind: string }; actionLabel: Record<string, string> }][]) {
+      if (form.route.kind === 'code') continue;
+      expect({ slug, credits: formCredits(form) }).toEqual({ slug, credits: 0 });
+      expect(actionLabelWithPrice(form, 'en')).toBe(form.actionLabel.en);
+    }
+  });
+});

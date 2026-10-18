@@ -14,6 +14,8 @@ import {
   buildExtendRequest,
   durationOptions,
   effectiveCapabilities,
+  filmGraphicsRuns,
+  filmLipsyncRuns,
   freeSlotApplies,
   insertPromptToken,
   isLengthLocked,
@@ -21,10 +23,12 @@ import {
   lipsyncAddOnNote,
   lastOpenStopIndex,
   musicVideoIntroSec,
+  narrationCueApplies,
   openDuration,
   parseVideoCapabilities,
   referenceToken,
   tierPriceEffect,
+  veoSpeaksTypedLine,
   videoPriceRows,
   videoQuote,
   videoResolution,
@@ -104,10 +108,69 @@ describe('the lip-sync pass: its own charge, beside the film\'s (gap C2)', () =>
     expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true })).toBe(20);
   });
 
+  test('a documentary whose Veo clips speak the typed line runs no talking head and charges nothing for one', () => {
+    // The ad of 2026-10-15: two typed Georgian lines, Veo's sound on. Veo says them in-clip with the film's own face; the
+    // HeyGen talking head would cut a second, different face in over scene 2 and take 20 credits for it.
+    expect(filmLipsyncRuns({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: true })).toBe(false);
+    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: true })).toBe(0);
+    // Veo's sound off (Vertex): the clips are mute, so the talking head still speaks the line.
+    expect(filmLipsyncRuns({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: false })).toBe(true);
+    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: false })).toBe(20);
+    // A music video's singer is not speech Veo replaces: its switch alone decides.
+    expect(filmLipsyncRuns({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: false, veoSpeaks: true })).toBe(true);
+    expect(lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: true, veoSpeaks: true })).toBe(20);
+  });
+
   test('the line says when it is taken and that a failed pass gives it back, in all three languages', () => {
     expect(lipsyncAddOnNote(20, 'en')).toBe('+20 credits for lip-sync — taken only if it runs, returned if it fails');
     expect(lipsyncAddOnNote(20, 'ka')).toBe('+20 კრედიტი ლიპსინკისთვის — ჩამოიჭრება მხოლოდ თუ შესრულდება, ჩავარდნისას ბრუნდება');
     expect(lipsyncAddOnNote(20, 'ru')).toBe('+20 кредитов за липсинк — списываются, только если он запустится; при сбое возвращаются');
+  });
+});
+
+describe('the music-video graphics pass', () => {
+  test('runs on a music video only: a documentary or an advert keeps its clean film', () => {
+    expect(filmGraphicsRuns('musicvideo')).toBe(true);
+    expect(filmGraphicsRuns('documentary')).toBe(false);
+  });
+});
+
+describe('a typed character line: Veo says it, or the old voice path keeps it', () => {
+  // The owner's advert of 2026-10-15: one line per scene, a 16 s film = 2 scenes of 8 s.
+  const AD = 'წარმოგიდგენთ პირველ ქართულ ენოვან პლატფორმას მაი ავატარ ჯის ჩატს რომელიც ასრულებს ვიდეოპროდაქშენ სტუდიოს ყველა ფუნქციას.\n'
+    + 'საიტის მთავარი პერსონაჟი კი არის აგენტი ჯი, მას შეუძლია ხმოვანი დავალების მიღება და მისი სრული შესრულება.';
+
+  test('Veo speaks it when its sound is on and every line has a scene', () => {
+    expect(veoSpeaksTypedLine({ speech: AD, sceneCount: 2, nativeAudio: true })).toBe(true);
+    expect(veoSpeaksTypedLine({ speech: 'Hello there.', sceneCount: 2, nativeAudio: true })).toBe(true);
+  });
+
+  test('not with Veo\'s sound off, an empty line, more lines than scenes, or a line too long for a clip', () => {
+    expect(veoSpeaksTypedLine({ speech: AD, sceneCount: 2, nativeAudio: false })).toBe(false);
+    expect(veoSpeaksTypedLine({ speech: '   ', sceneCount: 2, nativeAudio: true })).toBe(false);
+    expect(veoSpeaksTypedLine({ speech: AD, sceneCount: 1, nativeAudio: true })).toBe(false);
+    expect(veoSpeaksTypedLine({ speech: 'ა'.repeat(201), sceneCount: 2, nativeAudio: true })).toBe(false);
+  });
+
+  test('the narrator cue no longer turns a line Veo speaks into a voice-over (the Narration chip is on by default)', () => {
+    expect(narrationCueApplies({ mode: 'documentary', narrationOn: true, myVoiceNarration: false, characterLineOnVeo: true })).toBe(false);
+    // Without a line Veo will say, the chip behaves exactly as before.
+    expect(narrationCueApplies({ mode: 'documentary', narrationOn: true, myVoiceNarration: false, characterLineOnVeo: false })).toBe(true);
+    expect(narrationCueApplies({ mode: 'documentary', narrationOn: false, myVoiceNarration: false, characterLineOnVeo: false })).toBe(false);
+  });
+
+  test('the user\'s own trained voice stays an explicit narrator; a music video never gets the cue', () => {
+    expect(narrationCueApplies({ mode: 'documentary', narrationOn: false, myVoiceNarration: true, characterLineOnVeo: true })).toBe(true);
+    expect(narrationCueApplies({ mode: 'musicvideo', narrationOn: true, myVoiceNarration: true, characterLineOnVeo: false })).toBe(false);
+  });
+
+  test('the add-on follows: a line Veo cannot take keeps the talking head and its charge', () => {
+    const long = 'ა'.repeat(201);
+    const veoSpeaks = veoSpeaksTypedLine({ speech: long, sceneCount: 2, nativeAudio: true });
+    expect(filmLipsyncRuns({ mode: 'documentary', lipsyncOn: true, hasDialogue: true, veoSpeaks })).toBe(true);
+    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: true, hasDialogue: true, veoSpeaks })).toBe(quoteCredits({ tool: 'avatar' }));
+    const adSpeaks = veoSpeaksTypedLine({ speech: AD, sceneCount: 2, nativeAudio: true });
+    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: true, hasDialogue: true, veoSpeaks: adSpeaks })).toBe(0);
   });
 });
 

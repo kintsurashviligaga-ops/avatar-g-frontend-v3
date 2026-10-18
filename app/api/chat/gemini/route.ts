@@ -57,7 +57,8 @@ import { savedFactsBlock } from '@/lib/memory/context';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, refundRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isReplyLocale, resolveReplyLocale } from '@/lib/chat/replyLocale';
-import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { chatBudgetRefusal, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { anonymousGenerationAllowed, isAnonymousUser, signInToGenerateBody } from '@/lib/auth/generationGate';
 import {
   GUEST_GLOBAL_KEY,
@@ -87,6 +88,8 @@ import {
 } from '@/lib/chat/historySerializer';
 import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
+import { isAdminIdentity, type AdminCandidate } from '@/lib/auth/adminGuard';
+import { veoAvatarPublic } from '@/lib/avatar/veoAvatar';
 
 /** Derived from the helper's own return type — lib/supabase/server does not export its client alias. */
 type AnyAuthedClient = Awaited<ReturnType<typeof authedClientFromRequest>>['supabase'];
@@ -501,11 +504,16 @@ export async function POST(req: NextRequest) {
   // visitor may talk to it under lib/chat/guestChat: Fast only, text only, no grounding, short answers, capped per IP
   // AND for all guests together. A failed session lookup is treated as anonymous — fail closed into that policy.
   // CHAT_GUEST_ENABLED=0 restores the 401; FILM_ALLOW_ANONYMOUS=1 (demos) keeps its older, looser meaning.
-  const auth: { supabase: AnyAuthedClient | null; user: { id: string } | null } =
+  const auth: { supabase: AnyAuthedClient | null; user: ({ id: string } & AdminCandidate) | null } =
     await authedClientFromRequest(req).catch(() => ({ supabase: null, user: null }));
   const userId = auth.user?.id ?? null;
   /** The verified ACCOUNT, or null — a session id of "anonymous" is not an account (generationGate.isAnonymousUser). */
   const accountId = isAnonymousUser(userId) ? null : userId;
+  // The Veo talking avatar runs for the admin until GG opens it (app/api/avatar/veo), so the prompt offers the Avatar
+  // tool only to whoever that route lets through. Started here, read when the prompt is built.
+  const veoAvatarPromise: Promise<boolean> = veoAvatarPublic()
+    ? Promise.resolve(true)
+    : accountId ? isAdminIdentity(auth.user).catch(() => false) : Promise.resolve(false);
   const guest = !accountId && !anonymousGenerationAllowed();
   if (guest && !guestChatEnabled()) {
     const loc = requestLocale(req);
@@ -622,14 +630,14 @@ export async function POST(req: NextRequest) {
   // grounding is off for them (lib/chat/guestChat). The prompt is told either way, so a turn without the tool says it
   // cannot open links instead of "summarizing" a page it never read.
   const urlContextOn = !guest && wantsUrlContext(latestUserText);
-  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn });
+  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn, veoAvatar: await veoAvatarPromise });
   const modelMessages = toModelMessages(wire);
   const historyChars = wire.reduce((n, m) => n + estimateWireChars(m), 0);
 
   // Started now, awaited inside the stream: their latencies overlap each other and the Response is returned at once.
   // The budget estimate covers the platform prompt and the history text, not just the latest message, and is priced
   // at the mode's PRIMARY model — a Pro turn pre-checked at the flat Flash rate looked cheaper than it is.
-  const budgetPromise = chatBudgetAllows(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => true);
+  const budgetPromise = chatBudgetRefusal(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => null);
   const preamblesPromise: Promise<[string | null, string | null]> =
     auth.supabase && accountId
       ? Promise.all([
@@ -717,9 +725,11 @@ export async function POST(req: NextRequest) {
       try {
         // ── BUDGET GATE (Master Task §2.1.1) — in-stream, so a refusal is a normal assistant message, not a dead
         //    turn. Fails OPEN on a guard fault.
-        if (!(await budgetPromise)) {
+        const budgetRefused = await budgetPromise;
+        if (budgetRefused) {
           tryWrite({ meta: { provider: 'budget', model: 'none' } });
-          notice('budget', { afterText: false, retryable: false });
+          // Which limit, and when it lifts (2026-10-16: "try again later" left the owner guessing until midnight UTC).
+          notice('budget', { afterText: false, retryable: false, message: budgetRefusalMessage(noticeLocale, budgetRefused) });
           return;
         }
 

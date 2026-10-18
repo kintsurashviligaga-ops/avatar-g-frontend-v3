@@ -22,6 +22,8 @@ import {
   canProceed,
   checkThresholds,
   budgetMode,
+  dailyCeilingFor,
+  CHAT_DAILY_RESERVE_SHARE,
   allowedServices,
   usageWindow,
   limitsFromEnv,
@@ -75,9 +77,27 @@ describe('BillingGuard', () => {
   });
 
   it('allows a request that lands exactly ON the limit (boundary is inclusive)', () => {
-    const d = canProceed({ ...at(9.97, 50), estimatedCost: 0.03, service: 'image' });
+    const d = canProceed({ ...at(9.97, 50), estimatedCost: 0.03, service: 'chat' });
     expect(d.allowed).toBe(true);
     expect(d.projectedDaily).toBeCloseTo(10, 4);
+    // Media is held to the limit minus the chat reserve, with the same inclusive boundary.
+    expect(canProceed({ ...at(8.97, 50), estimatedCost: 0.03, service: 'image' }).allowed).toBe(true);
+  });
+
+  it('keeps the last tenth of the day for chat, so media spend never silences the assistant', () => {
+    // 2026-10-16: video tests used the whole day and every chat turn, live call and spoken reply was refused.
+    expect(dailyCeilingFor('chat', 10)).toBe(10);
+    expect(dailyCeilingFor('video', 10)).toBe(9);
+    expect(dailyCeilingFor('image', 20)).toBe(18);
+    const video = canProceed({ ...at(8.5, 50), estimatedCost: 0.96, service: 'video' });
+    expect(video).toMatchObject({ allowed: false, reason: 'daily_limit' });
+    const image = canProceed({ ...at(8.99, 50), estimatedCost: 0.03, service: 'image' });
+    expect(image).toMatchObject({ allowed: false, reason: 'daily_limit' });
+    // Chat still answers inside the reserve…
+    expect(canProceed({ ...at(9.5, 50), estimatedCost: 0.01, service: 'chat' })).toMatchObject({ allowed: true, reason: 'ok' });
+    // …and the owner's limit itself still holds for chat.
+    expect(canProceed({ ...at(9.995, 50), estimatedCost: 0.01, service: 'chat' })).toMatchObject({ allowed: false, reason: 'daily_limit' });
+    expect(CHAT_DAILY_RESERVE_SHARE).toBe(0.1);
   });
 
   it('correctly estimates cost for each service', () => {

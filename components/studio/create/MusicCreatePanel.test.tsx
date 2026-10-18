@@ -35,6 +35,8 @@ const respond = (body: unknown, status = 200) => Promise.resolve({ ok: status >=
 
 beforeEach(() => {
   window.localStorage.clear();
+  // Most tests below drive the Advanced screen; the Simple default has its own test.
+  window.localStorage.setItem('myavatar:music-ui-mode', 'advanced');
   resetMusicEnginesCache();
   useCreditsBalance.setState({ balance: 50, fetchedAt: Date.now(), inflight: null });
   fetchMock = jest.fn((url: string) => (String(url).includes('/api/ai/music/engines') ? respond(STATUS) : respond({})));
@@ -96,6 +98,32 @@ test('the elements are ref2\'s, in ref2\'s order: title · + Audio | + Voice · 
   expect(screen.getByPlaceholderText('Describe what you want your song to sound like')).toBeTruthy();
   expect(screen.queryByTestId('music-balance')).toBeNull(); // the balance is the shell's; the price is on Create
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/ai/music/engines', expect.anything()));
+});
+
+test('a first visit opens in Simple: one description card + Create, the genres only in Advanced (GG 2026-10-18)', () => {
+  window.localStorage.clear();
+  const { unmount } = render(<Host />);
+  expect(screen.getByTestId('music-mode-simple').getAttribute('aria-checked')).toBe('true'); // both options on screen, no menu
+  expect(screen.getByTestId('music-simple')).toBeTruthy();
+  // The engine is Auto, so Simple does not show it (it is technical: Advanced names it).
+  for (const gone of ['music-lyrics', 'music-styles-card', 'music-more', 'music-style-chips', 'music-add-audio', 'music-engine-pill']) expect(screen.queryByTestId(gone)).toBeNull();
+  expect(screen.getByTestId('music-create')).toBeTruthy();
+  expect(window.localStorage.getItem('myavatar:music-ui-mode')).toBeNull(); // nothing chosen, nothing stored
+  fireEvent.click(screen.getByTestId('music-mode-advanced'));
+  expect(screen.getByTestId('music-style-chips')).toBeTruthy();
+  expect(screen.getByTestId('music-engine-pill').textContent).toContain('Auto');
+  expect(window.localStorage.getItem('myavatar:music-ui-mode')).toBe('advanced');
+  unmount();
+  render(<Host />); // the choice is remembered
+  expect(screen.getByTestId('music-styles-card')).toBeTruthy();
+});
+
+test('an engine someone picked stays named in Simple, so nothing runs behind a hidden choice', async () => {
+  window.localStorage.clear();
+  window.localStorage.setItem(MUSIC_ENGINE_KEY, 'elevenlabs-music');
+  render(<Host />);
+  expect(screen.getByTestId('music-simple')).toBeTruthy();
+  await waitFor(() => expect(screen.getByTestId('music-engine-pill').textContent).toContain('ElevenLabs Music'));
 });
 
 test('Simple is one prompt card + Create; Advanced is the whole screen; the choice is remembered', () => {

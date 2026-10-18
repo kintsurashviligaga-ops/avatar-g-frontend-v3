@@ -80,6 +80,9 @@ export interface FilterGraphOpts {
   nativeAudio?: boolean[];
   /** Gain for the native diegetic lane (0–1.5). Default 0.9 — present and natural without burying narration. */
   nativeAudioVolume?: number;
+  /** Shot matching (lib/video/clipLook): clipLook[i] corrects clip i's exposure/saturation toward the film's median
+   *  BEFORE the shared grade, so one vivid and one dull clip stop jumping at the cut. null/absent → unchanged. */
+  clipLook?: ({ brightness: number; saturation: number } | null)[];
 }
 
 const XFADE: Record<string, string> = {
@@ -100,6 +103,12 @@ const CANVAS: Record<string, readonly [number, number]> = {
   square: [1080, 1080],
   portrait: [1080, 1350],
 };
+/** The per-clip grade; a shot-match correction folds into the same eq (one pass, no extra filter). */
+function clipEq(look: { brightness: number; saturation: number } | null | undefined): string {
+  if (!look) return 'eq=contrast=1.06:saturation=1.08:gamma=0.98';
+  const sat = Math.round(1.08 * look.saturation * 1000) / 1000;
+  return `eq=contrast=1.06:brightness=${look.brightness}:saturation=${sat}:gamma=0.98`;
+}
 const TRANSITION_SEC = 1; // 1s crossfade (offset = clipSec - 1)
 
 /**
@@ -242,7 +251,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
       // bug). `setpts=PTS-STARTPTS` rebases the trimmed clip to 0 for a clean
       // concat/xfade so each [v{i}] is precisely clipSec long.
       `[${i}:v]trim=0:${clipSec},setpts=PTS-STARTPTS,${fit},setsar=1,settb=AVTB,fps=${vfps},` +
-        `format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v${i}]`,
+        `format=yuv420p,${clipEq(opts.clipLook?.[i])},unsharp=3:3:0.3[v${i}]`,
     );
   }
   let vmap: string;
@@ -328,6 +337,11 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const sfxIdx = opts.hasSfx ? ai++ : null;
   const bg = [musicIdx, sfxIdx].filter((x): x is number => x !== null);
   const duck = Math.max(0, Math.min(1, opts.duckPct / 100));
+  // ⚠️ THE VOICE KEY RUNS THE WHOLE FILM. `sidechaincompress` ends when its key ends, so a 4 s narration keying the bed of a
+  // 16 s film cut the music (and the sfx) at 4 s, and the final `apad` filled the remaining 12 s with digital silence
+  // (live E2E 2026-10-17, film B: the narration and the score both stopped at 4.5 s). The voice is padded with silence to
+  // the film's length first, so the bed plays on, un-ducked, after the last word.
+  const voiceKeyPad = `apad=whole_dur=${targetDur.toFixed(2)}`;
 
   // Music-video song-master ducking: a deep, SMOOTH sidechain duck of the SFX bed
   // keyed off the song so the secondary backing drops ~−12 dB whenever the song's
@@ -385,7 +399,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
       // PHASE 27 (VECTOR 1) — the VOICE now keys TWO sidechain ducks (music AND sfx), so it is split
       // 3 ways: two keys + the audible copy. (Was asplit=2 with SFX riding a static gain, which risked
       // a loud soundscape — crowd roar / wind — drowning the ElevenLabs narration.)
-      parts.push(`[${voiceIdx}:a]asplit=3[vkeym][vkeys][vraw]`);
+      parts.push(`[${voiceIdx}:a]${voiceKeyPad},asplit=3[vkeym][vkeys][vraw]`);
       parts.push(`[vraw]volume=1.0[vmix]`);
       parts.push(`[musv][vkeym]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[musduck]`);
       // SFX ducked under the vocal: same threshold/ratio as music, a slightly slower 300ms release so the
@@ -423,7 +437,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     // dB→ratio via the SHARED duckRatio() map (identical to the 3-track path above). −12→12 · −18→17 · −6→8.
     const ratio = duckRatio(opts.duckDb, duck);
     if (smart) {
-      parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
+      parts.push(`[${voiceIdx}:a]${voiceKeyPad},asplit=2[vkey][vraw]`);
       parts.push(`[vraw]volume=1.25[vmix]`);
       parts.push(`${bgLabel}volume=0.6[bglow]`);
       parts.push(`[bglow][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[bgduck]`);

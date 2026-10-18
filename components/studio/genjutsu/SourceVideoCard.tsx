@@ -43,7 +43,7 @@ export function SourceVideoCard({ locale, video, busy, error, disabled, onPick, 
       {video ? (
         <div className="relative overflow-hidden rounded-2xl bg-black ring-1 ring-app-border/15">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- a preview of the user's own upload */}
-          <video src={video.previewUrl} muted playsInline preload="metadata" className="aspect-video w-full object-cover" />
+          <video src={video.previewUrl} muted playsInline preload="metadata" aria-label={c.videoTitle} className="aspect-video w-full object-cover" />
           <span data-testid="vfx-video-length" className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2.5 py-1 text-[12px] font-semibold tabular-nums text-white">
             {c.videoSeconds(formatSeconds(video.durationSec))}
           </span>

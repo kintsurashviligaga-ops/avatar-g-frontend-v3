@@ -334,6 +334,82 @@ export async function reSignIfInternal(url: string, expiresSec: number = SIGNED_
 }
 
 /**
+ * A fresh signed link to one of OUR Library media objects (renders, uploads, studio: never the twin bucket) that a
+ * SERVER-KEPT record names; anything else, or a link that cannot be signed now, comes back as given.
+ *
+ * ⚠️ ONLY FOR A LINK THE SERVER ITSELF STORED after it passed the caller check (a film's delivered stitch, read back for
+ * its owner: lib/chat/filmSceneRedo). A link a request supplied goes through lib/security/callerMedia first.
+ */
+export async function renewLibraryLink(
+  url: string,
+  expiresSec: number = SIGNED_URL_TTL_SEC,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
+  const ref = describeSupabaseObjectUrl(url, env);
+  if (!ref || ref.access !== 'sign' || !ownStorageHosts(env).has(ref.host) || !libraryMediaBuckets(env).has(ref.bucket)) return url;
+  return (await createSignedAssetUrl(ref.bucket, ref.path, expiresSec)) ?? url;
+}
+
+/** The claims of a storage URL token, read WITHOUT checking its signature (only storage can check that). */
+function unverifiedTokenClaims(token: string): Record<string, unknown> | null {
+  const part = token.split('.')[1];
+  if (!part) return null;
+  try {
+    const json = Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    const claims = JSON.parse(json) as unknown;
+    return claims && typeof claims === 'object' ? (claims as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Did OUR storage mint this signed link for exactly the object it names, whether or not it has expired since?
+ * True only for a SIGNED url on our host, in a Library media bucket, whose token names that same bucket/path and which
+ * storage either still honours or refuses for its age alone.
+ *
+ * ⚠️ A MANUAL SAVE FILED BEFORE POST PROBED IT (params.storage_verified) WAS NEVER RE-SIGNED, so it went dark when its
+ * stored token ran out (live 2026-10-18: every remix, character-swap, dub and overlay video in the Library answered
+ * 400 InvalidJWT "exp" and the browser showed "Unable to play media"). Its token is still proof: storage verifies a
+ * token's signature before it reads `exp`, so "\"exp\" claim timestamp check failed" means the signature was ours,
+ * and the token's own `url` claim says which object it was minted for. A forged token fails the signature, a token
+ * minted for another object fails the claim, and anything else storage says is a refusal.
+ */
+export async function provenOwnSignedLink(
+  url: string,
+  opts: { env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+): Promise<boolean> {
+  const env = opts.env ?? process.env;
+  const ref = describeSupabaseObjectUrl(url, env);
+  if (!ref || ref.access !== 'sign' || !ref.token || !ownStorageHosts(env).has(ref.host) || !libraryMediaBuckets(env).has(ref.bucket)) return false;
+  if (!url.toLowerCase().startsWith('https://')) return false;
+  const claims = unverifiedTokenClaims(ref.token);
+  if (!claims || claims.url !== `${ref.bucket}/${ref.path}`) return false;
+  const doFetch = opts.fetchImpl ?? fetch;
+  try {
+    const res = await doFetch(url, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-0' },
+      redirect: 'manual',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 5000),
+    });
+    if (res.status === 200 || res.status === 206) {
+      void res.body?.cancel().catch(() => undefined);
+      return true;
+    }
+    if (res.status !== 400) {
+      void res.body?.cancel().catch(() => undefined);
+      return false;
+    }
+    const body = (await res.json().catch(() => null)) as { error?: unknown; message?: unknown } | null;
+    return body?.error === 'InvalidJWT' && typeof body.message === 'string' && body.message.includes('"exp" claim timestamp check failed');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Upload a base64 fragment + return its signed URL.
  *
  * `expiresSec` defaults to the 15-minute internal-fragment TTL, but callers
@@ -402,11 +478,20 @@ export async function uploadBufferAndSign(
   const type = storageContentType(contentType, path);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const { error } = await Promise.race([
-        sb.storage.from(bucket).upload(path, buffer, { contentType: type, upsert: true }),
-        new Promise<{ error: { message: string } }>((resolve) =>
-          setTimeout(() => resolve({ error: { message: `upload timed out after ${UPLOAD_TIMEOUT_MS}ms` } }), UPLOAD_TIMEOUT_MS)),
-      ]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const result = await (async () => {
+        try {
+          return await Promise.race([
+            sb.storage.from(bucket).upload(path, buffer, { contentType: type, upsert: true }),
+            new Promise<{ error: { message: string } }>((resolve) => {
+              timer = setTimeout(() => resolve({ error: { message: `upload timed out after ${UPLOAD_TIMEOUT_MS}ms` } }), UPLOAD_TIMEOUT_MS);
+            }),
+          ]);
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
+      })();
+      const { error } = result;
       if (!error) return createSignedAssetUrl(bucket, path, expiresSec);
       // eslint-disable-next-line no-console
       console.warn(`[storage] buffer upload to ${bucket}/${path} failed (attempt ${attempt + 1}/2):`, error.message);

@@ -1,0 +1,17 @@
+{
+  "command": [
+    "node",
+    "node_modules/@playwright/test/cli.js",
+    "test",
+    "--config",
+    "playwright.image-studio.config.ts"
+  ],
+  "cwd": "/private/tmp/image-studio-pr58-aa0de1f7",
+  "deadlineSeconds": 300,
+  "startedAt": "2026-10-13T14:16:20.525657+00:00",
+  "timedOut": false,
+  "pid": 99032,
+  "exitCode": 0,
+  "elapsedSeconds": 58.704,
+  "finishedAt": "2026-10-13T14:17:19.229291+00:00"
+}

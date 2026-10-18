@@ -19,8 +19,8 @@ const VIEWPORTS = [
 ] as const;
 
 const TOOLS = [
-  { id: 'interior', title: 'Interior designer', order: ['header', 'upload', 'room', 'styles', 'prompt', 'chips', 'generate'] },
-  { id: 'photoshoot', title: 'Photographer', order: ['header', 'upload', 'presets', 'camera', 'prompt', 'chips', 'generate'] },
+  { id: 'interior', title: 'Interior designer', order: ['header', 'prompt', 'upload', 'room', 'styles', 'advanced', 'chips', 'generate'] },
+  { id: 'photoshoot', title: 'Photographer', order: ['header', 'prompt', 'upload', 'presets', 'advanced', 'chips', 'generate'] },
 ] as const;
 
 async function presetConsent(page: Page) {

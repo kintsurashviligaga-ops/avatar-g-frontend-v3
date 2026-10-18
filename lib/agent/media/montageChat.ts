@@ -22,6 +22,7 @@ import { isVideoQuestion } from '@/lib/chat/videoIntent';
 import type { MontageAspect } from '@/lib/services/montage/montagePlan';
 import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/services/montage/beatPlan';
 import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import type { MontageManifestItem } from './montageManifest';
 import { MAX_CLIPS, MAX_SOUNDS, asksNarration, wantsNoMusic, wantsOwnSound, wantsSilence } from './montageAsk';
 import type { UnsupportedMontageAsk } from './montageExec';
@@ -600,7 +601,8 @@ export function doneText(durationSec: number, locale: string, sound?: MontageQuo
 
 export type ChatErrorCode = MontageErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited' | 'approval_unclear';
 
-const ERR: Record<ChatErrorCode, Record<Lang, string>> = {
+// The budget codes are said by budgetRefusalMessage (errorText), not from this table.
+const ERR: Record<Exclude<ChatErrorCode, `budget_${string}`>, Record<Lang, string>> = {
   approval_unclear: { ka: 'შენი „კი“ ვერ გავიგე, ამიტომ არაფერი დამიწყია. თქვი „კი, დაიწყე“ ან დააჭირე Start-ს.', en: 'I did not hear a clear yes from you, so nothing was started. Say "yes, start" or tap Start.', ru: 'Я не услышал от вас чёткого «да», поэтому ничего не запущено. Скажите «да, начинай» или нажмите Start.' },
   bad_input: { ka: 'ფაილები ვერ მივიღე. მიამაგრე კლიპები და ერთი მუსიკა თავიდან.', en: 'The files did not come through. Attach the clips and one track again.', ru: 'Файлы не дошли. Прикрепите клипы и один трек снова.' },
   too_many_files: { ka: `ერთ მონტაჟში მაქსიმუმ ${MAX_CLIPS} კლიპი და ერთი მუსიკაა.`, en: `One edit takes up to ${MAX_CLIPS} clips and one track.`, ru: `В один монтаж — до ${MAX_CLIPS} клипов и один трек.` },
@@ -651,6 +653,8 @@ const ERR: Record<ChatErrorCode, Record<Lang, string>> = {
  */
 export function errorText(code: string | undefined, locale: string, files?: number[], names?: string[], detail?: MontageRefusalDetail): string {
   const lang = pick(locale);
+  // The platform's AI limit: which limit, and when it lifts — the one sentence every surface says (budgetMessage).
+  if (code?.startsWith('budget_')) return budgetRefusalMessage(lang, code.slice('budget_'.length));
   const row = (code && (ERR as Record<string, Record<Lang, string>>)[code]) || ERR.render_failed;
   const f = files?.length ? files.map((i) => fileName(names, i, lang)).join(', ') : (lang === 'en' ? 'One file' : lang === 'ru' ? 'Один файл' : 'ერთი ფაილი');
   const exact = code && detail ? refusalWithNumbers(code, lang, f, detail, files, names) : null;

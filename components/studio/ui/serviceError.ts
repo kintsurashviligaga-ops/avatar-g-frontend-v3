@@ -15,6 +15,8 @@
  * Every message says what happened AND what to do next, because "something went wrong" leaves the user
  * with nowhere to go.
  */
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
+
 export type ErrLang = 'ka' | 'en' | 'ru';
 
 type Known =
@@ -27,7 +29,16 @@ type Known =
   // `refunded: true` (see describeGenerationFailure).
   | 'generation_refunded'
   // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): a tool with no Google / ElevenLabs engine yet refuses before any charge.
-  | 'google_only';
+  | 'google_only'
+  // A music option outside Google Lyria (a cover, a sampled voice, another engine) — refused before any charge. It used
+  // to fall through to the loose /unsupported/ rule and read as „this format can't be read, try MP3 or WAV" (2026-10-16).
+  | 'option_unavailable'
+  // Final P0/P1 repair run: dubbing / decks stay off until the owner approves their price; the quote/confirm codes.
+  | 'pricing_not_approved' | 'duration_unmeasurable' | 'quote_invalid' | 'job_unavailable'
+  // The talking avatar's Georgian line (app/api/avatar/veo): ElevenLabs did not speak it, or it runs past the 8 s clip.
+  // Both are refused before any charge. `voice_off`: ElevenLabs refused it for good (a plan without the cloned Georgian
+  // voices, 2026-10-17 09:31Z) — a retry cannot help, so its copy never says "try again in a minute".
+  | 'voice_unavailable' | 'speech_too_long' | 'voice_off';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -49,7 +60,15 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'ბალანსის შემოწმება ვერ მოხერხდა. სცადე ცოტა ხანში — ზედმეტი თანხა არ ჩამოგეჭრება.',
     cannot_cancel: 'გენერაცია უკვე დაწყებულია და ვეღარ გაუქმდება. შედეგი მალე გამოჩნდება.',
     generation_refunded: 'გენერაცია ვერ შესრულდა — კრედიტები დაგიბრუნდათ.',
+    pricing_not_approved: 'ეს სერვისი ჯერ ხელმისაწვდომი არ არის — ფასი ჯერ დამტკიცებული არ არის. თანხა არ ჩამოგეჭრა.',
+    duration_unmeasurable: 'ვიდეოს ხანგრძლივობა ვერ წავიკითხეთ. სცადე სხვა ფაილით — თანხა არ ჩამოგეჭრა.',
+    quote_invalid: 'ფასი შეიცვალა ან ვადა გაუვიდა. ნახე ახალი ფასი და დაადასტურე ხელახლა — თანხა არ ჩამოგეჭრა.',
+    job_unavailable: 'სამუშაო ვერ ჩავწერეთ. სცადე ცოტა ხანში — თანხა არ ჩამოგეჭრა.',
     google_only: 'ეს ხელსაწყო დროებით შეჩერებულია, სანამ Google-ის ძრავაზე გადავა. თანხა არ ჩამოგეჭრა.',
+    option_unavailable: 'ეს არჩევანი მიუწვდომელია: აქ მხოლოდ Google-ის ძრავა მუშაობს. აირჩიე „ავტო“ ან მოხსენი ფაილი — თანხა არ ჩამოგეჭრა.',
+    voice_unavailable: 'ქართული ხმა ახლა ვერ შეიქმნა. სცადე ერთ წუთში — თანხა არ ჩამოგეჭრა.',
+    speech_too_long: 'ტექსტი ავატარის 8 წამს არ ეტევა. შეამოკლე და სცადე ხელახლა — თანხა არ ჩამოგეჭრა.',
+    voice_off: 'ქართული ხმა ახლა გამორთულია, ამიტომ ავატარი ვერ გაკეთდება. თანხა არ ჩამოგეჭრა.',
   },
   en: {
     insufficient_credits: 'Not enough credits. Top up your balance and try again.',
@@ -70,7 +89,15 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'We could not check your balance. Try again shortly — you will not be overcharged.',
     cannot_cancel: 'The generation has already started and can no longer be canceled. The result will appear soon.',
     generation_refunded: 'Generation failed — your credits were refunded.',
+    pricing_not_approved: 'This service is not available yet — its price has not been approved. You were not charged.',
+    duration_unmeasurable: 'We could not read the length of this video. Try another file — you were not charged.',
+    quote_invalid: 'The price changed or the quote expired. Check the new price and confirm again — you were not charged.',
+    job_unavailable: 'We could not record the job. Try again shortly — you were not charged.',
     google_only: 'This tool is paused while it moves to Google’s engines. You were not charged.',
+    option_unavailable: 'That option is not available: only Google’s engine runs here. Pick Auto or remove the file. You were not charged.',
+    voice_unavailable: 'The voice could not be made right now. Try again in a minute — you were not charged.',
+    speech_too_long: 'The line does not fit the avatar’s 8 seconds. Shorten it and try again — you were not charged.',
+    voice_off: 'The Georgian voice is switched off right now, so the avatar cannot be made. You were not charged.',
   },
   ru: {
     insufficient_credits: 'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
@@ -91,7 +118,15 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'Не удалось проверить баланс. Попробуйте чуть позже — лишнего не спишем.',
     cannot_cancel: 'Генерация уже началась и не может быть отменена. Результат скоро появится.',
     generation_refunded: 'Не удалось сгенерировать — кредиты возвращены.',
+    pricing_not_approved: 'Сервис пока недоступен — цена ещё не утверждена. Списания не было.',
+    duration_unmeasurable: 'Не удалось определить длительность видео. Попробуйте другой файл — списания не было.',
+    quote_invalid: 'Цена изменилась или срок предложения истёк. Проверьте новую цену и подтвердите снова — списания не было.',
+    job_unavailable: 'Не удалось записать задачу. Повторите чуть позже — списания не было.',
     google_only: 'Этот инструмент временно приостановлен на время перехода на движки Google. Списания не было.',
+    option_unavailable: 'Этот вариант недоступен: здесь работает только движок Google. Выберите «Авто» или уберите файл. Списания не было.',
+    voice_unavailable: 'Голос сейчас не удалось создать. Попробуйте через минуту — списания не было.',
+    speech_too_long: 'Текст не помещается в 8 секунд аватара. Сократите его и попробуйте снова — списания не было.',
+    voice_off: 'Грузинский голос сейчас отключён, поэтому аватар не получится. Списания не было.',
   },
 };
 
@@ -112,6 +147,14 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^ledger_unavailable$/, 'billing_unavailable'],
   [/^cannot_cancel$/, 'cannot_cancel'],
   [/^google_only$/, 'google_only'],
+  [/^unsupported$/, 'option_unavailable'],
+  [/^pricing_not_approved$/, 'pricing_not_approved'],
+  [/^duration_unmeasurable$/, 'duration_unmeasurable'],
+  [/^(quote_invalid|quote_price_changed)$/, 'quote_invalid'],
+  [/^job_unavailable$/, 'job_unavailable'],
+  [/^voice_unavailable$/, 'voice_unavailable'],
+  [/^speech_too_long$/, 'speech_too_long'],
+  [/^voice_off$/, 'voice_off'],
   [/^not_configured$/, 'provider_not_configured'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often
   // as "not enough". A false positive here is a slightly-wrong-but-actionable message; a miss is a
@@ -175,7 +218,13 @@ export function refundNoticeOr(body: unknown, locale: string, otherwise: string)
 
 export function describeGenerationFailure(body: unknown, locale: string, fallback: string): string {
   const lang: ErrLang = locale === 'en' || locale === 'ru' ? locale : 'ka';
-  const b = (body && typeof body === 'object' ? body : {}) as { success?: unknown; refunded?: unknown; code?: unknown; error?: unknown; message?: unknown };
+  const b = (body && typeof body === 'object' ? body : {}) as { success?: unknown; refunded?: unknown; code?: unknown; error?: unknown; message?: unknown; budgetReason?: unknown };
+  // The platform's own AI limit (lib/services/billing/budgetMessage): the route's sentence names the limit and when it
+  // lifts, which no generic line can. It wins over the refund notice, since it already says the balance was kept.
+  if (b.code === 'platform_budget' || b.error === 'platform_budget') {
+    if (typeof b.message === 'string' && b.message.trim()) return b.message;
+    return budgetRefusalMessage(lang, typeof b.budgetReason === 'string' ? b.budgetReason : null);
+  }
   if (b.refunded === true && b.success !== true) return COPY[lang].generation_refunded;
   for (const field of [b.code, b.error]) {
     const key = typeof field === 'string' && field.trim() ? knownFor(field.trim()) : null;

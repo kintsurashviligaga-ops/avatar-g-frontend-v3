@@ -17,12 +17,12 @@ describe('toolGroups — the studio menus come from the catalog', () => {
   it('groups the tools by catalog category, CREATE before WORK', () => {
     expect(groups.map((g) => [g.id, g.tools])).toEqual([
       ['agent-g', ['chat']],
-      ['video', ['video', 'product', 'swap', 'motion', 'vfx', 'remix', 'montage']],
-      ['image-photo', ['image', 'photoshoot', 'interior', 'photo']],
+      ['video', ['video', 'product', 'swap', 'motion', 'vfx', 'montage']],
+      ['image-photo', ['image', 'photoshoot', 'interior', 'photo', 'model3d']],
       ['avatar', ['avatar']],
       ['music', ['music']],
       ['voice-audio', ['dubbing']],
-      ['design', ['presentation', 'model3d']],
+      ['design', ['presentation']],
     ]);
     const order = groups.map((g) => g.group);
     expect(order.lastIndexOf('create')).toBeLessThan(order.indexOf('work'));
@@ -34,7 +34,8 @@ describe('toolGroups — the studio menus come from the catalog', () => {
 
   it('finds the group of a tool', () => {
     expect(groupOfTool('dubbing')?.id).toBe('voice-audio');
-    expect(groupOfTool('model3d')?.id).toBe('design');
+    expect(groupOfTool('model3d')?.id).toBe('image-photo');
+    expect(groupOfTool('presentation')?.id).toBe('design');
     expect(groupOfTool('chat')?.id).toBe('agent-g');
   });
 
@@ -48,5 +49,12 @@ describe('toolGroups — the studio menus come from the catalog', () => {
   it('labels every group in ka, en and ru', () => {
     for (const g of groups) for (const t of [g.label.ka, g.label.en, g.label.ru]) expect(t.trim()).not.toBe('');
     for (const t of Object.values(NAV_GROUP_LABEL)) expect(t.ka && t.en && t.ru).toBeTruthy();
+  });
+
+  it('names the categories for what they open, and offers no video remix (GG 2026-10-18)', () => {
+    const label = (id: string) => groups.find((g) => g.id === id)?.label;
+    expect(label('voice-audio')).toEqual({ ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' });
+    expect(label('design')).toEqual({ ka: 'პრეზენტაციები', en: 'Presentations', ru: 'Презентации' });
+    expect(groups.flatMap((g) => g.tools)).not.toContain('remix');
   });
 });

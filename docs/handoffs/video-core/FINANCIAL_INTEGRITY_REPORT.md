@@ -18,7 +18,9 @@ PostgREST (`scripts/lease-isolation/run.sh`, CI job "billing on real Postgres"),
 4. რასაც სერვერი ვერ მიაწოდა, ბრუნდება ზუსტად ერთხელ. Owner-ის არჩევანით (R3-A) ახლა ბრუნდება სცენაც, რომელიც Google-მა
    მიიღო და მერე ჩააგდო, მხოლოდ Google-ის საკუთარი პასუხით.
 5. ფასები უცვლელია (`lib/credits/videoPricing.ts`). ადმინს კოდი არასოდეს ჭრის.
-6. Production-ში ეს ყველაფერი ჯერ არ არის: საჭიროა მიგრაცია 20261014a და PR #69-ის deploy (**OWNER ACTION REQUIRED**).
+6. 2026-10-15-დან ეს Production-შია: მიგრაცია 20261014a (~11:32Z) და PR #69 (b46bb44, ~12:00Z). ადმინის ერთმა ფასიანმა
+   ტესტმა 0 კრედიტი დახარჯა (892 → 892), როგორც კოდი ამბობს (`VIDEO_CORE_PAID_E2E_EVIDENCE.md`). ჩვეულებრივი მომხმარებლის
+   ჩამოჭრა Production-ში ჯერ არ შემოწმებულა (**NOT TESTED** on Production; PG tier-ზე დამტკიცებულია).
 
 ## 1. The money path of a film (as built on PR #69)
 
@@ -59,7 +61,7 @@ CI on 979141f6, job "billing on real Postgres" (run 38721595510): `filmBilling.p
 | Google's bill for a failed operation | assumed $0 (Google bills generated seconds) | INFERENCE |
 | Debit on a real paid account in Production | Phase 5 runs as admin (owner's card 10:22Z "ადმინით"), so the debit is proven on real Postgres, not with money | NOT TESTED in T6 by the owner's choice |
 | Films on another engine | Production is Google-only for films; other engines are not recorded for R3-A | VERIFIED FACT (code) |
-| Every signed-in user can start a Veo film in Production today | after the Vertex switch their clips bill the Google Cloud project (budgets alert, no hard cap) | VERIFIED FACT (code: `providerRouter.ts` `refuseAnonymousGeneration` only); **OWNER ACTION REQUIRED** if this should be admin-only until the public opening |
+| Every signed-in user can start a Veo film in Production today | after the Vertex switch their clips bill the Google Cloud project; since PR #71 (2026-10-15) every Veo submit is refused once the day's reserved spend would pass `VEO_DAILY_LIMIT_USD` ($10 in Production, `lib/veo/dailyCap.ts`); the budgets still only alert | VERIFIED FACT (code: `providerRouter.ts` `refuseAnonymousGeneration` only); **OWNER ACTION REQUIRED** if this should be admin-only until the public opening |
 
 ## 4. Reconciliation (how to check the ledger after any film)
 

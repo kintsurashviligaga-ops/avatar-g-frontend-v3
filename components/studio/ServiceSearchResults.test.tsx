@@ -30,7 +30,7 @@ test('a coming-soon service is shown as unavailable and opens nothing', () => {
   expect(soon.textContent).toContain('Soon');
   fireEvent.click(soon);
   expect(onOpen).not.toHaveBeenCalled();
-  expect((container.querySelector('[data-service="video.remix"]') as HTMLElement).tagName).toBe('BUTTON');
+  expect(container.querySelector('[data-service="video.remix"]')).toBeNull(); // hidden (GG 2026-10-18)
 });
 
 test('Russian labels, and the row style of the menu', () => {

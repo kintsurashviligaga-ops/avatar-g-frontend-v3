@@ -52,3 +52,17 @@ describe('three orphan pages over tables Production does not have are retired (o
     ]) expect(existsSync(join(root, p))).toBe(false);
   });
 });
+
+describe('/create and /app land in the one window (final release FR-11: /ka/create answered 404)', () => {
+  test.each(['create', 'create/:path*', 'app', 'app/:path*'])('/{lang}/%s → /{lang} (307)', async (from) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const config = require('../../next.config.js') as { redirects: () => Promise<Redirect[]> };
+    const rule = (await config.redirects()).find((r) => r.source === `/:locale(ka|en|ru)/${from}`);
+    expect(rule).toEqual({ source: `/:locale(ka|en|ru)/${from}`, destination: '/:locale', permanent: false });
+  });
+
+  test('no page claims those paths, so the redirect is what answers', () => {
+    const root = join(__dirname, '..', '..');
+    for (const p of ['app/[locale]/create/page.tsx', 'app/[locale]/app/page.tsx']) expect(existsSync(join(root, p))).toBe(false);
+  });
+});

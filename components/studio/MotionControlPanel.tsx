@@ -7,22 +7,29 @@
  * photo + description, while the panel said it copied the video's motion. The slot is gone until a real engine exists.
  */
 import { useRef, useState } from 'react';
-import { Upload, Sparkles, Loader2, X, CheckCircle, AlertCircle, Music2, Mic } from 'lucide-react';
+import { Upload, X, CheckCircle, AlertCircle, Music2, Mic } from 'lucide-react';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { describeGenerationFailure } from './ui/serviceError';
 import { saveMedia } from '@/lib/media/saveMedia';
+import { LoadingLoop } from './ui/LoadingLoop';
+import { GenerateButton } from './ui/GenerateButton';
+import { openTopUp, useShortBalance } from './ui/useShortBalance';
+import { motionCredits } from '@/lib/credits/quote';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T: Record<Lang, Record<string, string>> = {
   ka: { char: 'პერსონაჟი', motion: 'მოძრაობა (არჩევითი)', upload: 'ატვირთე', optional: 'სურვილისამებრ',
     ph: 'მოძრაობის აღწერა… (ქართულად ან ინგლისურად)', gen: 'შექმნა', working: 'გენერირდება…',
-    done: 'მზადაა', dl: 'ჩამოტვირთვა', need: 'ატვირთე ფოტო და დაწერე მოძრაობა', failed: 'მოძრაობის გენერაცია ვერ მოხერხდა. სცადე ხელახლა.' },
+    done: 'მზადაა', dl: 'ჩამოტვირთვა', need: 'ატვირთე ფოტო და დაწერე მოძრაობა', failed: 'მოძრაობის გენერაცია ვერ მოხერხდა. სცადე ხელახლა.',
+    replace: 'პერსონაჟის ფოტოს შეცვლა', remove: 'ფოტოს წაშლა', motionText: 'მოძრაობის აღწერა', music: 'ფონური მუსიკა', lipsync: 'ტუჩების სინქრონი', lipsyncText: 'სათქმელი ტექსტი', result: 'მზა ვიდეო' },
   en: { char: 'Character', motion: 'Motion (optional)', upload: 'Upload', optional: 'optional',
     ph: 'Describe the motion… (Georgian or English)', gen: 'Create', working: 'Generating…',
-    done: 'Ready', dl: 'Download', need: 'Upload a photo and describe the motion', failed: 'The motion could not be generated. Please try again.' },
+    done: 'Ready', dl: 'Download', need: 'Upload a photo and describe the motion', failed: 'The motion could not be generated. Please try again.',
+    replace: 'Replace the character photo', remove: 'Remove the photo', motionText: 'Describe the motion', music: 'Background music', lipsync: 'Lip-sync', lipsyncText: 'Text to speak', result: 'Finished video' },
   ru: { char: 'Персонаж', motion: 'Движение (опц.)', upload: 'Загрузить', optional: 'опционально',
     ph: 'Опишите движение…', gen: 'Создать', working: 'Генерация…',
-    done: 'Готово', dl: 'Скачать', need: 'Загрузите фото и опишите движение', failed: 'Не удалось сгенерировать движение. Попробуйте снова.' },
+    done: 'Готово', dl: 'Скачать', need: 'Загрузите фото и опишите движение', failed: 'Не удалось сгенерировать движение. Попробуйте снова.',
+    replace: 'Заменить фото персонажа', remove: 'Удалить фото', motionText: 'Описание движения', music: 'Фоновая музыка', lipsync: 'Синхрон губ', lipsyncText: 'Текст для озвучки', result: 'Готовое видео' },
 };
 
 const QUICK: Record<Lang, { label: string; v: string }[]> = {
@@ -213,28 +220,33 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
   }
 
   const canGen = !!(charImage && motionPrompt.trim() && !busy);
+  // The price on the button is what the press reserves: the render, plus lip-sync's own price when it will speak.
+  const credits = motionCredits({ lipsync: enableLipsync && !!lipsyncText.trim() });
+  const short = useShortBalance(credits);
 
   return (
     <div className="space-y-4">
       <div className="mx-auto w-1/2">
         {/* Character photo */}
-        <div className="space-y-1">
+        <div className="relative space-y-1">
           <span className="text-[11px] uppercase tracking-wider text-app-muted">{t.char} *</span>
-          <button type="button" onClick={() => imgRef.current?.click()}
+          {/* The ✕ is a button BESIDE the upload button, not a span inside it: a control inside a control has no name a
+              screen reader can reach, and the span answered no key (WCAG 4.1.2, GG 2026-10-18). */}
+          <button type="button" onClick={() => imgRef.current?.click()} aria-label={charImage ? t.replace : `${t.upload}: ${t.char}`}
             className={`relative aspect-[3/4] w-full overflow-hidden rounded-2xl border-2 border-dashed transition ${charImage ? 'border-app-accent/40 bg-app-accent/5' : 'border-app-border/30 bg-app-bg/40 hover:border-app-accent/30'}`}>
             {charImage ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={charImage} alt="" className="h-full w-full object-cover" />
-                <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); setCharImage(null); }}
-                  className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-500"><X size={10} /></span>
-              </>
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={charImage} alt="" className="h-full w-full object-cover" />
             ) : (
               <span className="flex h-full flex-col items-center justify-center gap-2 text-app-muted">
-                <Upload size={16} /><span className="text-[11px]">{t.upload}</span>
+                <Upload size={16} aria-hidden="true" /><span className="text-[11px]">{t.upload}</span>
               </span>
             )}
           </button>
+          {charImage && (
+            <button type="button" onClick={() => setCharImage(null)} aria-label={t.remove} title={t.remove}
+              className="absolute right-1.5 top-7 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-500"><X size={14} aria-hidden="true" /></button>
+          )}
           <input ref={imgRef} type="file" accept="image/*" className="hidden"
             onChange={async (e) => { const f = e.target.files?.[0]; if (f) setCharImage(await toDataUrl(f)); }} />
         </div>
@@ -245,7 +257,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         <span className="text-[11px] uppercase tracking-wider text-app-muted">{lang === 'en' ? 'Format' : lang === 'ru' ? 'Формат' : 'ფორმატი'}</span>
         <div className="grid grid-cols-3 gap-1.5">
           {RATIOS.map((r) => (
-            <button key={r.id} type="button" onClick={() => setAspectRatio(r.id)}
+            <button key={r.id} type="button" onClick={() => setAspectRatio(r.id)} aria-pressed={aspectRatio === r.id}
               className={`flex flex-col items-center gap-1 rounded-xl border py-2 text-center transition ${aspectRatio === r.id ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:border-app-border/40'}`}>
               <span className="flex h-6 items-center justify-center"><span className={`rounded-sm border border-current ${r.box}`} /></span>
               <span className="text-[11px] font-medium">{r.id}</span>
@@ -257,14 +269,14 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
 
       <div className="flex flex-wrap gap-1.5">
         {QUICK[lang].map((q) => (
-          <button key={q.label} type="button" onClick={() => setMotionPrompt(q.v)}
+          <button key={q.label} type="button" onClick={() => setMotionPrompt(q.v)} aria-pressed={motionPrompt === q.v}
             className={`rounded-lg border px-2.5 py-1 text-xs transition ${motionPrompt === q.v ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:text-app-text'}`}>
             {q.label}
           </button>
         ))}
       </div>
 
-      <textarea value={motionPrompt} onChange={(e) => setMotionPrompt(e.target.value)} rows={2} placeholder={t.ph}
+      <textarea value={motionPrompt} onChange={(e) => setMotionPrompt(e.target.value)} rows={2} placeholder={t.ph} aria-label={t.motionText}
         className="w-full resize-none rounded-xl border border-app-border/20 bg-app-bg/40 px-3 py-2.5 text-sm text-app-text placeholder:text-app-muted/60 focus:border-app-accent/50 focus:outline-none" />
 
       {/* Background music — instrumental MusicGen bed, muxed onto the clip server-side. */}
@@ -277,12 +289,12 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
               <p className="text-[10px] text-app-muted">{lang === 'en' ? 'AI-generated, instrumental' : lang === 'ru' ? 'ИИ, инструментал' : 'AI, ინსტრუმენტალი'}</p>
             </div>
           </div>
-          <AppToggle on={enableMusic} onChange={setEnableMusic} label="music" />
+          <AppToggle on={enableMusic} onChange={setEnableMusic} label={t.music} />
         </div>
         {enableMusic && (
           <div className="flex flex-wrap gap-1.5 pt-0.5">
             {MOODS.map((m) => (
-              <button key={m.id} type="button" onClick={() => setMusicMood(m.id)}
+              <button key={m.id} type="button" onClick={() => setMusicMood(m.id)} aria-pressed={musicMood === m.id}
                 className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs transition ${musicMood === m.id ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:text-app-text'}`}>
                 <span>{m[lang]}</span>
               </button>
@@ -302,11 +314,11 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
               <p className="text-[10px] text-app-muted">{lang === 'en' ? 'AI voice + mouth sync' : lang === 'ru' ? 'ИИ-голос + синхрон губ' : 'AI ხმა + ტუჩების სინქრონი'}</p>
             </div>
           </div>
-          <AppToggle on={enableLipsync} onChange={setEnableLipsync} label="lipsync" />
+          <AppToggle on={enableLipsync} onChange={setEnableLipsync} label={t.lipsync} />
         </div>
         {enableLipsync && (
           <>
-            <textarea value={lipsyncText} onChange={(e) => setLipsyncText(e.target.value)} rows={2}
+            <textarea value={lipsyncText} onChange={(e) => setLipsyncText(e.target.value)} rows={2} aria-label={t.lipsyncText}
               placeholder={lang === 'en' ? 'Type text — AI will speak it (Georgian)…' : lang === 'ru' ? 'Текст — ИI озвучит…' : 'ჩაწერე ტექსტი (AI გაახმოვანებს ქართულად)…'}
               className="w-full resize-none rounded-xl border border-app-border/20 bg-app-bg/40 px-3 py-2 text-sm text-app-text placeholder:text-app-muted/60 focus:border-app-accent/50 focus:outline-none" />
             {enableMusic && (
@@ -324,7 +336,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
             { id: 'fast' as const, emoji: '🚀', ka: 'სწრაფი', en: 'Fast', ru: 'Быстро', eta: '~3წთ', etaEn: '~3 min', etaRu: '~3 мин' },
             { id: 'quality' as const, emoji: '⭐', ka: 'ხარისხი', en: 'Quality', ru: 'Качество', eta: '~12წთ', etaEn: '~12 min', etaRu: '~12 мин' },
           ]).map((m) => (
-            <button key={m.id} type="button" onClick={() => setQualityMode(m.id)} disabled={busy}
+            <button key={m.id} type="button" onClick={() => setQualityMode(m.id)} disabled={busy} aria-pressed={qualityMode === m.id}
               className={`flex flex-col items-center gap-0.5 rounded-xl border py-2 transition disabled:opacity-50 ${qualityMode === m.id ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:border-app-border/40'}`}>
               <span className="text-[13px] font-medium">{m[lang]}</span>
               <span className="text-[10px] opacity-70">{lang === 'en' ? m.etaEn : lang === 'ru' ? m.etaRu : m.eta}</span>
@@ -333,15 +345,18 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         </div>
       </div>
 
-      <button type="button" onClick={generate} disabled={!canGen}
-        className={`flex w-full items-center justify-center gap-2.5 rounded-2xl py-4 text-sm font-bold transition active:scale-[0.98] ${canGen ? 'bg-app-accent text-app-bg shadow-lg' : 'cursor-not-allowed bg-app-elevated/60 text-app-muted'}`}>
-        {busy ? <><Loader2 size={17} className="animate-spin" /><span>{t.working}</span></> : <><Sparkles size={17} /><span>{t.gen}</span></>}
-      </button>
+      <GenerateButton label={t.gen ?? ''} credits={credits} loading={busy} loadingLabel={t.working} disabled={!canGen}
+        insufficient={short} locale={lang} onClick={() => { if (short) openTopUp(); else void generate(); }}
+        testId="motion-generate" service="video.motion" />
 
       {busy && (
         <div className="space-y-2 rounded-2xl border border-app-border/10 bg-app-bg/40 p-3.5">
+          {/* The loading loop: the one picture of every generation's wait (the owner's rule, 2026-10-17). */}
+          <div aria-hidden="true" className="relative h-[140px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
+            <LoadingLoop />
+          </div>
           <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-app-accent" />
+            <span className="h-1.5 w-1.5 rounded-full bg-app-accent" />
             <span className="text-xs text-app-accent">
               {stage === 'lipsync' ? 'Lip-sync · HeyGen' : 'Kling · Replicate'} · ~2–4 min
             </span>
@@ -355,19 +370,18 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
               <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-app-accent/40" /><span>{lang === 'en' ? 'Music (MusicGen)' : lang === 'ru' ? 'Музыка (MusicGen)' : 'მუსიკა (MusicGen)'}</span></div>
             ) : null}
           </div>
-          <div className="h-1 w-full overflow-hidden rounded-full bg-app-elevated"><div className="h-full w-3/4 animate-pulse rounded-full bg-app-accent" /></div>
           <p className="text-[10.5px] text-app-muted">{aspectRatio}{enableLipsync && lipsyncText.trim() ? ' + lip-sync' : enableMusic ? ' + music' : ''}</p>
         </div>
       )}
 
       {error && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-red-500/20 bg-red-500/10 p-3"><AlertCircle size={14} className="mt-0.5 shrink-0 text-red-400" /><p className="text-xs text-red-400">{error}</p></div>
+        <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-500/20 bg-red-500/10 p-3"><AlertCircle size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-red-400" /><p className="text-xs text-red-400">{error}</p></div>
       )}
 
       {result && (
         <div className="space-y-2">
           <div className="flex items-center gap-2"><CheckCircle size={13} className="text-green-400" /><span className="text-xs text-green-400">{t.done} ✅</span></div>
-          <video src={result} controls playsInline className="w-full rounded-2xl" />
+          <video src={result} controls playsInline aria-label={t.result} className="w-full rounded-2xl" />
           <button type="button" onClick={() => void saveMedia(result, 'motion-control.mp4')} className="flex w-full items-center justify-center gap-2 rounded-xl border border-app-border/20 py-2.5 text-sm text-app-text hover:bg-app-elevated/40">⬇️ {t.dl}</button>
         </div>
       )}

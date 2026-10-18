@@ -1,5 +1,7 @@
 # Video Core v1.0 — final acceptance matrix AC-01…AC-28
 
+**Updated 2026-10-15 after the Production release (PR #69, b46bb44): see "Production release" below.**
+
 Branch `claude/video-core-v1-6gh97e`, draft PR #58, code head **f1e3358** (product code last changed in 717231c, defect 40; later commits change only workflows, the live-test client (f1e3358, defect 42) and these documents), main ba2e0a4 merged in at 179e10e (2026-10-13). Round 2's matrix with its SHAs stays in
 `acceptance-matrix.md`; this file is the release-candidate state after round 3 and the isolated CI E2E.
 
@@ -13,8 +15,8 @@ Branch `claude/video-core-v1-6gh97e`, draft PR #58, code head **f1e3358** (produ
 | DB | real Postgres + PostgREST + real ffmpeg, local and throwaway | sandbox and CI job "billing on real Postgres" |
 | **CI-E2E** | real browser + `next start` of this branch + throwaway Supabase (Auth, Storage, PostgREST, Postgres 17) + real ffmpeg, synthetic users and media | GitHub Actions job "live E2E" (`SUPABASE_TEST_ENV.md`) |
 | **T4** | Vercel runtime: a Preview of this branch in the separate Vercel project `avatar-g-video-core-e2e`, on a throwaway Supabase that lives only on the GitHub runner (GG's word 06:34Z / 08:52Z / 09:48Z) | **PROVEN 35 / 35**: Preview run 6, 38394841616 on f1e3358 (`PREVIEW_E2E_VERIFICATION.md`) |
-| T5 | paid provider (Veo / Vertex) | **NOT RUN** — needs GG's budget word (B1) |
-| T6 | Production | **NOT RUN** — Production is never a test environment |
+| T5 | paid provider (Veo / Vertex) | **RAN ONCE** 2026-10-15: one 4 s Veo 3.1 Fast clip on Vertex in Production (see "Production release" below); an earlier L1 call ran on Preview 2026-10-13 |
+| T6 | Production | **RAN ONCE** 2026-10-15 under GG's brief (17:34Z, Phase 5): the admin's one paid film, no test rows written by hand |
 
 CI-E2E runs: **38388562682 (head ec7f742): 35 / 35 passed** on desktop + iPhone 13 (`evidence/ci-e2e/live-e2e-38388562682.md`), and **38394813999 (head f1e3358): 35 / 35 passed** (`evidence/ci-e2e/live-e2e-38394813999.md`); every CI-E2E cell below passed again in both. The suite grew from 21 to 35 tests in this round (job recovery through the sweep, Trim / Volume / Adjust on both viewports, the track offset, the free film and the paid film on the real database). Earlier runs (4–8, 38386271150) are kept in the same folder with their failures and root causes (defects 37–40).
 
@@ -55,7 +57,9 @@ CI-E2E runs: **38388562682 (head ec7f742): 35 / 35 passed** on desktop + iPhone 
 
 **28 criteria: 19 PROVEN · 8 PARTIAL · 1 BLOCKED** (AC-24, capability B5; its no-silent-drop half is PROVEN). CI-E2E ran
 on 9 of them: AC-10, 11, 16, 17, 20, 25, 26 (PROVEN) and AC-19, 28 (PARTIAL), and the same 9 passed again on the Vercel
-runtime (T4, below). No row is proven at T5 or T6: those tiers were not run.
+runtime (T4, below). T5/T6 ran once, after the release (below): it adds Production evidence to AC-13, AC-16, AC-25,
+AC-26 and AC-28 and part of AC-01/AC-03; it changes no row's final status, because each of those rows is either
+already PROVEN or still waits on something the run did not cover.
 
 ## Vercel runtime (T4)
 
@@ -78,11 +82,31 @@ that file.
 | AC-26 | quote card → Start → running → done / cancelled / refused cards driven by the Preview's answers |
 | AC-28 | the real master downloaded and decoded; the Library lists it; edit results play from their signed URL |
 
+## Production release (T5 / T6, 2026-10-15)
+
+PR #69 merged as **b46bb44** and deployed (`dpl_6AaKtWBNgxyvjZSv4eF48DdSdTE7`); the build's auth check passed for the
+Production environment and `/api/video/engine` answers `transport: vertex`. Then the one paid test the brief allows, as
+the admin (`VIDEO_CORE_PAID_E2E_EVIDENCE.md`):
+
+| ID | What the Production run adds | Still not proven in Production |
+| --- | --- | --- |
+| AC-01 | the film path renders a real Veo film with Veo's own sound (4 s, one scene) | the 24 s music clip itself (3 scenes, music bed, stitch) |
+| AC-03 | a real Veo clip decodes to the exact frames of its length: 4.01 s = 96 frames at 24 fps (D7: single clips stay at the provider's 24 fps) | a multi-scene film's frame count on real clips |
+| AC-13 | the storyboard's success path on Production: plan, scripts, anchor, frame, all 200, nothing rendered before the press | failure paths stay at T1/T2 |
+| AC-16 | one press → one dispatch → one Vertex operation; the press is gated once | concurrent presses (T1, PG, CI-E2E, T4) |
+| AC-25 | provider on Production: Vertex via WIF, no key; director path off (`enabled:false`) | — |
+| AC-26 | plan → board → Generate → progress → the delivered bubble, in one window | — |
+| AC-28 | preview plays (readyState 4), Download is byte-identical, Save to library → listed in the API and on the Library page | the revision number in the Library (B3) |
+| AC-11 | Volume +6 dB on the delivered film: +6.0 dB measured, 96 frames kept, 0 credits | the other edit ops in Production |
+
+Money: 0 credits (admin, never billed; 892 → 892), ≈ $0.40 of Vertex (INFERENCE from the list price). One finding was
+fixed after the run: the board's scene tile and the Scenes & camera drawer said 8 s on a 4 s film (display only; 66fdc696).
+
 ## The four layers GG asked to keep apart
 
 | Layer | Status | Evidence / reason |
 | --- | --- | --- |
 | CI E2E (isolated local Supabase, real backend, real ffmpeg, desktop + phone) | **PROVEN**: 35 / 35 on head ec7f742 and again on f1e3358 | runs 38388562682 and 38394813999: desktop + iPhone 13 journeys, job recovery, billing and the stack contracts; job "billing on real Postgres" green in the same run; `evidence/ci-e2e/` |
 | Vercel Runtime E2E | **PROVEN**: 35 / 35 on head f1e3358 | Preview run 38394841616: the same suite against a Vercel Preview in the separate project `avatar-g-video-core-e2e`, on a throwaway Supabase on the runner; every desktop and iPhone 13 test, job recovery through the sweep running as a Vercel function, billing, RLS / RPC / access, `cuts: []`; `PREVIEW_E2E_VERIFICATION.md` |
-| Vertex / Veo live | **NOT RUN** | no paid call authorized; 980/980 Veo/director unit tests and the config review (`VERTEX_LIVE_TEST_PLAN.md`) are mocked-provider evidence only |
-| Production E2E | **NOT RUN** | Production is never a test environment; nothing merged or deployed |
+| Vertex / Veo live | **PROVEN for one 4 s clip** (2026-10-15) | Production, admin: operation `veo-3.1-fast-generate-001/operations/8c513ad5-…` on Vertex (us-central1), a 4.01 s film with sound; `VIDEO_CORE_PAID_E2E_EVIDENCE.md`. Multi-scene films are not proven live |
+| Production E2E | **PROVEN for the admin's single-clip path** (2026-10-15) | myavatar.ge on b46bb44: sign-in → storyboard → quote 13 → one press → Vertex → MP4 → preview → download → Library → history → 0 credits; Volume +6.0 dB free. A paying user and a multi-scene film are not proven in Production |

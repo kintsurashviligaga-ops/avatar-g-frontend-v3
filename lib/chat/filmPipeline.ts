@@ -233,7 +233,49 @@ export function buildSpeechDirection(
     out += ` Then ${who} answers: "${reply.text}"${stopFor(reply.text)}`;
   }
   out += list.length > 1 ? ' Both voices are heard clearly in the shot.' : ' The voice is heard clearly in the shot.';
+  // Pacing: a line handed to Veo with no tempo was rushed and clipped at the cut (the 2026-10-16 ad). The words are
+  // already sized to fit the clip (lib/video/speechTiming), so ask for a calm delivery that lands inside the shot.
+  out += ' Calm, natural pace, every word complete, the last word finished a beat before the shot ends.';
   return out;
+}
+
+// ─── OFF-CAMERA VOICE ────────────────────────────────────────────────────────
+// Veo cannot speak Georgian. The 2026-10-16 ad (Georgian lines delegated to Veo, one per scene) came back with a
+// different voice in every scene and the words garbled. A Georgian film is now voiced by ONE ElevenLabs voice over
+// the whole cut (lib/chat/filmComposite), so nobody on screen may look as if they talk: the presenter carries the
+// message with gestures and expression while the voice-over speaks. The direction is affirmative prose (Veo cannot
+// parse negations); talking and lip movement go to the negative field.
+
+/** The scene clause of an off-camera-voice film, in the slot a spoken line would take. */
+export const SILENT_PRESENTER_DIRECTION =
+  'Everyone on screen stays silent, mouth gently closed and lips still; the presenter carries the message through gestures, facial expression, nods and smiles while an off-screen voice-over speaks.';
+
+/** Leads the negative field of an off-camera-voice film, ahead of the drift terms, so the 800-char cap never cuts it. */
+export const SILENT_PRESENTER_NEGATIVE = 'talking, speaking, moving lips, open mouth, lip sync, mouthing words';
+
+/** Speech verbs in the (English) scene text → their silent, presenting equivalents. */
+const SILENT_VERBS: Readonly<Record<string, string>> = {
+  speak: 'present', speaks: 'presents', speaking: 'presenting', spoke: 'presented',
+  talk: 'present', talks: 'presents', talking: 'presenting', talked: 'presented',
+  say: 'present', says: 'presents', saying: 'presenting', said: 'presented',
+  tell: 'show', tells: 'shows', telling: 'showing', told: 'showed',
+  explain: 'present', explains: 'presents', explaining: 'presenting', explained: 'presented',
+  announce: 'present', announces: 'presents', announcing: 'presenting', announced: 'presented',
+  narrate: 'present', narrates: 'presents', narrating: 'presenting', narrated: 'presented',
+  speech: 'presentation', speeches: 'presentations', monologue: 'presentation',
+};
+const SILENT_VERB_RE = new RegExp(`\\b(${Object.keys(SILENT_VERBS).join('|')})\\b`, 'gi');
+
+/**
+ * The approved storyboard scene still says what the brief said ("begins speaking directly to the camera"), and a
+ * scene that asks for speech beside a clause that asks for silence is a coin toss for the model. The speech verbs
+ * become presenting ones; everything else in the scene stays as approved.
+ */
+export function silenceSpeechVerbs(text: string): string {
+  return String(text || '').replace(SILENT_VERB_RE, (word) => {
+    const silent = SILENT_VERBS[word.toLowerCase()] ?? word;
+    return /^[A-Z]/.test(word) ? silent.charAt(0).toUpperCase() + silent.slice(1) : silent;
+  });
 }
 
 // ─── Intent detection ────────────────────────────────────────────────────────
@@ -335,7 +377,7 @@ export function buildStyleGuide(shared: FilmShared): string {
   return (
     `Consistent across every shot: ${aesthetic}, one color palette, consistent key and rim lighting, `
     + `the same lens and depth of field, ${identity}, the SAME person throughout. `
-    + `Professional color grading, ARRI Alexa color science, neutral white balance, clean neutral whites, crisp 8K, sharp focus.`
+    + `Professional color grading, ARRI Alexa color science, neutral white balance, clean neutral whites, natural skin tones, balanced bright exposure, crisp 8K, sharp focus.`
   );
 }
 
@@ -409,7 +451,7 @@ const CINEMATIC_BEATS: readonly CinematicBeat[] = [
   { name: 'Arc Reveal', framing: 'A controlled camera arc moving around the protagonist to reveal the space and depth — 28mm lens, deliberate parallax, lit entirely by motivated practical sources in the room', cameraMotion: 'pan_right' },
   { name: 'Close-Up', framing: 'Intimate close-up on an 85mm portrait lens, a slow controlled push on the protagonist’s face capturing a real, present emotional beat — creamy bokeh, soft Rembrandt lighting', cameraMotion: 'pan_left' },
   { name: 'Wide Reveal', framing: 'A sweeping high aerial wide shot rising and pulling away over the scene — expansive composition, volumetric natural light, the protagonist small against an epic backdrop', cameraMotion: 'zoom_out' },
-  { name: 'Resolution', framing: 'A crane pull-back rising as the protagonist and the scene resolve — expansive composition, warm cinematic colour grade, a confident, conclusive final beat', cameraMotion: 'zoom_out' },
+  { name: 'Resolution', framing: 'A crane pull-back rising as the protagonist and the scene resolve — expansive composition, natural true-to-life colour grade, a confident, conclusive final beat', cameraMotion: 'zoom_out' },
 ];
 
 /**
@@ -566,6 +608,29 @@ export function mergeSceneCaptions<T extends CaptionMergeScene>(
   });
 }
 
+/**
+ * The FRAME prompt for each scene once the per-scene story shots are in. The plan's own frame prompt is the WHOLE
+ * brief plus a camera beat, cut to 600 characters by the frame route, so for a brief that lists its scenes ("four
+ * scenes: ... the second scene ... the fourth scene ...") every frame request carried all of them and no beat. The
+ * image model then drew the whole storyboard as a 2x2 grid with "SCENE 1..4" captions, or answered NO_IMAGE
+ * (2026-10-16: scene 2 came back as four panels and scene 4 empty on every try and every re-roll). The scene's own
+ * story shot describes that scene alone, so it wins over the plan prompt; a per-scene action the user typed still
+ * wins over both, and a blank script slot keeps the plan prompt. Pure: returns a new record.
+ */
+export function storyFramePrompts(
+  framePrompts: Readonly<Record<number, string>>,
+  scripts: readonly (string | null | undefined)[],
+  isEdited: (ordinal: number) => boolean = () => false,
+): Record<number, string> {
+  const out: Record<number, string> = { ...framePrompts };
+  scripts.forEach((sc, i) => {
+    const ord = i + 1;
+    const script = sc?.trim();
+    if (script && !isEdited(ord)) out[ord] = script;
+  });
+  return out;
+}
+
 // ─── Plan model ──────────────────────────────────────────────────────────────
 
 /** PHASE 45 §2/§3 — a film accepts up to THREE user reference images that lock
@@ -644,6 +709,12 @@ export interface FilmPlanOptions {
   sceneDialogue?: (SceneSpokenLine | string | readonly (SceneSpokenLine | string)[] | null | undefined)[];
   /** True when the render engine generates speech in-clip (Veo). Gates `sceneDialogue`. */
   nativeSpeech?: boolean;
+  /**
+   * OFF-CAMERA VOICE — the film's words are spoken by one voice-over track, so nobody on screen talks: every scene
+   * but a music-video intro gets SILENT_PRESENTER_DIRECTION, its speech verbs turn into presenting ones, and the
+   * negative field leads with talking / lip movement. Wins over `nativeSpeech` (no scene carries a spoken line).
+   */
+  silentPresenter?: boolean;
   /** Frame orientation — drives the per-clip aspect ratio. Default landscape. */
   orientation?: 'landscape' | 'vertical';
   /**
@@ -876,10 +947,11 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   // actually asks for ("a black-and-white film noir look…"), so a Director negative of "black and white,
   // desaturated" must not be allowed to cancel it on the provider's negative field.
   const look = typeof opts.look === 'string' ? opts.look.replace(/\s+/g, ' ').trim() : '';
+  const driftNegative = opts.silentPresenter ? `${SILENT_PRESENTER_NEGATIVE}, ${FILM_DRIFT_NEGATIVE}` : FILM_DRIFT_NEGATIVE;
   const negativePrompt = normalizeNegativePrompt(
-    briefNegative ? `${FILM_DRIFT_NEGATIVE}, ${briefNegative}` : FILM_DRIFT_NEGATIVE,
+    briefNegative ? `${driftNegative}, ${briefNegative}` : driftNegative,
     [opts.style, look].filter(Boolean).join(' ') || undefined,
-  ) || FILM_DRIFT_NEGATIVE.slice(0, 800);
+  ) || driftNegative.slice(0, 800);
 
   const shared: FilmShared = {
     seed,
@@ -971,7 +1043,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   // renders speech in-clip; for Runway/Kling/LTX the line must stay OUT of the prompt (they would render
   // the words as burned-in text at best) and the ElevenLabs VO path keeps owning it, unchanged.
   const spokenFor = (index: number): SceneSpokenLine[] => {
-    if (!opts.nativeSpeech) return [];
+    if (!opts.nativeSpeech || opts.silentPresenter) return [];
     const raw = opts.sceneDialogue?.[index];
     if (!raw) return [];
     const list = Array.isArray(raw) ? raw : [raw];
@@ -999,6 +1071,9 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // intro, then cuts to the singer — overrides any per-scene LLM script for these.
     const mvIntro = opts.musicVideo && segments.length >= 4 && seg.index <= 1;
     const placeHint = /tbilisi|თბილის/i.test(subject) ? 'the old town of Tbilisi' : 'a city';
+    // OFF-CAMERA VOICE: every scene but an (empty) music-video intro is played silent.
+    const silent = !!opts.silentPresenter && !mvIntro;
+    const storyText = llmScene && llmScene.length > 0 ? llmScene : `${subject}${styled} — ${beat.framing}`;
     const head = mvIntro
       ? (seg.index === 0
           ? `Cinematic aerial drone shot at night flying high over ${placeHint}, glowing streets, rooftops and warm windows, slowly descending toward a lively music venue — atmospheric wide establishing shot, NO people in frame, neon and golden light, photorealistic${styled}`
@@ -1007,7 +1082,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
       // of fixed, film-identical cinematography boilerplate in the highest-weighted position (and at the top
       // of the storyboard card), pushing the actual subject toward the clamp edge — every scene then read as
       // generic camera-speak instead of the story.
-      : (llmScene && llmScene.length > 0 ? llmScene : `${subject}${styled} — ${beat.framing}`);
+      : silent ? silenceSpeechVerbs(storyText) : storyText;
     // SCRIPT-DRIVEN scene: a real per-scene script decides who/what is in frame. Lock
     // only the WORLD and keep the protagonist consistent CONDITIONALLY (wherever the
     // script places them) — never force the "same protagonist in every shot" clause,
@@ -1021,7 +1096,9 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // meaningless to a video model — it is a sampler concept, not language — and it burned prompt budget in
     // the highest-value tail position. The seed still travels as a real provider PARAMETER (shared.seed →
     // selectedOptions.seed), which is where it actually locks continuity.
-    const continuity = scriptDriven
+    // A music video follows ONE singer through every shot, so its scenes keep the full same-person anchor even when a
+    // script drives them (Production 2026-10-16: the singer's face, clothes and bar changed at every cut).
+    const continuity = scriptDriven && !opts.musicVideo
       ? `${buildWorldStyleGuide(shared)}${conditionalCharacter}`
       : `${styleGuide} Continuity — the protagonist is ${characterAnchor}.`;
     // The SPOKEN LINE rides immediately after the scene's action — the highest-weighted position after
@@ -1029,7 +1106,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // downstream clamp (enrichVideoPrompt's tail cut and withColorScience's middle trim both preserve the
     // head). A Music-Video INTRO scene is an empty establishing location, so it never speaks.
     const spoken = mvIntro ? [] : spokenFor(seg.index);
-    const speechDirection = spoken.length ? ` ${buildSpeechDirection(spoken)}` : '';
+    const speechDirection = spoken.length ? ` ${buildSpeechDirection(spoken)}` : silent ? ` ${SILENT_PRESENTER_DIRECTION}` : '';
     // A script's scene line usually already ends in a full stop, so the fixed "." below produced
     // "…მტვრიანი სხივები.. The character…". Cosmetic, but it is the first thing Veo reads.
     const headStop = /[.!?…]$/.test(head.trim()) ? '' : '.';

@@ -64,6 +64,11 @@ export const CREDIT_COSTS = {
   // advertise. Wholesale is ~$0.10 per TRELLIS mesh (costModel) plus ~$0.04 for the Imagen reference on
   // the text path. Owner-tunable: change this one number.
   model3d: 5,
+  // Global E2E 2026-10-14 (S2): dubbing and presentation spent ElevenLabs / Gemini + Imagen with NO credit charge.
+  // PROPOSED prices, owner to confirm before merge — sized at provider cost plus margin at 1 cr ≈ $0.037:
+  // a dubbed minute ≈ STT + translation + ~15 TTS lines ≈ $0.30 → 10 cr; a deck = outline + up to 12 images ≈ $0.50 → 15 cr.
+  dubbing_per_minute: 10, // 1.00 GEL per started minute
+  presentation_deck: 15, // 1.50 GEL
 } as const;
 
 export type CreditAction = keyof typeof CREDIT_COSTS;
@@ -76,6 +81,19 @@ export function creditsToGel(credits: number): number {
 /** Credits a GEL balance is worth (1 credit = 0.10 ₾ → ×10), rounded. */
 export function gelToCredits(gel: number): number {
   return Math.round((gel || 0) / CREDIT_VALUE_GEL);
+}
+
+/**
+ * A CREDIT amount with its dollar value: `856 კრედიტი ($31.70)`.
+ *
+ * ⚠️ The wallet (`/api/credits/balance` → `profiles.credits_balance`) is already in CREDITS. The spend toast passed it
+ * through gelToCredits + formatWalletBalance as if it were GEL, so 856 credits read "8560 კრედიტი ($317.04)" — ten
+ * times the real balance (GG, 2026-10-16). One helper for both toast lines keeps the unit in one place.
+ */
+export function creditsWithUsd(credits: number | null | undefined, locale?: string): string {
+  const n = typeof credits === 'number' && Number.isFinite(credits) ? Math.max(0, Math.round(credits)) : 0;
+  const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кред.' : 'კრედიტი';
+  return `${n} ${unit} ($${(creditsToGel(n) / GEL_PER_USD).toFixed(2)})`;
 }
 
 /**
@@ -153,7 +171,7 @@ export function creditsToUsd(credits: number): number {
  * image jobs (×2/×4 grids). Unknown kinds → 0 (never over-charge on a guess).
  */
 export function creditCostFor(
-  kind: 'image' | 'music' | 'video' | 'avatar' | 'remix' | 'model3d' | 'chat',
+  kind: 'image' | 'music' | 'video' | 'avatar' | 'remix' | 'model3d' | 'dubbing' | 'presentation' | 'chat',
   opts: { seconds?: number; count?: number } = {},
 ): number {
   const C = CREDIT_COSTS;
@@ -174,6 +192,11 @@ export function creditCostFor(
       return C.remix_video;
     case 'model3d':
       return C.model3d;
+    case 'dubbing':
+      // per STARTED minute of source, at least one
+      return C.dubbing_per_minute * Math.max(1, Math.ceil((opts.seconds ?? 60) / 60));
+    case 'presentation':
+      return C.presentation_deck;
     case 'chat':
     default:
       return C.chat_message;

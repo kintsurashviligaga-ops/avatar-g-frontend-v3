@@ -34,7 +34,7 @@ const post = (body: unknown) =>
 beforeEach(() => {
   jest.clearAllMocks();
   process.env = { ...ENV };
-  delete process.env.MEDIA_GOOGLE_ONLY;
+  process.env.MEDIA_GOOGLE_ONLY = '0';
   mockUser = { id: 'user-1' };
   // The re-host fetch of the provider's file is not under test: it fails open and keeps the provider URL.
   global.fetch = jest.fn(async () => { throw new Error('offline'); }) as unknown as typeof fetch;

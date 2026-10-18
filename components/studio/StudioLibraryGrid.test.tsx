@@ -74,3 +74,15 @@ test('Georgian copy', async () => {
   expect(await screen.findByText('3D გეგმა')).toBeTruthy();
   expect(screen.getByText('3D გეგმის ნახვა')).toBeTruthy();
 });
+
+test('a film that will not load shows a plain message and a retry that fetches fresh links', async () => {
+  await mount('ka');
+  await screen.findByTestId('library-plan-toggle');
+  const video = document.querySelector('video') as HTMLVideoElement;
+  const before = (global.fetch as jest.Mock).mock.calls.length;
+  await act(async () => { fireEvent.error(video); });
+  expect(screen.getByText('ფაილი ვერ ჩაიტვირთა.')).toBeTruthy();
+  expect(document.querySelectorAll('video')).toHaveLength(0);
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'თავიდან ცდა' })); });
+  expect((global.fetch as jest.Mock).mock.calls.length).toBe(before + 1);
+});

@@ -1,0 +1,131 @@
+{
+  "checkedAt": "2026-10-14T14:30:38.705Z",
+  "env": "preview",
+  "commit": "95432a2b155e934f8f6e80b20990380dfe17071e",
+  "approval": "GG-20261014-GLOBAL-E2E-EXTRA-USD5",
+  "capUsd": 5,
+  "spentBeforeUsd": 0,
+  "reservedUsd": 1.5,
+  "reservePerCallUsd": {
+    "image": 0.15,
+    "veo": 0.6
+  },
+  "results": [
+    {
+      "case": "IMG-1-generate",
+      "kind": "image",
+      "model": "gemini-3.1-flash-image",
+      "location": "global",
+      "ok": true,
+      "dispatched": true,
+      "ms": 10907,
+      "status": 200,
+      "finishReason": "STOP",
+      "usage": {
+        "promptTokenCount": 37,
+        "candidatesTokenCount": 1120,
+        "totalTokenCount": 1157,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 37
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "IMAGE",
+            "tokenCount": 1120
+          }
+        ]
+      },
+      "modelVersion": "gemini-3.1-flash-image",
+      "mime": "image/png",
+      "bytes": 1506601,
+      "sha256": "fe24624f73ed8545713ffe23e6b357984dadc66ac436a3b222056c9c82d2e78a",
+      "file": "IMG-1-generate.png"
+    },
+    {
+      "case": "IMG-2-edit-background",
+      "kind": "image",
+      "model": "gemini-3.1-flash-image",
+      "location": "global",
+      "ok": true,
+      "dispatched": true,
+      "ms": 11215,
+      "status": 200,
+      "finishReason": "STOP",
+      "usage": {
+        "promptTokenCount": 1148,
+        "candidatesTokenCount": 1120,
+        "totalTokenCount": 2268,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 28
+          },
+          {
+            "modality": "IMAGE",
+            "tokenCount": 1120
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "IMAGE",
+            "tokenCount": 1120
+          }
+        ]
+      },
+      "modelVersion": "gemini-3.1-flash-image",
+      "mime": "image/png",
+      "bytes": 1286461,
+      "sha256": "7f029c13dcbd88b2354ff42f3900413e8ca08391f54e66ecd4527319fe0c27b4",
+      "file": "IMG-2-edit-background.png",
+      "inputSha256": "fe24624f73ed8545713ffe23e6b357984dadc66ac436a3b222056c9c82d2e78a"
+    },
+    {
+      "case": "VEO-1-t2v-9x16",
+      "kind": "veo",
+      "model": "veo-3.1-fast-generate-001",
+      "location": "us-central1",
+      "ok": true,
+      "dispatched": true,
+      "durationSec": 4,
+      "resolution": "720p",
+      "aspect": "9:16",
+      "generateAudio": true,
+      "status": 200,
+      "operationId": "6bc95d61-879c-4bc1-8f27-0e85ee536ebe",
+      "ms": 52041,
+      "raiMediaFilteredCount": 0,
+      "mime": "video/mp4",
+      "bytes": 1703939,
+      "sha256": "67d34b95952bb27d28e2e9e7bef74ec352b25771468ea0683f3a4864d2bbb465",
+      "file": "VEO-1-t2v-9x16.mp4"
+    },
+    {
+      "case": "VEO-2-i2v-16x9",
+      "kind": "veo",
+      "model": "veo-3.1-fast-generate-001",
+      "location": "us-central1",
+      "ok": true,
+      "dispatched": true,
+      "durationSec": 4,
+      "resolution": "720p",
+      "aspect": "16:9",
+      "generateAudio": true,
+      "status": 200,
+      "operationId": "4e530e0b-3d29-434c-a70a-fb84a793b9ec",
+      "ms": 41889,
+      "raiMediaFilteredCount": 0,
+      "mime": "video/mp4",
+      "bytes": 829279,
+      "sha256": "a2f0daf46565f067ae7fded985ba802bea998e7e735b7dd8677fa98ac27ed226",
+      "file": "VEO-2-i2v-16x9.mp4",
+      "inputSha256": "fe24624f73ed8545713ffe23e6b357984dadc66ac436a3b222056c9c82d2e78a"
+    }
+  ],
+  "dispatchedCalls": 4,
+  "reservedSpendUpperBoundUsd": 1.5
+}

@@ -95,3 +95,36 @@ test('a server job that does report a percent still shows that percent', () => {
   expect(container.textContent ?? '').toMatch(/55\s*%/);
   expect(container.querySelector('[data-progress="indeterminate"]')).toBeNull();
 });
+
+test('the ✕ hides a stuck render with no stop of its own, and it stays hidden after a reload (Production 2026-10-16)', () => {
+  window.localStorage.removeItem('jobTray.hidden');
+  act(() => { useJobQueue.setState({ durableJobs: [render1], inlineJobIds: [] }); });
+  const { unmount } = render(<JobTray locale="en" />);
+  expect(screen.getByText('A red car')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Hide renders' }));
+  expect(screen.queryByTestId('job-tray')).toBeNull();
+  expect(cancels()).toHaveLength(0); // hiding never stops or fails the job
+  unmount();
+  render(<JobTray locale="en" />);
+  expect(screen.queryByTestId('job-tray')).toBeNull();
+  window.localStorage.removeItem('jobTray.hidden');
+});
+
+test('the tray folds to its header line and stays folded after a reload; on a desktop it sits top right (Production 2026-10-16)', () => {
+  window.localStorage.removeItem('jobTray.collapsed');
+  const { unmount } = render(<JobTray locale="en" />);
+  const tray = screen.getByTestId('job-tray');
+  expect(tray.className).toContain('md:top-[4.25rem]');
+  expect(tray.className).toContain('md:bottom-auto');
+  expect(screen.getByText('A red car')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse renders' }));
+  expect(screen.queryByText('A red car')).toBeNull();
+  expect(screen.getByTestId('job-tray').textContent).toContain('2 active'); // the header still counts them
+  unmount();
+  render(<JobTray locale="en" />);
+  expect(screen.queryByText('A red car')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Show renders' }));
+  expect(screen.getByText('A red car')).toBeTruthy();
+  expect(cancels()).toHaveLength(0);
+  window.localStorage.removeItem('jobTray.collapsed');
+});

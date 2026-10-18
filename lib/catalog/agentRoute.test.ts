@@ -14,7 +14,6 @@ describe('routeAgentIntent — chat requests for a panel tool open that tool', (
     ['add vfx explosion to my photo', 'video.vfx', 'vfx'],
     ['redesign my living room in scandinavian style', 'image.interior', 'interior'],
     ['ჩემი ოთახის ინტერიერი გადააკეთე', 'image.interior', 'interior'],
-    ['remix this video with captions', 'video.remix', 'remix'],
     ['сделай фотосессию из моих фото', 'image.photoshoot', 'photoshoot'],
     ['use motion transfer on my photo', 'video.motion', 'motion'],
   ])('%s → %s', (text, id, tool) => {
@@ -23,6 +22,12 @@ describe('routeAgentIntent — chat requests for a panel tool open that tool', (
 });
 
 describe('routeAgentIntent — a service that is not there yet is said, never substituted', () => {
+  it('a video remix request opens no panel: the remix left every menu (GG 2026-10-18)', () => {
+    for (const t of ['remix this video with captions', 'ეს ვიდეო დამირემიქსე', 'сделай ремикс видео']) {
+      const r = routeAgentIntent(t);
+      expect(r?.kind === 'open' ? r.tool : null).not.toBe('remix');
+    }
+  });
   it('„მუსიკა დამირემიქსე" is an AUDIO remix: unavailable, offers music generation, never the video remix', () => {
     const r = routeAgentIntent('მუსიკა დამირემიქსე.');
     expect(r?.kind).toBe('unavailable');

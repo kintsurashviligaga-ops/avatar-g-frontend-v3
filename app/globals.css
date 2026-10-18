@@ -1128,6 +1128,9 @@ html[data-live-docked] .ag-fixed-shell:not(.app-native-shell) {
 html[data-live-docked] .app-native-shell,
 html[data-live-docked] [data-chrome-header],
 html[data-live-docked] .ag-fixed-shell > aside { padding-top: 0 !important; }
+/* A phone's Create sheet stops under a docked Live call (2026-10-16): at 86svh its top slid beneath the dock, so the
+   dock, the sheet's header and the sheet read as layers of two screens. The dock keeps the call's controls in reach. */
+html[data-live-docked] .studio-sheet { max-height: calc(100svh - var(--live-dock-h) - 12px) !important; }
 /* The collapsed rail keeps its own 10 px, minus the safe area. */
 html[data-live-docked] .ag-fixed-shell > nav { padding-top: 0.625rem !important; }
 /* The phone's history drawer is fixed to the viewport: it opens under the dock, never behind it. */
@@ -4312,27 +4315,6 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
 }
 @media (prefers-reduced-motion: reduce) {
   .result-shimmer { animation: none; background: rgb(255 255 255 / 0.03); }
-}
-
-/* ── Agent G task card (components/studio/AgentTaskCard.tsx) — the step in progress reads alive: a soft light crosses
-   its words, as in a task panel. Plain text under reduced motion and in forced colours (a clipped gradient would vanish). */
-@keyframes agent-step-sheen {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
-}
-.agent-step-sheen {
-  background: linear-gradient(90deg, rgb(var(--app-text)) 35%, rgb(var(--app-accent)) 50%, rgb(var(--app-text)) 65%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: agent-step-sheen 2.2s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .agent-step-sheen { animation: none; background: none; color: rgb(var(--app-text)); }
-}
-@media (forced-colors: active) {
-  .agent-step-sheen { background: none; color: CanvasText; }
 }
 
 /* ── BottomSheet (components/studio/ui/BottomSheet.tsx) — the studio's one sheet. A short rise and a fade

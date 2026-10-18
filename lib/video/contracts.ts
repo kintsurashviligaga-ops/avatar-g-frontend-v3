@@ -134,8 +134,9 @@ export const VIDEO_LANES: readonly VideoLaneContract[] = [
     note: 'Media Studio v2.0/v2.1 lane (PR #57), kept as is in this task.',
   },
   {
-    id: 'remix', service: 'remix', tools: ['remix'], capabilities: ['video.remix'],
-    entry: 'the Remix tool (#omni, shared with Music) or chat on an attached video (video.remix): one route, one `op`',
+    // No studio tool since GG's 2026-10-18 plan: the Remix panel left every menu (lib/studio/tools.ts PRIMARY_TOOLS).
+    id: 'remix', service: 'remix', tools: [], capabilities: ['video.remix'],
+    entry: 'chat on an attached video (video.remix): one route, one `op`',
     routes: ['app/api/video/remix/route.ts', 'app/api/video/remix-intent/route.ts'], modules: ['lib/video/remixOps.ts', 'lib/video/remixCharge.ts', 'lib/video/remixDelivery.ts'],
     duration: 'native', approval: 'panel', qc: 'none', billing: 'per-op',
     refusals: ['duplicate_request', 'insufficient_credits'], status: 'UNVERIFIED', tier: 'T1',

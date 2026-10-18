@@ -1,4 +1,6 @@
-import { detectIntent, isGenerativeCommand } from './intentDetector';
+import {
+  detectIntent, isGenerativeCommand, isKaVerbFinalOrder, isKaWishOrder, isMusicVideoIntent, isVideoIntent, kaNotAnOrder, resolveGenerativeLane,
+} from './intentDetector';
 
 /**
  * Pins the STEP-1 autonomous chat dispatch contract (OmniStudio send()). The client dispatches a chat
@@ -102,5 +104,96 @@ describe('intentDetector — autonomous chat dispatch classification', () => {
     expect(detectIntent('გამიკეთე სურათი მთის').intent).toBe('image_generation');
     expect(detectIntent('დახატე ლომი').intent).toBe('image_generation');
     expect(wouldDispatch('გამიკეთე სურათი მთის')).toBe(true);
+  });
+
+  // ⚠️ 2026-10-16: the owner asked the chat for a picture, a song and a video in the owner's own words and got a conversation
+  // back. Georgian puts the verb where it likes, says „please" formally, and asks with „შეგიძლია …?" and „მინდა …"; the
+  // gate only knew a verb at the start. Nothing here charges: the chat shows Agent G's card and renders only on a tap.
+  const laneOf = (m: string) => (isGenerativeCommand(m) ? resolveGenerativeLane(m, detectIntent(m)) : null);
+
+  it('reads Georgian orders whatever the word order, the politeness or the mood', () => {
+    const cases: Array<[string, string]> = [
+      ['კატის სურათი დამიხატე', 'image_generation'],
+      ['სურათი დამიხატე კატის', 'image_generation'],
+      ['კატა დამიხატე', 'image_generation'],
+      ['ლოგო დამიხატე ჩემი კაფესთვის', 'image_generation'],
+      ['ფოტო გამიკეთე სტუდიურ განათებაში', 'image_generation'],
+      ['გთხოვთ დამიხატეთ კატა ბაღში', 'image_generation'],
+      ['გთხოვ, დამიხატე კატა ბაღში', 'image_generation'],
+      ['შეგიძლია დამიხატო კატა?', 'image_generation'],
+      ['შეგიძლია სურათი გამიკეთო ზღვაზე?', 'image_generation'],
+      ['მინდა კატის სურათი', 'image_generation'],
+      ['მინდა სურათი ზღვაზე მზის ჩასვლისას', 'image_generation'],
+      ['მჭირდება ლოგო ჩემი კაფესთვის', 'image_generation'],
+      ['მინდა რომ დამიხატო ზღვა', 'image_generation'],
+      ['მუსიკა შემიქმენი', 'music_generation'],
+      ['შემიქმნი მუსიკა მშვიდი', 'music_generation'],
+      ['სიმღერა დამიწერე სიყვარულზე', 'music_generation'],
+      ['გთხოვთ შემიქმენით სიმღერა', 'music_generation'],
+      ['შეგიძლია მუსიკა შემიქმნა?', 'music_generation'],
+      ['მინდა მშვიდი მუსიკა', 'music_generation'],
+      ['ვიდეოსთვის მუსიკა შემიქმენი', 'music_generation'],
+      ['ვიდეო გამიკეთე ზღვაზე', 'video_generation'],
+      ['მომიმზადე ვიდეო ზღვაზე', 'video_generation'],
+      ['შეგიძლია ვიდეო გამიკეთო ზღვაზე?', 'video_generation'],
+      ['можешь нарисовать кота?', 'image_generation'],
+    ];
+    for (const [m, lane] of cases) expect([m, laneOf(m)]).toEqual([m, lane]);
+  });
+
+  it('leaves Georgian questions, refusals, memories, homework and edits of an existing file in the chat', () => {
+    for (const m of [
+      'ვიდეო როგორ გავაკეთო?', 'რატომ ვერ გამიკეთე სურათი?', 'სურათი ვერ გამიკეთე', 'გუშინ რომ ვიდეო გამიკეთე, მომეწონა',
+      'რა შეგიძლია?', 'დავალება გამიკეთე მათემატიკაში', 'ეს გამიკეთე', 'მინდა გკითხო სურათზე', 'მინდა ეს ფოტო წავშალო',
+      'მინდა ჩემი ფოტო გავაუმჯობესო', 'მინდა ვიცოდე როგორ კეთდება ვიდეო', 'ვიდეოს ანალიზი გამიკეთე', 'მინდა დავისვენო',
+      'სურათი ლამაზია', 'მუსიკა მიყვარს', 'წერილი დამიწერე მეგობარს', 'მჭირდება რჩევა მუსიკალური კლიპისთვის',
+      'მინდა იდეები ვიდეოსთვის',
+    ]) {
+      expect([m, laneOf(m)]).toEqual([m, null]);
+    }
+  });
+
+  it('a text ABOUT a video or a picture is written, never rendered', () => {
+    expect(laneOf('დამიწერე სცენარი ვიდეოზე')).toBeNull();
+    expect(laneOf('write a script for my video')).toBeNull();
+    expect(laneOf('ვიდეოსთვის სცენარი დაწერე')).toBeNull();
+    expect(laneOf('სურათზე ტექსტი დამიწერე')).toBeNull();
+    expect(laneOf('დამიწერე სიმღერა სიყვარულზე')).toBe('music_generation'); // a song is still written AND sung
+  });
+
+  it('the Georgian helpers, one by one', () => {
+    expect(isKaVerbFinalOrder('კატის სურათი დამიხატე')).toBe(true);
+    expect(isKaVerbFinalOrder('დავალება გამიკეთე')).toBe(false); // a generic verb needs a media noun
+    expect(isKaVerbFinalOrder('ერთი ორი სამი ოთხი ხუთი დამიხატე')).toBe(false); // the verb must come early
+    expect(isKaWishOrder('მინდა კატის სურათი')).toBe(true);
+    expect(isKaWishOrder('მინდა კატის სურათი?')).toBe(false);
+    expect(kaNotAnOrder('გუშინ რომ ვიდეო გამიკეთე, მომეწონა')).toBe(true);
+    expect(kaNotAnOrder('ერთწუთიანი ვიდეო გამიკეთე ზღვაზე')).toBe(false);
+  });
+});
+
+describe('isVideoIntent / isMusicVideoIntent — a video is not a track', () => {
+  it('a Georgian music video by either name goes to the Video tool in music-video mode', () => {
+    for (const m of ['გააკეთე მუსიკალური კლიპი', 'მუსიკალური კლიპი გამიკეთე სიყვარულზე', 'გამიკეთე მუსიკალური ვიდეო', 'ვიდეო კლიპი შემიქმენი']) {
+      expect([m, isVideoIntent(m), isMusicVideoIntent(m)]).toEqual([m, true, true]);
+    }
+  });
+
+  it('a Georgian video asked either way round is a video; music FOR a video is music', () => {
+    expect(isVideoIntent('ვიდეო გამიკეთე ზღვაზე')).toBe(true);
+    expect(isVideoIntent('გამიკეთე ვიდეო ზღვაზე')).toBe(true);
+    expect(isVideoIntent('მომიმზადე ვიდეო ზღვაზე')).toBe(true);
+    expect(isVideoIntent('ვიდეოსთვის მუსიკა შემიქმენი')).toBe(false);
+    expect(isVideoIntent('გამიკეთე სიმღერა ჩემი ვიდეოსთვის')).toBe(false);
+    expect(isVideoIntent('დამიწერე სცენარი ვიდეოზე')).toBe(false);
+  });
+
+  it('keeps the English and Russian cues it had', () => {
+    expect(isVideoIntent('make a music video about summer')).toBe(true);
+    expect(isVideoIntent('a 30 second clip of the beach')).toBe(true);
+    expect(isVideoIntent('сделай видео про море')).toBe(true);
+    expect(isVideoIntent('my client asked for a song')).toBe(false);
+    expect(isMusicVideoIntent('make a music video')).toBe(true);
+    expect(isMusicVideoIntent('make a video of the sea')).toBe(false);
   });
 });

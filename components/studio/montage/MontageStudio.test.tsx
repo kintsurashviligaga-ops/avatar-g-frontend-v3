@@ -27,6 +27,8 @@ import MontageStudio from './MontageStudio';
 import { resamplePeaks, visiblePeaks } from './Timeline';
 // eslint-disable-next-line import/first
 import { MONTAGE_COMMAND_EVENT } from './voiceCommands';
+// eslint-disable-next-line import/first
+import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -45,15 +47,25 @@ beforeAll(() => {
 /** When set, the render request waits on this instead of answering at once (an export in flight). */
 let renderGate: Promise<void> | null = null;
 
+/** What /api/upload/resign answers for a draft's refs; null = the route is unreachable. */
+let resignAnswer: ((refs: string[]) => Array<string | null>) | null = null;
+
 beforeEach(() => {
   uploads.length = 0;
   renderGate = null;
+  // The edit kept on this device (draft.ts) must not leak from one test into the next.
+  window.localStorage.clear();
+  resignAnswer = (refs) => refs.map((r) => `https://signed.test/${r}?token=fresh`);
   // jsdom has no Response: a minimal one with what the editor reads.
   const reply = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
-  global.fetch = jest.fn(async (url: RequestInfo | URL) => {
+  global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url);
     // A seeded data:/blob: song is read into a File before it uploads.
     if (u.startsWith('data:') || u.startsWith('blob:')) return { ok: true, status: 200, blob: async () => new Blob(['song'], { type: 'audio/mpeg' }) };
+    if (u.includes('/api/upload/resign')) {
+      const { refs } = JSON.parse(String((init as RequestInit).body)) as { refs: string[] };
+      return resignAnswer ? reply({ urls: resignAnswer(refs) }) : { ok: false, status: 503, json: async () => ({}) };
+    }
     if (u.includes('/api/v2/montage/render')) {
       if (renderGate) await renderGate;
       return reply({ videoUrl: 'https://cdn.test/master.mp4', warnings: { musicRequestedButMissing: false } });
@@ -120,6 +132,23 @@ describe('MontageStudio', () => {
     expect(screen.getAllByTestId('montage-clip')).toHaveLength(1);
   });
 
+  // 2026-10-16: the site's daily AI limit was spent and the export said only that it failed.
+  it('an export the platform\'s AI limit refuses says which limit and when it lifts', async () => {
+    const message = budgetRefusalMessage('ka', 'daily_limit');
+    const base = global.fetch as jest.Mock;
+    global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => (String(url).includes('/api/v2/montage/render')
+      ? { ok: false, status: 503, json: async () => ({ success: false, code: 'platform_budget', error: 'platform_budget', budgetReason: 'daily_limit', message }) }
+      : base(url, init))) as unknown as typeof fetch;
+    render(<MontageStudio locale="ka" onExit={() => {}} />);
+    await addTwoClips();
+    await act(async () => { uploads.splice(0).forEach((r, i) => r({ path: `u/${i}` })); });
+    await waitFor(() => expect(screen.getByTestId('montage-export-btn')).toBeEnabled());
+    await act(async () => { fireEvent.click(screen.getByTestId('montage-export-btn')); });
+    await waitFor(() => expect(screen.getByTestId('montage-export')).toHaveAttribute('data-phase', 'error'));
+    expect(screen.getByTestId('montage-export')).toHaveTextContent(message);
+    expect(message).toContain('04:00');
+  });
+
   it('writes text on a clip — it shows on the text track and goes out with the export', async () => {
     const onDelivered = jest.fn();
     render(<MontageStudio locale="ka" onExit={() => {}} onDelivered={onDelivered} />);
@@ -176,6 +205,33 @@ describe('MontageStudio', () => {
     await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
     // A hosted file needs no upload: Export is ready at once.
     expect(screen.getByTestId('montage-export-btn')).toBeEnabled();
+  });
+
+  it('a film handed over without a format says „Opening…" while its length is read, never the empty new project', async () => {
+    // GG 2026-10-18: a Library film's ✂ showed „New project" for as long as the film's length took to read.
+    let release: (sec: number) => void = () => {};
+    (jest.requireMock('./media') as { probeDuration: jest.Mock }).probeDuration
+      .mockImplementationOnce(() => new Promise<number>((resolve) => { release = resolve; }));
+    render(<MontageStudio locale="en" onExit={() => {}} initialMedia={[{ url: 'https://cdn.test/old-film.mp4', kind: 'video' }]} />);
+    expect(screen.getByTestId('montage-opening')).toHaveTextContent('Opening…');
+    expect(screen.queryByTestId('montage-start')).toBeNull();
+    await act(async () => { release(12); });
+    await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
+    expect(screen.queryByTestId('montage-opening')).toBeNull();
+  });
+
+  it('a song handed over on its own says on the start screen that it is in (a Library song\'s ✂)', async () => {
+    render(<MontageStudio locale="en" onExit={() => {}} initialMusic={{ url: 'https://cdn.test/old-song.mp3' }} />);
+    await act(async () => {}); // its length and waveform are read in the background
+    expect(screen.getByTestId('montage-start')).toBeInTheDocument();
+    const note = screen.getByTestId('montage-start-music');
+    expect(note).toHaveTextContent('Music'); // no name came with it: Montage's own word, in the person's language
+    expect(note).toHaveTextContent('The music is in. Add videos or photos and it plays under them.');
+  });
+
+  it('an empty new project has no music note', () => {
+    render(<MontageStudio locale="en" onExit={() => {}} />);
+    expect(screen.queryByTestId('montage-start-music')).toBeNull();
   });
 });
 
@@ -351,5 +407,73 @@ describe('voice: myavatar:montage-command', () => {
     const after = voice({ command: 'state' });
     expect(after.received).toBe(false);
     expect(after.reply).toBeUndefined();
+  });
+});
+
+describe('the edit survives a reload (kept on this device)', () => {
+  const KEY = 'myavatar:montage-draft:v1';
+  const resignCalls = () => (global.fetch as jest.Mock).mock.calls.filter(([u]) => String(u).includes('/api/upload/resign'));
+
+  /** Two clips that finished uploading as u/0 and u/1, kept by the autosave; then the tab goes away. */
+  async function keepAnEditAndReload() {
+    const first = render(<MontageStudio locale="ka" onExit={() => {}} />);
+    await addTwoClips();
+    // Still uploading: nothing could come back yet, so nothing is kept.
+    await new Promise((r) => setTimeout(r, 700));
+    expect(window.localStorage.getItem(KEY)).toBeNull();
+    await act(async () => { uploads.splice(0).forEach((r, i) => r({ path: `u/${i}` })); });
+    await waitFor(() => expect(window.localStorage.getItem(KEY)).not.toBeNull());
+    const kept = JSON.parse(window.localStorage.getItem(KEY)!);
+    expect(kept.sources.map((s: { ref: string }) => s.ref)).toEqual(['u/0', 'u/1']);
+    expect(JSON.stringify(kept)).not.toContain('blob:');
+    first.unmount();
+  }
+
+  it('reopening brings the edit back, signed again, with a note and a way to start over', async () => {
+    await keepAnEditAndReload();
+    render(<MontageStudio locale="ka" onExit={() => {}} />);
+    await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(2));
+    expect(screen.getByTestId('montage-restored')).toHaveTextContent('ბოლო მონტაჟი აღდგა.');
+    expect(JSON.parse(resignCalls()[0][1].body)).toEqual({ refs: ['u/0', 'u/1'] });
+    // Uploaded paths need no new upload: Export is ready, and the render gets the paths it signs itself.
+    expect(screen.getByTestId('montage-export-btn')).toBeEnabled();
+    await act(async () => { fireEvent.click(screen.getByTestId('montage-export-btn')); });
+    await waitFor(() => expect(screen.getByTestId('montage-export')).toHaveAttribute('data-phase', 'done'));
+    expect(JSON.stringify(renderBody())).toContain('u/0');
+  });
+
+  it('"start over" clears the timeline and forgets the kept edit', async () => {
+    await keepAnEditAndReload();
+    render(<MontageStudio locale="ka" onExit={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('montage-start-over')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('montage-start-over'));
+    expect(screen.getByTestId('montage-from-device')).toBeInTheDocument();
+    expect(screen.queryAllByTestId('montage-clip')).toHaveLength(0);
+    expect(window.localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('a file that no longer signs is left out, and the note says how many', async () => {
+    await keepAnEditAndReload();
+    resignAnswer = (refs) => refs.map((r) => (r === 'u/1' ? null : `https://signed.test/${r}`));
+    render(<MontageStudio locale="ka" onExit={() => {}} />);
+    await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
+    expect(screen.getByTestId('montage-restored')).toHaveTextContent('ამოვარდა: 1');
+  });
+
+  it('when the route cannot be reached the editor starts fresh and the kept edit waits for next time', async () => {
+    await keepAnEditAndReload();
+    resignAnswer = null;
+    render(<MontageStudio locale="ka" onExit={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('montage-from-device')).toBeInTheDocument());
+    await new Promise((r) => setTimeout(r, 700));
+    expect(window.localStorage.getItem(KEY)).not.toBeNull();
+  });
+
+  it('opening on handed media does not wait for, or ask about, the kept edit', async () => {
+    await keepAnEditAndReload();
+    render(<MontageStudio locale="en" onExit={() => {}} initialMedia={[{ url: 'https://cdn.test/gen.mp4', kind: 'video' }]} />);
+    await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
+    expect(resignCalls()).toHaveLength(0);
+    expect(screen.queryByTestId('montage-restored')).toBeNull();
   });
 });

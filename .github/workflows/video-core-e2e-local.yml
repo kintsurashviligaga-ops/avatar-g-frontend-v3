@@ -129,6 +129,10 @@ jobs:
             echo "AGENT_G_MEDIA_EXEC=admin"
             echo "VIDEO_DIRECTOR_RUNS=admin"
             echo "VIDEO_CORE_LIVE_E2E=1"
+            # Owner's word 2026-10-16 19:12Z, this throwaway CI stack only (Production keeps its own limit): the suite books
+            # ~$0.50 of compute per montage (~20 a run) and media stops at 90 % of the daily envelope (budgetPolicy), so the
+            # $10 default refused the last two montages. The envelope itself is covered by its unit tests.
+            echo "DAILY_COST_LIMIT=100"
           } >>"$GITHUB_ENV"
           rm -f sb-status.env sb-start.log
 

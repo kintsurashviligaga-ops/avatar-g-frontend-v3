@@ -1,0 +1,218 @@
+{
+  "suiteFiles": 884,
+  "counts": {
+    "passed": 13346,
+    "pending": 25,
+    "failed": 18
+  },
+  "failed": [
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "pictures TX-01 exact Georgian text on a picture: the very words, drawn whole, where asked"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "pictures TX-07 the same design re-laid as a 9:16 story: a revision, the words kept, inside the tall safe area"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "a logo and a line, revised the first result: our logo top-left, a line at the bottom, the package untouched"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "a logo and a line, revised TX-04 \u201e\u10d6\u10d4\u10d3\u10d0 \u10da\u10dd\u10d2\u10dd \u10db\u10dd\u10ee\u10e1\u10d4\u10dc\u10d8, \u10de\u10d0\u10d9\u10d4\u10e2\u10d8\u10e1 \u10da\u10dd\u10d2\u10dd \u10e8\u10d4\u10d8\u10dc\u10d0\u10e0\u10e9\u10e3\u10dc\u10d4\": our logo gone without a trace, the package logo kept"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "a logo and a line, revised TX-06 + TX-09 two revisions of the same result at once: a premium restyle (same words) and the logo moved right"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "TX-05 \u201e\u10d1\u10dd\u10da\u10dd \u10e1\u10d0\u10db \u10ec\u10d0\u10db\u10e8\u10d8 \u10d0\u10dc\u10d8\u10db\u10d0\u10ea\u10d8\u10e3\u10e0\u10d8 CTA \u10e9\u10d0\u10e1\u10d5\u10d8\": absent before 5 s, slides up into place, held to the end"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "TX-10 several layers: each in its own time, the later one drawn above the logo, all editable later"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "caption tracks TX-02 + TX-03 a Georgian track burned in on its times, and the same video without it"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "caption tracks reload: the stored job answers with both copies, the files and the QC; a repeated Start replays, never re-runs"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "caption tracks a revision in words: \u201e\u10e5\u10d4\u10e4\u10e8\u10d4\u10dc\u10d4\u10d1\u10d8 \u10e4\u10d0\u10d8\u10da\u10d0\u10d3 \u10db\u10dd\u10db\u10d4\u10ea\u10d8\" keeps the same lines (the parent's track), only delivered anew"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "caption tracks TX-08 an English track (typed lines), timed, burned in and as SRT/VTT"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "words a font cannot draw are refused at the quote, named, and nothing is queued"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "long Georgian text: 150 letters are laid out to fit a 9:16 frame; 161 are refused"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "masks hide a region where and when asked (mosaic and blur), and only there"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "a cancel during a layered edit kills ffmpeg and delivers nothing"
+    },
+    {
+      "file": "lib/agent/media/composition.ffmpeg.test.ts",
+      "test": "what a phone plays: H.264 4:2:0, the index before the data (faststart), the sound kept as AAC"
+    },
+    {
+      "file": "lib/agent/media/effects.ffmpeg.test.ts",
+      "test": "F10 the sound evened out: -14 LUFS from a quiet clip"
+    },
+    {
+      "file": "lib/video/ffmpegExec.test.ts",
+      "test": "ffmpegExec a playlist is not media: refused by type, and by demuxer when it lies about its type"
+    }
+  ],
+  "blockedSkipped": [
+    {
+      "file": "lib/agent/run/runIsolation.pg.test.ts",
+      "test": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) I: one message, three steps: a video\u2019s sound \u2192 a cut of two clips to it \u2192 a noir look with fades; three real results, one start per plan, nothing charged"
+    },
+    {
+      "file": "lib/agent/run/runIsolation.pg.test.ts",
+      "test": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) E: the cut\u2019s worker dies mid-render and the server restarts; after the lease lapses the montage sweep runs it as attempt 2, and a fresh process finishes the run from the database alone"
+    },
+    {
+      "file": "lib/agent/run/runIsolation.pg.test.ts",
+      "test": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) F: a stop while ffmpeg encodes the priced cut kills the encoder; the 7 credits come back once and the delivered sound stays"
+    },
+    {
+      "file": "lib/agent/run/runIsolation.pg.test.ts",
+      "test": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) G: a priced step waits for its own yes (forged ones refused); eight ticks race on the run and each step gets one job and one charge"
+    },
+    {
+      "file": "lib/agent/run/runIsolation.pg.test.ts",
+      "test": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) G: a failed priced step is paid back; a resume reuses the delivered sound (no second extraction, no second charge for it) and a second tap replays the first resume"
+    },
+    {
+      "file": "lib/agent/run/runIsolation.pg.test.ts",
+      "test": "Agent G runs on a real Postgres + PostgREST and real ffmpeg (local, isolated) H: another user can neither steer the run nor use its token, its uploads or its results; their own run fails at the quote and charges nothing"
+    },
+    {
+      "file": "lib/agent/media/leaseIsolation.pg.test.ts",
+      "test": "lease queue on a real Postgres + PostgREST (local, isolated) E: a worker dies mid-render; once its lease lapses the sweep takes the job over as attempt 2 and delivers it, charged once"
+    },
+    {
+      "file": "lib/agent/media/leaseIsolation.pg.test.ts",
+      "test": "lease queue on a real Postgres + PostgREST (local, isolated) F: the job dies twice; the sweep gives it up, refunds the charge once, and a second sweep pays nothing more"
+    },
+    {
+      "file": "lib/agent/media/leaseIsolation.pg.test.ts",
+      "test": "lease queue on a real Postgres + PostgREST (local, isolated) a debt left on a failed row (the refund did not land) is paid by the next sweep, once"
+    },
+    {
+      "file": "lib/agent/media/leaseIsolation.pg.test.ts",
+      "test": "lease queue on a real Postgres + PostgREST (local, isolated) the owner stops a running job: the worker hears it on its heartbeat, delivers nothing, and the charge comes back once"
+    },
+    {
+      "file": "lib/agent/media/leaseIsolation.pg.test.ts",
+      "test": "lease queue on a real Postgres + PostgREST (local, isolated) a charge whose request died before it lifted the hold is failed after HOLD_MS and paid back"
+    },
+    {
+      "file": "lib/agent/media/leaseIsolation.pg.test.ts",
+      "test": "lease queue on a real Postgres + PostgREST (local, isolated) eight workers race for one queued job through PostgREST: exactly one gets it"
+    },
+    {
+      "file": "lib/agent/media/leaseIsolation.pg.test.ts",
+      "test": "lease queue on a real Postgres + PostgREST (local, isolated) E/F for the URL-to-Audio worker: a dead extraction is retried once and delivered; two deaths are given up"
+    },
+    {
+      "file": "lib/notifications/outboxIsolation.pg.test.ts",
+      "test": "delivery outbox on a real Postgres + PostgREST (local, isolated) 1. a finished queued job is told once on each outlet; a second pass sends nothing"
+    },
+    {
+      "file": "lib/notifications/outboxIsolation.pg.test.ts",
+      "test": "delivery outbox on a real Postgres + PostgREST (local, isolated) 2. two deliverers at once: each outlet once"
+    },
+    {
+      "file": "lib/notifications/outboxIsolation.pg.test.ts",
+      "test": "delivery outbox on a real Postgres + PostgREST (local, isolated) 3. the lease queue clears a paid refund after our record: neither write undoes the other"
+    },
+    {
+      "file": "lib/notifications/outboxIsolation.pg.test.ts",
+      "test": "delivery outbox on a real Postgres + PostgREST (local, isolated) 4. the due list: fresh untold and open rows; never a step, a live row or a browser-written row"
+    },
+    {
+      "file": "lib/orchestrator/ledgerOnce.pg.test.ts",
+      "test": "deductCreditsOnce on a real PostgREST ( 20261002d) deduct_credits_once is not provisioned (Production today)"
+    },
+    {
+      "file": "lib/orchestrator/ledgerOnce.pg.test.ts",
+      "test": "deductCreditsOnce on a real PostgREST ( 20261002d) first call charges; a sequential replay is refused and charges nothing"
+    },
+    {
+      "file": "lib/orchestrator/ledgerOnce.pg.test.ts",
+      "test": "deductCreditsOnce on a real PostgREST ( 20261002d) reserveProduce({ refuseReplay }) turns the replay into duplicate_request, not a free render"
+    },
+    {
+      "file": "lib/orchestrator/ledgerOnce.pg.test.ts",
+      "test": "deductCreditsOnce on a real PostgREST ( 20261002d) without refuseReplay (a worker re-reserving its own ref) the idempotent success is unchanged"
+    },
+    {
+      "file": "lib/orchestrator/ledgerOnce.pg.test.ts",
+      "test": "deductCreditsOnce on a real PostgREST ( 20261002d) insufficient credits is still insufficient"
+    },
+    {
+      "file": "lib/orchestrator/ledgerOnce.pg.test.ts",
+      "test": "deductCreditsOnce on a real PostgREST ( 20261002d) a user with no profile row is not charged"
+    },
+    {
+      "file": "lib/orchestrator/ledgerOnce.pg.test.ts",
+      "test": "deductCreditsOnce on a real PostgREST ( 20261002d) eight concurrent twins: one debit, exactly one may render"
+    },
+    {
+      "file": "lib/orchestrator/ledgerOnce.pg.test.ts",
+      "test": "deductCreditsOnce on a real PostgREST ( 20261002d) concurrent twins before 20261002d: the known window (documented, not hidden)"
+    }
+  ],
+  "baselineHead": "30be5a2d96495f67134cad34796ce724a744bd28",
+  "exactFailureMatchWithCleanBaseline": true,
+  "noForceExit": true,
+  "stages": [
+    "regression-api-handles",
+    "regression-agent",
+    "regression-components",
+    "regression-libraries-1",
+    "regression-libraries-2",
+    "regression-libraries-3-cleanup",
+    "regression-libraries-4",
+    "regression-libraries-5",
+    "native-audio-local-listener",
+    "native-single-2",
+    "native-single-3",
+    "native-single-4",
+    "native-single-5",
+    "native-single-6",
+    "native-montage-process-access",
+    "native-single-8",
+    "native-single-9",
+    "native-single-10",
+    "native-single-11",
+    "native-single-12",
+    "public-fetch-local-listener",
+    "timer-cleanup-final",
+    "image-workspace-final",
+    "skipped-longform",
+    "skipped-audio"
+  ],
+  "limitations": [
+    "25 PostgreSQL/PostgREST tests lack local runtime",
+    "Mocked browser and injected provider tests are not live Phase 6 E2E"
+  ]
+}

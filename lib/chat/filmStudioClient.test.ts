@@ -10,8 +10,12 @@ import {
   everyClipLanded,
   filmProgressKey,
   asErrorText,
+  describeDeclinedScenes,
+  filmFollowPlan,
+  filmAssembleBody,
   MIN_SALVAGE_CLIPS,
   type FilmStudioMatrix,
+  asSceneQa,
 } from './filmStudioClient';
 import { FILM_SCENE_COUNT } from './filmPipeline';
 import { GEL_COST } from '@/lib/billing/gel';
@@ -57,6 +61,36 @@ describe('estimateFilmCostGel — honest retail forecast from the real matrix', 
   it('clamps invalid scene counts back to the default', () => {
     expect(estimateFilmCostGel(0)).toBeCloseTo(estimateFilmCostGel(FILM_SCENE_COUNT), 5);
     expect(estimateFilmCostGel(Number.NaN)).toBeCloseTo(estimateFilmCostGel(FILM_SCENE_COUNT), 5);
+  });
+});
+
+describe('subtitles are the user’s choice: they reach the stitch only when asked for', () => {
+  const landed = matrix({ sceneCount: 2, statusTokenId: 'tok-1', clips: [{ ordinal: 1, status: 'succeeded', url: 'c1' }, { ordinal: 2, status: 'succeeded', url: 'c2' }] });
+
+  it('off by default: no subtitles key in the plan or the stitch body', () => {
+    const plan = filmFollowPlan({ prompt: 'p' });
+    expect(plan).not.toHaveProperty('subtitles');
+    expect(filmAssembleBody(plan, landed, 'brief')).not.toHaveProperty('subtitles');
+  });
+
+  it('asked for: the plan the server keeps and the body the tab sends both carry it', () => {
+    const plan = filmFollowPlan({ prompt: 'p', subtitles: true });
+    expect(plan.subtitles).toBe(true);
+    const body = filmAssembleBody(plan, landed, 'brief');
+    expect(body.subtitles).toBe(true);
+    expect(body.filmTokenId).toBe('tok-1');
+  });
+});
+
+describe('every stitched clip names its scene (so one scene can be redone and cut back into its place)', () => {
+  it('a film missing scene 2 sends scenes 1 and 3 as themselves', () => {
+    const m = matrix({ sceneCount: 3, clipSec: 8, statusTokenId: 'tok-1', clips: [
+      { ordinal: 3, status: 'succeeded', url: 'c3' }, { ordinal: 1, status: 'succeeded', url: 'c1' }, { ordinal: 2, status: 'failed', url: null },
+    ] });
+    expect(filmAssembleBody(filmFollowPlan({ prompt: 'p' }), m, 'brief').segments).toEqual([
+      { url: 'c1', durationSec: 8, ordinal: 1 },
+      { url: 'c3', durationSec: 8, ordinal: 3 },
+    ]);
   });
 });
 
@@ -382,5 +416,69 @@ describe('summarizeProgress — phase-aware, honest copy', () => {
     // The {done}/{total} substitution must survive in ka + ru, not just en.
     expect(summarizeProgress(m, 'rendering', 'ka')).toMatch(/2\/5/);
     expect(summarizeProgress(m, 'rendering', 'ru')).toMatch(/2\/5/);
+  });
+});
+
+describe('describeDeclinedScenes — a scene Google declined is named, with its rule and code, in the user\'s language', () => {
+  // The ad film of 2026-10-15: scene 1 rendered, scene 2 was declined under support code 15236754 (celebrity).
+  const adFilm = matrix({
+    sceneCount: 2,
+    clips: [
+      { ordinal: 1, status: 'succeeded', url: 'c1' },
+      { ordinal: 2, status: 'failed', url: null, declined: { category: 'celebrity', codes: ['15236754'] } },
+    ],
+  });
+
+  it('names the scene, the likeness rule and the code (ka / en / ru)', () => {
+    expect(describeDeclinedScenes(adFilm, 'ka')).toBe('Google-მა სცენა 2 უარყო. მისმა ფილტრმა ადამიანი ცნობილ საჯარო პირს მიამსგავსა (კოდი 15236754).');
+    expect(describeDeclinedScenes(adFilm, 'en')).toBe('Google declined scene 2. Its filter judged the person to look like a well-known public figure (code 15236754).');
+    expect(describeDeclinedScenes(adFilm, 'ru')).toBe('Google отклонил сцену 2. Его фильтр счёл, что человек похож на известную публичную персону (код 15236754).');
+  });
+
+  it('fits the error card (≤160 characters) in every language', () => {
+    for (const locale of ['ka', 'en', 'ru']) {
+      expect((describeDeclinedScenes(adFilm, locale) ?? '').length).toBeLessThanOrEqual(160);
+    }
+  });
+
+  it('several scenes under different rules → the generic rule, every scene, at most two codes', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 3, status: 'failed', url: null, declined: { category: 'violence', codes: ['61493863'] } },
+        { ordinal: 1, status: 'failed', url: null, declined: { category: 'celebrity', codes: ['15236754'] } },
+        { ordinal: 2, status: 'failed', url: null, declined: { category: null, codes: ['11111111'] } },
+      ],
+    });
+    expect(describeDeclinedScenes(m, 'en')).toBe('Google declined scenes 1, 2, 3 under its safety rules (code 15236754, 11111111).');
+    expect(describeDeclinedScenes(m, 'ka')).toBe('Google-მა სცენები 1, 2, 3 უსაფრთხოების წესებით უარყო (კოდი 15236754, 11111111).');
+  });
+
+  it('no code → no parenthesis', () => {
+    const m = matrix({ clips: [{ ordinal: 2, status: 'failed', url: null, declined: { category: 'child' } }] });
+    expect(describeDeclinedScenes(m, 'en')).toBe('Google declined scene 2. Its filter judged that the picture shows a child.');
+  });
+
+  it('an ordinary failure, a landed clip or no matrix → null (the caller keeps its own sentence)', () => {
+    expect(describeDeclinedScenes(matrix({ clips: [{ ordinal: 1, status: 'failed', url: null }] }), 'en')).toBeNull();
+    expect(describeDeclinedScenes(matrix({ clips: [{ ordinal: 1, status: 'succeeded', url: 'c1', declined: { category: 'celebrity' } }] }), 'en')).toBeNull();
+    expect(describeDeclinedScenes(null, 'ka')).toBeNull();
+  });
+});
+
+describe('asSceneQa — the assembler\'s per-scene grades, narrowed', () => {
+  test('well-formed entries pass; malformed ones are dropped, never guessed', () => {
+    expect(asSceneQa([
+      { ordinal: 2, grade: 'F', score: 40, action: 'rerender', issues: ['warp', 7] },
+      { ordinal: 0, grade: 'A', score: 90, action: 'accept', issues: [] },
+      { ordinal: 3, grade: 'Z', score: 90 },
+      { ordinal: 4, grade: 'C', score: Number.NaN },
+      { ordinal: 5, grade: 'B', score: 80, action: 'weird' },
+      null,
+    ])).toEqual([
+      { ordinal: 2, grade: 'F', score: 40, action: 'rerender', issues: ['warp'] },
+      { ordinal: 5, grade: 'B', score: 80, action: 'accept', issues: [] },
+    ]);
+    expect(asSceneQa(undefined)).toEqual([]);
+    expect(asSceneQa('x')).toEqual([]);
   });
 });

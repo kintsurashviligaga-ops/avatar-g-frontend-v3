@@ -31,6 +31,13 @@ const C = {
   video: T('ვიდეო', 'Video', 'Видео'),
   photo: T('ფოტო', 'Photo', 'Фото'),
   opening: T('იხსნება…', 'Opening…', 'Открываем…'),
+  // A song opened on its own (a Library song's ✂, „put this song in a montage"): it is in, waiting for footage.
+  startMusic: T('მუსიკა უკვე დამატებულია. დაამატე ვიდეო ან ფოტო და მათ ქვეშ დაიკვრება.', 'The music is in. Add videos or photos and it plays under them.', 'Музыка уже добавлена. Добавьте видео или фото, и она зазвучит под ними.'),
+  // „My creations": which files it shows, and the next page of them.
+  showAll: T('ყველა', 'All', 'Все'),
+  showVideos: T('ვიდეოები', 'Videos', 'Видео'),
+  showPhotos: T('ფოტოები', 'Photos', 'Фото'),
+  showMore: T('მეტის ჩვენება', 'Show more', 'Показать ещё'),
 
   // Transport
   play: T('დაკვრა', 'Play', 'Воспроизвести'),
@@ -125,6 +132,11 @@ const C = {
   free: T('უფასო', 'Free', 'Бесплатно'),
 
   // Toasts and blockers
+  // The edit kept on this device (draft.ts) and brought back after a reload
+  restored: T('ბოლო მონტაჟი აღდგა.', 'Your last edit is back.', 'Последний монтаж восстановлен.'),
+  restoredDropped: T('ბოლო მონტაჟი აღდგა; ზოგი ფაილი აღარ არსებობს და ამოვარდა:', 'Your last edit is back; some files no longer exist and were left out:', 'Последний монтаж восстановлен; некоторых файлов больше нет, они убраны:'),
+  restoring: T('ბოლო მონტაჟი იტვირთება…', 'Bringing back your last edit…', 'Загружаем последний монтаж…'),
+  startOver: T('ახლიდან დაწყება', 'Start over', 'Начать заново'),
   tooMany: T(`მაქსიმუმ ${MAX_SHOTS} კლიპი`, `Up to ${MAX_SHOTS} clips`, `Не больше ${MAX_SHOTS} клипов`),
   firstMinute: T(`ვიდეო ${MAX_SHOT_SEC} წამზე გრძელია — დაემატა პირველი ${MAX_SHOT_SEC} წამი. სხვა ნაწილისთვის ჩამოჭერი.`, `Longer than ${MAX_SHOT_SEC} s — its first ${MAX_SHOT_SEC} s were added. Trim to pick another part.`, `Длиннее ${MAX_SHOT_SEC} с — добавлены первые ${MAX_SHOT_SEC} с. Обрежьте, чтобы выбрать другую часть.`),
   cantSplit: T('აქ ვერ გაიჭრება — ნაწილი ძალიან მოკლე იქნება.', 'Can’t split here — a part would be too short.', 'Здесь не разрезать — часть будет слишком короткой.'),

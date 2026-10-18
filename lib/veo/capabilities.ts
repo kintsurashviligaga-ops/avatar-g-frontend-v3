@@ -17,6 +17,7 @@ import type {
   VeoClipRequest,
   VeoDuration,
   VeoMedia,
+  VeoResizeMode,
   VeoResolution,
   VeoTier,
   VeoTransport,
@@ -49,6 +50,8 @@ export interface VeoModelCaps {
   supportsAudioToggle: boolean;
   /** Vertex only — `instances[].cameraControl` (schema-only, opt-in; see docs/VEO_ENGINE.md §1). */
   supportsCameraControl: boolean;
+  /** Vertex only — `parameters.resizeMode` for a first frame (the Gemini API has no such field). */
+  supportsResizeMode: boolean;
   pricePerSecondUsd: {
     audio: VeoPriceRow;
     /** Vertex only: the cheaper rate when `generateAudio: false`. */
@@ -144,6 +147,7 @@ function tierProfile(transport: VeoTransport, tier: VeoTier): VeoModelCaps {
     supportsLastFrame: true,
     supportsAudioToggle: vertex,
     supportsCameraControl: vertex,
+    supportsResizeMode: vertex,
     pricePerSecondUsd: vertex
       ? { audio: PRICE_WITH_AUDIO[tier], videoOnly: PRICE_VIDEO_ONLY_VERTEX[tier] }
       : { audio: PRICE_WITH_AUDIO[tier] },
@@ -197,7 +201,7 @@ export function capsFor(modelId: string, transport?: VeoTransport): VeoModelCaps
   const shared = Object.fromEntries(
     Object.entries(gemini.resolutions).filter(([res]) => vertexRes[res as VeoResolution] !== undefined),
   ) as VeoModelCaps['resolutions'];
-  return { ...gemini, id, status: 'preview', resolutions: shared, supportsCameraControl: false, inferred: true };
+  return { ...gemini, id, status: 'preview', resolutions: shared, supportsCameraControl: false, supportsResizeMode: false, inferred: true };
 }
 
 const TIER_ENV: Readonly<Record<VeoTier, string>> = {
@@ -418,6 +422,16 @@ export function normalizeClipRequest(input: VeoClipInput, modelId: string, trans
     cameraControl = undefined;
   }
 
+  // 7b. resizeMode is a Vertex parameter for a first frame only.
+  let resizeMode: VeoResizeMode | undefined = input.resizeMode;
+  if (resizeMode && !caps.supportsResizeMode) {
+    adjust('resizeMode', resizeMode, null, 'resizeMode exists only on Vertex AI');
+    resizeMode = undefined;
+  } else if (resizeMode && !startImage) {
+    adjust('resizeMode', resizeMode, null, 'resizeMode applies only to a first frame');
+    resizeMode = undefined;
+  }
+
   // 8. Seed → uint32 (Vertex: 0–4294967295). ToUint32 truncates and wraps, as the API would read the integer.
   let seed: number | undefined;
   const raw: unknown = input.seed;
@@ -444,6 +458,7 @@ export function normalizeClipRequest(input: VeoClipInput, modelId: string, trans
     ...(lastFrame ? { lastFrame } : {}),
     ...(referenceImages ? { referenceImages } : {}),
     ...(cameraControl ? { cameraControl } : {}),
+    ...(resizeMode ? { resizeMode } : {}),
     ...(input.personGeneration !== undefined ? { personGeneration: input.personGeneration } : {}),
     ...(input.enhancePrompt !== undefined ? { enhancePrompt: input.enhancePrompt } : {}),
     ...(input.verbatimPrompt === true ? { verbatimPrompt: true } : {}),

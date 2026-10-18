@@ -9,7 +9,7 @@ import { test, expect, type Page } from '@playwright/test';
  *   · the Photographer's and Interior designer's option rows wrap, so no chip is ever cut by the edge;
  *   · a carousel that has more cards says so (an arrow), and has none once it reaches the end.
  */
-const TOOLS = ['video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'remix', 'product', 'swap', 'vfx', 'motion', 'dubbing', 'model3d', 'presentation'];
+const TOOLS = ['video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'product', 'swap', 'vfx', 'motion', 'dubbing', 'model3d', 'presentation'];
 
 test.use({ viewport: { width: 1024, height: 800 } });
 
@@ -69,6 +69,12 @@ test('every service panel fits its 300 px column', async ({ page }) => {
     await page.goto(`/en/dashboard?tool=${tool}`);
     await expect(page.locator('#studio-settings')).toBeVisible({ timeout: 45_000 });
     await page.waitForTimeout(800);
+    // Advanced settings open, so what sits behind them (the Photographer's camera chips) is measured too.
+    // (Each click takes its toggle out of the "closed" set, so the first closed one is opened until none is left.)
+    const closed = page.locator('#studio-settings').locator('[data-testid$="advanced-toggle"][aria-expanded="false"], [data-testid^="video-disclosure-"] > button[aria-expanded="false"]');
+    for (let i = 0; i < 12 && (await closed.count()) > 0; i++) {
+      await closed.first().click();
+    }
     const r = await fit(page);
     expect(r, tool).not.toBeNull();
     expect.soft(r!.out, `${tool}: sticks out of the column`).toEqual([]);

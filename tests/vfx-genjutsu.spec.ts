@@ -132,6 +132,8 @@ for (const view of [
       await page.locator('[data-preset="portal"]').first().click();
       const gen = page.getByTestId('vfx-generate');
       await expect(gen).toHaveAttribute('data-price', '25');
+      // Format and quality are folded into one row (Production 2026-10-16): open it first.
+      await page.getByTestId('vfx-settings').locator('summary').click();
       await page.getByRole('radio', { name: 'High quality' }).click();
       await expect(gen).toHaveAttribute('data-price', '83');
     });

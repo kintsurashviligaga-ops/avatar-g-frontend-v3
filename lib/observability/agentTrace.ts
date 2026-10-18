@@ -14,6 +14,7 @@
 
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { paidWritesBlockedOnPreview } from '@/lib/env/previewIsolation';
 
 export type WorkerKind =
   | 'replicate'
@@ -101,7 +102,8 @@ export async function recordTrace(row: AgentTraceRow): Promise<void> {
     typeof row.costRetailGel === 'number' &&
     row.costRetailGel > 0;
 
-  if (!shouldDebit) return;
+  // Never debit Production wallets from an unisolated Preview (lib/env/previewIsolation).
+  if (!shouldDebit || paidWritesBlockedOnPreview()) return;
 
   const ref = row.deductRef ?? `${row.agentId}:${row.action ?? 'run'}:${row.userId}:${Date.now()}`;
 

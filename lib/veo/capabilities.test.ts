@@ -102,6 +102,7 @@ describe('VEO_MODELS — the §1 table', () => {
     for (const caps of Object.values(VEO_MODELS)) {
       expect(caps.supportsAudioToggle).toBe(caps.transport === 'vertex');
       expect(caps.supportsCameraControl).toBe(caps.transport === 'vertex');
+      expect(caps.supportsResizeMode).toBe(caps.transport === 'vertex');
     }
   });
 
@@ -491,6 +492,26 @@ describe('normalizeClipRequest', () => {
       const { request, adjustments } = normalizeClipRequest(base({ startImage: IMG2, cameraControl: 'tilt_up' }), G_STD);
       expect(request.cameraControl).toBeUndefined();
       expect(adjustments).toEqual([expect.objectContaining({ field: 'cameraControl', reason: expect.stringContaining('Vertex') })]);
+    });
+  });
+
+  describe('rule 7b — resizeMode only with a first frame (and only on Vertex)', () => {
+    it('is kept with a first frame on Vertex', () => {
+      const { request, adjustments } = normalizeClipRequest(base({ startImage: IMG, resizeMode: 'crop' }), V_STD);
+      expect(request.resizeMode).toBe('crop');
+      expect(adjustments).toEqual([]);
+    });
+
+    it('is dropped without a first frame', () => {
+      const { request, adjustments } = normalizeClipRequest(base({ resizeMode: 'crop' }), V_STD);
+      expect(request.resizeMode).toBeUndefined();
+      expect(adjustments).toEqual([expect.objectContaining({ field: 'resizeMode', from: 'crop', to: null, reason: expect.stringContaining('first frame') })]);
+    });
+
+    it('is dropped on the Gemini API (no such field there)', () => {
+      const { request, adjustments } = normalizeClipRequest(base({ startImage: IMG2, resizeMode: 'crop' }), G_STD);
+      expect(request.resizeMode).toBeUndefined();
+      expect(adjustments).toEqual([expect.objectContaining({ field: 'resizeMode', reason: expect.stringContaining('Vertex') })]);
     });
   });
 

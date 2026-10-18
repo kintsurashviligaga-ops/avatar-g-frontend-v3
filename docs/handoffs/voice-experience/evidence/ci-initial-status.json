@@ -1,0 +1,42 @@
+{
+  "sha": "54f570b21f687e156e092f993c7c646588ba4284",
+  "observed": "2026-10-14",
+  "checks": [
+    {
+      "name": "Vercel Preview Comments",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/runs/115957694360"
+    },
+    {
+      "name": "simulated-browser",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38593929938/job/115955653374"
+    },
+    {
+      "name": "verify",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38593929863/job/115955652554"
+    },
+    {
+      "name": "live E2E (local Supabase, desktop + phone)",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38593929811/job/115955652521"
+    },
+    {
+      "name": "billing on real Postgres",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38593929811/job/115955652138"
+    },
+    {
+      "name": "preview-e2e",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38593929894/job/115955651530"
+    }
+  ]
+}

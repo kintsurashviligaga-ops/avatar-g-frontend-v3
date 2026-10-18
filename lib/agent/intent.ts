@@ -24,7 +24,7 @@
  *   same character → edits → other studio services → catalog → generate → the focus tool's own gate → chat.
  */
 import { classifyFocusInput, looksLikeQuestion, talkReason, type GateMode } from '@/lib/chat/focusGate';
-import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from '@/lib/chat/intentDetector';
+import { detectIntent, isGenerativeCommand, kaNotAnOrder, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { isVideoEditRequest } from '@/lib/chat/videoIntent';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
@@ -209,6 +209,13 @@ const WRITING_LEAD = new RegExp(
   'iu',
 );
 
+/**
+ * „ეს ვიდეო დამირემიქსე", «сделай ремикс видео»: a remix of a VIDEO. The remix left every menu (GG 2026-10-18), so the
+ * catalog no longer resolves these words to it and «сделай ремикс видео» became a NEW film made from the words.
+ */
+const REMIX_WORD = /remix|რემიქს|ремикс/iu;
+const VIDEO_WORD = /video|clip|footage|ვიდეო|კლიპ|видео|ролик|клип/iu;
+
 const REMIX_OPS: ReadonlyArray<{ op: EditOp; re: RegExp }> = [
   { op: 'stabilize', re: /სტაბილ|stabili[sz]|стабилиз|shaky|jitter/iu },
   { op: 'speed', re: /სიჩქარ|გააჩქარ|შეანელ|speed|slow\s*(?:it\s*)?down|faster|slower|ускор|замедл|скорост/iu },
@@ -376,6 +383,12 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   // 11) The other studio services (presentation, 3D, avatar, the editor).
   if (studio) return act(STUDIO[studio.service]!, 'new', { ...params, ...(studio.params.durationSec ? { durationSec: studio.params.durationSec } : {}) });
 
+  // 11c) A video remix is the chat's touch-up of a video there (attached, or the last result), never a new film; with no
+  //      video in reach it asks for one. Music-video words keep their own lane (11b).
+  if (REMIX_WORD.test(text) && VIDEO_WORD.test(text) && !MUSIC_VIDEO.test(text)) {
+    return act('video.remix', videoTarget ?? 'new', params, videoTarget ? [] : ['video']);
+  }
+
   // 12) The catalog: a service with its own tool, or one that is not available yet.
   const route = routeAgentIntent(text);
   if (route?.kind === 'unavailable') {
@@ -390,7 +403,7 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   // 13) „Make me …": the generate lanes. A Georgian make-verb at the END of a video ask („ერთწუთიანი ვიდეო გამიკეთე
   //     ზღვაზე") counts too, when the words read as a video and name no analysis (Video Core v1.0 AC-01).
   const detected = detectIntent(text);
-  const kaVideo = !generative && nVideo === 0 && KA_MAKE.test(text) && !KA_ANALYSIS.test(text) && detected.intent === 'video_generation' && detected.confidence >= 0.7;
+  const kaVideo = !generative && nVideo === 0 && KA_MAKE.test(text) && !KA_ANALYSIS.test(text) && !kaNotAnOrder(text) && detected.intent === 'video_generation' && detected.confidence >= 0.7;
   if (generative || kaVideo) {
     const lane = resolveGenerativeLane(text, detected);
     // «напиши пост про видео», "write a script for the video": text about a video is the chat's, not a render.

@@ -187,6 +187,16 @@ describe('buildVertexPayload — full bodies', () => {
     }
   });
 
+  // The 2026-10-17 avatars: a square face padded into 9:16 came back with black bars above and below.
+  it('resizeMode rides on the parameters next to a first frame, and is refused without one or with an unknown value', () => {
+    const { parameters } = buildVertexPayload(clip({ startImage: gcs('gs://b/inputs/f.jpg'), resizeMode: 'crop' }));
+    expect(parameters.resizeMode).toBe('crop');
+    expect(buildVertexPayload(clip({ startImage: gcs('gs://b/inputs/f.jpg') })).parameters).not.toHaveProperty('resizeMode');
+    expect(payloadError(() => buildVertexPayload(clip({ resizeMode: 'crop' })), 'resizeMode').message).toContain('requires startImage');
+    expect(payloadError(() => buildVertexPayload(clip({ startImage: bytes(FIRST_B64), resizeMode: 'stretch' as never })), 'resizeMode').message)
+      .toContain('pad or crop');
+  });
+
   it('video-only render and an explicit enhancePrompt reach the parameters verbatim', () => {
     const { parameters } = buildVertexPayload(clip({ generateAudio: false, enhancePrompt: true }));
     expect(parameters.generateAudio).toBe(false);
@@ -301,10 +311,11 @@ describe('buildGeminiPayload — full bodies (the production-proven shape)', () 
     }]);
   });
 
-  it('Vertex-only fields are never sent: cameraControl, generateAudio, enhancePrompt; personGeneration is always allow_all', () => {
+  it('Vertex-only fields are never sent: cameraControl, resizeMode, generateAudio, enhancePrompt; personGeneration is always allow_all', () => {
     const body = buildGeminiPayload(clip({
       startImage: bytes(FIRST_B64),
       cameraControl: 'pan_left',
+      resizeMode: 'crop',
       generateAudio: false,
       enhancePrompt: true,
       personGeneration: 'dont_allow',
@@ -314,7 +325,7 @@ describe('buildGeminiPayload — full bodies (the production-proven shape)', () 
       parameters: { aspectRatio: '16:9', resolution: '1080p', durationSeconds: 8, personGeneration: 'allow_all' },
     });
     const wire = JSON.stringify(body);
-    for (const key of ['cameraControl', 'generateAudio', 'enhancePrompt', 'storageUri', 'sampleCount']) {
+    for (const key of ['cameraControl', 'resizeMode', 'generateAudio', 'enhancePrompt', 'storageUri', 'sampleCount']) {
       expect(wire).not.toContain(`"${key}"`);
     }
   });

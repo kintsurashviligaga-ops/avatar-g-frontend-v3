@@ -18,7 +18,8 @@ import 'server-only';
 import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
-import { DEFAULT_TIER, normalizeClipRequest, resolveModel, type VeoClipAdjustment, type VeoClipInput } from './capabilities';
+import { DEFAULT_TIER, estimateClipCostUsd, normalizeClipRequest, resolveModel, type VeoClipAdjustment, type VeoClipInput } from './capabilities';
+import { releaseVeoSpend, reserveVeoSpend, veoCapRefusalDetail } from './dailyCap';
 import { signedReadUrl, uploadVeoInput, VEO_INPUT_FETCH_TIMEOUT_MS, VEO_INPUT_MAX_BYTES, veoOutputPrefix, VeoGcsError } from './gcs';
 import { pollGeminiVeo, submitGeminiVeo } from './geminiTransport';
 import { vertexConfig, vertexConfigProblems } from './vertexAuth';
@@ -327,8 +328,9 @@ async function submitViaGemini(request: VeoClipRequest, model: string): Promise<
  *   3. native cameraControl kept only when VEO_NATIVE_CAMERA_CONTROL is on — it is undocumented for Veo 3.x, so the
  *      default is the prompt's camera language alone (normalisation already dropped it without a first frame / off
  *      Vertex);
- *   4. media in the transport's shape (Vertex: uploaded to GCS + an output prefix; Gemini: inline bytes);
- *   5. exactly one submit.
+ *   4. the daily Veo ceiling (dailyCap.ts, VEO_DAILY_LIMIT_USD): the clip's price reserved, or a `quota` refusal with no submit;
+ *   5. media in the transport's shape (Vertex: uploaded to GCS + an output prefix; Gemini: inline bytes);
+ *   6. exactly one submit.
  */
 export async function createVeoClip(input: CreateVeoClipInput): Promise<CreateVeoClipResult> {
   const tier = input.tier ?? input.request.tier ?? DEFAULT_TIER;
@@ -361,7 +363,18 @@ export async function createVeoClip(input: CreateVeoClipInput): Promise<CreateVe
     request = withoutCamera;
   }
 
+  // The daily Veo ceiling (dailyCap.ts): reserved at this clip's exact price BEFORE the submit, so no caller can reach Google
+  // around it. A refusal creates nothing and bills nothing, and reads as Veo's own non-retryable `quota` failure.
+  const cap = await reserveVeoSpend(estimateClipCostUsd(request, model, transport));
+  if (!cap.ok) {
+    const refused: CreateVeoClipResult = { outcome: failure('quota', false, veoCapRefusalDetail(cap)), request, adjustments, model, transport };
+    logSubmit(refused);
+    return refused;
+  }
+
   const outcome = transport === 'vertex' ? await submitViaVertex(request, model, input) : await submitViaGemini(request, model);
+  // Google provably created no job (anything but `ambiguous`) → the reservation goes back; an ambiguous submit may bill.
+  if (!outcome.ok && outcome.reason !== 'ambiguous') await releaseVeoSpend(cap);
   const result: CreateVeoClipResult = { outcome, request, adjustments, model, transport };
   logSubmit(result);
   return result;

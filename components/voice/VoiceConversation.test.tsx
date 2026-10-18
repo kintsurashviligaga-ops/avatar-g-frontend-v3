@@ -11,6 +11,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
 import VoiceConversation, { VOICE_CONVERSATION_STRINGS, voiceOrbState } from './VoiceConversation';
+import { budgetRefusalMessage } from '../../lib/services/billing/budgetMessage';
 
 // ── Fakes ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -63,12 +64,13 @@ const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
 const getUserMedia = jest.fn(async () => stream as unknown as MediaStream);
 
 const json = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body, arrayBuffer: async () => new ArrayBuffer(0) });
-const fetchMock = jest.fn(async (url: string) => {
+const defaultFetch = async (url: string): Promise<unknown> => {
   if (url === '/api/voice/transcribe') return json(200, { text: 'გამარჯობა', language: 'ka' });
   if (url === '/api/voice/chat') return json(200, { reply: 'სალამი, რით დაგეხმარო?', locale: 'ka' });
   if (url === '/api/tts/gemini') return { ok: true, status: 200, json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(2048) };
   return json(404, {});
-});
+};
+const fetchMock = jest.fn(defaultFetch);
 
 const w = window as unknown as Record<string, unknown>;
 const realTimeout = (AbortSignal as unknown as { timeout?: unknown }).timeout;
@@ -82,6 +84,7 @@ beforeEach(() => {
   getUserMedia.mockClear();
   getUserMedia.mockImplementation(async () => stream as unknown as MediaStream);
   fetchMock.mockClear();
+  fetchMock.mockImplementation(defaultFetch);
   w.AudioContext = FakeAudioContext;
   w.MediaRecorder = FakeRecorder;
   (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder = FakeRecorder;
@@ -253,6 +256,34 @@ describe('VoiceConversation — the Live call screen', () => {
     await flush();
     expect(screen.getByRole('heading').textContent).toBe(VOICE_CONVERSATION_STRINGS.en.stopped);
     expect(screen.getByRole('alert').textContent).toBe(VOICE_CONVERSATION_STRINGS.en.rateLimited);
+  });
+
+  it('the platform AI limit stops the call with the limit and when it lifts, not "no answer" (2026-10-16)', async () => {
+    sourceThrows = true;
+    fetchMock.mockImplementation(async (url: string): Promise<unknown> => {
+      if (url === '/api/voice/transcribe') return json(200, { text: 'hello', language: 'en' });
+      if (url === '/api/voice/chat') return json(200, { reply: 'x', locale: 'en', code: 'budget', budgetReason: 'daily_limit' });
+      return json(404, {});
+    });
+    await renderVoice('en');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: VOICE_CONVERSATION_STRINGS.en.endTurn })); });
+    await flush();
+    expect(screen.getByRole('alert').textContent).toBe(budgetRefusalMessage('en', 'daily_limit'));
+    expect(fetchMock.mock.calls.some(([u]) => u === '/api/tts/gemini')).toBe(false); // the refusal is not spoken by a TTS the same limit refuses
+  });
+
+  it('a TTS refused by the same limit says so too', async () => {
+    sourceThrows = true;
+    fetchMock.mockImplementation(async (url: string): Promise<unknown> => {
+      if (url === '/api/voice/transcribe') return json(200, { text: 'hello', language: 'en' });
+      if (url === '/api/voice/chat') return json(200, { reply: 'Hi there.', locale: 'en' });
+      if (url === '/api/tts/gemini') return json(503, { error: 'budget_exhausted' });
+      return json(404, {});
+    });
+    await renderVoice('en');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: VOICE_CONVERSATION_STRINGS.en.endTurn })); });
+    await flush();
+    expect(screen.getByRole('alert').textContent).toBe(budgetRefusalMessage('en', 'daily_limit'));
   });
 
   it('survives the development double-mount (Strict Mode): one live mic, listening — not stuck on connecting', async () => {

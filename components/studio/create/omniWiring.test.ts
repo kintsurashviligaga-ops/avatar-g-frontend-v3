@@ -29,7 +29,7 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
   test('the panel is imported and rendered for the image tool', () => {
     expect(src).toMatch(/import \{ ImageCreatePanel \} from '@\/components\/studio\/create\/ImageCreatePanel'/);
     expect(mounted).not.toBe('');
-    expect(src).toMatch(/\{mode === 'image' && \(\s*<ImageCreatePanel/);
+    expect(src).toMatch(/\{mode === 'image' && !imageWorkspace && \(\s*<ImageCreatePanel/);
   });
 
   test('the old inline controls are GONE (no second set of ratios, sizes or style chips beside the new one)', () => {
@@ -90,9 +90,13 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
 });
 
 describe('the phone: the sheet opens by itself and the composer\'s text box steps aside', () => {
-  test('choosing the Image tool (sidebar, "+", deep link) opens the Create sheet — the home has no starter chips any more', () => {
+  test('choosing the Image tool (sidebar, "+", deep link) opens the Create sheet — the old start chips stay gone', () => {
     expect(src).toMatch(/id === 'motion' \|\| id === 'image'( \|\| id === 'vfx')?\) setOptionsOpen\(true\)/);
     expect(src).not.toContain('startChip');
+  });
+
+  test('the EMPTY chat has the four quick buttons under its box (GG, 2026-10-18); a tap opens the tool like any other pick', () => {
+    expect(src).toMatch(/\{chatOnly && messages\.length === 0 && \(\s*<HomeQuickStart locale=\{locale\} onPick=\{\(id\) => selectTool\(id, 'quick-start'\)\} \/>\s*\)\}/);
   });
 
   test('"edit this image" opens the screen that holds the prompt and focuses ITS box', () => {
@@ -101,8 +105,9 @@ describe('the phone: the sheet opens by itself and the composer\'s text box step
     expect(edit).toContain('imgPromptRef.current ?? taRef.current');
   });
 
-  test('the composer\'s textarea is hidden below lg in the image and music tools (their prompt is the Create screen\'s), and only there', () => {
-    expect(src).toContain("`${(imageCreate || mode === 'music') && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none");
+  test('the composer\'s textarea steps aside while the Create screen holds the description: below lg in image and music, on a desktop while the panel of image, music or video is open (GG, 2026-10-18)', () => {
+    expect(src).toContain("`${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none");
+    expect(src).toMatch(/const composerTextHidden = \(imageCreate \|\| mode === 'music' \|\| activeTool === 'video'\)\s*&& \(isDesktop \? panelOpen : activeTool !== 'video'\);/);
   });
 
   test('a hidden box is not measured (0 px would stick as its inline height in the next tool)', () => {
@@ -125,7 +130,7 @@ describe('the desktop: the centre is the Result pane, the right column is the sa
   });
 
   test('the Result pane + Models & prices stand where the thread would, fed by the same messages and handlers', () => {
-    expect(src).toMatch(/const imageDesk = imageCreate && isDesktop;/);
+    expect(src).toMatch(/const imageDesk = imageCreate && isDesktop && !imageWorkspace;/);
     expect(src).toMatch(/const imageDeskResults = imageDesk \? deriveImageResults\(messages, \{ busy \}\) : \[\];/);
     expect(src).toMatch(/\{imageDesk && imageDeskActions && \(\s*<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">\s*<ImageDesk/);
     for (const handler of ['regenerate(spec)', 'cancelBubbleJob(m)', 'runImageBatch(b.spec', 'startImageEdit', 'sendImageToVideo', "saveLibButton(u, 'image'", "editButton(u, 'image')", 'void upscale(u)', "dl(u, 'myavatar-image.png')"]) {
@@ -135,9 +140,9 @@ describe('the desktop: the centre is the Result pane, the right column is the sa
   });
 
   test('the thread is hidden, never mounted twice: the feed keeps its node, renders nothing, and the jump button waits', () => {
-    expect(src).toContain("${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
-    expect(src).toContain(') : imageDesk ? null : messages.length === 0 && !musicPane ? (');
-    expect(src).toContain('{showJump && !imageDesk && messages.length > 0 && (');
+    expect(src).toContain("${imageDesk || imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
+    expect(src).toContain(') : imageDesk || imageWorkspace ? null : messages.length === 0 && !musicPane ? (');
+    expect(src).toContain('{showJump && !imageDesk && !imageWorkspace && messages.length > 0 && (');
   });
 });
 

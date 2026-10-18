@@ -10,12 +10,14 @@
  *     maintained path. Services that never had a generator here (agent-g, text, media, …) open the chat, which is the hub.
  *   • FORM — a text service the studio has no tool for (tourism, game, podcast, …). The page keeps its own form and posts
  *     to the same route as before, with the same field ids and option VALUES (the routes read them: tourism's prompt says
- *     "Duration: <value> days"). Only the visible labels are localised ka · en · ru. No price is shown: these routes
- *     charge none (docs/DESIGN.md §7 — the button carries the number the route charges, and here that number is nothing).
+ *     "Duration: <value> days"). Only the visible labels are localised ka · en · ru. The button carries the number the
+ *     route charges (docs/DESIGN.md §7, formCredits below): nothing for the free text routes, and the /api/ai `copy`
+ *     price for Software, whose code route debits it (it used to be charged with no price on the button).
  *
  * Pure and isomorphic; lib/services/workspaceForms.test.ts holds the values and the three languages in place.
  */
 import { isToolId, type ToolId } from '@/lib/studio/tools';
+import { AI_AGENT_COSTS } from '@/lib/credits/aiAgentCosts';
 
 export type WorkspaceLang = 'ka' | 'en' | 'ru';
 export type L10n = Record<WorkspaceLang, string>;
@@ -540,6 +542,19 @@ export function formDefaults(form: ServiceForm): Record<string, string> {
  * The request a form sends — the same route and body shape the page sent before this file existed; `locale` is new on
  * the pipeline (its schema already took it and defaulted to 'ka', so /en and /ru pages got Georgian answers).
  */
+/** Credits the form's route debits per run — 0 for the free routes. Single source: lib/credits/aiAgentCosts. */
+export function formCredits(form: ServiceForm): number {
+  return form.route.kind === 'code' ? AI_AGENT_COSTS.copy : 0;
+}
+
+/** The label of the form's primary button: the action, plus the price when the route charges one. */
+export function actionLabelWithPrice(form: ServiceForm, lang: WorkspaceLang): string {
+  const credits = formCredits(form);
+  if (credits <= 0) return form.actionLabel[lang];
+  const unit = lang === 'ka' ? 'კრედიტი' : lang === 'ru' ? 'кр.' : credits === 1 ? 'credit' : 'credits';
+  return `${form.actionLabel[lang]} · ${credits} ${unit}`;
+}
+
 export function buildGenerateRequest(
   form: ServiceForm,
   values: Record<string, string>,

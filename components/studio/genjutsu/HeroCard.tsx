@@ -58,6 +58,8 @@ export function HeroCard({ locale, preset, onChange }: { locale: string; preset:
         <button
           type="button"
           onClick={onChange}
+          // „შეცვლა" alone does not say WHAT changes once it is read out of the card (WCAG 2.4.6).
+          aria-label={`${c.change}: ${preset ? preset.label[lang] : c.heroEyebrow}`}
           className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent ${preset ? 'bg-black/35 text-white ring-white/20 hover:bg-black/50' : 'bg-app-elevated text-app-text ring-app-border/20 hover:text-app-accent'}`}
         >
           <Pencil size={14} aria-hidden="true" />

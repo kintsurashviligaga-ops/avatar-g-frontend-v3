@@ -1,0 +1,48 @@
+PASS components/voice/live/useGeminiLiveSession.test.tsx
+PASS components/voice/live/liveActions.test.tsx
+PASS lib/voice/liveTools.test.ts
+PASS components/chat/composer/useDictation.test.ts
+PASS lib/voice/geminiLive.test.ts
+PASS components/voice/live/LiveModeOverlay.test.tsx
+PASS components/voice/GeminiLiveConversation.test.tsx
+PASS components/voice/live/liveVoiceGate.test.tsx
+(node:53686) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS lib/agents/profile.test.ts
+PASS components/voice/VoiceConversation.test.tsx
+PASS lib/voice-v2v/geminiStt.test.ts
+PASS lib/voice/micAcquire.test.ts
+PASS components/voice/live/LiveDock.test.tsx
+PASS components/voice/live/LiveActionCards.test.tsx
+PASS lib/voice/vad.test.ts
+PASS components/voice/live/LiveActivityFeed.test.tsx
+PASS lib/voice/dictationMetrics.test.ts
+PASS lib/voice/liveUi.test.ts
+PASS lib/voice/livePlans.test.ts
+PASS lib/voice/liveTelemetry.test.ts
+PASS lib/voice/voicePrompt.test.ts
+PASS lib/voice/liveThread.test.ts
+PASS lib/voice/interimCadence.test.ts
+PASS lib/voice-v2v/vad.test.ts
+PASS lib/voice/spokenYes.test.ts
+PASS lib/audio/premium-tts.test.ts
+PASS lib/voice/voiceLedger.test.ts
+PASS lib/voice/twilio-signature.test.ts
+PASS components/voice/live/liveActivity.test.ts
+PASS lib/voice/voiceCallsSchema.test.ts
+PASS lib/voice/livePrime.test.ts
+PASS lib/voice/speechLang.test.ts
+PASS lib/voice/webhook-processing.test.ts
+PASS lib/voice/pcm.test.ts
+PASS lib/voice/sttAccept.test.ts
+PASS lib/voice-v2v/providersGoogleOnly.test.ts
+PASS lib/voice/liveStudio.test.ts
+PASS lib/voice/audioExt.test.ts
+PASS components/voice/live/lateToolAnswer.test.ts
+
+Test Suites: 39 passed, 39 total
+Tests:       895 passed, 895 total
+Snapshots:   0 total
+Time:        3.936 s
+Ran all test suites matching lib/voice|lib/agents/profile.test.ts|components/voice|components/chat/composer/useDictation.test.ts|lib/audio/premium-tts.test.ts.
+Test results written to: ../../../../../../tmp/voice-v2-baseline/jest.json

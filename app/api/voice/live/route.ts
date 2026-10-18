@@ -66,6 +66,7 @@ import { structuredLog } from '@/lib/logger';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { requireUser } from '@/lib/supabase/server';
 import { buildLiveSetup, type LiveSetupMessage, type LiveTool } from '@/lib/voice/geminiLive';
+import { validateVoicePreferences, voiceStyleInstruction, VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
 import { LIVE_ACTIONS_RULE } from '@/lib/voice/liveTools';
 import { resolveLiveModel, toModelResource } from '@/lib/ai/google/models';
 import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
@@ -143,10 +144,12 @@ function liveCallRule(search: boolean, actions: boolean): string {
     'speak natural sentences with no Markdown, lists, headings, tables, code blocks, LaTeX or emoji; describe structure',
     'in words. If the user speaks another language, answer in that language.',
     // ⚠️ THE TEXT CHAT'S RULES CONTRADICTED THE CALL'S. Above, HANDING OFF says no reply can start a render and ANSWERING
-    // says attached files are read in full — true for the text chat, false here: with actions the call DOES open tools
-    // and start renders (after the user's yes), and it never sees a file's content, only its name.
+    // says attached files are read in full — true for the text chat, false here: with actions the call DOES open and fill
+    // tools, and it never sees a file's content, only its name. ⚠️ It said "you start renders yourself" until 2026-10-16,
+    // against LIVE_ACTIONS_RULE (a spoken yes starts nothing) — and the model told GG an image was "already processing"
+    // when nothing ran.
     actions
-      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you open tools and start renders yourself with your functions, always after the user's clear yes to the price.`
+      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you fill and open tools yourself with your functions, and the user starts every render with its priced button on screen.`
       : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud.',
     'You cannot see or hear the content of files the user attached in this call (a photo, a video, a track): you know them only by name (get_screen_state). Never describe what is in them; offer what you can do with them, or ask the user to type the question in the chat, where the files are read.',
     actions
@@ -205,6 +208,7 @@ export async function POST(request: NextRequest) {
       customPersona: body.customPersona,
     });
     const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
+    const experience = body.voiceExperience ? validateVoicePreferences(body.voiceExperience) : null;
     // Talk to a research report. Imported lazily: this module (and its tests) must not pull the research runtime into every mint.
     let reportBlock = '';
     if (body.researchId !== undefined && body.researchId !== null && body.researchId !== '') {
@@ -232,7 +236,7 @@ export async function POST(request: NextRequest) {
     const search = toolsAllowed && profile.googleSearch && isEnabledByDefault(process.env.GEMINI_LIVE_GOOGLE_SEARCH);
     // Voice-to-action: default ON (GEMINI_LIVE_ACTIONS=0 is the kill switch), and only for a client that executes them.
     const actionsWanted = toolsAllowed && body.actions === true && isEnabledByDefault(process.env.GEMINI_LIVE_ACTIONS);
-    const voice = voiceFor(profile, body.voice, body.gender);
+    const voice = voiceFor(profile, experience?.voice ?? body.voice, body.gender);
     const promptNow = new Date();
     // The instruction names the action functions ONLY when the lock carries them, so it is built per attempt.
     const liveFor = (withActions: boolean, withSearch: boolean = search) => toGeminiLiveSetup(
@@ -247,7 +251,8 @@ export async function POST(request: NextRequest) {
       const tools: LiveTool[] = [...(withActions ? ['live_actions' as const] : []), ...(search ? ['google_search' as const] : [])];
       return buildLiveSetup({
         model,
-        systemInstruction: l.systemInstruction,
+        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE),
+        ...(experience ? { turnEagerness: experience.eagerness } : {}),
         voiceName: l.voiceName,
         // The Live session has always run at the model's default temperature; only an active persona changes that.
         ...(personaActive ? { temperature: l.temperature } : {}),
@@ -303,7 +308,7 @@ export async function POST(request: NextRequest) {
       const plain = liveFor(false, false);
       const legacy = buildLiveSetup({
         model,
-        systemInstruction: plain.systemInstruction,
+        systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE),
         voiceName: plain.voiceName,
         ...(personaActive ? { temperature: plain.temperature } : {}),
       });

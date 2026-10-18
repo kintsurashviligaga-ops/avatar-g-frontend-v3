@@ -23,7 +23,11 @@ export type ToolLang = 'ka' | 'en' | 'ru';
 
 // ⚠️ `photoshoot` (the photographer) and `interior` (the interior designer) are PRIMARY on purpose: they were lost from the
 // studio once, and a tool one level down is a tool people do not find. They sit beside `image`, the tool they specialise.
-export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'remix'];
+// ⚠️ `remix` IS RETIRED FROM EVERY MENU (GG's UI plan, 2026-10-18): its restyle / character ops made a NEW ~5 s clip from one
+// frame, so „ვიდეოს რემიქსი" promised an edit it did not make. It stays a ToolId only for the chat's „edit this attached
+// video" lane (subtitles, colour, music, text, trim, speed: /api/video/remix), which names itself by TOOL_META below.
+// Not in ALL_TOOLS, so no menu, deep link, sidebar event, Live voice or panel command can open its panel.
+export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar'];
 /** Tools that live one level down: video variants, motion, the four full studios and the photo culling workspace. */
 export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'vfx', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
@@ -33,7 +37,7 @@ export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n
   image: { Icon: ImageIcon, name: { ka: 'სურათი', en: 'Image', ru: 'Изображение' }, sub: { ka: 'შექმენი და დაარედაქტირე', en: 'Create and edit', ru: 'Создать и отредактировать' } },
   music: { Icon: Music2, name: { ka: 'მუსიკა', en: 'Music', ru: 'Музыка' }, sub: { ka: 'ტრეკი და სიმღერა', en: 'Tracks and songs', ru: 'Треки и песни' } },
   avatar: { Icon: ScanFace, name: { ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' }, sub: { ka: 'ფოტო ალაპარაკდება', en: 'Make a photo talk', ru: 'Фото заговорит' } },
-  remix: { Icon: Wand2, name: { ka: 'ვიდეოს რემიქსი', en: 'Video remix', ru: 'Ремикс видео' }, sub: { ka: 'შეცვალე არსებული ვიდეო', en: 'Change a video you have', ru: 'Измените своё видео' } },
+  remix: { Icon: Wand2, name: { ka: 'ვიდეოს შესწორება', en: 'Video touch-up', ru: 'Правка видео' }, sub: { ka: 'სუბტიტრები, ფერი, მუსიკა, მოჭრა', en: 'Subtitles, colour, music, trim', ru: 'Субтитры, цвет, музыка, обрезка' } },
   chat: { Icon: MessageSquare, name: { ka: 'ჩატი', en: 'Chat', ru: 'Чат' }, sub: { ka: 'ჰკითხე ნებისმიერი რამ', en: 'Ask anything', ru: 'Спросите что угодно' } },
   product: { Icon: Package, name: { ka: 'პროდუქტის რეკლამა', en: 'Product ad', ru: 'Реклама продукта' }, sub: { ka: 'ფოტოდან სარეკლამო რილი', en: 'An ad reel from a product photo', ru: 'Рекламный рилс из фото' } },
   swap: { Icon: Repeat, name: { ka: 'პერსონაჟის შეცვლა', en: 'Character swap', ru: 'Замена персонажа' }, sub: { ka: 'ვიდეოში სხვა სახე', en: 'Put another face in a video', ru: 'Другое лицо в видео' } },

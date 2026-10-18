@@ -2,14 +2,15 @@
 
 /**
  * The pieces both creation panels are made of, in the order the owner's reference (Higgsfield „CREATE IMAGE", docs/DESIGN.md
- * §8) lays them out: a header with the tool's name and a chevron to switch tools and a ✕ · a dashed upload card · (the
- * panel's own choices) · a prompt card whose last row is the model · a chip row · the Generate pill with its price.
+ * §8) lays them out, in the order of GG's 2026-10-18 plan: a header with the tool's name and a chevron to switch tools and
+ * a ✕ · the prompt card · a dashed upload card · (the panel's own choices) · „პროფესიონალური პარამეტრები", shut (the model,
+ * the resolution, the camera) · a chip row · the Generate pill with its price.
  *
  * Presentation only — nothing here knows a route, a price or a template. Every control is ≥ 44 px, every row wraps or
  * scrolls inside itself (nothing pushes the page sideways at 375 px), every colour is a design token.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { BrainCircuit, Check, ChevronDown, Gem, ImagePlus, Layers, X, type LucideIcon } from 'lucide-react';
+import { BrainCircuit, Check, ChevronDown, Gem, ImagePlus, Layers, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
 import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import { CHIP_BASE, CHIP_OFF, CHIP_ON, NOTE_BASE, NOTE_TONE } from '@/components/studio/ui/tokens';
 import { SHOOT_BRIEF_MAX } from '@/lib/studio/shootQuote';
@@ -112,8 +113,8 @@ export function UploadCard({ photos, max, title, limit, note, notice, copy, onFi
 
 // ─── The prompt card ─────────────────────────────────────────────────────────────────────────────────────────────
 
-export function PromptCard({ value, onChange, placeholder, copy, testId }: {
-  value: string; onChange: (v: string) => void; placeholder: string; copy: ShootCopy; testId: string;
+export function PromptCard({ value, onChange, placeholder, testId }: {
+  value: string; onChange: (v: string) => void; placeholder: string; testId: string;
 }) {
   const id = useId();
   return (
@@ -123,10 +124,38 @@ export function PromptCard({ value, onChange, placeholder, copy, testId }: {
       <textarea id={id} value={value} onChange={(e) => onChange(e.target.value.slice(0, SHOOT_BRIEF_MAX))} rows={4} placeholder={placeholder}
         maxLength={SHOOT_BRIEF_MAX} data-testid={`${testId}-brief`}
         className="block min-h-[132px] w-full resize-none !rounded-none !border-0 !bg-transparent px-5 pb-2 pt-4 leading-snug !text-app-text !shadow-none outline-none placeholder:text-app-muted/60 focus:!shadow-none" />
-      <div className="flex min-h-[52px] items-center justify-between gap-3 border-t border-app-border/10 px-5 text-[14px]">
-        <span className="inline-flex items-center gap-2 text-app-muted"><BrainCircuit size={16} aria-hidden="true" />{copy.modelLabel}</span>
-        <span className="font-medium text-app-text">{copy.modelValue}</span>
-      </div>
+    </section>
+  );
+}
+
+// ─── Advanced settings ───────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * „პროფესიონალური პარამეტრები" (GG 2026-10-18, progressive disclosure): the technical choices, shut until tapped. Shut,
+ * the summary says what is set, so nothing is chosen behind a closed door unseen. Its content mounts only while open.
+ * The first row names the model (the route picks it: Auto).
+ */
+export function ProSettings({ copy, summary, testId, children }: { copy: ShootCopy; summary: string; testId: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <section data-testid={`${testId}-advanced`} aria-label={copy.advanced} className="rounded-3xl bg-app-elevated/40 ring-1 ring-app-border/10">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={id} data-testid={`${testId}-advanced-toggle`}
+        className="flex min-h-[52px] w-full touch-manipulation items-center gap-2.5 rounded-3xl px-4 text-left transition-colors hover:bg-app-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+        <SlidersHorizontal size={18} aria-hidden="true" className="shrink-0 text-app-muted" />
+        <span className="min-w-0 flex-1 text-[15px] font-semibold text-app-text">{copy.advanced}</span>
+        {!open && <span className="min-w-0 max-w-[50%] shrink truncate text-[12.5px] text-app-muted">{summary}</span>}
+        <ChevronDown size={17} aria-hidden="true" className={`shrink-0 text-app-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div id={id} className="space-y-3 border-t border-app-border/10 p-4">
+          <div className="flex min-h-[44px] items-center justify-between gap-3 text-[14px]">
+            <span className="inline-flex items-center gap-2 text-app-muted"><BrainCircuit size={16} aria-hidden="true" />{copy.modelLabel}</span>
+            <span className="font-medium text-app-text">{copy.modelValue}</span>
+          </div>
+          {children}
+        </div>
+      )}
     </section>
   );
 }

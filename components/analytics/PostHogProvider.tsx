@@ -5,12 +5,19 @@ import { PostHogProvider as PHProvider, usePostHog } from 'posthog-js/react';
 import { useEffect, useRef } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import { CONSENT_EVENT, analyticsAllowed } from '@/lib/analytics/consent';
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
 
-// Initialize PostHog once on client
-if (typeof window !== 'undefined' && POSTHOG_KEY && !posthog.__loaded) {
+// PostHog starts only after the visitor chose "Accept all" on the cookie banner (lib/analytics/consent.ts). It used to
+// initialise here at module load on every page, before any choice, which broke the banner's promise.
+function startPosthog(): void {
+  if (typeof window === 'undefined' || !POSTHOG_KEY) return;
+  if (posthog.__loaded) {
+    posthog.opt_in_capturing();
+    return;
+  }
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
     capture_pageview: false,    // We manually track for accurate SPA routing
@@ -26,6 +33,18 @@ if (typeof window !== 'undefined' && POSTHOG_KEY && !posthog.__loaded) {
   });
 }
 
+/** Apply the current consent: start PostHog on "all", stop capturing otherwise. Exported for tests. */
+export function applyAnalyticsConsent(allowed: boolean = analyticsAllowed()): void {
+  if (typeof window === 'undefined' || !POSTHOG_KEY) return;
+  if (allowed) {
+    startPosthog();
+  } else if (posthog.__loaded) {
+    posthog.opt_out_capturing();
+  }
+}
+
+applyAnalyticsConsent();
+
 /** Tracks page views on route change — required for Next.js App Router */
 function PageViewTracker() {
   const pathname = usePathname();
@@ -37,7 +56,7 @@ function PageViewTracker() {
     const fullPath = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : '');
     if (fullPath !== prevPath.current) {
       prevPath.current = fullPath;
-      ph?.capture('$pageview', { $current_url: window.location.href });
+      if (posthog.__loaded && analyticsAllowed()) ph?.capture('$pageview', { $current_url: window.location.href });
     }
   }, [pathname, searchParams, ph]);
 
@@ -47,7 +66,7 @@ function PageViewTracker() {
 /** Safe capture — no-op if PostHog not initialized */
 function safeCapture(event: string, props?: Record<string, unknown>) {
   try {
-    if (typeof window !== 'undefined' && POSTHOG_KEY && posthog.__loaded) {
+    if (typeof window !== 'undefined' && POSTHOG_KEY && posthog.__loaded && analyticsAllowed()) {
       posthog.capture(event, props);
     }
   } catch { /* never throw from analytics */ }
@@ -120,7 +139,7 @@ export const analytics = {
   /** Identify authenticated user */
   identify: (userId: string, props?: Record<string, unknown>) => {
     try {
-      if (typeof window !== 'undefined' && POSTHOG_KEY && posthog.__loaded) {
+      if (typeof window !== 'undefined' && POSTHOG_KEY && posthog.__loaded && analyticsAllowed()) {
         posthog.identify(userId, props);
       }
     } catch { /* never throw */ }
@@ -139,6 +158,15 @@ export const analytics = {
   },
 };
 
+function ConsentListener() {
+  useEffect(() => {
+    const onConsent = (e: Event) => applyAnalyticsConsent(Boolean((e as CustomEvent<{ allowed?: boolean }>).detail?.allowed));
+    window.addEventListener(CONSENT_EVENT, onConsent);
+    return () => window.removeEventListener(CONSENT_EVENT, onConsent);
+  }, []);
+  return null;
+}
+
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   if (!POSTHOG_KEY) {
     // No PostHog key configured — skip provider, render children directly
@@ -147,6 +175,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <PHProvider client={posthog}>
+      <ConsentListener />
       <Suspense fallback={null}>
         <PageViewTracker />
       </Suspense>

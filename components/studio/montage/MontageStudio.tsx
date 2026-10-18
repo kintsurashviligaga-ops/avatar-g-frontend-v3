@@ -27,11 +27,12 @@ import {
 } from 'lucide-react';
 import { isMontageAspect, type MontageAspect, type MontageCaptionPos, type MontageGrade, type MontageTransition } from '@/lib/services/montage/montagePlan';
 import { useJobQueue } from '@/store/useJobQueue';
-import { describeServiceError } from '../ui/serviceError';
+import { describeGenerationFailure, describeServiceError } from '../ui/serviceError';
 import { uploadErrorText, uploadFileToStorage } from '../ui/useUpload';
 import { montageCopy, langOf, type Copy } from './copy';
 import { ExportView, type ExportState } from './ExportView';
 import { MediaPicker } from './MediaPicker';
+import { draftOf, loadDraft, resignDraftRefs, restoreDraft, saveDraft } from './draft';
 import { decodePeaks, extractFrames, fmtSec, fmtTime, kindOfFile, probeDuration } from './media';
 import {
   AdjustPanel, AspectChoice, DurationPanel, FiltersPanel, FormatPanel, MusicPanel, TextPanel, TransitionPanel,
@@ -137,8 +138,15 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
   const [hist, setHist] = useState<History>(() => startHistory(emptyEdit(isMontageAspect(initialAspect) ? initialAspect : '9:16')));
-  // Opening on clips in a known format („put the song on the video we made"): no format question while they land.
-  const [seeding, setSeeding] = useState(() => Boolean(initialMedia?.length) && isMontageAspect(initialAspect));
+  // Opening on clips („put the song on the video we made", a Library film's ✂): „Opening…" while they land.
+  // ⚠️ THIS USED TO WAIT ONLY WHEN A FORMAT CAME WITH THEM. A film sent without one showed the empty „New project" screen
+  // for as long as its length took to read (seconds, for a long film over the network), and GG took that for the file
+  // not having come over at all (2026-10-18). The format can still be changed above the preview once it is there.
+  const [seeding, setSeeding] = useState(() => Boolean(initialMedia?.length));
+  // Opened on nothing: the edit kept on this device (draft.ts) may come back first — the start screen waits for it.
+  const [restoring, setRestoring] = useState(() => !initialMedia?.length && !initialMusic?.url);
+  /** Set once a kept edit came back: the strip above the preview, with how many clips could not. */
+  const [restoredNote, setRestoredNote] = useState<{ dropped: number } | null>(null);
   const edit = hist.present;
   const editRef = useRef(edit);
   editRef.current = edit;
@@ -451,6 +459,54 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     })();
   }, [initialMusic, apply, enqueueUpload, patchSource, t]);
 
+  // ── The edit survives a reload (GG's audit 2026-10-17): kept on this device, signed again when it comes back ──
+  useEffect(() => {
+    if (!restoring) return;
+    const draft = loadDraft();
+    if (!draft) { setRestoring(false); return; }
+    const ctrl = new AbortController();
+    void (async () => {
+      const urls = await resignDraftRefs([...new Set(draft.sources.map((x) => x.ref))], ctrl.signal);
+      if (ctrl.signal.aborted) return;
+      if (urls) {
+        const back = restoreDraft(draft, urls);
+        if (back.edit.clips.length > 0 || back.edit.musicId) {
+          setSources(back.sources);
+          setHist(startHistory(back.edit));
+          setRestoredNote({ dropped: back.dropped });
+          window.setTimeout(() => seek(0), 0);
+        }
+      }
+      setRestoring(false);
+    })();
+    return () => ctrl.abort();
+    // Once, on open: `restoring` only ever turns off.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /** True once this session has kept something: emptying the edit then forgets it, an edit still uploading never does. */
+  const keptDraft = useRef(false);
+  useEffect(() => {
+    if (restoring) return;
+    const id = window.setTimeout(() => {
+      const d = draftOf(edit, sources);
+      if (d) { keptDraft.current = true; saveDraft(d); } else if (keptDraft.current && edit.clips.length === 0 && !edit.musicId) {
+        keptDraft.current = false;
+        saveDraft(null);
+      }
+    }, 600);
+    return () => window.clearTimeout(id);
+  }, [edit, sources, restoring]);
+  const startOver = useCallback(() => {
+    pause();
+    saveDraft(null);
+    keptDraft.current = false;
+    setRestoredNote(null);
+    setSelectedId(null);
+    setPanel(null);
+    setSources({});
+    setHist(startHistory(emptyEdit(editRef.current.aspect)));
+  }, [pause]);
+
   // ── Selection and the clip under the playhead ─────────────────────────────────────────────────────────
   const selected = selectedId ? edit.clips.find((c) => c.id === selectedId) ?? null : null;
   const selectedIndex = selected ? edit.clips.indexOf(selected) : -1;
@@ -552,7 +608,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
         credentials: 'include',
         body: JSON.stringify(clientJobId ? { ...body, clientJobId } : body),
       });
-      const j = (await res.json().catch(() => null)) as { videoUrl?: string; message?: string; step?: string; error?: string; warnings?: { musicRequestedButMissing?: boolean } } | null;
+      const j = (await res.json().catch(() => null)) as { videoUrl?: string; message?: string; step?: string; error?: string; code?: string; warnings?: { musicRequestedButMissing?: boolean } } | null;
       if (res.ok && j?.videoUrl) {
         onDelivered?.(j.videoUrl, body.aspect as MontageAspect);
         if (mounted.current) {
@@ -560,7 +616,10 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
           setExportedOnce(true);
         }
       } else if (mounted.current) {
-        const message = res.status === 401 ? uploadErrorText('auth', locale) : describeServiceError(j?.message ?? j?.error ?? j?.step, lang, t.exportFailed);
+        const message = res.status === 401 ? uploadErrorText('auth', locale)
+          // The platform's AI limit names itself and when it lifts; the export's generic line would hide it.
+          : j?.code === 'platform_budget' ? describeGenerationFailure(j, lang, t.exportFailed)
+            : describeServiceError(j?.message ?? j?.error ?? j?.step, lang, t.exportFailed);
         setExp({ phase: 'error', message });
       }
     } catch {
@@ -853,10 +912,10 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
           onBackToChat={onExit}
           onRetry={() => void runExport()}
         />
-      ) : empty && seeding ? (
-        // ── OPENING ON CLIPS IN A KNOWN FORMAT: nothing to choose, they are on their way ──
+      ) : empty && (seeding || restoring) ? (
+        // ── OPENING ON CLIPS IN A KNOWN FORMAT, or on the edit kept from last time: nothing to choose yet ──
         <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-[13px] text-app-muted" role="status" data-testid="montage-opening">
-          <Loader2 size={16} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> {t.opening}
+          <Loader2 size={16} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> {seeding ? t.opening : t.restoring}
         </div>
       ) : empty ? (
         // ── START: pick where it goes, then add footage ──
@@ -864,6 +923,18 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
           <div className="mx-auto w-full max-w-xl px-4 pb-10 pt-6">
             <h2 className="text-[22px] font-semibold leading-tight">{t.newProject}</h2>
             <p className="mt-1.5 text-[14px] leading-relaxed text-app-muted">{t.startSub}</p>
+            {music && (
+              // A song that came on its own shows it came: the start screen has no timeline to put it on yet.
+              <div className="mt-4 flex items-center gap-2.5 rounded-xl bg-app-accent/10 px-3 py-2.5 text-[13px] ring-1 ring-app-accent/25" role="status" data-testid="montage-start-music">
+                {music.status === 'uploading'
+                  ? <Loader2 size={16} aria-hidden="true" className="shrink-0 animate-spin text-app-accent motion-reduce:animate-none" />
+                  : <Music2 size={16} aria-hidden="true" className="shrink-0 text-app-accent" />}
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-app-text">{music.name}</span>
+                  <span className="block text-app-muted">{t.startMusic}</span>
+                </span>
+              </div>
+            )}
             <h3 className="mb-2 mt-5 text-[12px] font-medium uppercase tracking-wide text-app-muted">{t.format}</h3>
             <AspectChoice locale={locale} value={edit.aspect} onChange={(a) => apply((e) => ({ ...e, aspect: a }))} label={t.format} size="lg" />
             <div className="mt-6">
@@ -895,6 +966,15 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
                   playLabel={t.play}
                   pauseLabel={t.pause}
                 />
+                {restoredNote && hist.past.length === 0 && (
+                  <div role="status" data-testid="montage-restored" className="absolute inset-x-3 top-3 z-20 flex items-center justify-between gap-2 rounded-xl bg-app-elevated/95 px-3 py-2 text-[12.5px] text-app-text shadow-sm">
+                    <span className="min-w-0">{restoredNote.dropped > 0 ? `${t.restoredDropped} ${restoredNote.dropped}` : t.restored}</span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      <button type="button" onClick={startOver} data-testid="montage-start-over" className="min-h-[36px] rounded-lg px-2.5 font-medium text-app-accent hover:bg-app-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">{t.startOver}</button>
+                      <button type="button" onClick={() => setRestoredNote(null)} aria-label={t.close} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-app-muted hover:bg-app-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"><X size={15} aria-hidden="true" /></button>
+                    </span>
+                  </div>
+                )}
                 {toast && (
                   <p role="status" className="pointer-events-none absolute left-1/2 top-4 z-30 max-w-[86%] -translate-x-1/2 rounded-full bg-app-elevated/95 px-3.5 py-1.5 text-center text-[12.5px] text-app-text shadow-sm">
                     {toast}

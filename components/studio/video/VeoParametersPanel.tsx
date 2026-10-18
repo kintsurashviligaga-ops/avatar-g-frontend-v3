@@ -4,7 +4,7 @@
  * The video tool's Google Veo controls (docs/VEO_ENGINE.md §2) — every control here maps to something Veo or the
  * edit actually does, and nothing else is offered:
  *
- *   Scenes & camera  one card per 8 s clip: camera move · shot size · angle · lens · speed, compiled into the
+ *   Scenes & camera  one card per clip (8 s, or the one 4 s / 6 s clip of a short film): camera move · shot size · angle · lens · speed, compiled into the
  *                    clip's prompt as cinematographer's language (Veo 3.x has no documented camera parameter), and
  *                    the JOIN to the next scene — a cut / crossfade / dissolve / fade through black made in the
  *                    edit, because Veo has no transition parameter at all
@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react';
 import { CAMERA_ANGLES, CAMERA_MOVES, LENS_LOOKS, SHOT_SIZES, type CinematographyOption } from '@/lib/veo/cinematography';
 import type { CameraSpec, Transition } from '@/lib/veo/types';
 import { hasCustomCamera, planNotices, type VeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
+import { clipSecForSeconds } from '@/lib/video/duration';
 import { Chip, Disclosure, Hint, Note, Select, TextArea, ToggleRow } from '../ui/controls';
 
 type Locale = 'ka' | 'en' | 'ru';
@@ -159,7 +160,8 @@ export function VeoParametersPanel({ plan, dispatch, locale, engine, sceneTexts,
     ? tr(locale, 'შერეული', 'mixed', 'разные')
     : (() => { const t = TRANSITIONS.find((x) => x.id === joins[0]); return t ? txt(t) : ''; })();
   const scenesSummary = [
-    `${scenes.length} × 8${tr(locale, 'წმ', 's', 'с')}`,
+    // One scene's real length: a 4 s or 6 s film is ONE shorter clip, every longer film is 8 s scenes.
+    `${scenes.length} × ${clipSecForSeconds(plan.lengthSec)}${tr(locale, 'წმ', 's', 'с')}`,
     customCamera ? `${tr(locale, 'კამერა', 'camera', 'камера')} ✓` : '',
     scenes.length > 1 ? joinLabel : '',
   ].filter(Boolean).join(' · ');

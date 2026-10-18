@@ -7,6 +7,21 @@ merge, no deploy, no shared-database migration, no paid provider call. Rounds: m
 completion + isolated CI E2E (18:17Z, 19:05Z, 19:07Z), final review + isolated Preview E2E + GO/NO-GO (2026-10-13 06:34Z,
 08:52Z, 09:48Z).
 
+## Production release 2026-10-15 (start here)
+
+PR #69 merged as **b46bb44** and serving myavatar.ge (`dpl_6AaKtWBNgxyvjZSv4eF48DdSdTE7`); Production Veo runs on Vertex;
+one paid admin film passed. Video Core's Agent G media tools stay admin-only; the public opening is GG's separate word.
+
+| File | What it is |
+| --- | --- |
+| `VIDEO_CORE_FINAL_PRODUCTION_REPORT.md` | phases 0–7, gates, money, D1–D12, B1–B7, providers, the verdict and the exact permission the public opening needs |
+| `VIDEO_CORE_PAID_E2E_EVIDENCE.md` | the one paid Production test, step by step, and its findings F1–F5 |
+| `PRODUCTION_RELEASE_CHECKLIST.md` | every release gate with its proof |
+| `FINANCIAL_INTEGRITY_REPORT.md` | the film's money path, invariants, gaps, how to reconcile the ledger |
+| `ROLLBACK_AND_RECOVERY_PLAN.md` | rollback points, triggers, commands, recovery of a user's money |
+| `NEXT_PHASE_HANDOFF.md` | open items in order, how to re-run the checks |
+| `PRODUCTION_VEO_VERTEX_PLAN.md`, `R3_REFUND_MATRIX.md` | the Vertex switch and the refund rules behind this release |
+
 ## GG's ten deliverables (2026-10-13 08:52Z) — where each one is
 
 | # | Deliverable | File |

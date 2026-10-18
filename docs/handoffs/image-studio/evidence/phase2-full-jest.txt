@@ -1,0 +1,2935 @@
+FAIL lib/agent/media/effects.ffmpeg.test.ts (16.167 s)
+  ● F10 the sound evened out: -14 LUFS from a quiet clip
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "outcome": "delivered",
+    +   "outcome": "failed",
+        "ran": true,
+      }
+
+      180 |   const t0 = Date.now();
+      181 |   const worked = await workEditJob(deps, { jobId: q.quote.jobId, worker: 'w1' });
+    > 182 |   expect(worked).toMatchObject({ ran: true, outcome: 'delivered' });
+          |                  ^
+      183 |   const file = join(dir, `result-${source.split('/').pop()!.replace(/\.\w+$/, '')}-${Object.keys(evidence).length}.${output}`);
+      184 |   writeFileSync(file, stored[0]!);
+      185 |   return { file, edits: q.quote.edits, plan: q.quote.plan, ms: Date.now() - t0 };
+
+      at toMatchObject (lib/agent/media/effects.ffmpeg.test.ts:182:18)
+      at Object.<anonymous> (lib/agent/media/effects.ffmpeg.test.ts:345:13)
+
+FAIL lib/video/ffmpegExec.test.ts
+  ● ffmpegExec › a playlist is not media: refused by type, and by demuxer when it lies about its type
+
+    expect(received).rejects.toMatchObject(expected)
+
+    - Expected  -  1
+    + Received  + 14
+
+      Object {
+    -   "stderr": StringMatching /Invalid data found/,
+    +   "stderr": "ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers
+    +   built with Apple clang version 13.1.6 (clang-1316.0.21.2.5)
+    +   configuration: --prefix=/Volumes/tempdisk/sw --extra-cflags=-fno-stack-check --arch=arm64 --cc=/usr/bin/clang --enable-gpl --enable-libvmaf --enable-libbluray --enable-libopenjpeg --enable-libopus --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libvpx --enable-libwebp --enable-libass --enable-libfreetype --enable-fontconfig --enable-libtheora --enable-libvorbis --enable-libsnappy --enable-libaom --enable-libvidstab --enable-libzimg --enable-libsvtav1 --enable-libkvazaar --enable-version3 --pkg-config-flags=--static --enable-ffplay --enable-postproc --enable-nonfree --enable-neon --enable-runtime-cpudetect --disable-indev=qtkit --disable-indev=x11grab_xcb
+    +   libavutil      58.  2.100 / 58.  2.100
+    +   libavcodec     60.  3.100 / 60.  3.100
+    +   libavformat    60.  3.100 / 60.  3.100
+    +   libavdevice    60.  1.100 / 60.  1.100
+    +   libavfilter     9.  3.100 /  9.  3.100
+    +   libswscale      7.  1.100 /  7.  1.100
+    +   libswresample   4. 10.100 /  4. 10.100
+    +   libpostproc    57.  1.100 / 57.  1.100
+    + [hls @ 0x13f619c10] Format not on whitelist 'mov,matroska,mpegts,avi,flv,mpeg,mp3,wav,aac,ogg,flac,image2,png_pipe,jpeg_pipe,webp_pipe,gif'
+    + /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/ffin-v52et2/in0.mp4: Invalid argument
+    + ",
+      }
+
+      53 |       .rejects.toThrow('ffmpeg input refused (wrong_type)');
+      54 |     await expect(ffmpegExec(bin, ['-i', 'https://cdn.example/a.mp4', '-f', 'null', '-'], {}, { fetchImpl: serve(m3u8, 'video/mp4'), lookupImpl: PUBLIC }))
+    > 55 |       .rejects.toMatchObject({ stderr: expect.stringMatching(/Invalid data found/) });
+         |                ^
+      56 |   });
+      57 |
+      58 |   test('local inputs and lavfi sources pass through untouched', async () => {
+
+      at Object.toMatchObject (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/expect/build/index.js:2155:20)
+      at Object.toMatchObject (lib/video/ffmpegExec.test.ts:55:16)
+
+[Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+[Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+FAIL lib/agent/media/composition.ffmpeg.test.ts
+  ● pictures › TX-01 exact Georgian text on a picture: the very words, drawn whole, where asked
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● pictures › TX-07 the same design re-laid as a 9:16 story: a revision, the words kept, inside the tall safe area
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › the first result: our logo top-left, a line at the bottom, the package untouched
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › TX-04 „ზედა ლოგო მოხსენი, პაკეტის ლოგო შეინარჩუნე": our logo gone without a trace, the package logo kept
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › TX-06 + TX-09 two revisions of the same result at once: a premium restyle (same words) and the logo moved right
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● TX-05 „ბოლო სამ წამში ანიმაციური CTA ჩასვი": absent before 5 s, slides up into place, held to the end
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● TX-10 several layers: each in its own time, the later one drawn above the logo, all editable later
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › TX-02 + TX-03 a Georgian track burned in on its times, and the same video without it
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › reload: the stored job answers with both copies, the files and the QC; a repeated Start replays, never re-runs
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › a revision in words: „ქეფშენები ფაილად მომეცი" keeps the same lines (the parent's track), only delivered anew
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › TX-08 an English track (typed lines), timed, burned in and as SRT/VTT
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● words a font cannot draw are refused at the quote, named, and nothing is queued
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● long Georgian text: 150 letters are laid out to fit a 9:16 frame; 161 are refused
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● masks hide a region where and when asked (mosaic and blur), and only there
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a cancel during a layered edit kills ffmpeg and delivers nothing
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● what a phone plays: H.264 4:2:0, the index before the data (faststart), the sound kept as AAC
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+PASS lib/agent/media/montageExec.ffmpeg.test.ts (29.233 s)
+  ● Console
+
+    console.warn
+      [remix.fit] failed: ffmpeg cancelled
+
+      382 |   } catch (err) {
+      383 |     // eslint-disable-next-line no-console
+    > 384 |     console.warn('[remix.fit] failed:', err instanceof Error ? err.message : err);
+          |             ^
+      385 |     return null;
+      386 |   } finally {
+      387 |     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+
+      at warn (lib/video/remixOps.ts:384:13)
+      at renderLegs (lib/services/montage/montagePipeline.ts:138:22)
+      at runMontage (lib/services/montage/montagePipeline.ts:88:15)
+      at workMontageJob (lib/agent/media/montageWorker.ts:154:17)
+      at Object.<anonymous> (lib/agent/media/montageExec.ffmpeg.test.ts:284:10)
+
+PASS lib/agent/media/ownerMontage.ffmpeg.test.ts (27.519 s)
+PASS lib/agent/media/mediaStudio.ffmpeg.test.ts (21.375 s)
+PASS lib/agent/media/transitions.ffmpeg.test.ts (10.484 s)
+PASS lib/agent/media/soundMontage.ffmpeg.test.ts (7.672 s)
+PASS components/studio/create/HiggsfieldGenerate.test.tsx (6.405 s)
+PASS lib/agent/media/editLive.ffmpeg.test.ts (5.27 s)
+PASS lib/veo/contract.test.ts
+PASS components/studio/genjutsu/GenjutsuPanel.test.tsx
+PASS lib/agent/media/audioLive.ffmpeg.test.ts
+PASS lib/agent/media/erase.ffmpeg.test.ts
+PASS lib/photo/cullMetrics.test.ts
+FAIL __tests__/api-lockdown.test.ts
+  ● API lockdown — every route that can reach a paid provider is gated › no ungated provider-reaching route outside the reasoned allowlist
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 9
+
+    - Array []
+    + Array [
+    +   "app/api/image/capabilities/route.ts  via  app/api/image/capabilities/route.ts > app/api/image/models/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/jobs/[id]/cancel/route.ts  via  app/api/image/jobs/[id]/cancel/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/jobs/[id]/route.ts  via  app/api/image/jobs/[id]/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/jobs/quote/route.ts  via  app/api/image/jobs/quote/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/jobs/route.ts  via  app/api/image/jobs/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/models/route.ts  via  app/api/image/models/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/operations/validate/route.ts  via  app/api/image/operations/validate/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    + ]
+
+      170 |     // it (mustSignInToGenerate + a per-account cap, opsCallerAllowed for diagnostics, a signature for webhooks), or —
+      171 |     // if it truly cannot spend — add it to PROVIDER_ROUTE_ALLOWLIST with the reason.
+    > 172 |     expect(violations).toEqual([]);
+          |                        ^
+      173 |   });
+      174 |
+      175 |   it('the allowlist has no stale entries', () => {
+
+      at Object.toEqual (__tests__/api-lockdown.test.ts:172:24)
+
+PASS app/api/tts/gemini/route.test.ts
+  ● Console
+
+    console.warn
+      [tts/gemini] upstream 400 (attempt 1 — retrying) bad languageCode
+
+      193 |     for (let attempt = 1; attempt < MAX_ATTEMPTS && !res.ok; attempt++) {
+      194 |       const detail = await res.text().catch(() => '');
+    > 195 |       console.warn(`[tts/gemini] upstream ${res.status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
+          |               ^
+      196 |       // A 400 while a languageCode rode along may be the languageCode itself (see TTS_LANGUAGE_CODE) — the
+      197 |       // remaining attempts go without it, i.e. exactly the request shape verified live.
+      198 |       if (res.status === 400 && languageCode) languageCode = undefined;
+
+      at warn (app/api/tts/gemini/route.ts:195:15)
+      at Object.<anonymous> (app/api/tts/gemini/route.test.ts:194:15)
+
+    console.warn
+      [tts/gemini] upstream 400 (attempt 2 — retrying) Model tried to generate text
+
+      193 |     for (let attempt = 1; attempt < MAX_ATTEMPTS && !res.ok; attempt++) {
+      194 |       const detail = await res.text().catch(() => '');
+    > 195 |       console.warn(`[tts/gemini] upstream ${res.status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
+          |               ^
+      196 |       // A 400 while a languageCode rode along may be the languageCode itself (see TTS_LANGUAGE_CODE) — the
+      197 |       // remaining attempts go without it, i.e. exactly the request shape verified live.
+      198 |       if (res.status === 400 && languageCode) languageCode = undefined;
+
+      at warn (app/api/tts/gemini/route.ts:195:15)
+      at Object.<anonymous> (app/api/tts/gemini/route.test.ts:194:15)
+
+    console.warn
+      [tts/gemini] upstream 503 (attempt 1 — retrying) overloaded
+
+      193 |     for (let attempt = 1; attempt < MAX_ATTEMPTS && !res.ok; attempt++) {
+      194 |       const detail = await res.text().catch(() => '');
+    > 195 |       console.warn(`[tts/gemini] upstream ${res.status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
+          |               ^
+      196 |       // A 400 while a languageCode rode along may be the languageCode itself (see TTS_LANGUAGE_CODE) — the
+      197 |       // remaining attempts go without it, i.e. exactly the request shape verified live.
+      198 |       if (res.status === 400 && languageCode) languageCode = undefined;
+
+      at warn (app/api/tts/gemini/route.ts:195:15)
+      at Object.<anonymous> (app/api/tts/gemini/route.test.ts:204:15)
+
+    console.warn
+      [tts/gemini] upstream 503 (attempt 2 — retrying) overloaded
+
+      193 |     for (let attempt = 1; attempt < MAX_ATTEMPTS && !res.ok; attempt++) {
+      194 |       const detail = await res.text().catch(() => '');
+    > 195 |       console.warn(`[tts/gemini] upstream ${res.status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
+          |               ^
+      196 |       // A 400 while a languageCode rode along may be the languageCode itself (see TTS_LANGUAGE_CODE) — the
+      197 |       // remaining attempts go without it, i.e. exactly the request shape verified live.
+      198 |       if (res.status === 400 && languageCode) languageCode = undefined;
+
+      at warn (app/api/tts/gemini/route.ts:195:15)
+      at Object.<anonymous> (app/api/tts/gemini/route.test.ts:204:15)
+
+    console.error
+      [tts/gemini] upstream error (after 3 attempts) 503 overloaded
+
+      202 |     if (!res.ok) {
+      203 |       const detail = await res.text().catch(() => '');
+    > 204 |       console.error(`[tts/gemini] upstream error (after ${MAX_ATTEMPTS} attempts)`, res.status, detail.slice(0, 200));
+          |               ^
+      205 |       return NextResponse.json({ error: 'tts_failed', status: res.status }, { status: 502 });
+      206 |     }
+      207 |     const data = (await res.json().catch(() => null)) as
+
+      at error (app/api/tts/gemini/route.ts:204:15)
+      at Object.<anonymous> (app/api/tts/gemini/route.test.ts:204:15)
+
+PASS __tests__/provider-boundary.test.ts
+PASS lib/chat/textGeminiOnly.test.ts
+  ● Console
+
+    console.warn
+      [providerRouter] Gemini text path failed after 1 attempt(s): API key not valid
+
+      1546 |           continue;
+      1547 |         }
+    > 1548 |         console.warn(
+           |                 ^
+      1549 |           `[providerRouter] Gemini text path failed after ${attempt} attempt(s):`,
+      1550 |           geminiError,
+      1551 |         );
+
+      at warn (lib/chat/providerRouter.ts:1548:17)
+      at Object.<anonymous> (lib/chat/textGeminiOnly.test.ts:114:17)
+
+    console.warn
+      [providerRouter] Gemini text path failed after 3 attempt(s): 503 UNAVAILABLE: model overloaded
+
+      1546 |           continue;
+      1547 |         }
+    > 1548 |         console.warn(
+           |                 ^
+      1549 |           `[providerRouter] Gemini text path failed after ${attempt} attempt(s):`,
+      1550 |           geminiError,
+      1551 |         );
+
+      at warn (lib/chat/providerRouter.ts:1548:17)
+      at Object.<anonymous> (lib/chat/textGeminiOnly.test.ts:124:17)
+
+PASS components/voice/GeminiLiveConversation.test.tsx
+PASS components/voice/live/useGeminiLiveSession.test.tsx
+PASS lib/orchestrator/runpod-adapter.test.ts
+PASS lib/services/montage/beatPlan.test.ts
+PASS lib/ai/runway.test.ts
+  ● Console
+
+    console.warn
+      [runway] create RATE-LIMIT http_429 (model=gen4_turbo) → definitive, falling back to Replicate. body:
+
+      205 |     if (definitive) {
+      206 |       // eslint-disable-next-line no-console
+    > 207 |       console.warn(`[runway] create ${kind} http_${res.status} (model=${runwayModel()}) → definitive, falling back to Replicate. body: ${errBody.slice(0, 400)}`);
+          |               ^
+      208 |       return null;
+      209 |     }
+      210 |     // Transient server error (5xx / other) — retry Runway before surrendering.
+
+      at warn (lib/ai/runway.ts:207:15)
+      at Object.<anonymous> (lib/ai/runway.test.ts:104:15)
+
+    console.warn
+      [runway] create threw → falling back to Replicate: network down
+
+      186 |       // the render budget, so fail over to Replicate now rather than retry Runway.
+      187 |       // eslint-disable-next-line no-console
+    > 188 |       console.warn('[runway] create threw → falling back to Replicate:', e instanceof Error ? e.message : e);
+          |               ^
+      189 |       return null;
+      190 |     }
+      191 |     if (res.ok) {
+
+      at warn (lib/ai/runway.ts:188:15)
+      at Object.<anonymous> (lib/ai/runway.test.ts:121:15)
+
+PASS components/studio/create/imageCreate.test.tsx
+PASS __tests__/heavy-client-boundary.test.ts
+PASS __tests__/schema-drift.test.ts
+PASS components/studio/create/VideoCreatePanel.test.tsx
+PASS components/studio/scene/SceneDock.empty.test.tsx
+PASS lib/ai/google/retiredModels.test.ts
+PASS lib/studio/templateThumbs.test.ts
+PASS scripts/templates/build-thumbs.test.ts
+PASS lib/ai/google/transport.test.ts
+PASS components/studio/CreditsModal.test.tsx
+PASS components/studio/create/MusicCreatePanel.test.tsx
+  ● Console
+
+    console.error
+      Warning: An update to MusicCreatePanel inside a test was not wrapped in act(...).
+      
+      When testing, code that causes React state updates should be wrapped into act(...):
+      
+      act(() => {
+        /* fire events that update state */
+      });
+      /* assert on the output */
+      
+      This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+          at locale (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.tsx:99:11)
+          at over (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.test.tsx:47:17)
+
+      42 |   useEffect(() => {
+      43 |     let alive = true;
+    > 44 |     void fetchMusicEngines().then((v) => { if (alive) setStatus(v); });
+         |                                                       ^
+      45 |     return () => { alive = false; };
+      46 |   }, []);
+      47 |   return status;
+
+      at printWarning (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at warnIfUpdatesNotWrappedWithActDEV (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:27628:9)
+      at scheduleUpdateOnFiber (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:25547:5)
+      at dispatchSetState (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:16708:7)
+      at setStatus (components/studio/create/useMusicEngines.ts:44:55)
+
+    console.error
+      Warning: An update to MusicCreatePanel inside a test was not wrapped in act(...).
+      
+      When testing, code that causes React state updates should be wrapped into act(...):
+      
+      act(() => {
+        /* fire events that update state */
+      });
+      /* assert on the output */
+      
+      This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+          at locale (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.tsx:99:11)
+          at over (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.test.tsx:47:17)
+
+      42 |   useEffect(() => {
+      43 |     let alive = true;
+    > 44 |     void fetchMusicEngines().then((v) => { if (alive) setStatus(v); });
+         |                                                       ^
+      45 |     return () => { alive = false; };
+      46 |   }, []);
+      47 |   return status;
+
+      at printWarning (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at warnIfUpdatesNotWrappedWithActDEV (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:27628:9)
+      at scheduleUpdateOnFiber (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:25547:5)
+      at dispatchSetState (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:16708:7)
+      at setStatus (components/studio/create/useMusicEngines.ts:44:55)
+
+    console.error
+      Warning: An update to MusicCreatePanel inside a test was not wrapped in act(...).
+      
+      When testing, code that causes React state updates should be wrapped into act(...):
+      
+      act(() => {
+        /* fire events that update state */
+      });
+      /* assert on the output */
+      
+      This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+          at locale (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.tsx:99:11)
+          at over (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.test.tsx:47:17)
+
+      42 |   useEffect(() => {
+      43 |     let alive = true;
+    > 44 |     void fetchMusicEngines().then((v) => { if (alive) setStatus(v); });
+         |                                                       ^
+      45 |     return () => { alive = false; };
+      46 |   }, []);
+      47 |   return status;
+
+      at printWarning (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at warnIfUpdatesNotWrappedWithActDEV (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:27628:9)
+      at scheduleUpdateOnFiber (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:25547:5)
+      at dispatchSetState (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:16708:7)
+      at setStatus (components/studio/create/useMusicEngines.ts:44:55)
+
+    console.error
+      Warning: An update to MusicCreatePanel inside a test was not wrapped in act(...).
+      
+      When testing, code that causes React state updates should be wrapped into act(...):
+      
+      act(() => {
+        /* fire events that update state */
+      });
+      /* assert on the output */
+      
+      This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+          at locale (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.tsx:99:11)
+          at over (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.test.tsx:47:17)
+
+      42 |   useEffect(() => {
+      43 |     let alive = true;
+    > 44 |     void fetchMusicEngines().then((v) => { if (alive) setStatus(v); });
+         |                                                       ^
+      45 |     return () => { alive = false; };
+      46 |   }, []);
+      47 |   return status;
+
+      at printWarning (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at warnIfUpdatesNotWrappedWithActDEV (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:27628:9)
+      at scheduleUpdateOnFiber (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:25547:5)
+      at dispatchSetState (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:16708:7)
+      at setStatus (components/studio/create/useMusicEngines.ts:44:55)
+
+    console.error
+      Warning: An update to MusicCreatePanel inside a test was not wrapped in act(...).
+      
+      When testing, code that causes React state updates should be wrapped into act(...):
+      
+      act(() => {
+        /* fire events that update state */
+      });
+      /* assert on the output */
+      
+      This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+          at locale (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.tsx:99:11)
+          at over (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.test.tsx:47:17)
+
+      42 |   useEffect(() => {
+      43 |     let alive = true;
+    > 44 |     void fetchMusicEngines().then((v) => { if (alive) setStatus(v); });
+         |                                                       ^
+      45 |     return () => { alive = false; };
+      46 |   }, []);
+      47 |   return status;
+
+      at printWarning (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at warnIfUpdatesNotWrappedWithActDEV (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:27628:9)
+      at scheduleUpdateOnFiber (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:25547:5)
+      at dispatchSetState (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:16708:7)
+      at setStatus (components/studio/create/useMusicEngines.ts:44:55)
+
+    console.error
+      Warning: An update to MusicCreatePanel inside a test was not wrapped in act(...).
+      
+      When testing, code that causes React state updates should be wrapped into act(...):
+      
+      act(() => {
+        /* fire events that update state */
+      });
+      /* assert on the output */
+      
+      This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+          at locale (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.tsx:99:11)
+          at over (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.test.tsx:47:17)
+
+      42 |   useEffect(() => {
+      43 |     let alive = true;
+    > 44 |     void fetchMusicEngines().then((v) => { if (alive) setStatus(v); });
+         |                                                       ^
+      45 |     return () => { alive = false; };
+      46 |   }, []);
+      47 |   return status;
+
+      at printWarning (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at warnIfUpdatesNotWrappedWithActDEV (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:27628:9)
+      at scheduleUpdateOnFiber (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:25547:5)
+      at dispatchSetState (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:16708:7)
+      at setStatus (components/studio/create/useMusicEngines.ts:44:55)
+
+    console.error
+      Warning: An update to MusicCreatePanel inside a test was not wrapped in act(...).
+      
+      When testing, code that causes React state updates should be wrapped into act(...):
+      
+      act(() => {
+        /* fire events that update state */
+      });
+      /* assert on the output */
+      
+      This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+          at locale (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.tsx:99:11)
+          at over (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.test.tsx:47:17)
+
+      42 |   useEffect(() => {
+      43 |     let alive = true;
+    > 44 |     void fetchMusicEngines().then((v) => { if (alive) setStatus(v); });
+         |                                                       ^
+      45 |     return () => { alive = false; };
+      46 |   }, []);
+      47 |   return status;
+
+      at printWarning (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at warnIfUpdatesNotWrappedWithActDEV (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:27628:9)
+      at scheduleUpdateOnFiber (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:25547:5)
+      at dispatchSetState (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:16708:7)
+      at setStatus (components/studio/create/useMusicEngines.ts:44:55)
+
+    console.error
+      Warning: An update to MusicCreatePanel inside a test was not wrapped in act(...).
+      
+      When testing, code that causes React state updates should be wrapped into act(...):
+      
+      act(() => {
+        /* fire events that update state */
+      });
+      /* assert on the output */
+      
+      This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+          at locale (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.tsx:99:11)
+          at over (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/components/studio/create/MusicCreatePanel.test.tsx:47:17)
+
+      42 |   useEffect(() => {
+      43 |     let alive = true;
+    > 44 |     void fetchMusicEngines().then((v) => { if (alive) setStatus(v); });
+         |                                                       ^
+      45 |     return () => { alive = false; };
+      46 |   }, []);
+      47 |   return status;
+
+      at printWarning (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:86:30)
+      at error (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:60:7)
+      at warnIfUpdatesNotWrappedWithActDEV (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:27628:9)
+      at scheduleUpdateOnFiber (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:25547:5)
+      at dispatchSetState (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/react-dom/cjs/react-dom.development.js:16708:7)
+      at setStatus (components/studio/create/useMusicEngines.ts:44:55)
+
+PASS app/api/chat/gemini/route.test.ts
+PASS components/studio/create/createPanels.test.tsx
+PASS components/onboarding/OnboardingTour.test.tsx
+PASS components/studio/create/VideoStage.test.tsx
+PASS components/chat/MarkdownView.test.tsx
+PASS lib/agent/chatTurn.test.ts
+PASS lib/agent/media/effects.test.ts
+PASS components/studio/montage/MontageStudio.test.tsx
+PASS lib/agent/deadStacks.test.ts
+PASS scripts/templates/build-thumb-blur.test.ts
+PASS app/api/v2/dubbing/start/route.test.ts
+PASS components/voice/VoiceConversation.test.tsx
+PASS components/twin/TwinCapture.test.tsx
+PASS components/studio/scene/SceneDock.test.tsx
+PASS components/studio/ServiceParamsPanel.scene.test.tsx
+PASS lib/veo/gcs.test.ts
+PASS lib/security/serverAuthBoundary.test.ts
+PASS lib/agent/run/runChat.test.ts
+PASS app/api/pipeline/auth.test.ts
+PASS components/studio/research/sheets.test.tsx
+PASS lib/photo/grade.test.ts
+PASS lib/agent/media/resumeClients.test.ts
+PASS components/studio/genjutsu/ReferenceDropzone.test.tsx
+PASS components/studio/research/viewer.test.tsx
+PASS lib/credits/priceTables.test.ts
+PASS lib/chat/serviceManagerVeo.test.ts
+PASS lib/chat/filmClipRetry.test.ts
+PASS components/voice/live/LiveModeOverlay.test.tsx
+PASS hooks/useStudioGeneration.test.tsx
+PASS lib/ai/google/chatStream.test.ts
+PASS components/studio/create/imageDesk.test.tsx
+PASS lib/security/dbExposure.test.ts
+PASS components/chat/artifacts/ArtifactCanvas.test.tsx
+PASS lib/pipeline/photoMusicVideo.test.ts
+PASS components/studio/research/speech.test.ts
+PASS lib/agent/media/editWords.test.ts
+PASS components/settings/SettingsView.test.tsx
+PASS lib/pipeline/statusAgent.test.ts
+PASS components/studio/photo/PhotoWorkspace.test.tsx
+PASS lib/agent/media/montageExec.test.ts
+PASS components/studio/ui/ModelPicker.test.tsx
+PASS lib/calls/bridge/liveLink.test.ts
+PASS components/voice/live/LiveActionCards.test.tsx
+PASS lib/pipeline/compositing/ffmpeg-overlay.render.test.ts
+PASS components/voice/live/liveActions.test.tsx
+PASS lib/chat/platformPrompt.test.ts
+PASS components/notifications/PushPermissionCard.test.tsx
+PASS lib/calls/bridge/callBridge.test.ts
+PASS components/chat/composer/UnifiedComposer.test.tsx
+PASS lib/agent/run/runExec.test.ts
+PASS app/api/agent/media/sweep/route.test.ts
+PASS app/api/video/lipsync/callers.test.ts
+PASS lib/image/studio/engine.test.ts
+PASS components/settings/ConnectionsSection.test.tsx
+PASS lib/chat/videoDigest.test.ts
+PASS lib/agent/intentReply.test.ts
+PASS components/studio/photo/PhotoWorkspace.a11y.test.tsx
+PASS lib/research/parse.test.ts
+PASS components/chat/ModelSwitcher.test.tsx
+PASS components/voice/live/LiveDock.test.tsx
+PASS lib/chat/filmUpfrontCharge.test.ts
+PASS lib/agent/media/analyzeChat.test.ts
+PASS lib/agent/tools/declarations.test.ts
+PASS components/chat/composer/useDictation.test.ts
+PASS lib/calls/bridge/pcm.test.ts
+PASS components/studio/ServiceParamsPanel.model3d.test.tsx
+PASS lib/agent/media/montageWorker.test.ts
+PASS components/agent-g/WhatsAppLinkCard.test.tsx
+PASS components/studio/AgentTaskCard.test.tsx
+PASS app/api/v2/presentation/build/route.test.ts
+PASS components/studio/StudioLibraryGrid.test.tsx
+PASS lib/chat/filmCompositeTemplate.test.ts
+PASS components/memory/MemoryPanel.test.tsx
+PASS app/api/preview/google-check/route.test.ts
+PASS app/api/genjutsu/generate/route.test.ts
+PASS lib/agent/media/askCoverage.test.ts
+PASS lib/studio/templateContext.test.ts
+PASS components/studio/PersonaPicker.test.tsx
+PASS components/studio/ui/TemplateGallery.test.tsx
+PASS lib/i18n/messagesParity.test.ts
+PASS lib/ai/promptToEnglish.test.ts
+  ● Console
+
+    console.warn
+      [promptToEnglish] music: NOT TRANSLATED (no_key) — no Gemini key on this deployment
+
+       95 |   if (outcome === 'ok' || outcome === 'skipped_latin') return;
+       96 |   // Loud on purpose: every one of these means a non-Latin prompt reached an English-only model verbatim.
+    >  97 |   console.warn(`[promptToEnglish] ${kind}: NOT TRANSLATED (${outcome})${detail ? ` — ${detail}` : ''}`);
+          |           ^
+       98 |   if (outcome === 'no_key') return; // config, not an incident — the warn above is the signal
+       99 |   reportError(new Error(`promptToEnglish ${outcome}`), { where: 'promptToEnglish', kind, detail: detail ?? '' });
+      100 | }
+
+      at warn (lib/ai/promptToEnglish.ts:97:11)
+      at note (lib/ai/promptToEnglish.ts:59:30)
+      at viaGemini (lib/ai/promptToEnglish.ts:112:30)
+      at lib/ai/promptToEnglish.test.ts:44:33
+
+    console.warn
+      [promptToEnglish] music: NOT TRANSLATED (no_key) — no Gemini key on this deployment
+
+       95 |   if (outcome === 'ok' || outcome === 'skipped_latin') return;
+       96 |   // Loud on purpose: every one of these means a non-Latin prompt reached an English-only model verbatim.
+    >  97 |   console.warn(`[promptToEnglish] ${kind}: NOT TRANSLATED (${outcome})${detail ? ` — ${detail}` : ''}`);
+          |           ^
+       98 |   if (outcome === 'no_key') return; // config, not an incident — the warn above is the signal
+       99 |   reportError(new Error(`promptToEnglish ${outcome}`), { where: 'promptToEnglish', kind, detail: detail ?? '' });
+      100 | }
+
+      at warn (lib/ai/promptToEnglish.ts:97:11)
+      at note (lib/ai/promptToEnglish.ts:59:30)
+      at viaGemini (lib/ai/promptToEnglish.ts:112:30)
+      at lib/ai/promptToEnglish.test.ts:44:33
+
+    console.warn
+      [promptToEnglish] music: NOT TRANSLATED (no_key) — no Gemini key on this deployment
+
+       95 |   if (outcome === 'ok' || outcome === 'skipped_latin') return;
+       96 |   // Loud on purpose: every one of these means a non-Latin prompt reached an English-only model verbatim.
+    >  97 |   console.warn(`[promptToEnglish] ${kind}: NOT TRANSLATED (${outcome})${detail ? ` — ${detail}` : ''}`);
+          |           ^
+       98 |   if (outcome === 'no_key') return; // config, not an incident — the warn above is the signal
+       99 |   reportError(new Error(`promptToEnglish ${outcome}`), { where: 'promptToEnglish', kind, detail: detail ?? '' });
+      100 | }
+
+      at warn (lib/ai/promptToEnglish.ts:97:11)
+      at note (lib/ai/promptToEnglish.ts:59:30)
+      at viaGemini (lib/ai/promptToEnglish.ts:112:30)
+      at lib/ai/promptToEnglish.test.ts:44:33
+
+    console.warn
+      [promptToEnglish] video: NOT TRANSLATED (no_key) — no Gemini key on this deployment
+
+       95 |   if (outcome === 'ok' || outcome === 'skipped_latin') return;
+       96 |   // Loud on purpose: every one of these means a non-Latin prompt reached an English-only model verbatim.
+    >  97 |   console.warn(`[promptToEnglish] ${kind}: NOT TRANSLATED (${outcome})${detail ? ` — ${detail}` : ''}`);
+          |           ^
+       98 |   if (outcome === 'no_key') return; // config, not an incident — the warn above is the signal
+       99 |   reportError(new Error(`promptToEnglish ${outcome}`), { where: 'promptToEnglish', kind, detail: detail ?? '' });
+      100 | }
+
+      at warn (lib/ai/promptToEnglish.ts:97:11)
+      at note (lib/ai/promptToEnglish.ts:59:30)
+      at viaGemini (lib/ai/promptToEnglish.ts:112:30)
+      at Object.<anonymous> (lib/ai/promptToEnglish.test.ts:57:33)
+
+    console.warn
+      [promptToEnglish] video: NOT TRANSLATED (provider_error) — Gemini API error 402: {"error":{"code":402}}
+
+       95 |   if (outcome === 'ok' || outcome === 'skipped_latin') return;
+       96 |   // Loud on purpose: every one of these means a non-Latin prompt reached an English-only model verbatim.
+    >  97 |   console.warn(`[promptToEnglish] ${kind}: NOT TRANSLATED (${outcome})${detail ? ` — ${detail}` : ''}`);
+          |           ^
+       98 |   if (outcome === 'no_key') return; // config, not an incident — the warn above is the signal
+       99 |   reportError(new Error(`promptToEnglish ${outcome}`), { where: 'promptToEnglish', kind, detail: detail ?? '' });
+      100 | }
+
+      at warn (lib/ai/promptToEnglish.ts:97:11)
+      at note (lib/ai/promptToEnglish.ts:70:5)
+      at Object.<anonymous> (lib/ai/promptToEnglish.test.ts:90:5)
+
+    console.error
+      [reportError] {
+        name: 'Error',
+        message: 'promptToEnglish provider_error',
+        stack: 'Error: promptToEnglish provider_error\n' +
+          '    at note (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/lib/ai/promptToEnglish.ts:99:15)\n' +
+          '    at note (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/lib/ai/promptToEnglish.ts:70:5)\n' +
+          '    at Object.<anonymous> (/Users/giorgikintsurashvili/.codex/worktrees/image-studio-v1/beautiful-moser-50e6af/lib/ai/promptToEnglish.test.ts:90:5)',
+        context: {
+          where: 'promptToEnglish',
+          kind: 'video',
+          detail: 'Gemini API error 402: {"error":{"code":402}}'
+        },
+        at: '2026-10-12T10:25:03.873Z'
+      }
+
+      35 |   // 1. Always log structured — Vercel logs surface this regardless of Sentry
+      36 |   // eslint-disable-next-line no-console
+    > 37 |   console.error('[reportError]', {
+         |           ^
+      38 |     name: err.name,
+      39 |     message: err.message,
+      40 |     stack: err.stack?.split('\n').slice(0, 6).join('\n'),
+
+      at error (lib/observability/report-error.ts:37:11)
+      at note (lib/ai/promptToEnglish.ts:99:14)
+      at note (lib/ai/promptToEnglish.ts:70:5)
+      at Object.<anonymous> (lib/ai/promptToEnglish.test.ts:90:5)
+
+    console.warn
+      [promptToEnglish] video: NOT TRANSLATED (no_key) — ANTHROPIC_API_KEY is unset on this deployment
+
+       95 |   if (outcome === 'ok' || outcome === 'skipped_latin') return;
+       96 |   // Loud on purpose: every one of these means a non-Latin prompt reached an English-only model verbatim.
+    >  97 |   console.warn(`[promptToEnglish] ${kind}: NOT TRANSLATED (${outcome})${detail ? ` — ${detail}` : ''}`);
+          |           ^
+       98 |   if (outcome === 'no_key') return; // config, not an incident — the warn above is the signal
+       99 |   reportError(new Error(`promptToEnglish ${outcome}`), { where: 'promptToEnglish', kind, detail: detail ?? '' });
+      100 | }
+
+      at warn (lib/ai/promptToEnglish.ts:97:11)
+      at note (lib/ai/promptToEnglish.ts:115:15)
+      at Object.<anonymous> (lib/ai/promptToEnglish.test.ts:98:33)
+
+PASS lib/agent/media/audioWorker.test.ts
+PASS lib/seo/metadata.test.ts
+PASS app/api/voice/clone/route.test.ts
+PASS components/settings/NotificationPrefsPanel.test.tsx
+PASS lib/chat/spokenText.hardening.test.ts
+PASS components/library/LibraryGallery.test.tsx
+PASS app/api/heygen/presenter/route.test.ts
+PASS lib/studio/templates.shoot.test.ts
+PASS lib/models/catalog.test.ts
+PASS lib/agent/intent.test.ts
+PASS __tests__/api-security.test.ts
+PASS components/studio/ServiceParamsPanel.live.test.tsx
+PASS app/api/chat/gemini/proCap.integration.test.ts
+  ● Console
+
+    console.warn
+      [/api/chat/gemini] daily Pro allowance spent — answering with Fast
+
+      601 |       const resetAt = resetAtOf(proSpent);
+      602 |       downgrade = { requestedMode: 'pro', reason: 'pro_cap', ...(resetAt ? { resetAt } : {}) };
+    > 603 |       console.warn('[/api/chat/gemini] daily Pro allowance spent — answering with Fast');
+          |               ^
+      604 |     } else {
+      605 |       proCharged = true;
+      606 |     }
+
+      at warn (app/api/chat/gemini/route.ts:603:15)
+      at Object.<anonymous> (app/api/chat/gemini/proCap.integration.test.ts:97:15)
+
+    console.warn
+      [/api/chat/gemini] daily Pro allowance spent — answering with Fast
+
+      601 |       const resetAt = resetAtOf(proSpent);
+      602 |       downgrade = { requestedMode: 'pro', reason: 'pro_cap', ...(resetAt ? { resetAt } : {}) };
+    > 603 |       console.warn('[/api/chat/gemini] daily Pro allowance spent — answering with Fast');
+          |               ^
+      604 |     } else {
+      605 |       proCharged = true;
+      606 |     }
+
+      at warn (app/api/chat/gemini/route.ts:603:15)
+      at Object.<anonymous> (app/api/chat/gemini/proCap.integration.test.ts:121:38)
+
+PASS lib/studio/templates.test.ts
+PASS lib/jobs/durableJobs.test.ts
+PASS app/api/video/longform/route.test.ts
+PASS components/chat/StreamingBubble.test.tsx
+PASS __tests__/ffmpeg-tracing.test.ts
+PASS components/studio/scene/SceneCanvas.test.tsx
+PASS lib/video/cinematicPrompt.test.ts
+PASS lib/agent/capabilities.test.ts
+PASS components/studio/AgentRunCard.test.tsx
+PASS app/api/nanobanana/image/studio.test.ts
+PASS lib/veo/cinematography.test.ts
+PASS lib/services/workspaceForms.test.ts
+PASS components/studio/JobTray.test.tsx
+PASS components/voice/live/LiveActivityFeed.test.tsx
+PASS lib/web/readPage.test.ts
+PASS lib/notifications/outboxLive.test.ts
+PASS components/voice/live/lateToolAnswer.test.ts
+PASS components/studio/video/DirectorRunOverlay.test.tsx
+PASS app/api/cron/deliveries/route.test.ts
+PASS lib/chat/chatVideoBilling.test.ts
+PASS components/studio/research/store.test.tsx
+PASS lib/brand/iconSet.test.ts
+PASS components/studio/ui/EmptyState.test.tsx
+PASS components/studio/ui/GenerationProgress.test.tsx
+PASS lib/voice-v2v/geminiStt.test.ts
+PASS lib/chat/composerRouting.test.ts
+PASS components/studio/GlbViewer.test.tsx
+PASS components/chat/markdownMemo.stress.test.tsx
+PASS lib/chat/filmPipeline.test.ts
+PASS lib/video/longform/tick.test.ts
+PASS components/studio/research/toasts.test.tsx
+PASS lib/chat/serviceManagerImage.test.ts
+  ● Console
+
+    console.warn
+      [image] replicate threw: replicate 503
+
+      439 |     } catch (err) {
+      440 |       // eslint-disable-next-line no-console
+    > 441 |       console.warn(`[image] ${provider} threw:`, err instanceof Error ? err.message : err);
+          |               ^
+      442 |       primary = this.imageFailure(request, provider, 'Image generation failed. Please try again.');
+      443 |     }
+      444 |     if (primary.success && (primary.assetUrl || primary.predictionId) && primary.predictionStatus !== 'failed') return primary;
+
+      at ServiceManager.warn [as runTextToImage] (lib/chat/ServiceManager.ts:441:15)
+      at ServiceManager.execute (lib/chat/ServiceManager.ts:300:14)
+      at Object.<anonymous> (lib/chat/serviceManagerImage.test.ts:73:15)
+
+    console.warn
+      [image] replicate threw: replicate 503
+
+      439 |     } catch (err) {
+      440 |       // eslint-disable-next-line no-console
+    > 441 |       console.warn(`[image] ${provider} threw:`, err instanceof Error ? err.message : err);
+          |               ^
+      442 |       primary = this.imageFailure(request, provider, 'Image generation failed. Please try again.');
+      443 |     }
+      444 |     if (primary.success && (primary.assetUrl || primary.predictionId) && primary.predictionStatus !== 'failed') return primary;
+
+      at ServiceManager.warn [as runTextToImage] (lib/chat/ServiceManager.ts:441:15)
+      at ServiceManager.execute (lib/chat/ServiceManager.ts:300:14)
+      at Object.<anonymous> (lib/chat/serviceManagerImage.test.ts:84:15)
+
+    console.warn
+      [image] replicate threw: down
+
+      439 |     } catch (err) {
+      440 |       // eslint-disable-next-line no-console
+    > 441 |       console.warn(`[image] ${provider} threw:`, err instanceof Error ? err.message : err);
+          |               ^
+      442 |       primary = this.imageFailure(request, provider, 'Image generation failed. Please try again.');
+      443 |     }
+      444 |     if (primary.success && (primary.assetUrl || primary.predictionId) && primary.predictionStatus !== 'failed') return primary;
+
+      at ServiceManager.warn [as runTextToImage] (lib/chat/ServiceManager.ts:441:15)
+      at ServiceManager.execute (lib/chat/ServiceManager.ts:300:14)
+      at Object.<anonymous> (lib/chat/serviceManagerImage.test.ts:151:3)
+
+PASS app/api/twin/commit/route.test.ts
+PASS lib/agent/params.test.ts
+PASS lib/agent/intentCorpus.test.ts
+PASS components/PricingSection.test.tsx
+PASS app/api/ai/music/noFallback.test.ts
+PASS app/api/chat/route.test.ts
+PASS lib/veo/geminiTransport.test.ts
+PASS lib/orchestrator/ledger.test.ts
+PASS components/voice/live/liveVoiceGate.test.tsx
+PASS components/studio/photo/session.test.ts
+PASS lib/routing/shellRedirects.test.ts
+PASS lib/billing/bogClient.test.ts
+PASS lib/ai/veoClipSync.test.ts
+PASS __tests__/billing-routes-auth.test.ts
+PASS app/api/voice/transcribe/route.test.ts
+  ● Console
+
+    console.warn
+      [transcribe] gemini STT failed: bad_request 400
+
+      172 |         }
+      173 |         // eslint-disable-next-line no-console
+    > 174 |         console.warn('[transcribe] gemini STT failed:', geminiErr instanceof GeminiSttError ? `${geminiErr.code} ${geminiErr.status ?? ''}` : 'error');
+          |                 ^
+      175 |       }
+      176 |     };
+      177 |
+
+      at warn (app/api/voice/transcribe/route.ts:174:17)
+      at POST (app/api/voice/transcribe/route.ts:184:29)
+      at Object.<anonymous> (app/api/voice/transcribe/route.test.ts:148:15)
+
+    console.warn
+      [transcribe] gemini STT failed: quota 402
+
+      172 |         }
+      173 |         // eslint-disable-next-line no-console
+    > 174 |         console.warn('[transcribe] gemini STT failed:', geminiErr instanceof GeminiSttError ? `${geminiErr.code} ${geminiErr.status ?? ''}` : 'error');
+          |                 ^
+      175 |       }
+      176 |     };
+      177 |
+
+      at warn (app/api/voice/transcribe/route.ts:174:17)
+      at POST (app/api/voice/transcribe/route.ts:184:29)
+      at Object.<anonymous> (app/api/voice/transcribe/route.test.ts:197:15)
+
+    console.warn
+      [transcribe] gemini STT failed: bad_request 400
+
+      172 |         }
+      173 |         // eslint-disable-next-line no-console
+    > 174 |         console.warn('[transcribe] gemini STT failed:', geminiErr instanceof GeminiSttError ? `${geminiErr.code} ${geminiErr.status ?? ''}` : 'error');
+          |                 ^
+      175 |       }
+      176 |     };
+      177 |
+
+      at warn (app/api/voice/transcribe/route.ts:174:17)
+      at POST (app/api/voice/transcribe/route.ts:184:29)
+      at Object.<anonymous> (app/api/voice/transcribe/route.test.ts:236:15)
+
+PASS lib/agent/run/runCard.test.ts
+PASS components/studio/ui/ToolSheet.test.tsx
+PASS lib/voice-v2v/providersGoogleOnly.test.ts
+PASS components/studio/AgentAnalyzeCard.test.tsx
+PASS __tests__/phone-calls-unavailable.test.ts
+PASS lib/agent/media/layerWords.test.ts
+PASS lib/ai/llmText.test.ts
+PASS components/studio/ui/ResultCard.test.tsx
+PASS lib/twin/store.test.ts
+PASS lib/agents/profile.test.ts
+PASS app/api/voice/live/route.test.ts
+PASS lib/agent/media/montageChat.test.ts
+PASS lib/catalog/services.test.ts
+PASS app/api/ai/music/controls.test.ts
+PASS app/api/ai/music/engine-reference.test.ts
+PASS lib/studio/scene3d.test.ts
+PASS components/studio/glbFrame.test.tsx
+PASS scripts/hf-art-pack.test.ts
+PASS app/api/video/director/routes.test.ts
+PASS app/api/push/routes.test.ts
+PASS lib/system/provider-health.test.ts
+PASS lib/orchestrator/unpolledSettle.test.ts
+PASS components/studio/ui/controls.test.tsx
+PASS components/studio/ui/StyleChips.test.tsx
+PASS app/api/research/routes.test.ts
+PASS hooks/chat/useChatStream.test.tsx
+PASS lib/video/longform/runtime.test.ts
+PASS lib/video/director/googleVeoProvider.test.ts
+PASS components/studio/ui/serviceError.test.ts
+  ● Console
+
+    console.warn
+      [service] unmapped error shown as generic copy: TypeError: Cannot read properties of undefined (reading 'clip')
+
+      140 |   // Unrecognised — keep it off the screen, but do not lose it.
+      141 |   // eslint-disable-next-line no-console
+    > 142 |   console.warn('[service] unmapped error shown as generic copy:', text.slice(0, 200));
+          |           ^
+      143 |   return fallback;
+      144 | }
+      145 |
+
+      at warn (components/studio/ui/serviceError.ts:142:11)
+      at Object.<anonymous> (components/studio/ui/serviceError.test.ts:34:32)
+
+    console.warn
+      [service] unmapped error shown as generic copy: xyz_price_changed_log
+
+      140 |   // Unrecognised — keep it off the screen, but do not lose it.
+      141 |   // eslint-disable-next-line no-console
+    > 142 |   console.warn('[service] unmapped error shown as generic copy:', text.slice(0, 200));
+          |           ^
+      143 |   return fallback;
+      144 | }
+      145 |
+
+      at warn (components/studio/ui/serviceError.ts:142:11)
+      at Object.<anonymous> (components/studio/ui/serviceError.test.ts:57:32)
+
+    console.warn
+      [service] unmapped error shown as generic copy: music_failed
+
+      140 |   // Unrecognised — keep it off the screen, but do not lose it.
+      141 |   // eslint-disable-next-line no-console
+    > 142 |   console.warn('[service] unmapped error shown as generic copy:', text.slice(0, 200));
+          |           ^
+      143 |   return fallback;
+      144 | }
+      145 |
+
+      at warn (components/studio/ui/serviceError.ts:142:11)
+      at describeServiceError (components/studio/ui/serviceError.ts:185:10)
+      at Object.<anonymous> (components/studio/ui/serviceError.test.ts:131:37)
+
+    console.warn
+      [service] unmapped error shown as generic copy: image_failed
+
+      140 |   // Unrecognised — keep it off the screen, but do not lose it.
+      141 |   // eslint-disable-next-line no-console
+    > 142 |   console.warn('[service] unmapped error shown as generic copy:', text.slice(0, 200));
+          |           ^
+      143 |   return fallback;
+      144 | }
+      145 |
+
+      at warn (components/studio/ui/serviceError.ts:142:11)
+      at describeServiceError (components/studio/ui/serviceError.ts:185:10)
+      at Object.<anonymous> (components/studio/ui/serviceError.test.ts:132:37)
+
+    console.warn
+      [service] unmapped error shown as generic copy: TypeError: x is undefined
+
+      140 |   // Unrecognised — keep it off the screen, but do not lose it.
+      141 |   // eslint-disable-next-line no-console
+    > 142 |   console.warn('[service] unmapped error shown as generic copy:', text.slice(0, 200));
+          |           ^
+      143 |   return fallback;
+      144 | }
+      145 |
+
+      at warn (components/studio/ui/serviceError.ts:142:11)
+      at describeServiceError (components/studio/ui/serviceError.ts:185:10)
+      at Object.<anonymous> (components/studio/ui/serviceError.test.ts:152:37)
+
+PASS scripts/site-art/build-site-art.test.ts
+PASS lib/veo/vertexClient.test.ts
+PASS lib/veo/engine.test.ts
+PASS lib/agent/videoQueue.test.ts
+  ● Console
+
+    console.warn
+      [agentq] refund MISSED for item item-1 (25 credits) — row keeps its charge
+
+      137 |     if (!refunded) {
+      138 |       // eslint-disable-next-line no-console
+    > 139 |       console.warn(`[agentq] refund MISSED for item ${item.id} (${charged} credits) — row keeps its charge`);
+          |               ^
+      140 |     }
+      141 |   }
+      142 |
+
+      at warn (lib/agent/videoQueue.ts:139:15)
+      at drainOnce (lib/agent/videoQueue.ts:301:5)
+      at Object.<anonymous> (lib/agent/videoQueue.test.ts:154:5)
+
+    console.warn
+      [entitlements] paid-plan check failed → treating as FREE (output will be marked): svc.from is not a function
+
+      60 |   } catch (e) {
+      61 |     // eslint-disable-next-line no-console
+    > 62 |     console.warn('[entitlements] paid-plan check failed → treating as FREE (output will be marked):',
+         |             ^
+      63 |       e instanceof Error ? e.message : e);
+      64 |     return false;
+      65 |   }
+
+      at warn (lib/billing/entitlements.ts:62:13)
+      at hasPaidPlan (lib/billing/entitlements.ts:76:18)
+      at drainOnce (lib/agent/videoQueue.ts:208:30)
+      at Object.<anonymous> (lib/agent/videoQueue.test.ts:239:17)
+
+    console.warn
+      [entitlements] paid-plan check failed → treating as FREE (output will be marked): svc.from is not a function
+
+      60 |   } catch (e) {
+      61 |     // eslint-disable-next-line no-console
+    > 62 |     console.warn('[entitlements] paid-plan check failed → treating as FREE (output will be marked):',
+         |             ^
+      63 |       e instanceof Error ? e.message : e);
+      64 |     return false;
+      65 |   }
+
+      at warn (lib/billing/entitlements.ts:62:13)
+      at hasPaidPlan (lib/billing/entitlements.ts:76:18)
+      at drainOnce (lib/agent/videoQueue.ts:208:30)
+      at Object.<anonymous> (lib/agent/videoQueue.test.ts:257:17)
+
+PASS components/studio/AgentGCard.test.tsx
+PASS app/api/billing/bog/webhook/route.test.ts
+PASS lib/agent/media/taskSteps.test.ts
+PASS components/studio/ui/Segmented.test.tsx
+PASS components/studio/ui/GenerateButton.test.tsx
+PASS app/api/orchestrator/geminiOnly.test.ts
+PASS lib/chat/studioIntent.test.ts
+PASS lib/chat/providerRouterAnon.test.ts
+PASS lib/chat/focusGate.test.ts
+PASS components/studio/ServiceSearchResults.test.tsx
+PASS app/api/video/longform/e2e.test.ts
+PASS app/api/chat/stream/route.test.ts
+PASS lib/agent/tools/googleSearch.test.ts
+PASS components/studio/ui/LoadingLoop.test.tsx
+PASS components/AppShell.skipLink.test.tsx
+PASS components/studio/research/copy.test.ts
+PASS lib/veo/payload.test.ts
+PASS lib/providers/registry.test.ts
+PASS lib/services/personas/personas.test.ts
+PASS lib/research/service.test.ts
+PASS lib/chat/sse.test.ts
+PASS lib/chat/sceneDialogue.test.ts
+PASS app/api/video/lipsync/route.test.ts
+PASS lib/agent/media/editChat.test.ts
+PASS components/chat/composer/useAttachments.test.ts
+PASS app/api/pipeline/textGeminiOnly.test.ts
+PASS components/ui/deadPrimitives.test.ts
+PASS components/studio/ServiceHub.test.tsx
+PASS components/twin/useMyTwin.test.tsx
+PASS components/chat/chatStreamStore.test.tsx
+PASS components/auth/AuthScreen.test.tsx
+PASS app/api/auth/email-otp/send/route.test.ts
+  ● Console
+
+    console.error
+      [email-otp/send] generateLink (continue): Database error
+
+      174 |       // sent" for sign-in — a bad service-role key or a GoTrue 5xx then left people waiting forever, unlogged.)
+      175 |       // eslint-disable-next-line no-console
+    > 176 |       console.error(`[email-otp/send] generateLink (${purpose}):`, error.message);
+          |               ^
+      177 |       return NextResponse.json({ error: 'send_failed' }, { status: 502 });
+      178 |     }
+      179 |
+
+      at error (app/api/auth/email-otp/send/route.ts:176:15)
+      at Object.<anonymous> (app/api/auth/email-otp/send/route.test.ts:77:17)
+
+    console.error
+      [email-otp/send] generateLink (register): Database error
+
+      174 |       // sent" for sign-in — a bad service-role key or a GoTrue 5xx then left people waiting forever, unlogged.)
+      175 |       // eslint-disable-next-line no-console
+    > 176 |       console.error(`[email-otp/send] generateLink (${purpose}):`, error.message);
+          |               ^
+      177 |       return NextResponse.json({ error: 'send_failed' }, { status: 502 });
+      178 |     }
+      179 |
+
+      at error (app/api/auth/email-otp/send/route.ts:176:15)
+      at Object.<anonymous> (app/api/auth/email-otp/send/route.test.ts:120:17)
+
+PASS lib/ai/google/models.test.ts
+PASS lib/voice/liveTools.test.ts
+PASS app/api/video/remix/adMusic.test.ts
+PASS lib/video/createPanel.test.ts
+PASS lib/veo/vertexAuth.test.ts
+PASS app/api/v2/model3d/status/route.test.ts
+PASS app/api/voice/chat/route.test.ts
+PASS lib/web/publicFetch.test.ts
+PASS lib/providers/catalogue.test.ts
+PASS components/studio/TrackPlayer.test.tsx
+PASS app/api/film/storyboard/template.test.ts
+PASS lib/video/director/run.test.ts
+PASS lib/video/director/director.test.ts
+PASS lib/calls/whatsapp/callService.test.ts
+PASS lib/studio/saga.test.ts
+PASS components/brand/Wordmark.test.tsx
+PASS lib/agent/run/runClient.test.ts
+PASS lib/agent/react/bindLiveAgent.test.ts
+PASS components/studio/create/MusicVideoLook.test.tsx
+PASS components/chat/SourcesChips.test.tsx
+PASS app/api/studio/library/route.test.ts
+PASS app/api/genjutsu/status/route.test.ts
+PASS app/api/billing/subscribe/route.test.ts
+PASS app/api/ai/music/billing.test.ts
+PASS lib/research/voiceCommands.test.ts
+PASS app/api/v2/montage/render/route.test.ts
+PASS app/api/billing/bog/checkout/route.test.ts
+PASS app/api/elevenlabs/tts/auth.test.ts
+PASS lib/services/presentation/deckPlan.test.ts
+PASS components/chat/composer/DictationMetricsReadout.test.tsx
+PASS app/api/twin/route.test.ts
+PASS scripts/avatar/migrate-live-avatar-voice.test.ts
+PASS lib/veo/smoke.test.ts
+PASS lib/ai/musicControls.test.ts
+PASS components/studio/agentRun.wiring.test.ts
+PASS hooks/usePickedTemplate.test.tsx
+PASS hooks/useDialogA11y.test.tsx
+PASS app/api/v2/model3d/create/route.test.ts
+PASS app/api/stripe/webhook/route.test.ts
+PASS lib/services/billing/billingGuard.test.ts
+PASS lib/agent/media/redoChat.test.ts
+PASS lib/agent/media/montageClient.test.ts
+PASS lib/studio/musicEngines.test.ts
+PASS app/api/studio/library/delete.test.ts
+PASS app/api/pipeline/remix/auth.test.ts
+PASS app/api/agent/run/route.test.ts
+PASS lib/video/longform/rows.test.ts
+PASS lib/video/longform/director.test.ts
+PASS lib/video/duration.test.ts
+PASS lib/tasks/taskView.test.ts
+PASS lib/models/verify.test.ts
+PASS lib/api/rate-limit.test.ts
+PASS app/api/agent/media/montage/route.test.ts
+PASS app/api/video/assemble/musicBed.test.ts
+PASS lib/video/longform/stateMachine.test.ts
+PASS lib/services/model3d/model3d.test.ts
+PASS lib/providers/higgsfield/client.test.ts
+PASS lib/notifications/channels/push.test.ts
+PASS lib/agent/media/editExec.test.ts
+PASS lib/voice/micAcquire.test.ts
+PASS lib/video/productAdCharge.test.ts
+PASS lib/veo/authCheck.test.ts
+PASS lib/studio/shootContext.test.ts
+PASS lib/studio/modelPick.test.ts
+PASS lib/onboarding/tour.test.ts
+PASS lib/chat/providerRouterMediaPolicy.test.ts
+PASS lib/chat/promptAgent.test.ts
+PASS lib/chat/filmTaskRef.test.ts
+PASS components/studio/chatParity.test.ts
+PASS app/api/cron/longform-tick/route.test.ts
+PASS app/api/admin/google-transport/route.test.ts
+PASS lib/video/director/storyboard.test.ts
+PASS lib/pipeline/lipsync/lipsyncNode.test.ts
+PASS lib/agent/media/editPlan.test.ts
+PASS lib/credits/unitEconomics.test.ts
+PASS lib/chat/filmStudioClient.test.ts
+PASS app/api/nanobanana/image/style.test.ts
+  ● Console
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at Object.<anonymous> (app/api/nanobanana/image/style.test.ts:84:18)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at Object.<anonymous> (app/api/nanobanana/image/style.test.ts:93:18)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at Object.<anonymous> (app/api/nanobanana/image/style.test.ts:99:18)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at app/api/nanobanana/image/style.test.ts:105:18
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at app/api/nanobanana/image/style.test.ts:105:18
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at app/api/nanobanana/image/style.test.ts:105:18
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at Object.<anonymous> (app/api/nanobanana/image/style.test.ts:114:20)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at Object.<anonymous> (app/api/nanobanana/image/style.test.ts:114:20)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/style.test.ts:72:15)
+      at Object.<anonymous> (app/api/nanobanana/image/style.test.ts:121:18)
+
+PASS lib/video/longform/plan.test.ts
+PASS lib/agent/media/audioExtract.test.ts
+PASS lib/agent/run/runEngine.test.ts
+PASS app/api/motion-control/route.test.ts
+PASS lib/research/qa.test.ts
+PASS lib/billing/tiers.test.ts
+PASS lib/video/longform/stitch.test.ts
+PASS lib/image/studio/quality.test.ts
+PASS components/studio/ui/LiveStatus.test.tsx
+PASS lib/voice/liveUi.test.ts
+PASS lib/orchestrator/ffmpeg-filtergraph.test.ts
+PASS lib/jobs/jobQueue.test.ts
+PASS lib/chat/filmStudioClientVeo.test.ts
+PASS components/studio/FilmQaBadge.test.tsx
+PASS lib/pipeline/script/masterScript.test.ts
+PASS lib/agent/media/analyzeExec.test.ts
+PASS lib/orchestrator/jobs.test.ts
+PASS lib/notifications/outbox.test.ts
+PASS lib/chat/filmStatusStore.test.ts
+PASS lib/contracts/contracts.test.ts
+PASS app/api/twin/upload-url/route.test.ts
+PASS app/api/nanobanana/image/model.test.ts
+  ● Console
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:90:12)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:92:12)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:94:12)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:96:12)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:100:12)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:102:12)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:104:12)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:106:12)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:110:5)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:114:5)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at endpointFor (app/api/nanobanana/image/model.test.ts:63:15)
+      at Object.<anonymous> (app/api/nanobanana/image/model.test.ts:119:12)
+
+PASS app/api/nanobanana/image/template.test.ts
+  ● Console
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/template.test.ts:71:15)
+      at Object.<anonymous> (app/api/nanobanana/image/template.test.ts:82:13)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/template.test.ts:71:15)
+      at Object.<anonymous> (app/api/nanobanana/image/template.test.ts:89:13)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/template.test.ts:71:15)
+      at Object.<anonymous> (app/api/nanobanana/image/template.test.ts:95:13)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/template.test.ts:71:15)
+      at Object.<anonymous> (app/api/nanobanana/image/template.test.ts:101:13)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/template.test.ts:71:15)
+      at Object.<anonymous> (app/api/nanobanana/image/template.test.ts:108:13)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/template.test.ts:71:15)
+      at Object.<anonymous> (app/api/nanobanana/image/template.test.ts:115:17)
+
+    console.error
+      [nanobanana/image] NanoBanana missed (no fallback engine, R7): nanobanana stopped by the test
+
+      369 |       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      370 |       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+    > 371 |       console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+          |               ^
+      372 |       return NextResponse.json({
+      373 |         success: false,
+      374 |         code:    'provider_unavailable',
+
+      at error (app/api/nanobanana/image/route.ts:371:15)
+      at render (app/api/nanobanana/image/template.test.ts:71:15)
+      at Object.<anonymous> (app/api/nanobanana/image/template.test.ts:117:17)
+
+PASS lib/services/montage/montagePlan.test.ts
+PASS app/api/orchestrator/interior/produce/route.test.ts
+PASS app/api/agent/media/analyze/route.test.ts
+PASS app/api/voice/train/route.test.ts
+PASS app/api/ai/music/style.test.ts
+PASS lib/pipeline/compositing/ffmpeg-overlay.wrap.test.ts
+PASS lib/agent-g/channels/handleInbound.test.ts
+PASS lib/security/callerMedia.test.ts
+PASS lib/orchestrator/jobLease.test.ts
+PASS lib/connectors/connectors.test.ts
+PASS lib/billing/bogSettlement.test.ts
+PASS app/api/agent/media/edit/route.test.ts
+PASS app/api/nanobanana/image/noFallback.test.ts
+PASS app/api/agent-g/chat/guest.test.ts
+PASS lib/services/billing/chatBudget.test.ts
+PASS lib/image/studio/http.test.ts
+PASS lib/agent/media/emoji.test.ts
+PASS app/api/research/ask.routes.test.ts
+PASS app/api/log-error/route.test.ts
+PASS app/api/connectors/routes.test.ts
+PASS lib/voice/geminiLive.test.ts
+PASS lib/studio/musicRegen.test.ts
+PASS lib/chat/replyLocale.test.ts
+PASS app/api/agent/media/audio/route.test.ts
+PASS app/api/nanobanana/image/billing.test.ts
+PASS app/api/health/providers/route.test.ts
+PASS lib/video/longform/api.test.ts
+PASS lib/agent/media/montageManifest.test.ts
+PASS components/studio/create/omniWiring.test.ts
+PASS lib/video/videoProviderCascade.test.ts
+PASS lib/security/allowlistedAudioFetch.test.ts
+PASS lib/genjutsu/veoScene.test.ts
+PASS lib/chat/imageBlocks.test.ts
+PASS lib/chat/filmStudioStages.test.ts
+PASS lib/chat/chatModes.test.ts
+PASS app/api/webhooks/whatsapp/route.test.ts
+PASS app/api/ai/music/template.test.ts
+PASS lib/agent/tools/registry.test.ts
+PASS components/studio/montage/project.test.ts
+PASS lib/seo/sitemap.test.ts
+PASS lib/avatar/enroll.test.ts
+PASS app/api/orbit/[service]/auth.test.ts
+PASS app/api/film/storyboard/style.test.ts
+PASS lib/agent/media/montageAsk.test.ts
+PASS lib/agent/media/analyzeSpec.test.ts
+PASS lib/veo/capabilities.test.ts
+PASS lib/research/interactionsClient.test.ts
+PASS lib/genjutsu/contract.test.ts
+PASS lib/chat/remixPlanner.test.ts
+PASS lib/chat/historySerializer.test.ts
+PASS lib/brand/siteArt.test.ts
+PASS app/api/chat/orchestrate/guest.test.ts
+PASS lib/services/montage/transitionPlan.test.ts
+PASS lib/pipeline/compositing/word-synced-captions.render.test.ts
+PASS lib/agent-g/channels/whatsappMetaCheck.test.ts
+PASS lib/services/serviceCatalogue.test.ts
+PASS lib/media/saveMedia.test.ts
+PASS lib/chat/filmScriptFidelity.test.ts
+PASS app/api/genjutsu/quote/route.test.ts
+PASS app/api/admin/model-catalog/route.test.ts
+PASS lib/calls/whatsapp/bridgeApi.test.ts
+PASS components/studio/montage/voiceCommands.test.ts
+PASS lib/voice/dictationMetrics.test.ts
+PASS lib/orchestrator/unpolledSettleRuntime.test.ts
+PASS lib/genjutsu/mp4Duration.test.ts
+PASS lib/gemini/client.models.test.ts
+PASS lib/chat/filmAgentRoster.test.ts
+PASS lib/billing/tierCopy.test.ts
+PASS lib/billing/resolveTier.test.ts
+PASS app/api/voice/webhook/route.test.ts
+PASS app/api/studio/catalogue/route.test.ts
+PASS app/api/notifications/preferences/route.test.ts
+PASS lib/services/dubbing/dubbingLegs.test.ts
+PASS lib/pipeline/audio/audioMix.test.ts
+PASS lib/calls/whatsapp/phoneTools.test.ts
+PASS lib/veo/promptCompiler.test.ts
+PASS lib/chat/filmPaidUpfront.test.ts
+PASS lib/catalog/agentRoute.test.ts
+PASS lib/billing/subscriptionAllowance.test.ts
+PASS lib/ai/agentG.test.ts
+PASS lib/ads/adScriptAgent.test.ts
+PASS app/api/chat/orchestrate/filmGrid.test.ts
+PASS lib/voice/vad.test.ts
+PASS lib/providers/latencyFailover.test.ts
+PASS lib/orchestrator/ledger.refundByRef.test.ts
+PASS lib/legal/links.test.ts
+PASS lib/e2e/phase48-workflow.test.ts
+PASS lib/chat/musicVideoCompositeCharge.test.ts
+PASS lib/chat/mediaKeys.test.ts
+PASS lib/agent-g-orchestrator.test.ts
+PASS app/api/agent-g/whatsapp/send/route.test.ts
+PASS app/api/agent-g/whatsapp/link/route.test.ts
+PASS app/api/video/assemble/billing.test.ts
+PASS lib/image/studio/live.test.ts
+PASS lib/agent-g/channels/whatsapp-link.test.ts
+PASS app/api/generate/route.test.ts
+PASS lib/orchestrator/storage-adapter.test.ts
+PASS lib/ai/musicBrief.test.ts
+PASS lib/agentg/personality.test.ts
+PASS app/api/upload/verify/route.test.ts
+PASS lib/genjutsu/presets.test.ts
+PASS lib/chat/chatMediaRoute.test.ts
+PASS lib/ai/lyriaMusic.test.ts
+PASS components/studio/create/newtools/plan3d.test.ts
+PASS app/api/video/remix-intent/route.test.ts
+PASS app/api/gemini/chat/auth.test.ts
+PASS app/api/film/storyboard/auth.test.ts
+PASS app/api/chat/orchestrate/template.test.ts
+PASS app/api/ai/music/regen.test.ts
+PASS app/api/agent-g/channels/route.test.ts
+PASS app/api/agent-g/calls/route.test.ts
+PASS lib/video/director/server.test.ts
+PASS lib/image/studio/provider.test.ts
+PASS app/api/tasks/route.test.ts
+PASS scripts/site-art/shots.test.ts
+PASS lib/studio/tools.test.ts
+PASS lib/memory/embed.test.ts
+PASS scripts/probe-live-actions.test.ts
+PASS app/api/editing/jobs/[id]/route.test.ts
+PASS app/api/webhooks/higgsfield/route.test.ts
+PASS app/api/orchestrator/produce/route.test.ts
+PASS app/api/orchestrator/jobs/route.test.ts
+PASS app/api/avatars/save/route.test.ts
+PASS app/api/ai/upscale/route.test.ts
+PASS app/api/ai/music/auth.test.ts
+PASS app/api/ai/edit/billing.test.ts
+PASS lib/studio/ui/dock.test.ts
+PASS lib/agent-g/channels/telegram-webhook-handler.test.ts
+PASS lib/agent/media/audioSource.test.ts
+PASS lib/agent/run/runSpec.test.ts
+PASS app/api/pipeline/voice.test.ts
+PASS lib/video/watermark.test.ts
+PASS lib/twin/paths.test.ts
+PASS lib/studio/pendingPrompt.test.ts
+PASS lib/security/storageReadScope.test.ts
+PASS lib/genjutsu/hfMotion.test.ts
+PASS lib/gemini/client.test.ts
+PASS lib/analytics/serviceEvents.test.ts
+PASS app/api/video/longform/[id]/cancel/route.test.ts
+PASS app/api/video/longform/[id]/route.test.ts
+PASS app/api/tasks/[taskId]/owner.test.ts
+PASS app/api/motion-control/status/route.test.ts
+PASS app/api/health/services/route.test.ts
+PASS app/api/credits/history/route.test.ts
+PASS app/api/cron/bog-billing/route.test.ts
+PASS app/api/chat/title/route.test.ts
+PASS app/api/avatar/core/route.test.ts
+PASS app/api/ai/edit-audio/twinGuard.test.ts
+PASS lib/image/studio/contracts.test.ts
+PASS app/api/ai/route.test.ts
+PASS lib/catalog/nav.test.ts
+PASS app/api/agent-g/calls/transcribe/route.test.ts
+PASS app/api/replicate/image/route.test.ts
+PASS app/api/replicate/generate/route.test.ts
+PASS app/api/orbit/agent/route.test.ts
+PASS app/api/creations/[id]/route.test.ts
+PASS app/api/ai/magic-wand/route.test.ts
+PASS app/api/ai/edit-photo/billing.test.ts
+  ● Console
+
+    console.warn
+      [edit-photo] REPLICATE_REMOVE_BG_MODEL unset — using default "851-labs/background-remover". Pin your own to be safe.
+
+      61 |   const pinned = process.env[ENV_KEY[action]]?.trim();
+      62 |   if (!pinned && process.env.NODE_ENV !== 'production') {
+    > 63 |     console.warn(`[edit-photo] ${ENV_KEY[action]} unset — using default "${DEFAULT_MODEL[action]}". Pin your own to be safe.`);
+         |             ^
+      64 |   }
+      65 |   return pinned || DEFAULT_MODEL[action];
+      66 | }
+
+      at warn (app/api/ai/edit-photo/route.ts:63:13)
+      at modelFor (app/api/ai/edit-photo/route.ts:178:46)
+      at Object.<anonymous> (app/api/ai/edit-photo/billing.test.ts:62:3)
+
+PASS lib/services/dubbing/dubbingPlan.test.ts
+PASS lib/image/studio/task.test.ts
+PASS lib/calls/bridge/server.test.ts
+PASS lib/agent/media/commonsLicense.test.ts
+PASS app/api/upload/route.test.ts
+PASS app/api/research/favicon.route.test.ts
+PASS app/api/memory/route.test.ts
+PASS scripts/templates/thumbs.shoot.test.ts
+PASS lib/voice/livePlans.test.ts
+PASS lib/video/identityAndAudio.test.ts
+PASS lib/providers/paramSpec.test.ts
+PASS lib/providers/mediaPolicy.test.ts
+PASS app/api/billing/bog/orders/[id]/route.test.ts
+PASS app/api/avatar/handoff/complete/route.test.ts
+PASS app/api/ai/music/engines/route.test.ts
+PASS app/api/video/generate-hero/route.test.ts
+PASS app/api/udio/generate/route.test.ts
+PASS app/api/heygen/avatar/route.test.ts
+PASS app/api/admin/run-migration/route.test.ts
+PASS app/api/admin/provider-probe/route.test.ts
+PASS lib/agent/media/sourceSelect.test.ts
+PASS components/studio/ui/studioParity.test.ts
+PASS components/studio/ui/musicControlsCopy.test.ts
+PASS components/studio/research/watcher.test.ts
+PASS app/api/health/route.test.ts
+PASS lib/voice/spokenYes.test.ts
+PASS lib/twin/account.test.ts
+PASS lib/platform/upstash.test.ts
+PASS lib/genjutsu/engines.test.ts
+PASS lib/genjutsu/capabilities.test.ts
+PASS lib/chat/userMemory.test.ts
+PASS lib/chat/documentText.test.ts
+PASS components/landing/copy.test.ts
+PASS __tests__/legacy-chat-routes-gone.test.ts
+PASS app/api/billing/bog/subscription/route.test.ts
+PASS app/api/app/worker/tick/route.test.ts
+PASS app/api/voice/dictation-metrics/route.test.ts
+PASS app/api/video/voice-narration/auth.test.ts
+PASS app/api/upload/sign/route.test.ts
+PASS app/api/cron/drain-renders/route.test.ts
+PASS app/api/ai/lyrics/route.test.ts
+PASS lib/agent/react/hiddenInstruction.test.ts
+PASS components/studio/photo/wiring.test.ts
+PASS app/api/ltx-video/route.test.ts
+PASS lib/voice/interimCadence.test.ts
+PASS lib/studio/imageCreate.test.ts
+PASS lib/research/report.test.ts
+PASS lib/chat/turnMeta.test.ts
+PASS lib/chat/musicVideoPresets.test.ts
+PASS lib/admin/adminGate.test.ts
+PASS app/api/video/status/[tokenId]/route.test.ts
+PASS app/api/calls/bridge/[op]/route.test.ts
+PASS app/api/admin/whatsapp/meta-check/route.test.ts
+PASS app/api/voice/web-read/route.test.ts
+PASS app/api/video/capabilities/route.test.ts
+PASS app/api/pipeline/remix/throwRefund.test.ts
+PASS app/api/gemini/feedback/route.test.ts
+PASS app/api/elevenlabs/tts/voiceId.test.ts
+PASS app/api/auth/lookup/route.test.ts
+PASS app/api/audio/isolate/route.test.ts
+PASS app/api/audio/georgian-song/auth.test.ts
+PASS app/api/app/health/route.test.ts
+PASS app/api/agent/approvals/route.test.ts
+PASS lib/notifications/push/subscription.test.ts
+PASS lib/agent/tools/scrapeWebpage.test.ts
+PASS components/studio/scene/wiring.test.ts
+PASS components/studio/photo/exportPicks.test.ts
+PASS app/api/orchestrate/route.test.ts
+PASS lib/voice/webhook-processing.test.ts
+PASS lib/video/remixOps.mux.test.ts
+PASS lib/studio/hfParams.test.ts
+PASS lib/research/limits.test.ts
+PASS lib/pricing/founder.test.ts
+PASS lib/mcp/skills-manifest.test.ts
+PASS lib/chat/filmBillingWaiver.test.ts
+PASS lib/billing/wallet-ledger.subscription.test.ts
+PASS lib/audio/georgianSongBed.test.ts
+  ● Console
+
+    console.warn
+      [ka-song] EL instrumental failed (no other engine is tried): EL 500
+
+      86 |     } catch (err) {
+      87 |       // eslint-disable-next-line no-console
+    > 88 |       console.warn('[ka-song] EL instrumental failed (no other engine is tried):', err instanceof Error ? err.message : err);
+         |               ^
+      89 |       return null;
+      90 |     }
+      91 |   }
+
+      at warn (lib/audio/georgianSong.ts:88:15)
+      at Object.<anonymous> (lib/audio/georgianSongBed.test.ts:27:3)
+
+PASS lib/ai/audioEditCommands.test.ts
+PASS lib/agent/feedback.test.ts
+PASS app/api/share/[token]/route.test.ts
+PASS app/api/jobs/[id]/route.test.ts
+PASS app/api/billing/wallet-topup/route.test.ts
+PASS app/api/avatars/latest/route.test.ts
+PASS app/api/auth/whoami/route.test.ts
+PASS app/api/admin/veo-smoke/route.test.ts
+PASS lib/video/longform/stitch.ffmpeg.test.ts
+PASS lib/video/longform/limits.test.ts
+PASS lib/pipeline/script/scriptSchema.test.ts
+PASS lib/pipeline/compositing/word-synced-captions.test.ts
+PASS lib/calls/bridge/playout.test.ts
+PASS lib/agent-g/channels/whatsapp-processor.test.ts
+PASS lib/agent-g/channels/whatsapp-client.test.ts
+PASS lib/agent/media/audioChat.test.ts
+PASS lib/agent/media/audioClient.test.ts
+PASS lib/agent/optimizer/analyze.test.ts
+PASS components/studio/photo/cullClient.test.ts
+PASS components/chat/artifacts/artifactSpec.test.ts
+PASS app/api/avatars/route.test.ts
+PASS scripts/gcp/preview-inference-check.test.ts
+PASS lib/twin/resolve.test.ts
+PASS lib/udio/client.test.ts
+PASS lib/studio/style.test.ts
+PASS lib/studio/shootQuote.test.ts
+PASS lib/rag/chunk.test.ts
+PASS lib/pipeline/storyboardBridge.test.ts
+PASS lib/orchestrator/masterQa.test.ts
+PASS lib/orchestrator/cinematic-lut.test.ts
+PASS lib/notifications/dispatch.test.ts
+PASS lib/credits/videoPricing.test.ts
+PASS lib/chat/outputEnforcement.test.ts
+PASS lib/billing/bogBillingMigration.test.ts
+PASS lib/api/providerError.test.ts
+PASS lib/ai/visionQualityGate.test.ts
+PASS lib/ai/replicate.test.ts
+PASS lib/admin/users.test.ts
+PASS lib/admin/reliabilityMetrics.test.ts
+PASS lib/admin/guard.test.ts
+PASS components/studio/lipsyncCharge.wiring.test.ts
+PASS __tests__/sw-push.test.ts
+PASS app/api/ai/edit-audio/billing.test.ts
+PASS lib/video/longform/migration.test.ts
+PASS lib/video/director/planner.test.ts
+PASS lib/services/montage/joinPlan.test.ts
+PASS lib/calls/whatsapp/metaCalls.test.ts
+PASS lib/calls/whatsapp/gates.test.ts
+PASS lib/agent-g/channels/whatsapp-text.test.ts
+PASS lib/agent/media/cardPersist.test.ts
+PASS lib/agent/sandbox/policy.test.ts
+PASS components/studio/ui/resultActionsAdoption.test.ts
+PASS components/chat/artifacts/artifactStore.test.ts
+PASS lib/voice/livePrime.test.ts
+PASS lib/video/veoPlan.test.ts
+PASS lib/twin/validate.test.ts
+PASS lib/supabase/middleware.test.ts
+PASS lib/smm/server.test.ts
+PASS lib/server/feature-flags.test.ts
+PASS lib/seo/manifest.test.ts
+PASS lib/research/migration.test.ts
+PASS lib/research/liveContext.test.ts
+PASS lib/pipeline/renderDrainer.test.ts
+PASS lib/orchestrator/produceBilling.test.ts
+PASS lib/orchestrator/idempotency.test.ts
+PASS lib/orchestrator/events.test.ts
+PASS lib/media/videoDuration.test.ts
+PASS lib/memory/context.test.ts
+PASS lib/chat/videoProvider.test.ts
+PASS lib/chat/intentDetector.test.ts
+PASS lib/chat/historyKeys.test.ts
+PASS lib/chat/filmReadiness.test.ts
+PASS lib/billing/wallet-ledger.test.ts
+PASS lib/avatar/handoff.test.ts
+PASS lib/auth/generationGate.test.ts
+PASS lib/ai/photoEditSliders.test.ts
+PASS lib/ai/lipsyncNoFallback.test.ts
+PASS lib/ai/geminiVeo.test.ts
+PASS components/twin/rehostSource.test.ts
+PASS app/api/payments/provider/route.test.ts
+PASS app/api/genjutsu/capabilities/route.test.ts
+PASS lib/services/montage/montagePipeline.test.ts
+PASS lib/notifications/push/migration.test.ts
+PASS lib/calls/whatsapp/ticket.test.ts
+PASS lib/calls/whatsapp/phoneSetup.test.ts
+PASS lib/agent/tools/prepareInstagramPost.test.ts
+PASS components/studio/ui/useUpload.progress.test.ts
+PASS scripts/gcp/preview-auth-check.test.ts
+PASS lib/voice/liveThread.test.ts
+PASS lib/voice/liveTelemetry.test.ts
+PASS lib/video/sequenceWindows.test.ts
+PASS lib/uploads/policy.test.ts
+PASS lib/ui/opFailure.test.ts
+PASS lib/support/sanitize.test.ts
+PASS lib/studio/musicLibrary.test.ts
+PASS lib/studio/imageResults.test.ts
+PASS lib/stripe/subscriptions.test.ts
+PASS lib/services/cardImage.test.ts
+PASS lib/photo/exif.test.ts
+PASS lib/orchestrator/saga.test.ts
+PASS lib/orchestrator/reflection.test.ts
+PASS lib/orchestrator/rate-limit.test.ts
+PASS lib/orchestrator/produceBilling.idem.test.ts
+PASS lib/orchestrator/ledger.reversal.test.ts
+PASS lib/orchestrator/ledger.once.test.ts
+PASS lib/orchestrator/config-audit.test.ts
+PASS lib/orchestrator/composition.test.ts
+PASS lib/notifications/preferences.test.ts
+PASS lib/genjutsu/chargeToken.test.ts
+PASS lib/financials/adminMetrics.test.ts
+PASS lib/elevenlabs/ttsTimestamps.test.ts
+PASS lib/chat/serviceBlocks.test.ts
+PASS lib/chat/multiVoiceWiring.test.ts
+PASS lib/chat/guestChat.test.ts
+PASS lib/chat/freeFilmWaiver.test.ts
+PASS lib/chat/dialogueCasting.test.ts
+PASS lib/chat/conversationSync.test.ts
+PASS lib/chat/cameraCue.test.ts
+PASS lib/brand/v1.test.ts
+PASS lib/billing/subscriptionTiersMigration.test.ts
+PASS lib/billing/pricingConfig.db.test.ts
+PASS lib/billing/gel.test.ts
+PASS lib/billing/bogCheckoutClient.test.ts
+PASS lib/audio/premium-tts.test.ts
+PASS lib/auth/otpEmail.test.ts
+PASS lib/api/requireAuthForGeneration.test.ts
+PASS lib/api/billingCopy.test.ts
+PASS lib/ai/videoEditCommands.test.ts
+PASS lib/ai/geminiImagen.test.ts
+PASS lib/ai/elevenlabs.test.ts
+PASS lib/ai/channelBridge.test.ts
+PASS lib/ads/adInputValidation.test.ts
+PASS app/api/admin/payouts/payoutDecision.test.ts
+PASS lib/video/director/fromStudio.test.ts
+PASS lib/services/billing/guardedCall.test.ts
+  ● Console
+
+    console.error
+      [guardedCall] budget check threw → allowing the call: supabase unreachable
+
+      57 |     // The guard broke, not the budget. Fail OPEN and shout — see the fail-direction note in BillingGuard.
+      58 |     // eslint-disable-next-line no-console
+    > 59 |     console.error('[guardedCall] budget check threw → allowing the call:', err instanceof Error ? err.message : err);
+         |             ^
+      60 |   }
+      61 |   if (!allowed) throw new BudgetExceededError(opts.service, reason);
+      62 |
+
+      at error (lib/services/billing/guardedCall.ts:59:13)
+      at Object.<anonymous> (lib/services/billing/guardedCall.test.ts:51:5)
+
+    console.warn
+      [guardedCall] recordUsage failed (call already succeeded): ledger down
+
+      78 |   } catch (err) {
+      79 |     // eslint-disable-next-line no-console
+    > 80 |     console.warn('[guardedCall] recordUsage failed (call already succeeded):', err instanceof Error ? err.message : err);
+         |             ^
+      81 |   }
+      82 |
+      83 |   return result;
+
+      at warn (lib/services/billing/guardedCall.ts:80:13)
+      at Object.<anonymous> (lib/services/billing/guardedCall.test.ts:83:5)
+
+PASS lib/providers/higgsfield/tokenPricing.test.ts
+PASS lib/notifications/channels/whatsapp.test.ts
+PASS lib/calls/whatsapp/delivery.test.ts
+PASS lib/ai/google/policy.test.ts
+PASS lib/agent/media/overlayFx.test.ts
+PASS lib/agent/media/analyzeClient.test.ts
+PASS lib/agent/optimizer/configVersioning.test.ts
+PASS components/chat/artifacts/previewDocument.test.ts
+PASS components/chat/artifacts/openArtifactEvent.test.ts
+PASS lib/voice-v2v/vad.test.ts
+PASS lib/voice/voiceLedger.test.ts
+PASS lib/voice/voicePrompt.test.ts
+PASS lib/voice/twilio-signature.test.ts
+PASS lib/voice/pcm.test.ts
+PASS lib/video/remixCaption.test.ts
+PASS lib/video/aspectConform.test.ts
+PASS lib/veo/deliver.test.ts
+PASS lib/twin/ticket.test.ts
+PASS lib/studio/musicQuote.test.ts
+PASS lib/share/nativeShare.test.ts
+PASS lib/research/favicon.test.ts
+PASS lib/research/context.test.ts
+PASS lib/routing/landing.test.ts
+PASS lib/photo/exportPlan.test.ts
+PASS lib/orchestrator/storage-adapter.twin.test.ts
+PASS lib/orchestrator/sse-hub.test.ts
+PASS lib/orchestrator/script-breakdown.test.ts
+PASS lib/orchestrator/media-directors.test.ts
+PASS lib/orchestrator/dialogueCastPlan.test.ts
+PASS lib/orchestrator/avatar.test.ts
+PASS lib/notify/browserNotify.test.ts
+PASS lib/genjutsu/selection.test.ts
+PASS lib/genjutsu/pricing.test.ts
+PASS lib/chat/urlContext.test.ts
+PASS lib/chat/promptTraits.test.ts
+PASS lib/chat/mergeSceneCaptions.test.ts
+PASS lib/chat/georgianNumbers.test.ts
+PASS lib/chat/filmVoiceover.provider.test.ts
+PASS lib/chat/filmDispatchRouting.test.ts
+PASS lib/chat/filmDelivery.test.ts
+PASS lib/chat/emailHtml.test.ts
+PASS lib/billing/stripeReversal.test.ts
+PASS lib/billing/pricingTiers.test.ts
+PASS lib/billing/creditHistory.test.ts
+PASS lib/billing/avatarCharge.test.ts
+PASS lib/audio/tts-model.test.ts
+PASS lib/audio/google-tts.test.ts
+PASS lib/auth/sessionCleanup.dom.test.ts
+PASS lib/auth/accountStatus.test.ts
+PASS lib/agent/approval.test.ts
+PASS lib/admin/jobs.test.ts
+PASS components/studio/serviceSearch.wiring.test.ts
+PASS components/studio/personaSidebar.test.ts
+PASS components/studio/agentGGate.wiring.test.ts
+PASS components/onboarding/tourWiring.test.ts
+PASS lib/support.test.ts
+PASS app/api/video/remix/noSilentSwitch.test.ts
+PASS app/api/video/remix/fallbackRefund.test.ts
+PASS lib/providers/higgsfield/webhookAuth.test.ts
+PASS lib/orchestrator/agents/profiles.test.ts
+PASS lib/calls/whatsapp/events.test.ts
+PASS lib/calls/providers/index.test.ts
+PASS lib/ai/google/reply.test.ts
+PASS lib/agent/media/jobFollow.test.ts
+PASS lib/agent/react/coordinator.test.ts
+PASS components/voice/live/liveActivity.test.ts
+PASS components/studio/ui/useUpload.test.ts
+PASS components/studio/research/commands.test.ts
+PASS lib/voice/voiceCallsSchema.test.ts
+PASS lib/voice/sttAccept.test.ts
+PASS lib/voice/speechLang.test.ts
+PASS lib/voice/liveStudio.test.ts
+PASS lib/voice/audioExt.test.ts
+PASS lib/video/videoPresets.test.ts
+PASS lib/video/remixDelivery.test.ts
+PASS lib/video/remixCharge.test.ts
+PASS lib/uploads/sniff.test.ts
+PASS lib/ui/useViewportClamp.test.ts
+PASS lib/studio/semaphore.test.ts
+PASS lib/studio/media.test.ts
+PASS lib/studio/composeImagePrompt.test.ts
+PASS lib/security/publicMediaUrl.test.ts
+PASS lib/security/rlsInternalTables.test.ts
+PASS lib/routing/signIn.test.ts
+PASS lib/orchestrator/storage-adapter.uploads.test.ts
+PASS lib/orchestrator/providers.test.ts
+PASS lib/orchestrator/pipeline-stages.test.ts
+PASS lib/orchestrator/jobLifecycle.test.ts
+PASS lib/orchestrator/interior.test.ts
+PASS lib/orchestrator/gemini-guard.test.ts
+PASS lib/notifications/prefsStore.test.ts
+PASS lib/image/imagePresets.test.ts
+PASS lib/e2e/pipeline-sim.test.ts
+PASS lib/credits/musicSettlement.test.ts
+PASS lib/delivery/deliveryEngine.test.ts
+PASS lib/chat/sfxTriggers.test.ts
+PASS lib/chat/remixContinuity.test.ts
+PASS lib/chat/mediaWindow.test.ts
+PASS lib/chat/historyBuckets.test.ts
+PASS lib/chat/compositeRefunds.test.ts
+PASS lib/billing/topupPayer.test.ts
+PASS lib/billing/entitlements.test.ts
+  ● Console
+
+    console.warn
+      [entitlements] paid-plan check failed → treating as FREE (output will be marked): { message: 'connection reset' }
+
+      60 |   } catch (e) {
+      61 |     // eslint-disable-next-line no-console
+    > 62 |     console.warn('[entitlements] paid-plan check failed → treating as FREE (output will be marked):',
+         |             ^
+      63 |       e instanceof Error ? e.message : e);
+      64 |     return false;
+      65 |   }
+
+      at warn (lib/billing/entitlements.ts:62:13)
+      at Object.<anonymous> (lib/billing/entitlements.test.ts:58:5)
+
+    console.warn
+      [entitlements] paid-plan check failed → treating as FREE (output will be marked): { message: 'timeout' }
+
+      60 |   } catch (e) {
+      61 |     // eslint-disable-next-line no-console
+    > 62 |     console.warn('[entitlements] paid-plan check failed → treating as FREE (output will be marked):',
+         |             ^
+      63 |       e instanceof Error ? e.message : e);
+      64 |     return false;
+      65 |   }
+
+      at warn (lib/billing/entitlements.ts:62:13)
+      at Object.<anonymous> (lib/billing/entitlements.test.ts:63:5)
+
+PASS lib/billing/bogCatalog.test.ts
+PASS lib/avatar/video-config.test.ts
+PASS lib/avatar/renderAttempts.test.ts
+PASS lib/audio/voiceId.test.ts
+PASS lib/auth/sessionCleanup.test.ts
+PASS lib/ai/xaiImage.test.ts
+PASS lib/ai/qaDirectorAgent.test.ts
+PASS lib/ai/musicReference.test.ts
+PASS lib/ai/fluxImage.test.ts
+PASS lib/agent/feedbackClient.test.ts
+PASS components/studio/pendingPrompt.wiring.test.ts
+PASS components/studio/historySidebar.test.ts
+PASS components/twin/captureMath.test.ts
+PASS store/useCreditsBalance.test.ts
+PASS app/api/video/assemble/callerMedia.test.ts
+PASS app/[locale]/account/payments/page.test.ts
+PASS lib/video/director/migration.test.ts
+PASS lib/services/presentation/deckZip.test.ts
+PASS lib/services/motion/chargeToken.test.ts
+PASS lib/calls/whatsapp/lifecycle.test.ts
+PASS lib/agent/media/workingCard.test.ts
+PASS lib/agent/media/sweepAlerts.test.ts
+PASS lib/agent/media/access.test.ts
+PASS components/studio/research/requestId.test.ts
+PASS lib/video/sceneGrid.test.ts
+PASS lib/video/probeBanner.test.ts
+PASS lib/services/resolveUpload.test.ts
+PASS lib/security/secretMatch.test.ts
+PASS lib/security/csp.test.js
+PASS lib/research/pricing.test.ts
+PASS lib/observability/reliability.test.ts
+PASS lib/orchestrator/render-settings.test.ts
+PASS lib/orchestrator/profileError.test.ts
+PASS lib/jobs/stallDetector.test.ts
+PASS lib/env/flag.test.ts
+PASS lib/chat/videoProviderVeo.test.ts
+PASS lib/chat/iteration-store.test.ts
+PASS lib/chat/ltxKey.test.ts
+PASS lib/chat/interiorRedesign.test.ts
+PASS lib/chat/filmVoiceover.sanitize.test.ts
+PASS lib/chat/filmStarterPrompts.test.ts
+PASS lib/chat/filmBalanceGate.test.ts
+PASS lib/chat/chatPhotoVideoRouting.test.ts
+PASS lib/chat/attachedFiles.test.ts
+PASS lib/chat/chatBilling.test.ts
+PASS lib/connections/model.test.ts
+PASS lib/audio/ttsChunks.test.ts
+PASS lib/auth/safeRedirect.test.ts
+PASS lib/auth/identifier.test.ts
+PASS lib/ai/webSearch.test.ts
+PASS lib/ai/usageMetrics.test.ts
+PASS components/studio/agentRoute.wiring.test.ts
+PASS lib/services/montage/montageSound.test.ts
+PASS lib/video/colorScience.test.ts
+PASS lib/tasks/taskService.test.ts
+PASS lib/tasks/statusModel.test.ts
+PASS lib/pipeline/modelSelection.test.ts
+PASS lib/api/cronAuth.test.ts
+PASS lib/ads/adBudgetGuard.test.ts
+PASS hooks/keyboardShellHeight.test.ts
+PASS app/api/video/assemble/singleClipRef.test.ts
+
+Summary of all failing tests
+FAIL lib/agent/media/effects.ffmpeg.test.ts (16.167 s)
+  ● F10 the sound evened out: -14 LUFS from a quiet clip
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "outcome": "delivered",
+    +   "outcome": "failed",
+        "ran": true,
+      }
+
+      180 |   const t0 = Date.now();
+      181 |   const worked = await workEditJob(deps, { jobId: q.quote.jobId, worker: 'w1' });
+    > 182 |   expect(worked).toMatchObject({ ran: true, outcome: 'delivered' });
+          |                  ^
+      183 |   const file = join(dir, `result-${source.split('/').pop()!.replace(/\.\w+$/, '')}-${Object.keys(evidence).length}.${output}`);
+      184 |   writeFileSync(file, stored[0]!);
+      185 |   return { file, edits: q.quote.edits, plan: q.quote.plan, ms: Date.now() - t0 };
+
+      at toMatchObject (lib/agent/media/effects.ffmpeg.test.ts:182:18)
+      at Object.<anonymous> (lib/agent/media/effects.ffmpeg.test.ts:345:13)
+
+FAIL lib/video/ffmpegExec.test.ts
+  ● ffmpegExec › a playlist is not media: refused by type, and by demuxer when it lies about its type
+
+    expect(received).rejects.toMatchObject(expected)
+
+    - Expected  -  1
+    + Received  + 14
+
+      Object {
+    -   "stderr": StringMatching /Invalid data found/,
+    +   "stderr": "ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers
+    +   built with Apple clang version 13.1.6 (clang-1316.0.21.2.5)
+    +   configuration: --prefix=/Volumes/tempdisk/sw --extra-cflags=-fno-stack-check --arch=arm64 --cc=/usr/bin/clang --enable-gpl --enable-libvmaf --enable-libbluray --enable-libopenjpeg --enable-libopus --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libvpx --enable-libwebp --enable-libass --enable-libfreetype --enable-fontconfig --enable-libtheora --enable-libvorbis --enable-libsnappy --enable-libaom --enable-libvidstab --enable-libzimg --enable-libsvtav1 --enable-libkvazaar --enable-version3 --pkg-config-flags=--static --enable-ffplay --enable-postproc --enable-nonfree --enable-neon --enable-runtime-cpudetect --disable-indev=qtkit --disable-indev=x11grab_xcb
+    +   libavutil      58.  2.100 / 58.  2.100
+    +   libavcodec     60.  3.100 / 60.  3.100
+    +   libavformat    60.  3.100 / 60.  3.100
+    +   libavdevice    60.  1.100 / 60.  1.100
+    +   libavfilter     9.  3.100 /  9.  3.100
+    +   libswscale      7.  1.100 /  7.  1.100
+    +   libswresample   4. 10.100 /  4. 10.100
+    +   libpostproc    57.  1.100 / 57.  1.100
+    + [hls @ 0x13f619c10] Format not on whitelist 'mov,matroska,mpegts,avi,flv,mpeg,mp3,wav,aac,ogg,flac,image2,png_pipe,jpeg_pipe,webp_pipe,gif'
+    + /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/ffin-v52et2/in0.mp4: Invalid argument
+    + ",
+      }
+
+      53 |       .rejects.toThrow('ffmpeg input refused (wrong_type)');
+      54 |     await expect(ffmpegExec(bin, ['-i', 'https://cdn.example/a.mp4', '-f', 'null', '-'], {}, { fetchImpl: serve(m3u8, 'video/mp4'), lookupImpl: PUBLIC }))
+    > 55 |       .rejects.toMatchObject({ stderr: expect.stringMatching(/Invalid data found/) });
+         |                ^
+      56 |   });
+      57 |
+      58 |   test('local inputs and lavfi sources pass through untouched', async () => {
+
+      at Object.toMatchObject (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/expect/build/index.js:2155:20)
+      at Object.toMatchObject (lib/video/ffmpegExec.test.ts:55:16)
+
+FAIL lib/agent/media/composition.ffmpeg.test.ts
+  ● pictures › TX-01 exact Georgian text on a picture: the very words, drawn whole, where asked
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● pictures › TX-07 the same design re-laid as a 9:16 story: a revision, the words kept, inside the tall safe area
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › the first result: our logo top-left, a line at the bottom, the package untouched
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › TX-04 „ზედა ლოგო მოხსენი, პაკეტის ლოგო შეინარჩუნე": our logo gone without a trace, the package logo kept
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › TX-06 + TX-09 two revisions of the same result at once: a premium restyle (same words) and the logo moved right
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● TX-05 „ბოლო სამ წამში ანიმაციური CTA ჩასვი": absent before 5 s, slides up into place, held to the end
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● TX-10 several layers: each in its own time, the later one drawn above the logo, all editable later
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › TX-02 + TX-03 a Georgian track burned in on its times, and the same video without it
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › reload: the stored job answers with both copies, the files and the QC; a repeated Start replays, never re-runs
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › a revision in words: „ქეფშენები ფაილად მომეცი" keeps the same lines (the parent's track), only delivered anew
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › TX-08 an English track (typed lines), timed, burned in and as SRT/VTT
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● words a font cannot draw are refused at the quote, named, and nothing is queued
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● long Georgian text: 150 letters are laid out to fit a 9:16 frame; 161 are refused
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● masks hide a region where and when asked (mosaic and blur), and only there
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a cancel during a layered edit kills ffmpeg and delivers nothing
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● what a phone plays: H.264 4:2:0, the index before the data (faststart), the sound kept as AAC
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RFOPHT/packshot.png
+    [Parsed_gradients_0 @ 0x143e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x143e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+FAIL __tests__/api-lockdown.test.ts
+  ● API lockdown — every route that can reach a paid provider is gated › no ungated provider-reaching route outside the reasoned allowlist
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 9
+
+    - Array []
+    + Array [
+    +   "app/api/image/capabilities/route.ts  via  app/api/image/capabilities/route.ts > app/api/image/models/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/jobs/[id]/cancel/route.ts  via  app/api/image/jobs/[id]/cancel/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/jobs/[id]/route.ts  via  app/api/image/jobs/[id]/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/jobs/quote/route.ts  via  app/api/image/jobs/quote/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/jobs/route.ts  via  app/api/image/jobs/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/models/route.ts  via  app/api/image/models/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    +   "app/api/image/operations/validate/route.ts  via  app/api/image/operations/validate/route.ts > lib/image/studio/http.ts > lib/image/studio/live.ts > lib/ai/google/transport.ts",
+    + ]
+
+      170 |     // it (mustSignInToGenerate + a per-account cap, opsCallerAllowed for diagnostics, a signature for webhooks), or —
+      171 |     // if it truly cannot spend — add it to PROVIDER_ROUTE_ALLOWLIST with the reason.
+    > 172 |     expect(violations).toEqual([]);
+          |                        ^
+      173 |   });
+      174 |
+      175 |   it('the allowlist has no stale entries', () => {
+
+      at Object.toEqual (__tests__/api-lockdown.test.ts:172:24)
+
+
+Test Suites: 4 failed, 5 skipped, 870 passed, 874 of 879 total
+Tests:       19 failed, 30 skipped, 13312 passed, 13361 total
+Snapshots:   0 total
+Time:        198.747 s
+Ran all test suites.
+Test results written to: docs/handoffs/image-studio/evidence/phase2-full-jest.json
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

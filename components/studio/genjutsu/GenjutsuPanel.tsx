@@ -311,7 +311,9 @@ export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
       {/* The job — progress while it renders, the video when it is done, what happened to the credits if it failed. */}
       {jobState && (
         <div data-testid="vfx-job" data-state={jobState} className="space-y-2 rounded-2xl bg-app-elevated/40 p-2.5 ring-1 ring-app-border/10">
-          <div className="mx-auto w-full max-w-[320px]">
+          {/* ONE PLACE FOR THE RESULT (Production 2026-10-16, GG: the finished video showed in this panel AND in the chat).
+              Once the studio has posted it to the chat as the agent's reply, this panel keeps only the line and "another". */}
+          {!(job.phase === 'ready' && onDelivered) && <div className="mx-auto w-full max-w-[320px]">
             <ResultCard
               kind="video"
               aspect={jobAspect}
@@ -324,7 +326,7 @@ export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
               {...(job.phase === 'failed' ? { error: job.message || c.failed } : job.phase === 'stalled' ? { error: c.stillWorking } : {})}
               onDismiss={job.phase === 'failed' || job.phase === 'stalled' ? reset : undefined}
             />
-          </div>
+          </div>}
           {job.phase === 'running' && <p className="text-center text-[11.5px] leading-snug text-app-muted">{c.jobWorking}</p>}
           {job.phase === 'ready' && (
             <div className="flex flex-col items-center gap-1.5">
@@ -405,7 +407,17 @@ export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
           )}
         </div>
 
-        <div className="space-y-2.5 rounded-2xl bg-app-elevated/40 p-3 ring-1 ring-app-border/10">
+        {/* COMPACT SETTINGS (Production 2026-10-16, GG: the panel's format / quality rows were long and made you scroll).
+            Folded to one line that names the current choice; one tap opens the rows. */}
+        <details data-testid="vfx-settings" className="group rounded-2xl bg-app-elevated/40 ring-1 ring-app-border/10">
+          <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-3 text-[13px] [&::-webkit-details-marker]:hidden">
+            <span className="font-semibold text-app-text">{c.format} · {c.quality}</span>
+            <span className="flex items-center gap-1.5 text-right font-medium tabular-nums text-app-muted">
+              {[engine.aspects ? aspect : null, tierOptions.length > 1 ? c.tier[q] : null, lengthText].filter(Boolean).join(' · ')}
+              <span aria-hidden="true" className="transition-transform group-open:rotate-180">▾</span>
+            </span>
+          </summary>
+        <div className="space-y-2.5 px-3 pb-3">
           {engine.aspects && (
             <Segmented label={c.format} cols="grid-cols-2" options={engine.aspects as readonly GenjutsuAspect[]} value={aspect} onChange={setAspect} />
           )}
@@ -417,6 +429,7 @@ export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
             <span className="text-right font-semibold tabular-nums text-app-text">{lengthText}</span>
           </div>
         </div>
+        </details>
       </div>
 
       <EnginesList

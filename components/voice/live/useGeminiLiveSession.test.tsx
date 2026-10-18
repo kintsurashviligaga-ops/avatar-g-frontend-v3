@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+import { VoicePreferencesProvider, useVoicePreferencesContext } from '@/components/voice/experience/VoicePreferencesProvider';
 /**
  * The Live call's browser half, driven through a fake WebSocket + fake Web Audio + a fake worklet:
  * setup goes first, audio spoken before setupComplete is flushed after it, a local barge-in stops playback,
@@ -8,6 +10,7 @@
  */
 import { act, renderHook, waitFor } from '@testing-library/react';
 
+import { VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
 import { LIVE_SPOKEN_RULE } from '@/lib/agents/profile';
 import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
@@ -230,7 +233,7 @@ test('setup is the FIRST frame: parity setup (transcription, resumption, compres
   expect(ws.sent).toHaveLength(1);
   const { setup } = ws.sent[0]!;
   expect(setup.model).toBe('models/gemini-2.5-flash-native-audio-latest');
-  expect(setup.systemInstruction).toEqual({ parts: [{ text: 'SYS' }] });
+  expect(setup.systemInstruction).toEqual({ parts: [{ text: 'SYS\n' + VOICE_UI_APPROVAL_RULE }] });
   expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
   expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
   expect(setup.outputAudioTranscription).toEqual({});
@@ -1193,4 +1196,36 @@ describe('buildLiveInstruction', () => {
     expect(r.systemInstruction.startsWith('CUSTOM VOICE\n\n')).toBe(true);
     expect(r.systemInstruction).toContain(LIVE_SPOKEN_RULE);
   });
+});
+
+test('transport denies spoken paid starts before the legacy host can execute them', async () => {
+  const h=harness(), handler=jest.fn(async()=>[]);
+  const {ws,unmount}=await connected({deps:h.deps,actions:true,onToolCall:handler});
+  act(()=>ws.receive({toolCall:{functionCalls:[{id:'paid',name:'start_generation',args:{confirmed:'yes'}}]}}));
+  await waitFor(()=>expect(ws.sent.some(f=>f.toolResponse?.functionResponses?.some((r: {response:{error?:string}})=>r.response.error==='ui_confirmation_required'))).toBe(true));
+  expect(handler).not.toHaveBeenCalled(); unmount();
+});
+
+
+test('style changes at listening without replacing context; voice applies only on the next call', async () => {
+  localStorage.clear();
+  const h = harness();
+  const wrapper = ({ children }: { children: ReactNode }) => <VoicePreferencesProvider userId="voice-style-test">{children}</VoicePreferencesProvider>;
+  const { result, unmount } = renderHook(() => ({ live: useGeminiLiveSession({ deps: h.deps }), prefs: useVoicePreferencesContext()! }), { wrapper });
+  await act(async () => { await result.current.live.start(); });
+  const ws = FakeSocket.last;
+  act(() => { ws.open(); ws.receive({ setupComplete: {} }); });
+  expect(h.mintBodies[0].voiceExperience.personality).toBe('friendly');
+  act(() => ws.receive(audioFrame()));
+  const sent = ws.sent.length;
+  act(() => result.current.prefs.update({ ...result.current.prefs.preferences, personality: 'coach', voice: 'Charon' }));
+  expect(ws.sent).toHaveLength(sent);
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  await waitFor(() => expect(JSON.stringify(ws.sent.slice(sent))).toContain('Encourage improvement with specific'));
+  expect(h.fetchImpl).toHaveBeenCalledTimes(1);
+  expect(h.mintBodies[0].voice).toBe('Aoede');
+  act(() => result.current.live.stop());
+  await act(async () => { await result.current.live.start(); });
+  expect(h.mintBodies[1].voice).toBe('Charon');
+  unmount(); localStorage.clear();
 });

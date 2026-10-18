@@ -28,6 +28,7 @@
 
 import 'server-only';
 import { hasVideoProvider, videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
+import { BUDGET_ERROR_PREFIX, budgetReasonOf, budgetRefusalMessage, isBudgetRefusal } from '@/lib/services/billing/budgetMessage';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
@@ -44,11 +45,13 @@ import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
 import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
-import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid, getFilmStartReplay, recordFilmStartReplay } from './filmStatusStore';
+import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid, getFilmStartReplay, recordFilmStartReplay, recordFilmCaptions } from './filmStatusStore';
 import { filmChargeRef as filmChargeRefFor, recordFilmBilling, recordFilmScenes, filmStartKey } from './filmBilling';
 import { filmSceneShares } from './filmSceneRefund';
+import { saveFilmSceneBook } from './filmSceneBook';
+import type { FilmBookScene } from './filmSceneRedo';
 import { claimPaidStartKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
-import { generateFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type DialogueStem } from './filmVoiceover';
+import { generateCheckedFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type CheckedFilmVoiceover, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
 import { enrichSfxBrief } from './sfxTriggers';
 import { evaluateFilmQa } from '@/lib/ai/qaDirectorAgent';
@@ -66,6 +69,10 @@ import {
   type SceneScreenwriterMeta,
 } from './filmPipeline';
 import { planSceneDialogue, type SceneSpokenLine } from './sceneDialogue';
+import { checkSceneSpeech, reflowSpeech, speechSeconds, OVERFLOW_TOLERANCE, SPEECH_LEAD_SEC, SPEECH_TAIL_SEC } from '@/lib/video/speechTiming';
+import { isGeorgianText } from '@/lib/audio/tts-model';
+import { filmFrameChainOn, chainEndFrame } from '@/lib/video/frameChain';
+import { filmSequentialChainOn, filmChainStoreReady, saveFilmChainPlan } from './filmChain';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
@@ -290,6 +297,8 @@ async function renderClip(
   sceneFrame: string | null,
   /** True for a FREE film (promo) or founder/admin render → clip legs must NOT charge. */
   waiveClipBilling: boolean,
+  /** The NEXT scene's first frame: this clip ends on it (Veo interpolation) so the cut is seamless. */
+  nextSceneFrame: string | null = null,
 ): Promise<FilmClipResult> {
   // Gate on the SAME predicate as the pipeline pre-flight (hasVideoProvider =
   // LTX OR Replicate). The runtime now renders via Replicate as a primary when no
@@ -303,21 +312,12 @@ async function renderClip(
     return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0, debited: false };
   }
 
-  // A debit is only ever issued by withTrace for a real, billable user with a
-  // positive retail price. Track it locally so the orchestrator can refund this
-  // exact leg if the whole film collapses.
-  const realUser = Boolean(input.userId && input.userId !== 'anonymous');
-  // A FREE film (promo slot) or founder/admin render must NOT charge per clip — the pre-flight
-  // waives them, but the per-leg debit was still firing (promo not actually free; founder drained).
-  const billable = realUser && forecastClipRetail > 0 && !waiveClipBilling;
-  let debited = false;
-
   // PHASE 4A — preview-tier model gate: the premium i2v upgrade (Kling/Hailuo) is only
   // honored for a signed-in, non-preview render; anon trials + preview-quality renders
   // fall through to the cheap LTX default and never burn the premium budget.
   const clipModel = selectClipVideoModel({
     requested: typeof input.metadata?.videoModel === 'string' ? input.metadata.videoModel : null,
-    isSignedIn: realUser,
+    isSignedIn: Boolean(input.userId && input.userId !== 'anonymous'),
     preview: input.metadata?.quality === 'preview',
   });
 
@@ -339,6 +339,45 @@ async function renderClip(
   // reference in place (buildFilmClipRequest already wired it).
   const clipReq = buildFilmClipRequest(scene, shared);
   if (sceneFrame) clipReq.selectedOptions.characterReference = sceneFrame;
+  if (sceneFrame && nextSceneFrame) clipReq.selectedOptions.veoEndFrame = nextSceneFrame;
+
+  return submitFilmClip(
+    { userId: input.userId ?? null, sessionId: input.sessionId, locale: input.locale, videoModel: clipModel ?? null },
+    clipReq, scene, compositeId, forecastClipWholesale, forecastClipRetail, waiveClipBilling,
+  );
+}
+
+/** Who a film clip is rendered for: the film's owner, session and locale, and the clip model the start resolved. */
+export interface FilmClipContext {
+  userId: string | null;
+  sessionId: string;
+  locale: string;
+  videoModel: ReturnType<typeof selectClipVideoModel> | null;
+}
+
+/**
+ * Send ONE film clip request (already built: prompt, start frame, Veo options) and report the leg. Shared by the film
+ * start and by a chained scene the poll dispatches later (lib/chat/filmChain), so both follow the same retry, budget and
+ * billing rules. Never throws.
+ */
+export async function submitFilmClip(
+  ctx: FilmClipContext,
+  clipReq: { userPrompt: string; selectedOptions: Record<string, string> },
+  scene: { ordinal: number; seed: number },
+  compositeId: string,
+  forecastClipWholesale: number,
+  forecastClipRetail: number,
+  /** True for a FREE film (promo) or founder/admin render, and for every film charged up front → no per-clip charge. */
+  waiveClipBilling: boolean,
+): Promise<FilmClipResult> {
+  // A debit is only ever issued by withTrace for a real, billable user with a
+  // positive retail price. Track it locally so the orchestrator can refund this
+  // exact leg if the whole film collapses.
+  const realUser = Boolean(ctx.userId && ctx.userId !== 'anonymous');
+  // A FREE film (promo slot) or founder/admin render must NOT charge per clip — the pre-flight
+  // waives them, but the per-leg debit was still firing (promo not actually free; founder drained).
+  const billable = realUser && forecastClipRetail > 0 && !waiveClipBilling;
+  let debited = false;
 
   // PHASE 43 §3 / PHASE 58 — Isolated per-leg retry. We retry ONLY when a dispatch
   // fails to produce a provider job (throw or null taskRef); a successfully queued
@@ -363,7 +402,7 @@ async function renderClip(
     try {
       const dispatched = await withTrace(
         {
-          userId: input.userId || null,
+          userId: ctx.userId || null,
           agentId: 'video-agent',
           workerKind: 'ltx',
           action: 'generate_clip',
@@ -380,15 +419,15 @@ async function renderClip(
         },
         () =>
           serviceManager.execute({
-            sessionId: input.sessionId,
+            sessionId: ctx.sessionId,
             serviceContext: 'video',
             intent: 'video_generation',
             userPrompt: clipReq.userPrompt,
             selectedOptions: clipReq.selectedOptions,
-            locale: input.locale,
+            locale: ctx.locale,
             // PHASE 2 L5 / 4A — per-render i2v model (Cinema panel Kling/Hailuo toggle),
             // gated by selectClipVideoModel so anon/preview renders stay on cheap LTX.
-            ...(clipModel ? { videoModel: clipModel } : {}),
+            ...(ctx.videoModel ? { videoModel: ctx.videoModel } : {}),
           }),
         (r) => r.predictionId || r.assetUrl || null,
       );
@@ -408,6 +447,14 @@ async function renderClip(
       // dead. ServiceManager.execute() reports exactly this shape (`predictionStatus: 'failed'` /
       // `success: false`, ServiceManager.ts:277) and its own retry loop already refuses it the same way
       // (line 371) — this call site was the one that did not.
+      // ⚠️ A BUDGET REFUSAL IS FINAL FOR THE DAY. The platform limit answered "no" before anything was sent to Google;
+      // asking three more times only repeats the "no" (2026-10-16: four refusals per clip, then "could not reach the
+      // video service" instead of the limit). It goes back as `budget_exceeded:<reason>` so the film says which
+      // limit stopped it and when it lifts.
+      if (dispatched.metadata?.budgetExceeded === true) {
+        const reason = typeof dispatched.metadata.budgetReason === 'string' ? dispatched.metadata.budgetReason : 'daily_limit';
+        return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: attempt, debited, error: `${BUDGET_ERROR_PREFIX}${reason}` };
+      }
       const dispatchDead = dispatched.success === false
         || dispatched.predictionStatus === 'failed'
         || dispatched.predictionStatus === 'canceled'
@@ -776,7 +823,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     return s && !wantsCommentary(input.message) ? s : null;
   })();
   type DialogueSourceKind = 'master-script' | 'script-scenes' | 'dialogueScript' | 'narrationScript';
-  const { sceneDialogue, dialogueSource, dialogueComplete, dialoguePlacedCount } = ((): {
+  const { sceneDialogue: plannedDialogue, dialogueSource, dialogueComplete, dialoguePlacedCount: plannedPlacedCount } = ((): {
     sceneDialogue: SceneSpokenLine[][]; dialogueSource: DialogueSourceKind | null; dialogueComplete: boolean; dialoguePlacedCount: number;
   } => {
     const base = { sceneCount: grid.sceneCount, clipSec: grid.clipSec };
@@ -821,16 +868,71 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }
     return { sceneDialogue: [], dialogueSource: null, dialogueComplete: false, dialoguePlacedCount: 0 };
   })();
+  let sceneDialogue = plannedDialogue;
+  let dialoguePlacedCount = plannedPlacedCount;
   const spokenSceneCount = sceneDialogue.filter((l) => l.length > 0).length;
   // ALL-OR-NOTHING. The ElevenLabs dialogue leg is ONE track for the whole film, so it can only be
   // dropped wholesale — which means a line we failed to place in some scene's prompt would end up spoken
   // by nobody. `complete` is false whenever anything could not be placed (a third line inside one 6s
   // window, more lines than scenes, a line with no speakable words), and then we delegate NOTHING: the
   // prompts and the ElevenLabs path stay byte-identical to before.
-  const delegateSpeech = nativeSpeech && dialogueComplete && spokenSceneCount > 0;
+  //
+  // ⚠️ GEORGIAN IS NEVER HANDED TO VEO. Veo cannot speak it: the 2026-10-16 ad (a Georgian narration delegated scene by
+  // scene) came back with a new voice in every scene and the words garbled. A Georgian film is voiced OFF CAMERA by one
+  // ElevenLabs voice over the whole cut (the owner's call, 2026-10-16): nobody on screen talks (silentPresenter in the
+  // plan), the clips render without Veo's own audio, and the ElevenLabs leg that owns the source voices every line.
+  // Not for a music video: its singer sings, and that film's voice is the song. Keyed on the SOURCE text, not on
+  // the lines that could be placed: a Georgian script too long to place is still voiced by ElevenLabs, and a clip
+  // that talks on its own beside it is the same double voice.
+  const offCameraText = dialogueSource === 'narrationScript' ? narrationAsDialogue
+    : dialogueSource === 'dialogueScript' ? dialogueScriptRaw
+    : dialogueSource === 'master-script'
+      ? [parsedMaster?.narrationScript, ...(parsedMaster?.dialogue ?? []).map((d) => d.text)].filter(Boolean).join(' ')
+      : sceneDialogue.flat().map((l) => l.text).join(' ');
+  const offCameraVoice = !input.metadata?.musicVideoMode && !!offCameraText?.trim() && isGeorgianText(offCameraText);
+  const delegateSpeech = nativeSpeech && !offCameraVoice && dialogueComplete && spokenSceneCount > 0;
   if (spokenSceneCount > 0 && !delegateSpeech) {
     // eslint-disable-next-line no-console
-    console.log(`[filmComposite] dialogue from ${dialogueSource} NOT delegated to Veo (nativeSpeech=${nativeSpeech}, complete=${dialogueComplete}) → ElevenLabs keeps every line`);
+    console.log(`[filmComposite] dialogue from ${dialogueSource} NOT delegated to Veo (nativeSpeech=${nativeSpeech}, complete=${dialogueComplete}, offCamera=${offCameraVoice}) → ElevenLabs keeps every line`);
+  }
+
+  // ── EVERY WORD MUST FIT ITS SCENE ───────────────────────────────────────────
+  // Veo never refuses a line that is too long for its clip: it rushes it, swallows words, or stops when the shot
+  // ends. The 2026-10-16 ad (three 36–42-syllable Georgian lines on three 8 s scenes) came back exactly so —
+  // speech from frame 0 to the last frame, the third line cut off. So the words are measured against the time
+  // BEFORE anything is charged: an overfull scene hands its overflow to the next one (one speaker, words kept in
+  // order, cut at a sentence or clause break — with chained scenes the speech runs on across the cut), and a
+  // script that cannot fit the film at all is refused with the scene count it needs, never rendered half-said.
+  if (delegateSpeech) {
+    const sceneTexts = sceneDialogue.map((lines) => lines.map((l) => l.text).join(' '));
+    const fit = checkSceneSpeech(sceneTexts, grid.clipSec);
+    if (fit.overflow) {
+      const speakers = Array.from(new Set(sceneDialogue.flat().map((l) => l.speaker ?? '')));
+      const reflowed = speakers.length <= 1
+        ? reflowSpeech(sceneTexts.filter((t) => t.trim()).join(' '), sceneDialogue.length, grid.clipSec)
+        : null;
+      if (!reflowed) {
+        // eslint-disable-next-line no-console
+        console.log(`[filmComposite] speech does not fit: ${fit.totalSeconds}s of speech over ${sceneDialogue.length} × ${grid.clipSec}s scenes — needs ${fit.scenesNeeded}; refused before any charge`);
+        return speechTooLongResponse(input.locale, fit.totalSeconds, sceneDialogue.length, fit.scenesNeeded, grid.clipSec);
+      }
+      const speaker = speakers[0] || null;
+      sceneDialogue = reflowed.map((text) => (text ? [{ text, speaker }] : []));
+      dialoguePlacedCount = sceneDialogue.reduce((n, lines) => n + lines.length, 0);
+      // eslint-disable-next-line no-console
+      console.log(`[filmComposite] speech re-flowed across ${sceneDialogue.length} scenes so every word fits (${fit.scenes.map((x) => `${x.seconds}s`).join(' / ')} → ${checkSceneSpeech(reflowed, grid.clipSec).scenes.map((x) => `${x.seconds}s`).join(' / ')})`);
+    }
+  }
+  // The off-camera voice is ONE track over the whole cut, so its words are measured against the film, not a scene: a
+  // script longer than the film would be cut off at the last frame, so it is refused here, before any charge.
+  if (offCameraVoice) {
+    const seconds = speechSeconds(offCameraText ?? '');
+    if (seconds > Math.max(0, grid.totalSec - SPEECH_LEAD_SEC - SPEECH_TAIL_SEC) * OVERFLOW_TOLERANCE) {
+      const scenesNeeded = Math.ceil((seconds + SPEECH_LEAD_SEC + SPEECH_TAIL_SEC) / grid.clipSec);
+      // eslint-disable-next-line no-console
+      console.log(`[filmComposite] off-camera voice does not fit: ${Math.round(seconds)}s of speech over a ${grid.totalSec}s film — needs ${scenesNeeded} scenes; refused before any charge`);
+      return speechTooLongResponse(input.locale, seconds, grid.sceneCount, scenesNeeded, grid.clipSec);
+    }
   }
 
   // ⚠️ ENGLISH FOR THE RENDERER — VERBATIM FOR THE VOICE. Veo, Runway, Kling and LTX are trained
@@ -865,7 +967,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const sceneScriptsEn: string[] | undefined = sceneScripts?.length
     ? await Promise.all(sceneScripts.map((s) => promptToEnglish(s, 'video')))
     : undefined;
-  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, ...(filmTemplate ? { look: filmTemplate.look } : {}), orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}), ...(veoPlan ? { veo: veoPlan.film, veoScenes: veoPlan.scenes, outputFormat: veoPlan.film.format } : {}) });
+  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, ...(filmTemplate ? { look: filmTemplate.look } : {}), orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}), ...(offCameraVoice ? { silentPresenter: true } : {}), ...(veoPlan ? { veo: veoPlan.film, veoScenes: veoPlan.scenes, outputFormat: veoPlan.film.format } : {}) });
   // `grid.totalSec` (not a bare pinnedSceneCount × clipSec) is what the plan splits, so plan.sceneCount
   // and grid.sceneCount can never disagree — a mismatch would slide every dialogue line one scene off.
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
@@ -932,6 +1034,147 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     startKey = null;
     await releaseIdempotencyKey(input.userId, key).catch(() => {});
   };
+
+  // ── THE VOICE TRACK ─────────────────────────────────────────────────────────
+  // Which legs Veo already speaks in-clip is known only after dispatch (the double-voice guard below), so the sources take
+  // that decision as an argument. An off-camera voice film has nothing delegated (its clips are silent), so its voice can be
+  // made before anything is charged or sent.
+  //   narration  → generateCheckedFilmVoiceover.narrationScript  (the sanitized VO spine, verbatim; listened to by Scribe)
+  //   dialogue   → generateDialogueVoiceover.turns         (per-SPEAKER N-character casting)
+  const filmVoiceSpec = (veoSpeaks: { dialogueLeg: boolean; narrationLeg: boolean; narrationSpine: string | null }) => {
+    const suppressDialogueLeg = veoSpeaks.dialogueLeg;
+    const suppressNarrationLeg = veoSpeaks.narrationLeg;
+    const masterNarration = parsedMaster && parsedMaster.narrationScript.trim() ? parsedMaster.narrationScript.trim() : null;
+    const customNarration = (() => {
+      // Veo is already speaking these exact words inside the clips → voicing them again here is the double
+      // voice. (Only fires when narrationScript was the delegated source; a real VO spine is untouched.)
+      if (suppressNarrationLeg) return null;
+      const v = voiceMeta?.narrationScript;
+      const explicit = typeof v === 'string' && v.trim() ? v.trim() : null;
+      // The parsed Master-Script VO spine feeds the SAME verbatim narrationScript slot when no explicit one is set.
+      // Off camera, the lines written in the scene sheets feed no other leg: the narrator reads them, in scene order.
+      const sheetLines = offCameraVoice && dialogueSource === 'script-scenes'
+        ? sceneDialogue.flat().map((l) => l.text).join(' ').trim() || null
+        : null;
+      return explicit ?? masterNarration ?? sheetLines;
+    })();
+    // Explicit narrator gender (video panel 👩/👨) — overrides brief auto-detection.
+    const narratorGender: 'male' | 'female' | null =
+      voiceMeta?.narratorGender === 'male' || voiceMeta?.narratorGender === 'female' ? voiceMeta.narratorGender : null;
+    // Master-Script dialogue leg — the parsed on-camera dialogue with the VO NARRATOR spine folded in,
+    // timecode-ordered (review finding #2: don't drop narration when dialogue also exists). Empty → null,
+    // so narration-only scripts route through the single-voice narration leg below. Exact silence-gap
+    // placement at each timecode is the Phase-2 assemble refinement; here they play in script order.
+    const masterTurns = (() => {
+      if (!parsedMaster) return null;
+      // Veo speaks the ON-CAMERA dialogue in-clip → this leg would double it. The VO NARRATOR spine is NOT
+      // delegated (a narrator has no mouth in frame), so it routes through the single-voice narration leg
+      // below via `masterNarration` instead of being dropped.
+      if (suppressDialogueLeg) return null;
+      const t = masterDialogueTurns(parsedMaster, narratorGender);
+      return t.length ? t : null;
+    })();
+    // PHASE 2 L1 — Character Voice selector (language + persona + tone). Whitelisted to
+    // the allowed unions; null when unset so the legacy gender/brief path is unchanged.
+    const voiceLanguage = (voiceMeta?.voiceLanguage === 'ka' || voiceMeta?.voiceLanguage === 'en' || voiceMeta?.voiceLanguage === 'ru') ? voiceMeta.voiceLanguage : null;
+    const voicePersona = (voiceMeta?.voicePersona === 'male' || voiceMeta?.voicePersona === 'female' || voiceMeta?.voicePersona === 'child' || voiceMeta?.voicePersona === 'elderly') ? voiceMeta.voicePersona : null;
+    const voiceTone = (voiceMeta?.voiceTone === 'epic' || voiceMeta?.voiceTone === 'emotional' || voiceMeta?.voiceTone === 'energetic') ? voiceMeta.voiceTone : null;
+    // Multi-character dialogue script (video panel toggle) — split per speaker, each
+    // line voiced in its gendered voice and mixed into one track. Wins over single narration.
+    // Suppressed when Veo already speaks these lines in-clip (see the double-voice guard above).
+    const dialogueScript = suppressDialogueLeg ? null : dialogueScriptRaw;
+    return {
+      masterTurns, dialogueScript, customNarration, narratorGender, voiceLanguage, voicePersona, voiceTone,
+      suppressDialogueLeg, delegatedNarrationSpine: veoSpeaks.narrationSpine,
+    } as const;
+  };
+  // DAY-6 multi-voice: when the Master-Script dialogue is multi-voice-viable (≥2 DISTINCT
+  // TIMECODED speakers), render per-speaker STEMS ONCE (generateDialogueStems) so the assembler
+  // spatial-premixes them with the -12dB sidechain duck. On ANY miss (not viable, 1 speaker, a
+  // failed leg, or no ElevenLabs key) it returns null and we fall through to the EXACT single-track
+  // path below — so every single-voice / narration film is byte-identical to before. No double-render:
+  // generateDialogueStems returns null (never a partial upload) before we reach generateDialogueVoiceover.
+  // `checked` is the narration as Scribe heard it (lib/chat/filmVoiceCheck): its score, and its words timed for subtitles.
+  const renderVoiceTrack = async (spec: ReturnType<typeof filmVoiceSpec>): Promise<{ voiceUrl: string | null; dialogueStems: DialogueStem[] | null; checked?: CheckedFilmVoiceover | null }> => {
+    const { masterTurns, dialogueScript, customNarration, narratorGender, voiceLanguage, voicePersona, voiceTone, suppressDialogueLeg, delegatedNarrationSpine } = spec;
+    const heard: { v: CheckedFilmVoiceover | null } = { v: null };
+    const narrate = async (narrationScript: string | null, leg: string): Promise<string | null> => {
+      heard.v = await generateCheckedFilmVoiceover({
+        brief: input.message,
+        totalSec: plan.shared.totalSec,
+        compositeId,
+        narrationScript,
+        narratorGender,
+        voiceLanguage,
+        voicePersona,
+        voiceTone,
+      }).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn(`[film] ${leg} leg failed:`, err instanceof Error ? err.message : err);
+        return null;
+      });
+      return heard.v?.url ?? null;
+    };
+    if (masterTurns && dialogueStemsViable(masterTurns)) {
+      const stemsRes = await generateDialogueStems({ turns: masterTurns, compositeId }).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[film] dialogue stems leg failed:', err instanceof Error ? err.message : err);
+        return null;
+      });
+      if (stemsRes && stemsRes.stems.length >= 2) {
+        return { voiceUrl: stemsRes.mergedUrl, dialogueStems: stemsRes.stems };
+      }
+    }
+    // TRACK 3.3 — Music Video mode: the SONG leads, so skip the spoken narrator/dialogue VO track
+    // ENTIRELY (no VO mixed over the vocal → zero sync drift). Documentary is byte-identical to before.
+    const single = input.metadata?.musicVideoMode
+      ? null
+      // SUPPRESSION MUST NOT PROMOTE A DIFFERENT VOICE. Nulling `dialogueScript`/`masterTurns` does not
+      // end this ternary chain — it ADVANCES it, so a film whose dialogue Veo now speaks would fall
+      // through to the narration leg and get a narrator track laid over clips that already talk
+      // (either the same words again from the "what the character says" box, or a brand-new brief-derived
+      // commentary). The ONLY voice that legitimately survives delegation is a VO NARRATOR SPINE that was
+      // already part of the suppressed leg — i.e. a Master Script's own VO sheet, which is off-camera and
+      // was never delegated. Everything else: no voice track.
+      : suppressDialogueLeg
+      ? (delegatedNarrationSpine ? await narrate(delegatedNarrationSpine, 'narrator-spine') : null)
+      : (masterTurns || dialogueScript)
+      ? await generateDialogueVoiceover(
+          // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
+          masterTurns ? { turns: masterTurns, compositeId } : { script: dialogueScript!, compositeId },
+        ).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[film] dialogue voiceover leg failed:', err instanceof Error ? err.message : err);
+          return null;
+        })
+      : (wantsCommentary(input.message) || customNarration)
+      ? await narrate(customNarration, 'voiceover')
+      : null;
+    return { voiceUrl: single, dialogueStems: null, checked: heard.v };
+  };
+
+  // ── AN OFF-CAMERA VOICE IS MADE FIRST ───────────────────────────────────────
+  // ⚠️ 2026-10-17: the paid 32 s ad came back SILENT. A Georgian film is voiced off camera by ElevenLabs only (its clips
+  // render with Veo's own audio off, see offCameraVoice), the voice leg ran beside the clips, ElevenLabs refused every
+  // request, and the leg's null quietly became a film with no sound after the Veo render was paid for. That voice is the
+  // film's only speech, so it is made before anything is charged or rendered: no voice, no film, nothing taken.
+  let voiceMadeFirst: { voiceUrl: string | null; dialogueStems: DialogueStem[] | null; checked?: CheckedFilmVoiceover | null } | null = null;
+  if (offCameraVoice) {
+    voiceMadeFirst = await renderVoiceTrack(filmVoiceSpec({ dialogueLeg: false, narrationLeg: false, narrationSpine: null }));
+    if (!voiceMadeFirst.voiceUrl && !voiceMadeFirst.dialogueStems?.length) {
+      // eslint-disable-next-line no-console
+      console.warn('[filmComposite] off-camera voice could not be made (ElevenLabs gave no audio) → film refused before any charge or render');
+      await undoStart();
+      return filmVoiceUnavailableResponse(input.locale);
+    }
+    // …and it must SAY the film's words (the owner's audit 2026-10-17, item 3): read twice, both reads lost most of them.
+    if (voiceMadeFirst.checked?.verdict === 'fail') {
+      // eslint-disable-next-line no-console
+      console.warn(`[filmComposite] off-camera voice did not say its words (score ${voiceMadeFirst.checked.score}, ${voiceMadeFirst.checked.reads} reads) → film refused before any charge or render`);
+      await undoStart();
+      return filmVoiceUnclearResponse(input.locale);
+    }
+  }
 
   // ── Pre-flight: balance gate (skips anonymous; downstream gate covers them) ─
   // (Clip legs never charge: the film is debited once up front and renderClip always gets the waiver — see its call.)
@@ -1055,6 +1298,21 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     else console.error(`[film] REFUND FAILED ref=${ref} user=${input.userId} amount=${amount} — needs manual credit`);
   };
 
+  // The platform's own spend limit stopped every clip (not the provider): say which limit and when it lifts.
+  const budgetRefused = (reason?: string): ChatResponse => ({
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message: budgetRefusalMessage(input.locale, reason),
+    metadata: {
+      provider: 'composite',
+      composite: true,
+      platformBudget: true,
+      budgetReason: reason ?? 'daily_limit',
+      balanceProtected: true,
+    },
+  });
+
   const connectionFailed = (diagnostic?: string | null): ChatResponse => ({
     success: false,
     intent: 'video_generation',
@@ -1079,7 +1337,16 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // renderClip never throws (it catches per-leg), but guard the fan-out anyway:
   // an unexpected throw must still roll the ledger back and surface the clean
   // localized halt rather than a 500.
+  // OFF-CAMERA VOICE → the clips render without Veo's own audio: a silent presenter's clip would otherwise carry a
+  // murmur under the voice-over. (Vertex honours the switch, and costs less without audio; the Gemini API always
+  // renders sound.) The film's price is unchanged.
+  if (offCameraVoice && plan.shared.veo) plan.shared.veo = { ...plan.shared.veo, generateAudio: false };
+
   let clips: FilmClipResult[];
+  // True once the later scenes wait on the sequential chain (lib/chat/filmChain): the token says so, and the poll advances it.
+  let filmChained = false;
+  // Every scene's own clip request and storyboard frame, kept for a scene redo (lib/chat/filmSceneRedo) once the film is out.
+  let bookScenes: FilmBookScene[] | null = null;
   try {
     // PREFER approved storyboard frames (from /api/film/storyboard) as the
     // per-scene identity anchors: the user reviewed them, so the render MATCHES
@@ -1144,18 +1411,84 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // eslint-disable-next-line no-console
       console.info('[film] vision-qa report:', JSON.stringify(qa.report));
     }
-    clips = await mapWithConcurrency(plan.scenes, clipDispatchConcurrency(), (scene, i) =>
-      renderClip(
-        input,
-        scene,
-        plan.shared,
-        compositeId,
-        clipForecast.wholesaleGel,
-        clipForecast.retailGel,
-        sceneFrames[i] ?? null,
-        true, // no per-clip legs: the film was charged ONCE up front (filmCharged) — `debit_wallet_gel` is not on prod, and if it ever is, this keeps it from charging twice
-      ),
-    );
+    // FRAME CHAINING — each clip ends on the next scene's first frame (Veo first→last interpolation), so every
+    // join is a match cut: same framing, light, pose and wardrobe on both sides of the cut. Independent clips
+    // rendered in parallel each drifted on their own (the 2026-10-16 ad: framing, background and colour jumped at
+    // every join). 8 s clips only (Google's interpolation length); FILM_FRAME_CHAIN=0 turns it off.
+    // SEQUENTIAL CHAIN (owner's choice, 2026-10-16) — scene 1 renders now; every later scene starts from the previous
+    // clip's REAL last frame, dispatched by the film's poll once that clip lands (lib/chat/filmChain). Asking Veo to end a
+    // clip on the next storyboard frame did not hold on the paid ad, so the joins jumped. Needs a store every poll can
+    // read; without one, and for anything the chain does not cover, the scenes render side by side exactly as before.
+    const sequential = filmSequentialChainOn({
+      sceneCount: plan.scenes.length,
+      googleOnly,
+      referenceMode,
+      musicVideo: !!input.metadata?.musicVideoMode,
+      owner: input.userId,
+    }) && filmChainStoreReady();
+    let chained: FilmClipResult[] | null = null;
+    let firstClip: FilmClipResult | null = null;
+    if (sequential) {
+      // no per-clip legs: the film was charged ONCE up front (filmCharged), as in the side-by-side path below
+      firstClip = await renderClip(input, plan.scenes[0]!, plan.shared, compositeId, clipForecast.wholesaleGel, clipForecast.retailGel, sceneFrames[0] ?? null, true);
+      if (firstClip.status === 'queued') {
+        const saved = await saveFilmChainPlan({
+          v: 1,
+          tokenId: filmTokenId,
+          uid: input.userId as string,
+          sessionId: input.sessionId,
+          locale: input.locale,
+          compositeId,
+          videoModel: effectiveVideoModel ?? null,
+          forecast: { wholesaleGel: clipForecast.wholesaleGel, retailGel: clipForecast.retailGel },
+          sceneCredits: filmCharged > 0 ? perSceneCredits(filmQuoteTaken, Math.max(1, plan.scenes.length)) : 0,
+          chargeRef: filmCharged > 0 ? filmChargeRef : null,
+          scenes: plan.scenes.slice(1).map((scene, i) => {
+            const req = buildFilmClipRequest(scene, plan.shared);
+            return { ordinal: scene.ordinal, seed: scene.seed, userPrompt: req.userPrompt, selectedOptions: req.selectedOptions, storyboardFrame: sceneFrames[i + 1] ?? null };
+          }),
+          createdAt: Date.now(),
+        });
+        if (saved) {
+          // The waiting scenes are Veo scenes (the chain runs only behind the Google-only boundary): the double-voice guard
+          // below counts them as such.
+          chained = [firstClip, ...plan.scenes.slice(1).map((scene): FilmClipResult => ({ ordinal: scene.ordinal, taskRef: null, status: 'pending', attempts: 0, debited: false, engine: 'gemini-veo' }))];
+          // eslint-disable-next-line no-console
+          console.log(`[filmComposite] sequential chain: scene 1 sent, ${plan.scenes.length - 1} scene(s) start from the previous clip's last frame`);
+        }
+      }
+    }
+    bookScenes = plan.scenes.map((scene, i) => {
+      const req = buildFilmClipRequest(scene, plan.shared);
+      return { ordinal: scene.ordinal, seed: scene.seed, userPrompt: req.userPrompt, selectedOptions: req.selectedOptions, storyboardFrame: sceneFrames[i] ?? null };
+    });
+    if (chained) {
+      clips = chained;
+      filmChained = true;
+    } else {
+      const chainFrames = filmFrameChainOn(grid.clipSec, sceneFrames);
+      if (chainFrames) {
+        // eslint-disable-next-line no-console
+        console.log(`[filmComposite] frame chaining on: ${sceneFrames.length - 1} clip(s) end on the next scene's first frame`);
+      }
+      // A chain whose plan could not be stored keeps the scene 1 it already sent; the rest go side by side.
+      const sent = firstClip;
+      clips = await mapWithConcurrency(plan.scenes, clipDispatchConcurrency(), (scene, i) =>
+        i === 0 && sent
+          ? Promise.resolve(sent)
+          : renderClip(
+            input,
+            scene,
+            plan.shared,
+            compositeId,
+            clipForecast.wholesaleGel,
+            clipForecast.retailGel,
+            sceneFrames[i] ?? null,
+            true, // no per-clip legs: the film was charged ONCE up front (filmCharged) — `debit_wallet_gel` is not on prod, and if it ever is, this keeps it from charging twice
+            chainFrames ? chainEndFrame(sceneFrames, i) : null,
+          ),
+      );
+    }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[film] scene synthesis threw — protecting balance:', err instanceof Error ? err.message : err);
@@ -1180,6 +1513,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // failure is actionable instead of an opaque "couldn't connect".
     const reason = clips.map((c) => c.error).find((e): e is string => Boolean(e)) ?? null;
     await undoStart();
+    const budgetError = clips.map((c) => c.error).find((e): e is string => isBudgetRefusal(e));
+    if (budgetError) return budgetRefused(budgetReasonOf(budgetError));
     return connectionFailed(reason);
   }
 
@@ -1266,43 +1601,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // OR the user typed verbatim dialogue (narrationScript); SFX runs for every film.
   // (voiceMeta + parsedMaster are resolved up-front, before the plan — the scene grid and the per-scene
   // spoken lines both derive from the same parse.)
-  //   narration  → generateFilmVoiceover.narrationScript  (the sanitized VO spine, verbatim)
-  //   dialogue   → generateDialogueVoiceover.turns         (per-SPEAKER N-character casting)
-  const masterNarration = parsedMaster && parsedMaster.narrationScript.trim() ? parsedMaster.narrationScript.trim() : null;
-  const customNarration = (() => {
-    // Veo is already speaking these exact words inside the clips → voicing them again here is the double
-    // voice. (Only fires when narrationScript was the delegated source; a real VO spine is untouched.)
-    if (suppressNarrationLeg) return null;
-    const v = voiceMeta?.narrationScript;
-    const explicit = typeof v === 'string' && v.trim() ? v.trim() : null;
-    // The parsed Master-Script VO spine feeds the SAME verbatim narrationScript slot when no explicit one is set.
-    return explicit ?? masterNarration;
-  })();
-  // Explicit narrator gender (video panel 👩/👨) — overrides brief auto-detection.
-  const narratorGender: 'male' | 'female' | null =
-    voiceMeta?.narratorGender === 'male' || voiceMeta?.narratorGender === 'female' ? voiceMeta.narratorGender : null;
-  // Master-Script dialogue leg — the parsed on-camera dialogue with the VO NARRATOR spine folded in,
-  // timecode-ordered (review finding #2: don't drop narration when dialogue also exists). Empty → null,
-  // so narration-only scripts route through the single-voice narration leg below. Exact silence-gap
-  // placement at each timecode is the Phase-2 assemble refinement; here they play in script order.
-  const masterTurns = (() => {
-    if (!parsedMaster) return null;
-    // Veo speaks the ON-CAMERA dialogue in-clip → this leg would double it. The VO NARRATOR spine is NOT
-    // delegated (a narrator has no mouth in frame), so it routes through the single-voice narration leg
-    // below via `masterNarration` instead of being dropped.
-    if (suppressDialogueLeg) return null;
-    const t = masterDialogueTurns(parsedMaster, narratorGender);
-    return t.length ? t : null;
-  })();
-  // PHASE 2 L1 — Character Voice selector (language + persona + tone). Whitelisted to
-  // the allowed unions; null when unset so the legacy gender/brief path is unchanged.
-  const voiceLanguage = (voiceMeta?.voiceLanguage === 'ka' || voiceMeta?.voiceLanguage === 'en' || voiceMeta?.voiceLanguage === 'ru') ? voiceMeta.voiceLanguage : null;
-  const voicePersona = (voiceMeta?.voicePersona === 'male' || voiceMeta?.voicePersona === 'female' || voiceMeta?.voicePersona === 'child' || voiceMeta?.voicePersona === 'elderly') ? voiceMeta.voicePersona : null;
-  const voiceTone = (voiceMeta?.voiceTone === 'epic' || voiceMeta?.voiceTone === 'emotional' || voiceMeta?.voiceTone === 'energetic') ? voiceMeta.voiceTone : null;
-  // Multi-character dialogue script (video panel toggle) — split per speaker, each
-  // line voiced in its gendered voice and mixed into one track. Wins over single narration.
-  // Suppressed when Veo already speaks these lines in-clip (see the double-voice guard above).
-  const dialogueScript = suppressDialogueLeg ? null : dialogueScriptRaw;
+  // (The voice's sources and its render: filmVoiceSpec / renderVoiceTrack, above the charge.)
   // PHASE 25 (VECTOR 2) — QA DIRECTOR AGENT pre-assembly gate. Pure, deterministic, fail-open. It
   // grades the collective PLANNING output (character lock, scene count, empty/monotone scenes,
   // orientation) and applies the ONE provably-safe single-pass correction — filling any missing
@@ -1342,78 +1641,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const sfxBriefEn = sfxCueText ? await promptToEnglish(sfxCueText, 'video') : messageEn;
 
   const [voiceResult, sfxUrl] = await Promise.all([
-    // DAY-6 multi-voice: when the Master-Script dialogue is multi-voice-viable (≥2 DISTINCT
-    // TIMECODED speakers), render per-speaker STEMS ONCE (generateDialogueStems) so the assembler
-    // spatial-premixes them with the -12dB sidechain duck. On ANY miss (not viable, 1 speaker, a
-    // failed leg, or no ElevenLabs key) it returns null and we fall through to the EXACT single-track
-    // path below — so every single-voice / narration film is byte-identical to before. No double-render:
-    // generateDialogueStems returns null (never a partial upload) before we reach generateDialogueVoiceover.
-    (async (): Promise<{ voiceUrl: string | null; dialogueStems: DialogueStem[] | null }> => {
-      if (masterTurns && dialogueStemsViable(masterTurns)) {
-        const stemsRes = await generateDialogueStems({ turns: masterTurns, compositeId }).catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[film] dialogue stems leg failed:', err instanceof Error ? err.message : err);
-          return null;
-        });
-        if (stemsRes && stemsRes.stems.length >= 2) {
-          return { voiceUrl: stemsRes.mergedUrl, dialogueStems: stemsRes.stems };
-        }
-      }
-      // TRACK 3.3 — Music Video mode: the SONG leads, so skip the spoken narrator/dialogue VO track
-      // ENTIRELY (no VO mixed over the vocal → zero sync drift). Documentary is byte-identical to before.
-      const single = input.metadata?.musicVideoMode
-        ? null
-        // SUPPRESSION MUST NOT PROMOTE A DIFFERENT VOICE. Nulling `dialogueScript`/`masterTurns` does not
-        // end this ternary chain — it ADVANCES it, so a film whose dialogue Veo now speaks would fall
-        // through to generateFilmVoiceover and get a narrator track laid over clips that already talk
-        // (either the same words again from the "what the character says" box, or a brand-new brief-derived
-        // commentary). The ONLY voice that legitimately survives delegation is a VO NARRATOR SPINE that was
-        // already part of the suppressed leg — i.e. a Master Script's own VO sheet, which is off-camera and
-        // was never delegated. Everything else: no voice track.
-        : suppressDialogueLeg
-        ? (delegatedNarrationSpine
-            ? await generateFilmVoiceover({
-                brief: input.message,
-                totalSec: plan.shared.totalSec,
-                compositeId,
-                narrationScript: delegatedNarrationSpine,
-                narratorGender,
-                voiceLanguage,
-                voicePersona,
-                voiceTone,
-              }).catch((err) => {
-                // eslint-disable-next-line no-console
-                console.warn('[film] narrator-spine leg failed:', err instanceof Error ? err.message : err);
-                return null;
-              })
-            : null)
-        : (masterTurns || dialogueScript)
-        ? await generateDialogueVoiceover(
-            // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
-            masterTurns ? { turns: masterTurns, compositeId } : { script: dialogueScript!, compositeId },
-          ).catch((err) => {
-            // eslint-disable-next-line no-console
-            console.warn('[film] dialogue voiceover leg failed:', err instanceof Error ? err.message : err);
-            return null;
-          })
-        : (wantsCommentary(input.message) || customNarration)
-        ? await generateFilmVoiceover({
-            brief: input.message,
-            totalSec: plan.shared.totalSec,
-            compositeId,
-            narrationScript: customNarration,
-            narratorGender,
-            voiceLanguage,
-            voicePersona,
-            voiceTone,
-          }).catch((err) => {
-            // eslint-disable-next-line no-console
-            console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
-            return null;
-          })
-        : null;
-      return { voiceUrl: single, dialogueStems: null };
-    })(),
+    // An off-camera voice was made before the clips (AN OFF-CAMERA VOICE IS MADE FIRST); every other film's voice is made here.
+    voiceMadeFirst ?? renderVoiceTrack(filmVoiceSpec({ dialogueLeg: suppressDialogueLeg, narrationLeg: suppressNarrationLeg, narrationSpine: delegatedNarrationSpine })),
     generateFilmSfx({
       // PHASE 2 L3 — when the Prompt Agent produced per-scene SFX cues, compose them
       // into a scene-aware ambience brief (no music/speech) instead of the generic
@@ -1431,6 +1660,14 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }),
   ]);
   const voiceUrl = voiceResult.voiceUrl;
+  if (voiceResult.checked) {
+    // eslint-disable-next-line no-console
+    console.log(`[film] voice check: score ${voiceResult.checked.score ?? 'unverified'}, verdict ${voiceResult.checked.verdict ?? 'none'}, ${voiceResult.checked.reads} read(s)`);
+    // The narration's words, timed, for the subtitles the user may ask for at the stitch (never burned unless asked).
+    if (voiceResult.checked.words?.length && input.userId && input.userId !== 'anonymous') {
+      await recordFilmCaptions(filmTokenId, input.userId, voiceResult.checked.words).catch(() => {});
+    }
+  }
   // DAY-6 — the per-speaker dialogue stems (null for single-voice / narration films).
   const dialogueStems = voiceResult.dialogueStems;
 
@@ -1450,6 +1687,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // must not be stitched as 8s.
     clipSec: grid.clipSec,
     clips: clips.map((c) => ({ ordinal: c.ordinal, taskRef: c.taskRef, status: clipDispatchStatus(c.status), attempts: c.attempts })),
+    // The later scenes are dispatched by the poll from the previous clip's last frame (lib/chat/filmChain).
+    ...(filmChained ? { chain: true } : {}),
     musicWorkId,
     voiceUrl,
     sfxUrl,
@@ -1481,6 +1720,28 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     const shares = filmSceneShares(clips, perSceneCredits(filmQuoteTaken, Math.max(1, plan.scenes.length)));
     if (shares.length > 0) await recordFilmScenes(input.userId, filmTokenId, shares).catch(() => 'unavailable');
   }
+  // The film's scene book: what one scene costs and how each was asked for, so the owner can have ONE scene rendered again
+  // at that scene's price and cut back into this film (owner's tap 2026-10-17 14:26:55Z, "სცენის ფასი"). Fail-open: without
+  // it a redo is simply not offered for this film.
+  if (input.userId && input.userId !== 'anonymous' && bookScenes) {
+    await saveFilmSceneBook({
+      v: 1,
+      tokenId: filmTokenId,
+      uid: input.userId,
+      sessionId: input.sessionId,
+      locale: input.locale,
+      compositeId,
+      videoModel: effectiveVideoModel ?? null,
+      forecast: { wholesaleGel: clipForecast.wholesaleGel, retailGel: clipForecast.retailGel },
+      scenePrice: videoCredits({
+        seconds: grid.clipSec,
+        quality: plan.shared.veo?.tier ?? STUDIO_DEFAULT_VEO_TIER,
+        mode: input.metadata?.musicVideoMode ? 'musicvideo' : 'documentary',
+      }),
+      scenes: bookScenes,
+      createdAt: Date.now(),
+    }).catch(() => false);
+  }
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so
   // they are reported as queued (the async assembler picks them up) — never
@@ -1505,7 +1766,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const summary = [
     `🎬 Film pipeline started (${sceneCount} × ${grid.clipSec}s Veo scenes)`,
     `📝 Storyboard: ${sceneCount} scenes planned`,
-    `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
+    filmChained
+      ? `🎥 Scene 1 dispatched; scenes 2–${sceneCount} each start from the previous scene's last frame (shared seed ${plan.shared.seed})`
+      : `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
     '✂️ Editor will stitch the final cut',
     // musicWorkId is always null (Udio retired) — the score is generated at the ASSEMBLE step (ElevenLabs
     // Music / MusicGen) or the user's custom soundtrack is used. So don't tell every user "Score skipped".
@@ -1537,5 +1800,56 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         marginMultiplier: forecast.marginMultiplier,
       },
     },
+  };
+}
+
+/** The script holds more speech than the film's scenes can say: refuse before any charge, naming what would fit. */
+/** A film whose off-camera voice could not be made: refused before anything was charged or rendered. */
+function filmVoiceUnavailableResponse(locale: string | undefined): ChatResponse {
+  const loc = (locale || 'ka').toLowerCase();
+  const message = loc === 'en'
+    ? 'The film’s voice could not be made right now (the voice service did not answer), so the film was not started — nothing was charged. Please try again later.'
+    : loc === 'ru'
+      ? 'Голос фильма сейчас не удалось создать (голосовой сервис не ответил), поэтому фильм не запущен — ничего не списано. Попробуйте позже.'
+      : 'ფილმის ხმა ახლა ვერ შეიქმნა (ხმის სერვისმა არ უპასუხა), ამიტომ ფილმი არ დაიწყო — თანხა არ ჩამოგეჭრა. სცადე მოგვიანებით.';
+  return {
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message,
+    metadata: { provider: 'composite', composite: true, voiceUnavailable: true },
+  };
+}
+
+function filmVoiceUnclearResponse(locale: string | undefined): ChatResponse {
+  const loc = (locale || 'ka').toLowerCase();
+  const message = loc === 'en'
+    ? 'The film’s voice came out unclear twice (it did not say the script’s words), so the film was not started — nothing was charged. Please try again, or shorten the text.'
+    : loc === 'ru'
+      ? 'Голос фильма дважды получился неразборчивым (он не произнёс текст сценария), поэтому фильм не запущен — ничего не списано. Попробуйте ещё раз или сократите текст.'
+      : 'ფილმის ხმა ორჯერ გაურკვევლად გამოვიდა (ტექსტის სიტყვები ვერ წარმოთქვა), ამიტომ ფილმი არ დაიწყო — თანხა არ ჩამოგეჭრა. სცადე თავიდან ან შეამოკლე ტექსტი.';
+  return {
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message,
+    metadata: { provider: 'composite', composite: true, voiceUnavailable: true, voiceUnclear: true },
+  };
+}
+
+function speechTooLongResponse(locale: string | undefined, speechSec: number, scenes: number, scenesNeeded: number, clipSec: number): ChatResponse {
+  const loc = (locale || 'ka').toLowerCase();
+  const needSec = scenesNeeded * clipSec;
+  const message = loc === 'en'
+    ? `The text is about ${Math.round(speechSec)} s of speech, but ${scenes} scenes of ${clipSec} s can say only part of it — words would be rushed or cut off. Choose ${needSec} s (${scenesNeeded} scenes) or shorten the text. Nothing was charged.`
+    : loc === 'ru'
+      ? `Текст занимает около ${Math.round(speechSec)} с речи, а ${scenes} сцены по ${clipSec} с вмещают только часть — слова будут скомканы или обрезаны. Выберите ${needSec} с (${scenesNeeded} сцен) или сократите текст. Ничего не списано.`
+      : `ტექსტი დაახლოებით ${Math.round(speechSec)} წამი საუბარია, ${scenes} სცენა ${clipSec} წამით კი მხოლოდ ნაწილს იტევს — სიტყვები აჩქარდება ან მოიჭრება. აირჩიე ${needSec} წამი (${scenesNeeded} სცენა) ან შეამოკლე ტექსტი. თანხა არ ჩამოგეჭრა.`;
+  return {
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message,
+    metadata: { provider: 'composite', composite: true, speechTooLong: true, speechSec, scenes, scenesNeeded, clipSec },
   };
 }

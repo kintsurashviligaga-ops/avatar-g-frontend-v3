@@ -1,0 +1,81 @@
+{
+  "head": "09333d7ab9a93922c1a39ea685d396cda508bc3f",
+  "checks": [
+    {
+      "name": "Vercel Preview Comments",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/runs/115352986318",
+      "completedAt": "2026-10-13T14:29:58Z"
+    },
+    {
+      "name": "live E2E (local Supabase, desktop + phone)",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38413376597/job/115351888101",
+      "completedAt": "2026-10-13T14:48:04Z"
+    },
+    {
+      "name": "billing on real Postgres",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38413376597/job/115351887631",
+      "completedAt": "2026-10-13T14:29:47Z"
+    },
+    {
+      "name": "verify",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38413376701/job/115351743717",
+      "completedAt": "2026-10-13T14:39:31Z"
+    },
+    {
+      "name": "isolated-db",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38413377277/job/115351259670",
+      "completedAt": "2026-10-13T14:29:18Z"
+    },
+    {
+      "name": "image-browser",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38413377277/job/115351259213",
+      "completedAt": "2026-10-13T14:30:11Z"
+    },
+    {
+      "name": "preview-e2e",
+      "conclusion": "success",
+      "url": "https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38413375804/job/115351253877",
+      "completedAt": "2026-10-13T14:29:34Z"
+    }
+  ],
+  "verify": {
+    "suitesPassed": 906,
+    "suitesSkipped": 7,
+    "testsPassed": 13905,
+    "testsSkipped": 63,
+    "seconds": 460.049,
+    "typecheck": "PASS",
+    "build": "PASS"
+  },
+  "live": {
+    "totalPassed": 38,
+    "imagePassed": 3,
+    "minutes": 15.8,
+    "environment": "isolated local Supabase; synthetic Image outputs; no provider calls",
+    "imageScenarios": [
+      "Auth identity and anonymous denial",
+      "RLS asset signing versions Library isolation",
+      "private Storage public and foreign denial"
+    ],
+    "creditInvariant": "PASS (afterAll)"
+  },
+  "artifacts": {
+    "db": {
+      "id": 11823063419,
+      "sha256": "22cb5ac17b1523ea3e39de2b6eb1e059e35835ed704487f7e01f182f0660e183"
+    },
+    "browser": {
+      "id": 11822229037,
+      "sha256": "00d91ddaef20c437c942995c48d6e80b9fa6bf7c7b7aaef01d87b12c4d282abd"
+    },
+    "live": {
+      "id": 11823478683
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-14",
+  "code_checkpoint": "54f570b21f687e156e092f993c7c646588ba4284",
+  "typecheck_exit": 0,
+  "eslint_exit": 0,
+  "build_exit": 0,
+  "build_font_retries": "ETIMEDOUT then compiled successfully",
+  "local_browser_initial": {
+    "passed": 7,
+    "failed": 3
+  },
+  "local_browser_locale_rerun": {
+    "passed": 3,
+    "failed": 0
+  },
+  "live_provider_calls": 0,
+  "real_microphone_samples": 0,
+  "production_mutations": 0,
+  "no_force_exit": true,
+  "test_checkpoint": "044dca4ec4581c89730d7e72dec72606c099c551",
+  "final_browser": {
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0
+  },
+  "ci_initial_voice_jest": {
+    "suites": 49,
+    "passed": 1030
+  },
+  "integration": {
+    "typescript_exit": 0,
+    "passed_tests": 1135,
+    "skipped_tests": 9,
+    "adapter_typecheck_exit": 0
+  }
+}

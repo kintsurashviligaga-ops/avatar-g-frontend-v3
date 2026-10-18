@@ -3,6 +3,7 @@ import 'server-only';
 
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getPlan, isPlanAtLeast, normalizePlan, planAllowsAgent, type PlanTier, type PlanDefinition } from './plans';
+import { paidWritesBlockedOnPreview, PREVIEW_NOT_ISOLATED } from '@/lib/env/previewIsolation';
 // Returns the plan definition for a given plan tier string (async for future extensibility)
 export async function getPlanSummary(plan: string | null | undefined): Promise<PlanDefinition> {
   // In future, could fetch from DB or API
@@ -124,6 +125,9 @@ export async function deductCreditsTransaction(params: {
   reason: string;
   idempotencyKey: string;
 }): Promise<{ newBalance: number }> {
+  if (paidWritesBlockedOnPreview()) {
+    throw new BillingEnforcementError('Billing is disabled on a Preview that shares the Production database', 503, PREVIEW_NOT_ISOLATED);
+  }
   const supabase = createRouteHandlerClient();
 
   const { data, error } = await supabase.rpc('deduct_credits_transaction', {

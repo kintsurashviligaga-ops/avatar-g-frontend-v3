@@ -8,6 +8,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getServerEnv } from '@/lib/env/server';
+import { paidWritesBlockedOnPreview } from '@/lib/env/previewIsolation';
 import {
   ComputeOrderSplit,
   ComputeProductMargin,
@@ -108,6 +109,8 @@ export async function depositToWallet(
   description: string = 'Deposit',
   metadata: Record<string, unknown> = {}
 ) {
+  // lib/env/previewIsolation: a Preview shares Production's database until it proves otherwise.
+  if (paidWritesBlockedOnPreview()) throw new Error('preview_not_isolated');
   const supabase = getSupabaseClient();
 
   // Get wallet
@@ -200,6 +203,8 @@ export async function deductFromWallet(
   description: string,
   metadata: Record<string, unknown> = {}
 ) {
+  // lib/env/previewIsolation: a Preview shares Production's database until it proves otherwise.
+  if (paidWritesBlockedOnPreview()) throw new Error('preview_not_isolated');
   const supabase = getSupabaseClient();
 
   const wallet = await getWalletByUserId(userId);

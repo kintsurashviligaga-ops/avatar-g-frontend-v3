@@ -47,6 +47,9 @@ export const LIVE_ACTION_NAMES = [
   'stop',
   'scroll_chat',
   'open_panel',
+  // 2026-10-17 (GG: „ჩაკეტე პანელი" — open, close … the panels by voice at any moment, in one chat): the close that was
+  // missing. The same command a typed „close the panel" is (lib/chat/panelCommand); the conversation stays the same.
+  'close_panel',
   'call_view',
   'show_code',
   'open_url',
@@ -70,6 +73,10 @@ export const LIVE_ACTION_NAMES = [
   // started, stopped and read by voice with the same cards a tap uses. A start runs only on the user's OWN words — the
   // call's transcript of what they said after the plan was told — never on the model's word (lib/voice/spokenYes).
   'agent_task',
+  // 2026-10-14 (Music Studio v1, Phase 2): the Music Studio plan card by voice — plan (a card is put on screen and priced;
+  // NOTHING is charged), free edits / joins of the tracks on screen, status, cancel (returns credits), download. There is
+  // no start: a Music Studio job starts only on the user's own tap on the card's Create (components/studio/music).
+  'music_studio',
 ] as const;
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
 
@@ -82,7 +89,7 @@ export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
  * in the icon set and this file is shared with the token route). open_studio reaches all of them.
  */
 export const LIVE_OPEN_TOOLS = [
-  'chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'remix',
+  'chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar',
   'product', 'swap', 'vfx', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo',
 ] as const;
 export type LiveOpenTool = (typeof LIVE_OPEN_TOOLS)[number];
@@ -94,6 +101,10 @@ export type LiveChatModel = (typeof LIVE_CHAT_MODELS)[number];
 /** Panels a call may open. `settings` = the open studio's own settings panel. */
 export const LIVE_PANELS = ['settings', 'credits', 'persona', 'search', 'history'] as const;
 export type LivePanel = (typeof LIVE_PANELS)[number];
+
+/** What close_panel closes: `settings` = the open studio's settings (the studio stays); `tool` = the studio, back to the chat. */
+export const LIVE_CLOSE_TARGETS = ['settings', 'tool'] as const;
+export type LiveCloseTarget = (typeof LIVE_CLOSE_TARGETS)[number];
 
 export const LIVE_STOP_TARGETS = ['reply', 'generation', 'all'] as const;
 export type LiveStopTarget = (typeof LIVE_STOP_TARGETS)[number];
@@ -163,6 +174,18 @@ export type LivePlanKind = (typeof LIVE_PLAN_KINDS)[number];
 /** A call numbers Agent G's plans 1, 2, 3 … as it hears of them; never more than this in one call. */
 export const LIVE_PLAN_MAX = 99;
 
+/** music_studio: plan a card (priced, never started) · edit / join tracks (free) · status · cancel · download · save. */
+export const LIVE_MUSIC_ACTIONS = ['plan', 'edit', 'join', 'status', 'cancel', 'download', 'save'] as const;
+export type LiveMusicAction = (typeof LIVE_MUSIC_ACTIONS)[number];
+export const LIVE_MUSIC_MODES = ['instrumental', 'song'] as const;
+export const LIVE_MUSIC_TEMPOS = ['slow', 'medium', 'fast'] as const;
+export const LIVE_MUSIC_FORMATS = ['mp3', 'wav', 'm4a'] as const;
+export const LIVE_MUSIC_LANGS = ['ka', 'en', 'ru'] as const;
+export const LIVE_MUSIC_VOCALS = ['female', 'male', 'duet'] as const;
+/** music_studio edit: the user's edit words, as they said them. */
+export const LIVE_MUSIC_COMMAND_MAX_CHARS = 300;
+export const LIVE_MUSIC_LYRICS_MAX_CHARS = 3000;
+
 /** montage: what to do with the Montage editor (free — no credits). */
 export const LIVE_MONTAGE_ACTIONS = ['open', 'set_music_start', 'export', 'state'] as const;
 export type LiveMontageAction = (typeof LIVE_MONTAGE_ACTIONS)[number];
@@ -186,8 +209,9 @@ export interface LiveResultNote {
   /**
    * `plan`: Agent G put a plan card in the chat that waits for the user's yes. `not_started`: a voice start ran out its
    * countdown without starting anything (no clear yes in the user's own words, a wait, a refusal) — the model is told.
+   * `music`: a Music Studio card's news (priced, refused, ready, an edit made) — `what` is the whole sentence.
    */
-  kind: LiveResultKind | 'failed' | 'plan' | 'not_started';
+  kind: LiveResultKind | 'failed' | 'plan' | 'not_started' | 'music';
   /** The prompt / title, short. For a failure: what the screen says. For a plan: its facts. */
   what?: string;
   /** plan: the card's id and kind — the call gives it a number agent_task can start it by. */
@@ -299,10 +323,9 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'start_generation',
     description:
-      'Start the generation prepared in the studio on screen. It SPENDS CREDITS. Call it ONLY after you told the user the '
-      + 'price and they clearly said yes in this conversation. The screen shows a 3-second countdown the user can cancel; '
-      + 'it runs only if the user\'s own words after the price were a clear yes (the app checks what it heard, not your '
-      + 'word), and a "wait" or "no" stops it. A video first gets a storyboard the user approves.',
+      'A paid generation never starts by voice: this answers ui_confirmation_required and starts nothing. The user '
+      + 'starts it by pressing the priced button on screen, so after prepare_generation tell them the price and that they '
+      + 'press its button to start. A video first gets a storyboard the user approves.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -314,7 +337,7 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'open_studio',
     description: 'Switch the app to a tool without preparing anything in it: chat, video, image, photoshoot (photographer), '
-      + 'interior (interior designer), music, avatar, remix, product (product ad), swap (character swap), vfx, motion, '
+      + 'interior (interior designer), music, avatar, product (product ad), swap (character swap), vfx, motion, '
       + 'montage (video editor), dubbing, model3d, presentation, photo (photo culling).',
     parameters: {
       type: 'OBJECT',
@@ -374,6 +397,16 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       type: 'OBJECT',
       properties: { panel: { type: 'STRING', enum: [...LIVE_PANELS], description: 'The panel to open.' } },
       required: ['panel'],
+    },
+  },
+  {
+    name: 'close_panel',
+    description: 'Close something on screen: settings (the open studio\'s settings panel; the studio stays open) or tool (close '
+      + 'the open studio and go back to the chat, in the same conversation). Use it when the user says close, hide or exit.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { what: { type: 'STRING', enum: [...LIVE_CLOSE_TARGETS], description: 'What to close.' } },
+      required: ['what'],
     },
   },
   {
@@ -549,9 +582,9 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       + 'the chat (nothing is downloaded yet): give url when the user said or pasted the link; without url it uses the video '
       + 'or audio file attached in the composer, else the newest link the user sent in the chat. Links from video platforms '
       + '(YouTube, TikTok, Instagram, Facebook, Vimeo and the like) are refused by their terms: never look for a way around '
-      + 'that; tell the user to upload their own or a licensed file (the card has the button). "start": start the newest MP3 '
-      + 'plan, only after the user clearly says yes (the same as agent_task start); when the plan says the rights are '
-      + 'unverified, first tell them that starting confirms the file is theirs or licensed to them. "stop": cancel the '
+      + 'that; tell the user to upload their own or a licensed file (the card has the button). "start" never starts it by voice '
+      + '(it answers ui_confirmation_required, the same as agent_task start): the user presses the card\'s button; when the '
+      + 'plan says the rights are unverified, tell them that starting confirms the file is theirs or licensed to them. "stop": cancel the '
       + 'extraction that is running.',
     parameters: {
       type: 'OBJECT',
@@ -569,16 +602,47 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       'Agent G\'s plans and tasks in the chat: an MP3 out of a file or link, a montage (clips cut to music into one video), '
       + 'an edit of the user\'s video (trim, reframe, colour, sound, caption). A plan is made by extract_audio plan or by '
       + 'asking in the chat (chat_send); each plan reaches you as an [App] note with its number and facts, and waits as a '
-      + 'card in the chat. action "start": start plan number `plan` (the newest when omitted) — only after you told the '
-      + 'user what it does (and its price, if any) and they clearly said yes. The screen counts down 3 seconds first, and '
-      + 'it starts only if the user\'s own words after the plan were a clear yes: the app checks what it heard, not your '
-      + 'word. "stop": stop plan `plan` while it runs, or every running Agent G task when omitted. "status": what each plan '
+      + 'card in the chat. action "start" never starts anything by voice: it answers ui_confirmation_required, and the user '
+      + 'starts the plan with its card\'s button after you told them what it does. "stop": stop plan `plan` while it runs, or every running Agent G task when omitted. "status": what each plan '
       + 'and task is doing now (call it when the user asks, or before you start a plan you have no note for).',
     parameters: {
       type: 'OBJECT',
       properties: {
         action: { type: 'STRING', enum: [...LIVE_AGENT_TASK_ACTIONS], description: 'start · stop · status.' },
         plan: { type: 'INTEGER', description: 'The plan number from the [App] note or from status (absent = the newest).' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'music_studio',
+    description:
+      'Music Studio (Google Lyria) in the chat. action "plan": put a music plan card on screen from the user\'s words (prompt, '
+      + 'and genre / mood / tempo or bpm when they said them; mode "song" only when they want singing). The card is priced by '
+      + 'the server; you can NEVER start it — only the user\'s tap on the card\'s Create starts it and charges the credits it '
+      + 'shows. To change genre, mood or tempo, make a new plan. A song may be refused (vocals not verified yet): then say '
+      + 'so, never offer an instrumental as if it were the song. "edit": free edit of the newest track in the user\'s words '
+      + '(command, e.g. "first 20 seconds", "fade in 2 seconds", "fade out 3 seconds", "quieter by 6 dB", "as WAV"); a new '
+      + 'version, the original kept. "join": join the newest `count` tracks (2-6) with an optional crossfadeSec. "status": '
+      + 'the cards, their price and progress. "cancel": cancel the music being made (credits return). "download": download '
+      + 'the newest track. "save": tracks are saved to the Library automatically — say so.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: [...LIVE_MUSIC_ACTIONS], description: 'plan · edit · join · status · cancel · download · save.' },
+        prompt: { type: 'STRING', description: `plan: what the music is, in the user's words (at most ${LIVE_PROMPT_MAX_CHARS} characters).` },
+        mode: { type: 'STRING', enum: [...LIVE_MUSIC_MODES], description: 'plan: instrumental (default) or song (singing).' },
+        genre: { type: 'STRING', description: 'plan: genre, e.g. "jazz".' },
+        mood: { type: 'STRING', description: 'plan: mood, e.g. "calm".' },
+        tempo: { type: 'STRING', enum: [...LIVE_MUSIC_TEMPOS], description: 'plan: slow, medium or fast.' },
+        bpm: { type: 'INTEGER', description: 'plan: beats per minute (40-220), when the user said a number.' },
+        lyrics: { type: 'STRING', description: 'plan, song: the user\'s own lyrics, word for word.' },
+        lyricsLanguage: { type: 'STRING', enum: [...LIVE_MUSIC_LANGS], description: 'plan, song with lyrics: their language.' },
+        vocalGender: { type: 'STRING', enum: [...LIVE_MUSIC_VOCALS], description: 'plan, song: the voice.' },
+        command: { type: 'STRING', description: `edit: the edit in the user's words (at most ${LIVE_MUSIC_COMMAND_MAX_CHARS} characters).` },
+        count: { type: 'INTEGER', description: 'join: how many of the newest tracks (2-6, default 2).' },
+        crossfadeSec: { type: 'INTEGER', description: 'join: crossfade in seconds (0-10).' },
+        format: { type: 'STRING', enum: [...LIVE_MUSIC_FORMATS], description: 'join: the file type (default mp3).' },
       },
       required: ['action'],
     },
@@ -594,21 +658,25 @@ export const LIVE_ACTIONS_RULE = [
   'ACTIONS: you can operate the MyAvatar app on the user\'s screen through your functions while you talk.',
   'Call get_screen_state whenever the user refers to the screen, a result, a price or "this", before you answer.',
   'prepare_generation and update_settings fill and tune a studio; they never spend credits. Their answer gives the price:',
-  'say it and ask whether to start. Call start_generation ONLY after the user clearly says yes to that price; it shows a',
-  '3-second countdown they can cancel. Never start a generation on your own initiative.',
+  'say it and tell the user they start it by pressing its button on screen. A spoken yes never starts or charges anything:',
+  'start_generation and every "start" action answer ui_confirmation_required. Never start a generation on your own initiative.',
+  'When the user wants an image, video, music or an avatar and agrees to a prompt, call prepare_generation with that prompt',
+  'right away instead of asking "shall we start?". For an avatar the prompt is only the words it says; put "female" or',
+  '"male" in style for its voice. Never say the system is processing, generating or almost done unless',
+  'get_screen_state shows that job running.',
   'Use chat_send for anything long or written (documents, lists, plans, code explanations) and then say it is on the',
   'screen instead of reading it aloud; show_code for code.',
   'To open a website, a video or search results in the browser, call open_url, e.g. with',
   'https://www.google.com/search?q=... or https://www.youtube.com/results?search_query=...; it shows a link the user taps.',
   'open_studio, new_chat, set_chat_model, stop, scroll_chat,',
-  'open_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
+  'open_panel, close_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
   'You also have hands on the screen: when the user says click, press, open, choose, switch or type, do it with click and',
   'type_text, using the control ids get_screen_state lists (call it first; ids change when the screen changes). They never',
-  'spend credits, pay, delete or sign out — those are refused, and a generation always goes through prepare_generation and',
-  'start_generation. download saves a result to the device. use_result moves a result into another tool, and montage',
+  'spend credits, pay, delete or sign out — those are refused, and a generation is prepared with prepare_generation and',
+  'started by the user\'s own tap on its priced button. download saves a result to the device. use_result moves a result into another tool, and montage',
   'combines videos and music and trims the music, for free. Carry out multi-step requests step by step, e.g. "make music,',
-  'then a video, then put the music on it from 0:30": prepare and (after a yes to each price) start the music, then the',
-  'video; when both are ready, montage open with videos "latest", music "latest", musicStartSec 30, then montage export.',
+  'then a video, then put the music on it from 0:30": prepare the music and the video and tell each price (the user taps',
+  'each one\'s button to start it); when both are ready, montage open with videos "latest", music "latest", musicStartSec 30, then montage export.',
   'Files the user ATTACHED (get_screen_state lists them under attachments, by number and name) are theirs to use: to cut',
   'them together call montage open with source "attached" — all of them, in their order; never say you cannot see them.',
   'Messages that start with [App] come from the app, not the user: they say when a generation finished or failed —',
@@ -620,14 +688,16 @@ export const LIVE_ACTIONS_RULE = [
   'answer briefly in their language.',
   'When the user wants the sound or an MP3 out of a video or audio link or file, call extract_audio with action "plan";',
   'say what the plan card says (and, for unverified rights, that starting confirms the file is theirs or licensed), and',
-  'call extract_audio with action "start" only after a clear yes. It is free. A video platform link is refused: offer the',
+  'that they start it with the card\'s button. It is free. A video platform link is refused: offer the',
   'upload instead, never a workaround.',
   'Agent G\'s plans (an MP3, a montage of clips to music, an edit of the user\'s video) come to you as [App] notes with a',
-  'plan number: tell the user what the plan does and ask; after a clear yes call agent_task with action "start" and that',
-  'plan. agent_task "stop" stops a running one, "status" says what each is doing.',
-  'Every start — start_generation, extract_audio start, agent_task start — runs only when the user\'s OWN words after',
-  'the price or plan were a clear yes: the app checks its transcript of the user, never your word. If an [App] note says',
-  'nothing was started, ask the user again plainly; never say it started.',
+  'plan number: tell the user what the plan does and that they start it with the card\'s button. agent_task "stop" stops a',
+  'running one, "status" says what each is doing.',
+  'No start is ever made by voice — start_generation, extract_audio start and agent_task start answer',
+  'ui_confirmation_required: the user presses the button on screen. Never say something started unless the screen shows it.',
+  'For music made with Music Studio use music_studio: "plan" puts a priced card on screen — tell the user the price from',
+  'the card (status) and that they start it by tapping Create; you can never start it or charge for it. Edits, joins and',
+  'downloads of the tracks are free; "cancel" stops the music being made and returns the credits.',
   'After a function answers, say in one short sentence what you did; if it answers ok:false, say so plainly and never',
   'pretend it worked.',
 ].join(' ');
@@ -659,6 +729,7 @@ export interface SetChatModelAction { type: 'set_chat_model'; model: LiveChatMod
 export interface StopAction { type: 'stop'; what: LiveStopTarget }
 export interface ScrollChatAction { type: 'scroll_chat'; to: LiveScrollTarget }
 export interface OpenPanelAction { type: 'open_panel'; panel: LivePanel }
+export interface ClosePanelAction { type: 'close_panel'; what: LiveCloseTarget }
 export interface CallViewAction { type: 'call_view'; view: LiveCallView }
 /** A link the user taps to open in a new tab: `url` is a normalised public http(s) address (see validateLiveUrl). */
 export interface OpenUrlAction { type: 'open_url'; url: string; title?: string }
@@ -697,12 +768,30 @@ export interface AgentTaskAction {
   planId?: string;
   planKind?: LivePlanKind;
 }
+/** Music Studio by voice (components/studio/music/musicVoiceBridge). Never starts a job: plan only shows a priced card. */
+export interface MusicStudioAction {
+  type: 'music_studio';
+  action: LiveMusicAction;
+  prompt?: string;
+  mode?: (typeof LIVE_MUSIC_MODES)[number];
+  genre?: string;
+  mood?: string;
+  tempo?: (typeof LIVE_MUSIC_TEMPOS)[number];
+  bpm?: number;
+  lyrics?: string;
+  lyricsLanguage?: (typeof LIVE_MUSIC_LANGS)[number];
+  vocalGender?: (typeof LIVE_MUSIC_VOCALS)[number];
+  command?: string;
+  count?: number;
+  crossfadeSec?: number;
+  format?: (typeof LIVE_MUSIC_FORMATS)[number];
+}
 export type LiveAction =
   | GetScreenStateAction | PrepareGenerationAction | UpdateSettingsAction | StartGenerationAction | OpenStudioAction
-  | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | CallViewAction
+  | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | ClosePanelAction | CallViewAction
   | ShowCodeAction | OpenUrlAction | EndCallAction
   | ClickAction | TypeTextAction | DownloadAction | UseResultAction | MontageAction | ReadWebpageAction | AskAgentGAction
-  | ExtractAudioAction | AgentTaskAction;
+  | ExtractAudioAction | AgentTaskAction | MusicStudioAction;
 
 /**
  * What the studio writes back onto the event detail (`detail.reply`) while it handles an action — synchronously, inside
@@ -903,7 +992,7 @@ function asEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
 const OPEN_TOOL_ALIASES: Readonly<Record<string, LiveOpenTool>> = {
   ...TOOL_ALIASES,
   chat: 'chat', text: 'chat', photographer: 'photoshoot', photoshoot: 'photoshoot', interior: 'interior',
-  interior_designer: 'interior', remix: 'remix', product: 'product', product_ad: 'product', swap: 'swap',
+  interior_designer: 'interior', product: 'product', product_ad: 'product', swap: 'swap',
   character_swap: 'swap', vfx: 'vfx', motion: 'motion', montage: 'montage', editor: 'montage', video_editor: 'montage',
   dubbing: 'dubbing', dub: 'dubbing', model3d: 'model3d', '3d': 'model3d', presentation: 'presentation', slides: 'presentation',
   deck: 'presentation', culling: 'photo', photo_culling: 'photo',
@@ -1159,6 +1248,12 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     return { ok: true, action: { type: 'open_panel', panel } };
   },
 
+  close_panel(args) {
+    const what = isObj(args) ? asEnum(own(args, 'what'), LIVE_CLOSE_TARGETS) : null;
+    if (!what) return fail('invalid_args', 'Say what to close: settings or tool.', 'what', LIVE_CLOSE_TARGETS);
+    return { ok: true, action: { type: 'close_panel', what } };
+  },
+
   call_view(args) {
     const view = isObj(args) ? asEnum(own(args, 'view'), LIVE_CALL_VIEWS) : null;
     if (!view) return fail('invalid_args', 'view must be screen or full.', 'view', LIVE_CALL_VIEWS);
@@ -1315,6 +1410,75 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     const checked = validateLiveUrl(own(args, 'url'));
     if (!checked.ok) return fail(checked.code, checked.message, 'url');
     return { ok: true, action: { type: 'read_webpage', url: checked.url } };
+  },
+
+  music_studio(args) {
+    if (!isObj(args)) return fail('invalid_args', 'Arguments must be an object with action.');
+    const what = asEnum(own(args, 'action'), LIVE_MUSIC_ACTIONS);
+    if (!what) return fail('invalid_args', 'Say what to do in Music Studio.', 'action', LIVE_MUSIC_ACTIONS);
+    const action: MusicStudioAction = { type: 'music_studio', action: what };
+    const opt = <T extends string>(field: string, allowed: readonly T[]): T | undefined | false => {
+      const raw = own(args, field);
+      if (raw === undefined || raw === null || raw === '') return undefined;
+      return asEnum(raw, allowed) ?? false;
+    };
+    const int = (field: string, min: number, max: number): number | undefined | false => {
+      const raw = own(args, field);
+      if (raw === undefined || raw === null || raw === '') return undefined;
+      const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+      return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : false;
+    };
+    if (what === 'plan') {
+      const rawPrompt = own(args, 'prompt');
+      const prompt = typeof rawPrompt === 'string' ? cleanText(rawPrompt, LIVE_PROMPT_MAX_CHARS) : '';
+      if (!prompt) return fail('invalid_args', 'A non-empty prompt is required: what the music is.', 'prompt');
+      action.prompt = prompt;
+      const mode = opt('mode', LIVE_MUSIC_MODES);
+      if (mode === false) return fail('invalid_args', 'Unknown mode.', 'mode', LIVE_MUSIC_MODES);
+      if (mode) action.mode = mode;
+      const tempo = opt('tempo', LIVE_MUSIC_TEMPOS);
+      if (tempo === false) return fail('invalid_args', 'Unknown tempo.', 'tempo', LIVE_MUSIC_TEMPOS);
+      if (tempo) action.tempo = tempo;
+      const bpm = int('bpm', 40, 220);
+      if (bpm === false) return fail('invalid_args', 'bpm must be a number (40-220).', 'bpm');
+      if (bpm !== undefined) action.bpm = bpm;
+      for (const field of ['genre', 'mood'] as const) {
+        const raw = own(args, field);
+        if (typeof raw === 'string') {
+          // The contract's label alphabet: letters, digits, spaces and & / ' + - only.
+          const v = cleanLine(raw, LIVE_STYLE_MAX_CHARS).replace(/[^\p{L}\p{N} &/'+-]/gu, ' ').replace(/\s+/g, ' ').trim();
+          if (v) action[field] = v;
+        }
+      }
+      if (action.mode === 'song') {
+        const rawLyrics = own(args, 'lyrics');
+        if (typeof rawLyrics === 'string') { const l = cleanText(rawLyrics, LIVE_MUSIC_LYRICS_MAX_CHARS); if (l) action.lyrics = l; }
+        const lang = opt('lyricsLanguage', LIVE_MUSIC_LANGS);
+        if (lang === false) return fail('invalid_args', 'Unknown lyrics language.', 'lyricsLanguage', LIVE_MUSIC_LANGS);
+        if (lang && action.lyrics) action.lyricsLanguage = lang;
+        const voice = opt('vocalGender', LIVE_MUSIC_VOCALS);
+        if (voice === false) return fail('invalid_args', 'Unknown voice.', 'vocalGender', LIVE_MUSIC_VOCALS);
+        if (voice) action.vocalGender = voice;
+      }
+    }
+    if (what === 'edit') {
+      const raw = own(args, 'command');
+      const command = typeof raw === 'string' ? cleanLine(raw, LIVE_MUSIC_COMMAND_MAX_CHARS) : '';
+      if (!command) return fail('invalid_args', 'Say the edit in the user\'s words, e.g. "fade out 3 seconds".', 'command');
+      action.command = command;
+    }
+    if (what === 'join') {
+      const count = int('count', 2, 6);
+      if (count === false) return fail('invalid_args', 'count must be a number (2-6).', 'count');
+      if (count !== undefined) action.count = count;
+      const xf = int('crossfadeSec', 0, 10);
+      if (xf === false) return fail('invalid_args', 'crossfadeSec must be a number of seconds (0-10).', 'crossfadeSec');
+      if (xf) action.crossfadeSec = xf;
+      const format = opt('format', LIVE_MUSIC_FORMATS);
+      if (format === false) return fail('invalid_args', 'Unknown file type.', 'format', LIVE_MUSIC_FORMATS);
+      if (format) action.format = format;
+    }
+    return { ok: true, action };
   },
 
   ask_agent_g(args) {

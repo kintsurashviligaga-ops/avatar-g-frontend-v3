@@ -46,6 +46,7 @@ import 'server-only';
  * The coordinator's control flow is unit-tested at $0 (coordinator.test.ts); this file's wiring is tested with
  * every provider mocked (bindLiveAgent.test.ts).
  */
+import { imageQuoteTool, type ImageToolContext } from '@/lib/image/studio/agentTool';
 import { llmText } from '@/lib/ai/llmText';
 import { newRunMeter, type AgentRunMetrics } from '@/lib/ai/usageMetrics';
 import { structuredLog } from '@/lib/logger';
@@ -70,7 +71,7 @@ import {
 } from '@/lib/agent/media/layers';
 import { MAX_SPEED, MIN_SPEED } from '@/lib/video/editFilters';
 
-export interface AgentContext {
+export interface AgentContext extends ImageToolContext {
   userId: string;
   /** The files the user attached to THIS request (their upload paths or our signed links), in their order. */
   files?: string[];
@@ -319,6 +320,7 @@ export function editsForQuote(edits: ReadonlyArray<Record<string, unknown>>, fil
  * starts a render or spends a credit; the one media tool quotes, and its plan runs only on the user's Confirm.
  */
 export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
+  imageQuoteTool,
   defineTool({
     name: 'web_search',
     effect: 'read',

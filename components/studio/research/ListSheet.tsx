@@ -4,12 +4,13 @@
  * ListSheet — every research the user has, newest first (the sidebar's „Deep Research" row opens it): the way back to a
  * finished report after its toast is gone, and the place to start another one or open the Connectors.
  */
-import { AlertCircle, FileSearch, Loader2, Plug, Plus } from 'lucide-react';
+import { AlertCircle, FileSearch, Plug, Plus } from 'lucide-react';
 import { isActiveResearchStatus } from '@/lib/research/types';
 import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import { jobLabel, researchCopy } from './copy';
 import { researchActions, useResearchState } from './store';
 import { sortJobs } from './watcher';
+import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
 
 export function ListSheet({ locale }: { locale: string }) {
   const c = researchCopy(locale);
@@ -33,12 +34,17 @@ export function ListSheet({ locale }: { locale: string }) {
               const active = isActiveResearchStatus(j.status);
               const ready = j.status === 'completed' && j.hasReport;
               const status = active ? c.statusRunning : ready ? c.statusReady : j.status === 'canceled' ? c.statusCanceled : c.statusFailed;
-              const Icon = active ? Loader2 : ready ? FileSearch : AlertCircle;
+              const Icon = ready ? FileSearch : AlertCircle;
               return (
                 <li key={j.id}>
                   <button type="button" data-testid="research-list-row" onClick={() => researchActions.openViewer(j.id)}
                     className="flex min-h-[56px] w-full items-center gap-3.5 rounded-2xl px-3 py-2 text-left transition-colors hover:bg-app-elevated/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent">
-                    <Icon size={18} aria-hidden="true" className={`shrink-0 ${active ? 'text-app-accent motion-safe:animate-spin' : ready ? 'text-app-accent' : 'text-app-muted'}`} />
+                    {active ? (
+                      // A running job carries the loading loop as a small tile, like every generation's wait.
+                      <span aria-hidden="true" className="relative h-8 w-[18px] shrink-0 overflow-hidden rounded-md bg-black"><LoadingLoop /></span>
+                    ) : (
+                      <Icon size={18} aria-hidden="true" className={`shrink-0 ${ready ? 'text-app-accent' : 'text-app-muted'}`} />
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className="line-clamp-2 block text-[14px] font-medium leading-snug text-app-text">{jobLabel(j, 120)}</span>
                       <span className="mt-0.5 block text-[12px] text-app-muted">{status} · {date(j.createdAt)}{ready ? ` · ${c.sourcesCount(j.sourcesCount)}` : ''}</span>

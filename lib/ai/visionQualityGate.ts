@@ -121,14 +121,26 @@ export function parseVisionVerdict(text: string, frameCount: number, floor: numb
 /** Injectable deps so the orchestration is unit-testable without ffmpeg or the network. */
 export interface VisionGateDeps {
   enabled?: () => boolean;
-  keyPresent?: () => boolean;
+  /** Whether a Google model call can be made at all. May be async: the default asks the selected transport. */
+  keyPresent?: () => boolean | Promise<boolean>;
   extract?: (videoUrl: string) => Promise<string[]>;
   score?: (prompt: string, frames: string[]) => Promise<string | null>;
 }
 
-/** Default env-based Gemini key pre-check (avoids extraction cost when clearly no key). */
-function defaultKeyPresent(): boolean {
-  return !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_API_KEY);
+/**
+ * Default pre-check (avoids extraction cost when no Google call can be made): a Gemini API key, or the selected
+ * transport being configured. Vertex with Workload Identity carries no key at all, so the key-only check this
+ * replaced skipped every grade with `no_key` on a Vertex project. The transport is server-only, so it is
+ * lazy-imported like the extractor.
+ */
+async function defaultKeyPresent(): Promise<boolean> {
+  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_API_KEY) return true;
+  try {
+    const { googleAiConfigured } = await import('./google/transport');
+    return googleAiConfigured();
+  } catch {
+    return false;
+  }
 }
 
 /** Default keyframe extractor — lazy-imports the server-only ffmpeg module so THIS file stays testable. */
@@ -165,7 +177,7 @@ export async function evaluateRenderQuality(
     const enabled = deps.enabled ?? visionQaEnabled;
     if (!enabled()) return skip('disabled');
     const keyPresent = deps.keyPresent ?? defaultKeyPresent;
-    if (!keyPresent()) return skip('no_key');
+    if (!(await keyPresent())) return skip('no_key');
 
     const extract = deps.extract ?? defaultExtract;
     const frames = await extract(input.videoUrl).catch(() => []);
@@ -180,4 +192,51 @@ export async function evaluateRenderQuality(
     // Belt-and-suspenders: the gate can NEVER throw into the render/assemble path.
     return skip('gate_error');
   }
+}
+
+/** One scene clip's grade, as the assembler reports it. Issue codes only; their details stay in the logs. */
+export interface SceneQaEntry {
+  ordinal: number;
+  grade: VisionGrade;
+  score: number;
+  action: 'accept' | 'rerender';
+  issues: string[];
+}
+
+/** Scene clips graded at once: each one downloads its clip and runs ffmpeg inside the same function. */
+export const SCENE_QA_CONCURRENCY = 2;
+
+/**
+ * Grade each scene clip of a film on its own (audit item 3b, 2026-10-17), so a weak scene can be named and shot
+ * again at the scene's price instead of only grading the whole master. Fail-open like the gate: a scene the gate
+ * skipped is left out, and so is a scene still being graded when `deadlineMs` runs out. Sorted by ordinal.
+ */
+export async function evaluateSceneClips(
+  clips: ReadonlyArray<{ url: string; ordinal: number }>,
+  opts: { deadlineMs: number; characterLock?: string; style?: string; concurrency?: number },
+  deps: VisionGateDeps = {},
+): Promise<SceneQaEntry[]> {
+  const enabled = deps.enabled ?? visionQaEnabled;
+  if (!clips.length || !enabled()) return [];
+  const graded: SceneQaEntry[] = [];
+  const queue = [...clips];
+  let expired = false;
+  const worker = async () => {
+    while (!expired && queue.length) {
+      const clip = queue.shift()!;
+      const v = await evaluateRenderQuality({ videoUrl: clip.url, characterLock: opts.characterLock, style: opts.style }, deps);
+      if (!expired && v.ran) {
+        graded.push({ ordinal: clip.ordinal, grade: v.grade, score: v.score, action: v.action, issues: v.issues.map((i) => i.code) });
+      }
+    }
+  };
+  const width = Math.max(1, Math.min(opts.concurrency ?? SCENE_QA_CONCURRENCY, clips.length));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    Promise.all(Array.from({ length: width }, worker)),
+    new Promise<void>((resolve) => { timer = setTimeout(resolve, Math.max(0, opts.deadlineMs)); }),
+  ]);
+  if (timer) clearTimeout(timer);
+  expired = true;
+  return [...graded].sort((a, b) => a.ordinal - b.ordinal);
 }

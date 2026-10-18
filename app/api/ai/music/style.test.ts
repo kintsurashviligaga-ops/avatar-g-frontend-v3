@@ -8,8 +8,9 @@
  * cover art, whose URL goes to a mocked fetch) and the in-flight mutex key. The main render is stopped at its first
  * step by the test, so no engine runs; the ledger and the idempotency store are mocked — no network, no spend.
  *
- * The cover art (Pollinations, outside R7) runs only with the AI_GOOGLE_ONLY=0 kill switch since 2026-10-09, so the
- * cover-prompt cases set it; the last case pins that the default sends nothing to Pollinations.
+ * The cover art (Pollinations, outside R7) is removed from the route (Music Studio v1, Phase 2); the last case pins
+ * that not even AI_GOOGLE_ONLY=0 sends anything to Pollinations. The style is pinned through the mutex key, which reads
+ * the same cleaned line the brief does.
  */
 jest.mock('server-only', () => ({}));
 
@@ -73,7 +74,6 @@ const GOOGLE_ONLY = process.env.AI_GOOGLE_ONLY;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env.AI_GOOGLE_ONLY = '0'; // the kill switch: the only setting that still draws a cover
   // Call 1 is the cover art's (it starts first and is not awaited); let it through so its prompt reaches fetch.
   // Call 2 is the main render's first step; stopping it there ends the request before any engine runs.
   (promptToEnglish as jest.Mock)
@@ -89,14 +89,6 @@ afterEach(() => {
   else process.env.AI_GOOGLE_ONLY = GOOGLE_ONLY;
 });
 
-/** The decoded prompt of the (mocked) cover-art request. */
-async function coverPrompt(): Promise<string> {
-  await new Promise((r) => setImmediate(r));
-  expect(fetchSpy).toHaveBeenCalledTimes(1);
-  const url = String(fetchSpy.mock.calls[0][0]);
-  return decodeURIComponent(url.split('/prompt/')[1]!.split('?')[0]!);
-}
-
 function expectNoEngine(): void {
   for (const engine of [generateLyriaTrack, generateUdioTrack, composeElevenLabsMusic, generateMusic]) {
     expect(engine).not.toHaveBeenCalled();
@@ -107,31 +99,26 @@ test('a hostile style is capped at 80 characters and stripped of bidi/zero-width
   const res = await POST(post({ prompt: 'calm piano on a rainy evening', style: HOSTILE, durationSec: 30 }));
   expect(res.status).toBe(502); // the test stopped the render
 
-  const prompt = await coverPrompt();
-  expect(prompt).toContain(`Album cover art for a ${CLEAN} music track.`);
-  expect(prompt).not.toContain('x'.repeat(74));
-  expect(prompt).not.toMatch(/[‮​\n]/);
-  expect(prompt).not.toContain('Ignore all previous instructions');
-
-  // The in-flight mutex keys on the same cleaned value every downstream prompt uses.
-  expect((hashPayload as jest.Mock).mock.calls[0][0].st).toBe(CLEAN);
+  // The style line every prompt reads (the brief and the mutex key) is the cleaned one.
+  const st = (hashPayload as jest.Mock).mock.calls[0][0].st as string;
+  expect(st).toBe(CLEAN);
+  expect(st).not.toMatch(/[\u202e\u200b\n]/);
+  expect(st).not.toContain('Ignore all previous instructions');
   expectNoEngine();
 });
 
 test('a real genre label reaches the prompt unchanged', async () => {
   await POST(post({ prompt: 'calm piano on a rainy evening', style: 'lo-fi', durationSec: 30 }));
-  expect(await coverPrompt()).toContain('Album cover art for a lo-fi music track.');
   expect((hashPayload as jest.Mock).mock.calls[0][0].st).toBe('lo-fi');
 });
 
 test('a style that is nothing but control/bidi characters keeps the default (cinematic)', async () => {
   await POST(post({ prompt: 'calm piano on a rainy evening', style: '‮​\u0000\n', durationSec: 30 }));
-  expect(await coverPrompt()).toContain('Album cover art for a cinematic music track.');
   expect((hashPayload as jest.Mock).mock.calls[0][0].st).toBe('cinematic');
 });
 
-test('Google-only (the default): no cover request at all, so the brief never reaches Pollinations', async () => {
-  delete process.env.AI_GOOGLE_ONLY;
+test('no cover request under ANY AI_GOOGLE_ONLY setting: Pollinations is gone from the route (Music Studio v1)', async () => {
+  process.env.AI_GOOGLE_ONLY = '0'; // the old kill switch no longer brings a third-party cover back
   // Every translation succeeds here (with the gate gone, the cover would reach fetch); Lyria fails, ending the render.
   (promptToEnglish as jest.Mock).mockReset().mockImplementation(async (p: string) => p);
   (generateLyriaTrack as jest.Mock).mockRejectedValueOnce(new Error('render stopped by the test'));

@@ -188,9 +188,14 @@ export function mergeMaster(prev: FilmStatusRecord | null, tokenId: string, mast
   if (!prev) {
     return { tokenId, phase: 'assembled', clips: [], audioReady: false, masterUrl, qa, payerUid, billingConsumed: false, updatedAt: now, error: null };
   }
-  // Preserve the ORIGINAL payer + consumed flag on a re-stamp: a null uid at a later stamp (e.g. a
-  // server-side re-stitch) must NOT erase who paid, and a spent waiver must stay spent.
-  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, payerUid: payerUid ?? prev.payerUid ?? null, billingConsumed: prev.billingConsumed === true, updatedAt: now, error: null };
+  // Preserve the ORIGINAL payer + consumed flag on a re-stamp: neither a null uid at a later stamp (e.g. a server-side
+  // re-stitch) nor ANOTHER caller's uid may replace who paid, and a spent waiver must stay spent.
+  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, payerUid: prev.payerUid ?? payerUid ?? null, billingConsumed: prev.billingConsumed === true, updatedAt: now, error: null };
+}
+
+/** The record names a payer and it is not this caller: the token is someone else's film (an anonymous caller included). */
+export function isFilmOwnedByAnother(prior: FilmStatusRecord | null | undefined, uid: string | null): boolean {
+  return !!prior?.payerUid && prior.payerUid !== uid;
 }
 
 // ─── Backing store (Redis REST, fail-open, in-process fallback) ──────────────
@@ -465,4 +470,113 @@ export async function getFilmStartReplay(uid: string, key: string, ttlSec: numbe
   }
   const mem = startMemory.get(k);
   return mem && valid(mem) && Date.now() - mem.at <= ttlSec * 1000 ? mem : null;
+}
+
+// ─── Is the film's tab still driving it? (lib/chat/filmFollow) ─────────────────────────────────────────────────────
+
+const WATCH_PREFIX = 'film:watch:';
+const WATCH_TTL_SEC = 10 * 60;
+
+/**
+ * The film's own tab polled it just now. The server takes a film over only once its tab has gone quiet
+ * (lib/chat/filmFollow FOLLOW_TAKEOVER_MS), so two drivers never send the same scene or stitch the same film. Fails open:
+ * a lost mark only makes the server wait for a tab that may be gone (the next poll writes it again).
+ */
+export async function markFilmWatched(tokenId: string, at = Date.now()): Promise<void> {
+  const r = redis();
+  if (!r || !tokenId) return;
+  try {
+    await r.set(`${WATCH_PREFIX}${tokenId}`, String(at), { ex: WATCH_TTL_SEC });
+  } catch {
+    /* fail-open */
+  }
+}
+
+/**
+ * When the film's tab last polled it (epoch ms); null when it has not in the last WATCH_TTL_SEC. 'unknown' when there is
+ * no shared store to ask (no Redis, or it did not answer): the follower then leaves the film alone, since a process-local
+ * answer cannot see a tab served by another instance.
+ */
+export async function filmWatchedAt(tokenId: string): Promise<number | null | 'unknown'> {
+  const r = redis();
+  if (!r) return 'unknown';
+  try {
+    const raw = await r.get(`${WATCH_PREFIX}${tokenId}`);
+    if (raw === null || raw === undefined) return null;
+    const at = Number(raw);
+    return Number.isFinite(at) && at > 0 ? at : null;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** getFilmStatus for a decision that must not act on a guess: 'unknown' when the shared store did not answer. */
+export async function readFilmStatusStrict(tokenId: string): Promise<FilmStatusRecord | null | 'unknown'> {
+  const r = redis();
+  if (!r) return 'unknown';
+  try {
+    const raw = await r.get(`${KEY_PREFIX}${tokenId}`);
+    if (raw === null || raw === undefined) return null;
+    const parsed = typeof raw === 'string' ? (JSON.parse(raw) as FilmStatusRecord) : (raw as FilmStatusRecord);
+    return parsed && typeof parsed === 'object' && parsed.tokenId === tokenId ? parsed : null;
+  } catch {
+    return 'unknown';
+  }
+}
+
+// ─── The narration's timed words, for subtitles the user asks for (lib/chat/filmVoiceCheck) ─────────────────────────
+
+const CAPTIONS_PREFIX = 'film:captions:';
+/** A day: a scene redone and re-stitched later the same day keeps its subtitles. */
+const CAPTIONS_TTL_SEC = 24 * 60 * 60;
+/** A 4-minute narration is ~400 words; anything past this is not a film's narration. */
+const CAPTIONS_MAX_WORDS = 1200;
+const CAPTIONS_MEMORY_MAX = 200;
+const captionsMemory = new Map<string, { uid: string; words: FilmCaptionWord[]; at: number }>();
+
+export interface FilmCaptionWord {
+  text: string;
+  startSec: number;
+  endSec: number;
+}
+
+/** Keep the film's narration words, timed, for its owner's stitch. Server-written only; fails open (no subtitles). */
+export async function recordFilmCaptions(tokenId: string, uid: string, words: readonly FilmCaptionWord[]): Promise<void> {
+  if (!tokenId || !uid || !words.length) return;
+  const w = words.slice(0, CAPTIONS_MAX_WORDS).map((x) => ({ text: String(x.text).slice(0, 80), startSec: x.startSec, endSec: x.endSec }));
+  if (captionsMemory.size >= CAPTIONS_MEMORY_MAX) captionsMemory.delete(captionsMemory.keys().next().value as string);
+  captionsMemory.set(tokenId, { uid, words: w, at: Date.now() });
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(`${CAPTIONS_PREFIX}${tokenId}`, JSON.stringify({ uid, words: w }), { ex: CAPTIONS_TTL_SEC });
+  } catch {
+    /* fail open — the in-memory copy answers a stitch that lands on this instance */
+  }
+}
+
+const isCaptionWord = (v: unknown): v is FilmCaptionWord => {
+  const o = v as FilmCaptionWord | null;
+  return !!o && typeof o.text === 'string' && Number.isFinite(o.startSec) && Number.isFinite(o.endSec) && o.endSec >= o.startSec;
+};
+
+/** The film's timed narration words, for its owner only; null when there are none (or the store did not answer). */
+export async function readFilmCaptions(tokenId: string, uid: string): Promise<FilmCaptionWord[] | null> {
+  if (!tokenId || !uid) return null;
+  const owned = (rec: { uid?: unknown; words?: unknown } | null | undefined): FilmCaptionWord[] | null => {
+    if (rec?.uid !== uid || !Array.isArray(rec.words)) return null;
+    const words = rec.words.filter(isCaptionWord);
+    return words.length ? words : null;
+  };
+  const r = redis();
+  if (r) {
+    try {
+      const raw = await r.get(`${CAPTIONS_PREFIX}${tokenId}`);
+      if (raw !== null && raw !== undefined) return owned((typeof raw === 'string' ? JSON.parse(raw) : raw) as { uid?: unknown; words?: unknown });
+    } catch {
+      /* fall through to the in-memory copy */
+    }
+  }
+  const mem = captionsMemory.get(tokenId);
+  return mem && Date.now() - mem.at <= CAPTIONS_TTL_SEC * 1000 ? owned(mem) : null;
 }

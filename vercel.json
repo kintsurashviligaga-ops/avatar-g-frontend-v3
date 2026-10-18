@@ -3,10 +3,12 @@
   "framework": "nextjs",
   "git": {
     "deploymentEnabled": {
-      "claude/video-core-v1-6gh97e": false
+      "claude/video-core-v1-6gh97e": false,
+      "claude/final-integration-release-wt2y8s": false,
+      "claude/production-launch-certification-u2s9hy": false
     }
   },
-  "buildCommand": "node scripts/gcp/preview-auth-check.cjs; node scripts/gcp/preview-inference-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
+  "buildCommand": "node scripts/gcp/preview-auth-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
   "installCommand": "npm ci",
   "outputDirectory": ".next",
   "devCommand": "next dev -p 3000",
@@ -30,6 +32,12 @@
       "maxDuration": 300
     },
     "app/api/video/assemble/route.ts": {
+      "maxDuration": 600
+    },
+    "app/api/film/sweep/route.ts": {
+      "maxDuration": 600
+    },
+    "app/api/film/scene/redo/stitch/route.ts": {
       "maxDuration": 600
     },
     "app/api/video/longform/route.ts": {
@@ -118,6 +126,12 @@
     },
     "app/api/research/**": {
       "maxDuration": 60
+    },
+    "app/api/avatar/veo/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/genjutsu/**": {
+      "maxDuration": 120
     },
     "app/api/**": {
       "maxDuration": 15
@@ -226,6 +240,14 @@
     },
     {
       "path": "/api/agent/media/sweep",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/film/sweep",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/music/studio/sweep",
       "schedule": "* * * * *"
     },
     {

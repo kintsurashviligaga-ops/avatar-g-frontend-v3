@@ -17,12 +17,10 @@ import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { reportError } from '@/lib/observability/report-error';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
-import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client';
-import { hasUdioApiKey } from './mediaKeys';
+import { getUdioGenerationStatus } from '@/lib/udio/client';
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
-import { buildEnforcedMusicStyle } from './outputEnforcement';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
@@ -37,6 +35,8 @@ import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/i
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
 import { settleFailedFilmScenes } from './filmSceneRefund';
+import { advanceFilmChain, chainRetryDue, getFilmChainPlan, getFilmChainSteps } from './filmChain';
+import { asVeoSafetyCategory, type VeoSafetyCategory } from '@/lib/veo/safetyCodes';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -285,6 +285,26 @@ function refuseOutsideEngineInChat(input: OrchestratorInput, intent: IntentCateg
   };
 }
 
+/**
+ * ⚠️ CHAT MUSIC (Udio / MusicGen) IS OUTSIDE THE PROVIDER BOUNDARY — REFUSED ALWAYS (Music Studio v1, Phase 2), not only
+ * under MEDIA_GOOGLE_ONLY: its only engines are outside ones. The user is pointed to the Music tool (Google Lyria), and
+ * nothing is charged or sent to a provider.
+ */
+function refuseChatMusic(input: OrchestratorInput, intent: IntentCategory): ChatResponse {
+  const l = input.locale;
+  return {
+    success: false,
+    intent,
+    responseType: 'text',
+    message: l === 'en'
+      ? 'Music is made in the Music tool (Google Lyria). Open it from the sidebar — you were not charged.'
+      : l === 'ru'
+        ? 'Музыка создаётся в инструменте «Музыка» (Google Lyria). Откройте его в боковой панели — списания не было.'
+        : 'მუსიკა იქმნება მუსიკის ხელსაწყოში (Google Lyria). გახსენი გვერდითი პანელიდან — თანხა არ ჩამოგეჭრა.',
+    metadata: { provider: 'policy', code: 'unsupported' },
+  };
+}
+
 export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
@@ -390,9 +410,7 @@ export async function orchestrate(
   const detected = detectIntent(input.message, input.serviceContext);
 
   if (detected.intent === 'music_generation') {
-    return refuseAnonymousGeneration(input, detected.intent)
-      ?? refuseOutsideEngineInChat(input, detected.intent)
-      ?? handleMusicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent) ?? refuseChatMusic(input, detected.intent);
   }
 
   if (DETERMINISTIC_INTENTS.has(detected.intent)) {
@@ -605,11 +623,59 @@ async function pollFilmTask(predictionId: string, sessionId?: string, userId?: s
   }
 
   const effectiveSession = sessionId || ref.sessionId;
+  const statusTokenId = deriveFilmTokenId({ sessionId: ref.sessionId, createdAt: ref.createdAt, seed: ref.seed });
+
+  // ── The sequential chain (lib/chat/filmChain) ───────────────────────────────
+  // Scenes after the first wait in the token with no task ref; the server's chain record holds what became of each. A
+  // waiting scene reads as pending, so the film is never "done" before every scene had its turn.
+  const chainPlan = ref.chain ? await getFilmChainPlan(statusTokenId) : null;
+  const chainSteps = chainPlan ? await getFilmChainSteps(chainPlan) : null;
+  const waiting = (clip: FilmTaskRef['clips'][number]): boolean => !!ref.chain && !clip.taskRef && clip.status === 'pending';
+  const clipRefs = ref.clips.map((clip) => {
+    const step = waiting(clip) ? chainSteps?.get(clip.ordinal) : undefined;
+    return step ? { ...clip, taskRef: step.taskRef, status: step.status } : clip;
+  });
 
   // ── Poll all clip legs in lock-step ─────────────────────────────────────────
   const clipStates = await Promise.all(
-    ref.clips.map(async (clip) => pollFilmClip(clip, effectiveSession)),
+    clipRefs.map(async (clip): Promise<FilmClipPollState> => (waiting(clip)
+      ? { ordinal: clip.ordinal, status: 'pending', url: null, attempts: 0, providerStatus: 'waiting', note: 'starts from the previous clip’s last frame' }
+      : pollFilmClip(clip, effectiveSession))),
   );
+
+  // The next scene, once its predecessor has landed: only the film owner's poll sends it, and only the one that claims it.
+  if (chainPlan && chainSteps) {
+    // Loaded only for a chained film: its wiring pulls in ffmpeg, Storage and the ledger, which no other poll needs.
+    const { filmChainDeps } = await import('./filmChainRuntime');
+    const chainLegs = clipStates.map((c) => ({ ordinal: c.ordinal, status: c.status, url: c.url, declined: !!c.declined }));
+    // A scene Google declined from a last frame is owed one more try from its storyboard frame. Until that try has an
+    // outcome the scene is not final: it reads as pending (another poll may hold the try), so it is neither hinted for
+    // R3-A (no share back for a scene still being made) nor ends the film one scene short.
+    const resending = chainRetryDue(chainPlan, chainLegs, chainSteps)?.ordinal ?? null;
+    const advanced = await advanceFilmChain(
+      chainPlan,
+      chainLegs,
+      chainSteps,
+      userId,
+      filmChainDeps,
+    );
+    if (resending != null && advanced?.ordinal !== resending) {
+      const j = clipStates.findIndex((c) => c.ordinal === resending);
+      if (j >= 0) clipStates[j] = { ordinal: resending, status: 'pending', url: null, attempts: 1, providerStatus: 'queued', note: 'declined by Google; sent again from its storyboard frame', videoProvider: 'gemini-veo' };
+    }
+    if (advanced) {
+      const i = clipRefs.findIndex((c) => c.ordinal === advanced.ordinal);
+      if (i >= 0) {
+        clipRefs[i] = { ...clipRefs[i]!, taskRef: advanced.step.taskRef, status: advanced.step.status };
+        const j = clipStates.findIndex((c) => c.ordinal === advanced.ordinal);
+        if (j >= 0) {
+          clipStates[j] = advanced.step.status === 'queued'
+            ? { ordinal: advanced.ordinal, status: 'pending', url: null, attempts: 1, providerStatus: 'queued', note: `started from ${advanced.step.from}`, videoProvider: 'gemini-veo' }
+            : { ordinal: advanced.ordinal, status: 'failed', url: null, attempts: 1, providerStatus: 'failed', ...(advanced.step.error ? { note: advanced.step.error.slice(0, 140) } : {}) };
+        }
+      }
+    }
+  }
   // ⚠️ NO REFUND IS EVER DECIDED FROM THIS TOKEN. It is unsigned (its task refs can be forged) and a mapped transient 429
   // can read as 'failed'. A dead clip here is only a HINT: R3-A (lib/chat/filmSceneRefund, below) re-asks Google about the
   // operation the film START recorded server-side for the signed-in user, and gives the scene's share back only on Google's
@@ -644,10 +710,9 @@ async function pollFilmTask(predictionId: string, sessionId?: string, userId?: s
   // so a reload / second device can recover the unified state (and the final
   // master, once the assemble route stamps it) via /api/video/status/[tokenId].
   // Best-effort + fail-open: a tracking write must never break the poll.
-  const statusTokenId = deriveFilmTokenId({ sessionId: ref.sessionId, createdAt: ref.createdAt, seed: ref.seed });
   // R3-A — a scene Google accepted and then failed: its share back, once, on the server's record and Google's own word.
   const deadAfterDispatch = clipStates
-    .filter((c) => c.status === 'failed' && ref.clips.some((x) => x.ordinal === c.ordinal && x.taskRef))
+    .filter((c) => c.status === 'failed' && clipRefs.some((x) => x.ordinal === c.ordinal && x.taskRef))
     .map((c) => c.ordinal);
   const creditsGivenBack = deadAfterDispatch.length > 0
     ? await settleFailedFilmScenes(userId, statusTokenId, deadAfterDispatch).catch(() => 0)
@@ -720,6 +785,8 @@ async function pollFilmTask(predictionId: string, sessionId?: string, userId?: s
           ...(c.note ? { note: c.note } : {}),
           // PHASE 25 (VECTOR 3) — the render engine, consumed by the Director's Console badge.
           ...(c.videoProvider ? { videoProvider: c.videoProvider } : {}),
+          // The scene Google's safety filter declined, and under which rule (the film's error card names both).
+          ...(c.declined ? { declined: c.declined } : {}),
         })),
         stitch: filmStitchToClientStatus(stitchStatus, anyClipPending),
         audio: filmLegToClientStatus(audioStatus),
@@ -760,6 +827,9 @@ interface FilmClipPollState {
    *  'runway' | 'replicate'/'kling' | 'ltx' | …). Threaded to the Director's Console provider badge
    *  so a Runway→Replicate fallback is visible in the UI, not just in the raw response. */
   videoProvider?: string;
+  /** Google's safety filter declined this scene (a terminal verdict, never billed by Google): the category from its support
+   *  code (lib/veo/safetyCodes) and the codes themselves, so the film can name the scene and the rule instead of "failed". */
+  declined?: { category: VeoSafetyCategory | null; codes: string[] };
 }
 
 /** Poll one clip leg; null taskRef short-circuits to its dispatch-time verdict. */
@@ -783,7 +853,15 @@ async function pollFilmClip(clip: FilmTaskRef['clips'][number], sessionId?: stri
     // it to 'failed' would declare the whole film failed on a routing blip. Treat it as 'pending' (keep
     // polling) so the film self-heals; genuine failures still arrive as a clean 'failed'/'canceled'.
     if (sm.predictionStatus === 'failed' || sm.predictionStatus === 'canceled') {
-      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts, providerStatus, note, videoProvider };
+      const declined = sm.metadata?.veoFiltered === true
+        ? {
+            category: asVeoSafetyCategory(sm.metadata.veoSafetyCategory),
+            codes: Array.isArray(sm.metadata.veoSupportCodes)
+              ? sm.metadata.veoSupportCodes.filter((c): c is string => typeof c === 'string' && /^\d{4,12}$/.test(c)).slice(0, 4)
+              : [],
+          }
+        : undefined;
+      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts, providerStatus, note, videoProvider, ...(declined ? { declined } : {}) };
     }
     return { ordinal: clip.ordinal, status: 'pending', url: null, attempts: clip.attempts, providerStatus, note, videoProvider };
   } catch (err) {
@@ -1157,161 +1235,6 @@ async function handleInteriorIntent(input: OrchestratorInput): Promise<ChatRespo
       },
     };
   }
-}
-
-async function handleMusicIntent(
-  input: OrchestratorInput,
-  detected: DetectedIntent,
-): Promise<ChatResponse> {
-  // PRE-RENDER balance gate — music_generation dispatches BEFORE the deterministic-intent gate
-  // (music isn't in DETERMINISTIC_INTENTS), so without this a 0-balance user gets a free paid track
-  // on /chat. Gate here at the TOP so it covers BOTH the Udio submit below AND the replicate
-  // delegation. Authed only; fail-open on a read miss. Mirrors handleDeterministicIntent's gate.
-  const gateCost = billableCreditCost(detected.intent);
-  if (input.userId && input.userId !== 'anonymous' && gateCost > 0 && !(await hasSufficientBalance(input.userId, gateCost))) {
-    return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
-  }
-
-  const iterative = buildIterativePrompt({
-    sessionId: input.sessionId,
-    serviceContext: input.serviceContext || 'music',
-    message: input.message,
-    selectedOptions: input.selectedOptions,
-    imageUrl: input.imageUrl,
-  });
-  const opts = input.selectedOptions || {};
-  const provider = String(
-    opts.provider
-      || opts.music_provider
-      || opts.musicProvider
-      || (hasUdioApiKey() ? 'udio' : 'replicate'),
-  ).toLowerCase();
-
-  if (provider === 'replicate') {
-    return handleReplicateIntent(input, detected);
-  }
-
-  const lyricsMode = String(opts.lyrics_mode || opts.lyricsMode || '').toLowerCase();
-  const styleTags = parseOptionList(opts.style_tags || opts.styleTags || opts.tags);
-
-  // ⚠️ THIS IS THE MUSIC LANE THE CHAT ACTUALLY USES, AND IT WAS THE ONE STILL BROKEN. There are TWO:
-  // /api/ai/music serves the Music panel and was translated; this one serves a prompt TYPED INTO THE CHAT
-  // and was not. So "the song has nothing to do with what I asked" kept happening after the panel was
-  // fixed, and the code that was inspected each time was the other lane.
-  //
-  // It failed TWICE over, which is why the result was so far off:
-  //   1. Udio reads English. A Georgian brief arrived as noise and it composed from its priors.
-  //   2. buildEnforcedMusicStyle mirrors the user's words into the style anchor by matching ENGLISH
-  //      keyword lists (MUSIC_GENRE / MOOD / TEMPO / INSTRUMENT in outputEnforcement.ts). Georgian text
-  //      matches NOTHING, so `style` came back undefined and the one mechanism meant to stop a prompt
-  //      drifting into a generic bed was silently switched off — on exactly the prompts that needed it.
-  // Translating first fixes both: the provider can read the brief AND the mirroring can find the genre.
-  //
-  // LYRICS ARE NOT TRANSLATED — `opts.lyrics` is passed through untouched below. Those are the words to be
-  // SUNG; a brief asking for a song "ესპანურად" keeps that as an English instruction, so the singer is
-  // told which language to sing in rather than handed a translation of the user's own words.
-  // Dynamic import, matching handleReplicateIntent below — promptToEnglish is server-only and this
-  // module is reached from paths that must not pull it into a client bundle.
-  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
-  const promptEn = await promptToEnglish(iterative.prompt, 'music');
-
-  // PHASE 52 TASK 5 — strict prompt mirroring. Force the genre/tempo/mood/
-  // instrumentation the user TYPED into the Udio style anchor (their words go
-  // first so the provider weights them highest), and honor an explicit
-  // "instrumental / no vocals" ask. This is what stops a "techno" prompt from
-  // drifting into a generic ambient bed. Any UI-selected style/genre/mood and
-  // tags are merged in AFTER the typed keywords, so nothing is lost.
-  const enforced = buildEnforcedMusicStyle(
-    promptEn,
-    [opts.style, opts.genre, opts.mood].filter(Boolean).join(', '),
-    styleTags,
-  );
-  const requestedInstrumental =
-    parseBooleanOption(opts.make_instrumental || opts.instrumental) || lyricsMode === 'instrumental';
-
-  try {
-    const started = await startUdioGeneration({
-      // The English brief — Udio cannot read the alphabet the user typed in. `opts.lyrics` on the next
-      // line stays in the user's own language ON PURPOSE: those are the words to be sung.
-      prompt: promptEn,
-      lyrics: opts.lyrics,
-      // `style` now carries the mirrored anchor (typed keywords ∪ UI tags); we
-      // intentionally omit the separate genre/mood/styleTags fields so they are
-      // not double-appended by the Udio body builder.
-      style: enforced.style,
-      title: opts.title,
-      model: opts.model || opts.variant,
-      makeInstrumental: requestedInstrumental || enforced.forceInstrumental,
-      callbackUrl: typeof input.metadata?.callback_url === 'string'
-        ? input.metadata.callback_url
-        : typeof input.metadata?.callbackUrl === 'string'
-          ? input.metadata.callbackUrl
-          : undefined,
-    });
-
-    const predictionId = toUdioPredictionId(started.workId);
-
-    return {
-      success: true,
-      intent: detected.intent,
-      responseType: 'audio',
-      message: startedMessage(detected.intent),
-      predictionId,
-      predictionStatus: 'processing',
-      assetType: 'audio',
-      metadata: {
-        provider: 'udio',
-        model: started.model,
-        workId: started.workId,
-        confidence: detected.confidence,
-        iteration: iterative.iteration,
-      },
-    };
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Udio generation failed';
-
-    // PHASE 57 — a billing/credit failure from Udio (e.g. "No credit",
-    // insufficient funds, quota) must NOT be a dead end: transparently fail
-    // over to the funded Replicate (Meta MusicGen) music model so the user
-    // still receives a track. Mirrors the image (NanoBanana→FLUX) and video
-    // (LTX→Zeroscope) failovers. A non-billing error still surfaces honestly
-    // so we never mask a real bug.
-    if (isProviderCreditError(errorMsg)) {
-      const fallback = await handleReplicateIntent(input, detected).catch(() => null);
-      if (fallback && fallback.success) {
-        return {
-          ...fallback,
-          metadata: {
-            ...fallback.metadata,
-            musicFallback: 'udio->replicate',
-            primaryProvider: 'udio',
-            primaryProviderError: errorMsg,
-          },
-        };
-      }
-    }
-
-    return {
-      success: false,
-      intent: detected.intent,
-      responseType: 'text',
-      message: errorMsg,
-      metadata: {
-        provider: 'udio',
-        confidence: detected.confidence,
-        iteration: iterative.iteration,
-      },
-    };
-  }
-}
-
-/**
- * PHASE 57 — true when a provider error message indicates a billing/credit/auth
- * failure (out of funds, quota, payment, unauthorized) rather than a
- * deterministic bad-request bug. Drives the music Udio→Replicate failover.
- */
-function isProviderCreditError(message: string): boolean {
-  return /no credit|insufficient|insufficient_funds|top.?up|quota|exceeded|payment|balance|out of credit|unauthor|forbidden|denied|\b402\b|\b429\b/i.test(message || '');
 }
 
 async function pollUdioTask(workId: string, predictionId: string): Promise<ChatResponse> {
@@ -1783,10 +1706,6 @@ function mapResponseType(intent: IntentCategory): ChatResponse['responseType'] {
   }
 }
 
-function toUdioPredictionId(workId: string): string {
-  return `${UDIO_PREDICTION_PREFIX}${workId}`;
-}
-
 function extractUdioWorkId(predictionId: string): string | null {
   if (!predictionId.startsWith(UDIO_PREDICTION_PREFIX)) {
     return null;
@@ -1794,28 +1713,6 @@ function extractUdioWorkId(predictionId: string): string | null {
 
   const workId = predictionId.slice(UDIO_PREDICTION_PREFIX.length).trim();
   return workId || null;
-}
-
-function parseOptionList(value: string | undefined): string[] | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const items = value
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-
-  return items.length > 0 ? items : undefined;
-}
-
-function parseBooleanOption(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
 
 function intentToMediaKind(intent: IntentCategory): MediaKind {

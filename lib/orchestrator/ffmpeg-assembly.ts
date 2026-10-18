@@ -19,6 +19,8 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex, joinOverlaps, resolveJoins } from './ffmpeg-filtergraph';
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
+import { keepsOnlySong } from './songMix';
+import { matchClipLooks, parseSignalStats, type ClipStats } from '@/lib/video/clipLook';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, MasterQaRejected, type QaReport } from './masterQa';
 import { SoundtrackUnreadable } from './soundtrackUnreadable';
@@ -58,6 +60,20 @@ async function probeHasAudio(bin: string, file: string): Promise<boolean> {
   } catch (e: unknown) {
     const log = String((e as { stderr?: string } | null)?.stderr ?? '');
     return /Stream #\d+:\d+[^\n]*:\s*Audio:/.test(log);
+  }
+}
+
+/** Average exposure + colour intensity of one clip (2 sampled frames per second, small scale: fast). Null on failure. */
+async function probeClipLook(bin: string, file: string, seconds: number): Promise<ClipStats | null> {
+  try {
+    const { stdout } = await exec(
+      bin,
+      ['-hide_banner', '-t', String(seconds), '-i', file, '-vf', 'fps=2,scale=320:-2,signalstats,metadata=print:file=-', '-an', '-f', 'null', '-'],
+      { maxBuffer: 1 << 22 },
+    );
+    return parseSignalStats(String(stdout));
+  } catch {
+    return null;
   }
 }
 
@@ -442,11 +458,26 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // eslint-disable-next-line no-console
     console.log(`[assemble] native clip audio: ${nativeAudio.filter(Boolean).length}/${nativeAudio.length} clips carry sound`);
 
+    // SHOT MATCHING — measure each clip's exposure and colour intensity and correct it toward the film's median, so
+    // a vivid clip next to a dull one stops jumping at the cut. FILM_SHOT_MATCH=0 turns it off; a probe miss leaves
+    // that clip uncorrected.
+    const shotMatchOn = inputs.length >= 2 && !/^(0|false|off)$/i.test((process.env.FILM_SHOT_MATCH || '').trim());
+    const clipLook = shotMatchOn
+      ? matchClipLooks(await Promise.all(inputs.map((p) => probeClipLook(bin, p, clipSec))))
+      : [];
+    if (clipLook.some(Boolean)) {
+      // eslint-disable-next-line no-console
+      console.log(`[assemble] shot matching: ${clipLook.map((l) => (l ? `b${l.brightness}/s${l.saturation}` : '=')).join(' ')}`);
+    }
+
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
-      // Preserve the clips' own sound whenever ANY clip has it (opt-in: omitted → previous graph unchanged).
-      ...(nativeAudio.some(Boolean) ? { nativeAudio } : {}),
+      ...(clipLook.some(Boolean) ? { clipLook } : {}),
+      // Preserve the clips' own sound whenever ANY clip has it (opt-in: omitted → previous graph unchanged) — except
+      // under a music video's song: each Veo clip invents its own music and singing, so keeping them made the song
+      // jump at every cut (Production 2026-10-16). The one continuous song is the only soundtrack there.
+      ...(nativeAudio.some(Boolean) && !keepsOnlySong({ musicVideo, hasMusic: Boolean(music) }) ? { nativeAudio } : {}),
       hasVoice: Boolean(voicePath),
       hasMusic: Boolean(music),
       hasSfx: Boolean(sfx),
@@ -631,7 +662,8 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       const segs = alignmentToCaptionSegments(m.captionAlignment);
       const pre = segs.length ? await probeMaster(bin, out) : null;
       if (pre?.width && pre?.height) {
-        const captioned = await burnCaptionSegments(out, segs, { width: pre.width, height: pre.height });
+        // The cap is spread over the master's real length: the narration (and so the last caption) often ends first.
+        const captioned = await burnCaptionSegments(out, segs, { width: pre.width, height: pre.height, durationSec: pre.actualDurSec ?? deliverSec });
         if (captioned) {
           await writeFile(out, captioned);
           // eslint-disable-next-line no-console
@@ -685,7 +717,11 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // surfacing as the misleading "Storage not configured" error. uploadBufferAndSign
     // streams the Buffer and retries once on a transient failure.
     const url = await uploadBufferAndSign(RENDER_BUCKET, objectPath, data, 'video/mp4', 604_800);
-    if (!url) throw new Error('master upload failed (storage rejected the file or is unavailable — check service-role key + project upload size limit)');
+    if (!url) {
+      // The operator's hint stays in the log; the film's error card shows the sentence below (lib/ui/opFailure).
+      console.error(`[assemble] master upload failed: ${(data.byteLength / 1048576).toFixed(1)} MB to ${RENDER_BUCKET} (storage refused the file or is unavailable: check the service-role key and the project upload size limit)`);
+      throw new Error('The finished film could not be saved to storage.');
+    }
     return { url, qa };
   } finally {
     await rm(dir, { recursive: true, force: true });

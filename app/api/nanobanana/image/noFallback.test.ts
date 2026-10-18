@@ -71,7 +71,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   jest.restoreAllMocks();
-  delete process.env.MEDIA_GOOGLE_ONLY;
+  process.env.MEDIA_GOOGLE_ONLY = '0';
 });
 
 /** The one failure exit: 502 provider_unavailable, the reserved credit returned, nothing re-hosted, no other engine. */

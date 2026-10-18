@@ -30,6 +30,7 @@ import { StallDetector } from '@/lib/jobs/stallDetector';
 import type { VeoRenderOptions } from '@/lib/video/veoPlan';
 import type { SceneScreenwriterMeta } from '@/lib/chat/filmPipeline';
 import type { RenderApprovalWire } from '@/lib/video/storyboard/revision';
+import type { SceneQaEntry } from '@/lib/ai/visionQualityGate';
 
 /** The director's per-scene provenance as the orchestrate route accepts it (lib/veo/renderOptions SceneMetaSchema). */
 export type SceneMetaWire = Pick<SceneScreenwriterMeta, 'cameraShot' | 'mood' | 'location' | 'lighting' | 'camera'>;
@@ -54,6 +55,8 @@ export interface FilmClipState {
   /** PHASE 25 (VECTOR 3) — the render engine that produced this clip ('runway' | 'replicate' |
    *  'kling' | 'ltx' | …). Drives the Director's Console provider badge so a fallback is visible. */
   videoProvider?: string;
+  /** Google's safety filter declined this scene: the category its support code files it under, and the codes. */
+  declined?: { category: string | null; codes?: string[] };
 }
 
 /** Mirrors the server `metadata.film` matrix (providerRouter) the client reads. */
@@ -131,6 +134,8 @@ export interface FilmStudioResult {
   scenesRequested?: number;
   /** What the score leg did — null means every music provider missed and the film is SILENT. */
   scoreFallback?: string | null;
+  /** Each scene clip's own vision grade, when the assembler ran the check (FILM_VISION_QA): names a weak scene. */
+  sceneQa?: SceneQaEntry[];
   /** The resolved song/vocal URL (ElevenLabs Music / Udio) — drives the HeyGen
    *  singer-performance lip-sync (face frame + this vocal). Null when silent. */
   musicUrl?: string | null;
@@ -214,6 +219,9 @@ export interface DriveFilmOptions {
   sceneMeta?: SceneMetaWire[];
   /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
   myVoiceNarration?: boolean;
+  /** The user asked for subtitles (the panel's switch, or the brief): the narration's words are burned at the stitch. Off by
+   *  default, the user's choice (the owner's word 2026-10-17). */
+  subtitles?: boolean;
   /** Verbatim dialogue from the video panel — spoken as the film's voice-over (as-is). */
   narrationScript?: string;
   /** Explicit narrator gender (video panel 👩/👨) → cloned female/male Georgian voice. */
@@ -315,15 +323,20 @@ export function estimateFilmCostGel(sceneCount: number = FILM_SCENE_COUNT): numb
   return n * GEL_COST.video_film + GEL_COST.voice_tts;
 }
 
-/** Ordered, de-duplicated URLs of the clips that actually landed. */
-export function readyClipUrls(matrix: FilmStudioMatrix | null): string[] {
+/** The clips that actually landed, in scene order and de-duplicated, each with the scene it is. */
+export function readyClips(matrix: FilmStudioMatrix | null): { url: string; ordinal: number }[] {
   if (!matrix) return [];
   const seen = new Set<string>();
   return [...matrix.clips]
     .sort((a, b) => a.ordinal - b.ordinal)
     .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url.length > 0)
-    .map((c) => c.url as string)
-    .filter((url) => (seen.has(url) ? false : (seen.add(url), true)));
+    .map((c) => ({ url: c.url as string, ordinal: c.ordinal }))
+    .filter((c) => (seen.has(c.url) ? false : (seen.add(c.url), true)));
+}
+
+/** Ordered, de-duplicated URLs of the clips that actually landed. */
+export function readyClipUrls(matrix: FilmStudioMatrix | null): string[] {
+  return readyClips(matrix).map((c) => c.url);
 }
 
 /** First playable clip URL — the graceful fallback while the editor stitches. */
@@ -333,6 +346,63 @@ export function firstPreviewUrl(matrix: FilmStudioMatrix | null): string | null 
     .sort((a, b) => a.ordinal - b.ordinal)
     .find((c) => typeof c.url === 'string' && c.url.length > 0);
   return ready?.url ?? null;
+}
+
+type DeclineLang = 'en' | 'ka' | 'ru';
+const DECLINE_COPY: Record<DeclineLang, {
+  head: (scenes: number[]) => string;
+  celebrity: string;
+  child: string;
+  generic: string;
+  code: string;
+}> = {
+  en: {
+    head: (n) => `Google declined scene${n.length > 1 ? 's' : ''} ${n.join(', ')}`,
+    celebrity: '. Its filter judged the person to look like a well-known public figure',
+    child: '. Its filter judged that the picture shows a child',
+    generic: ' under its safety rules',
+    code: 'code',
+  },
+  ka: {
+    head: (n) => `Google-მა ${n.length > 1 ? 'სცენები' : 'სცენა'} ${n.join(', ')} უარყო`,
+    celebrity: '. მისმა ფილტრმა ადამიანი ცნობილ საჯარო პირს მიამსგავსა',
+    child: '. მისმა ფილტრმა ჩათვალა, რომ კადრში ბავშვია',
+    generic: ' უსაფრთხოების წესებით',
+    code: 'კოდი',
+  },
+  ru: {
+    head: (n) => `Google отклонил ${n.length > 1 ? 'сцены' : 'сцену'} ${n.join(', ')}`,
+    celebrity: '. Его фильтр счёл, что человек похож на известную публичную персону',
+    child: '. Его фильтр счёл, что в кадре ребёнок',
+    generic: ' по своим правилам безопасности',
+    code: 'код',
+  },
+};
+
+/**
+ * The scenes Google's safety filter declined, said in the user's language with the rule and its support code — or null
+ * when no scene was declined (an ordinary failure keeps its own sentence).
+ *
+ * ⚠️ THE AD FILM OF 2026-10-15 ENDED ON "the service may be busy". Scene 2 had been declined by Google's likeness filter
+ * (support code 15236754): a verdict, not a busy service, and one the user can only act on if they are told which scene and
+ * which rule. Short on purpose — the error card prints at most 160 characters of it (lib/ui/opFailure).
+ */
+export function describeDeclinedScenes(matrix: FilmStudioMatrix | null, locale: string = 'en'): string | null {
+  const declined = [...(matrix?.clips ?? [])]
+    .filter((c) => c.status === 'failed' && c.declined)
+    .sort((a, b) => a.ordinal - b.ordinal);
+  if (declined.length === 0) return null;
+  const copy = DECLINE_COPY[locale === 'ka' || locale === 'ru' ? locale : 'en'];
+  const categories = new Set(declined.map((c) => c.declined?.category ?? null));
+  const only = categories.size === 1 ? [...categories][0] : null;
+  const rule = only === 'celebrity' ? copy.celebrity : only === 'child' ? copy.child : copy.generic;
+  const codes = [...new Set(declined.flatMap((c) => c.declined?.codes ?? []))].slice(0, 2);
+  const head = copy.head(declined.map((c) => c.ordinal));
+  // Georgian puts the verb last: "Google-მა სცენა 2 უარყო. …" but "Google-მა სცენა 2 უსაფრთხოების წესებით უარყო".
+  const sentence = locale === 'ka' && rule === copy.generic
+    ? head.replace(/ უარყო$/, `${copy.generic} უარყო`)
+    : `${head}${rule}`;
+  return `${sentence}${codes.length ? ` (${copy.code} ${codes.join(', ')})` : ''}.`;
 }
 
 /**
@@ -580,35 +650,126 @@ export function composeTransitionRender(transition: string | null | undefined, j
   return g;
 }
 
+/**
+ * The choices a film's stitch needs besides its clips, all made in the studio before the render started. The dispatch
+ * hands them to the server with the film (`filmFollow`), so a film whose tab closes is stitched the way the tab would have
+ * stitched it (lib/chat/filmFollowWorker). `myVoiceNarration` is not among them: the re-voice runs in the browser.
+ */
+export interface FilmFollowPlan {
+  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
+  transition?: DriveFilmOptions['transition'];
+  joinTransitions?: DriveFilmOptions['joinTransitions'];
+  noMusic?: boolean;
+  musicVideoMode?: boolean;
+  soundtrackUrl?: string | null;
+  locale?: string;
+  vocalGender?: 'male' | 'female' | 'duet';
+  audioMix?: AudioMixOptions;
+  finalDurationSec?: number;
+  subtitles?: boolean;
+}
+
+/** The stitch's share of the studio options (what FilmFollowPlan holds), as the dispatch sends it. */
+export function filmFollowPlan(opts: DriveFilmOptions): FilmFollowPlan {
+  return {
+    ...(opts.orientation ? { orientation: opts.orientation } : {}),
+    ...(opts.transition ? { transition: opts.transition } : {}),
+    ...(opts.joinTransitions?.length ? { joinTransitions: opts.joinTransitions } : {}),
+    ...(opts.noMusic ? { noMusic: true } : {}),
+    ...(opts.musicVideoMode ? { musicVideoMode: true } : {}),
+    ...(opts.soundtrackUrl ? { soundtrackUrl: opts.soundtrackUrl } : {}),
+    ...(opts.locale ? { locale: opts.locale } : {}),
+    ...(opts.vocalGender ? { vocalGender: opts.vocalGender } : {}),
+    ...(opts.audioMix ? { audioMix: opts.audioMix } : {}),
+    ...(typeof opts.finalDurationSec === 'number' && opts.finalDurationSec > 0 ? { finalDurationSec: opts.finalDurationSec } : {}),
+    ...(opts.subtitles ? { subtitles: true } : {}),
+  };
+}
+
+/**
+ * The /api/video/assemble body for a film's landed clips. ONE builder for both drivers: the tab (driveFilmStudio) and the
+ * server that finishes a film whose tab closed (lib/chat/filmFollowWorker), so the two can never stitch the same film two
+ * ways. `voiceUrl` is the narration to mix (the tab may have re-voiced it); absent → the film's own.
+ */
+export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix, scorePrompt: string, voiceUrl?: string | null): Record<string, unknown> {
+  const landed = readyClips(matrix);
+  const clipUrls = landed.map((c) => c.url);
+  const clipSec = matrix.clipSec ?? null;
+  // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
+  const musicUrl = plan.noMusic ? null : (plan.soundtrackUrl ?? matrix.audioUrl ?? null);
+  // PHASE 48 §2 — commentator/narration track, when the brief asked for one.
+  const finalVoiceUrl = voiceUrl !== undefined ? voiceUrl : (matrix.voiceUrl ?? null);
+  // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
+  const sfxUrl = matrix.sfxUrl ?? null;
+  // DAY-6 multi-voice — per-speaker dialogue stems (≥2 → assembler spatial premix + -12dB duck).
+  const dialogueStems = matrix.dialogueStems ?? null;
+  const customAudioUrl = plan.soundtrackUrl ?? null;
+  // v330 — the caption language for the burned-in lower-third (the app locale).
+  const captionLang: 'ka' | 'en' | 'ru' = plan.locale === 'ka' ? 'ka' : plan.locale === 'ru' ? 'ru' : 'en';
+  const scenesPlanned = matrix.sceneCount || matrix.clips.length;
+  const finalDurationSec = finalContractForCut(plan.finalDurationSec, clipUrls.length, scenesPlanned);
+  const audioMix = plan.audioMix;
+  // PHASE 2 L2/L6 — assemble the transition + 3-track-audio / smart-ducking knobs into
+  // ONE globalRender object. Each key is opt-in; an empty object is omitted entirely so
+  // the route keeps its defaults (and the existing documentary mix) when nothing is set.
+  const globalRender: Record<string, string | number | boolean> = { ...composeTransitionRender(plan.transition, plan.joinTransitions) };
+  if (audioMix?.threeTrack) globalRender.three_track_mix = true;
+  if (typeof audioMix?.musicVolume === 'number') globalRender.music_volume = audioMix.musicVolume;
+  if (typeof audioMix?.sfxVolume === 'number') globalRender.sfx_volume = audioMix.sfxVolume;
+  if (audioMix?.smartDuck === false) globalRender.smart_duck = false;
+  if (typeof audioMix?.duckDb === 'number') globalRender.duck_db = audioMix.duckDb;
+  return {
+    // The assembler derives the master timeline (and every per-clip trim) from these durations, so a
+    // film rendered on a 6s grid must report 6s — a hardcoded 8 pad-froze the tail of every clip.
+    // Each clip names its scene, so one scene can later be rendered again and cut back into its own place (filmSceneRedo).
+    segments: landed.map(({ url, ordinal }) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : FILM_CLIP_SEC, ordinal })),
+    ...(musicUrl ? { musicUrl } : {}),
+    // Music OFF → tell the route to skip score generation (no musicUrl + this flag).
+    ...(plan.noMusic ? { noMusic: true } : {}),
+    // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
+    // the score under it (voiceoverUrl → vocal_ducking_pct).
+    ...(finalVoiceUrl ? { voiceoverUrl: finalVoiceUrl } : {}),
+    // DAY-6 multi-voice — ≥2 per-speaker dialogue stems → the assembler builds the
+    // spatialized multi-voice lane with the -12dB sidechain duck (route re-signs + caps at 16).
+    ...(dialogueStems && dialogueStems.length >= 2 ? { dialogueStems } : {}),
+    // PHASE 49 §7 — cinematic SFX / sound-design, mixed under the score.
+    ...(sfxUrl ? { sfxUrl } : {}),
+    ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
+    ...(matrix.statusTokenId ? { filmTokenId: matrix.statusTokenId } : {}),
+    // Video Core v1.0 §4 — the final length the master is cut to (the route refuses one these clips cannot be cut to).
+    ...(typeof finalDurationSec === 'number' && finalDurationSec > 0 ? { finalDurationSec } : {}),
+    // Pass any non-landscape canvas (vertical · 1:1 · 4:5) to the assembler;
+    // landscape is the route default.
+    ...(plan.orientation && plan.orientation !== 'landscape' ? { orientation: plan.orientation } : {}),
+    // v330 — explicit Music Video mode → song-master mix + branded lower-third.
+    // A supplied soundtrack implies music-video intent.
+    ...(plan.musicVideoMode || customAudioUrl ? { musicVideoMode: true } : {}),
+    // v330 — a user-uploaded soundtrack: the route anchors onto it, bypassing
+    // both the Udio score and the MusicGen fallback.
+    ...(customAudioUrl ? { customAudioUrl } : {}),
+    // v330 — caption language for the FiraGO lower-third (ka/en/ru).
+    ...(captionLang ? { captionLang } : {}),
+    // v330 — selected sung-vocal gender (steers the ElevenLabs Music singer).
+    ...(plan.vocalGender ? { vocalGender: plan.vocalGender } : {}),
+    // Scene transition + L2/L6 audio knobs. globalRender wins over the route's
+    // film-token default ('cut'), so the user's choices are honoured.
+    ...(Object.keys(globalRender).length ? { globalRender } : {}),
+    // Subtitles only when the user asked: the route burns the narration's words as they were timed at the film's start.
+    ...(plan.subtitles ? { subtitles: true } : {}),
+  };
+}
+
 /** Mirror of MyAvatarChatV2.assembleFilm — hand the landed clips to the authed stitch. */
 async function assembleMaster(
-  clipUrls: string[],
-  musicUrl: string | null,
-  statusTokenId: string | undefined,
+  plan: FilmFollowPlan,
+  matrix: FilmStudioMatrix,
   scorePrompt: string,
-  signal?: AbortSignal,
-  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait',
-  voiceUrl?: string | null,
-  sfxUrl?: string | null,
-  transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide' | 'fade_black',
   myVoiceNarration?: boolean,
-  noMusic?: boolean,
-  musicVideoMode?: boolean,
-  customAudioUrl?: string | null,
-  captionLang?: 'ka' | 'en' | 'ru',
-  vocalGender?: 'male' | 'female' | 'duet',
-  audioMix?: AudioMixOptions,
-  dialogueStems?: { url: string; speaker: string; startSec: number }[] | null,
-  /** The film's real per-scene length (4–8s). Absent → the 8s default grid. */
-  clipSec?: number | null,
-  /** Per-join transitions (the studio's scene timeline). */
-  joinTransitions?: string[] | null,
-  /** Video Core v1.0 §4 — the contracted final length the assembler cuts the master to. */
-  finalDurationSec?: number | null,
-): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null; clipsDropped?: number } | { url: null; error: string } | null> {
+  signal?: AbortSignal,
+): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null; clipsDropped?: number; sceneQa?: SceneQaEntry[] } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
-  let finalVoiceUrl = voiceUrl ?? null;
+  let finalVoiceUrl = matrix.voiceUrl ?? null;
   if (myVoiceNarration && finalVoiceUrl) {
     try {
       const cr = await fetch('/api/video/voice-narration', {
@@ -619,56 +780,12 @@ async function assembleMaster(
       if (cj?.url) finalVoiceUrl = cj.url;
     } catch { /* keep the original TTS narration */ }
   }
-  // PHASE 2 L2/L6 — assemble the transition + 3-track-audio / smart-ducking knobs into
-  // ONE globalRender object. Each key is opt-in; an empty object is omitted entirely so
-  // the route keeps its defaults (and the existing documentary mix) when nothing is set.
-  const globalRender: Record<string, string | number | boolean> = { ...composeTransitionRender(transition, joinTransitions) };
-  if (audioMix?.threeTrack) globalRender.three_track_mix = true;
-  if (typeof audioMix?.musicVolume === 'number') globalRender.music_volume = audioMix.musicVolume;
-  if (typeof audioMix?.sfxVolume === 'number') globalRender.sfx_volume = audioMix.sfxVolume;
-  if (audioMix?.smartDuck === false) globalRender.smart_duck = false;
-  if (typeof audioMix?.duckDb === 'number') globalRender.duck_db = audioMix.duckDb;
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     signal,
-    body: JSON.stringify({
-      // The assembler derives the master timeline (and every per-clip trim) from these durations, so a
-      // film rendered on a 6s grid must report 6s — a hardcoded 8 pad-froze the tail of every clip.
-      segments: clipUrls.map((url) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : FILM_CLIP_SEC })),
-      ...(musicUrl ? { musicUrl } : {}),
-      // Music OFF → tell the route to skip score generation (no musicUrl + this flag).
-      ...(noMusic ? { noMusic: true } : {}),
-      // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
-      // the score under it (voiceoverUrl → vocal_ducking_pct).
-      ...(finalVoiceUrl ? { voiceoverUrl: finalVoiceUrl } : {}),
-      // DAY-6 multi-voice — ≥2 per-speaker dialogue stems → the assembler builds the
-      // spatialized multi-voice lane with the -12dB sidechain duck (route re-signs + caps at 16).
-      ...(dialogueStems && dialogueStems.length >= 2 ? { dialogueStems } : {}),
-      // PHASE 49 §7 — cinematic SFX / sound-design, mixed under the score.
-      ...(sfxUrl ? { sfxUrl } : {}),
-      ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
-      ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
-      // Video Core v1.0 §4 — the final length the master is cut to (the route refuses one these clips cannot be cut to).
-      ...(typeof finalDurationSec === 'number' && finalDurationSec > 0 ? { finalDurationSec } : {}),
-      // Pass any non-landscape canvas (vertical · 1:1 · 4:5) to the assembler;
-      // landscape is the route default.
-      ...(orientation && orientation !== 'landscape' ? { orientation } : {}),
-      // v330 — explicit Music Video mode → song-master mix + branded lower-third.
-      // A supplied soundtrack implies music-video intent.
-      ...(musicVideoMode || customAudioUrl ? { musicVideoMode: true } : {}),
-      // v330 — a user-uploaded soundtrack: the route anchors onto it, bypassing
-      // both the Udio score and the MusicGen fallback.
-      ...(customAudioUrl ? { customAudioUrl } : {}),
-      // v330 — caption language for the FiraGO lower-third (ka/en/ru).
-      ...(captionLang ? { captionLang } : {}),
-      // v330 — selected sung-vocal gender (steers the ElevenLabs Music singer).
-      ...(vocalGender ? { vocalGender } : {}),
-      // Scene transition + L2/L6 audio knobs. globalRender wins over the route's
-      // film-token default ('cut'), so the user's choices are honoured.
-      ...(Object.keys(globalRender).length ? { globalRender } : {}),
-    }),
+    body: JSON.stringify(filmAssembleBody(plan, matrix, scorePrompt, finalVoiceUrl)),
   });
   // FIX 4 — surface the route's STRUCTURED reason (insufficient credits, audio/
   // stitch failure) instead of collapsing every non-OK response to a blank null.
@@ -676,7 +793,7 @@ async function assembleMaster(
   // ⚠️ `scoreFallback` WAS MISSING FROM THIS CAST, so the route's own report that every music provider
   // missed — it literally logs "SILENT (all music providers missed — proceeding silent, not 500)" —
   // was dropped right here at the door, and a film with no soundtrack was handed back as a clean one.
-  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown; clipsDropped?: unknown } | null;
+  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown; clipsDropped?: unknown; sceneQa?: unknown } | null;
   if (!res.ok) {
     const msg = typeof json?.message === 'string' && json.message.trim()
       ? json.message.trim()
@@ -697,7 +814,28 @@ async function assembleMaster(
     scoreFallback: json.scoreFallback === null ? null : (typeof json.scoreFallback === 'string' ? json.scoreFallback : undefined),
     // Clips the route found dead (hard 403/404/410) and left out of the cut — the delivered film is that many scenes short.
     ...(typeof json.clipsDropped === 'number' && json.clipsDropped > 0 ? { clipsDropped: json.clipsDropped } : {}),
+    ...(asSceneQa(json.sceneQa).length ? { sceneQa: asSceneQa(json.sceneQa) } : {}),
   };
+}
+
+/** Narrow the assembler's per-scene vision grades; anything malformed is dropped, never guessed. */
+export function asSceneQa(v: unknown): SceneQaEntry[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((e): SceneQaEntry[] => {
+    if (!e || typeof e !== 'object') return [];
+    const o = e as Record<string, unknown>;
+    const grade = o.grade;
+    if (!(typeof o.ordinal === 'number' && Number.isInteger(o.ordinal) && o.ordinal >= 1 && o.ordinal <= 24)) return [];
+    if (grade !== 'A' && grade !== 'B' && grade !== 'C' && grade !== 'F') return [];
+    if (typeof o.score !== 'number' || !Number.isFinite(o.score)) return [];
+    return [{
+      ordinal: o.ordinal,
+      grade,
+      score: o.score,
+      action: o.action === 'rerender' ? 'rerender' : 'accept',
+      issues: Array.isArray(o.issues) ? o.issues.filter((x): x is string => typeof x === 'string').slice(0, 12) : [],
+    }];
+  });
 }
 
 /** Recover an already-hosted master (+ its QA verdict) from the durable tracker. */
@@ -839,6 +977,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.storyboardApproval ? { storyboardApproval: opts.storyboardApproval } : {}),
           // ONE Generate press = one film start: the server refuses a second start under the same id, with nothing charged.
           metadata: { filmRequestId: newFilmRequestId() },
+          // How the film is stitched, kept by the server with the film: if this tab closes, the server finishes the film
+          // the way this tab would have (lib/chat/filmFollowWorker).
+          filmFollow: filmFollowPlan(opts),
         },
         signal,
       );
@@ -972,11 +1113,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // all 5 scenes under a red "halted" header — a contradictory tracker).
     if (!matrix.readyToStitch && !canSalvagePartialCut(matrix)) {
       return fail(
-        renderStalled
+        describeDeclinedScenes(matrix, locale) ?? (renderStalled
           ? 'The render stalled: no scene finished in time. Please try again a little later.'
           : renderFailed
             ? 'One or more scenes failed to render, so the film could not be assembled.'
-            : 'The render timed out before enough scenes were ready to assemble a film.',
+            : 'The render timed out before enough scenes were ready to assemble a film.'),
         matrix,
       );
     }
@@ -990,32 +1131,26 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // films still need ≥2 salvageable clips. Additive: only the sceneCount===1 case.
     const intendedSingleClip = matrix.sceneCount === 1;
     if (clips.length < MIN_SALVAGE_CLIPS && !(intendedSingleClip && clips.length === 1)) {
-      return fail('Not enough scenes rendered to stitch a film (need at least 2).', matrix);
+      return fail(describeDeclinedScenes(matrix, locale) ?? 'Not enough scenes rendered to stitch a film (need at least 2).', matrix);
     }
-    // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
-    const musicBed = opts.noMusic ? null : (opts.soundtrackUrl ?? matrix.audioUrl ?? null);
-    // PHASE 48 §2 — commentator/narration track, when the brief asked for one.
-    const voiceBed = matrix.voiceUrl ?? null;
-    // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
-    const sfxBed = matrix.sfxUrl ?? null;
-    // DAY-6 multi-voice — per-speaker dialogue stems (≥2 → assembler spatial premix + -12dB duck).
-    const dialogueStemsBed = matrix.dialogueStems ?? null;
-    // v330 — Music Video mode (explicit, or implied by an uploaded soundtrack) +
-    // the caption language for the burned-in lower-third (the app locale).
-    const musicVideoMode = Boolean(opts.musicVideoMode);
-    const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
-    // The full transition (crossfade/cut/dissolve/zoom/slide) flows to the assembler
-    // → globalRender.transition → buildFilterComplex's XFADE map.
+    // The beds (score, narration, SFX, dialogue stems), the caption language, the transitions and the final-length
+    // contract are composed by filmAssembleBody — the one builder the server's follower uses too (lib/chat/filmFollowWorker).
     // Lip-sync is NOT done here (a whole-master sync/lipsync-2 pass warps the wide/
     // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
     // compositeDocumentary path, which lip-syncs a clean close-up face and composites
     // it back in-place instead).
     const scenesPlanned = matrix.sceneCount || matrix.clips.length;
-    const finalContract = finalContractForCut(opts.finalDurationSec, clips.length, scenesPlanned);
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null, finalContract);
-    let assembled: { url: string; qa: FilmQaSummary | null } | null =
+    const assembledRes = await assembleMaster(filmFollowPlan(opts), matrix, message, opts.myVoiceNarration, signal);
+    // The route's music report rides along: rebuilding this object as { url, qa } alone dropped it, so a film every
+    // music provider missed came back with no "no soundtrack" note (audit 2026-10-17, still true on 9f691d8).
+    let assembled: { url: string; qa: FilmQaSummary | null; scoreFallback?: string | null; sceneQa?: SceneQaEntry[] } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
-        ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
+        ? {
+          url: assembledRes.url,
+          qa: 'qa' in assembledRes ? assembledRes.qa : null,
+          ...('scoreFallback' in assembledRes && assembledRes.scoreFallback !== undefined ? { scoreFallback: assembledRes.scoreFallback } : {}),
+          ...('sceneQa' in assembledRes && assembledRes.sceneQa?.length ? { sceneQa: assembledRes.sceneQa } : {}),
+        }
         : null;
     // FIX 4 — keep the route's real reason (e.g. the insufficient-credits top-up
     // message) so a failure shows WHY in chat, not a generic "could not host".
@@ -1055,7 +1190,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       // A master RECOVERED from the durable tracker carries no score report, and `undefined` is the
       // honest value for that — it means "not reported", which the delivery notice treats differently
       // from null ("every provider missed"). Inventing null here would warn about a film that is fine.
-      scoreFallback: 'scoreFallback' in assembled ? (assembled.scoreFallback as string | null | undefined) : undefined,
+      scoreFallback: assembled.scoreFallback,
+      ...(assembled.sceneQa?.length ? { sceneQa: assembled.sceneQa } : {}),
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {

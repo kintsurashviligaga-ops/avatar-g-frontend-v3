@@ -106,6 +106,14 @@ const nextConfig = {
       // missing for assemble the whole time the marketing overlay was shipping.
       '/api/video/assemble': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       '/api/orchestrator/produce': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // The film poll (lib/chat/filmChain): a chained scene starts from the previous clip's last frame, which ffmpeg reads
+      // out of the finished clip inside the poll. Without the binary every scene would fall back to its storyboard frame.
+      // Measured 2026-10-16: the route traces 44 MB without it, ~122 MB with it (the assemble route is 124 MB).
+      '/api/chat/orchestrate': ['./node_modules/ffmpeg-static/**'],
+      // The talking avatar's Georgian line (lib/avatar/voicedClip): ffmpeg lays the ElevenLabs voice over Veo's silent clip
+      // inside the poll that delivers it (and crops a Gemini-API clip's mark there). Without the binary a voiced avatar
+      // would never deliver and be refunded at the hard cap.
+      '/api/genjutsu/status': ['./node_modules/ffmpeg-static/**'],
       // Surgical Editor: deterministic ops shell out to ffmpeg-static (lib/video/{trimClip,surgicalOps}); text
       // overlays rasterise via @resvg (drawtext is unavailable on Vercel — no libfreetype). Both binaries must ride.
       '/api/ai/edit': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
@@ -123,6 +131,9 @@ const nextConfig = {
       '/api/agent/media/montage': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // …and its per-minute sweep, which renders a job whose worker never started or died (lib/agent/media/montageWorker).
       '/api/agent/media/sweep': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // A chat film whose tab closed (lib/chat/filmFollowWorker): its sweep polls the film (a chained scene's last frame is
+      // read with ffmpeg) and stitches it through the assemble route in-process (ffmpeg + the @resvg lower-third).
+      '/api/film/sweep': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // …and its audio extraction: ffmpeg takes the sound out of a video as an MP3 (lib/agent/media/audioLive).
       '/api/agent/media/audio': ['./node_modules/ffmpeg-static/**'],
       // …and the one task route (lib/tasks): reading a lease job that no worker holds starts one there, montage or audio.
@@ -143,6 +154,12 @@ const nextConfig = {
       // DAY-4 photo-to-music-video: multiplexes an uploaded image + the generated track into an MP4 via
       // ffmpeg-static — the binary must ride along in this lambda or the multiplex ENOENTs at runtime.
       '/api/music/video': ['./node_modules/ffmpeg-static/**'],
+      // Music Studio v1: ffmpeg QC of every Lyria track (the worker runs in the start, status and sweep functions) and
+      // the deterministic edits.
+      '/api/music/studio/jobs': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/jobs/[id]': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/sweep': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/edit': ['./node_modules/ffmpeg-static/**'],
       // Music voice-clone transcodes the uploaded voice to mp3 (+ loops short clips)
       // via ffmpeg-static before MiniMax — its binary must ride along in this lambda too.
       '/api/ai/music': ['./node_modules/ffmpeg-static/**'],
@@ -383,6 +400,9 @@ const nextConfig = {
       ['services/workflow', '/:locale/dashboard'], ['services/workflow/:path*', '/:locale/dashboard'],
       ['account/invoices', '/:locale/account/billing'], ['account/invoices/:path*', '/:locale/account/billing'],
       ['admin/disputes', '/:locale/admin'],
+      // /create and /app were never routes but are typed and linked from outside as "the studio" (final-release master
+      // task §7.1: /ka/create answered 404). The one canonical runtime is /{lang} (ServiceHub → ChatChrome + OmniStudio).
+      ['create', home], ['create/:path*', home], ['app', home], ['app/:path*', home],
     ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
     // /{lang}/studio — the „Studio Beta" second studio — is RETIRED everywhere, whatever STUDIO_V2 says (the owner,
     // 2026-10-09 18:25Z: „too confusing"; it was a second set of Video / Image / Avatar / Music tabs beside the studio's own

@@ -1,0 +1,644 @@
+  ▲ Next.js 14.2.35
+  - Experiments (use with caution):
+    · cpus
+
+   Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 8 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ✓ Compiled successfully
+   Skipping linting
+   Checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/207) ...
+[env] Missing optional env variables: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, NEXT_PUBLIC_BASE_URL, BASE_URL, ALLOWED_ORIGINS, SENTRY_DSN, VERCEL_ANALYTICS_ID
+[env] Optional env var STRIPE_WEBHOOK_SECRET is not set
+[env] Optional env var UPSTASH_REDIS_REST_URL is not set
+[env] Optional env var SENTRY_DSN is not set
+[env] Optional env var ALLOWED_ORIGINS is not set
+   Generating static pages (51/207) 
+   Generating static pages (103/207) 
+   Generating static pages (155/207) 
+ ✓ Generating static pages (207/207)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                               Size     First Load JS
+┌ ○ /                                                     172 B            89 kB
+├ ○ /_not-found                                           173 B            89 kB
+├ ● /[locale]                                             2.4 kB          310 kB
+├   ├ /en
+├   ├ /ka
+├   └ /ru
+├ ● /[locale]/account/billing                             4.44 kB         178 kB
+├   ├ /en/account/billing
+├   ├ /ka/account/billing
+├   └ /ru/account/billing
+├ ● /[locale]/account/delete                              3.66 kB         101 kB
+├   ├ /en/account/delete
+├   ├ /ka/account/delete
+├   └ /ru/account/delete
+├ ● /[locale]/account/payments                            174 B            89 kB
+├   ├ /en/account/payments
+├   ├ /ka/account/payments
+├   └ /ru/account/payments
+├ ● /[locale]/admin                                       21.2 kB         179 kB
+├   ├ /en/admin
+├   ├ /ka/admin
+├   └ /ru/admin
+├ ● /[locale]/admin/agent-proposals                       1.95 kB        90.8 kB
+├   ├ /en/admin/agent-proposals
+├   ├ /ka/admin/agent-proposals
+├   └ /ru/admin/agent-proposals
+├ ● /[locale]/admin/veo-smoke                             1.93 kB        90.8 kB
+├   ├ /en/admin/veo-smoke
+├   ├ /ka/admin/veo-smoke
+├   └ /ru/admin/veo-smoke
+├ ● /[locale]/agent-terminal                              173 B            89 kB
+├   ├ /en/agent-terminal
+├   ├ /ka/agent-terminal
+├   └ /ru/agent-terminal
+├ ƒ /[locale]/auth/callback                               0 B                0 B
+├ ● /[locale]/avatar/enroll                               14 kB           166 kB
+├   ├ /en/avatar/enroll
+├   ├ /ka/avatar/enroll
+├   └ /ru/avatar/enroll
+├ ● /[locale]/calendar-lab                                5.12 kB          94 kB
+├   ├ /en/calendar-lab
+├   ├ /ka/calendar-lab
+├   └ /ru/calendar-lab
+├ ● /[locale]/cookies                                     1.32 kB        98.9 kB
+├   ├ /en/cookies
+├   ├ /ka/cookies
+├   └ /ru/cookies
+├ ● /[locale]/dashboard                                   2.4 kB          310 kB
+├   ├ /en/dashboard
+├   ├ /ka/dashboard
+├   └ /ru/dashboard
+├ ● /[locale]/landing                                     576 B           103 kB
+├   ├ /en/landing
+├   ├ /ka/landing
+├   └ /ru/landing
+├ ● /[locale]/library                                     4.38 kB         308 kB
+├   ├ /en/library
+├   ├ /ka/library
+├   └ /ru/library
+├ ● /[locale]/licenses                                    1.32 kB        98.9 kB
+├   ├ /en/licenses
+├   ├ /ka/licenses
+├   └ /ru/licenses
+├ ● /[locale]/memory                                      5.19 kB          94 kB
+├   ├ /en/memory
+├   ├ /ka/memory
+├   └ /ru/memory
+├ ● /[locale]/onboarding                                  3.22 kB         144 kB
+├   ├ /en/onboarding
+├   ├ /ka/onboarding
+├   └ /ru/onboarding
+├ ● /[locale]/pricing                                     5.25 kB         154 kB
+├   ├ /en/pricing
+├   ├ /ka/pricing
+├   └ /ru/pricing
+├ ● /[locale]/privacy                                     1.32 kB        98.9 kB
+├   ├ /en/privacy
+├   ├ /ka/privacy
+├   └ /ru/privacy
+├ ● /[locale]/refund                                      1.32 kB        98.9 kB
+├   ├ /en/refund
+├   ├ /ka/refund
+├   └ /ru/refund
+├ ● /[locale]/refund-policy                               174 B            89 kB
+├   ├ /en/refund-policy
+├   ├ /ka/refund-policy
+├   └ /ru/refund-policy
+├ ● /[locale]/services                                    512 B           313 kB
+├   ├ /en/services
+├   ├ /ka/services
+├   └ /ru/services
+├ ● /[locale]/services/[slug]                             13.5 kB         326 kB
+├   ├ /en/services/avatar
+├   ├ /en/services/video
+├   ├ /en/services/editing
+├   └ [+72 more paths]
+├ ● /[locale]/services/agent-g                            174 B            89 kB
+├   ├ /en/services/agent-g
+├   ├ /ka/services/agent-g
+├   └ /ru/services/agent-g
+├ ● /[locale]/services/agent-g/dashboard                  4.32 kB         111 kB
+├   ├ /en/services/agent-g/dashboard
+├   ├ /ka/services/agent-g/dashboard
+├   └ /ru/services/agent-g/dashboard
+├ ● /[locale]/settings                                    23.2 kB         151 kB
+├   ├ /en/settings
+├   ├ /ka/settings
+├   └ /ru/settings
+├ ● /[locale]/studio                                      174 B            89 kB
+├   ├ /en/studio
+├   ├ /ka/studio
+├   └ /ru/studio
+├ ● /[locale]/support                                     2.78 kB         100 kB
+├   ├ /en/support
+├   ├ /ka/support
+├   └ /ru/support
+├ ● /[locale]/terms                                       1.32 kB        98.9 kB
+├   ├ /en/terms
+├   ├ /ka/terms
+├   └ /ru/terms
+├ ● /[locale]/voice-lab                                   4.17 kB         149 kB
+├   ├ /en/voice-lab
+├   ├ /ka/voice-lab
+├   └ /ru/voice-lab
+├ ƒ /api/aasa                                             0 B                0 B
+├ ƒ /api/account/delete                                   0 B                0 B
+├ ƒ /api/account/export                                   0 B                0 B
+├ ƒ /api/admin/admins                                     0 B                0 B
+├ ƒ /api/admin/affiliates                                 0 B                0 B
+├ ƒ /api/admin/analytics                                  0 B                0 B
+├ ƒ /api/admin/avatar-providers                           0 B                0 B
+├ ƒ /api/admin/billing/config                             0 B                0 B
+├ ƒ /api/admin/billing/plans                              0 B                0 B
+├ ƒ /api/admin/billing/users/[id]                         0 B                0 B
+├ ƒ /api/admin/creations-stats                            0 B                0 B
+├ ƒ /api/admin/credits/adjust                             0 B                0 B
+├ ƒ /api/admin/credits/grant                              0 B                0 B
+├ ƒ /api/admin/financials                                 0 B                0 B
+├ ƒ /api/admin/flags                                      0 B                0 B
+├ ƒ /api/admin/google-transport                           0 B                0 B
+├ ƒ /api/admin/jobs                                       0 B                0 B
+├ ƒ /api/admin/jobs/[id]/cancel                           0 B                0 B
+├ ƒ /api/admin/jobs/[id]/retry                            0 B                0 B
+├ ƒ /api/admin/model-catalog                              0 B                0 B
+├ ƒ /api/admin/payments                                   0 B                0 B
+├ ƒ /api/admin/payouts                                    0 B                0 B
+├ ƒ /api/admin/payouts/approve                            0 B                0 B
+├ ƒ /api/admin/payouts/eligible                           0 B                0 B
+├ ƒ /api/admin/payouts/reject                             0 B                0 B
+├ ƒ /api/admin/presence                                   0 B                0 B
+├ ƒ /api/admin/provider-probe                             0 B                0 B
+├ ƒ /api/admin/reliability                                0 B                0 B
+├ ƒ /api/admin/run-migration                              0 B                0 B
+├ ƒ /api/admin/stats                                      0 B                0 B
+├ ƒ /api/admin/support/chats                              0 B                0 B
+├ ƒ /api/admin/support/chats/[id]                         0 B                0 B
+├ ƒ /api/admin/support/chats/[id]/reply                   0 B                0 B
+├ ƒ /api/admin/users                                      0 B                0 B
+├ ƒ /api/admin/veo-smoke                                  0 B                0 B
+├ ƒ /api/admin/whatsapp/meta-check                        0 B                0 B
+├ ƒ /api/ads/tts                                          0 B                0 B
+├ ƒ /api/affiliate/analytics                              0 B                0 B
+├ ƒ /api/affiliate/balance                                0 B                0 B
+├ ƒ /api/affiliate/claim                                  0 B                0 B
+├ ƒ /api/affiliate/commissions                            0 B                0 B
+├ ƒ /api/affiliate/dashboard                              0 B                0 B
+├ ƒ /api/affiliate/me                                     0 B                0 B
+├ ƒ /api/affiliate/payout/request                         0 B                0 B
+├ ƒ /api/affiliate/payouts                                0 B                0 B
+├ ƒ /api/agent-g/admin/memory                             0 B                0 B
+├ ƒ /api/agent-g/calls                                    0 B                0 B
+├ ƒ /api/agent-g/calls/callback                           0 B                0 B
+├ ƒ /api/agent-g/calls/start                              0 B                0 B
+├ ƒ /api/agent-g/calls/transcribe                         0 B                0 B
+├ ƒ /api/agent-g/calls/tts                                0 B                0 B
+├ ƒ /api/agent-g/calls/webhook/inbound                    0 B                0 B
+├ ƒ /api/agent-g/calls/webhook/status                     0 B                0 B
+├ ƒ /api/agent-g/channels                                 0 B                0 B
+├ ƒ /api/agent-g/chat                                     0 B                0 B
+├ ƒ /api/agent-g/delegate                                 0 B                0 B
+├ ƒ /api/agent-g/execute                                  0 B                0 B
+├ ƒ /api/agent-g/orchestrate                              0 B                0 B
+├ ƒ /api/agent-g/output                                   0 B                0 B
+├ ƒ /api/agent-g/plan                                     0 B                0 B
+├ ƒ /api/agent-g/router/execute                           0 B                0 B
+├ ƒ /api/agent-g/run-task                                 0 B                0 B
+├ ƒ /api/agent-g/status                                   0 B                0 B
+├ ƒ /api/agent-g/telegram                                 0 B                0 B
+├ ƒ /api/agent-g/telegram/connect-code                    0 B                0 B
+├ ƒ /api/agent-g/telegram/send                            0 B                0 B
+├ ƒ /api/agent-g/telegram/set-webhook                     0 B                0 B
+├ ƒ /api/agent-g/telegram/status                          0 B                0 B
+├ ƒ /api/agent-g/telegram/webhook                         0 B                0 B
+├ ƒ /api/agent-g/webhook/telegram                         0 B                0 B
+├ ƒ /api/agent-g/webhook/whatsapp                         0 B                0 B
+├ ƒ /api/agent-g/whatsapp/link                            0 B                0 B
+├ ƒ /api/agent-g/whatsapp/send                            0 B                0 B
+├ ƒ /api/agent/approvals                                  0 B                0 B
+├ ƒ /api/agent/feedback                                   0 B                0 B
+├ ƒ /api/agent/media/analyze                              0 B                0 B
+├ ƒ /api/agent/media/audio                                0 B                0 B
+├ ƒ /api/agent/media/edit                                 0 B                0 B
+├ ƒ /api/agent/media/montage                              0 B                0 B
+├ ƒ /api/agent/media/sweep                                0 B                0 B
+├ ƒ /api/agent/proposals                                  0 B                0 B
+├ ƒ /api/agent/proposals/[id]/approve                     0 B                0 B
+├ ƒ /api/agent/proposals/[id]/reject                      0 B                0 B
+├ ƒ /api/agent/run                                        0 B                0 B
+├ ƒ /api/agent/video-queue                                0 B                0 B
+├ ƒ /api/agent/video-queue/drain                          0 B                0 B
+├ ƒ /api/agents/chat                                      0 B                0 B
+├ ƒ /api/agents/execute                                   0 B                0 B
+├ ƒ /api/agents/status                                    0 B                0 B
+├ ƒ /api/ai                                               0 B                0 B
+├ ƒ /api/ai/agent-g                                       0 B                0 B
+├ ƒ /api/ai/chat                                          0 B                0 B
+├ ƒ /api/ai/edit                                          0 B                0 B
+├ ƒ /api/ai/edit-audio                                    0 B                0 B
+├ ƒ /api/ai/edit-photo                                    0 B                0 B
+├ ƒ /api/ai/lyrics                                        0 B                0 B
+├ ƒ /api/ai/magic-wand                                    0 B                0 B
+├ ƒ /api/ai/music                                         0 B                0 B
+├ ƒ /api/ai/music/engines                                 0 B                0 B
+├ ƒ /api/ai/upscale                                       0 B                0 B
+├ ƒ /api/analytics/events                                 0 B                0 B
+├ ƒ /api/analytics/revenue                                0 B                0 B
+├ ƒ /api/analytics/summary                                0 B                0 B
+├ ƒ /api/analytics/track                                  0 B                0 B
+├ ƒ /api/app/admin/jobs                                   0 B                0 B
+├ ƒ /api/app/health                                       0 B                0 B
+├ ƒ /api/app/jobs                                         0 B                0 B
+├ ƒ /api/app/jobs/[id]                                    0 B                0 B
+├ ƒ /api/app/observability/admin                          0 B                0 B
+├ ƒ /api/app/observability/me                             0 B                0 B
+├ ƒ /api/app/outputs                                      0 B                0 B
+├ ƒ /api/app/services/[slug]/run                          0 B                0 B
+├ ƒ /api/app/status                                       0 B                0 B
+├ ƒ /api/app/worker/tick                                  0 B                0 B
+├ ƒ /api/app/workflow-runs/[id]                           0 B                0 B
+├ ƒ /api/app/workflow-runs/[id]/steps/[stepId]            0 B                0 B
+├ ƒ /api/app/workflow-runs/[id]/tick                      0 B                0 B
+├ ƒ /api/app/workflows                                    0 B                0 B
+├ ƒ /api/app/workflows/[id]                               0 B                0 B
+├ ƒ /api/app/workflows/[id]/run                           0 B                0 B
+├ ƒ /api/audio/georgian-song                              0 B                0 B
+├ ƒ /api/audio/isolate                                    0 B                0 B
+├ ƒ /api/auth/email-otp/send                              0 B                0 B
+├ ƒ /api/auth/lookup                                      0 B                0 B
+├ ƒ /api/auth/otp/check                                   0 B                0 B
+├ ƒ /api/auth/otp/send                                    0 B                0 B
+├ ƒ /api/auth/register                                    0 B                0 B
+├ ƒ /api/auth/whoami                                      0 B                0 B
+├ ƒ /api/automation                                       0 B                0 B
+├ ƒ /api/avatar                                           0 B                0 B
+├ ƒ /api/avatar/core                                      0 B                0 B
+├ ƒ /api/avatar/create                                    0 B                0 B
+├ ƒ /api/avatar/enroll                                    0 B                0 B
+├ ƒ /api/avatar/generate                                  0 B                0 B
+├ ƒ /api/avatar/handoff/complete                          0 B                0 B
+├ ƒ /api/avatar/handoff/start                             0 B                0 B
+├ ƒ /api/avatar/live/session                              0 B                0 B
+├ ƒ /api/avatar/mark-ready                                0 B                0 B
+├ ƒ /api/avatar/set-core                                  0 B                0 B
+├ ƒ /api/avatar/upload-complete                           0 B                0 B
+├ ƒ /api/avatars                                          0 B                0 B
+├ ƒ /api/avatars/latest                                   0 B                0 B
+├ ƒ /api/avatars/save                                     0 B                0 B
+├ ƒ /api/billing/bog/checkout                             0 B                0 B
+├ ƒ /api/billing/bog/orders/[id]                          0 B                0 B
+├ ƒ /api/billing/bog/subscription                         0 B                0 B
+├ ƒ /api/billing/bog/webhook                              0 B                0 B
+├ ƒ /api/billing/checkout                                 0 B                0 B
+├ ƒ /api/billing/credits                                  0 B                0 B
+├ ƒ /api/billing/founder-verify                           0 B                0 B
+├ ƒ /api/billing/plan                                     0 B                0 B
+├ ƒ /api/billing/portal                                   0 B                0 B
+├ ƒ /api/billing/subscribe                                0 B                0 B
+├ ƒ /api/billing/tier-checkout                            0 B                0 B
+├ ƒ /api/billing/topup                                    0 B                0 B
+├ ƒ /api/billing/usage                                    0 B                0 B
+├ ƒ /api/billing/usage/export                             0 B                0 B
+├ ƒ /api/billing/use                                      0 B                0 B
+├ ƒ /api/billing/wallet-topup                             0 B                0 B
+├ ƒ /api/billing/webhook                                  0 B                0 B
+├ ƒ /api/business-agent/projects                          0 B                0 B
+├ ƒ /api/business-agent/projects/[id]                     0 B                0 B
+├ ƒ /api/business-agent/run                               0 B                0 B
+├ ƒ /api/business-agent/uploads                           0 B                0 B
+├ ƒ /api/business/calc                                    0 B                0 B
+├ ƒ /api/business/items                                   0 B                0 B
+├ ƒ /api/business/items/[id]                              0 B                0 B
+├ ƒ /api/business/items/[id]/events                       0 B                0 B
+├ ƒ /api/business/profile                                 0 B                0 B
+├ ƒ /api/business/projects                                0 B                0 B
+├ ƒ /api/business/projects/[id]                           0 B                0 B
+├ ƒ /api/calls/bridge/[op]                                0 B                0 B
+├ ƒ /api/character/reference                              0 B                0 B
+├ ƒ /api/chat                                             0 B                0 B
+├ ƒ /api/chat/claude                                      0 B                0 B
+├ ƒ /api/chat/gemini                                      0 B                0 B
+├ ƒ /api/chat/openai                                      0 B                0 B
+├ ƒ /api/chat/orchestrate                                 0 B                0 B
+├ ƒ /api/chat/stream                                      0 B                0 B
+├ ƒ /api/chat/title                                       0 B                0 B
+├ ƒ /api/chat/trash                                       0 B                0 B
+├ ƒ /api/checkout/capabilities                            0 B                0 B
+├ ƒ /api/checkout/create-intent                           0 B                0 B
+├ ƒ /api/commerce/compliance                              0 B                0 B
+├ ƒ /api/commerce/orders                                  0 B                0 B
+├ ƒ /api/commerce/wallet                                  0 B                0 B
+├ ƒ /api/connectors                                       0 B                0 B
+├ ƒ /api/connectors/files                                 0 B                0 B
+├ ƒ /api/creations                                        0 B                0 B
+├ ƒ /api/creations/[id]                                   0 B                0 B
+├ ƒ /api/creations/batch                                  0 B                0 B
+├ ƒ /api/credits/balance                                  0 B                0 B
+├ ƒ /api/credits/history                                  0 B                0 B
+├ ƒ /api/cron/bog-billing                                 0 B                0 B
+├ ƒ /api/cron/deliveries                                  0 B                0 B
+├ ƒ /api/cron/drain-renders                               0 B                0 B
+├ ƒ /api/cron/longform-tick                               0 B                0 B
+├ ƒ /api/cron/optimize-agents                             0 B                0 B
+├ ƒ /api/cron/research-sweep                              0 B                0 B
+├ ƒ /api/cron/studio-sweep                                0 B                0 B
+├ ƒ /api/decision/evaluate                                0 B                0 B
+├ ƒ /api/diagnostics                                      0 B                0 B
+├ ƒ /api/diagnostics/env                                  0 B                0 B
+├ ƒ /api/disputes                                         0 B                0 B
+├ ƒ /api/editing/jobs                                     0 B                0 B
+├ ƒ /api/editing/jobs/[id]                                0 B                0 B
+├ ƒ /api/elevenlabs/sound                                 0 B                0 B
+├ ƒ /api/elevenlabs/tts                                   0 B                0 B
+├ ƒ /api/env_integrity_status                             0 B                0 B
+├ ƒ /api/env-check                                        0 B                0 B
+├ ƒ /api/estimate                                         0 B                0 B
+├ ƒ /api/executive/task                                   0 B                0 B
+├ ƒ /api/executive/tasks                                  0 B                0 B
+├ ƒ /api/feedback                                         0 B                0 B
+├ ƒ /api/film/storyboard                                  0 B                0 B
+├ ƒ /api/finance/admin/summary                            0 B                0 B
+├ ƒ /api/finance/admin/timeseries                         0 B                0 B
+├ ƒ /api/finance/affiliate/summary                        0 B                0 B
+├ ƒ /api/finance/me/summary                               0 B                0 B
+├ ƒ /api/finance/scenarios                                0 B                0 B
+├ ƒ /api/finance/seller/summary                           0 B                0 B
+├ ƒ /api/finance/simulate                                 0 B                0 B
+├ ƒ /api/fulfillment                                      0 B                0 B
+├ ƒ /api/fulfillment/[id]/retry                           0 B                0 B
+├ ƒ /api/gemini/analyze                                   0 B                0 B
+├ ƒ /api/gemini/chat                                      0 B                0 B
+├ ƒ /api/gemini/feedback                                  0 B                0 B
+├ ƒ /api/generate                                         0 B                0 B
+├ ƒ /api/generate/[id]                                    0 B                0 B
+├ ƒ /api/genjutsu/capabilities                            0 B                0 B
+├ ƒ /api/genjutsu/generate                                0 B                0 B
+├ ƒ /api/genjutsu/quote                                   0 B                0 B
+├ ƒ /api/genjutsu/status                                  0 B                0 B
+├ ƒ /api/growth/churn-risk/scan                           0 B                0 B
+├ ƒ /api/growth/events/process                            0 B                0 B
+├ ƒ /api/growth/referrals/code                            0 B                0 B
+├ ƒ /api/growth/referrals/track                           0 B                0 B
+├ ƒ /api/health                                           0 B                0 B
+├ ƒ /api/health/config                                    0 B                0 B
+├ ƒ /api/health/embed                                     0 B                0 B
+├ ƒ /api/health/memory                                    0 B                0 B
+├ ƒ /api/health/providers                                 0 B                0 B
+├ ƒ /api/health/public                                    0 B                0 B
+├ ƒ /api/health/services                                  0 B                0 B
+├ ƒ /api/heygen/avatar                                    0 B                0 B
+├ ƒ /api/heygen/presenter                                 0 B                0 B
+├ ƒ /api/iap/apple/verify                                 0 B                0 B
+├ ƒ /api/image/capabilities                               0 B                0 B
+├ ƒ /api/image/jobs                                       0 B                0 B
+├ ƒ /api/image/jobs/[id]                                  0 B                0 B
+├ ƒ /api/image/jobs/[id]/cancel                           0 B                0 B
+├ ƒ /api/image/jobs/quote                                 0 B                0 B
+├ ƒ /api/image/models                                     0 B                0 B
+├ ƒ /api/image/operations/validate                        0 B                0 B
+├ ƒ /api/invite                                           0 B                0 B
+├ ƒ /api/invoices                                         0 B                0 B
+├ ƒ /api/invoices/[id]                                    0 B                0 B
+├ ƒ /api/invoices/create                                  0 B                0 B
+├ ƒ /api/invoices/generate                                0 B                0 B
+├ ƒ /api/invoices/list                                    0 B                0 B
+├ ƒ /api/jobs                                             0 B                0 B
+├ ƒ /api/jobs/[id]                                        0 B                0 B
+├ ƒ /api/jobs/[id]/status                                 0 B                0 B
+├ ƒ /api/jobs/create                                      0 B                0 B
+├ ƒ /api/jobs/list                                        0 B                0 B
+├ ƒ /api/launch-30/initialize                             0 B                0 B
+├ ƒ /api/launch/generate                                  0 B                0 B
+├ ƒ /api/launch/plan                                      0 B                0 B
+├ ƒ /api/lead-capture                                     0 B                0 B
+├ ƒ /api/log-error                                        0 B                0 B
+├ ƒ /api/ltx-video                                        0 B                0 B
+├ ƒ /api/mail/send                                        0 B                0 B
+├ ƒ /api/market/scan                                      0 B                0 B
+├ ƒ /api/marketplace/favorites                            0 B                0 B
+├ ƒ /api/marketplace/health                               0 B                0 B
+├ ƒ /api/marketplace/inquiries                            0 B                0 B
+├ ƒ /api/marketplace/inquiries/[id]/messages              0 B                0 B
+├ ƒ /api/marketplace/kpis                                 0 B                0 B
+├ ƒ /api/marketplace/listings                             0 B                0 B
+├ ƒ /api/marketplace/listings/[id]                        0 B                0 B
+├ ƒ /api/marketplace/metrics                              0 B                0 B
+├ ƒ /api/marketplace/orders                               0 B                0 B
+├ ƒ /api/marketplace/search                               0 B                0 B
+├ ƒ /api/matilda                                          0 B                0 B
+├ ƒ /api/memory                                           0 B                0 B
+├ ƒ /api/metrics/conversion                               0 B                0 B
+├ ƒ /api/metrics/kpis                                     0 B                0 B
+├ ƒ /api/metrics/revenue                                  0 B                0 B
+├ ƒ /api/motion-control                                   0 B                0 B
+├ ƒ /api/motion-control/status                            0 B                0 B
+├ ƒ /api/music/generate                                   0 B                0 B
+├ ƒ /api/music/list                                       0 B                0 B
+├ ƒ /api/music/video                                      0 B                0 B
+├ ƒ /api/nanobanana/image                                 0 B                0 B
+├ ƒ /api/notifications                                    0 B                0 B
+├ ƒ /api/notifications/preferences                        0 B                0 B
+├ ƒ /api/observability/dashboard                          0 B                0 B
+├ ƒ /api/observability/latency                            0 B                0 B
+├ ƒ /api/orbit/[service]                                  0 B                0 B
+├ ƒ /api/orbit/agent                                      0 B                0 B
+├ ƒ /api/orchestrate                                      0 B                0 B
+├ ƒ /api/orchestrator/avatar/produce                      0 B                0 B
+├ ƒ /api/orchestrator/image/produce                       0 B                0 B
+├ ƒ /api/orchestrator/interior/analyze                    0 B                0 B
+├ ƒ /api/orchestrator/interior/produce                    0 B                0 B
+├ ƒ /api/orchestrator/interior/style                      0 B                0 B
+├ ƒ /api/orchestrator/jobs                                0 B                0 B
+├ ƒ /api/orchestrator/music/produce                       0 B                0 B
+├ ƒ /api/orchestrator/produce                             0 B                0 B
+├ ƒ /api/orchestrator/script                              0 B                0 B
+├ ƒ /api/orchestrator/script-context                      0 B                0 B
+├ ƒ /api/orchestrator/voice/produce                       0 B                0 B
+├ ƒ /api/orders/create-payment                            0 B                0 B
+├ ƒ /api/org/branding                                     0 B                0 B
+├ ƒ /api/payments/provider                                0 B                0 B
+├ ƒ /api/payouts/accounts                                 0 B                0 B
+├ ƒ /api/payouts/history                                  0 B                0 B
+├ ƒ /api/payouts/request                                  0 B                0 B
+├ ƒ /api/payouts/requests                                 0 B                0 B
+├ ƒ /api/pipeline                                         0 B                0 B
+├ ƒ /api/pipeline/health                                  0 B                0 B
+├ ƒ /api/pipeline/remix                                   0 B                0 B
+├ ƒ /api/pipeline/run                                     0 B                0 B
+├ ƒ /api/pipeline/status                                  0 B                0 B
+├ ƒ /api/pipeline/stream                                  0 B                0 B
+├ ƒ /api/presence/ping                                    0 B                0 B
+├ ƒ /api/preview/google-check                             0 B                0 B
+├ ƒ /api/products/validate-launch                         0 B                0 B
+├ ƒ /api/profile/avatar                                   0 B                0 B
+├ ƒ /api/profile/landing                                  0 B                0 B
+├ ƒ /api/profile/onboarding                               0 B                0 B
+├ ƒ /api/projects                                         0 B                0 B
+├ ƒ /api/projects/[projectId]                             0 B                0 B
+├ ƒ /api/projects/[projectId]/versions                    0 B                0 B
+├ ƒ /api/projects/[projectId]/versions/[versionId]/rerun  0 B                0 B
+├ ƒ /api/push/public-key                                  0 B                0 B
+├ ƒ /api/push/subscribe                                   0 B                0 B
+├ ƒ /api/push/test                                        0 B                0 B
+├ ƒ /api/rate-limit/daily                                 0 B                0 B
+├ ƒ /api/referral                                         0 B                0 B
+├ ƒ /api/referral/create                                  0 B                0 B
+├ ƒ /api/referral/redeem                                  0 B                0 B
+├ ƒ /api/referral/status                                  0 B                0 B
+├ ƒ /api/refunds/[id]                                     0 B                0 B
+├ ƒ /api/refunds/create                                   0 B                0 B
+├ ƒ /api/replicate/audio                                  0 B                0 B
+├ ƒ /api/replicate/avatar                                 0 B                0 B
+├ ƒ /api/replicate/generate                               0 B                0 B
+├ ƒ /api/replicate/image                                  0 B                0 B
+├ ƒ /api/replicate/photo                                  0 B                0 B
+├ ƒ /api/replicate/video                                  0 B                0 B
+├ ƒ /api/replicate/visual-ai                              0 B                0 B
+├ ƒ /api/research                                         0 B                0 B
+├ ƒ /api/research/[id]                                    0 B                0 B
+├ ƒ /api/research/[id]/ask                                0 B                0 B
+├ ƒ /api/research/[id]/cancel                             0 B                0 B
+├ ƒ /api/research/capabilities                            0 B                0 B
+├ ƒ /api/research/favicon                                 0 B                0 B
+├ ƒ /api/research/start                                   0 B                0 B
+├ ƒ /api/returns                                          0 B                0 B
+├ ƒ /api/returns/[id]                                     0 B                0 B
+├ ƒ /api/returns/create                                   0 B                0 B
+├ ƒ /api/router                                           0 B                0 B
+├ ƒ /api/seller/activate                                  0 B                0 B
+├ ƒ /api/services/health                                  0 B                0 B
+├ ƒ /api/share-event                                      0 B                0 B
+├ ƒ /api/share/[token]                                    0 B                0 B
+├ ƒ /api/shipments/[id]                                   0 B                0 B
+├ ƒ /api/shipping/event                                   0 B                0 B
+├ ƒ /api/shipping/quote                                   0 B                0 B
+├ ƒ /api/shipping/select-profile                          0 B                0 B
+├ ƒ /api/shipping/track                                   0 B                0 B
+├ ƒ /api/smm/export                                       0 B                0 B
+├ ƒ /api/smm/posts/[id]/assets                            0 B                0 B
+├ ƒ /api/smm/projects                                     0 B                0 B
+├ ƒ /api/smm/projects/[id]                                0 B                0 B
+├ ƒ /api/smm/projects/[id]/posts                          0 B                0 B
+├ ƒ /api/smm/publish                                      0 B                0 B
+├ ƒ /api/stripe/connect/account-status                    0 B                0 B
+├ ƒ /api/stripe/connect/create-account                    0 B                0 B
+├ ƒ /api/stripe/connect/create-account-link               0 B                0 B
+├ ƒ /api/stripe/connect/login-link                        0 B                0 B
+├ ƒ /api/stripe/connect/onboarding                        0 B                0 B
+├ ƒ /api/stripe/connect/status                            0 B                0 B
+├ ƒ /api/stripe/customer-portal                           0 B                0 B
+├ ƒ /api/stripe/health                                    0 B                0 B
+├ ƒ /api/stripe/subscription/create-checkout              0 B                0 B
+├ ƒ /api/stripe/subscription/get-status                   0 B                0 B
+├ ƒ /api/stripe/webhook                                   0 B                0 B
+├ ƒ /api/studio/catalogue                                 0 B                0 B
+├ ƒ /api/studio/library                                   0 B                0 B
+├ ƒ /api/studio/models                                    0 B                0 B
+├ ƒ /api/support                                          0 B                0 B
+├ ƒ /api/support/chat                                     0 B                0 B
+├ ƒ /api/support/chat/read                                0 B                0 B
+├ ƒ /api/system/film-readiness                            0 B                0 B
+├ ƒ /api/system/film-selftest                             0 B                0 B
+├ ƒ /api/system/video-provider                            0 B                0 B
+├ ƒ /api/tasks                                            0 B                0 B
+├ ƒ /api/tasks/[taskId]/cancel                            0 B                0 B
+├ ƒ /api/tasks/[taskId]/status                            0 B                0 B
+├ ƒ /api/telegram/send                                    0 B                0 B
+├ ƒ /api/tools/margin-calculator                          0 B                0 B
+├ ƒ /api/tracking/[id]                                    0 B                0 B
+├ ƒ /api/tracking/sync                                    0 B                0 B
+├ ƒ /api/tts/gemini                                       0 B                0 B
+├ ƒ /api/twin                                             0 B                0 B
+├ ƒ /api/twin/commit                                      0 B                0 B
+├ ƒ /api/twin/upload-url                                  0 B                0 B
+├ ƒ /api/udio/generate                                    0 B                0 B
+├ ƒ /api/upload                                           0 B                0 B
+├ ƒ /api/upload/sign                                      0 B                0 B
+├ ƒ /api/upload/verify                                    0 B                0 B
+├ ƒ /api/user/stats                                       0 B                0 B
+├ ƒ /api/utils/extract-text                               0 B                0 B
+├ ƒ /api/v2/dubbing/start                                 0 B                0 B
+├ ƒ /api/v2/model3d/create                                0 B                0 B
+├ ƒ /api/v2/model3d/status                                0 B                0 B
+├ ƒ /api/v2/montage/render                                0 B                0 B
+├ ƒ /api/v2/personas                                      0 B                0 B
+├ ƒ /api/v2/presentation/build                            0 B                0 B
+├ ƒ /api/v2/usage/daily                                   0 B                0 B
+├ ƒ /api/v2/usage/monthly                                 0 B                0 B
+├ ○ /api/version                                          0 B                0 B
+├ ƒ /api/video/assemble                                   0 B                0 B
+├ ƒ /api/video/assemble/callback                          0 B                0 B
+├ ƒ /api/video/capabilities                               0 B                0 B
+├ ƒ /api/video/director                                   0 B                0 B
+├ ƒ /api/video/director/plan                              0 B                0 B
+├ ƒ /api/video/director/runs                              0 B                0 B
+├ ƒ /api/video/director/runs/[id]                         0 B                0 B
+├ ƒ /api/video/director/runs/[id]/advance                 0 B                0 B
+├ ƒ /api/video/director/runs/[id]/decision                0 B                0 B
+├ ƒ /api/video/engine                                     0 B                0 B
+├ ƒ /api/video/generate                                   0 B                0 B
+├ ƒ /api/video/generate-hero                              0 B                0 B
+├ ƒ /api/video/generate-promo                             0 B                0 B
+├ ƒ /api/video/graphics                                   0 B                0 B
+├ ƒ /api/video/lipsync                                    0 B                0 B
+├ ƒ /api/video/longform                                   0 B                0 B
+├ ƒ /api/video/longform/[id]                              0 B                0 B
+├ ƒ /api/video/longform/[id]/cancel                       0 B                0 B
+├ ƒ /api/video/remix                                      0 B                0 B
+├ ƒ /api/video/remix-intent                               0 B                0 B
+├ ƒ /api/video/status/[tokenId]                           0 B                0 B
+├ ƒ /api/video/trim                                       0 B                0 B
+├ ƒ /api/video/voice-narration                            0 B                0 B
+├ ƒ /api/videos                                           0 B                0 B
+├ ƒ /api/voice-lab/assets                                 0 B                0 B
+├ ƒ /api/voice-lab/health                                 0 B                0 B
+├ ƒ /api/voice-lab/jobs                                   0 B                0 B
+├ ƒ /api/voice-lab/profiles                               0 B                0 B
+├ ƒ /api/voice-lab/projects                               0 B                0 B
+├ ƒ /api/voice-lab/projects/[id]                          0 B                0 B
+├ ƒ /api/voice/chat                                       0 B                0 B
+├ ƒ /api/voice/clone                                      0 B                0 B
+├ ƒ /api/voice/dictation-metrics                          0 B                0 B
+├ ƒ /api/voice/history                                    0 B                0 B
+├ ƒ /api/voice/inbound                                    0 B                0 B
+├ ƒ /api/voice/incoming                                   0 B                0 B
+├ ƒ /api/voice/live                                       0 B                0 B
+├ ƒ /api/voice/notify                                     0 B                0 B
+├ ƒ /api/voice/outbound                                   0 B                0 B
+├ ƒ /api/voice/outgoing                                   0 B                0 B
+├ ƒ /api/voice/realtime/session                           0 B                0 B
+├ ƒ /api/voice/train                                      0 B                0 B
+├ ƒ /api/voice/transcribe                                 0 B                0 B
+├ ƒ /api/voice/web-read                                   0 B                0 B
+├ ƒ /api/voice/web-token                                  0 B                0 B
+├ ƒ /api/voice/webhook                                    0 B                0 B
+├ ƒ /api/webhooks/higgsfield                              0 B                0 B
+├ ƒ /api/webhooks/phone                                   0 B                0 B
+├ ƒ /api/webhooks/stripe                                  0 B                0 B
+├ ƒ /api/webhooks/whatsapp                                0 B                0 B
+├ ○ /apple-icon.png                                       0 B                0 B
+├ ƒ /auth/callback                                        0 B                0 B
+├ ƒ /favicon.png                                          0 B                0 B
+├ ○ /icon.png                                             0 B                0 B
+├ ○ /manifest.webmanifest                                 0 B                0 B
+├ ○ /robots.txt                                           0 B                0 B
+├ ƒ /share/[token]                                        3.31 kB        92.2 kB
+└ ○ /sitemap.xml                                          0 B                0 B
++ First Load JS shared by all                             88.9 kB
+  ├ chunks/6694-fb6ecac507ae8bbd.js                       31.9 kB
+  ├ chunks/ae2f0522-8cf46c165ab1cadc.js                   53.6 kB
+  └ other shared chunks (total)                           3.34 kB
+
+
+ƒ Middleware                                              74.1 kB
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses getStaticProps)
+ƒ  (Dynamic)  server-rendered on demand
+
