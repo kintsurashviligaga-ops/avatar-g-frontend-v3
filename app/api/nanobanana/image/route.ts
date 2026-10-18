@@ -27,6 +27,7 @@ import { composeImagePrompt } from '@/lib/studio/composeImagePrompt';
 import { resolveTemplateContext } from '@/lib/studio/templateContext';
 import { resolveShootDirective } from '@/lib/studio/shootContext';
 import { DEFAULT_MODEL, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor, type DeploymentProbe } from '@/lib/providers/catalogue';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -197,6 +198,9 @@ export async function POST(req: NextRequest) {
     if (mustSignInToGenerate(sessionUserId)) {
       return NextResponse.json(signInToGenerateBody(), { status: 401 });
     }
+      // Admin service switch (lib/server/serviceSwitches): the studio kind names the tool (plain image when absent).
+      const serviceOff = await serviceOffResponse(shoot?.kind === 'photoshoot' ? 'photoshoot' : shoot?.kind === 'interior' ? 'interior' : 'image');
+      if (serviceOff) return serviceOff;
 
     // RESERVE the credit up front (state declared above). The atomic deduct serialises a
     // concurrent ×4 batch: only tiles the wallet can actually fund proceed; the rest 402 WITHOUT

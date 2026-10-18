@@ -19,6 +19,7 @@ import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { model3dChargeRef, signModel3dCharge } from '@/lib/services/model3d/chargeToken';
 import { reportError } from '@/lib/observability/report-error';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,6 +55,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // before any charge. Off (the default) → no-op.
   const outside = refuseOutsideEngine(req);
   if (outside) return outside;
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('model3d');
+  if (serviceOff) return serviceOff;
   const limited = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (limited) return limited;
 

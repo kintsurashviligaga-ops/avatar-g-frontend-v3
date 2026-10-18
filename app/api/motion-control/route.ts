@@ -28,6 +28,7 @@ import { classifyProviderError } from '@/lib/api/providerError';
 import { reportError } from '@/lib/observability/report-error';
 import { randomUUID } from 'node:crypto';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 // A Motion Control render is a single short (5-10s) Kling i2v clip — priced as one paid video op, the
 // same tier as a remix. The reservation is taken BEFORE the submit under a fresh server ref; the jobId handed back
@@ -78,6 +79,9 @@ export async function POST(req: Request) {
   if (outside) return outside;
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('motion');
+  if (serviceOff) return serviceOff;
   const rl = await checkRateLimit(req as NextRequest, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // paid Kling submit
   if (!klingConfigured()) return NextResponse.json({ error: 'video engine not configured' }, { status: 503 });
 

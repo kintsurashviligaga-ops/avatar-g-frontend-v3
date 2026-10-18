@@ -34,6 +34,7 @@ import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generatio
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { remixSceneCredits } from '@/lib/credits/priceBook';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -109,6 +110,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   // the original film unchanged and costs nothing.
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id)) return json(signInToGenerateBody(), 401);
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('video');
+  if (serviceOff) return serviceOff;
 
   const stamp = Date.now();
 
