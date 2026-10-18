@@ -7,11 +7,14 @@
  * photo + description, while the panel said it copied the video's motion. The slot is gone until a real engine exists.
  */
 import { useRef, useState } from 'react';
-import { Upload, Sparkles, Loader2, X, CheckCircle, AlertCircle, Music2, Mic } from 'lucide-react';
+import { Upload, X, CheckCircle, AlertCircle, Music2, Mic } from 'lucide-react';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { describeGenerationFailure } from './ui/serviceError';
 import { saveMedia } from '@/lib/media/saveMedia';
 import { LoadingLoop } from './ui/LoadingLoop';
+import { GenerateButton } from './ui/GenerateButton';
+import { openTopUp, useShortBalance } from './ui/useShortBalance';
+import { motionCredits } from '@/lib/credits/quote';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T: Record<Lang, Record<string, string>> = {
@@ -217,6 +220,9 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
   }
 
   const canGen = !!(charImage && motionPrompt.trim() && !busy);
+  // The price on the button is what the press reserves: the render, plus lip-sync's own price when it will speak.
+  const credits = motionCredits({ lipsync: enableLipsync && !!lipsyncText.trim() });
+  const short = useShortBalance(credits);
 
   return (
     <div className="space-y-4">
@@ -339,10 +345,9 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         </div>
       </div>
 
-      <button type="button" onClick={generate} disabled={!canGen}
-        className={`flex w-full items-center justify-center gap-2.5 rounded-2xl py-4 text-sm font-bold transition active:scale-[0.98] ${canGen ? 'bg-app-accent text-app-bg shadow-lg' : 'cursor-not-allowed bg-app-elevated/60 text-app-muted'}`}>
-        {busy ? <><Loader2 size={17} className="animate-spin" /><span>{t.working}</span></> : <><Sparkles size={17} /><span>{t.gen}</span></>}
-      </button>
+      <GenerateButton label={t.gen ?? ''} credits={credits} loading={busy} loadingLabel={t.working} disabled={!canGen}
+        insufficient={short} locale={lang} onClick={() => { if (short) openTopUp(); else void generate(); }}
+        testId="motion-generate" service="video.motion" />
 
       {busy && (
         <div className="space-y-2 rounded-2xl border border-app-border/10 bg-app-bg/40 p-3.5">

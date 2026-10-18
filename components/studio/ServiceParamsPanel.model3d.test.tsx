@@ -28,6 +28,7 @@ jest.mock('next/dynamic', () => () => function MockGlbViewer({ url }: { url: str
 });
 
 import { ServiceParamsPanel } from './ServiceParamsPanel';
+import { CREDIT_COSTS } from '../../lib/credits/pricing';
 
 const GLB = 'https://x.supabase.co/storage/v1/object/sign/renders/models3d/pred123.glb?token=t';
 const REF = 'https://x.supabase.co/storage/v1/object/sign/renders/models3d/ref.png?token=t';
@@ -57,7 +58,14 @@ describe('3D prefill', () => {
     const box = await screen.findByPlaceholderText('Describe the object — a single item, plain background');
     await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe('an old clay jug'));
     // …which is what makes Run usable without retyping the request.
-    expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByTestId('model3d-generate') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('shows the price ON Create: the one flat 3D price the create route reserves', async () => {
+    render(<ServiceParamsPanel service="model3d" locale="en" onClose={() => {}} prefill={{ topic: 'an old clay jug' }} />);
+    const create = screen.getByTestId('model3d-generate');
+    expect(create.getAttribute('data-price')).toBe(String(CREDIT_COSTS.model3d));
+    expect(create.getAttribute('aria-label')).toBe(`Create — ${CREDIT_COSTS.model3d} credits`);
   });
 
   it('still fills the deck topic for a presentation', async () => {
@@ -70,7 +78,7 @@ describe('3D prefill', () => {
 describe('3D delivery', () => {
   async function runOnce(onDelivered = jest.fn()) {
     render(<ServiceParamsPanel service="model3d" locale="en" onClose={() => {}} prefill={{ topic: 'an old clay jug' }} onDelivered={onDelivered} />);
-    const run = screen.getByRole('button', { name: 'Create' });
+    const run = screen.getByTestId('model3d-generate');
     await waitFor(() => expect((run as HTMLButtonElement).disabled).toBe(false));
     await act(async () => { fireEvent.click(run); });
     await waitFor(() => expect(onDelivered).toHaveBeenCalled());
@@ -93,6 +101,6 @@ describe('3D delivery', () => {
     expect(await screen.findByText('The 3D preview could not load — you can still download the model.')).toBeTruthy();
     // The panel is still mounted around it — the close control and the run button are still there.
     expect(screen.getByRole('button', { name: /Close/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
+    expect(screen.getByTestId('model3d-generate')).toBeTruthy();
   });
 });

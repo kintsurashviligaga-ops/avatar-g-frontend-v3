@@ -5,6 +5,7 @@
  * the photo's ✕ was a span role=button INSIDE the upload button, nameless and deaf to the keyboard.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { CREDIT_COSTS } from '@/lib/credits/pricing';
 import { MotionControlPanel } from './MotionControlPanel';
 
 jest.mock('./ui/LoadingLoop', () => ({ LoadingLoop: () => null }));
@@ -44,4 +45,19 @@ test('the switches and fields are named in the page language, and a picked optio
   expect(reels.getAttribute('aria-pressed')).toBe('true');
   fireEvent.click(screen.getByRole('button', { name: /16:9/ }));
   expect(reels.getAttribute('aria-pressed')).toBe('false');
+});
+
+test('the price is ON Create: the render, plus lip-sync\'s own price once it has text to speak', async () => {
+  const { container } = render(<MotionControlPanel locale="en" />);
+  const create = () => screen.getByTestId('motion-generate');
+  expect(create().getAttribute('data-price')).toBe(String(CREDIT_COSTS.remix_video));
+  expect(create().getAttribute('aria-label')).toBe(`Create — ${CREDIT_COSTS.remix_video} credits`);
+  expect((create() as HTMLButtonElement).disabled).toBe(true); // no photo, no motion yet
+  fireEvent.click(screen.getByRole('switch', { name: 'Lip-sync' }));
+  expect(create().getAttribute('data-price')).toBe(String(CREDIT_COSTS.remix_video)); // nothing to speak yet
+  fireEvent.change(screen.getByRole('textbox', { name: 'Text to speak' }), { target: { value: 'გამარჯობა' } });
+  expect(create().getAttribute('data-price')).toBe(String(CREDIT_COSTS.remix_video + CREDIT_COSTS.avatar_30s));
+  await addPhoto(container);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Describe the motion' }), { target: { value: 'walking forward' } });
+  expect((create() as HTMLButtonElement).disabled).toBe(false);
 });
