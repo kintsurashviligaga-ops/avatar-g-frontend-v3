@@ -187,10 +187,16 @@ async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
     await page.keyboard.press('Escape');
     await expect(sheet).toBeHidden();
   }
-  // On a desktop the Video, Image or Music panel opens with its tool and holds the description, so the composer's box
-  // steps aside (GG, 2026-10-18). Hold that too, then put the panel away (the tool chip toggles it): the box is back.
+  // On a desktop the Image or Music panel opens with its tool and holds the description, so the composer's box steps
+  // aside (GG, 2026-10-18). The Video panel opens too, but holds no prompt: the box stays beside it (GG, 2026-10-18,
+  // „პრომპტი ჩატის ველში"). Hold that, then put the panel away (the tool chip toggles it) so each test starts the same.
   if (desktop && /[?&]tool=(video|image|music)\b/.test(path)) {
-    await expect(page.getByTestId('composer-input')).toBeHidden();
+    if (/[?&]tool=video\b/.test(path)) {
+      await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
+      await expect(page.getByTestId('composer-input')).toBeVisible();
+    } else {
+      await expect(page.getByTestId('composer-input')).toBeHidden();
+    }
     await page.getByTestId('options-toggle').click();
   }
   await expect(page.getByTestId('composer-input')).toBeVisible();
@@ -343,8 +349,10 @@ for (const vp of VIEWPORTS) {
       await video.click();
       await expect(page.getByTestId('tool-sheet')).toHaveCount(0); // the sheet closed
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
-      // Picking it again opens its Create screen again (a desktop's panel, a phone's sheet), and that holds the description.
-      await expect(page.getByTestId('video-prompt-input').filter({ visible: true })).toBeVisible();
+      // Picking it again opens its settings again (a desktop's panel, a phone's sheet). GG 2026-10-18: the panel holds no
+      // description of its own — the words stay in the chat box.
+      await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
+      await expect(page.getByTestId('video-prompt-input')).toHaveCount(0);
     });
 
     test('with text in the box, Send takes the live-voice slot', async ({ page }) => {
@@ -411,45 +419,45 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('result-card')).toHaveCount(0);
     });
 
-    test('the video Create screen prints its price on the Generate button — it follows quality and length — and nothing sits under the composer', async ({ page }) => {
+    test('the video price is on the chat box\'s Send — it follows quality and length — and nothing sits under the composer', async ({ page }) => {
       await openDashboard(page);
-      // Owner, 2026-10-02: no „25 კრედიტი · ~5 წთ“ caption under the box — a tool's price is ON its Generate button.
+      // Owner, 2026-10-02: no „25 კრედიტი · ~5 წთ“ caption under the box — a tool's price is ON its button. GG 2026-10-18:
+      // the film's words are typed in the chat box, so its Send is the film's one button and carries the quote.
       await expect(page.getByTestId('price-tag')).toHaveCount(0);
       const pill = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
       const chip = (await page.getByTestId('options-toggle').boundingBox())!;
       expect(chip.y).toBeGreaterThanOrEqual(pill.y); // the tool chip is IN the composer
       expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
+      await page.getByTestId('composer-input').fill('A quiet harbour at dawn');
+      const send = page.getByTestId('run-button');
       const settings = await openSettings(page);
-      const generate = settings.getByTestId('video-generate');
-      // Advanced settings (GG 2026-10-18) holds the model card, the quality row and the resolution: opened only if shut.
-      const adv = settings.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
-      if ((await adv.getAttribute('aria-expanded')) === 'false') await adv.click();
+      const quality = settings.getByTestId('video-quality');
       // 24 s on the default tier (Fast) = 24 × 3.125 credits; Best is ×3.3 (rounded up), Economy ×0.6 — lib/credits/videoPricing.
-      await expect(generate).toHaveAttribute('data-price', '75');
-      await settings.getByTestId('video-quality-standard').click();
-      await expect(generate).toHaveAttribute('data-price', '248');
-      await settings.getByTestId('video-quality-lite').click();
-      await expect(generate).toHaveAttribute('data-price', '45');
-      await settings.getByTestId('video-quality-fast').click();
-      await expect(generate).toHaveAttribute('data-price', '75');
+      await expect(send).toHaveAttribute('data-price', '75');
+      await quality.selectOption('standard');
+      await expect(send).toHaveAttribute('data-price', '248');
+      await quality.selectOption('lite');
+      await expect(send).toHaveAttribute('data-price', '45');
+      await quality.selectOption('fast');
+      await expect(send).toHaveAttribute('data-price', '75');
       // The length is chosen in its own picker (4 s – 4 min); the price and the composer's chip follow it.
       await settings.getByTestId('video-tile-length').click();
       await page.getByTestId('video-preset-8').click();
       await expect(page.getByTestId('video-duration-price')).toHaveAttribute('data-price', '25');
       await page.keyboard.press('Escape');
-      await expect(generate).toHaveAttribute('data-price', '25');
+      await expect(send).toHaveAttribute('data-price', '25');
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 8წმ');
+      // The panel has no Generate of its own: one button.
+      await expect(settings.getByTestId('video-generate')).toHaveCount(0);
     });
 
-    test('the video tool opens on Fast, and Economy / Best are one tap away', async ({ page }) => {
+    test('the video tool opens on Fast, and Economy / Best are one pick away, each with its price', async ({ page }) => {
       await openDashboard(page);
       const settings = await openSettings(page);
-      // Advanced settings (GG 2026-10-18) holds the model card, the quality row and the resolution: opened only if shut.
-      const adv = settings.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
-      if ((await adv.getAttribute('aria-expanded')) === 'false') await adv.click();
-      await expect(settings.getByTestId('video-quality-fast')).toHaveAttribute('aria-checked', 'true');
-      await expect(settings.getByTestId('video-quality-standard')).toHaveAttribute('aria-checked', 'false');
-      await expect(settings.getByTestId('video-quality-lite')).toHaveAttribute('aria-checked', 'false');
+      const quality = settings.getByTestId('video-quality');
+      await expect(quality).toHaveValue('fast');
+      await expect(quality.locator('option[value="standard"]')).toContainText('248');
+      await expect(quality.locator('option[value="lite"]')).toContainText('45');
     });
 
     test('"შესვლა" opens the sign-in', async ({ page }) => {

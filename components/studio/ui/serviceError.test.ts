@@ -220,3 +220,14 @@ describe('describeGenerationFailure — the platform\'s AI limit (2026-10-16)', 
     expect(describeGenerationFailure({ success: false, code: 'platform_budget' }, 'ka', KA_FALLBACK)).toContain('04:00');
   });
 });
+
+describe('the avatar route’s refusals read as what happened (GG 2026-10-18)', () => {
+  it('423 locked, speech_too_long and voice_off each have their own line, never the generic one', () => {
+    for (const l of ['ka', 'en', 'ru']) {
+      for (const error of ['locked', 'speech_too_long', 'voice_off']) {
+        expect(describeGenerationFailure({ success: false, error }, l, 'FALLBACK')).not.toBe('FALLBACK');
+      }
+    }
+    expect(describeGenerationFailure({ success: false, error: 'locked', op: 'avatar' }, 'en', 'FALLBACK')).toContain('isn’t available on your account');
+  });
+});

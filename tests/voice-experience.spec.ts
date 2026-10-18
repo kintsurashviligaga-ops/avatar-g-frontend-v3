@@ -32,11 +32,13 @@ for (const [locale,title,personality,voice] of [
  });
  }
 }
-test('spoken paid start and agent run blocked even with explicit spoken yes',async({page,baseURL})=>{
+test('a spoken yes with nothing waiting for it starts nothing; the studio tools stay button-only',async({page,baseURL})=>{
  const live=new FakeLive(),spend=await openLiveCall(page,baseURL,live);
  live.hear('კი, დაიწყე');
- for(const [name,args] of [['start_generation',{confirmed:'yes'}],['agent_task',{action:'start'}],['music_studio',{action:'start'}]] as const){
-  expect(await live.call(name,args)).toMatchObject({ok:false,error:'ui_confirmation_required'});
- }
+ // GG 2026-10-18 („ხმით დაიწყოს"): the yes may start what waits for it; here nothing does, so nothing starts.
+ expect(await live.call('start_generation',{confirmed:'yes'})).toMatchObject({ok:false});
+ expect(await live.call('agent_task',{action:'start'})).toMatchObject({ok:false,error:'no_plan'});
+ expect(await live.call('music_studio',{action:'start'})).toMatchObject({ok:false,error:'ui_confirmation_required'});
+ await page.waitForTimeout(3_500);
  expect(spend).toEqual([]);
 });

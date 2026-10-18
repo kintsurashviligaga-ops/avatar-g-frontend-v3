@@ -13,7 +13,8 @@
  */
 import { AVATAR_TEMPLATES } from '@/lib/studio/templates';
 import { creditsLabel } from '@/lib/credits/quote';
-import { VEO_AVATAR_SECONDS, avatarVoiceByElevenLabs } from './veoAvatar';
+import { OVERFLOW_TOLERANCE, speechSeconds } from '@/lib/video/speechTiming';
+import { VEO_AVATAR_SECONDS, VEO_AVATAR_SPEECH_MAX, avatarVoiceByElevenLabs } from './veoAvatar';
 import { splitAvatarScript } from './scriptSplit';
 
 export type AvatarGender = 'female' | 'male';
@@ -87,4 +88,42 @@ export function avatarOfferText(o: AvatarOffer): string {
   const price = `${en ? '**Price:**' : ru ? '**Цена:**' : '**ფასი:**'} ${creditsLabel(o.credits, o.locale)}.`;
   const ask = en ? 'Shall I start?' : ru ? 'Начать?' : 'დავიწყო?';
   return [head, '', says, voice, face, ...(how ? [how] : []), price, '', ask].join('\n');
+}
+
+// ─── When Agent G does NOT offer a card (GG 2026-10-18: „it says it's creating the avatar, but nothing is created") ───
+
+/** The order named no line („შემიქმენი ავატარი"): Agent G asks for it — never a paid card that reads the order aloud. */
+export function avatarAskLineText(locale: string): string {
+  if (locale === 'en') return `What should the avatar say? Send me the exact words (up to about ${VEO_AVATAR_SECONDS} seconds of speech).`;
+  if (locale === 'ru') return `Что должен сказать аватар? Пришлите точный текст (примерно до ${VEO_AVATAR_SECONDS} секунд речи).`;
+  return `რა თქვას ავატარმა? მომწერე ზუსტი ტექსტი (დაახლოებით ${VEO_AVATAR_SECONDS} წამამდე).`;
+}
+
+/** The Veo avatar's door is closed for this caller (non-admin, AVATAR_VEO_PUBLIC unset): said plainly, nothing started. */
+export function avatarUnavailableText(locale: string): string {
+  if (locale === 'en') return 'The talking avatar isn’t available on your account yet. Nothing was started and nothing was charged.';
+  if (locale === 'ru') return 'Говорящий аватар пока недоступен для вашего аккаунта. Ничего не запущено и ничего не списано.';
+  return 'მოლაპარაკე ავატარი შენს ანგარიშზე ჯერ ხელმისაწვდომი არ არის. არაფერი დაწყებულა და თანხა არ ჩამოგეჭრა.';
+}
+
+/**
+ * Will the line fit the one 8-second clip? The route refuses past VEO_AVATAR_SPEECH_MAX characters (HTTP 400) and a Georgian
+ * line whose spoken voice runs past the clip (422 speech_too_long — it measures the real ElevenLabs take, which the
+ * browser cannot). Here the film pipeline's own conservative pace estimate (lib/video/speechTiming) asks to shorten
+ * first, before any card.
+ */
+export function avatarLineFit(speech: string): { fits: boolean; seconds: number } {
+  const s = speech.trim();
+  const seconds = Math.round(speechSeconds(s) * 10) / 10;
+  if (s.length > VEO_AVATAR_SPEECH_MAX) return { fits: false, seconds };
+  if (avatarVoiceByElevenLabs(s) && seconds > VEO_AVATAR_SECONDS * OVERFLOW_TOLERANCE) return { fits: false, seconds };
+  return { fits: true, seconds };
+}
+
+/** The line is too long for the clip: Agent G asks for a shorter one instead of a paid card. */
+export function avatarShortenText(seconds: number, locale: string): string {
+  const s = Math.max(Math.round(seconds), VEO_AVATAR_SECONDS + 1);
+  if (locale === 'en') return `That line runs about ${s} seconds — too long for the avatar’s ${VEO_AVATAR_SECONDS}-second clip. Send me a shorter version.`;
+  if (locale === 'ru') return `Этот текст звучит примерно ${s} секунд — слишком долго для ${VEO_AVATAR_SECONDS}-секундного аватара. Пришлите версию короче.`;
+  return `ეს ტექსტი დაახლოებით ${s} წამია — ავატარის ${VEO_AVATAR_SECONDS} წამში არ ეტევა. მომწერე უფრო მოკლე ვარიანტი.`;
 }

@@ -4,7 +4,27 @@
  * says what it will make before anything is charged.
  */
 import { AVATAR_TEMPLATES } from '@/lib/studio/templates';
-import { avatarGenderFromText, avatarOfferText, stockAvatarFace } from './chatAvatar';
+import { avatarAskLineText, avatarGenderFromText, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from './chatAvatar';
+
+describe('Agent G in words, no card (GG 2026-10-18)', () => {
+  it('asks for the line, says a closed door plainly, and asks to shorten — in ka · en · ru', () => {
+    for (const l of ['ka', 'en', 'ru']) {
+      expect(avatarAskLineText(l).length).toBeGreaterThan(10);
+      expect(avatarUnavailableText(l).length).toBeGreaterThan(10);
+      expect(avatarShortenText(12, l)).toContain('12');
+    }
+    expect(avatarAskLineText('en')).toContain('What should the avatar say?');
+  });
+  it('a short line fits; one past 200 characters or a Georgian line past ~8 s does not', () => {
+    expect(avatarLineFit('გამარჯობა ყველას').fits).toBe(true);
+    expect(avatarLineFit('Hello everyone').fits).toBe(true);
+    expect(avatarLineFit('a'.repeat(201)).fits).toBe(false);
+    const long = 'გამარჯობა ყველას, დღეს მოგიყვებით ჩვენს ახალ სერვისზე, რომელიც დაგეხმარებათ ვიდეოების შექმნაში და მათ გაზიარებაში მეგობრებთან ერთად';
+    const fit = avatarLineFit(long);
+    expect(fit.fits).toBe(false);
+    expect(fit.seconds).toBeGreaterThan(8);
+  });
+});
 
 describe('stockAvatarFace', () => {
   it('picks a ready presenter of the voice’s gender in the frame asked for', () => {

@@ -1,14 +1,16 @@
 /**
- * Agent G Master Task PART 4, tightened by the final-release master task §8.D: a voice call never starts a run.
+ * Agent G Master Task PART 4 — a voice start runs on the USER'S OWN yes, never the model's word. Restored by GG's decision
+ * of 2026-10-18 („ხმით დაიწყოს"), which supersedes the final-release §8.D button-only rule.
  *
- * Every start — start_generation, agent_task start, extract_audio start — answers ui_confirmation_required at the
- * executor, whatever the transcript, the told price or plan, or the model's `confirmed` says: the studio is never
- * asked, no countdown starts, no yes is recorded and nothing runs. The user presses the priced button (or the plan
- * card's button) on screen. Status and stop still work by voice, and a stop still cancels.
+ * The executor (at the model's call): no transcript → no start; a price never told in this call, or a screen that
+ * changed since it was told, refuses; a "no"/"wait" said after the price or plan refuses; Agent G's plans start by the
+ * call's own number (the model never names a card). The hook (when the countdown ends): it runs only when the words
+ * said after the price or plan were a clear yes — a studio render's yes is recorded on the server first — and anything
+ * else starts nothing and tells the model with an [App] note. A "wait" during the countdown stops it at once.
  */
 import { act, renderHook } from '@testing-library/react';
 
-import type { LiveActionEventDetail, LiveStudioReply } from '@/lib/voice/liveTools';
+import type { LiveActionEventDetail, LiveRunDetail, LiveStudioReply } from '@/lib/voice/liveTools';
 import { createVoiceLedger } from '@/lib/voice/voiceLedger';
 
 import { executeLiveToolCall, fetchApproval, useLiveActions, type LiveActionEnv } from './liveActions';
@@ -30,28 +32,65 @@ function gateEnv(reply: (d: LiveActionEventDetail) => LiveStudioReply | undefine
   return { env, actions, voice, say, tick: (ms = 100) => { t += ms; } };
 }
 
-describe('start_generation: refused by voice in every state', () => {
+describe('start_generation: the price was told, and the user has not said no since', () => {
   const studio = (fp = 'image|a red fox|2') => (d: LiveActionEventDetail): LiveStudioReply | undefined =>
     (d.type === 'prepare_generation' || d.type === 'start_generation' || d.type === 'get_screen_state'
       ? { ok: true, tool: 'image', priceCredits: 2, fingerprint: fp } : undefined);
-  const refused = (out: ReturnType<typeof executeLiveToolCall>) => {
-    expect(out.response.response).toMatchObject({ ok: false, error: 'ui_confirmation_required' });
-    expect(String(out.response.response.message)).toMatch(/confirmation button\. Nothing started/);
-    expect(out.run).toBeUndefined();
-  };
 
-  it('no transcript, a price never told, a "wait" after it, and a clear yes after it: all refused, the studio never sees a start', () => {
+  it('no transcript on this host → no start, and the studio is never asked', () => {
     const g = gateEnv(studio());
-    refused(executeLiveToolCall(call('s0', 'start_generation', { confirmed: 'yes' }), { ...g.env, voice: undefined }));
-    refused(executeLiveToolCall(call('s1', 'start_generation', { confirmed: 'yes' }), g.env));
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), { ...g.env, voice: undefined });
+    expect(out.response.response).toMatchObject({ ok: false, error: 'no_transcript' });
+    expect(out.run).toBeUndefined();
+    expect(g.actions).toEqual([]);
+  });
+
+  it('a price never told in this call refuses (the model is sent to read it and ask)', () => {
+    const g = gateEnv(studio());
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(out.response.response).toMatchObject({ ok: false, error: 'price_not_told' });
+    expect(String(out.response.response.message)).toMatch(/get_screen_state, tell them the price, and ask/);
+    expect(out.run).toBeUndefined();
+  });
+
+  it('V5: what is on screen changed after the price was told → nothing starts until it is told again', () => {
+    let fp = 'image|a red fox|2';
+    const g = gateEnv((d) => studio(fp)(d));
     executeLiveToolCall(call('p', 'prepare_generation', { tool: 'image', prompt: 'a red fox' }), g.env);
+    g.say('yes');
+    fp = 'image|a red fox, neon|4'; // the user edited the prompt by hand; the price changed
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(out.response.response).toMatchObject({ ok: false, error: 'changed_since_price' });
+    // Reading the screen again re-quotes (it changed), and a yes after THAT counts.
+    executeLiveToolCall(call('g', 'get_screen_state'), g.env);
+    g.say('ok, go');
+    const again = executeLiveToolCall(call('s2', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(again.run).toMatchObject({ target: { kind: 'studio', tool: 'image', fingerprint: 'image|a red fox, neon|4' } });
+  });
+
+  it('a "wait" after the price refuses with the user\'s words; a "no" said BEFORE the price does not count', () => {
+    const g = gateEnv(studio());
+    g.say('no, a fox, not a dog'); // before the price: about the prompt, not the start
+    g.tick();
+    executeLiveToolCall(call('p', 'prepare_generation', { tool: 'image', prompt: 'a red fox' }), g.env);
+    const ok = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(ok.run).toMatchObject({ tool: 'image', priceCredits: 2, since: g.voice.studioQuote().at });
     g.say('wait, not yet');
-    refused(executeLiveToolCall(call('s2', 'start_generation', { confirmed: 'yes' }), g.env));
-    g.say('yes please, start it');
-    refused(executeLiveToolCall(call('s3', 'start_generation', { confirmed: 'yes' }), g.env));
-    refused(executeLiveToolCall(call('s4', 'start_generation', {}), g.env)); // no `confirmed`: still the same refusal
-    expect(g.actions.map((a) => a.type)).toEqual(['prepare_generation']);
-    expect(g.env.runGeneration).not.toHaveBeenCalled();
+    const no = executeLiveToolCall(call('s2', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(no.response.response).toMatchObject({ ok: false, error: 'user_said_no' });
+    expect(String(no.response.response.message)).toMatch(/"wait, not yet"/);
+    expect(no.run).toBeUndefined();
+  });
+
+  it('the screen read the rule asks for before a start never voids a yes said just before it', () => {
+    const g = gateEnv(studio());
+    executeLiveToolCall(call('p', 'prepare_generation', { tool: 'image', prompt: 'a red fox' }), g.env);
+    const told = g.voice.studioQuote().at;
+    g.say('yes please');
+    g.tick();
+    executeLiveToolCall(call('g', 'get_screen_state'), g.env); // same screen: the quote time stands
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(out.run?.since).toBe(told);
   });
 });
 
@@ -72,24 +111,43 @@ describe('agent_task / extract_audio start: Agent G\'s plans by the call\'s own 
     return undefined;
   };
 
-  it('agent_task start and extract_audio start are refused by voice — with no plan, a plan not told, a "no", or a clear yes', () => {
+  it('no plan, a plan not yet told, and a "no" since it was told all refuse — the studio never sees a start', () => {
     const g = gateEnv(cards);
-    const refusedStart = (id: string, name: string, args: Record<string, unknown>) => {
-      const out = executeLiveToolCall(call(id, name, args), g.env);
-      expect(out.response.response).toMatchObject({ ok: false, error: 'ui_confirmation_required' });
-      expect(out.run).toBeUndefined();
-    };
-    refusedStart('a', 'agent_task', { action: 'start' });
-    g.voice.registerPlan('msg-a', 'audio', 'MP3 of talk.mp4');
-    refusedStart('b', 'agent_task', { action: 'start', plan: 1 });
+    expect(executeLiveToolCall(call('a', 'agent_task', { action: 'start' }), g.env).response.response).toMatchObject({ ok: false, error: 'no_plan' });
+    g.voice.registerPlan('msg-a', 'audio');
+    expect(executeLiveToolCall(call('b', 'agent_task', { action: 'start', plan: 1 }), g.env).response.response)
+      .toMatchObject({ ok: false, error: 'plan_not_told' });
     g.voice.planTold('msg-a');
     g.say('нет, подожди');
-    refusedStart('c', 'agent_task', { action: 'start', plan: 1 });
-    g.say('კი, დაიწყე');
-    refusedStart('d', 'agent_task', { action: 'START', plan: 1 });
-    refusedStart('e', 'extract_audio', { action: 'start', confirmed: 'yes' });
+    expect(executeLiveToolCall(call('c', 'agent_task', { action: 'start', plan: 1 }), g.env).response.response)
+      .toMatchObject({ ok: false, error: 'user_said_no' });
+    expect(executeLiveToolCall(call('d', 'agent_task', { action: 'start', plan: 5 }), g.env).response.response)
+      .toMatchObject({ ok: false, error: 'no_plan' });
     expect(g.actions).toEqual([]);
+  });
+
+  it('a told plan: the studio checks the card it resolved, and a countdown starts with the plan\'s told time', () => {
+    const g = gateEnv(cards);
+    g.voice.registerPlan('msg-a', 'audio', 'MP3 of talk.mp4');
+    g.voice.planTold('msg-a');
+    const told = g.voice.plan(1)!.at;
+    g.say('კი, დაიწყე');
+    const out = executeLiveToolCall(call('s', 'agent_task', { action: 'start', plan: 1 }), g.env);
+    expect(g.actions).toEqual([expect.objectContaining({ type: 'agent_task', action: 'start', plan: 1, planId: 'msg-a', planKind: 'audio' })]);
+    expect(out.run).toEqual({ tool: 'audio', priceCredits: 0, target: { kind: 'agent', planId: 'msg-a', planKind: 'audio' }, since: told });
+    expect(String(out.response.response.summary)).toMatch(/Plan 1 \(MP3\) starts in 3 seconds[\s\S]*It is free/);
     expect(g.env.runGeneration).not.toHaveBeenCalled();
+  });
+
+  it('extract_audio start is the newest MP3 plan (a newer montage plan is not it); a studio refusal passes through', () => {
+    const g = gateEnv((d) => (d.type === 'agent_task' && d.planId === 'msg-a2' ? { ok: false, error: 'not_quoted', message: 'That plan already ran.' } : cards(d)));
+    g.voice.registerPlan('msg-a1', 'audio'); g.voice.planTold('msg-a1');
+    g.voice.registerPlan('msg-a2', 'audio'); g.voice.planTold('msg-a2');
+    g.voice.registerPlan('msg-m', 'montage'); g.voice.planTold('msg-m');
+    const out = executeLiveToolCall(call('x', 'extract_audio', { action: 'start', confirmed: 'yes' }), g.env);
+    expect(g.actions[0]).toMatchObject({ planId: 'msg-a2', planKind: 'audio' });
+    expect(out.response.response).toEqual({ ok: false, error: 'not_quoted', message: 'That plan already ran.' });
+    expect(out.run).toBeUndefined();
   });
 
   it('status numbers the cards for the model and tells the waiting ones; stop cancels a countdown too', () => {
@@ -121,34 +179,146 @@ describe('agent_task / extract_audio start: Agent G\'s plans by the call\'s own 
   });
 });
 
-describe('useLiveActions: no voice start reaches the countdown', () => {
-  beforeEach(() => { jest.useFakeTimers(); });
-  afterEach(() => { jest.useRealTimers(); });
+describe('useLiveActions: the countdown runs only on the user\'s own yes', () => {
+  const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
 
-  it('a told price, a told plan and a yes: every start answers ui_confirmation_required; nothing is recorded or run; stop still answers', async () => {
+  function hookEnv(overrides: Partial<LiveActionEnv> = {}) {
+    const runs: LiveRunDetail[] = [];
     const env: LiveActionEnv = {
       dispatchAction: (d) => {
-        if (d.type === 'prepare_generation') d.reply = { ok: true, tool: 'music', priceCredits: 4 };
+        if (d.type === 'prepare_generation' || d.type === 'start_generation') d.reply = { ok: true, tool: 'music', priceCredits: 4 };
+        if (d.type === 'agent_task' && d.action === 'start') d.reply = { ok: true, priceCredits: 0 };
         return true;
       },
       openArtifact: () => true,
-      runGeneration: jest.fn(() => true),
+      runGeneration: jest.fn((d: LiveRunDetail) => { runs.push(d); return true; }),
       recordApproval: jest.fn(async () => ({ ok: true as const })),
       notify: jest.fn(),
+      ...overrides,
     };
+    return { env, runs };
+  }
+
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  const prepare = (r: { current: ReturnType<typeof useLiveActions> }) => act(() => {
+    r.current.onToolCall([call('p', 'prepare_generation', { tool: 'music', prompt: 'lo-fi rain' })]);
+    jest.advanceTimersByTime(300);
+  });
+  const hear = (r: { current: ReturnType<typeof useLiveActions> }, text: string) => act(() => {
+    r.current.onHeard({ text });
+    r.current.onHeard({ end: true });
+  });
+
+  it('nothing heard → not started: no record, no run, and the model is told', async () => {
+    const { env } = hookEnv();
     const { result } = renderHook(() => useLiveActions(env));
-    act(() => { result.current.onToolCall([call('p', 'prepare_generation', { tool: 'music', prompt: 'lo-fi rain' })]); jest.advanceTimersByTime(300); });
-    act(() => { result.current.registerPlan('msg-1', 'montage', '4 clips to song.mp3'); result.current.planTold('msg-1'); });
-    act(() => { result.current.onHeard({ text: 'да, давай' }); result.current.onHeard({ end: true }); });
-    let out: ReturnType<typeof result.current.onToolCall> = [];
-    act(() => { out = result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' }), call('a', 'agent_task', { action: 'start', plan: 1 })]); });
-    expect(out.map((r) => r.response)).toEqual([expect.objectContaining({ error: 'ui_confirmation_required' }), expect.objectContaining({ error: 'ui_confirmation_required' })]);
-    expect(result.current.pendingRun).toBeNull();
-    await act(async () => { jest.advanceTimersByTime(5000); });
+    prepare(result);
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    await act(async () => { jest.advanceTimersByTime(3100); });
     expect(env.recordApproval).not.toHaveBeenCalled();
     expect(env.runGeneration).not.toHaveBeenCalled();
-    act(() => { out = result.current.onToolCall([call('x', 'stop', { what: 'generation' })]); });
-    expect(out[0]!.response).toMatchObject({ ok: true });
+    expect(result.current.pendingRun?.state).toBe('not_heard');
+    expect(env.notify).toHaveBeenCalledWith({ kind: 'not_started', reason: 'not_heard' });
+  });
+
+  it('a yes whose transcript arrives during the countdown still counts (the transcript lags the call)', async () => {
+    const { env, runs } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    prepare(result);
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    act(() => { jest.advanceTimersByTime(800); });
+    hear(result, ' sure, do it');
+    await act(async () => { jest.advanceTimersByTime(2300); });
+    await flush();
+    expect(env.recordApproval).toHaveBeenCalledWith({ tool: 'music', said: 'sure, do it', credits: 4 });
+    expect(runs).toEqual([{ target: { kind: 'studio', tool: 'music' }, approval: { channel: 'voice-transcript', said: 'sure, do it' } }]);
+    expect(result.current.pendingRun?.state).toBe('started');
+  });
+
+  it('a "wait" during the countdown stops it at once, before the 3 seconds are up', async () => {
+    const { env } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    prepare(result);
+    hear(result, 'yes');
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    act(() => { jest.advanceTimersByTime(1000); result.current.onHeard({ text: 'wait' }); });
+    expect(result.current.pendingRun?.state).toBe('cancelled');
+    expect(env.notify).toHaveBeenCalledWith({ kind: 'not_started', reason: 'said_no' });
+    await act(async () => { jest.advanceTimersByTime(5000); });
+    expect(env.runGeneration).not.toHaveBeenCalled();
+  });
+
+  it('the server not recording the yes starts nothing (fail closed)', async () => {
+    const { env } = hookEnv({ recordApproval: jest.fn(async () => ({ ok: false as const, error: 'approval_unclear' })) });
+    const { result } = renderHook(() => useLiveActions(env));
+    prepare(result);
+    hear(result, 'ok');
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    await flush();
+    expect(env.runGeneration).not.toHaveBeenCalled();
+    expect(result.current.pendingRun?.state).toBe('failed');
+    expect(env.notify).toHaveBeenCalledWith({ kind: 'not_started', reason: 'not_recorded', what: 'approval_unclear' });
+  });
+
+  it('a Cancel while the yes is being recorded: nothing runs', async () => {
+    let release: (v: { ok: true }) => void = () => {};
+    const { env } = hookEnv({ recordApproval: jest.fn(() => new Promise<{ ok: true }>((r) => { release = r; })) });
+    const { result } = renderHook(() => useLiveActions(env));
+    prepare(result);
+    hear(result, 'yes');
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    expect(env.recordApproval).toHaveBeenCalled();
+    act(() => { result.current.cancelRun(); });
+    await act(async () => { release({ ok: true }); });
+    await flush();
+    expect(env.runGeneration).not.toHaveBeenCalled();
+  });
+
+  it('an Agent G plan: told, yes, start → the card runs with the words (no studio record: the run request carries them)', async () => {
+    const { env, runs } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    let n = 0;
+    act(() => { n = result.current.registerPlan('msg-1', 'montage', '4 clips to song.mp3'); });
+    expect(n).toBe(1);
+    act(() => { jest.advanceTimersByTime(200); result.current.planTold('msg-1'); jest.advanceTimersByTime(200); });
+    hear(result, 'да, давай');
+    act(() => { result.current.onToolCall([call('s', 'agent_task', { action: 'start', plan: 1 })]); });
+    expect(result.current.pendingRun).toMatchObject({ tool: 'montage', state: 'counting' });
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    expect(env.recordApproval).not.toHaveBeenCalled();
+    expect(runs).toEqual([{ target: { kind: 'agent', planId: 'msg-1', planKind: 'montage' }, approval: { channel: 'voice-transcript', said: 'да, давай' } }]);
+  });
+
+  it('the studio refusing the run (what was told is gone) → failed, and the model hears why', async () => {
+    const { env } = hookEnv({
+      runGeneration: jest.fn((d: LiveRunDetail) => { d.reply = { ok: false, error: 'changed', message: 'The prompt changed during the countdown.' }; return true; }),
+    });
+    const { result } = renderHook(() => useLiveActions(env));
+    prepare(result);
+    hear(result, 'yes');
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    await flush();
+    expect(result.current.pendingRun?.state).toBe('failed');
+    expect(env.notify).toHaveBeenCalledWith({ kind: 'not_started', reason: 'refused', what: 'The prompt changed during the countdown.' });
+  });
+
+  it('stop (generations) cancels a start still counting; hanging up mid-countdown runs nothing', async () => {
+    const { env } = hookEnv();
+    const { result, unmount } = renderHook(() => useLiveActions(env));
+    prepare(result);
+    hear(result, 'yes');
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    act(() => { result.current.onToolCall([call('x', 'stop', { what: 'generation' })]); });
+    expect(result.current.pendingRun?.state).toBe('cancelled');
+    act(() => { result.current.onToolCall([call('s2', 'start_generation', { confirmed: 'yes' })]); });
+    unmount();
+    await act(async () => { jest.advanceTimersByTime(5000); });
+    expect(env.runGeneration).not.toHaveBeenCalled();
   });
 });
 

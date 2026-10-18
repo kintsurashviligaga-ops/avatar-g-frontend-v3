@@ -17,7 +17,8 @@
 import { hasLyriaProvider } from '@/lib/ai/lyriaMusic';
 import { isProviderTripped } from '@/lib/orchestrator/idempotency';
 import { controlModeFor } from '@/lib/ai/musicControls';
-import { MUSIC_ENGINE_CHAIN, type MusicEngineId, type MusicEnginesStatus } from '@/lib/studio/musicEngines';
+import { MUSIC_ENGINE_CHAIN, offeredMusicLengths, type MusicEngineId, type MusicEnginesStatus } from '@/lib/studio/musicEngines';
+import { lyriaProMaxSec } from '@/lib/music/studio/capabilities';
 
 export function replicateConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
   return (env.REPLICATE_API_TOKEN ?? '').trim().length > 0;
@@ -50,5 +51,8 @@ export async function musicEnginesStatus(
     // that was not busy, which was true while a Lyria miss rerouted down the chain; reported now, it would promise the
     // picker's "Auto" a fallback the route no longer runs. Empty when Lyria cannot run: Auto then fails explicitly.
     chain: engines.lyria.configured && !engines.lyria.busy ? ['lyria'] : [],
+    // The panel offers only the lengths the route will make: 30 s on the clip, 60 / 90 / Full song once Lyria 3 Pro is
+    // verified for them (the same gate the route refuses by) — never a longer choice that comes back ~30 s.
+    lengths: offeredMusicLengths(lyriaProMaxSec(env)),
   };
 }

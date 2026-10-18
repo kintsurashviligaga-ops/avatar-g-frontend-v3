@@ -3,6 +3,10 @@
  * early, with friendly copy) and the server (which refuses for real). Pure and client-safe.
  */
 
+/** A paid scene still not delivered this long after it was created is refunded and closed (app/api/genjutsu/status).
+ * The browser polls that route for exactly this long (the talking avatar in components/studio/OmniStudio). */
+export const GENJUTSU_HARD_CAP_MS = 12 * 60_000;
+
 /** The reference dropzone's cap — what the user may PICK. What an engine RECEIVES is smaller (engines.ts). */
 export const MAX_REFERENCES = 40;
 

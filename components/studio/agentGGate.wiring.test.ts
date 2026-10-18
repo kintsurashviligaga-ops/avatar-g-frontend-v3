@@ -56,7 +56,9 @@ describe('what the gate does with each verdict', () => {
     expect(src).toContain("void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(card.aspect ? { aspect: card.aspect } : {}),");
     expect(src).toContain("void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(cardAspect ? { aspect: cardAspect } : {}),");
     expect(src).toContain("onGenerate={() => runTool(true, 'panel')}");
-    expect(src).toContain("onGenerate: () => runTool(true, 'panel'),");
+    // Video (GG 2026-10-18): the prompt lives in the chat box, so its priced Send is the film's explicit press.
+    expect(src).toContain("runTool(true, 'composer');");
+    expect(src).toMatch(/const runComposer = \(\) => \{\s*if \(composerQuote !== null && activeTool === 'video'\) \{/);
     expect(src).toContain('void send({ promptOverride: prompt, explicit: true })');
   });
   test('the composer\'s own buttons never count as explicit (a click event is not `true`)', () => {

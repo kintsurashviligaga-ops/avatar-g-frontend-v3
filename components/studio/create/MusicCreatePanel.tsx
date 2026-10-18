@@ -132,6 +132,13 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
   const pref: MusicEnginePref = effectiveEnginePref(storedPref, status, { instrumental: p.instrumental });
   const firstEngine = pref !== 'auto' ? pref : status?.chain[0] ?? 'lyria';
   const controlsMode = status?.engines[firstEngine]?.controls ?? 'prompt';
+  // The lengths the route makes right now (only 30 s until the status answers). A kept choice it no longer makes — Lyria 3
+  // Pro switched off since — falls back to 30 s instead of being sent and refused.
+  const lengths = status?.lengths ?? [30];
+  const onDuration = p.onDuration;
+  useEffect(() => {
+    if (status && !status.lengths.includes(p.duration)) onDuration(30);
+  }, [status, p.duration, onDuration]);
 
   // ── the price: the shared quote at the seconds the route bills ────────────────────────────────────────
   const cover = isCoverRun({ hasAudio: !!p.audio, audioMode: p.audioMode, trainedVoiceActive: trainedActive });
@@ -353,6 +360,7 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
         cover={cover}
         tempo={p.tempo}
         onTempo={p.onTempo}
+        lengths={lengths}
       />
 
       {showResult && <MusicResult testId="music-result-card" locale={locale} track={p.result.track} actions={p.result.actions} label={p.result.label} variant="card" />}

@@ -96,17 +96,17 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(byName.open_studio!.parameters!.required).toEqual(['tool']);
   });
 
-  it('tells the model the money rule: preparing is free, and a paid start is the user\'s own tap, never a spoken yes', () => {
+  it('tells the model the money rule: preparing is free, and a paid start needs the user\'s own clear yes (GG 2026-10-18)', () => {
     const prep = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'prepare_generation')!;
     expect(prep.description).toMatch(/does NOT start/);
     expect(prep.description).toMatch(/no credits/);
     const start = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'start_generation')!;
-    expect(start.description).toMatch(/never starts by voice: this answers ui_confirmation_required/);
-    expect(start.description).toMatch(/pressing the priced button on screen/);
+    expect(start.description).toMatch(/THEY clearly said yes/);
+    expect(start.description).toMatch(/your call is never the approval/);
     expect(start.parameters!.required).toEqual(['confirmed']);
     expect(start.parameters!.properties!.confirmed!.enum).toEqual(['yes']);
     expect(LIVE_ACTIONS_RULE).toMatch(/never spend credits/);
-    expect(LIVE_ACTIONS_RULE).toMatch(/A spoken yes never starts or charges anything/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/Only when the user THEMSELVES clearly says yes to that price, call start_generation/);
     expect(LIVE_ACTIONS_RULE).toMatch(/Never start a generation on your own initiative/);
     // Production 2026-10-16: the call said an image was "already processing" and never called prepare_generation.
     expect(LIVE_ACTIONS_RULE).toMatch(/an avatar and agrees to a prompt, call prepare_generation with that prompt\s+right away/);
@@ -605,7 +605,7 @@ describe('extract_audio', () => {
     expect(d).toMatch(/Free, no credits/);
     expect(d).toMatch(/video platforms[\s\S]*refused by their terms: never look for a way around/);
     expect(d).toMatch(/upload their own or a licensed file/);
-    expect(d).toMatch(/"start" never starts it by voice/);
+    expect(d).toMatch(/"start": only after you told the user/);
     expect(d).toMatch(/starting confirms the file is theirs or licensed/);
     expect(LIVE_ACTIONS_RULE).toMatch(/call extract_audio with action "plan"/);
     expect(LIVE_ACTIONS_RULE).toMatch(/offer the\s+upload instead, never a workaround/);
@@ -648,11 +648,10 @@ describe('agent_task', () => {
     expect(p.required).toEqual(['action']);
   });
 
-  it('tells the model no start is ever made by voice: the user presses the card\'s button', () => {
+  it('tells the model the yes is the user\'s own words, checked by the app, never its own word', () => {
     const d = decl().description;
-    expect(d).toMatch(/action "start" never starts anything by voice: it answers ui_confirmation_required/);
-    expect(d).toMatch(/starts the plan with its card's button/);
-    expect(LIVE_ACTIONS_RULE).toMatch(/No start is ever made by voice/);
+    expect(d).toMatch(/the app checks its transcript of the user, never your word/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/The app checks its transcript of the user, never your word/);
     expect(LIVE_ACTIONS_RULE).toMatch(/Never say something started unless the screen shows it/);
   });
 

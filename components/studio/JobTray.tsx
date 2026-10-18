@@ -172,7 +172,7 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   //
   // Every job submitted through the composer's queue pushes its own chat bubble in the same breath
   // (runImageJob · runImageBatch · runMusicJob · submitFilmJob · generateProductAd · runVideoSwap all do),
-  // and that bubble renders GenerationProgress / FilmDirectorConsole / RemixStudioConsole INLINE in the
+  // and that bubble renders its ResultCard (the one loading card) INLINE in the
   // conversation. So a LOCAL job is by construction already on screen, and repeating it in a floating
   // corner card is not a second opinion — it is the fragmentation the user sees as "Renders · 2 active"
   // hovering over "94% Drawing the slides…". Same for a durable row a mounted panel is narrating itself:

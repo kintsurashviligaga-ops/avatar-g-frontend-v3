@@ -145,6 +145,33 @@ describe('avatar — the words are the script the presenter speaks', () => {
   });
 });
 
+describe('avatar — an order with no line asks for the line (GG 2026-10-18)', () => {
+  test.each(['შემიქმენი ავატარი', 'create my avatar', 'შემიქმენი ავატარი ქალი, შავი თმით, გრძელი კაბით', 'make me an avatar of a young woman with black hair'])(
+    '“%s” is clarify, never a confirm that speaks the order', (t) => {
+      expect(kind(t, 'avatar')).toBe('clarify');
+      expect(kind(t, 'avatar', { explicit: true })).toBe('clarify');
+    },
+  );
+  test('an attached voice track is the line', () => {
+    expect(classifyFocusInput({ text: 'შემიქმენი ავატარი', mode: 'avatar', hasAudio: true }).kind).not.toBe('clarify');
+  });
+  test('an order that names its line is confirmed', () => {
+    expect(kind('შემიქმენი ავატარი ქალი, შავი თმით, თქვას გამარჯობა ყველას, მოგესალმებით', 'avatar')).toBe('confirm');
+  });
+  test('after Agent G asked for the line, a short greeting IS the line', () => {
+    expect(kind('hello everyone', 'avatar')).toBe('chat');
+    expect(classifyFocusInput({ text: 'გამარჯობა ყველას', mode: 'avatar', awaitingLine: true }).kind).toBe('confirm');
+    expect(classifyFocusInput({ text: 'hello everyone', mode: 'avatar', awaitingLine: true }).kind).toBe('confirm');
+  });
+  test('the merged script is the answer, not „ავატარი, <line>"', () => {
+    expect(mergePrompt('შემიქმენი ავატარი', 'გამარჯობა ყველას', 'avatar')).toBe('გამარჯობა ყველას');
+    expect(mergePrompt('(ქალი, შავი თმით)', 'გამარჯობა ყველას', 'avatar')).toBe('(ქალი, შავი თმით) გამარჯობა ყველას');
+    expect(mergePrompt('', 'hello everyone', 'avatar')).toBe('hello everyone');
+    // Other tools keep joining the words.
+    expect(mergePrompt('cat', 'in the snow', 'image')).toBe('cat, in the snow');
+  });
+});
+
 describe('feedback — „I don\'t like it" is answered, never rendered', () => {
   test.each(['არ მომწონს', 'ეს სურათი საერთოდ არ მომწონს', 'ცუდად გამოვიდა', "I don't like it", 'not what i wanted', 'мне не нравится', 'это не то'])(
     '“%s” is talk in every focus tool',
