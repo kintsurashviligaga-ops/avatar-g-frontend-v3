@@ -65,15 +65,16 @@ describe('the price is the quote, for every length, tier and mode', () => {
     }
   });
 
-  test('the anchor: Fast = 25 credits per 8 s clip, 75 for 24 s', () => {
-    expect(videoQuote({ seconds: 8, tier: 'fast', mode: 'documentary' })).toBe(25);
-    expect(videoQuote({ seconds: 24, tier: 'fast', mode: 'documentary' })).toBe(75);
+  // The worked examples of docs/handoffs/pricing/PRICE_BOOK_2026-10-18.md (the owner's 100 %-profit rule).
+  test('the anchor: a Fast film of 8 s = 75 credits, of 24 s = 217', () => {
+    expect(videoQuote({ seconds: 8, tier: 'fast', mode: 'documentary' })).toBe(75);
+    expect(videoQuote({ seconds: 24, tier: 'fast', mode: 'documentary' })).toBe(217);
   });
 
-  test('the tier effects shown are the pricing table’s own (Lite 0.6×, Fast 1×, Standard 3.3×)', () => {
-    expect(tierPriceEffect('lite')).toEqual({ multiplier: VIDEO_QUALITY_MULT.lite, deltaPct: -40 });
+  test('the tier effects shown are the pricing table’s own (a scene on Lite 0.7×, Fast 1×, Standard 3.1×)', () => {
+    expect(tierPriceEffect('lite')).toEqual({ multiplier: VIDEO_QUALITY_MULT.lite, deltaPct: -30 });
     expect(tierPriceEffect('fast')).toEqual({ multiplier: 1, deltaPct: 0 });
-    expect(tierPriceEffect('standard')).toEqual({ multiplier: VIDEO_QUALITY_MULT.standard, deltaPct: 230 });
+    expect(tierPriceEffect('standard')).toEqual({ multiplier: VIDEO_QUALITY_MULT.standard, deltaPct: 210 });
     expect(MUSIC_VIDEO_SURCHARGE_PCT).toBe(Math.round((MUSIC_VIDEO_MULT - 1) * 100));
   });
 
@@ -94,31 +95,34 @@ describe('the price is the quote, for every length, tier and mode', () => {
 });
 
 describe('the lip-sync pass: its own charge, beside the film\'s (gap C2)', () => {
+  /** What /api/video/lipsync reserves: the avatar price (lib/credits/pricing creditCostFor('avatar')). */
+  const AVATAR = quoteCredits({ tool: 'avatar' });
+
   test('it is the avatar price — what /api/video/lipsync reserves (creditCostFor(\'avatar\')) — and never part of videoQuote', () => {
     const lip = lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: false });
     expect(lip).toBe(quoteCredits({ tool: 'avatar' }));
-    expect(lip).toBe(20);
+    expect(lip).toBe(AVATAR);
     expect(videoQuote({ seconds: 24, tier: 'fast', mode: 'musicvideo' })).toBe(videoCredits({ seconds: 24, quality: 'fast', mode: 'musicvideo' }));
   });
 
   test('the same condition as the studio\'s wantsLipsync: a music video when its switch is on, a documentary when it has dialogue', () => {
-    expect(lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: false })).toBe(20);
+    expect(lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: false })).toBe(AVATAR);
     expect(lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: false, hasDialogue: true })).toBe(0);
     expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: true, hasDialogue: false })).toBe(0);
-    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true })).toBe(20);
+    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true })).toBe(AVATAR);
   });
 
   test('a documentary whose Veo clips speak the typed line runs no talking head and charges nothing for one', () => {
     // The ad of 2026-10-15: two typed Georgian lines, Veo's sound on. Veo says them in-clip with the film's own face; the
-    // HeyGen talking head would cut a second, different face in over scene 2 and take 20 credits for it.
+    // HeyGen talking head would cut a second, different face in over scene 2 and take the avatar price for it.
     expect(filmLipsyncRuns({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: true })).toBe(false);
     expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: true })).toBe(0);
     // Veo's sound off (Vertex): the clips are mute, so the talking head still speaks the line.
     expect(filmLipsyncRuns({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: false })).toBe(true);
-    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: false })).toBe(20);
+    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true, veoSpeaks: false })).toBe(AVATAR);
     // A music video's singer is not speech Veo replaces: its switch alone decides.
     expect(filmLipsyncRuns({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: false, veoSpeaks: true })).toBe(true);
-    expect(lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: true, veoSpeaks: true })).toBe(20);
+    expect(lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: true, veoSpeaks: true })).toBe(AVATAR);
   });
 
   test('the line says when it is taken and that a failed pass gives it back, in all three languages', () => {

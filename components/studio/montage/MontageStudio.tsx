@@ -75,6 +75,10 @@ export interface MontageStudioProps {
   initialAspect?: MontageAspect;
   /** Called once with the finished video, so it lands in the conversation too (and survives closing this). */
   onDelivered?: (videoUrl: string, aspect: MontageAspect) => void;
+  /** An export ended (true = delivered). Fires even after the editor closed, so the chat can say how it went. */
+  onExportEnd?: (ok: boolean) => void;
+  /** An export started (the chat keeps it in view if the editor is closed before it ends). */
+  onExportStart?: () => void;
 }
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -126,7 +130,7 @@ function ToolButton({ label, Icon, run, disabled, testId, active }: {
   );
 }
 
-export default function MontageStudio({ locale, onExit, initialMedia, initialMusic, initialAspect, onDelivered }: MontageStudioProps) {
+export default function MontageStudio({ locale, onExit, initialMedia, initialMusic, initialAspect, onDelivered, onExportEnd, onExportStart }: MontageStudioProps) {
   const t = useMemo(() => montageCopy(locale), [locale]);
   const lang = langOf(locale);
   // ≥ 1024: the tools move into a right column. ≥ 1280: the media gets its own left column too — below that, beside
@@ -569,8 +573,9 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     mounted.current = true;
     return () => {
       mounted.current = false;
-      // Closing mid-render HANDS the job to the tray instead of losing sight of it.
-      if (claimed.current) releaseInline(claimed.current);
+      // Closing mid-render keeps the job claimed (GG 2026-10-18: the floating tray card that then opened looked like an
+      // old card starting a new process). The render goes on; the chat says so and the finished film lands there
+      // (onDelivered / onExportEnd still fire after the editor is gone).
     };
   }, [releaseInline]);
 
@@ -584,6 +589,8 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     const body = buildRenderBody(editRef.current, sourcesRef.current);
     setExp({ phase: 'running', stage: null, pct: 3 });
     const stop = { done: false };
+    let delivered = false;
+    onExportStart?.();
     if (clientJobId) {
       claimed.current = clientJobId;
       claimInline(clientJobId);
@@ -609,6 +616,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
         body: JSON.stringify(clientJobId ? { ...body, clientJobId } : body),
       });
       const j = (await res.json().catch(() => null)) as { videoUrl?: string; message?: string; step?: string; error?: string; code?: string; warnings?: { musicRequestedButMissing?: boolean } } | null;
+      delivered = Boolean(res.ok && j?.videoUrl);
       if (res.ok && j?.videoUrl) {
         onDelivered?.(j.videoUrl, body.aspect as MontageAspect);
         if (mounted.current) {
@@ -627,9 +635,10 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     } finally {
       stop.done = true;
       exportingRef.current = false;
-      if (claimed.current) { releaseInline(claimed.current); claimed.current = null; }
+      if (claimed.current) { if (mounted.current) releaseInline(claimed.current); claimed.current = null; }
+      onExportEnd?.(delivered);
     }
-  }, [claimInline, lang, locale, onDelivered, pause, releaseInline, t]);
+  }, [claimInline, lang, locale, onDelivered, onExportEnd, onExportStart, pause, releaseInline, t]);
 
   // ── Voice: `myavatar:montage-command` (voiceCommands.ts) — export · set_music_start · state ──────────────────
   // The host object is rebuilt every render and read through a ref, so the one listener never holds a stale closure;

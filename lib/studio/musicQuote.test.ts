@@ -1,18 +1,21 @@
 /** @jest-environment node */
 /**
- * The Create button's number is the bill: 30 s → 5, 60 s → 8, 90 s → 12 credits, "Full song" at the 90 s tier, a cover
- * flat at 30 s. The route's own `billSeconds` expression is pinned from its source, so the two cannot drift apart.
+ * The Create button's number is the bill: 30 / 60 / 90 s at the price book's three music bands, "Full song" at the 90 s
+ * band, a cover flat at 30 s. The route's own `billSeconds` expression is pinned from its source, so the two cannot drift apart.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { creditCostFor, CREDIT_COSTS } from '@/lib/credits/pricing';
 import { quoteCredits } from '@/lib/credits/quote';
+import { PRICE_BOOK } from '@/lib/credits/priceBook';
 import { MUSIC_DURATIONS, isCoverRun, musicBilledSeconds, musicQuote } from './musicQuote';
 
-test('30 / 60 / 90 s quote exactly the shared price list (5 / 8 / 12) — and the button reads the same function', () => {
-  expect(musicQuote({ duration: 30 })).toBe(5);
-  expect(musicQuote({ duration: 60 })).toBe(8);
-  expect(musicQuote({ duration: 90 })).toBe(12);
+const { under60, under90, from90 } = PRICE_BOOK.music;
+
+test('30 / 60 / 90 s quote exactly the price book\'s bands — and the button reads the same function', () => {
+  expect(musicQuote({ duration: 30 })).toBe(under60);
+  expect(musicQuote({ duration: 60 })).toBe(under90);
+  expect(musicQuote({ duration: 90 })).toBe(from90);
   expect(musicQuote({ duration: 30 })).toBe(CREDIT_COSTS.music_30s);
   expect(musicQuote({ duration: 60 })).toBe(CREDIT_COSTS.music_60s);
   expect(musicQuote({ duration: 90 })).toBe(CREDIT_COSTS.music_90s);
@@ -21,20 +24,20 @@ test('30 / 60 / 90 s quote exactly the shared price list (5 / 8 / 12) — and th
 
 test('"Full song" (0) is billed at the 90 s tier, as the route does', () => {
   expect(musicBilledSeconds({ duration: 0 })).toBe(90);
-  expect(musicQuote({ duration: 0 })).toBe(12);
+  expect(musicQuote({ duration: 0 })).toBe(from90);
 });
 
 test('a cover is a flat 30 s whatever the length picker says', () => {
   for (const d of [0, 30, 60, 90]) {
     expect(musicBilledSeconds({ duration: d, cover: true })).toBe(30);
-    expect(musicQuote({ duration: d, cover: true })).toBe(5);
+    expect(musicQuote({ duration: d, cover: true })).toBe(under60);
   }
 });
 
 test('every length the screen offers quotes a positive whole number of credits, ascending with length', () => {
   const prices = MUSIC_DURATIONS.map((d) => musicQuote({ duration: d }));
   expect(prices.every((p) => Number.isInteger(p) && p > 0)).toBe(true);
-  expect(prices).toEqual([5, 8, 12, 12]);
+  expect(prices).toEqual([under60, under90, from90, from90]);
 });
 
 test('a cover run needs an attached track, in cover mode, with no trained voice overriding it', () => {

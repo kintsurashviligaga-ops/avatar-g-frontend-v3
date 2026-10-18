@@ -16,6 +16,7 @@
  * server (cost forecasting) AND in the client (toast / UI) without pulling server-only code.
  */
 import { GEL_PER_USD } from '@/lib/billing/fx';
+import { PRICE_BOOK, filmCredits, musicCredits, sceneCredits } from './priceBook';
 
 /** Approximate wholesale API cost per unit, in USD. Used for margin sanity-checks. */
 export const API_COSTS_USD = {
@@ -49,26 +50,29 @@ export const USD_TO_GEL = GEL_PER_USD;
 /** Credit system: 1 credit = 0.10 GEL ≈ 0.037 USD. */
 export const CREDIT_VALUE_GEL = 0.1;
 
-/** Cost in CREDITS per user-facing action (1 credit = 0.10 GEL). */
+/**
+ * Cost in CREDITS per user-facing action (1 credit = 0.10 GEL), read from THE price book (lib/credits/priceBook — the owner's
+ * 100 %-profit rule, PRD v2 §1.1). The keys are the ones every caller already uses; the numbers live in the book.
+ */
 export const CREDIT_COSTS = {
-  image_generate: 2, // 0.20 GEL
-  music_30s: 5, // 0.50 GEL
-  music_60s: 8, // 0.80 GEL
-  music_90s: 12, // 1.20 GEL
-  video_30s: 25, // 2.50 GEL (covers 6 clips + assembly)
-  video_60s: 45, // 4.50 GEL
-  avatar_30s: 20, // 2.00 GEL
+  image_generate: PRICE_BOOK.image,
+  music_30s: PRICE_BOOK.music.under60,
+  music_60s: PRICE_BOOK.music.under90,
+  music_90s: PRICE_BOOK.music.from90,
+  // The shortest film, 8 s on Fast. The key keeps its old name; a film is priced by its length (filmCredits).
+  video_30s: filmCredits(8),
+  // The Veo talking avatar: one 8 s Fast scene with its spoken line (the HeyGen routes that also read it refuse under
+  // MEDIA_GOOGLE_ONLY).
+  avatar_30s: sceneCredits('fast'),
   chat_message: 0, // free
-  remix_video: 15, // 1.50 GEL
-  // 0.50 GEL — the price docs/COMPETITIVE_ADVANTAGE.md and lib/billing/gel.ts (geometry_3d) already
-  // advertise. Wholesale is ~$0.10 per TRELLIS mesh (costModel) plus ~$0.04 for the Imagen reference on
-  // the text path. Owner-tunable: change this one number.
+  // A charged video touch-up (lib/video/remixCharge remixOpCredits prices each op; this is the voice-over, the dearest).
+  remix_video: PRICE_BOOK.remixVoiceover,
+  // No allowed engine renders a 3D model (TRELLIS is Replicate): the route refuses under MEDIA_GOOGLE_ONLY, so the price
+  // book has no rule price for it and this number is never charged while the switch is on.
   model3d: 5,
-  // Global E2E 2026-10-14 (S2): dubbing and presentation spent ElevenLabs / Gemini + Imagen with NO credit charge.
-  // PROPOSED prices, owner to confirm before merge — sized at provider cost plus margin at 1 cr ≈ $0.037:
-  // a dubbed minute ≈ STT + translation + ~15 TTS lines ≈ $0.30 → 10 cr; a deck = outline + up to 12 images ≈ $0.50 → 15 cr.
-  dubbing_per_minute: 10, // 1.00 GEL per started minute
-  presentation_deck: 15, // 1.50 GEL
+  // Off until the owner approves THESE numbers (OWNER_APPROVED_PRICING, lib/billing/pricingApproval).
+  dubbing_per_minute: PRICE_BOOK.dubbingPerMinute, // per started minute
+  presentation_deck: PRICE_BOOK.presentationDeck,
 } as const;
 
 export type CreditAction = keyof typeof CREDIT_COSTS;
@@ -117,17 +121,10 @@ export interface CreditPackage {
  * three copies of one product. A buyer who does the arithmetic finds no reason to spend more, and a
  * buyer who doesn't is being quietly nudged toward the option with no advantage.
  *
- * ⚠️ I BRIEFLY "FIXED" THIS BY MAKING THE BIG PACKS MORE GENEROUS (11 and 12 cr/GEL) AND THAT WAS WRONG.
- * A credit spent on VIDEO costs us 0.104 GEL in provider fees (video_30s = 25 cr against $0.96 of
- * inference, at 2.7 GEL/USD) while a credit SELLS for 0.10 GEL. So the flat ladder below already runs at
- * a 0.96x margin on video-heavy spend — a loss — and sweetening the larger packs took it to 0.80x. The
- * numbers are back where they were, and the flat rate is now a KNOWN problem rather than an accident.
- *
- * ⚠️ THE REAL DEFECT IS THAT CREDIT_VALUE_GEL IS TOO LOW, not that the ladder lacks a discount. Fixing
- * it means either charging more per credit, or capping what top-up credits may be spent on, and both
- * are commercial decisions. Do not add a volume bonus here until the base rate covers video.
- * lib/billing/pricingTiers.test.ts guards the SUBSCRIPTION side with a 2.5x-4.5x margin band; the
- * top-ups have no such guard, which is how this went unnoticed.
+ * ⚠️ NO VOLUME BONUS. A credit sells for 0.10 ₾ on every rail, and every service's credit count is priced so that 0.10 ₾
+ * a credit earns 100 % over its cost (lib/credits/priceBook, the owner's rule, PRD v2 §1.1, 2026-10-18). A pack that
+ * gave more credits per lari would sell every service under the rule; the plans keep the same 10 credits per ₾
+ * (lib/billing/tiers). Before the rule, a credit spent on video cost more in Veo fees than it sold for.
  */
 export const CREDIT_PACKAGES: ReadonlyArray<CreditPackage> = [
   { id: 'starter', gel: 9, credits: 90, highlight: false },
@@ -168,7 +165,7 @@ export function creditsToUsd(credits: number): number {
 /**
  * Credit cost for a generation, resolved by kind + size so the SAME helper covers
  * every surface. `seconds` picks the music/video tier; `count` multiplies batch
- * image jobs (×2/×4 grids). Unknown kinds → 0 (never over-charge on a guess).
+ * image jobs (×2/×4 grids). Unknown kinds → 0 (never over-charge on a guess). Every number is lib/credits/priceBook's.
  */
 export function creditCostFor(
   kind: 'image' | 'music' | 'video' | 'avatar' | 'remix' | 'model3d' | 'dubbing' | 'presentation' | 'chat',
@@ -178,14 +175,11 @@ export function creditCostFor(
   switch (kind) {
     case 'image':
       return C.image_generate * Math.max(1, opts.count ?? 1);
-    case 'music': {
-      const s = opts.seconds ?? 30;
-      return s >= 90 ? C.music_90s : s >= 60 ? C.music_60s : C.music_30s;
-    }
-    case 'video': {
-      const s = opts.seconds ?? 30;
-      return s >= 60 ? C.video_60s : C.video_30s;
-    }
+    case 'music':
+      return musicCredits(opts.seconds ?? 30);
+    case 'video':
+      // A film of that length on Fast (8 s when none is given: one clip, the shortest film).
+      return filmCredits(opts.seconds ?? 8);
     case 'avatar':
       return C.avatar_30s;
     case 'remix':

@@ -2,11 +2,16 @@
  * Every user-visible string of the video create screen, in the three languages of the product. Georgian runs 1.5–2× the
  * length of English: every row that shows these wraps (it never truncates a label that carries meaning).
  */
+import { filmCredits } from '@/lib/credits/priceBook';
+
 export type VideoLang = 'ka' | 'en' | 'ru';
 export const videoLang = (l: string | null | undefined): VideoLang => (l === 'en' || l === 'ru' ? l : 'ka');
 
 export type L3 = Record<VideoLang, string>;
 const T = (ka: string, en: string, ru: string): L3 => ({ ka, en, ru });
+
+/** How many times a Fast film a Standard one costs, from the price book (an 8 s film: 224 against 75 → 3). */
+const STANDARD_X = Math.round((filmCredits(8, 'standard') / filmCredits(8, 'fast')) * 10) / 10;
 
 export const VIDEO_COPY = {
   chooseTool: T('აირჩიე ხელსაწყო', 'Choose a tool', 'Выберите инструмент'),
@@ -64,6 +69,25 @@ export const VIDEO_COPY = {
   generate: T('შექმნა', 'Generate', 'Создать'),
   rendering: T('იქმნება…', 'Rendering…', 'Создаётся…'),
 
+  // GG 2026-10-18 („ზედმეტი წაშალე"): the prompt is typed in the chat box; the panel keeps only the switches that matter.
+  promptInChat: T(
+    'ვიდეო აღწერე ჩატის ველში ქვემოთ და დააჭირე გაგზავნას',
+    'Describe the video in the chat box below and press Send',
+    'Опишите видео в поле чата ниже и нажмите «Отправить»',
+  ),
+  settings: T('პარამეტრები', 'Settings', 'Параметры'),
+  otherModels: T('სხვა მოდელები…', 'Other models…', 'Другие модели…'),
+  narrator: T('დიქტორი', 'Narrator', 'Диктор'),
+  narratorOff: T('გამორთული', 'Off', 'Выкл'),
+  female: T('ქალი', 'Female', 'Женский'),
+  male: T('კაცი', 'Male', 'Мужской'),
+  music: T('მუსიკა', 'Music', 'Музыка'),
+  subtitles: T('სუბტიტრები', 'Subtitles', 'Субтитры'),
+  lipsync: T('ტუჩების სინქრონი', 'Lip-sync', 'Синхрон губ'),
+  lipsyncSub: (credits: string): L3 => T(`+${credits}, ჩავარდნისას ბრუნდება`, `+${credits}, returned if it fails`, `+${credits}, при сбое возвращаются`),
+  photos: T('ფოტოები', 'Photos', 'Фото'),
+  photosOptional: T('არჩევითი', 'optional', 'необязательно'),
+
   // disclosures
   story: T('ისტორია და სტილი', 'Story & style', 'История и стиль'),
   voice: T('ხმა და მუსიკა', 'Voice & music', 'Голос и музыка'),
@@ -103,7 +127,7 @@ export const VIDEO_COPY = {
   engineLabel: T('ძრავა და ფასი', 'Engine & price', 'Движок и цена'),
   liteBlurb: T('ყველაზე დაბალი ფასი', 'Lowest price', 'Самая низкая цена'),
   fastBlurb: T('ბალანსი — ძირითადი არჩევანი', 'Balanced — the default', 'Баланс — основной выбор'),
-  standardBlurb: T('მაქსიმალური ხარისხი · Fast-ზე 3.3-ჯერ ძვირი', 'Max quality · 3.3× the price of Fast', 'Максимум качества · в 3,3 раза дороже Fast'),
+  standardBlurb: T(`მაქსიმალური ხარისხი · Fast-ზე ${STANDARD_X}-ჯერ ძვირი`, `Max quality · ${STANDARD_X}× the price of Fast`, `Максимум качества · в ${String(STANDARD_X).replace('.', ',')} раза дороже Fast`),
   musicVideoSurcharge: (pct: number): L3 => T(
     `მუსიკალური კლიპი +${pct}% (სიმღერა და ტუჩების სინქრონი)`,
     `A music video adds ${pct}% (the song and lip-synced close-ups)`,

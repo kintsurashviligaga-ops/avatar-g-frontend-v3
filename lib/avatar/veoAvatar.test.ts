@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import { avatarVoiceByElevenLabs, avatarVoicePath, avatarVoicedPath, buildVeoAvatarPrompt, parseVeoAvatarRequest, veoAvatarCredits, VEO_AVATAR_NEGATIVE, VEO_AVATAR_SPEECH_MAX } from './veoAvatar';
-import { videoCredits } from '../credits/videoPricing';
+import { sceneCredits } from '../credits/priceBook';
 
 describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
   it('the prompt keeps the Georgian words verbatim, names the language, and puts the direction apart from them', () => {
@@ -14,8 +14,9 @@ describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
   it('with no direction a calm default is used', () => {
     expect(buildVeoAvatarPrompt({ speech: 'Hello there', direction: '' })).toMatch(/Natural, warm expression/);
   });
-  it('is priced as one Veo Fast clip of 8 s from the video SSoT', () => {
-    expect(veoAvatarCredits()).toBe(videoCredits({ seconds: 8, quality: 'fast' }));
+  it('is priced as one 8 s Fast scene from the price book (its clip and spoken line, no film base): 71 credits', () => {
+    expect(veoAvatarCredits()).toBe(sceneCredits('fast', false, 8));
+    expect(veoAvatarCredits()).toBe(71);
   });
   it('parses strictly: words required, a too-long line refused, 9:16 by default', () => {
     expect(parseVeoAvatarRequest({ photo: 'omni-uploads/u/a.jpg', speech: 'hi' })).toEqual({ ok: true, value: { photo: 'omni-uploads/u/a.jpg', speech: 'hi', direction: '', aspect: '9:16', voiceGender: null, expectedCredits: null } });

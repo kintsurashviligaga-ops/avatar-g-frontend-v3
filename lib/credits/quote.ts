@@ -28,25 +28,22 @@ export const PRODUCT_AD_LENGTHS = [8, 24, 48] as const;
 /**
  * Which price a product ad charges.
  *
- * - `production`: what myavatar.ge charges today, the video price for the length (creditCostFor: 25 credits up to 59 s),
- *   so 25 at 8, 24 and 48 s.
- * - `length`: the pricing audit's rule (D2, docs/handoffs/pricing/SERVICE_UNIT_ECONOMICS.md): an ad costs what a film
- *   of its length costs on the tier it renders on (25 / 75 / 150), since a 48 s ad renders six Veo Fast clips
- *   ($5.76 at $0.12/s, ≈ 15.5 ₾) for 2.50 ₾.
+ * - `length` (live): an ad costs what a Fast film of its length costs (lib/credits/priceBook — 75 / 217 / 430 at 8 / 24 / 48 s),
+ *   since a 48 s ad renders six Veo Fast clips. The owner's 100 %-profit rule (PRD v2 §1.1, 2026-10-18).
+ * - `production`: the flat 8 s video price (creditCostFor('video') without a length) whatever the ad's length, which sold a 48 s ad — six
+ *   clips, ~20 ₾ of cost — for one clip's price. Kept so the switch can be read back in tests and the doc.
  *
- * ⚠️ STAYS `production` UNTIL THE OWNER APPROVES THE PRICE MODEL. A Production price changes only on the owner's word
- * (2026-10-10), and this rule is part of the one price model waiting on it. The button, the chat notices, the remix
- * route's charge and the secondary-clip gate all read this one switch.
+ * The button, the chat notices, the remix route's charge and the secondary-clip gate all read this one switch.
  */
 export type ProductAdPricing = 'production' | 'length';
-export const PRODUCT_AD_PRICING: ProductAdPricing = 'production';
+export const PRODUCT_AD_PRICING: ProductAdPricing = 'length';
 
 /** Credits a product ad of `sec` seconds costs under `rule`. */
 export function productAdCredits(sec: number | null | undefined, rule: ProductAdPricing = PRODUCT_AD_PRICING): number {
   const seconds = productAdSeconds(sec);
   return rule === 'length'
     ? videoCredits({ seconds, quality: STUDIO_DEFAULT_VEO_TIER })
-    : creditCostFor('video', { seconds });
+    : creditCostFor('video');
 }
 
 /** A requested ad length rounded UP to the next offered one (8 s when absent), so a request never pays for less than it renders. */

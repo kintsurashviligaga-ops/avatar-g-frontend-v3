@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { PRICE_BOOK } from '@/lib/credits/priceBook';
 import { quoteCredits } from '@/lib/credits/quote';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { PRODUCE_COST } from '@/lib/orchestrator/produceCost';
@@ -42,7 +43,7 @@ describe('what a press costs', () => {
         expect(shootCredits(photos, count)).toBe(tiles * creditCostFor('image')); // = renders × the per-render debit
       }
     }
-    expect(shootCredits(0, 1)).toBe(2);
+    expect(shootCredits(0, 1)).toBe(PRICE_BOOK.image); // one render: one image of the price book
   });
 
   test('both tools are registered in lib/credits/quote under their own names, at the same price as an image render', () => {

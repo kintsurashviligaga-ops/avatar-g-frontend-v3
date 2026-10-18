@@ -305,6 +305,29 @@ function refuseChatMusic(input: OrchestratorInput, intent: IntentCategory): Chat
   };
 }
 
+/**
+ * The admin's service switch (lib/server/serviceSwitches) for a chat "yes": a tool the admin switched off answers in
+ * the chat with the same sentence the studio route gives, before any balance read, charge or provider call.
+ */
+async function refuseSwitchedOffInChat(input: OrchestratorInput, intent: IntentCategory, tool: SwitchableTool | null): Promise<ChatResponse | null> {
+  if (!tool) return null;
+  // Loaded on use (it reads the database client), and fail-open like the switch itself: a read problem never blocks
+  // the chat.
+  const reason = await import('@/lib/server/serviceSwitches').then((m) => m.serviceOffReason(tool)).catch(() => null);
+  if (!reason) return null;
+  return { success: false, intent, responseType: 'text', message: reason, metadata: { provider: 'policy', code: 'service_disabled' } };
+}
+
+/** Which switchable tool a chat intent starts (null = not a switchable generation). */
+function toolForIntent(intent: IntentCategory): SwitchableTool | null {
+  switch (intent as string) {
+    case 'image_generation': case 'photo_edit': return 'image';
+    case 'video_generation': return 'video';
+    case 'avatar_generation': return 'avatar';
+    default: return null;
+  }
+}
+
 export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
@@ -314,7 +337,9 @@ export async function orchestrate(
   // interior and attachment checks, so a film brief with the word "room" or "space" in it was answered "Upload a room
   // photo" by the 3D-interior branch, and a film with a reference image could be answered by the vision branch as text.
   if (input.metadata?.musicVideoMode === true || hasFilmDispatchSignal(input.metadata)) {
-    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation')
+      ?? (await refuseSwitchedOffInChat(input, 'video_generation', 'video'))
+      ?? handleFilmComposite(input);
   }
 
   // PHASE 56 — Interior REDESIGN (depth-locked FLUX ControlNet) takes priority
@@ -325,12 +350,14 @@ export async function orchestrate(
   if (shouldRedesignInterior(input)) {
     return refuseAnonymousGeneration(input, 'image_generation')
       ?? refuseOutsideEngineInChat(input, 'image_generation')
+      ?? (await refuseSwitchedOffInChat(input, 'image_generation', 'interior'))
       ?? handleInteriorRedesign(input);
   }
 
   if (shouldRouteInteriorToWorldLabs(input)) {
     return refuseAnonymousGeneration(input, 'image_generation')
       ?? refuseOutsideEngineInChat(input, 'image_generation')
+      ?? (await refuseSwitchedOffInChat(input, 'image_generation', 'interior'))
       ?? handleInteriorIntent(input);
   }
 
@@ -395,7 +422,9 @@ export async function orchestrate(
   // conservative (explicit "30-second film / short film / mini-movie" phrasing), so a plain "music video"
   // request still falls through to the music-video composite below. See lib/chat/filmComposite.ts.
   if (isThirtySecondFilm(input.message)) {
-    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation')
+      ?? (await refuseSwitchedOffInChat(input, 'video_generation', 'video'))
+      ?? handleFilmComposite(input);
   }
 
   // Composite check runs BEFORE single-intent detection. Music-video prompts
@@ -403,7 +432,9 @@ export async function orchestrate(
   // (whichever pattern hits the higher confidence weight) and only ONE
   // worker would fire — see lib/chat/musicVideoComposite.ts for the trace.
   if (isMusicVideoComposite(input.message)) {
-    return refuseAnonymousGeneration(input, 'video_generation') ?? handleMusicVideoComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation')
+      ?? (await refuseSwitchedOffInChat(input, 'video_generation', 'video'))
+      ?? handleMusicVideoComposite(input);
   }
 
   // 1. Detect intent
@@ -414,13 +445,16 @@ export async function orchestrate(
   }
 
   if (DETERMINISTIC_INTENTS.has(detected.intent)) {
-    return refuseAnonymousGeneration(input, detected.intent) ?? handleDeterministicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent)
+      ?? (await refuseSwitchedOffInChat(input, detected.intent, toolForIntent(detected.intent)))
+      ?? handleDeterministicIntent(input, detected);
   }
 
   // 2. Route to the right provider
   if (detected.provider === 'replicate') {
     return refuseAnonymousGeneration(input, detected.intent)
       ?? refuseOutsideEngineInChat(input, detected.intent)
+      ?? (await refuseSwitchedOffInChat(input, detected.intent, toolForIntent(detected.intent)))
       ?? handleReplicateIntent(input, detected);
   }
 
@@ -908,6 +942,7 @@ const INTERIOR_REDESIGN_MODEL = process.env.REPLICATE_INTERIOR_MODEL || 'black-f
 export { shouldRedesignInterior } from './interiorRouting';
 import { shouldRedesignInterior } from './interiorRouting';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
+import type { SwitchableTool } from '@/lib/server/serviceSwitches';
 
 /** Normalize the many shapes a Replicate image output can take into a URL. */
 function extractReplicateImageUrl(output: unknown): string | null {

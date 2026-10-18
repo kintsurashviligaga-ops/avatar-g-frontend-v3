@@ -123,45 +123,38 @@ const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
   business: { ka: 'ბიზნესი', en: 'Business', ru: 'Бизнес' },
 };
 
-// Bullets deliberately carry NO credit total: `creditsIncluded` is derived from the ceilings in
-// pricingConfig, so a hardcoded "150 credits" here would silently drift the moment a media cost changes.
-// Engine names are Gemini-era — the old copy advertised "Runway Gen-4" to users long after Veo became the
-// primary video engine.
+// Bullets deliberately carry NO credit total, and their counts are READ from the tier ceilings (PRICING_TIERS ←
+// lib/billing/tiers), so a ceiling that moves with the price book moves these words in the same edit. Engine names are
+// Gemini-era — the old copy advertised "Runway Gen-4" to users long after Veo became the primary video engine.
+const ceilingOf = (id: PricingTierId) => PRICING_TIERS.find((t) => t.id === id)?.creditCeiling ?? { videos: 0, music: 0, images: 0 };
+const FREE = ceilingOf('free');
+const BASIC = ceilingOf('basic');
+const PRO = ceilingOf('pro');
+const BUSINESS = ceilingOf('business');
+
 export const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
-  // ⚠️ THIS BLOCK ONCE ARGUED THE OPPOSITE — that the card must advertise "3 უფასო ვიდეო" because
-  // free_films_remaining really was 3 on every account. That was true then and is wrong now: the
-  // three uncounted videos were 94% of the cost of a free signup ($2.88 of $3.06) and have been
-  // folded into one 50-credit grant with a 1-video cap. Kept as a note because the underlying rule
-  // has not changed — this copy must state what the DATABASE actually grants, not the other way round.
-  // ⚠️ THIS CARD USED TO CONTRADICT THE DATABASE AND THE PRICING PAGE AT THE SAME TIME. It promised
-  // "3 free videos + 10 starter credits" while the pricing card said 6 images (12 credits) and the signup
-  // trigger actually inserted 10 — three numbers, none of which agreed, plus a video allowance that the
-  // credit ledger did not know existed. One trial now: 50 credits, of which at most one video, and the
-  // video cap is enforced by free_films_remaining rather than promised in copy.
+  // ⚠️ THIS COPY MUST STATE WHAT THE DATABASE GRANTS. Once it promised "3 free videos + 10 starter credits" while the
+  // pricing card said 6 images and the signup trigger inserted 10. The trial is the 50-credit grant plus ONE free film
+  // from free_films_remaining (its own quota, not paid from the 50), and the ceiling frames the 50 as tracks + images.
   free: {
-    ka: ['50 უფასო კრედიტი სასტარტოდ', 'მათ შორის 1 ვიდეო (8 წმ)', 'ან 25 სურათი / 10 მუსიკა', 'AI ჩატი (Gemini)'],
-    en: ['50 free starter credits', 'including 1 video (8s)', 'or 25 images / 10 music tracks', 'AI chat (Gemini)'],
-    ru: ['50 бесплатных стартовых кредитов', 'включая 1 видео (8 с)', 'или 25 изображений / 10 треков', 'AI-чат (Gemini)'],
+    ka: ['50 უფასო კრედიტი სასტარტოდ', `${FREE.videos} უფასო ფილმი (8 წმ)`, `კრედიტით: ${FREE.music} მუსიკა და ${FREE.images} სურათი`, 'AI ჩატი (Gemini)'],
+    en: ['50 free starter credits', `${FREE.videos} free film (8s)`, `credits for ${FREE.music} music tracks and ${FREE.images} images`, 'AI chat (Gemini)'],
+    ru: ['50 бесплатных стартовых кредитов', `${FREE.videos} бесплатный фильм (8 с)`, `кредиты на ${FREE.music} трека и ${FREE.images} изображений`, 'AI-чат (Gemini)'],
   },
   basic: {
-    ka: ['4 ვიდეო კლიპი 8 წამამდე (Veo 3.1, ნატიური აუდიო)', '40 კინემატოგრაფიული სურათი', '10 მუსიკალური ტრეკი (Lyria 3)', 'ხმის სინთეზი ქართულად'],
-    en: ['4 video clips up to 8s (Veo 3.1, native audio)', '40 cinematic images', '10 music tracks (Lyria 3)', 'Georgian voice synthesis'],
-    ru: ['4 видеоклипа до 8с (Veo 3.1, нативное аудио)', '40 кинематографичных изображений', '10 музыкальных треков (Lyria 3)', 'Синтез голоса на грузинском'],
+    ka: [`${BASIC.videos} ვიდეო კლიპი 8 წამამდე (Veo 3.1, ნატიური აუდიო)`, `${BASIC.images} კინემატოგრაფიული სურათი`, `${BASIC.music} მუსიკალური ტრეკი (Lyria 3)`, 'ხმის სინთეზი ქართულად'],
+    en: [`${BASIC.videos} video clips up to 8s (Veo 3.1, native audio)`, `${BASIC.images} cinematic images`, `${BASIC.music} music tracks (Lyria 3)`, 'Georgian voice synthesis'],
+    ru: [`${BASIC.videos} видеоклипа до 8с (Veo 3.1, нативное аудио)`, `${BASIC.images} кинематографичных изображений`, `${BASIC.music} музыкальных треков (Lyria 3)`, 'Синтез голоса на грузинском'],
   },
   pro: {
-    ka: ['8 ვიდეო კლიპი (Veo 3.1)', '100 უზადო სურათი', '25 მუსიკალური ტრეკი (Lyria 3)', 'მოლაპარაკე ავატარები', 'სრული წვდომა Agent G-ზე'],
-    en: ['8 video clips (Veo 3.1)', '100 flawless images', '25 music tracks (Lyria 3)', 'Talking avatars', 'Full access to Agent G'],
-    ru: ['8 видеоклипов (Veo 3.1)', '100 безупречных изображений', '25 музыкальных треков (Lyria 3)', 'Говорящие аватары', 'Полный доступ к Agent G'],
+    ka: [`${PRO.videos} ვიდეო კლიპი (Veo 3.1)`, `${PRO.images} უზადო სურათი`, `${PRO.music} მუსიკალური ტრეკი (Lyria 3)`, 'მოლაპარაკე ავატარები', 'სრული წვდომა Agent G-ზე'],
+    en: [`${PRO.videos} video clips (Veo 3.1)`, `${PRO.images} flawless images`, `${PRO.music} music tracks (Lyria 3)`, 'Talking avatars', 'Full access to Agent G'],
+    ru: [`${PRO.videos} видеоклипов (Veo 3.1)`, `${PRO.images} безупречных изображений`, `${PRO.music} музыкальных треков (Lyria 3)`, 'Говорящие аватары', 'Полный доступ к Agent G'],
   },
-  // ⚠️ THESE NUMBERS MUST TRACK PRICING_TIERS[business].creditCeiling, AND ONCE THEY DID NOT. When Business
-  // was rebalanced to {16, 60, 250} to give it a real per-dollar advantage over Pro, this hand-written
-  // copy kept saying 200 images / 50 tracks — so the pricing PAGE advertised 250/60 while the billing
-  // MODAL, the screen someone reads with their card out, advertised less. Caught by opening the modal as a
-  // signed-in user, not by reading the diff. If a ceiling moves, this block moves in the same edit.
   business: {
-    ka: ['16 ვიდეო კლიპი (Veo 3.1)', '250 დეტალური სურათი', '60 მუსიკალური ტრეკი (Lyria 3)', 'გუნდური ბიბლიოთეკები', 'პრიორიტეტული რენდერი', 'VIP მხარდაჭერა'],
-    en: ['16 video clips (Veo 3.1)', '250 detailed images', '60 music tracks (Lyria 3)', 'Shared team libraries', 'Priority render queue', 'VIP support'],
-    ru: ['16 видеоклипов (Veo 3.1)', '250 детальных изображений', '60 музыкальных треков (Lyria 3)', 'Командные библиотеки', 'Приоритетная очередь', 'VIP-поддержка'],
+    ka: [`${BUSINESS.videos} ვიდეო კლიპი (Veo 3.1)`, `${BUSINESS.images} დეტალური სურათი`, `${BUSINESS.music} მუსიკალური ტრეკი (Lyria 3)`, 'გუნდური ბიბლიოთეკები', 'პრიორიტეტული რენდერი', 'VIP მხარდაჭერა'],
+    en: [`${BUSINESS.videos} video clips (Veo 3.1)`, `${BUSINESS.images} detailed images`, `${BUSINESS.music} music tracks (Lyria 3)`, 'Shared team libraries', 'Priority render queue', 'VIP support'],
+    ru: [`${BUSINESS.videos} видеоклипов (Veo 3.1)`, `${BUSINESS.images} детальных изображений`, `${BUSINESS.music} музыкальных треков (Lyria 3)`, 'Командные библиотеки', 'Приоритетная очередь', 'VIP-поддержка'],
   },
 };
 

@@ -20,6 +20,10 @@
  * the tests can read the envelope it was given, and throw its refusal.
  */
 import { drainOnce } from './videoQueue';
+import { clipCredits } from '../credits/priceBook';
+
+/** One queued clip's price: one 8 s Veo clip on Fast (lib/credits/priceBook), 64 credits. */
+const CLIP = clipCredits('fast');
 
 const refundCredits = jest.fn();
 const deductCredits = jest.fn();
@@ -36,7 +40,7 @@ jest.mock('../orchestrator/ledger', () => ({
   deductCredits: (...a: unknown[]) => deductCredits(...a),
   refundCredits: (...a: unknown[]) => refundCredits(...a),
 }));
-jest.mock('../credits/videoPricing', () => ({ STUDIO_DEFAULT_VEO_TIER: 'fast', videoCredits: () => 25 }));
+jest.mock('../credits/videoPricing', () => ({ STUDIO_DEFAULT_VEO_TIER: 'fast' }));
 jest.mock('../veo/engine', () => ({
   veoTransport: () => veoTransport(),
   createVeoClip: (...a: unknown[]) => createVeoClip(...a),
@@ -138,9 +142,9 @@ describe('a clip the provider refuses', () => {
     const res = await drainOnce(db as never, UID);
 
     expect(res.action).toBe('failed');
-    expect(deductCredits).toHaveBeenCalledWith(UID, 25, 'agentq:item-1');
-    // THE ASSERTION THAT WAS MISSING. The snapshot drainOnce read said credits: 0; the row says 25.
-    expect(refundCredits).toHaveBeenCalledWith(UID, 25, 'agentq:item-1');
+    expect(deductCredits).toHaveBeenCalledWith(UID, CLIP, 'agentq:item-1');
+    // THE ASSERTION THAT WAS MISSING. The snapshot drainOnce read said credits: 0; the row says the clip's price.
+    expect(refundCredits).toHaveBeenCalledWith(UID, CLIP, 'agentq:item-1');
     expect(db.rows[0].status).toBe('failed');
     expect(db.rows[0].credits).toBe(0); // cleared only because the refund landed
   });
@@ -154,7 +158,7 @@ describe('a clip the provider refuses', () => {
     await drainOnce(db as never, UID);
 
     expect(db.rows[0].status).toBe('failed');
-    expect(db.rows[0].credits).toBe(25);
+    expect(db.rows[0].credits).toBe(CLIP);
   });
 
   it('charges nothing when the provider is not configured at all', async () => {
@@ -179,7 +183,7 @@ describe('a clip the provider refuses', () => {
 
     expect(res.action).toBe('failed');
     expect(createVeoClip).not.toHaveBeenCalled();
-    expect(refundCredits).toHaveBeenCalledWith(UID, 25, 'agentq:item-1');
+    expect(refundCredits).toHaveBeenCalledWith(UID, CLIP, 'agentq:item-1');
     expect(db.rows[0].status).toBe('failed');
     expect(db.rows[0].credits).toBe(0);
   });
@@ -195,7 +199,7 @@ describe('a clip the provider refuses', () => {
     expect(first.action).toBe('failed');
     expect(second.action).toBe('idle');
     expect(createVeoClip).toHaveBeenCalledTimes(1);
-    expect(refundCredits).toHaveBeenCalledWith(UID, 25, 'agentq:item-1');
+    expect(refundCredits).toHaveBeenCalledWith(UID, CLIP, 'agentq:item-1');
     expect(db.rows[0].error).toBe('the provider did not confirm the clip');
     // …and the budget keeps its estimate for a job that may exist, while a definitive refusal books $0.
     expect(guardOpts().actualCost(refused('ambiguous'))).toBeUndefined();
@@ -308,7 +312,7 @@ describe('a clip that is accepted', () => {
     expect(guardedCall).toHaveBeenCalledTimes(1);
     const opts = guardOpts();
     expect(opts).toEqual(expect.objectContaining({ service: 'video', units: 8, userId: UID }));
-    // The tier the 25-credit price is anchored on, never the engine's Standard default ($0.40/s).
+    // The tier the clip's price is anchored on, never the engine's Standard default ($0.40/s).
     expect(opts.model).toMatch(/^veo-3\.1-fast-/);
     expect(opts.unitCostUsd).toBeGreaterThan(0);
     // A clip that was accepted keeps the estimate.

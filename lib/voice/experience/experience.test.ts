@@ -72,14 +72,19 @@ test('unknown models receive no VAD override and legacy3.8 receives no thinkingB
  const setup=buildSetupMessage({model:'models/gemini-3.8-live'}) as {setup:{generationConfig:object}};
  expect(setup.setup.generationConfig).not.toHaveProperty('thinkingConfig');
 });
-test.each(['start_generation','agent_task','extract_audio','music_studio','image_studio','video_studio'])('spoken yes cannot start %s',async name=>{
+test.each(['music_studio','image_studio','video_studio'])('spoken yes cannot start %s (no countdown gate there)',async name=>{
  const handler=jest.fn();
  const replies=await executeVoiceCalls([{id:'1',name,args:{action:'start',confirmed:'yes',said:'კი'}}],handler);
  expect(handler).not.toHaveBeenCalled();expect(replies[0]?.response).toMatchObject({error:'ui_confirmation_required'});
 });
+test.each(['start_generation','agent_task','extract_audio'])('%s goes on to the countdown gate (GG 2026-10-18: the user\'s own spoken yes)',async name=>{
+ const handler=jest.fn(async()=>[{id:'1',name,response:{ok:true}}]);
+ const r=await executeVoiceCalls([{id:'1',name,args:{action:'start',confirmed:'yes'}}],handler);
+ expect(handler).toHaveBeenCalledTimes(1);expect(r[0]?.response).toMatchObject({ok:true});
+});
 test('mixed batch executes quote only and cannot override blocked response',async()=>{
- const handler=jest.fn(async()=>[{id:'q',name:'music_studio',response:{ok:true}},{id:'s',name:'start_generation',response:{ok:true}}]);
- const r=await executeVoiceCalls([{id:'s',name:'start_generation',args:{}},{id:'q',name:'music_studio',args:{action:'quote'}}],handler);
+ const handler=jest.fn(async()=>[{id:'q',name:'music_studio',response:{ok:true}},{id:'s',name:'music_studio',response:{ok:true}}]);
+ const r=await executeVoiceCalls([{id:'s',name:'music_studio',args:{action:'start'}},{id:'q',name:'music_studio',args:{action:'quote'}}],handler);
  expect(handler.mock.calls[0]?.[0]).toEqual([{id:'q',name:'music_studio',args:{action:'quote'}}]);
  expect(r).toHaveLength(2);expect(r[0]?.response).toMatchObject({error:'ui_confirmation_required'});
 });

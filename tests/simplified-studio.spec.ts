@@ -69,9 +69,10 @@ test('the Video panel shows Film | Music video at its top, and a tap switches it
 
   const choice = panel.getByTestId('video-mode-choice');
   await expect(choice).toBeVisible();
-  // Above the prompt, not hidden in a sheet or a closed disclosure (the model card is in Advanced settings since 2026-10-18).
-  const [c, prompt] = await Promise.all([choice.boundingBox(), panel.getByTestId('video-prompt').boundingBox()]);
-  expect(c!.y).toBeLessThan(prompt!.y);
+  // At the top of the panel, above its settings — not hidden in a sheet or a closed disclosure (GG 2026-10-18: the panel
+  // has no prompt of its own; the settings card is everything under the switch, length and format).
+  const [c, settings] = await Promise.all([choice.boundingBox(), panel.getByTestId('video-settings').boundingBox()]);
+  expect(c!.y).toBeLessThan(settings!.y);
 
   await expect(panel.getByTestId('video-mode-documentary')).toHaveAttribute('aria-checked', 'true');
   await panel.getByTestId('video-mode-musicvideo').click();
@@ -81,7 +82,7 @@ test('the Video panel shows Film | Music video at its top, and a tap switches it
   if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-mode.png` });
 });
 
-test('Music video keeps the retired director\'s look and the storyboard: genre and light reach the brief, scenes can be edited', async ({ page }) => {
+test('Music video keeps the storyboard: the genre and light typed in the chat box reach the brief, scenes can be edited', async ({ page }) => {
   test.setTimeout(240_000);
   await quiet(page);
   // Nothing is planned or rendered for real: the plan call answers three scenes that already have frames (so none are
@@ -106,25 +107,17 @@ test('Music video keeps the retired director\'s look and the storyboard: genre a
     new MutationObserver(pin).observe(el, { attributes: true, attributeFilter: ['data-authed'] });
   });
 
-  // Film mode has no look row; Music video shows it right under the switch.
-  await expect(panel.getByTestId('mv-look')).toHaveCount(0);
+  // GG 2026-10-18: the look chips (MusicVideoLook) left the panel — the genre and the light are words in the prompt, typed
+  // in the chat box like the rest of it; the panel keeps the switch and the priced lip-sync.
   await panel.getByTestId('video-mode-musicvideo').click();
-  const look = panel.getByTestId('mv-look');
-  await expect(look).toBeVisible();
-  const [lb, prompt] = await Promise.all([look.boundingBox(), panel.getByTestId('video-prompt').boundingBox()]);
-  expect(lb!.y).toBeLessThan(prompt!.y);
+  await expect(panel.getByTestId('mv-look')).toHaveCount(0);
+  await expect(panel.getByTestId('video-lipsync')).toBeVisible();
+  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-panel.png` });
 
-  await panel.getByTestId('mv-genre-blues').click();
-  await panel.getByTestId('mv-light-golden').click();
-  await expect(panel.getByTestId('mv-genre-blues')).toHaveAttribute('aria-pressed', 'true');
-  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-look.png` });
-
-  await panel.getByTestId('video-prompt').locator('textarea').fill('A singer on a rooftop at dusk');
-  await panel.getByTestId('video-generate').click();
+  await page.getByTestId('composer-input').fill('A singer on a rooftop at dusk, soulful blues, golden-hour sunlight');
+  await page.getByTestId('run-button').click();
   await expect.poll(() => briefs.length, { timeout: 30_000 }).toBeGreaterThan(0);
-  expect(briefs[0]).toContain('A singer on a rooftop at dusk');
-  expect(briefs[0]).toContain('soulful blues music video');
-  expect(briefs[0]).toContain('golden-hour sunlight');
+  expect(briefs[0]).toContain('A singer on a rooftop at dusk, soulful blues, golden-hour sunlight');
   // No character photo was given, so the brief does not tell the director to feature one.
   expect(briefs[0]).not.toContain('uploaded character');
 

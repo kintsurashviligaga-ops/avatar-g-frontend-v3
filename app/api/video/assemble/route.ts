@@ -58,6 +58,7 @@ import { textToHostedSpeech, sanitizeSpokenText } from '@/lib/chat/filmVoiceover
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
 import { saveClipCheckpoints } from '@/lib/pipeline/checkpoints';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 // ISSUE 5 — the VIDEO pipeline uses ElevenLabs Music ONLY. Udio is intentionally NOT imported here so it can
 // never score a video; it stays confined to the standalone /api/ai/music surface — and Replicate MusicGen, once the
 // "silent-safety last resort", is gone too (PROJECT_MASTER R7: no silent fallback — see resolveMusicBed).
@@ -331,6 +332,9 @@ async function assembleImpl(req: NextRequest) {
     const gate = requireAuthForGeneration(uid);
     if (gate.response) return gate.response;
   }
+    // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+    const serviceOff = await serviceOffResponse('video');
+    if (serviceOff) return serviceOff;
   // QA pass: drop any clip whose URL is DEFINITIVELY dead (hard 403/404/410) so a single
   // expired/missing clip can't make ffmpeg fail the whole stitch — the survivors still
   // assemble (partial salvage). STRICTLY fail-open: keeps clips on 200/timeout/5xx/error
@@ -353,6 +357,7 @@ async function assembleImpl(req: NextRequest) {
   // The fallback stitch price: the film quote for the seconds actually handed over (lib/credits/videoPricing).
   const assembleCost = videoCredits({
     seconds: filmSecondsFromClips(segments.map((s) => ({ durationSec: s.durationSec }))),
+    scenes: segments.length,
     mode: body.musicVideoMode === true ? 'musicvideo' : 'documentary',
   });
   // Anonymous trial renders are allowed. The expensive part — rendering the 5

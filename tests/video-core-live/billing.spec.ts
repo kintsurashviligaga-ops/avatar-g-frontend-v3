@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { assertIsolatedSupabase } from './guard';
+import { filmSecondsFromClips, videoCredits } from '../../lib/credits/videoPricing';
 import {
   balanceOf, evidence, ledgerOf, liveUser, longCall, noteTransportCut, putOwnUpload, rows, rpc, signInToken, storageList, type LedgerRow,
 } from './_live';
@@ -30,8 +31,10 @@ import {
  * The route's EXPENSIVE limiter is 5 calls a minute per address; a 429 is waited out, never counted as a result.
  */
 const ASSEMBLE = '/api/video/assemble';
-// Two 4 s clips: 8 s of film at 25 credits per 8 s (lib/credits/videoPricing videoCredits, documentary mode).
-const FILM_PRICE = 25;
+// Two 4 s clips: what the route charges for them (lib/credits/videoPricing videoCredits, documentary mode), so a price-book
+// change moves this number with it.
+const CLIPS = [{ durationSec: 4 }, { durationSec: 4 }];
+const FILM_PRICE = videoCredits({ seconds: filmSecondsFromClips(CLIPS), scenes: CLIPS.length, mode: 'documentary' });
 // The route's maxDuration is 600 s; a call is given that and a little more.
 const CALL_MS = 620_000;
 
@@ -84,6 +87,14 @@ async function serverSince(userId: string, sinceIso: string, before: Set<string>
   const masters = (await Promise.all(fresh.map(async (f) =>
     (await storageList('renders', f)).filter((o) => o.id !== null && o.name.endsWith('.mp4')).map((o) => `${f}/${o.name}`)))).flat();
   return { masters, ledger: filmRows(await ledgerOf(userId), sinceIso), freeFilms: await freeFilmsOf(userId) };
+}
+/**
+ * Synthetic credits on this run's own stack (service role), so `presses` films can be paid for: the payer's 50 sign-up
+ * credits are less than one film at the price book's prices. The top-up's ref is not a film's, so `judge` never counts it.
+ */
+async function coverFilms(userId: string, presses: number): Promise<void> {
+  const short = presses * FILM_PRICE - (await balanceOf(userId));
+  if (short > 0) await rpc('refund_credits', { p_user_id: userId, p_amount: short, p_ref: `e2e:topup:${Date.now()}` });
 }
 const debitsOf = (s: Server) => s.ledger.filter((x) => x.delta < 0).length;
 const refundsOf = (s: Server) => s.ledger.filter((x) => x.delta > 0).length;
@@ -152,6 +163,8 @@ test.describe('Video Core live — the film stitch charges once, refunds a failu
   });
 
   test('a different composition is debited its price exactly once', async ({ request }) => {
+    await coverFilms(payer().id, 1);
+    const balance = await balanceOf(payer().id);
     const before = await sagaFolders();
     const since = new Date().toISOString();
     const r = await assemble(request, token, { segments: [{ url: clipB, durationSec: 4 }, { url: clipA, durationSec: 4 }], noMusic: true, orientation: 'vertical' }, 'node');
@@ -164,11 +177,12 @@ test.describe('Video Core live — the film stitch charges once, refunds a failu
     expect(server.masters, 'one film hosted').toHaveLength(1);
     expect(server.ledger.map((x) => x.delta)).toEqual([-FILM_PRICE]);
     expect(String(server.ledger[0]!.metadata?.ref)).toMatch(/^assemble:/);
-    expect(await balanceOf(payer().id)).toBe(50 - FILM_PRICE);
-    evidence('billing-paid-film', { client: r.client, ms: r.ms, transport: r.transport ?? null, status: r.status, freeFilm: r.body.freeFilm ?? null, balance: 50 - FILM_PRICE, masters: server.masters.length, ledger: summary(server.ledger) });
+    expect(await balanceOf(payer().id)).toBe(balance - FILM_PRICE);
+    evidence('billing-paid-film', { client: r.client, ms: r.ms, transport: r.transport ?? null, status: r.status, freeFilm: r.body.freeFilm ?? null, price: FILM_PRICE, balanceBefore: balance, balanceAfter: balance - FILM_PRICE, masters: server.masters.length, ledger: summary(server.ledger) });
   });
 
   test('a stitch that cannot decode a clip delivers nothing and nets to zero (one debit, one refund at most)', async ({ request }) => {
+    await coverFilms(payer().id, 1);
     const balance = await balanceOf(payer().id);
     const before = await sagaFolders();
     const since = new Date().toISOString();
@@ -187,8 +201,8 @@ test.describe('Video Core live — the film stitch charges once, refunds a failu
   });
 
   test('two presses at once: every delivered film is paid once, every failed press is refunded', async ({ request }) => {
-    // Synthetic credits on this run's own stack (service role), so both presses could be paid for.
-    await rpc('refund_credits', { p_user_id: payer().id, p_amount: 50, p_ref: `e2e:topup:${Date.now()}` });
+    // Enough credits for both presses to be paid for.
+    await coverFilms(payer().id, 2);
     // A fresh limiter window, so neither press is a 429.
     await new Promise((r) => setTimeout(r, 61_000));
     const balance = await balanceOf(payer().id);

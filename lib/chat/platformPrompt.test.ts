@@ -14,6 +14,8 @@ import { getService } from '@/lib/catalog/services';
 import { CREDIT_COSTS, CREDIT_PACKAGES, CREDIT_VALUE_GEL, creditCostFor, creditsToGel } from '@/lib/credits/pricing';
 import { BOG_TOPUP_PACKS_GEL, topupCredits } from '@/lib/billing/bogCatalog';
 import { videoCredits } from '@/lib/credits/videoPricing';
+import { PRICE_BOOK } from '@/lib/credits/priceBook';
+import { MUSIC_VIDEO_SURCHARGE_PCT, tierPriceEffect } from '@/lib/video/createPanel';
 
 const LOCALES: PlatformPromptLocale[] = ['ka', 'en', 'ru'];
 const NOW = new Date('2026-09-30T08:00:00Z'); // 12:00 in Tbilisi (UTC+4)
@@ -86,43 +88,52 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     for (const tier of ['Starter', 'Pro Creator', 'Studio Annual']) expect(p).not.toContain(tier);
   });
 
-  it('follows a price change in pricing.ts instead of carrying a literal', () => {
+  it('follows a price change in pricing.ts and the price book instead of carrying a literal', () => {
     jest.isolateModules(() => {
-      // Relative specifier: jest.doMock strings are not rewritten by the path-alias transform; the resolved file is
-      // the same one platformPrompt imports as '@/lib/credits/pricing'.
+      // Relative specifiers: jest.doMock strings are not rewritten by the path-alias transform; the resolved files are
+      // the same ones platformPrompt imports as '@/lib/credits/pricing' and '@/lib/credits/priceBook'.
+      jest.doMock('../credits/priceBook', () => {
+        const actual = jest.requireActual('../credits/priceBook');
+        return { ...actual, PRICE_BOOK: { ...actual.PRICE_BOOK, remixVoiceover: 17, remixMusic: 3 } };
+      });
       jest.doMock('../credits/pricing', () => {
         const actual = jest.requireActual('../credits/pricing');
-        return { ...actual, CREDIT_COSTS: { ...actual.CREDIT_COSTS, video_30s: 31, remix_video: 17 } };
+        return { ...actual, CREDIT_COSTS: { ...actual.CREDIT_COSTS, video_30s: 31 } };
       });
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./platformPrompt') as typeof import('./platformPrompt');
       const p = mod.buildPlatformPrompt({ locale: 'en', now: NOW });
-      expect(p).toContain('video 31 cr (3.10 ₾) <60 s');
-      expect(p).toContain('video touch-up 17 cr (1.70 ₾)');
-      expect(p).not.toContain(cr(CREDIT_COSTS.video_30s) + ' <60 s');
+      expect(p).toContain('chat clip 31 cr (3.10 ₾)');
+      expect(p).toContain('touch-up: voice-over 17 cr (1.70 ₾), own music 3 cr (0.30 ₾)');
+      expect(p).not.toContain(`chat clip ${cr(CREDIT_COSTS.video_30s)}`);
     });
     jest.dontMock('../credits/pricing');
+    jest.dontMock('../credits/priceBook');
   });
 
   it('quotes a film at what the film is charged (videoCredits), not the clip table (gap C4)', () => {
     const p = build('en');
-    // A 24-second Fast film is 75 credits; the clip table's 25 "under 60 s" must not be read as the film's price.
+    // A 24-second Fast film is 217 credits; the single chat clip's 75 must not be read as the film's price.
     const v = (s: number) => videoCredits({ seconds: s, quality: 'fast', mode: 'documentary' });
     expect(p).toContain(`film: Fast 8 s ${v(8)}, 24 s ${v(24)}, 48 s ${v(48)} cr`);
     expect(videoCredits({ seconds: 24, quality: 'fast', mode: 'documentary' })).toBeGreaterThan(CREDIT_COSTS.video_30s);
-    expect(p).toContain('Lite −40%, Max +230%, music video +40%');
+    const pct = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
+    expect(p).toContain(`Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)}`);
+    expect(p).toContain('Lite −30%, Max +210%, music video +3%');
     expect(p).toContain(`film lip-sync +${creditCostFor('avatar')} cr`);
-    expect(p).toContain('chat clip/product ad: video');
+    expect(p).toContain('product ad = a Fast film of its length');
   });
 
-  it('states the duration bands creditCostFor actually charges (what the clip and product-ad routes bill through)', () => {
+  it('states what creditCostFor actually charges: music by its length bands, a chat clip at 8 s, a video by its length', () => {
     const p = build('en');
     const C = CREDIT_COSTS;
-    expect(p).toContain(`video ${cr(C.video_30s)} <60 s, ${cr(C.video_60s)} ≥60 s`);
+    expect(p).toContain(`chat clip ${cr(C.video_30s)}`);
     expect(p).toContain(`music ${cr(C.music_30s)} <60 s, ${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s`);
     // The bands in the sentence above are literals; these pin them to pricing.ts so a moved threshold fails here.
-    for (const s of [8, 24, 48, 59]) expect(creditCostFor('video', { seconds: s })).toBe(C.video_30s);
-    for (const s of [60, 120]) expect(creditCostFor('video', { seconds: s })).toBe(C.video_60s);
+    // A chat clip is the shortest film (8 s on Fast); anything longer is priced by its length, never at the clip's number.
+    expect(creditCostFor('video')).toBe(C.video_30s);
+    expect(creditCostFor('video', { seconds: 8 })).toBe(C.video_30s);
+    for (const s of [24, 48, 60, 120]) expect(creditCostFor('video', { seconds: s })).toBe(videoCredits({ seconds: s, quality: 'fast' }));
     expect(creditCostFor('music', { seconds: 59 })).toBe(C.music_30s);
     expect(creditCostFor('music', { seconds: 60 })).toBe(C.music_60s);
     expect(creditCostFor('music', { seconds: 89 })).toBe(C.music_60s);
@@ -153,7 +164,7 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     // The touch-up has no menu row (GG 2026-10-18): it is listed with the way to reach it, says what the switch refuses,
     // and its ffmpeg ops stay priced.
     expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (attach a video here; no restyle, background or redub)`);
-    expect(p).toContain(`video touch-up ${cr(CREDIT_COSTS.remix_video)}`);
+    expect(p).toContain(`touch-up: voice-over ${cr(PRICE_BOOK.remixVoiceover)}, own music ${cr(PRICE_BOOK.remixMusic)}`);
     expect(p).toContain('say plainly it is not available yet (nothing is charged)');
     expect(p.length).toBeLessThanOrEqual(5000);
   });

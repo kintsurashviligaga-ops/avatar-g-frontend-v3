@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import {
   openStudio, openVideoTool, waitForBoard, cancelStoryboard, say, attachClipsAndTrack, shot, recordFinding, pinSignedIn, taskView,
   MASTER_URL, QUOTE, QC_REJECTED, MUSIC_UNREADABLE, ROUTE_CHECK_MS,
+  typeFilmPrompt, sendFilm,
 } from './_shared';
 
 /**
@@ -41,8 +42,8 @@ async function newVisit(page: import('@playwright/test').Page): Promise<void> {
 
 async function filmToAssemble(page: import('@playwright/test').Page, isMobile: boolean): Promise<void> {
   await openVideoTool(page, isMobile);
-  await page.getByTestId('video-prompt-input').fill(PROMPT);
-  await page.getByTestId('video-generate').click();
+  await typeFilmPrompt(page, PROMPT);
+  await sendFilm(page);
   await waitForBoard(page, 'en', 3);
   await page.getByTestId('storyboard-generate').click();
 }

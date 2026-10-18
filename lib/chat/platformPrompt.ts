@@ -34,7 +34,7 @@ import { CREDIT_COSTS, CREDIT_VALUE_GEL, creditsToGel } from '@/lib/credits/pric
 import { quoteCredits } from '@/lib/credits/quote';
 import { BOG_TOPUP_PACKS_GEL, topupCredits } from '@/lib/billing/bogCatalog';
 import { MUSIC_VIDEO_SURCHARGE_PCT, tierPriceEffect, videoQuote } from '@/lib/video/createPanel';
-import { videoCredits } from '@/lib/credits/videoPricing';
+import { PRICE_BOOK, sceneCredits } from '@/lib/credits/priceBook';
 
 export type PlatformPromptLocale = 'ka' | 'en' | 'ru';
 
@@ -114,7 +114,7 @@ const GONE_TOOLS: readonly ToolId[] = RETIRED_TOOLS.filter((id) => id !== 'remix
  * Not imported from lib/avatar/veoAvatar: that pulls the film pipeline into the Live voice client bundle; the test pins
  * the two numbers equal.
  */
-export const VEO_AVATAR_PROMPT_CREDITS = videoCredits({ seconds: 8, quality: 'fast' });
+export const VEO_AVATAR_PROMPT_CREDITS = sceneCredits('fast');
 
 /** What the studio's gates allow this turn: the media switch, and whether this user may run the Veo avatar. */
 interface Gates {
@@ -177,14 +177,14 @@ const goneLine = (loc: PlatformPromptLocale): string =>
   `NO LONGER OFFERED: ${GONE_TOOLS.map((id) => TOOL_META[id].name[loc]).join(', ')}. If asked, say plainly MyAvatar.ge no longer has it and name the closest tool above.`;
 
 /**
- * ⚠️ THE DURATION BANDS ARE creditCostFor's, NOT THE KEY NAMES'. `video_30s` / `music_60s` read like "the price of a
- * 30-second video", but the routes that charge through creditCostFor bill anything under 60 s at video_30s and 60 s or
- * more at video_60s. Quoting "25 cr for 30 s" left a 48-second video to the model's guesswork. The test pins these bands
- * to creditCostFor, so moving a threshold there fails CI.
+ * ⚠️ THE MUSIC BANDS ARE creditCostFor's, NOT THE KEY NAMES'. `music_30s` / `music_60s` read like "the price of a
+ * 30-second track", but the routes bill anything under 60 s at music_30s, 60–89 s at music_60s and 90 s or more at
+ * music_90s. The test pins these bands to creditCostFor, so moving a threshold there fails CI. A video is priced by its
+ * length (`video_30s` is the shortest, an 8 s Fast film: the single chat clip).
  *
- * ⚠️ A FILM IS NOT ON THAT TABLE. A Veo film (the studio's Video tool, a film or music video from the chat) is charged
- * videoCredits — length × quality × mode, the number on its Generate button — so a 24-second Fast film is 75 credits, not
- * the table's 25. The table's video line is only for what still bills through it (a single chat clip, a product ad).
+ * ⚠️ A FILM IS NOT ON THAT TABLE. A Veo film (the studio's Video tool, a film or music video from the chat, a product ad)
+ * is charged videoCredits — its length, tier and mode, the number on its Generate button (lib/credits/priceBook). The
+ * table's video line is only the single chat clip that still bills through creditCostFor.
  * The film examples, the tier effects and the lip-sync pass (its own /api/video/lipsync charge) come from the same
  * functions the routes charge with (agent PART 5, gap C4).
  *
@@ -204,9 +204,9 @@ function priceBlock(topUp: string, closed: readonly ToolId[], { mediaGoogleOnly 
     `film: Fast ${fast} cr; Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)};`,
     // The film's lip-sync pass is the old avatar engine (/api/video/lipsync), which the switch refuses; the Veo avatar is
     // its own 8 s clip at the Veo price.
-    `${mediaGoogleOnly ? '' : `film lip-sync +${quoteCredits({ tool: 'avatar' })} cr; `}chat clip/product ad: video ${cr(C.video_30s)} <60 s, ${cr(C.video_60s)} ≥60 s; music ${cr(C.music_30s)} <60 s,`,
-    `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${mediaGoogleOnly ? `${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip` : cr(C.avatar_30s)}; ` : ''}video touch-up ${cr(C.remix_video)}${open('model3d') ? `; 3D model ${cr(C.model3d)}` : ''}.`,
-    `Top-ups ("${topUp}"): ${packs}. Quote prices only in credits and lari and only these numbers; for anything not listed, do not guess.`,
+    `${mediaGoogleOnly ? '' : `film lip-sync +${quoteCredits({ tool: 'avatar' })} cr; `}product ad = a Fast film of its length; chat clip ${cr(C.video_30s)}; music ${cr(C.music_30s)} <60 s,`,
+    `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${mediaGoogleOnly ? `${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip` : cr(C.avatar_30s)}; ` : ''}touch-up: voice-over ${cr(PRICE_BOOK.remixVoiceover)}, own music ${cr(PRICE_BOOK.remixMusic)}${open('model3d') ? `; 3D model ${cr(C.model3d)}` : ''}.`,
+    `Top-ups ("${topUp}"): ${packs}. Quote only these numbers, in credits and lari; never guess one.`,
   ].join(' ');
 }
 

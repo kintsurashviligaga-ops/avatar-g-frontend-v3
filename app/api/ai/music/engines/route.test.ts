@@ -101,7 +101,8 @@ test('the route answers 200 with a body the client parser accepts — and no key
   expect(res.status).toBe(200);
   expect(res.headers.get('cache-control')).toMatch(/private/);
   const text = await res.text();
-  for (const secret of Object.values(KEYS)) expect(text).not.toContain(secret);
+  // (A one-character flag value such as '0' is no secret, and appears in the `lengths` list.)
+  for (const secret of Object.values(KEYS).filter((v) => v.length > 3)) expect(text).not.toContain(secret);
   const parsed = parseMusicEnginesStatus(JSON.parse(text));
   expect(parsed?.chain).toEqual(['lyria']);
 });

@@ -5,7 +5,7 @@ Two products, both settled in **GEL** through BOG's hosted payment page:
 | Product | What the customer gets | How it's charged |
 |---|---|---|
 | **Top-up (PAYG)** — 10 / 20 / 50 ₾ (any amount in the tier store) | `floor(₾ × 10)` credits, once (1 credit = 0.10 ₾) | one payment |
-| **Plan** — Starter 54 ₾ · Creator 108 ₾ · Business 216 ₾ per month | the tier's monthly allowance (230 / 525 / 1200 credits) + the tier's entitlements | first payment on BOG's page; every month after, automatically on the card saved at that payment |
+| **Plan** — Starter 54 ₾ · Creator 108 ₾ · Business 216 ₾ per month | the tier's monthly allowance (540 / 1080 / 2160 credits, 10 per ₾ since the 100 %-profit rule of 2026-10-18) + the tier's entitlements | first payment on BOG's page; every month after, automatically on the card saved at that payment |
 
 Plan prices are the pricing page's `$ × GEL_PER_USD`, rounded (`lib/billing/bogCatalog.ts`; a test fails if they drift).
 

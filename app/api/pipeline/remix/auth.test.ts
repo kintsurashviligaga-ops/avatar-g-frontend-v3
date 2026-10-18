@@ -35,13 +35,15 @@ import { POST } from './route';
 import { assembleWithFfmpeg } from '../../../../lib/orchestrator/ffmpeg-assembly';
 import { deductCredits, refundDebitByRef } from '../../../../lib/orchestrator/ledger';
 import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
-import { creditCostFor } from '../../../../lib/credits/pricing';
+import { clipCredits, veoSecondsCredits } from '../../../../lib/credits/priceBook';
 
 const { __sm: sm } = jest.requireMock('../../../../lib/chat/ServiceManager') as { __sm: { execute: jest.Mock; poll: jest.Mock } };
 const assembleMock = assembleWithFfmpeg as jest.MockedFunction<typeof assembleWithFfmpeg>;
 const deductMock = deductCredits as jest.MockedFunction<typeof deductCredits>;
 const refundMock = refundDebitByRef as jest.MockedFunction<typeof refundDebitByRef>;
 const REMIX_REF = /^pipeline-remix:user-42:\d+$/;
+/** One edited scene on the 8 s grid: one Fast Veo clip (lib/credits/priceBook). */
+const ONE_SCENE = clipCredits('fast');
 
 const REMIX_BODY = {
   originalPrompt: 'A lighthouse keeper keeps the lamp burning through a storm — a cinematic film',
@@ -115,8 +117,8 @@ describe('signed in', () => {
     const res = await POST(post(REMIX_BODY).req);
     expect(res.status).toBe(402);
     const body = await res.json();
-    expect(body).toMatchObject({ success: false, error: 'insufficient_credits', requiredCredits: creditCostFor('remix') });
-    expect(deductMock).toHaveBeenCalledWith('user-42', creditCostFor('remix'), expect.stringMatching(REMIX_REF));
+    expect(body).toMatchObject({ success: false, error: 'insufficient_credits', requiredCredits: ONE_SCENE });
+    expect(deductMock).toHaveBeenCalledWith('user-42', ONE_SCENE, expect.stringMatching(REMIX_REF));
     expect(sm.execute).not.toHaveBeenCalled();
     expect(assembleMock).not.toHaveBeenCalled();
   });
@@ -145,9 +147,23 @@ describe('signed in', () => {
     const segments = assembleMock.mock.calls[0]![0].segments.map((s: { url: string }) => s.url);
     expect(segments).toEqual(['https://x.supabase.co/clip-1.mp4', 'https://x.supabase.co/clip-2-darker.mp4', 'https://x.supabase.co/clip-3.mp4']);
     expect(deductMock).toHaveBeenCalledTimes(1);
-    expect(deductMock).toHaveBeenCalledWith('user-42', creditCostFor('remix'), expect.stringMatching(REMIX_REF));
+    expect(deductMock).toHaveBeenCalledWith('user-42', ONE_SCENE, expect.stringMatching(REMIX_REF));
     expect(deductMock.mock.invocationCallOrder[0]!).toBeLessThan(sm.execute.mock.invocationCallOrder[0]!);
     expect(refundMock).not.toHaveBeenCalled();
+  });
+
+  it('each re-rendered scene pays its own Veo clip: two edited scenes reserve two clips', async () => {
+    const res = await POST(post({ ...REMIX_BODY, editRequest: 'make scenes 1 and 3 darker' }).req);
+    expect(res.status).toBe(200);
+    expect(sm.execute).toHaveBeenCalledTimes(2);
+    expect(deductMock).toHaveBeenCalledTimes(1);
+    expect(deductMock).toHaveBeenCalledWith('user-42', 2 * ONE_SCENE, expect.stringMatching(REMIX_REF));
+  });
+
+  it('a 5 s grid pays the 6 s Veo renders, not the 5 s slot it trims them to', async () => {
+    const res = await POST(post({ ...REMIX_BODY, clipSec: 5 }).req);
+    expect(res.status).toBe(200);
+    expect(deductMock).toHaveBeenCalledWith('user-42', veoSecondsCredits(6, 'fast'), expect.stringMatching(REMIX_REF));
   });
 
   it('a remix whose re-render failed returns the original cut and costs nothing', async () => {

@@ -19,11 +19,12 @@
  * come from here, and lib/billing/pricingTiers.test.ts fails if the two ever drift. The others are legacy; do not
  * add to them.
  *
- * ⚠️ THE NUMBERS ARE TODAY'S LIVE NUMBERS, RENAMED — NOT A NEW PRICE LIST. starter = the page's "Basic" ($19.99,
- * 230 credits), creator = "Pro" ($39.99, 525), business = "Business" ($79.99, 1200). The live pricing page keeps
- * telling the truth about what a tier costs and contains. Changing a price here changes the page; it does NOT
- * change what Stripe charges — that is the Stripe Price object behind STRIPE_PRICE_<TIER>, and the two must be
- * moved together (see the activation checklist).
+ * ⚠️ THE CREDITS ARE THE PRICE BOOK'S RULE (PRD v2 §1.1, 2026-10-18): a plan's credit costs what a top-up credit costs,
+ * 10 credits per lari of the plan's BOG price (54 / 108 / 216 ₾ → 540 / 1 080 / 2 160), so every service keeps its
+ * 100 % profit whichever way the credit was bought. The numbers are literals, and tiers.test.ts holds each one equal to
+ * what its ceiling buys at the price book's prices — a price change fails the test instead of silently re-sizing a
+ * plan. Changing a price here changes the page; it does NOT change what Stripe charges — that is the Stripe Price object
+ * behind STRIPE_PRICE_<TIER>, and the two must be moved together (see the activation checklist).
  */
 import { CHAT_MODE_IDS, type ChatModeId } from '@/lib/chat/chatModes';
 import { CREDIT_COSTS } from '@/lib/credits/pricing';
@@ -45,8 +46,8 @@ export interface CreditCeiling {
 }
 
 /**
- * Σ (ceiling × per-asset media credit cost). The pool is DERIVED from the ceiling so a media-cost change in
- * lib/credits/pricing flows through instead of silently drifting from a hard-coded total.
+ * Σ (ceiling × per-asset credit price): what a ceiling buys at today's price book — a video is the shortest film (8 s,
+ * Fast), a track 30 s. The plans' includedCredits are literals; tiers.test.ts holds each paid one equal to this.
  * (pricingConfig re-exports this under the same name; every existing importer is unchanged.)
  */
 export function tierCreditPool(ceiling: CreditCeiling): number {
@@ -65,7 +66,7 @@ export interface SubscriptionTier {
   /** The DISPLAYED monthly price. Stripe charges whatever its Price object says — keep them equal. */
   monthlyPriceUsd: number;
   creditCeiling: CreditCeiling;
-  /** tierCreditPool(creditCeiling). For a paid tier: granted once per paid invoice. For free: the one-time trial. */
+  /** For a paid tier: granted once per paid invoice (= tierCreditPool(creditCeiling)). For free: the one-time trial. */
   includedCredits: number;
   /** 'monthly' = granted on every paid invoice; 'trial_once' = the signup grant, never renewed (see TRIAL). */
   creditCadence: 'monthly' | 'trial_once';
@@ -101,22 +102,21 @@ export const MAX_CHAT_PRO_DAILY = 10_000;
 const ALL_CHAT_MODES: readonly ChatModeId[] = CHAT_MODE_IDS;
 
 export const TIERS: Readonly<Record<TierId, SubscriptionTier>> = {
-  // ⚠️ THE FREE TIER WAS THREE CONTRADICTORY PROMISES. The card advertised 6 images (12 credits), the DB trigger
-  // granted 10, and `profiles.free_films_remaining` handed out 3 free VIDEOS the credit ledger knew nothing about.
-  // One grant now: 50 credits, with the video quota expressed IN the ceiling, which sums to exactly 50
-  // (1×25 + 1×5 + 10×2) — so includedCredits stays derived. It is the TRIAL below, not a monthly allowance:
+  // ⚠️ THE FREE TIER WAS THREE CONTRADICTORY PROMISES (the card said 6 images, the DB trigger granted 10, and
+  // `profiles.free_films_remaining` handed out 3 free videos). One trial now: the 50-credit signup grant (the DB trigger's
+  // number, pinned by tiers.test.ts) plus ONE free film from its own quota. So the ceiling's video is that quota film,
+  // and the 50 credits are framed as 5 tracks + 7 images (15 + 35). It is the TRIAL below, not a monthly allowance:
   // nothing renews it, and the webhook never grants a free tier anything (monthlyAllowanceCredits('free') = 0).
   //
   // ⚠️ THE 1-VIDEO CAP IS THE WHOLE COST CONTROL — `free_films_remaining` (default 1) via the race-safe
-  // consume_free_film RPC, not this number. Video is the one medium sold BELOW cost (25 credits = $0.926 of
-  // revenue against $0.96 of Veo), so an uncapped free grant spendable on video is a cash transfer.
+  // consume_free_film RPC, not this number: the free film costs the platform a whole Veo render.
   free: {
     id: 'free',
     rank: 0,
     names: { en: 'Free', ka: 'უფასო', ru: 'Бесплатно' },
     monthlyPriceUsd: 0,
-    creditCeiling: { videos: 1, music: 1, images: 10 },
-    includedCredits: tierCreditPool({ videos: 1, music: 1, images: 10 }),
+    creditCeiling: { videos: 1, music: 5, images: 7 },
+    includedCredits: 50,
     creditCadence: 'trial_once',
     chat: { proDaily: 5, modes: ALL_CHAT_MODES },
     premiumTemplates: false,
@@ -127,19 +127,15 @@ export const TIERS: Readonly<Record<TierId, SubscriptionTier>> = {
     priority: false,
     stripePriceEnv: null,
   },
-  // Provider cost of a fully-consumed tier lands near ⅓ of its price — the 200%-margin structure — at the
-  // Master Task §1.8 unit costs ($0.96 per 8 s clip · $0.10/track · $0.03/image):
-  //   starter   4×8s $3.84 + 10 music $1.00 +  40 images $1.20 =  $6.04 of $19.99 (≈3.3×)
-  //   creator   8×8s $7.68 + 25 music $2.50 + 100 images $3.00 = $13.18 of $39.99 (≈3.0×)
-  //   business 16×8s $15.36 + 60 music $6.00 + 250 images $7.50 = $28.86 of $79.99 (≈2.8×)
-  // lib/billing/pricingTiers.test.ts pins the 2.5–4.5× band.
+  // 10 credits per lari of the BOG price, framed in the price book's units (a video = an 8 s Fast film, 75; a track 3;
+  // an image 5): starter 4 + 20 + 36 = 540, creator and business ×2 and ×4. Same 4 / 8 / 16 videos as before.
   starter: {
     id: 'starter',
     rank: 1,
     names: { en: 'Starter', ka: 'სტარტერი', ru: 'Стартовый' },
     monthlyPriceUsd: 19.99,
-    creditCeiling: { videos: 4, music: 10, images: 40 },
-    includedCredits: tierCreditPool({ videos: 4, music: 10, images: 40 }),
+    creditCeiling: { videos: 4, music: 20, images: 36 },
+    includedCredits: 540,
     creditCadence: 'monthly',
     chat: { proDaily: 20, modes: ALL_CHAT_MODES },
     premiumTemplates: false,
@@ -152,8 +148,8 @@ export const TIERS: Readonly<Record<TierId, SubscriptionTier>> = {
     rank: 2,
     names: { en: 'Creator', ka: 'კრეატორი', ru: 'Креатор' },
     monthlyPriceUsd: 39.99,
-    creditCeiling: { videos: 8, music: 25, images: 100 },
-    includedCredits: tierCreditPool({ videos: 8, music: 25, images: 100 }),
+    creditCeiling: { videos: 8, music: 40, images: 72 },
+    includedCredits: 1080,
     creditCadence: 'monthly',
     chat: { proDaily: 100, modes: ALL_CHAT_MODES },
     premiumTemplates: true,
@@ -161,17 +157,13 @@ export const TIERS: Readonly<Record<TierId, SubscriptionTier>> = {
     priority: false,
     stripePriceEnv: 'STRIPE_PRICE_CREATOR',
   },
-  // ⚠️ BUSINESS WAS CREATOR ×2 EXACTLY — 16/50/200 at 2× the price — so it delivered 13.1266 credits/$ against
-  // 13.1283: paying twice as much bought very slightly FEWER credits per dollar. Music and images carry the bonus,
-  // NOT video (video is the loss-making medium; 5 extra videos instead would have pushed the margin to 2.57×).
-  // Now 15.00 credits/$ (+14.3% over creator), margin 2.772×, price untouched at $79.99.
   business: {
     id: 'business',
     rank: 3,
     names: { en: 'Business / Agency', ka: 'ბიზნესი / სააგენტო', ru: 'Бизнес / Агентство' },
     monthlyPriceUsd: 79.99,
-    creditCeiling: { videos: 16, music: 60, images: 250 },
-    includedCredits: tierCreditPool({ videos: 16, music: 60, images: 250 }),
+    creditCeiling: { videos: 16, music: 80, images: 144 },
+    includedCredits: 2160,
     creditCadence: 'monthly',
     chat: { proDaily: 300, modes: ALL_CHAT_MODES },
     premiumTemplates: true,

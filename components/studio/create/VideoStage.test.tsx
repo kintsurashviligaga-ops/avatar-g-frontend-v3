@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { quoteCredits } from '@/lib/credits/quote';
-import { PRICE_TABLE_LENGTHS } from '@/lib/video/createPanel';
+import { MUSIC_VIDEO_SURCHARGE_PCT, PRICE_TABLE_LENGTHS } from '@/lib/video/createPanel';
 import { VideoStage, type VideoStageProps } from './VideoStage';
 
 function setup(over: Partial<VideoStageProps> = {}) {
@@ -82,7 +82,7 @@ describe('Models & prices — the table that also picks the model', () => {
     setup({ mode: 'musicvideo' });
     const fast = within(screen.getByTestId('video-model-fast')).getAllByText(/^\d+$/).map((c) => Number(c.textContent));
     expect(fast).toEqual(PRICE_TABLE_LENGTHS.map((seconds) => quoteCredits({ tool: 'video', seconds, quality: 'fast', mode: 'musicvideo' })));
-    expect(screen.getByTestId('video-models-table').textContent).toContain('adds 40%');
+    expect(screen.getByTestId('video-models-table').textContent).toContain(`adds ${MUSIC_VIDEO_SURCHARGE_PCT}%`);
   });
 
   test('the table never lists a long-form length (those are locked in the picker, not for sale here)', () => {

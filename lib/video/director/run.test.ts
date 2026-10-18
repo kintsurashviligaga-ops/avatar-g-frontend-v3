@@ -32,6 +32,10 @@ import {
 import { freeze, restoreFrozen, StoryboardNotFrozenError } from './storyboard';
 import { createFakeVeoEngine, type FakeVeoEngineOptions } from './testing/fakeVeoEngine';
 import { makeShot, makeStoryboard, threeShots } from './testing/fixtures';
+
+/** What the run charges for the fixture board's three 8 s Fast shots, shot by shot and in total (shotCredits). */
+const THREE_SHOTS = shotCredits(threeShots());
+const THREE_TOTAL = THREE_SHOTS.reduce((a, b) => a + b, 0);
 import type { FrozenStoryboard } from './types';
 
 const USER = 'user-1';
@@ -119,14 +123,15 @@ describe('shotCredits — the shots add up to the film price', () => {
   });
 
   it('rounds once, on the running total, across mixed tiers', () => {
-    // 4 s lite = 7.5, 6 s fast = 18.75, 8 s standard = 82.5 → 108.75 → 109 in total, never 8 + 19 + 83.
+    // The film base 4 on the first shot; each shot its Veo seconds (6 s Fast = 48, 6 s Lite = 32.25) and a scene's 7 →
+    // 59, 98.25, 153.25 running → 154 in total, never 59 + 40 + 56 (lib/credits/priceBook).
     const parts = shotCredits([
-      { durationSeconds: 4, quality: 'lite' },
       { durationSeconds: 6, quality: 'fast' },
-      { durationSeconds: 8, quality: 'standard' },
+      { durationSeconds: 6, quality: 'lite' },
+      { durationSeconds: 6, quality: 'fast' },
     ]);
-    expect(parts).toEqual([8, 19, 82]);
-    expect(parts.reduce((a, b) => a + b, 0)).toBe(109);
+    expect(parts).toEqual([59, 40, 55]);
+    expect(parts.reduce((a, b) => a + b, 0)).toBe(154);
   });
 });
 
@@ -136,7 +141,7 @@ describe('startRun', () => {
     const view = await startRun(s.deps, { id: 'run-1', userId: USER, storyboard: board() });
     expect(view.state).toBe('running');
     expect(view.shots.map((x) => [x.shotId, x.status])).toEqual([['a', 'pending'], ['b', 'pending'], ['c', 'pending']]);
-    expect(view.quoteCredits).toBe(75);
+    expect(view.quoteCredits).toBe(THREE_TOTAL);
     expect(s.engine.calls).toHaveLength(0);
     expect(s.charges).toHaveLength(0);
   });
@@ -182,7 +187,7 @@ describe('advanceRun — the happy path', () => {
     ]);
     expect(s.engine.calls.map((c) => c.request.prompt)).toEqual(['Shot one.', 'Shot two.', 'Shot three.']);
     expect(s.charges.map((c) => c.ref)).toEqual([chargeRefFor('run-1', 0, 1), chargeRefFor('run-1', 1, 1), chargeRefFor('run-1', 2, 1)]);
-    expect(s.charges.reduce((sum, c) => sum + c.credits, 0)).toBe(75);
+    expect(s.charges.reduce((sum, c) => sum + c.credits, 0)).toBe(THREE_TOTAL);
     expect(s.refunds).toHaveLength(0);
     const final = await advanceRun(s.deps, 'run-1', USER);
     expect(final.shots.every((x) => x.clipUrl?.startsWith('https://storage.example.com/'))).toBe(true);
@@ -216,7 +221,7 @@ describe('advanceRun — failures stop the run (V5) and give the money back', ()
     expect(view.pendingDecision).toMatchObject({ shotId: 'b', shotIndex: 1, options: ['retry', 'edit', 'cancel'] });
     expect(view.pendingDecision?.error.reason).toBe('veo_internal');
     expect(s.engine.calls).toHaveLength(2);
-    expect(s.refunds).toEqual([{ userId: USER, ref: chargeRefFor('run-1', 1, 1), credits: 25 }]);
+    expect(s.refunds).toEqual([{ userId: USER, ref: chargeRefFor('run-1', 1, 1), credits: THREE_SHOTS[1] }]);
     expect(s.store.get('run-1').shots[1]?.refunded).toBe(true);
   });
 

@@ -15,7 +15,7 @@ import { ReadAloudControls } from '@/components/voice/experience/ReadAloudContro
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { HomeQuickStart } from './HomeQuickStart';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -38,8 +38,8 @@ import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { usePickedTemplate } from '@/hooks/usePickedTemplate';
 import {
   AVATAR_TEMPLATES, IMAGE_PANEL_DEFAULTS, IMAGE_TEMPLATES, MUSIC_PANEL_DEFAULTS, MUSIC_TEMPLATES, VIDEO_PANEL_DEFAULTS,
-  VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
-  matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
+  avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
+  matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang,
 } from '@/lib/studio/templates';
 import { TemplateGallery, TemplateThumbImage } from '@/components/studio/ui/TemplateGallery';
 import { WorkspaceSkeleton } from '@/components/studio/ui/EmptyState';
@@ -59,12 +59,12 @@ import { wantsSubtitles } from '@/lib/chat/filmVoiceCheck';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
 import { FilmQaBadge } from './FilmQaBadge';
-import { MusicVideoLook, type MusicVideoLookValue } from './create/MusicVideoLook';
+import type { MusicVideoLookValue } from './create/MusicVideoLook';
 import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions, storyFramePrompts } from '@/lib/chat/filmPipeline';
 import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, type VeoRenderOptions } from '@/lib/video/veoPlan';
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
 import type { Transition } from '@/lib/veo/types';
-import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
+import { useVeoEngineInfo } from './video/VeoParametersPanel';
 import { DirectorRunOverlay, useDirectorRunsEnabled } from './video/DirectorRunOverlay';
 import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
 import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
@@ -92,11 +92,6 @@ import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
 import type { ChatSource, ChatStreamSnapshot, ChatStreamStore } from '@/components/chat/chatStreamStore';
 import { serializeHistory } from '@/lib/chat/historySerializer';
-// ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
-// initial dashboard paint, so lazy-load them (ssr:false) to keep their ~540 lines of JS
-// out of the first-load bundle. A tiny placeholder holds layout until the chunk lands.
-const FilmDirectorConsole = dynamic(() => import('./FilmDirectorConsole'), { ssr: false, loading: () => <div className="h-24" /> });
-const RemixStudioConsole = dynamic(() => import('./RemixStudioConsole'), { ssr: false, loading: () => <div className="h-24" /> });
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
@@ -114,7 +109,8 @@ import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { avatarRetakeText, filmRefineNote, improvedBrief, refineChange } from '@/lib/chat/refineRequest';
 import { quoteSceneRedo, runSceneRedo, sceneRedoAsk, sceneRedoOfferText, sceneRedoProgressText, sceneRedoResultText, weakScenesText } from '@/lib/chat/filmSceneRedoClient';
-import { type AvatarFace, avatarGenderFromText, avatarOfferText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
+import { type AvatarFace, avatarAskLineText, avatarGenderFromText, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
+import { GENJUTSU_HARD_CAP_MS } from '@/lib/genjutsu/limits';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
 import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/useMyTwin';
@@ -123,7 +119,6 @@ const OWN_PHOTO_CARD_ID = 'own-photo';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, AD_IMAGE_MIME, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { placeProductShots, readAsDataUrl, type ProductShots } from '@/lib/ads/productShots';
-import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
 import { serviceForTool, trackGenerationCompleted, trackGenerationConfirmed, trackGenerationFailed, trackQuoteShown, trackResultSaved, trackServiceOpened, type ServiceSurface } from '@/lib/analytics/serviceEvents';
 import { ensureNotificationPermission, fireCompletionNotification } from '@/lib/notify/browserNotify';
@@ -164,6 +159,7 @@ import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './
 import { handleMusicVoice } from './music/musicVoiceBridge';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
+import { remixSceneCredits } from '@/lib/credits/priceBook';
 import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
@@ -219,7 +215,8 @@ import { MusicCentrePane } from './create/MusicCentrePane';
 import type { MusicTrack } from './create/MusicResult';
 import { musicEngineField } from '@/lib/studio/musicEnginePref';
 // The image model the panel's ModelPicker stored — read at request time like the music engine, so a re-roll uses the pick.
-import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
+import { higgsfieldPicked, imageModelField, useModelPick } from '@/lib/studio/modelPick';
+import { catalogueEntry } from '@/lib/providers/catalogue';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
@@ -385,13 +382,6 @@ async function decodeAudioMeta(file: File, buckets = 48): Promise<{ durationSec:
   } catch {
     return null;
   }
-}
-
-// mm:ss for a soundtrack duration chip.
-function fmtDur(sec: number): string {
-  if (!isFinite(sec) || sec <= 0) return '';
-  const s = Math.round(sec);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 /** Exported for tests. */
@@ -2679,7 +2669,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // The whole film's join in the stitch (mirrors the Veo panel's "between scenes" choice; per-scene joins ride in the
   // Veo plan). A hard cut by default: every soft join overlaps the clips by ~1 s, so a crossfaded 24 s film came
   // back 22 s long.
-  const [videoTransition, setVideoTransition] = useState<Transition>('cut');
+  const [videoTransition] = useState<Transition>('cut');
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
   // (empty = auto-written narration). The clear "what should they say" field.
   const [videoSpeech, setVideoSpeech] = useState('');
@@ -2701,7 +2691,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // 'documentary' → narration-forward (voice on top, music ducked under it).
   const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>(VIDEO_PANEL_DEFAULTS.mode);
   // The music video's look (genre + light, components/studio/create/MusicVideoLook): words added to the brief, nothing else.
-  const [mvLook, setMvLook] = useState<MusicVideoLookValue>({ genre: null, lighting: null });
+  const [mvLook] = useState<MusicVideoLookValue>({ genre: null, lighting: null });
   // PHASE 2 L1 — Cinema vs Product-Ad tab (orthogonal to videoMode's music/documentary axis).
   // TASK 1 — 'videoswap': upload a video + a character photo → regenerate a ~5s clip with
   // the new character (honest capability: Kling is i2v-only, so it re-animates a keyframe).
@@ -2721,9 +2711,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     el.click();
   }, []);
   // PHASE 2 L1 — Character Voice selector → VOICE_MAP (language + persona + tone).
-  const [voiceLanguage, setVoiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
-  const [voicePersona, setVoicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
-  const [voiceTone, setVoiceTone] = useState<'epic' | 'emotional' | 'energetic'>('emotional');
+  const [voiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
+  const [voicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
+  const [voiceTone] = useState<'epic' | 'emotional' | 'energetic'>('emotional');
   // THE GOOGLE VEO PLAN (lib/video/veoPlan) — quality tier, how the photos condition Veo, Veo's own sound, seed lock,
   // negative prompt, and each scene's camera + join. Format and length stay OWNED by videoOrientation / videoDuration
   // (the composer pills and the presets write those) and are mirrored in below, so each value has one source.
@@ -2788,9 +2778,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // entry overrides that scene's AI frame-prompt AND its render script (so the clip
   // animates the described action). Empty entries fall back to the storyboard AI.
   const [scenePrompts, setScenePrompts] = useState<string[]>([]);
-  const updateScenePrompt = useCallback((i: number, v: string) => {
-    setScenePrompts((prev) => { const next = prev.slice(); next[i] = v; return next; });
-  }, []);
   // Scene-frame slots scale with the film length, matching the pipeline's scene count
   // (8s→1 · 24s→3 · 48s→6 = round(sec/8)). Each uploaded frame anchors that scene IN
   // ORDER; empty scenes are auto-generated by the storyboard (handled server-side).
@@ -2817,20 +2804,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   });
   // The panel's DEFAULTS are the Reel card, so the lit id alone would give every default film the Reel's look and
   // director note. Only a picked card's id rides on the storyboard and render requests.
-  const { templateId: pickedVideoTemplateId, pick: pickVideoTemplate } = usePickedTemplate(activeVideoPreset);
-
-  const applyVideoPreset = useCallback((id: string) => {
-    const v = videoTemplateValues(id);
-    if (!v) return;
-    pickVideoTemplate(id);
-    setVideoMode(v.mode);
-    setVideoDuration(v.duration);
-    setVideoRequestedSec(null);
-    setVideoStyle(v.style);
-    // Music-Video mode is 9:16-locked in this panel (the Format buttons are disabled for it), so
-    // writing any other orientation here would put the UI in a state its own controls forbid.
-    setVideoOrientation(v.mode === 'musicvideo' ? 'vertical' : v.orientation);
-  }, [pickVideoTemplate]);
+  const { templateId: pickedVideoTemplateId } = usePickedTemplate(activeVideoPreset);
 
   // Music: the same lit-vs-picked split (the panel defaults switched to Instrumental light the R&B Beat card).
   const activeMusicPreset = matchMusicTemplate({
@@ -2855,7 +2829,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // composer), so the Director/Storyboard agents always read it regardless of chat mode.
   // .txt/.md are decoded in-browser; .pdf/.docx go through /api/utils/extract-text.
   const [videoScriptDoc, setVideoScriptDoc] = useState<{ name: string; text: string } | null>(null);
-  const [videoScriptBusy, setVideoScriptBusy] = useState(false);
+  const [, setVideoScriptBusy] = useState(false);
   // Is this attachment/file a SCRIPT document (not media)? Matched by mime OR extension.
   const isScriptFile = useCallback((nameOrType: { name?: string; type?: string }) => {
     const n = (nameOrType.name || '').toLowerCase();
@@ -2899,19 +2873,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return false;
     } finally { setVideoScriptBusy(false); }
   }, [locale]);
-  // VECTOR 1 — DROP a script file ONTO the Script slot. Without an explicit handler the browser default fires and
-  // NAVIGATES the tab to the dropped file (loading it as a raw URL — the reported "opens in a new tab" bug).
-  // preventDefault on the drop (and dragOver, on the element) stops that; a script file is read via loadScriptFile
-  // (.txt/.md decoded in-browser, .pdf/.docx via extract-text), and a non-script file gets a clear format toast.
-  const handleScriptDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const f = e.dataTransfer?.files?.[0];
-    if (!f || videoScriptBusy) return;
-    if (isScriptFile({ name: f.name, type: f.type })) { void loadScriptFile(f); return; }
-    setShareToast(locale === 'en' ? 'Invalid file format. Please upload a text script (.txt, .md)' : locale === 'ru' ? 'Неверный формат файла. Загрузите текстовый сценарий (.txt, .md)' : 'არასწორი ფაილის ფორმატი. გთხოვთ ატვირთოთ ტექსტური სცენარი (.txt, .md)');
-    setTimeout(() => setShareToast((s) => (s && /\.txt|формат|ფორმატ/.test(s) ? null : s)), 3200);
-  }, [isScriptFile, loadScriptFile, locale, videoScriptBusy]);
   // Whole-surface drag-over overlay (V3). Only reacts to FILE drags (a text selection drag
   // is ignored). A depth counter survives dragleave firing once per crossed child. The Script
   // slot handles its own drop (stopPropagation), so a drop there never double-fires here.
@@ -3116,7 +3077,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [mode, isScriptFile, loadScriptFile, ingestFiles]);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
-  const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
+  const [videoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
   // Documentary narrator gender (👩 ქალი / 👨 კაცი) → cloned female/male Georgian TTS.
   const [videoNarratorGender, setVideoNarratorGender] = useState<'male' | 'female'>('female');
   // Multi-character dialogue: when ON, the dialogue textarea is split per speaker
@@ -3136,8 +3097,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // auto-ducks under the dialogue via the assembler's 3-track sidechain. The slider
   // sets the duck depth (−6…−18 dB). Only affects films that carry voice + music +
   // sfx (the assembler's 3-track gate); others keep the existing mix unchanged.
-  const [videoSmartDuck, setVideoSmartDuck] = useState(true);
-  const [videoDuckDb, setVideoDuckDb] = useState(-12);
+  const [videoSmartDuck] = useState(true);
+  const [videoDuckDb] = useState(-12);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
@@ -5740,7 +5701,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // the user's own words that said yes, and THAT runs it — only what was told (its fingerprint, or that very card).
   const liveApiRef = useRef<(d: LiveActionEventDetail) => boolean>(() => false);
   const liveRunRef = useRef<(d: LiveRunDetail) => boolean>(() => false);
-  const liveChatSendRef = useRef<(text: string) => void>(() => {});
+  const liveChatSendRef = useRef<(text: string, order?: GateMode) => void>(() => {});
   /**
    * Agent G reads a typed or spoken message before any tool takes it as a prompt (lib/agent/chatTurn): stop, status,
    * continue, a change to the plan on screen, a request missing its input, an edit with no route yet. Assigned below,
@@ -5754,7 +5715,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    *  back in `locale`. Assigned every render below, so it reads the tool and the panels as they are now. */
   const panelCommandRef = useRef<(cmd: PanelCommand, locale: string) => string>(() => '');
   /** chat_send while another tool was open: sent once the chat is on screen (the send path reads the mode it renders with). */
-  const pendingLiveChatRef = useRef<string | null>(null);
+  const pendingLiveChatRef = useRef<{ text: string; order?: GateMode } | null>(null);
   useEffect(() => {
     const onAction = (e: Event) => {
       const d = (e as CustomEvent<LiveActionEventDetail>).detail;
@@ -5819,9 +5780,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [messages]);
   useEffect(() => {
     if (activeTool !== 'chat' || !pendingLiveChatRef.current) return;
-    const text = pendingLiveChatRef.current;
+    const { text, order } = pendingLiveChatRef.current;
     pendingLiveChatRef.current = null;
-    liveChatSendRef.current(text);
+    liveChatSendRef.current(text, order);
   }, [activeTool]);
 
   // ── Mount hydration: server chat RESUME (#1) + batch-tile RECONCILIATION (#3) ────────────────
@@ -6609,7 +6570,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
     return { clips: media.length, music: !!track };
   }, [setMode]);
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode; /** The frame the user named („9:16") — wins over the panel's for this one render. */ aspect?: ImgAspect; /** A photo from earlier in the thread the offer is built on (lib/chat/chatConsent latestThreadPhoto). */ refImage?: string; /** One picture, whatever the panel's count: the price the offer quoted was one image's. */ single?: boolean; /** The Live call sent these words (chat_send): a spoken „yes" never starts spending (PHASE 5). */ fromLive?: boolean; /** A Photographer / Interior designer render Agent G's card agreed in the chat (lib/chat/chatShoot). */ studio?: StudioWire }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode; /** The frame the user named („9:16") — wins over the panel's for this one render. */ aspect?: ImgAspect; /** A photo from earlier in the thread the offer is built on (lib/chat/chatConsent latestThreadPhoto). */ refImage?: string; /** One picture, whatever the panel's count: the price the offer quoted was one image's. */ single?: boolean; /** The Live call sent these words (chat_send): a spoken „yes" never starts spending (PHASE 5). */ fromLive?: boolean; /** A Live call's order for this tool (prepare_generation): Agent G's card for it, in the chat (GG 2026-10-18). */ liveOrder?: GateMode; /** A Photographer / Interior designer render Agent G's card agreed in the chat (lib/chat/chatShoot). */ studio?: StudioWire }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
@@ -6873,6 +6834,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const chatOrder: GateMode | null = (() => {
       if (!inChat || !text || opts?.confirmed) return null;
       if (chatPend) return chatPend.mode;
+      // A Live call named the tool (prepare_generation): its words are that order, whatever verb they lack.
+      if (opts?.liveOrder) return opts.liveOrder;
       // A catalog service with its own tool („make a product ad…") is not a picture: Agent G opens that tool below.
       if (!isGenerativeCommand(text) || detectStudioIntent(text) || routeAgentIntent(text)) return null;
       const lane = resolveGenerativeLane(text, detectIntent(text));
@@ -6887,7 +6850,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const pending = pend && pend.mode === gateMode && !!pend.inChat === inChat && Date.now() - pend.at < 10 * 60_000 ? pend : null;
       if (!pending && !inChat) gatePendingRef.current = null;
       // "yes / go ahead" to Agent G's question → create what was asked about, as it stands.
-      if (pending && isAffirmation(text)) {
+      // (An avatar question that asked for the LINE has nothing to create „as it stands": a „კი" there is not a script.)
+      if (pending && isAffirmation(text) && !(pending.mode === 'avatar' && !splitAvatarScript(pending.base).speech)) {
         gatePendingRef.current = null;
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         void send({ promptOverride: pending.base, confirmed: true, ...(pending.inChat ? { target: pending.mode } : {}) });
@@ -6895,10 +6859,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       const hasRef = attachments.length > 0;
       const explicit = opts?.explicit === true;
-      const first = classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit });
-      // An answer to Agent G's questions joins the thin prompt it was about; talk does not.
-      const promptText = pending && first.kind !== 'chat' ? mergePrompt(pending.base, text) : text;
-      const verdict = promptText === text ? first : classifyFocusInput({ text: promptText, mode: gateMode, hasAttachments: hasRef, explicit });
+      // Avatar (GG 2026-10-18): an attached voice track is the line; after Agent G asked for the line, this message IS it.
+      const hasAudio = attachments.some((a) => isAudio(a.mimeType));
+      const awaitingLine = gateMode === 'avatar' && !!pending && !splitAvatarScript(pending.base).speech;
+      const first = classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine });
+      // An answer to Agent G's questions joins the thin prompt it was about; talk does not. An avatar's joins as a SCRIPT.
+      const promptText = pending && first.kind !== 'chat' ? mergePrompt(pending.base, text, gateMode) : text;
+      const verdict = promptText === text ? first : classifyFocusInput({ text: promptText, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine });
+      // Agent G answers in words only — no card, no price, nothing started.
+      const agentSays = (say: string) => {
+        setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: say }]);
+        setGateFrom(messages.length);
+        if (!isDesktop) setOptionsOpen(false);
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      };
       if (verdict.kind === 'chat') {
         if (busy || genActiveRef.current) {
           // A reply is still streaming: park the message (the type-ahead flush sends it when the turn ends) — never drop it.
@@ -6933,6 +6907,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
         // An avatar is Veo's price where its door is open (2026-10-17: the card said 20, Veo charges 25).
         const door = gateMode === 'avatar' ? await readVeoAvatarDoor() : null;
+        // ⚠️ GG 2026-10-18: „it says it's creating the avatar, but nothing is created". A closed door (non-admin, the Veo
+        // avatar not public) got a priced card whose Create fell to routes that refuse; an order with no line got a card that
+        // read the ORDER aloud; a line past 8 s was refused only after Create. Each is now said in words, before any card.
+        if (gateMode === 'avatar') {
+          const line = splitAvatarScript(promptText);
+          const fit = line.speech && !hasAudio ? avatarLineFit(line.speech) : null;
+          const say = !door?.open ? avatarUnavailableText(locale)
+            : !line.speech && !hasAudio ? avatarAskLineText(locale)
+              : fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;
+          if (say) {
+            // The next message is the line (or the shorter one): the order's look stays, its words are replaced.
+            gatePendingRef.current = door?.open ? { mode: 'avatar', base: line.direction ? `(${line.direction})` : '', at: Date.now(), inChat } : null;
+            agentSays(say);
+            return;
+          }
+        }
         const credits = gateMode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
           : gateMode === 'music' ? musicQuote({ duration: musicDuration }) /* "Full song" (0) bills the 90 s tier, as the route does */
             : gateMode === 'avatar' ? (door?.open ? door.credits : quoteCredits({ tool: 'avatar' }))
@@ -6960,6 +6950,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
       // 'go': straight to the tool. If the user's words were an ANSWER, run the merged prompt, not just the answer.
+      // (The avatar panel's own Generate with the Veo door closed would only reach routes that refuse: said in words.)
+      if (gateMode === 'avatar' && !(await readVeoAvatarDoor())?.open) {
+        gatePendingRef.current = null;
+        agentSays(avatarUnavailableText(locale));
+        return;
+      }
       gatePendingRef.current = null;
       setGateFrom(null);
       if (promptText !== text) { void send({ promptOverride: promptText, confirmed: true }); return; }
@@ -7111,7 +7107,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // it (send with target 'avatar'). The photo attached with the order is the face. Without a line, or with the door
       // closed, the Avatar tool opens as before.
       const avatarLine = studio.service === 'avatar' && !attachments.some((a) => !isImage(a.mimeType)) ? splitAvatarScript(text) : null;
-      const avatarDoor = avatarLine?.speech ? await readVeoAvatarDoor() : null;
+      const avatarDoor = avatarLine ? await readVeoAvatarDoor() : null;
+      // GG 2026-10-18: a bare order („შემიქმენი ავატარი") read ITSELF aloud on a paid card. Now: the door closed → said
+      // plainly; no line → Agent G asks for it (the next message is the line, kept with the order's look); a line too long
+      // for the 8 s clip → asked to shorten. No card, no price, nothing started — the photo stays attached for the answer.
+      if (avatarLine && avatarDoor) {
+        const fit = avatarLine.speech ? avatarLineFit(avatarLine.speech) : null;
+        const say = !avatarDoor.open ? avatarUnavailableText(locale)
+          : !avatarLine.speech ? avatarAskLineText(locale)
+            : fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;
+        if (say) {
+          gatePendingRef.current = avatarDoor.open ? { mode: 'avatar', base: avatarLine.direction ? `(${avatarLine.direction})` : '', at: Date.now(), inChat: true } : null;
+          setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: say }]);
+          setGateFrom(messages.length);
+          setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+          return;
+        }
+      }
       if (avatarLine?.speech && avatarDoor?.open) {
         const photo = attachments.find((a) => isImage(a.mimeType));
         const ratio = aspectFromText(text, { ratioOnly: true });
@@ -7449,11 +7461,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const job: ChatRemixJob = { op, params: intent.params || {}, text, caption, videoAtt, audioAtt: audioAtt ?? null, attachments: sent };
         // ── A CHARGED EDIT WAITS FOR AGENT G'S CREATE. ───────────────────────────────────────────────
         // Every other paid chat order stops at Agent G's card with its price; this one used to classify the sentence and
-        // spend 15 credits on whatever op came back. A charged op (lib/video/remixCharge — the route's own list) now shows
-        // the edit and its price first; nothing is uploaded or charged until Create. The free ffmpeg ops run at once.
+        // spend credits on whatever op came back. A charged op (lib/video/remixCharge — the route's own list and prices)
+        // now shows the edit and its price first; nothing is uploaded or charged until Create. The free ffmpeg ops run at once.
         if (isChargedRemixOp(op)) {
           if (!mine()) return;
-          const credits = remixOpCredits();
+          const credits = remixOpCredits(op);
           remixAsksRef.current.set(bubbleId, job);
           patch({ role: 'assistant', text: remixAskText(op, credits, locale, [videoAtt.name || 'video', ...(audioAtt && (op === 'add_music' || op === 'music' || op === 'redub') ? [audioAtt.name || 'audio'] : [])]), remixAsk: { credits } });
           trackQuoteShown(serviceForTool('remix'), credits, 'agent-card');
@@ -7707,7 +7719,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             const vj = (await veoRes.json().catch(() => ({}))) as { success?: boolean; jobId?: string; error?: string; code?: string; refunded?: boolean };
             let veoUrl: string | null = null;
             let veoFail: string | null = vj.success && vj.jobId ? null : describeGenerationFailure(vj, locale, t.lipsyncFailed);
-            for (let i = 0; i < 60 && vj.jobId && !veoUrl && !veoFail; i++) { // ~6 min of short polls (mobile-safe)
+            // Short polls (mobile-safe) for as long as the server keeps the job open: it refunds and closes it at
+            // GENJUTSU_HARD_CAP_MS (12 min) and says so. Stopping at 6 min told the user „still rendering" on a paid job
+            // that could still arrive (GG 2026-10-18); a minute's slack lets the server's own verdict land.
+            const veoPollUntil = Date.now() + GENJUTSU_HARD_CAP_MS + 60_000;
+            while (Date.now() < veoPollUntil && vj.jobId && !veoUrl && !veoFail) {
               if (!mine()) return;
               await new Promise((r) => setTimeout(r, 6000));
               const pr = await fetch(`/api/genjutsu/status?id=${encodeURIComponent(vj.jobId)}`, { credentials: 'include', signal: ac.signal }).catch(() => null);
@@ -8444,6 +8460,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    */
   const liveFp = (tool: ToolId, prompt: string = input, over: { musicSec?: number } = {}): string | undefined =>
     (LIVE_GEN_TOOLS.includes(tool) ? liveFingerprint(tool, prompt, livePrice(tool, over)) : undefined);
+  /**
+   * What a spoken yes would start now, in the CHAT (GG 2026-10-18: a Live order runs in the chat, and the user's own yes
+   * starts it): the storyboard on screen (a film's priced approval), else Agent G's live price card, the newest reply.
+   */
+  const liveChatOffer = (): { tool: ToolId; prompt: string; credits?: number; lipsyncCredits?: number; kind: 'storyboard' | 'card' } | null => {
+    if (storyboard && !storyboardBusy && storyboardGenerateRef.current) {
+      const sec = storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC);
+      const credits = freeSlotApplies(videoFreeFilms, sec) ? 0 : videoQuote({ seconds: sec, tier: veoPlan.tier, mode: videoMode });
+      const lip = directorRunsOn ? 0 : filmLipsyncCredits;
+      return { tool: 'video', prompt: storyboard.filmPrompt, credits, ...(lip ? { lipsyncCredits: lip } : {}), kind: 'storyboard' };
+    }
+    const last = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && !m.notice);
+    const card = last?.agentG;
+    if (!card || card.done || card.kind !== 'confirm' || card.madeIn !== 'chat' || activeTool !== 'chat') return null;
+    return { tool: card.target as ToolId, prompt: card.prompt, ...(card.credits ? { credits: card.credits } : {}), kind: 'card' };
+  };
+  const liveOfferFp = (o: NonNullable<ReturnType<typeof liveChatOffer>>): string | undefined => liveFingerprint(o.tool, o.prompt, o.credits);
   /** Generations running in the tray, and the server's durable ones it follows (a card's own job is its card's). */
   const liveTasks = (): Array<Record<string, unknown>> => {
     const owned = new Set(messagesRef.current.flatMap(cardJobsOf));
@@ -8555,6 +8588,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       prompt: input.trim().slice(0, 600),
       ...(settings ? { settings } : {}),
       ...(LIVE_GEN_TOOLS.includes(activeTool) ? { priceCredits: price ?? (activeTool === 'video' ? 'priced at the storyboard step' : undefined) } : {}),
+      // What the user's yes would start in the chat now: Agent G's price card or the film's storyboard (with its price).
+      ...((): Record<string, unknown> => {
+        const o = liveChatOffer();
+        return o ? { waitingForYes: { what: o.kind === 'storyboard' ? 'the film storyboard on screen' : `Agent G's ${toolName(o.tool, 'en')} card in the chat`, tool: o.tool, prompt: o.prompt.slice(0, 300), ...(typeof o.credits === 'number' ? { priceCredits: o.credits } : { priceCredits: 'none on this card (a film is priced at its storyboard)' }), ...(o.lipsyncCredits ? { lipSyncAddOnCredits: o.lipsyncCredits } : {}) } } : {};
+      })(),
       chatModel: getChatMode(),
       busy: busy || genActiveRef.current,
       ...(lastReply ? { lastChatReply: lastReply.text.slice(0, 900) } : {}),
@@ -8568,7 +8606,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
     };
   };
-  liveChatSendRef.current = (text: string) => { void send({ promptOverride: text, fromLive: true }); };
+  liveChatSendRef.current = (text: string, order?: GateMode) => { void send({ promptOverride: text, fromLive: true, ...(order ? { liveOrder: order } : {}) }); };
   // What a call's ask_agent_g hands Agent G: the checked stored paths of the user's files (composer first, else the
   // newest turn that carried files) — the same references a typed request sends.
   setLiveAttachedRefs(() => {
@@ -8589,7 +8627,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const signedOut = typeof document !== 'undefined' && document.documentElement.dataset.authed === '0';
     switch (d.type) {
       case 'get_screen_state': {
-        const fingerprint = liveFp(activeTool);
+        const offer = liveChatOffer();
+        const fingerprint = offer ? liveOfferFp(offer) : liveFp(activeTool);
         const plans = livePlansOf(messagesRef.current);
         reply({ ok: true, state: liveScreenState(), ...(fingerprint ? { fingerprint } : {}), ...(plans.length ? { plans } : {}) });
         return true;
@@ -8607,13 +8646,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           reply({ ok: true, tool: d.tool, applied: { description: true } });
           return true;
         }
-        selectTool(d.tool, 'voice');
-        setInput(d.prompt.slice(0, 2000));
+        // ⚠️ GG 2026-10-18: „დავალებას ლაივ ჩატში რომ იღებს, ის უნდა ჩანდეს როგორ კეთდება … აღარ უნდა მჭირდებოდეს გადასვლა".
+        // The order no longer opens the studio panel: it is written into the CHAT as the user's turn, and Agent G answers
+        // there exactly as for a typed order (its questions, or the price and Create; a film's storyboard). The panel's
+        // settings the call named still apply (the chat renders with them); the run starts on Create or the user's own yes.
+        const prompt = d.prompt.slice(0, 2000);
         const { applied, musicSec } = applyLiveSettings(d.tool, d);
+        const order: GateMode = d.tool === 'image' || d.tool === 'music' || d.tool === 'avatar' ? d.tool : 'video';
+        if (activeTool === 'chat') liveChatSendRef.current(prompt, order);
+        else { pendingLiveChatRef.current = { text: prompt, order }; selectTool('chat', 'voice'); }
         const price = livePrice(d.tool, { musicSec });
-        const fingerprint = liveFp(d.tool, d.prompt.slice(0, 2000), { musicSec });
-        reply({ ok: true, tool: d.tool, applied, ...(price ? { priceCredits: price } : {}), ...(fingerprint ? { fingerprint } : {}) });
-        if (d.reveal === true) setTimeout(() => taRef.current?.focus(), 0);
+        reply({ ok: true, tool: d.tool, applied, inChat: true, ...(price ? { priceCredits: price } : {}) });
         return true;
       }
       case 'open_studio':
@@ -8637,6 +8680,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       case 'start_generation': {
         if (signedOut) { reply({ ok: false, error: 'signed_out', message: 'The user is not signed in; generating needs an account. Ask them to sign in.' }); return true; }
+        // The chat's own offer first (the Live order path): the countdown runs it through that card / that storyboard.
+        const offer = liveChatOffer();
+        if (offer) {
+          if (busy || genActiveRef.current) { reply({ ok: false, error: 'busy', message: 'Something is already being generated. Wait for it, or stop it first.' }); return true; }
+          const fp = liveOfferFp(offer);
+          reply({ ok: true, tool: offer.tool, ...(typeof offer.credits === 'number' ? { priceCredits: offer.credits } : {}), ...(fp ? { fingerprint: fp } : {}) });
+          return true;
+        }
         if (activeTool === 'presentation' || activeTool === 'model3d') { reply({ ok: false, error: 'panel_run', message: `The ${toolName(activeTool, 'en')} studio runs from its own panel: ask the user to press Create there (the price is on that button).` }); return true; }
         if (!LIVE_GEN_TOOLS.includes(activeTool)) { reply({ ok: false, error: 'not_generative', message: `Nothing to start: the open tool is ${toolName(activeTool, 'en')}. Prepare a video, image, music or avatar first.` }); return true; }
         if (!input.trim()) { reply({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' }); return true; }
@@ -8649,7 +8700,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'chat_send': {
         if (busy) { reply({ ok: false, error: 'busy', message: 'The chat is still answering; wait a moment or stop it first.' }); return true; }
         if (activeTool === 'chat') liveChatSendRef.current(d.text);
-        else { pendingLiveChatRef.current = d.text; selectTool('chat', 'voice'); }
+        else { pendingLiveChatRef.current = { text: d.text }; selectTool('chat', 'voice'); }
         reply({ ok: true });
         return true;
       }
@@ -8918,16 +8969,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       detail.reply = { ok: true };
       return true;
     }
+    // GG 2026-10-18 (card „ხმით დაიწყოს"): the user's OWN spoken yes, recorded on the server before this ran (fireRun),
+    // starts the paid run in the CHAT — the very card or storyboard whose price was told, through its own button's path
+    // (balance checks, the storyboard approval). The model's word never gets here: `said` is the user's transcript.
+    const offer = liveChatOffer();
+    if (offer) {
+      if (busy || genActiveRef.current) return refuse('busy', 'Something else is being generated now, so nothing was started.');
+      if (target.tool !== offer.tool || (target.fingerprint && target.fingerprint !== liveOfferFp(offer))) {
+        return refuse('changed', 'What is on screen changed after the price was told, so nothing was started.');
+      }
+      if (offer.kind === 'storyboard') { storyboardGenerateRef.current?.(); detail.reply = { ok: true }; return true; }
+      if (!consentRef.current(said) && !consentRef.current('yes')) return refuse('gone', 'That card is no longer waiting, so nothing was started.');
+      detail.reply = { ok: true };
+      return true;
+    }
     // The studio's prepared render, through its own path (balance checks; a video's storyboard) — only what was told.
     if (!LIVE_GEN_TOOLS.includes(activeTool) || !input.trim()) return refuse('nothing_prepared', 'Nothing is prepared in the studio any more, so nothing was started.');
     if (busy || genActiveRef.current) return refuse('busy', 'Something else is being generated now, so nothing was started.');
     if (target.tool !== activeTool || (target.fingerprint && target.fingerprint !== liveFp(activeTool))) {
       return refuse('changed', 'What is on screen changed after the price was told (the studio, the prompt or the price), so nothing was started.');
     }
-    // A studio render is PAID (it debits on start). Spoken words alone never spend credits (final-release master task
-    // §8.D: a spoken „კი", a model's tool flag or a transcript may never debit): the price stays on screen and the run
-    // starts only from its visible button. Agent G's free montage / audio / edit plans above still take the spoken yes.
-    return refuse('ui_confirmation_required', 'The price is on screen; press its button to start. Nothing was started or charged.');
+    // A studio render is PAID (it debits on start). GG 2026-10-18 („ხმით დაიწყოს") superseded the button-only rule: the
+    // user's own spoken yes, recorded on the server first (fireRun), starts it through the button's own path.
+    runTool(true, 'voice');
+    detail.reply = { ok: true };
+    return true;
   };
 
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
@@ -8941,10 +9007,29 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // product ad, the character swap and the remix (the Create screens of video / image / music / interior / photographer /
   // VFX print theirs on the panel's button). One quote function for both (lib/credits/quote = what the route charges).
   // The avatar's is Veo's where its door is open (avatarCredits): the price on the button is the one charged.
+  // VIDEO (GG 2026-10-18): the prompt lives only in this box, so its Send is the film's one button and carries the film's
+  // quote — videoQuote for the length, tier and mode on the panel, the number its Generate used to show. A Higgsfield pick
+  // runs from the panel's own saga button (its server's price), so the box shows no Veo number then.
+  const [videoModelPick] = useModelPick('video');
+  const videoHfPicked = !!videoModelPick && catalogueEntry(videoModelPick)?.wire.runner === 'studio';
   const composerQuote = activeTool === 'avatar' ? avatarCredits || null
     : activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix'
       ? quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool }) || null
-      : null;
+      : activeTool === 'video' && mode === 'video' && videoTab === 'cinema' && !videoHfPicked
+        ? videoQuote({ seconds: videoDuration, tier: veoPlan.tier, mode: videoMode }) || null
+        : null;
+  // The box's Send for a film is the explicit press the panel's Generate was (its price is on it): same runTool path,
+  // same guest gate, storyboard approval and focus gate. A balance known to be short opens the top-up instead, as the
+  // panel's button did; the trial slot (one clip ≤ 8 s) is never blocked.
+  const runComposer = () => {
+    if (composerQuote !== null && activeTool === 'video') {
+      const short = !freeSlotApplies(videoFreeFilms, videoDuration) && videoBalanceCredits !== null && videoBalanceCredits < composerQuote;
+      if (short) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }
+      runTool(true, 'composer');
+      return;
+    }
+    runTool();
+  };
   const runAria = composerQuote ? `${runLabel} — ${creditsLabel(composerQuote, locale)}` : runLabel;
   const composerPlaceholder = recording ? t.recording
     // The chat asks like Gemini's prompt bar ("Ask Gemini") — in our name.
@@ -9914,6 +9999,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Agent G's note belongs to the tool it was made in: leaving the mode (or starting a new thread) retires it.
   useEffect(() => { setGateFrom(null); }, [mode]);
 
+  /** A Montage export is running / the editor was closed while it ran (MontageStudio onExportStart · onExportEnd). */
+  const montageExportingRef = useRef(false);
+  /** The storyboard overlay's Generate (set while it is on screen): a Live call's spoken yes presses it. */
+  const storyboardGenerateRef = useRef<(() => void) | null>(null);
+  const montageExportLeftRef = useRef(false);
   const messageList = useMemo(() => (
           messages.map((m, i) => (
             <div key={i} className={`group flex motion-safe:animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -10164,6 +10254,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                               ) : (
                                 <p className="text-app-muted">{locale === 'en' ? 'The AI will pick the scene(s) to re-render from your edit; the rest are reused.' : locale === 'ru' ? 'ИИ выберет сцену(ы) для перерисовки; остальные переиспользуются.' : 'AI აირჩევს გადასარენდერებელ სცენას; დანარჩენი ხელახლა გამოიყენება.'}</p>
                               )}
+                              {/* The price /api/pipeline/remix reserves: one Veo clip per re-rendered scene (lib/credits/priceBook). */}
+                              {(() => {
+                                const per = creditsLabel(remixSceneCredits(m.filmClipSec ?? 8), locale);
+                                return <p className="text-app-muted">{locale === 'en' ? `Price: ${per} per re-rendered scene.` : locale === 'ru' ? `Цена: ${per} за каждую перерисованную сцену.` : `ფასი: ${per} თითო გადარენდერებულ სცენაზე.`}</p>;
+                              })()}
                               <div className="flex items-center gap-1.5">
                                 <button type="button" onClick={() => {
                                   setRemixPreviewIdx(null);
@@ -10265,10 +10360,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   // A remix/product-ad bubble in flight — product-ad runs through the QUEUE (no `busy`), so it
                   // gets its inline staged console here too instead of only the floating tray.
                   const isInflightRemix = m.role === 'assistant' && !!m.remixOpKind && !m.videoUrl && !m.audioUrl && !m.text?.startsWith('⚠️');
-                  // FIX 6 — a remix op (panel OR chat-attached) gets the Remix Studio
-                  // staged-timer console. Checked first so it wins in chat mode too.
+                  // A remix op or a product ad in flight gets the same loading card as every other render (GG 2026-10-18:
+                  // the old staged-timer console, RemixStudioConsole, is retired from the UI with the director's console).
                   if ((pending || isInflightRemix) && m.remixOpKind) {
-                    return <RemixStudioConsole op={m.remixOpKind} elapsed={elapsed} locale={locale} onCancel={stop} stopLabel={t.stop} />;
+                    return (
+                      <ResultCard
+                        kind="video"
+                        aspect={ORIENT_ASPECT[m.orientation ?? videoOrientation]}
+                        state="rendering"
+                        locale={locale}
+                        elapsedSec={elapsed}
+                        capSec={PROGRESS_TARGET.video}
+                        stage={m.text}
+                        onCancel={() => cancelBubbleJob(m)}
+                      />
+                    );
                   }
                   // Generative modes get the live staged progress card (bar + clock +
                   // narrated steps) — the real "loading process". Chat gets typing dots.
@@ -10329,13 +10435,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           poster={m.storyboard?.find((s) => s.frameUrl)?.frameUrl ?? null}
                           // This bubble's own job — its queue job when it has one, else the foreground render.
                           onCancel={() => cancelBubbleJob(m)}
-                        >
-                          {/* The Master-Prompt Director's Console — the 9-agent crew, live, driven by the real
-                              film-pipeline matrix — stays one tap away under the tile rather than being lost. */}
-                          {kind === 'video' ? (
-                            <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={cardCap} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
-                          ) : null}
-                        </ResultCard>
+                        />
+                        {/* GG 2026-10-18: the old Director's Console (9-agent crew under „Details") is retired from the UI;
+                            the loading card above is the one progress view. */}
                       </div>
                     );
                   }
@@ -10827,7 +10929,27 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const orientation = aspect === '9:16' ? 'vertical' as const : aspect === '1:1' ? 'square' as const : 'landscape' as const;
               setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl, orientation }]);
             }}
-            onExit={() => { setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setMode('chat'); }}
+            onExportEnd={(ok) => {
+              const left = montageExportLeftRef.current;
+              montageExportLeftRef.current = false;
+              montageExportingRef.current = false;
+              // Only the chat's own word when the editor was closed mid-export: a success lands as the video above.
+              if (left && !ok) {
+                const failed = locale === 'en' ? 'The montage export did not finish. Open Montage and export again.' : locale === 'ru' ? 'Экспорт монтажа не завершился. Откройте Монтаж и экспортируйте снова.' : 'მონტაჟის ექსპორტი ვერ დასრულდა. გახსენი მონტაჟი და ხელახლა დააექსპორტე.';
+                setMessages((prev) => [...prev, { role: 'assistant', text: `⚠️ ${failed}`, notice: true }]);
+              }
+            }}
+            onExportStart={() => { montageExportingRef.current = true; }}
+            onExit={() => {
+              // An export still running keeps going (GG 2026-10-18: no tray card, no second process): the chat says so,
+              // and the film lands here when it is ready.
+              if (montageExportingRef.current) {
+                montageExportLeftRef.current = true;
+                const note = locale === 'en' ? 'The montage is still exporting; it will appear here when it is ready.' : locale === 'ru' ? 'Монтаж ещё экспортируется; он появится здесь, когда будет готов.' : 'მონტაჟი ჯერ ექსპორტდება; როცა მზად იქნება, აქ გამოჩნდება.';
+                setMessages((prev) => [...prev, { role: 'assistant', text: note, notice: true }]);
+              }
+              setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setMode('chat');
+            }}
           />
         </div>
       );
@@ -11221,11 +11343,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
             {videoTab === 'cinema' && (
-            // ⚠️ THE CREATE SCREEN (components/studio/create — ref4 / ref5) owns what every video decides first: the model, the
-            // references, the prompt, the length / format / quality tiles and the price on its Generate button. EVERYTHING the
-            // cinema tab always had is passed in below as its three disclosures — the SAME blocks, so their state and
-            // behaviour are untouched: a first-time user meets the path to a film (model → photos → words → length →
-            // Generate), and a script, a track, a voice or a camera is one tap away (and opens by itself when it matters).
+            // ⚠️ THE VIDEO SETTINGS (components/studio/create/VideoCreatePanel — GG 2026-10-18: „ზედმეტი ფუნქციები წაშალე"). The
+            // prompt lives ONLY in the chat box, and the box's Send (the film's price on it, composerQuote) starts the film
+            // through runTool — the path this panel's Generate used. The panel keeps the switches that change the film: film |
+            // music video, length, format, priced quality, Veo's sound, narrator, music, subtitles / lip-sync, the photos. The
+            // script, dialogue, lyrics, scene prompts, effect, voice details and camera are typed in the prompt (or a .txt /
+            // .pdf / .docx attached in the box): their state keeps its defaults and the request reads it unchanged.
             <VideoCreatePanel
               locale={locale}
               surface={isDesktop ? 'panel' : 'sheet'}
@@ -11242,7 +11365,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
               onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
               prompt={input}
-              onPrompt={(v) => { dictation.markTyped(); setInput(v); }}
               refs={{
                 images: videoCharacterRefs,
                 max: sceneFrameCount,
@@ -11254,402 +11376,27 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 onRemoveAudio: () => setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }),
               }}
               generate={{
-                onGenerate: () => runTool(true, 'panel'),
-                busy: busy || storyboardBusy,
-                canGenerate: canRun,
                 balanceCredits: videoBalanceCredits,
-                freeFilmsRemaining: videoFreeFilms,
                 onTopUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
                 lipsyncCredits: filmLipsyncCredits,
+                onNeedPrompt: () => taRef.current?.focus(),
+              }}
+              audio={{
+                narration: videoNarration,
+                // The removed „my voice" / „both" choices fall back to one narrator when the narrator is set here.
+                onNarration: (on) => { setVideoNarration(on); if (on) { setVideoMultiChar(false); setVideoMyVoiceNarration(false); } },
+                narratorGender: videoNarratorGender,
+                onNarratorGender: setVideoNarratorGender,
+                music: videoMusic,
+                onMusic: setVideoMusic,
+                subtitles: videoSubtitles,
+                onSubtitles: setVideoSubtitles,
+                lipsync: videoLipsync,
+                onLipsync: setVideoLipsync,
               }}
               caps={videoCaps}
               requestedSec={videoRequestedSec}
               joinOverlapSec={videoPlanOpts.joinOverlapSec}
-              storySummary={styleLabel(videoStyle, locale)}
-              voiceSummary={videoSoundtrack?.name}
-              storyOpenWhen={!!videoScriptDoc || !!videoMasterScript.trim()}
-              voiceOpenWhen={videoMode === 'musicvideo' || !!videoSoundtrack}
-              musicLook={<MusicVideoLook locale={locale} value={mvLook} onChange={setMvLook} />}
-              story={<>
-            {/* 0 · START HERE — one tap sets mode, length, format and look together.
-                The panel has 57 controls. Each is reasonable; the combination is not, because a
-                first-time user must decide four things before anything happens and has no opinion yet
-                about three of them. A preset answers all four from something they DO have an opinion
-                about ("this is for Instagram"), and every individual control stays visible below — so
-                it is a starting point, not a mode they are locked into.
-                The highlight is DERIVED from the live values (matchVideoTemplate), never stored: a chip
-                that stayed lit after you changed the length would be describing settings you no longer
-                have, which is worse than no highlight at all. */}
-            <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <TemplateGallery
-                testId="video-templates"
-                label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
-                items={VIDEO_TEMPLATES.map((tp) => ({
-                  id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
-                  thumb: tp.thumb, palette: tp.palette, Icon: Film,
-                  meta: `${ORIENT_ASPECT[tp.values.orientation]} · ${tp.values.duration}${locale === 'en' ? 's' : locale === 'ru' ? ' с' : 'წმ'}`,
-                  adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
-                }))}
-                activeId={activeVideoPreset}
-                onPick={applyVideoPreset}
-              />
-            </div>
-
-            {/* Film vs music video is the switch at the top of the panel (VideoModeChoice), not a card in here. */}
-
-            {/* 2 · CHARACTER REFERENCE — up to 3 photos. The FIRST is the main identity →
-                Kling i2v start_image; all are sent to the pipeline (referenceImages) + stored
-                in the job metadata for multi-angle character lock. */}
-            <div id="character-ref-zone" className="space-y-1.5">
-              <span className="inline-flex flex-wrap items-center gap-1.5 px-0.5 text-[12.5px] font-semibold text-app-text">
-                <Camera size={14} aria-hidden="true" className="text-app-accent" /> {locale === 'en' ? 'Your photo' : locale === 'ru' ? 'Ваше фото' : 'თქვენი ფოტო'}
-                <span className="text-[10px] font-normal text-app-muted">
-                  {videoCharacterRefs.length}/{sceneFrameCount}
-                  {videoCharacterRefs.length < sceneFrameCount && videoCharacterRefs.length > 0 && (
-                    <> · {sceneFrameCount - videoCharacterRefs.length} {locale === 'en' ? 'AI-filled' : locale === 'ru' ? 'ИИ' : 'AI-ით'}</>
-                  )}
-                </span>
-              </span>
-              <div className={`grid gap-2 ${sceneFrameCount === 1 ? 'grid-cols-1' : sceneFrameCount <= 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
-                {Array.from({ length: sceneFrameCount }).map((_, i) => {
-                  const url = videoCharacterRefs[i];
-                  const isAdd = !url && i === videoCharacterRefs.length;
-                  return (
-                    <div key={i} className="flex min-w-0 flex-col gap-1">
-                      {url ? (
-                        <div className="relative aspect-square overflow-hidden rounded-xl border border-app-accent/50 bg-app-accent/10">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                          <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent pt-3 pb-0.5 text-center text-[8.5px] font-medium text-white">{locale === 'en' ? 'Scene' : locale === 'ru' ? 'Сц.' : 'სცენა'} {i + 1}</span>
-                          <button type="button" aria-label={t.a11yRemoveFrame} onClick={() => setVideoCharacterRefs((p) => p.filter((_, k) => k !== i))}
-                            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
-                        </div>
-                      ) : (
-                        <div role={isAdd ? 'button' : undefined} tabIndex={isAdd ? 0 : undefined}
-                          onClick={isAdd ? () => { charReplaceRef.current = false; charFileRef.current?.click(); } : undefined}
-                          onKeyDown={isAdd ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charReplaceRef.current = false; charFileRef.current?.click(); } } : undefined}
-                          className={`relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed text-center transition ${isAdd ? 'cursor-pointer border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70 active:scale-[0.99]' : 'border-app-border/15 bg-app-elevated/20'}`}>
-                          {isAdd ? <span className="flex h-7 w-7 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Plus size={14} /></span> : <Sparkles size={12} aria-hidden="true" className="text-app-muted" />}
-                          <span className="text-[8.5px] font-medium text-app-muted">{locale === 'en' ? 'Scene' : locale === 'ru' ? 'Сц.' : 'სცენა'} {i + 1}</span>
-                        </div>
-                      )}
-                      {/* Per-scene ACTION prompt — describe this scene's motion (optional; empty → AI). */}
-                      <textarea
-                        value={scenePrompts[i] || ''}
-                        onChange={(e) => updateScenePrompt(i, e.target.value)}
-                        rows={2}
-                        placeholder={locale === 'en' ? `Scene ${i + 1} — action…` : locale === 'ru' ? `Сцена ${i + 1} — действие…` : `სცენა ${i + 1} — მოქმედება…`}
-                        className="w-full resize-none rounded-lg border border-app-border/20 bg-app-elevated/40 px-2 py-1 text-[11px] leading-snug text-app-text placeholder:text-app-muted/55 focus:border-app-accent/50 focus:outline-none"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="px-0.5 text-[10px] leading-tight text-app-muted">{veoPlan.referenceMode === 'reference'
-                ? (locale === 'en' ? 'Reference mode: up to 3 photos of the person — Veo keeps them in every scene.' : locale === 'ru' ? 'Режим референса: до 3 фото человека — Veo сохранит его в каждой сцене.' : 'რეფერენსის რეჟიმი: ადამიანის მაქს. 3 ფოტო — Veo მას ყველა სცენაში შეინარჩუნებს.')
-                : (locale === 'en' ? 'One frame per scene (optional, in order). Empty scenes are filled by the storyboard AI.' : locale === 'ru' ? 'По кадру на сцену (опц., по порядку). Пустые сцены добавит ИИ-раскадровка.' : 'თითო ფრეიმი თითო სცენისთვის (არჩევით, თანმიმდევრობით). ცარიელ სცენებს Storyboard-ის AI შეავსებს.')}</p>
-            </div>
-
-            {/* 2-script · SCRIPT ingest slot — the Director follows this verbatim. Lives in the
-                video panel (not the chat composer) so the script ALWAYS reaches the storyboard,
-                independent of chat mode. .txt/.md/.pdf/.docx. */}
-            <div className="grid grid-cols-1 gap-2">
-              <div role="button" tabIndex={0} onClick={() => { if (!videoScriptBusy) scriptFileRef.current?.click(); }}
-                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoScriptBusy) { e.preventDefault(); scriptFileRef.current?.click(); } }}
-                onDragOver={(e) => { e.preventDefault(); }} onDrop={handleScriptDrop}
-                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoScriptDoc ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
-                {videoScriptBusy ? (
-                  <><Loader2 size={18} className="animate-spin text-app-accent" /><span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Reading script…' : locale === 'ru' ? 'Читаю сценарий…' : 'სცენარს ვკითხულობ…'}</span></>
-                ) : videoScriptDoc ? (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><FileText size={16} /></span>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Script loaded' : locale === 'ru' ? 'Сценарий загружен' : 'სცენარი ჩაიტვირთა'}</span>
-                    <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoScriptDoc.name} · {videoScriptDoc.text.length.toLocaleString()} {locale === 'en' ? 'chars' : locale === 'ru' ? 'симв.' : 'სიმბ.'}</span>
-                    <button type="button" aria-label={t.a11yRemoveScript} onClick={(e) => { e.stopPropagation(); setVideoScriptDoc(null); }}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><FileText size={16} /></span>
-                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Script / scenario' : locale === 'ru' ? 'Сценарий' : 'სცენარი'}</span>
-                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload .txt / .pdf / .docx — the film follows it' : locale === 'ru' ? 'загрузите .txt / .pdf / .docx — фильм по нему' : 'ატვირთე .txt / .pdf / .docx — ფილმი მის მიხედვით'}</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* PHASE 19 — MASTER SCRIPT / STORYBOARD, now UNIVERSAL (both documentary AND music-video).
-                It was documentary-only, so a music video had no way to supply a timecoded scene script —
-                the storyboard then invented its own. When filled it drives the scenes + per-speaker
-                casting; empty = auto. Folded into the brief in send() for every video mode. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
-              <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
-              <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
-                placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
-                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-            </div>
-
-            {/* 5 · Effect — the primary creative control, kept fully visible. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
-              {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
-                  reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{styleLabel(s, locale)}</Chip>)}
-              </div>
-            </div>
-
-              </>}
-              voice={<>
-            {/* 2a · Audio Track ingest slot (full width) */}
-            <div className="grid grid-cols-1 gap-2">
-              <div role="button" tabIndex={0} onClick={() => { if (!videoSoundtrackBusy) audioFileRef.current?.click(); }}
-                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoSoundtrackBusy) { e.preventDefault(); audioFileRef.current?.click(); } }}
-                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoSoundtrack ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
-                {videoSoundtrackBusy ? (
-                  <><Loader2 size={18} className="animate-spin text-app-accent" /><span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Uploading…' : locale === 'ru' ? 'Загрузка…' : 'იტვირთება…'}</span></>
-                ) : videoSoundtrack ? (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Soundtrack' : locale === 'ru' ? 'Саундтрек' : 'საუნდტრეკი'}</span>
-                    <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoSoundtrack.name}</span>
-                    <button type="button" aria-label={t.a11yRemoveSoundtrack} onClick={(e) => { e.stopPropagation(); setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }); }}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
-                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Audio track' : locale === 'ru' ? 'Аудиодорожка' : 'აუდიო ტრეკი'}</span>
-                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload a beat/song' : locale === 'ru' ? 'загрузить бит/песню' : 'ატვირთე ბიტი/სიმღერა'}</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* 2b · Soundtrack detail — waveform + duration + preview (Phase 6 polish).
-                Shown once a track is uploaded; purely informative, never blocks generation. */}
-            {videoSoundtrack && (
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-app-text">
-                    <Music2 size={13} className="shrink-0 text-app-accent" />
-                    <span className="truncate">{videoSoundtrack.name}</span>
-                  </span>
-                  {videoSoundtrack.durationSec ? (
-                    <span className="shrink-0 tabular-nums text-[11px] font-medium text-app-muted">{fmtDur(videoSoundtrack.durationSec)}</span>
-                  ) : null}
-                </div>
-                {videoSoundtrack.peaks && videoSoundtrack.peaks.length > 0 && (
-                  <div className="flex h-9 items-end gap-[2px]" aria-hidden="true">
-                    {videoSoundtrack.peaks.map((p, k) => (
-                      <span key={k} className="flex-1 rounded-sm bg-app-accent/55" style={{ height: `${Math.max(8, Math.round(p * 100))}%` }} />
-                    ))}
-                  </div>
-                )}
-                {videoSoundtrack.previewUrl && (
-                  // eslint-disable-next-line jsx-a11y/media-has-caption
-                  <audio src={videoSoundtrack.previewUrl} controls className="h-8 w-full" />
-                )}
-              </div>
-            )}
-
-            {/* 2c · Character-photo guidance for music video — lip-sync keys a face, so a
-                character reference gives the best result. A WARNING (not a hard block): the
-                pipeline still derives a face if none is given, so generation is never blocked. */}
-            {videoMode === 'musicvideo' && !videoCharacterRef && (
-              <div className="flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] px-3 py-2.5 text-[11.5px] leading-snug text-amber-600 dark:text-amber-400">
-                <Camera size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
-                <span>{locale === 'en'
-                  ? 'Add a character photo above for accurate lip-sync (otherwise a face is auto-generated).'
-                  : locale === 'ru'
-                    ? 'Добавьте фото персонажа выше для точного липсинка (иначе лицо создаётся автоматически).'
-                    : 'lip-sync-ისთვის ატვირთე პერსონაჟის ფოტო ზემოთ (თუ არა — სახე ავტომატურად შეიქმნება).'}</span>
-              </div>
-            )}
-
-            {/* 3 · Length + Format used to live here. They are the composer's format pills now (ratio incl. 4:5,
-                and 8 / 24 / 48 s) — one control, always in view, instead of a second copy in the panel. */}
-
-            {/* 4 · Audio mix — adapts to the chosen mode (the voice-overlap fix made visible) */}
-            {videoMode === 'documentary' ? (
-              <>
-                <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'Music on' : locale === 'ru' ? 'Музыка вкл' : 'მუსიკა ჩართ.'}</Chip>
-                    <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
-                    <span className="mx-1 h-4 w-px bg-app-border/15" />
-                    <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>{t.narration}</Chip>
-                    {hasTrainedVoice && (
-                      <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>{locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
-                    )}
-                    {/* Subtitles of the narration: the user's choice, off by default. */}
-                    {videoNarration && (
-                      <Chip active={videoSubtitles} onClick={() => setVideoSubtitles((v) => !v)}>{locale === 'en' ? 'Subtitles' : locale === 'ru' ? 'Субтитры' : 'სუბტიტრი'}</Chip>
-                    )}
-                  </div>
-                  {/* Character voice — female/male cloned Georgian voice, or "Both"
-                      (ორივე) which flips on multi-character mode (per-speaker voices,
-                      script split below). Shown when narration is on and not using
-                      the user's own trained voice. */}
-                  {videoNarration && !videoMyVoiceNarration && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                      <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Character voice:' : locale === 'ru' ? 'Голос персонажа:' : 'პერსონაჟის ხმა:'}</span>
-                      <Chip active={!videoMultiChar && videoNarratorGender === 'female'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('female'); }}>{locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'}</Chip>
-                      <Chip active={!videoMultiChar && videoNarratorGender === 'male'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('male'); }}>{locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი'}</Chip>
-                      <Chip active={videoMultiChar} onClick={() => setVideoMultiChar(true)}>{locale === 'en' ? 'Both' : locale === 'ru' ? 'Оба' : 'ორივე'}</Chip>
-                    </div>
-                  )}
-                  {/* PHASE 2 L1 — Character Voice DETAILS: language + persona + tone → VOICE_MAP.
-                      Folded into an accordion (13 chips) with a live emoji summary so the default
-                      view stays calm; the primary female/male/both choice above stays visible. */}
-                  {videoNarration && !videoMyVoiceNarration && (
-                    <Section
-                      title={`${locale === 'en' ? 'Voice details' : locale === 'ru' ? 'Детали голоса' : 'ხმის დეტალები'}`}
-                      badge={`${voiceLanguage.toUpperCase()} · ${voicePersona === 'male' ? (locale === 'en' ? 'Man' : locale === 'ru' ? 'Муж' : 'კაცი') : voicePersona === 'female' ? (locale === 'en' ? 'Woman' : locale === 'ru' ? 'Жен' : 'ქალი') : voicePersona === 'child' ? (locale === 'en' ? 'Child' : locale === 'ru' ? 'Ребёнок' : 'ბავშვი') : (locale === 'en' ? 'Elder' : locale === 'ru' ? 'Пожилой' : 'ხანდაზმ.')}`}
-                    >
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Language:' : locale === 'ru' ? 'Язык:' : 'ენა:'}</span>
-                        <Chip active={voiceLanguage === 'ka'} onClick={() => setVoiceLanguage('ka')}>KA</Chip>
-                        <Chip active={voiceLanguage === 'en'} onClick={() => setVoiceLanguage('en')}>EN</Chip>
-                        <Chip active={voiceLanguage === 'ru'} onClick={() => setVoiceLanguage('ru')}>RU</Chip>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Persona:' : locale === 'ru' ? 'Персона:' : 'პერსონა:'}</span>
-                        <Chip active={voicePersona === 'male'} onClick={() => setVoicePersona('male')}>{locale === 'en' ? 'Man' : locale === 'ru' ? 'Муж' : 'კაცი'}</Chip>
-                        <Chip active={voicePersona === 'female'} onClick={() => setVoicePersona('female')}>{locale === 'en' ? 'Woman' : locale === 'ru' ? 'Жен' : 'ქალი'}</Chip>
-                        <Chip active={voicePersona === 'child'} onClick={() => setVoicePersona('child')}>{locale === 'en' ? 'Child' : locale === 'ru' ? 'Ребёнок' : 'ბავშვი'}</Chip>
-                        <Chip active={voicePersona === 'elderly'} onClick={() => setVoicePersona('elderly')}>{locale === 'en' ? 'Elder' : locale === 'ru' ? 'Пожилой' : 'ხანდაზმული'}</Chip>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Tone:' : locale === 'ru' ? 'Тон:' : 'ტონი:'}</span>
-                        <Chip active={voiceTone === 'epic'} onClick={() => setVoiceTone('epic')}>{locale === 'en' ? 'Epic' : locale === 'ru' ? 'Эпично' : 'ეპიკური'}</Chip>
-                        <Chip active={voiceTone === 'emotional'} onClick={() => setVoiceTone('emotional')}>{locale === 'en' ? 'Emotional' : locale === 'ru' ? 'Эмоц.' : 'ემოციური'}</Chip>
-                        <Chip active={voiceTone === 'energetic'} onClick={() => setVoiceTone('energetic')}>{locale === 'en' ? 'Energetic' : locale === 'ru' ? 'Энерг.' : 'ენერგიული'}</Chip>
-                      </div>
-                    </div>
-                    </Section>
-                  )}
-                  {/* PHASE 2 L6 — Smart ducking: music auto-ducks under the narration.
-                      Only shown with music on; depth −6…−18 dB (default −12). */}
-                  {videoMusic && (
-                    <div className="flex flex-col gap-1.5 border-t border-app-border/10 pt-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-app-muted">{locale === 'en' ? 'Smart ducking' : locale === 'ru' ? 'Авто-приглушение' : 'ჭკვიანი ჩაჩუმება'}</span>
-                        <AppToggle on={videoSmartDuck} onChange={setVideoSmartDuck} label="smart ducking" />
-                      </div>
-                      {videoSmartDuck && (
-                        <label className="flex items-center gap-2">
-                          <span className="whitespace-nowrap text-[10.5px] text-app-muted">{locale === 'en' ? 'Depth' : locale === 'ru' ? 'Глубина' : 'სიღრმე'}</span>
-                          <input type="range" min={-18} max={-6} step={6} value={videoDuckDb}
-                            onChange={(e) => setVideoDuckDb(Number(e.target.value))}
-                            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label={t.a11yDuckingDb} />
-                          <span className="w-12 text-right text-[10.5px] tabular-nums text-app-text">{videoDuckDb} dB</span>
-                        </label>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {/* Multiple-characters toggle — when on, the script below is split per
-                    speaker (ქალი:/კაცი:/Woman:/Man:) and each line voiced separately. */}
-                <button type="button" onClick={() => setVideoMultiChar((v) => !v)} aria-pressed={videoMultiChar}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoMultiChar ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/20 bg-app-bg/40'}`}>
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Multiple characters' : locale === 'ru' ? 'Несколько персонажей' : 'მრავალი პერსონაჟი'}</span>
-                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Each speaker gets their own voice.' : locale === 'ru' ? 'У каждого говорящего свой голос.' : 'თითო პერსონაჟს თავისი ხმა.'}</span>
-                  </span>
-                  {/* Inline-styled visual track (the card button handles the click). */}
-                  <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: videoMultiChar ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
-                    <span style={{ position: 'absolute', top: 3, left: videoMultiChar ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
-                  </span>
-                </button>
-                {/* Dialogue — single narrator (verbatim) OR a multi-character script. */}
-                <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  {videoMultiChar ? (
-                    <>
-                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Dialogue script' : locale === 'ru' ? 'Сценарий диалога' : 'დიალოგის სცენარი'}</span>
-                      <textarea value={videoDialogue} onChange={(e) => setVideoDialogue(e.target.value)} rows={4}
-                        placeholder={locale === 'en' ? 'Woman: Hello, how are you?\nMan: I am well, thanks!' : locale === 'ru' ? 'Женщина: Привет, как дела?\nМужчина: Хорошо, спасибо!' : 'ქალი: გამარჯობა, როგორ ხარ?\nკაცი: კარგად ვარ, გმადლობ!'}
-                        className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-                    </>
-                  ) : (
-                    <>
-                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
-                      <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
-                        placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
-                        className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-                    </>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Vocal gender — steers the ElevenLabs Music singer (big touch targets) */}
-                <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {([
-                      ['female', '', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
-                      ['male', '', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
-                      ['duet', '', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
-                    ] as const).map(([id, , label]) => {
-                      const on = videoVocalGender === id;
-                      return (
-                        <button key={id} type="button" onClick={() => setVideoVocalGender(id)}
-                          className={`flex min-h-[52px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-[14px] font-semibold transition active:scale-[0.98] ${on ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-text hover:bg-app-bg/60'}`}>
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                {/* Song-master info */}
-                <div className="space-y-1 rounded-xl border border-app-accent/25 bg-app-accent/10 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-accent">{locale === 'en' ? 'Song-master mix' : locale === 'ru' ? 'Песня — мастер' : 'სიმღერა — მთავარი'}</span>
-                  <p className="text-[11px] leading-relaxed text-app-muted">
-                    {locale === 'en'
-                      ? 'The song rules the master — no narrator, backing ducked −12 dB under the vocal, forced 9:16 vertical. Upload a beat in the Audio Track slot, or one is generated for you.'
-                      : locale === 'ru'
-                        ? 'Песня — мастер: без диктора, фон −12 дБ под вокал, вертикаль 9:16. Загрузите бит в слот «Аудиодорожка» — или он сгенерируется.'
-                        : 'სიმღერა მთავარია — დიქტორის გარეშე, ფონი −12 dB ვოკალის ქვეშ, 9:16 ვერტიკალური. ატვირთე ბიტი „აუდიო ტრეკში“, ან დაგენერირდება.'}
-                  </p>
-                </div>
-                {/* P1 · Lip-sync the singer to the vocal (default ON; fail-open) */}
-                <button type="button" onClick={() => setVideoLipsync((v) => !v)} aria-pressed={videoLipsync}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoLipsync ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/20 bg-app-bg/40'}`}>
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
-                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{(() => { const n = creditsLabel(quoteCredits({ tool: 'avatar' }), locale); return locale === 'en' ? `A lip-sync pass after the film assembles: more time, +${n} (returned if it fails).` : locale === 'ru' ? `Липсинк после сборки фильма: дольше, +${n} (при сбое возвращаются).` : `ლიპსინკი ფილმის აწყობის შემდეგ: მეტი დრო, +${n} (ჩავარდნისას ბრუნდება).`; })()}</span>
-                  </span>
-                  {/* Inline-styled visual track (the card button handles the click). */}
-                  <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: videoLipsync ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
-                    <span style={{ position: 'absolute', top: 3, left: videoLipsync ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
-                  </span>
-                </button>
-                {/* PHASE 19 — LYRICS. Music-video mode had no way to supply the song's words; the singer
-                    sang auto-written lyrics. Bound to videoSpeech (folded into the brief in send()), so the
-                    AI performs THESE Georgian lyrics. Empty = auto-written. */}
-                <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст песни' : 'ლირიკა'}</span>
-                  <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'What the singer sings (Georgian works). Empty = auto-written.' : locale === 'ru' ? 'Что поёт исполнитель (можно на грузинском). Пусто = авто.' : 'რას მღერის შემსრულებელი (ქართული მუშაობს). ცარიელი = ავტომატური.'}</span>
-                  <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={3}
-                    placeholder={locale === 'en' ? 'Paste the song lyrics…' : locale === 'ru' ? 'Вставьте текст песни…' : 'ჩასვი სიმღერის ტექსტი…'}
-                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-                </div>
-              </>
-            )}
-
-              </>}
-              advanced={<>
-            {/* GOOGLE VEO — scenes & camera, identity, Veo's own sound, advanced. Every control maps to a field of the Veo
-                request or to the edit (docs/VEO_ENGINE.md §2): the camera is compiled into each clip's prompt, the joins
-                are made by the assembler. Zoom / Slide joins and the engine badge are gone — Veo is the only engine and
-                those joins do not exist in its pipeline. */}
-            <VeoParametersPanel plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan} dispatch={dispatchVeo} locale={locale} engine={veoEngine}
-              sceneTexts={scenePrompts} onTransitionAll={setVideoTransition} />
-              </>}
             />
             )}
 
@@ -12085,12 +11832,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * composer docked at the bottom, as Gemini's phone app does.
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
-  // ONE DESCRIPTION BOX (GG's card, 2026-10-18 05:14Z: „დამალე"). Image, Music and Video keep their description on the Create
+  // ONE DESCRIPTION BOX (GG's card, 2026-10-18 05:14Z: „დამალე"). Image and Music keep their description on the Create
   // screen (it and the composer share `input`), so the composer's text box steps aside while that screen is on: below `lg`
-  // in Image and Music always (the sheet IS the prompt card; Video's sheet hides the whole bar), on a desktop while the panel
-  // is open — closing it brings the box back as Agent G's line. Mic, Live voice and Send stay in the pill.
-  const composerTextHidden = (imageCreate || mode === 'music' || activeTool === 'video')
-    && (isDesktop ? panelOpen : activeTool !== 'video');
+  // always (the sheet IS the prompt card), on a desktop while the panel is open — closing it brings the box back as Agent
+  // G's line. Mic, Live voice and Send stay in the pill. VIDEO is the other way round (GG 2026-10-18, „პრომპტი ჩატის ველში"):
+  // its panel has no prompt, so this box and its priced Send stay beside the open panel.
+  const composerTextHidden = (imageCreate || mode === 'music')
+    && (isDesktop ? panelOpen : true);
   // …and on a desktop the box's own Send and enhance go with it: the panel beside it has the priced Create.
   const composerRunAside = composerTextHidden && isDesktop;
   // Music on a desktop: the latest track and the engines-and-prices list (ref6) lead the centre column; the feed — progress
@@ -12956,7 +12704,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={() => runTool()} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
+                    <button type="button" onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
                       className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
                       {composerQuote ? (
                         <>
@@ -13149,7 +12897,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           onMove={moveScene}
           onReorder={reorderScene}
           onAddScene={addScene}
-          onGenerate={() => {
+          // Kept in a ref too: a Live call's spoken yes approves this very board (liveRunRef), as the button does.
+          onGenerate={(storyboardGenerateRef.current = () => {
             trackGenerationConfirmed(serviceForTool('video', { videoMode }), 'storyboard');
             // Stop any still-streaming frame fetches — the user has approved; we
             // don't need (or want to pay for) the remaining preview frames.
@@ -13192,7 +12941,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
             void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec, sb.sceneMeta?.length === sb.scenes.length ? sb.sceneMeta : undefined, storyboardApproval);
-          }}
+          })}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
             const sb = storyboard;

@@ -36,6 +36,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { deductCredits, refundCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { videoCredits, perSceneCredits, STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
+import { sceneCredits } from '@/lib/credits/priceBook';
 import { TRIAL } from '@/lib/billing/tiers';
 import { insufficientCreditsResponse, chargeRefusedResponse } from './chatBilling';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
@@ -1231,8 +1232,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // The price is the quote for THIS film's real length, Veo tier and mode — the same function the button shows.
       const filmQuote = videoCredits({
         seconds: grid.totalSec,
+        scenes: grid.sceneCount,
         quality: plan.shared.veo?.tier ?? STUDIO_DEFAULT_VEO_TIER,
         mode: input.metadata?.musicVideoMode ? 'musicvideo' : 'documentary',
+        referenceMode: plan.shared.veo?.referenceMode === 'reference',
       });
       // The pre-flight gate (credits against credits — it compared credits with ₾, ten times too lax) stops the obvious
       // case before anything is touched; the debit below is the real, atomic guard.
@@ -1733,11 +1736,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       compositeId,
       videoModel: effectiveVideoModel ?? null,
       forecast: { wholesaleGel: clipForecast.wholesaleGel, retailGel: clipForecast.retailGel },
-      scenePrice: videoCredits({
-        seconds: grid.clipSec,
-        quality: plan.shared.veo?.tier ?? STUDIO_DEFAULT_VEO_TIER,
-        mode: input.metadata?.musicVideoMode ? 'musicvideo' : 'documentary',
-      }),
+      // One scene: its clip and what the film adds to it, without the film's base (lib/credits/priceBook sceneCredits).
+      scenePrice: sceneCredits(plan.shared.veo?.tier ?? STUDIO_DEFAULT_VEO_TIER, Boolean(input.metadata?.musicVideoMode), grid.clipSec, plan.shared.veo?.referenceMode === 'reference'),
       scenes: bookScenes,
       createdAt: Date.now(),
     }).catch(() => false);

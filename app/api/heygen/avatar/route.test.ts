@@ -20,6 +20,7 @@ import { NextRequest } from 'next/server';
 import { GET } from './route';
 import { deductCredits } from '../../../../lib/orchestrator/ledger';
 import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
+import { creditCostFor } from '../../../../lib/credits/pricing';
 
 const ENV = { ...process.env };
 const realFetch = global.fetch;
@@ -38,7 +39,7 @@ afterAll(() => { process.env = ENV; });
 test('a charged completion delivers the re-hosted video and files it (unchanged)', async () => {
   (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
   const j = await (await get()).json();
-  expect(deductCredits).toHaveBeenCalledWith('user-1', 20, 'avatar:vid-9');
+  expect(deductCredits).toHaveBeenCalledWith('user-1', creditCostFor('avatar'), 'avatar:vid-9');
   expect(j).toMatchObject({ status: 'completed', url: expect.stringContaining('supabase.co') });
   expect(recordCompletedFilm).toHaveBeenCalledTimes(1);
 });

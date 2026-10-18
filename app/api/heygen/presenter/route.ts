@@ -15,6 +15,7 @@ import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generatio
 import { PRESENTER_DEFAULT_FACE_URL, audioFingerprint, avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, holdReleasableFor, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
 import { randomUUID } from 'crypto';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 /**
  * /api/heygen/presenter — "Presenter mode"
@@ -94,6 +95,9 @@ export async function POST(req: NextRequest) {
   // before any charge. Off (the default) → no-op.
   const outside = refuseOutsideEngine(req);
   if (outside) return outside;
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('avatar');
+  if (serviceOff) return serviceOff;
   // Two POSTs per generation (synthesize + submit), so use the AI tier (10/min)
   // rather than EXPENSIVE (5/min) which a couple of generations would exhaust.
   const rl = await checkRateLimit(req, RATE_LIMITS.AI);

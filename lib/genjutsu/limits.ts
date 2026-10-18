@@ -3,6 +3,10 @@
  * early, with friendly copy) and the server (which refuses for real). Pure and client-safe.
  */
 
+/** A paid scene still not delivered this long after it was created is refunded and closed (app/api/genjutsu/status).
+ * The browser polls that route for exactly this long (the talking avatar in components/studio/OmniStudio). */
+export const GENJUTSU_HARD_CAP_MS = 12 * 60_000;
+
 /**
  * The reference dropzone's cap — what the user may PICK. Google Veo 3.1 takes up to 3 reference images, so the
  * dropzone takes 3 too (the owner's PRD, 2026-10-18): a photo the engine would never receive is not offered.

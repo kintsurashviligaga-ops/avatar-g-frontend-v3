@@ -32,21 +32,25 @@ function deployment(runs: string[]) {
 }
 afterEach(() => { global.fetch = realFetch; });
 
-function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCreatePanelProps['generate']> = {}, refs: Partial<VideoCreatePanelProps['refs']> = {}) {
+function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCreatePanelProps['generate']> = {}, refs: Partial<VideoCreatePanelProps['refs']> = {}, audio: Partial<VideoCreatePanelProps['audio']> = {}) {
   const calls = {
-    onSeconds: jest.fn(), onPrompt: jest.fn(), onMode: jest.fn(), onFormat: jest.fn(), dispatch: jest.fn<void, [VeoPlanAction]>(),
-    onGenerate: jest.fn(), onTopUp: jest.fn(), onSwitchTool: jest.fn(), onClose: jest.fn(), onAddImage: jest.fn(), onRemoveImage: jest.fn(),
+    onSeconds: jest.fn(), onMode: jest.fn(), onFormat: jest.fn(), dispatch: jest.fn<void, [VeoPlanAction]>(),
+    onTopUp: jest.fn(), onNeedPrompt: jest.fn(), onSwitchTool: jest.fn(), onClose: jest.fn(), onAddImage: jest.fn(), onRemoveImage: jest.fn(),
     onAddAudio: jest.fn(), onRemoveAudio: jest.fn(),
+    onNarration: jest.fn(), onNarratorGender: jest.fn(), onMusic: jest.fn(), onSubtitles: jest.fn(), onLipsync: jest.fn(),
   };
   const props: VideoCreatePanelProps = {
     locale: 'en', surface: 'sheet', toolName: 'Video', onSwitchTool: calls.onSwitchTool, onClose: calls.onClose,
     plan: initialVeoPlan({ tier: 'fast', lengthSec: 24 }), dispatch: calls.dispatch, engine: null,
     mode: 'documentary', onMode: calls.onMode, seconds: 24, onSeconds: calls.onSeconds, format: '9:16', onFormat: calls.onFormat,
-    prompt: '', onPrompt: calls.onPrompt,
+    prompt: '',
     refs: { images: [], max: 3, onAddImage: calls.onAddImage, onRemoveImage: calls.onRemoveImage, audio: null, audioBusy: false, onAddAudio: calls.onAddAudio, onRemoveAudio: calls.onRemoveAudio, ...refs },
-    generate: { onGenerate: calls.onGenerate, busy: false, canGenerate: true, balanceCredits: null, freeFilmsRemaining: null, onTopUp: calls.onTopUp, ...gen },
+    generate: { balanceCredits: null, onTopUp: calls.onTopUp, onNeedPrompt: calls.onNeedPrompt, ...gen },
+    audio: {
+      narration: true, onNarration: calls.onNarration, narratorGender: 'female', onNarratorGender: calls.onNarratorGender,
+      music: true, onMusic: calls.onMusic, subtitles: false, onSubtitles: calls.onSubtitles, lipsync: true, onLipsync: calls.onLipsync, ...audio,
+    },
     caps: CLOSED_CAPABILITIES,
-    story: <div data-testid="story-body">story</div>, voice: <div data-testid="voice-body">voice</div>, advanced: <div data-testid="advanced-body">advanced</div>,
     ...over,
   };
   const utils = render(<VideoCreatePanel {...props} />);
@@ -54,53 +58,55 @@ function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCrea
   return { ...utils, props, calls, rerender };
 }
 
-const gen = () => screen.getByTestId('video-generate') as HTMLButtonElement;
-const price = () => gen().getAttribute('data-price');
-/** Advanced settings (GG 2026-10-18): the model card, the quality row and the resolution are behind this one closed section. */
-const openAdvanced = () => fireEvent.click(within(screen.getByTestId('video-disclosure-advanced')).getAllByRole('button')[0]!);
+const quality = () => screen.getByTestId('video-quality') as HTMLSelectElement;
+/** The selected quality option's words — the tier and its price at THIS length and mode. */
+const qualityText = () => quality().selectedOptions[0]?.textContent ?? '';
+const optionText = (select: HTMLSelectElement, value: string) => Array.from(select.options).find((o) => o.value === value)?.textContent ?? '';
 
-describe('element order — header → film|music switch → prompt → references → length · format → disclosures → Generate (GG 2026-10-18)', () => {
-  test('the DOM order is the linear one: what to make, its files, its shape, then the price on the button', () => {
+describe('one short panel — GG 2026-10-18: the prompt is typed in the chat box, the panel keeps only the switches that matter', () => {
+  test('the DOM order: header → film | music video → length · format → the settings card (quality first) → the hint', () => {
     setup();
-    const ids = ['video-tool-switch', 'video-mode-choice', 'video-prompt', 'video-references', 'video-tiles',
-      'video-disclosure-story', 'video-disclosure-voice', 'video-disclosure-advanced', 'video-generate-bar'];
+    const ids = ['video-tool-switch', 'video-mode-choice', 'video-tiles', 'video-settings', 'video-prompt-hint'];
     const els = ids.map((id) => screen.getByTestId(id));
     for (let i = 1; i < els.length; i++) {
       expect(els[i - 1]!.compareDocumentPosition(els[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+    expect(within(screen.getByTestId('video-settings')).getAllByRole('combobox')[0]).toBe(quality());
   });
 
-  test('the model, its quality and the resolution are not in plain view: Advanced settings holds them, shut, and names them', () => {
+  test('no second prompt box, no Generate, no disclosures, no hero, no resolution tile, no camera panel', () => {
     setup();
-    for (const id of ['video-hero', 'video-quality', 'video-tile-resolution']) expect(screen.queryByTestId(id)).toBeNull();
-    const advanced = screen.getByTestId('video-disclosure-advanced');
-    expect(advanced.textContent).toContain('Advanced settings');
-    expect(advanced.textContent).toContain('Veo 3.1 Fast · 1080p');
-    openAdvanced();
-    const inside = ['video-hero', 'video-quality', 'video-tile-resolution', 'advanced-body'].map((id) => screen.getByTestId(id));
-    for (const el of inside) expect(advanced.contains(el)).toBe(true);
-    for (let i = 1; i < inside.length; i++) {
-      expect(inside[i - 1]!.compareDocumentPosition(inside[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const id of ['video-prompt', 'video-prompt-input', 'video-generate', 'video-generate-bar', 'video-disclosure-story', 'video-disclosure-voice',
+      'video-disclosure-advanced', 'video-hero', 'video-tile-resolution', 'veo-parameters', 'video-elements']) {
+      expect(screen.queryByTestId(id)).toBeNull();
     }
+    expect(screen.getByTestId('video-create-panel').querySelector('textarea')).toBeNull();
+    // It says where the words go instead.
+    expect(screen.getByTestId('video-prompt-hint').textContent).toBe('Describe the video in the chat box below and press Send');
   });
 
-  test('the visible tiles are length · format, in that order, each with its value; the resolution tile is in Advanced settings', () => {
+  test('the visible tiles are length · format, in that order, each with its value', () => {
     setup();
     const tiles = within(screen.getByTestId('video-tiles')).getAllByRole('button');
     expect(tiles.map((t) => t.getAttribute('data-testid'))).toEqual(['video-tile-length', 'video-tile-format']);
     expect(tiles.map((t) => t.textContent)).toEqual(['24s', '9:16']);
-    openAdvanced();
-    expect(screen.getByTestId('video-tile-resolution').textContent).toBe('1080p');
   });
 
-  test('the header has the tool switcher and ✕; the hero has "Change" and the model title', () => {
+  test('the header has the tool switcher and ✕', () => {
     const { calls } = setup();
     fireEvent.click(screen.getByTestId('video-tool-switch'));
     expect(calls.onSwitchTool).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId('video-close'));
     expect(calls.onClose).toHaveBeenCalledTimes(1);
-    openAdvanced();
-    expect(screen.getByTestId('video-hero-title').textContent).toBe('VEO 3.1 FAST');
+  });
+
+  test('on the phone the sheet ends with „Done", which closes it — back to the chat box and its priced Send; the desktop column has none', () => {
+    const { calls, unmount } = setup({ surface: 'sheet' });
+    fireEvent.click(screen.getByTestId('video-settings-done'));
+    expect(calls.onClose).toHaveBeenCalledTimes(1);
+    unmount();
+    setup({ surface: 'panel' });
+    expect(screen.queryByTestId('video-settings-done')).toBeNull();
   });
 
   test('film or music video is a visible switch at the top of the panel (the owner could not find music video): one tap picks it', () => {
@@ -115,148 +121,98 @@ describe('element order — header → film|music switch → prompt → referenc
     expect(screen.getByTestId('video-mode-musicvideo').getAttribute('aria-checked')).toBe('true');
     expect(screen.getByTestId('video-mode-documentary').getAttribute('aria-checked')).toBe('false');
   });
-
-  test('the clip look (genre + light) sits under the switch only while Music video is picked', () => {
-    const look = <div data-testid="mv-look-slot">look</div>;
-    const { rerender } = setup({ musicLook: look });
-    expect(screen.queryByTestId('mv-look-slot')).toBeNull();
-    rerender({ mode: 'musicvideo', musicLook: look });
-    const slot = screen.getByTestId('mv-look-slot');
-    expect(screen.getByTestId('video-mode-choice').compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(slot.compareDocumentPosition(screen.getByTestId('video-prompt')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  test('the hero title follows the Veo tier', () => {
-    const { rerender } = setup();
-    openAdvanced();
-    rerender({ plan: initialVeoPlan({ tier: 'standard' }) });
-    expect(screen.getByTestId('video-hero-title').textContent).toBe('VEO 3.1');
-    rerender({ plan: initialVeoPlan({ tier: 'lite' }) });
-    expect(screen.getByTestId('video-hero-title').textContent).toBe('VEO 3.1 LITE');
-  });
-
-  test('the hero banner follows the tier too — every tier has its own picture, Lite included', () => {
-    const { rerender } = setup();
-    openAdvanced();
-    expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/fast.jpg');
-    rerender({ plan: initialVeoPlan({ tier: 'standard' }) });
-    expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/standard.jpg');
-    rerender({ plan: initialVeoPlan({ tier: 'lite' }) });
-    expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/lite.jpg');
-  });
 });
 
-describe('the number on the Generate button is the quote', () => {
+describe('the quality select is priced with the quote (the number the chat box\'s Send carries)', () => {
   test.each(VIDEO_DURATION_STOPS.filter((s) => s < 104).flatMap((s) => (['lite', 'fast', 'standard'] as const).map((t) => [s, t] as const)))(
     '%is · %s · documentary',
     (seconds, tier) => {
       setup({ seconds, plan: initialVeoPlan({ tier, lengthSec: seconds }) });
-      expect(Number(price())).toBe(quoteCredits({ tool: 'video', seconds, quality: tier, mode: 'documentary' }));
+      expect(quality().value).toBe(tier);
+      expect(qualityText()).toContain(`✦ ${quoteCredits({ tool: 'video', seconds, quality: tier, mode: 'documentary' })}`);
     },
   );
 
   test('a music video is priced as one (×1.4)', () => {
     setup({ seconds: 24, mode: 'musicvideo' });
-    expect(Number(price())).toBe(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'musicvideo' }));
-    expect(Number(price())).toBeGreaterThan(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'documentary' }));
+    expect(qualityText()).toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'musicvideo' })}`);
+    expect(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'musicvideo' })).toBeGreaterThan(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'documentary' }));
   });
 
-  test('the price follows every change on screen, and the button names it for a screen reader', () => {
-    const { rerender } = setup({ seconds: 8 });
-    expect(price()).toBe('25');
-    expect(gen().getAttribute('aria-label')).toBe('Generate — 25 credits');
-    rerender({ seconds: 96 });
-    expect(price()).toBe(String(quoteCredits({ tool: 'video', seconds: 96, quality: 'fast' })));
-    rerender({ seconds: 96, plan: initialVeoPlan({ tier: 'standard' }) });
-    expect(price()).toBe(String(quoteCredits({ tool: 'video', seconds: 96, quality: 'standard' })));
-  });
-
-  test('the quality row shows each tier’s price for THIS length and picking one asks the plan for it', () => {
-    const { calls } = setup({ seconds: 48 });
-    openAdvanced();
+  test('every tier shows its price for THIS length, the price follows the length, and picking one asks the plan for it', () => {
+    const { calls, rerender } = setup({ seconds: 48 });
     for (const t of ['lite', 'fast', 'standard'] as const) {
-      expect(screen.getByTestId(`video-quality-${t}`).textContent).toContain(String(quoteCredits({ tool: 'video', seconds: 48, quality: t })));
+      expect(optionText(quality(), t)).toContain(String(quoteCredits({ tool: 'video', seconds: 48, quality: t })));
     }
-    fireEvent.click(screen.getByTestId('video-quality-lite'));
+    rerender({ seconds: 96 });
+    expect(qualityText()).toContain(String(quoteCredits({ tool: 'video', seconds: 96, quality: 'fast' })));
+    fireEvent.change(quality(), { target: { value: 'lite' } });
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'lite' });
-    expect(screen.getByTestId('video-quality-fast').getAttribute('aria-checked')).toBe('true');
-  });
-
-  test('no price rides on any callback: Generate calls onGenerate with nothing at all', () => {
-    const { calls } = setup();
-    fireEvent.click(gen());
-    expect(calls.onGenerate).toHaveBeenCalledTimes(1);
-    expect(calls.onGenerate.mock.calls[0]).toEqual([]);
   });
 });
 
-describe('free · insufficient · empty', () => {
-  test('the trial slot pays for ONE short clip: free at ≤ 8 s with a slot, the price otherwise', () => {
-    const { rerender } = setup({ seconds: 8 }, { freeFilmsRemaining: 1 });
-    expect(gen().getAttribute('data-price')).toBe('free');
-    expect(gen().textContent).toContain('Free');
-    rerender({ seconds: 16 });
-    expect(price()).toBe(String(quoteCredits({ tool: 'video', seconds: 16, quality: 'fast' })));
-    rerender({ seconds: 4 });
-    expect(gen().getAttribute('data-price')).toBe('free');
+describe('the sound switches are the studio\'s own state', () => {
+  test('a film: Narrator (off · female · male), Music and — while someone narrates — Subtitles (off by default); no lip-sync', () => {
+    const { calls } = setup();
+    const narrator = screen.getByTestId('video-narrator') as HTMLSelectElement;
+    expect(Array.from(narrator.options).map((o) => o.textContent)).toEqual(['Off', 'Female', 'Male']);
+    expect(narrator.value).toBe('female');
+    fireEvent.change(narrator, { target: { value: 'male' } });
+    expect(calls.onNarratorGender).toHaveBeenCalledWith('male');
+    expect(calls.onNarration).toHaveBeenLastCalledWith(true);
+    fireEvent.change(narrator, { target: { value: 'off' } });
+    expect(calls.onNarration).toHaveBeenLastCalledWith(false);
+    const music = screen.getByTestId('video-music');
+    expect(music.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(music);
+    expect(calls.onMusic).toHaveBeenCalledWith(false);
+    const subs = screen.getByTestId('video-subtitles');
+    expect(subs.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(subs);
+    expect(calls.onSubtitles).toHaveBeenCalledWith(true);
+    expect(screen.queryByTestId('video-lipsync')).toBeNull();
   });
 
-  test('a balance below the price turns the tap into the top-up, keeps the price visible, and never starts the film', () => {
-    const { calls } = setup({ seconds: 24 }, { balanceCredits: 10 });
-    expect(gen().textContent).toContain('Top up');
-    expect(gen().textContent).toContain('75');
-    fireEvent.click(gen());
-    expect(calls.onTopUp).toHaveBeenCalledTimes(1);
-    expect(calls.onGenerate).not.toHaveBeenCalled();
+  test('no narrator → no subtitles row; the select says Off', () => {
+    setup({}, {}, {}, { narration: false });
+    expect((screen.getByTestId('video-narrator') as HTMLSelectElement).value).toBe('off');
+    expect(screen.queryByTestId('video-subtitles')).toBeNull();
   });
 
-  test('a balance that covers it generates; an unknown balance (a guest) never blocks', () => {
-    const covered = setup({}, { balanceCredits: 500 });
-    expect(gen().textContent).not.toContain('Top up');
-    fireEvent.click(gen());
-    expect(covered.calls.onGenerate).toHaveBeenCalledTimes(1);
-    covered.unmount();
-    const guest = setup({}, { balanceCredits: null });
-    expect(gen().textContent).not.toContain('Top up');
-    guest.unmount();
+  test('a music video: the priced Lip-sync switch, and no narrator, music or subtitles rows', () => {
+    const { calls } = setup({ mode: 'musicvideo' });
+    const lip = screen.getByTestId('video-lipsync');
+    expect(lip.getAttribute('aria-checked')).toBe('true');
+    expect(lip.closest('div')!.textContent).toContain(`+${quoteCredits({ tool: 'avatar' })} credits`);
+    fireEvent.click(lip);
+    expect(calls.onLipsync).toHaveBeenCalledWith(false);
+    for (const id of ['video-narrator', 'video-music', 'video-subtitles']) expect(screen.queryByTestId(id)).toBeNull();
   });
 
-  test('a free film is never blocked by a low balance', () => {
-    const { calls } = setup({ seconds: 8 }, { balanceCredits: 0, freeFilmsRemaining: 1 });
-    expect(gen().textContent).not.toContain('Top up');
-    fireEvent.click(gen());
-    expect(calls.onGenerate).toHaveBeenCalledTimes(1);
+  test('sound: on a connection that cannot switch Veo’s sound off the switch is On and locked, with the reason', () => {
+    setup({ engine: { transport: 'gemini', googleOnly: true, audioToggle: false, enhancePrompt: false, nativeCameraControl: false } });
+    const sw = screen.getByTestId('video-sound') as HTMLButtonElement;
+    expect(sw.disabled).toBe(true);
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    expect(sw.getAttribute('title')).toContain('always renders sound');
   });
 
-  test('an empty box: Generate does not start a film, says why, and puts the cursor in the prompt', () => {
-    const { calls } = setup({}, { canGenerate: false });
-    fireEvent.click(gen());
-    expect(calls.onGenerate).not.toHaveBeenCalled();
-    expect(screen.getByRole('status').textContent).toContain('Describe your video first');
-    expect(document.activeElement).toBe(screen.getByTestId('video-prompt-input'));
-  });
-
-  test('while a film is being made the button holds its place and is busy', () => {
-    setup({}, { busy: true });
-    expect(gen().disabled).toBe(true);
-    expect(gen().getAttribute('aria-busy')).toBe('true');
-    expect(gen().textContent).toContain('Rendering…');
+  test('sound: where Veo’s sound can be switched, the switch toggles the plan’s nativeAudio', () => {
+    const { calls } = setup({ engine: { transport: 'vertex', googleOnly: true, audioToggle: true, enhancePrompt: true, nativeCameraControl: false } });
+    const sw = screen.getByTestId('video-sound') as HTMLButtonElement;
+    expect(sw.disabled).toBe(false);
+    fireEvent.click(sw);
+    expect(calls.dispatch).toHaveBeenCalledWith({ type: 'nativeAudio', on: false });
   });
 });
 
 describe('the lip-sync pass is named beside the price, never folded into it (gap C2)', () => {
-  test('a film that runs one says its own charge under Generate; the button keeps the film\'s number', () => {
+  test('a film that runs one says its own charge; the quality select keeps the film\'s number', () => {
     setup({ mode: 'musicvideo' }, { lipsyncCredits: 20 });
     const note = screen.getByTestId('video-lipsync-addon');
     expect(note.getAttribute('data-credits')).toBe('20');
     expect(note.textContent).toBe('+20 credits for lip-sync — taken only if it runs, returned if it fails');
-    expect(Number(price())).toBe(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'musicvideo' }));
-  });
-
-  test('a free first film still names it: the free slot pays for the film, not for the lip-sync', () => {
-    setup({ seconds: 8 }, { freeFilmsRemaining: 1, lipsyncCredits: 20 });
-    expect(price()).toBe('free');
-    expect(screen.getByTestId('video-lipsync-addon').textContent).toContain('+20 credits');
+    expect(qualityText()).toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'musicvideo' })}`);
   });
 
   test('no pass, no line', () => {
@@ -356,7 +312,6 @@ describe('the length picker: the grid, the lock, the live price', () => {
     expect(c.calls.onSeconds).not.toHaveBeenCalled();
   });
 });
-
 describe('format and model pickers', () => {
   test('format: four ratios; a music video can only be 9:16; a cropped ratio says so', () => {
     const { calls } = setup({ mode: 'musicvideo' });
@@ -378,11 +333,11 @@ describe('format and model pickers', () => {
     expect(screen.queryByTestId('video-format-sheet')).toBeNull();
   });
 
-  test('"Change" on the hero and the Model row both open the model picker: mode, then the catalogue\'s models — no prices', async () => {
+
+  test('„Other models…" in the quality select opens the model picker: the catalogue\'s models — no prices', async () => {
     deployment([]);
     const { calls } = setup({ seconds: 24 });
-    openAdvanced();
-    fireEvent.click(screen.getByTestId('video-hero-change'));
+    fireEvent.change(quality(), { target: { value: '__other' } });
     const sheet = screen.getByTestId('video-model-sheet');
     await waitFor(() => expect(within(sheet).getByText('Kling 3 — text to video').closest('[role="radio"]')!.textContent).toContain('Not enabled yet'));
     // The film route's three Veo models are the rows a tap may choose; the Studio β models are listed, dimmed, saying why.
@@ -390,72 +345,50 @@ describe('format and model pickers', () => {
     const open = radios.filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'));
     expect(open).toEqual(['google/veo-3.1-lite', 'google/veo-3.1-fast', 'google/veo-3.1']);
     expect(radios.find((r) => r.getAttribute('data-model') === 'google/veo-3.1-fast')!.getAttribute('aria-checked')).toBe('true');
-    const kling = radios.find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
-    expect(kling.getAttribute('aria-disabled')).toBe('true');
-    expect(kling.textContent).toContain('Not enabled yet');
-    // ⚠️ No price in the picker: the price is the server's quote, on Generate.
-    for (const t of ['lite', 'fast', 'standard'] as const) {
-      expect(sheet.textContent).not.toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: t })}`);
-    }
     expect(sheet.textContent).not.toMatch(/credit/i);
-    // The film / music-video switch is on the panel, not in the model sheet.
     expect(within(sheet).queryByTestId('video-mode-choice')).toBeNull();
     // A model is one tap: it sets the tier (the tier IS the model on the film route) and closes.
     fireEvent.click(radios.find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
     expect(screen.queryByTestId('video-model-sheet')).toBeNull();
-    fireEvent.click(screen.getByTestId('video-hero-change'));
-    expect(screen.getByTestId('video-model-sheet')).toBeTruthy();
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByTestId('video-model-sheet')).toBeNull();
   });
 
-  test('a Higgsfield model this deployment runs is a real choice: the hero names it, the Veo tiers step aside, Generate is the saga\'s', async () => {
+  test('a Higgsfield model this deployment runs: the select names it, and its saga\'s own priced button sends the chat box\'s text', async () => {
     deployment(['hf/kling-3-std-t2v']);
-    const { calls } = setup({ seconds: 24, prompt: '' });
-    openAdvanced();
-    fireEvent.click(screen.getByTestId('video-hero-change'));
+    const { calls } = setup({ seconds: 24, prompt: 'a rider at dawn' });
+    fireEvent.change(quality(), { target: { value: '__other' } });
     const sheet = screen.getByTestId('video-model-sheet');
     const kling = () => within(sheet).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
     await waitFor(() => expect(kling().getAttribute('aria-disabled')).toBeNull());
     fireEvent.click(kling());
     expect(window.localStorage.getItem('myavatar:model:video')).toBe('hf/kling-3-std-t2v');
     expect(calls.dispatch).not.toHaveBeenCalled(); // the film's Veo tier is left as it was
-    expect(screen.getByTestId('video-hero-title').textContent).toBe('Kling 3 — text to video');
-    expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/model.jpg'); // not a Veo tier's picture
-    expect(screen.queryByTestId('video-model-row')).toBeNull(); // the hero is the one place the model is named
-    expect(screen.queryByTestId('video-quality')).toBeNull();
+    expect(qualityText()).toBe('Kling 3 — text to video');
     expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/kling-3-std-t2v');
     expect(screen.getByTestId('video-generate')).toBeTruthy();
+    expect(screen.queryByTestId('video-prompt-hint')).toBeNull();
     // 24 s is not a length Kling renders: the line above the button says the 15 s it will.
     await waitFor(() => expect(screen.getByTestId('hf-summary').textContent).toBe('Kling 3 — text to video · 15 s · 9:16 · sound on'));
-    // Back to Google in one tap: a Veo model is the film again.
-    fireEvent.click(screen.getByTestId('video-hero-change'));
-    fireEvent.click(within(screen.getByTestId('video-model-sheet')).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
+    // Back to Google in one pick: a Veo tier is the film again.
+    fireEvent.change(quality(), { target: { value: 'standard' } });
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
     expect(window.localStorage.getItem('myavatar:model:video')).toBe('google/veo-3.1');
   });
 
-  test('the pick is remembered in this browser: a stored Veo model is applied on mount, and a tier change is stored', () => {
+  test('the pick is remembered in this browser: a stored Veo model is applied on mount', () => {
     window.localStorage.setItem('myavatar:model:video', 'google/veo-3.1-lite');
     const { calls } = setup();
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'lite' });
     window.localStorage.removeItem('myavatar:model:video');
   });
-
-  test('the resolution tile opens the model picker too (the resolution is the clip length’s, the tier is the price)', () => {
-    setup();
-    openAdvanced();
-    fireEvent.click(screen.getByTestId('video-tile-resolution'));
-    expect(screen.getByTestId('video-model-sheet')).toBeTruthy();
-  });
 });
 
-describe('references, @ Elements and sound', () => {
+describe('the optional photos (and a song)', () => {
   const IMG = ['data:image/jpeg;base64,AAAA1', 'data:image/jpeg;base64,AAAA2'];
 
-  test('the two round buttons add an image or a soundtrack; a full slot list disables the image button and says why', () => {
+  test('two small buttons add a photo or a soundtrack; a full slot list disables the photo button and says why', () => {
     const { calls, rerender, props } = setup();
+    expect(screen.getByTestId('video-references').textContent).toContain('optional');
     fireEvent.click(screen.getByTestId('video-add-image'));
     fireEvent.click(screen.getByTestId('video-add-audio'));
     expect(calls.onAddImage).toHaveBeenCalledTimes(1);
@@ -465,98 +398,36 @@ describe('references, @ Elements and sound', () => {
     expect(screen.getByTestId('video-references').textContent).toContain('One photo per scene');
   });
 
-  test('references are listed by name (@image1 …) with a way to remove each; an uploaded track shows and says what it does', () => {
+  test('each photo and the track can be removed', () => {
     const { calls } = setup({}, {}, { images: IMG, audio: { name: 'beat.mp3' } });
     const list = screen.getByTestId('video-reference-list');
-    expect(list.textContent).toContain('@image1');
-    expect(list.textContent).toContain('@image2');
+    expect(list.querySelectorAll('img')).toHaveLength(2);
     expect(list.textContent).toContain('beat.mp3');
-    expect(list.textContent).toContain('music video');
     fireEvent.click(screen.getByLabelText('Remove @image2'));
     expect(calls.onRemoveImage).toHaveBeenCalledWith(1);
     fireEvent.click(screen.getByLabelText('Remove beat.mp3'));
     expect(calls.onRemoveAudio).toHaveBeenCalledTimes(1);
   });
-
-  test('"@ Elements" lists the references and puts the chosen @name into the prompt, spaced', () => {
-    const { calls } = setup({ prompt: 'A rider with' }, {}, { images: IMG });
-    const ta = screen.getByTestId('video-prompt-input') as HTMLTextAreaElement;
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-    fireEvent.click(screen.getByTestId('video-elements'));
-    fireEvent.click(within(screen.getByTestId('video-elements-list')).getByText('@image2'));
-    expect(calls.onPrompt).toHaveBeenCalledWith('A rider with @image2 ');
-  });
-
-  test('"@ Elements" with no reference yet asks for one instead of listing nothing', () => {
-    const { calls } = setup();
-    fireEvent.click(screen.getByTestId('video-elements'));
-    expect(calls.onAddImage).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId('video-elements-list')).toBeNull();
-  });
-
-  test('typing in the prompt reports the text', () => {
-    const { calls } = setup();
-    fireEvent.change(screen.getByTestId('video-prompt-input'), { target: { value: 'a lone rider' } });
-    expect(calls.onPrompt).toHaveBeenCalledWith('a lone rider');
-  });
-
-  test('sound: on a connection that cannot switch Veo’s sound off the chip is On and locked, with the reason', () => {
-    setup({ engine: { transport: 'gemini', googleOnly: true, audioToggle: false, enhancePrompt: false, nativeCameraControl: false } });
-    const chip = screen.getByTestId('video-sound') as HTMLButtonElement;
-    expect(chip.disabled).toBe(true);
-    expect(chip.getAttribute('aria-pressed')).toBe('true');
-    expect(chip.getAttribute('title')).toContain('always renders sound');
-  });
-
-  test('sound: where Veo’s sound can be switched, the chip toggles the plan’s nativeAudio', () => {
-    const { calls } = setup({ engine: { transport: 'vertex', googleOnly: true, audioToggle: true, enhancePrompt: true, nativeCameraControl: false } });
-    const chip = screen.getByTestId('video-sound') as HTMLButtonElement;
-    expect(chip.disabled).toBe(false);
-    fireEvent.click(chip);
-    expect(calls.dispatch).toHaveBeenCalledWith({ type: 'nativeAudio', on: false });
-  });
 });
 
-describe('no Extend tab yet, and the disclosures', () => {
-  test('there is no Create | Extend tab row while Extend is not open — the panel IS Create', () => {
-    setup();
-    expect(screen.queryByRole('tab', { name: 'Extend' })).toBeNull();
-    expect(screen.queryByRole('tablist')).toBeNull();
-    expect(screen.queryByTestId('video-extend-generate')).toBeNull();
-    expect(screen.getByTestId('video-generate')).toBeTruthy();
-  });
-
-  test('Story & style · Voice & music · Advanced start closed (their content is not even mounted) and open on a tap', () => {
-    setup();
-    for (const id of ['story', 'voice', 'advanced']) {
-      expect(screen.queryByTestId(`${id}-body`)).toBeNull();
-      fireEvent.click(within(screen.getByTestId(`video-disclosure-${id}`)).getByRole('button'));
-      expect(screen.getByTestId(`${id}-body`)).toBeTruthy();
-    }
-  });
-
-  test('something already loaded stays in view: openWhen opens its disclosure', () => {
-    setup({ storyOpenWhen: true, voiceOpenWhen: true });
-    expect(screen.getByTestId('story-body')).toBeTruthy();
-    expect(screen.getByTestId('voice-body')).toBeTruthy();
-    expect(screen.queryByTestId('advanced-body')).toBeNull();
-  });
-
+describe('targets', () => {
   test('every target is at least 44 px: the controls carry a 44 px floor class', () => {
-    setup();
+    setup({}, {}, { images: ['data:image/jpeg;base64,AAAA1'] });
     const root = screen.getByTestId('video-create-panel');
-    const small = Array.from(root.querySelectorAll('button')).filter((b) => !/(min-h-\[(4[4-9]|[5-9]\d)px\]|h-1[1-9]|h-14|min-h-\[56px\]|min-h-\[72px\]|min-h-\[52px\]|min-h-\[48px\])/.test(b.className));
-    // The remove ✕ on a reference is a 24 px glyph with a 48 px hit area (before: -inset-3); nothing else may be small.
-    expect(small.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual([]);
+    const small = Array.from(root.querySelectorAll('button, select')).filter((b) => !/(min-h-\[(4[4-9]|[5-9]\d)px\]|h-1[1-9]|h-14|min-h-\[56px\]|min-h-\[72px\]|min-h-\[52px\]|min-h-\[48px\])/.test(b.className));
+    // The remove ✕ on a reference is a 20 px glyph with a 44 px hit area (before: -inset-3); nothing else may be small.
+    expect(small.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Remove @image1']);
   });
 });
 
 describe('the other languages', () => {
   test.each(['ka', 'ru'])('%s: the panel renders its own words, and the price is the same number', (locale) => {
     setup({ locale });
-    expect(screen.getByTestId('video-sound').textContent).toBe(locale === 'ka' ? 'ხმით' : 'Со звуком');
-    expect(price()).toBe('75');
-    expect(screen.getByTestId('video-prompt-input').getAttribute('placeholder')).not.toMatch(/Describe the shot/);
+    expect(screen.getByTestId('video-sound').getAttribute('aria-label')).toBe(locale === 'ka' ? 'ხმა' : 'Звук');
+    expect(qualityText()).toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'documentary' })}`);
+    expect(screen.getByTestId('video-prompt-hint').textContent).not.toMatch(/chat box/);
+    expect(Array.from((screen.getByTestId('video-narrator') as HTMLSelectElement).options).map((o) => o.textContent))
+      .toEqual(locale === 'ka' ? ['გამორთული', 'ქალი', 'კაცი'] : ['Выкл', 'Женский', 'Мужской']);
   });
 });
 
@@ -568,8 +439,8 @@ describe('Video Core v1.0 §4 — the panel says requested · rendered · final 
     expect(line.getAttribute('data-final')).toBe('60');
     expect(line.getAttribute('data-native')).toBe('64');
     expect(line.getAttribute('data-frames')).toBe('1800');
-    // the price on Generate stays the RENDERED length's — the trim is not a discount
-    expect(price()).toBe(String(quoteCredits({ tool: 'video', seconds: 64, quality: 'fast', mode: 'documentary' })));
+    // the price stays the RENDERED length's — the trim is not a discount
+    expect(qualityText()).toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 64, quality: 'fast', mode: 'documentary' })}`);
   });
 
   test('no request, or a request the panel\'s length no longer matches: no line', () => {

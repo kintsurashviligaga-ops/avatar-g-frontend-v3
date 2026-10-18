@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { quoteCredits } from '@/lib/credits/quote';
+import { PRICE_BOOK } from '@/lib/credits/priceBook';
 import { SLIDER_DEFAULT, type VocalGender } from '@/lib/ai/musicControls';
 import { MUSIC_ENGINE_KEY } from '@/lib/studio/musicEnginePref';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
@@ -23,6 +24,7 @@ const STATUS = {
   },
   references: { cover: true, voice: true },
   chain: ['lyria', 'elevenlabs-music', 'musicgen'],
+  lengths: [30, 60, 90, 0], // Lyria 3 Pro verified: every panel length is made
 };
 
 const STYLE_OPTIONS = [
@@ -174,19 +176,36 @@ test('the sliders have ticks and an accent thumb, and emit numbers', () => {
   expect(screen.getByTestId('music-sliders-hint').getAttribute('data-mode')).toBe('prompt'); // approximate on Lyria
 });
 
-test('the price on Create is the shared quote: 30 s → 5, 60 s → 8, 90 s → 12 (Full song at the 90 s tier)', () => {
+test('the price on Create is the shared quote: the price book\'s 30 / 60 / 90 s bands (Full song at the 90 s band)', () => {
   for (const [duration, tool] of [[30, 30], [60, 60], [90, 90], [0, 90]] as const) {
     const { unmount } = render(<Host over={{ duration }} />);
     expect(price()).toBe(quoteCredits({ tool: 'music', seconds: tool }));
     expect(screen.getByTestId('music-create').textContent).toContain(String(price()));
     unmount();
   }
-  expect([30, 60, 90].map((s) => quoteCredits({ tool: 'music', seconds: s }))).toEqual([5, 8, 12]);
+  const { under60, under90, from90 } = PRICE_BOOK.music;
+  expect([30, 60, 90].map((s) => quoteCredits({ tool: 'music', seconds: s }))).toEqual([under60, under90, from90]);
+});
+
+test('without Lyria 3 Pro the length list offers 30 s alone, and a kept longer choice falls back to 30 s', async () => {
+  fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond({ ...STATUS, lengths: [30] }) : respond({})));
+  render(<Host over={{ duration: 0 }} />);
+  await waitFor(() => expect(price()).toBe(quoteCredits({ tool: 'music', seconds: 30 })));
+  fireEvent.click(screen.getByTestId('music-tile-length'));
+  const options = within(screen.getByTestId('music-tile-length-list')).getAllByRole('option');
+  expect(options.map((o) => o.textContent)).toEqual([expect.stringContaining('30')]);
+});
+
+test('with Lyria 3 Pro verified every length is offered, Full song included', async () => {
+  render(<Host />);
+  await act(async () => { await Promise.resolve(); });
+  fireEvent.click(screen.getByTestId('music-tile-length'));
+  expect(within(screen.getByTestId('music-tile-length-list')).getAllByRole('option')).toHaveLength(4);
 });
 
 test('a cover is a flat 30 s: the price ignores the length picker and the length tile says it is fixed', async () => {
   render(<Host over={{ duration: 90, audio: { name: 'song.wav' }, audioMode: 'cover' }} />);
-  expect(price()).toBe(5);
+  expect(price()).toBe(quoteCredits({ tool: 'music', seconds: 30 }));
   expect(screen.getByTestId('music-tile-length').getAttribute('aria-disabled')).toBe('true');
 });
 
@@ -237,14 +256,15 @@ describe('Create', () => {
   });
 
   test('a balance below the price turns the tap into a top-up: the price stays, nothing is created', () => {
-    useCreditsBalance.setState({ balance: 3, fetchedAt: Date.now() });
+    const thirty = quoteCredits({ tool: 'music', seconds: 30 });
+    useCreditsBalance.setState({ balance: thirty - 1, fetchedAt: Date.now() });
     const onCreate = jest.fn();
     const opened = jest.fn();
     window.addEventListener('myavatar:open-credits', opened);
     render(<Host spy={{ onCreate }} />);
     const btn = screen.getByTestId('music-create');
     expect(btn.textContent).toContain('Top up');
-    expect(btn.textContent).toContain('5');
+    expect(btn.textContent).toContain(String(thirty));
     fireEvent.click(btn);
     expect(opened).toHaveBeenCalledTimes(1);
     expect(onCreate).not.toHaveBeenCalled();

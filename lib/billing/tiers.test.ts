@@ -44,18 +44,20 @@ describe('the catalogue', () => {
     expect(TIER_LIST.map((t) => t.id)).toEqual(TIER_IDS);
   });
 
-  it('carries today’s live prices and credit pools, renamed (basic→starter, pro→creator)', () => {
+  it('carries the live prices and the price book\'s credits: 10 per lari of the plan\'s price, the 50-credit trial', () => {
     expect(TIER_LIST.map((t) => [t.id, t.monthlyPriceUsd, t.includedCredits])).toEqual([
       ['free', 0, 50],
-      ['starter', 19.99, 230],
-      ['creator', 39.99, 525],
-      ['business', 79.99, 1200],
+      ['starter', 19.99, 540],
+      ['creator', 39.99, 1080],
+      ['business', 79.99, 2160],
     ]);
   });
 
-  it('derives every credit total from its ceiling — no hard-coded pool that can drift from media costs', () => {
-    for (const t of TIER_LIST) expect(t.includedCredits).toBe(tierCreditPool(t.creditCeiling));
+  it('a paid plan\'s credits are what its ceiling buys at the price book, so a price change fails here', () => {
+    for (const t of TIER_LIST.filter((x) => x.id !== 'free')) expect(t.includedCredits).toBe(tierCreditPool(t.creditCeiling));
     expect(tierCreditPool({ videos: 1, music: 0, images: 0 })).toBe(CREDIT_COSTS.video_30s);
+    // The free ceiling's video is the quota film (free_films_remaining), not paid from the 50.
+    expect(tierCreditPool({ ...TIERS.free.creditCeiling, videos: 0 })).toBe(TIERS.free.includedCredits);
   });
 
   it('names every tier in Georgian, English and Russian (Business is "Business / Agency")', () => {
@@ -155,7 +157,7 @@ describe('tierById / isTierId / higherTier', () => {
   });
 
   it('monthly allowance = the tier’s included credits for paid tiers', () => {
-    expect(PAID_TIER_IDS.map((id) => monthlyAllowanceCredits(id))).toEqual([230, 525, 1200]);
+    expect(PAID_TIER_IDS.map((id) => monthlyAllowanceCredits(id))).toEqual([540, 1080, 2160]);
     expect(monthlyAllowanceCredits('nonsense')).toBe(0);
   });
 });

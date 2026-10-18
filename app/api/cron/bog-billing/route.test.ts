@@ -59,6 +59,7 @@ jest.mock('../../../../lib/billing/wallet-ledger', () => ({
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
+import { TIERS } from '../../../../lib/billing/tiers';
 
 const ENV = { ...process.env };
 const tick = (auth = 'Bearer cron-secret') => GET(new NextRequest('https://myavatar.ge/api/cron/bog-billing', { headers: { authorization: auth } }));
@@ -163,7 +164,7 @@ test('a due renewal: claimed, charged on the saved card with OUR id, BOG’s id 
   mockCharge.mockResolvedValueOnce({ ok: true, orderId: 'bog-ren-1' });
   const body = await (await tick()).json();
   expect(body).toMatchObject({ charged: 1 });
-  expect(mockClaim).toHaveBeenCalledWith('sub-1', 525);
+  expect(mockClaim).toHaveBeenCalledWith('sub-1', TIERS.creator.includedCredits);
   expect(mockCharge).toHaveBeenCalledWith({ environment: 'production' }, expect.anything(), { parentOrderId: 'parent-1', externalOrderId: 'myavatar-renew-20261102-1-abc', callbackUrl: 'https://myavatar.ge/api/billing/bog/webhook' });
   const bind = mockLog.find((c) => c.table === 'bog_orders' && c.op === 'update' && (c.args[0] as { bog_order_id?: string }).bog_order_id === 'bog-ren-1');
   expect(bind?.filters).toEqual(expect.arrayContaining([['eq', 'shop_order_id', 'myavatar-renew-20261102-1-abc'], ['is', 'bog_order_id', null]]));
