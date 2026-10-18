@@ -11,12 +11,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight, Move3d } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight, Move3d, Scissors } from 'lucide-react';
 import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { SHOOT_COPY } from '@/components/studio/create/newtools/copy';
 import { PlanView } from '@/components/studio/create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
+import { editKindFor, stashPendingEdit } from '@/lib/studio/pendingEdit';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -68,7 +69,7 @@ const VIDEO_KINDS = new Set(['film', 'avatar']);
 const IMAGE_KINDS = new Set(['image', 'interior']);
 
 const COPY: Record<Lang, {
-  title: string; tabs: Record<Tab, string>; empty: string; download: string; del: string;
+  title: string; tabs: Record<Tab, string>; empty: string; download: string; del: string; edit: string;
   play: string; confirmDel: string; prev: string; next: string; page: string; search: string;
   plan: string; openPlan: string; closePlan: string;
 }> = {
@@ -76,7 +77,7 @@ const COPY: Record<Lang, {
     title: 'ბიბლიოთეკა',
     tabs: { video: 'ვიდეო', image: 'სურათი', music: 'მუსიკა', favorites: 'ფავორიტი' },
     empty: 'ჯერ არაფერი შექმენით',
-    download: 'ჩამოტვირთვა', del: 'წაშლა', play: 'დაკვრა',
+    download: 'ჩამოტვირთვა', del: 'წაშლა', edit: 'რედაქტირება ედიტორში', play: 'დაკვრა',
     confirmDel: 'წავშალო ეს ფაილი სამუდამოდ?', prev: 'წინა', next: 'შემდეგი', page: 'გვერდი', search: 'ძიება…',
     plan: '3D გეგმა', openPlan: '3D გეგმის ნახვა', closePlan: 'გეგმის დახურვა',
   },
@@ -84,7 +85,7 @@ const COPY: Record<Lang, {
     title: 'Library',
     tabs: { video: 'Video', image: 'Image', music: 'Music', favorites: 'Favorites' },
     empty: 'Nothing created yet',
-    download: 'Download', del: 'Delete', play: 'Play',
+    download: 'Download', del: 'Delete', edit: 'Open in Editor', play: 'Play',
     confirmDel: 'Delete this file permanently?', prev: 'Prev', next: 'Next', page: 'Page', search: 'Search…',
     plan: '3D plan', openPlan: 'View 3D plan', closePlan: 'Close plan',
   },
@@ -92,7 +93,7 @@ const COPY: Record<Lang, {
     title: 'Библиотека',
     tabs: { video: 'Видео', image: 'Фото', music: 'Музыка', favorites: 'Избранное' },
     empty: 'Пока ничего не создано',
-    download: 'Скачать', del: 'Удалить', play: 'Воспроизвести',
+    download: 'Скачать', del: 'Удалить', edit: 'Открыть в редакторе', play: 'Воспроизвести',
     confirmDel: 'Удалить этот файл навсегда?', prev: 'Назад', next: 'Далее', page: 'Стр.', search: 'Поиск…',
     plan: '3D-план', openPlan: 'Открыть 3D-план', closePlan: 'Закрыть план',
   },
@@ -107,6 +108,7 @@ function fmtDate(iso: string, lang: Lang): string {
 export default function LibraryGallery({ locale }: { locale: string }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
+  const router = useRouter();
 
   const [tab, setTab] = useState<Tab>('video');
   // The sidebar's Favorites row deep-links here with ?tab=favorites. Read once on mount: without this the
@@ -209,6 +211,16 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     } catch { /* fail-soft */ } finally { setBusyId(null); }
   }, [t.confirmDel, favs, persistFavs]);
 
+  // Edit (GG's UI/UX plan, 2026-10-18): the file opens in the studio's editor, the one a result's ✂ opens in the chat —
+  // Montage for a video, the Surgical Editor for a picture or a sound. It rides over in this tab's sessionStorage (a signed
+  // link never goes in the address bar) and the studio opens it once. Opening it generates and charges nothing.
+  const edit = useCallback((it: LibraryItem) => {
+    const kind = editKindFor(it.kind, it.url);
+    if (!kind) return;
+    stashPendingEdit(it.url, kind);
+    router.push(`/${locale}/dashboard`); // the signed-in studio (/{lang} sends a signed-in visitor there anyway)
+  }, [router, locale]);
+
   // Next page exists when a full window came back (or, for favorites, more starred
   // items remain beyond this page).
   const hasNext = tab !== 'favorites' ? items.length === PAGE_SIZE : items.filter((it) => favs.has(it.id)).length > (page + 1) * PAGE_SIZE;
@@ -300,6 +312,12 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-app-bg hover:text-app-text">
                         <Download size={15} />
                       </button>
+                      {editKindFor(it.kind, it.url) && !failed.has(it.id) && (
+                        <button type="button" onClick={() => edit(it)} aria-label={t.edit} title={t.edit} data-testid="library-edit"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-app-bg hover:text-app-text">
+                          <Scissors size={15} />
+                        </button>
+                      )}
                       <button type="button" onClick={() => del(it.id)} disabled={busyId === it.id} aria-label={t.del} title={t.del}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50">
                         {busyId === it.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}

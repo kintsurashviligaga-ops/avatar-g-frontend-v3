@@ -207,6 +207,7 @@ import { toolGroups } from '@/lib/catalog/nav';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { getService, serviceModeQuery } from '@/lib/catalog/services';
 import { clearPendingPrompt, stashPendingPrompt, takePendingPrompt } from '@/lib/studio/pendingPrompt';
+import { takePendingEdit } from '@/lib/studio/pendingEdit';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { MusicCreatePanel } from './create/MusicCreatePanel';
@@ -8993,6 +8994,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!url) return;
     setEditorAsset({ url, kind });
     setMode('surgical');
+  }, []);
+  // A Library file the person tapped „edit" on (components/library/LibraryGallery → lib/studio/pendingEdit): it opens
+  // here in the editor, once, on mount — the same editor this feed's ✂ opens. Nothing is generated or charged.
+  useEffect(() => {
+    const p = takePendingEdit();
+    if (p) openInEditor(p.url, p.kind);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
   // Reverse context pipeline (V4): the editor hands its current (edited) asset back → seed it as a chat attachment so
   // the user can keep conversing / prompting Agent G about the freshly-edited file. Fetch → dataURL (the attachment
