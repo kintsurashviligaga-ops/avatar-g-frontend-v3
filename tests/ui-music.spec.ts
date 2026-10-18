@@ -97,7 +97,7 @@ test.describe('music create · phone 375×812', () => {
     await open(page, { advanced: false });
     await expect(page.getByTestId('options-sheet')).toBeVisible({ timeout: 45_000 });
     await expect(page.getByTestId('music-simple')).toBeVisible();
-    for (const gone of ['music-lyrics', 'music-styles-card', 'music-more', 'music-style-chips']) await expect(page.getByTestId(gone)).toHaveCount(0);
+    for (const gone of ['music-lyrics', 'music-styles-card', 'music-more', 'music-style-chips', 'music-engine-pill']) await expect(page.getByTestId(gone)).toHaveCount(0);
     await expect(page.getByTestId('music-create')).toHaveAttribute('data-price', '5');
     await noHorizontalScroll(page);
   });

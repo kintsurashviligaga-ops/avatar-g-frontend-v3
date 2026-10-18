@@ -3,7 +3,7 @@
 /**
  * MusicCreatePanel — the Music tool's Create screen, element for element as ref2:
  *
- *   title row  a Simple | Advanced switch · the engine pill (the real engine, or "Auto")
+ *   title row  a Simple | Advanced switch · the engine pill (the real engine, or "Auto"; in Simple only once an engine is picked)
  *   "+ Audio | + Voice"
  *   LYRICS card   — wand · textarea · [library] [✓ Instrumental] [camera] … [expand]
  *   STYLES card   — wand · textarea · [library] ‹style chips› [expand]
@@ -251,7 +251,8 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
         locale={locale}
         uiMode={uiMode}
         onUiMode={setUiMode}
-        showEngine={!p.isDesktop}
+        // Simple keeps the engine out of sight while it is Auto; a picked engine stays named, so nothing runs unseen.
+        showEngine={!p.isDesktop && (!simple || pref !== 'auto')}
         engine={{
           label: enginePillLabel({ locale, pref, reference }),
           status,
