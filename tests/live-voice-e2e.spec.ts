@@ -13,9 +13,19 @@ import { FakeLive, openLiveCall } from './fixtures/liveVoice';
  * Every UI piece in between — useGeminiLiveSession, liveActions, the dock, OmniStudio's live listener, the chat
  * stream — is the production code.
  *
- * Nothing here can spend: `start_generation` is denied before its legacy countdown, and the test asserts that no
- * generation request ever left the browser.
+ * GG 2026-10-18 (card „ხმით დაიწყოს"): an order given in the call runs in the CHAT (Agent G's card with its price), and
+ * the user's OWN spoken yes starts it after a 3-second countdown they can cancel; the yes is recorded on the server first.
+ * Only the chain test lets one (stubbed) paid request leave, the confirmed one; every other test asserts none does.
  */
+
+/** An order the gate takes as complete (a thin one gets Agent G's questions first, not its priced card). */
+const FOX_ORDER = 'წითელი მელია თოვლში, ოქროსფერი მზის ჩასვლა, ახლო ხედი, ფოტორეალისტური';
+
+/** get_screen_state → what waits for the user's yes in the chat, as the model is told (and the price is armed as told). */
+const waitingForYes = async (live: FakeLive) => {
+  const r = await live.call('get_screen_state');
+  return (r.waitingForYes ?? (r.state as { waitingForYes?: unknown } | undefined)?.waitingForYes ?? null) as { tool?: string; priceCredits?: number } | null;
+};
 
 /** get_screen_state → the tool on screen, as the model is told. */
 const toolOnScreen = async (live: FakeLive) => {
@@ -27,7 +37,7 @@ const toolOnScreen = async (live: FakeLive) => {
 test.describe('voice mode, end to end', () => {
   test.setTimeout(120_000);
 
-  test('the agent reads the screen, opens a studio, prepares an image with its price, writes in the chat, and a spoken start requires UI confirmation — nothing is spent', async ({ page, baseURL }) => {
+  test('the agent reads the screen, opens a studio, puts an image order in the chat with its price, writes in the chat, and a confirmed start can still be cancelled — nothing is spent', async ({ page, baseURL }) => {
     const live = new FakeLive();
     await page.route('**/api/chat/gemini', (r) => r.fulfill({
       status: 200,
@@ -48,18 +58,7 @@ test.describe('voice mode, end to end', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect.poll(() => toolOnScreen(live)).toBe('video');
 
-    // 3 — prepare an image: the studio, the prompt and the frame change, and the model is told the price.
-    const prepared = await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში', aspectRatio: '9:16' });
-    expect(prepared.ok).toBe(true);
-    expect(String(prepared.summary)).toMatch(/credit/i);
-    expect(prepared.summary ?? prepared.priceCredits).toBeTruthy();
-    await expect.poll(async () => {
-      const r = await live.call('get_screen_state');
-      return (r.state as { prompt?: string } | undefined)?.prompt ?? '';
-    }).toBe('წითელი მელია თოვლში');
-    await expect.poll(() => toolOnScreen(live)).toBe('image');
-
-    // 3b — another service: a presentation opens with its topic filled in; its own Create button runs it.
+    // 3b first — another service: a presentation opens with its topic filled in; its own Create button runs it.
     const deck = await live.call('prepare_generation', { tool: 'presentation', prompt: 'საქართველოს ღვინის 8000 წელი' });
     expect(deck.ok).toBe(true);
     expect(String(deck.summary)).toMatch(/press Create/);
@@ -70,14 +69,27 @@ test.describe('voice mode, end to end', () => {
     await expect.poll(() => toolOnScreen(live)).toBe('presentation');
     const deckStart = await live.call('start_generation', { confirmed: 'yes' });
     expect(deckStart.ok).toBe(false); // a deck is made by its panel's Create, never by a voice start
-    // back to the image the agent prepared
-    await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში', aspectRatio: '9:16' });
-    await expect.poll(() => toolOnScreen(live)).toBe('image');
+
+    // 3 — an image order: it goes to the CHAT (the user watches it there, no studio panel), and Agent G's card shows the
+    // price; the model reads it as what waits for the yes.
+    const prepared = await live.call('prepare_generation', { tool: 'image', prompt: FOX_ORDER, aspectRatio: '9:16' });
+    expect(prepared).toMatchObject({ ok: true });
+    expect(String(prepared.summary)).toMatch(/chat/i);
+    await expect.poll(() => toolOnScreen(live), { timeout: 15_000 }).toBe('chat');
+    await expect(page.getByText(FOX_ORDER).first()).toBeVisible({ timeout: 15_000 });
+    await expect.poll(async () => (await waitingForYes(live))?.tool, { timeout: 15_000 }).toBe('image');
+    expect((await waitingForYes(live))?.priceCredits).toBeGreaterThan(0);
 
     // 4 — the user says yes: a 3-second countdown with Cancel; Cancel stops it before anything runs.
+    live.hear('კი, დაიწყე');
     const started = await live.call('start_generation', { confirmed: 'yes' });
-    expect(started).toMatchObject({ok:false,error:'ui_confirmation_required'});
-    await expect(page.getByTestId('live-run-banner')).toHaveCount(0);
+    expect(started.ok).toBe(true);
+    const banner = page.getByTestId('live-run-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveAttribute('data-state', 'counting');
+    await page.getByTestId('live-run-cancel').click();
+    await expect(banner).toHaveAttribute('data-state', 'cancelled');
+    await page.waitForTimeout(3_500); // past the countdown: still nothing may run
     expect(spend).toEqual([]);
 
     // 5 — something long goes to the chat: the chat opens and the answer is written there.
@@ -184,7 +196,7 @@ test.describe('voice mode, end to end', () => {
     expect(spend).toEqual([]);
   });
 
-  test('a chain by voice: the UI-confirmed image is made, the app tells the agent, which downloads it and carries it into Video — one paid call, the confirmed one', async ({ page, baseURL }) => {
+  test('a chain by voice: the image the user said yes to is made in the chat, the app tells the agent, which downloads it and carries it into Video — one paid call, the confirmed one', async ({ page, baseURL }) => {
     const live = new FakeLive();
     // Results are served from our storage's domain (*.supabase.co), the only one a production build's CSP lets the download path fetch.
     const FOX = 'https://e2e-media.supabase.co/fox.png';
@@ -197,14 +209,13 @@ test.describe('voice mode, end to end', () => {
     // 1 — prepare, the user says yes, the countdown runs out: the yes is recorded, then exactly one paid request leaves.
     const approvals: Array<Record<string, unknown>> = [];
     await page.route('**/api/agent/approvals', (r) => { approvals.push(r.request().postDataJSON() as Record<string, unknown>); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
-    expect(await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში', aspectRatio: '9:16' })).toMatchObject({ ok: true });
-    await expect.poll(() => toolOnScreen(live)).toBe('image');
+    expect(await live.call('prepare_generation', { tool: 'image', prompt: FOX_ORDER, aspectRatio: '9:16' })).toMatchObject({ ok: true });
+    await expect.poll(async () => (await waitingForYes(live))?.tool, { timeout: 15_000 }).toBe('image');
     live.hear('კი, დაიწყე');
-    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok:false,error:'ui_confirmation_required' });
-    expect(spend).toEqual([]);
-    await page.getByTestId('create-generate').click(); // authenticated human UI confirmation
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
+    expect(spend).toEqual([]); // the countdown first
     await expect.poll(() => spend, { timeout: 15_000 }).toEqual(['/api/nanobanana/image']);
-    expect(approvals).toEqual([]); // no speech-derived approval record
+    expect(approvals).toEqual([expect.objectContaining({ channel: 'voice-transcript', said: 'კი, დაიწყე', tool: 'image' })]);
 
     // 2 — nobody asked, yet the agent hears it: the app's note says the image is ready, so a plan of steps goes on.
     await expect.poll(() => live.notes().some((n) => /new image is ready/.test(n)), { timeout: 15_000 }).toBe(true);
@@ -228,17 +239,23 @@ test.describe('voice mode, end to end', () => {
     const approvals: unknown[] = [];
     await page.route('**/api/agent/approvals', (r) => { approvals.push(r.request().postDataJSON()); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
     const spend = await openLiveCall(page, baseURL, live);
-    expect(await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში' })).toMatchObject({ ok: true });
-    await expect.poll(() => toolOnScreen(live)).toBe('image');
+    expect(await live.call('prepare_generation', { tool: 'image', prompt: FOX_ORDER })).toMatchObject({ ok: true });
+    await expect.poll(async () => (await waitingForYes(live))?.tool, { timeout: 15_000 }).toBe('image');
 
+    // The model calls start with "confirmed: yes", but the user only asked the price: an unclear answer still counts
+    // down (the transcript can lag behind the call), and at its end nothing runs, nothing is recorded, the agent hears so.
     live.hear('რა ღირს?');
-    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ok:false,error:'ui_confirmation_required'});
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
+    const banner = page.getByTestId('live-run-banner');
+    await expect(banner).toHaveAttribute('data-state', 'not_heard', { timeout: 10_000 });
+    await expect.poll(() => live.notes().some((n) => /Nothing was started/.test(n)), { timeout: 10_000 }).toBe(true);
+    await page.waitForTimeout(500);
     expect(spend).toEqual([]);
     expect(approvals).toEqual([]);
 
     // The user says no: the start is refused at once, no countdown.
     live.hear('არა, მოიცადე');
-    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: false, error: 'ui_confirmation_required' });
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: false, error: 'user_said_no' });
     await page.waitForTimeout(3_500);
     expect(spend).toEqual([]);
     expect(approvals).toEqual([]);

@@ -86,7 +86,7 @@ export class FakeLive {
 
   /**
    * The user speaking: Google's input transcription of their words, then the end of that exchange.
-   * These words are conversational input, never payment authorization.
+   * A clear yes said after a told price may start that run (GG 2026-10-18), after the countdown and a server record.
    */
   hear(text: string): void {
     this.ws?.send(JSON.stringify({ serverContent: { inputTranscription: { text } } }));
