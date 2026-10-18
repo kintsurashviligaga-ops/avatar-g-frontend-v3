@@ -21,9 +21,11 @@ let mockRows: Row[] = [];
 const mockSignCalls: Array<{ bucket: string; paths: string[]; ttl: number }> = [];
 
 const mockFilters: Array<[string, ...unknown[]]> = [];
+const mockUpdates: Array<Record<string, unknown>> = [];
 function mockQuery() {
   const chain: Record<string, unknown> = {};
   for (const m of ['select', 'order', 'range', 'like', 'limit']) chain[m] = () => chain;
+  chain.update = (patch: Record<string, unknown>) => { mockUpdates.push(patch); return chain; };
   for (const m of ['eq', 'neq', 'in']) chain[m] = (...a: unknown[]) => { mockFilters.push([m, ...a]); return chain; };
   chain.then = (resolve: (v: unknown) => unknown) => resolve({ data: mockRows, error: null });
   return chain;
@@ -64,6 +66,7 @@ beforeEach(() => {
   mockRows = [];
   mockSignCalls.length = 0;
   mockFilters.length = 0;
+  mockUpdates.length = 0;
   mockRecord.mockClear();
   fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 206 }));
 });
@@ -111,7 +114,7 @@ describe('GET — re-signing is limited to what is provably ours', () => {
     for (const r of mockRows) expect(urlOf(items, r.id)).toBe(r.signed_url);
   });
 
-  test('a manual save is re-signed only when POST verified it — legacy unverified saves keep their stored URL', async () => {
+  test('a manual save is re-signed only when POST verified it — a legacy save whose token proves nothing keeps its stored URL', async () => {
     mockRows = [
       row('legacy', signed('renders', 'captioned/victim.mp4'), { params: { source: 'manual-save' } }),
       row('verified', signed('renders', 'captioned/mine.mp4'), { params: { source: 'manual-save', storage_verified: true } }),
@@ -120,6 +123,48 @@ describe('GET — re-signing is limited to what is provably ours', () => {
     expect(urlOf(items, 'legacy')).toBe(signed('renders', 'captioned/victim.mp4'));
     expect(urlOf(items, 'verified')).toContain('captioned/mine.mp4?token=FRESH');
     expect(mockSignCalls).toEqual([{ bucket: 'renders', paths: ['captioned/mine.mp4'], ttl: 86_400 }]);
+  });
+
+  // Live 2026-10-18: every remix / character-swap / dub / overlay video saved by hand before POST probed links answered
+  // 400 InvalidJWT "exp" and the Library showed "Unable to play media". Storage checks a token's signature before its
+  // age, so that answer plus the token's own `url` claim proves the link was minted for that object.
+  const jwt = (claims: Record<string, unknown>) => {
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(claims)}.c2ln`;
+  };
+  const tokened = (bucket: string, path: string, claimUrl = `${bucket}/${path}`) =>
+    `${OWN}/storage/v1/object/sign/${bucket}/${path}?token=${jwt({ url: claimUrl, iat: 1, exp: 2 })}`;
+  const expired = () => new Response(JSON.stringify({ statusCode: '400', error: 'InvalidJWT', message: '"exp" claim timestamp check failed' }), { status: 400 });
+
+  test('a legacy manual save whose expired token was minted for its own object is re-signed, and the proof is kept', async () => {
+    fetchSpy.mockResolvedValue(expired());
+    const url = tokened('uploads', 'remix/faceswap-1-abc.mp4');
+    mockRows = [row('old', url, { params: { source: 'manual-save', prompt: 'swap' } })];
+    const items = await getItems();
+    expect(urlOf(items, 'old')).toBe(`${OWN}/storage/v1/object/sign/uploads/remix/faceswap-1-abc.mp4?token=FRESH`);
+    expect(fetchSpy).toHaveBeenCalledWith(url, expect.objectContaining({ method: 'GET', headers: { Range: 'bytes=0-0' } }));
+    expect(mockUpdates).toEqual([{ params: { source: 'manual-save', prompt: 'swap', storage_verified: true } }]);
+    expect(mockFilters).toEqual(expect.arrayContaining([['eq', 'id', 'old'], ['eq', 'user_id', USER]]));
+  });
+
+  test('a legacy save is NOT re-signed when its token names another object, is forged, or storage refuses it otherwise', async () => {
+    mockRows = [
+      row('repointed', tokened('uploads', 'remix/victim.mp4', 'uploads/remix/mine.mp4'), { params: { source: 'manual-save' } }),
+      row('forged', tokened('uploads', 'remix/forged.mp4'), { params: { source: 'manual-save' } }),
+      row('external', 'https://tempfile.example.com/x.png', { params: { source: 'manual-save' } }),
+    ];
+    fetchSpy.mockImplementation(async (u: string) => (String(u).includes('forged')
+      ? new Response(JSON.stringify({ statusCode: '400', error: 'InvalidSignature', message: 'signature verification failed' }), { status: 400 })
+      : expired()));
+    const items = await getItems();
+    for (const r of mockRows) expect(urlOf(items, r.id)).toBe(r.signed_url);
+    expect(mockSignCalls).toEqual([]);
+    expect(mockUpdates).toEqual([]);
+  });
+
+  test('a legacy save storage still honours is re-signed too (its token proves the same thing)', async () => {
+    mockRows = [row('live', tokened('renders', 'captioned/2-x.mp4'), { params: { source: 'manual-save' } })];
+    expect(urlOf(await getItems(), 'live')).toContain('/renders/captioned/2-x.mp4?token=FRESH');
   });
 
   test('a row that is not the caller’s never reaches the signer (or the response), even if a filter slipped', async () => {

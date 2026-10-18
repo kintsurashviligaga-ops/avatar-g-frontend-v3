@@ -38,7 +38,6 @@ const re = (alts: string) => new RegExp(`^(?:${alts})$`, 'u');
 /** Several words that name one tool. Read before the single words, so „ვიდეოს მონტაჟი" is not Video and Montage at once. */
 const PHRASES: ReadonlyArray<{ tool: ToolId; re: RegExp }> = ([
   ['montage', `ვიდეო(?:ს)?\\s+მონტაჟ${L}|ვიდეო\\s+რედაქტორ${L}|video\\s+(?:editing|editor)|видео\\s*монтаж${L}|видеоредактор${L}|редактор\\s+видео`],
-  ['remix', `ვიდეო(?:ს)?\\s+რემიქს${L}|video\\s+remix|ремикс${L}\\s+видео`],
   ['product', `პროდუქტ(?:ის)?\\s+რეკლამ${L}|product\\s+ads?|реклам${L}\\s+продукт${L}`],
   ['swap', `პერსონაჟ(?:ის)?\\s+(?:შეცვლ|ჩანაცვლებ)${L}|(?:character|face)\\s+swap|замен${L}\\s+персонаж${L}`],
   ['motion', `მოძრაობ(?:ის)?\\s+გადატან${L}|motion\\s+transfer|перенос${L}\\s+движени${L}`],
@@ -56,7 +55,6 @@ const TOOL_WORDS: ReadonlyArray<{ tool: ToolId; re: RegExp }> = ([
   ['image', `სურათ${L}|ფოტო(?:ს|ზე|ში|თი)?|ნახატ${L}|გამოსახულებ${L}|image|images|picture|pictures|photo|изображени${L}|картинк${L}|фото`],
   ['music', `მუსიკ${L}|სიმღერ${L}|music|song|songs|музык${L}|песн${L}`],
   ['avatar', `ავატარ${L}|avatar|avatars|аватар${L}`],
-  ['remix', `რემიქს${L}|remix|ремикс${L}`],
   ['montage', `მონტაჟ${L}|რედაქტორ${L}|montage|editor|editing|монтаж${L}|видеомонтаж${L}|редактор${L}`],
   ['dubbing', `დუბლაჟ${L}|დუბლირებ${L}|dubbing|dub|дубляж${L}`],
   ['presentation', `პრეზენტაცი${L}|სლაიდ${L}|presentation|presentations|slides|deck|презентаци${L}|слайд${L}`],

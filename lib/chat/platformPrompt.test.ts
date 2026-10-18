@@ -100,7 +100,7 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
       const mod = require('./platformPrompt') as typeof import('./platformPrompt');
       const p = mod.buildPlatformPrompt({ locale: 'en', now: NOW });
       expect(p).toContain('video 31 cr (3.10 ₾) <60 s');
-      expect(p).toContain('remix 17 cr (1.70 ₾)');
+      expect(p).toContain('video touch-up 17 cr (1.70 ₾)');
       expect(p).not.toContain(cr(CREDIT_COSTS.video_30s) + ' <60 s');
     });
     jest.dontMock('../credits/pricing');
@@ -152,9 +152,10 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     expect(p).not.toContain('talking avatar');
     expect(p).not.toContain('film lip-sync');
     expect(p).not.toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
-    // Remix stays: its ffmpeg ops run; the line says which edits are closed.
-    expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (trim, captions, voice-over, music, colour, speed only; restyle, background and redub not available yet)`);
-    expect(p).toContain(`remix ${cr(CREDIT_COSTS.remix_video)}`);
+    // The touch-up has no menu row (GG 2026-10-18): it is listed with the way to reach it, says what the switch refuses,
+    // and its ffmpeg ops stay priced.
+    expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (attach a video here; no restyle, background or redub)`);
+    expect(p).toContain(`video touch-up ${cr(CREDIT_COSTS.remix_video)}`);
     expect(p).toContain('say plainly it is not available yet (nothing is charged)');
     expect(p.length).toBeLessThanOrEqual(5000);
   });
@@ -164,7 +165,8 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, listed: toolLine(p, id, locale) }).toEqual({ id, listed: true });
     expect(p).toContain(`talking avatar ${cr(CREDIT_COSTS.avatar_30s)}`);
     expect(p).toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
-    expect(p).not.toContain('restyle, background and redub not available yet');
+    expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (attach a video here)`);
+    expect(p).not.toContain('no restyle, background or redub');
   });
 
   it.each(LOCALES)('a user who may run the Veo avatar is offered it at the Veo clip price, with Veo named (%s)', (locale) => {

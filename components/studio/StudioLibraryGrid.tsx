@@ -27,6 +27,7 @@ import { saveMedia } from '@/lib/media/saveMedia';
 import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { SHOOT_COPY, shootLang } from './create/newtools/copy';
 import { PlanView } from './create/newtools/PlanView';
+import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
   Inbox, RefreshCw, Trash2, AlertTriangle, Boxes, Move3d,
@@ -160,7 +161,7 @@ function filterMatches(kind: string, f: FilterKey): boolean {
 // card re-renders on each page merge. Props are stable (t is a constant COPY object, onDeleted is a
 // useCallback), so memo skips re-rendering the settled grid. Pure render perf; no behaviour change.
 const LibraryCard = memo(function LibraryCard({
-  item, t, locale, onDeleted, isNew = false,
+  item, t, locale, onDeleted, onRetry, isNew = false,
 }: {
   item: LibraryItem;
   t: (typeof COPY)['ka'];
@@ -168,6 +169,8 @@ const LibraryCard = memo(function LibraryCard({
    *  string, so memo stays effective. */
   locale: Lang;
   onDeleted: (id: string) => void;
+  /** Fetch the list again (every link in it minted fresh), offered when this file will not load. */
+  onRetry: () => void;
   /** VECTOR 6 — a subtle badge when this asset was just added via a live library refresh. */
   isNew?: boolean;
 }) {
@@ -183,6 +186,11 @@ const LibraryCard = memo(function LibraryCard({
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(false);
+  // The file would not load (an expired or missing link): MediaUnavailable instead of the browser's "Unable to play media".
+  const [failed, setFailed] = useState(false);
+  const onMediaError = useCallback(() => { setFailed(true); setLoaded(true); }, []);
+  // A fresh list brings a freshly signed link: give the file another go.
+  useEffect(() => { setFailed(false); }, [item.url]);
 
   const flash = useCallback((which: 'prompt' | 'link') => {
     setCopied(which);
@@ -257,7 +265,9 @@ const LibraryCard = memo(function LibraryCard({
       ) : null}
       {/* Media thumbnail */}
       <div className={`relative ${aspect} w-full overflow-hidden bg-neutral-950`}>
-        {isVideo(item.kind) ? (
+        {failed ? (
+          <MediaUnavailable lang={locale} onRetry={onRetry} />
+        ) : isVideo(item.kind) ? (
           <>
             {/* #t=0.1 makes the browser paint an early frame as the poster. */}
             <video
@@ -267,6 +277,7 @@ const LibraryCard = memo(function LibraryCard({
               playsInline
               onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
               onLoadedData={() => setLoaded(true)}
+              onError={onMediaError}
               onEnded={() => setPlaying(false)}
               onClick={togglePlay}
               className="h-full w-full cursor-pointer object-cover"
@@ -292,7 +303,7 @@ const LibraryCard = memo(function LibraryCard({
         ) : isAudio(item.kind) ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-4">
             <Music2 className="h-8 w-8 text-[#338FE8]/70" />
-            <audio src={item.url} controls className="w-full" onLoadedData={() => setLoaded(true)} />
+            <audio src={item.url} controls className="w-full" onLoadedData={() => setLoaded(true)} onError={onMediaError} />
           </div>
         ) : is3d(item.url) ? (
           // A MESH, not a picture. Rendering it in an <img> gave a permanently-shimmering black tile,
@@ -311,6 +322,7 @@ const LibraryCard = memo(function LibraryCard({
             alt={item.prompt ?? 'generated image'}
             loading="lazy"
             onLoad={() => setLoaded(true)}
+            onError={onMediaError}
             className={`h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           />
         )}
@@ -606,7 +618,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
           <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <AnimatePresence mode="popLayout">
               {visible.map((item) => (
-                <LibraryCard locale={locale} key={item.id} item={item} t={t} onDeleted={handleDeleted} isNew={newIds.has(item.id)} />
+                <LibraryCard locale={locale} key={item.id} item={item} t={t} onDeleted={handleDeleted} onRetry={load} isNew={newIds.has(item.id)} />
               ))}
             </AnimatePresence>
           </div>

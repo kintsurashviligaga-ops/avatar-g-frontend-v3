@@ -120,10 +120,14 @@ interface Gates {
   veoAvatar: boolean;
 }
 
-/** A tool the switch closes only in part: what still runs (the remix route refuses restyle / character / background / redub). */
-const GOOGLE_ONLY_NOTE: Partial<Record<ToolId, string>> = {
-  remix: 'trim, captions, voice-over, music, colour, speed only; restyle, background and redub not available yet',
-};
+/**
+ * The video touch-up has no menu row since GG's 2026-10-18 plan (lib/studio/tools.ts PRIMARY_TOOLS): it is reached by
+ * attaching ONE video in this chat (OmniStudio's attached-video lane → /api/video/remix). It is listed under the video
+ * category with the way to reach it, so the model never sends a person to a „Video remix" that no menu has. Under the
+ * switch the route refuses restyle / character / background / redub, and the line says so.
+ */
+const touchUpLine = (loc: PlatformPromptLocale, mediaGoogleOnly: boolean): string =>
+  `- ${TOOL_META.remix.name[loc]} — ${TOOL_META.remix.sub[loc]} (attach a video here${mediaGoogleOnly ? '; no restyle, background or redub' : ''})`;
 
 /**
  * ⚠️ A CLOSED TOOL MUST NOT BE OFFERED (owner's sweep 2026-10-16: the chat should say plainly which service is closed). The
@@ -150,9 +154,9 @@ function toolLines(loc: PlatformPromptLocale, closed: readonly ToolId[], { media
       ...g.tools.map((id) => {
         const meta = TOOL_META[id];
         const engine = id === 'avatar' && mediaGoogleOnly ? 'Veo' : TOOL_ENGINE[id];
-        const note = mediaGoogleOnly ? GOOGLE_ONLY_NOTE[id] : undefined;
-        return `- ${meta.name[loc]} — ${meta.sub[loc]}${engine ? ` · ${engine}` : ''}${note ? ` (${note})` : ''}`;
+        return `- ${meta.name[loc]} — ${meta.sub[loc]}${engine ? ` · ${engine}` : ''}`;
       }),
+      ...(g.id === 'video' ? [touchUpLine(loc, mediaGoogleOnly)] : []),
     ].join('\n')).join('\n');
 }
 
@@ -208,7 +212,7 @@ function priceBlock(topUp: string, closed: readonly ToolId[], { mediaGoogleOnly 
     // The film's lip-sync pass is the old avatar engine (/api/video/lipsync), which the switch refuses; the Veo avatar is
     // its own 8 s clip at the Veo price.
     `${mediaGoogleOnly ? '' : `film lip-sync +${quoteCredits({ tool: 'avatar' })} cr; `}chat clip/product ad: video ${cr(C.video_30s)} <60 s, ${cr(C.video_60s)} ≥60 s; music ${cr(C.music_30s)} <60 s,`,
-    `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${mediaGoogleOnly ? `${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip` : cr(C.avatar_30s)}; ` : ''}remix ${cr(C.remix_video)}; ${open('model3d') ? `3D model ${cr(C.model3d)}; ` : ''}${dubDeck}.`,
+    `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${mediaGoogleOnly ? `${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip` : cr(C.avatar_30s)}; ` : ''}video touch-up ${cr(C.remix_video)}; ${open('model3d') ? `3D model ${cr(C.model3d)}; ` : ''}${dubDeck}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote prices only in credits and lari and only these numbers; for anything not listed, do not guess.`,
   ].join(' ');
 }
@@ -286,7 +290,7 @@ export function buildPlatformPrompt(opts: {
 
     `FORMAT: Fit the length to the question — a simple or casual question gets one to three plain sentences, no headings. Use Markdown only when structure helps: short ## headings, bullet or numbered lists, tables for comparisons, fenced code blocks with a language tag for all code, LaTeX maths in $…$ or $$…$$. Answer first; no filler, no restating the question, no generic disclaimers.`,
 
-    `STUDIO TOOLS by side-menu category (name — what it does · Google engine):\n${toolLines(loc, closed, gates)}\n${notYetLine(loc, closed)}\nVoice: the "${ui.liveVoice}" button starts a live spoken conversation (Gemini Live) for signed-in users, and replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
+    `STUDIO TOOLS by side-menu category (name — what it does · Google engine):\n${toolLines(loc, closed, gates)}\n${notYetLine(loc, closed)}\nVoice: "${ui.liveVoice}" starts a live spoken chat for signed-in users (Gemini Live); replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
 
     // ⚠️ IT SENT PEOPLE TO A TOOL FOR WHAT THE CHAT DOES ITSELF (Production 2026-10-16, GG's iPhone): „კი შექმენი სურათი 9:16
     // ფორმატის" got „I can't generate in the chat — open the Image tool via +, attach the photo again, pick 9:16, paste this".

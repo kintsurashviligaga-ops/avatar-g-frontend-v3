@@ -80,9 +80,11 @@ export const SERVICE_CATEGORIES: readonly { id: ServiceCategory; label: L10n; gr
   { id: 'image-photo', label: l('სურათი და ფოტო', 'Image & Photo', 'Изображения и фото'), group: 'create' },
   { id: 'avatar', label: l('ავატარი', 'Avatar', 'Аватар'), group: 'create' },
   { id: 'music', label: l('მუსიკა', 'Music', 'Музыка'), group: 'create' },
-  { id: 'voice-audio', label: l('ხმა და აუდიო', 'Voice & Audio', 'Голос и аудио'), group: 'create' },
+  // Named for what it holds (GG 2026-10-18): dubbing is its only service, and „ხმა და აუდიო“ promised voices it does not have.
+  { id: 'voice-audio', label: l('დუბლაჟი', 'Dubbing', 'Дубляж'), group: 'create' },
   { id: 'text-content', label: l('ტექსტი და კონტენტი', 'Text & Content', 'Текст и контент'), group: 'work' },
-  { id: 'design', label: l('დიზაინი', 'Design', 'Дизайн'), group: 'work' },
+  // „დიზაინი“ read as graphic design; what opens is a slide deck (GG 2026-10-18). The 3D model moved to Image & Photo.
+  { id: 'design', label: l('პრეზენტაციები', 'Presentations', 'Презентации'), group: 'work' },
   { id: 'code', label: l('კოდი', 'Code', 'Код'), group: 'work' },
   { id: 'web-research', label: l('ძიება და კვლევა', 'Search & Research', 'Поиск и исследования'), group: 'agent' },
 ];
@@ -155,7 +157,10 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['vfx', 'visual effects', 'special effects', 'ვიზუალური ეფექტ', 'სპეცეფექტ', 'спецэффект', 'визуальные эффекты'],
   }),
   svc({
-    id: 'video.remix', category: 'video', order: 16, tool: 'remix', pricingKey: 'remix', status: 'live',
+    // Hidden (GG 2026-10-18): out of every menu, the search and Agent G's routing — see lib/studio/tools.ts PRIMARY_TOOLS.
+    // The route stays for the chat's attached-video edits and so a job already started can finish or refund.
+    id: 'video.remix', category: 'video', order: 16, tool: 'remix', pricingKey: 'remix', status: 'hidden',
+    agentCallable: false, visibleInTools: false, visibleInServices: false,
     boundary: 'violation', boundaryNote: 'restyle / background: NanoBanana + Kling; character: roop; redub: Replicate sync/lipsync-2; a miss refunds; MEDIA_GOOGLE_ONLY refuses those four ops',
     label: l('ვიდეოს რემიქსი', 'Video remix', 'Ремикс видео'),
     description: l('შეცვალე არსებული ვიდეო: სტილი, სუბტიტრები, ხმა', 'Change a video you have: style, captions, voice', 'Измените своё видео: стиль, субтитры, голос'),
@@ -261,7 +266,8 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['presentation', 'slides', 'deck', 'პრეზენტაცია', 'სლაიდები', 'презентация', 'слайды'],
   }),
   svc({
-    id: 'design.model3d', category: 'design', order: 71, tool: 'model3d', pricingKey: 'model3d', status: 'beta',
+    // Listed beside the picture tools, not under „პრეზენტაციები“; the id (the analytics identity) is unchanged.
+    id: 'design.model3d', category: 'image-photo', order: 71, tool: 'model3d', pricingKey: 'model3d', status: 'beta',
     boundary: 'violation', boundaryNote: 'Replicate TRELLIS (/api/v2/model3d); MEDIA_GOOGLE_ONLY refuses it',
     label: l('3D მოდელი', '3D model', '3D-модель'),
     description: l('3D მოდელი ტექსტიდან ან ფოტოდან', 'A 3D model from text or a photo', '3D-модель из текста или фото'),

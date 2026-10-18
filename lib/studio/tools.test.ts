@@ -8,7 +8,8 @@ describe('studio tools', () => {
   it('chat first (the hub), video leading the generators, and every service the studio had is still here', () => {
     expect(PRIMARY_TOOLS[0]).toBe('chat');
     expect(PRIMARY_TOOLS[1]).toBe('video');
-    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'interior', 'model3d', 'montage', 'motion', 'music', 'photo', 'photoshoot', 'presentation', 'product', 'remix', 'swap', 'vfx', 'video'].sort());
+    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'interior', 'model3d', 'montage', 'motion', 'music', 'photo', 'photoshoot', 'presentation', 'product', 'swap', 'vfx', 'video'].sort());
+    expect(isToolId('remix')).toBe(false); // retired from every menu (GG 2026-10-18); the chat's touch-up lane keeps the id
     expect(new Set(ALL_TOOLS).size).toBe(PRIMARY_TOOLS.length + MORE_TOOLS.length); // no tool in both lists
   });
 

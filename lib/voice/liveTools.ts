@@ -89,7 +89,7 @@ export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
  * in the icon set and this file is shared with the token route). open_studio reaches all of them.
  */
 export const LIVE_OPEN_TOOLS = [
-  'chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'remix',
+  'chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar',
   'product', 'swap', 'vfx', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo',
 ] as const;
 export type LiveOpenTool = (typeof LIVE_OPEN_TOOLS)[number];
@@ -337,7 +337,7 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'open_studio',
     description: 'Switch the app to a tool without preparing anything in it: chat, video, image, photoshoot (photographer), '
-      + 'interior (interior designer), music, avatar, remix, product (product ad), swap (character swap), vfx, motion, '
+      + 'interior (interior designer), music, avatar, product (product ad), swap (character swap), vfx, motion, '
       + 'montage (video editor), dubbing, model3d, presentation, photo (photo culling).',
     parameters: {
       type: 'OBJECT',
@@ -992,7 +992,7 @@ function asEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
 const OPEN_TOOL_ALIASES: Readonly<Record<string, LiveOpenTool>> = {
   ...TOOL_ALIASES,
   chat: 'chat', text: 'chat', photographer: 'photoshoot', photoshoot: 'photoshoot', interior: 'interior',
-  interior_designer: 'interior', remix: 'remix', product: 'product', product_ad: 'product', swap: 'swap',
+  interior_designer: 'interior', product: 'product', product_ad: 'product', swap: 'swap',
   character_swap: 'swap', vfx: 'vfx', motion: 'motion', montage: 'montage', editor: 'montage', video_editor: 'montage',
   dubbing: 'dubbing', dub: 'dubbing', model3d: 'model3d', '3d': 'model3d', presentation: 'presentation', slides: 'presentation',
   deck: 'presentation', culling: 'photo', photo_culling: 'photo',
