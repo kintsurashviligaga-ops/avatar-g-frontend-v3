@@ -176,16 +176,24 @@ async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
   await page.addInitScript(() => { try { localStorage.setItem('myavatar-cookie-consent', 'necessary'); } catch { /* private mode */ } });
   await page.goto(path);
   // The composer is what every path has: the video tool's Create screen replaces the greeting on a desktop.
-  await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 30_000 });
+  const desktop = (page.viewportSize()?.width ?? 1280) >= 1024;
   // On a phone a link to a tool whose input lives in its Create screen opens that screen as a sheet over the composer
   // (OmniStudio applyTool). A production build does; `next dev` hid it until StrictMode stopped closing it (2026-10-09).
   // Hold that here, then put the sheet away so each test starts at the composer.
-  if ((page.viewportSize()?.width ?? 1280) < 1024 && /[?&]tool=(video|product|swap|remix|motion|image|vfx)\b/.test(path)) {
+  if (!desktop && /[?&]tool=(video|product|swap|remix|motion|image|vfx)\b/.test(path)) {
     const sheet = page.getByTestId('options-sheet');
     await expect(sheet).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(sheet).toBeHidden();
   }
+  // On a desktop the Video, Image or Music panel opens with its tool and holds the description, so the composer's box
+  // steps aside (GG, 2026-10-18). Hold that too, then put the panel away (the tool chip toggles it): the box is back.
+  if (desktop && /[?&]tool=(video|image|music)\b/.test(path)) {
+    await expect(page.getByTestId('composer-input')).toBeHidden();
+    await page.getByTestId('options-toggle').click();
+  }
+  await expect(page.getByTestId('composer-input')).toBeVisible();
 }
 
 /**
@@ -242,12 +250,14 @@ for (const vp of VIEWPORTS) {
       expect(posts).toEqual(['/api/chat/gemini']);
     });
 
-    test('the home is the greeting and the box — no sub line, no starter chips, nothing under the box', async ({ page }) => {
+    test('the home is the greeting, the box and its four quick buttons — no sub line, nothing else', async ({ page }) => {
       await openDashboard(page, '/ka/dashboard?tool=chat');
-      // Owner, 2026-10-02: "in the middle only რით დაგეხმარო; remove the four frames below".
+      // Owner, 2026-10-02: "in the middle only რით დაგეხმარო; remove the four frames below". GG, 2026-10-18: one box and
+      // four quick actions under it — video, image, music, avatar.
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?');
       await expect(page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.')).toHaveCount(0);
       await expect(page.getByRole('group', { name: 'დაიწყე' })).toHaveCount(0);
+      await expect(page.getByRole('group', { name: 'სწრაფი შექმნა' }).getByRole('button')).toHaveText(['ვიდეო', 'სურათი', 'მუსიკა', 'ავატარი']);
       await expect(page.getByTestId('price-tag')).toHaveCount(0);
       await expect(page.getByTestId('chat-disclaimer')).toHaveCount(0);
       await expect(page.getByPlaceholder('ჰკითხე MyAvatar-ს')).toBeVisible();

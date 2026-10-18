@@ -16,6 +16,7 @@ import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, us
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
+import { HomeQuickStart } from './HomeQuickStart';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -3477,6 +3478,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return () => mq.removeEventListener('change', on);
   }, []);
   const [panelOpen, setPanelOpen] = useState(true);
+  // On a desktop the panel also hides the composer's text box in Image, Music and Video (composerTextHidden): closing it
+  // brings the box back holding the description, so it is measured again then (the sizing effect above skips a hidden box).
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el || el.offsetParent === null || !el.value) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [panelOpen]);
   // Every existing "show the options" call site (a deep link, a studio sentence, a bridge hand-off) keeps working on
   // a desktop: there it reveals the panel instead of opening the phone's sheet.
   useEffect(() => {
@@ -11971,8 +11980,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return first.length > 90 ? `${first.slice(0, 90)}…` : first;
   })();
   /**
-   * Gemini's empty chat on a desktop: the greeting and, under it, the composer — nothing else (owner, 2026-10-02: no sub
-   * line, no starter chips). Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold
+   * Gemini's empty chat on a desktop: the greeting and, under it, the composer and its four quick buttons (owner, 2026-10-02:
+   * no sub line, no starter chips; GG, 2026-10-18: video, image, music, avatar under the box). Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold
    * that node). The feed above and an empty spacer below are two EQUAL flex halves (`flex-1 basis-0`), so the composer
    * block sits on the centre line; the feed starts from its 48 px of bottom padding (flex-basis 0 cannot go below it),
    * which lowers the PILL 24 px under that line — the optical centre of a greeting-and-box pair, which reads as centred
@@ -11981,6 +11990,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * composer docked at the bottom, as Gemini's phone app does.
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
+  // ONE DESCRIPTION BOX (GG's card, 2026-10-18 05:14Z: „დამალე"). Image, Music and Video keep their description on the Create
+  // screen (it and the composer share `input`), so the composer's text box steps aside while that screen is on: below `lg`
+  // in Image and Music always (the sheet IS the prompt card; Video's sheet hides the whole bar), on a desktop while the panel
+  // is open — closing it brings the box back as Agent G's line. Mic, Live voice and Send stay in the pill.
+  const composerTextHidden = (imageCreate || mode === 'music' || activeTool === 'video')
+    && (isDesktop ? panelOpen : activeTool !== 'video');
+  // …and on a desktop the box's own Send and enhance go with it: the panel beside it has the priced Create.
+  const composerRunAside = composerTextHidden && isDesktop;
   // Music on a desktop: the latest track and the engines-and-prices list (ref6) lead the centre column; the feed — progress
   // cards, failures, top-up buttons — continues under them.
   const musicPane = isDesktop && mode === 'music' ? (
@@ -12200,7 +12217,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
             </div>
-            {/* THE HOME IS THE GREETING AND THE BOX — nothing else (owner, 2026-10-02: no sub line, no starter chips).
+            {/* THE HOME IS THE GREETING, THE BOX AND ITS FOUR QUICK BUTTONS (owner, 2026-10-02: no sub line, no starter
+                chips; GG's UI plan, 2026-10-18: the four quick actions under the box — HomeQuickStart).
                 The greeting carries its own soft halo of the brand blue as a layered text-shadow — a separate glow box
                 (tried first) made the feed scroll and cut a hard edge above the box, because anything that sticks out
                 of a scroll container is scrollable overflow and a shadow is not. It rises in once, and not at all under
@@ -12292,8 +12310,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         )}
         {/* Measured mic latency on this device, only with ?micstats=1 (a phone has no inspector; see the component). */}
         <DictationMetricsReadout locale={locale} />
-        {/* No service shortcuts IN the composer or on the empty home — the tool chip and the navigation are how a
-            service is chosen. */}
+        {/* No service shortcuts IN the composer — the tool chip and the navigation are how a service is chosen; the empty
+            chat's four quick buttons sit under the box (HomeQuickStart, below). */}
 
         {/* Video Remix Mode — a video attached in chat = "edit this video". Show the
             indicator + quick-action chips that pre-fill the right request. */}
@@ -12644,11 +12662,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             placeholder={composerPlaceholder}
             className={chatOnly
               ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-h-[44px] min-w-0 flex-1 px-2 py-2.5' : 'min-h-[40px] w-full px-3 py-2'}`
-              // Not drawn in the Image or Music tool below `lg`: its prompt IS the Create screen's prompt card (same `input`), and the
-              // pill keeps [+] · the tool chip · mic · send. On a desktop the box stays, mirroring the panel's: it is where Agent G
-              // is talked to (it answers, asks, confirms with the price) while the panel's Generate runs at once — and the video
-              // tool's composer placeholder is locked copy (docs/DESIGN.md §7).
-              : `${(imageCreate || mode === 'music') && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
+              // Not drawn while the tool's Create screen holds the description (composerTextHidden, above): the pill keeps
+              // [+] · the tool chip · mic · send. With a desktop's panel closed the box is back — Agent G's line (it answers,
+              // asks, confirms with the price) — and the video tool's placeholder is locked copy (docs/DESIGN.md §7).
+              : `${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
           />
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
@@ -12800,7 +12817,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     ვერ ჩაირთო“). primeLive asks every other mic holder to let go, resumes playback and starts the
                     mic while the gesture is live; the session adopts both. A guest is sent to sign-in instead —
                     their browser is never asked for the microphone. */}
-                {!canRun && !workingCard && (
+                {(!canRun || composerRunAside) && !workingCard && (
                 <button type="button" onClick={() => {
                   if (document.documentElement.dataset.authed !== '0') primeLive();
                   window.dispatchEvent(new CustomEvent('myavatar:voice-open'));
@@ -12824,7 +12841,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     {workingCard.stopping ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Square size={chatOnly ? 14 : 15} className="fill-current" aria-hidden="true" />}
                   </button>
                 )}
-                {input.trim() && !chatOnly && (
+                {input.trim() && !chatOnly && !composerTextHidden && (
                   // Prompt-enhance is a desktop-only power tool — hidden on mobile so the single-row
                   // composer keeps [mic][live][send] clean and Send never wraps. (magicEnhance stays wired.)
                   // Not in the chat: it rewrites a GENERATION prompt; a question to the assistant is not one.
@@ -12833,7 +12850,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
                   </button>
                 )}
-                {canRun && (
+                {/* With a desktop panel holding the description, the panel's priced Create is THE button: no second one here
+                    (GG's plan, 2026-10-18: „წაშალეთ დუბლირებული ღილაკები"). Live voice keeps its place. */}
+                {canRun && !composerRunAside && (
                   chatOnly ? (
                     // Gemini's send: a filled circle with an up-arrow — the one accent-filled control in the chat.
                     <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
@@ -12856,8 +12875,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             )}
           </div>
         </div>
-        {/* NOTHING under the composer — in the chat or in any tool (owner, 2026-10-02: "minimalist, premium"; he had the
-            „25 კრედიტი · ~5 წთ“ line removed too). A priced tool's price is ON its Generate button (lib/credits/quote —
+        {/* Under the EMPTY chat's box: the four quick buttons and nothing else (GG's UI plan, 2026-10-18: one box and four
+            quick actions — video, image, music, avatar). A tap opens that tool with what is typed here as its description;
+            nothing is charged until the tool's own priced Create. Gone once the conversation starts. */}
+        {chatOnly && messages.length === 0 && (
+          <HomeQuickStart locale={locale} onPick={(id) => selectTool(id, 'quick-start')} />
+        )}
+        {/* Otherwise NOTHING under the composer — in the chat or in any tool (owner, 2026-10-02: "minimalist, premium"; he
+            had the „25 კრედიტი · ~5 წთ“ line removed too). A priced tool's price is ON its Generate button (lib/credits/quote —
             the same number the route charges), never a caption under the box; the AI notice lives in the Terms. */}
       </div>
       {/* The centred empty chat (desktop): an empty half under the composer, equal to the feed above it. */}
