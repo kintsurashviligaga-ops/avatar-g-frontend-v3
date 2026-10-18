@@ -21,6 +21,9 @@
 /** Tier boundaries, mirroring creditCostFor('music', { seconds }). */
 export const MUSIC_TIER_SEC = [30, 60, 90] as const;
 
+/** The share of a tier's length a delivered track must reach to be billed at that tier. */
+export const MUSIC_TIER_TOLERANCE = 0.9;
+
 /**
  * Which billing tier a real duration falls into. A track is never billed BELOW the shortest tier — 30s is
  * the floor price, not a pro-rata rate.
@@ -50,9 +53,10 @@ export function settleMusicCharge(billedSec: number, actualSec: number): MusicSe
   const billedTier = musicTierFor(billedSec);
   if (!Number.isFinite(actualSec) || actualSec <= 0) return { settledSec: billedTier, overcharged: false };
 
-  // A small tolerance so a 89.6s "90 second" render is not demoted a whole tier over an encoder rounding
-  // difference. Only a genuinely shorter track settles down.
-  const deliveredTier = musicTierFor(actualSec + 1.5);
+  // A track within 10 % of a tier counts as that tier: Lyria 3 Pro lands a little under the length it is asked for
+  // (Production 2026-10-18: 58.1 s for 60 s, 87.6 s for 90 s), and a 1.5 s margin refunded both as a whole tier short.
+  // Only a genuinely shorter track settles down: a ~30 s clip never reaches 54 s.
+  const deliveredTier = musicTierFor(actualSec / MUSIC_TIER_TOLERANCE);
   if (deliveredTier >= billedTier) return { settledSec: billedTier, overcharged: false };
   return { settledSec: deliveredTier, overcharged: true };
 }
