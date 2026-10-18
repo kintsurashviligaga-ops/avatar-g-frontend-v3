@@ -33,6 +33,7 @@ import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -108,6 +109,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   // the original film unchanged and costs nothing.
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id)) return json(signInToGenerateBody(), 401);
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('video');
+  if (serviceOff) return serviceOff;
   const remixCost = creditCostFor('remix');
 
   const stamp = Date.now();

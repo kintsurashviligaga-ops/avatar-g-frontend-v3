@@ -20,6 +20,7 @@ import { publicJob } from '@/lib/studio/saga';
 import { mediaParams, notFound, publicPrice, readJson, sagaError, unauthorized } from '@/lib/studio/http';
 import { TERMINAL_JOB_STATUSES } from '@/lib/studio/store';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest) {
   if (outside) return outside;
   const { user } = await authedClientFromRequest(req);
   if (!user) return unauthorized();
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('video');
+  if (serviceOff) return serviceOff;
 
   const body = await readJson(req);
   const modelId = typeof body?.modelId === 'string' ? body.modelId : '';

@@ -56,7 +56,13 @@ const codeOf = (f: string) =>
  */
 const IMPORTED_GATE = /import\s*\{[^}]*\b(isAdmin|isAdminUser|isAdminUserAsync|isAdminIdentity|isAdminEmail|assertAdminAccess|assertAdmin|requireAdmin|hasValidAdminKey)\b[^}]*\}\s*from\s*['"][^'"]*(adminGuard|admin\/guard)['"]/;
 const LOCAL_SECRET = /x-admin-key|ADMIN_EMAILS/;
-const isGated = (src: string) => IMPORTED_GATE.test(src) || LOCAL_SECRET.test(src);
+/**
+ * lib/admin/routeContext's adminContext() is the gate plus the service-role client and the actor, in one call; it is
+ * accepted only because it imports the real gate itself (pinned below), and only when the route also CALLS it and
+ * returns its refusal.
+ */
+const CONTEXT_GATE = /import\s*\{[^}]*\badminContext\b[^}]*\}\s*from\s*['"]@\/lib\/admin\/routeContext['"][\s\S]*await\s+adminContext\(\)[\s\S]*if\s*\(\s*!\s*\w+\.ok\s*\)\s*return\s+\w+\.response/;
+const isGated = (src: string) => IMPORTED_GATE.test(src) || LOCAL_SECRET.test(src) || CONTEXT_GATE.test(src);
 
 describe('admin route gate', () => {
   it('finds the admin routes at all', () => {
@@ -65,6 +71,13 @@ describe('admin route gate', () => {
 
   it.each(files.map((f) => [rel(f), f]))('%s is gated', (_name, f) => {
     expect(isGated(readFileSync(f, 'utf8'))).toBe(true);
+  });
+
+  it('adminContext itself is the imported gate, refusing before any client is built', () => {
+    const ctx = codeOf(join(root, 'lib/admin/routeContext.ts'));
+    expect(ctx).toMatch(IMPORTED_GATE);
+    expect(ctx.indexOf('await isAdmin(')).toBeGreaterThan(-1);
+    expect(ctx.indexOf('await isAdmin(')).toBeLessThan(ctx.indexOf('createServiceRoleClient()'));
   });
 
   it('no admin route trusts a role flag on the user’s own row', () => {

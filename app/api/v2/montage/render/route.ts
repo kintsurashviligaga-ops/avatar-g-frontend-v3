@@ -10,6 +10,7 @@ import { billingLocale } from '@/lib/api/billingCopy';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
 import { firstUnreadableOwnUrl, resolveCallerMedia } from '@/lib/security/callerMedia';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,6 +36,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('montage');
+  if (serviceOff) return serviceOff;
 
   const body = await req.json().catch(() => null);
 

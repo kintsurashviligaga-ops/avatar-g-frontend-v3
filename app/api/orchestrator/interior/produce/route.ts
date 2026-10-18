@@ -40,6 +40,7 @@ import {
   buildWalkthroughPrompts, DEFAULT_ROOM_GEOMETRY, DEFAULT_STYLE_GUIDE,
   type RoomGeometry,
 } from '@/lib/orchestrator/interior';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -111,6 +112,9 @@ export async function POST(req: NextRequest) {
   // Auth required in production; bypassed ONLY under `next dev` for local QA.
   if (!user && process.env.NODE_ENV !== 'development') return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   if (user) { const rate = await checkProduceRate(user.id); if (!rate.ok) return rateLimitedResponse(rate); }
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('interior');
+  if (serviceOff) return serviceOff;
 
   let intake;
   let rawBody: unknown = null;

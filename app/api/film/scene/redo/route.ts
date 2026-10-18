@@ -16,6 +16,7 @@ import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { pollSceneRedo, quoteSceneRedo, startSceneRedo } from '@/lib/chat/filmSceneRedoFlow';
 import { liveRedoDeps } from '@/lib/chat/filmSceneRedoLive';
+import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,9 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id) || !user?.id) return NextResponse.json(signInToGenerateBody(), { status: 401 });
+  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
+  const serviceOff = await serviceOffResponse('video');
+  if (serviceOff) return serviceOff;
   const limited = await checkRateLimitByKey(user.id, RATE_LIMITS.EXPENSIVE);
   if (limited) return limited;
   let body: { filmTokenId?: unknown; ordinal?: unknown; note?: unknown; expectedPrice?: unknown };

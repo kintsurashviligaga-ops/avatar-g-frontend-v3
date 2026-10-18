@@ -2,7 +2,8 @@
 
 /**
  * AdminDashboard — the complete admin control panel (client).
- * Tabs: Overview (KPIs + pipeline health) · Users (search + credit grant) · Activity (generations + failures).
+ * Tabs: Dashboard (money + usage) · Users (search, account drawer: balance ±, refund, plan, history) · Support (live
+ * chat, unread badge) · Services (on/off switches) · Prices (margin check) · Overview · Reliability · Activity · …
  * All privileged data/actions go through admin-gated API routes; this component only renders + calls them.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -16,11 +17,15 @@ import LaunchHealthCard from '@/components/admin/LaunchHealthCard';
 import SupportInbox from '@/components/admin/SupportInbox';
 import AdminsPanel from '@/components/admin/AdminsPanel';
 import LiveVisitors from '@/components/admin/LiveVisitors';
+import DashboardPanel from '@/components/admin/DashboardPanel';
+import UserDrawer from '@/components/admin/UserDrawer';
+import PricesPanel from '@/components/admin/PricesPanel';
+import ServiceSwitches from '@/components/admin/ServiceSwitches';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
 
-type Tab = 'overview' | 'reliability' | 'users' | 'activity' | 'billing' | 'jobs' | 'flags' | 'support' | 'admins';
+type Tab = 'dashboard' | 'services' | 'prices' | 'overview' | 'reliability' | 'users' | 'activity' | 'billing' | 'jobs' | 'flags' | 'support' | 'admins';
 type Accent = 'default' | 'green' | 'red' | 'cyan' | 'amber';
 
 const ACCENT: Record<Accent, string> = {
@@ -56,7 +61,8 @@ function MiniStat({ label, value, sub }: { label: string; value: string | number
 
 export default function AdminDashboard({ locale, stats, initialUsers, pipelineHealth }: Props) {
   const ka = locale === 'ka';
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('dashboard');
+  const unread = useSupportUnread();
   const top = stats.byService[0];
   const fmt = useCallback((iso: string) => {
     try { return new Date(iso).toLocaleString(ka ? 'ka-GE' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return iso; }
@@ -66,17 +72,20 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
   const healthLabel = health === 'healthy' ? (ka ? 'ჯანმრთელი' : 'Healthy') : health === 'degraded' ? (ka ? 'დეგრადირებული' : 'Degraded') : health === 'critical' ? (ka ? 'კრიტიკული' : 'Critical') : '';
   const healthClass = health === 'healthy' ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/20' : health === 'degraded' ? 'bg-amber-500/15 text-amber-400 ring-amber-500/20' : 'bg-rose-500/15 text-rose-400 ring-rose-500/20';
 
+  // The daily controls first (money, people, the customers waiting in Support, the switches, the prices); the
+  // engineering views after them.
   const TABS: { id: Tab; label: string }[] = [
+    { id: 'dashboard', label: ka ? 'დაშბორდი' : 'Dashboard' },
+    { id: 'users', label: ka ? 'მომხმარებლები' : 'Users' },
+    { id: 'support', label: ka ? 'მხარდაჭერა' : 'Support' },
+    { id: 'services', label: ka ? 'სერვისები' : 'Services' },
+    { id: 'prices', label: ka ? 'ფასები' : 'Prices' },
     { id: 'overview', label: ka ? 'მიმოხილვა' : 'Overview' },
     { id: 'reliability', label: ka ? 'სანდოობა' : 'Reliability' },
-    { id: 'users', label: ka ? 'მომხმარებლები' : 'Users' },
     { id: 'activity', label: ka ? 'აქტივობა' : 'Activity' },
     { id: 'billing', label: ka ? 'ბილინგი' : 'Billing' },
     { id: 'jobs', label: ka ? 'რიგი' : 'Queue' },
     { id: 'flags', label: ka ? 'დროშები' : 'Flags' },
-    // Support sits LAST but is the only tab a customer is waiting on — the unread badge is what makes
-    // an unanswered message visible without opening the tab.
-    { id: 'support', label: ka ? 'მხარდაჭერა' : 'Support' },
     { id: 'admins', label: ka ? 'ადმინები' : 'Admins' },
   ];
 
@@ -116,10 +125,16 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
               className={`flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${tab === t.id ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-gray-200'}`}
             >
               {t.label}
+              {t.id === 'support' && unread > 0 && (
+                <span className="ml-1.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10.5px] font-bold leading-[18px] text-white">{unread}</span>
+              )}
             </button>
           ))}
         </div>
 
+        {tab === 'dashboard' && <DashboardPanel ka={ka} />}
+        {tab === 'services' && <ServiceSwitches ka={ka} />}
+        {tab === 'prices' && <PricesPanel ka={ka} />}
         {tab === 'overview' && <Overview ka={ka} stats={stats} top={top} pipelineHealth={pipelineHealth} fmt={fmt} />}
         {tab === 'reliability' && <ReliabilityPanel ka={ka} />}
         {tab === 'users' && <Users ka={ka} initial={initialUsers} fmt={fmt} />}
@@ -132,6 +147,30 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
       </div>
     </main>
   );
+}
+
+/**
+ * Messages from customers nobody has read yet, across open chats; polled while the panel is visible so the
+ * Support tab shows a count wherever the admin is in the panel.
+ */
+function useSupportUnread(): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const res = await fetch('/api/admin/support/chats?status=all', { cache: 'no-store' });
+        if (!res.ok) return;
+        const j = (await res.json()) as { chats?: { unread_for_admin?: number }[] };
+        if (alive) setN((j.chats ?? []).reduce((sum, c) => sum + (c.unread_for_admin ?? 0), 0));
+      } catch { /* the badge is a hint; the inbox itself shows the truth */ }
+    };
+    void tick();
+    const id = setInterval(() => void tick(), 15_000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  return n;
 }
 
 /* ── Overview ─────────────────────────────────────────────────────────────── */
@@ -222,6 +261,7 @@ function Users({ ka, initial, fmt }: { ka: boolean; initial: AdminUserPage; fmt:
   }, [q, load]);
 
   const goPage = (pg: number) => { setPage(pg); load(q, pg); };
+  const [openId, setOpenId] = useState<string | null>(null);
   const onGranted = (id: string, newBalance: number) =>
     setData((d) => ({ ...d, users: d.users.map((u) => (u.id === id ? { ...u, credits_balance: newBalance } : u)) }));
 
@@ -254,10 +294,12 @@ function Users({ ka, initial, fmt }: { ka: boolean; initial: AdminUserPage; fmt:
           <p className="px-4 py-6 text-center text-[12px] text-gray-600">{ka ? 'ვერაფერი მოიძებნა' : 'No users found'}</p>
         ) : (
           <ul className="divide-y divide-white/[0.06]">
-            {data.users.map((u) => <UserRow key={u.id} ka={ka} user={u} fmt={fmt} onGranted={onGranted} />)}
+            {data.users.map((u) => <UserRow key={u.id} ka={ka} user={u} fmt={fmt} onGranted={onGranted} onOpen={() => setOpenId(u.id)} />)}
           </ul>
         )}
       </div>
+
+      {openId && <UserDrawer ka={ka} userId={openId} fmt={fmt} onBalance={onGranted} onClose={() => setOpenId(null)} />}
 
       {maxPage > 0 && (
         <div className="flex items-center justify-center gap-3 text-[12px]">
@@ -270,7 +312,7 @@ function Users({ ka, initial, fmt }: { ka: boolean; initial: AdminUserPage; fmt:
   );
 }
 
-function UserRow({ ka, user, fmt, onGranted }: { ka: boolean; user: AdminUserRow; fmt: (s: string) => string; onGranted: (id: string, bal: number) => void }) {
+function UserRow({ ka, user, fmt, onGranted, onOpen }: { ka: boolean; user: AdminUserRow; fmt: (s: string) => string; onGranted: (id: string, bal: number) => void; onOpen: () => void }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
@@ -297,7 +339,7 @@ function UserRow({ ka, user, fmt, onGranted }: { ka: boolean; user: AdminUserRow
 
   return (
     <li className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 text-[12.5px]">
-      <div className="min-w-0">
+      <button type="button" onClick={onOpen} className="min-w-0 text-left hover:opacity-80">
         <p className="truncate text-gray-200">{user.email ?? <span className="text-gray-600">—</span>}</p>
         {/* Registration date, then how much this account has actually USED — the two numbers that say
             whether a row is a real customer or a dormant signup. An unread count renders as "—" rather
@@ -306,7 +348,7 @@ function UserRow({ ka, user, fmt, onGranted }: { ka: boolean; user: AdminUserRow
           {user.full_name || `${user.id.slice(0, 8)}…`} · {fmt(user.created_at)} · {ka ? 'გენერაცია' : 'gen'}{' '}
           <span className="tabular-nums text-gray-400">{user.generations ?? '—'}</span>
         </p>
-      </div>
+      </button>
       <span className="text-right font-semibold tabular-nums text-cyan-400">{user.credits_balance}</span>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {open ? (
@@ -324,6 +366,9 @@ function UserRow({ ka, user, fmt, onGranted }: { ka: boolean; user: AdminUserRow
             + {ka ? 'კრედიტი' : 'Credits'}
           </button>
         )}
+        <button onClick={onOpen} className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-gray-300 hover:bg-white/5">
+          {ka ? 'მართვა' : 'Manage'}
+        </button>
         {msg && <span className={`text-[11px] ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`}>{msg.text}</span>}
       </div>
     </li>

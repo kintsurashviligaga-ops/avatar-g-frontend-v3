@@ -99,7 +99,9 @@ describe('application code never calls a money RPC through a session client', ()
     // 20261002a — Bank of Georgia settlement + renewals. Same rule: wallet-ledger.ts only.
     'bog_fulfill_order', 'bog_claim_renewal', 'bog_record_renewal_failure'];
   /** The service-role modules allowed to call them. Everything else goes through these helpers. */
-  const ALLOWED = new Set(['lib/orchestrator/ledger.ts', 'lib/billing/wallet-ledger.ts', 'lib/admin/users.ts']);
+  // lib/admin/userDetail.ts: the admin panel's balance / refund / plan writes, on the service-role client an
+  // isAdmin()-gated route (lib/admin/routeContext) hands it.
+  const ALLOWED = new Set(['lib/orchestrator/ledger.ts', 'lib/billing/wallet-ledger.ts', 'lib/admin/users.ts', 'lib/admin/userDetail.ts']);
 
   const walk = (dir: string): string[] =>
     readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((e) => {
