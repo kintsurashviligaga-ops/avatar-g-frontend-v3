@@ -7,16 +7,18 @@
  *
  * Top to bottom on a 375 px phone — the order of ref3:
  *   header        the tool's name with a chevron (the tool switcher) · ✕ where the surrounding sheet is closable
+ *   prompt        the prompt card (GG 2026-10-18: what to make comes first, then its file)
  *   upload        a dashed card: "Choose an image to upload (max N)" — N is what the image route REALLY takes (one)
- *   prompt        the prompt card; its bottom row is "◎ Model … Auto ▾" — it opens the studio's ModelPicker (components/studio/ui):
+ *   templates     a collapsible gallery directly under the upload (open on a desktop, shut on a phone)
+ *   advanced      „პროფესიონალური პარამეტრები", shut: "◎ Model … Auto ▾" — the studio's ModelPicker (components/studio/ui):
  *                 Google's Nano Banana first (Auto · V2 · Pro, Auto the default), then the Higgsfield image models — open where
  *                 this deployment can run them (keys · HF_ENABLED_MODELS · STUDIO_V2), dimmed with why where it cannot. A
  *                 Higgsfield pick swaps the footer's Generate for HiggsfieldGenerate (the studio saga: the price on the button
- *                 is the server's, the tap confirms it); a Google pick sends `model` to /api/nanobanana/image as before.
- *   templates     a collapsible gallery directly under the prompt (open on a desktop, shut on a phone)
- *   advanced      the infrequent controls, shut: style · negative prompt · whatever the studio slots in (Script → Storyboard)
+ *                 is the server's, the tap confirms it); a Google pick sends `model` to /api/nanobanana/image as before ·
+ *                 the resolution chip [◇ 2K] · style · negative prompt · whatever the studio slots in (Script → Storyboard).
+ *                 Shut, its summary names the model and the resolution.
  *   ─ footer (sticky) ─
- *   chips         [▢ 1:1] [◇ 2K] [⧉ 1] — each opens a picker with large 44 px+ options
+ *   chips         [▢ 1:1] [⧉ 1] — each opens a picker with large 44 px+ options
  *   Generate ✦ N  full width; N is `quoteCredits`, the SAME function the route charges with
  *
  * ⚠️ NOTHING THAT EXISTED IS GONE: the ten ratios, the three sizes, ×1/×2/×4, all thirteen styles, the negative prompt, the
@@ -278,6 +280,24 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         )}
       </div>
 
+      {/* ── prompt ── */}
+      <div data-create-row="prompt">
+        <PromptModelCard
+          ref={setPromptRef}
+          value={p.prompt}
+          onChange={p.onPrompt}
+          placeholder={c.promptPlaceholder}
+          label={c.promptLabel}
+          onSubmit={generate}
+          {...(p.onEnhance ? { onEnhance: p.onEnhance, enhanceLabel: c.enhance } : {})}
+          enhancing={!!p.enhancing}
+          {...(p.onMic ? { onMic: p.onMic, micLabels: { start: c.micStart, stop: c.micStop, wait: c.micWait } } : {})}
+          micState={p.micState ?? 'idle'}
+          invalid={needPrompt}
+          invalidMessage={c.needPrompt}
+        />
+      </div>
+
       {/* ── upload ── */}
       <div data-create-row="upload">
         <ReferenceUploadCard
@@ -300,30 +320,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         </div>
       )}
 
-      {/* ── prompt (+ the model row) ── */}
-      <div data-create-row="prompt">
-        <PromptModelCard
-          ref={setPromptRef}
-          value={p.prompt}
-          onChange={p.onPrompt}
-          placeholder={c.promptPlaceholder}
-          label={c.promptLabel}
-          onSubmit={generate}
-          modelLabel={c.model}
-          modelValue={model.label[lang]}
-          modelIcon={<Cpu size={18} />}
-          modelOpen={picker === 'model'}
-          onOpenModel={() => setPicker((cur) => (cur === 'model' ? null : 'model'))}
-          {...(p.onEnhance ? { onEnhance: p.onEnhance, enhanceLabel: c.enhance } : {})}
-          enhancing={!!p.enhancing}
-          {...(p.onMic ? { onMic: p.onMic, micLabels: { start: c.micStart, stop: c.micStop, wait: c.micWait } } : {})}
-          micState={p.micState ?? 'idle'}
-          invalid={needPrompt}
-          invalidMessage={c.needPrompt}
-        />
-      </div>
-
-      {/* ── templates: directly under the prompt ── */}
+      {/* ── templates: directly under the upload ── */}
       <section ref={tplSection} data-create-row="templates" aria-label={c.templates} className="scroll-mt-2">
         <DisclosureRow
           icon={<LayoutTemplate size={18} />}
@@ -346,7 +343,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         <DisclosureRow
           icon={<SlidersHorizontal size={18} />}
           title={c.advanced}
-          summary={p.style !== 'Auto' ? p.styleLabel(p.style) : c.advancedNone}
+          summary={[model.label[lang], tier.res, ...(p.style !== 'Auto' ? [p.styleLabel(p.style)] : [])].join(' · ')}
           dot={dirtyAdvanced}
           open={advOpen}
           onToggle={() => { setAdvOpen(!advOpen); if (!advOpen) reveal(advSection.current); }}
@@ -355,6 +352,27 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         />
         {advOpen && (
           <div id={advId} className="mt-2 space-y-4 rounded-3xl border border-app-border/10 bg-app-elevated/30 p-3.5">
+            <button
+              type="button"
+              onClick={() => setPicker((cur) => (cur === 'model' ? null : 'model'))}
+              aria-haspopup="dialog"
+              aria-expanded={picker === 'model'}
+              data-testid="model-row"
+              className="flex min-h-[52px] w-full touch-manipulation items-center justify-between gap-3 rounded-2xl bg-app-elevated/60 px-4 text-left ring-1 ring-app-border/10 transition-colors hover:bg-app-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+            >
+              <span className="inline-flex min-w-0 items-center gap-2.5 text-[15px] text-app-muted">
+                <Cpu size={18} aria-hidden="true" className="shrink-0" />
+                <span className="truncate">{c.model}</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1 text-[16px] font-medium text-app-text">
+                {model.label[lang]}
+                <ChevronDown size={18} aria-hidden="true" className={`text-app-muted transition-transform ${picker === 'model' ? 'rotate-180' : ''}`} />
+              </span>
+            </button>
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <p className="text-[12.5px] font-semibold text-app-text">{c.quality}</p>
+              <OptionChip ref={qualityBtn} icon={<Gem size={18} />} label={`${c.quality}: ${tier.res}`} expanded={picker === 'quality'} onClick={() => setPicker((cur) => (cur === 'quality' ? null : 'quality'))} testId="chip-quality">{tier.res}</OptionChip>
+            </div>
             <div>
               <p className="mb-2 text-[12.5px] font-semibold text-app-text">{c.style}</p>
               {/* Wraps, never scrolls sideways: thirteen styles in a strip hid most of them behind the edge. */}
@@ -378,9 +396,8 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         style={{ paddingBottom: p.insetBottom ? 'calc(env(safe-area-inset-bottom, 0px) + 8px)' : 8 }}
       >
         <div data-create-row="options">
-          <OptionChipRow label={`${c.aspect} · ${c.quality} · ${c.count}`}>
+          <OptionChipRow label={hf ? c.aspect : `${c.aspect} · ${c.count}`}>
             <OptionChip ref={aspectBtn} icon={<AspectGlyph ratio={p.aspect} size={18} />} label={`${c.aspect}: ${p.aspect}`} expanded={picker === 'aspect'} onClick={() => setPicker((cur) => (cur === 'aspect' ? null : 'aspect'))} testId="chip-aspect">{p.aspect}</OptionChip>
-            <OptionChip ref={qualityBtn} icon={<Gem size={18} />} label={`${c.quality}: ${tier.res}`} expanded={picker === 'quality'} onClick={() => setPicker((cur) => (cur === 'quality' ? null : 'quality'))} testId="chip-quality">{tier.res}</OptionChip>
             {/* One Higgsfield job is one request; the ×2 / ×4 batch is the Google route's. */}
             {!hf && <OptionChip ref={countBtn} icon={<Layers size={18} />} label={`${c.count}: ${p.count}`} expanded={picker === 'count'} onClick={() => setPicker((cur) => (cur === 'count' ? null : 'count'))} testId="chip-count">{p.count}</OptionChip>}
           </OptionChipRow>

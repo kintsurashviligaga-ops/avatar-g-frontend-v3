@@ -22,6 +22,12 @@ const AVATAR_URL = 'https://e2e-media.supabase.co/renders/avatar-veo/voiced.mp4'
 
 async function say(page: Page, text: string): Promise<void> {
   const box = page.getByTestId('composer-input');
+  // On a desktop an open Image, Music or Video panel holds the description and the composer's box steps aside (GG's card,
+  // 2026-10-18): put the panel away, as a person does, to write to Agent G.
+  if (await box.isHidden()) {
+    await page.getByTestId('options-toggle').click();
+    await expect(box).toBeVisible();
+  }
   await box.fill(text);
   await box.press('Enter');
 }

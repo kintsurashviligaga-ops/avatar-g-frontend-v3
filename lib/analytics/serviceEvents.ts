@@ -37,7 +37,8 @@ export type ServiceSurface =
   | 'agent-card'
   | 'storyboard'
   | 'result'
-  | 'library';
+  | 'library'
+  | 'quick-start'; // the empty chat's four quick buttons (components/studio/HomeQuickStart)
 
 /**
  * The catalog service a studio tool stands for. Several services can share a tool: the lowest `order` is the tool's own

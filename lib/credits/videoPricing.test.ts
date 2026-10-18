@@ -1,7 +1,7 @@
 import { CREDIT_COSTS } from './pricing';
 import { VIDEO_DURATION_STOPS } from '@/lib/video/duration';
 import { MUSIC_VIDEO_MULT, VIDEO_CREDITS_PER_SEC, filmSecondsFromClips, perSceneCredits, videoCredits } from './videoPricing';
-import { quoteCredits, creditsLabel, productAdCredits, productAdSeconds, PRODUCT_AD_PRICING } from './quote';
+import { quoteCredits, creditsLabel, motionCredits, productAdCredits, productAdSeconds, PRODUCT_AD_PRICING } from './quote';
 import { genjutsuCredits } from '../genjutsu/pricing';
 
 describe('video price by the second', () => {
@@ -72,6 +72,11 @@ describe('quote — the number on the button', () => {
     for (const tool of ['remix', 'swap', 'motion'] as const) expect(quoteCredits({ tool })).toBe(CREDIT_COSTS.remix_video);
     expect(quoteCredits({ tool: 'model3d' })).toBe(CREDIT_COSTS.model3d);
     expect(quoteCredits({ tool: 'chat' })).toBe(0);
+  });
+
+  test('a Motion Control press is the render, plus lip-sync\'s own avatar price when it speaks (the two routes\' reservations)', () => {
+    expect(motionCredits()).toBe(CREDIT_COSTS.remix_video);
+    expect(motionCredits({ lipsync: true })).toBe(CREDIT_COSTS.remix_video + CREDIT_COSTS.avatar_30s);
   });
 
   test('video goes through videoCredits; a product ad keeps today\'s Production price until the owner approves the length rule', () => {

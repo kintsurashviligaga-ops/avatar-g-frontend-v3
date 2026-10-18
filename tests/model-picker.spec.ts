@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 import { MODELS, publicModel } from '@/lib/providers/registry';
 
 /**
@@ -20,6 +20,13 @@ import { MODELS, publicModel } from '@/lib/providers/registry';
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 800 };
 const SHOTS = process.env.MODEL_PICKER_SHOTS_DIR;
+
+
+/** Advanced settings (GG 2026-10-18) holds the model row and the resolution chip: opened only if it is shut. */
+async function openAdvanced(scope: Page | Locator): Promise<void> {
+  const toggle = scope.getByTestId('advanced-toggle').first();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+}
 
 async function shot(page: Page, name: string): Promise<void> {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` });
@@ -128,6 +135,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await openTool(page, 'image', 'image-create-panel');
       await pretendSignedIn(page);
       const panel = page.getByTestId('image-create-panel').filter({ visible: true }).first();
+      await openAdvanced(panel);
       await expect(panel.getByTestId('model-row')).toContainText('Auto');
 
       await panel.getByTestId('model-row').click();
@@ -159,6 +167,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await openTool(page, 'image', 'image-create-panel');
       await pretendSignedIn(page);
       const again = page.getByTestId('image-create-panel').filter({ visible: true }).first();
+      await openAdvanced(again);
       await expect(again.getByTestId('model-row')).toContainText('Nano Banana Pro');
       await again.getByTestId('model-row').click();
       await page.getByRole('dialog', { name: 'Model' }).locator('[data-model="nb/v2"]').click();
@@ -176,6 +185,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await openTool(page, 'image', 'image-create-panel');
       await pretendSignedIn(page);
       const panel = page.getByTestId('image-create-panel').filter({ visible: true }).first();
+      await openAdvanced(panel);
       await panel.getByTestId('model-row').click();
       await page.getByRole('dialog', { name: 'Model' }).locator('[data-model="hf/soul-2"]').click();
       await expect(panel.getByTestId('model-row')).toContainText('Soul 2');
@@ -201,6 +211,9 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await mockCatalogue(page);
       await openTool(page, 'video', 'video-create-panel');
       const panel = page.getByTestId('video-create-panel').filter({ visible: true }).first();
+      // Advanced settings (GG 2026-10-18) holds the model card, the quality row and the resolution: opened only if shut.
+      const adv = panel.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
+      if ((await adv.getAttribute('aria-expanded')) === 'false') await adv.click();
       await expect(panel.getByTestId('video-hero-title')).toHaveText('VEO 3.1 FAST');
 
       await panel.getByTestId('video-hero-change').click();
@@ -219,7 +232,10 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await expect(panel.getByTestId('video-model-row')).toHaveCount(0); // one place names the model: the hero
 
       await openTool(page, 'video', 'video-create-panel');
-      await expect(page.getByTestId('video-create-panel').filter({ visible: true }).first().getByTestId('video-hero-title')).toHaveText('VEO 3.1 LITE');
+      const again = page.getByTestId('video-create-panel').filter({ visible: true }).first();
+      const adv2 = again.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
+      if ((await adv2.getAttribute('aria-expanded')) === 'false') await adv2.click();
+      await expect(again.getByTestId('video-hero-title')).toHaveText('VEO 3.1 LITE');
     });
   });
 }

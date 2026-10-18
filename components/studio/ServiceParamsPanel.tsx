@@ -39,6 +39,9 @@ import { useSceneStore } from './scene/sceneStore';
 import { GlbViewerSkeleton } from './glbFrame';
 import { LiveStatus, generationAnnouncement } from './ui/LiveStatus';
 import { peekTask } from '@/lib/agent/media/jobFollow';
+import { GenerateButton } from './ui/GenerateButton';
+import { openTopUp, useShortBalance } from './ui/useShortBalance';
+import { quoteCredits } from '@/lib/credits/quote';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -557,6 +560,10 @@ export function ServiceParamsPanel({
       : service === 'presentation' ? topic.trim().length >= 3
       : mode3d === 'text' ? prompt3d.trim().length >= 3 : Boolean(imageUrl3d.trim())
   );
+  // 3D is one flat price (/api/v2/model3d/create reserves creditCostFor('model3d')), shown ON its button. Dubbing and
+  // the deck keep their quote-then-confirm step, which states the price before the run.
+  const credits3d = service === 'model3d' ? quoteCredits({ tool: 'model3d' }) : 0;
+  const short3d = useShortBalance(credits3d);
 
   /**
    * Every page of the finished deck, COVER FIRST — one array driving both the thumbnail grid and the
@@ -782,6 +789,12 @@ export function ServiceParamsPanel({
             {t.confirmRun}
           </PrimaryButton>
           <GhostButton onClick={() => setQuote(null)}>{t.cancelQuote}</GhostButton>
+        </div>
+      ) : service === 'model3d' ? (
+        <div className="mt-3">
+          <GenerateButton label={t.run} credits={credits3d} loading={busy} loadingLabel={t.working} disabled={!canRun}
+            insufficient={short3d} locale={lang} onClick={() => { if (short3d) openTopUp(); else void run(); }}
+            testId="model3d-generate" service="design.model3d" />
         </div>
       ) : (
         <PrimaryButton onClick={() => run()} disabled={!canRun} loading={busy} full className="mt-3">

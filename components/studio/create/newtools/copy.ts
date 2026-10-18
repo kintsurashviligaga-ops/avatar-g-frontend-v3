@@ -42,6 +42,8 @@ export interface ShootCopy {
   tooMany: string;
   modelLabel: string;
   modelValue: string;
+  /** The closed section for the technical choices (GG 2026-10-18): model, resolution, camera. */
+  advanced: string;
   aspect: string;
   quality: string;
   /** One line per tier, in the quality sheet (the tiers differ in detail and time, NOT in price). */
@@ -120,6 +122,7 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     tooMany: 'მაქსიმუმ 3 ფოტო.',
     modelLabel: 'მოდელი',
     modelValue: 'ავტო',
+    advanced: 'პროფესიონალური პარამეტრები',
     aspect: 'პროპორცია',
     quality: 'ხარისხი',
     qualityHint: { standard: 'ყველაზე სწრაფი', high: 'ბალანსი სიჩქარესა და დეტალს შორის', ultra: 'მაქსიმალური დეტალი, ყველაზე ნელი' },
@@ -215,6 +218,7 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     tooMany: 'Up to 3 photos.',
     modelLabel: 'Model',
     modelValue: 'Auto',
+    advanced: 'Advanced settings',
     aspect: 'Aspect ratio',
     quality: 'Quality',
     qualityHint: { standard: 'Fastest', high: 'A balance of speed and detail', ultra: 'Maximum detail, slowest' },
@@ -310,6 +314,7 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     tooMany: 'Не больше 3 фото.',
     modelLabel: 'Модель',
     modelValue: 'Авто',
+    advanced: 'Профессиональные настройки',
     aspect: 'Соотношение',
     quality: 'Качество',
     qualityHint: { standard: 'Быстрее всего', high: 'Баланс скорости и деталей', ultra: 'Максимум деталей, дольше всего' },

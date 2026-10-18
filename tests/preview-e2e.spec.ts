@@ -102,7 +102,14 @@ test('a generated image lands in the feed, in the same window (no new tab)', asy
   await page.addInitScript(() => { try { localStorage.setItem('myavatar-cookie-consent', 'necessary'); } catch { /* private mode */ } });
   await page.goto(`${HOME}/dashboard?tool=image`);
   const box = page.getByPlaceholder('აღწერე სურათი, რომ დაგიხატო…');
-  await expect(box).toBeVisible({ timeout: 45_000 });
+  await expect(box).toBeAttached({ timeout: 45_000 });
+  // On a desktop the Image panel opens with its tool and holds the description, so the chat box steps aside (GG's card,
+  // 2026-10-18). This test follows the chat's own path: put the panel away, as a person does, to write to Agent G.
+  const chip = page.getByTestId('options-toggle');
+  await expect(chip).toHaveAttribute('aria-expanded', 'true');
+  await chip.click();
+  await expect(chip).toHaveAttribute('aria-expanded', 'false');
+  await expect(box).toBeVisible();
   // The sign-in wall is not what is under test: lift it in this browser only, AFTER the shell has published its own
   // guest flag (setting it earlier is overwritten). The image route itself is mocked — nothing is spent.
   await page.evaluate(() => { document.documentElement.dataset.authed = '1'; });

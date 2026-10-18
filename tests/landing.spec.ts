@@ -176,16 +176,24 @@ async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
   await page.addInitScript(() => { try { localStorage.setItem('myavatar-cookie-consent', 'necessary'); } catch { /* private mode */ } });
   await page.goto(path);
   // The composer is what every path has: the video tool's Create screen replaces the greeting on a desktop.
-  await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 30_000 });
+  const desktop = (page.viewportSize()?.width ?? 1280) >= 1024;
   // On a phone a link to a tool whose input lives in its Create screen opens that screen as a sheet over the composer
   // (OmniStudio applyTool). A production build does; `next dev` hid it until StrictMode stopped closing it (2026-10-09).
   // Hold that here, then put the sheet away so each test starts at the composer.
-  if ((page.viewportSize()?.width ?? 1280) < 1024 && /[?&]tool=(video|product|swap|remix|motion|image|vfx)\b/.test(path)) {
+  if (!desktop && /[?&]tool=(video|product|swap|remix|motion|image|vfx)\b/.test(path)) {
     const sheet = page.getByTestId('options-sheet');
     await expect(sheet).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(sheet).toBeHidden();
   }
+  // On a desktop the Video, Image or Music panel opens with its tool and holds the description, so the composer's box
+  // steps aside (GG, 2026-10-18). Hold that too, then put the panel away (the tool chip toggles it): the box is back.
+  if (desktop && /[?&]tool=(video|image|music)\b/.test(path)) {
+    await expect(page.getByTestId('composer-input')).toBeHidden();
+    await page.getByTestId('options-toggle').click();
+  }
+  await expect(page.getByTestId('composer-input')).toBeVisible();
 }
 
 /**
@@ -242,12 +250,14 @@ for (const vp of VIEWPORTS) {
       expect(posts).toEqual(['/api/chat/gemini']);
     });
 
-    test('the home is the greeting and the box — no sub line, no starter chips, nothing under the box', async ({ page }) => {
+    test('the home is the greeting, the box and its four quick buttons — no sub line, nothing else', async ({ page }) => {
       await openDashboard(page, '/ka/dashboard?tool=chat');
-      // Owner, 2026-10-02: "in the middle only რით დაგეხმარო; remove the four frames below".
+      // Owner, 2026-10-02: "in the middle only რით დაგეხმარო; remove the four frames below". GG, 2026-10-18: one box and
+      // four quick actions under it — video, image, music, avatar.
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?');
       await expect(page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.')).toHaveCount(0);
       await expect(page.getByRole('group', { name: 'დაიწყე' })).toHaveCount(0);
+      await expect(page.getByRole('group', { name: 'სწრაფი შექმნა' }).getByRole('button')).toHaveText(['ვიდეო', 'სურათი', 'მუსიკა', 'ავატარი']);
       await expect(page.getByTestId('price-tag')).toHaveCount(0);
       await expect(page.getByTestId('chat-disclaimer')).toHaveCount(0);
       await expect(page.getByPlaceholder('ჰკითხე MyAvatar-ს')).toBeVisible();
@@ -333,7 +343,8 @@ for (const vp of VIEWPORTS) {
       await video.click();
       await expect(page.getByTestId('tool-sheet')).toHaveCount(0); // the sheet closed
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
-      await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
+      // Picking it again opens its Create screen again (a desktop's panel, a phone's sheet), and that holds the description.
+      await expect(page.getByTestId('video-prompt-input').filter({ visible: true })).toBeVisible();
     });
 
     test('with text in the box, Send takes the live-voice slot', async ({ page }) => {
@@ -410,6 +421,9 @@ for (const vp of VIEWPORTS) {
       expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
       const settings = await openSettings(page);
       const generate = settings.getByTestId('video-generate');
+      // Advanced settings (GG 2026-10-18) holds the model card, the quality row and the resolution: opened only if shut.
+      const adv = settings.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
+      if ((await adv.getAttribute('aria-expanded')) === 'false') await adv.click();
       // 24 s on the default tier (Fast) = 24 × 3.125 credits; Best is ×3.3 (rounded up), Economy ×0.6 — lib/credits/videoPricing.
       await expect(generate).toHaveAttribute('data-price', '75');
       await settings.getByTestId('video-quality-standard').click();
@@ -430,6 +444,9 @@ for (const vp of VIEWPORTS) {
     test('the video tool opens on Fast, and Economy / Best are one tap away', async ({ page }) => {
       await openDashboard(page);
       const settings = await openSettings(page);
+      // Advanced settings (GG 2026-10-18) holds the model card, the quality row and the resolution: opened only if shut.
+      const adv = settings.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
+      if ((await adv.getAttribute('aria-expanded')) === 'false') await adv.click();
       await expect(settings.getByTestId('video-quality-fast')).toHaveAttribute('aria-checked', 'true');
       await expect(settings.getByTestId('video-quality-standard')).toHaveAttribute('aria-checked', 'false');
       await expect(settings.getByTestId('video-quality-lite')).toHaveAttribute('aria-checked', 'false');
@@ -476,7 +493,8 @@ test.describe('guest dashboard · desktop is a studio', () => {
 
   test('navigation, the session and its settings side by side — Google AI Studio’s three columns', async ({ page }) => {
     // A tool that keeps the generic settings panel (the Create screens of video / image / music draw their own header).
-    await openDashboard(page, '/ka/dashboard?tool=remix');
+    // The remix was that tool until it left every menu and deep link (GG's UI plan, 2026-10-18); the product ad is now.
+    await openDashboard(page, '/ka/dashboard?tool=product');
     const nav = (await page.locator('aside[aria-label="მენიუ"]').boundingBox())!;
     const bar = page.locator('header').filter({ visible: true });
     await expect(bar).toHaveCount(1); // the studio's own title bar; the phone header steps aside
@@ -485,7 +503,7 @@ test.describe('guest dashboard · desktop is a studio', () => {
     const settings = page.locator('#studio-settings');
     await expect(settings).toBeVisible();
     // ONE header: the tool's name (▾ switches the tool) — not a „Settings" title with the tool on a card under it.
-    await expect(settings.getByRole('heading', { name: /რემიქსი/ })).toBeVisible();
+    await expect(settings.getByRole('heading', { name: /პროდუქტის რეკლამა/ })).toBeVisible();
     await expect(settings.getByRole('heading', { name: 'პარამეტრები' })).toHaveCount(0);
     const right = (await settings.boundingBox())!;
     expect(nav.x + nav.width).toBeLessThanOrEqual(title.x + 1);

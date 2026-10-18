@@ -338,21 +338,28 @@ function VideoTile({ label, value, icon, onClick, testId }: { label: string; val
   );
 }
 
-export function VideoTiles({ locale, seconds, format, resolution, onLength, onFormat, onResolution }: {
+/** Length and format: the two choices every film asks for, in plain view. */
+export function VideoTiles({ locale, seconds, format, onLength, onFormat }: {
   locale: string;
   seconds: number;
   format: OutputFormat;
-  resolution: string;
   onLength: () => void;
   onFormat: () => void;
-  onResolution: () => void;
 }) {
   const AspectIcon = format === '16:9' ? RectangleHorizontal : format === '1:1' ? Square : RectangleVertical;
   return (
-    <div className="grid grid-cols-3 gap-2" data-testid="video-tiles">
+    <div className="grid grid-cols-2 gap-2" data-testid="video-tiles">
       <VideoTile testId="video-tile-length" label={vc(VIDEO_COPY.length, locale)} value={formatVideoDuration(seconds, locale)} icon={<Clock size={18} />} onClick={onLength} />
       <VideoTile testId="video-tile-format" label={vc(VIDEO_COPY.format, locale)} value={format} icon={<AspectIcon size={18} />} onClick={onFormat} />
-      <VideoTile testId="video-tile-resolution" label={vc(VIDEO_COPY.resolution, locale)} value={resolution} icon={<Gem size={18} />} onClick={onResolution} />
+    </div>
+  );
+}
+
+/** The resolution (the clip length's, opened in the model picker): technical, so it lives under Advanced settings. */
+export function VideoResolutionTile({ locale, resolution, onClick }: { locale: string; resolution: string; onClick: () => void }) {
+  return (
+    <div className="grid grid-cols-1" data-testid="video-resolution">
+      <VideoTile testId="video-tile-resolution" label={vc(VIDEO_COPY.resolution, locale)} value={resolution} icon={<Gem size={18} />} onClick={onClick} />
     </div>
   );
 }

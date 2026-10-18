@@ -43,15 +43,17 @@ const show = (over: Partial<ImageCreatePanelProps> = {}) => {
 };
 
 const generate = () => screen.getByTestId('create-generate');
+/** Advanced settings (GG 2026-10-18): the model row and the resolution chip live behind it, shut by default. */
+const openAdvanced = () => fireEvent.click(screen.getByTestId('advanced-toggle'));
 
 // The model pick is remembered per browser (lib/studio/modelPick): one test's pick must not leak into the next.
 beforeEach(() => { try { window.localStorage.clear(); } catch { /* jsdom always has it */ } });
 
 describe('the rows, in the reference\'s order', () => {
-  test('header → upload → prompt → templates → advanced → chips → Generate', () => {
+  test('header → prompt → upload → templates → advanced → chips → Generate (GG 2026-10-18: what to make, then its file)', () => {
     const { container } = show();
     const rows = [...container.querySelectorAll('[data-create-row]')].map((el) => el.getAttribute('data-create-row')).filter((r) => r !== 'footer');
-    expect(rows).toEqual(['header', 'upload', 'prompt', 'templates', 'advanced', 'options', 'generate']);
+    expect(rows).toEqual(['header', 'prompt', 'upload', 'templates', 'advanced', 'options', 'generate']);
   });
 
   test('the header is the tool name with a chevron that opens the tool switcher, and a ✕ where the sheet can close', () => {
@@ -70,17 +72,20 @@ describe('the rows, in the reference\'s order', () => {
     expect(screen.queryByTestId('create-close')).toBeNull();
   });
 
-  test('the prompt card IS the prompt, and its bottom row reads "Model … Auto"', () => {
+  test('the prompt card IS the prompt; the model row reads "Model … Auto" under Advanced settings, not in the card', () => {
     const { p, container } = show({ prompt: 'a red fox' });
     const prompt = screen.getByTestId('create-prompt') as HTMLTextAreaElement;
     expect(prompt.value).toBe('a red fox');
     expect(prompt.placeholder).toBe('Describe your concept, scene, or idea');
     fireEvent.change(prompt, { target: { value: 'a red fox in snow' } });
     expect(p.onPrompt).toHaveBeenCalledWith('a red fox in snow');
+    expect(screen.queryByTestId('model-row')).toBeNull();
+    expect(screen.getByTestId('advanced-toggle').textContent).toContain('Advanced settings');
+    expect(screen.getByTestId('advanced-toggle').textContent).toContain('Auto · 2K');
+    openAdvanced();
     const row = screen.getByTestId('model-row');
-    expect(container.querySelector('[data-create-row="prompt"]')!.contains(row)).toBe(true);
-    // The row follows the textarea inside the same card.
-    expect(prompt.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelector('[data-create-row="prompt"]')!.contains(row)).toBe(false);
+    expect(container.querySelector('[data-create-row="advanced"]')!.contains(row)).toBe(true);
     expect(row.textContent).toContain('Model');
     expect(row.textContent).toContain('Auto');
     expect(row.getAttribute('aria-haspopup')).toBe('dialog');
@@ -195,16 +200,20 @@ describe('Generate never silently does nothing', () => {
 });
 
 describe('the chips show the live values and open large pickers', () => {
-  test('aspect · quality · count read from the props, in that order', () => {
+  test('aspect · count read from the props, in that order, beside Generate; the resolution chip is under Advanced settings', () => {
     const { container, rerenderWith } = show({ aspect: '9:16', quality: 'ultra', count: 4 });
-    const chips = ['chip-aspect', 'chip-quality', 'chip-count'].map((id) => screen.getByTestId(id));
-    expect(chips.map((c) => c.textContent)).toEqual(['9:16', '4K', '4']);
+    expect(screen.queryByTestId('chip-quality')).toBeNull();
+    openAdvanced();
+    const chips = ['chip-aspect', 'chip-count'].map((id) => screen.getByTestId(id));
+    const quality = screen.getByTestId('chip-quality');
+    expect([...chips, quality].map((c) => c.textContent)).toEqual(['9:16', '4', '4K']);
     const row = container.querySelector('[data-create-row="options"]')!;
     expect(chips.every((c) => row.contains(c))).toBe(true);
+    expect(container.querySelector('[data-create-row="advanced"]')!.contains(quality)).toBe(true);
     expect(chips[0]!.compareDocumentPosition(chips[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     rerenderWith({ aspect: '21:9', quality: 'standard', count: 2 });
-    expect(chips.map((c) => c.textContent)).toEqual(['21:9', '1K', '2']);
-    expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['Aspect ratio: 21:9', 'Quality: 1K', 'Count: 2']);
+    expect([...chips, quality].map((c) => c.textContent)).toEqual(['21:9', '2', '1K']);
+    expect([...chips, quality].map((c) => c.getAttribute('aria-label'))).toEqual(['Aspect ratio: 21:9', 'Count: 2', 'Quality: 1K']);
   });
 
   test('the aspect picker is a sheet of ten ratios, each a ≥ 44 px tile with its drawn shape; the current one is checked', () => {
@@ -223,6 +232,7 @@ describe('the chips show the live values and open large pickers', () => {
 
   test('the quality picker names the model at each size and prices it from the quote', () => {
     const { p } = show({ quality: 'high' });
+    openAdvanced();
     fireEvent.click(screen.getByTestId('chip-quality'));
     const options = within(screen.getByRole('dialog', { name: 'Quality' })).getAllByRole('radio');
     expect(options.map((o) => o.querySelector('span.text-\\[15px\\]')?.textContent)).toEqual(['1K', '2K', '4K']);
@@ -249,6 +259,7 @@ describe('the chips show the live values and open large pickers', () => {
 
   test('arrow keys move through a picker and Escape closes it', () => {
     show();
+    openAdvanced();
     fireEvent.click(screen.getByTestId('chip-quality'));
     const dialog = screen.getByRole('dialog', { name: 'Quality' });
     const options = within(dialog).getAllByRole('radio');
@@ -303,6 +314,7 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   test('Google\'s Nano Banana first (Auto checked); every Higgsfield image model listed, dimmed where this deployment cannot run it', async () => {
     deployment([]);
     show();
+    openAdvanced();
     fireEvent.click(screen.getByTestId('model-row'));
     const hf = catalogueFor('image').filter((e) => e.provider === 'higgsfield').map((e) => e.id);
     expect(rows().map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro', ...hf]);
@@ -321,6 +333,7 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   test('a pick is one tap: it closes the sheet, the row reads the model, the browser remembers it — a dimmed row does nothing', async () => {
     deployment([]);
     show();
+    openAdvanced();
     fireEvent.click(screen.getByTestId('model-row'));
     await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Not enabled yet'));
     fireEvent.click(row('hf/soul-2'));
@@ -334,6 +347,7 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   test('a Higgsfield model this deployment runs is a real choice: Generate becomes the saga\'s (its own price), the ×N chip steps aside', async () => {
     deployment(['hf/soul-2']);
     const { p } = show({ prompt: '' }); // no prompt: nothing to price, so the test ends with no request in flight
+    openAdvanced();
     fireEvent.click(screen.getByTestId('model-row'));
     await waitFor(() => expect(row('hf/soul-2').getAttribute('aria-disabled')).toBeNull());
     fireEvent.click(row('hf/soul-2'));
@@ -353,6 +367,7 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
     deployment([]);
     show();
     await waitFor(() => expect(window.localStorage.getItem('myavatar:model:image')).toBeNull());
+    openAdvanced();
     expect(screen.getByTestId('model-row').textContent).toContain('Auto');
     expect(screen.queryByTestId('hf-generate')).toBeNull();
   });
@@ -360,6 +375,7 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   test('a model without the size on screen moves the size chip to one it has (Nano Banana Pro starts at 2K) and names the gap', () => {
     const { p } = show({ quality: 'standard', model: 'nb/pro', onModel: jest.fn() });
     expect(p.onQuality).toHaveBeenCalledWith('high');
+    openAdvanced();
     fireEvent.click(screen.getByTestId('chip-quality'));
     const options = within(screen.getByRole('dialog', { name: 'Quality' })).getAllByRole('radio');
     expect((options[0] as HTMLButtonElement).disabled).toBe(true);
@@ -370,6 +386,8 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   test('controlled: `model` / `onModel` override the browser\'s pick', () => {
     const onModel = jest.fn();
     show({ model: 'nb/pro', onModel });
+    expect(screen.getByTestId('advanced-toggle').textContent).toContain('Nano Banana Pro');
+    openAdvanced();
     expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana Pro');
     fireEvent.click(screen.getByTestId('model-row'));
     fireEvent.click(row('nb/auto'));
@@ -414,7 +432,7 @@ describe('the reference picture: the route takes one', () => {
   });
 });
 
-describe('the templates gallery stays — under the prompt, shut on a phone, open on a desktop', () => {
+describe('the templates gallery stays — under the upload, shut on a phone, open on a desktop', () => {
   test('a phone: collapsed behind a row that names the picked card; opening shows every card with its "Adds:" line', () => {
     show({ activeTemplate: 'poster' });
     const toggle = screen.getByTestId('templates-toggle');
@@ -429,11 +447,13 @@ describe('the templates gallery stays — under the prompt, shut on a phone, ope
     expect(within(gallery).getByRole('radio', { name: 'Anime' }).getAttribute('aria-checked')).toBe('false');
   });
 
-  test('the gallery sits directly under the prompt card', () => {
+  test('the gallery sits directly under the upload card, which follows the prompt', () => {
     const { container } = show({ desktop: true });
     const prompt = container.querySelector('[data-create-row="prompt"]')!;
+    const upload = container.querySelector('[data-create-row="upload"]')!;
     const templates = container.querySelector('[data-create-row="templates"]')!;
-    expect(prompt.nextElementSibling).toBe(templates);
+    expect(prompt.nextElementSibling).toBe(upload);
+    expect(upload.nextElementSibling).toBe(templates);
   });
 
   test('picking a card hands its id to the studio (which sets the values and remembers the PICK)', () => {

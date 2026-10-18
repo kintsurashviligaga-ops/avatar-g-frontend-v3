@@ -56,11 +56,13 @@ function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCrea
 
 const gen = () => screen.getByTestId('video-generate') as HTMLButtonElement;
 const price = () => gen().getAttribute('data-price');
+/** Advanced settings (GG 2026-10-18): the model card, the quality row and the resolution are behind this one closed section. */
+const openAdvanced = () => fireEvent.click(within(screen.getByTestId('video-disclosure-advanced')).getAllByRole('button')[0]!);
 
-describe('element order — header → film|music switch → hero → references → prompt → model → tiles → quality → disclosures → Generate (ref4)', () => {
-  test('the DOM order is the reference’s', () => {
+describe('element order — header → film|music switch → prompt → references → length · format → disclosures → Generate (GG 2026-10-18)', () => {
+  test('the DOM order is the linear one: what to make, its files, its shape, then the price on the button', () => {
     setup();
-    const ids = ['video-tool-switch', 'video-mode-choice', 'video-hero', 'video-references', 'video-prompt', 'video-tiles', 'video-quality',
+    const ids = ['video-tool-switch', 'video-mode-choice', 'video-prompt', 'video-references', 'video-tiles',
       'video-disclosure-story', 'video-disclosure-voice', 'video-disclosure-advanced', 'video-generate-bar'];
     const els = ids.map((id) => screen.getByTestId(id));
     for (let i = 1; i < els.length; i++) {
@@ -68,11 +70,27 @@ describe('element order — header → film|music switch → hero → references
     }
   });
 
-  test('the three tiles are length · format · resolution, in that order, each with its value', () => {
+  test('the model, its quality and the resolution are not in plain view: Advanced settings holds them, shut, and names them', () => {
+    setup();
+    for (const id of ['video-hero', 'video-quality', 'video-tile-resolution']) expect(screen.queryByTestId(id)).toBeNull();
+    const advanced = screen.getByTestId('video-disclosure-advanced');
+    expect(advanced.textContent).toContain('Advanced settings');
+    expect(advanced.textContent).toContain('Veo 3.1 Fast · 1080p');
+    openAdvanced();
+    const inside = ['video-hero', 'video-quality', 'video-tile-resolution', 'advanced-body'].map((id) => screen.getByTestId(id));
+    for (const el of inside) expect(advanced.contains(el)).toBe(true);
+    for (let i = 1; i < inside.length; i++) {
+      expect(inside[i - 1]!.compareDocumentPosition(inside[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  test('the visible tiles are length · format, in that order, each with its value; the resolution tile is in Advanced settings', () => {
     setup();
     const tiles = within(screen.getByTestId('video-tiles')).getAllByRole('button');
-    expect(tiles.map((t) => t.getAttribute('data-testid'))).toEqual(['video-tile-length', 'video-tile-format', 'video-tile-resolution']);
-    expect(tiles.map((t) => t.textContent)).toEqual(['24s', '9:16', '1080p']);
+    expect(tiles.map((t) => t.getAttribute('data-testid'))).toEqual(['video-tile-length', 'video-tile-format']);
+    expect(tiles.map((t) => t.textContent)).toEqual(['24s', '9:16']);
+    openAdvanced();
+    expect(screen.getByTestId('video-tile-resolution').textContent).toBe('1080p');
   });
 
   test('the header has the tool switcher and ✕; the hero has "Change" and the model title', () => {
@@ -81,6 +99,7 @@ describe('element order — header → film|music switch → hero → references
     expect(calls.onSwitchTool).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId('video-close'));
     expect(calls.onClose).toHaveBeenCalledTimes(1);
+    openAdvanced();
     expect(screen.getByTestId('video-hero-title').textContent).toBe('VEO 3.1 FAST');
   });
 
@@ -104,11 +123,12 @@ describe('element order — header → film|music switch → hero → references
     rerender({ mode: 'musicvideo', musicLook: look });
     const slot = screen.getByTestId('mv-look-slot');
     expect(screen.getByTestId('video-mode-choice').compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(slot.compareDocumentPosition(screen.getByTestId('video-hero')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(screen.getByTestId('video-prompt')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test('the hero title follows the Veo tier', () => {
     const { rerender } = setup();
+    openAdvanced();
     rerender({ plan: initialVeoPlan({ tier: 'standard' }) });
     expect(screen.getByTestId('video-hero-title').textContent).toBe('VEO 3.1');
     rerender({ plan: initialVeoPlan({ tier: 'lite' }) });
@@ -117,6 +137,7 @@ describe('element order — header → film|music switch → hero → references
 
   test('the hero banner follows the tier too — every tier has its own picture, Lite included', () => {
     const { rerender } = setup();
+    openAdvanced();
     expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/fast.jpg');
     rerender({ plan: initialVeoPlan({ tier: 'standard' }) });
     expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/standard.jpg');
@@ -152,6 +173,7 @@ describe('the number on the Generate button is the quote', () => {
 
   test('the quality row shows each tier’s price for THIS length and picking one asks the plan for it', () => {
     const { calls } = setup({ seconds: 48 });
+    openAdvanced();
     for (const t of ['lite', 'fast', 'standard'] as const) {
       expect(screen.getByTestId(`video-quality-${t}`).textContent).toContain(String(quoteCredits({ tool: 'video', seconds: 48, quality: t })));
     }
@@ -359,6 +381,7 @@ describe('format and model pickers', () => {
   test('"Change" on the hero and the Model row both open the model picker: mode, then the catalogue\'s models — no prices', async () => {
     deployment([]);
     const { calls } = setup({ seconds: 24 });
+    openAdvanced();
     fireEvent.click(screen.getByTestId('video-hero-change'));
     const sheet = screen.getByTestId('video-model-sheet');
     await waitFor(() => expect(within(sheet).getByText('Kling 3 — text to video').closest('[role="radio"]')!.textContent).toContain('Not enabled yet'));
@@ -390,6 +413,7 @@ describe('format and model pickers', () => {
   test('a Higgsfield model this deployment runs is a real choice: the hero names it, the Veo tiers step aside, Generate is the saga\'s', async () => {
     deployment(['hf/kling-3-std-t2v']);
     const { calls } = setup({ seconds: 24, prompt: '' });
+    openAdvanced();
     fireEvent.click(screen.getByTestId('video-hero-change'));
     const sheet = screen.getByTestId('video-model-sheet');
     const kling = () => within(sheet).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
@@ -421,6 +445,7 @@ describe('format and model pickers', () => {
 
   test('the resolution tile opens the model picker too (the resolution is the clip length’s, the tier is the price)', () => {
     setup();
+    openAdvanced();
     fireEvent.click(screen.getByTestId('video-tile-resolution'));
     expect(screen.getByTestId('video-model-sheet')).toBeTruthy();
   });

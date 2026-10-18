@@ -307,7 +307,7 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     expect(await page.evaluate(() => window.localStorage.getItem('myavatar:chat-mode'))).toBe('pro');
   });
 
-  test('the empty chat is the greeting and the box: the composer sits near the middle with nothing under it, Gemini’s 64 px pill', async ({ page }) => {
+  test('the empty chat is the greeting and the box: the composer sits near the middle with its four quick buttons under it, Gemini’s 64 px pill', async ({ page }) => {
     await openChat(page);
     const pillLoc = page.getByTestId('composer-input').locator('xpath=..');
     const pill = (await pillLoc.boundingBox())!;
@@ -316,8 +316,10 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     expect(centre).toBeLessThan(800 * 0.65);
     const h1 = (await page.getByRole('heading', { level: 1 }).boundingBox())!;
     expect(h1.y + h1.height).toBeLessThanOrEqual(pill.y);
-    // Owner, 2026-10-02: nothing but the greeting and the box — no sub line, no starter chips, nothing under the pill.
+    // Owner, 2026-10-02: no sub line, no starter chips. GG, 2026-10-18: the four quick buttons, and only they, under the pill.
     await expect(page.getByRole('group', { name: 'დაიწყე' })).toHaveCount(0);
+    const quick = (await page.getByRole('group', { name: 'სწრაფი შექმნა' }).boundingBox())!;
+    expect(quick.y).toBeGreaterThanOrEqual(pill.y + pill.height - 1);
     await expect(page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.')).toHaveCount(0);
     expect(pill.height).toBeGreaterThanOrEqual(63);
     expect(await pillLoc.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('32px');
