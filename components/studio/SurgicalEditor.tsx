@@ -504,6 +504,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     if (!initialAsset?.url || loadedAssetRef.current === initialAsset.url) return;
     loadedAssetRef.current = initialAsset.url;
     let cancelled = false;
+    let applied = false;
     void (async () => {
       try {
         const res = await fetch(initialAsset.url, { credentials: 'omit' });
@@ -514,6 +515,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : 'png';
         const file = new File([blob], `import-${Date.now()}.${ext}`, { type });
         if (cancelled) return;
+        applied = true;
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const nclip: Clip = { id, file, url: URL.createObjectURL(file), kind, name: file.name };
         const idx = Math.min(clipsRef.current.length, MAX_CLIPS - 1);
@@ -527,7 +529,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         });
       } catch { if (!cancelled) flash(t.failed); }
     })();
-    return () => { cancelled = true; };
+    // A run cancelled before its file landed gives the link back, so the next run loads it: React's dev Strict Mode
+    // mounts every effect twice, and without this the second run saw the link as loaded and the editor stayed empty.
+    return () => { cancelled = true; if (!applied && loadedAssetRef.current === initialAsset?.url) loadedAssetRef.current = null; };
   }, [initialAsset, flash, t.failed]);
 
   const resetDraft = useCallback(() => {
