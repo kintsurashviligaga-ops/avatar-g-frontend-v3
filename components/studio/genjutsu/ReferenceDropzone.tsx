@@ -1,17 +1,17 @@
 'use client';
 
 /**
- * ReferenceDropzone — up to 40 reference photos (Character · Product · Wardrobe) that keep the people and the product
+ * ReferenceDropzone — up to 3 reference photos (Character · Product · Wardrobe) that keep the people and the product
  * identical in the generated video, with the policy for what the ENGINE really receives printed where the user can see
- * it BEFORE paying: "Using 3 of 12 — Google Veo 3.1 takes up to 3".
+ * it BEFORE paying: "Using 3 of 3 — Google Veo 3.1 takes up to 3".
  *
  *   · a dashed drop card (the picker input is a SIBLING of its label — a nested input's `.click()` bubbles back into the
  *     label and iOS Safari cancels the picker; components/studio/ui/controls.Dropzone documents the trap);
  *   · a thumbnail grid — each tile wears its role as a chip and a check when the engine will use it; tapping a tile
  *     selects it;
  *   · ONE toolbar for the selected photo (role · earlier · later · remove), 44 px controls — per-tile controls on a 78 px
- *     thumbnail would be 30 px targets, and 40 photos of them would be unusable on a phone;
- *   · the count "12 / 40", a "remove all", and the rule that picks the photos, one tap away.
+ *     thumbnail would be 30 px targets on a phone;
+ *   · the count "2 / 3", a "remove all", and the rule that picks the photos, one tap away.
  *
  * Presentation only: the state (and the 1280 px downscale, the type and size checks, the lazy upload) is
  * useReferencePhotos; the choice of photos is lib/genjutsu/selection — the SAME pure function the server re-applies.

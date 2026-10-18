@@ -1,5 +1,5 @@
 /**
- * The reference-selection policy: the dropzone takes 40 photos, an engine takes a few, and WHICH few is a documented,
+ * The reference-selection policy: when more photos are picked than an engine takes, WHICH few it gets is a documented,
  * deterministic rule (role pass, then the user's order). These tests pin the rule, because the panel promises
  * "Using 3 of 12" before the user pays and the server must give the engine exactly those.
  */

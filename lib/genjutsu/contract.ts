@@ -4,7 +4,7 @@
  *
  *   { op, preset?, prompt?, aspect?, quality?, keepSound?,
  *     video?: { path, durationSec, sizeBytes },            ← motion / swap only; a storage PATH, never a URL
- *     references: [{ ref, role }],                          ← up to 40; a storage PATH each
+ *     references: [{ ref, role }],                          ← up to 3 (MAX_REFERENCES); a storage PATH each
  *     referencesTotal?, expectedCredits?, confirmedGel? }
  *
  * ⚠️ ONLY OUR OWN STORAGE PATHS CROSS THIS WIRE. The browser uploads straight to the `uploads` bucket (components/studio/
@@ -181,7 +181,7 @@ export function parseGenjutsuRequest(raw: unknown): ParseResult {
     bad('video', 'video_required');
   }
 
-  // references — up to 40, each a storage path with a role.
+  // references — up to MAX_REFERENCES (3), each a storage path with a role.
   const references: GenjutsuReference[] = [];
   if (raw.references !== undefined && raw.references !== null) {
     if (!Array.isArray(raw.references)) bad('references', 'bad_reference');
