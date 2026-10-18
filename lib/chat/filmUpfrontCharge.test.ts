@@ -88,6 +88,13 @@ import { filmStartRefused, handleFilmComposite } from './filmComposite';
 import { deriveFilmTokenId, getFilmPaid } from './filmStatusStore';
 import { decodeFilmRef } from './filmTaskRef';
 import type { OrchestratorInput } from './providerRouter';
+import { filmCredits, type ClipTier } from '@/lib/credits/priceBook';
+import { perSceneCredits } from '@/lib/credits/videoPricing';
+
+/** A film of `scenes` × 8 s: the quote the Generate button shows and the route charges (lib/credits/priceBook). */
+const film = (scenes: number, tier: ClipTier = 'fast', musicVideo = false): number => filmCredits(scenes * 8, tier, musicVideo, scenes);
+/** One scene's even share of that film, what a scene dead at dispatch gives back. */
+const share = (scenes: number): number => perSceneCredits(film(scenes), scenes);
 
 const queued = (n: number) => ({ success: true, predictionId: `task-${n}`, predictionStatus: 'processing', metadata: { videoProvider: 'gemini-veo' } });
 const dead = { success: false, predictionStatus: 'failed', metadata: { veoFailure: { reason: 'safety', retryable: false } } };
@@ -145,13 +152,14 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe('a paid film is charged ONCE, at its quote, before any clip is dispatched', () => {
-  test('3 scenes × 8 s on Fast = 75 credits — one debit, on the film’s own durable ref, taken BEFORE the first provider call', async () => {
+  test('3 scenes × 8 s on Fast = 217 credits — one debit, on the film’s own durable ref, taken BEFORE the first provider call', async () => {
     const res = await handleFilmComposite(input({ sceneCount: 3, veo: veo('fast') }));
     expect(res.success).toBe(true);
     expect(mockDeduct).toHaveBeenCalledTimes(1);
     const [uid, amount, ref] = mockDeduct.mock.calls[0] as [string, number, string];
     expect(uid).toBe('user-1');
-    expect(amount).toBe(75);
+    expect(amount).toBe(film(3));
+    expect(amount).toBe(217);
     // The ledger itself is the film's payment record: /assemble finds it under the token it is handed.
     expect(ref).toBe(`filmpay:${statusTokenOf(res)}`);
     expect(mockDeduct.mock.invocationCallOrder[0]).toBeLessThan(mockExecute.mock.invocationCallOrder[0]!);
@@ -162,7 +170,7 @@ describe('a paid film is charged ONCE, at its quote, before any clip is dispatch
     await handleFilmComposite(input({ sceneCount: 6, veo: veo('fast') }));
     await handleFilmComposite(input({ sceneCount: 1, veo: veo('standard') }));
     await handleFilmComposite(input({ sceneCount: 3, veo: veo('fast'), musicVideoMode: true }));
-    expect(mockDeduct.mock.calls.map((c) => c[1])).toEqual([150, 83, 105]);
+    expect(mockDeduct.mock.calls.map((c) => c[1])).toEqual([film(6), film(1, 'standard'), film(3, 'fast', true)]);
   });
 
   test('a clip leg no longer debits on its own (debit_wallet_gel is not on prod, and must never double-charge if it appears)', async () => {
@@ -174,17 +182,17 @@ describe('a paid film is charged ONCE, at its quote, before any clip is dispatch
   test('the payment is recorded server-side so /assemble does not charge the stitch again', async () => {
     const res = await handleFilmComposite(input({ sceneCount: 3, veo: veo('fast') }));
     const paid = await getFilmPaid(statusTokenOf(res));
-    expect(paid).toMatchObject({ uid: 'user-1', credits: 75, consumed: false });
+    expect(paid).toMatchObject({ uid: 'user-1', credits: film(3), consumed: false });
     expect(paid?.ref).toBe(mockDeduct.mock.calls[0]![2]);
   });
 });
 
 describe('a film we cannot charge for does not start', () => {
   test('a balance below the quote → the localized top-up answer; nothing debited, nothing dispatched', async () => {
-    mockBalance = 40; // a 3-scene Fast film is 75
+    mockBalance = 40; // a 3-scene Fast film is 217
     const res = await handleFilmComposite(input({ sceneCount: 3, veo: veo('fast') }));
     expect(res.success).toBe(false);
-    expect(res.message).toMatch(/75/);
+    expect(res.message).toMatch(new RegExp(String(film(3))));
     expect((res.metadata as { insufficientCredits?: boolean }).insufficientCredits).toBe(true);
     expect(mockDeduct).not.toHaveBeenCalled();
     expect(mockExecute).not.toHaveBeenCalled();
@@ -209,7 +217,7 @@ describe('a film we cannot charge for does not start', () => {
 
   test('the gate compares credits with credits: a 10-credit balance no longer passes a film quoted in the hundreds', async () => {
     mockBalance = 10;
-    const res = await handleFilmComposite(input({ sceneCount: 6, veo: veo('fast') })); // 150
+    const res = await handleFilmComposite(input({ sceneCount: 6, veo: veo('fast') })); // 430
     expect(res.success).toBe(false);
     expect(mockDeduct).not.toHaveBeenCalled();
   });
@@ -222,19 +230,19 @@ describe('refunds: only what this request proves it did not deliver', () => {
     expect(res.success).toBe(false);
     expect(mockRefund).toHaveBeenCalledTimes(1);
     const [uid, amount, ref] = mockRefund.mock.calls[0] as [string, number, string];
-    expect([uid, amount]).toEqual(['user-1', 75]);
+    expect([uid, amount]).toEqual(['user-1', film(3)]);
     expect(ref).toBe(`${(mockDeduct.mock.calls[0] as unknown[])[2]}:refund`);
   });
 
-  test('one scene of three dead at dispatch → its third (25) comes back; the film still starts and records the net 50', async () => {
+  test('one scene of three dead at dispatch → its third comes back; the film still starts and records the net', async () => {
     let n = 0;
     mockExecute.mockImplementation(async () => (++n === 2 ? dead : queued(n)));
     const res = await handleFilmComposite(input({ sceneCount: 3, veo: veo('fast') }));
     expect(res.success).toBe(true);
     expect(mockRefund).toHaveBeenCalledTimes(1);
-    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(25);
+    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(share(3));
     expect(String((mockRefund.mock.calls[0] as unknown[])[2])).toMatch(/:refund:dispatch$/);
-    expect((await getFilmPaid(statusTokenOf(res)))?.credits).toBe(50);
+    expect((await getFilmPaid(statusTokenOf(res)))?.credits).toBe(film(3) - share(3));
   });
 
   test('the daily Veo ceiling refusing scene 2 (engine `quota`, not retryable) → that scene is refunded at dispatch and never re-posted', async () => {
@@ -245,7 +253,7 @@ describe('refunds: only what this request proves it did not deliver', () => {
     expect(res.success).toBe(true);
     expect(mockExecute).toHaveBeenCalledTimes(2); // one dispatch per scene: a ceiling refusal is not retried
     expect(mockRefund).toHaveBeenCalledTimes(1);
-    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(25);
+    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(share(2));
     expect(String((mockRefund.mock.calls[0] as unknown[])[2])).toMatch(/:refund:dispatch$/);
   });
 
@@ -270,15 +278,15 @@ describe('refunds: only what this request proves it did not deliver', () => {
     mockExecute.mockImplementation(async () => (++n === 2 ? dead : queuedOnVeo(n)));
     const res = await handleFilmComposite(input({ sceneCount: 4, veo: veo('fast') }));
     expect(res.success).toBe(true);
-    expect((mockDeduct.mock.calls[0] as unknown[])[1]).toBe(100);
+    expect((mockDeduct.mock.calls[0] as unknown[])[1]).toBe(film(4));
     expect(mockRecordScenes).toHaveBeenCalledTimes(1);
     const [uid, token, shares] = mockRecordScenes.mock.calls[0] as [string, string, Array<{ ordinal: number; operation: string; credits: number }>];
     expect([uid, token]).toEqual(['user-1', statusTokenOf(res)]);
-    expect(shares.map((x) => x.credits)).toEqual([25, 25, 25]);
+    expect(shares.map((x) => x.credits)).toEqual([share(4), share(4), share(4)]);
     expect(shares.map((x) => x.operation)).toEqual([veoOp(1), veoOp(3), veoOp(4)]);
     // the dispatch refund took the dead scene's share; the three recorded shares are exactly what the film still holds
-    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(25);
-    expect((await getFilmPaid(statusTokenOf(res)))?.credits).toBe(75);
+    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(share(4));
+    expect((await getFilmPaid(statusTokenOf(res)))?.credits).toBe(3 * share(4));
   });
 
   test('R3-A: a free film and a clip on another engine record nothing', async () => {
@@ -301,12 +309,12 @@ describe('the free video is ONE SHORT CLIP, not a film of any length', () => {
     expect(mockDeduct).not.toHaveBeenCalled();
   });
 
-  test('a 24 s film with a free slot available does NOT spend it — it is a paid film at 75', async () => {
+  test('a 24 s film with a free slot available does NOT spend it — it is a paid film at 217', async () => {
     mockConsumeFree.mockResolvedValue(0);
     const res = await handleFilmComposite(input({ sceneCount: 3, veo: veo('fast') }));
     expect(res.success).toBe(true);
     expect(mockConsumeFree).not.toHaveBeenCalled();
-    expect((mockDeduct.mock.calls[0] as unknown[])[1]).toBe(75);
+    expect((mockDeduct.mock.calls[0] as unknown[])[1]).toBe(film(3));
   });
 
   test('a free film that dispatches nothing hands the slot back', async () => {

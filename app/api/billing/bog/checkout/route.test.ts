@@ -70,6 +70,7 @@ jest.mock('../../../../../lib/billing/bogClient', () => ({
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
+import { TIERS } from '../../../../../lib/billing/tiers';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/billing/bog/checkout', {
@@ -155,12 +156,12 @@ test('top-up: the row (amount, credits, kind, locale) is written first; BOG gets
   expect(mockSaveCard).not.toHaveBeenCalled();
 });
 
-test('plan: priced by the catalogue (Creator = 108 ₾, 525 credits), card-only, card saved for renewals before the redirect', async () => {
+test('plan: priced by the catalogue (Creator = 108 ₾, its tier credits), card-only, card saved for renewals before the redirect', async () => {
   const res = await POST(post({ kind: 'plan', tierId: 'pro' }));
   const body = await res.json();
   expect(res.status).toBe(200);
   expect(body).toMatchObject({ autoRenew: true, orderId: expect.stringMatching(/^myavatar-plan-/) });
-  expect(inserted()).toMatchObject({ kind: 'subscription', tier: 'creator', amount_gel: 108, credits: 525, locale: 'ka' });
+  expect(inserted()).toMatchObject({ kind: 'subscription', tier: 'creator', amount_gel: 108, credits: TIERS.creator.includedCredits, locale: 'ka' });
   expect(mockCreateOrder.mock.calls[0][2]).toMatchObject({ amountGel: 108, cardOnly: true });
   expect(mockSaveCard).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'bog-ord-1');
   expect(updatesTo()).toEqual(expect.arrayContaining([expect.objectContaining({ card_saved: true })]));

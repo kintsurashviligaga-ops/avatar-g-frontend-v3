@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { balanceOf, evidence, liveUser, logExpensive, paced, rest, rows, signInToken } from '../video-core-live/_live';
-import { STARTED, jobRow, ledgerForJob } from './_music';
+import { MUSIC_PRICE, STARTED, jobRow, ledgerForJob } from './_music';
 
 /**
  * Music Studio v1 — access, ownership, Storage/RLS and billing integrity through the app's real HTTP routes and the
@@ -72,7 +72,7 @@ test('quote → confirm: exact price, replay = same job, 4 concurrent confirms =
 
   const q = await app(request, 'POST', '/api/music/studio/quote', payerToken, req({ prompt: 'api piano sketch' }));
   expect(q.status).toBe(200);
-  expect(q.json.credits).toBe(5);
+  expect(q.json.credits).toBe(MUSIC_PRICE);
   expect(await balanceOf(payer.id), 'a quote never charges').toBe(before);
   const { plan, token } = q.json as { plan: Record<string, unknown> & { request: Record<string, unknown> }; token: string };
 
@@ -112,8 +112,8 @@ test('quote → confirm: exact price, replay = same job, 4 concurrent confirms =
   if (replay.status === 200) expect(replay.json.jobId).toBe(ownedJob);
   const done = await waitFinal(request, payerToken, ownedJob);
   expect(done.json.status).toBe('completed');
-  expect((await ledgerForJob(payer.id, ownedJob)).map((r) => r.delta)).toEqual([-5]);
-  expect(await balanceOf(payer.id)).toBe(before - 5);
+  expect((await ledgerForJob(payer.id, ownedJob)).map((r) => r.delta)).toEqual([-MUSIC_PRICE]);
+  expect(await balanceOf(payer.id)).toBe(before - MUSIC_PRICE);
   ownedPath = String(((await jobRow(ownedJob))!.result as { path: string }).path);
 
   // Secrets never travel: no key of the stack in any answer.

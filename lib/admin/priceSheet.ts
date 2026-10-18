@@ -9,7 +9,7 @@
  * edit here. Pure and client-safe.
  */
 import { quoteCredits, type QuoteInput } from '@/lib/credits/quote';
-import { ECON, netGelPerCredit, opCostGel, unitOp, videoCostGel } from '@/lib/credits/unitEconomics';
+import { ECON, clipCostGel, netGelPerCredit, opCostGel, unitOp, videoCostGel } from '@/lib/credits/unitEconomics';
 import { PAID_TIER_IDS, TIERS, monthlyAllowanceCredits, type PaidTierId } from '@/lib/billing/tiers';
 import { planPriceGel, BOG_CREDITS_PER_GEL } from '@/lib/billing/bogCatalog';
 
@@ -58,14 +58,16 @@ const SPECS: readonly Spec[] = [
   { id: 'video.24.musicvideo', label: { ka: 'მუსიკალური კლიპი 24 წმ', en: 'Music video 24 s' }, quote: { tool: 'video', seconds: 24, quality: 'fast', mode: 'musicvideo' }, cost: () => videoCostGel(24, 'fast', true) },
   { id: 'product.8', label: { ka: 'პროდუქტის რეკლამა 8 წმ', en: 'Product ad 8 s' }, quote: { tool: 'product', seconds: 8 }, cost: () => videoCostGel(8, 'fast') },
   { id: 'product.24', label: { ka: 'პროდუქტის რეკლამა 24 წმ', en: 'Product ad 24 s' }, quote: { tool: 'product', seconds: 24 }, cost: () => videoCostGel(24, 'fast') },
-  { id: 'vfx', label: { ka: 'VFX სცენა 8 წმ', en: 'VFX scene 8 s' }, quote: { tool: 'vfx' }, cost: () => videoCostGel(8, 'fast') },
+  // A VFX scene is one bare Veo clip (no storyboard frame, narration or film assembly): the clip's own cost.
+  { id: 'vfx', label: { ka: 'VFX სცენა 8 წმ', en: 'VFX scene 8 s' }, quote: { tool: 'vfx' }, cost: () => clipCostGel(8, 'fast') },
   { id: 'image.1', label: { ka: 'სურათი', en: 'Image' }, quote: { tool: 'image', count: 1 }, cost: op('image.one') },
   { id: 'photoshoot.4', label: { ka: 'ფოტოსესია, 4 კადრი', en: 'Photoshoot, 4 shots' }, quote: { tool: 'photoshoot', count: 4 }, cost: () => 4 * opCostGel(unitOp('image.one')) },
   { id: 'interior.1', label: { ka: 'ინტერიერი, 1 რენდერი', en: 'Interior, 1 render' }, quote: { tool: 'interior', count: 1 }, cost: op('image.one') },
   { id: 'music.30', label: { ka: 'მუსიკა 30 წმ', en: 'Music 30 s' }, quote: { tool: 'music', seconds: 30 }, cost: op('music.track.30') },
   { id: 'music.60', label: { ka: 'მუსიკა 60 წმ', en: 'Music 60 s' }, quote: { tool: 'music', seconds: 60 }, cost: op('music.track.60') },
   { id: 'music.180', label: { ka: 'სიმღერა 3 წთ', en: 'Song 3 min' }, quote: { tool: 'music', seconds: 180 }, cost: op('music.track.180') },
-  { id: 'avatar', label: { ka: 'ავატარი', en: 'Avatar' }, quote: { tool: 'avatar' }, cost: op('avatar.talking') },
+  // The talking avatar is one 8 s Veo Fast scene under the Google-only rule (lib/avatar/veoAvatar): a clip plus a film scene's extras.
+  { id: 'avatar', label: { ka: 'ავატარი', en: 'Avatar' }, quote: { tool: 'avatar' }, cost: () => clipCostGel(8, 'fast') + opCostGel(unitOp('video.film.scene')) },
   { id: 'model3d', label: { ka: '3D მოდელი', en: '3D model' }, quote: { tool: 'model3d' }, cost: op('design.model3d') },
 ];
 

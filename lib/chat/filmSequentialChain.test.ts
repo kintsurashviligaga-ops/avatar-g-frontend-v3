@@ -86,6 +86,12 @@ import { decodeFilmRef } from './filmTaskRef';
 import { deriveFilmTokenId } from './filmStatusStore';
 import { getFilmChainPlan, __setFilmChainRedisForTests } from './filmChain';
 import type { OrchestratorInput } from './providerRouter';
+import { filmCredits } from '@/lib/credits/priceBook';
+import { perSceneCredits } from '@/lib/credits/videoPricing';
+
+/** The film under test: 4 × 8 s on Fast (lib/credits/priceBook), and its even per-scene share. */
+const FILM_PRICE = filmCredits(32, 'fast', false, 4);
+const SCENE_SHARE = perSceneCredits(FILM_PRICE, 4);
 
 const queued = (n: number) => ({ success: true, predictionId: `task-${n}`, predictionStatus: 'processing', metadata: { videoProvider: 'gemini-veo' } });
 /** The studio's Veo plan as it travels on the wire (lib/veo/renderOptions.ts VeoRenderOptionsSchema). */
@@ -189,7 +195,7 @@ describe('chain on (a store every poll can read)', () => {
     expect(plan).not.toBeNull();
     expect(plan!.uid).toBe('user-1');
     expect(plan!.scenes.map((s) => s.storyboardFrame)).toEqual(FRAMES.slice(1));
-    expect(plan!.sceneCredits).toBe(25); // 100 credits over 4 scenes
+    expect(plan!.sceneCredits).toBe(SCENE_SHARE); // the film's price over 4 scenes
     expect(plan!.chargeRef).toMatch(/^filmpay:f[0-9a-f]{16}$/);
 
     // The same film side by side: its clips 2–4 are what the chain will send (bar the start and end frames).
@@ -214,9 +220,9 @@ describe('chain on (a store every poll can read)', () => {
     mockExecute.mockImplementation(async () => ({ ...queued(++n), predictionId: veoRef(n) }));
     await handleFilmComposite(input(adPanel()));
     expect(mockDeduct).toHaveBeenCalledTimes(1);
-    expect(mockDeduct.mock.calls[0]![1]).toBe(100); // the price is unchanged
+    expect(mockDeduct.mock.calls[0]![1]).toBe(FILM_PRICE); // the price is unchanged
     expect(mockRecordScenes).toHaveBeenCalledTimes(1);
-    expect(mockRecordScenes.mock.calls[0]![2]).toEqual([{ ordinal: expect.any(Number), operation: 'projects/p/operations/op-1', credits: 25 }]);
+    expect(mockRecordScenes.mock.calls[0]![2]).toEqual([{ ordinal: expect.any(Number), operation: 'projects/p/operations/op-1', credits: SCENE_SHARE }]);
     expect(mockRefund).not.toHaveBeenCalled(); // a waiting scene is not a failed one
   });
 

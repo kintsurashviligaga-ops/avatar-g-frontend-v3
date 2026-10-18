@@ -86,6 +86,10 @@ jest.mock('../../../../../lib/observability/report-error', () => ({ reportError:
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { checkRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
+import { CREDIT_COSTS } from '../../../../../lib/credits/pricing';
+
+/** The deck's price in the price book; the owner's approval names this exact number (OWNER_APPROVED_PRICING). */
+const DECK = CREDIT_COSTS.presentation_deck;
 
 const png = (i: number) => `https://ours.supabase.co/storage/v1/object/sign/renders/deck/s${i}.png?token=t`;
 const COVER = 'https://ours.supabase.co/storage/v1/object/sign/renders/deck/cover.png?token=t';
@@ -112,7 +116,7 @@ const quoteThenConfirm = async (body: Record<string, unknown>) => {
 const saved = { ...process.env };
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env.OWNER_APPROVED_PRICING = 'dubbing:10,presentation:15';
+  process.env.OWNER_APPROVED_PRICING = `dubbing:${CREDIT_COSTS.dubbing_per_minute},presentation:${DECK}`;
   process.env.AGENT_G_QUOTE_SECRET = 'test-quote-secret';
   signedIn = true;
   rows.clear(); debits.clear(); refunds.clear();
@@ -147,8 +151,8 @@ describe('POST /api/v2/presentation/build — access and input', () => {
   });
 });
 
-describe('owner approval (15 cr/deck is PROPOSED, not approved)', () => {
-  it.each([undefined, '', 'presentation:14', 'dubbing:10'])('OWNER_APPROVED_PRICING=%p ⇒ unavailable before any ledger or provider call', async (v) => {
+describe('owner approval (the deck runs only at the exact price the owner approved)', () => {
+  it.each([undefined, '', `presentation:${DECK - 1}`, `dubbing:${CREDIT_COSTS.dubbing_per_minute}`])('OWNER_APPROVED_PRICING=%p ⇒ unavailable before any ledger or provider call', async (v) => {
     if (v === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = v;
     const { res, json } = await post({ topic: 'Tbilisi cafés' });
     expect(res.status).toBe(503);
@@ -159,10 +163,10 @@ describe('owner approval (15 cr/deck is PROPOSED, not approved)', () => {
 });
 
 describe('signed quote and explicit confirm', () => {
-  it('a first POST is a quote of 15 credits; nothing charged or built', async () => {
+  it('a first POST is a quote of the deck price; nothing charged or built', async () => {
     const { res, json } = await post({ topic: 'Tbilisi cafés' });
     expect(res.status).toBe(200);
-    expect(json).toMatchObject({ requiresConfirm: true, quote: { credits: 15 } });
+    expect(json).toMatchObject({ requiresConfirm: true, quote: { credits: DECK } });
     expect(deductCreditsOnce).not.toHaveBeenCalled();
     expect(runDeckBuild).not.toHaveBeenCalled();
   });
@@ -178,10 +182,10 @@ describe('signed quote and explicit confirm', () => {
 });
 
 describe('confirmed build', () => {
-  it('reserves 15 before the build, files every page, reports the charge', async () => {
+  it('reserves the deck price before the build, files every page, reports the charge', async () => {
     const { quote, res, json } = await quoteThenConfirm({ topic: '  Tbilisi   cafés ', slideCount: 6, language: 'en', withImages: true });
     expect(res.status).toBe(200);
-    expect(deductCreditsOnce).toHaveBeenCalledWith(mockUser.id, 15, `presentation:${quote.jobId}`);
+    expect(deductCreditsOnce).toHaveBeenCalledWith(mockUser.id, DECK, `presentation:${quote.jobId}`);
     expect(deductCreditsOnce.mock.invocationCallOrder[0]).toBeLessThan(runDeckBuild.mock.invocationCallOrder[0]);
     expect(runDeckBuild).toHaveBeenCalledWith({ topic: 'Tbilisi cafés', slideCount: 6, language: 'en', theme: 'dark', withImages: true }, { jobId: quote.jobId });
     expect(createJob).toHaveBeenCalledWith(expect.objectContaining({ id: quote.jobId, serviceType: 'image', params: { subtype: 'presentation', slides: 6, language: 'en' } }));
@@ -189,8 +193,8 @@ describe('confirmed build', () => {
       signedUrl: COVER,
       result: { subtype: 'presentation', slideCount: 6, coverUrl: COVER, url: COVER, slides: RESULT.slides.map((s) => ({ index: s.index, pngUrl: s.pngUrl })) },
     });
-    expect(json).toMatchObject({ status: 'completed', persisted: true, creditsCharged: 15, title: 'Tbilisi cafés', coverUrl: COVER });
-    expect(balance).toBe(85);
+    expect(json).toMatchObject({ status: 'completed', persisted: true, creditsCharged: DECK, title: 'Tbilisi cafés', coverUrl: COVER });
+    expect(balance).toBe(100 - DECK);
     expect(recordUsage).toHaveBeenCalledTimes(1);
   });
 

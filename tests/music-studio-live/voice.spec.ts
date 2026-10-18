@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { balanceOf, evidence, projectUser } from '../video-core-live/_live';
-import { cards, confirm, ledgerForJob, newestCard, openStudio, voice, waitPhase } from './_music';
+import { MUSIC_PRICE, cards, confirm, ledgerForJob, newestCard, openStudio, voice, waitPhase } from './_music';
+import { creditsLabel } from '../../lib/credits/quote';
 
 /**
  * Agent G Live Voice → Music Studio, at the TOOL-DISPATCH layer: each step is the validated `music_studio` call the
@@ -36,7 +37,7 @@ test('voice plans, never spends; the user\'s tap starts it; voice edits, joins, 
 
   // status → the price the card shows; still nothing charged.
   const status = await voice(page, { action: 'status' });
-  expect((status.reply!.state as { cards: Array<{ phase: string; credits?: number }> }).cards[0]).toMatchObject({ phase: 'quoted', credits: 5 });
+  expect((status.reply!.state as { cards: Array<{ phase: string; credits?: number }> }).cards[0]).toMatchObject({ phase: 'quoted', credits: MUSIC_PRICE });
   expect(await balanceOf(user.id)).toBe(before);
 
   // The call's own hands cannot press Create: the live click guard refuses a `data-live-guard="spend"` control.
@@ -56,7 +57,7 @@ test('voice plans, never spends; the user\'s tap starts it; voice edits, joins, 
   const progress = await voice(page, { action: 'status' });
   expect(['starting', 'running', 'completed']).toContain((progress.reply!.state as { cards: Array<{ phase: string }> }).cards[0]!.phase);
   await waitPhase(card, 'completed', 120_000);
-  expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-5]);
+  expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-MUSIC_PRICE]);
 
   // Voice edit → a new version (free, original kept).
   const edited = page.waitForResponse((r) => r.url().endsWith('/api/music/studio/edit'));
@@ -85,7 +86,7 @@ test('voice plans, never spends; the user\'s tap starts it; voice edits, joins, 
   expect((await voice(page, { action: 'download' })).reply).toMatchObject({ ok: true });
   expect((await dl).suggestedFilename()).toMatch(/^myavatar-music-[0-9a-f]{8}-join-2-crossfade-2s\.mp3$/);
   expect((await voice(page, { action: 'save' })).reply!.message).toMatch(/already saved in the user's Library/);
-  expect(await balanceOf(user.id), 'voice edits, joins and downloads are free').toBe(before - 5);
+  expect(await balanceOf(user.id), 'voice edits, joins and downloads are free').toBe(before - MUSIC_PRICE);
 
   // Voice cancel of a running job → refunded once.
   await voice(page, { action: 'plan', prompt: `voice cancel check [e2e:slow] ${info.project.name}` });
@@ -95,8 +96,8 @@ test('voice plans, never spends; the user\'s tap starts it; voice edits, joins, 
   await expect(slow.getByTestId('music-cancel')).toBeVisible({ timeout: 30_000 });
   expect((await voice(page, { action: 'cancel' })).reply).toMatchObject({ ok: true });
   await waitPhase(slow, 'cancelled', 60_000);
-  await expect.poll(async () => (await ledgerForJob(user.id, slowId)).map((r) => r.delta), { timeout: 60_000 }).toEqual([-5, 5]);
-  expect(await balanceOf(user.id)).toBe(before - 5);
+  await expect.poll(async () => (await ledgerForJob(user.id, slowId)).map((r) => r.delta), { timeout: 60_000 }).toEqual([-MUSIC_PRICE, MUSIC_PRICE]);
+  expect(await balanceOf(user.id)).toBe(before - MUSIC_PRICE);
 
   evidence(`music-voice-${info.project.name}`, { jobId, slowId, before, after: await balanceOf(user.id) });
 });
@@ -106,7 +107,7 @@ test('voice in Georgian and Russian: a plan in the page language; a song stays a
   const ka = await voice(page, { action: 'plan', prompt: 'ქართული ხალხური მელოდია ფანდურზე', tempo: 'slow' });
   expect(ka.reply).toMatchObject({ ok: true });
   await waitPhase(newestCard(page), 'quoted', 30_000);
-  await expect(newestCard(page).getByTestId('music-confirm')).toHaveText('შექმნა · 5 კრედიტი');
+  await expect(newestCard(page).getByTestId('music-confirm')).toHaveText(`შექმნა · ${creditsLabel(MUSIC_PRICE, 'ka')}`);
   const song = await voice(page, { action: 'plan', prompt: 'სიმღერა თბილისზე', mode: 'song', lyrics: 'თბილისო, მზის და ვარდების მხარეო', lyricsLanguage: 'ka' });
   expect(song.reply!.message).toMatch(/never offer an instrumental/);
   await waitPhase(newestCard(page), 'refused', 30_000);
@@ -116,5 +117,5 @@ test('voice in Georgian and Russian: a plan in the page language; a song stays a
   await openStudio(page, 'ru');
   expect((await voice(page, { action: 'plan', prompt: 'энергичный электронный трек', tempo: 'fast' })).reply).toMatchObject({ ok: true });
   await waitPhase(newestCard(page), 'quoted', 30_000);
-  await expect(newestCard(page).getByTestId('music-confirm')).toHaveText('Создать · 5 кредитов');
+  await expect(newestCard(page).getByTestId('music-confirm')).toHaveText(`Создать · ${creditsLabel(MUSIC_PRICE, 'ru')}`);
 });

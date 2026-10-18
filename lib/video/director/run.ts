@@ -27,7 +27,7 @@
  * Pure: the store, the billing and the provider are injected. ./runServer.ts binds them to Supabase, the credit ledger
  * and the live Veo engine.
  */
-import { VIDEO_CREDITS_PER_SEC, VIDEO_QUALITY_MULT, type VideoQuality } from '@/lib/credits/videoPricing';
+import { PRICE_BOOK, veoRenderedSeconds, type ClipTier } from '@/lib/credits/priceBook';
 import { SHOT_DECISIONS } from './director';
 import { GoogleVeoProvider, type ShotTicket } from './googleVeoProvider';
 import { draftFromFrozen, isFrozen, shotsInOrder, StoryboardNotFrozenError } from './storyboard';
@@ -147,16 +147,18 @@ const DEFAULT_STALE_SUBMIT_MS = 3 * 60_000;
 // ── Price ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Each shot's credits, in `order` order. The film price for the same seconds and tiers (lib/credits/videoPricing: 25
- * credits per 8 s on Fast, scaled by tier) is rounded UP once, on the running total, and every shot pays the step it
- * adds — so the shots add up to exactly the film price, and no shot pays a rounding twice.
+ * Each shot's credits, in `order` order, from the price book (lib/credits/priceBook, the owner's 100 %-profit rule): the
+ * film's base rides on the first shot, and every shot adds its Veo seconds on its tier (the length Veo renders, 4 / 6 /
+ * 8 s) and a film scene's extras. The running total is rounded UP once and every shot pays the step it adds — so shots of
+ * one tier and length add up to exactly filmCredits for the same film, and no shot pays a rounding twice.
  */
 export function shotCredits(shots: readonly Pick<Shot, 'durationSeconds' | 'quality'>[]): number[] {
-  let exact = 0;
+  let exact = shots.length > 0 ? PRICE_BOOK.filmBase : 0;
   let billed = 0;
   return shots.map((shot) => {
-    const mult = VIDEO_QUALITY_MULT[shot.quality as VideoQuality] ?? 1;
-    exact += Math.max(0, shot.durationSeconds) * VIDEO_CREDITS_PER_SEC * mult;
+    const tier: ClipTier = shot.quality === 'lite' || shot.quality === 'standard' ? shot.quality : 'fast';
+    const seconds = shot.durationSeconds > 0 ? veoRenderedSeconds(shot.durationSeconds) : 0;
+    exact += (PRICE_BOOK.clip[tier] * seconds) / 8 + PRICE_BOOK.filmScene;
     // The 1e-9 absorbs float noise, like videoCredits.
     const total = Math.ceil(exact - 1e-9);
     const step = Math.max(0, total - billed);

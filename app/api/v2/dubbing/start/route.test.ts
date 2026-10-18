@@ -94,6 +94,12 @@ jest.mock('../../../../../lib/observability/report-error', () => ({ reportError:
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { checkRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
+import { CREDIT_COSTS } from '../../../../../lib/credits/pricing';
+
+/** Dubbing's price per started minute in the price book; the owner's approval names this exact number. */
+const PER_MIN = CREDIT_COSTS.dubbing_per_minute;
+/** The default measured source (95 s) bills two started minutes. */
+const TWO_MIN = 2 * PER_MIN;
 
 const SRC = 'https://cdn.example.com/talk.mp4';
 const SIGNED = 'https://ours.supabase.co/storage/v1/object/sign/uploads/clip.mp4?token=t';
@@ -122,7 +128,7 @@ const quoteThenConfirm = async (body: Record<string, unknown>) => {
 const saved = { ...process.env };
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env.OWNER_APPROVED_PRICING = 'dubbing:10';
+  process.env.OWNER_APPROVED_PRICING = `dubbing:${PER_MIN}`;
   process.env.AGENT_G_QUOTE_SECRET = 'test-quote-secret';
   signedIn = true;
   rows.clear(); debits.clear(); refunds.clear();
@@ -184,8 +190,8 @@ describe('POST /api/v2/dubbing/start — access and input', () => {
   });
 });
 
-describe('owner approval (prices are PROPOSED, not approved)', () => {
-  it.each([undefined, '', 'dubbing:9', 'dubbing', 'presentation:15', 'dubbing:10:x'])('OWNER_APPROVED_PRICING=%p ⇒ unavailable before ffmpeg, ledger or provider', async (v) => {
+describe('owner approval (dubbing runs only at the exact price the owner approved)', () => {
+  it.each([undefined, '', `dubbing:${PER_MIN - 1}`, 'dubbing', `presentation:${CREDIT_COSTS.presentation_deck}`, `dubbing:${PER_MIN}:x`])('OWNER_APPROVED_PRICING=%p ⇒ unavailable before ffmpeg, ledger or provider', async (v) => {
     if (v === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = v;
     const { res, json } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka' });
     expect(res.status).toBe(503);
@@ -202,7 +208,7 @@ describe('server-measured price and signed quote', () => {
     const { res, json } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka', durationSec: 10 });
     expect(res.status).toBe(200);
     expect(json.requiresConfirm).toBe(true);
-    expect(json.quote).toMatchObject({ credits: 20, minutes: 2, durationSec: 95 });
+    expect(json.quote).toMatchObject({ credits: TWO_MIN, minutes: 2, durationSec: 95 });
     expect(deductCreditsOnce).not.toHaveBeenCalled();
     expect(createJob).not.toHaveBeenCalled();
     expect(runDubbing).not.toHaveBeenCalled();
@@ -212,8 +218,8 @@ describe('server-measured price and signed quote', () => {
     extractAudioTrack.mockResolvedValue(track(241));
     const { res, json } = await quoteThenConfirm({ sourceVideoUrl: SRC, targetLanguage: 'ka', durationSec: 1 });
     expect(res.status).toBe(200);
-    expect(deductCreditsOnce).toHaveBeenCalledWith(mockUser.id, 50, expect.stringMatching(/^dubbing:/));
-    expect(json.creditsCharged).toBe(50);
+    expect(deductCreditsOnce).toHaveBeenCalledWith(mockUser.id, 5 * PER_MIN, expect.stringMatching(/^dubbing:/)); // 241 s = five started minutes
+    expect(json.creditsCharged).toBe(5 * PER_MIN);
     expect(deductCredits).not.toHaveBeenCalled(); // no after-the-fact top-up exists
   });
 
@@ -280,10 +286,10 @@ describe('confirmed run: reserve → provider → persist', () => {
     expect(deductCreditsOnce.mock.invocationCallOrder[0]).toBeLessThan(runDubbing.mock.invocationCallOrder[0]);
     expect(runDubbing).toHaveBeenCalledWith(expect.objectContaining({ sourceVideoUrl: SIGNED, targetLanguage: 'ka' }), { jobId: quote.jobId, extracted: track(95) });
     expect(createJob).toHaveBeenCalledWith(expect.objectContaining({ id: quote.jobId, userId: mockUser.id, serviceType: 'film', params: { subtype: 'dubbing', targetLanguage: 'ka', minutes: 2 } }));
-    expect(rows.get(quote.jobId)).toMatchObject({ status: 'completed', params: { _reserve: { ref: `dubbing:${quote.jobId}`, credits: 20 } } });
-    expect(json).toMatchObject({ status: 'completed', persisted: true, creditsCharged: 20, videoUrl: DUB, segments: 3 });
+    expect(rows.get(quote.jobId)).toMatchObject({ status: 'completed', params: { _reserve: { ref: `dubbing:${quote.jobId}`, credits: TWO_MIN } } });
+    expect(json).toMatchObject({ status: 'completed', persisted: true, creditsCharged: TWO_MIN, videoUrl: DUB, segments: 3 });
     expect(json.warnings).toEqual({ droppedLines: 1, untranslatedLines: 0, lipSyncSkipped: false });
-    expect(balance).toBe(80);
+    expect(balance).toBe(100 - TWO_MIN);
     expect(refundCredits).not.toHaveBeenCalled();
   });
 
@@ -324,7 +330,7 @@ describe('confirmed run: reserve → provider → persist', () => {
     expect(results.filter((r) => r.json.error === 'duplicate_request')).toHaveLength(2);
     expect(debits.size).toBe(1);
     expect(runDubbing).toHaveBeenCalledTimes(1);
-    expect(balance).toBe(80);
+    expect(balance).toBe(100 - TWO_MIN);
   });
 
   it('a RETRY after success (lost response) is refused, not charged again', async () => {
@@ -345,7 +351,7 @@ describe('confirmed run: reserve → provider → persist', () => {
     expect(res.status).toBe(502);
     expect(json).toMatchObject({ error: 'dubbing_failed', step: 'transcribe', refunded: true, refundPending: false });
     expect(refundCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits).toHaveBeenCalledWith(mockUser.id, 20, `dubbing:${quote.jobId}:refund`);
+    expect(refundCredits).toHaveBeenCalledWith(mockUser.id, TWO_MIN, `dubbing:${quote.jobId}:refund`);
     expect(rows.get(quote.jobId)).toMatchObject({ status: 'failed', error: 'transcribe: stt unavailable' });
     expect(balance).toBe(100);
     expect(completeJob).not.toHaveBeenCalled();
@@ -376,7 +382,7 @@ describe('confirmed run: reserve → provider → persist', () => {
     expect(json).toMatchObject({ refunded: false, refundPending: true });
     const row = rows.get(quote.jobId)!;
     expect(row.status).toBe('processing'); // reapable — not failed
-    expect(row.params._reserve).toEqual({ ref: `dubbing:${quote.jobId}`, credits: 20 });
+    expect(row.params._reserve).toEqual({ ref: `dubbing:${quote.jobId}`, credits: TWO_MIN });
     expect(reportError).toHaveBeenCalled();
   });
 
@@ -385,7 +391,7 @@ describe('confirmed run: reserve → provider → persist', () => {
     runDubbing.mockImplementationOnce(async (_r: unknown, o: { jobId: string }) => { seen = { ...rows.get(o.jobId)!, params: { ...rows.get(o.jobId)!.params } }; throw new Error('killed'); });
     await quoteThenConfirm({ sourceVideoUrl: SRC, targetLanguage: 'ka' });
     expect(seen).toMatchObject({ status: 'processing', stage: 'reserved' });
-    expect(seen?.params._reserve).toMatchObject({ credits: 20 });
+    expect(seen?.params._reserve).toMatchObject({ credits: TWO_MIN });
   });
 
   it('PERSISTENCE FAILURE: the result is returned but never reported as a completed job', async () => {

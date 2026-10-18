@@ -33,6 +33,10 @@ import { handleMusicVideoComposite } from './musicVideoComposite';
 import { startUdioGeneration } from '../udio/client';
 import { hasUdioApiKey } from './mediaKeys';
 import type { OrchestratorInput } from './providerRouter';
+import { filmCredits } from '@/lib/credits/priceBook';
+
+/** The music-video quote: one 8 s Fast scene with its song, as a film (lib/credits/priceBook) — 77 credits. */
+const MV_QUOTE = filmCredits(8, 'fast', true);
 
 const input = (): OrchestratorInput => ({
   message: 'make a music video about Tbilisi at night', serviceContext: 'video', agentId: '', userId: 'user-1',
@@ -54,11 +58,11 @@ beforeEach(() => {
 });
 afterEach(() => { jest.restoreAllMocks(); delete process.env.GEMINI_API_KEY; });
 
-test('charged once, up front, at the music-video quote (35) — before any leg runs — and no leg debits on its own', async () => {
+test('charged once, up front, at the music-video quote (77) — before any leg runs — and no leg debits on its own', async () => {
   const res = await handleMusicVideoComposite(input());
   expect(res.success).toBe(true);
   expect(mockDeduct).toHaveBeenCalledTimes(1);
-  expect(mockDeduct.mock.calls[0]!.slice(0, 2)).toEqual(['user-1', 35]);
+  expect(mockDeduct.mock.calls[0]!.slice(0, 2)).toEqual(['user-1', MV_QUOTE]);
   expect(String(mockDeduct.mock.calls[0]![2])).toMatch(/:charge$/);
   expect(mockDeduct.mock.invocationCallOrder[0]).toBeLessThan(mockExecute.mock.invocationCallOrder[0]!);
   expect(mockMeta.length).toBeGreaterThanOrEqual(2);
@@ -94,7 +98,7 @@ test('neither the song nor the clip came back → the WHOLE charge is returned, 
   mockExecute.mockResolvedValue({ success: false });
   await handleMusicVideoComposite(input());
   expect(mockRefund).toHaveBeenCalledTimes(1);
-  expect(mockRefund.mock.calls[0]!.slice(0, 2)).toEqual(['user-1', 35]);
+  expect(mockRefund.mock.calls[0]!.slice(0, 2)).toEqual(['user-1', MV_QUOTE]);
   expect(String(mockRefund.mock.calls[0]![2])).toMatch(/:charge:refund$/);
 });
 
@@ -102,5 +106,5 @@ test('only one leg delivered → half comes back, rounded DOWN (never more than 
   (hasUdioApiKey as jest.Mock).mockReturnValue(false); // no song
   await handleMusicVideoComposite(input());            // the clip still queues
   expect(mockRefund).toHaveBeenCalledTimes(1);
-  expect(mockRefund.mock.calls[0]![1]).toBe(17);
+  expect(mockRefund.mock.calls[0]![1]).toBe(Math.floor(MV_QUOTE / 2));
 });

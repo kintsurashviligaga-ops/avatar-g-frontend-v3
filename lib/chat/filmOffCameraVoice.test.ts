@@ -95,6 +95,7 @@ import { handleFilmComposite } from './filmComposite';
 import { generateCheckedFilmVoiceover } from './filmVoiceover';
 import { SILENT_PRESENTER_DIRECTION, silenceSpeechVerbs } from './filmPipeline';
 import type { OrchestratorInput } from './providerRouter';
+import { filmCredits } from '@/lib/credits/priceBook';
 
 const queued = (n: number) => ({ success: true, predictionId: `task-${n}`, predictionStatus: 'processing', metadata: { videoProvider: 'gemini-veo' } });
 /** The studio's Veo plan as it travels on the wire (lib/veo/renderOptions.ts VeoRenderOptionsSchema). */
@@ -187,7 +188,7 @@ describe('a Georgian narration is spoken off camera by ONE voice', () => {
   test('the price is the same quote: muting Veo’s own audio does not change what the film costs', async () => {
     await handleFilmComposite(input(adPanel(KA_SCRIPT)));
     expect(mockDeduct).toHaveBeenCalledTimes(1);
-    expect(mockDeduct.mock.calls[0]![1]).toBe(100);
+    expect(mockDeduct.mock.calls[0]![1]).toBe(filmCredits(32, 'fast', false, 4)); // 4 × 8 s on Fast
   });
 
   test('a Georgian line too long to place in one scene still leaves every scene silent (no clip talks beside the voice)', async () => {

@@ -108,6 +108,10 @@ jest.mock('../../../../lib/supabase/server', () => ({
 }));
 
 import { POST } from './route';
+import { TIERS } from '../../../../lib/billing/tiers';
+
+/** The Creator plan's monthly credits, from the tier SSoT (lib/billing/tiers). */
+const CREATOR_CREDITS = TIERS.creator.includedCredits;
 
 const USER = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 const PERIOD_START = 1_790_000_000;
@@ -217,7 +221,7 @@ describe('invoice.paid → subscription allowance', () => {
       userId: USER,
       invoiceId: 'in_1',
       tier: 'creator',
-      credits: 525,
+      credits: CREATOR_CREDITS,
       subscriptionId: 'sub_1',
       customerId: 'cus_1',
       priceId: 'price_creator_m',
@@ -225,7 +229,7 @@ describe('invoice.paid → subscription allowance', () => {
       periodEnd: new Date(PERIOD_END * 1000).toISOString(),
     });
     expect(mockFindUserIdForStripeSubscription).not.toHaveBeenCalled();
-    expect(mockCreateNotification).toHaveBeenCalledWith(expect.anything(), USER, 'payment', expect.stringContaining('+525'));
+    expect(mockCreateNotification).toHaveBeenCalledWith(expect.anything(), USER, 'payment', expect.stringContaining(`+${CREATOR_CREDITS}`));
     expect(markedProcessed()).toBe(true);
   });
 

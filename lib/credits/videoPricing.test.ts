@@ -3,15 +3,21 @@ import { VIDEO_DURATION_STOPS } from '@/lib/video/duration';
 import { MUSIC_VIDEO_MULT, VIDEO_CREDITS_PER_SEC, filmSecondsFromClips, perSceneCredits, videoCredits } from './videoPricing';
 import { quoteCredits, creditsLabel, motionCredits, productAdCredits, productAdSeconds, PRODUCT_AD_PRICING } from './quote';
 import { genjutsuCredits } from '../genjutsu/pricing';
+import { PRICE_BOOK, clipCredits, filmCredits, sceneCredits } from './priceBook';
 
 describe('video price by the second', () => {
-  test('anchored on the owner’s number: one 8 s clip on Fast is 25 credits — the unit the plan pools are built on', () => {
-    expect(VIDEO_CREDITS_PER_SEC * 8).toBe(CREDIT_COSTS.video_30s);
-    expect(videoCredits({ seconds: 8 })).toBe(25);
+  test('anchored on the price book: the shortest film, 8 s on Fast, is 75 credits — its base, one clip and one scene', () => {
+    expect(videoCredits({ seconds: 8 })).toBe(CREDIT_COSTS.video_30s);
+    expect(videoCredits({ seconds: 8 })).toBe(PRICE_BOOK.filmBase + PRICE_BOOK.clip.fast + PRICE_BOOK.filmScene);
+    expect(videoCredits({ seconds: 8 })).toBe(75);
+    // The estimate's unit (the director's plan): one Fast scene's price per second.
+    expect(VIDEO_CREDITS_PER_SEC * 8).toBe(sceneCredits('fast'));
   });
 
-  test('the whole ladder, Fast: 4 s 13 · 6 s 19 · 8 s 25 · 16 s 50 · 24 s 75 · 48 s 150 · 96 s 300 · 240 s 750', () => {
-    expect([4, 6, 8, 16, 24, 48, 96, 240].map((seconds) => videoCredits({ seconds }))).toEqual([13, 19, 25, 50, 75, 150, 300, 750]);
+  test('the whole ladder, Fast: 4 s 43 · 6 s 59 · 8 s 75 · 16 s 146 · 24 s 217 · 48 s 430 · 96 s 856 · 240 s 2134', () => {
+    const stops = [4, 6, 8, 16, 24, 48, 96, 240];
+    expect(stops.map((seconds) => videoCredits({ seconds }))).toEqual([43, 59, 75, 146, 217, 430, 856, 2134]);
+    expect(stops.map((seconds) => videoCredits({ seconds }))).toEqual(stops.map((seconds) => filmCredits(seconds, 'fast')));
   });
 
   test('longer always costs more (no stop is cheaper than the one before) and the price is a whole credit', () => {
@@ -24,24 +30,26 @@ describe('video price by the second', () => {
     }
   });
 
-  test('quality scales it: Lite 0.6×, Standard 3.3× (8 s → 15 and 83)', () => {
-    expect(videoCredits({ seconds: 8, quality: 'lite' })).toBe(15);
-    expect(videoCredits({ seconds: 8, quality: 'fast' })).toBe(25);
-    expect(videoCredits({ seconds: 8, quality: 'standard' })).toBe(83);
-    expect(videoCredits({ seconds: 240, quality: 'standard' })).toBe(2475);
+  test('the tier sets the clip price: 8 s → Lite 54, Fast 75, Standard 224', () => {
+    expect(videoCredits({ seconds: 8, quality: 'lite' })).toBe(54);
+    expect(videoCredits({ seconds: 8, quality: 'fast' })).toBe(75);
+    expect(videoCredits({ seconds: 8, quality: 'standard' })).toBe(224);
+    expect(videoCredits({ seconds: 240, quality: 'standard' })).toBe(filmCredits(240, 'standard'));
   });
 
-  test('a music video is 1.4× the same film', () => {
-    expect(MUSIC_VIDEO_MULT).toBe(1.4);
-    expect(videoCredits({ seconds: 24, mode: 'musicvideo' })).toBe(105);
-    expect(videoCredits({ seconds: 24, mode: 'documentary' })).toBe(75);
+  test('a music video adds the sung song to every scene', () => {
+    expect(MUSIC_VIDEO_MULT).toBe(sceneCredits('fast', true) / sceneCredits('fast'));
+    expect(videoCredits({ seconds: 24, mode: 'musicvideo' })).toBe(videoCredits({ seconds: 24, mode: 'documentary' }) + 3 * PRICE_BOOK.musicVideoSongPerScene);
+    expect(videoCredits({ seconds: 24, mode: 'musicvideo' })).toBe(223);
+    expect(videoCredits({ seconds: 24, mode: 'documentary' })).toBe(217);
   });
 
   test('out-of-range or garbage input is clamped to 4 … 240 s, never free and never negative', () => {
-    expect(videoCredits({ seconds: 0 })).toBe(13);
-    expect(videoCredits({ seconds: -50 })).toBe(13);
-    expect(videoCredits({ seconds: 10_000 })).toBe(750);
-    expect(videoCredits({ seconds: Number.NaN })).toBe(13);
+    const shortest = filmCredits(4, 'fast');
+    expect(videoCredits({ seconds: 0 })).toBe(shortest);
+    expect(videoCredits({ seconds: -50 })).toBe(shortest);
+    expect(videoCredits({ seconds: 10_000 })).toBe(filmCredits(240, 'fast'));
+    expect(videoCredits({ seconds: Number.NaN })).toBe(shortest);
   });
 });
 
@@ -79,13 +87,12 @@ describe('quote — the number on the button', () => {
     expect(motionCredits({ lipsync: true })).toBe(CREDIT_COSTS.remix_video + CREDIT_COSTS.avatar_30s);
   });
 
-  test('video goes through videoCredits; a product ad keeps today\'s Production price until the owner approves the length rule', () => {
-    expect(quoteCredits({ tool: 'video', seconds: 48 })).toBe(150);
-    expect(quoteCredits({ tool: 'video', seconds: 24, mode: 'musicvideo' })).toBe(105);
-    // Production today: 25 credits at every offered length, on the button and in the route alike.
-    expect(PRODUCT_AD_PRICING).toBe('production');
-    expect([8, 24, 48].map((seconds) => quoteCredits({ tool: 'product', seconds }))).toEqual([25, 25, 25]);
-    // The audit's rule (D2): 8 / 24 / 48 s render 1 / 3 / 6 Veo Fast clips and would cost what a film of that length costs.
+  test('video goes through videoCredits; a product ad costs what a Fast film of its length costs (the length rule, live)', () => {
+    expect(quoteCredits({ tool: 'video', seconds: 48 })).toBe(videoCredits({ seconds: 48 }));
+    expect(quoteCredits({ tool: 'video', seconds: 24, mode: 'musicvideo' })).toBe(videoCredits({ seconds: 24, mode: 'musicvideo' }));
+    // 8 / 24 / 48 s render 1 / 3 / 6 Veo Fast clips and cost what a film of that length costs (PRD v2 §1.1, 2026-10-18).
+    expect(PRODUCT_AD_PRICING).toBe('length');
+    expect([8, 24, 48].map((seconds) => quoteCredits({ tool: 'product', seconds }))).toEqual([75, 217, 430]);
     expect([8, 24, 48].map((seconds) => productAdCredits(seconds, 'length'))).toEqual(
       [8, 24, 48].map((seconds) => quoteCredits({ tool: 'video', seconds })),
     );
@@ -99,9 +106,10 @@ describe('quote — the number on the button', () => {
   test('a VFX scene is quoted with the price its route charges (one 8 s Veo clip), never as a remix', () => {
     expect(quoteCredits({ tool: 'vfx' })).toBe(genjutsuCredits({ op: 'scene', quality: 'fast' }));
     expect(quoteCredits({ tool: 'vfx', quality: 'standard' })).toBe(genjutsuCredits({ op: 'scene', quality: 'standard' }));
-    expect([quoteCredits({ tool: 'vfx' }), quoteCredits({ tool: 'vfx', quality: 'standard' })]).toEqual([25, 83]);
+    expect([quoteCredits({ tool: 'vfx' }), quoteCredits({ tool: 'vfx', quality: 'standard' })]).toEqual([clipCredits('fast'), clipCredits('standard')]);
+    expect([quoteCredits({ tool: 'vfx' }), quoteCredits({ tool: 'vfx', quality: 'standard' })]).toEqual([64, 213]);
     // A tier the scene does not offer (Lite takes no references) prices as Fast, its default — never cheaper.
-    expect(quoteCredits({ tool: 'vfx', quality: 'lite' })).toBe(25);
+    expect(quoteCredits({ tool: 'vfx', quality: 'lite' })).toBe(clipCredits('fast'));
   });
 
   test('the credits word: English plural, Georgian invariant, Russian 1 / 2-4 / 5+ with the 11-14 exception', () => {

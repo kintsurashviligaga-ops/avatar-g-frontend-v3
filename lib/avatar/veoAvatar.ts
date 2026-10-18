@@ -17,7 +17,7 @@
  * Pure: the route (app/api/avatar/veo) owns auth, money and the provider.
  */
 import { buildSpeechDirection } from '@/lib/chat/filmPipeline';
-import { videoCredits } from '@/lib/credits/videoPricing';
+import { sceneCredits } from '@/lib/credits/priceBook';
 import { isGeorgianText } from '@/lib/audio/tts-model';
 import { georgianToLatin } from './speechMatch';
 import type { VeoAspect } from '@/lib/veo/types';
@@ -39,9 +39,9 @@ export function veoAvatarPublic(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.AVATAR_VEO_PUBLIC === '1';
 }
 
-/** Credits for one avatar clip: the same as one Veo Fast clip of that length. */
+/** Credits for one avatar clip: one Veo Fast film scene of that length (the clip and its spoken line). */
 export function veoAvatarCredits(): number {
-  return videoCredits({ seconds: VEO_AVATAR_SECONDS, quality: 'fast' });
+  return sceneCredits('fast', false, VEO_AVATAR_SECONDS);
 }
 
 export interface VeoAvatarInput {

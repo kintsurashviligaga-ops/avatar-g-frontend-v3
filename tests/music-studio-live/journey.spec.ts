@@ -5,6 +5,7 @@ import {
   MUSIC_PRICE, audioFacts, cards, confirm, jobRow, ledgerForJob, newestCard, openStudio, storedBytes, studioReady, voice, waitPhase,
 } from './_music';
 import { rows } from '../video-core-live/_live';
+import { creditsLabel } from '../../lib/credits/quote';
 
 /**
  * Music Studio v1 — the One Window journey in a real browser (desktop Chrome and an iPhone 13 viewport, each its own
@@ -190,11 +191,11 @@ test('Cancel mid-render returns the credits exactly once; Try again makes a NEW 
   await waitPhase(card, 'quoted', 30_000);
   const { jobId } = await confirm(page, card, user.id);
   await expect(card.getByTestId('music-cancel')).toBeVisible({ timeout: 30_000 });
-  await expect.poll(() => balanceOf(user.id), { timeout: 30_000 }).toBe(before - 5);
+  await expect.poll(() => balanceOf(user.id), { timeout: 30_000 }).toBe(before - MUSIC_PRICE);
   await card.getByTestId('music-cancel').click();
   await waitPhase(card, 'cancelled', 60_000);
   await expect(card).toContainText('Cancelled. The reserved credits were returned.');
-  await expect.poll(async () => (await ledgerForJob(user.id, jobId)).map((r) => r.delta), { timeout: 60_000 }).toEqual([-5, 5]);
+  await expect.poll(async () => (await ledgerForJob(user.id, jobId)).map((r) => r.delta), { timeout: 60_000 }).toEqual([-MUSIC_PRICE, MUSIC_PRICE]);
   expect(await balanceOf(user.id)).toBe(before);
   // Stored as a failed lease with the cancel reason (the view reports it as „cancelled").
   expect(await jobRow(jobId)).toMatchObject({ status: 'failed', error: expect.stringMatching(/^cancelled/) });
@@ -218,7 +219,7 @@ test('provider failure and QC failure: no track delivered, the reservation refun
     await waitPhase(card, 'failed', 120_000);
     await expect(card).toContainText('The reserved credits were returned');
     await expect(card.getByTestId('music-player')).toHaveCount(0);
-    await expect.poll(async () => (await ledgerForJob(user.id, jobId)).map((r) => r.delta), { timeout: 90_000 }).toEqual([-5, 5]);
+    await expect.poll(async () => (await ledgerForJob(user.id, jobId)).map((r) => r.delta), { timeout: 90_000 }).toEqual([-MUSIC_PRICE, MUSIC_PRICE]);
     out[fault] = { jobId, row: await jobRow(jobId), ledger: await ledgerForJob(user.id, jobId) };
   }
   // The sweep (cron) twice: nothing more is refunded.
@@ -229,7 +230,7 @@ test('provider failure and QC failure: no track delivered, the reservation refun
   }
   for (const fault of ['fail', 'silent'] as const) {
     const { jobId } = out[fault] as { jobId: string };
-    expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-5, 5]);
+    expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-MUSIC_PRICE, MUSIC_PRICE]);
   }
   expect(await balanceOf(user.id)).toBe(before);
   evidence(`music-failures-${tag(info)}`, out);
@@ -259,7 +260,7 @@ test('a sung song is refused before any price (vocals not verified) — never tu
 });
 
 test('Georgian and Russian: the card speaks the page language (plan, price, length note)', async ({ page }) => {
-  for (const [locale, create, len] of [['ka', 'შექმნა · 5 კრედიტი', '≈ 30 წმ'], ['ru', 'Создать · 5 кредитов', '≈ 30 с']] as const) {
+  for (const [locale, create, len] of [['ka', `შექმნა · ${creditsLabel(MUSIC_PRICE, 'ka')}`, '≈ 30 წმ'], ['ru', `Создать · ${creditsLabel(MUSIC_PRICE, 'ru')}`, '≈ 30 с']] as const) {
     await openStudio(page, locale);
     await voice(page, { action: 'plan', prompt: locale === 'ka' ? 'მშვიდი ფორტეპიანო' : 'спокойное пианино' });
     const card = newestCard(page);
@@ -331,8 +332,8 @@ test('reload while it composes → fresh chat; the thread opened from History re
   const back = page.locator(`[data-testid="music-card"][data-job-id="${jobId}"]`);
   await expect(back).toHaveAttribute('data-phase', 'completed', { timeout: 120_000 });
   await expect(back.locator('audio')).toHaveCount(1);
-  expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-5]);
-  expect(await balanceOf(user.id)).toBe(before - 5);
+  expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-MUSIC_PRICE]);
+  expect(await balanceOf(user.id)).toBe(before - MUSIC_PRICE);
   const jobs = await rows<{ id: string }>(`generation_jobs?user_id=eq.${user.id}&service_type=eq.music&params->>prompt=eq.${encodeURIComponent(prompt)}&select=id`);
   expect(jobs.map((j) => j.id)).toEqual([jobId]);
   await shot(page, `music-reload-recovered-${tag(info)}`);

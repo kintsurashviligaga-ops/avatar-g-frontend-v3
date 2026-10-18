@@ -15,29 +15,25 @@ describe('PRICING_TIERS — the 4-tier ladder', () => {
     expect(PRICING_TIERS.map((t) => t.priceGel)).toEqual([0, 54, 108, 216]);
   });
 
-  it('derives creditsIncluded from the ceilings (no hardcoded total that can drift)', () => {
-    for (const tier of PRICING_TIERS) {
+  it('a paid rung includes exactly what its ceiling buys at the price book (a price change fails here, not on the page)', () => {
+    for (const tier of PRICING_TIERS.filter((t) => t.priceUsd > 0)) {
       expect(tier.creditsIncluded).toBe(tierCreditPool(tier.creditCeiling));
     }
-    // ⚠️ THE FREE TIER IS ONE GRANT NOW, NOT THREE PROMISES. It used to advertise 6 images (12 credits)
-    // while the DB trigger granted 10 and free_films_remaining handed out 3 uncounted videos. The trial
-    // is 50 credits, and the ceiling is chosen so it SUMS to exactly 50 — keeping creditsIncluded derived
-    // rather than a hardcoded total that drifts.
+    // ⚠️ THE FREE TIER IS ONE GRANT, NOT THREE PROMISES: the 50 credits the DB trigger grants, framed as tracks +
+    // images, plus the one free film from its own quota (free_films_remaining), which the 50 do not pay for.
     const free = PRICING_TIERS.find((t) => t.id === 'free')!;
-    expect(free.creditCeiling).toEqual({ videos: 1, music: 1, images: 10 });
+    expect(free.creditCeiling).toEqual({ videos: 1, music: 5, images: 7 });
     expect(free.creditsIncluded).toBe(50);
+    expect(tierCreditPool({ ...free.creditCeiling, videos: 0 })).toBe(50);
   });
 
-  it('gives a bigger pack MORE credits per dollar — the reason to buy up', () => {
-    // ⚠️ THIS IS THE DEFECT THIS TEST EXISTS TO PREVENT COMING BACK. Business was Pro doubled in every
-    // dimension at twice the price, so it delivered 13.1266 credits/$ against Pro's 13.1283 — paying
-    // twice as much bought marginally FEWER credits per dollar, because the price ratio (2.00025) beat
-    // the credit ratio (2.00000). Three tiers, two of which were the same offer.
-    const paid = PRICING_TIERS.filter((t) => t.priceUsd > 0).sort((a, b) => a.priceUsd - b.priceUsd);
-    const perDollar = paid.map((t) => t.creditsIncluded / t.priceUsd);
-    for (let i = 1; i < perDollar.length; i += 1) {
-      // STRICTLY greater, and by a margin a customer would notice — not a rounding artefact.
-      expect(perDollar[i]!).toBeGreaterThan(perDollar[i - 1]! * 1.05);
+  it('no plan sells a credit below the price book\'s credit value (10 credits per lari of its BOG price)', () => {
+    // ⚠️ THE OWNER'S 100 %-PROFIT RULE (PRD v2 §1.1, 2026-10-18) IS WHY THERE IS NO VOLUME BONUS. Every service is priced
+    // at exactly twice its cost against a 0.10 ₾ credit; a plan credit sold for less would sell every service below the
+    // rule. A plan may give MORE only if the price book is re-priced against that cheaper credit (the owner's option 2).
+    for (const tier of PRICING_TIERS.filter((t) => t.priceUsd > 0)) {
+      expect(tier.creditsIncluded).toBeLessThanOrEqual(tier.priceGel * 10);
+      expect(tier.creditsIncluded).toBe(tier.priceGel * 10);
     }
   });
 
@@ -53,9 +49,9 @@ describe('PRICING_TIERS — the 4-tier ladder', () => {
     }
   });
 
-  it('tierCreditPool still derives Σ ceiling × media cost (kept for the pool helper)', () => {
-    expect(tierCreditPool({ videos: 2, music: 10, images: 20 })).toBe(140); // 50 + 50 + 40
-    expect(tierCreditPool({ videos: 10, music: 50, images: 100 })).toBe(700); // 250 + 250 + 200
+  it('tierCreditPool prices a ceiling at the price book (an 8 s Fast film, a 30 s track, an image)', () => {
+    expect(tierCreditPool({ videos: 2, music: 10, images: 20 })).toBe(280); // 150 + 30 + 100
+    expect(tierCreditPool({ videos: 10, music: 50, images: 100 })).toBe(1400); // 750 + 150 + 500
   });
 });
 
@@ -113,7 +109,7 @@ describe('PRICING_TIERS is derived from the subscription catalogue (lib/billing/
       expect(rung.creditCeiling).toEqual(tier.creditCeiling);
       expect(rung.creditsIncluded).toBe(tier.includedCredits);
     }
-    expect(PRICING_TIERS.map((t) => t.creditsIncluded)).toEqual([50, 230, 525, 1200]);
+    expect(PRICING_TIERS.map((t) => t.creditsIncluded)).toEqual([50, 540, 1080, 2160]);
   });
 
   it('a paid rung grants on its invoice exactly what the page says is included', () => {
