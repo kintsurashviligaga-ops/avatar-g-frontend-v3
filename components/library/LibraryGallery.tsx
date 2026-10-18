@@ -215,9 +215,9 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     }
   }, []);
 
-  // Edit (GG's UI/UX plan, 2026-10-18): the file opens in the studio's editor, the one a result's ✂ opens in the chat —
-  // Montage for a video, the Surgical Editor for a picture or a sound. It rides over in this tab's sessionStorage (a signed
-  // link never goes in the address bar) and the studio opens it once. Opening it generates and charges nothing.
+  // Edit (GG's UI/UX plan, 2026-10-18): the file opens in the studio's Montage — a film or a picture on the timeline, a song
+  // as the music (GG's card answer the same day). It rides over in this tab's sessionStorage (a signed link never goes in
+  // the address bar) and the studio opens it once. Opening it generates and charges nothing.
   const edit = useCallback((it: LibraryItem) => {
     const kind = editKindFor(it.kind, it.url);
     if (!kind) return;

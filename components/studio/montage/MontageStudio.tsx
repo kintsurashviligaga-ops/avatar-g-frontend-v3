@@ -138,8 +138,11 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
   const [hist, setHist] = useState<History>(() => startHistory(emptyEdit(isMontageAspect(initialAspect) ? initialAspect : '9:16')));
-  // Opening on clips in a known format („put the song on the video we made"): no format question while they land.
-  const [seeding, setSeeding] = useState(() => Boolean(initialMedia?.length) && isMontageAspect(initialAspect));
+  // Opening on clips („put the song on the video we made", a Library film's ✂): „Opening…" while they land.
+  // ⚠️ THIS USED TO WAIT ONLY WHEN A FORMAT CAME WITH THEM. A film sent without one showed the empty „New project" screen
+  // for as long as its length took to read (seconds, for a long film over the network), and GG took that for the file
+  // not having come over at all (2026-10-18). The format can still be changed above the preview once it is there.
+  const [seeding, setSeeding] = useState(() => Boolean(initialMedia?.length));
   // Opened on nothing: the edit kept on this device (draft.ts) may come back first — the start screen waits for it.
   const [restoring, setRestoring] = useState(() => !initialMedia?.length && !initialMusic?.url);
   /** Set once a kept edit came back: the strip above the preview, with how many clips could not. */
@@ -920,6 +923,18 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
           <div className="mx-auto w-full max-w-xl px-4 pb-10 pt-6">
             <h2 className="text-[22px] font-semibold leading-tight">{t.newProject}</h2>
             <p className="mt-1.5 text-[14px] leading-relaxed text-app-muted">{t.startSub}</p>
+            {music && (
+              // A song that came on its own shows it came: the start screen has no timeline to put it on yet.
+              <div className="mt-4 flex items-center gap-2.5 rounded-xl bg-app-accent/10 px-3 py-2.5 text-[13px] ring-1 ring-app-accent/25" role="status" data-testid="montage-start-music">
+                {music.status === 'uploading'
+                  ? <Loader2 size={16} aria-hidden="true" className="shrink-0 animate-spin text-app-accent motion-reduce:animate-none" />
+                  : <Music2 size={16} aria-hidden="true" className="shrink-0 text-app-accent" />}
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-app-text">{music.name}</span>
+                  <span className="block text-app-muted">{t.startMusic}</span>
+                </span>
+              </div>
+            )}
             <h3 className="mb-2 mt-5 text-[12px] font-medium uppercase tracking-wide text-app-muted">{t.format}</h3>
             <AspectChoice locale={locale} value={edit.aspect} onChange={(a) => apply((e) => ({ ...e, aspect: a }))} label={t.format} size="lg" />
             <div className="mt-6">

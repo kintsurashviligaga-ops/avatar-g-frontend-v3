@@ -4,7 +4,7 @@ import path from 'node:path';
 
 /**
  * The Library's „edit" (GG's UI/UX plan, 2026-10-18), at a phone and a desktop width: a Library file opens in the
- * studio's editor — a film in Montage, a picture and a song in the Surgical Editor — carried in this tab's
+ * studio's Montage — a film or a picture on its timeline, a song as its music (GG's card answer, 2026-10-18) — carried in this tab's
  * sessionStorage (lib/studio/pendingEdit), so the file's link never shows in the address bar. Opening it calls no
  * generation. The Library API is stubbed at the network edge (the dev server runs on a dummy Supabase); the files are
  * served from this site, so nothing leaves the machine.
@@ -83,7 +83,7 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('montage-studio')).toHaveCount(0);
     });
 
-    test('a picture and a song open in the Surgical Editor', async ({ page }) => {
+    test('a picture opens on the Montage timeline and a song as its music', async ({ page }) => {
       await prepare(page);
       const posts = watchGenerations(page);
 
@@ -91,15 +91,20 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByAltText('A picture')).toBeVisible({ timeout: 60_000 });
       await page.getByRole('button', { name: 'Open in Editor' }).click();
       await expect(page).toHaveURL(/\/en\/dashboard$/, { timeout: 60_000 });
-      await expect(page.locator('button[title^="import-"][title$=".png"]')).toHaveCount(1, { timeout: 60_000 });
-      await expect(page.getByTestId('montage-studio')).toHaveCount(0);
+      await expect(page.getByTestId('montage-studio')).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId('montage-clip')).toHaveCount(1, { timeout: 30_000 });
+      // Not the photo editor any more (it used to open there, and read as the picture not having come over).
+      await expect(page.locator('button[title^="import-"]')).toHaveCount(0);
 
       await page.goto('/en/library?tab=music', { waitUntil: 'load' });
       const songEdit = page.getByRole('button', { name: 'Open in Editor' });
       await expect(songEdit).toHaveCount(1, { timeout: 60_000 });
       await songEdit.click();
       await expect(page).toHaveURL(/\/en\/dashboard$/, { timeout: 60_000 });
-      await expect(page.locator('button[title^="import-"][title$=".mp3"]')).toHaveCount(1, { timeout: 60_000 });
+      await expect(page.getByTestId('montage-studio')).toBeVisible({ timeout: 60_000 });
+      // No footage yet, so the start screen says the song is in; the first picture or film puts it under them.
+      await expect(page.getByTestId('montage-start-music')).toContainText('The music is in', { timeout: 30_000 });
+      await expect(page.getByTestId('montage-clip')).toHaveCount(0);
       expect(posts).toEqual([]);
     });
   });

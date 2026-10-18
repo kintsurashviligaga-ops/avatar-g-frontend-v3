@@ -31,6 +31,8 @@ const C = {
   video: T('ვიდეო', 'Video', 'Видео'),
   photo: T('ფოტო', 'Photo', 'Фото'),
   opening: T('იხსნება…', 'Opening…', 'Открываем…'),
+  // A song opened on its own (a Library song's ✂, „put this song in a montage"): it is in, waiting for footage.
+  startMusic: T('მუსიკა უკვე დამატებულია. დაამატე ვიდეო ან ფოტო და მათ ქვეშ დაიკვრება.', 'The music is in. Add videos or photos and it plays under them.', 'Музыка уже добавлена. Добавьте видео или фото, и она зазвучит под ними.'),
   // „My creations": which files it shows, and the next page of them.
   showAll: T('ყველა', 'All', 'Все'),
   showVideos: T('ვიდეოები', 'Videos', 'Видео'),

@@ -206,6 +206,33 @@ describe('MontageStudio', () => {
     // A hosted file needs no upload: Export is ready at once.
     expect(screen.getByTestId('montage-export-btn')).toBeEnabled();
   });
+
+  it('a film handed over without a format says „Opening…" while its length is read, never the empty new project', async () => {
+    // GG 2026-10-18: a Library film's ✂ showed „New project" for as long as the film's length took to read.
+    let release: (sec: number) => void = () => {};
+    (jest.requireMock('./media') as { probeDuration: jest.Mock }).probeDuration
+      .mockImplementationOnce(() => new Promise<number>((resolve) => { release = resolve; }));
+    render(<MontageStudio locale="en" onExit={() => {}} initialMedia={[{ url: 'https://cdn.test/old-film.mp4', kind: 'video' }]} />);
+    expect(screen.getByTestId('montage-opening')).toHaveTextContent('Opening…');
+    expect(screen.queryByTestId('montage-start')).toBeNull();
+    await act(async () => { release(12); });
+    await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
+    expect(screen.queryByTestId('montage-opening')).toBeNull();
+  });
+
+  it('a song handed over on its own says on the start screen that it is in (a Library song\'s ✂)', async () => {
+    render(<MontageStudio locale="en" onExit={() => {}} initialMusic={{ url: 'https://cdn.test/old-song.mp3' }} />);
+    await act(async () => {}); // its length and waveform are read in the background
+    expect(screen.getByTestId('montage-start')).toBeInTheDocument();
+    const note = screen.getByTestId('montage-start-music');
+    expect(note).toHaveTextContent('Music'); // no name came with it: Montage's own word, in the person's language
+    expect(note).toHaveTextContent('The music is in. Add videos or photos and it plays under them.');
+  });
+
+  it('an empty new project has no music note', () => {
+    render(<MontageStudio locale="en" onExit={() => {}} />);
+    expect(screen.queryByTestId('montage-start-music')).toBeNull();
+  });
 });
 
 describe('the music start', () => {
