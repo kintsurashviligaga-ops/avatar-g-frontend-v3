@@ -14,6 +14,11 @@ jest.mock('../../lib/analytics/track', () => ({ track: jest.fn() }));
 import AuthModal from './AuthModal';
 import { PRICING_TIERS } from '../../lib/billing/pricingConfig';
 
+// CI sets NEXT_PUBLIC_SUPABASE_URL, so the sheet asks GoTrue which sign-in providers exist; jsdom has no fetch. Email only.
+beforeEach(() => {
+  global.fetch = jest.fn(async () => ({ ok: false, json: async () => null })) as unknown as typeof fetch;
+});
+
 const basic = PRICING_TIERS.find((t) => t.id === 'basic')!;
 const sub = () => screen.getByTestId('auth-signup-sub').textContent ?? '';
 const open = (locale: 'ka' | 'en' | 'ru', plan: string | null) =>
