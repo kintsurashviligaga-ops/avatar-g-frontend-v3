@@ -10,11 +10,23 @@
 import { useState } from 'react';
 import { Check, Film, Loader2, Upload } from 'lucide-react';
 import type { Copy } from './copy';
-import { isVideoItem, type LibraryItem } from './useLibrary';
+import { isVideoItem, type LibraryFilter, type LibraryItem } from './useLibrary';
+
+/** What the picker reads from useLibrary. Filter and paging are optional (a fixed list shows neither). */
+export interface PickerLibrary {
+  items: LibraryItem[];
+  loading: boolean;
+  signedOut: boolean;
+  filter?: LibraryFilter;
+  setFilter?: (f: LibraryFilter) => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  more?: () => void;
+}
 
 export function MediaPicker(p: {
   t: Copy;
-  library: { items: LibraryItem[]; loading: boolean; signedOut: boolean };
+  library: PickerLibrary;
   onDevice: () => void;
   onAdd: (items: LibraryItem[]) => void;
   /** Grid columns: 3 in a phone sheet, 2 in the desktop's narrow left column. */
@@ -44,6 +56,24 @@ export function MediaPicker(p: {
       </button>
 
       <h4 className="mb-2 mt-4 text-[12px] font-medium uppercase tracking-wide text-app-muted">{t.myCreations}</h4>
+      {!p.library.signedOut && p.library.setFilter && (
+        <div role="group" aria-label={t.myCreations} className="mb-2 flex gap-1.5" data-testid="montage-library-filter">
+          {([['all', t.showAll], ['video', t.showVideos], ['photo', t.showPhotos]] as const).map(([f, label]) => {
+            const on = (p.library.filter ?? 'all') === f;
+            return (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={on}
+                onClick={() => { if (!on) { setPicked([]); p.library.setFilter?.(f); } }}
+                className={`min-h-[36px] rounded-full px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${on ? 'bg-app-text text-app-bg' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {p.library.signedOut ? (
         <p className="text-[12.5px] leading-snug text-app-muted">{t.signInLibrary}</p>
       ) : p.library.loading ? (
@@ -85,6 +115,20 @@ export function MediaPicker(p: {
               </li>
             );
           })}
+          {p.library.hasMore && p.library.more && (
+            <li style={{ gridColumn: '1 / -1' }}>
+              <button
+                type="button"
+                onClick={p.library.more}
+                disabled={p.library.loadingMore}
+                aria-busy={p.library.loadingMore || undefined}
+                data-testid="montage-library-more"
+                className="mt-1 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-app-border/20 text-[13px] font-medium text-app-text transition hover:border-app-border/40 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+              >
+                {p.library.loadingMore && <Loader2 size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />} {t.showMore}
+              </button>
+            </li>
+          )}
         </ul>
       )}
       {picked.length > 0 && (

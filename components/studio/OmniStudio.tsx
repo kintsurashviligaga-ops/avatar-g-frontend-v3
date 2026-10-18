@@ -8996,10 +8996,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setMode('surgical');
   }, []);
   // A Library file the person tapped „edit" on (components/library/LibraryGallery → lib/studio/pendingEdit): it opens
-  // here in the editor, once, on mount — the same editor this feed's ✂ opens. Nothing is generated or charged.
+  // here in Montage, once, on mount — a film or a picture on the timeline, a song as the music (GG's card, 2026-10-18:
+  // every Library file goes to Montage; a picture used to open the photo editor, a song the audio editor, and GG took
+  // that for the file not having come over). Nothing is generated or charged.
   useEffect(() => {
     const p = takePendingEdit();
-    if (p) openInEditor(p.url, p.kind);
+    if (!p) return;
+    if (p.kind === 'audio') {
+      setMontageSeed(null); setMontageMusicSeed({ url: p.url }); // Montage names it „Music" in the person's language
+    } else {
+      setMontageSeed([{ url: p.url, kind: p.kind }]); setMontageMusicSeed(null);
+    }
+    setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
+    setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
   // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
   // Reverse context pipeline (V4): the editor hands its current (edited) asset back → seed it as a chat attachment so

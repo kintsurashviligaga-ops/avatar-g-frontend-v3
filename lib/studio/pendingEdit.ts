@@ -3,9 +3,9 @@
  *
  * GG's 2026-10-18 UI/UX plan: the Library lets a person search, filter, download AND edit. The Library is its own page
  * (app/[locale]/library), and the editor lives inside the studio, so the file rides over in sessionStorage (this tab
- * only, gone with it) and the studio opens it in the editor once, on mount — the same editor a result's ✂ button in the
- * chat opens: Montage for a video, the Surgical Editor's studios for a picture or a sound. Nothing is generated or
- * charged by opening it.
+ * only, gone with it) and the studio opens it in Montage once, on mount: a video or a picture on the timeline, a sound
+ * as the music (GG's card answer, 2026-10-18 — a picture and a sound used to open the Surgical Editor's studios, which
+ * read as the file not having come over). Nothing is generated or charged by opening it.
  *
  * The link is a signed storage URL, so it never goes in the address bar; it expires after 30 min here (its own
  * signature lasts longer), and only an https or same-origin link is taken back.

@@ -18,34 +18,23 @@ import { SHOOT_COPY } from '@/components/studio/create/newtools/copy';
 import { PlanView } from '@/components/studio/create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 import { editKindFor, stashPendingEdit } from '@/lib/studio/pendingEdit';
+import { saveMedia } from '@/lib/media/saveMedia';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
 
-// Save a media item. On mobile, the Web Share API hands the FILE to the OS share
-// sheet → "Save to Photos/Gallery" (a plain <a download> only ever lands in Files).
-// Desktop / unsupported → blob download. Any miss → open the URL. Fail-open throughout.
-async function saveMedia(url: string): Promise<void> {
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    const t = blob.type || '';
-    const ext = /mp4|video/.test(t) ? 'mp4' : /audio|mpeg|mp3/.test(t) ? 'mp3' : /png/.test(t) ? 'png' : 'jpg';
-    const name = `myavatar-${Date.now()}.${ext}`;
-    const file = new File([blob], name, { type: t || 'application/octet-stream' });
-    const nav = navigator as Navigator & { canShare?: (d?: { files?: File[] }) => boolean };
-    if (typeof nav.share === 'function' && nav.canShare?.({ files: [file] })) {
-      await nav.share({ files: [file], title: name });
-      return;
-    }
-    const burl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = burl; a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(burl);
-  } catch {
-    try { window.open(url, '_blank', 'noopener'); } catch { /* give up */ }
-  }
+// ⚠️ DOWNLOAD SAVED ONLY SOMETIMES (GG, 2026-10-18). This page kept its own older copy of the save: it fetched the whole
+// file first and only then asked for the system share sheet — a browser lets a page open that only for a few seconds
+// after the tap, so a longer film was refused and the fallback opened a new tab, which a popup blocker stops. It also
+// saved an error page as the file and released the file's link the instant the download began. It now saves through
+// lib/media/saveMedia, the chat's own save: a plain download, the share sheet only on an iPhone or iPad (Photos) with a
+// one-tap retry when the wait ran out, and the button shows it is working until the file is out.
+function saveName(it: { kind: string; id: string }): string {
+  return `myavatar-${it.kind}-${it.id.slice(0, 8)}`;
+}
+function fallbackExt(it: { kind: string; url: string }): string {
+  if (/\.glb(\?|#|$)/i.test(it.url)) return 'glb';
+  return VIDEO_KINDS.has(it.kind) ? 'mp4' : it.kind === 'music' ? 'mp3' : 'png';
 }
 
 interface LibraryItem {
@@ -126,6 +115,9 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const [loading, setLoading] = useState(true);
   const [favs, setFavs] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Files being saved: the button spins until the file is out, and a second tap meanwhile starts no second download.
+  const [saving, setSaving] = useState<ReadonlySet<string>>(new Set());
+  const savingRef = useRef(new Set<string>());
   const [openPlan, setOpenPlan] = useState<string | null>(null);
   // Files that would not load. The first failure fetches the page again once, quietly (every link in it is minted
   // fresh, which mends a page left open past its links' 24 h); a file that fails again shows MediaUnavailable.
@@ -211,9 +203,21 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     } catch { /* fail-soft */ } finally { setBusyId(null); }
   }, [t.confirmDel, favs, persistFavs]);
 
-  // Edit (GG's UI/UX plan, 2026-10-18): the file opens in the studio's editor, the one a result's ✂ opens in the chat —
-  // Montage for a video, the Surgical Editor for a picture or a sound. It rides over in this tab's sessionStorage (a signed
-  // link never goes in the address bar) and the studio opens it once. Opening it generates and charges nothing.
+  const download = useCallback(async (it: LibraryItem) => {
+    if (savingRef.current.has(it.id)) return;
+    savingRef.current.add(it.id);
+    setSaving(new Set(savingRef.current));
+    try {
+      await saveMedia(it.url, saveName(it), { fallbackExt: fallbackExt(it) });
+    } finally {
+      savingRef.current.delete(it.id);
+      setSaving(new Set(savingRef.current));
+    }
+  }, []);
+
+  // Edit (GG's UI/UX plan, 2026-10-18): the file opens in the studio's Montage — a film or a picture on the timeline, a song
+  // as the music (GG's card answer the same day). It rides over in this tab's sessionStorage (a signed link never goes in
+  // the address bar) and the studio opens it once. Opening it generates and charges nothing.
   const edit = useCallback((it: LibraryItem) => {
     const kind = editKindFor(it.kind, it.url);
     if (!kind) return;
@@ -308,9 +312,10 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                   <div className="flex items-center justify-between gap-1 p-2">
                     <span className="truncate text-[10.5px] text-app-muted">{fmtDate(it.createdAt, lang)}</span>
                     <div className="flex shrink-0 items-center gap-0.5">
-                      <button type="button" onClick={() => void saveMedia(it.url)} aria-label={t.download} title={t.download}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-app-bg hover:text-app-text">
-                        <Download size={15} />
+                      <button type="button" onClick={() => void download(it)} disabled={saving.has(it.id)} aria-busy={saving.has(it.id) || undefined}
+                        aria-label={t.download} title={t.download} data-testid="library-download"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-app-bg hover:text-app-text disabled:opacity-60">
+                        {saving.has(it.id) ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                       </button>
                       {editKindFor(it.kind, it.url) && !failed.has(it.id) && (
                         <button type="button" onClick={() => edit(it)} aria-label={t.edit} title={t.edit} data-testid="library-edit"
