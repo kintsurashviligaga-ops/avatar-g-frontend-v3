@@ -14,6 +14,11 @@
 import { createSign, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { hs256, startSupabaseGateway, type SupabaseGateway } from './bogE2eGateway';
+import { monthlyAllowanceCredits } from '../../lib/billing/tiers';
+
+/** A paid month's credits (lib/billing/tiers; 540 / 1080 since the owner's 100 %-profit rule of 2026-10-18). */
+const STARTER = monthlyAllowanceCredits('starter');
+const CREATOR = monthlyAllowanceCredits('creator');
 
 jest.mock('server-only', () => ({}));
 // @t3-oss/env-nextjs ships ESM only (jest cannot load it); the env it validates is plain process.env here.
@@ -358,19 +363,19 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
   });
 
   // ── E9 ──
-  test('E9 plan: Starter 54 ₾ → card saved → 230 credits + renewing plan; the cron renews once on the saved card; cancel stops it', async () => {
+  test('E9 plan: Starter 54 ₾ → card saved → a month of credits + renewing plan; the cron renews once on the saved card; cancel stops it', async () => {
     const u = await newUser();
     const c = await startCheckout(u, { kind: 'plan', tierId: 'starter' });
     expect(c.status).toBe(200);
     expect(c.json.autoRenew).toBe(true);
     const r = await row(c.json.orderId);
-    expect(r).toMatchObject({ kind: 'subscription', tier: 'starter', credits: 230, card_saved: true });
+    expect(r).toMatchObject({ kind: 'subscription', tier: 'starter', credits: STARTER, card_saved: true });
     expect(Number(r.amount_gel)).toBe(54);
 
     // a second checkout for the same live tier is refused only once the first is PAID; first pay it
     customerPays(r.bog_order_id);
     expect(await (await webhook.POST(signedCallback(receiptOf(bank.orders.get(r.bog_order_id)!)))).json()).toMatchObject({ status: 'completed' });
-    expect(await balance(u)).toBe(230);
+    expect(await balance(u)).toBe(STARTER);
     const again = await startCheckout(u, { kind: 'plan', tierId: 'starter' });
     expect(again.status).toBe(409);
 
@@ -389,7 +394,7 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     // BOG's callback for the renewal (the charge completed at BOG)
     const renewalBog = bank.orders.get(renewals[0].bog_order_id)!;
     expect(await (await webhook.POST(signedCallback(receiptOf(renewalBog)))).json()).toMatchObject({ status: 'completed' });
-    expect(await balance(u)).toBe(460);
+    expect(await balance(u)).toBe(2 * STARTER);
     const { data: sub } = await svc.from('subscriptions').select('current_period_end,renewal_failures').eq('user_id', u).single();
     expect(new Date(sub.current_period_end).getTime()).toBeGreaterThan(Date.now() + 27 * 86_400_000);
 
@@ -410,7 +415,7 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     const r = await row(c.json.orderId);
     customerPays(r.bog_order_id);
     await webhook.POST(signedCallback(receiptOf(bank.orders.get(r.bog_order_id)!)));
-    expect(await balance(u)).toBe(525);
+    expect(await balance(u)).toBe(CREATOR);
     // the card disappears at the bank (expired / blocked): every renewal charge is refused
     bank.savedCards.clear();
     for (let i = 0; i < 3; i++) {
@@ -424,7 +429,7 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     const before = bank.calls.filter((x) => x.endsWith('/subscribe')).length;
     await cronTick();
     expect(bank.calls.filter((x) => x.endsWith('/subscribe')).length).toBe(before);
-    expect(await balance(u)).toBe(525);
+    expect(await balance(u)).toBe(CREATOR);
   });
 
   // ── E12 ──
@@ -477,7 +482,7 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     customerPays(bogId);
     const paidReceipt = receiptOf(bank.orders.get(bogId)!);
     expect(await (await webhook.POST(signedCallback(paidReceipt))).json()).toMatchObject({ status: 'completed' });
-    expect(await balance(u)).toBe(230);
+    expect(await balance(u)).toBe(STARTER);
 
     // the customer cancels auto-renewal; the owner refunds the month in Business Manager
     expect(await (await subscription.DELETE(authed(u, 'https://e2e.myavatar.test/api/billing/bog/subscription', { method: 'DELETE' }))).json()).toEqual({ canceled: 1 });
@@ -490,7 +495,7 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     const { data: sub } = await svc.from('subscriptions').select('cancel_at_period_end,bog_parent_order_id').eq('user_id', u).single();
     expect(sub.cancel_at_period_end).toBe(true);
     expect((await row(c.json.orderId)).status).toBe('refunded');
-    expect(await balance(u)).toBe(230);
+    expect(await balance(u)).toBe(STARTER);
     const { data: grants } = await svc.from('subscription_allowance_grants').select('invoice_id').eq('user_id', u);
     expect(grants).toHaveLength(1);
   });
@@ -648,7 +653,7 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
       const bogId = (await row(c.json.orderId)).bog_order_id;
       customerPays(bogId);
       await webhook.POST(signedCallback(receiptOf(bank.orders.get(bogId)!)));
-      expect(await balance(u)).toBe(230);
+      expect(await balance(u)).toBe(STARTER);
       await svc.from('subscriptions').update({ current_period_end: new Date(Date.now() + 20 * 60_000).toISOString() }).eq('user_id', u);
 
       const subscribes = () => bank.calls.filter((x) => x.endsWith('/subscribe')).length;
