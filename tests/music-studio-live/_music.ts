@@ -9,10 +9,12 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { FFMPEG, logExpensive, paced, rows } from '../video-core-live/_live';
+import { PRICE_BOOK } from '../../lib/credits/priceBook';
 
 const run = promisify(execFile);
 
-export const MUSIC_PRICE = 5;
+/** The quoted price of a ≤ 30 s track: the price book's (lib/credits/priceBook), so a price change moves these specs too. */
+export const MUSIC_PRICE = PRICE_BOOK.music.under60;
 export const STUDIO_REF = (jobId: string) => `music-studio-v1:${jobId}`;
 
 export interface AudioFacts { durationSec: number; codec: string | null; sampleRate: number | null; channels: string | null; maxDb: number }
