@@ -31,6 +31,11 @@ const C = {
   video: T('ვიდეო', 'Video', 'Видео'),
   photo: T('ფოტო', 'Photo', 'Фото'),
   opening: T('იხსნება…', 'Opening…', 'Открываем…'),
+  // „My creations": which files it shows, and the next page of them.
+  showAll: T('ყველა', 'All', 'Все'),
+  showVideos: T('ვიდეოები', 'Videos', 'Видео'),
+  showPhotos: T('ფოტოები', 'Photos', 'Фото'),
+  showMore: T('მეტის ჩვენება', 'Show more', 'Показать ещё'),
 
   // Transport
   play: T('დაკვრა', 'Play', 'Воспроизвести'),

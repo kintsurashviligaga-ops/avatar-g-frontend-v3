@@ -167,7 +167,7 @@ export function MusicStart(p: {
 export function MusicPanel(p: {
   t: Copy;
   music: MediaSource | null;
-  library: { items: LibraryItem[]; loading: boolean; signedOut: boolean };
+  library: { items: LibraryItem[]; loading: boolean; signedOut: boolean; hasMore?: boolean; loadingMore?: boolean; more?: () => void };
   originalSound: boolean;
   shorterThanEdit: boolean;
   /** Where the song starts, and what the start control needs to draw it. */
@@ -253,6 +253,20 @@ export function MusicPanel(p: {
               </button>
             </li>
           ))}
+          {p.library.hasMore && p.library.more && (
+            <li>
+              <button
+                type="button"
+                onClick={p.library.more}
+                disabled={p.library.loadingMore}
+                aria-busy={p.library.loadingMore || undefined}
+                data-testid="montage-music-more"
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 text-[13px] font-medium text-app-text hover:text-app-accent disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+              >
+                {p.library.loadingMore && <Loader2 size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />} {t.showMore}
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </PanelShell>

@@ -6,6 +6,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 
 const push = jest.fn();
 jest.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push }) }));
+// The shared save (lib/media/saveMedia), held open until a test lets it finish.
+let finishSave: () => void = () => {};
+const mockSaveMedia = jest.fn((_url: string, _base: string, _opts?: { fallbackExt?: string }) => new Promise<string>((done) => { finishSave = () => done('downloaded'); }));
+jest.mock('../../lib/media/saveMedia', () => ({ saveMedia: (url: string, base: string, opts?: { fallbackExt?: string }) => mockSaveMedia(url, base, opts) }));
 jest.mock('../studio/create/newtools/PlanView', () => ({
   PlanView: ({ style }: { style: { styleName: string } }) => <figure data-testid="plan-ready">{style.styleName}</figure>,
 }));
@@ -25,6 +29,7 @@ let requested: string[] = [];
 beforeEach(() => {
   requested = [];
   push.mockReset();
+  mockSaveMedia.mockClear();
   window.sessionStorage.clear();
   global.fetch = jest.fn(async (url: string) => {
     requested.push(url);
@@ -113,4 +118,28 @@ test('the edit button speaks Georgian and Russian', async () => {
   render(<LibraryGallery locale="ru" />);
   await act(async () => { /* the page's first fetch */ });
   expect(screen.getByRole('button', { name: 'Открыть в редакторе' })).toBeTruthy();
+});
+
+// GG 2026-10-18: „Download saves sometimes and sometimes not". The page had its own older save (share sheet after the
+// whole file had loaded, then a new tab); it now goes through the chat's save, once per tap, and shows it is working.
+test('Download saves through the shared save, once, and the button is busy until the file is out', async () => {
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  const button = screen.getByTestId('library-download');
+  await act(async () => { fireEvent.click(button); });
+  await act(async () => { fireEvent.click(button); }); // a second, impatient tap
+  expect(mockSaveMedia).toHaveBeenCalledTimes(1);
+  expect(mockSaveMedia).toHaveBeenCalledWith(AVATAR.url, 'myavatar-avatar-av-1', { fallbackExt: 'mp4' });
+  expect(button).toHaveProperty('disabled', true);
+  expect(button.getAttribute('aria-busy')).toBe('true');
+  await act(async () => { finishSave(); });
+  expect(button).toHaveProperty('disabled', false);
+  expect(button.getAttribute('aria-busy')).toBeNull();
+
+  // A song keeps its own extension when the bytes do not say; a 3D model downloads as .glb.
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Music$/ })); });
+  await act(async () => { fireEvent.click(screen.getByTestId('library-download')); finishSave(); });
+  expect(mockSaveMedia).toHaveBeenLastCalledWith(SONG.url, 'myavatar-music-song-1', { fallbackExt: 'mp3' });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
+  await act(async () => { fireEvent.click(screen.getAllByTestId('library-download')[1]!); finishSave(); });
+  expect(mockSaveMedia).toHaveBeenLastCalledWith(MODEL.url, 'myavatar-image-glb-1', { fallbackExt: 'glb' });
 });
