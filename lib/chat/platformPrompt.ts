@@ -122,11 +122,12 @@ interface Gates {
 
 /**
  * The video touch-up has no menu row since GG's 2026-10-18 plan (lib/studio/tools.ts PRIMARY_TOOLS): it is reached by
- * attaching ONE video in this chat (OmniStudio's attached-video lane → /api/video/remix). Named here so the model sends a
- * person there instead of to a „Video remix" that no menu has. Restyle / character / background / redub stay refused.
+ * attaching ONE video in this chat (OmniStudio's attached-video lane → /api/video/remix). It is listed under the video
+ * category with the way to reach it, so the model never sends a person to a „Video remix" that no menu has. Under the
+ * switch the route refuses restyle / character / background / redub, and the line says so.
  */
-const TOUCH_UP_LINE = (loc: PlatformPromptLocale) =>
-  `${TOOL_META.remix.name[loc]} (no menu row): attach one video in this chat and say the edit (subtitles, colour, music, text, trim, speed). Restyle, background and redub are not available.`;
+const touchUpLine = (loc: PlatformPromptLocale, mediaGoogleOnly: boolean): string =>
+  `- ${TOOL_META.remix.name[loc]} — ${TOOL_META.remix.sub[loc]} (attach a video here${mediaGoogleOnly ? '; no restyle, background or redub' : ''})`;
 
 /**
  * ⚠️ A CLOSED TOOL MUST NOT BE OFFERED (owner's sweep 2026-10-16: the chat should say plainly which service is closed). The
@@ -155,6 +156,7 @@ function toolLines(loc: PlatformPromptLocale, closed: readonly ToolId[], { media
         const engine = id === 'avatar' && mediaGoogleOnly ? 'Veo' : TOOL_ENGINE[id];
         return `- ${meta.name[loc]} — ${meta.sub[loc]}${engine ? ` · ${engine}` : ''}`;
       }),
+      ...(g.id === 'video' ? [touchUpLine(loc, mediaGoogleOnly)] : []),
     ].join('\n')).join('\n');
 }
 
@@ -288,7 +290,7 @@ export function buildPlatformPrompt(opts: {
 
     `FORMAT: Fit the length to the question — a simple or casual question gets one to three plain sentences, no headings. Use Markdown only when structure helps: short ## headings, bullet or numbered lists, tables for comparisons, fenced code blocks with a language tag for all code, LaTeX maths in $…$ or $$…$$. Answer first; no filler, no restating the question, no generic disclaimers.`,
 
-    `STUDIO TOOLS by side-menu category (name — what it does · Google engine):\n${toolLines(loc, closed, gates)}\n${TOUCH_UP_LINE(loc)}\n${notYetLine(loc, closed)}\nVoice: the "${ui.liveVoice}" button starts a live spoken conversation (Gemini Live) for signed-in users, and replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
+    `STUDIO TOOLS by side-menu category (name — what it does · Google engine):\n${toolLines(loc, closed, gates)}\n${notYetLine(loc, closed)}\nVoice: "${ui.liveVoice}" starts a live spoken chat for signed-in users (Gemini Live); replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
 
     // ⚠️ IT SENT PEOPLE TO A TOOL FOR WHAT THE CHAT DOES ITSELF (Production 2026-10-16, GG's iPhone): „კი შექმენი სურათი 9:16
     // ფორმატის" got „I can't generate in the chat — open the Image tool via +, attach the photo again, pick 9:16, paste this".

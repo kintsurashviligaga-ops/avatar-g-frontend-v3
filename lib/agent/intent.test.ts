@@ -275,3 +275,19 @@ describe('a photo among the clips rides along as a still (owner, 2026-10-11 11:3
     expect(run('Озвучь это видео на русском', { attachments: [V] })).not.toMatchObject({ capability: 'agent.montage' });
   });
 });
+
+describe('a video remix is the chat touch-up, never a new film (GG 2026-10-18: the remix left every menu)', () => {
+  test.each(['ეს ვიდეო დამირემიქსე', 'сделай ремикс видео', 'remix this video'])('with no video in reach it asks for one: %s', (text) => {
+    expect(act(run(text))).toMatchObject({ capability: 'video.remix', target: 'new', missing: ['video'] });
+  });
+
+  test('an attached video, or the last one, is the video it touches up', () => {
+    expect(act(run('сделай ремикс видео', { attachments: [V] }))).toMatchObject({ capability: 'video.remix', target: 'attachment', missing: [] });
+    expect(act(run('ეს ვიდეო დამირემიქსე', { previous: { kind: 'video' } }))).toMatchObject({ capability: 'video.remix', target: 'previous', missing: [] });
+  });
+
+  test('a music remix is still not a video, and a music video keeps its own lane', () => {
+    expect(run('მუსიკა დამირემიქსე')).not.toMatchObject({ capability: 'video.remix' });
+    expect(run('make a 24 second music video')).toMatchObject({ capability: 'video.music-video' });
+  });
+});

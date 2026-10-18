@@ -125,7 +125,6 @@ describe('resolveService — Agent G intent and search', () => {
     ['ამ ვიდეოს ხმა ქართულად გადამითარგმნე', 'voice.dubbing'],
     ['переведи это видео, нужен дубляж', 'voice.dubbing'],
     ['მუსიკა დამირემიქსე', 'music.remix'],
-    ['remix this video with captions', 'video.remix'],
     ['create a product ad for my sneakers', 'video.product-ad'],
     ['lip sync this photo to my voice', 'avatar.talking'],
     ['swap the character in this clip', 'video.character-swap'],
@@ -138,6 +137,12 @@ describe('resolveService — Agent G intent and search', () => {
   ];
   it.each(cases)('%s → %s', (text, id) => {
     expect(resolveService(text)?.id).toBe(id);
+  });
+
+  it('never resolves to the video remix, which left every menu (GG 2026-10-18); Agent G sends these words to the touch-up', () => {
+    for (const t of ['remix this video with captions', 'ეს ვიდეო დამირემიქსე', 'сделай ремикс видео']) {
+      expect(resolveService(t)?.id).not.toBe('video.remix');
+    }
   });
 
   it('does not let a short alias match inside a longer word', () => {
