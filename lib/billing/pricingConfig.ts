@@ -159,7 +159,7 @@ export interface PricingTier {
   billing: 'monthly' | 'annual'
   /** Marketing ceilings the price is framed around. */
   creditCeiling: { videos: number; music: number; images: number }
-  /** Credit-pool grant on the tier (Σ ceiling × media cost — see tierCreditPool). */
+  /** Credit grant on the tier (TIERS includedCredits: 10 per lari of the plan's price; the free trial's 50). */
   creditsIncluded: number
 }
 
@@ -190,13 +190,13 @@ function fromCatalogue(id: PricingTierId, name: string): PricingTier {
     priceGel: Math.round(t.monthlyPriceUsd * GEL_PER_USD),
     billing: 'monthly',
     creditCeiling,
-    creditsIncluded: tierCreditPool(creditCeiling),
+    creditsIncluded: t.includedCredits,
   }
 }
 
 /**
  * The 4-rung ladder the live pricing page renders: Free $0 · Basic $19.99 · Pro $39.99 · Business $79.99, with
- * 50 / 230 / 525 / 1200 credits. The margin structure and the history of every ceiling are documented on TIERS.
+ * 50 / 540 / 1 080 / 2 160 credits. The margin structure and the history of every ceiling are documented on TIERS.
  */
 export const PRICING_TIERS: PricingTier[] = [
   fromCatalogue('free', 'Free'),

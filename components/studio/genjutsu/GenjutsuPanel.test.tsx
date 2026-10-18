@@ -18,6 +18,9 @@ jest.mock('./api', () => ({
 import { GenjutsuPanel } from './GenjutsuPanel';
 import { fetchBalanceCredits, fetchCapabilities, fetchStatus, startGeneration } from './api';
 
+/** One Fast VFX scene: what the button shows and the route charges (lib/genjutsu/pricing → the price book). */
+const FAST = genjutsuCredits({ op: 'scene', refsUsed: 0, quality: 'fast' })!;
+
 const OPEN = { scene: { open: true, state: 'open' }, motion: { open: false, state: 'soon' }, swap: { open: false, state: 'soon' } };
 const generate = () => screen.getByTestId('vfx-generate') as HTMLButtonElement;
 
@@ -63,12 +66,12 @@ test('there are at least fourteen presets to tap', async () => {
 });
 
 test('Generate sends the contract: the preset id, the format, the price it displayed — and no prompt', async () => {
-  (startGeneration as jest.Mock).mockResolvedValue({ ok: true, job: { jobId: 'j1', credits: 25, gel: null, refsUsed: 0, refsTotal: 0, engine: 'Veo 3.1 Fast', seconds: null } });
+  (startGeneration as jest.Mock).mockResolvedValue({ ok: true, job: { jobId: 'j1', credits: FAST, gel: null, refsUsed: 0, refsTotal: 0, engine: 'Veo 3.1 Fast', seconds: null } });
   await mount();
   fireEvent.click(document.querySelector('[data-preset="portal"]')!);
   await act(async () => { fireEvent.click(generate()); });
   await waitFor(() => expect(startGeneration).toHaveBeenCalledTimes(1));
-  expect((startGeneration as jest.Mock).mock.calls[0]![0]).toMatchObject({ op: 'scene', preset: 'portal', quality: 'fast', aspect: '9:16', expectedCredits: 25, references: [], referencesTotal: 0 });
+  expect((startGeneration as jest.Mock).mock.calls[0]![0]).toMatchObject({ op: 'scene', preset: 'portal', quality: 'fast', aspect: '9:16', expectedCredits: FAST, references: [], referencesTotal: 0 });
   expect((startGeneration as jest.Mock).mock.calls[0]![0].prompt).toBeUndefined();
   await waitFor(() => expect(screen.getByTestId('vfx-job')).toBeTruthy());
 });
@@ -124,7 +127,7 @@ test('a balance that cannot pay turns the tap into "Top up" and opens the top-up
   await mount();
   fireEvent.click(document.querySelector('[data-preset="glitch"]')!);
   await waitFor(() => expect(generate().textContent).toContain('Top up'));
-  expect(generate().getAttribute('data-price')).toBe('25');
+  expect(generate().getAttribute('data-price')).toBe(String(FAST));
   await act(async () => { fireEvent.click(generate()); });
   expect(seen).toHaveBeenCalledTimes(1);
   expect(startGeneration).not.toHaveBeenCalled();
@@ -141,7 +144,7 @@ test('a stale price is corrected from the server\'s answer and the user is told'
 });
 
 test('a finished effect is handed to the chat once: onDelivered gets the video and its format', async () => {
-  (startGeneration as jest.Mock).mockResolvedValue({ ok: true, job: { jobId: 'j2', credits: 25, gel: null, refsUsed: 0, refsTotal: 0, engine: 'Veo 3.1 Fast', seconds: null } });
+  (startGeneration as jest.Mock).mockResolvedValue({ ok: true, job: { jobId: 'j2', credits: FAST, gel: null, refsUsed: 0, refsTotal: 0, engine: 'Veo 3.1 Fast', seconds: null } });
   (fetchStatus as jest.Mock).mockResolvedValue({ ok: true, done: true, state: 'ready', videoUrl: 'https://cdn.example/vfx.mp4' });
   const onDelivered = jest.fn();
   const { rerender } = render(<GenjutsuPanel locale="en" onDelivered={onDelivered} />);
@@ -171,7 +174,7 @@ test('the panel speaks Georgian and Russian', async () => {
 test('a finished video goes to the chat and is not drawn a second time in the panel (Production 2026-10-16)', async () => {
   jest.useFakeTimers();
   try {
-    (startGeneration as jest.Mock).mockResolvedValue({ ok: true, job: { jobId: 'j2', credits: 25, gel: null, refsUsed: 0, refsTotal: 0, engine: 'Veo 3.1 Fast', seconds: null } });
+    (startGeneration as jest.Mock).mockResolvedValue({ ok: true, job: { jobId: 'j2', credits: FAST, gel: null, refsUsed: 0, refsTotal: 0, engine: 'Veo 3.1 Fast', seconds: null } });
     (fetchStatus as jest.Mock).mockResolvedValue({ ok: true, done: true, state: 'ready', videoUrl: 'https://cdn.example/out.mp4' });
     const delivered = jest.fn();
     render(<GenjutsuPanel locale="en" onDelivered={delivered} />);

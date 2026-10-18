@@ -424,7 +424,7 @@ describe('the other languages', () => {
   test.each(['ka', 'ru'])('%s: the panel renders its own words, and the price is the same number', (locale) => {
     setup({ locale });
     expect(screen.getByTestId('video-sound').getAttribute('aria-label')).toBe(locale === 'ka' ? 'ხმა' : 'Звук');
-    expect(qualityText()).toContain('✦ 75');
+    expect(qualityText()).toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'documentary' })}`);
     expect(screen.getByTestId('video-prompt-hint').textContent).not.toMatch(/chat box/);
     expect(Array.from((screen.getByTestId('video-narrator') as HTMLSelectElement).options).map((o) => o.textContent))
       .toEqual(locale === 'ka' ? ['გამორთული', 'ქალი', 'კაცი'] : ['Выкл', 'Женский', 'Мужской']);

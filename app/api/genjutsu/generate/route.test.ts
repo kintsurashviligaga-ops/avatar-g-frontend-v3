@@ -31,7 +31,7 @@ jest.mock('../../../../lib/genjutsu/serverCommon', () => ({
 jest.mock('../../../../lib/orchestrator/ledger', () => ({
   hasSufficientBalance: jest.fn(async () => true),
   deductCredits: jest.fn(async () => ({ ok: true })),
-  refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 25 })),
+  refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 64 })),
 }));
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ createJob: jest.fn(async () => true), failJob: jest.fn(async () => undefined) }));
 jest.mock('../../../../lib/orchestrator/idempotency', () => ({
@@ -55,6 +55,11 @@ import { createJob, failJob } from '../../../../lib/orchestrator/jobs';
 import { claimIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
 import { reportError } from '../../../../lib/observability/report-error';
 import { getStudioRuntime } from '../../../../lib/studio/runtime';
+import { clipCredits } from '../../../../lib/credits/priceBook';
+
+/** The scene's price: one bare 8 s Veo clip in the price book — the same function the VFX button shows. */
+const FAST = clipCredits('fast');
+const STD = clipCredits('standard');
 
 const ENV = { ...process.env };
 const UID = '11111111-2222-4333-8444-555555555555';
@@ -80,7 +85,7 @@ beforeEach(() => {
   (checkRateLimitByKey as jest.Mock).mockResolvedValue(null);
   (hasSufficientBalance as jest.Mock).mockResolvedValue(true);
   (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
-  (refundDebitByRef as jest.Mock).mockResolvedValue({ ok: true, refunded: 25 });
+  (refundDebitByRef as jest.Mock).mockResolvedValue({ ok: true, refunded: FAST });
   (createJob as jest.Mock).mockResolvedValue(true);
   (claimIdempotencyKey as jest.Mock).mockResolvedValue(true);
   (claimDailySlot as jest.Mock).mockResolvedValue(true);
@@ -160,12 +165,12 @@ test('the job row (carrying `_reserve`) is filed FIRST, the credits are reserved
 
   const [uid, amount, ref] = (deductCredits as jest.Mock).mock.calls[0]!;
   expect(uid).toBe(UID);
-  expect(amount).toBe(25);
+  expect(amount).toBe(FAST);
   expect(ref).toMatch(new RegExp(`^genjutsu:reserve:[0-9a-f-]{36}:${UID}$`));
   const row = (createJob as jest.Mock).mock.calls[0]![0];
   expect(row).toMatchObject({ userId: UID, serviceType: 'film', status: 'processing' });
   expect(row.id).toBe(`genjutsu:${ref.split(':')[2]}`);
-  expect(row.params).toMatchObject({ subtype: 'vfx', op: 'scene', preset: 'fire', _reserve: { ref, credits: 25 } });
+  expect(row.params).toMatchObject({ subtype: 'vfx', op: 'scene', preset: 'fire', _reserve: { ref, credits: FAST } });
 });
 
 test('the returned jobId carries a charge token naming exactly this reservation and operation', async () => {
@@ -174,7 +179,7 @@ test('the returned jobId carries a charge token naming exactly this reservation 
   const { jobId, charge } = genjutsuChargeForPolledId(body.jobId);
   expect(jobId).toMatch(/^models\/veo-3\.1-fast-generate-preview\/operations\/abc::16:9::\d+$/);
   expect(charge).toEqual({ u: UID, r: ref, j: jobId });
-  expect(body).toMatchObject({ success: true, op: 'scene', credits: 25, engine: 'Veo 3.1 Fast' });
+  expect(body).toMatchObject({ success: true, op: 'scene', credits: FAST, engine: 'Veo 3.1 Fast' });
 });
 
 test('the SERVER picks the photos: 12 sent, Veo receives the best 3 (one per role, in priority order) and only those are signed', async () => {
@@ -201,21 +206,21 @@ test('a preset alone is a complete request; the typed line is translated and app
   expect((submitScene as jest.Mock).mock.calls[0]![0].prompt).not.toContain('Extra detail');
 });
 
-test('Standard quality charges the Standard price (83) — through the same function that labels the button', async () => {
-  await POST(post({ ...SCENE, quality: 'standard', expectedCredits: 83 }));
-  expect((deductCredits as jest.Mock).mock.calls[0]![1]).toBe(83);
+test('Standard quality charges the Standard price — through the same function that labels the button', async () => {
+  await POST(post({ ...SCENE, quality: 'standard', expectedCredits: STD }));
+  expect((deductCredits as jest.Mock).mock.calls[0]![1]).toBe(STD);
 });
 
 test('a stale button is refused BEFORE any charge: expectedCredits that is not the server\'s number → 409 price_changed', async () => {
-  const res = await POST(post({ ...SCENE, expectedCredits: 24 }));
+  const res = await POST(post({ ...SCENE, expectedCredits: FAST - 1 }));
   expect(res.status).toBe(409);
-  expect(await res.json()).toMatchObject({ error: 'price_changed', credits: 25 });
+  expect(await res.json()).toMatchObject({ error: 'price_changed', credits: FAST });
   expect(deductCredits).not.toHaveBeenCalled();
   expect(submitScene).not.toHaveBeenCalled();
 });
 
 test('a matching expectedCredits goes through', async () => {
-  expect((await POST(post({ ...SCENE, expectedCredits: 25 }))).status).toBe(202);
+  expect((await POST(post({ ...SCENE, expectedCredits: FAST }))).status).toBe(202);
 });
 
 // ─── scene: the failure paths ───────────────────────────────────────────────────────────────────────────────────
@@ -263,7 +268,7 @@ test('a submit that fails refunds the reservation BY REF, closes the row, and sa
   const ref = (deductCredits as jest.Mock).mock.calls[0]![2];
   expect(res.status).toBe(503);
   expect(await res.json()).toMatchObject({ error: 'provider_unavailable', refunded: true });
-  expect(refundDebitByRef).toHaveBeenCalledWith(UID, ref, 25);
+  expect(refundDebitByRef).toHaveBeenCalledWith(UID, ref, FAST);
   expect(failJob).toHaveBeenCalledTimes(1);
   expect(releaseDailySlot).toHaveBeenCalled();
 });

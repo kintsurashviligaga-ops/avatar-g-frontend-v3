@@ -46,13 +46,13 @@ function legacyInvoice(over: Partial<InvoiceLike> = {}): InvoiceLike {
 }
 
 describe('planInvoiceAllowance — what one paid invoice is worth', () => {
-  it('a clover-shape creator renewal grants 525 credits under sub:<invoice id>', () => {
+  it('a clover-shape creator renewal grants 1080 credits under sub:<invoice id>', () => {
     expect(planInvoiceAllowance(cloverInvoice(), ENV)).toEqual({
       action: 'grant',
       invoiceId: 'in_123',
       ref: 'sub:in_123',
       tier: 'creator',
-      credits: 525,
+      credits: 1080,
       subscriptionId: 'sub_1',
       customerId: 'cus_1',
       priceId: 'price_c',
@@ -64,12 +64,12 @@ describe('planInvoiceAllowance — what one paid invoice is worth', () => {
 
   it('reads the pre-basil shape too (invoice.subscription, line.price, expanded objects)', () => {
     const plan = planInvoiceAllowance(legacyInvoice(), ENV);
-    expect(plan).toMatchObject({ action: 'grant', tier: 'starter', credits: 230, subscriptionId: 'sub_2', customerId: 'cus_2', priceId: 'price_s', metadataUserId: USER });
+    expect(plan).toMatchObject({ action: 'grant', tier: 'starter', credits: 540, subscriptionId: 'sub_2', customerId: 'cus_2', priceId: 'price_s', metadataUserId: USER });
   });
 
   it('accepts an expanded Price object on the clover line', () => {
     const inv = cloverInvoice({ lines: { data: [{ amount: 7999, period: { start: START, end: END }, pricing: { price_details: { price: { id: 'price_b' } } } }] } });
-    expect(planInvoiceAllowance(inv, ENV)).toMatchObject({ action: 'grant', tier: 'business', credits: 1200 });
+    expect(planInvoiceAllowance(inv, ENV)).toMatchObject({ action: 'grant', tier: 'business', credits: 2160 });
   });
 
   it('is INERT with no price env: every invoice is "no_tier" — silently', () => {
@@ -149,13 +149,13 @@ describe('applyInvoiceAllowance — the effectful half', () => {
   it('grants through deps.grant with the metadata user, without a DB lookup', async () => {
     const d = deps();
     const out = await applyInvoiceAllowance(cloverInvoice(), d);
-    expect(out).toEqual({ status: 'granted', userId: USER, invoiceId: 'in_123', tier: 'creator', credits: 525, ref: 'sub:in_123', balance: 575 });
+    expect(out).toEqual({ status: 'granted', userId: USER, invoiceId: 'in_123', tier: 'creator', credits: 1080, ref: 'sub:in_123', balance: 575 });
     expect(d.findUserId).not.toHaveBeenCalled();
     expect(d.grant).toHaveBeenCalledWith({
       userId: USER,
       invoiceId: 'in_123',
       tier: 'creator',
-      credits: 525,
+      credits: 1080,
       subscriptionId: 'sub_1',
       customerId: 'cus_1',
       priceId: 'price_c',
@@ -166,7 +166,7 @@ describe('applyInvoiceAllowance — the effectful half', () => {
 
   it('a redelivered invoice reports "duplicate" — success, nothing granted twice', async () => {
     const d = deps({ grant: jest.fn().mockResolvedValue({ granted: false, balance: 575 }) });
-    expect(await applyInvoiceAllowance(cloverInvoice(), d)).toMatchObject({ status: 'duplicate', credits: 525 });
+    expect(await applyInvoiceAllowance(cloverInvoice(), d)).toMatchObject({ status: 'duplicate', credits: 1080 });
   });
 
   it('falls back to the subscriptions lookup when the metadata has no user', async () => {

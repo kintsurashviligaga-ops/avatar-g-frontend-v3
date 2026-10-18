@@ -15,7 +15,7 @@ import {
   getFilmStitchRecord, nextRedoAttempt, releaseFilmRestitch, releaseSceneRender, saveFilmRedoJob, saveFilmSceneBook,
   saveFilmStitchRecord,
 } from './filmSceneBook';
-import { videoCredits } from '@/lib/credits/videoPricing';
+import { sceneCredits } from '@/lib/credits/priceBook';
 import { pickLutLook } from '@/lib/orchestrator/cinematic-lut';
 
 const scene = (over: Partial<FilmBookScene> = {}): FilmBookScene => ({
@@ -32,8 +32,8 @@ const record = (over: Partial<FilmStitchRecord> = {}): FilmStitchRecord => ({
 });
 
 describe('the price', () => {
-  test('one scene of 8 s on Fast costs 25 credits, as the owner was told', () => {
-    expect(videoCredits({ seconds: 8, quality: 'fast', mode: 'documentary' })).toBe(25);
+  test('one scene of 8 s on Fast costs 71 credits: its clip and what the film adds to it, without the film base', () => {
+    expect(sceneCredits('fast', false, 8)).toBe(71);
   });
 
   test('every attempt has its own ledger ref, so each is charged once and refunded at most once', () => {

@@ -1,48 +1,49 @@
 /**
  * lib/credits/unitEconomics.ts — what each paid operation COSTS the platform, and the price the owner's margin rule gives it.
  *
- * The pricing audit's engine (docs/handoffs/pricing/SERVICE_UNIT_ECONOMICS.md). Pure, client-safe, and NOT wired into any
- * charge: the live prices are still lib/credits/pricing.ts, videoPricing.ts and quote.ts. This module holds the cost side
- * and the PROPOSED price table, so the proposal and its arithmetic are one file that tests can hold to the rule, and the
- * rollout (after the owner's approval) moves the proposed numbers into the live quote functions.
+ * The cost side of the price book (lib/credits/priceBook.ts holds the live prices; priceBook.test.ts holds every one of them
+ * to the rule below). Pure and client-safe. An unknown cost is never 0: it is an estimate, marked so.
  *
- * THE RULE (owner, 2026-10-10 12:42Z): cost-based prices, 65 % target gross margin, 62 % floor. Cost is the FULL variable
- * cost — provider list price, the expected paid re-renders, compute, storage and transfer, the FX reserve — and it is
- * measured against what a credit NETS after VAT and the card fee. An unknown cost is never 0: it is an estimate, marked so.
+ * THE RULE (owner, PRD v2 §1.1, 2026-10-18): every operation earns exactly 100 % profit over its FULL cost — the price at
+ * least doubles the API cost (Google, ElevenLabs) plus the bank's fee. Full cost = provider list price, the expected paid
+ * re-renders, compute, storage and transfer, the FX reserve, and the card fee on the price itself. So, per operation:
  *
- *     price in credits = ceil( full cost ₾ ÷ ( net ₾ per credit × (1 − target margin) ) )
+ *     price ₾ ÷ (1 + VAT) − fee × price − cost  =  k − 1 times ( cost + fee × price ),   k = 1 + profitOverCost = 2
+ *     price ₾ = k × cost ÷ ( 1 ÷ (1 + VAT) − k × fee )        credits = ⌈ price ₾ ÷ ₾ per credit ⌉
  *
- * Every price in PROPOSED is checked by unitEconomics.test.ts: at or above the floor, and never a BLOCKED op.
+ * The 2026-10-10 audit's rule (65 % target / 62 % floor of a VAT-inclusive price, ≈ 2.9× cost) is kept as ECON_2026_10_10
+ * and AUDIT_2026_10_10, so the doc and the owner's card can show where the new rule lowers a price.
  */
 import { GEL_PER_USD } from '@/lib/billing/fx';
 import { CREDIT_VALUE_GEL } from './pricing';
 
-/** The money side of every price. Change one number here and every proposed price moves with it (the tests re-check). */
+/** The money side of every price. Change one number here and every rule price moves with it (priceBook.test re-checks). */
 export const ECON = {
-  /** What one credit sells for, VAT included (1 credit = 0.10 ₾; the owner keeps this unless the analysis needs a change). */
+  /** What one credit sells for on a top-up (1 credit = 0.10 ₾). */
   creditGel: CREDIT_VALUE_GEL,
   /** lib/billing/fx — the display rate. */
   gelPerUsd: GEL_PER_USD,
   /** Headroom on the dollar: provider bills are in USD, credits are sold in lari. */
   fxReserve: 0.05,
   /**
-   * Georgian VAT. A VAT payer's consumer price includes it, so 18 % of every lari paid is not revenue. ESTIMATED: whether the
-   * business is VAT-registered is the owner's fact; until it is confirmed the price assumes it is (the safe direction).
+   * Georgian VAT taken out of every lari paid. 0: the owner's rule counts API cost and bank fees, and the merchant is not
+   * known to be VAT-registered. If it is (or becomes so), set 0.18 here and every price rises ~22 %; the tests re-check.
    */
-  vatRate: 0.18,
-  /** Card acquiring on a BOG top-up. ESTIMATED: the merchant rate is not public; 3 % until the contract's number is known. */
+  vatRate: 0,
+  /** Card acquiring on a BOG payment. ESTIMATED: the merchant rate is in the bank contract; 3 % until its number is known. */
   paymentFeeRate: 0.03,
-  targetMargin: 0.65,
-  floorMargin: 0.62,
+  /** Profit as a share of full cost: 1 = 100 % (PRD v2 §1.1). */
+  profitOverCost: 1,
 } as const;
 
-/** Lari one credit leaves after VAT and the card fee. */
-export function netGelPerCredit(econ: typeof ECON = ECON): number {
-  return (econ.creditGel / (1 + econ.vatRate)) * (1 - econ.paymentFeeRate);
-}
+export type Econ = { readonly [K in keyof typeof ECON]: number };
+
+/** The 2026-10-10 audit's money side: VAT counted, 65 % target / 62 % floor gross margin. For comparison only. */
+export const ECON_2026_10_10 = { ...ECON, vatRate: 0.18, targetMargin: 0.65, floorMargin: 0.62 } as const;
+export type AuditEcon = Econ & { readonly targetMargin: number; readonly floorMargin: number };
 
 /** USD → ₾ with the FX reserve. */
-export function usdToCostGel(usd: number, econ: typeof ECON = ECON): number {
+export function usdToCostGel(usd: number, econ: Econ = ECON): number {
   return usd * econ.gelPerUsd * (1 + econ.fxReserve);
 }
 
@@ -98,7 +99,8 @@ const compute = (seconds: number, label = 'function'): CostLine => ({
   source: 'estimated',
 });
 
-// Veo 3.1 with native audio, Gemini API list rate per second (lib/veo/capabilities PRICE_WITH_AUDIO). 8 s renders at 1080p.
+// Veo 3.1 with native audio, list rate per second (lib/veo/capabilities PRICE_WITH_AUDIO). 8 s renders at 1080p. A film scene
+// under Georgian narration renders silent (filmComposite), which Vertex bills less; the price assumes sound, the higher rate.
 export const VEO_USD_PER_SEC_1080P = { lite: 0.08, fast: 0.12, standard: 0.4 } as const;
 const veoClip = (tier: keyof typeof VEO_USD_PER_SEC_1080P): CostLine => ({
   what: `Veo 3.1 ${tier}, 8 s 1080p with audio`,
@@ -113,8 +115,9 @@ const flash = (inTok: number, outTok: number, what: string): CostLine => ({
   usd: (inTok * 1.5 + outTok * 7.5) / 1e6,
   source: 'estimated',
 });
-// ElevenLabs API, USD at every plan (elevenlabs.io/pricing/api, read 2026-10-10): eleven_v3 / multilingual_v2 speech $0.08 per
-// 1 000 characters; music $0.15 a minute; Scribe $0.22 an hour of audio (v2, the listed successor of scribe_v1).
+// ElevenLabs API, USD at every plan (elevenlabs.io/pricing/api, read 2026-10-10 and again 2026-10-18: "API usage is billed in
+// US dollars, not credits"; the plan only sets what is included): eleven_v3 / multilingual_v2 speech $0.08 per 1 000
+// characters; music $0.15 a minute; Scribe $0.22 an hour of audio (v2, the listed successor of scribe_v1).
 export const ELEVEN_TTS_USD_PER_1K_CHARS = 0.08;
 export const ELEVEN_MUSIC_USD_PER_MIN = 0.15;
 const tts = (chars: number): CostLine => ({ what: `ElevenLabs speech, ~${chars} characters`, usd: (chars / 1000) * ELEVEN_TTS_USD_PER_1K_CHARS, source: 'official' });
@@ -176,24 +179,41 @@ export const CALL_PLANNING_MINUTES_PER_MONTH = 1000;
 
 export const UNIT_OPS: readonly UnitOp[] = [
   // ── Video ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+  // A film = video.film.base + per 8 s scene ( video.clip.<tier> + video.film.scene ) [+ video.music-video.song per scene].
+  // One bare clip (a VFX scene, a chat or Agent G queue clip, a conversational remix's re-rendered scene) is video.clip alone.
   ...(['lite', 'fast', 'standard'] as const).map((tier): UnitOp => ({
     id: `video.clip.${tier}`,
     service: 'video.generate',
-    unit: 'one 8 s scene (film, product ad, VFX, chat video)',
-    provider: 'Google (Gemini API; Vertex the same rate)',
+    unit: 'one 8 s Veo clip',
+    provider: 'Google (Vertex; the Gemini API lists the same rate)',
     model: `veo-3.1-${tier === 'standard' ? '' : `${tier}-`}generate`,
-    lines: [veoClip(tier), tts(120), compute(15, 'crop + host'), storage(12)],
+    // Veo alone: a clip of any length pays its seconds' share of this (Veo bills by the second). Cropping and hosting are
+    // per clip, so they ride on video.film.scene (and on a bare clip's price, which rounds up past them).
+    lines: [veoClip(tier)],
     retryShare: 0.1,
     status: tier === 'lite' ? 'ESTIMATED' : 'PROVEN',
     currentCredits: tier === 'lite' ? 15 : tier === 'fast' ? 25 : 83,
   })),
   {
+    id: 'video.film.scene',
+    service: 'video.generate',
+    unit: 'what a film scene adds to its clip: the storyboard frame, its narration and music bed, cropping and hosting',
+    provider: 'Google + ElevenLabs',
+    model: 'gemini-3.1-flash-image · eleven_v3 · eleven music',
+    // filmComposite draws one storyboard frame per scene (gemini-3.1-flash-image), narrates ~8 s (~120 characters), and the
+    // assemble step lays an ElevenLabs bed as long as the film (8 s of it per scene).
+    lines: [{ what: 'storyboard frame, 1K image', usd: 0.067, source: 'official' }, flash(300, 100, 'frame prompt to English'), tts(120), elevenMusic(8), compute(15, 'crop + host'), storage(12)],
+    retryShare: 0.1,
+    status: 'PROVEN',
+    currentCredits: 0,
+  },
+  {
     id: 'video.film.base',
     service: 'video.generate',
-    unit: 'one film, on top of its scenes (storyboard, music bed, assembly)',
-    provider: 'Google + ElevenLabs + FFmpeg',
-    model: 'gemini-3.8-flash · eleven music · ffmpeg',
-    lines: [flash(6000, 4000, 'storyboard'), elevenMusic(60), compute(90, 'assembly'), storage(40)],
+    unit: 'one film, on top of its scenes (the plan, the assembly)',
+    provider: 'Google + FFmpeg',
+    model: 'gemini-3.8-flash · ffmpeg',
+    lines: [flash(6000, 4000, 'film plan'), compute(90, 'assembly'), storage(40)],
     retryShare: 0.05,
     status: 'ESTIMATED',
     currentCredits: 0,
@@ -201,10 +221,10 @@ export const UNIT_OPS: readonly UnitOp[] = [
   {
     id: 'video.music-video.song',
     service: 'video.music-video',
-    unit: 'the song under a music video (up to 48 s)',
+    unit: 'the sung song under a music video, per 8 s scene',
     provider: 'ElevenLabs / Google Lyria',
     model: 'eleven music · lyria-3',
-    lines: [elevenMusic(60), storage(2)],
+    lines: [elevenMusic(8), storage(0.3)],
     retryShare: 0.1,
     status: 'ESTIMATED',
     currentCredits: null,
@@ -236,12 +256,13 @@ export const UNIT_OPS: readonly UnitOp[] = [
   {
     id: 'video.remix.music',
     service: 'video.remix',
-    unit: 'a music bed under a clip',
-    provider: 'ElevenLabs + FFmpeg',
-    model: 'eleven music',
-    lines: [elevenMusic(30), compute(30, 'mix'), storage(15)],
+    unit: 'the user\'s own track laid under a clip',
+    provider: 'FFmpeg',
+    model: 'ffmpeg',
+    // /api/video/remix `music` muxes the track the user brought (no generation); the 10-10 audit costed an ElevenLabs bed.
+    lines: [compute(30, 'mix'), storage(15)],
     retryShare: 0.05,
-    status: 'ESTIMATED',
+    status: 'PROVEN',
     currentCredits: 15,
   },
   {
@@ -294,13 +315,16 @@ export const UNIT_OPS: readonly UnitOp[] = [
     status: 'PROVEN',
     currentCredits: 5,
   },
+  // Over 30 s is Lyria 3 Pro on Vertex (the agent live-chat branch, GG 2026-10-18): $0.08 a song whatever its length (Vertex
+  // pricing lists "Lyria 3 Pro — Full song music generation — $0.08 / 1 count"; the 30 s clip is $0.04), so a 60 s, a 90 s
+  // and a ~3-minute full song cost the same; only the hosted megabytes grow. ESTIMATED until Pro is verified live.
   ...([60, 90, 180] as const).map((sec): UnitOp => ({
     id: `music.track.${sec}`,
     service: 'music.generate',
-    unit: sec === 180 ? 'one full song (up to 3 min)' : `one ${sec} s track`,
-    provider: 'ElevenLabs',
-    model: 'music_v1',
-    lines: [elevenMusic(sec), storage(sec / 30)],
+    unit: sec === 180 ? 'one full song (up to ~3 min)' : `one ${sec} s track`,
+    provider: 'Google Lyria',
+    model: 'lyria-3-pro-preview',
+    lines: [{ what: 'Lyria 3 Pro, one song', usd: 0.08, source: 'official' }, storage(sec / 30)],
     retryShare: 0.1,
     status: 'ESTIMATED',
     currentCredits: sec === 60 ? 8 : 12,
@@ -432,24 +456,8 @@ export function opCostUsd(op: UnitOp): number {
   return sum * (1 + op.retryShare);
 }
 
-export function opCostGel(op: UnitOp, econ: typeof ECON = ECON): number {
+export function opCostGel(op: UnitOp, econ: Econ = ECON): number {
   return usdToCostGel(opCostUsd(op), econ);
-}
-
-/** The fewest credits that reach `margin`. */
-export function creditsForMargin(op: UnitOp, margin: number, econ: typeof ECON = ECON): number {
-  const cost = opCostGel(op, econ);
-  if (cost <= 0) return 0;
-  return Math.ceil(cost / (netGelPerCredit(econ) * (1 - margin)) - 1e-9);
-}
-
-export const targetCredits = (op: UnitOp, econ: typeof ECON = ECON): number => creditsForMargin(op, econ.targetMargin, econ);
-export const floorCredits = (op: UnitOp, econ: typeof ECON = ECON): number => creditsForMargin(op, econ.floorMargin, econ);
-
-/** Gross margin of `credits` against the op's full cost (1 = free to make, negative = sold below cost). */
-export function marginAt(op: UnitOp, credits: number, econ: typeof ECON = ECON): number {
-  if (credits <= 0) return opCostGel(op, econ) > 0 ? -Infinity : 0;
-  return 1 - opCostGel(op, econ) / (credits * netGelPerCredit(econ));
 }
 
 export function unitOp(id: string): UnitOp {
@@ -458,46 +466,120 @@ export function unitOp(id: string): UnitOp {
   return op;
 }
 
-// ── The proposed price model (for the owner's one approval) ─────────────────────────────────────────────────────────────
-//
-// Round numbers at or above the target-margin price of each op above. A video is one base price plus its seconds on the
-// tier it renders on; a deck is a base plus its slides. Nothing here charges anyone until the rollout moves these numbers
-// into lib/credits/quote.ts and the routes that charge through it.
+// ── The owner's rule: 100 % profit over full cost ───────────────────────────────────────────────────────────────────────
 
-/** Credits per video, on top of its seconds: the storyboard, the music bed, the narration's mix and the assembly. */
-export const PROPOSED_VIDEO_BASE = 25;
-/** Credits per second of video, by the Veo tier it renders on (8 s scenes at 1080p, sound included). */
-export const PROPOSED_VIDEO_PER_SEC = { lite: 9, fast: 14, standard: 44 } as const;
-/** The song under a music video. Lip-sync is not offered: no allowed engine does it (BLOCKED above). */
-export const PROPOSED_MUSIC_VIDEO_SONG = 20;
-/** A deck: a base plus each slide's illustration (a deck without pictures pays the base only). */
-export const PROPOSED_DECK = { base: 4, perIllustratedSlide: 5 } as const;
+/** Lari of price per credit, net of VAT, less `k` card fees — the denominator of the rule. */
+function ruleDenominator(econ: Econ): number {
+  return 1 / (1 + econ.vatRate) - (1 + econ.profitOverCost) * econ.paymentFeeRate;
+}
 
-/** Every other op's price, in credits per unit. */
-export const PROPOSED: Readonly<Record<string, number>> = {
-  'video.remix.voiceover': 10,
-  'video.remix.music': 10,
-  'image.one': 8,
-  'image.interior.plan3d': 8,
-  'music.track.30': 5,
-  'music.track.60': 18,
-  'music.track.90': 25,
-  'music.track.180': 50,
-  'voice.dubbing.minute': 10,
-  'research.deep': 330,
-  /** Fast answers stay free inside FREE_DAILY; the Pro model is paid, from the first answer. */
-  'chat.pro.message': 5,
-  'agent-g.analyze': 8,
-  /** Past the free daily minutes (FREE_DAILY below). */
-  'agent-g.live.minute': 8,
-  /**
-   * A WhatsApp call with Agent G, per started minute, either direction; no free minutes. Clears 62 % all-in (VM included)
-   * from ~405 call-minutes a month on today's setup and from ~750 on the 12k → 6k fallback (COMMUNICATION_UNIT_ECONOMICS).
-   */
-  'agent-g.whatsapp-call.minute': 12,
-};
+/** The fewest credits whose price earns `profitOverCost` of a full cost of `costGel` ₾ (bank fee included). */
+export function ruleCreditsForCost(costGel: number, econ: Econ = ECON): number {
+  if (costGel <= 0) return 0;
+  const k = 1 + econ.profitOverCost;
+  // The 1e-9 absorbs float noise, so a cost that is exactly a whole number of credits is not rounded up to the next one.
+  return Math.ceil((k * costGel) / (econ.creditGel * ruleDenominator(econ)) - 1e-9);
+}
 
-/** Free, inside these daily caps (per signed-in account; guests keep the existing per-IP caps). */
+/** The rule's price of one unit of `op`. */
+export const ruleCredits = (op: UnitOp, econ: Econ = ECON): number => ruleCreditsForCost(opCostGel(op, econ), econ);
+
+/**
+ * Profit over full cost when `credits` buy something costing `costGel` ₾: 1 = 100 % (the rule), 0 = break-even, negative
+ * = sold at a loss. Full cost counts the card fee on the price; revenue is the price less VAT.
+ */
+export function profitOverCostOf(credits: number, costGel: number, econ: Econ = ECON): number {
+  const price = credits * econ.creditGel;
+  const fullCost = costGel + price * econ.paymentFeeRate;
+  if (fullCost <= 0) return Infinity;
+  return (price / (1 + econ.vatRate) - fullCost) / fullCost;
+}
+
+/** Full cost (₾) of one bare clip of `seconds` on `tier`: its Veo seconds, plus cropping and hosting. */
+export function clipCostGel(seconds: number, tier: VideoTier, econ: Econ = ECON): number {
+  const hosting = usdToCostGel((compute(15).usd + storage(12).usd) * 1.1, econ);
+  return (opCostGel(unitOp(`video.clip.${tier}`), econ) * seconds) / 8 + hosting;
+}
+
+/**
+ * Full cost (₾) of a film of `seconds` on `tier` in `scenes` scenes (one per started 8 s unless given): its base, its Veo
+ * seconds, each scene's extras, and the song under a music video.
+ */
+export function videoCostGel(seconds: number, tier: VideoTier, musicVideo = false, econ: Econ = ECON, scenes?: number): number {
+  const n = scenes ?? Math.max(1, Math.ceil(seconds / 8));
+  return (
+    opCostGel(unitOp('video.film.base'), econ) +
+    (opCostGel(unitOp(`video.clip.${tier}`), econ) * seconds) / 8 +
+    n * opCostGel(unitOp('video.film.scene'), econ) +
+    (musicVideo ? n * opCostGel(unitOp('video.music-video.song'), econ) : 0)
+  );
+}
+
+export type VideoTier = 'lite' | 'fast' | 'standard';
+
+/** Full cost (₾) of a deck: the 12-slide op scaled — the outline and render share, plus each slide's picture. */
+export function deckCostGel(slides: number, illustrated = true, econ: Econ = ECON): number {
+  const op = unitOp('design.presentation.deck');
+  const pictures = op.lines.filter((l) => l.what.includes('Imagen') || l.what.includes('to English'));
+  const fixed = op.lines.filter((l) => !pictures.includes(l));
+  const sum = (ls: readonly CostLine[]) => ls.reduce((s, l) => s + l.usd, 0);
+  const usd = (sum(fixed) + (illustrated ? (sum(pictures) / 12) * Math.max(1, slides) : 0)) * (1 + op.retryShare);
+  return usdToCostGel(usd, econ);
+}
+
+// ── The 2026-10-10 audit (for comparison; it never charged anyone) ─────────────────────────────────────────────────────
+
+/** Lari one credit leaves after VAT and the card fee. */
+export function netGelPerCredit(econ: Econ = ECON): number {
+  return (econ.creditGel / (1 + econ.vatRate)) * (1 - econ.paymentFeeRate);
+}
+
+/** The fewest credits that reach gross `margin` (the audit's rule). */
+export function creditsForMargin(op: UnitOp, margin: number, econ: Econ = ECON_2026_10_10): number {
+  const cost = opCostGel(op, econ);
+  if (cost <= 0) return 0;
+  return Math.ceil(cost / (netGelPerCredit(econ) * (1 - margin)) - 1e-9);
+}
+
+/** Gross margin of a price against a cost, both in the units above (credits, ₾). */
+export function marginOf(credits: number, costGel: number, econ: Econ = ECON_2026_10_10): number {
+  return credits > 0 ? 1 - costGel / (credits * netGelPerCredit(econ)) : -Infinity;
+}
+
+/**
+ * The audit's proposed prices (docs/handoffs/pricing/SERVICE_UNIT_ECONOMICS.md, card 2026-10-10): round numbers at or above
+ * its 65 % target. Superseded by the price book; kept so the doc and the owner's card show the two side by side.
+ */
+export const AUDIT_2026_10_10 = {
+  videoBase: 25,
+  videoPerSec: { lite: 9, fast: 14, standard: 44 },
+  musicVideoSong: 20,
+  deck: { base: 4, perIllustratedSlide: 5 },
+  ops: {
+    'video.remix.voiceover': 10,
+    'video.remix.music': 10,
+    'image.one': 8,
+    'image.interior.plan3d': 8,
+    'music.track.30': 5,
+    'music.track.60': 18,
+    'music.track.90': 25,
+    'music.track.180': 50,
+    'voice.dubbing.minute': 10,
+    'research.deep': 330,
+    'chat.pro.message': 5,
+    'agent-g.analyze': 8,
+    'agent-g.live.minute': 8,
+    'agent-g.whatsapp-call.minute': 12,
+  } as Readonly<Record<string, number>>,
+} as const;
+
+/** The audit's price for a video of `seconds` on `tier` (8 s scenes), base included. */
+export function auditVideoCredits(seconds: number, tier: VideoTier, musicVideo = false): number {
+  const s = Math.max(8, Math.ceil(seconds / 8) * 8);
+  return AUDIT_2026_10_10.videoBase + s * AUDIT_2026_10_10.videoPerSec[tier] + (musicVideo ? AUDIT_2026_10_10.musicVideoSong : 0);
+}
+
+/** Free, inside these daily caps (per signed-in account; guests keep the existing per-IP caps). The audit's proposal. */
 export const FREE_DAILY = {
   /** Chat answers on the Fast model for an account that has never bought credits; 200 once it has. */
   chatAnswers: 30,
@@ -508,39 +590,3 @@ export const FREE_DAILY = {
   agentEdits: 5,
   ffmpegRemixEdits: 10,
 } as const;
-
-/** Credits for a video of `seconds` on `tier` (8 s scenes), base included. */
-export function proposedVideoCredits(seconds: number, tier: keyof typeof PROPOSED_VIDEO_PER_SEC, musicVideo = false): number {
-  const s = Math.max(8, Math.ceil(seconds / 8) * 8);
-  return PROPOSED_VIDEO_BASE + s * PROPOSED_VIDEO_PER_SEC[tier] + (musicVideo ? PROPOSED_MUSIC_VIDEO_SONG : 0);
-}
-
-/** Full cost (₾) of the same video: the base op, one clip per 8 s, the song for a music video. */
-export function videoCostGel(seconds: number, tier: keyof typeof PROPOSED_VIDEO_PER_SEC, musicVideo = false, econ: typeof ECON = ECON): number {
-  const clips = Math.max(1, Math.ceil(seconds / 8));
-  return (
-    opCostGel(unitOp('video.film.base'), econ) +
-    clips * opCostGel(unitOp(`video.clip.${tier}`), econ) +
-    (musicVideo ? opCostGel(unitOp('video.music-video.song'), econ) : 0)
-  );
-}
-
-/** Credits for a deck of `slides`. */
-export function proposedDeckCredits(slides: number, illustrated = true): number {
-  return PROPOSED_DECK.base + (illustrated ? Math.max(1, slides) * PROPOSED_DECK.perIllustratedSlide : 0);
-}
-
-/** Full cost (₾) of a deck: the 12-slide op scaled — the outline and render share, plus each slide's picture. */
-export function deckCostGel(slides: number, illustrated = true, econ: typeof ECON = ECON): number {
-  const op = unitOp('design.presentation.deck');
-  const pictures = op.lines.filter((l) => l.what.includes('Imagen') || l.what.includes('to English'));
-  const fixed = op.lines.filter((l) => !pictures.includes(l));
-  const sum = (ls: readonly CostLine[]) => ls.reduce((s, l) => s + l.usd, 0);
-  const usd = (sum(fixed) + (illustrated ? (sum(pictures) / 12) * Math.max(1, slides) : 0)) * (1 + op.retryShare);
-  return usdToCostGel(usd, econ);
-}
-
-/** Gross margin of a price against a cost, both in the units above (credits, ₾). */
-export function marginOf(credits: number, costGel: number, econ: typeof ECON = ECON): number {
-  return credits > 0 ? 1 - costGel / (credits * netGelPerCredit(econ)) : -Infinity;
-}

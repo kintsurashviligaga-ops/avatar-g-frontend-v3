@@ -83,7 +83,7 @@ describe('quote', () => {
   test('a quote states the price the ledger will take, needs confirmation, and shows the exact provider text', async () => {
     const h = harness();
     const q = await quoted(h);
-    expect(q.credits).toBe(5);
+    expect(q.credits).toBe(3); // a track under 60 s in the price book (lib/credits/priceBook music.under60)
     expect(q.credits).toBe(priceOf(q.plan));
     expect(q.requiresConfirmation).toBe(true);
     expect(q.summary.exactDuration).toBe(false);
@@ -133,7 +133,7 @@ describe('start → work → deliver', () => {
     const row = h.store.rows.get(q.jobId)!;
     expect(row.status).toBe('completed');
     expect(row.signedUrl).toContain(q.jobId);
-    expect(row.result).toMatchObject({ kind: 'music', durationSec: 30.8, credits: 5, modelId: 'lyria-3-clip-preview' });
+    expect(row.result).toMatchObject({ kind: 'music', durationSec: 30.8, credits: 3, modelId: 'lyria-3-clip-preview' });
     expect(h.refunds).toEqual([]);
     const st = await musicStatus(h.deps, USER, q.jobId);
     expect(st.view.status).toBe('completed');

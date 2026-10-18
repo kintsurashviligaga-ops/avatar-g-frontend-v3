@@ -1,4 +1,6 @@
 /** components/studio/music/musicCardCopy.ts — every sentence of the Music Studio card, in Georgian, English and Russian. */
+import { creditsLabel } from '@/lib/credits/quote';
+
 type L = 'ka' | 'en' | 'ru';
 const pick = (l: string): L => (l === 'en' || l === 'ru' ? l : 'ka');
 
@@ -45,7 +47,7 @@ const COPY = {
     planTitle: 'План трека', song: 'Песня', instrumental: 'Инструментал', pricing: 'Считаю цену…',
     tempo: { slow: 'медленно', medium: 'средне', fast: 'быстро' },
     approxLength: (s: number) => `≈ ${s} с`,
-    confirm: (n: number) => `Создать · ${n} кредитов`, confirmAria: (n: number) => `Подтвердить: будет списано ${n} кредитов`,
+    confirm: (n: number) => `Создать · ${creditsLabel(n, 'ru')}`, confirmAria: (n: number) => `Подтвердить: будет списано ${creditsLabel(n, 'ru')}`,
     lengthNote: 'Точную длину задаёт модель — она приблизительна.',
     cancel: 'Отменить', retry: 'Ещё раз', regenerate: 'Новый вариант', download: 'Скачать', apply: 'Применить',
     playerAria: 'Созданный трек', editLabel: 'Команда редактирования',
@@ -55,7 +57,7 @@ const COPY = {
     editFailed: 'Редактирование не удалось. Оригинал не изменён.', genericError: 'Что-то пошло не так.',
     refundPending: 'Возврат обрабатывается — кредиты вернутся автоматически.',
     failed: (cancelled: boolean, code: string | null) => (cancelled ? 'Отменено. Зарезервированные кредиты возвращены.' : `Не удалось создать${code ? ` (${code})` : ''}. Зарезервированные кредиты возвращены.`),
-    delivered: (s: number, cr: number, m: string) => `${s} с · ${cr} кредитов · ${m}`,
+    delivered: (s: number, cr: number, m: string) => `${s} с · ${creditsLabel(cr, 'ru')} · ${m}`,
     version: (label: string, s: number) => `Новая версия: ${label} · ${s} с`,
     savedToLibrary: 'Сохранено в библиотеке. Оригинал никогда не меняется.',
     joinNeedsTwo: 'Для склейки нужны два готовых трека на экране.',

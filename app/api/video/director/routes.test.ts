@@ -89,6 +89,7 @@ import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { deductCredits } from '../../../../lib/orchestrator/ledger';
 import { liveVeoEngine } from '../../../../lib/video/director/server';
 import { makeStoryboard, threeShots } from '../../../../lib/video/director/testing/fixtures';
+import { shotCredits } from '../../../../lib/video/director/run';
 import { studioToDirectorStoryboard, type StudioBoard } from '../../../../lib/video/director/fromStudio';
 import { approvalForRender, snapshotRevision, type BoardLike } from '../../../../lib/video/storyboard/revision';
 import type { FakeVeoEngine } from '../../../../lib/video/director/testing/fakeVeoEngine';
@@ -174,7 +175,8 @@ describe('plan', () => {
     const body = (await res.json()) as { storyboard: { approvedByUser: boolean; createdBy: string }; quoteCredits: number };
     expect(body.storyboard.approvedByUser).toBe(false);
     expect(body.storyboard.createdBy).toBe('agent_planner');
-    expect(body.quoteCredits).toBe(75);
+    // The default draft is three 8 s Fast shots: the quote is what the run will charge for them, shot by shot.
+    expect(body.quoteCredits).toBe(shotCredits(threeShots()).reduce((a, b) => a + b, 0));
   });
 });
 

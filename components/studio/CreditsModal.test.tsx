@@ -12,6 +12,7 @@ jest.mock('../../lib/billing/bogCheckoutClient', () => ({
 jest.mock('../../lib/analytics/track', () => ({ track: jest.fn() }));
 
 import { CreditsModal } from './CreditsModal';
+import { TIERS } from '../../lib/billing/tiers';
 
 type Handler = (init?: RequestInit) => { status?: number; body?: unknown };
 let routes: Record<string, Handler> = {};
@@ -53,7 +54,8 @@ test('with BOG live: plans priced in the ₾ BOG charges, PAYG packs, BOG footer
   expect(screen.getByText('Subscribe · 54 ₾ / mo')).toBeTruthy();
   expect(screen.getByText('Subscribe · 216 ₾ / mo')).toBeTruthy();
   expect(screen.getByText('≈ $39.99')).toBeTruthy();
-  expect(screen.getByText('525 credits every month')).toBeTruthy();
+  // The Creator plan's monthly grant, from the tier SSoT (1 080 credits: 10 per ₾ of its 108 ₾).
+  expect(screen.getByText(`${TIERS.creator.includedCredits} credits every month`)).toBeTruthy();
   expect(screen.getByLabelText('20 ₾ — 200 credits')).toBeTruthy();
   expect(screen.getByText('Secure payment by Bank of Georgia (₾)')).toBeTruthy();
   expect(document.body.textContent).not.toMatch(/stripe/i);

@@ -16,6 +16,7 @@ jest.mock('../../../lib/orchestrator/ledger', () => ({ deductCredits: jest.fn(),
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { deductCredits, refundCredits } from '../../../lib/orchestrator/ledger';
+import { creditCostFor } from '../../../lib/credits/pricing';
 
 const ENV = { ...process.env };
 const realFetch = global.fetch;
@@ -58,7 +59,7 @@ test('an LTX refusal → refunded once, a code instead of LTX’s words, and nev
   expect(res.status).toBe(503); // OUR outage — a provider 402 must not read as the user being out of credit
   const j = await res.json();
   expect(refundCredits).toHaveBeenCalledTimes(1);
-  expect((refundCredits as jest.Mock).mock.calls[0]).toEqual(['user-1', 25, expect.stringMatching(/^ltx:user-1:.*:refund$/)]);
+  expect((refundCredits as jest.Mock).mock.calls[0]).toEqual(['user-1', creditCostFor('video'), expect.stringMatching(/^ltx:user-1:.*:refund$/)]);
   expect(j).toEqual({ error: 'provider_unfunded', refunded: true });
 });
 

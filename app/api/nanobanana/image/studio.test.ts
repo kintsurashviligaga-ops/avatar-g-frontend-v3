@@ -178,7 +178,7 @@ describe('the charge', () => {
     const [uid, amount, ref] = (deductCredits as jest.Mock).mock.calls[0];
     expect(uid).toBe('user-1');
     expect(amount).toBe(creditCostFor('image'));
-    expect(amount).toBe(2);
+    expect(amount).toBe(5); // one image in the price book (lib/credits/priceBook)
     expect(ref).toMatch(/^image:nanobanana:tile-1:[0-9a-f]+:user-1$/);
     // The reserve comes BEFORE the provider call (the order the whole money story rests on).
     const reserveAt = (deductCredits as jest.Mock).mock.invocationCallOrder[0]!;

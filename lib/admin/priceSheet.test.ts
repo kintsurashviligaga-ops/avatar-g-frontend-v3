@@ -11,7 +11,8 @@ describe('buildPriceRows', () => {
     const image = rows.find((r) => r.id === 'image.1')!;
     expect(image.credits).toBe(quoteCredits({ tool: 'image', count: 1 }));
     expect(image.priceGel).toBeCloseTo(image.credits * ECON.creditGel, 2);
-    expect(image.netGel).toBeCloseTo(image.credits * netGelPerCredit(), 2);
+    // netGel is rounded to the tetri for display, so it sits within half a tetri of the exact net (5 × 0.097 = 0.485 → 0.49).
+    expect(Math.abs(image.netGel - image.credits * netGelPerCredit())).toBeLessThanOrEqual(0.005 + 1e-9);
   });
 
   it('computes markup as (net − cost) / cost and flags the owner rule', () => {
@@ -30,6 +31,10 @@ describe('buildPriceRows', () => {
       expect(r.markup as number).toBeLessThanOrEqual(hi + 0.001);
       expect(r.ok).toBe((r.markup as number) >= MIN_MARKUP);
     }
+  });
+
+  it('every row with a known cost clears the rule under the price book (a VFX scene is costed as its bare clip)', () => {
+    for (const r of rows) if (r.costGel !== null && r.costGel > 0) expect([r.id, r.ok]).toEqual([r.id, true]);
   });
 
   it('shows no cost for an engine the provider rule blocks', () => {

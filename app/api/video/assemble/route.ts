@@ -357,6 +357,7 @@ async function assembleImpl(req: NextRequest) {
   // The fallback stitch price: the film quote for the seconds actually handed over (lib/credits/videoPricing).
   const assembleCost = videoCredits({
     seconds: filmSecondsFromClips(segments.map((s) => ({ durationSec: s.durationSec }))),
+    scenes: segments.length,
     mode: body.musicVideoMode === true ? 'musicvideo' : 'documentary',
   });
   // Anonymous trial renders are allowed. The expensive part — rendering the 5

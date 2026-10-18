@@ -18,7 +18,7 @@ jest.mock('../../../../lib/orchestrator/jobs', () => ({
   recordCompletedAsset: jest.fn(async () => true),
   jobOwnerId: jest.fn(async () => 'user-1'),
 }));
-jest.mock('../../../../lib/orchestrator/ledger', () => ({ refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 15 })) }));
+jest.mock('../../../../lib/orchestrator/ledger', () => ({ refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 5 })) }));
 jest.mock('../../../../lib/ai/replicate', () => ({ generateMusic: jest.fn() }));
 jest.mock('../../../../lib/video/remixOps', () => ({ muxAudioOntoVideo: jest.fn(), fitAspect: jest.fn(async () => 'https://x.supabase.co/fitted.mp4') }));
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
@@ -28,6 +28,10 @@ import { klingPoll } from '../../../../lib/ai/klingClient';
 import { failJob, recordCompletedAsset, jobOwnerId } from '../../../../lib/orchestrator/jobs';
 import { refundDebitByRef } from '../../../../lib/orchestrator/ledger';
 import { signMotionCharge, withMotionCharge } from '../../../../lib/services/motion/chargeToken';
+import { creditCostFor } from '../../../../lib/credits/pricing';
+
+/** What a failed motion render gives back: the price the route reserved, creditCostFor('remix'). */
+const MOTION = creditCostFor('remix');
 
 const ENV = { ...process.env };
 const get = (id: string) => new Request(`https://myavatar.ge/api/motion-control/status?id=${encodeURIComponent(id)}&aspect=9:16`);
@@ -37,7 +41,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser = { id: 'user-1' };
   process.env = { ...ENV, MOTION_CHARGE_SECRET: 'test-motion-secret' };
-  (refundDebitByRef as jest.Mock).mockResolvedValue({ ok: true, refunded: 15 });
+  (refundDebitByRef as jest.Mock).mockResolvedValue({ ok: true, refunded: MOTION });
   (jobOwnerId as jest.Mock).mockResolvedValue('user-1');
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
@@ -51,7 +55,7 @@ test('a failed paid render: refund AWAITED through the ledger under the token’
   const res = await GET(get(paidId()));
   const j = await res.json();
   expect(klingPoll).toHaveBeenCalledWith('pred-abc'); // the bare prediction, token stripped
-  expect(refundDebitByRef).toHaveBeenCalledWith('user-1', REF, 15);
+  expect(refundDebitByRef).toHaveBeenCalledWith('user-1', REF, MOTION);
   const refundAt = (refundDebitByRef as jest.Mock).mock.invocationCallOrder[0]!;
   const failAt = (failJob as jest.Mock).mock.invocationCallOrder[0]!;
   expect(refundAt).toBeLessThan(failAt);
@@ -76,7 +80,7 @@ test('another user polling the payer’s token collects nothing', async () => {
 test('a LEGACY id (charged after submit under motion:charge:<id>) still refunds its owner — via the ledger, awaited', async () => {
   (klingPoll as jest.Mock).mockResolvedValue({ status: 'failed', url: null, error: 'x' });
   const j = await (await GET(get('pred-legacy'))).json();
-  expect(refundDebitByRef).toHaveBeenCalledWith('user-1', 'motion:charge:pred-legacy', 15);
+  expect(refundDebitByRef).toHaveBeenCalledWith('user-1', 'motion:charge:pred-legacy', MOTION);
   expect(j.refunded).toBe(true);
 });
 

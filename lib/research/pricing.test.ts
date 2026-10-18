@@ -5,6 +5,8 @@
  */
 import { GEL_PER_USD } from '@/lib/billing/fx';
 import { creditsToGel } from '@/lib/credits/pricing';
+import { PRICE_BOOK } from '@/lib/credits/priceBook';
+import { opCostGel, profitOverCostOf, unitOp } from '@/lib/credits/unitEconomics';
 import { RESEARCH_AGENT_ID, RESEARCH_CREDITS, RESEARCH_MAX_MINUTES, researchCredits, researchPriceGel } from './pricing';
 import { RESEARCH_CONTEXT_MAX_CHARS } from './context';
 
@@ -14,23 +16,28 @@ const GOOGLE_HIGH_USD = 3;
 const usdOf = (credits: number) => creditsToGel(credits) / GEL_PER_USD;
 
 describe('researchCredits', () => {
-  test('a positive whole number — the owner-tunable constant, 120 by default', () => {
+  test('a positive whole number — the price book\'s research price (200)', () => {
     expect(Number.isInteger(researchCredits())).toBe(true);
     expect(researchCredits()).toBeGreaterThan(0);
     expect(researchCredits()).toBe(RESEARCH_CREDITS);
-    expect(RESEARCH_CREDITS).toBe(120);
+    expect(RESEARCH_CREDITS).toBe(PRICE_BOOK.research);
+    expect(RESEARCH_CREDITS).toBe(200);
   });
 
-  test('is 12 ₾ at 0.10 ₾ a credit, ≈ $4.44 at the repo FX rate', () => {
-    expect(researchPriceGel()).toBe(12);
-    expect(usdOf(researchCredits())).toBeCloseTo(4.44, 2);
+  test('is 20 ₾ at 0.10 ₾ a credit, ≈ $7.41 at the repo FX rate', () => {
+    expect(researchPriceGel()).toBe(20);
+    expect(usdOf(researchCredits())).toBeCloseTo(7.41, 2);
   });
 
-  test('covers the TOP of Google\'s estimate with at least a 1.4× margin, and never costs less than its worst typical run', () => {
+  test('earns the owner\'s 100 % over the cost of a task priced at the TOP of Google\'s estimate', () => {
+    expect(profitOverCostOf(researchCredits(), opCostGel(unitOp('research.deep')))).toBeGreaterThanOrEqual(1);
+  });
+
+  test('covers the TOP of Google\'s estimate at least twice over, and never costs less than its worst typical run', () => {
     const usd = usdOf(researchCredits());
-    expect(usd).toBeGreaterThanOrEqual(GOOGLE_HIGH_USD * 1.4);
+    expect(usd).toBeGreaterThanOrEqual(GOOGLE_HIGH_USD * 2);
     // …and is not absurdly above it either (a price 10× the cost is a different decision, made on purpose).
-    expect(usd).toBeLessThanOrEqual(GOOGLE_HIGH_USD * 2.5);
+    expect(usd).toBeLessThanOrEqual(GOOGLE_HIGH_USD * 3);
     expect(usd / GOOGLE_LOW_USD).toBeGreaterThan(4);
   });
 

@@ -10,7 +10,7 @@
  *
  * HOW. The film start keeps a scene book on the server (./filmSceneBook): every scene's own clip request, its storyboard
  * frame, and what the scene costs. Every delivered stitch of the film keeps what it was cut from. A redo then:
- *   1. charges the scene's price, once (8 s on Fast = 25 credits; an admin pays nothing);
+ *   1. charges the scene's price, once (priceBook sceneCredits: 8 s on Fast = 71 credits; an admin pays nothing);
  *   2. renders that scene again from its own storyboard frame, with the user's note folded into its prompt and a new seed;
  *   3. gives the price back when Google's own verdict says the render failed, or when it never comes back;
  *   4. cuts the new clip into the film's last stitch in place of the old one (or into the gap a failed scene left), with

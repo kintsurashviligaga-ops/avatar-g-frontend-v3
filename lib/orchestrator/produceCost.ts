@@ -7,9 +7,17 @@
  * quotes it (the Interior designer's „3D plan ✦ 8") read ONE constant — the number on the button is the number on the bill.
  */
 
+import { PRICE_BOOK, filmCredits, musicCredits, sceneCredits } from '@/lib/credits/priceBook';
+
 export type ProduceKind = 'film' | 'avatar' | 'interior' | 'image' | 'music' | 'voice';
 
-/** Credits charged per successful produce (relative provider expense). */
+/** Credits charged per successful produce — the price book's number for what each pipeline renders. */
 export const PRODUCE_COST: Record<ProduceKind, number> = {
-  film: 20, avatar: 15, interior: 8, image: 2, music: 6, voice: 2,
+  film: filmCredits(8),
+  avatar: sceneCredits('fast'),
+  interior: PRICE_BOOK.interiorPlan,
+  image: PRICE_BOOK.image,
+  music: musicCredits(30),
+  // One ElevenLabs line, the voice-over's cost class.
+  voice: PRICE_BOOK.remixVoiceover,
 };
