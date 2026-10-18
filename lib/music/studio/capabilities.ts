@@ -10,14 +10,16 @@
  *     here has produced and checked one. Offered only once the owner-approved paid test (Phase 8) has, by setting
  *     MUSIC_LYRIA_VOCALS_VERIFIED=1. Until then a song request is `unsupported`.
  *   lyria-3-pro-preview — NOT VERIFIED (it answered 500 "high demand" when lib/ai/lyriaMusic was written). Hidden unless
- *     MUSIC_LYRIA_PRO_VERIFIED=1, and even then only with the length it was verified at (MUSIC_LYRIA_PRO_SECONDS).
+ *     MUSIC_LYRIA_PRO_VERIFIED=1, and even then only up to the length it was verified at (MUSIC_LYRIA_PRO_SECONDS). It
+ *     makes every panel length over 30 s (60 / 90 / Full song ≈ 180 s, lib/studio/musicEngines) — the clip makes 30 s.
  *   Lyria RealTime, remix, extension, stems, cover, voice conversion — not implemented on an approved engine: never offered.
  *
- * Length: Lyria takes no duration parameter. The clip model returns its own ~30 s, so the only length offered is that
- * one, and it is never described as exact.
+ * Length: Lyria takes no duration parameter. The clip model returns its own ~30 s; Pro is steered to the length by the
+ * prompt (lib/music/studio/prompt). Neither is ever described as exact.
  */
 import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import { googleTransportKind, googleTransportProblems } from '@/lib/ai/google/transport';
+import { LYRIA_CLIP_MODEL, LYRIA_PRO_MODEL, LYRIA_CLIP_MAX_SEC, musicTargetSec, offeredMusicLengths } from '@/lib/studio/musicEngines';
 import type { MusicRequest } from './contracts';
 import { MusicError } from './errors';
 
@@ -51,8 +53,8 @@ export interface MusicCapabilities {
   edits: readonly string[];
 }
 
-export const CLIP_MODEL = 'lyria-3-clip-preview';
-export const PRO_MODEL = 'lyria-3-pro-preview';
+export const CLIP_MODEL = LYRIA_CLIP_MODEL;
+export const PRO_MODEL = LYRIA_PRO_MODEL;
 export const UNSUPPORTED_OPS = [
   'remix', 'extend', 'stem_separation', 'vocal_removal', 'cover', 'voice_conversion', 'dubbing', 'realtime',
 ] as const;
@@ -61,6 +63,15 @@ export const EDIT_OPS = ['trim', 'volume', 'mute', 'fade_in', 'fade_out', 'join'
 /** Music Studio v1 is off until the owner switches it on (MUSIC_STUDIO_ENABLED=1). */
 export function musicStudioEnabled(env: Env = process.env): boolean {
   return isTruthyFlag(env.MUSIC_STUDIO_ENABLED);
+}
+
+/**
+ * The longest track Lyria 3 Pro is verified for (MUSIC_LYRIA_PRO_SECONDS, 30–600), or 0 while MUSIC_LYRIA_PRO_VERIFIED is
+ * off. The one gate /api/ai/music, its engines status (the panel's lengths) and this matrix all read.
+ */
+export function lyriaProMaxSec(env: Env = process.env): number {
+  const proSec = Math.round(Number(env.MUSIC_LYRIA_PRO_SECONDS));
+  return isTruthyFlag(env.MUSIC_LYRIA_PRO_VERIFIED) && Number.isFinite(proSec) && proSec >= 30 && proSec <= 600 ? proSec : 0;
 }
 
 function transportOf(env: Env): Transport | null {
@@ -86,12 +97,13 @@ export function musicCapabilities(env: Env = process.env): MusicCapabilities {
     lyricsLanguages: ['ka', 'en', 'ru'],
     evidence: 'Vertex AI 2026-10-08: 200, MP3 30.8 s instrumental (gcp-part0-report T2.3)',
   }];
-  const proSec = Math.round(Number(env.MUSIC_LYRIA_PRO_SECONDS));
-  if (isTruthyFlag(env.MUSIC_LYRIA_PRO_VERIFIED) && Number.isFinite(proSec) && proSec >= 30 && proSec <= 600) {
+  // The panel's lengths over 30 s, as the seconds the request names (Full song → 180): each within the verified length.
+  const proLengths = offeredMusicLengths(lyriaProMaxSec(env)).map(musicTargetSec).filter((s) => s > LYRIA_CLIP_MAX_SEC);
+  if (proLengths.length) {
     models.push({
       id: PRO_MODEL,
       label: 'Lyria 3 Pro',
-      durationsSec: [proSec],
+      durationsSec: proLengths,
       exactDuration: false,
       instrumental: { offered: true, evidence: 'proven' },
       vocals: { offered: vocals, evidence: vocals ? 'proven' : 'unverified' },

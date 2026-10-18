@@ -1,11 +1,13 @@
 /**
  * components/studio/music/musicDraft.ts — the Music tool panel's choices as a Music Studio v1 request. Pure.
- * Only fields the server's contract accepts are sent; the length is the model's own (Lyria Clip ≈ 30 s), never a promise.
+ * Only fields the server's contract accepts are sent. The panel's length picks the model (lib/studio/musicEngines): up to
+ * 30 s Lyria 3 Clip, longer Lyria 3 Pro (Full song ≈ 180 s) — an approximate length, never a promise.
  */
 import type { MusicRequest } from '@/lib/music/studio/contracts';
+import { LYRIA_CLIP_MAX_SEC, LYRIA_CLIP_MODEL, lyriaModelForSec, musicTargetSec } from '@/lib/studio/musicEngines';
 import type { MusicDraft } from './MusicStudioCard';
 
-export const MUSIC_STUDIO_DEFAULT_MODEL = 'lyria-3-clip-preview';
+export const MUSIC_STUDIO_DEFAULT_MODEL = LYRIA_CLIP_MODEL;
 
 /** The client switch. Off by default; the server has its own (MUSIC_STUDIO_ENABLED) and refuses when that is off. */
 export function musicStudioV1OnClient(): boolean {
@@ -16,11 +18,13 @@ const LABEL = /[^\p{L}\p{N} &/'+-]/gu;
 const clean = (s: string | undefined) => (s ?? '').replace(LABEL, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
 
 export function musicDraftFromPanel(
-  m: { prompt: string; genre: string; tempo: string; instrumental: boolean; voiceType: string; lyrics: string },
+  m: { prompt: string; genre: string; tempo: string; instrumental: boolean; voiceType: string; lyrics: string; duration?: number },
   locale: string,
 ): MusicDraft {
   const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const song = !m.instrumental;
+  // The clip makes its own 30 s (a legacy 15 is that too); 60 / 90 / Full song name their own length, on Pro.
+  const sec = Math.max(LYRIA_CLIP_MAX_SEC, musicTargetSec(m.duration ?? 30));
   const request: MusicRequest = {
     v: 1,
     prompt: m.prompt.trim().slice(0, 2000) || (lang === 'en' ? 'Instrumental track' : lang === 'ru' ? 'Инструментальный трек' : 'ინსტრუმენტული ტრეკი'),
@@ -29,8 +33,8 @@ export function musicDraftFromPanel(
     ...(m.tempo === 'slow' || m.tempo === 'medium' || m.tempo === 'fast' ? { tempo: m.tempo } : {}),
     ...(song && (m.voiceType === 'female' || m.voiceType === 'male' || m.voiceType === 'duet') ? { vocalGender: m.voiceType } : {}),
     ...(song && m.lyrics.trim() ? { lyrics: m.lyrics.trim().slice(0, 3000) } : {}),
-    modelId: MUSIC_STUDIO_DEFAULT_MODEL,
-    durationSec: 30,
+    modelId: lyriaModelForSec(sec),
+    durationSec: sec,
     locale: lang,
   };
   return { id: `md_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`, request };

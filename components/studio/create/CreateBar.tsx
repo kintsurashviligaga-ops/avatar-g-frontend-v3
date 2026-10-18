@@ -84,7 +84,7 @@ function Tile<T extends string | number>({
 }
 
 export function CreateBar({
-  locale, price, insufficient, onCreate, duration, onDuration, cover, tempo, onTempo,
+  locale, price, insufficient, onCreate, duration, onDuration, cover, tempo, onTempo, lengths,
 }: {
   locale: string;
   /** The exact credits for this press (lib/studio/musicQuote). */
@@ -98,6 +98,9 @@ export function CreateBar({
   cover: boolean;
   tempo: MusicTempo;
   onTempo: (t: MusicTempo) => void;
+  /** The lengths the server makes right now (GET /api/ai/music/engines `lengths`): 60 / 90 / Full song only once Lyria 3
+   *  Pro is verified — a longer choice is never offered to come back ~30 s. */
+  lengths: readonly MusicDuration[];
 }) {
   const cc = musicCreateCopy(locale);
   const lengthName = (d: MusicDuration) => (d === 0 ? cc.lengthFull : `${d} ${cc.secondsShort}`);
@@ -115,7 +118,7 @@ export function CreateBar({
           lockedNote={cc.refCoverNote}
           value={shown}
           onPick={onDuration}
-          options={MUSIC_DURATIONS.map((d) => ({ id: d, label: lengthName(d), detail: `${musicQuote({ duration: d })} ${cc.creditsShort}` }))}
+          options={MUSIC_DURATIONS.filter((d) => lengths.includes(d)).map((d) => ({ id: d, label: lengthName(d), detail: `${musicQuote({ duration: d })} ${cc.creditsShort}` }))}
         />
         <Tile
           testId="music-tile-tempo"
