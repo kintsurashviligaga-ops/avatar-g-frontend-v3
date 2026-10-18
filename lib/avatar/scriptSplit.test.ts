@@ -1,4 +1,4 @@
-import { splitAvatarScript } from './scriptSplit';
+import { mergeAvatarScript, splitAvatarScript } from './scriptSplit';
 
 describe('splitAvatarScript — the avatar speaks only its words, never its stage directions', () => {
   it('GG\'s Production request (2026-10-16)', () => {
@@ -32,5 +32,47 @@ describe('splitAvatarScript — the avatar speaks only its words, never its stag
     expect(splitAvatarScript('გამარჯობა, მე ვარ თქვენი ასისტენტი')).toEqual({ speech: 'გამარჯობა, მე ვარ თქვენი ასისტენტი', direction: '' });
     expect(splitAvatarScript('The avatar says hello to everyone')).toEqual({ speech: 'The avatar says hello to everyone', direction: '' });
     expect(splitAvatarScript('')).toEqual({ speech: '', direction: '' });
+  });
+
+  it('GG 2026-10-18: an order is never the script — a bare order has no speech at all', () => {
+    expect(splitAvatarScript('შემიქმენი ავატარი')).toEqual({ speech: '', direction: '' });
+    expect(splitAvatarScript('create my avatar')).toEqual({ speech: '', direction: '' });
+    expect(splitAvatarScript('შემიქმენი ჩემი ავატარი')).toEqual({ speech: '', direction: '' });
+    expect(splitAvatarScript('Создай мой аватар')).toEqual({ speech: '', direction: '' });
+  });
+
+  it('GG 2026-10-18: after an order the verb alone (no colon) splits look from line', () => {
+    expect(splitAvatarScript('შემიქმენი ავატარი ქალი, შავი თმით, თქვას გამარჯობა')).toEqual({ speech: 'გამარჯობა', direction: 'ქალი, შავი თმით' });
+    expect(splitAvatarScript('make me an avatar of a young woman saying hello everyone')).toEqual({ speech: 'hello everyone', direction: 'a young woman' });
+    expect(splitAvatarScript('Сделай аватар, который скажет добро пожаловать')).toEqual({ speech: 'добро пожаловать', direction: '' });
+    // An order with a look and no line: the look is direction, nothing is spoken.
+    expect(splitAvatarScript('შემიქმენი ავატარი ქალი, შავი თმით')).toEqual({ speech: '', direction: 'ქალი, შავი თმით' });
+    // A colon right after the order marks the words.
+    expect(splitAvatarScript('შექმენი ავატარი: გამარჯობა ყველას')).toEqual({ speech: 'გამარჯობა ყველას', direction: '' });
+  });
+
+  it('"says:" with a colon still works after the fix', () => {
+    expect(splitAvatarScript('Create an avatar of a man who says: Welcome to the shop')).toEqual({ speech: 'Welcome to the shop', direction: 'a man who' });
+    expect(splitAvatarScript('შექმენი ავატარი რომელიც ამბობს: გამარჯობა')).toEqual({ speech: 'გამარჯობა', direction: '' });
+  });
+
+  it('only stage directions: nothing to speak', () => {
+    expect(splitAvatarScript('(smiles)')).toEqual({ speech: '', direction: 'smiles' });
+  });
+});
+
+describe('mergeAvatarScript — the answer to "what should it say?"', () => {
+  it('a bare order + the answer is the answer alone', () => {
+    expect(mergeAvatarScript('შემიქმენი ავატარი', 'გამარჯობა ყველას')).toBe('გამარჯობა ყველას');
+  });
+  it('the look stays a direction, never spoken', () => {
+    const merged = mergeAvatarScript('შემიქმენი ავატარი ქალი, შავი თმით', 'გამარჯობა ყველას');
+    expect(splitAvatarScript(merged)).toEqual({ speech: 'გამარჯობა ყველას', direction: 'ქალი, შავი თმით' });
+  });
+  it('a thin line from the base is kept and the answer follows it', () => {
+    expect(splitAvatarScript(mergeAvatarScript('hello', 'and welcome to the studio'))).toEqual({ speech: 'hello and welcome to the studio', direction: '' });
+  });
+  it('a look alone stays without speech', () => {
+    expect(splitAvatarScript(mergeAvatarScript('create my avatar', 'a woman with black hair'.replace(/^/, '(') + ')'))).toEqual({ speech: '', direction: 'a woman with black hair' });
   });
 });
