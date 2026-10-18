@@ -561,6 +561,25 @@ describe('the hands: click · type_text · download · use_result · montage · 
     expect(sent.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/submitted/) });
   });
 
+  test('type_text holds Enter in a studio\'s own prompt while a priced button is on the page; a plain field still submits', () => {
+    // The music Create screen (2026-10-18): its prompt is no composer and sits in no <form>, and Enter there started the run.
+    document.body.innerHTML = '<div><textarea aria-label="აღწერე სიმღერა"></textarea></div><div><button data-price="5">შექმნა</button></div>';
+    const ta = document.querySelector('textarea')!;
+    const keys: string[] = [];
+    ta.addEventListener('keydown', (e) => keys.push((e as KeyboardEvent).key));
+    document.documentElement.dataset.tool = 'music';
+    const held = executeLiveToolCall(call('t3', 'type_text', { target: 'აღწერე სიმღერა', text: 'ბლუზი', submit: 'on' }), handsEnv().env);
+    expect(ta.value).toBe('ბლუზი');
+    expect(keys).toEqual([]);
+    expect(held.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/NOT submitted.*ask the user to tap it/) });
+    document.body.innerHTML = '<input aria-label="ძებნა" />';
+    const search = document.querySelector('input')!;
+    search.addEventListener('keydown', (e) => keys.push((e as KeyboardEvent).key));
+    const sent = executeLiveToolCall(call('t4', 'type_text', { target: 'ძებნა', text: 'ზღვა', submit: 'on' }), handsEnv().env);
+    expect(keys).toEqual(['Enter']);
+    expect(sent.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/and submitted it/) });
+  });
+
   test('type_text never fills a password', () => {
     document.body.innerHTML = '<input type="password" aria-label="Password" />';
     const out = executeLiveToolCall(call('t', 'type_text', { target: 'Password', text: 'hunter2' }), handsEnv().env);
