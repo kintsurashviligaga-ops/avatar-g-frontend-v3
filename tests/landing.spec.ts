@@ -410,6 +410,9 @@ for (const vp of VIEWPORTS) {
       expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
       const settings = await openSettings(page);
       const generate = settings.getByTestId('video-generate');
+      // Advanced settings (GG 2026-10-18) holds the model card, the quality row and the resolution: opened only if shut.
+      const adv = settings.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
+      if ((await adv.getAttribute('aria-expanded')) === 'false') await adv.click();
       // 24 s on the default tier (Fast) = 24 × 3.125 credits; Best is ×3.3 (rounded up), Economy ×0.6 — lib/credits/videoPricing.
       await expect(generate).toHaveAttribute('data-price', '75');
       await settings.getByTestId('video-quality-standard').click();
@@ -430,6 +433,9 @@ for (const vp of VIEWPORTS) {
     test('the video tool opens on Fast, and Economy / Best are one tap away', async ({ page }) => {
       await openDashboard(page);
       const settings = await openSettings(page);
+      // Advanced settings (GG 2026-10-18) holds the model card, the quality row and the resolution: opened only if shut.
+      const adv = settings.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
+      if ((await adv.getAttribute('aria-expanded')) === 'false') await adv.click();
       await expect(settings.getByTestId('video-quality-fast')).toHaveAttribute('aria-checked', 'true');
       await expect(settings.getByTestId('video-quality-standard')).toHaveAttribute('aria-checked', 'false');
       await expect(settings.getByTestId('video-quality-lite')).toHaveAttribute('aria-checked', 'false');

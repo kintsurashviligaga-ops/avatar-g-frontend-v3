@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 import { quoteCredits } from '@/lib/credits/quote';
 import { IMAGE_TEMPLATES } from '@/lib/studio/templates';
 
@@ -20,6 +20,13 @@ import { IMAGE_TEMPLATES } from '@/lib/studio/templates';
 const PHONE = { width: 375, height: 812 };
 const DESKTOP = { width: 1280, height: 800 };
 const SHOTS = process.env.UI_IMAGE_SHOTS_DIR;
+
+
+/** Advanced settings (GG 2026-10-18) holds the model row and the resolution chip: opened only if it is shut. */
+async function openAdvanced(scope: Page | Locator): Promise<void> {
+  const toggle = scope.getByTestId('advanced-toggle').first();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+}
 
 async function shot(page: Page, name: string): Promise<void> {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` });
@@ -82,14 +89,14 @@ test.describe('phone 375×812 — ref3', () => {
 
   test.beforeEach(async ({ page }) => { await seed(page); });
 
-  test('the rows are ref3\'s, in order: header ▾ ✕ · upload · prompt with Model … Auto ▾ · chips · Generate ✦ N', async ({ page }) => {
+  test('the rows, in order: header ▾ ✕ · prompt · upload · Advanced settings (Model … Auto ▾, 2K) · chips · Generate ✦ N', async ({ page }) => {
     await openImage(page);
     const panel = page.getByTestId('image-create-panel');
     const rows = await panel.evaluate((el) => [...el.querySelectorAll('[data-create-row]')].map((n) => n.getAttribute('data-create-row')).filter((r) => r !== 'footer'));
-    expect(rows).toEqual(['header', 'upload', 'prompt', 'templates', 'advanced', 'options', 'generate']);
+    expect(rows).toEqual(['header', 'prompt', 'upload', 'templates', 'advanced', 'options', 'generate']);
 
     // Top to bottom on the screen as well as in the DOM.
-    const tops = await Promise.all(['header', 'upload', 'prompt', 'options', 'generate'].map((r) => panel.locator(`[data-create-row="${r}"]`).evaluate((n) => n.getBoundingClientRect().top)));
+    const tops = await Promise.all(['header', 'prompt', 'upload', 'options', 'generate'].map((r) => panel.locator(`[data-create-row="${r}"]`).evaluate((n) => n.getBoundingClientRect().top)));
     expect([...tops].sort((a, b) => a - b)).toEqual(tops);
 
     await expect(page.getByTestId('create-tool-switch')).toContainText('Image');
@@ -97,6 +104,9 @@ test.describe('phone 375×812 — ref3', () => {
     await expect(panel.locator('[data-create-row="upload"]')).toContainText('Choose an image to upload');
     await expect(panel.locator('[data-create-row="upload"]')).toContainText('(max 1)');
     await expect(page.getByTestId('create-prompt')).toHaveAttribute('placeholder', 'Describe your concept, scene, or idea');
+    await expect(page.getByTestId('model-row')).toHaveCount(0);
+    await expect(page.getByTestId('advanced-toggle')).toContainText('Auto · 2K');
+    await openAdvanced(page);
     await expect(page.getByTestId('model-row')).toContainText('Model');
     await expect(page.getByTestId('model-row')).toContainText('Auto');
     await expect(page.getByTestId('chip-aspect')).toHaveText('1:1');
@@ -129,6 +139,7 @@ test.describe('phone 375×812 — ref3', () => {
     await expect(go).toContainText('Generate');
     await expect(go).toHaveAttribute('data-price', String(quoteCredits({ tool: 'image', count: 1 })));
 
+    await openAdvanced(page);
     await page.getByTestId('chip-quality').click();
     await page.getByRole('dialog', { name: 'Quality' }).getByRole('radio', { name: /4K/ }).click();
     await expect(page.getByTestId('chip-quality')).toHaveText('4K');
@@ -177,6 +188,7 @@ test.describe('phone 375×812 — ref3', () => {
     await tiles.filter({ hasText: '9:16' }).click();
     await expect(page.getByTestId('chip-aspect')).toHaveText('9:16');
 
+    await openAdvanced(page);
     await page.getByTestId('chip-quality').click();
     const quality = page.getByRole('dialog', { name: 'Quality' }).getByRole('radio');
     await expect(quality).toHaveCount(3);
@@ -236,9 +248,9 @@ test.describe('phone 375×812 — ref3', () => {
 
     await page.getByTestId('chip-aspect').click();
     await page.getByRole('dialog', { name: 'Aspect ratio' }).getByRole('radio').filter({ hasText: '9:16' }).click();
+    await openAdvanced(page);
     await page.getByTestId('chip-quality').click();
     await page.getByRole('dialog', { name: 'Quality' }).getByRole('radio', { name: /4K/ }).click();
-    await page.getByTestId('advanced-toggle').click();
     await page.getByRole('group', { name: 'Style' }).getByRole('button', { name: 'Anime' }).click();
     await page.getByTestId('create-negative').fill('blurry, watermark');
     await page.getByTestId('create-prompt').fill('A lighthouse on a cliff at sunset');
@@ -384,6 +396,7 @@ test.describe('desktop 1280×800 — ref6', () => {
     await expect(rows.nth(1)).toHaveAttribute('aria-checked', 'true'); // 2K, the default
     await rows.nth(2).click();
     await expect(rows.nth(2)).toHaveAttribute('aria-checked', 'true');
+    await openAdvanced(page.getByTestId('settings-panel'));
     await expect(page.getByTestId('settings-panel').getByTestId('chip-quality')).toHaveText('4K');
     await shot(page, 'desktop-models');
   });

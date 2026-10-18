@@ -50,10 +50,11 @@ afterEach(() => {
 });
 
 const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+const openAdvanced = (tool: 'interior' | 'photoshoot') => fireEvent.click(screen.getByTestId(`${tool}-advanced-toggle`));
 
-test('interior: the reference\'s order — header · upload · room · styles · prompt · chips · Generate', () => {
+test('interior: GG\'s order — header · prompt · upload · room · styles · Advanced settings · chips · Generate', () => {
   render(<Harness tool="interior" />);
-  const order = ['interior-header', 'interior-upload', 'interior-room', 'interior-styles', 'interior-prompt', 'interior-chips', 'interior-generate']
+  const order = ['interior-header', 'interior-prompt', 'interior-upload', 'interior-room', 'interior-styles', 'interior-advanced', 'interior-chips', 'interior-generate']
     .map((id) => screen.getByTestId(id));
   for (let i = 0; i < order.length - 1; i++) expect({ i, ok: before(order[i]!, order[i + 1]!) }).toEqual({ i, ok: true });
   // The header names the tool, offers the switcher and a ✕; the upload card is dashed and says its limit.
@@ -65,12 +66,16 @@ test('interior: the reference\'s order — header · upload · room · styles ·
   expect(within(screen.getByTestId('interior-styles')).getAllByRole('radio').length).toBeGreaterThanOrEqual(10);
 });
 
-test('photoshoot: header · upload · presets · camera · prompt · chips · Generate, with 12+ presets and the four camera groups', () => {
+test('photoshoot: header · prompt · upload · presets · Advanced settings · chips · Generate, with 12+ presets and the four camera groups inside Advanced', () => {
   render(<Harness tool="photoshoot" />);
-  const order = ['photoshoot-header', 'photoshoot-upload', 'photoshoot-presets', 'photoshoot-camera', 'photoshoot-prompt', 'photoshoot-chips', 'photoshoot-generate']
+  const order = ['photoshoot-header', 'photoshoot-prompt', 'photoshoot-upload', 'photoshoot-presets', 'photoshoot-advanced', 'photoshoot-chips', 'photoshoot-generate']
     .map((id) => screen.getByTestId(id));
   for (let i = 0; i < order.length - 1; i++) expect({ i, ok: before(order[i]!, order[i + 1]!) }).toEqual({ i, ok: true });
   expect(within(screen.getByTestId('photoshoot-presets')).getAllByRole('radio').length).toBeGreaterThanOrEqual(12);
+  // The camera is technical: shut away until Advanced settings is opened.
+  expect(screen.queryByTestId('photoshoot-camera')).toBeNull();
+  openAdvanced('photoshoot');
+  expect(within(screen.getByTestId('photoshoot-advanced')).getByTestId('photoshoot-camera')).toBeTruthy();
   for (const g of ['lens', 'light', 'angle', 'dof']) expect(screen.getByTestId(`photoshoot-${g}`)).toBeTruthy();
   expect(within(screen.getByTestId('photoshoot-lens')).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Preset', '24 mm', '35 mm', '50 mm', '85 mm']);
 });

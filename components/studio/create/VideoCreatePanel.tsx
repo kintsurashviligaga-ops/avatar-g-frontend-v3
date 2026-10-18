@@ -4,10 +4,12 @@
  * VideoCreatePanel — the video tool's create screen (ref4 / ref5), one component for the phone's sheet and the desktop's
  * right column (the same element, only the surrounding scroll container differs).
  *
- * Order, top to bottom: header (tool name + tool switcher, ✕) → Film | Music video switch → HERO model card ("✎ Change") →
- * "Add references" (images → the film's reference frames, audio → the soundtrack) → Prompt (+ "@ Elements", 🔊 On/Off) →
- * Model row → [length] [format] [resolution] tiles → quality (Economy · Fast · Max quality, each with its price) →
- * disclosures (Story & style · Voice & music · Advanced) → Generate ✦ N, pinned.
+ * Order, top to bottom (GG 2026-10-18, „ეტაპობრივი გამჟღავნება"): header (tool name + tool switcher, ✕) → Film | Music
+ * video switch → Prompt (+ "@ Elements", 🔊 On/Off) → "Add references" (images → the film's reference frames, audio → the
+ * soundtrack) → [length] [format] tiles → disclosures (Story & style · Voice & music · Advanced settings) → Generate ✦ N,
+ * pinned. ADVANCED SETTINGS, closed until tapped, holds everything technical: the HERO model card ("✎ Change"), the
+ * quality row (Lite · Fast · Max quality, each with its price), the resolution tile and the Veo camera controls. Shut, its
+ * summary names the model and the resolution, so the choice on the button is never a secret.
  *
  * ⚠️ NOTHING THE CINEMA TAB HAD IS GONE. Mode, effect, transitions, voices, dialogue, lip-sync, the master script, the
  * templates, the scene frames, the storyboard and the Veo camera controls are the three disclosures' content — OmniStudio
@@ -44,7 +46,7 @@ import type { VeoEngineInfo } from '../video/VeoParametersPanel';
 import { VideoDurationSheet, VideoFormatSheet, VideoModeChoice } from './VideoPickers';
 import {
   VideoCreateHeader, VideoDisclosure, VideoGenerateBar, VideoHero, VideoPromptCard, VideoQualityRow, VideoRefsCard,
-  VideoTiles,
+  VideoResolutionTile, VideoTiles, modelRowName,
 } from './videoCreateParts';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
 
@@ -141,6 +143,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
 
   const tier = plan.tier;
   const credits = videoQuote({ seconds, tier, mode });
+  const resolution = videoResolution(seconds);
   // The three lengths of an off-grid request — said only when there IS a trim to say (an on-grid ask is one length, the tile's).
   const requestPlan = activePlan(p.requestedSec, seconds, caps, { joinOverlapSec: p.joinOverlapSec ?? 0 });
   const finalPlan = requestPlan && requestPlan.deviation === 'trim' ? requestPlan : null;
@@ -199,32 +202,33 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
       <VideoCreateHeader locale={locale} title={p.toolName} onSwitchTool={p.onSwitchTool} onClose={p.onClose} />
       <VideoModeChoice locale={locale} mode={mode} onMode={p.onMode} />
       {mode === 'musicvideo' && p.musicLook}
-      <VideoHero locale={locale} tier={tier} mode={mode} format={format} seconds={seconds} onChange={() => setSheet('model')} {...(hfName ? { title: hfName } : {})} />
       {/* No Create | Extend tabs: Extend is not open yet (Veo continues a clip from its last frame; until that path is ready a
           long film is made with the length picker), and a whole tab that only said „soon" was the first thing under the model. */}
       <div className="space-y-3">
-          <VideoRefsCard locale={locale} images={refs.images} maxImages={refs.max} onAddImage={refs.onAddImage} onRemoveImage={refs.onRemoveImage}
-            audio={refs.audio} audioBusy={refs.audioBusy} onAddAudio={refs.onAddAudio} onRemoveAudio={refs.onRemoveAudio} />
           <VideoPromptCard
             locale={locale} value={prompt} onChange={p.onPrompt} placeholder={p.placeholder ?? vc(VIDEO_COPY.placeholder, locale)} textareaRef={promptRef}
             images={refs.images} onInsertToken={insertToken} onAddImage={refs.onAddImage}
             soundOn={plan.nativeAudio || !audioToggle} soundLocked={!audioToggle}
             onToggleSound={() => dispatch({ type: 'nativeAudio', on: !plan.nativeAudio })} needed={needed} />
-          {/* No separate „Model ›" row: the hero card above names the model and its „Change" opens the same picker. */}
-          <VideoTiles locale={locale} seconds={seconds} format={format} resolution={videoResolution(seconds)}
-            onLength={() => setSheet('duration')} onFormat={() => setSheet('format')} onResolution={() => setSheet('model')} />
+          <VideoRefsCard locale={locale} images={refs.images} maxImages={refs.max} onAddImage={refs.onAddImage} onRemoveImage={refs.onRemoveImage}
+            audio={refs.audio} audioBusy={refs.audioBusy} onAddAudio={refs.onAddAudio} onRemoveAudio={refs.onRemoveAudio} />
+          <VideoTiles locale={locale} seconds={seconds} format={format} onLength={() => setSheet('duration')} onFormat={() => setSheet('format')} />
           {finalPlan && (
             <p data-testid="video-duration-plan" data-final={finalPlan.finalSec} data-native={finalPlan.nativeSec} data-frames={finalPlan.finalFrames}
               className="rounded-2xl bg-app-elevated/70 px-3.5 py-2.5 text-[12.5px] leading-snug tabular-nums text-app-muted">
               {describeDurationPlan(finalPlan, locale)}
             </p>
           )}
-          {/* Veo's three tiers ARE Veo models; with a Higgsfield model picked they would be a second, contradicting choice. */}
-          {!hf && <VideoQualityRow locale={locale} tier={tier} mode={mode} seconds={seconds} onTier={(t) => dispatch({ type: 'tier', tier: t })} />}
 
           <VideoDisclosure id="story" title={vc(VIDEO_COPY.story, locale)} summary={p.storySummary} openWhen={p.storyOpenWhen}>{p.story}</VideoDisclosure>
           <VideoDisclosure id="voice" title={vc(VIDEO_COPY.voice, locale)} summary={p.voiceSummary} openWhen={p.voiceOpenWhen}>{p.voice}</VideoDisclosure>
-          <VideoDisclosure id="advanced" title={vc(VIDEO_COPY.advanced, locale)}>{p.advanced}</VideoDisclosure>
+          <VideoDisclosure id="advanced" title={vc(VIDEO_COPY.advanced, locale)} summary={`${hfName ?? modelRowName(tier)} · ${resolution}`}>
+            <VideoHero locale={locale} tier={tier} mode={mode} format={format} seconds={seconds} onChange={() => setSheet('model')} {...(hfName ? { title: hfName } : {})} />
+            {/* Veo's three tiers ARE Veo models; with a Higgsfield model picked they would be a second, contradicting choice. */}
+            {!hf && <VideoQualityRow locale={locale} tier={tier} mode={mode} seconds={seconds} onTier={(t) => dispatch({ type: 'tier', tier: t })} />}
+            <VideoResolutionTile locale={locale} resolution={resolution} onClick={() => setSheet('model')} />
+            {p.advanced}
+          </VideoDisclosure>
 
           <VideoGenerateBar surface={p.surface}>
             {hf ? (

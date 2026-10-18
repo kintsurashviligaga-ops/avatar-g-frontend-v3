@@ -69,6 +69,10 @@ test('every service panel fits its 300 px column', async ({ page }) => {
     await page.goto(`/en/dashboard?tool=${tool}`);
     await expect(page.locator('#studio-settings')).toBeVisible({ timeout: 45_000 });
     await page.waitForTimeout(800);
+    // Advanced settings open, so what sits behind them (the Photographer's camera chips) is measured too.
+    for (const toggle of await page.locator('#studio-settings').locator('[data-testid$="advanced-toggle"][aria-expanded="false"], [data-testid^="video-disclosure-"] > button[aria-expanded="false"]').all()) {
+      await toggle.click();
+    }
     const r = await fit(page);
     expect(r, tool).not.toBeNull();
     expect.soft(r!.out, `${tool}: sticks out of the column`).toEqual([]);

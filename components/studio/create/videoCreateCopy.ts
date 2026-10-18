@@ -67,7 +67,8 @@ export const VIDEO_COPY = {
   // disclosures
   story: T('ისტორია და სტილი', 'Story & style', 'История и стиль'),
   voice: T('ხმა და მუსიკა', 'Voice & music', 'Голос и музыка'),
-  advanced: T('დამატებითი', 'Advanced', 'Дополнительно'),
+  // GG 2026-10-18: the model, its quality and the resolution are technical; they sit in this one closed section.
+  advanced: T('პროფესიონალური პარამეტრები', 'Advanced settings', 'Профессиональные настройки'),
 
   // length picker
   lengthTitle: T('ხანგრძლივობა', 'Length', 'Длительность'),

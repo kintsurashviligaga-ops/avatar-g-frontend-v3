@@ -2,8 +2,9 @@
 
 /**
  * InteriorCreatePanel — the INTERIOR DESIGNER's settings, in the creation grammar of the owner's reference (docs/DESIGN.md
- * §8): header (the tool's name, a chevron to switch tools, ✕) · a dashed card for the room photos (1–3, or none) · the room
- * type · a carousel of styles · the prompt card · the chip row (aspect · quality · count) · the Generate pill with its price.
+ * §8), in the order of GG's 2026-10-18 plan: header (the tool's name, a chevron to switch tools, ✕) · the prompt card · a
+ * dashed card for the room photos (1–3, or none) · the room type · a carousel of styles · Advanced settings, shut (the model,
+ * the resolution) · the chip row (aspect · count) · the Generate pill with its price.
  *
  * A pure view. Everything it shows and every change it makes comes through props from useShootStudio
  * (components/studio/create/newtools), which OmniStudio calls once; nothing here reaches a route. The number on the button
@@ -16,8 +17,8 @@ import { INTERIOR_TEMPLATES, ROOM_TYPES, interiorAddsLine, interiorTemplate } fr
 import { templateLang } from '@/lib/studio/templates';
 import { toolName } from '@/lib/studio/tools';
 import { SHOOT_MAX_PHOTOS } from '@/lib/studio/shootQuote';
-import { PanelHeader, PromptCard, ChipScroller, UploadCard } from './newtools/PanelParts';
-import { ShootFooter } from './newtools/shared';
+import { PanelHeader, PromptCard, ChipScroller, ProSettings, UploadCard } from './newtools/PanelParts';
+import { ShootFooter, ShootQualityChip, shootQualityLabel } from './newtools/shared';
 import { TemplateCarousel } from './newtools/TemplateCarousel';
 import { SHOOT_COPY, shootLang } from './newtools/copy';
 import type { InteriorForm } from './newtools/useShootStudio';
@@ -49,6 +50,7 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
   return (
     <div data-testid="interior-panel" className="space-y-4 pb-1">
       <PanelHeader Icon={Armchair} title={toolName('interior', p.locale)} copy={copy} onSwitch={p.onSwitchTool} onClose={p.onClose} testId="interior" />
+      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} copy={copy} testId="interior" />
       <UploadCard photos={p.form.photos} max={SHOOT_MAX_PHOTOS} title={c.uploadTitle} limit={c.uploadLimit} note={p.form.photos.length ? c.uploadNoteWithPhoto : c.uploadNote}
         notice={p.notice} copy={copy} onFiles={p.onAddPhotos} onRemove={p.onRemovePhoto} testId="interior" />
       <ChipScroller label={copy.roomType} testId="interior-room"
@@ -60,10 +62,12 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
         }))}
         activeId={p.form.template} onPick={(id) => p.onPatch({ template: id })}
         addsLine={picked ? interiorAddsLine(picked, tl) : null} emptyLine={c.carouselNone} />
-      <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} copy={copy} testId="interior" />
+      <ProSettings copy={copy} summary={`${copy.modelValue} · ${shootQualityLabel(p.form.quality)}`} testId="interior">
+        <ShootQualityChip copy={copy} locale={p.locale} form={p.form} onQuality={(quality) => p.onPatch({ quality })} testId="interior" />
+      </ProSettings>
       <ShootFooter service="image.interior" copy={copy} locale={p.locale} form={p.form} tiles={p.tiles} credits={p.credits} insufficient={p.insufficient}
         canGenerate={p.canGenerate} needSomething={c.needSomething} onGenerate={p.onGenerate} testId="interior"
-        onAspect={(aspect) => p.onPatch({ aspect })} onQuality={(quality) => p.onPatch({ quality })} onCount={(count) => p.onPatch({ count })} />
+        onAspect={(aspect) => p.onPatch({ aspect })} onCount={(count) => p.onPatch({ count })} />
     </div>
   );
 }

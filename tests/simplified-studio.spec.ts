@@ -73,9 +73,9 @@ test('the Video panel shows Film | Music video at its top, and a tap switches it
 
   const choice = panel.getByTestId('video-mode-choice');
   await expect(choice).toBeVisible();
-  // Above the model card, not hidden in a sheet or a closed disclosure.
-  const [c, hero] = await Promise.all([choice.boundingBox(), panel.getByTestId('video-hero').boundingBox()]);
-  expect(c!.y).toBeLessThan(hero!.y);
+  // Above the prompt, not hidden in a sheet or a closed disclosure (the model card is in Advanced settings since 2026-10-18).
+  const [c, prompt] = await Promise.all([choice.boundingBox(), panel.getByTestId('video-prompt').boundingBox()]);
+  expect(c!.y).toBeLessThan(prompt!.y);
 
   await expect(panel.getByTestId('video-mode-documentary')).toHaveAttribute('aria-checked', 'true');
   await panel.getByTestId('video-mode-musicvideo').click();
@@ -115,8 +115,8 @@ test('Music video keeps the retired director\'s look and the storyboard: genre a
   await panel.getByTestId('video-mode-musicvideo').click();
   const look = panel.getByTestId('mv-look');
   await expect(look).toBeVisible();
-  const [lb, hero] = await Promise.all([look.boundingBox(), panel.getByTestId('video-hero').boundingBox()]);
-  expect(lb!.y).toBeLessThan(hero!.y);
+  const [lb, prompt] = await Promise.all([look.boundingBox(), panel.getByTestId('video-prompt').boundingBox()]);
+  expect(lb!.y).toBeLessThan(prompt!.y);
 
   await panel.getByTestId('mv-genre-blues').click();
   await panel.getByTestId('mv-light-golden').click();
