@@ -5688,7 +5688,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // the user's own words that said yes, and THAT runs it — only what was told (its fingerprint, or that very card).
   const liveApiRef = useRef<(d: LiveActionEventDetail) => boolean>(() => false);
   const liveRunRef = useRef<(d: LiveRunDetail) => boolean>(() => false);
-  const liveChatSendRef = useRef<(text: string) => void>(() => {});
+  const liveChatSendRef = useRef<(text: string, order?: GateMode) => void>(() => {});
   /**
    * Agent G reads a typed or spoken message before any tool takes it as a prompt (lib/agent/chatTurn): stop, status,
    * continue, a change to the plan on screen, a request missing its input, an edit with no route yet. Assigned below,
@@ -5702,7 +5702,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    *  back in `locale`. Assigned every render below, so it reads the tool and the panels as they are now. */
   const panelCommandRef = useRef<(cmd: PanelCommand, locale: string) => string>(() => '');
   /** chat_send while another tool was open: sent once the chat is on screen (the send path reads the mode it renders with). */
-  const pendingLiveChatRef = useRef<string | null>(null);
+  const pendingLiveChatRef = useRef<{ text: string; order?: GateMode } | null>(null);
   useEffect(() => {
     const onAction = (e: Event) => {
       const d = (e as CustomEvent<LiveActionEventDetail>).detail;
@@ -5767,9 +5767,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [messages]);
   useEffect(() => {
     if (activeTool !== 'chat' || !pendingLiveChatRef.current) return;
-    const text = pendingLiveChatRef.current;
+    const { text, order } = pendingLiveChatRef.current;
     pendingLiveChatRef.current = null;
-    liveChatSendRef.current(text);
+    liveChatSendRef.current(text, order);
   }, [activeTool]);
 
   // ── Mount hydration: server chat RESUME (#1) + batch-tile RECONCILIATION (#3) ────────────────
@@ -6556,7 +6556,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
     return { clips: media.length, music: !!track };
   }, [setMode]);
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode; /** The frame the user named („9:16") — wins over the panel's for this one render. */ aspect?: ImgAspect; /** A photo from earlier in the thread the offer is built on (lib/chat/chatConsent latestThreadPhoto). */ refImage?: string; /** One picture, whatever the panel's count: the price the offer quoted was one image's. */ single?: boolean; /** The Live call sent these words (chat_send): a spoken „yes" never starts spending (PHASE 5). */ fromLive?: boolean; /** A Photographer / Interior designer render Agent G's card agreed in the chat (lib/chat/chatShoot). */ studio?: StudioWire }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode; /** The frame the user named („9:16") — wins over the panel's for this one render. */ aspect?: ImgAspect; /** A photo from earlier in the thread the offer is built on (lib/chat/chatConsent latestThreadPhoto). */ refImage?: string; /** One picture, whatever the panel's count: the price the offer quoted was one image's. */ single?: boolean; /** The Live call sent these words (chat_send): a spoken „yes" never starts spending (PHASE 5). */ fromLive?: boolean; /** A Live call's order for this tool (prepare_generation): Agent G's card for it, in the chat (GG 2026-10-18). */ liveOrder?: GateMode; /** A Photographer / Interior designer render Agent G's card agreed in the chat (lib/chat/chatShoot). */ studio?: StudioWire }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
@@ -6820,6 +6820,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const chatOrder: GateMode | null = (() => {
       if (!inChat || !text || opts?.confirmed) return null;
       if (chatPend) return chatPend.mode;
+      // A Live call named the tool (prepare_generation): its words are that order, whatever verb they lack.
+      if (opts?.liveOrder) return opts.liveOrder;
       // A catalog service with its own tool („make a product ad…") is not a picture: Agent G opens that tool below.
       if (!isGenerativeCommand(text) || detectStudioIntent(text) || routeAgentIntent(text)) return null;
       const lane = resolveGenerativeLane(text, detectIntent(text));
@@ -8379,6 +8381,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    */
   const liveFp = (tool: ToolId, prompt: string = input, over: { musicSec?: number } = {}): string | undefined =>
     (LIVE_GEN_TOOLS.includes(tool) ? liveFingerprint(tool, prompt, livePrice(tool, over)) : undefined);
+  /**
+   * What a spoken yes would start now, in the CHAT (GG 2026-10-18: a Live order runs in the chat, and the user's own yes
+   * starts it): the storyboard on screen (a film's priced approval), else Agent G's live price card, the newest reply.
+   */
+  const liveChatOffer = (): { tool: ToolId; prompt: string; credits?: number; lipsyncCredits?: number; kind: 'storyboard' | 'card' } | null => {
+    if (storyboard && !storyboardBusy && storyboardGenerateRef.current) {
+      const sec = storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC);
+      const credits = freeSlotApplies(videoFreeFilms, sec) ? 0 : videoQuote({ seconds: sec, tier: veoPlan.tier, mode: videoMode });
+      const lip = directorRunsOn ? 0 : filmLipsyncCredits;
+      return { tool: 'video', prompt: storyboard.filmPrompt, credits, ...(lip ? { lipsyncCredits: lip } : {}), kind: 'storyboard' };
+    }
+    const last = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && !m.notice);
+    const card = last?.agentG;
+    if (!card || card.done || card.kind !== 'confirm' || card.madeIn !== 'chat' || activeTool !== 'chat') return null;
+    return { tool: card.target as ToolId, prompt: card.prompt, ...(card.credits ? { credits: card.credits } : {}), kind: 'card' };
+  };
+  const liveOfferFp = (o: NonNullable<ReturnType<typeof liveChatOffer>>): string | undefined => liveFingerprint(o.tool, o.prompt, o.credits);
   /** Generations running in the tray, and the server's durable ones it follows (a card's own job is its card's). */
   const liveTasks = (): Array<Record<string, unknown>> => {
     const owned = new Set(messagesRef.current.flatMap(cardJobsOf));
@@ -8490,6 +8509,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       prompt: input.trim().slice(0, 600),
       ...(settings ? { settings } : {}),
       ...(LIVE_GEN_TOOLS.includes(activeTool) ? { priceCredits: price ?? (activeTool === 'video' ? 'priced at the storyboard step' : undefined) } : {}),
+      // What the user's yes would start in the chat now: Agent G's price card or the film's storyboard (with its price).
+      ...((): Record<string, unknown> => {
+        const o = liveChatOffer();
+        return o ? { waitingForYes: { what: o.kind === 'storyboard' ? 'the film storyboard on screen' : `Agent G's ${toolName(o.tool, 'en')} card in the chat`, tool: o.tool, prompt: o.prompt.slice(0, 300), ...(typeof o.credits === 'number' ? { priceCredits: o.credits } : { priceCredits: 'none on this card (a film is priced at its storyboard)' }), ...(o.lipsyncCredits ? { lipSyncAddOnCredits: o.lipsyncCredits } : {}) } } : {};
+      })(),
       chatModel: getChatMode(),
       busy: busy || genActiveRef.current,
       ...(lastReply ? { lastChatReply: lastReply.text.slice(0, 900) } : {}),
@@ -8503,7 +8527,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
     };
   };
-  liveChatSendRef.current = (text: string) => { void send({ promptOverride: text, fromLive: true }); };
+  liveChatSendRef.current = (text: string, order?: GateMode) => { void send({ promptOverride: text, fromLive: true, ...(order ? { liveOrder: order } : {}) }); };
   // What a call's ask_agent_g hands Agent G: the checked stored paths of the user's files (composer first, else the
   // newest turn that carried files) — the same references a typed request sends.
   setLiveAttachedRefs(() => {
@@ -8524,7 +8548,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const signedOut = typeof document !== 'undefined' && document.documentElement.dataset.authed === '0';
     switch (d.type) {
       case 'get_screen_state': {
-        const fingerprint = liveFp(activeTool);
+        const offer = liveChatOffer();
+        const fingerprint = offer ? liveOfferFp(offer) : liveFp(activeTool);
         const plans = livePlansOf(messagesRef.current);
         reply({ ok: true, state: liveScreenState(), ...(fingerprint ? { fingerprint } : {}), ...(plans.length ? { plans } : {}) });
         return true;
@@ -8537,13 +8562,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
           return true;
         }
-        selectTool(d.tool, 'voice');
-        setInput(d.prompt.slice(0, 2000));
+        // ⚠️ GG 2026-10-18: „დავალებას ლაივ ჩატში რომ იღებს, ის უნდა ჩანდეს როგორ კეთდება … აღარ უნდა მჭირდებოდეს გადასვლა".
+        // The order no longer opens the studio panel: it is written into the CHAT as the user's turn, and Agent G answers
+        // there exactly as for a typed order (its questions, or the price and Create; a film's storyboard). The panel's
+        // settings the call named still apply (the chat renders with them); the run starts on Create or the user's own yes.
+        const prompt = d.prompt.slice(0, 2000);
         const { applied, musicSec } = applyLiveSettings(d.tool, d);
+        const order: GateMode = d.tool === 'image' || d.tool === 'music' || d.tool === 'avatar' ? d.tool : 'video';
+        if (activeTool === 'chat') liveChatSendRef.current(prompt, order);
+        else { pendingLiveChatRef.current = { text: prompt, order }; selectTool('chat', 'voice'); }
         const price = livePrice(d.tool, { musicSec });
-        const fingerprint = liveFp(d.tool, d.prompt.slice(0, 2000), { musicSec });
-        reply({ ok: true, tool: d.tool, applied, ...(price ? { priceCredits: price } : {}), ...(fingerprint ? { fingerprint } : {}) });
-        if (d.reveal === true) setTimeout(() => taRef.current?.focus(), 0);
+        reply({ ok: true, tool: d.tool, applied, inChat: true, ...(price ? { priceCredits: price } : {}) });
         return true;
       }
       case 'open_studio':
@@ -8567,6 +8596,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       case 'start_generation': {
         if (signedOut) { reply({ ok: false, error: 'signed_out', message: 'The user is not signed in; generating needs an account. Ask them to sign in.' }); return true; }
+        // The chat's own offer first (the Live order path): the countdown runs it through that card / that storyboard.
+        const offer = liveChatOffer();
+        if (offer) {
+          if (busy || genActiveRef.current) { reply({ ok: false, error: 'busy', message: 'Something is already being generated. Wait for it, or stop it first.' }); return true; }
+          const fp = liveOfferFp(offer);
+          reply({ ok: true, tool: offer.tool, ...(typeof offer.credits === 'number' ? { priceCredits: offer.credits } : {}), ...(fp ? { fingerprint: fp } : {}) });
+          return true;
+        }
         if (activeTool === 'presentation' || activeTool === 'model3d') { reply({ ok: false, error: 'panel_run', message: `The ${toolName(activeTool, 'en')} studio runs from its own panel: ask the user to press Create there (the price is on that button).` }); return true; }
         if (!LIVE_GEN_TOOLS.includes(activeTool)) { reply({ ok: false, error: 'not_generative', message: `Nothing to start: the open tool is ${toolName(activeTool, 'en')}. Prepare a video, image, music or avatar first.` }); return true; }
         if (!input.trim()) { reply({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' }); return true; }
@@ -8579,7 +8616,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'chat_send': {
         if (busy) { reply({ ok: false, error: 'busy', message: 'The chat is still answering; wait a moment or stop it first.' }); return true; }
         if (activeTool === 'chat') liveChatSendRef.current(d.text);
-        else { pendingLiveChatRef.current = d.text; selectTool('chat', 'voice'); }
+        else { pendingLiveChatRef.current = { text: d.text }; selectTool('chat', 'voice'); }
         reply({ ok: true });
         return true;
       }
@@ -8848,16 +8885,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       detail.reply = { ok: true };
       return true;
     }
+    // GG 2026-10-18 (card „ხმით დაიწყოს"): the user's OWN spoken yes, recorded on the server before this ran (fireRun),
+    // starts the paid run in the CHAT — the very card or storyboard whose price was told, through its own button's path
+    // (balance checks, the storyboard approval). The model's word never gets here: `said` is the user's transcript.
+    const offer = liveChatOffer();
+    if (offer) {
+      if (busy || genActiveRef.current) return refuse('busy', 'Something else is being generated now, so nothing was started.');
+      if (target.tool !== offer.tool || (target.fingerprint && target.fingerprint !== liveOfferFp(offer))) {
+        return refuse('changed', 'What is on screen changed after the price was told, so nothing was started.');
+      }
+      if (offer.kind === 'storyboard') { storyboardGenerateRef.current?.(); detail.reply = { ok: true }; return true; }
+      if (!consentRef.current(said) && !consentRef.current('yes')) return refuse('gone', 'That card is no longer waiting, so nothing was started.');
+      detail.reply = { ok: true };
+      return true;
+    }
     // The studio's prepared render, through its own path (balance checks; a video's storyboard) — only what was told.
     if (!LIVE_GEN_TOOLS.includes(activeTool) || !input.trim()) return refuse('nothing_prepared', 'Nothing is prepared in the studio any more, so nothing was started.');
     if (busy || genActiveRef.current) return refuse('busy', 'Something else is being generated now, so nothing was started.');
     if (target.tool !== activeTool || (target.fingerprint && target.fingerprint !== liveFp(activeTool))) {
       return refuse('changed', 'What is on screen changed after the price was told (the studio, the prompt or the price), so nothing was started.');
     }
-    // A studio render is PAID (it debits on start). Spoken words alone never spend credits (final-release master task
-    // §8.D: a spoken „კი", a model's tool flag or a transcript may never debit): the price stays on screen and the run
-    // starts only from its visible button. Agent G's free montage / audio / edit plans above still take the spoken yes.
-    return refuse('ui_confirmation_required', 'The price is on screen; press its button to start. Nothing was started or charged.');
+    // A studio render is PAID (it debits on start). GG 2026-10-18 („ხმით დაიწყოს") superseded the button-only rule: the
+    // user's own spoken yes, recorded on the server first (fireRun), starts it through the button's own path.
+    runTool(true, 'voice');
+    detail.reply = { ok: true };
+    return true;
   };
 
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
@@ -9846,6 +9898,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
   /** A Montage export is running / the editor was closed while it ran (MontageStudio onExportStart · onExportEnd). */
   const montageExportingRef = useRef(false);
+  /** The storyboard overlay's Generate (set while it is on screen): a Live call's spoken yes presses it. */
+  const storyboardGenerateRef = useRef<(() => void) | null>(null);
   const montageExportLeftRef = useRef(false);
   const messageList = useMemo(() => (
           messages.map((m, i) => (
@@ -13099,7 +13153,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           onMove={moveScene}
           onReorder={reorderScene}
           onAddScene={addScene}
-          onGenerate={() => {
+          // Kept in a ref too: a Live call's spoken yes approves this very board (liveRunRef), as the button does.
+          onGenerate={(storyboardGenerateRef.current = () => {
             trackGenerationConfirmed(serviceForTool('video', { videoMode }), 'storyboard');
             // Stop any still-streaming frame fetches — the user has approved; we
             // don't need (or want to pay for) the remaining preview frames.
@@ -13142,7 +13197,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
             void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec, sb.sceneMeta?.length === sb.scenes.length ? sb.sceneMeta : undefined, storyboardApproval);
-          }}
+          })}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
             const sb = storyboard;

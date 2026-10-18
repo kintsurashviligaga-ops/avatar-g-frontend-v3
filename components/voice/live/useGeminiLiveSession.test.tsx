@@ -1201,7 +1201,7 @@ describe('buildLiveInstruction', () => {
 test('transport denies spoken paid starts before the legacy host can execute them', async () => {
   const h=harness(), handler=jest.fn(async()=>[]);
   const {ws,unmount}=await connected({deps:h.deps,actions:true,onToolCall:handler});
-  act(()=>ws.receive({toolCall:{functionCalls:[{id:'paid',name:'start_generation',args:{confirmed:'yes'}}]}}));
+  act(()=>ws.receive({toolCall:{functionCalls:[{id:'paid',name:'music_studio',args:{action:'start'}}]}}));
   await waitFor(()=>expect(ws.sent.some(f=>f.toolResponse?.functionResponses?.some((r: {response:{error?:string}})=>r.response.error==='ui_confirmation_required'))).toBe(true));
   expect(handler).not.toHaveBeenCalled(); unmount();
 });

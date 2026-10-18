@@ -2,9 +2,11 @@ import type { LiveFunctionResponse } from '@/lib/voice/geminiLive';
 export interface VoiceCall { id: string; name: string; args: unknown }
 /** Deterministic dispatch gate before the legacy spokenYes/countdown executor. No authority from model audio. */
 export function voiceNeedsUiConfirmation(call: VoiceCall): boolean {
-  if (call.name === 'start_generation') return true;
+  // start_generation, agent_task start and extract_audio start are NOT blocked here (GG 2026-10-18, card „ხმით
+  // დაიწყოს"): each runs only after the cancelable countdown and on the USER'S OWN transcript yes, recorded on the server
+  // (components/voice/live/liveActions fireRun). The studio tools below have no such gate, so they stay button-only.
   const args = call.args && typeof call.args === 'object' ? call.args as Record<string, unknown> : {};
-  return ['agent_task', 'extract_audio', 'music_studio', 'image_studio', 'video_studio'].includes(call.name)
+  return ['music_studio', 'image_studio', 'video_studio'].includes(call.name)
     && ['start', 'confirm', 'generate', 'run'].includes(String(args.action ?? '').trim().toLowerCase());
 }
 export async function executeVoiceCalls(

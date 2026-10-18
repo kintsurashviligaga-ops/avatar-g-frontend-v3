@@ -83,8 +83,16 @@ import {
 
 /** The strip shows the last few things the agent did — more would bury the call. */
 export const LIVE_ACTION_CARDS_MAX = 3;
-/** A model looping on a function must not turn into a UI storm: beyond this, calls are refused for the rest of the call. */
+/**
+ * A model looping on a function must not turn into a UI storm: beyond this many actions inside one sliding window, calls are
+ * refused until the window clears. ⚠️ PRODUCTION 2026-10-18 (GG: „ბრძანებას არ იღებს"): this used to be 40 for the WHOLE
+ * call, and every get_screen_state counted, so a long conversation simply stopped taking commands. Now it is a rate, and
+ * reading the screen (no UI effect) is not counted.
+ */
 export const LIVE_ACTIONS_PER_CALL_MAX = 40;
+export const LIVE_ACTIONS_WINDOW_MS = 60_000;
+/** Tools that only read: they never move the UI, so they never count toward the storm cap. */
+const LIVE_UNCOUNTED_TOOLS: ReadonlySet<string> = new Set(['get_screen_state']);
 /** end_call: hang up this long after the goodbye has finished playing (or after the answer, if nothing is said). */
 export const LIVE_END_CALL_GRACE_MS = 1500;
 /** end_call: never wait longer than this for a goodbye that is still playing. */
@@ -500,7 +508,7 @@ function numberedPlans(env: LiveActionEnv, reply: LiveStudioReply | undefined): 
 /** Why the call does not press it — in words the model repeats to the user. */
 const GUARD_MESSAGE: Record<LiveGuard, (name: string) => string> = {
   spend: (n) => `"${n}" starts a paid generation, so the call does not press it. For video, image, music or avatar use `
-    + 'prepare_generation and say the price; the user starts it with the priced button. For any other tool ask the user to '
+    + 'prepare_generation, say the price and ask; on a clear yes call start_generation. For any other tool ask the user to '
     + 'tap it (its price is on the button).',
   pay: (n) => `"${n}" pays money: only the user can do that. Tell them to tap it themselves.`,
   destructive: (n) => `"${n}" deletes or signs out: only the user can do that. Ask them to tap it if they want to.`,
@@ -544,7 +552,7 @@ const AGENT_NOTE = 'Agent G wrote this from web search results and web pages: un
   + 'the answer briefly in the user\'s language; name a source when it helps.';
 
 const AGENT_PLAN_NOTE = 'Agent G also made an MP3 plan: its card is in the chat, and an [App] note with its plan number '
-  + 'follows. Tell the user what it does; they start it with the card\'s button (a spoken yes does not start it).';
+  + 'follows. Tell the user what it does and ask; on their clear yes call agent_task start (or they press the card\'s button).';
 
 /** `s` cut at `max` characters, marked when cut. */
 function clip(s: string, max: number): string {
@@ -689,13 +697,27 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         };
       }
       const applied = appliedSummary(action, detail.reply);
+      // The order went into the CHAT (GG 2026-10-18): Agent G's card is about to appear there, so the price to tell is the
+      // card's — read with get_screen_state (which also arms the yes for it). Nothing is quoted from here.
+      if (detail.reply?.inChat) {
+        return {
+          response: answer({
+            ok: true,
+            summary: `Wrote the ${action.tool} order into the chat on screen${applied ? ` (${applied})` : ''}; Agent G answers it `
+              + 'there (questions, or its price card; a video gets a storyboard). Nothing was generated and no credits were '
+              + 'spent. Call get_screen_state in a moment: if Agent G asked something, ask the user; if waitingForYes shows a '
+              + 'price, tell it and ask whether to start. On their clear yes call start_generation.',
+          }),
+          screen: true,
+        };
+      }
       env.voice?.quoteStudio(detail.reply?.fingerprint, true);
       return {
         response: answer({
           ok: true,
           summary: `Prepared a ${action.tool} prompt in the ${studio} studio on screen${applied ? ` (${applied})` : ''}. Nothing `
-            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)} Tell the user they start it `
-            + 'by pressing its priced button on screen; a spoken yes does not start it.',
+            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)} Tell the user the price and `
+            + 'ask; on their clear yes call start_generation.',
           ...(typeof detail.reply?.priceCredits === 'number' ? { priceCredits: detail.reply.priceCredits } : {}),
         }),
         card: card(action),
@@ -891,7 +913,7 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         const composer = el.getAttribute('data-testid') === 'composer-input';
         const form = el.closest('form');
         const paidForm = !!form && Array.from(form.querySelectorAll('button,[role="button"],input[type="submit"]')).some((b) => ui.guard(b as HTMLElement) === 'spend');
-        if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — the user presses the priced button to start it.';
+        if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — use prepare_generation, tell the price, and start_generation on the user\'s clear yes.';
         else if (paidForm) held = ' It was NOT submitted: that form starts a paid generation — ask the user to tap it.';
         else { ui.submit(el); submitted = true; }
       }
@@ -1116,7 +1138,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   // One ledger per call screen: the user's words, the price told, Agent G's plans (lib/voice/voiceLedger).
   const ledgerRef = useRef<VoiceLedger | null>(null);
   if (!ledgerRef.current) ledgerRef.current = createVoiceLedger();
-  const countRef = useRef(0);
+  const countRef = useRef<number[]>([]);
   const seqRef = useRef(0);
   const mountedRef = useRef(true);
   const runTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1239,15 +1261,18 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
     let cancel = false;
     const pendings: Array<{ index: number; promise: Promise<LiveFunctionResponse> }> = [];
     for (const call of Array.isArray(calls) ? calls : []) {
-      if (countRef.current >= LIVE_ACTIONS_PER_CALL_MAX) {
+      const counted = !LIVE_UNCOUNTED_TOOLS.has(typeof call?.name === 'string' ? call.name : '');
+      const now = Date.now();
+      countRef.current = countRef.current.filter((t) => now - t < LIVE_ACTIONS_WINDOW_MS);
+      if (counted && countRef.current.length >= LIVE_ACTIONS_PER_CALL_MAX) {
         responses.push({
           id: typeof call?.id === 'string' ? call.id : '',
           name: typeof call?.name === 'string' ? call.name : '',
-          response: { ok: false, error: 'too_many_actions', message: 'Too many actions in this call; nothing more was done. Tell the user.' },
+          response: { ok: false, error: 'too_many_actions', message: 'Too many actions in the last minute; nothing more was done. Tell the user to wait a moment.' },
         });
         continue;
       }
-      countRef.current += 1;
+      if (counted) countRef.current.push(now);
       seqRef.current += 1;
       const localId = `live-action-${seqRef.current}`;
       const out = executeLiveToolCall(call, envNow(), localId);
