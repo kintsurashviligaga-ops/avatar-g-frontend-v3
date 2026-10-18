@@ -30,8 +30,10 @@ describe('the lip-sync charge is shown where the film is confirmed', () => {
     expect(code).toMatch(/price=\{videoQuote\(\{ seconds: storyboard\.scenes\.length \* \(storyboard\.clipSec \?\? FILM_CLIP_SEC\), tier: veoPlan\.tier, mode: videoMode \}\)\}/);
   });
 
-  test('the music video\'s Lip-sync switch names its price', () => {
-    expect(code).toContain("creditsLabel(quoteCredits({ tool: 'avatar' }), locale)");
+  test('the music video\'s Lip-sync switch names its price (the video panel, GG 2026-10-18)', () => {
+    const panel = readFileSync(join(process.cwd(), 'components/studio/create/VideoCreatePanel.tsx'), 'utf8');
+    expect(panel).toContain("const lipsyncPrice = creditsLabel(quoteCredits({ tool: 'avatar' }), locale);");
+    expect(panel).toContain('sub={vc(VIDEO_COPY.lipsyncSub(lipsyncPrice), locale)}');
   });
 });
 

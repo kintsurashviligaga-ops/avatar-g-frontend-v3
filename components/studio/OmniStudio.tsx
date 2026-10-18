@@ -15,7 +15,7 @@ import { ReadAloudControls } from '@/components/voice/experience/ReadAloudContro
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { HomeQuickStart } from './HomeQuickStart';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
@@ -36,8 +36,8 @@ import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { usePickedTemplate } from '@/hooks/usePickedTemplate';
 import {
   AVATAR_TEMPLATES, IMAGE_PANEL_DEFAULTS, IMAGE_TEMPLATES, MUSIC_PANEL_DEFAULTS, MUSIC_TEMPLATES, VIDEO_PANEL_DEFAULTS,
-  VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
-  matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
+  avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
+  matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang,
 } from '@/lib/studio/templates';
 import { TemplateGallery, TemplateThumbImage } from '@/components/studio/ui/TemplateGallery';
 import { WorkspaceSkeleton } from '@/components/studio/ui/EmptyState';
@@ -57,12 +57,12 @@ import { wantsSubtitles } from '@/lib/chat/filmVoiceCheck';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
 import { FilmQaBadge } from './FilmQaBadge';
-import { MusicVideoLook, type MusicVideoLookValue } from './create/MusicVideoLook';
+import type { MusicVideoLookValue } from './create/MusicVideoLook';
 import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions, storyFramePrompts } from '@/lib/chat/filmPipeline';
 import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, type VeoRenderOptions } from '@/lib/video/veoPlan';
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
 import type { Transition } from '@/lib/veo/types';
-import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
+import { useVeoEngineInfo } from './video/VeoParametersPanel';
 import { DirectorRunOverlay, useDirectorRunsEnabled } from './video/DirectorRunOverlay';
 import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
 import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
@@ -120,7 +120,6 @@ import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/us
 const OWN_PHOTO_CARD_ID = 'own-photo';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
-import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
 import { serviceForTool, trackGenerationCompleted, trackGenerationConfirmed, trackGenerationFailed, trackQuoteShown, trackResultSaved, trackServiceOpened, type ServiceSurface } from '@/lib/analytics/serviceEvents';
 import { ensureNotificationPermission, fireCompletionNotification } from '@/lib/notify/browserNotify';
@@ -215,7 +214,8 @@ import { MusicCentrePane } from './create/MusicCentrePane';
 import type { MusicTrack } from './create/MusicResult';
 import { musicEngineField } from '@/lib/studio/musicEnginePref';
 // The image model the panel's ModelPicker stored — read at request time like the music engine, so a re-roll uses the pick.
-import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
+import { higgsfieldPicked, imageModelField, useModelPick } from '@/lib/studio/modelPick';
+import { catalogueEntry } from '@/lib/providers/catalogue';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
@@ -379,13 +379,6 @@ async function decodeAudioMeta(file: File, buckets = 48): Promise<{ durationSec:
   } catch {
     return null;
   }
-}
-
-// mm:ss for a soundtrack duration chip.
-function fmtDur(sec: number): string {
-  if (!isFinite(sec) || sec <= 0) return '';
-  const s = Math.round(sec);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 /** Exported for tests. */
@@ -2658,7 +2651,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // The whole film's join in the stitch (mirrors the Veo panel's "between scenes" choice; per-scene joins ride in the
   // Veo plan). A hard cut by default: every soft join overlaps the clips by ~1 s, so a crossfaded 24 s film came
   // back 22 s long.
-  const [videoTransition, setVideoTransition] = useState<Transition>('cut');
+  const [videoTransition] = useState<Transition>('cut');
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
   // (empty = auto-written narration). The clear "what should they say" field.
   const [videoSpeech, setVideoSpeech] = useState('');
@@ -2680,7 +2673,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // 'documentary' → narration-forward (voice on top, music ducked under it).
   const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>(VIDEO_PANEL_DEFAULTS.mode);
   // The music video's look (genre + light, components/studio/create/MusicVideoLook): words added to the brief, nothing else.
-  const [mvLook, setMvLook] = useState<MusicVideoLookValue>({ genre: null, lighting: null });
+  const [mvLook] = useState<MusicVideoLookValue>({ genre: null, lighting: null });
   // PHASE 2 L1 — Cinema vs Product-Ad tab (orthogonal to videoMode's music/documentary axis).
   // TASK 1 — 'videoswap': upload a video + a character photo → regenerate a ~5s clip with
   // the new character (honest capability: Kling is i2v-only, so it re-animates a keyframe).
@@ -2700,9 +2693,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     el.click();
   }, []);
   // PHASE 2 L1 — Character Voice selector → VOICE_MAP (language + persona + tone).
-  const [voiceLanguage, setVoiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
-  const [voicePersona, setVoicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
-  const [voiceTone, setVoiceTone] = useState<'epic' | 'emotional' | 'energetic'>('emotional');
+  const [voiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
+  const [voicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
+  const [voiceTone] = useState<'epic' | 'emotional' | 'energetic'>('emotional');
   // THE GOOGLE VEO PLAN (lib/video/veoPlan) — quality tier, how the photos condition Veo, Veo's own sound, seed lock,
   // negative prompt, and each scene's camera + join. Format and length stay OWNED by videoOrientation / videoDuration
   // (the composer pills and the presets write those) and are mirrored in below, so each value has one source.
@@ -2767,9 +2760,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // entry overrides that scene's AI frame-prompt AND its render script (so the clip
   // animates the described action). Empty entries fall back to the storyboard AI.
   const [scenePrompts, setScenePrompts] = useState<string[]>([]);
-  const updateScenePrompt = useCallback((i: number, v: string) => {
-    setScenePrompts((prev) => { const next = prev.slice(); next[i] = v; return next; });
-  }, []);
   // Scene-frame slots scale with the film length, matching the pipeline's scene count
   // (8s→1 · 24s→3 · 48s→6 = round(sec/8)). Each uploaded frame anchors that scene IN
   // ORDER; empty scenes are auto-generated by the storyboard (handled server-side).
@@ -2796,20 +2786,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   });
   // The panel's DEFAULTS are the Reel card, so the lit id alone would give every default film the Reel's look and
   // director note. Only a picked card's id rides on the storyboard and render requests.
-  const { templateId: pickedVideoTemplateId, pick: pickVideoTemplate } = usePickedTemplate(activeVideoPreset);
-
-  const applyVideoPreset = useCallback((id: string) => {
-    const v = videoTemplateValues(id);
-    if (!v) return;
-    pickVideoTemplate(id);
-    setVideoMode(v.mode);
-    setVideoDuration(v.duration);
-    setVideoRequestedSec(null);
-    setVideoStyle(v.style);
-    // Music-Video mode is 9:16-locked in this panel (the Format buttons are disabled for it), so
-    // writing any other orientation here would put the UI in a state its own controls forbid.
-    setVideoOrientation(v.mode === 'musicvideo' ? 'vertical' : v.orientation);
-  }, [pickVideoTemplate]);
+  const { templateId: pickedVideoTemplateId } = usePickedTemplate(activeVideoPreset);
 
   // Music: the same lit-vs-picked split (the panel defaults switched to Instrumental light the R&B Beat card).
   const activeMusicPreset = matchMusicTemplate({
@@ -2834,7 +2811,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // composer), so the Director/Storyboard agents always read it regardless of chat mode.
   // .txt/.md are decoded in-browser; .pdf/.docx go through /api/utils/extract-text.
   const [videoScriptDoc, setVideoScriptDoc] = useState<{ name: string; text: string } | null>(null);
-  const [videoScriptBusy, setVideoScriptBusy] = useState(false);
+  const [, setVideoScriptBusy] = useState(false);
   // Is this attachment/file a SCRIPT document (not media)? Matched by mime OR extension.
   const isScriptFile = useCallback((nameOrType: { name?: string; type?: string }) => {
     const n = (nameOrType.name || '').toLowerCase();
@@ -2878,19 +2855,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return false;
     } finally { setVideoScriptBusy(false); }
   }, [locale]);
-  // VECTOR 1 — DROP a script file ONTO the Script slot. Without an explicit handler the browser default fires and
-  // NAVIGATES the tab to the dropped file (loading it as a raw URL — the reported "opens in a new tab" bug).
-  // preventDefault on the drop (and dragOver, on the element) stops that; a script file is read via loadScriptFile
-  // (.txt/.md decoded in-browser, .pdf/.docx via extract-text), and a non-script file gets a clear format toast.
-  const handleScriptDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const f = e.dataTransfer?.files?.[0];
-    if (!f || videoScriptBusy) return;
-    if (isScriptFile({ name: f.name, type: f.type })) { void loadScriptFile(f); return; }
-    setShareToast(locale === 'en' ? 'Invalid file format. Please upload a text script (.txt, .md)' : locale === 'ru' ? 'Неверный формат файла. Загрузите текстовый сценарий (.txt, .md)' : 'არასწორი ფაილის ფორმატი. გთხოვთ ატვირთოთ ტექსტური სცენარი (.txt, .md)');
-    setTimeout(() => setShareToast((s) => (s && /\.txt|формат|ფორმატ/.test(s) ? null : s)), 3200);
-  }, [isScriptFile, loadScriptFile, locale, videoScriptBusy]);
   // Whole-surface drag-over overlay (V3). Only reacts to FILE drags (a text selection drag
   // is ignored). A depth counter survives dragleave firing once per crossed child. The Script
   // slot handles its own drop (stopPropagation), so a drop there never double-fires here.
@@ -3095,7 +3059,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [mode, isScriptFile, loadScriptFile, ingestFiles]);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
-  const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
+  const [videoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
   // Documentary narrator gender (👩 ქალი / 👨 კაცი) → cloned female/male Georgian TTS.
   const [videoNarratorGender, setVideoNarratorGender] = useState<'male' | 'female'>('female');
   // Multi-character dialogue: when ON, the dialogue textarea is split per speaker
@@ -3115,8 +3079,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // auto-ducks under the dialogue via the assembler's 3-track sidechain. The slider
   // sets the duck depth (−6…−18 dB). Only affects films that carry voice + music +
   // sfx (the assembler's 3-track gate); others keep the existing mix unchanged.
-  const [videoSmartDuck, setVideoSmartDuck] = useState(true);
-  const [videoDuckDb, setVideoDuckDb] = useState(-12);
+  const [videoSmartDuck] = useState(true);
+  const [videoDuckDb] = useState(-12);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
@@ -8876,10 +8840,29 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // product ad, the character swap and the remix (the Create screens of video / image / music / interior / photographer /
   // VFX print theirs on the panel's button). One quote function for both (lib/credits/quote = what the route charges).
   // The avatar's is Veo's where its door is open (avatarCredits): the price on the button is the one charged.
+  // VIDEO (GG 2026-10-18): the prompt lives only in this box, so its Send is the film's one button and carries the film's
+  // quote — videoQuote for the length, tier and mode on the panel, the number its Generate used to show. A Higgsfield pick
+  // runs from the panel's own saga button (its server's price), so the box shows no Veo number then.
+  const [videoModelPick] = useModelPick('video');
+  const videoHfPicked = !!videoModelPick && catalogueEntry(videoModelPick)?.wire.runner === 'studio';
   const composerQuote = activeTool === 'avatar' ? avatarCredits || null
     : activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix'
       ? quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool }) || null
-      : null;
+      : activeTool === 'video' && mode === 'video' && videoTab === 'cinema' && !videoHfPicked
+        ? videoQuote({ seconds: videoDuration, tier: veoPlan.tier, mode: videoMode }) || null
+        : null;
+  // The box's Send for a film is the explicit press the panel's Generate was (its price is on it): same runTool path,
+  // same guest gate, storyboard approval and focus gate. A balance known to be short opens the top-up instead, as the
+  // panel's button did; the trial slot (one clip ≤ 8 s) is never blocked.
+  const runComposer = () => {
+    if (composerQuote !== null && activeTool === 'video') {
+      const short = !freeSlotApplies(videoFreeFilms, videoDuration) && videoBalanceCredits !== null && videoBalanceCredits < composerQuote;
+      if (short) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }
+      runTool(true, 'composer');
+      return;
+    }
+    runTool();
+  };
   const runAria = composerQuote ? `${runLabel} — ${creditsLabel(composerQuote, locale)}` : runLabel;
   const composerPlaceholder = recording ? t.recording
     // The chat asks like Gemini's prompt bar ("Ask Gemini") — in our name.
@@ -11143,11 +11126,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
             {videoTab === 'cinema' && (
-            // ⚠️ THE CREATE SCREEN (components/studio/create — ref4 / ref5) owns what every video decides first: the model, the
-            // references, the prompt, the length / format / quality tiles and the price on its Generate button. EVERYTHING the
-            // cinema tab always had is passed in below as its three disclosures — the SAME blocks, so their state and
-            // behaviour are untouched: a first-time user meets the path to a film (model → photos → words → length →
-            // Generate), and a script, a track, a voice or a camera is one tap away (and opens by itself when it matters).
+            // ⚠️ THE VIDEO SETTINGS (components/studio/create/VideoCreatePanel — GG 2026-10-18: „ზედმეტი ფუნქციები წაშალე"). The
+            // prompt lives ONLY in the chat box, and the box's Send (the film's price on it, composerQuote) starts the film
+            // through runTool — the path this panel's Generate used. The panel keeps the switches that change the film: film |
+            // music video, length, format, priced quality, Veo's sound, narrator, music, subtitles / lip-sync, the photos. The
+            // script, dialogue, lyrics, scene prompts, effect, voice details and camera are typed in the prompt (or a .txt /
+            // .pdf / .docx attached in the box): their state keeps its defaults and the request reads it unchanged.
             <VideoCreatePanel
               locale={locale}
               surface={isDesktop ? 'panel' : 'sheet'}
@@ -11164,7 +11148,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
               onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
               prompt={input}
-              onPrompt={(v) => { dictation.markTyped(); setInput(v); }}
               refs={{
                 images: videoCharacterRefs,
                 max: sceneFrameCount,
@@ -11176,402 +11159,27 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 onRemoveAudio: () => setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }),
               }}
               generate={{
-                onGenerate: () => runTool(true, 'panel'),
-                busy: busy || storyboardBusy,
-                canGenerate: canRun,
                 balanceCredits: videoBalanceCredits,
-                freeFilmsRemaining: videoFreeFilms,
                 onTopUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
                 lipsyncCredits: filmLipsyncCredits,
+                onNeedPrompt: () => taRef.current?.focus(),
+              }}
+              audio={{
+                narration: videoNarration,
+                // The removed „my voice" / „both" choices fall back to one narrator when the narrator is set here.
+                onNarration: (on) => { setVideoNarration(on); if (on) { setVideoMultiChar(false); setVideoMyVoiceNarration(false); } },
+                narratorGender: videoNarratorGender,
+                onNarratorGender: setVideoNarratorGender,
+                music: videoMusic,
+                onMusic: setVideoMusic,
+                subtitles: videoSubtitles,
+                onSubtitles: setVideoSubtitles,
+                lipsync: videoLipsync,
+                onLipsync: setVideoLipsync,
               }}
               caps={videoCaps}
               requestedSec={videoRequestedSec}
               joinOverlapSec={videoPlanOpts.joinOverlapSec}
-              storySummary={styleLabel(videoStyle, locale)}
-              voiceSummary={videoSoundtrack?.name}
-              storyOpenWhen={!!videoScriptDoc || !!videoMasterScript.trim()}
-              voiceOpenWhen={videoMode === 'musicvideo' || !!videoSoundtrack}
-              musicLook={<MusicVideoLook locale={locale} value={mvLook} onChange={setMvLook} />}
-              story={<>
-            {/* 0 · START HERE — one tap sets mode, length, format and look together.
-                The panel has 57 controls. Each is reasonable; the combination is not, because a
-                first-time user must decide four things before anything happens and has no opinion yet
-                about three of them. A preset answers all four from something they DO have an opinion
-                about ("this is for Instagram"), and every individual control stays visible below — so
-                it is a starting point, not a mode they are locked into.
-                The highlight is DERIVED from the live values (matchVideoTemplate), never stored: a chip
-                that stayed lit after you changed the length would be describing settings you no longer
-                have, which is worse than no highlight at all. */}
-            <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <TemplateGallery
-                testId="video-templates"
-                label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
-                items={VIDEO_TEMPLATES.map((tp) => ({
-                  id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
-                  thumb: tp.thumb, palette: tp.palette, Icon: Film,
-                  meta: `${ORIENT_ASPECT[tp.values.orientation]} · ${tp.values.duration}${locale === 'en' ? 's' : locale === 'ru' ? ' с' : 'წმ'}`,
-                  adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
-                }))}
-                activeId={activeVideoPreset}
-                onPick={applyVideoPreset}
-              />
-            </div>
-
-            {/* Film vs music video is the switch at the top of the panel (VideoModeChoice), not a card in here. */}
-
-            {/* 2 · CHARACTER REFERENCE — up to 3 photos. The FIRST is the main identity →
-                Kling i2v start_image; all are sent to the pipeline (referenceImages) + stored
-                in the job metadata for multi-angle character lock. */}
-            <div id="character-ref-zone" className="space-y-1.5">
-              <span className="inline-flex flex-wrap items-center gap-1.5 px-0.5 text-[12.5px] font-semibold text-app-text">
-                <Camera size={14} aria-hidden="true" className="text-app-accent" /> {locale === 'en' ? 'Your photo' : locale === 'ru' ? 'Ваше фото' : 'თქვენი ფოტო'}
-                <span className="text-[10px] font-normal text-app-muted">
-                  {videoCharacterRefs.length}/{sceneFrameCount}
-                  {videoCharacterRefs.length < sceneFrameCount && videoCharacterRefs.length > 0 && (
-                    <> · {sceneFrameCount - videoCharacterRefs.length} {locale === 'en' ? 'AI-filled' : locale === 'ru' ? 'ИИ' : 'AI-ით'}</>
-                  )}
-                </span>
-              </span>
-              <div className={`grid gap-2 ${sceneFrameCount === 1 ? 'grid-cols-1' : sceneFrameCount <= 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
-                {Array.from({ length: sceneFrameCount }).map((_, i) => {
-                  const url = videoCharacterRefs[i];
-                  const isAdd = !url && i === videoCharacterRefs.length;
-                  return (
-                    <div key={i} className="flex min-w-0 flex-col gap-1">
-                      {url ? (
-                        <div className="relative aspect-square overflow-hidden rounded-xl border border-app-accent/50 bg-app-accent/10">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                          <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent pt-3 pb-0.5 text-center text-[8.5px] font-medium text-white">{locale === 'en' ? 'Scene' : locale === 'ru' ? 'Сц.' : 'სცენა'} {i + 1}</span>
-                          <button type="button" aria-label={t.a11yRemoveFrame} onClick={() => setVideoCharacterRefs((p) => p.filter((_, k) => k !== i))}
-                            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
-                        </div>
-                      ) : (
-                        <div role={isAdd ? 'button' : undefined} tabIndex={isAdd ? 0 : undefined}
-                          onClick={isAdd ? () => { charReplaceRef.current = false; charFileRef.current?.click(); } : undefined}
-                          onKeyDown={isAdd ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charReplaceRef.current = false; charFileRef.current?.click(); } } : undefined}
-                          className={`relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed text-center transition ${isAdd ? 'cursor-pointer border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70 active:scale-[0.99]' : 'border-app-border/15 bg-app-elevated/20'}`}>
-                          {isAdd ? <span className="flex h-7 w-7 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Plus size={14} /></span> : <Sparkles size={12} aria-hidden="true" className="text-app-muted" />}
-                          <span className="text-[8.5px] font-medium text-app-muted">{locale === 'en' ? 'Scene' : locale === 'ru' ? 'Сц.' : 'სცენა'} {i + 1}</span>
-                        </div>
-                      )}
-                      {/* Per-scene ACTION prompt — describe this scene's motion (optional; empty → AI). */}
-                      <textarea
-                        value={scenePrompts[i] || ''}
-                        onChange={(e) => updateScenePrompt(i, e.target.value)}
-                        rows={2}
-                        placeholder={locale === 'en' ? `Scene ${i + 1} — action…` : locale === 'ru' ? `Сцена ${i + 1} — действие…` : `სცენა ${i + 1} — მოქმედება…`}
-                        className="w-full resize-none rounded-lg border border-app-border/20 bg-app-elevated/40 px-2 py-1 text-[11px] leading-snug text-app-text placeholder:text-app-muted/55 focus:border-app-accent/50 focus:outline-none"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="px-0.5 text-[10px] leading-tight text-app-muted">{veoPlan.referenceMode === 'reference'
-                ? (locale === 'en' ? 'Reference mode: up to 3 photos of the person — Veo keeps them in every scene.' : locale === 'ru' ? 'Режим референса: до 3 фото человека — Veo сохранит его в каждой сцене.' : 'რეფერენსის რეჟიმი: ადამიანის მაქს. 3 ფოტო — Veo მას ყველა სცენაში შეინარჩუნებს.')
-                : (locale === 'en' ? 'One frame per scene (optional, in order). Empty scenes are filled by the storyboard AI.' : locale === 'ru' ? 'По кадру на сцену (опц., по порядку). Пустые сцены добавит ИИ-раскадровка.' : 'თითო ფრეიმი თითო სცენისთვის (არჩევით, თანმიმდევრობით). ცარიელ სცენებს Storyboard-ის AI შეავსებს.')}</p>
-            </div>
-
-            {/* 2-script · SCRIPT ingest slot — the Director follows this verbatim. Lives in the
-                video panel (not the chat composer) so the script ALWAYS reaches the storyboard,
-                independent of chat mode. .txt/.md/.pdf/.docx. */}
-            <div className="grid grid-cols-1 gap-2">
-              <div role="button" tabIndex={0} onClick={() => { if (!videoScriptBusy) scriptFileRef.current?.click(); }}
-                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoScriptBusy) { e.preventDefault(); scriptFileRef.current?.click(); } }}
-                onDragOver={(e) => { e.preventDefault(); }} onDrop={handleScriptDrop}
-                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoScriptDoc ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
-                {videoScriptBusy ? (
-                  <><Loader2 size={18} className="animate-spin text-app-accent" /><span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Reading script…' : locale === 'ru' ? 'Читаю сценарий…' : 'სცენარს ვკითხულობ…'}</span></>
-                ) : videoScriptDoc ? (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><FileText size={16} /></span>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Script loaded' : locale === 'ru' ? 'Сценарий загружен' : 'სცენარი ჩაიტვირთა'}</span>
-                    <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoScriptDoc.name} · {videoScriptDoc.text.length.toLocaleString()} {locale === 'en' ? 'chars' : locale === 'ru' ? 'симв.' : 'სიმბ.'}</span>
-                    <button type="button" aria-label={t.a11yRemoveScript} onClick={(e) => { e.stopPropagation(); setVideoScriptDoc(null); }}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><FileText size={16} /></span>
-                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Script / scenario' : locale === 'ru' ? 'Сценарий' : 'სცენარი'}</span>
-                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload .txt / .pdf / .docx — the film follows it' : locale === 'ru' ? 'загрузите .txt / .pdf / .docx — фильм по нему' : 'ატვირთე .txt / .pdf / .docx — ფილმი მის მიხედვით'}</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* PHASE 19 — MASTER SCRIPT / STORYBOARD, now UNIVERSAL (both documentary AND music-video).
-                It was documentary-only, so a music video had no way to supply a timecoded scene script —
-                the storyboard then invented its own. When filled it drives the scenes + per-speaker
-                casting; empty = auto. Folded into the brief in send() for every video mode. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
-              <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
-              <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
-                placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
-                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-            </div>
-
-            {/* 5 · Effect — the primary creative control, kept fully visible. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
-              {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
-                  reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{styleLabel(s, locale)}</Chip>)}
-              </div>
-            </div>
-
-              </>}
-              voice={<>
-            {/* 2a · Audio Track ingest slot (full width) */}
-            <div className="grid grid-cols-1 gap-2">
-              <div role="button" tabIndex={0} onClick={() => { if (!videoSoundtrackBusy) audioFileRef.current?.click(); }}
-                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoSoundtrackBusy) { e.preventDefault(); audioFileRef.current?.click(); } }}
-                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoSoundtrack ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
-                {videoSoundtrackBusy ? (
-                  <><Loader2 size={18} className="animate-spin text-app-accent" /><span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Uploading…' : locale === 'ru' ? 'Загрузка…' : 'იტვირთება…'}</span></>
-                ) : videoSoundtrack ? (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Soundtrack' : locale === 'ru' ? 'Саундтрек' : 'საუნდტრეკი'}</span>
-                    <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoSoundtrack.name}</span>
-                    <button type="button" aria-label={t.a11yRemoveSoundtrack} onClick={(e) => { e.stopPropagation(); setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }); }}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
-                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Audio track' : locale === 'ru' ? 'Аудиодорожка' : 'აუდიო ტრეკი'}</span>
-                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload a beat/song' : locale === 'ru' ? 'загрузить бит/песню' : 'ატვირთე ბიტი/სიმღერა'}</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* 2b · Soundtrack detail — waveform + duration + preview (Phase 6 polish).
-                Shown once a track is uploaded; purely informative, never blocks generation. */}
-            {videoSoundtrack && (
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-app-text">
-                    <Music2 size={13} className="shrink-0 text-app-accent" />
-                    <span className="truncate">{videoSoundtrack.name}</span>
-                  </span>
-                  {videoSoundtrack.durationSec ? (
-                    <span className="shrink-0 tabular-nums text-[11px] font-medium text-app-muted">{fmtDur(videoSoundtrack.durationSec)}</span>
-                  ) : null}
-                </div>
-                {videoSoundtrack.peaks && videoSoundtrack.peaks.length > 0 && (
-                  <div className="flex h-9 items-end gap-[2px]" aria-hidden="true">
-                    {videoSoundtrack.peaks.map((p, k) => (
-                      <span key={k} className="flex-1 rounded-sm bg-app-accent/55" style={{ height: `${Math.max(8, Math.round(p * 100))}%` }} />
-                    ))}
-                  </div>
-                )}
-                {videoSoundtrack.previewUrl && (
-                  // eslint-disable-next-line jsx-a11y/media-has-caption
-                  <audio src={videoSoundtrack.previewUrl} controls className="h-8 w-full" />
-                )}
-              </div>
-            )}
-
-            {/* 2c · Character-photo guidance for music video — lip-sync keys a face, so a
-                character reference gives the best result. A WARNING (not a hard block): the
-                pipeline still derives a face if none is given, so generation is never blocked. */}
-            {videoMode === 'musicvideo' && !videoCharacterRef && (
-              <div className="flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] px-3 py-2.5 text-[11.5px] leading-snug text-amber-600 dark:text-amber-400">
-                <Camera size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
-                <span>{locale === 'en'
-                  ? 'Add a character photo above for accurate lip-sync (otherwise a face is auto-generated).'
-                  : locale === 'ru'
-                    ? 'Добавьте фото персонажа выше для точного липсинка (иначе лицо создаётся автоматически).'
-                    : 'lip-sync-ისთვის ატვირთე პერსონაჟის ფოტო ზემოთ (თუ არა — სახე ავტომატურად შეიქმნება).'}</span>
-              </div>
-            )}
-
-            {/* 3 · Length + Format used to live here. They are the composer's format pills now (ratio incl. 4:5,
-                and 8 / 24 / 48 s) — one control, always in view, instead of a second copy in the panel. */}
-
-            {/* 4 · Audio mix — adapts to the chosen mode (the voice-overlap fix made visible) */}
-            {videoMode === 'documentary' ? (
-              <>
-                <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'Music on' : locale === 'ru' ? 'Музыка вкл' : 'მუსიკა ჩართ.'}</Chip>
-                    <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
-                    <span className="mx-1 h-4 w-px bg-app-border/15" />
-                    <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>{t.narration}</Chip>
-                    {hasTrainedVoice && (
-                      <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>{locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
-                    )}
-                    {/* Subtitles of the narration: the user's choice, off by default. */}
-                    {videoNarration && (
-                      <Chip active={videoSubtitles} onClick={() => setVideoSubtitles((v) => !v)}>{locale === 'en' ? 'Subtitles' : locale === 'ru' ? 'Субтитры' : 'სუბტიტრი'}</Chip>
-                    )}
-                  </div>
-                  {/* Character voice — female/male cloned Georgian voice, or "Both"
-                      (ორივე) which flips on multi-character mode (per-speaker voices,
-                      script split below). Shown when narration is on and not using
-                      the user's own trained voice. */}
-                  {videoNarration && !videoMyVoiceNarration && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                      <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Character voice:' : locale === 'ru' ? 'Голос персонажа:' : 'პერსონაჟის ხმა:'}</span>
-                      <Chip active={!videoMultiChar && videoNarratorGender === 'female'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('female'); }}>{locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'}</Chip>
-                      <Chip active={!videoMultiChar && videoNarratorGender === 'male'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('male'); }}>{locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი'}</Chip>
-                      <Chip active={videoMultiChar} onClick={() => setVideoMultiChar(true)}>{locale === 'en' ? 'Both' : locale === 'ru' ? 'Оба' : 'ორივე'}</Chip>
-                    </div>
-                  )}
-                  {/* PHASE 2 L1 — Character Voice DETAILS: language + persona + tone → VOICE_MAP.
-                      Folded into an accordion (13 chips) with a live emoji summary so the default
-                      view stays calm; the primary female/male/both choice above stays visible. */}
-                  {videoNarration && !videoMyVoiceNarration && (
-                    <Section
-                      title={`${locale === 'en' ? 'Voice details' : locale === 'ru' ? 'Детали голоса' : 'ხმის დეტალები'}`}
-                      badge={`${voiceLanguage.toUpperCase()} · ${voicePersona === 'male' ? (locale === 'en' ? 'Man' : locale === 'ru' ? 'Муж' : 'კაცი') : voicePersona === 'female' ? (locale === 'en' ? 'Woman' : locale === 'ru' ? 'Жен' : 'ქალი') : voicePersona === 'child' ? (locale === 'en' ? 'Child' : locale === 'ru' ? 'Ребёнок' : 'ბავშვი') : (locale === 'en' ? 'Elder' : locale === 'ru' ? 'Пожилой' : 'ხანდაზმ.')}`}
-                    >
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Language:' : locale === 'ru' ? 'Язык:' : 'ენა:'}</span>
-                        <Chip active={voiceLanguage === 'ka'} onClick={() => setVoiceLanguage('ka')}>KA</Chip>
-                        <Chip active={voiceLanguage === 'en'} onClick={() => setVoiceLanguage('en')}>EN</Chip>
-                        <Chip active={voiceLanguage === 'ru'} onClick={() => setVoiceLanguage('ru')}>RU</Chip>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Persona:' : locale === 'ru' ? 'Персона:' : 'პერსონა:'}</span>
-                        <Chip active={voicePersona === 'male'} onClick={() => setVoicePersona('male')}>{locale === 'en' ? 'Man' : locale === 'ru' ? 'Муж' : 'კაცი'}</Chip>
-                        <Chip active={voicePersona === 'female'} onClick={() => setVoicePersona('female')}>{locale === 'en' ? 'Woman' : locale === 'ru' ? 'Жен' : 'ქალი'}</Chip>
-                        <Chip active={voicePersona === 'child'} onClick={() => setVoicePersona('child')}>{locale === 'en' ? 'Child' : locale === 'ru' ? 'Ребёнок' : 'ბავშვი'}</Chip>
-                        <Chip active={voicePersona === 'elderly'} onClick={() => setVoicePersona('elderly')}>{locale === 'en' ? 'Elder' : locale === 'ru' ? 'Пожилой' : 'ხანდაზმული'}</Chip>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Tone:' : locale === 'ru' ? 'Тон:' : 'ტონი:'}</span>
-                        <Chip active={voiceTone === 'epic'} onClick={() => setVoiceTone('epic')}>{locale === 'en' ? 'Epic' : locale === 'ru' ? 'Эпично' : 'ეპიკური'}</Chip>
-                        <Chip active={voiceTone === 'emotional'} onClick={() => setVoiceTone('emotional')}>{locale === 'en' ? 'Emotional' : locale === 'ru' ? 'Эмоц.' : 'ემოციური'}</Chip>
-                        <Chip active={voiceTone === 'energetic'} onClick={() => setVoiceTone('energetic')}>{locale === 'en' ? 'Energetic' : locale === 'ru' ? 'Энерг.' : 'ენერგიული'}</Chip>
-                      </div>
-                    </div>
-                    </Section>
-                  )}
-                  {/* PHASE 2 L6 — Smart ducking: music auto-ducks under the narration.
-                      Only shown with music on; depth −6…−18 dB (default −12). */}
-                  {videoMusic && (
-                    <div className="flex flex-col gap-1.5 border-t border-app-border/10 pt-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-app-muted">{locale === 'en' ? 'Smart ducking' : locale === 'ru' ? 'Авто-приглушение' : 'ჭკვიანი ჩაჩუმება'}</span>
-                        <AppToggle on={videoSmartDuck} onChange={setVideoSmartDuck} label="smart ducking" />
-                      </div>
-                      {videoSmartDuck && (
-                        <label className="flex items-center gap-2">
-                          <span className="whitespace-nowrap text-[10.5px] text-app-muted">{locale === 'en' ? 'Depth' : locale === 'ru' ? 'Глубина' : 'სიღრმე'}</span>
-                          <input type="range" min={-18} max={-6} step={6} value={videoDuckDb}
-                            onChange={(e) => setVideoDuckDb(Number(e.target.value))}
-                            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label={t.a11yDuckingDb} />
-                          <span className="w-12 text-right text-[10.5px] tabular-nums text-app-text">{videoDuckDb} dB</span>
-                        </label>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {/* Multiple-characters toggle — when on, the script below is split per
-                    speaker (ქალი:/კაცი:/Woman:/Man:) and each line voiced separately. */}
-                <button type="button" onClick={() => setVideoMultiChar((v) => !v)} aria-pressed={videoMultiChar}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoMultiChar ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/20 bg-app-bg/40'}`}>
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Multiple characters' : locale === 'ru' ? 'Несколько персонажей' : 'მრავალი პერსონაჟი'}</span>
-                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Each speaker gets their own voice.' : locale === 'ru' ? 'У каждого говорящего свой голос.' : 'თითო პერსონაჟს თავისი ხმა.'}</span>
-                  </span>
-                  {/* Inline-styled visual track (the card button handles the click). */}
-                  <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: videoMultiChar ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
-                    <span style={{ position: 'absolute', top: 3, left: videoMultiChar ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
-                  </span>
-                </button>
-                {/* Dialogue — single narrator (verbatim) OR a multi-character script. */}
-                <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  {videoMultiChar ? (
-                    <>
-                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Dialogue script' : locale === 'ru' ? 'Сценарий диалога' : 'დიალოგის სცენარი'}</span>
-                      <textarea value={videoDialogue} onChange={(e) => setVideoDialogue(e.target.value)} rows={4}
-                        placeholder={locale === 'en' ? 'Woman: Hello, how are you?\nMan: I am well, thanks!' : locale === 'ru' ? 'Женщина: Привет, как дела?\nМужчина: Хорошо, спасибо!' : 'ქალი: გამარჯობა, როგორ ხარ?\nკაცი: კარგად ვარ, გმადლობ!'}
-                        className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-                    </>
-                  ) : (
-                    <>
-                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
-                      <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
-                        placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
-                        className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-                    </>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Vocal gender — steers the ElevenLabs Music singer (big touch targets) */}
-                <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {([
-                      ['female', '', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
-                      ['male', '', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
-                      ['duet', '', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
-                    ] as const).map(([id, , label]) => {
-                      const on = videoVocalGender === id;
-                      return (
-                        <button key={id} type="button" onClick={() => setVideoVocalGender(id)}
-                          className={`flex min-h-[52px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-[14px] font-semibold transition active:scale-[0.98] ${on ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-text hover:bg-app-bg/60'}`}>
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                {/* Song-master info */}
-                <div className="space-y-1 rounded-xl border border-app-accent/25 bg-app-accent/10 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-accent">{locale === 'en' ? 'Song-master mix' : locale === 'ru' ? 'Песня — мастер' : 'სიმღერა — მთავარი'}</span>
-                  <p className="text-[11px] leading-relaxed text-app-muted">
-                    {locale === 'en'
-                      ? 'The song rules the master — no narrator, backing ducked −12 dB under the vocal, forced 9:16 vertical. Upload a beat in the Audio Track slot, or one is generated for you.'
-                      : locale === 'ru'
-                        ? 'Песня — мастер: без диктора, фон −12 дБ под вокал, вертикаль 9:16. Загрузите бит в слот «Аудиодорожка» — или он сгенерируется.'
-                        : 'სიმღერა მთავარია — დიქტორის გარეშე, ფონი −12 dB ვოკალის ქვეშ, 9:16 ვერტიკალური. ატვირთე ბიტი „აუდიო ტრეკში“, ან დაგენერირდება.'}
-                  </p>
-                </div>
-                {/* P1 · Lip-sync the singer to the vocal (default ON; fail-open) */}
-                <button type="button" onClick={() => setVideoLipsync((v) => !v)} aria-pressed={videoLipsync}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoLipsync ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/20 bg-app-bg/40'}`}>
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
-                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{(() => { const n = creditsLabel(quoteCredits({ tool: 'avatar' }), locale); return locale === 'en' ? `A lip-sync pass after the film assembles: more time, +${n} (returned if it fails).` : locale === 'ru' ? `Липсинк после сборки фильма: дольше, +${n} (при сбое возвращаются).` : `ლიპსინკი ფილმის აწყობის შემდეგ: მეტი დრო, +${n} (ჩავარდნისას ბრუნდება).`; })()}</span>
-                  </span>
-                  {/* Inline-styled visual track (the card button handles the click). */}
-                  <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: videoLipsync ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
-                    <span style={{ position: 'absolute', top: 3, left: videoLipsync ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
-                  </span>
-                </button>
-                {/* PHASE 19 — LYRICS. Music-video mode had no way to supply the song's words; the singer
-                    sang auto-written lyrics. Bound to videoSpeech (folded into the brief in send()), so the
-                    AI performs THESE Georgian lyrics. Empty = auto-written. */}
-                <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст песни' : 'ლირიკა'}</span>
-                  <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'What the singer sings (Georgian works). Empty = auto-written.' : locale === 'ru' ? 'Что поёт исполнитель (можно на грузинском). Пусто = авто.' : 'რას მღერის შემსრულებელი (ქართული მუშაობს). ცარიელი = ავტომატური.'}</span>
-                  <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={3}
-                    placeholder={locale === 'en' ? 'Paste the song lyrics…' : locale === 'ru' ? 'Вставьте текст песни…' : 'ჩასვი სიმღერის ტექსტი…'}
-                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-                </div>
-              </>
-            )}
-
-              </>}
-              advanced={<>
-            {/* GOOGLE VEO — scenes & camera, identity, Veo's own sound, advanced. Every control maps to a field of the Veo
-                request or to the edit (docs/VEO_ENGINE.md §2): the camera is compiled into each clip's prompt, the joins
-                are made by the assembler. Zoom / Slide joins and the engine badge are gone — Veo is the only engine and
-                those joins do not exist in its pipeline. */}
-            <VeoParametersPanel plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan} dispatch={dispatchVeo} locale={locale} engine={veoEngine}
-              sceneTexts={scenePrompts} onTransitionAll={setVideoTransition} />
-              </>}
             />
             )}
 
@@ -12007,12 +11615,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * composer docked at the bottom, as Gemini's phone app does.
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
-  // ONE DESCRIPTION BOX (GG's card, 2026-10-18 05:14Z: „დამალე"). Image, Music and Video keep their description on the Create
+  // ONE DESCRIPTION BOX (GG's card, 2026-10-18 05:14Z: „დამალე"). Image and Music keep their description on the Create
   // screen (it and the composer share `input`), so the composer's text box steps aside while that screen is on: below `lg`
-  // in Image and Music always (the sheet IS the prompt card; Video's sheet hides the whole bar), on a desktop while the panel
-  // is open — closing it brings the box back as Agent G's line. Mic, Live voice and Send stay in the pill.
-  const composerTextHidden = (imageCreate || mode === 'music' || activeTool === 'video')
-    && (isDesktop ? panelOpen : activeTool !== 'video');
+  // always (the sheet IS the prompt card), on a desktop while the panel is open — closing it brings the box back as Agent
+  // G's line. Mic, Live voice and Send stay in the pill. VIDEO is the other way round (GG 2026-10-18, „პრომპტი ჩატის ველში"):
+  // its panel has no prompt, so this box and its priced Send stay beside the open panel.
+  const composerTextHidden = (imageCreate || mode === 'music')
+    && (isDesktop ? panelOpen : true);
   // …and on a desktop the box's own Send and enhance go with it: the panel beside it has the priced Create.
   const composerRunAside = composerTextHidden && isDesktop;
   // Music on a desktop: the latest track and the engines-and-prices list (ref6) lead the centre column; the feed — progress
@@ -12877,7 +12486,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={() => runTool()} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
+                    <button type="button" onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
                       className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
                       {composerQuote ? (
                         <>

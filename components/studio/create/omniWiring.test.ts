@@ -105,9 +105,27 @@ describe('the phone: the sheet opens by itself and the composer\'s text box step
     expect(edit).toContain('imgPromptRef.current ?? taRef.current');
   });
 
-  test('the composer\'s textarea steps aside while the Create screen holds the description: below lg in image and music, on a desktop while the panel of image, music or video is open (GG, 2026-10-18)', () => {
+  test('the composer\'s textarea steps aside while the Create screen holds the description: below lg in image and music, on a desktop while their panel is open (GG, 2026-10-18)', () => {
     expect(src).toContain("`${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none");
-    expect(src).toMatch(/const composerTextHidden = \(imageCreate \|\| mode === 'music' \|\| activeTool === 'video'\)\s*&& \(isDesktop \? panelOpen : activeTool !== 'video'\);/);
+    expect(src).toMatch(/const composerTextHidden = \(imageCreate \|\| mode === 'music'\)\s*&& \(isDesktop \? panelOpen : true\);/);
+  });
+
+  test('VIDEO keeps the box and its priced Send beside the open panel: the prompt lives only in the chat (GG, 2026-10-18)', () => {
+    // The box is never hidden for video, so its Send (not set aside) is the film's one button.
+    expect(src).not.toMatch(/const composerTextHidden = [^;]*activeTool === 'video'/);
+    expect(src).toMatch(/const composerRunAside = composerTextHidden && isDesktop;/);
+    // Its price is the film's quote for the length, tier and mode on the panel (the number the panel's Generate showed).
+    expect(src).toMatch(/\? videoQuote\(\{ seconds: videoDuration, tier: veoPlan\.tier, mode: videoMode \}\) \|\| null/);
+    expect(src).toContain('onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}');
+    // A balance known to be short opens the top-up (never the film); the trial slot (one clip ≤ 8 s) is never blocked;
+    // a guest (balance unknown) goes on to runTool's own sign-in gate. A Higgsfield pick shows no Veo number.
+    expect(src).toContain("const short = !freeSlotApplies(videoFreeFilms, videoDuration) && videoBalanceCredits !== null && videoBalanceCredits < composerQuote;");
+    expect(src).toContain("if (short) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }");
+    expect(src).toMatch(/activeTool === 'video' && mode === 'video' && videoTab === 'cinema' && !videoHfPicked\s*\? videoQuote/);
+    // The panel carries no prompt box and no Generate of its own; script, voice details and camera are gone from it.
+    const panel = /<VideoCreatePanel([\s\S]*?)\n {12}\/>/.exec(src)?.[1] ?? '';
+    expect(panel).toContain('prompt={input}');
+    expect(panel).not.toMatch(/onPrompt=|onGenerate|story=\{|voice=\{|advanced=\{|VeoParametersPanel|master-script-input|video-templates/);
   });
 
   test('a hidden box is not measured (0 px would stick as its inline height in the next tool)', () => {
