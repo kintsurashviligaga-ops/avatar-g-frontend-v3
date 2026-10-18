@@ -107,7 +107,8 @@ import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { avatarRetakeText, filmRefineNote, improvedBrief, refineChange } from '@/lib/chat/refineRequest';
 import { quoteSceneRedo, runSceneRedo, sceneRedoAsk, sceneRedoOfferText, sceneRedoProgressText, sceneRedoResultText, weakScenesText } from '@/lib/chat/filmSceneRedoClient';
-import { type AvatarFace, avatarGenderFromText, avatarOfferText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
+import { type AvatarFace, avatarAskLineText, avatarGenderFromText, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
+import { GENJUTSU_HARD_CAP_MS } from '@/lib/genjutsu/limits';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
 import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/useMyTwin';
@@ -6836,7 +6837,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const pending = pend && pend.mode === gateMode && !!pend.inChat === inChat && Date.now() - pend.at < 10 * 60_000 ? pend : null;
       if (!pending && !inChat) gatePendingRef.current = null;
       // "yes / go ahead" to Agent G's question → create what was asked about, as it stands.
-      if (pending && isAffirmation(text)) {
+      // (An avatar question that asked for the LINE has nothing to create „as it stands": a „კი" there is not a script.)
+      if (pending && isAffirmation(text) && !(pending.mode === 'avatar' && !splitAvatarScript(pending.base).speech)) {
         gatePendingRef.current = null;
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         void send({ promptOverride: pending.base, confirmed: true, ...(pending.inChat ? { target: pending.mode } : {}) });
@@ -6844,10 +6846,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       const hasRef = attachments.length > 0;
       const explicit = opts?.explicit === true;
-      const first = classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit });
-      // An answer to Agent G's questions joins the thin prompt it was about; talk does not.
-      const promptText = pending && first.kind !== 'chat' ? mergePrompt(pending.base, text) : text;
-      const verdict = promptText === text ? first : classifyFocusInput({ text: promptText, mode: gateMode, hasAttachments: hasRef, explicit });
+      // Avatar (GG 2026-10-18): an attached voice track is the line; after Agent G asked for the line, this message IS it.
+      const hasAudio = attachments.some((a) => isAudio(a.mimeType));
+      const awaitingLine = gateMode === 'avatar' && !!pending && !splitAvatarScript(pending.base).speech;
+      const first = classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine });
+      // An answer to Agent G's questions joins the thin prompt it was about; talk does not. An avatar's joins as a SCRIPT.
+      const promptText = pending && first.kind !== 'chat' ? mergePrompt(pending.base, text, gateMode) : text;
+      const verdict = promptText === text ? first : classifyFocusInput({ text: promptText, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine });
+      // Agent G answers in words only — no card, no price, nothing started.
+      const agentSays = (say: string) => {
+        setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: say }]);
+        setGateFrom(messages.length);
+        if (!isDesktop) setOptionsOpen(false);
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      };
       if (verdict.kind === 'chat') {
         if (busy || genActiveRef.current) {
           // A reply is still streaming: park the message (the type-ahead flush sends it when the turn ends) — never drop it.
@@ -6882,6 +6894,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
         // An avatar is Veo's price where its door is open (2026-10-17: the card said 20, Veo charges 25).
         const door = gateMode === 'avatar' ? await readVeoAvatarDoor() : null;
+        // ⚠️ GG 2026-10-18: „it says it's creating the avatar, but nothing is created". A closed door (non-admin, the Veo
+        // avatar not public) got a priced card whose Create fell to routes that refuse; an order with no line got a card that
+        // read the ORDER aloud; a line past 8 s was refused only after Create. Each is now said in words, before any card.
+        if (gateMode === 'avatar') {
+          const line = splitAvatarScript(promptText);
+          const fit = line.speech && !hasAudio ? avatarLineFit(line.speech) : null;
+          const say = !door?.open ? avatarUnavailableText(locale)
+            : !line.speech && !hasAudio ? avatarAskLineText(locale)
+              : fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;
+          if (say) {
+            // The next message is the line (or the shorter one): the order's look stays, its words are replaced.
+            gatePendingRef.current = door?.open ? { mode: 'avatar', base: line.direction ? `(${line.direction})` : '', at: Date.now(), inChat } : null;
+            agentSays(say);
+            return;
+          }
+        }
         const credits = gateMode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
           : gateMode === 'music' ? musicQuote({ duration: musicDuration }) /* "Full song" (0) bills the 90 s tier, as the route does */
             : gateMode === 'avatar' ? (door?.open ? door.credits : quoteCredits({ tool: 'avatar' }))
@@ -6909,6 +6937,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
       // 'go': straight to the tool. If the user's words were an ANSWER, run the merged prompt, not just the answer.
+      // (The avatar panel's own Generate with the Veo door closed would only reach routes that refuse: said in words.)
+      if (gateMode === 'avatar' && !(await readVeoAvatarDoor())?.open) {
+        gatePendingRef.current = null;
+        agentSays(avatarUnavailableText(locale));
+        return;
+      }
       gatePendingRef.current = null;
       setGateFrom(null);
       if (promptText !== text) { void send({ promptOverride: promptText, confirmed: true }); return; }
@@ -7053,7 +7087,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // it (send with target 'avatar'). The photo attached with the order is the face. Without a line, or with the door
       // closed, the Avatar tool opens as before.
       const avatarLine = studio.service === 'avatar' && !attachments.some((a) => !isImage(a.mimeType)) ? splitAvatarScript(text) : null;
-      const avatarDoor = avatarLine?.speech ? await readVeoAvatarDoor() : null;
+      const avatarDoor = avatarLine ? await readVeoAvatarDoor() : null;
+      // GG 2026-10-18: a bare order („შემიქმენი ავატარი") read ITSELF aloud on a paid card. Now: the door closed → said
+      // plainly; no line → Agent G asks for it (the next message is the line, kept with the order's look); a line too long
+      // for the 8 s clip → asked to shorten. No card, no price, nothing started — the photo stays attached for the answer.
+      if (avatarLine && avatarDoor) {
+        const fit = avatarLine.speech ? avatarLineFit(avatarLine.speech) : null;
+        const say = !avatarDoor.open ? avatarUnavailableText(locale)
+          : !avatarLine.speech ? avatarAskLineText(locale)
+            : fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;
+        if (say) {
+          gatePendingRef.current = avatarDoor.open ? { mode: 'avatar', base: avatarLine.direction ? `(${avatarLine.direction})` : '', at: Date.now(), inChat: true } : null;
+          setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: say }]);
+          setGateFrom(messages.length);
+          setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+          return;
+        }
+      }
       if (avatarLine?.speech && avatarDoor?.open) {
         const photo = attachments.find((a) => isImage(a.mimeType));
         const ratio = aspectFromText(text, { ratioOnly: true });
@@ -7644,7 +7694,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             const vj = (await veoRes.json().catch(() => ({}))) as { success?: boolean; jobId?: string; error?: string; code?: string; refunded?: boolean };
             let veoUrl: string | null = null;
             let veoFail: string | null = vj.success && vj.jobId ? null : describeGenerationFailure(vj, locale, t.lipsyncFailed);
-            for (let i = 0; i < 60 && vj.jobId && !veoUrl && !veoFail; i++) { // ~6 min of short polls (mobile-safe)
+            // Short polls (mobile-safe) for as long as the server keeps the job open: it refunds and closes it at
+            // GENJUTSU_HARD_CAP_MS (12 min) and says so. Stopping at 6 min told the user „still rendering" on a paid job
+            // that could still arrive (GG 2026-10-18); a minute's slack lets the server's own verdict land.
+            const veoPollUntil = Date.now() + GENJUTSU_HARD_CAP_MS + 60_000;
+            while (Date.now() < veoPollUntil && vj.jobId && !veoUrl && !veoFail) {
               if (!mine()) return;
               await new Promise((r) => setTimeout(r, 6000));
               const pr = await fetch(`/api/genjutsu/status?id=${encodeURIComponent(vj.jobId)}`, { credentials: 'include', signal: ac.signal }).catch(() => null);

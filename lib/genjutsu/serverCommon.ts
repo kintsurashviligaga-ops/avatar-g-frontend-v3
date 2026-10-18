@@ -12,8 +12,9 @@ import { ownsUploadPath, type Issue } from './contract';
 /** Per ACCOUNT, not per IP: IP rotation must not defeat a cap on a cost-bearing mint. Six starts a minute. */
 export const GENJUTSU_RATE: RateLimitConfig = { maxRequests: 6, windowMs: 60_000, keyPrefix: 'rl:genjutsu' };
 
-/** A paid scene that is still not delivered this long after it was created is refunded and closed (status route). */
-export const GENJUTSU_HARD_CAP_MS = 12 * 60_000;
+/** A paid scene that is still not delivered this long after it was created is refunded and closed (status route). Lives
+ * in the client-safe limits so the browser's poll waits exactly as long (components/studio/OmniStudio, the avatar). */
+export { GENJUTSU_HARD_CAP_MS } from './limits';
 
 export const uploadBucket = (): string => process.env.UPLOAD_BUCKET || 'uploads';
 

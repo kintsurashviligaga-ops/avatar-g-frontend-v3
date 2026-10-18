@@ -69,6 +69,29 @@ describe('a talking avatar ordered with no photo, in the chat or the avatar tool
     expect(src).toContain("const composerQuote = activeTool === 'avatar' ? avatarCredits || null");
     expect(send).toContain("gateMode === 'avatar' ? (door?.open ? door.credits : quoteCredits({ tool: 'avatar' }))");
   });
+  it('GG 2026-10-18: a closed door gets words, not a priced card, in the composer gate, the panel’s Generate and the chat', () => {
+    const gate = send.slice(send.indexOf("const door = gateMode === 'avatar' ? await readVeoAvatarDoor() : null;"));
+    const say = gate.indexOf("const say = !door?.open ? avatarUnavailableText(locale)");
+    expect(say).toBeGreaterThan(0);
+    // The words are said and the send returns BEFORE the card (its price, its Create) is built.
+    expect(say).toBeLessThan(gate.indexOf('const card: AgentGCardState = { kind: verdict.kind'));
+    expect(gate.slice(say, gate.indexOf('const credits = gateMode'))).toMatch(/agentSays\(say\);\s*return;/);
+    expect(send).toMatch(/if \(gateMode === 'avatar' && !\(await readVeoAvatarDoor\(\)\)\?\.open\) \{\s*gatePendingRef\.current = null;\s*agentSays\(avatarUnavailableText\(locale\)\);\s*return;/);
+    expect(send).toContain('const say = !avatarDoor.open ? avatarUnavailableText(locale)');
+  });
+  it('GG 2026-10-18: an order with no line asks for it; a line past the clip is asked to be shortened — before any card', () => {
+    expect(send).toContain(': !line.speech && !hasAudio ? avatarAskLineText(locale)');
+    expect(send).toContain(': fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;');
+    expect(send).toContain(': !avatarLine.speech ? avatarAskLineText(locale)');
+    // The answer joins as a script (never „ავატარი, <line>"), and a bare „კი" to the question is not a script.
+    expect(send).toContain('mergePrompt(pending.base, text, gateMode)');
+    expect(send).toContain("!(pending.mode === 'avatar' && !splitAvatarScript(pending.base).speech)");
+  });
+  it('GG 2026-10-18: the Veo avatar is polled for as long as the server keeps the job (its 12-min cap), not 6 min', () => {
+    expect(lip).toContain('const veoPollUntil = Date.now() + GENJUTSU_HARD_CAP_MS + 60_000;');
+    expect(lip).toContain('while (Date.now() < veoPollUntil && vj.jobId && !veoUrl && !veoFail) {');
+    expect(lip).not.toMatch(/for \(let i = 0; i < 60 && vj\.jobId/);
+  });
   it('in the chat the order gets Agent G’s card, and its yes renders it as the avatar tool’s — no chat route reads it again', () => {
     expect(send).toContain("kind: 'confirm', target: 'avatar', prompt: text, credits: avatarDoor.credits, madeIn: 'chat', aspect,");
     expect(send).toContain("const chatAvatar = mode === 'chat' && opts?.confirmed === true && opts.target === 'avatar';");
