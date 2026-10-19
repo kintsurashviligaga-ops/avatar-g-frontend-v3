@@ -54,7 +54,10 @@ jest.mock('../../../../lib/elevenlabs/music', () => ({
 }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => `EN: ${p}`) }));
 jest.mock('../../../../lib/orchestrator/masterQa', () => ({}));
-jest.mock('../../../../lib/ai/visionQualityGate', () => ({ evaluateRenderQuality: jest.fn(), evaluateSceneClips: jest.fn(), visionQaEnabled: jest.fn(() => true) }));
+jest.mock('../../../../lib/ai/visionQualityGate', () => ({
+  ...jest.requireActual('../../../../lib/ai/visionQualityGate'),
+  evaluateRenderQuality: jest.fn(), evaluateSceneClips: jest.fn(), visionQaEnabled: jest.fn(() => true),
+}));
 jest.mock('../../../../lib/pipeline/compositing/ffmpeg-overlay', () => ({ overlayMasterUrl: jest.fn(), hasOverlayContent: jest.fn(() => false) }));
 jest.mock('../../../../lib/pipeline/qaAgent', () => ({ keepLiveClips: jest.fn(async (s: unknown[]) => s) }));
 jest.mock('../../../../lib/pipeline/marketing-from-brief', () => ({ deriveMarketingFromBrief: jest.fn() }));
@@ -108,7 +111,7 @@ beforeEach(() => {
     return { ok: true, sagaId: 'saga-1' };
   });
   (visionQaEnabled as jest.Mock).mockReturnValue(true);
-  (evaluateRenderQuality as jest.Mock).mockResolvedValue({ ran: true, pass: true, grade: 'B', score: 80, issues: [], action: 'accept' });
+  (evaluateRenderQuality as jest.Mock).mockResolvedValue({ status: 'PASS', ran: true, pass: true, grade: 'B', score: 80, issues: [], action: 'accept' });
   (evaluateSceneClips as jest.Mock).mockResolvedValue(GRADES);
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -159,4 +162,29 @@ test('a grader that throws never breaks the delivered film', async () => {
   const json = await res.json();
   expect(json.url).toBe(MASTER);
   expect(json).not.toHaveProperty('sceneQa');
+});
+
+test('an unavailable master evaluation reaches the response without a fabricated grade', async () => {
+  const unavailable = { status: 'UNAVAILABLE', ran: false, pass: false, grade: null, score: null, action: 'review', reason: 'parse_error', issues: [] };
+  (evaluateRenderQuality as jest.Mock).mockResolvedValue(unavailable);
+  const json = await (await POST(post({ segments: SEGMENTS }))).json();
+  expect(json.url).toBe(MASTER); // optional telemetry does not certify or block publication
+  expect(json.visionQa).toEqual(unavailable);
+});
+
+test('a thrown master evaluation is explicitly unavailable', async () => {
+  (evaluateRenderQuality as jest.Mock).mockRejectedValue(new Error('scorer unavailable'));
+  const json = await (await POST(post({ segments: SEGMENTS }))).json();
+  expect(json.visionQa).toMatchObject({ status: 'UNAVAILABLE', ran: false, pass: false, grade: null, score: null, reason: 'gate_error' });
+});
+
+test('a timed out master evaluation has an unavailable deadline verdict', async () => {
+  let started!: () => void;
+  const grading = new Promise<void>((resolve) => { started = resolve; });
+  (evaluateRenderQuality as jest.Mock).mockImplementation(() => { started(); return new Promise(() => {}); });
+  const response = POST(post({ segments: SEGMENTS }));
+  await grading;
+  await jest.advanceTimersByTimeAsync(45_000);
+  const json = await (await response).json();
+  expect(json.visionQa).toMatchObject({ status: 'UNAVAILABLE', ran: false, pass: false, grade: null, score: null, reason: 'deadline' });
 });

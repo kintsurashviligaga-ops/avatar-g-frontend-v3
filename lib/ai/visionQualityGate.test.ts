@@ -66,17 +66,17 @@ describe('parseVisionVerdict — model reply → verdict', () => {
     expect(v.grade).toBe('B');
     expect(v.ran).toBe(true);
   });
-  test('an unparseable reply FAILS OPEN to accept (never blocks a master on QA garbage)', () => {
+  test('an unparseable reply has no passing quality claim', () => {
     const v = parseVisionVerdict('the model rambled with no json', 4);
     expect(v.ran).toBe(false);
-    expect(v.pass).toBe(true);
-    expect(v.action).toBe('accept');
+    expect(v.pass).toBe(false);
+    expect(v.action).toBe('review');
     expect(v.reason).toBe('parse_error');
   });
-  test('a missing/NaN score defaults to 100 (accept) rather than blocking', () => {
+  test('a missing score remains unavailable rather than inventing a perfect score', () => {
     const v = parseVisionVerdict('{"issues": []}', 4);
-    expect(v.score).toBe(100);
-    expect(v.grade).toBe('A');
+    expect(v.score).toBeNull();
+    expect(v.grade).toBeNull();
   });
 });
 
@@ -89,7 +89,7 @@ describe('evaluateRenderQuality — fail-open orchestration (injected deps)', ()
     const v = await evaluateRenderQuality(base, { enabled: () => false, extract, score });
     expect(v.reason).toBe('disabled');
     expect(v.ran).toBe(false);
-    expect(v.pass).toBe(true);
+    expect(v.pass).toBe(false);
     expect(extract).not.toHaveBeenCalled();
     expect(score).not.toHaveBeenCalled();
   });
@@ -104,7 +104,7 @@ describe('evaluateRenderQuality — fail-open orchestration (injected deps)', ()
   test('no frames extracted → skip("no_frames")', async () => {
     const v = await evaluateRenderQuality(base, { enabled: () => true, keyPresent: () => true, extract: async () => [] });
     expect(v.reason).toBe('no_frames');
-    expect(v.pass).toBe(true);
+    expect(v.pass).toBe(false);
   });
 
   test('vision model returns null (timeout/no key) → skip("vision_unavailable"), fail-open', async () => {
@@ -113,7 +113,7 @@ describe('evaluateRenderQuality — fail-open orchestration (injected deps)', ()
       extract: async () => ['ZmFrZQ=='], score: async () => null,
     });
     expect(v.reason).toBe('vision_unavailable');
-    expect(v.pass).toBe(true);
+    expect(v.pass).toBe(false);
     expect(v.frameCount).toBe(1);
   });
 
@@ -137,7 +137,7 @@ describe('evaluateRenderQuality — fail-open orchestration (injected deps)', ()
       enabled: () => true, keyPresent: () => true,
       extract: async () => { throw new Error('ffmpeg exploded'); },
     });
-    expect(v.pass).toBe(true);
+    expect(v.pass).toBe(false);
     expect(v.reason).toBe('no_frames');
   });
 

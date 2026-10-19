@@ -48,7 +48,7 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt, 
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
-import { evaluateRenderQuality, evaluateSceneClips, visionQaEnabled, type SceneQaEntry } from '@/lib/ai/visionQualityGate';
+import { evaluateRenderQuality, evaluateSceneClips, visionQaEnabled, visionQaUnavailable, type SceneQaEntry } from '@/lib/ai/visionQualityGate';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling, isFilmOwnedByAnother, readFilmCaptions } from '@/lib/chat/filmStatusStore';
 import { decideFilmWaiver, settleFilmWaiver, FILM_WAIVER_LEASE_SEC } from '@/lib/chat/filmBilling';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
@@ -1185,8 +1185,8 @@ async function assembleImpl(req: NextRequest) {
   await settleWaiver(Boolean(resultUrl));
 
   // PHASE 27 (VECTOR 2) — POST-RENDER VISION QUALITY GATE. Env-gated (FILM_VISION_QA=1, default OFF →
-  // INERT + zero-cost in prod) and fully FAIL-OPEN: it samples keyframes from the finished master and
-  // grades them with Gemini Vision. It NEVER blocks delivery — a critical warp surfaces as an
+  // INERT + zero-cost in prod). This optional telemetry samples the finished master and
+  // grades it with Gemini Vision. It does not block delivery — a critical warp surfaces as an
   // action:'rerender' SIGNAL (an actual poll-time scene re-render needs the film-token param overhaul
   // flagged in Phase 23/26). Wrapped so it can never throw into the assemble saga.
   let visionQa: Awaited<ReturnType<typeof evaluateRenderQuality>> | null = null;
@@ -1194,10 +1194,12 @@ async function assembleImpl(req: NextRequest) {
   // shot again at the scene's price (/api/film/scene/redo). Same switch, same 45 s bound, run beside the master.
   let sceneQa: SceneQaEntry[] = [];
   if (visionQaEnabled() && resultUrl) {
+    let visionTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       // Bound the WHOLE gate (frame extraction + the bare-fetch Gemini call) so a stalled provider or
       // ffmpeg can never PIN this route until maxDuration — a hang is not an error. On the race timeout
-      // we simply skip QA (null). The deliverable master is already stamped (recordFilmMaster above).
+      // report UNAVAILABLE, never a passing grade. This remains optional telemetry after publication;
+      // the durable mandatory-QA publication protocol is a separate implementation gate.
       const sceneClips = signedSegments.length > 1
         ? signedSegments.map((s, i) => {
           const o = segments[i]?.ordinal;
@@ -1207,19 +1209,25 @@ async function assembleImpl(req: NextRequest) {
       [visionQa, sceneQa] = await Promise.all([
         Promise.race([
           evaluateRenderQuality({ videoUrl: resultUrl }),
-          new Promise<null>((r) => setTimeout(() => r(null), 45_000)),
+          new Promise<Awaited<ReturnType<typeof evaluateRenderQuality>>>((r) => {
+            visionTimer = setTimeout(() => r(visionQaUnavailable('deadline')), 45_000);
+          }),
         ]),
         evaluateSceneClips(sceneClips, { deadlineMs: 45_000 }).catch(() => []),
       ]);
-      if (visionQa?.ran) {
+      if (visionQa) {
         // eslint-disable-next-line no-console
-        console.info(`[assemble][vision-qa] grade=${visionQa.grade} score=${visionQa.score} action=${visionQa.action} issues=${visionQa.issues.map((i) => i.code).join(',') || 'none'}`);
+        console.info(`[assemble][vision-qa] status=${visionQa.status} grade=${visionQa.grade} score=${visionQa.score} action=${visionQa.action} reason=${visionQa.reason || 'none'} issues=${visionQa.issues.map((i) => i.code).join(',') || 'none'}`);
       }
       for (const q of sceneQa) {
         // eslint-disable-next-line no-console
         console.info(`[assemble][vision-qa] scene=${q.ordinal} grade=${q.grade} score=${q.score} action=${q.action} issues=${q.issues.join(',') || 'none'}`);
       }
-    } catch { /* fail-open — the vision gate can never break assembly */ }
+    } catch {
+      visionQa = visionQaUnavailable('gate_error');
+    } finally {
+      if (visionTimer) clearTimeout(visionTimer);
+    }
   }
 
   // Phase 7B — checkpoint the surviving clip URLs (keyed by the film token) so a later
@@ -1259,5 +1267,5 @@ async function assembleImpl(req: NextRequest) {
 
   // Return the resolved song URL so the client can drive a HeyGen singer-performance
   // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
-  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), ...(sceneQa.length ? { sceneQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), covered: Boolean(bag.covered), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
+  return NextResponse.json({ url: resultUrl, qa, ...(visionQa ? { visionQa } : {}), ...(sceneQa.length ? { sceneQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), covered: Boolean(bag.covered), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
 }
