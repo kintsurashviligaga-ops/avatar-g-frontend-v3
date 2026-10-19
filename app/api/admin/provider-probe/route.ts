@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
-import { geminiTierModel } from '@/lib/ai/google/models';
 import { veoTransport } from '@/lib/veo/engine';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { checkVertexAuth } from '@/lib/veo/authCheck';
@@ -55,7 +54,7 @@ async function probe(
 }
 
 const get = (url: string, init?: RequestInit) =>
-  fetch(url, { ...init, cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT) });
+  fetch(url, { ...init, cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT) });
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { user } = await authedClientFromRequest(req);
@@ -84,22 +83,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         ok: true,
         detail: `${names.length} models · veo:${has(/veo/i)} imagen:${has(/imagen/i)} lyria:${has(/lyria/i)}`,
       };
-    }),
-
-    // GEMINI BILLING — listing models is free, so it stays green while the prepaid balance is EMPTY: that is exactly
-    // how every Veo / Lyria / TTS / chat call answered 402 for days behind a healthy-looking key. One generated
-    // token (well under $0.0001) is the cheapest question the billing system actually answers.
-    probe('gemini-billing', process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY, async (k) => {
-      const model = (process.env.GEMINI_PROBE_MODEL || geminiTierModel('flash')).trim();
-      const r = await get(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-        method: 'POST',
-        headers: { 'x-goog-api-key': k, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: 'ok' }] }], generationConfig: { maxOutputTokens: 1 } }),
-      });
-      if (r.ok) return { provider: 'gemini-billing', configured: true, ok: true, detail: `${model} answered — the balance pays` };
-      const body = await r.text().catch(() => '');
-      const hint = r.status === 402 || /prepa|billing|credit/i.test(body) ? ' — the AI Studio prepaid balance is empty' : '';
-      return { provider: 'gemini-billing', configured: true, ok: false, detail: `HTTP ${r.status}${hint} ${body.slice(0, 160)}` };
     }),
 
     // VEO — which Google route renders clips right now, and what still keeps Vertex AI off (variable NAMES only).
@@ -182,6 +165,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       not_configured: unset,
     },
     results,
-    note: 'Every probe is a read, except gemini-billing: one generated token (under $0.0001) to prove the prepaid balance pays.',
+    billingVerification: {
+      status: 'not_tested',
+      paidInference: false,
+      reason: 'Diagnostic GET requests never generate content. Model availability does not prove a funded inference request.',
+    },
+    note: 'Read-only provider diagnostics. No generation or paid billing probe is submitted.',
   });
 }
