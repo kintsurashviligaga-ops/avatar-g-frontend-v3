@@ -7,7 +7,7 @@
  *   · the agent profile is resolved SERVER-side and systemInstruction + voice + generationConfig are locked into
  *     bidiGenerateContentSetup (built by buildLiveSetup) and returned as `setupMessage` for the browser;
  *   · the key rides in x-goog-api-key, never the URL;
- *   · a 400 on the full lock falls back to the verified {model}-only lock; GEMINI_LIVE_LOCK_SETUP=0 forces it;
+ *   · a rejected full lock may use a server-owned legacy setup; a rejected legacy setup never mints a model-only token;
  *   · the platform budget refuses before the mint;
  *   · voice-to-action: `actions: true` locks the UI-action functionDeclarations (+ their instruction) ahead of search;
  *     GEMINI_LIVE_ACTIONS=0 / no opt-in / `tools: false` (the degraded retry) lock none; a 400 drops ONLY them first.
@@ -317,27 +317,29 @@ describe('the mint', () => {
     expect(text).toMatch(/the user starts every render with its priced button/);
   });
 
-  test('only if the legacy lock is rejected too does it drop to the {model}-only lock, and says so', async () => {
+  test('a rejected legacy setup lock fails closed without minting a model-only token', async () => {
     fetchSpy
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response('bad again', { status: 400 }))
       .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-3' }), { status: 200 }));
     const res = await POST(post({}));
-    expect(res.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
-    expect(mintBody(2).bidiGenerateContentSetup).toEqual({ model: 'models/gemini-2.5-flash-native-audio-latest' });
+    expect(res.status).toBe(503);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
     const j = await res.json();
-    expect(j).toMatchObject({ token: 'auth_tokens/eph-3', setupLocked: false });
-    expect(j.setupMessage.setup.systemInstruction).toBeDefined();
+    expect(j).toMatchObject({ error: 'live_token_unavailable' });
+    expect(j.token).toBeUndefined();
+    for (let i = 0; i < fetchSpy.mock.calls.length; i++) {
+      expect(mintBody(i).bidiGenerateContentSetup.systemInstruction).toBeDefined();
+    }
     expect(logMock).toHaveBeenCalledWith('warn', 'voice.live.setup_lock_rejected', expect.objectContaining({ lock: 'legacy' }));
   });
 
-  test('GEMINI_LIVE_LOCK_SETUP=0 mints the {model}-only lock directly', async () => {
+  test('GEMINI_LIVE_LOCK_SETUP=0 disables minting instead of weakening the setup lock', async () => {
     process.env.GEMINI_LIVE_LOCK_SETUP = '0';
     const res = await POST(post({}));
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(mintBody().bidiGenerateContentSetup).toEqual({ model: 'models/gemini-2.5-flash-native-audio-latest' });
-    expect((await res.json()).setupLocked).toBe(false);
+    expect(res.status).toBe(503);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ error: 'live_setup_lock_required' });
   });
 
   test('a non-400 mint failure is a 503 that leaks neither the upstream body nor the key', async () => {
@@ -432,24 +434,23 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
     expect(logMock).toHaveBeenCalledWith('warn', 'voice.live.setup_lock_rejected', expect.objectContaining({ lock: 'actions' }));
   });
 
-  test('…then the legacy lock, then {model}-only — the frame never carries the rejected declarations again', async () => {
+  test('rejected action, parity and legacy locks return 503 without a fourth weaker mint', async () => {
     fetchSpy
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-m' }), { status: 200 }));
     const res = await POST(post({ locale: 'en', transcribe: true, actions: true }));
-    expect(res.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(res.status).toBe(503);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
     const legacy = mintBody(2).bidiGenerateContentSetup;
     expect(legacy.tools).toBeUndefined();
     expect(legacy.inputAudioTranscription).toBeUndefined();
     expect(legacy.systemInstruction?.parts[0]?.text).not.toContain(LIVE_ACTIONS_RULE);
-    expect(mintBody(3).bidiGenerateContentSetup).toEqual({ model: 'models/gemini-2.5-flash-native-audio-latest' });
+    expect(legacy.systemInstruction).toBeDefined();
     const j = await res.json();
-    expect(j).toMatchObject({ setupLocked: false, actions: false });
-    expect(j.setupMessage.setup.tools).toBeUndefined();
-    expect(j.setupMessage.setup.inputAudioTranscription).toEqual({ languageCodes: ['en-US'] });
+    expect(j).toMatchObject({ error: 'live_token_unavailable' });
+    expect(j.token).toBeUndefined();
     for (const lock of ['actions', 'full', 'legacy']) {
       expect(logMock).toHaveBeenCalledWith('warn', 'voice.live.setup_lock_rejected', expect.objectContaining({ lock }));
     }
