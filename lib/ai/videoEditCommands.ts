@@ -71,7 +71,7 @@ export function parseVideoEditCommand(text: string): VideoEditCommand | null {
   else if (has(lc, /\b2x\b|\b(?:double|twice)\b|ორმაგ/)) cmd.speed = 2;
   else if (has(lc, /\b(?:faster|speed up|speed it up|quicker|accelerate)\b|სწრაფ|აჩქარ|დააჩქარ|быстрее|ускор/)) cmd.speed = strong ? 2 : 1.5;
   else if (has(lc, /\b0\.5x\b|\bhalf speed\b|ნახევარ.{0,40}სიჩქარ/)) cmd.speed = 0.5;
-  else if (has(lc, /\b(?:slower|slow down|slow it down|slo-?mo|slow motion)\b|(?:^|[^\p{L}])(?:ნელა|შეანელ\p{L}*|დაანელ\p{L}*)(?=$|[^\p{L}])|медленнее|замедл/u)) cmd.speed = 0.5;
+  else if (has(lc, /\b(?:slower|slow down|slow it down|slo-?mo|slow motion)\b|(?:^|[^\p{L}])(?:ნელა|ნელი|ნელად|შეანელ\p{L}*|შენელ\p{L}*|დაანელ\p{L}*)(?=$|[^\p{L}])|медленнее|замедл/u)) cmd.speed = 0.5;
 
   // ── fade ───────────────────────────────────────────────────────────────
   const fadeIn = has(lc, /\bfade in\b|შემოსვლ.{0,40}მილევ|მილევ.{0,40}შემო|плавн.{0,40}появлен|появлен.{0,40}затухан/);

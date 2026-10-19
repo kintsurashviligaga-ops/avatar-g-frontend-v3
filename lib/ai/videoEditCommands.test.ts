@@ -92,6 +92,10 @@ describe('parseVideoEditCommand — natural-language video edits drive the slide
 
   it('keeps affirmative multilingual commands whose words contain negation substrings', () => {
     expect(parseVideoEditCommand('ნელა')).toEqual({ speed: 0.5 });
+    expect(parseVideoEditCommand('ნელი ვიდეო')).toEqual({ speed: 0.5 });
+    expect(parseVideoEditCommand('შენელება')).toEqual({ speed: 0.5 });
+    expect(parseVideoEditCommand('ნელ-ნელა')).toEqual({ speed: 0.5 });
+    expect(parseVideoEditCommand('1: brighten')).toEqual({ grade: { brightness: 135 } });
     expect(parseVideoEditCommand('сделай медленнее')).toEqual({ speed: 0.5 });
     expect(parseVideoEditCommand('turn the contrast up, add contrast')).toEqual({ grade: { contrast: 130 } });
   });
