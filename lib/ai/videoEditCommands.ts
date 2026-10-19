@@ -20,19 +20,32 @@ export interface VideoEditCommand {
 
 const has = (lc: string, re: RegExp) => re.test(lc);
 
+// This slider parser cannot represent prohibitions or their scope. Reject the whole command, including mixed
+// positive/negative clauses, so a forbidden edit never becomes an affirmative mutation. Unicode boundaries matter:
+// ASCII \b does not delimit Georgian/Cyrillic words (and bare "не" would also match "медленнее").
+const NEGATION = /(?:^|[^\p{L}\p{N}_])(?:not|no|never|don['’]?t|without|არ|არა|აღარ|ნუ|ვერ|не|нет|нельзя|никогда)(?=$|[^\p{L}\p{N}_])/u;
+// Trim/crop need a range/aspect contract, not split-at-playhead. Reject unsupported compound requests atomically.
+const UNSUPPORTED_EDIT = /\b(?:trim|crop|aspect|portrait|landscape)\b|ამოჭერ|ამოჭრ|მოაჭერ|მოაჭრ|მოჭერ|მოჭრ|შეამოკლ|обреж|обрез|кадрир|\d\s*:\s*\d/u;
+const TIME_PARAMETER = /(?:\d+(?:\.\d+)?|ერთი|ორი|სამი|ოთხი|ხუთი|ექვსი|შვიდი|რვა)\s*(?:წამ|წუთ|sec|second|сек|мин)|\b\d+(?:\.\d+)?\s*s\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:seconds?|minutes?)\b/u;
+
 export function parseVideoEditCommand(text: string): VideoEditCommand | null {
-  // Cap the input: a real command is short, and this keeps the few multi-word `.{0,40}` patterns strictly linear even
-  // if someone pastes a pathologically long string into the (local, unbilled) editor box.
-  const lc = (typeof text === 'string' ? text : '').slice(0, 2000).toLowerCase();
+  // Never execute a truncated prefix: a prohibition could occur beyond the cap. Reject before lowercasing/scanning.
+  if (typeof text !== 'string' || text.length > 2000) return null;
+  const lc = text.toLowerCase();
   if (!lc.trim()) return null;
+  if (has(lc, NEGATION) || has(lc, UNSUPPORTED_EDIT) || has(lc, TIME_PARAMETER)) return null;
   const cmd: VideoEditCommand = {};
   const grade: VideoGrade = {};
   const strong = has(lc, /\b(?:much|very|really|way|a lot|strong)\b|ძალიან|очень|сильно|намного|гораздо/);
 
-  // ── timeline ops (single: first match wins) ──────────────────────────────────
-  if (has(lc, /\b(?:split|cut|trim|slice)\b|გაჭერ|გაჭრ|ამოჭერ|разрежь|разрез|нарежь|обрежь/)) cmd.op = 'split';
-  else if (has(lc, /\b(?:mute|silence)\b|დაადუმ|დადუმ|გააჩუმ|заглуши|без звука|приглуши/)) cmd.op = 'mute';
-  else if (has(lc, /\b(?:reset|revert|undo all|start over)\b|გადატვირთ|თავიდან|საწყის|сброс|сброси|заново/)) cmd.op = 'reset';
+  // Only one timeline op fits this return type; never silently drop a second requested mutation.
+  const split = has(lc, /\b(?:split|cut|slice)\b|გაჭერ|გაჭრ|разрежь|разрез|нарежь/);
+  const mute = has(lc, /\b(?:mute|silence)\b|დაადუმ|დადუმ|გააჩუმ|заглуши|без звука|приглуши/);
+  const reset = has(lc, /\b(?:reset|revert|undo all|start over)\b|გადატვირთ|თავიდან\s+დაიწყ|დაიწყ\p{L}*\s+თავიდან|საწყის\p{L}*\s+(?:მდგომარეობ|დააბრუნ)|сброс|сброси|заново/u);
+  if (Number(split) + Number(mute) + Number(reset) > 1) return null;
+  if (split) cmd.op = 'split';
+  else if (mute) cmd.op = 'mute';
+  else if (reset) cmd.op = 'reset';
 
   // ── brightness ───────────────────────────────────────────────────────────────
   if (has(lc, /\b(?:brighter|brighten|lighter|lighten)\b|გაანათ|განათ|ნათელ|ярче|светл/)) grade.brightness = strong ? 165 : 135;
@@ -44,7 +57,7 @@ export function parseVideoEditCommand(text: string): VideoEditCommand | null {
 
   // ── saturation ───────────────────────────────────────────────────────────────
   if (has(lc, /\b(?:desaturate|black and white|b&w|grayscale|greyscale|monochrome|mono)\b|შავ-?თეთრ|ნაცრისფერ|черно-?бел|чб|обесцвет/)) grade.saturation = 0;
-  else if (has(lc, /\b(?:saturate|more colou?r|colou?rful|vivid|vibrant|pop|colou?rize)\b|გააფერად|ფერად|ფერებ|насыщен|ярче цвет|сочн/)) grade.saturation = strong ? 175 : 150;
+  else if (has(lc, /\b(?:saturate|more colou?r|colou?rful|vivid|vibrant|pop|colou?rize)\b|გააფერად|ფერად|насыщен|ярче цвет|сочн/)) grade.saturation = strong ? 175 : 150;
   else if (has(lc, /\b(?:less colou?r|muted colou?rs?|pastel)\b|ნაკლებ.{0,40}ფერ|приглуши цвет/)) grade.saturation = 60;
 
   // ── temperature ───────────────────────────────────────────────────────────────
@@ -58,7 +71,7 @@ export function parseVideoEditCommand(text: string): VideoEditCommand | null {
   else if (has(lc, /\b2x\b|\b(?:double|twice)\b|ორმაგ/)) cmd.speed = 2;
   else if (has(lc, /\b(?:faster|speed up|speed it up|quicker|accelerate)\b|სწრაფ|აჩქარ|დააჩქარ|быстрее|ускор/)) cmd.speed = strong ? 2 : 1.5;
   else if (has(lc, /\b0\.5x\b|\bhalf speed\b|ნახევარ.{0,40}სიჩქარ/)) cmd.speed = 0.5;
-  else if (has(lc, /\b(?:slower|slow down|slow it down|slo-?mo|slow motion)\b|ნელ|შეანელ|დაანელ|медленнее|замедл/)) cmd.speed = 0.5;
+  else if (has(lc, /\b(?:slower|slow down|slow it down|slo-?mo|slow motion)\b|(?:^|[^\p{L}])(?:ნელა|შეანელ\p{L}*|დაანელ\p{L}*)(?=$|[^\p{L}])|медленнее|замедл/u)) cmd.speed = 0.5;
 
   // ── fade ───────────────────────────────────────────────────────────────
   const fadeIn = has(lc, /\bfade in\b|შემოსვლ.{0,40}მილევ|მილევ.{0,40}შემო|плавн.{0,40}появлен|появлен.{0,40}затухан/);

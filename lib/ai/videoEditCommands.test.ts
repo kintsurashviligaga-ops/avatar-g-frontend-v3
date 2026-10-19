@@ -52,6 +52,54 @@ describe('parseVideoEditCommand — natural-language video edits drive the slide
     expect(parseVideoEditCommand('   ')).toBeNull();
   });
 
+  it.each([
+    'არ გაანათო', 'ნუ დაადუმებ', 'აღარ გაანათო',
+    "don't mute", 'do not brighten', 'never reset', 'do NOT speed up',
+    'не ускоряй', 'не делай ярче',
+    'brighten but do not mute', 'გაანათე, მაგრამ არ დაადუმო',
+  ])('does not mutate a negated or ambiguous compound instruction: %s', (text) => {
+    expect(parseVideoEditCommand(text)).toBeNull();
+  });
+
+  it('does not confuse Georgian darkening with slowing playback', () => {
+    expect(parseVideoEditCommand('დააბნელე')).toEqual({ grade: { brightness: 70 } });
+    expect(parseVideoEditCommand('ძალიან დააბნელე')).toEqual({ grade: { brightness: 45 } });
+    expect(parseVideoEditCommand('შეანელე')).toEqual({ speed: 0.5 });
+  });
+
+  it('does not add saturation just because colors are mentioned', () => {
+    expect(parseVideoEditCommand('ფერები უფრო თბილი გახადე')).toEqual({ grade: { temperature: 45 } });
+    expect(parseVideoEditCommand('ფერები უფრო ცივი გახადე')).toEqual({ grade: { temperature: -45 } });
+    expect(parseVideoEditCommand('გააფერადე')).toEqual({ grade: { saturation: 150 } });
+  });
+
+  it.each([
+    'დასაწყისიდან 2 წამი ამოჭერი', 'trim the first 2 seconds and brighten',
+    'обрежь первые 2 секунды', 'make it 9:16 and brighten',
+    'გაანათე და ფორმატი 16:9 გახადე', 'crop to portrait and mute',
+    'cut the first two seconds and brighten', 'გაჭერი 2 წამზე', 'split at 2s',
+    'fade in 2 seconds', 'split and mute', 'გაჭერი და დაადუმე',
+  ])('rejects unsupported trim/crop instructions without applying a different edit: %s', (text) => {
+    expect(parseVideoEditCommand(text)).toBeNull();
+  });
+
+  it('does not mistake location words for resetting the draft', () => {
+    expect(parseVideoEditCommand('დასაწყისიდან')).toBeNull();
+    expect(parseVideoEditCommand('თავიდან დაიწყე')).toEqual({ op: 'reset' });
+    expect(parseVideoEditCommand('დაიწყე თავიდან')).toEqual({ op: 'reset' });
+    expect(parseVideoEditCommand('ყველა მონტაჟის ცვლილება საწყისზე დააბრუნე.')).toEqual({ op: 'reset' });
+  });
+
+  it('keeps affirmative multilingual commands whose words contain negation substrings', () => {
+    expect(parseVideoEditCommand('ნელა')).toEqual({ speed: 0.5 });
+    expect(parseVideoEditCommand('сделай медленнее')).toEqual({ speed: 0.5 });
+    expect(parseVideoEditCommand('turn the contrast up, add contrast')).toEqual({ grade: { contrast: 130 } });
+  });
+
+  it('rejects oversized input instead of executing a prefix before a trailing prohibition', () => {
+    expect(parseVideoEditCommand('brighten ' + ' '.repeat(2000) + 'do not brighten')).toBeNull();
+  });
+
   it('handles a pathologically long input without hanging (input cap + bounded quantifiers — review fix)', () => {
     // ~400k chars of a repeated Georgian token: with the .slice(2000) cap + .{0,40} bounds this stays linear;
     // jest would time out if it went quadratic. The capped window has no trailing token, so nothing matches.

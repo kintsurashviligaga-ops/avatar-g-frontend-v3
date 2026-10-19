@@ -85,6 +85,8 @@ import { claimIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits } from '../../../../lib/orchestrator/ledger';
 import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
 import { hasElevenLabsMusicKey } from '../../../../lib/elevenlabs/music';
+import { firstUnreadableOwnUrl } from '../../../../lib/security/callerMedia';
+import { keepLiveClips } from '../../../../lib/pipeline/qaAgent';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/video/assemble', {
@@ -120,6 +122,32 @@ test("another account's film token is refused (403 film_not_owned) before any cl
   for (const fn of [decideFilmWaiver, claimIdempotencyKey, deductCredits, recordFilmAssembling, recordFilmMaster, recordFilmFailed, recordCompletedFilm]) {
     expect(fn).not.toHaveBeenCalled();
   }
+});
+
+test("another account's clip is refused before probing or dropping it", async () => {
+  (firstUnreadableOwnUrl as jest.Mock).mockResolvedValueOnce(0);
+  const res = await POST(post(FILM));
+  expect(res.status).toBe(403);
+  expect(await res.json()).toMatchObject({ error: 'media_not_yours' });
+  expect(firstUnreadableOwnUrl).toHaveBeenCalledWith(
+    expect.arrayContaining([FILM.segments[0].url]), 'user-1',
+  );
+  for (const fn of [keepLiveClips, decideFilmWaiver, claimIdempotencyKey, deductCredits, recordFilmAssembling, recordFilmMaster]) {
+    expect(fn).not.toHaveBeenCalled();
+  }
+});
+
+test('ownership is checked on the complete bounded input before a probe can drop clips', async () => {
+  (getFilmStatus as jest.Mock).mockResolvedValue(record('user-1'));
+  const second = 'https://storage.example/clip-1.mp4';
+  (keepLiveClips as jest.Mock).mockResolvedValueOnce(FILM.segments);
+  await POST(post({ ...FILM, segments: [...FILM.segments, { url: second, durationSec: 8 }] }));
+  expect(firstUnreadableOwnUrl).toHaveBeenCalledWith(
+    expect.arrayContaining([FILM.segments[0].url, second]), 'user-1',
+  );
+  expect((firstUnreadableOwnUrl as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+    (keepLiveClips as jest.Mock).mock.invocationCallOrder[0],
+  );
 });
 
 test("the caller's own film token goes through to the stitch", async () => {

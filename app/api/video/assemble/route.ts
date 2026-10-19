@@ -343,6 +343,20 @@ async function assembleImpl(req: NextRequest) {
   // Bound the clip count (2× the 12-scene pipeline max = generous headroom, no real film is clamped) so a
   // pathological payload can't make keepLiveClips HEAD-probe an unbounded list or ffmpeg stitch thousands.
   const handedOver = dedupedSegments.slice(0, 24);
+  // ⚠️ EVERY URL BELOW IS RE-SIGNED WITH THE SERVICE ROLE (reSignIfInternal) and stitched into a master the caller
+  // gets back, so a signed URL of ours that is not the caller's (another account's upload, an expired link someone
+  // kept) would come back readable inside the film. Refused here, before any HEAD probe, charge (lib/security/callerMedia).
+  {
+    const named: unknown[] = [
+      ...handedOver.map((s) => s.url),
+      body.customAudioUrl, body.musicUrl, body.voiceoverUrl, body.sfxUrl,
+      ...(Array.isArray(body.dialogueStems) ? body.dialogueStems.slice(0, 16).map((s) => s?.url) : []),
+    ];
+    if ((await firstUnreadableOwnUrl(named, uid)) >= 0) {
+      return NextResponse.json({ error: 'media_not_yours', message: 'One of the clips or audio files is not yours, or its link has expired. Open it again from your Library.' }, { status: 403 });
+    }
+  }
+
   const segments = await keepLiveClips(handedOver);
   // A clip dropped here leaves a salvaged cut, shorter than the board by whole scenes: the final-length contract below was
   // planned on every scene, so it does not apply to the survivors (they are stitched at their own length, as before the
@@ -366,19 +380,6 @@ async function assembleImpl(req: NextRequest) {
   // "could not host the final master" dead-end. Anonymous renders skip the credit
   // / free-film saga entirely (there is no wallet to charge); the full billing
   // saga still runs unchanged for signed-in users.
-  // ⚠️ EVERY URL BELOW IS RE-SIGNED WITH THE SERVICE ROLE (reSignIfInternal) and stitched into a master the caller
-  // gets back, so a signed URL of ours that is not the caller's (another account's upload, an expired link someone
-  // kept) would come back readable inside the film. Refused here, before any charge (lib/security/callerMedia).
-  {
-    const named: unknown[] = [
-      ...segments.map((s) => s.url),
-      body.customAudioUrl, body.musicUrl, body.voiceoverUrl, body.sfxUrl,
-      ...(Array.isArray(body.dialogueStems) ? body.dialogueStems.slice(0, 16).map((s) => s?.url) : []),
-    ];
-    if ((await firstUnreadableOwnUrl(named, uid)) >= 0) {
-      return NextResponse.json({ error: 'media_not_yours', message: 'One of the clips or audio files is not yours, or its link has expired. Open it again from your Library.' }, { status: 403 });
-    }
-  }
 
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
