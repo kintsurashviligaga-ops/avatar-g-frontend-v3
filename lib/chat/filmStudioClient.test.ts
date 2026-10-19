@@ -140,20 +140,36 @@ describe('firstPreviewUrl — graceful fallback while the editor stitches', () =
   });
 });
 
-describe('finalContractForCut — the final-length contract holds only for a cut of every planned scene', () => {
+describe('finalContractForCut — the final-length contract cannot be silently downgraded', () => {
   it('a complete cut carries the contract (a 24 s film of 3 × 8 s)', () => {
     expect(finalContractForCut(24, 3, 3)).toBe(24);
     expect(finalContractForCut(5, 1, 1)).toBe(5); // a single-scene film asked off the grid
   });
-  it('a salvaged cut goes without one: 2 of 3 scenes stitch to 16 s, never refused for the 24 s the board can no longer reach', () => {
-    expect(finalContractForCut(24, 2, 3)).toBeNull();
-    expect(finalContractForCut(57, 7, 8)).toBeNull();
+  it('partial inputs retain the requested duration so the route can refuse them', () => {
+    expect(finalContractForCut(24, 2, 3)).toBe(24);
+    expect(finalContractForCut(57, 7, 8)).toBe(57);
+  });
+  it('both tab and follow bodies keep the planned count and duration after a failed scene', () => {
+    const m = matrix({ sceneCount: 3, clipSec: 8, clips: [
+      { ordinal: 1, status: 'succeeded', url: 'https://storage.example/1.mp4' },
+      { ordinal: 2, status: 'failed', url: null },
+      { ordinal: 3, status: 'succeeded', url: 'https://storage.example/3.mp4' },
+    ] });
+    expect(filmAssembleBody({ finalDurationSec: 24 }, m, 'brief')).toMatchObject({ finalDurationSec: 24, expectedSegments: 3 });
+    expect((filmAssembleBody({ finalDurationSec: 24 }, m, 'brief').segments as unknown[])).toHaveLength(2);
+  });
+  it('an unknown clip duration is not guessed for an explicit final contract', () => {
+    const m = matrix({ sceneCount: 1, clipSec: undefined, clips: [{ ordinal: 1, status: 'succeeded', url: 'c1' }] });
+    const body = JSON.parse(JSON.stringify(filmAssembleBody({ finalDurationSec: 5 }, m, 'brief')));
+    expect(body).toMatchObject({ finalDurationSec: 5, expectedSegments: 1 });
+    expect(body.segments[0]).not.toHaveProperty('durationSec');
   });
   it('no contract asked → none sent', () => {
     expect(finalContractForCut(undefined, 3, 3)).toBeNull();
     expect(finalContractForCut(null, 3, 3)).toBeNull();
     expect(finalContractForCut(0, 3, 3)).toBeNull();
     expect(finalContractForCut(Number.NaN, 3, 3)).toBeNull();
+    expect(finalContractForCut(Infinity, 3, 3)).toBeNull();
   });
 });
 

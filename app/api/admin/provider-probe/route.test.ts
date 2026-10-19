@@ -59,6 +59,27 @@ it('answers 404 to a caller who is not an admin, and probes nothing', async () =
   expect(warn).not.toHaveBeenCalled();
 });
 
+it('never generates or spends Developer API balance during a diagnostic GET, even with a configured key', async () => {
+  process.env.GEMINI_API_KEY = 'gemini-test-key';
+  mockAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok'] });
+  const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+  try {
+    const res = await GET(req());
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalled();
+    for (const [url, init] of fetchSpy.mock.calls) {
+      expect(String(url)).not.toMatch(/:generateContent|:streamGenerateContent|:predict|interactions/);
+      expect(init?.method ?? 'GET').toBe('GET');
+    }
+    expect(body.billingVerification).toMatchObject({ status: 'not_tested', paidInference: false });
+    expect(body.results.some((r: { provider: string }) => r.provider === 'gemini-billing')).toBe(false);
+    expect(JSON.stringify(body)).not.toContain('gemini-test-key');
+  } finally {
+    fetchSpy.mockRestore();
+  }
+});
+
 it('logs the passing keyless chain as one status line', async () => {
   mockAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok', 'bucket:ok', 'sign:ok'] });
   const res = await GET(req());

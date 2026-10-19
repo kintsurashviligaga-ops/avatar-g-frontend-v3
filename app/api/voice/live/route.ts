@@ -39,11 +39,11 @@
  * frame always matches the lock.
  *   googleSearch IS part of the default lock (it minted and completed setup in that same probe): a voice call answers
  *   news, prices, scores and weather from the web like the text chat does. GEMINI_LIVE_GOOGLE_SEARCH=0 is the kill
- *   switch. A session that rejects it costs nothing extra: the browser's legacy retry mints with `tools: false`.
+ *   switch. A session that rejects it may retry with `tools: false`; this is still Developer API, not Vertex billing.
  * Fallback if Google ever rejects the lock (HTTP 400): the verified LEGACY lock (model + generationConfig +
- * systemInstruction — still server-owned, no tools) and `setupMessage` becomes that legacy frame; only if that is
- * rejected too does it drop to the {model}-only lock (`setupLocked: false`). Each step logs
- * `voice.live.setup_lock_rejected`. GEMINI_LIVE_LOCK_SETUP=0 forces the {model}-only lock.
+ * systemInstruction — still server-owned, no tools) and `setupMessage` becomes that legacy frame. If that is
+ * rejected too, return 503 without issuing a weaker token. Each step logs `voice.live.setup_lock_rejected`.
+ * GEMINI_LIVE_LOCK_SETUP=0 disables minting; it can never enable a model-only lock.
  *
  * VOICE-TO-ACTION (lib/voice/liveTools.ts, docs/voice/LIVE_ACTIONS.md): with `actions: true` the lock also carries
  * `{functionDeclarations}` (prepare a studio, show code, open a studio, end the call — PREPARE-ONLY, never a render or a
@@ -170,6 +170,11 @@ export async function POST(request: NextRequest) {
     if (!isEnabledByDefault(process.env.GEMINI_LIVE_ENABLED)) {
       return NextResponse.json({ error: 'gemini_live_disabled' }, { status: 503 });
     }
+    // A model-only lock leaves the instruction and tools to the browser. Never mint that weaker credential,
+    // including when an old deployment setting explicitly asks to disable setup locking.
+    if (!isEnabledByDefault(process.env.GEMINI_LIVE_LOCK_SETUP)) {
+      return NextResponse.json({ error: 'live_setup_lock_required' }, { status: 503 });
+    }
     // ── Gate 2: key present (fail-closed, never leaked) ──────────────────────
     const apiKey = resolveGeminiKey();
     if (!apiKey) {
@@ -288,19 +293,18 @@ export async function POST(request: NextRequest) {
         signal: AbortSignal.timeout(timeoutMs), // a hung mint becomes the already-handled 503 path
       });
 
-    let setupLocked = isEnabledByDefault(process.env.GEMINI_LIVE_LOCK_SETUP);
     // The frame the browser will send — always the one the token was minted for.
     let frame: LiveSetupMessage = setupMessage;
-    let res = await mint(setupLocked ? setupMessage.setup : { model: modelResource }, 12_000);
-    if (!res.ok && setupLocked && res.status === 400 && actionsWanted) {
+    let res = await mint(setupMessage.setup, 12_000);
+    if (!res.ok && res.status === 400 && actionsWanted) {
       const detail = await res.text().catch(() => '');
       structuredLog('warn', 'voice.live.setup_lock_rejected', { lock: 'actions', status: res.status, detail: detail.slice(0, 300) });
       // The declarations are the newest, unverified part of the lock: drop ONLY them first. From here on the frame
-      // never carries them again — not even on the {model}-only fallback below, which sends the parity frame.
+      // never carries them again. Every later attempt still locks a complete server-owned setup.
       frame = parityFor(false);
       res = await mint(frame.setup, 8_000);
     }
-    if (!res.ok && setupLocked && res.status === 400) {
+    if (!res.ok && res.status === 400) {
       const detail = await res.text().catch(() => '');
       structuredLog('warn', 'voice.live.setup_lock_rejected', { lock: 'full', status: res.status, detail: detail.slice(0, 300) });
       // Still server-owned: the legacy wire the product ran on before parity (no transcription/resumption/tools).
@@ -318,8 +322,6 @@ export async function POST(request: NextRequest) {
       } else if (res.status === 400) {
         const d2 = await res.text().catch(() => '');
         structuredLog('warn', 'voice.live.setup_lock_rejected', { lock: 'legacy', status: res.status, detail: d2.slice(0, 300) });
-        setupLocked = false;
-        res = await mint({ model: modelResource }, 8_000);
       }
     }
     if (!res.ok) {
@@ -341,7 +343,7 @@ export async function POST(request: NextRequest) {
       model: modelResource,
       expiresAt: expireTime,
       setupMessage: frame,
-      setupLocked,
+      setupLocked: true,
       voice: live.voiceName,
       locale,
       actions,
