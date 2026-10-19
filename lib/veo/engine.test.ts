@@ -170,7 +170,10 @@ describe('veoTransport', () => {
     ['pinned vertex', 'vertex', true, false, undefined, 'vertex'],
     ['pinned vertex, not configured → null, never a quiet Gemini render', 'vertex', false, true, undefined, null],
     ['pin is trimmed and case-insensitive', ' VERTEX ', true, true, undefined, 'vertex'],
-    ['an unknown pin is auto', 'auto', false, true, undefined, 'gemini'],
+    ['explicit auto mode', 'auto', false, true, undefined, 'gemini'],
+    ['explicit auto is trimmed and case-insensitive', ' AUTO ', true, true, undefined, 'vertex'],
+    ['unknown pin with both transports available', 'vertx', true, true, undefined, null],
+    ['unknown pin with only a Gemini key', 'gemini_api', false, true, undefined, null],
   ])('%s', (_label, pin, vertex, key, enabled, expected) => {
     setEnv({
       ...(pin !== undefined ? { VEO_TRANSPORT: pin } : {}),
@@ -629,6 +632,19 @@ describe('createVeoClip — Gemini API', () => {
 // ── not configured ──────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('createVeoClip — no transport', () => {
+  it.each([false, true])('an invalid pin refuses before media preparation or either provider (Vertex ready: %s)', async (vertexReady) => {
+    process.env.VEO_TRANSPORT = 'wrong-transport-should-not-leak';
+    process.env.GEMINI_API_KEY = KEY;
+    if (vertexReady) useVertex();
+    routeFetch();
+    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }));
+    expect(res.transport).toBeNull();
+    expect(failed(res.outcome)).toMatchObject({ reason: 'not_configured', retryable: false });
+    expect(failed(res.outcome).detail).toMatch(/VEO_TRANSPORT must be/);
+    expect(JSON.stringify(res)).not.toContain('wrong-transport-should-not-leak');
+    for (const fn of [fetchMock, uploadMock, prefixMock, tokenMock]) expect(fn).not.toHaveBeenCalled();
+  });
+
   it('nothing configured → not_configured naming the missing env, nothing sent', async () => {
     const res = await createVeoClip(input({ prompt: 'x', aspect: '4:5', durationSec: 8 }));
     expect(res.transport).toBeNull();
@@ -712,16 +728,18 @@ describe('createVeoClip — one concise log line', () => {
 // ── poll / deliver ──────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('pollVeoClip', () => {
-  it('a Vertex operation polls Vertex (even when the current transport is Gemini)', async () => {
+  it.each(['gemini', 'invalid-pin'])('a Vertex operation keeps polling Vertex with current pin %s', async (pin) => {
     useGemini();
+    process.env.VEO_TRANSPORT = pin;
     fetchMock.mockResolvedValueOnce(json(200, { done: false }));
     expect(await pollVeoClip(` ${VERTEX_OP} `)).toStrictEqual({ state: 'processing' });
     expect(calls()[0]?.[0]).toBe(VERTEX_SUBMIT.replace(':predictLongRunning', ':fetchPredictOperation'));
     expect(JSON.parse(String(calls()[0]?.[1].body))).toStrictEqual({ operationName: VERTEX_OP });
   });
 
-  it('a Gemini operation polls the Gemini API (even when the current transport is Vertex)', async () => {
+  it.each(['vertex', 'invalid-pin'])('a Gemini operation keeps polling its own API with current pin %s', async (pin) => {
     useVertex();
+    process.env.VEO_TRANSPORT = pin;
     process.env.GEMINI_API_KEY = KEY;
     fetchMock.mockResolvedValueOnce(
       json(200, { done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: 'https://generativelanguage.googleapis.com/v1beta/files/f:download?alt=media' } }] } } }),

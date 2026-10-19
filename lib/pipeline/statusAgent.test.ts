@@ -120,6 +120,15 @@ describe('the video row names the engine that renders film clips', () => {
     expect(video.available).toBe(false);
     expect(video.note).toMatch(/^VEO_TRANSPORT=vertex but Vertex AI is missing .*GCP_PROJECT_ID/);
   });
+
+  it.each([false, true])('an invalid transport pin is unavailable without leaking its value (Vertex ready: %s)', async (vertexReady) => {
+    setEnv({ ...SECRETS, ...(vertexReady ? VERTEX_ENV : {}), VEO_TRANSPORT: 'wrong-pin-should-not-leak' });
+    const h = await checkPipelineHealth();
+    const video = row(h, 'ვიდეო (Clips)');
+    expect(video.available).toBe(false);
+    expect(video.note).toMatch(/VEO_TRANSPORT must be/);
+    expect(JSON.stringify(h)).not.toContain('wrong-pin-should-not-leak');
+  });
 });
 
 describe('no row repeats the stale provider claims', () => {

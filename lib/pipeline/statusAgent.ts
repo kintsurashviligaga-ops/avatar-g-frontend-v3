@@ -44,7 +44,7 @@ import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { resolveModel } from '@/lib/veo/capabilities';
-import { veoTransport } from '@/lib/veo/engine';
+import { veoTransport, veoTransportConfigProblem } from '@/lib/veo/engine';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
 
@@ -125,6 +125,8 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     const veoModel = transport ? resolveModel(transport, STUDIO_DEFAULT_VEO_TIER) : null;
     const pin = (env.VEO_TRANSPORT ?? '').trim().toLowerCase();
     const veoMissing = (): string => {
+      const invalid = veoTransportConfigProblem();
+      if (invalid) return invalid;
       const vertexMissing = vertexConfigProblems().join(', ') || 'incomplete';
       const gemini = resolveGeminiKey() ? 'GEMINI_VEO_ENABLED is off' : 'no GEMINI_API_KEY';
       if (pin === 'vertex') return `VEO_TRANSPORT=vertex but Vertex AI is missing ${vertexMissing}`;
