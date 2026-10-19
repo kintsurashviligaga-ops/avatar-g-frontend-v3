@@ -491,10 +491,21 @@ describe('asSceneQa — the assembler\'s per-scene grades, narrowed', () => {
       { ordinal: 5, grade: 'B', score: 80, action: 'weird' },
       null,
     ])).toEqual([
-      { ordinal: 2, grade: 'F', score: 40, action: 'rerender', issues: ['warp'] },
-      { ordinal: 5, grade: 'B', score: 80, action: 'accept', issues: [] },
+      { ordinal: 2, status: 'FAIL', grade: 'F', score: 40, action: 'rerender', issues: ['warp'] },
+      { ordinal: 5, status: 'PASS', grade: 'B', score: 80, action: 'accept', issues: [] },
     ]);
     expect(asSceneQa(undefined)).toEqual([]);
     expect(asSceneQa('x')).toEqual([]);
+  });
+
+  test('unmeasured scene outcomes survive narrowing, while contradictory pass claims do not', () => {
+    const unavailable = { ordinal: 2, status: 'UNAVAILABLE', grade: null, score: null, action: 'review', reason: 'deadline', issues: [] };
+    expect(asSceneQa([
+      unavailable,
+      { ...unavailable, ordinal: 3, status: 'SKIPPED', reason: 'disabled' },
+      { ...unavailable, ordinal: 4, grade: 'A', score: 100 },
+      { ordinal: 5, status: 'PASS', grade: 'F', score: 40, action: 'rerender' },
+      { ordinal: 6, status: 'UNKNOWN', grade: 'A', score: 95 },
+    ])).toEqual([unavailable, { ...unavailable, ordinal: 3, status: 'SKIPPED', reason: 'disabled' }]);
   });
 });

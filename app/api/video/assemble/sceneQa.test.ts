@@ -138,7 +138,7 @@ test('every scene clip is graded under its own scene number, and the grades come
   ]);
   expect(opts.deadlineMs).toBe(45_000);
   // The whole master is still graded beside the scenes.
-  expect(evaluateRenderQuality).toHaveBeenCalledWith({ videoUrl: MASTER });
+  expect(evaluateRenderQuality).toHaveBeenCalledWith({ videoUrl: MASTER, signal: expect.any(AbortSignal) });
 });
 
 test('segments without a scene number are numbered by their place in the cut', async () => {
@@ -155,13 +155,15 @@ test('check off: nothing is graded and no sceneQa key is sent', async () => {
   expect(evaluateSceneClips).not.toHaveBeenCalled();
 });
 
-test('a grader that throws never breaks the delivered film', async () => {
+test('a grader that throws reports unmeasured scenes without breaking optional delivery', async () => {
   (evaluateSceneClips as jest.Mock).mockRejectedValue(new Error('ffmpeg exploded'));
   const res = await POST(post({ segments: SEGMENTS }));
   expect(res.status).toBe(200);
   const json = await res.json();
   expect(json.url).toBe(MASTER);
-  expect(json).not.toHaveProperty('sceneQa');
+  expect(json.sceneQa).toEqual([1, 3].map((ordinal) => ({
+    ordinal, status: 'UNAVAILABLE', grade: null, score: null, action: 'review', reason: 'gate_error', issues: [],
+  })));
 });
 
 test('an unavailable master evaluation reaches the response without a fabricated grade', async () => {
@@ -187,4 +189,12 @@ test('a timed out master evaluation has an unavailable deadline verdict', async 
   await jest.advanceTimersByTimeAsync(45_000);
   const json = await (await response).json();
   expect(json.visionQa).toMatchObject({ status: 'UNAVAILABLE', ran: false, pass: false, grade: null, score: null, reason: 'deadline' });
+  expect((evaluateRenderQuality as jest.Mock).mock.calls[0][0].signal.aborted).toBe(true);
+});
+
+test('an unavailable scene remains in the route response', async () => {
+  const scene = { ordinal: 3, status: 'UNAVAILABLE', grade: null, score: null, action: 'review', reason: 'deadline', issues: [] };
+  (evaluateSceneClips as jest.Mock).mockResolvedValue([GRADES[0], scene]);
+  const json = await (await POST(post({ segments: SEGMENTS }))).json();
+  expect(json.sceneQa).toEqual([GRADES[0], scene]);
 });

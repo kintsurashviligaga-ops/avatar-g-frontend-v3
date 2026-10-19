@@ -152,6 +152,19 @@ describe('what the per-scene vision check found is said under the film (audit it
     expect(weakScenesText(undefined, true, 'ka')).toBe('');
   });
 
+  test.each(['ka', 'en', 'ru'])('unverified scenes are disclosed without offering a paid redo (%s)', (locale) => {
+    const text = weakScenesText([{ ordinal: 2, grade: null, status: 'UNAVAILABLE' }], true, locale);
+    expect(text).not.toBe('');
+    expect(text).not.toMatch(/შეცვალე|change scene|измени сцену|undefined/);
+    expect(text).toMatch(locale === 'ka' ? /შემოწმებული არ არის/ : locale === 'ru' ? /не проверено/ : /not verified/);
+  });
+
+  test('unavailable status cannot become a paid redo offer from a contradictory grade', () => {
+    const text = weakScenesText([{ ordinal: 2, grade: 'F', status: 'UNAVAILABLE' }], true, 'en');
+    expect(text).toContain('not verified');
+    expect(text).not.toMatch(/real flaw|change scene/);
+  });
+
   test('a flawed and a weak scene are named, and the command for the flawed one is offered', () => {
     const t = weakScenesText([{ ordinal: 3, grade: 'C' }, { ordinal: 2, grade: 'F' }, { ordinal: 1, grade: 'A' }], true, 'ka');
     expect(t).toContain('მე-2 სცენაში სერიოზული ხარვეზი');

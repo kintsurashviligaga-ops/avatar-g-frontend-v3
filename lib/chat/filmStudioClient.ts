@@ -816,7 +816,7 @@ async function assembleMaster(
   };
 }
 
-/** Narrow the assembler's per-scene vision grades; anything malformed is dropped, never guessed. */
+/** Preserve explicit unmeasured QA. Legacy measured grades remain readable; contradictory states are refused. */
 export function asSceneQa(v: unknown): SceneQaEntry[] {
   if (!Array.isArray(v)) return [];
   return v.flatMap((e): SceneQaEntry[] => {
@@ -824,13 +824,21 @@ export function asSceneQa(v: unknown): SceneQaEntry[] {
     const o = e as Record<string, unknown>;
     const grade = o.grade;
     if (!(typeof o.ordinal === 'number' && Number.isInteger(o.ordinal) && o.ordinal >= 1 && o.ordinal <= 24)) return [];
+    if (o.status === 'SKIPPED' || o.status === 'UNAVAILABLE') {
+      if (grade !== null || o.score !== null || o.action !== 'review' || typeof o.reason !== 'string' || !o.reason) return [];
+      return [{ ordinal: o.ordinal, status: o.status, grade: null, score: null, action: 'review', reason: o.reason.slice(0, 80), issues: [] }];
+    }
+    if (o.status !== undefined && o.status !== 'PASS' && o.status !== 'FAIL') return [];
     if (grade !== 'A' && grade !== 'B' && grade !== 'C' && grade !== 'F') return [];
-    if (typeof o.score !== 'number' || !Number.isFinite(o.score)) return [];
+    if (typeof o.score !== 'number' || !Number.isFinite(o.score) || o.score < 0 || o.score > 100) return [];
+    const status = grade === 'F' ? 'FAIL' : 'PASS';
+    if (o.status !== undefined && o.status !== status) return [];
     return [{
       ordinal: o.ordinal,
+      status,
       grade,
       score: o.score,
-      action: o.action === 'rerender' ? 'rerender' : 'accept',
+      action: grade === 'F' ? 'rerender' : 'accept',
       issues: Array.isArray(o.issues) ? o.issues.filter((x): x is string => typeof x === 'string').slice(0, 12) : [],
     }];
   });

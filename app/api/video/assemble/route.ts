@@ -1195,6 +1195,7 @@ async function assembleImpl(req: NextRequest) {
   let sceneQa: SceneQaEntry[] = [];
   if (visionQaEnabled() && resultUrl) {
     let visionTimer: ReturnType<typeof setTimeout> | undefined;
+    const visionController = new AbortController();
     try {
       // Bound the WHOLE gate (frame extraction + the bare-fetch Gemini call) so a stalled provider or
       // ffmpeg can never PIN this route until maxDuration — a hang is not an error. On the race timeout
@@ -1208,12 +1209,14 @@ async function assembleImpl(req: NextRequest) {
         : [];
       [visionQa, sceneQa] = await Promise.all([
         Promise.race([
-          evaluateRenderQuality({ videoUrl: resultUrl }),
+          evaluateRenderQuality({ videoUrl: resultUrl, signal: visionController.signal }).catch(() => visionQaUnavailable('gate_error')),
           new Promise<Awaited<ReturnType<typeof evaluateRenderQuality>>>((r) => {
-            visionTimer = setTimeout(() => r(visionQaUnavailable('deadline')), 45_000);
+            visionTimer = setTimeout(() => { visionController.abort(); r(visionQaUnavailable('deadline')); }, 45_000);
           }),
         ]),
-        evaluateSceneClips(sceneClips, { deadlineMs: 45_000 }).catch(() => []),
+        evaluateSceneClips(sceneClips, { deadlineMs: 45_000 }).catch(() => sceneClips.map<SceneQaEntry>(({ ordinal }) => ({
+          ordinal, status: 'UNAVAILABLE', grade: null, score: null, action: 'review', reason: 'gate_error', issues: [],
+        }))),
       ]);
       if (visionQa) {
         // eslint-disable-next-line no-console
@@ -1227,6 +1230,7 @@ async function assembleImpl(req: NextRequest) {
       visionQa = visionQaUnavailable('gate_error');
     } finally {
       if (visionTimer) clearTimeout(visionTimer);
+      visionController.abort();
     }
   }
 

@@ -196,29 +196,33 @@ describe('evaluateSceneClips — each scene graded on its own (audit item 3b)', 
   test('every scene is graded and reported in scene order, with issue codes only', async () => {
     const out = await evaluateSceneClips(clips, { deadlineMs: 5_000 }, deps);
     expect(out).toEqual([
-      { ordinal: 1, grade: 'A', score: 91, action: 'accept', issues: [] },
-      { ordinal: 2, grade: 'F', score: 40, action: 'rerender', issues: ['warp'] },
-      { ordinal: 3, grade: 'C', score: 64, action: 'accept', issues: ['drift'] },
+      { ordinal: 1, status: 'PASS', grade: 'A', score: 91, action: 'accept', issues: [] },
+      { ordinal: 2, status: 'FAIL', grade: 'F', score: 40, action: 'rerender', issues: ['warp'] },
+      { ordinal: 3, status: 'PASS', grade: 'C', score: 64, action: 'accept', issues: ['drift'] },
     ]);
   });
 
-  test('a scene the gate skipped is left out, never reported as a pass', async () => {
+  test('a scene the gate could not measure is retained without a passing grade', async () => {
     const out = await evaluateSceneClips(clips, { deadlineMs: 5_000 }, { ...deps, score: async (_p: string, f: string[]) => (f[0].includes('clip-2') ? null : verdicts['clip-1']) });
-    expect(out.map((e) => e.ordinal)).toEqual([1, 3]);
+    expect(out.map((e) => e.ordinal)).toEqual([1, 2, 3]);
+    expect(out[1]).toMatchObject({ status: 'UNAVAILABLE', grade: null, reason: 'vision_unavailable' });
   });
 
-  test('off → nothing runs and nothing is reported', async () => {
+  test('off → nothing runs, and every input is explicitly skipped', async () => {
     const extract = jest.fn(async () => ['a']);
-    expect(await evaluateSceneClips(clips, { deadlineMs: 5_000 }, { ...deps, enabled: () => false, extract })).toEqual([]);
+    const out = await evaluateSceneClips(clips, { deadlineMs: 5_000 }, { ...deps, enabled: () => false, extract });
+    expect(out).toHaveLength(3);
+    expect(out.every((q) => q.status === 'SKIPPED' && q.grade === null)).toBe(true);
     expect(extract).not.toHaveBeenCalled();
   });
 
-  test('a scene still being graded at the deadline is dropped, and the deadline holds', async () => {
+  test('a scene still being graded at the deadline is unavailable, and the deadline holds', async () => {
     const slow = { ...deps, extract: async (url: string) => (url.includes('clip-2') ? new Promise<string[]>(() => {}) : [url]) };
     const t0 = Date.now();
     const out = await evaluateSceneClips(clips, { deadlineMs: 150, concurrency: 3 }, slow);
     expect(Date.now() - t0).toBeLessThan(2_000);
-    expect(out.map((e) => e.ordinal)).toEqual([1, 3]);
+    expect(out.map((e) => e.ordinal)).toEqual([1, 2, 3]);
+    expect(out[1]).toMatchObject({ status: 'UNAVAILABLE', grade: null, reason: 'deadline' });
   });
 
   test('no more clips are downloaded at once than the concurrency allows', async () => {

@@ -180,22 +180,27 @@ async function defaultScore(prompt: string, frames: string[]): Promise<string | 
  * FILM_VISION_QA + a configured Google transport. Deps are injectable; production uses lazy IO.
  */
 export async function evaluateRenderQuality(
-  input: { videoUrl: string; characterLock?: string; style?: string },
+  input: { videoUrl: string; characterLock?: string; style?: string; signal?: AbortSignal },
   deps: VisionGateDeps = {},
 ): Promise<VisionVerdict> {
   try {
+    if (input.signal?.aborted) return visionQaUnavailable('cancelled');
     const enabled = deps.enabled ?? visionQaEnabled;
     if (!enabled()) return visionQaUnavailable('disabled');
     const keyPresent = deps.keyPresent ?? defaultKeyPresent;
-    if (!(await keyPresent())) return visionQaUnavailable('no_key');
+    const configured = await keyPresent();
+    if (input.signal?.aborted) return visionQaUnavailable('cancelled');
+    if (!configured) return visionQaUnavailable('no_key');
 
     const extract = deps.extract ?? defaultExtract;
     const frames = await extract(input.videoUrl).catch(() => []);
+    if (input.signal?.aborted) return visionQaUnavailable('cancelled');
     if (!frames.length) return visionQaUnavailable('no_frames');
 
     const prompt = buildVisionQaPrompt({ characterLock: input.characterLock, style: input.style });
     const score = deps.score ?? defaultScore;
     const text = await score(prompt, frames).catch(() => null);
+    if (input.signal?.aborted) return visionQaUnavailable('cancelled', frames.length);
     if (!text) return visionQaUnavailable('vision_unavailable', frames.length);
     return parseVisionVerdict(text, frames.length);
   } catch {
@@ -205,48 +210,55 @@ export async function evaluateRenderQuality(
 }
 
 /** One scene clip's grade, as the assembler reports it. Issue codes only; their details stay in the logs. */
-export interface SceneQaEntry {
-  ordinal: number;
-  grade: VisionGrade;
-  score: number;
-  action: 'accept' | 'rerender';
-  issues: string[];
-}
+export type SceneQaEntry = { ordinal: number; issues: string[] } & (
+  | Pick<VisionMeasurement, 'status' | 'grade' | 'score' | 'action'>
+  | Pick<VisionNotMeasured, 'status' | 'grade' | 'score' | 'action' | 'reason'>
+);
 
 /** Scene clips graded at once: each one downloads its clip and runs ffmpeg inside the same function. */
 export const SCENE_QA_CONCURRENCY = 2;
 
 /**
  * Grade each scene clip of a film on its own (audit item 3b, 2026-10-17), so a weak scene can be named and shot
- * again at the scene's price instead of only grading the whole master. Fail-open like the gate: a scene the gate
- * skipped is left out, and so is a scene still being graded when `deadlineMs` runs out. Sorted by ordinal.
+ * again at the scene's price instead of only grading the whole master. Every submitted clip retains an outcome,
+ * including disabled/unavailable/deadline checks. This is input coverage, not proof of an approved manifest.
+ * Deadline cancellation prevents a late extraction/configuration result from starting new inference; it does not
+ * cancel or refund an already-submitted provider operation. Sorted by ordinal.
  */
 export async function evaluateSceneClips(
   clips: ReadonlyArray<{ url: string; ordinal: number }>,
   opts: { deadlineMs: number; characterLock?: string; style?: string; concurrency?: number },
   deps: VisionGateDeps = {},
 ): Promise<SceneQaEntry[]> {
-  const enabled = deps.enabled ?? visionQaEnabled;
-  if (!clips.length || !enabled()) return [];
-  const graded: SceneQaEntry[] = [];
-  const queue = [...clips];
+  if (!clips.length) return [];
+  const entry = (ordinal: number, v: VisionVerdict): SceneQaEntry => {
+    const common = { ordinal, issues: v.issues.map((i) => i.code) };
+    return v.ran
+      ? { ...common, status: v.status, grade: v.grade, score: v.score, action: v.action }
+      : { ...common, status: v.status, grade: null, score: null, action: 'review', reason: v.reason };
+  };
+  const deadline = Number.isFinite(opts.deadlineMs) ? Math.max(0, opts.deadlineMs) : 0;
+  const graded = clips.map((clip) => entry(clip.ordinal, visionQaUnavailable('deadline')));
+  if (deadline === 0) return graded.sort((a, b) => a.ordinal - b.ordinal);
+  const queue = clips.map((clip, index) => ({ ...clip, index }));
   let expired = false;
+  const controller = new AbortController();
   const worker = async () => {
     while (!expired && queue.length) {
       const clip = queue.shift()!;
-      const v = await evaluateRenderQuality({ videoUrl: clip.url, characterLock: opts.characterLock, style: opts.style }, deps);
-      if (!expired && v.ran) {
-        graded.push({ ordinal: clip.ordinal, grade: v.grade, score: v.score, action: v.action, issues: v.issues.map((i) => i.code) });
-      }
+      const v = await evaluateRenderQuality({ videoUrl: clip.url, characterLock: opts.characterLock, style: opts.style, signal: controller.signal }, deps);
+      if (!expired) graded[clip.index] = entry(clip.ordinal, v);
     }
   };
-  const width = Math.max(1, Math.min(opts.concurrency ?? SCENE_QA_CONCURRENCY, clips.length));
+  const requestedWidth = opts.concurrency ?? SCENE_QA_CONCURRENCY;
+  const width = Number.isFinite(requestedWidth) ? Math.max(1, Math.min(Math.floor(requestedWidth), clips.length)) : SCENE_QA_CONCURRENCY;
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([
     Promise.all(Array.from({ length: width }, worker)),
-    new Promise<void>((resolve) => { timer = setTimeout(resolve, Math.max(0, opts.deadlineMs)); }),
+    new Promise<void>((resolve) => { timer = setTimeout(() => { expired = true; controller.abort(); resolve(); }, deadline); }),
   ]);
   if (timer) clearTimeout(timer);
   expired = true;
+  controller.abort();
   return [...graded].sort((a, b) => a.ordinal - b.ordinal);
 }
