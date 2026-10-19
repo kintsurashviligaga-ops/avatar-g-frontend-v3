@@ -46,6 +46,10 @@ jest.mock('../../../../lib/video/remixOps', () => ({
 }));
 jest.mock('../../../../lib/video/surgicalOps', () => ({ probeDimensions: jest.fn() }));
 jest.mock('../../../../lib/orchestrator/ffmpeg-assembly', () => ({ assembleWithFfmpeg: jest.fn() }));
+jest.mock('../../../../lib/video/finalCut', () => ({
+  cutMasterToLength: jest.fn(async () => 'https://storage.example/exact-master.mp4'),
+  isFinalCutRejected: jest.fn(() => false),
+}));
 jest.mock('../../../../lib/pipeline/compositing/word-synced-captions', () => ({}));
 jest.mock('../../../../lib/pipeline/compositing/caption-burn', () => ({ overlayCaptionsOnUrl: jest.fn() }));
 jest.mock('../../../../lib/elevenlabs/music', () => ({
@@ -87,6 +91,10 @@ import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
 import { hasElevenLabsMusicKey } from '../../../../lib/elevenlabs/music';
 import { firstUnreadableOwnUrl } from '../../../../lib/security/callerMedia';
 import { keepLiveClips } from '../../../../lib/pipeline/qaAgent';
+import { muxAudioOntoVideo } from '../../../../lib/video/remixOps';
+import { assembleWithFfmpeg } from '../../../../lib/orchestrator/ffmpeg-assembly';
+import { composeElevenLabsMusic } from '../../../../lib/elevenlabs/music';
+import { cutMasterToLength } from '../../../../lib/video/finalCut';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/video/assemble', {
@@ -148,6 +156,83 @@ test('ownership is checked on the complete bounded input before a probe can drop
   expect((firstUnreadableOwnUrl as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
     (keepLiveClips as jest.Mock).mock.invocationCallOrder[0],
   );
+});
+
+describe('an explicit final duration never authorizes a partial film', () => {
+  const second = { url: 'https://storage.example/clip-1.mp4', durationSec: 8 };
+  const noRenderOrBilling = () => {
+    for (const fn of [decideFilmWaiver, claimIdempotencyKey, deductCredits, recordFilmAssembling,
+      recordFilmMaster, recordFilmFailed, recordCompletedFilm, muxAudioOntoVideo, assembleWithFfmpeg, composeElevenLabsMusic, cutMasterToLength]) {
+      expect(fn).not.toHaveBeenCalled();
+    }
+  };
+
+  test('a missing scene refuses before billing, audio generation, rendering or publication', async () => {
+    (keepLiveClips as jest.Mock).mockResolvedValueOnce(FILM.segments);
+    const res = await POST(post({ ...FILM, segments: [...FILM.segments, second], finalDurationSec: 12 }));
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: 'contracted_segment_unavailable', expectedSegments: 2, readySegments: 1 });
+    noRenderOrBilling();
+  });
+
+  test('the tab/follow planned count cannot be replaced with only the landed clips', async () => {
+    const res = await POST(post({ ...FILM, expectedSegments: 2, finalDurationSec: 5 }));
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: 'contracted_segment_unavailable', expectedSegments: 2, readySegments: 1 });
+    expect(keepLiveClips).not.toHaveBeenCalled();
+    noRenderOrBilling();
+  });
+
+  test.each([0, -1, 1.5, 25, '2'])('invalid expected scene count %p refuses before work', async (expectedSegments) => {
+    const res = await POST(post({ ...FILM, expectedSegments, finalDurationSec: 5 }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'contracted_segments_invalid', reason: 'invalid_expected_count' });
+    noRenderOrBilling();
+  });
+
+  test.each([
+    ['absent list', undefined], ['empty list', []], ['non-array list', {}],
+    ['null entry', [null]], ['placeholder', [{ durationSec: 8 }]],
+    ['duplicate URL', [...FILM.segments, ...FILM.segments]],
+    ['whitespace URL alias', [...FILM.segments, { ...FILM.segments[0], url: FILM.segments[0].url + ' ' }]],
+    ['unknown duration', [{ url: second.url }]],
+    ['zero duration', [{ ...second, durationSec: 0 }]],
+    ['negative duration', [{ ...second, durationSec: -8 }]],
+    ['string duration', [{ ...second, durationSec: '8' }]],
+    ['duplicate scene identity', [{ ...FILM.segments[0], ordinal: 1 }, { ...second, ordinal: 1 }]],
+    ['invalid scene identity', [{ ...second, ordinal: 0 }]],
+    ['too many scenes', Array.from({ length: 25 }, (_, i) => ({ url: `https://storage.example/clip-${i}.mp4`, durationSec: 8 }))],
+  ])('%s is refused without silently filtering, guessing or truncating the contracted input', async (_label, segments) => {
+    const res = await POST(post({ ...FILM, segments, finalDurationSec: 8 }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'contracted_segments_invalid' });
+    expect(keepLiveClips).not.toHaveBeenCalled();
+    noRenderOrBilling();
+  });
+
+  test('a complete owned single clip still reaches the exact-cut path', async () => {
+    (getFilmStatus as jest.Mock).mockResolvedValue(record('user-1'));
+    const res = await POST(post({ ...FILM, finalDurationSec: 5 }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ url: 'https://storage.example/exact-master.mp4' });
+    expect(cutMasterToLength).toHaveBeenCalledWith(FILM.segments[0].url, 5);
+  });
+
+  test.each([-5, 'invalid', 999])('an invalid final duration %p refuses before a status write or paid work', async (finalDurationSec) => {
+    const res = await POST(post({ ...FILM, finalDurationSec }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'final_duration_invalid' });
+    noRenderOrBilling();
+  });
+
+  test.each([undefined, null])('legacy final duration %p retains the existing salvage path', async (finalDurationSec) => {
+    (getFilmStatus as jest.Mock).mockResolvedValue(record('user-1'));
+    (keepLiveClips as jest.Mock).mockResolvedValueOnce(FILM.segments);
+    const res = await POST(post({ ...FILM, segments: [...FILM.segments, second], finalDurationSec }));
+    expect(res.status).toBe(200);
+    expect(recordFilmMaster).toHaveBeenCalled();
+    expect(cutMasterToLength).not.toHaveBeenCalled();
+  });
 });
 
 test("the caller's own film token goes through to the stitch", async () => {
