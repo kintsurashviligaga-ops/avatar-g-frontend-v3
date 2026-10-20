@@ -737,7 +737,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const handleNewChat = useCallback(() => {
     try {
       document.documentElement.dataset.tool = 'chat';
-      window.dispatchEvent(new CustomEvent('omni:select-tool', { detail: 'chat' }));
+      window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'chat', cancelable: true }));
       window.dispatchEvent(new CustomEvent('omni:tool-changed', { detail: 'chat' }));
     } catch { /* ignore */ }
     window.dispatchEvent(new Event('myavatar:new-chat'));
@@ -1169,12 +1169,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         {/* ONE lockup: the transparent rocket + the name (docs/DESIGN.md §13). ⚠️ „ორი ლოგო“ — the OPAQUE rocket tile
             used to sit beside the name (and in the header), reading as a second logo; the cut-out has no box and
             lives inside the wordmark's single role="img". */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-3">
+        <div className="flex items-center justify-between px-4 pb-3 pt-3">
           <span className="text-[20px] font-semibold tracking-tight text-white">MyAvatar</span>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => { if (searchOpen) setConvQuery(""); setSearchOpen((v) => !v); }}
+              onClick={() => { if (searchOpen) setConvQuery(''); setSearchOpen((v) => !v); }}
               aria-label={tSearchRow}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a1b1e] text-white/80 transition-colors hover:bg-white/15"
             >
@@ -1191,8 +1191,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           </div>
         </div>
 
-        {/* Gemini Reference Primary Navigation Rows */}
-        <div className="space-y-1 px-3">
+        <div className="space-y-1.5 px-3 pb-2">
           <button
             type="button"
             onClick={handleNewChat}
@@ -1203,7 +1202,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <path d="M12 20h9" />
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
             </svg>
-            <span>{lang === "en" ? "New chat" : lang === "ru" ? "Новый чат" : "ახალი ჩატი"}</span>
+            <span>{lang === 'en' ? 'New chat' : lang === 'ru' ? 'Новый чат' : 'ახალი ჩატი'}</span>
           </button>
 
           <button
@@ -1217,150 +1216,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <rect x="14" y="14" width="7" height="7" rx="2" />
               <rect x="3" y="14" width="7" height="7" rx="2" />
             </svg>
-            <span>{lang === "en" ? "Library" : lang === "ru" ? "Библиотека" : "ბიბლიოთეკა"}</span>
+            <span>{lang === 'en' ? 'Library' : lang === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა'}</span>
           </button>
-
-          <button
-            type="button"
-            onClick={() => selectTool("image")}
-            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="3" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="M21 15l-5-5L5 21" />
-            </svg>
-            <span>{lang === "en" ? "Images" : lang === "ru" ? "Изображения" : "სურათები"}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => selectTool("video")}
-            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <polyline points="12 7 12 12 15 15" />
-            </svg>
-            <span>{lang === "en" ? "Scheduled" : lang === "ru" ? "Видео · Расписание" : "ვიდეო · დაგეგმილი"}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => selectTool("avatar")}
-            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-              <path d="M6 12v5c3 3 9 3 12 0v-5" />
-            </svg>
-            <span>{lang === "en" ? "Students" : lang === "ru" ? "Аватар · Студия" : "ავატარი · სტუდია"}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }}
-            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="currentColor">
-              <circle cx="5" cy="12" r="1.6" />
-              <circle cx="12" cy="12" r="1.6" />
-              <circle cx="19" cy="12" r="1.6" />
-            </svg>
-            <span>{lang === "en" ? "More" : lang === "ru" ? "Ещё" : "მეტი"}</span>
-          </button>
-
-          <div className="pt-4 pb-1">
-            <p className="px-4 pb-1.5 text-[12.5px] font-medium text-white/45">Notebooks</p>
-            <button
-              type="button"
-              onClick={handleNewChat}
-              className="flex w-full items-center gap-3.5 rounded-full px-4 py-2 text-left text-[14.5px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
-            >
-              <span className="flex h-5 w-5 items-center justify-center text-[20px] font-light leading-none text-white/80">+</span>
-              <span>{lang === "en" ? "New notebook" : lang === "ru" ? "Новый блокнот" : "ახალი პროექტი"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => selectTool("chat")}
-              className="flex w-full items-center gap-3.5 rounded-full px-4 py-2 text-left text-[14.5px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
-              <span>Myavatar.ge</span>
-            </button>
-          </div>
         </div>
 
-        <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* The services, by catalog category (lib/catalog/nav.ts — the composer's „+" sheet reads the
-              same groups, so a tool can never be reachable from one door and missing from the other). In the studio a row
-              switches the tool in place; anywhere else it opens the studio on it. */}
-          {(['create', 'work'] as const).map((grp) => {
-            const cats = navCategories.filter((g) => g.group === grp);
-            if (cats.length === 0) return null;
-            return (
-              <div key={grp} data-testid={`sidebar-group-${grp}`}>
-                <p className={sideHdr}>{NAV_GROUP_LABEL[grp][lang]}</p>
-                <div className="space-y-0.5">
-                  {cats.map((g) => {
-                    const lead = g.tools[0]!;
-                    const rest = g.tools.slice(1);
-                    const { Icon } = TOOL_META[lead];
-                    const inCat = onStudioHome && activeTool !== null && g.tools.includes(activeTool);
-                    const on = onStudioHome && activeTool === lead;
-                    const open = openCats.has(g.id);
-                    return (
-                      <div key={g.id}>
-                        <div className="flex items-center gap-0.5">
-                          {/* data-tour: an anchor the first-run tour can point at (lib/onboarding/tour.ts — step 2 uses tool-avatar). */}
-                          <button type="button" onClick={() => selectTool(lead)} aria-current={on ? 'true' : undefined} data-tour={`tool-${lead}`}
-                            className={`${sideRow} min-w-0 flex-1 ${on ? 'bg-app-elevated' : ''}`}>
-                            <Icon className={`h-[17px] w-[17px] ${inCat ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
-                            <span className="min-w-0 truncate">{g.label[lang]}</span>
-                          </button>
-                          {rest.length > 0 && (
-                            <button type="button" onClick={() => toggleCat(g.id)} aria-expanded={open} aria-label={`${g.label[lang]}: ${tMore}`} title={tMore}
-                              data-testid={`sidebar-cat-toggle-${g.id}`}
-                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10">
-                              <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
-                            </button>
-                          )}
-                        </div>
-                        {/* A mode of the lead tool with a row of its own (lib/catalog/nav.ts modeServices): „Music video" under
-                            Video, always shown, because a mode reachable only from inside the panel was not found. */}
-                        {g.modeServices.map((sid) => {
-                          const s = getService(sid);
-                          if (!s) return null;
-                          return (
-                            <button key={sid} type="button" onClick={() => openService(s, 'sidebar')} data-testid={`sidebar-service-${sid}`}
-                              className={`${sideRow} pl-7`}>
-                              <Music2 className="h-4 w-4 text-app-muted" aria-hidden="true" />
-                              <span className="min-w-0 truncate">{s.label[lang]}</span>
-                            </button>
-                          );
-                        })}
-                        {open && rest.map((id) => {
-                          const { Icon: SubIcon } = TOOL_META[id];
-                          const subOn = onStudioHome && activeTool === id;
-                          return (
-                            <button key={id} type="button" onClick={() => selectTool(id)} aria-current={subOn ? 'true' : undefined} data-tour={`tool-${id}`}
-                              className={`${sideRow} pl-7 ${subOn ? 'bg-app-elevated' : ''}`}>
-                              <SubIcon className={`h-4 w-4 ${subOn ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
-                              <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-
+        <div className="mt-1 min-h-0 flex-1 overflow-y-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* „ბოლო“ — the chat history. */}
           <div className="mt-3 flex items-center justify-between gap-1.5 pr-1">
             <p className={sideHdr}>{tRecent}</p>

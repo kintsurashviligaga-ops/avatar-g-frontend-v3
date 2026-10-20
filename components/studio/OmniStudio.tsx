@@ -3273,6 +3273,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const onClear = () => clearAllConversations();
     window.addEventListener('myavatar:resume-conversation', onResume as EventListener);
     const onNewWithReset = () => {
+      applyToolRef.current?.('chat');
       setMode('chat');
       setPanelService(null);
       setOptionsOpen(false);
@@ -3435,7 +3436,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // Tools whose inputs are uploads rather than words (a product photo, a source video, a motion reference)
     // open their settings, so the next step is on screen instead of behind a second tap.
     // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer. So is Video, and the VFX tool.
-    if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image' || id === 'vfx') setOptionsOpen(true);
+    setOptionsOpen(false); setPanelOpen(false);
   }, [setMode, setPanelService]);
   applyToolRef.current = applyTool;
   /** `surface` — where the pick came from, for the §50 `catalog_service_opened` event (none: a restart, not a pick). */
@@ -3455,7 +3456,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   // On a desktop the panel also hides the composer's text box in Image, Music and Video (composerTextHidden): closing it
   // brings the box back holding the description, so it is measured again then (the sizing effect above skips a hidden box).
   useEffect(() => {
@@ -12651,9 +12652,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   }}
                   aria-label={locale === 'en' ? 'Close service and return to chat' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის დახურვა და ჩატში დაბრუნება'}
                   title={locale === 'en' ? 'Close service (back to chat)' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის გათიშვა (ჩატში დაბრუნება)'}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-rose-500/20 hover:text-rose-300"
+                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-rose-500/15 px-2.5 text-rose-300 transition-colors hover:bg-rose-500/25"
                 >
-                  <X size={15} aria-hidden="true" />
+                  <X size={14} aria-hidden="true" />
+                  <span className="ml-0.5 text-[11px] font-medium">{locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი'}</span>
                 </button>
               </div>
             )}
