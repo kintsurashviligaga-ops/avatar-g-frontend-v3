@@ -7061,21 +7061,37 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); stopDictationEcho();
       return;
     }
-    const isMultiScene = /(?:სცენ[ა-ე]|scene|\d+[- ]?სცენ|3\s*სცენა|სამივე|კლიპ|ვიდეო|მსახიობ)/iu.test(text);
+    // Smart Scene & Mode Detection (1 scene = 8s, 2 scenes = 16s, 3 scenes = 24s)
+    const sceneHeadersCount = (text.match(/(?:სცენა|scene)\s*[1-9]/gi) || []).length;
+    const explicitSceneNumMatch = text.match(/\b([1-6])\s*(?:[- ]?სცენ|სცენა|scenes?)\b/i);
+    const wordSceneCount = /(?:ერთი\s*სცენ|ერთსცენ|1[- ]?სცენ)/i.test(text) ? 1
+      : /(?:ორი\s*სცენ|ორსცენ|2[- ]?სცენ)/i.test(text) ? 2
+      : /(?:სამი\s*სცენ|სამსცენ|სამივე\s*სცენ|3[- ]?სცენ)/i.test(text) ? 3
+      : /(?:ოთხი\s*სცენ|ოთხსცენ|4[- ]?სცენ)/i.test(text) ? 4 : 0;
+
+    const detectedScenes = sceneHeadersCount >= 2
+      ? sceneHeadersCount
+      : explicitSceneNumMatch
+        ? parseInt(explicitSceneNumMatch[1] || "1", 10)
+        : wordSceneCount;
+
+    const isMultiScene = detectedScenes >= 2 || /(?:სთორიბორდ|storyboard|მრავალსცენ)/iu.test(text);
     if (isMultiScene) {
+      const targetScenes = detectedScenes >= 1 ? Math.min(6, detectedScenes) : 2;
+      const targetSec = targetScenes * 8;
       const photoRefs = attachments
         .filter((a) => (a as any).mimeType?.startsWith("image/") || isImage((a as any).mimeType) || /\.(jpe?g|png|webp)$/i.test((a as any).name || ""))
         .map((a: any) => a.url || a.dataUrl || "")
         .filter(Boolean);
       const attachedAudio = attachments.find((a) => (a as any).mimeType?.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg)$/i.test((a as any).name || ""));
-      const isMusicVideoPrompt = /(?:მუსიკალურ|კლიპი|სიმღერ|music\s*video|song)/iu.test(text) || !!attachedAudio;
+      const isMusicVideoPrompt = /(?:მუსიკალურ\s*(?:კლიპ|ვიდეო)|სიმღერ[აი]|music\s*video|\bsong\b)/iu.test(text) || !!attachedAudio;
       const ratio = aspectFromText(text, { ratioOnly: true });
       const sbOrientation = (ratio ?? lipFormat) === "16:9" ? "landscape" : "vertical";
       setAttachments([]);
       setInput(""); stopDictationEcho();
-      await createStoryboard(text, photoRefs, sbOrientation, { 
-        nativeSec: 24, 
-        musicVideoMode: isMusicVideoPrompt 
+      await createStoryboard(text, photoRefs, sbOrientation, {
+        nativeSec: targetSec,
+        musicVideoMode: isMusicVideoPrompt
       });
       return;
     }
@@ -9788,19 +9804,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
       analyzeOn: agentAnalyzeOn,
     };
-    const isVideoCreationAsk = /(?:შექმენ|დააგენერირ|ახალი\s*ვიდეო|სარეკლამო|3[- ]?სცენ|სცენა\s*[1-9]|სცენარ|რეფერენსად|კლიპი|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
-
-    // DYNAMIC SCENE PLANNING BASED ON SCRIPT LENGTH:
-    const explicitScenesMatch = text.match(/(?:(\d+)[- ]?სცენ|სცენა\s*([1-9]))/i);
-    const countScenesInText = (text.match(/სცენა\s*[1-9]/gi) || []).length;
-    const explicitCount = countScenesInText > 1 ? countScenesInText : (explicitScenesMatch ? parseInt(explicitScenesMatch[1] || explicitScenesMatch[2] || "0", 10) : 0);
-
-    const scriptWords = text.replace(/(?:შექმენ|დააგენერირ|სარეკლამო|ვიდეო|ფორმატ|კინოსტუდი|9:16|16:9|რეფერენს|პროჟექტორ)/gi, "").trim().split(/\s+/).filter(Boolean).length;
-    const autoScenes = explicitCount > 0 ? Math.min(6, Math.max(1, explicitCount)) : (scriptWords <= 16 ? 2 : scriptWords <= 32 ? 3 : 4);
-    const autoSec = autoScenes * 8;
-
-    const autoVideoMode: "documentary" | "musicvideo" = /(?:მუსიკალურ|კლიპი|music\s*video)/iu.test(text) ? "musicvideo" : "documentary";
-    const autoAspect: "9:16" | undefined = /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? "9:16" : undefined;
+    const isVideoCreationAsk = /(?:შექმენ|დააგენერირ|ახალი\s*ვიდეო|სარეკლამო\s*(?:ვიდეო|კლიპ)|[1-6][- ]?სცენ|სცენა\s*[1-9]|მუსიკალურ\s*(?:კლიპ|ვიდეო)|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
+    const scHeaders = (text.match(/(?:სცენა|scene)\s*[1-9]/gi) || []).length;
+    const scNumMatch = text.match(/\b([1-6])\s*(?:[- ]?სცენ|სცენა|scenes?)\b/i);
+    const scWord = /(?:ერთი\s*სცენ|ერთსცენ|1[- ]?სცენ|8\s*წამ)/i.test(text) ? 1
+      : /(?:ორი\s*სცენ|ორსცენ|2[- ]?სცენ|16\s*წამ)/i.test(text) ? 2
+      : /(?:სამი\s*სცენ|სამსცენ|სამივე\s*სცენ|3[- ]?სცენ|24\s*წამ)/i.test(text) ? 3
+      : /(?:ოთხი\s*სცენ|ოთხსცენ|4[- ]?სცენ|32\s*წამ)/i.test(text) ? 4 : 0;
+    const cleanWordsCount = text.replace(/(?:შექმენ|დააგენერირ|სარეკლამო|ვიდეო|ფორმატ|კინოსტუდი|9:16|16:9|რეფერენს|პროჟექტორ)/gi, "").trim().split(/\s+/).filter(Boolean).length;
+    const finalScenes = scHeaders >= 2 ? scHeaders : scNumMatch ? parseInt(scNumMatch[1] || "1", 10) : scWord > 0 ? scWord : (cleanWordsCount <= 18 ? 1 : cleanWordsCount <= 32 ? 2 : 3);
+    const autoSec = Math.min(6, Math.max(1, finalScenes)) * 8;
+    const autoVideoMode: "documentary" | "musicvideo" = /(?:მუსიკალურ\s*(?:კლიპ|ვიდეო)|სიმღერ[აი]|music\s*video|\bsong\b)/iu.test(text) ? "musicvideo" : "documentary";
+    const autoAspect: "9:16" | "16:9" | undefined = /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? "9:16" : /(?:16:9|ჰორიზონტალ|landscape)/iu.test(text) ? "16:9" : undefined;
     const step = isVideoCreationAsk
       ? { kind: "open" as const, videoMode: autoVideoMode, durationSec: autoSec, aspect: autoAspect }
       : planChatTurn(text, snapshot);

@@ -599,22 +599,25 @@ export async function POST(req: NextRequest) {
   // frames) so the storyboard opens in ~1s; frames then stream in per-scene and the
   // story enrichment arrives separately (scriptsOnly). Each scene carries its full
   // frame prompt (the summary `prompt` is truncated for display).
-      // SCRIPT PASSTHROUGH: If user provided Georgian text, distribute THEIR words directly
+      // SCRIPT PASSTHROUGH: Dynamically adapt to exact sceneCount (1, 2, 3, etc.)
     const isKa = /[ა-ჰ]/u.test(prompt);
     let userKaParts: string[] = [];
     if (isKa) {
-      const clean = prompt.replace(/(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/gi, "").trim();
-      const sents = clean.split(/[.!?\n]+/).map(s => s.trim()).filter(Boolean);
-      if (sents.length >= 3) {
-        userKaParts = [sents[0] || "", sents[1] || "", sents.slice(2).join(". ")];
+      const explicitBlocks = prompt
+        .split(/(?=(?:სცენა|scene)\s*[1-9])/i)
+        .map((s) => s.trim())
+        .filter((s) => /^(?:სცენა|scene)\s*[1-9]/i.test(s));
+      if (explicitBlocks.length >= sceneCount) {
+        userKaParts = explicitBlocks.slice(0, sceneCount);
+      } else if (sceneCount <= 1) {
+        userKaParts = [prompt.trim()];
       } else {
-        const words = clean.split(/\s+/);
-        const chunk = Math.ceil(words.length / 3);
-        userKaParts = [
-          words.slice(0, chunk).join(" "),
-          words.slice(chunk, chunk * 2).join(" "),
-          words.slice(chunk * 2).join(" ")
-        ].filter(Boolean);
+        const clean = prompt.replace(/(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/gi, "").trim();
+        const words = clean.split(/\s+/).filter(Boolean);
+        const chunk = Math.ceil(words.length / sceneCount);
+        userKaParts = Array.from({ length: sceneCount }, (_, idx) =>
+          words.slice(idx * chunk, (idx + 1) * chunk).join(" ")
+        ).filter(Boolean);
       }
     }
     if (body.planOnly) {
