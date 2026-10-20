@@ -24,7 +24,9 @@ import type {
   LiveLevels,
   LiveStatus,
 } from './useGeminiLiveSession';
-import { isMicErrorCode } from './useGeminiLiveSession';
+import { isMicErrorCode } from "./useGeminiLiveSession";
+import LiveDock from "./LiveDock";
+import { liveCurrentStep } from "./LiveActivityFeed";
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -132,6 +134,12 @@ export function LiveModeOverlay({
   onEnd,
   onRetry,
   onStopSpeaking,
+  docked,
+  isDocked,
+  onToggleDock,
+  pendingRun,
+  onCancelRun,
+  activity,
 }: LiveModeOverlayProps) {
   const [copied, setCopied] = useState(false);
 
@@ -157,6 +165,27 @@ export function LiveModeOverlay({
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+    if (docked || isDocked) {
+    const dock = (
+      <LiveDock
+        locale={locale}
+        status={status}
+        statusLabel={status === "speaking" ? "ვსაუბრობ…" : status === "listening" ? "გისმენთ…" : "მზად არის"}
+        captions={captions as any}
+        step={liveCurrentStep((activity || []) as any, locale)}
+        muted={muted}
+        getLevels={getLevels}
+        onToggleMute={onToggleMute}
+        onEnd={onEnd}
+        onExpand={onToggleDock ?? (() => {})}
+        {...(onStopSpeaking ? { onStopSpeaking } : {})}
+        pendingRun={pendingRun}
+        {...(onCancelRun ? { onCancelRun } : {})}
+      />
+    );
+    return typeof document === "undefined" ? dock : createPortal(dock, document.body);
+  }
 
   const overlay = (
     <div className="fixed inset-0 z-[130] flex select-none flex-col justify-between overflow-hidden bg-black text-white">
