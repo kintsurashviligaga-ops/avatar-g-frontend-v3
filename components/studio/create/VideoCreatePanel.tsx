@@ -195,9 +195,10 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
             <VideoSettingRow label={vc(VIDEO_COPY.narrator, locale)}>
               <VideoSelect label={vc(VIDEO_COPY.narrator, locale)} value={narrator} testId="video-narrator"
                 options={[
-                  { value: 'off', label: vc(VIDEO_COPY.narratorOff, locale) },
+                  { value: 'auto', label: vc(VIDEO_COPY.narratorAuto, locale) },
                   { value: 'female', label: vc(VIDEO_COPY.female, locale) },
                   { value: 'male', label: vc(VIDEO_COPY.male, locale) },
+                  { value: 'off', label: vc(VIDEO_COPY.narratorOff, locale) },
                 ]}
                 onChange={(v) => {
                   if (v === 'off') { audio.onNarration(false); return; }

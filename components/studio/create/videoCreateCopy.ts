@@ -78,6 +78,7 @@ export const VIDEO_COPY = {
   settings: T('პარამეტრები', 'Settings', 'Параметры'),
   otherModels: T('სხვა მოდელები…', 'Other models…', 'Другие модели…'),
   narrator: T('დიქტორი', 'Narrator', 'Диктор'),
+  narratorAuto: T('ავტო', 'Auto', 'Авто'),
   narratorOff: T('გამორთული', 'Off', 'Выкл'),
   female: T('ქალი', 'Female', 'Женский'),
   male: T('კაცი', 'Male', 'Мужской'),

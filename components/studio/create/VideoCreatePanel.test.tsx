@@ -427,7 +427,7 @@ describe('the other languages', () => {
     expect(qualityText()).toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'documentary' })}`);
     expect(screen.getByTestId('video-prompt-hint').textContent).not.toMatch(/chat box/);
     expect(Array.from((screen.getByTestId('video-narrator') as HTMLSelectElement).options).map((o) => o.textContent))
-      .toEqual(locale === 'ka' ? ['გამორთული', 'ქალი', 'კაცი'] : ['Выкл', 'Женский', 'Мужской']);
+      .toEqual(locale === 'ka' ? ['ავტო', 'ქალი', 'კაცი', 'გამორთული'] : ['Авто', 'Женский', 'Мужской', 'Выкл']);
   });
 });
 
