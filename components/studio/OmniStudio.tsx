@@ -3272,12 +3272,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const onDelete = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) removeConversation(id); };
     const onClear = () => clearAllConversations();
     window.addEventListener('myavatar:resume-conversation', onResume as EventListener);
-    window.addEventListener('myavatar:new-chat', onNew);
+    const onNewWithReset = () => {
+      setMode('chat');
+      setPanelService(null);
+      setOptionsOpen(false);
+      setPanelOpen(false);
+      setImageWorkspaceOpen(false);
+      setToolSheetOpen(false);
+      onNew();
+    };
+    window.addEventListener('myavatar:new-chat', onNewWithReset);
     window.addEventListener('myavatar:delete-conversation', onDelete as EventListener);
     window.addEventListener('myavatar:clear-conversations', onClear);
     return () => {
       window.removeEventListener('myavatar:resume-conversation', onResume as EventListener);
-      window.removeEventListener('myavatar:new-chat', onNew);
+      window.removeEventListener('myavatar:new-chat', onNewWithReset);
       window.removeEventListener('myavatar:delete-conversation', onDelete as EventListener);
       window.removeEventListener('myavatar:clear-conversations', onClear);
     };
@@ -12604,27 +12613,49 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
                 chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
             {!chatOnly && (
-              <button type="button" onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen(true))}
-                aria-haspopup={isDesktop ? undefined : 'dialog'} aria-expanded={isDesktop ? panelOpen : optionsOpen}
-                data-testid="options-toggle" title={settingsWord}
-                className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface max-[389px]:px-2 max-[359px]:w-11 max-[359px]:shrink-0 max-[359px]:justify-center max-[359px]:px-0 sm:px-3.5 sm:text-[13px]">
-                <ToolIcon size={15} aria-hidden="true" className="shrink-0 text-app-accent" />
-                {/* ⚠️ ON A PHONE THE CHIP IS TWO LINES — the tool, and under it its shape („9:16 · 24წმ"), small and muted. With
-                    the paperclip beside „+" (owner, 2026-10-03) one line left ~136 px at 390 and cut it to „ვიდეო · …". The
-                    „ · " stays in the text (screen-reader-only on a phone), so the chip's text and accessible name are
-                    still „ვიდეო · 9:16 · 24წმ". Under 360 px the words go screen-reader-only too: the icon is the chip. */}
-                <span className="flex min-w-0 flex-col items-start leading-[1.15] max-[359px]:sr-only sm:flex-row sm:items-center sm:leading-normal">
-                  <span className="max-w-full truncate whitespace-nowrap">{toolLabel}</span>
-                  {toolSummary ? (
-                    <>
-                      <span className="sr-only whitespace-pre text-app-muted sm:not-sr-only"> · </span>
-                      <span className="max-w-full truncate whitespace-nowrap text-[11px] text-app-muted sm:text-[13px]">{toolSummary}</span>
-                    </>
-                  ) : null}
-                </span>
-                {/* The chevron is from `sm` up: a phone's width goes to the words. */}
-                <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 text-app-muted sm:block" />
-              </button>
+              <div className="inline-flex h-10 min-w-0 items-center gap-0.5 rounded-full bg-app-accent/15 p-1 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
+                {/* 1. სერვისის სწრაფი შეცვლა (ხსნის სერვისების სიას) */}
+                <button
+                  type="button"
+                  onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
+                  title={locale === 'en' ? 'Switch service' : locale === 'ru' ? 'Сменить сервис' : 'სერვისის შეცვლა'}
+                  className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-app-accent transition-colors hover:bg-app-accent/20"
+                >
+                  <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
+                  <span className="max-w-[110px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
+                  <ChevronDown size={13} aria-hidden="true" className="shrink-0 opacity-80" />
+                </button>
+
+                {/* 2. პარამეტრების პანელის ჩაკეცვა / გახსნა */}
+                <button
+                  type="button"
+                  onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}
+                  data-testid="options-toggle"
+                  title={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
+                  className="inline-flex h-8 items-center gap-1 rounded-full bg-white/[0.06] px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
+                >
+                  <span className="truncate whitespace-nowrap">
+                    {toolSummary || (locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები')}
+                  </span>
+                </button>
+
+                {/* 3. ✕ სერვისის დახურვა და მთავარ ჩატში დაბრუნება */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPanelOpen(false);
+                    setOptionsOpen(false);
+                    setImageWorkspaceOpen(false);
+                    setPanelService(null);
+                    selectTool('chat');
+                  }}
+                  aria-label={locale === 'en' ? 'Close service and return to chat' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის დახურვა და ჩატში დაბრუნება'}
+                  title={locale === 'en' ? 'Close service (back to chat)' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის გათიშვა (ჩატში დაბრუნება)'}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-rose-500/20 hover:text-rose-300"
+                >
+                  <X size={15} aria-hidden="true" />
+                </button>
+              </div>
             )}
             {/* The persona in use, as Gemini shows a chosen Gem: tap the name to change it, ✕ to go back to the
                 default assistant. The same choice the sidebar row and the switcher's persona row show. */}

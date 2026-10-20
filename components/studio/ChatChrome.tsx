@@ -735,6 +735,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // One-shot handoff for "open this old chat". MUST match OMNI_RESUME_KEY in OmniStudio.tsx.
   const OMNI_RESUME_KEY = 'myavatar-omni-resume';
   const handleNewChat = useCallback(() => {
+    try {
+      document.documentElement.dataset.tool = 'chat';
+      window.dispatchEvent(new CustomEvent('omni:select-tool', { detail: 'chat' }));
+      window.dispatchEvent(new CustomEvent('omni:tool-changed', { detail: 'chat' }));
+    } catch { /* ignore */ }
     window.dispatchEvent(new Event('myavatar:new-chat'));
     // On the studio surface onNewChat resets the chat in place. On OTHER surfaces that
     // render ChatChrome WITHOUT it (e.g. /library), "New chat" must actually NAVIGATE
