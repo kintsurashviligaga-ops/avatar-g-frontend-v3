@@ -32,8 +32,14 @@ export function stockAvatarFace(gender: AvatarGender, aspect: AvatarAspect): str
 // No \b: it is ASCII-only in JS, and never matches next to a Georgian or Cyrillic letter.
 const EDGE = '(?:^|[\\s,.;:!?()"„“«»—-])';
 const END = '(?=$|[\\s,.;:!?()"„“«»—-])';
-const FEMALE = new RegExp(`${EDGE}(?:ქალ(?:ი|ის|ბატონი|ური)?|გოგო(?:ნა)?|woman|female|girl|lady|женщин\\S*|девушк\\S*|женск\\S*)${END}`, 'iu');
-const MALE = new RegExp(`${EDGE}(?:კაც(?:ი|ის)?|მამაკაც(?:ი|ის)?|ბიჭ(?:ი|ის)?|man|male|guy|boy|мужчин\\S*|парень|парн\\S*|мужск\\S*)${END}`, 'iu');
+// ქართული ბრუნვები (-ი, -მა, -ს, -ის, -ად), ბავშვი, მოხუცი, ბაბუა, ბებია
+const FEMALE = new RegExp(`${EDGE}(?:ქალ(?:ი|მა|ს|ის|ად|ბატონი|ბატონმა|ბატონს|ბატონის)?(?!აქ)|გოგო(?:ნა|ნამ|ნას|ს)?|დედა(?:მ|ს|ის)?|ბებია(?:მ|ს|ის)?|მოხუცი ქალ(?:ი|მა|ს|ის)?|ხანდაზმული ქალ(?:ი|მა|ს|ის)?|woman|female|girl|lady|grandma|grandmother|девушк\\S*|женщин\\S*|женск\\S*|бабушк\\S*)${END}`, 'iu');
+
+const MALE = new RegExp(`${EDGE}(?:კაც(?:ი|მა|ს|ის|ად)?|მამაკაც(?:ი|მა|ს|ის|ად)?|ბიჭ(?:ი|მა|ს|ის|ად|უნა|უნამ|უნას)?|ბაბუა(?:მ|ს|ის)?|პაპა(?:მ|ს|ის)?|მოხუცი კაც(?:ი|მა|ს|ის)?|მოხუცი მამაკაც(?:ი|მა|ს|ის)?|ხანდაზმული კაც(?:ი|მა|ს|ის)?|მსახიობი მამაკაც(?:ი|მა|ს|ის)?|man|male|guy|boy|grandfather|grandpa|мужчин\\S*|парень|парн\\S*|мужск\\S*|дедушк\\S*)${END}`, 'iu');
+
+const CHILD = new RegExp(`${EDGE}(?:ბავშვ(?:ი|მა|ს|ის|ად)?|პატარა ბავშვ(?:ი|მა|ს|ის)?|პატარა ბიჭ(?:ი|მა|ს|ის)?|პატარა გოგო(?:ნა|ს)?|ჩვილ(?:ი|მა|ს|ის)?|მოზარდ(?:ი|მა|ს|ის)?|child|kid|toddler|baby|ребенок|дитя)${END}`, 'iu');
+
+const ELDERLY = new RegExp(`${EDGE}(?:მოხუც(?:ი|მა|ს|ის|ად|ებული)?|ხანდაზმულ(?:ი|მა|ს|ის)?|ბებერ(?:ი|მა|ს|ის)?|elderly|senior|old person|пожилой|старик)${END}`, 'iu');
 
 /**
  * „ქალი ავატარი…", „a man who says…": the voice the order names, read only from the words AROUND the line — never from the
@@ -43,9 +49,23 @@ export function avatarGenderFromText(text: string): AvatarGender | null {
   const { speech } = splitAvatarScript(text);
   const at = speech ? text.lastIndexOf(speech) : -1;
   const around = at >= 0 ? text.slice(0, at) + ' ' + text.slice(at + speech.length) : text;
+  
   const f = FEMALE.test(around);
   const m = MALE.test(around);
-  return f === m ? null : f ? 'female' : 'male';
+  if (f !== m) return f ? 'female' : 'male';
+
+  // თუ პირდაპირ წერია მოხუცი / ბავშვი სპეციფიკაციის გარეშე
+  const isChild = CHILD.test(around);
+  const isElderly = ELDERLY.test(around);
+
+  if (isChild) {
+    return 'female'; // ბავშვის ხმოვანი ტემბრი სტანდარტულად უფრო მაღალი/ნაზი პროფილია
+  }
+  if (isElderly) {
+    return 'male'; // მოხუცი სტანდარტულად ღრმა ტემბრია
+  }
+
+  return null;
 }
 
 export interface AvatarOffer {
