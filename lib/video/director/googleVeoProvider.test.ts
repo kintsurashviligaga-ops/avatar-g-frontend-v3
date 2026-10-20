@@ -264,8 +264,25 @@ describe('V5 — engine failures map to the eight reasons', () => {
     };
     const provider = new GoogleVeoProvider({ engine: changed });
     const result = await provider.generateShot({ storyboardId: 'sb-1', shot: makeShot({ id: 'a', order: 1 }), consistencyLock: LOCK });
-    expect(errorOf(result)).toMatchObject({ reason: 'invalid_duration' });
+    expect(errorOf(result)).toMatchObject({ reason: 'invalid_duration', requiresReconciliation: true, retryable: false });
     expect(engine.polled).toHaveLength(0);
+  });
+
+  it.each(['adjustment', 'prompt'] as const)('retains the accepted operation when post-submit %s differs', async (mode) => {
+    const engine = createFakeVeoEngine();
+    const create = engine.createClip.bind(engine);
+    jest.spyOn(engine, 'createClip').mockImplementation(async (...args) => {
+      const result = await create(...args);
+      return mode === 'prompt'
+        ? { ...result, request: { ...result.request, prompt: 'changed after preflight' } }
+        : { ...result, adjustments: [{ field: 'durationSec' as const, from: 8, to: 6, reason: 'snapped after preflight' }] };
+    });
+    const provider = new GoogleVeoProvider({ engine });
+    const result = await provider.submitShot({ storyboardId: 'sb-1', shot: makeShot({ id: 'a', order: 1 }), consistencyLock: LOCK });
+    expect(result).toMatchObject({ ok: false, error: { retryable: false, requiresReconciliation: true }, ticket: { operationName: expect.stringContaining('/operations/'), metadata: { providerName: 'google_veo' } } });
+    expect(engine.calls).toHaveLength(1);
+    expect(engine.polled).toHaveLength(0);
+    expect(engine.delivered).toHaveLength(0);
   });
 });
 

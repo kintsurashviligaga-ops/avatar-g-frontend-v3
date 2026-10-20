@@ -15,6 +15,7 @@
  * excerpt. Never the full prompt, media, tokens, keys or signed URLs.
  */
 import 'server-only';
+import { createHash } from 'node:crypto';
 import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
@@ -25,6 +26,7 @@ import { pollGeminiVeo, submitGeminiVeo } from './geminiTransport';
 import { vertexConfig, vertexConfigProblems } from './vertexAuth';
 import { pollVertexVeo, submitVertexVeo, type VeoCreateFailure } from './vertexClient';
 import type { VeoClipRequest, VeoCreateOutcome, VeoFailureReason, VeoMedia, VeoPollOutcome, VeoTier, VeoTransport, VeoVideo } from './types';
+import type { VeoSubmissionEvidence, VeoSubmissionJournal } from './submissionJournal';
 
 export { isGoogleOnly } from './policy';
 
@@ -261,6 +263,8 @@ export interface CreateVeoClipInput {
   sessionId: string;
   /** The scene index — part of the Vertex output prefix. */
   ordinal: number;
+  /** Internal durable-run hook. Never accepted from request JSON. */
+  submissionJournal?: VeoSubmissionJournal;
 }
 
 export interface CreateVeoClipResult {
@@ -305,30 +309,26 @@ function logSubmit(result: CreateVeoClipResult): void {
   );
 }
 
-async function submitViaVertex(request: VeoClipRequest, model: string, input: CreateVeoClipInput): Promise<VeoCreateOutcome> {
-  const cfg = vertexConfig();
+async function submitViaVertex(request: VeoClipRequest, model: string, input: CreateVeoClipInput, cfg: ReturnType<typeof vertexConfig>, storageUri: string, beforeSubmit?: (body: string) => Promise<boolean>): Promise<VeoCreateOutcome> {
   if (!cfg) return failure('not_configured', false, notConfiguredDetail());
   let prepared: VeoClipRequest;
-  let storageUri: string;
   try {
-    // A fresh output prefix per attempt: a re-render never finds an earlier attempt's sample_0.mp4.
-    storageUri = veoOutputPrefix(input.sessionId, input.ordinal);
     // Inputs travel as gs:// objects, so no base64 rides in the predictLongRunning body (gcs passes through as-is).
     prepared = await mapMedia(request, (media) => uploadVeoInput(media, { sessionId: input.sessionId }));
   } catch (err) {
     return preparationFailure(err);
   }
-  return submitVertexVeo(prepared, cfg, { model, storageUri });
+  return submitVertexVeo(prepared, cfg, { model, storageUri, beforeSubmit });
 }
 
-async function submitViaGemini(request: VeoClipRequest, model: string): Promise<VeoCreateOutcome> {
+async function submitViaGemini(request: VeoClipRequest, model: string, beforeSubmit?: (body: string) => Promise<boolean>): Promise<VeoCreateOutcome> {
   let prepared: VeoClipRequest;
   try {
     prepared = await mapMedia(request, inlineForGemini);
   } catch (err) {
     return preparationFailure(err);
   }
-  return submitGeminiVeo(prepared, { model });
+  return submitGeminiVeo(prepared, { model, beforeSubmit });
 }
 
 /**
@@ -373,6 +373,40 @@ export async function createVeoClip(input: CreateVeoClipInput): Promise<CreateVe
     request = withoutCamera;
   }
 
+  // Capture output location/request before any input upload or provider POST. Hooks receive no media or credentials.
+  const selectedConfig = transport === 'vertex' ? vertexConfig() : null;
+  const cfg = selectedConfig ? { ...selectedConfig, auth: { ...selectedConfig.auth } } : null;
+  const sameConfig = () => !cfg || JSON.stringify(vertexConfig()) === JSON.stringify(cfg);
+  let storageUri = '';
+  let evidence: VeoSubmissionEvidence | undefined;
+  const persist = async (value: VeoSubmissionEvidence): Promise<boolean> => {
+    if (!input.submissionJournal) return true;
+    try { return (await input.submissionJournal(Object.freeze({ ...value }))) === true; } catch { return false; }
+  };
+  try {
+    // Clone before awaiting caller code: fingerprint and execution share this owned request snapshot.
+    if (input.submissionJournal) request = JSON.parse(JSON.stringify(request)) as VeoClipRequest;
+    if (transport === 'vertex') {
+      if (!cfg) throw new Error('missing configuration');
+      storageUri = veoOutputPrefix(input.sessionId, input.ordinal, cfg);
+    }
+    if (input.submissionJournal) evidence = { schema: 1, phase: 'prepared', transport, model,
+      requestSha256: createHash('sha256').update(JSON.stringify(request)).digest('hex'),
+      estimatedUsd: estimateClipCostUsd(request, model, transport),
+      ...(cfg ? { projectId: cfg.projectId, location: cfg.location, outputPrefix: storageUri } : {}),
+    };
+  } catch {
+    return { outcome: failure('not_configured', false, 'The submission could not be prepared'), request, adjustments, model, transport };
+  }
+  if (evidence && !(await persist(evidence))) {
+    return { outcome: failure('invalid_request', false, 'The submission journal refused this attempt before preparation'), request, adjustments, model, transport };
+  }
+  if (!sameConfig()) return { outcome: failure('invalid_request', false, 'Vertex configuration changed before input preparation'), request, adjustments, model, transport };
+  const preparedEvidence = evidence;
+  const beforeSubmit = preparedEvidence ? async (body: string) => sameConfig()
+    && await persist({ ...preparedEvidence, phase: 'posting', bodySha256: createHash('sha256').update(body).digest('hex') })
+    && sameConfig() : undefined;
+
   // The daily Veo ceiling (dailyCap.ts): reserved at this clip's exact price BEFORE the submit, so no caller can reach Google
   // around it. A refusal creates nothing and bills nothing, and reads as Veo's own non-retryable `quota` failure.
   const cap = await reserveVeoSpend(estimateClipCostUsd(request, model, transport));
@@ -382,7 +416,7 @@ export async function createVeoClip(input: CreateVeoClipInput): Promise<CreateVe
     return refused;
   }
 
-  const outcome = transport === 'vertex' ? await submitViaVertex(request, model, input) : await submitViaGemini(request, model);
+  const outcome = transport === 'vertex' ? await submitViaVertex(request, model, input, cfg, storageUri, beforeSubmit) : await submitViaGemini(request, model, beforeSubmit);
   // Google provably created no job (anything but `ambiguous`) → the reservation goes back; an ambiguous submit may bill.
   if (!outcome.ok && outcome.reason !== 'ambiguous') await releaseVeoSpend(cap);
   const result: CreateVeoClipResult = { outcome, request, adjustments, model, transport };
