@@ -9,7 +9,7 @@
  * Payment rail, probed from the secretless /api/checkout/capabilities when the modal opens:
  *   · Bank of Georgia (live) — prices shown in ₾, because ₾ is what BOG charges; plans renew monthly on the card
  *     saved at the first payment (/api/billing/bog/checkout). The return trip is handled in ChatChrome (?bog=…).
- *   · otherwise the older card checkout keeps working as it did (USD tier packs / GEL wallet top-up), unannounced;
+ *   · otherwise the older card checkout keeps working as it did (GEL tier packs / GEL wallet top-up), unannounced;
  *   · neither → the buttons are disabled with a plain notice, never a click that 503s.
  *
  * Failures surface in a self-contained local toast (there is no ToastProvider in this tree, so never useToast()).
@@ -114,7 +114,7 @@ const COPY: Record<Lang, Copy> = {
   },
 };
 
-// PHASE 39 (Master Contract V1/V2) — localized tier NAMES + the exact premium USD feature bullets per tier.
+// PHASE 39 (Master Contract V1/V2) — localized tier NAMES + the exact premium GEL feature bullets per tier.
 // The Georgian copy is authoritative (the directive's launch spec); en/ru are faithful translations.
 const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
   free: { ka: 'უფასო', en: 'Free', ru: 'Бесплатно' },

@@ -2611,7 +2611,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Lip-sync "dub from text" → speak the typed script in the user's TRAINED voice (RVC).
   const [lipMyVoice, setLipMyVoice] = useState(false);
   // Avatar mode: cloned-voice gender + output format (the panel's selectable options).
-  const [lipGender, setLipGender] = useState<'female' | 'male'>('female');
+  const [lipGender, setLipGender] = useState<'auto' | 'female' | 'male'>('auto');
   const [lipFormat, setLipFormat] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   // P8 — selected built-in avatar preset (a /public path used as the talking face).
   // Mutually exclusive with an uploaded face: picking one clears the other.
@@ -7537,9 +7537,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
       // Only the words go to the voice. "The avatar, emotionally, says: …" was read out whole (Production 2026-10-16):
       // the direction part ("emotionally, with gestures") is how it behaves, not what it says (lib/avatar/scriptSplit).
-      const spoken = text ? (splitAvatarScript(text).speech || text) : text;
+      const parsedScript = splitAvatarScript(text); const spoken = parsedScript.speech || text;
       // The voice the order names („ქალი ავატარი…"), else the panel's; the frame the words or the card named, else the panel's.
-      const voiceGender = (text ? avatarGenderFromText(text) : null) ?? lipGender;
+      const detected = text ? avatarGenderFromText(text) : null; const voiceGender = lipGender === 'auto' ? (detected ?? 'male') : lipGender;
       const namedRatio = opts?.aspect ?? (text ? aspectFromText(text, { ratioOnly: true }) : null);
       const veoAspect: '9:16' | '16:9' = (namedRatio ?? lipFormat) === '16:9' ? '16:9' : '9:16';
       // ⚠️ NO PHOTO AND NO PRESET WENT TO THE HEYGEN PRESENTER, which the Google-only boundary refuses (GG, 2026-10-17
@@ -11215,7 +11215,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="block text-[11px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
                 <div className="mt-1.5 flex gap-1.5">
-                  {([['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი']] as const).map(([g, label]) => (
+                  {([['auto', locale === 'en' ? 'Auto' : locale === 'ru' ? 'Авто' : 'ავტო'], ['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი']] as const).map(([g, label]) => (
                     <button key={g} type="button" onClick={() => setLipGender(g)} aria-pressed={lipGender === g}
                       className={`min-h-[44px] flex-1 rounded-lg px-2 py-2 text-[12px] font-semibold transition active:scale-[0.98] ${lipGender === g ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{label}</button>
                   ))}
