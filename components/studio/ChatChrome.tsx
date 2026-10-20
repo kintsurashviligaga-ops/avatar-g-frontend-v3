@@ -1158,51 +1158,138 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         role={sidebarOpen ? 'dialog' : undefined}
         aria-modal={sidebarOpen ? true : undefined}
         aria-label={t.menu}
-        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[288px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
+        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[288px] max-w-[84vw] shrink-0 flex-col border-r border-white/[0.08] bg-black transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         {/* ONE lockup: the transparent rocket + the name (docs/DESIGN.md §13). ⚠️ „ორი ლოგო“ — the OPAQUE rocket tile
             used to sit beside the name (and in the header), reading as a second logo; the cut-out has no box and
             lives inside the wordmark's single role="img". */}
-        <div className="flex items-center justify-between py-2.5 pl-4 pr-2">
-          {/* Not a link: from the studio a document load to /{lang} (and back) would drop the jobs in flight and the draft. */}
-          <span className="flex h-11 min-w-0 items-center"><Wordmark size="sm" mark /></span>
-          {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. */}
-          <button type="button" onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
-            aria-label={tCollapse} title={tCollapse}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><PanelLeftClose className="h-[18px] w-[18px]" /></button>
+        <div className="flex items-center justify-between px-4 pt-3 pb-3">
+          <span className="text-[20px] font-semibold tracking-tight text-white">MyAvatar</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { if (searchOpen) setConvQuery(""); setSearchOpen((v) => !v); }}
+              aria-label={tSearchRow}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a1b1e] text-white/80 transition-colors hover:bg-white/15"
+            >
+              <Search className="h-[18px] w-[18px]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
+              aria-label={tCollapse}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a1b1e] text-white/80 transition-colors hover:bg-white/15"
+            >
+              <X className="h-[18px] w-[18px]" />
+            </button>
+          </div>
         </div>
 
-        <div className="space-y-0.5 px-2">
-          {/* CHAT IS THE HUB, so it is the first row (the owner's 2026-10-01 directive) — above „New session“, and
-              out of the „სერვისები“ list below so it is never named twice. */}
-          <button type="button" onClick={() => selectTool('chat')} aria-current={onStudioHome && activeTool === 'chat' ? 'true' : undefined}
+        {/* Gemini Reference Primary Navigation Rows */}
+        <div className="space-y-1 px-3">
+          <button
+            type="button"
+            onClick={handleNewChat}
             data-testid="sidebar-chat"
-            className={`${sideRow} font-medium ${onStudioHome && activeTool === 'chat' ? 'bg-app-elevated' : ''}`}>
-            <ChatIcon className={`h-[17px] w-[17px] ${onStudioHome && activeTool === 'chat' ? 'text-app-accent' : 'text-app-text'}`} aria-hidden="true" />
-            {TOOL_META.chat.name[lang]}
+            className="flex w-full items-center gap-3.5 rounded-full bg-[#1e1f23] px-4 py-3 text-left text-[15px] font-medium text-white transition-colors hover:bg-[#27282d]"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+            <span>{lang === "en" ? "New chat" : lang === "ru" ? "Новый чат" : "ახალი ჩატი"}</span>
           </button>
-          <button type="button" onClick={handleNewChat} className={sideRow}>
-            <PenSquare className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tNewSession}
+
+          <button
+            type="button"
+            onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }}
+            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="2" />
+              <rect x="14" y="3" width="7" height="7" rx="2" />
+              <rect x="14" y="14" width="7" height="7" rx="2" />
+              <rect x="3" y="14" width="7" height="7" rx="2" />
+            </svg>
+            <span>{lang === "en" ? "Library" : lang === "ru" ? "Библиотека" : "ბიბლიოთეკა"}</span>
           </button>
-          <button type="button" onClick={() => { if (searchOpen) setConvQuery(''); setSearchOpen((v) => !v); }} aria-expanded={searchOpen} className={sideRow}>
-            <Search className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tSearchRow}
+
+          <button
+            type="button"
+            onClick={() => selectTool("image")}
+            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="3" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+            <span>{lang === "en" ? "Images" : lang === "ru" ? "Изображения" : "სურათები"}</span>
           </button>
-          <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
-            <FolderOpen className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tLibrary}
+
+          <button
+            type="button"
+            onClick={() => selectTool("video")}
+            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <polyline points="12 7 12 12 15 15" />
+            </svg>
+            <span>{lang === "en" ? "Scheduled" : lang === "ru" ? "Видео · Расписание" : "ვიდეო · დაგეგმილი"}</span>
           </button>
-          {voiceV2 && <button type="button" className={sideRow} onClick={() => { setSidebarOpen(false); setVoiceSettingsOpen(true); }}>{VOICE_SETTINGS_LABEL[lang]}</button>}
-          <ResearchSidebarRow locale={lang} authed={authed} className={sideRow} onPicked={() => setSidebarOpen(false)} />
-          <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
-            <Sparkles className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {t.persona}
-            {activePersonaName
-              // Named, truncated, and still marked — the dot alone was the whole problem.
-              ? <span className="ml-auto min-w-0 truncate text-[12px] text-app-accent" title={activePersonaName}>{activePersonaName}</span>
-              : activePersonaId && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-app-accent" aria-hidden />}
+
+          <button
+            type="button"
+            onClick={() => selectTool("avatar")}
+            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+              <path d="M6 12v5c3 3 9 3 12 0v-5" />
+            </svg>
+            <span>{lang === "en" ? "Students" : lang === "ru" ? "Аватар · Студия" : "ავატარი · სტუდია"}</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }}
+            className="flex w-full items-center gap-3.5 rounded-full px-4 py-2.5 text-left text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="currentColor">
+              <circle cx="5" cy="12" r="1.6" />
+              <circle cx="12" cy="12" r="1.6" />
+              <circle cx="19" cy="12" r="1.6" />
+            </svg>
+            <span>{lang === "en" ? "More" : lang === "ru" ? "Ещё" : "მეტი"}</span>
+          </button>
+
+          <div className="pt-4 pb-1">
+            <p className="px-4 pb-1.5 text-[12.5px] font-medium text-white/45">Notebooks</p>
+            <button
+              type="button"
+              onClick={handleNewChat}
+              className="flex w-full items-center gap-3.5 rounded-full px-4 py-2 text-left text-[14.5px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
+            >
+              <span className="flex h-5 w-5 items-center justify-center text-[20px] font-light leading-none text-white/80">+</span>
+              <span>{lang === "en" ? "New notebook" : lang === "ru" ? "Новый блокнот" : "ახალი პროექტი"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => selectTool("chat")}
+              className="flex w-full items-center gap-3.5 rounded-full px-4 py-2 text-left text-[14.5px] font-medium text-white/90 transition-colors hover:bg-white/[0.06]"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-white/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              <span>Myavatar.ge</span>
+            </button>
+          </div>
         </div>
 
-        <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* The services, by catalog category (lib/catalog/nav.ts — the composer's „+" sheet reads the
               same groups, so a tool can never be reachable from one door and missing from the other). In the studio a row
               switches the tool in place; anywhere else it opens the studio on it. */}
@@ -1448,8 +1535,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 )
               )}
               {/* Mobile: open the sidebar drawer. */}
-              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
-                <Menu className="h-[18px] w-[18px]" />
+              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-white transition-colors hover:bg-white/[0.14] touch-manipulation md:hidden">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="5" y1="9" x2="19" y2="9" />
+                  <line x1="5" y1="15" x2="19" y2="15" />
+                </svg>
               </button>
               {/* IN THE CHAT the name IS the model switcher — Gemini mobile's "Gemini · 3.8 Flash ⌄": the wordmark and
                   the mode in the accent. Shown at every width this header lives at (it is the tablet's only way to the
@@ -1476,8 +1566,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
               {onStudioHome && (
                 <button type="button" onClick={handleNewChat} aria-label={tNewSession} title={tNewSession}
-                  className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
-                  <PenSquare className="h-[18px] w-[18px]" aria-hidden="true" />
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white/90 transition-colors hover:bg-white/[0.14] touch-manipulation mr-1">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9" strokeDasharray="3 3" />
+                    <path d="M14.5 9.5L9.5 14.5M14.5 9.5L16 8C16.5 7.5 17.5 7.5 18 8C18.5 8.5 18.5 9.5 18 10L16.5 11.5M14.5 9.5L16.5 11.5M9.5 14.5L8 16L9.5 14.5Z" />
+                  </svg>
                 </button>
               )}
               {/* A "Sign in" button for guests, or the account (→ settings) once signed in. */}

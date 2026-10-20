@@ -12049,25 +12049,97 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
-            </div>
-            {/* THE HOME IS THE GREETING, THE BOX AND ITS FOUR QUICK BUTTONS (owner, 2026-10-02: no sub line, no starter
-                chips; GG's UI plan, 2026-10-18: the four quick actions under the box — HomeQuickStart).
-                The greeting carries its own soft halo of the brand blue as a layered text-shadow — a separate glow box
-                (tried first) made the feed scroll and cut a hard edge above the box, because anything that sticks out
-                of a scroll container is scrollable overflow and a shadow is not. It rises in once, and not at all under
-                reduced motion. */}
-            <div className="relative space-y-3 motion-safe:[animation:agSlideUp_0.7s_cubic-bezier(0.2,0.7,0.2,1)_both]">
-              {personalGreeting && (
-                <p data-testid="personal-greeting" className="bg-gradient-to-r from-app-accent to-app-text bg-clip-text pb-1 text-[18px] font-medium leading-[1.4] text-transparent sm:text-[20px]">
-                  {personalGreeting}
-                </p>
-              )}
-              {/* The locked greeting (docs/DESIGN.md §7). Solid ink, never gradient text: forced-colors mode strips the
-                  background a clipped gradient needs and would leave the page's one heading invisible. */}
-              <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text [text-shadow:0_0_28px_rgb(var(--app-accent)/0.38),0_0_80px_rgb(var(--app-accent)/0.22)] sm:text-[48px]">{t.greeting}</h1>
+            {/* Gemini Reference Bottom-Right Royal Blue Ambient Glow */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
+              style={{
+                background: "radial-gradient(ellipse 85% 55% at 78% 96%, rgba(29, 78, 216, 0.42) 0%, rgba(15, 23, 42, 0.22) 48%, rgba(0, 0, 0, 0) 75%)"
+              }}
+            />
+            <div className="relative z-10 flex flex-col items-center space-y-3.5 motion-safe:[animation:agSlideUp_0.6s_cubic-bezier(0.2,0.7,0.2,1)_both]">
+              {/* Small Glowing Blue Glass Sphere with Rocket */}
+              <div
+                className="relative mx-auto mb-1 flex h-14 w-14 items-center justify-center rounded-full sm:h-16 sm:w-16"
+                style={{
+                  background: "radial-gradient(circle at 35% 28%, rgba(56, 189, 248, 0.45) 0%, rgba(37, 99, 235, 0.65) 42%, rgba(10, 25, 65, 0.95) 78%, #020817 100%)",
+                  boxShadow: "0 0 28px rgba(14, 165, 233, 0.75), 0 0 56px rgba(37, 99, 235, 0.45), inset 0 0 16px rgba(125, 211, 252, 0.65)"
+                }}
+                aria-hidden="true"
+              >
+                {/* Glass rim & specular highlights */}
+                <span className="pointer-events-none absolute inset-0 rounded-full ring-[1.5px] ring-sky-300/80" />
+                <span className="pointer-events-none absolute left-2.5 top-1.5 h-2 w-4 -rotate-[28deg] rounded-full bg-white/70 blur-[1px]" />
+                <span className="pointer-events-none absolute bottom-1.5 right-2.5 h-1.5 w-3.5 -rotate-[28deg] rounded-full bg-sky-200/65 blur-[1px]" />
+
+                {/* 3D Rocket SVG with 4-leaf clover emblem & cyan flame */}
+                <svg viewBox="0 0 64 64" className="h-9 w-9 drop-shadow-[0_2px_8px_rgba(56,189,248,0.8)] sm:h-10 sm:w-10">
+                  <defs>
+                    <linearGradient id="rkBody" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#93c5fd" />
+                      <stop offset="45%" stopColor="#2563eb" />
+                      <stop offset="100%" stopColor="#1e3a8a" />
+                    </linearGradient>
+                    <linearGradient id="rkWing" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#e2e8f0" />
+                      <stop offset="50%" stopColor="#3b82f6" />
+                      <stop offset="100%" stopColor="#1d4ed8" />
+                    </linearGradient>
+                    <linearGradient id="rkFlame" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#ffffff" />
+                      <stop offset="45%" stopColor="#67e8f9" />
+                      <stop offset="100%" stopColor="#0284c7" />
+                    </linearGradient>
+                  </defs>
+                  {/* Exhaust Flame */}
+                  <path
+                    d="M22 42 C16 44, 13 50, 12 52 C14 51, 20 48, 22 42 Z"
+                    fill="url(#rkFlame)"
+                  />
+                  <path
+                    d="M24 40 C17 43, 13 51, 11 53 C16 52, 23 47, 26 42 Z"
+                    fill="url(#rkFlame)"
+                    opacity="0.85"
+                  />
+                  {/* Left & Right Fins */}
+                  <path
+                    d="M27 31 L17 34 C16 37, 17 40, 19 41 L26 38 Z"
+                    fill="url(#rkWing)"
+                    stroke="#bae6fd"
+                    strokeWidth="1"
+                  />
+                  <path
+                    d="M33 37 L30 45 C31 47, 34 48, 37 47 L40 37 Z"
+                    fill="url(#rkWing)"
+                    stroke="#bae6fd"
+                    strokeWidth="1"
+                  />
+                  {/* Rocket Main Fuselage (angled 45deg up-right) */}
+                  <path
+                    d="M49 15 C41 15, 31 21, 25 31 L33 39 C43 33, 49 23, 49 15 Z"
+                    fill="url(#rkBody)"
+                    stroke="#e0f2fe"
+                    strokeWidth="1.2"
+                  />
+                  {/* Nozzle Collar */}
+                  <path
+                    d="M24 32 L32 40 L29 42 L22 35 Z"
+                    fill="#cbd5e1"
+                    stroke="#94a3b8"
+                    strokeWidth="0.8"
+                  />
+                  {/* 4-Leaf Clover Emblem on Fuselage */}
+                  <g transform="translate(37.5, 26.5) rotate(45) scale(0.85)" fill="none" stroke="#0f172a" strokeWidth="1.6">
+                    <path d="M0 -1 C-2.5 -4.5, -5.5 -2, -2 0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
+                    <path d="M0 -1 C2.5 -4.5, 5.5 -2, 2 0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
+                    <path d="M0 1 C-2.5 4.5, -5.5 2, -2 -0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
+                    <path d="M0 1 C2.5 4.5, 5.5 2, 2 -0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
+                  </g>
+                </svg>
+              </div>
+              <h1 className="mx-auto max-w-[290px] text-balance font-display text-[28px] font-semibold leading-[1.22] tracking-[-0.02em] text-white sm:max-w-md sm:text-[36px]">
+                {locale === "en" ? "What should we focus on?" : locale === "ru" ? "На чём сфокусируемся?" : "რაზე გავამახვილოთ ყურადღება?"}
+              </h1>
               {/* In a TOOL (never the chat home, whose screen stays the greeting and the box): one quiet line saying where you
                   are and what this tool does — the panel beside it is the how. Without it every tool without a result pane of
                   its own opened on the home page's words alone. */}
@@ -12660,7 +12732,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 }}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
-                  className="group relative ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors duration-200 hover:bg-app-accent/10">
+                  className="group relative ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1d4ed8] text-white shadow-[0_0_20px_rgba(29,78,216,0.5)] transition-all duration-200 hover:bg-[#2563eb] active:scale-95">
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 )}
@@ -12714,9 +12786,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* Under the EMPTY chat's box: the four quick buttons and nothing else (GG's UI plan, 2026-10-18: one box and four
             quick actions — video, image, music, avatar). A tap opens that tool with what is typed here as its description;
             nothing is charged until the tool's own priced Create. Gone once the conversation starts. */}
-        {chatOnly && messages.length === 0 && (
-          <HomeQuickStart locale={locale} onPick={(id) => selectTool(id, 'quick-start')} />
-        )}
+        {/* HomeQuickStart 4 buttons removed */}
         {/* Otherwise NOTHING under the composer — in the chat or in any tool (owner, 2026-10-02: "minimalist, premium"; he
             had the „25 კრედიტი · ~5 წთ“ line removed too). A priced tool's price is ON its Generate button (lib/credits/quote —
             the same number the route charges), never a caption under the box; the AI notice lives in the Terms. */}
