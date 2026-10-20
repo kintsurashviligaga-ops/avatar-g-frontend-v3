@@ -9789,8 +9789,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       analyzeOn: agentAnalyzeOn,
     };
     const isVideoCreationAsk = /(?:შექმენ|დააგენერირ|ახალი\s*ვიდეო|სარეკლამო|3[- ]?სცენ|სცენა\s*[1-9]|სცენარ|რეფერენსად|კლიპი|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
+
+    // DYNAMIC SCENE PLANNING BASED ON SCRIPT LENGTH:
+    const explicitScenesMatch = text.match(/(?:(\d+)[- ]?სცენ|სცენა\s*([1-9]))/i);
+    const countScenesInText = (text.match(/სცენა\s*[1-9]/gi) || []).length;
+    const explicitCount = countScenesInText > 1 ? countScenesInText : (explicitScenesMatch ? parseInt(explicitScenesMatch[1] || explicitScenesMatch[2] || "0", 10) : 0);
+
+    const scriptWords = text.replace(/(?:შექმენ|დააგენერირ|სარეკლამო|ვიდეო|ფორმატ|კინოსტუდი|9:16|16:9|რეფერენს|პროჟექტორ)/gi, "").trim().split(/\s+/).filter(Boolean).length;
+    const autoScenes = explicitCount > 0 ? Math.min(6, Math.max(1, explicitCount)) : (scriptWords <= 16 ? 2 : scriptWords <= 32 ? 3 : 4);
+    const autoSec = autoScenes * 8;
+
+    const autoVideoMode: "documentary" | "musicvideo" = /(?:მუსიკალურ|კლიპი|music\s*video)/iu.test(text) ? "musicvideo" : "documentary";
+    const autoAspect: "9:16" | undefined = /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? "9:16" : undefined;
     const step = isVideoCreationAsk
-      ? { kind: "open" as const, videoMode: "documentary" as const, durationSec: 24, aspect: /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? ("9:16" as const) : undefined }
+      ? { kind: "open" as const, videoMode: autoVideoMode, durationSec: autoSec, aspect: autoAspect }
       : planChatTurn(text, snapshot);
     if (step.kind === 'pass') return false;
 

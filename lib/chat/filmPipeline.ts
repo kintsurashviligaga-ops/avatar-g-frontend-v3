@@ -809,6 +809,7 @@ export interface FilmShared {
  *  scene-specific negative. Directly targets the documented failures: yellow/sepia LUT tint,
  *  muddy gradients, warped faces/hands, and cartoon/illustration drift on a photoreal brief. */
 export const FILM_DRIFT_NEGATIVE =
+  'sparkles, glitter, fairy lights, string lights, glowing bokeh balls, lens flare, shiny plastic skin, oily skin, ' +
   'yellow tint, sepia, oversaturated, muddy colours, amber cast, colour banding, deformed face, ' +
   'distorted face, extra fingers, extra limbs, mutated hands, disfigured, cartoon, anime, illustration, ' +
   '3d render, low quality, blurry, watermark, text, subtitles, ' +
