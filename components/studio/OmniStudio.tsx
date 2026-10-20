@@ -2612,6 +2612,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [lipMyVoice, setLipMyVoice] = useState(false);
   // Avatar mode: cloned-voice gender + output format (the panel's selectable options).
   const [lipGender, setLipGender] = useState<'auto' | 'female' | 'male'>('auto');
+  const resolveLipGender = (hintText?: string): 'female' | 'male' => {
+    if (hintText) {
+      const fromText = avatarGenderFromText(hintText);
+      if (fromText) return fromText;
+    }
+    return lipGender === 'auto' ? 'male' : lipGender;
+  };
   const [lipFormat, setLipFormat] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   // P8 — selected built-in avatar preset (a /public path used as the talking face).
   // Mutually exclusive with an uploaded face: picking one clears the other.
@@ -6886,7 +6893,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const avatarLine = gateMode === 'avatar' && verdict.kind === 'confirm' && door?.open ? splitAvatarScript(promptText) : null;
         const cardText = avatarLine?.speech
           ? avatarOfferText({
-            speech: avatarLine.speech, direction: avatarLine.direction, gender: avatarGenderFromText(promptText) ?? lipGender,
+            speech: avatarLine.speech, direction: avatarLine.direction, gender: resolveLipGender(promptText),
             aspect: (aspectFromText(promptText, { ratioOnly: true }) ?? lipFormat) === '16:9' ? '16:9' : '9:16',
             face: attachments.some((a) => isImage(a.mimeType)) ? 'photo' : lipPreset ? 'preset' : 'stock', credits, locale,
           })
@@ -7085,7 +7092,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           { role: 'user', text, ...(photo ? { medias: [photo], modelMedias: [] } : {}) },
           {
             role: 'assistant', agentG: card,
-            text: avatarOfferText({ speech: avatarLine.speech, direction: avatarLine.direction, gender: avatarGenderFromText(text) ?? lipGender, aspect, face, credits: avatarDoor.credits, locale }),
+            text: avatarOfferText({ speech: avatarLine.speech, direction: avatarLine.direction, gender: resolveLipGender(text), aspect, face, credits: avatarDoor.credits, locale }),
           },
         ]);
         setGateFrom(messages.length);
@@ -7560,7 +7567,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             // Honour the panel's Voice (Female/Male) + Format selections.
-            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: lipGender }),
+            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: resolveLipGender() }),
           });
           const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string; error?: string; code?: string };
           let sj: { success?: boolean; videoId?: string; error?: string; code?: string } = {};
