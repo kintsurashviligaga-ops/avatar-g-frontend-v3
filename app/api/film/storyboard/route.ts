@@ -599,7 +599,25 @@ export async function POST(req: NextRequest) {
   // frames) so the storyboard opens in ~1s; frames then stream in per-scene and the
   // story enrichment arrives separately (scriptsOnly). Each scene carries its full
   // frame prompt (the summary `prompt` is truncated for display).
-  if (body.planOnly) {
+      // SCRIPT PASSTHROUGH: If user provided Georgian text, distribute THEIR words directly
+    const isKa = /[ა-ჰ]/u.test(prompt);
+    let userKaParts: string[] = [];
+    if (isKa) {
+      const clean = prompt.replace(/(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/gi, "").trim();
+      const sents = clean.split(/[.!?\n]+/).map(s => s.trim()).filter(Boolean);
+      if (sents.length >= 3) {
+        userKaParts = [sents[0] || "", sents[1] || "", sents.slice(2).join(". ")];
+      } else {
+        const words = clean.split(/\s+/);
+        const chunk = Math.ceil(words.length / 3);
+        userKaParts = [
+          words.slice(0, chunk).join(" "),
+          words.slice(chunk, chunk * 2).join(" "),
+          words.slice(chunk * 2).join(" ")
+        ].filter(Boolean);
+      }
+    }
+    if (body.planOnly) {
     // ANCHOR MODE — the user uploaded MULTIPLE reference images: use them directly as
     // the ordered per-scene frames (scene 1 → image 1, scene 2 → image 2, …), skipping
     // FLUX for those scenes. The client renders them immediately AND threads them to the
@@ -630,7 +648,7 @@ export async function POST(req: NextRequest) {
         return {
           ordinal: s.ordinal,
           beat: s.beat,
-          prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
+          prompt: (userKaParts[i] && userKaParts[i].length > 3) ? userKaParts[i] : s.prompt.replace(/\s+/g, ' ').slice(0, 160),
           framePrompt: s.prompt,
           // VECTOR 1 — Scene 1 shows the user's EXACT uploaded image (never a to-be-generated frame). Other scenes
           // stay null here and get an identity-locked frame from the per-scene generation pass.

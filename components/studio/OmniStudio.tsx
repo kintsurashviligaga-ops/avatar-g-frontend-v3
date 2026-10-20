@@ -7061,9 +7061,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); stopDictationEcho();
       return;
     }
-    const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(text);
+    const isMultiScene = /(?:სცენ[ა-ე]|scene|\d+[- ]?სცენ|3\s*სცენა|სამივე|კლიპ|ვიდეო|მსახიობ)/iu.test(text);
     if (isMultiScene) {
-      const photoRefs = attachments.filter((a) => isImage(a.mimeType)).map((a: any) => a.url || a.dataUrl || "").filter(Boolean);
+      const photoRefs = attachments
+        .filter((a) => (a as any).mimeType?.startsWith("image/") || isImage((a as any).mimeType) || /\.(jpe?g|png|webp)$/i.test((a as any).name || ""))
+        .map((a: any) => a.url || a.dataUrl || "")
+        .filter(Boolean);
       const attachedAudio = attachments.find((a) => (a as any).mimeType?.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg)$/i.test((a as any).name || ""));
       const isMusicVideoPrompt = /(?:მუსიკალურ|კლიპი|სიმღერ|music\s*video|song)/iu.test(text) || !!attachedAudio;
       const ratio = aspectFromText(text, { ratioOnly: true });
