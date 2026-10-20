@@ -4759,6 +4759,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
+    // Live ETA notice for video generation
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        text: "🎬 **ვიდეოს გენერაცია დაიწყო (3 სცენა · 24 წმ)**\n\n⏳ **სავარაუდო დრო: ~5–10 წუთი.**\nმიმდინარეობს Veo 2-ის თანმიმდევრული დამუშავება სტუდიური ხარისხით. გთხოვთ დაელოდოთ...",
+      }
+    ]);
     // The failure, visible: the route's own sentence when it gave one (describeOpFailure keeps machine codes out of a
     // Georgian interface), the translated line otherwise — as the chat's error card, whose Retry plans the storyboard
     // again (never a render) and whose Dismiss puts it away. Nothing after a user cancel.
