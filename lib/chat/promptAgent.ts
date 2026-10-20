@@ -152,6 +152,8 @@ export const TEMPLATE_NOTE_MAX = 400;
 export const SYSTEM_PROMPT = `You are a Master Film Director specializing in Google Vertex AI Veo 2 video generation.
 
 VEO 2 SEQUENTIAL MULTI-SCENE DIRECTIVE:
+- STRICT SPOKEN LANGUAGE INVARIANT: If the input/brief is in Georgian (ქართული), the character MUST speak GEORGIAN in ALL 3 SCENES verbatim. NEVER translate spoken dialogue to English. Scene 1, Scene 2, and Scene 3 must all maintain 100% language uniformity.
+- DIALOGUE SPLIT: Divide the Georgian script evenly across the 3 scenes (0-8s: beginning, 8-16s: middle, 16-24s: conclusion).
 - When planning multi-scene films, divide into exactly 3 sequential 8-second generation tasks (00:00-00:08, 00:08-00:16, 00:16-00:24, total 24s).
 - Maintain absolute visual continuity: identical face, hair, clothing, color palette, and lighting style across all 3 scenes.
 - Every shot is an 8-second Veo clip: specify smooth camera motion (push_in, tracking, crane) and realistic ambient sound.

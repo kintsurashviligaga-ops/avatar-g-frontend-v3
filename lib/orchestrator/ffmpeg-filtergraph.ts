@@ -383,7 +383,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     // dialogue energy (depth from duckDb, else duckPct); SFX stays present so
     // diegetic sound is audible. normalize=0 everywhere (the codebase invariant).
     const clampVol = (v: number) => Math.max(0, Math.min(1.5, v));
-    const musV = clampVol(opts.musicVolume ?? 0.7);
+    const musV = clampVol(opts.musicVolume ?? 0.18);
     const sfxV = clampVol(opts.sfxVolume ?? 0.8);
     const smart = opts.smartDuck !== false;
     // dB→ratio via the SHARED duckRatio() map (unified with the 2-track path below) so the
@@ -439,13 +439,13 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     if (smart) {
       parts.push(`[${voiceIdx}:a]${voiceKeyPad},asplit=2[vkey][vraw]`);
       parts.push(`[vraw]volume=1.25[vmix]`);
-      parts.push(`${bgLabel}volume=0.6[bglow]`);
+      parts.push(`${bgLabel}volume=0.18[bglow]`);
       parts.push(`[bglow][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[bgduck]`);
       parts.push(`[bgduck][vmix]amix=inputs=2:normalize=0[apre]`);
     } else {
       // Smart-duck OFF → static mix: voice lifted on top, bed low + constant (no sidechain).
       parts.push(`[${voiceIdx}:a]volume=1.25[vmix]`);
-      parts.push(`${bgLabel}volume=0.6[bglow]`);
+      parts.push(`${bgLabel}volume=0.18[bglow]`);
       parts.push(`[bglow][vmix]amix=inputs=2:normalize=0[apre]`);
     }
     apre = '[apre]';

@@ -1850,7 +1850,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
         {regenning && (
           <div className="absolute inset-0 z-30 overflow-hidden bg-black"><LoadingLoop /><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-medium text-white/85">{t.sbRegen}…</span></div>
         )}
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+        <input ref={fileRef} type="file" accept="image/*,audio/mpeg,audio/mp3,audio/wav,audio/m4a,audio/*" hidden onChange={onFile} />
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-2">
         <p className="text-[11.5px] font-semibold leading-snug text-app-text">{s.beat}</p>
@@ -7055,12 +7055,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(text);
     if (isMultiScene) {
-      const photoRefs = attachments.filter((a) => isImage(a.mimeType)).map((a) => (a as any).url || (a as any).dataUrl || '').filter(Boolean);
+      const photoRefs = attachments.filter((a) => isImage(a.mimeType)).map((a: any) => a.url || a.dataUrl || "").filter(Boolean);
+      const attachedAudio = attachments.find((a) => (a as any).mimeType?.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg)$/i.test((a as any).name || ""));
+      const isMusicVideoPrompt = /(?:მუსიკალურ|კლიპი|სიმღერ|music\s*video|song)/iu.test(text) || !!attachedAudio;
       const ratio = aspectFromText(text, { ratioOnly: true });
-      const sbOrientation = (ratio ?? lipFormat) === '16:9' ? 'landscape' : 'vertical';
+      const sbOrientation = (ratio ?? lipFormat) === "16:9" ? "landscape" : "vertical";
       setAttachments([]);
-      setInput(''); stopDictationEcho();
-      await createStoryboard(text, photoRefs, sbOrientation, { nativeSec: 24 });
+      setInput(""); stopDictationEcho();
+      await createStoryboard(text, photoRefs, sbOrientation, { 
+        nativeSec: 24, 
+        musicVideoMode: isMusicVideoPrompt 
+      });
       return;
     }
     if (studio) {
