@@ -16,14 +16,15 @@ export const runtime = 'nodejs';
 
 /** Read-only readiness of the 6 core agents (KEY PRESENCE only — not a guarantee the provider works). */
 function providerReadiness() {
-  const has = (k: string) => Boolean(process.env[k]);
+  const has = (...names: string[]) => names.some((n) => Boolean(process.env[n]?.trim()));
+  const hasVertex = has('GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_VERTEX_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY');
   return [
-    { key: 'music', label: 'Music (ElevenLabs → MusicGen)', ready: has('ELEVENLABS_API_KEY') || has('REPLICATE_API_TOKEN') },
-    { key: 'audio', label: 'Audio / TTS (ElevenLabs)', ready: has('ELEVENLABS_API_KEY') },
-    { key: 'video', label: 'Video (Kling via Replicate)', ready: has('REPLICATE_API_TOKEN') },
-    { key: 'avatar', label: 'Avatar (HeyGen)', ready: has('HEYGEN_API_KEY') },
-    { key: 'lipsync', label: 'Lip-sync (Replicate / HeyGen)', ready: has('REPLICATE_API_TOKEN') || has('HEYGEN_API_KEY') },
-    { key: 'audiomix', label: 'Audio-mix (local ffmpeg)', ready: true },
+    { key: 'video', label: 'Video (Google Vertex AI · Veo)', ready: hasVertex },
+    { key: 'gemini', label: 'Chat & Vision (Google Gemini)', ready: has('GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY') || hasVertex },
+    { key: 'music', label: 'Music (Google Lyria 3)', ready: hasVertex },
+    { key: 'image', label: 'Image (Google Gemini / Imagen)', ready: has('GEMINI_API_KEY', 'NANOBANANA_API_KEY') || hasVertex },
+    { key: 'audio', label: 'Voice / Live Audio (Gemini Native)', ready: has('GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY') || hasVertex },
+    { key: 'audiomix', label: 'Audio-mix & Mastering (FFmpeg)', ready: true },
   ];
 }
 

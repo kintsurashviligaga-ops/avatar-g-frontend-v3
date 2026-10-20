@@ -107,7 +107,18 @@ export function summarizeDashboard(input: {
     if ((c.status ?? 'succeeded') !== 'succeeded') continue;
     const a = num(c.cost_wholesale_gel);
     apiCostGel += a;
-    const k = typeof c.worker_kind === 'string' && c.worker_kind ? c.worker_kind : 'unknown';
+    const rawK = typeof c.worker_kind === 'string' && c.worker_kind ? c.worker_kind.toLowerCase() : 'unknown';
+    const k = rawK === 'ltx' || rawK === 'veo' || rawK === 'vertex-veo' || rawK === 'video'
+      ? 'Google Vertex AI (Veo)'
+      : rawK === 'gemini' || rawK === 'gemini-image'
+        ? 'Google Gemini'
+        : rawK === 'lyria'
+          ? 'Google Lyria 3'
+          : rawK === 'nanobanana'
+            ? 'Gemini Image (NanoBanana)'
+            : rawK === 'elevenlabs'
+              ? 'ElevenLabs Audio'
+              : typeof c.worker_kind === 'string' && c.worker_kind ? c.worker_kind : 'Google AI';
     const e = byKind.get(k) ?? { costGel: 0, calls: 0 };
     e.costGel += a;
     e.calls += 1;

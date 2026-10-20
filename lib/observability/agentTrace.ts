@@ -23,6 +23,7 @@ export type WorkerKind =
   | 'openai'
   | 'gemini'
   | 'nanobanana'
+  | 'veo'
   | 'ltx'
   | 'heygen'
   | 'worldlabs'
