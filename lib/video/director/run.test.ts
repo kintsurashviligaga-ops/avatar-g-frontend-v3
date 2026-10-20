@@ -363,3 +363,72 @@ describe('decideRun', () => {
     expect(s.engine.calls).toHaveLength(0);
   });
 });
+
+describe('unresolved provider submissions', () => {
+  it.each(['ambiguous', 'throw'] as const)('%s cannot authorize another paid attempt', async (mode) => {
+    const s = setup(mode === 'throw'
+      ? { createThrows: () => new Error('lost submit response') }
+      : { script: () => ({ submit: { ok: false, reason: 'ambiguous', retryable: false } }) });
+    await started(s);
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(view.pendingDecision?.error).toMatchObject({ requiresReconciliation: true, retryable: false });
+    expect(view.pendingDecision?.options).toEqual(['cancel']);
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    await expect(decideRun(s.deps, 'run-1', USER, 'edit')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    await Promise.all([advanceRun(s.deps, 'run-1', USER), advanceRun(s.deps, 'run-1', USER)]);
+    expect(s.store.get('run-1').shots[0]?.attempt).toBe(1);
+    expect(s.engine.calls).toHaveLength(1);
+    expect(s.charges).toHaveLength(1);
+    // A user refund does not prove that Google did not accept or bill the request.
+    expect(s.refunds).toHaveLength(1);
+  });
+
+  it.each(['submitting', 'rendering'] as const)('a persisted %s without a ticket requires reconciliation', async (status) => {
+    const s = setup();
+    await started(s);
+    const row = s.store.get('run-1');
+    await s.store.replace({ ...row, version: row.version + 1, shots: row.shots.map((rec, i) => i === 0 ? { ...rec, status, charged: 25 } : rec) }, row.version);
+    s.tick(4 * 60_000);
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(view.pendingDecision?.error).toMatchObject({ requiresReconciliation: true, retryable: false });
+    expect(view.pendingDecision?.options).toEqual(['cancel']);
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    expect(s.engine.calls).toHaveLength(0);
+    const cancelled = await decideRun(s.deps, 'run-1', USER, 'cancel');
+    expect(cancelled.view.state).toBe('cancelled');
+    expect(s.store.get('run-1').shots[0]?.error).toMatchObject({ requiresReconciliation: true });
+  });
+
+  it.each([false, true])('retains a late operation for reconciliation without reviving delivery (cancel=%s)', async (cancel) => {
+    const s = setup();
+    await started(s);
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const submit = s.provider.submitShot.bind(s.provider);
+    jest.spyOn(s.provider, 'submitShot').mockImplementation(async (...args) => {
+      const result = await submit(...args);
+      entered();
+      await gate;
+      return result;
+    });
+    const first = advanceRun(s.deps, 'run-1', USER);
+    await ready;
+    s.tick(4 * 60_000);
+    await advanceRun(s.deps, 'run-1', USER);
+    if (cancel) await decideRun(s.deps, 'run-1', USER, 'cancel');
+    release();
+    await first;
+    const row = s.store.get('run-1');
+    expect(row.state).toBe(cancel ? 'cancelled' : 'waiting_for_shot_decision');
+    expect(row.shots[0]).toMatchObject({ status: 'failed', attempt: 1, error: { requiresReconciliation: true }, ticket: { operationName: expect.stringContaining('/operations/') } });
+    expect(row.shots[0]?.clipUrl).toBeUndefined();
+    const after = await advanceRun(s.deps, 'run-1', USER);
+    expect(JSON.stringify(after)).not.toContain('/operations/');
+    expect(s.engine.calls).toHaveLength(1);
+    expect(s.engine.polled).toHaveLength(0);
+    expect(s.engine.delivered).toHaveLength(0);
+    expect(s.refunds).toHaveLength(1);
+  });
+});

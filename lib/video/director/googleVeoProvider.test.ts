@@ -202,7 +202,7 @@ describe('V5 — engine failures map to the eight reasons', () => {
     ['a render rejected for its duration', { polls: [{ state: 'failed', reason: 'Invalid duration for this model', code: 3 }] }, 'invalid_duration', false],
     ['an internal render failure', { polls: [{ state: 'failed', reason: 'Internal error', code: 13 }] }, 'veo_internal', true],
     ['a render that returns no video', { polls: [{ state: 'succeeded', videos: [] }] }, 'veo_internal', true],
-    ['a render that never finishes', { polls: [{ state: 'processing' }] }, 'veo_internal', true],
+    ['a render that never finishes', { polls: [{ state: 'processing' }] }, 'veo_internal', false],
     ['a clip that cannot be delivered', { deliver: null }, 'unknown', true],
   ])('%s', async (_label, script, reason, retryable) => {
     const { run } = setup({ script: once(script) });
@@ -233,14 +233,24 @@ describe('V5 — engine failures map to the eight reasons', () => {
 
   it('gives up waiting after the poll budget (30 s / 5 s = 6 polls), without re-submitting', async () => {
     const { engine, run } = setup({ script: once({ polls: [{ state: 'processing' }] }) });
-    await run(makeShot({ id: 'a', order: 1 }));
+    expect(errorOf(await run(makeShot({ id: 'a', order: 1 })))).toMatchObject({ requiresReconciliation: true, retryable: false });
     expect(engine.polled).toHaveLength(6);
     expect(engine.calls).toHaveLength(1);
   });
 
   it('turns an engine that throws into a non-retryable unknown (it may have submitted)', async () => {
     const { run } = setup({ createThrows: () => new Error('boom') });
-    expect(errorOf(await run(makeShot({ id: 'a', order: 1 })))).toMatchObject({ reason: 'unknown', retryable: false, veoRawResponse: 'boom' });
+    expect(errorOf(await run(makeShot({ id: 'a', order: 1 })))).toMatchObject({ reason: 'unknown', retryable: false, requiresReconciliation: true, veoRawResponse: 'boom' });
+  });
+
+  it('retains the ambiguity marker even if an engine incorrectly suggests retry', async () => {
+    const { run } = setup({ script: once({ submit: { ok: false, reason: 'ambiguous', retryable: true } }) });
+    expect(errorOf(await run(makeShot({ id: 'a', order: 1 })))).toMatchObject({ requiresReconciliation: true, retryable: false });
+  });
+
+  it('a definite request refusal does not invent an uncertain submission', async () => {
+    const { run } = setup({ script: once({ submit: { ok: false, reason: 'invalid_request', retryable: false, status: 400 } }) });
+    expect(errorOf(await run(makeShot({ id: 'a', order: 1 })))).not.toHaveProperty('requiresReconciliation');
   });
 
   it('discards a clip the engine changed after the submit instead of returning it as the frozen shot', async () => {

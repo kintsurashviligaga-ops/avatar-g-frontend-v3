@@ -2,7 +2,8 @@
  * @jest-environment jsdom
  *
  * The overlay only shows what the server decided: it starts the run once, steps it while it is running, and on a
- * failed shot offers exactly retry / edit / cancel (V5). A board the server refuses is listed with every problem and
+ * failed shot offers only the decisions the server permits (V5). An unresolved submit cannot offer retry/edit.
+ * A board the server refuses is listed with every problem and
  * sent back to the editor (V6); nothing is retried or fixed on the client.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -76,6 +77,24 @@ afterEach(() => {
 
 const flush = () => act(async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve(); });
 const step = () => act(async () => { jest.advanceTimersByTime(5_000); for (let i = 0; i < 6; i += 1) await Promise.resolve(); });
+
+it('offers only the server-allowed cancel while an uncertain submission is reconciled', async () => {
+  reply(201, { run: view({
+    state: 'waiting_for_shot_decision',
+    pendingDecision: {
+      shotId: 's1', shotIndex: 0,
+      error: { shotId: 's1', reason: 'veo_internal', message: 'The submission needs review.', retryable: false },
+      options: ['cancel'],
+    },
+  }, ['failed', 'pending']) });
+  render(<DirectorRunOverlay storyboard={board} locale="en" onEdit={jest.fn()} onClose={jest.fn()} />);
+  await flush();
+  expect(screen.queryByRole('button', { name: 'Retry this shot' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Edit storyboard' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+  await step();
+  expect(calls).toHaveLength(1);
+});
 
 it('starts the run once with the approved board and steps it while it runs', async () => {
   reply(201, { run: view() });

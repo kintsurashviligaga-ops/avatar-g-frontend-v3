@@ -49,6 +49,17 @@ afterAll(() => {
   expect(llmText).not.toHaveBeenCalled();
 });
 
+it('an ambiguous submit cannot be retried or edited through the synchronous director', async () => {
+  const s = setup({ script: () => ({ submit: { ok: false, reason: 'ambiguous', retryable: false } }) });
+  const frozen = lockedThreeShotBoard(s.director);
+  const run = await s.director.executeStoryboard(frozen, s.onProgress);
+  expect(run.pendingDecision?.options).toEqual(['cancel']);
+  await expect(s.director.retryFailedShot(run, s.onProgress)).rejects.toBeInstanceOf(RunDecisionError);
+  expect(() => s.director.editStoryboard(run)).toThrow(RunDecisionError);
+  expect(s.director.cancelRun(run).state).toBe('cancelled');
+  expect(s.engine.calls).toHaveLength(1);
+});
+
 describe('V1 — only GoogleVeoProvider', () => {
   it('accepts GoogleVeoProvider ("google_veo")', () => {
     const { director } = setup();

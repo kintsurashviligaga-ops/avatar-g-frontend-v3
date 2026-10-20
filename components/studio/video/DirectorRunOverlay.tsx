@@ -193,7 +193,9 @@ export function DirectorRunOverlay({ storyboard, approval, locale, onEdit, onClo
           {view?.pendingDecision && (
             <div className="mt-3 rounded-2xl bg-app-elevated p-4 ring-1 ring-app-border/25" role="alert">
               <p className="text-[13px] font-medium text-app-text">
-                {tr(locale, `სცენა ${view.pendingDecision.shotIndex + 1} ვერ შედგა. შემდეგი სცენები არ დაიწყება, სანამ არ აირჩევ.`, `Shot ${view.pendingDecision.shotIndex + 1} failed. Nothing more is rendered until you choose.`, `Сцена ${view.pendingDecision.shotIndex + 1} не удалась. Дальше ничего не рендерится, пока вы не выберете.`)}
+                {view.pendingDecision.error.requiresReconciliation
+                  ? tr(locale, 'Veo-მ შესაძლოა ჯერ კიდევ შექმნას ვიდეო და დაარიცხოს ხარჯი. შედეგის გარკვევამდე განმეორებითი გაშვება შეჩერებულია.', 'Veo may still render and bill this video. Another attempt is blocked until the outcome is reviewed.', 'Veo ещё может создать видео и начислить плату. Новая попытка заблокирована до проверки результата.')
+                  : tr(locale, `სცენა ${view.pendingDecision.shotIndex + 1} ვერ შედგა. შემდეგი სცენები არ დაიწყება, სანამ არ აირჩევ.`, `Shot ${view.pendingDecision.shotIndex + 1} failed. Nothing more is rendered until you choose.`, `Сцена ${view.pendingDecision.shotIndex + 1} не удалась. Дальше ничего не рендерится, пока вы не выберете.`)}
               </p>
               <p className="mt-1 text-[12.5px] text-app-muted">{view.pendingDecision.error.message}</p>
             </div>
@@ -207,15 +209,15 @@ export function DirectorRunOverlay({ storyboard, approval, locale, onEdit, onClo
         <div className="flex flex-wrap items-center gap-2 border-t border-app-border/10 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
           {view?.pendingDecision ? (
             <>
-              <button type="button" disabled={deciding} onClick={() => void decide('retry')} className="min-h-[44px] flex-1 rounded-full bg-app-accent px-4 text-[13.5px] font-semibold text-app-bg disabled:opacity-50">
+              {view.pendingDecision.options.includes('retry') && <button type="button" disabled={deciding} onClick={() => void decide('retry')} className="min-h-[44px] flex-1 rounded-full bg-app-accent px-4 text-[13.5px] font-semibold text-app-bg disabled:opacity-50">
                 {tr(locale, 'თავიდან ცდა', 'Retry this shot', 'Повторить сцену')}
-              </button>
-              <button type="button" disabled={deciding} onClick={() => void decide('edit')} className="min-h-[44px] rounded-full bg-app-elevated px-4 text-[13px] font-medium text-app-text disabled:opacity-50">
+              </button>}
+              {view.pendingDecision.options.includes('edit') && <button type="button" disabled={deciding} onClick={() => void decide('edit')} className="min-h-[44px] rounded-full bg-app-elevated px-4 text-[13px] font-medium text-app-text disabled:opacity-50">
                 {tr(locale, 'სცენარის შეცვლა', 'Edit storyboard', 'Изменить раскадровку')}
-              </button>
-              <button type="button" disabled={deciding} onClick={() => void decide('cancel')} className="min-h-[44px] rounded-full bg-app-elevated px-4 text-[13px] font-medium text-app-muted disabled:opacity-50">
+              </button>}
+              {view.pendingDecision.options.includes('cancel') && <button type="button" disabled={deciding} onClick={() => void decide('cancel')} className="min-h-[44px] rounded-full bg-app-elevated px-4 text-[13px] font-medium text-app-muted disabled:opacity-50">
                 {tr(locale, 'გაუქმება', 'Cancel', 'Отменить')}
-              </button>
+              </button>}
             </>
           ) : phase.kind === 'refused' ? (
             <>

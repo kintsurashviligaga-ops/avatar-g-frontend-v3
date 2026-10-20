@@ -100,6 +100,8 @@ export type ShotError = {
     | 'unknown';
   message: string;
   retryable: boolean;
+  /** The provider may still be rendering/billing. No new attempt until an operator reconciles it. */
+  requiresReconciliation?: true;
   veoRawResponse?: string;
 };
 

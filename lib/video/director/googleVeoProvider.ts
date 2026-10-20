@@ -186,7 +186,7 @@ function submitError(shotId: string, o: CreateFailure): ShotError {
         : 'Veo is temporarily unavailable. Nothing was rendered; retry shortly.', true, raw);
     }
     case 'ambiguous':
-      return shotError(shotId, 'veo_internal', 'Veo did not answer the submit. It may still render (and bill) this clip; a retry renders a second one.', engineRetryable, raw);
+      return { ...shotError(shotId, 'veo_internal', 'Veo did not answer the submit. It may still render and bill this clip. The submission needs review before another attempt.', false, raw), requiresReconciliation: true };
     case 'invalid_request':
       return shotError(shotId, reasonFromDetail(o.detail) ?? 'unknown', 'Veo rejected the request for this shot.', false, raw);
     case 'auth':
@@ -276,7 +276,7 @@ export class GoogleVeoProvider implements VideoGenProvider {
     const minutes = Math.round((this.maxPolls * this.pollIntervalMs) / 60_000);
     return {
       ok: false,
-      error: shotError(shot.id, 'veo_internal', `Veo did not finish this clip within ${minutes} min. It may still finish (and bill); a retry renders a new one.`, true),
+      error: { ...shotError(shot.id, 'veo_internal', `Veo did not finish this clip within ${minutes} min. It may still finish and bill; the operation needs review before another attempt.`, false), requiresReconciliation: true },
     };
   }
 
@@ -343,7 +343,8 @@ export class GoogleVeoProvider implements VideoGenProvider {
     try {
       created = await this.engine.createClip(createInput, { userId: input.params?.userId ?? null });
     } catch (err) {
-      return fail('unknown', 'The Veo submit failed unexpectedly; it is not known whether Google accepted it.', false, err instanceof Error ? err.message : String(err));
+      const failed = fail('unknown', 'The Veo submit failed unexpectedly; it is not known whether Google accepted it. The submission needs review before another attempt.', false, err instanceof Error ? err.message : String(err));
+      return { ...failed, error: { ...failed.error, requiresReconciliation: true } };
     }
     if (!created.outcome.ok) return { ok: false, error: submitError(shot.id, created.outcome) };
     // Preflight ran the same normalisation, so this only trips if the transport changed in between. The job exists
