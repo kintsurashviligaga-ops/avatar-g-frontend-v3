@@ -143,6 +143,14 @@ export async function startRun(
   if (put === 'exists') {
     const row = await deps.store.read(runId);
     if (!row || row.userId !== userId || row.exec?.kind !== RUN_KIND) return err('jobs_unavailable', 'The run could not be recorded, so it was not started.');
+    const saved = runOf(row.params);
+    if (!saved) return err('jobs_unavailable', 'The run could not be recorded, so it was not started.');
+    const savedSpec = validateRunSpec(saved.spec);
+    if (!savedSpec.ok || specFingerprint(savedSpec.spec) !== fingerprint
+      || saved.approval?.userId !== userId || saved.approval?.quoteFingerprint !== fingerprint) {
+      await deps.audit({ userId, op: 'agent_run', phase: 'run', outcome: 'refused', runId, detail: 'run_plan_conflict' });
+      return err('quote_changed', 'This run belongs to a different approved plan.');
+    }
     await deps.audit({ userId, op: 'agent_run', phase: 'run', outcome: 'replayed', runId, detail: row.status });
     return { ok: true, runId, replay: true };
   }
@@ -251,7 +259,12 @@ export async function tickRun(deps: RunExecDeps, input: { id: string; startWorke
       last = { row, run: next, children: views };
     }
     let acted = false;
-    if (mayStart) { await startSteps(deps, row.id, row.userId, starts, me, input.startWorkers); acted = true; }
+    if (mayStart) {
+      // Ownership/cancellation lost during a quote: let the successor or a later tick continue. Do not start another
+      // quoting pass from this stale tick. An already-started quote is not cancellable through the adapter contract.
+      if (!(await startSteps(deps, row.id, row.userId, starts, me, input.startWorkers))) return readRun(deps, input.id);
+      acted = true;
+    }
     for (const a of actions) {
       if (a.type === 'enqueue') { await enqueueStep(deps, row.id, row.userId, a.step, input.startWorkers); acted = true; }
       if (a.type === 'cancel') {
@@ -274,22 +287,44 @@ export async function tickRun(deps: RunExecDeps, input: { id: string; startWorke
   return last ?? readRun(deps, input.id);
 }
 
-/** Quote the ready steps (holding the tick lease), then write what each quote says and queue the ones that may run. */
-async function startSteps(deps: RunExecDeps, runId: string, userId: string, ids: string[], me: string, startWorkers: boolean): Promise<void> {
-  const first = await readRunRow(deps, runId);
-  if (!first || first.run.tick?.owner !== me) return;
+/**
+ * Read the current start authority. A long quote can outlive the lease: renew only the SAME owner's lease under the
+ * existing version CAS, never overwrite a successor. This preserves slow valid quotes without letting an expired
+ * read authorize the next one. No timer/parallel execution authority or new store is introduced.
+ */
+async function startLease(deps: RunExecDeps, runId: string, userId: string, me: string): Promise<Awaited<ReturnType<typeof readRunRow>>> {
+  const owned = (run: RunState) => run.tick?.owner === me && !isTerminalRun(run) && !run.cancelRequested;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const r = await readRunRow(deps, runId);
+    if (!r || r.row.userId !== userId || !owned(r.run)) return null;
+    const now = deps.now();
+    if (r.run.tick!.until > now) return r;
+    const next = clone(r.run);
+    next.tick = { owner: me, until: now + TICK_LEASE_MS };
+    if (await writeRun(deps, r.row, next)) {
+      const fresh = await readRunRow(deps, runId);
+      return fresh && fresh.row.userId === userId && owned(fresh.run) && fresh.run.tick!.until > deps.now() ? fresh : null;
+    }
+  }
+  return null;
+}
+
+/** Quote ready steps under fresh start authority, then write the quotes and queue the ones that may run. */
+async function startSteps(deps: RunExecDeps, runId: string, userId: string, ids: string[], me: string, startWorkers: boolean): Promise<boolean> {
   const quotes = new Map<string, Awaited<ReturnType<StepAdapter['quote']>>>();
   for (const id of ids) {
-    const spec = first.run.spec.steps.find((s) => s.id === id);
-    const step = stepOf(first.run, id);
-    if (!spec || !step) continue;
-    const resolved = resolveStep(first.run, spec);
+    const current = await startLease(deps, runId, userId, me);
+    if (!current) return false;
+    const spec = current.run.spec.steps.find((s) => s.id === id);
+    const step = stepOf(current.run, id);
+    if (!spec || !step || isFinalStep(step) || step.taskId || step.quote) continue;
+    const resolved = resolveStep(current.run, spec);
     quotes.set(id, resolved ? await deps.adapters[spec.tool].quote(userId, resolved) : { ok: false, error: 'input_missing' });
   }
   const queued: string[] = [];
   for (let i = 0; i < 4; i += 1) {
-    const r = await readRunRow(deps, runId);
-    if (!r || isTerminalRun(r.run) || r.run.tick?.owner !== me) return; // the lease lapsed and another tick took over
+    const r = await startLease(deps, runId, userId, me);
+    if (!r) return false;
     const next = clone(r.run);
     const now = deps.now();
     queued.length = 0;
@@ -315,9 +350,10 @@ async function startSteps(deps: RunExecDeps, runId: string, userId: string, ids:
     delete next.tick;
     settle(next, now);
     if (await writeRun(deps, r.row, next)) break;
-    if (i === 3) return;
+    if (i === 3) return false;
   }
   for (const id of queued) await enqueueStep(deps, runId, userId, id, startWorkers);
+  return true;
 }
 
 /** The step spec with every `{ step }` input replaced by that step's result link; null while one is missing. */
