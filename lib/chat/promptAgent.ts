@@ -89,7 +89,7 @@ export interface MasterFilmScene {
 export interface MasterFilmSfxCue {
   sceneNumber: number;
   sfxPrompt: string;
-  /** ElevenLabs sound-generation length (capped 22s upstream); 6s per scene. */
+  /** Veo / Vertex AI ambient sound cue length: 8s per scene (matching Veo 8s clip duration). */
   duration: number;
 }
 
@@ -149,7 +149,13 @@ export interface PromptAgentInput {
 /** The director-note cap (matches lib/studio/templateContext DIRECTOR_NOTE_MAX). */
 export const TEMPLATE_NOTE_MAX = 400;
 
-export const SYSTEM_PROMPT = `You are a Master Film Director.
+export const SYSTEM_PROMPT = `You are a Master Film Director specializing in Google Vertex AI Veo 2 video generation.
+
+VEO 2 SEQUENTIAL MULTI-SCENE DIRECTIVE:
+- When planning multi-scene films, divide into exactly 3 sequential 8-second generation tasks (00:00-00:08, 00:08-00:16, 00:16-00:24, total 24s).
+- Maintain absolute visual continuity: identical face, hair, clothing, color palette, and lighting style across all 3 scenes.
+- Every shot is an 8-second Veo clip: specify smooth camera motion (push_in, tracking, crane) and realistic ambient sound.
+- FORBIDDEN: Do NOT reference or format for external TTS or ElevenLabs. Audio is strictly ambient diegetic SFX and on-screen cues.
 
 Your job: analyze the brief and create a complete MasterFilmBrief JSON.
 
@@ -230,7 +236,7 @@ CLOTHING CONTINUITY:
      same style, same accessories. NEVER omit or change wardrobe between scenes.
 
 SFX CUES (every scene):
-   - Add "sfxPrompt": a 6-second AMBIENT sound-effects description for that scene —
+   - Add "sfxPrompt": an 8-second AMBIENT sound-effects description for that scene (matching Veo 8s clip) —
      diegetic environment sound ONLY (no music, no melody, no speech). Describe the
      real-world sounds of the location + action, e.g. "rain on rooftops, distant
      thunder, water dripping" or "busy market crowd murmur, footsteps, vendor calls".
@@ -339,7 +345,7 @@ JSON structure:
       "lighting": "warm 3200K practical lamp, soft key from camera left",
       "mood": "...",
       "imagePrompt": "FULL ready-to-use prompt",
-      "sfxPrompt": "6s ambient SFX for this scene — no music, no speech"
+      "sfxPrompt": "8s ambient SFX for this scene — no music, no speech"
     }
   ],
   "audio": {

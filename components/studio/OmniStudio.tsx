@@ -7055,12 +7055,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(text);
     if (isMultiScene) {
-      const photoRefs = attachments.filter((a) => isImage(a.mimeType)).map((a) => a.url || a.dataUrl || '').filter(Boolean);
+      const photoRefs = attachments.filter((a) => isImage(a.mimeType)).map((a) => (a as any).url || (a as any).dataUrl || '').filter(Boolean);
       const ratio = aspectFromText(text, { ratioOnly: true });
       const sbOrientation = (ratio ?? lipFormat) === '16:9' ? 'landscape' : 'vertical';
       setAttachments([]);
       setInput(''); stopDictationEcho();
-      await createStoryboard(text, photoRefs, sbOrientation);
+      await createStoryboard(text, photoRefs, sbOrientation, { nativeSec: 24 });
       return;
     }
     if (studio) {
