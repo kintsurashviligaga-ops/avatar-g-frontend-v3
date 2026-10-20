@@ -374,12 +374,14 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       const requested = String(g.lut || '').trim() as LutLook;
       lutLook = (['cinematic', 'night_neon', 'warm_golden'] as const).includes(requested)
         ? requested
-        : 'none'; // preserve natural Veo colors and true black background
-      const cubePath = join(dir, LUT_FILENAME[lutLook]);
-      await writeFile(cubePath, buildCubeFile(lutLook));
-      lut3dPath = cubePath;
-      // eslint-disable-next-line no-console
-      console.log(`[assemble] applying lut3d grade: ${LUT_FILENAME[lutLook]} (${lutLook})`);
+        : null; // null by default: preserve natural Veo colors and avoid harsh/burnt contrast
+      if (lutLook) {
+        const cubePath = join(dir, LUT_FILENAME[lutLook]);
+        await writeFile(cubePath, buildCubeFile(lutLook));
+        lut3dPath = cubePath;
+        // eslint-disable-next-line no-console
+        console.log(`[assemble] applying lut3d grade: ${LUT_FILENAME[lutLook]} (${lutLook})`);
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[assemble] LUT write failed, using base grade only:', e instanceof Error ? e.message : e);
