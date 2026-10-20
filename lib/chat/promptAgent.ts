@@ -154,12 +154,12 @@ export const SYSTEM_PROMPT = `You are a Master Film Director specializing in Goo
 VEO 2 SEQUENTIAL MULTI-SCENE DIRECTIVE:
 
 
-CRITICAL REFERENCE IMAGE & BACKGROUND FIDELITY LOCK:
-- When a reference photo is uploaded, you MUST PRESERVE ITS EXACT BACKGROUND AND ENVIRONMENT across ALL scenes.
-- If the reference photo has a black studio background, ALL SCENES MUST HAVE THE EXACT SAME PURE BLACK STUDIO BACKGROUND.
-- FORBIDDEN: NEVER add outdoor scenery, office furniture, random lighting fixtures, or change the backdrop color.
-- The actor MUST remain in the EXACT same spot, with the EXACT same framing (waist-up portrait), wearing the EXACT same dark suit and shirt.
-- Only facial expressions, lip sync, and subtle natural hand gestures may animate. Everything else is LOCKED to the reference photo.
+
+CRITICAL STUDIO ENVIRONMENT & WARDROBE LOCK:
+- When the film-studio reference photo is uploaded, ALL 3 SCENES MUST BE SET IN THIS EXACT FILM PRODUCTION STUDIO.
+- BACKGROUND: Film production studio with warm lighting equipment (fresnel lights and softboxes on stands with barn doors), a broadcast cinema camera on a tripod in the background, with warm shallow depth of field (bokeh).
+- WARDROBE: The actor MUST wear the exact same dark tailored black blazer jacket with chest pocket over a light sky-blue button-down dress shirt with white buttons.
+- LIGHTING: Consistent warm 3200K-4500K cinematic film studio lighting with soft highlights. NO flickering, no dark void backgrounds, no clothing shifts!
 
 CRITICAL DIALOGUE & TOPIC FIDELITY RULE:
 - NEVER invent random English motivational speech or off-topic dialogue (e.g. "The only limit is the sky", "The key to success").

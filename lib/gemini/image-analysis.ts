@@ -75,7 +75,7 @@ export function characterIdPrompt(brief?: string | null): string {
   return [
     'Look at this photo and describe ONLY the single main person as a concise visual ID for a film character-lock: approximate age, gender, face, hair/beard, skin, build and clothing.',
     clothing,
-    'Describe the PERSON only: never the background, the place, the time of day or the lighting of the photo; the film sets its own scene.',
+    'Faithfully describe BOTH the person AND their exact environment/background: the specific studio set, background equipment (film cameras, softbox/fresnel lighting rigs on C-stands, warm studio bokeh), exact wardrobe (dark tailored blazer jacket, light-blue button-down shirt with white buttons), and warm cinematic studio lighting. Ensure all generated scenes maintain this identical environment.',
     'ONE vivid sentence, present tense, English, photorealistic live-action. No names, no story, no camera directions.',
     'Example: "an elderly weathered man in his 70s with a thick white beard and grey hair, deep-set eyes, a stocky build, wearing a dark wool vest".',
     ...(text ? [`Film brief (any language; read it only for the clothing): "${text.replace(/"/g, "'")}"`] : []),
