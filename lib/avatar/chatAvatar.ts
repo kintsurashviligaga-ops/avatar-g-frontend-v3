@@ -42,9 +42,9 @@ const CHILD = new RegExp(`${EDGE}(?:ბავშვ(?:ი|მა|ს|ის|ა�
 
 const ELDERLY = new RegExp(`${EDGE}(?:მოხუც(?:ი|მა|ს|ის|ად|ებული)?|ხანდაზმულ(?:ი|მა|ს|ის)?|ბებერ(?:ი|მა|ს|ის)?|elderly|senior|old person|пожилой|старик)${END}`, 'iu');
 
-const CHILD = new RegExp(`${EDGE}(?:ბავშვ(?:ი|მა|ს|ის|ად)?|პატარა ბავშვ(?:ი|მა|ს|ის)?|პატარა ბიჭ(?:ი|მა|ს|ის)?|პატარა გოგო(?:ნა|ს)?|ჩვილ(?:ი|მა|ს|ის)?|მოზარდ(?:ი|მა|ს|ის)?|child|kid|toddler|baby|ребенок|дитя)${END}`, 'iu');
 
-const ELDERLY = new RegExp(`${EDGE}(?:მოხუც(?:ი|მა|ს|ის|ად|ებული)?|ხანდაზმულ(?:ი|მა|ს|ის)?|ბებერ(?:ი|მა|ს|ის)?|elderly|senior|old person|пожилой|старик)${END}`, 'iu');
+
+
 
 /**
  * „ქალი ავატარი…", „a man who says…": the voice the order names, read only from the words AROUND the line — never from the
