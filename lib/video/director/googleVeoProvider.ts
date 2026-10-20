@@ -218,7 +218,12 @@ export interface ShotTicket {
   metadata: ShotMetadata;
 }
 
-export type SubmitShotResult = { ok: true; ticket: ShotTicket } | { ok: false; error: ShotError };
+export type SubmitShotResult = { ok: true; ticket: ShotTicket } | {
+  ok: false;
+  error: ShotError;
+  /** Google accepted an operation, but it cannot be delivered as the approved shot. Reconciliation evidence only. */
+  ticket?: ShotTicket;
+};
 
 export type CheckShotResult =
   | { state: 'processing' }
@@ -347,13 +352,6 @@ export class GoogleVeoProvider implements VideoGenProvider {
       return { ...failed, error: { ...failed.error, requiresReconciliation: true } };
     }
     if (!created.outcome.ok) return { ok: false, error: submitError(shot.id, created.outcome) };
-    // Preflight ran the same normalisation, so this only trips if the transport changed in between. The job exists
-    // (and may bill) but it is not the frozen shot, so it is never handed back as one.
-    if (created.adjustments.length > 0 || created.request.prompt !== shot.prompt) {
-      const first = created.adjustments[0];
-      return fail(first ? reasonForField(first.field) : 'unknown', 'The engine changed this shot after it was submitted, so the clip was discarded. Retry renders it as frozen.', true, created.adjustments.map((a) => a.reason).join('; '));
-    }
-
     const metadata: ShotMetadata = {
       providerName: this.providerName,
       model: created.model,
@@ -367,7 +365,15 @@ export class GoogleVeoProvider implements VideoGenProvider {
       ...(seedSource ? { seedSource } : {}),
       ...(referenceSource ? { referenceImageSource: referenceSource } : {}),
     };
-    return { ok: true, ticket: { operationName: created.outcome.operation.name, metadata } };
+    const ticket: ShotTicket = { operationName: created.outcome.operation.name, metadata };
+    // Preflight ran the same normalisation, so this only trips if the transport changed in between. The accepted job
+    // may still render/bill. Keep its handle, but do not poll/deliver it or authorize another paid attempt.
+    if (created.adjustments.length > 0 || created.request.prompt !== shot.prompt) {
+      const first = created.adjustments[0];
+      const refused = fail(first ? reasonForField(first.field) : 'unknown', 'The engine changed this shot after it was submitted. Its accepted operation needs review before another attempt.', false, created.adjustments.map((a) => a.reason).join('; '));
+      return { ok: false, error: { ...refused.error, requiresReconciliation: true }, ticket };
+    }
+    return { ok: true, ticket };
   }
 
   /**

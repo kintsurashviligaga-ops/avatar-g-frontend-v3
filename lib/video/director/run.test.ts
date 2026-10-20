@@ -102,6 +102,16 @@ function setup(engineOpts: FakeVeoEngineOptions = {}, billingOpts: Parameters<ty
   return { engine, provider, store, deps, tick, ...ledger };
 }
 
+function changeAfterSubmit(s: ReturnType<typeof setup>, mode: 'adjustment' | 'prompt' = 'prompt') {
+  const create = s.engine.createClip.bind(s.engine);
+  jest.spyOn(s.engine, 'createClip').mockImplementation(async (...args) => {
+    const result = await create(...args);
+    return mode === 'prompt'
+      ? { ...result, request: { ...result.request, prompt: 'changed after preflight' } }
+      : { ...result, adjustments: [{ field: 'durationSec' as const, from: 8, to: 6, reason: 'snapped after preflight' }] };
+  });
+}
+
 function board(): FrozenStoryboard {
   const shots = [
     makeShot({ id: 'c', order: 3, prompt: 'Shot three.' }),
@@ -365,6 +375,51 @@ describe('decideRun', () => {
 });
 
 describe('unresolved provider submissions', () => {
+  it('keeps the accepted operation while its user refund remains due', async () => {
+    const s = setup({}, { refundOk: () => false });
+    changeAfterSubmit(s);
+    await started(s);
+    await advanceRun(s.deps, 'run-1', USER);
+    await advanceRun(s.deps, 'run-1', USER);
+    expect(s.store.get('run-1').shots[0]).toMatchObject({ refunded: false, error: { requiresReconciliation: true }, ticket: { operationName: expect.stringContaining('/operations/') } });
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    expect(s.engine.calls).toHaveLength(1);
+    expect(s.refunds).toHaveLength(0);
+  });
+
+  it('an accepted ticket cannot become retryable because a provider omitted its uncertainty flag', async () => {
+    const s = setup();
+    changeAfterSubmit(s);
+    const submit = s.provider.submitShot.bind(s.provider);
+    jest.spyOn(s.provider, 'submitShot').mockImplementation(async (...args) => {
+      const result = await submit(...args);
+      if (result.ok) throw new Error('expected a refused contract');
+      const error = { ...result.error, retryable: true };
+      delete error.requiresReconciliation;
+      return { ...result, error };
+    });
+    await started(s);
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(view.pendingDecision?.error).toMatchObject({ requiresReconciliation: true, retryable: false });
+    expect(view.pendingDecision?.options).toEqual(['cancel']);
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    expect(s.engine.calls).toHaveLength(1);
+  });
+
+  it.each(['adjustment', 'prompt'] as const)('stores the operation and blocks another attempt after a post-submit %s mismatch', async (mode) => {
+    const s = setup();
+    changeAfterSubmit(s, mode);
+    await started(s);
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(view.pendingDecision?.options).toEqual(['cancel']);
+    expect(s.store.get('run-1').shots[0]).toMatchObject({ status: 'failed', refunded: true, error: { requiresReconciliation: true }, ticket: { operationName: expect.stringContaining('/operations/') } });
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    expect(JSON.stringify(view)).not.toContain('/operations/');
+    expect(s.engine.calls).toHaveLength(1);
+    expect(s.engine.delivered).toHaveLength(0);
+    expect(s.refunds).toHaveLength(1);
+  });
+
   it.each(['ambiguous', 'throw'] as const)('%s cannot authorize another paid attempt', async (mode) => {
     const s = setup(mode === 'throw'
       ? { createThrows: () => new Error('lost submit response') }
@@ -399,8 +454,9 @@ describe('unresolved provider submissions', () => {
     expect(s.store.get('run-1').shots[0]?.error).toMatchObject({ requiresReconciliation: true });
   });
 
-  it.each([false, true])('retains a late operation for reconciliation without reviving delivery (cancel=%s)', async (cancel) => {
+  it.each([[false, false], [true, false], [false, true], [true, true]])('retains a late operation for reconciliation without reviving delivery (cancel=%s, mismatch=%s)', async (cancel, mismatch) => {
     const s = setup();
+    if (mismatch) changeAfterSubmit(s);
     await started(s);
     let release!: () => void;
     let entered!: () => void;
