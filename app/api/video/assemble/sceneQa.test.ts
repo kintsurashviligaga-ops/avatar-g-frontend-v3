@@ -54,7 +54,10 @@ jest.mock('../../../../lib/elevenlabs/music', () => ({
 }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => `EN: ${p}`) }));
 jest.mock('../../../../lib/orchestrator/masterQa', () => ({}));
-jest.mock('../../../../lib/ai/visionQualityGate', () => ({ evaluateRenderQuality: jest.fn(), evaluateSceneClips: jest.fn(), visionQaEnabled: jest.fn(() => true) }));
+jest.mock('../../../../lib/ai/visionQualityGate', () => ({
+  ...jest.requireActual('../../../../lib/ai/visionQualityGate'),
+  evaluateRenderQuality: jest.fn(), evaluateSceneClips: jest.fn(), visionQaEnabled: jest.fn(() => true),
+}));
 jest.mock('../../../../lib/pipeline/compositing/ffmpeg-overlay', () => ({ overlayMasterUrl: jest.fn(), hasOverlayContent: jest.fn(() => false) }));
 jest.mock('../../../../lib/pipeline/qaAgent', () => ({ keepLiveClips: jest.fn(async (s: unknown[]) => s) }));
 jest.mock('../../../../lib/pipeline/marketing-from-brief', () => ({ deriveMarketingFromBrief: jest.fn() }));
@@ -108,7 +111,7 @@ beforeEach(() => {
     return { ok: true, sagaId: 'saga-1' };
   });
   (visionQaEnabled as jest.Mock).mockReturnValue(true);
-  (evaluateRenderQuality as jest.Mock).mockResolvedValue({ ran: true, pass: true, grade: 'B', score: 80, issues: [], action: 'accept' });
+  (evaluateRenderQuality as jest.Mock).mockResolvedValue({ status: 'PASS', ran: true, pass: true, grade: 'B', score: 80, issues: [], action: 'accept' });
   (evaluateSceneClips as jest.Mock).mockResolvedValue(GRADES);
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -135,7 +138,7 @@ test('every scene clip is graded under its own scene number, and the grades come
   ]);
   expect(opts.deadlineMs).toBe(45_000);
   // The whole master is still graded beside the scenes.
-  expect(evaluateRenderQuality).toHaveBeenCalledWith({ videoUrl: MASTER });
+  expect(evaluateRenderQuality).toHaveBeenCalledWith({ videoUrl: MASTER, signal: expect.any(AbortSignal) });
 });
 
 test('segments without a scene number are numbered by their place in the cut', async () => {
@@ -152,11 +155,46 @@ test('check off: nothing is graded and no sceneQa key is sent', async () => {
   expect(evaluateSceneClips).not.toHaveBeenCalled();
 });
 
-test('a grader that throws never breaks the delivered film', async () => {
+test('a grader that throws reports unmeasured scenes without breaking optional delivery', async () => {
   (evaluateSceneClips as jest.Mock).mockRejectedValue(new Error('ffmpeg exploded'));
   const res = await POST(post({ segments: SEGMENTS }));
   expect(res.status).toBe(200);
   const json = await res.json();
   expect(json.url).toBe(MASTER);
-  expect(json).not.toHaveProperty('sceneQa');
+  expect(json.sceneQa).toEqual([1, 3].map((ordinal) => ({
+    ordinal, status: 'UNAVAILABLE', grade: null, score: null, action: 'review', reason: 'gate_error', issues: [],
+  })));
+});
+
+test('an unavailable master evaluation reaches the response without a fabricated grade', async () => {
+  const unavailable = { status: 'UNAVAILABLE', ran: false, pass: false, grade: null, score: null, action: 'review', reason: 'parse_error', issues: [] };
+  (evaluateRenderQuality as jest.Mock).mockResolvedValue(unavailable);
+  const json = await (await POST(post({ segments: SEGMENTS }))).json();
+  expect(json.url).toBe(MASTER); // optional telemetry does not certify or block publication
+  expect(json.visionQa).toEqual(unavailable);
+});
+
+test('a thrown master evaluation is explicitly unavailable', async () => {
+  (evaluateRenderQuality as jest.Mock).mockRejectedValue(new Error('scorer unavailable'));
+  const json = await (await POST(post({ segments: SEGMENTS }))).json();
+  expect(json.visionQa).toMatchObject({ status: 'UNAVAILABLE', ran: false, pass: false, grade: null, score: null, reason: 'gate_error' });
+});
+
+test('a timed out master evaluation has an unavailable deadline verdict', async () => {
+  let started!: () => void;
+  const grading = new Promise<void>((resolve) => { started = resolve; });
+  (evaluateRenderQuality as jest.Mock).mockImplementation(() => { started(); return new Promise(() => {}); });
+  const response = POST(post({ segments: SEGMENTS }));
+  await grading;
+  await jest.advanceTimersByTimeAsync(45_000);
+  const json = await (await response).json();
+  expect(json.visionQa).toMatchObject({ status: 'UNAVAILABLE', ran: false, pass: false, grade: null, score: null, reason: 'deadline' });
+  expect((evaluateRenderQuality as jest.Mock).mock.calls[0][0].signal.aborted).toBe(true);
+});
+
+test('an unavailable scene remains in the route response', async () => {
+  const scene = { ordinal: 3, status: 'UNAVAILABLE', grade: null, score: null, action: 'review', reason: 'deadline', issues: [] };
+  (evaluateSceneClips as jest.Mock).mockResolvedValue([GRADES[0], scene]);
+  const json = await (await POST(post({ segments: SEGMENTS }))).json();
+  expect(json.sceneQa).toEqual([GRADES[0], scene]);
 });

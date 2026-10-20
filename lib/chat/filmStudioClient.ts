@@ -425,14 +425,12 @@ export function canSalvagePartialCut(matrix: FilmStudioMatrix | null): boolean {
 }
 
 /**
- * Video Core v1.0 §4 — the final-length contract a stitch carries. It was planned on EVERY scene of the board, so it holds
- * only when every one of them landed. A salvaged cut (a scene failed and the survivors are stitched) is shorter by whole
- * scenes: it goes without a contract and is stitched at its own length — the "N of M scenes" note says so — instead of
- * being refused for a length the board can no longer reach (a film paid when it started would then deliver nothing).
+ * The requested final length survives a failed scene. Both drivers carry it and the planned count to the route,
+ * which refuses incomplete contracted films. A partial cut requires a new explicit request, not a silent downgrade.
+ * Count arguments remain for existing callers; they can never remove the requested duration.
  */
-export function finalContractForCut(finalDurationSec: number | null | undefined, clipsLanded: number, scenesPlanned: number): number | null {
-  if (typeof finalDurationSec !== 'number' || !(finalDurationSec > 0)) return null;
-  return clipsLanded === scenesPlanned ? finalDurationSec : null;
+export function finalContractForCut(finalDurationSec: number | null | undefined, _clipsLanded: number, _scenesPlanned: number): number | null {
+  return typeof finalDurationSec === 'number' && Number.isFinite(finalDurationSec) && finalDurationSec > 0 ? finalDurationSec : null;
 }
 
 /**
@@ -722,7 +720,7 @@ export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix,
     // The assembler derives the master timeline (and every per-clip trim) from these durations, so a
     // film rendered on a 6s grid must report 6s — a hardcoded 8 pad-froze the tail of every clip.
     // Each clip names its scene, so one scene can later be rendered again and cut back into its own place (filmSceneRedo).
-    segments: landed.map(({ url, ordinal }) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : FILM_CLIP_SEC, ordinal })),
+    segments: landed.map(({ url, ordinal }) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : finalDurationSec !== null ? undefined : FILM_CLIP_SEC, ordinal })),
     ...(musicUrl ? { musicUrl } : {}),
     // Music OFF → tell the route to skip score generation (no musicUrl + this flag).
     ...(plan.noMusic ? { noMusic: true } : {}),
@@ -737,7 +735,7 @@ export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix,
     ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
     ...(matrix.statusTokenId ? { filmTokenId: matrix.statusTokenId } : {}),
     // Video Core v1.0 §4 — the final length the master is cut to (the route refuses one these clips cannot be cut to).
-    ...(typeof finalDurationSec === 'number' && finalDurationSec > 0 ? { finalDurationSec } : {}),
+    ...(finalDurationSec !== null ? { finalDurationSec, expectedSegments: scenesPlanned } : {}),
     // Pass any non-landscape canvas (vertical · 1:1 · 4:5) to the assembler;
     // landscape is the route default.
     ...(plan.orientation && plan.orientation !== 'landscape' ? { orientation: plan.orientation } : {}),
@@ -818,7 +816,7 @@ async function assembleMaster(
   };
 }
 
-/** Narrow the assembler's per-scene vision grades; anything malformed is dropped, never guessed. */
+/** Preserve explicit unmeasured QA. Legacy measured grades remain readable; contradictory states are refused. */
 export function asSceneQa(v: unknown): SceneQaEntry[] {
   if (!Array.isArray(v)) return [];
   return v.flatMap((e): SceneQaEntry[] => {
@@ -826,13 +824,21 @@ export function asSceneQa(v: unknown): SceneQaEntry[] {
     const o = e as Record<string, unknown>;
     const grade = o.grade;
     if (!(typeof o.ordinal === 'number' && Number.isInteger(o.ordinal) && o.ordinal >= 1 && o.ordinal <= 24)) return [];
+    if (o.status === 'SKIPPED' || o.status === 'UNAVAILABLE') {
+      if (grade !== null || o.score !== null || o.action !== 'review' || typeof o.reason !== 'string' || !o.reason) return [];
+      return [{ ordinal: o.ordinal, status: o.status, grade: null, score: null, action: 'review', reason: o.reason.slice(0, 80), issues: [] }];
+    }
+    if (o.status !== undefined && o.status !== 'PASS' && o.status !== 'FAIL') return [];
     if (grade !== 'A' && grade !== 'B' && grade !== 'C' && grade !== 'F') return [];
-    if (typeof o.score !== 'number' || !Number.isFinite(o.score)) return [];
+    if (typeof o.score !== 'number' || !Number.isFinite(o.score) || o.score < 0 || o.score > 100) return [];
+    const status = grade === 'F' ? 'FAIL' : 'PASS';
+    if (o.status !== undefined && o.status !== status) return [];
     return [{
       ordinal: o.ordinal,
+      status,
       grade,
       score: o.score,
-      action: o.action === 'rerender' ? 'rerender' : 'accept',
+      action: grade === 'F' ? 'rerender' : 'accept',
       issues: Array.isArray(o.issues) ? o.issues.filter((x): x is string => typeof x === 'string').slice(0, 12) : [],
     }];
   });

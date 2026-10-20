@@ -3,11 +3,11 @@
  * ===========================
  * PHASE 27 (VECTOR 2) — POST-RENDER VISION QUALITY GATE.
  *
- * A fail-open, env-gated validator that samples keyframes from a rendered MP4 and asks Gemini Vision
- * to grade aesthetic consistency / character-deformity bounds / visual drift, returning a structured
- * verdict. Everything degrades safely: gate off, no Gemini key, no ffmpeg, a failed download, a
- * timeout, or an unparseable model reply all resolve to an ACCEPT verdict, so a good master is NEVER
- * blocked by the QA layer.
+ * An optional, env-gated validator that samples keyframes from a rendered MP4 and asks Gemini Vision
+ * to grade consistency / deformity / visual drift. Missing or malformed evaluation is explicitly
+ * SKIPPED/UNAVAILABLE, with no grade or score and pass=false. This optional telemetry does not itself
+ * block publication; a required-QA publication policy must require status=PASS, never infer it from
+ * the absence of a finding. Full decode, timing, audio and mandatory scene coverage are separate gates.
  *
  * FLOW (per the directive):
  *   1. extractKeyframes() (lib/ai/visionKeyframes, server-only ffmpeg) samples N frames → base64 JPEGs.
@@ -32,10 +32,9 @@ export interface VisionIssue {
   severity: 'critical' | 'warn' | 'info';
   detail: string;
 }
-export interface VisionVerdict {
-  /** true only when the gate actually ran an evaluation; false = a fail-open skip. */
-  ran: boolean;
-  /** true unless a critical warp was found. A skip is always pass=true (never blocks). */
+interface VisionMeasurement {
+  status: 'PASS' | 'FAIL';
+  ran: true;
   pass: boolean;
   grade: VisionGrade;
   /** 0..100 aesthetic/consistency score from the vision model. */
@@ -43,10 +42,21 @@ export interface VisionVerdict {
   issues: VisionIssue[];
   /** 'rerender' ONLY on grade F — a SIGNAL for the caller, not a built re-render loop. */
   action: 'accept' | 'rerender';
-  /** For a skip: why (disabled / no_key / no_frames / vision_unavailable / parse_error). */
-  reason?: string;
+  reason?: undefined;
   frameCount?: number;
 }
+interface VisionNotMeasured {
+  status: 'SKIPPED' | 'UNAVAILABLE';
+  ran: false;
+  pass: false;
+  grade: null;
+  score: null;
+  issues: VisionIssue[];
+  action: 'review';
+  reason: string;
+  frameCount?: number;
+}
+export type VisionVerdict = VisionMeasurement | VisionNotMeasured;
 
 /** Score below this floor → grade F → a re-render signal. Env-tunable. */
 export const VISION_QUALITY_FLOOR = Math.max(0, Math.min(100, Number(process.env.FILM_VISION_QA_FLOOR) || 55));
@@ -57,9 +67,10 @@ export function visionQaEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.FILM_VISION_QA === '1';
 }
 
-/** A fail-open SKIP verdict — always accepts, never blocks. */
-function skip(reason: string): VisionVerdict {
-  return { ran: false, pass: true, grade: 'A', score: 100, issues: [], action: 'accept', reason };
+/** No quality claim can be made without a complete evaluation. No automatic re-render is requested. */
+export function visionQaUnavailable(reason: string, frameCount?: number): VisionNotMeasured {
+  return { status: reason === 'disabled' ? 'SKIPPED' : 'UNAVAILABLE', ran: false, pass: false,
+    grade: null, score: null, issues: [], action: 'review', reason, ...(frameCount !== undefined ? { frameCount } : {}) };
 }
 
 /** Map a 0..100 score → grade. Pure. */
@@ -87,34 +98,33 @@ export function buildVisionQaPrompt(context?: { characterLock?: string; style?: 
 }
 
 /**
- * Parse the vision model's reply → verdict. Fail-SAFE: an unparseable reply returns an ACCEPT (we never
- * block a master because the QA model returned garbage). Pure → unit-testable.
+ * Parse a complete measured reply. A missing score/issue list or malformed issue is unavailable:
+ * never invent a perfect score, discard a malformed critical finding, or clamp invalid scores to pass.
  */
 export function parseVisionVerdict(text: string, frameCount: number, floor: number = VISION_QUALITY_FLOOR): VisionVerdict {
   try {
     const m = /\{[\s\S]*\}/.exec(text || '');
-    if (!m) return { ...skip('parse_error'), frameCount };
+    if (!m) return visionQaUnavailable('parse_error', frameCount);
     const raw = JSON.parse(m[0]) as { score?: unknown; issues?: unknown };
-    const score = typeof raw.score === 'number' && Number.isFinite(raw.score) ? Math.max(0, Math.min(100, raw.score)) : 100;
-    const issues: VisionIssue[] = Array.isArray(raw.issues)
-      ? raw.issues
-          .filter((i): i is Record<string, unknown> => !!i && typeof i === 'object')
-          .map((i): VisionIssue => {
-            const severity: VisionIssue['severity'] = i.severity === 'critical' ? 'critical' : i.severity === 'warn' ? 'warn' : 'info';
-            return {
-              code: typeof i.code === 'string' ? i.code.slice(0, 40) : 'issue',
-              severity,
-              detail: typeof i.detail === 'string' ? i.detail.slice(0, 200) : '',
-            };
-          })
-          .slice(0, 12)
-      : [];
+    if (!raw || Array.isArray(raw) || typeof raw.score !== 'number' || !Number.isFinite(raw.score)
+      || raw.score < 0 || raw.score > 100 || !Array.isArray(raw.issues) || raw.issues.length > 12) {
+      return visionQaUnavailable('parse_error', frameCount);
+    }
+    const score = raw.score;
+    const issues: VisionIssue[] = [];
+    for (const issue of raw.issues) {
+      if (!issue || typeof issue !== 'object' || Array.isArray(issue)
+        || typeof issue.code !== 'string' || !issue.code.trim()
+        || !['critical', 'warn', 'info'].includes(issue.severity)
+        || typeof issue.detail !== 'string' || !issue.detail.trim()) return visionQaUnavailable('parse_error', frameCount);
+      issues.push({ code: issue.code.slice(0, 40), severity: issue.severity, detail: issue.detail.slice(0, 200) });
+    }
     const hasCritical = issues.some((i) => i.severity === 'critical');
     const grade = hasCritical ? 'F' : scoreToGrade(score, floor);
     const pass = grade !== 'F';
-    return { ran: true, pass, grade, score, issues, action: grade === 'F' ? 'rerender' : 'accept', frameCount };
+    return { status: pass ? 'PASS' : 'FAIL', ran: true, pass, grade, score, issues, action: grade === 'F' ? 'rerender' : 'accept', frameCount };
   } catch {
-    return { ...skip('parse_error'), frameCount };
+    return visionQaUnavailable('parse_error', frameCount);
   }
 }
 
@@ -166,77 +176,89 @@ async function defaultScore(prompt: string, frames: string[]): Promise<string | 
 }
 
 /**
- * THE GATE. Evaluate a rendered MP4's visual quality. Fail-open at every step. Gated on FILM_VISION_QA
- * + a Gemini key. Deps are injectable for tests; prod uses the real (lazy-loaded) ffmpeg + Gemini impls.
+ * Evaluate a rendered MP4's visual quality without inventing a pass on missing evaluation. Gated on
+ * FILM_VISION_QA + a configured Google transport. Deps are injectable; production uses lazy IO.
  */
 export async function evaluateRenderQuality(
-  input: { videoUrl: string; characterLock?: string; style?: string },
+  input: { videoUrl: string; characterLock?: string; style?: string; signal?: AbortSignal },
   deps: VisionGateDeps = {},
 ): Promise<VisionVerdict> {
   try {
+    if (input.signal?.aborted) return visionQaUnavailable('cancelled');
     const enabled = deps.enabled ?? visionQaEnabled;
-    if (!enabled()) return skip('disabled');
+    if (!enabled()) return visionQaUnavailable('disabled');
     const keyPresent = deps.keyPresent ?? defaultKeyPresent;
-    if (!(await keyPresent())) return skip('no_key');
+    const configured = await keyPresent();
+    if (input.signal?.aborted) return visionQaUnavailable('cancelled');
+    if (!configured) return visionQaUnavailable('no_key');
 
     const extract = deps.extract ?? defaultExtract;
     const frames = await extract(input.videoUrl).catch(() => []);
-    if (!frames.length) return skip('no_frames');
+    if (input.signal?.aborted) return visionQaUnavailable('cancelled');
+    if (!frames.length) return visionQaUnavailable('no_frames');
 
     const prompt = buildVisionQaPrompt({ characterLock: input.characterLock, style: input.style });
     const score = deps.score ?? defaultScore;
     const text = await score(prompt, frames).catch(() => null);
-    if (!text) return { ...skip('vision_unavailable'), frameCount: frames.length };
+    if (input.signal?.aborted) return visionQaUnavailable('cancelled', frames.length);
+    if (!text) return visionQaUnavailable('vision_unavailable', frames.length);
     return parseVisionVerdict(text, frames.length);
   } catch {
     // Belt-and-suspenders: the gate can NEVER throw into the render/assemble path.
-    return skip('gate_error');
+    return visionQaUnavailable('gate_error');
   }
 }
 
 /** One scene clip's grade, as the assembler reports it. Issue codes only; their details stay in the logs. */
-export interface SceneQaEntry {
-  ordinal: number;
-  grade: VisionGrade;
-  score: number;
-  action: 'accept' | 'rerender';
-  issues: string[];
-}
+export type SceneQaEntry = { ordinal: number; issues: string[] } & (
+  | Pick<VisionMeasurement, 'status' | 'grade' | 'score' | 'action'>
+  | Pick<VisionNotMeasured, 'status' | 'grade' | 'score' | 'action' | 'reason'>
+);
 
 /** Scene clips graded at once: each one downloads its clip and runs ffmpeg inside the same function. */
 export const SCENE_QA_CONCURRENCY = 2;
 
 /**
  * Grade each scene clip of a film on its own (audit item 3b, 2026-10-17), so a weak scene can be named and shot
- * again at the scene's price instead of only grading the whole master. Fail-open like the gate: a scene the gate
- * skipped is left out, and so is a scene still being graded when `deadlineMs` runs out. Sorted by ordinal.
+ * again at the scene's price instead of only grading the whole master. Every submitted clip retains an outcome,
+ * including disabled/unavailable/deadline checks. This is input coverage, not proof of an approved manifest.
+ * Deadline cancellation prevents a late extraction/configuration result from starting new inference; it does not
+ * cancel or refund an already-submitted provider operation. Sorted by ordinal.
  */
 export async function evaluateSceneClips(
   clips: ReadonlyArray<{ url: string; ordinal: number }>,
   opts: { deadlineMs: number; characterLock?: string; style?: string; concurrency?: number },
   deps: VisionGateDeps = {},
 ): Promise<SceneQaEntry[]> {
-  const enabled = deps.enabled ?? visionQaEnabled;
-  if (!clips.length || !enabled()) return [];
-  const graded: SceneQaEntry[] = [];
-  const queue = [...clips];
+  if (!clips.length) return [];
+  const entry = (ordinal: number, v: VisionVerdict): SceneQaEntry => {
+    const common = { ordinal, issues: v.issues.map((i) => i.code) };
+    return v.ran
+      ? { ...common, status: v.status, grade: v.grade, score: v.score, action: v.action }
+      : { ...common, status: v.status, grade: null, score: null, action: 'review', reason: v.reason };
+  };
+  const deadline = Number.isFinite(opts.deadlineMs) ? Math.max(0, opts.deadlineMs) : 0;
+  const graded = clips.map((clip) => entry(clip.ordinal, visionQaUnavailable('deadline')));
+  if (deadline === 0) return graded.sort((a, b) => a.ordinal - b.ordinal);
+  const queue = clips.map((clip, index) => ({ ...clip, index }));
   let expired = false;
+  const controller = new AbortController();
   const worker = async () => {
     while (!expired && queue.length) {
       const clip = queue.shift()!;
-      const v = await evaluateRenderQuality({ videoUrl: clip.url, characterLock: opts.characterLock, style: opts.style }, deps);
-      if (!expired && v.ran) {
-        graded.push({ ordinal: clip.ordinal, grade: v.grade, score: v.score, action: v.action, issues: v.issues.map((i) => i.code) });
-      }
+      const v = await evaluateRenderQuality({ videoUrl: clip.url, characterLock: opts.characterLock, style: opts.style, signal: controller.signal }, deps);
+      if (!expired) graded[clip.index] = entry(clip.ordinal, v);
     }
   };
-  const width = Math.max(1, Math.min(opts.concurrency ?? SCENE_QA_CONCURRENCY, clips.length));
+  const requestedWidth = opts.concurrency ?? SCENE_QA_CONCURRENCY;
+  const width = Number.isFinite(requestedWidth) ? Math.max(1, Math.min(Math.floor(requestedWidth), clips.length)) : SCENE_QA_CONCURRENCY;
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([
     Promise.all(Array.from({ length: width }, worker)),
-    new Promise<void>((resolve) => { timer = setTimeout(resolve, Math.max(0, opts.deadlineMs)); }),
+    new Promise<void>((resolve) => { timer = setTimeout(() => { expired = true; controller.abort(); resolve(); }, deadline); }),
   ]);
   if (timer) clearTimeout(timer);
   expired = true;
+  controller.abort();
   return [...graded].sort((a, b) => a.ordinal - b.ordinal);
 }

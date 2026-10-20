@@ -12,10 +12,10 @@ const code = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\
 const gateAt = code.indexOf('await firstUnreadableOwnUrl(named, uid)');
 const gate = code.slice(code.indexOf('const named: unknown[] = ['), gateAt);
 
-test('the gate refuses with 403 before the first charge or reservation', () => {
+test('the gate refuses with 403 before any media probe, charge or reservation', () => {
   expect(gateAt).toBeGreaterThan(0);
   expect(code).toMatch(/await firstUnreadableOwnUrl\(named, uid\)\) >= 0\) \{\s*return NextResponse\.json\(\{ error: 'media_not_yours'[^\n]*status: 403 \}\);/);
-  for (const charge of ['deductCredits(', 'refundCredits(', 'reserve']) {
+  for (const charge of ['await keepLiveClips(', 'deductCredits(', 'refundCredits(', 'reserve']) {
     const at = code.indexOf(charge);
     if (at >= 0) expect(at).toBeGreaterThan(gateAt);
   }
@@ -29,8 +29,8 @@ test('every field the route re-signs is in the gated list', () => {
     'body.musicUrl': /body\.musicUrl/,
     'body.voiceoverUrl': /body\.voiceoverUrl/,
     'body.sfxUrl': /body\.sfxUrl/,
-    'segments[0]!.url': /\.\.\.segments\.map\(\(s\) => s\.url\)/,
-    's.url': /\.\.\.segments\.map\(\(s\) => s\.url\)|body\.dialogueStems\.slice\(0, 16\)\.map\(\(s\) => s\?\.url\)/,
+    'segments[0]!.url': /\.\.\.handedOver\.map\(\(s\) => s\.url\)/,
+    's.url': /\.\.\.handedOver\.map\(\(s\) => s\.url\)|body\.dialogueStems\.slice\(0, 16\)\.map\(\(s\) => s\?\.url\)/,
   };
   for (const arg of resigned) {
     const rule = gatedFields[arg];

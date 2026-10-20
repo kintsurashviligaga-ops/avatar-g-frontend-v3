@@ -39,6 +39,7 @@ import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
+import { contractedSegmentsError, MAX_ASSEMBLY_SEGMENTS } from '@/lib/video/assemblyInput';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { cutMasterToLength, isFinalCutRejected } from '@/lib/video/finalCut';
 import { type ElevenAlignment, wordsToAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
@@ -47,7 +48,7 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt, 
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
-import { evaluateRenderQuality, evaluateSceneClips, visionQaEnabled, type SceneQaEntry } from '@/lib/ai/visionQualityGate';
+import { evaluateRenderQuality, evaluateSceneClips, visionQaEnabled, visionQaUnavailable, type SceneQaEntry } from '@/lib/ai/visionQualityGate';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling, isFilmOwnedByAnother, readFilmCaptions } from '@/lib/chat/filmStatusStore';
 import { decideFilmWaiver, settleFilmWaiver, FILM_WAIVER_LEASE_SEC } from '@/lib/chat/filmBilling';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
@@ -227,6 +228,8 @@ interface AssembleBody {
    *  Checked before any charge against the clips handed over: a length they cannot be cut to is a 400 with the reason,
    *  never a film of another length. Absent → the master is delivered at its native length, as before. */
   finalDurationSec?: number | null;
+  /** Expected count carried by the shared tab/follow builder. A consistency check, not approval authority. */
+  expectedSegments?: number;
 }
 
 // FIX 3/4 — HARD GUARANTEE: this route never surfaces an unhandled 500. The real
@@ -292,6 +295,27 @@ async function assembleImpl(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
   }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
+  }
+  const hasFinalContract = body.finalDurationSec !== undefined && body.finalDurationSec !== null;
+  // Filtering a placeholder, duplicate or overflow would change the contracted film before even probing it.
+  if (hasFinalContract) {
+    const reason = contractedSegmentsError(body.segments);
+    if (reason) return NextResponse.json({
+      error: 'contracted_segments_invalid', reason,
+      message: 'Every contracted scene must have a distinct ready clip and a known duration. Nothing was assembled or charged for this attempt.',
+    }, { status: 400 });
+    if (body.expectedSegments !== undefined) {
+      if (!Number.isSafeInteger(body.expectedSegments) || body.expectedSegments < 1 || body.expectedSegments > MAX_ASSEMBLY_SEGMENTS) {
+        return NextResponse.json({ error: 'contracted_segments_invalid', reason: 'invalid_expected_count' }, { status: 400 });
+      }
+      if (body.expectedSegments !== body.segments!.length) return NextResponse.json({
+        error: 'contracted_segment_unavailable', expectedSegments: body.expectedSegments, readySegments: body.segments!.length,
+        message: 'Every planned scene is required for the contracted film. Nothing was assembled or charged for this attempt.',
+      }, { status: 422 });
+    }
+  }
 
   // PHASE 52 TASK 4 — defend the stitch order against the two failure modes that
   // produce "missing chunk indices": (a) a clip whose URL never resolved (kept a
@@ -299,8 +323,8 @@ async function assembleImpl(req: NextRequest) {
   // chunk and shift every index after it. We keep the caller's order, drop
   // url-less entries, and de-duplicate by URL so the timeline is contiguous.
   const seenUrls = new Set<string>();
-  const dedupedSegments = (body.segments ?? []).filter((s): s is Required<Pick<SegmentInput, 'url'>> & SegmentInput => {
-    if (typeof s.url !== 'string' || s.url.length === 0) return false;
+  const dedupedSegments = (Array.isArray(body.segments) ? body.segments : []).filter((s): s is Required<Pick<SegmentInput, 'url'>> & SegmentInput => {
+    if (!s || typeof s.url !== 'string' || s.url.length === 0) return false;
     if (seenUrls.has(s.url)) return false;
     seenUrls.add(s.url);
     return true;
@@ -342,12 +366,31 @@ async function assembleImpl(req: NextRequest) {
   // async and only have URLs by assemble time; see lib/pipeline/qaAgent.ts.)
   // Bound the clip count (2× the 12-scene pipeline max = generous headroom, no real film is clamped) so a
   // pathological payload can't make keepLiveClips HEAD-probe an unbounded list or ffmpeg stitch thousands.
-  const handedOver = dedupedSegments.slice(0, 24);
+  const handedOver = dedupedSegments.slice(0, MAX_ASSEMBLY_SEGMENTS);
+  // ⚠️ EVERY URL BELOW IS RE-SIGNED WITH THE SERVICE ROLE (reSignIfInternal) and stitched into a master the caller
+  // gets back, so a signed URL of ours that is not the caller's (another account's upload, an expired link someone
+  // kept) would come back readable inside the film. Refused here, before any HEAD probe, charge (lib/security/callerMedia).
+  {
+    const named: unknown[] = [
+      ...handedOver.map((s) => s.url),
+      body.customAudioUrl, body.musicUrl, body.voiceoverUrl, body.sfxUrl,
+      ...(Array.isArray(body.dialogueStems) ? body.dialogueStems.slice(0, 16).map((s) => s?.url) : []),
+    ];
+    if ((await firstUnreadableOwnUrl(named, uid)) >= 0) {
+      return NextResponse.json({ error: 'media_not_yours', message: 'One of the clips or audio files is not yours, or its link has expired. Open it again from your Library.' }, { status: 403 });
+    }
+  }
+
   const segments = await keepLiveClips(handedOver);
-  // A clip dropped here leaves a salvaged cut, shorter than the board by whole scenes: the final-length contract below was
-  // planned on every scene, so it does not apply to the survivors (they are stitched at their own length, as before the
-  // contract existed), and the response says how many were dropped so the client's "N of M scenes" note stays true.
   const clipsDropped = handedOver.length - segments.length;
+  // A final-length contract covers every submitted scene. Never waive it and publish a shorter salvage cut.
+  // Legacy requests without a final-length contract retain their existing partial-salvage behavior.
+  if (hasFinalContract && clipsDropped > 0) {
+    return NextResponse.json({
+      error: 'contracted_segment_unavailable', expectedSegments: handedOver.length, readySegments: segments.length,
+      message: 'A contracted scene is unavailable. Restore every scene before assembling; nothing was assembled or charged for this attempt.',
+    }, { status: 422 });
+  }
   // ≥1 segment. A SINGLE segment (6s film, sceneCount=1) takes the lightweight
   // single-clip path below (mux music, no multi-clip xfade stitch); ≥2 keeps the
   // full filtergraph stitch. Zero segments is still a hard error.
@@ -366,19 +409,6 @@ async function assembleImpl(req: NextRequest) {
   // "could not host the final master" dead-end. Anonymous renders skip the credit
   // / free-film saga entirely (there is no wallet to charge); the full billing
   // saga still runs unchanged for signed-in users.
-  // ⚠️ EVERY URL BELOW IS RE-SIGNED WITH THE SERVICE ROLE (reSignIfInternal) and stitched into a master the caller
-  // gets back, so a signed URL of ours that is not the caller's (another account's upload, an expired link someone
-  // kept) would come back readable inside the film. Refused here, before any charge (lib/security/callerMedia).
-  {
-    const named: unknown[] = [
-      ...segments.map((s) => s.url),
-      body.customAudioUrl, body.musicUrl, body.voiceoverUrl, body.sfxUrl,
-      ...(Array.isArray(body.dialogueStems) ? body.dialogueStems.slice(0, 16).map((s) => s?.url) : []),
-    ];
-    if ((await firstUnreadableOwnUrl(named, uid)) >= 0) {
-      return NextResponse.json({ error: 'media_not_yours', message: 'One of the clips or audio files is not yours, or its link has expired. Open it again from your Library.' }, { status: 403 });
-    }
-  }
 
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
@@ -392,7 +422,7 @@ async function assembleImpl(req: NextRequest) {
   const nativeTotalSec = segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0);
   const clipSecOfRender = Math.max(1, Math.round(nativeTotalSec / segments.length));
   const stitchSec = stitchedSeconds(segments.length, clipSecOfRender, { ...(filmTokenId ? { transition: 'cut' } : {}), ...(body.globalRender ?? {}) }, VIDEO_FPS);
-  const finalCut = body.finalDurationSec === undefined || body.finalDurationSec === null || clipsDropped > 0 ? null : finalCutForAssemble(stitchSec, body.finalDurationSec);
+  const finalCut = hasFinalContract ? finalCutForAssemble(stitchSec, body.finalDurationSec) : null;
   if (finalCut && !finalCut.ok) {
     return NextResponse.json({
       error: 'final_duration_invalid',
@@ -1155,8 +1185,8 @@ async function assembleImpl(req: NextRequest) {
   await settleWaiver(Boolean(resultUrl));
 
   // PHASE 27 (VECTOR 2) — POST-RENDER VISION QUALITY GATE. Env-gated (FILM_VISION_QA=1, default OFF →
-  // INERT + zero-cost in prod) and fully FAIL-OPEN: it samples keyframes from the finished master and
-  // grades them with Gemini Vision. It NEVER blocks delivery — a critical warp surfaces as an
+  // INERT + zero-cost in prod). This optional telemetry samples the finished master and
+  // grades it with Gemini Vision. It does not block delivery — a critical warp surfaces as an
   // action:'rerender' SIGNAL (an actual poll-time scene re-render needs the film-token param overhaul
   // flagged in Phase 23/26). Wrapped so it can never throw into the assemble saga.
   let visionQa: Awaited<ReturnType<typeof evaluateRenderQuality>> | null = null;
@@ -1164,10 +1194,13 @@ async function assembleImpl(req: NextRequest) {
   // shot again at the scene's price (/api/film/scene/redo). Same switch, same 45 s bound, run beside the master.
   let sceneQa: SceneQaEntry[] = [];
   if (visionQaEnabled() && resultUrl) {
+    let visionTimer: ReturnType<typeof setTimeout> | undefined;
+    const visionController = new AbortController();
     try {
       // Bound the WHOLE gate (frame extraction + the bare-fetch Gemini call) so a stalled provider or
       // ffmpeg can never PIN this route until maxDuration — a hang is not an error. On the race timeout
-      // we simply skip QA (null). The deliverable master is already stamped (recordFilmMaster above).
+      // report UNAVAILABLE, never a passing grade. This remains optional telemetry after publication;
+      // the durable mandatory-QA publication protocol is a separate implementation gate.
       const sceneClips = signedSegments.length > 1
         ? signedSegments.map((s, i) => {
           const o = segments[i]?.ordinal;
@@ -1176,20 +1209,29 @@ async function assembleImpl(req: NextRequest) {
         : [];
       [visionQa, sceneQa] = await Promise.all([
         Promise.race([
-          evaluateRenderQuality({ videoUrl: resultUrl }),
-          new Promise<null>((r) => setTimeout(() => r(null), 45_000)),
+          evaluateRenderQuality({ videoUrl: resultUrl, signal: visionController.signal }).catch(() => visionQaUnavailable('gate_error')),
+          new Promise<Awaited<ReturnType<typeof evaluateRenderQuality>>>((r) => {
+            visionTimer = setTimeout(() => { visionController.abort(); r(visionQaUnavailable('deadline')); }, 45_000);
+          }),
         ]),
-        evaluateSceneClips(sceneClips, { deadlineMs: 45_000 }).catch(() => []),
+        evaluateSceneClips(sceneClips, { deadlineMs: 45_000 }).catch(() => sceneClips.map<SceneQaEntry>(({ ordinal }) => ({
+          ordinal, status: 'UNAVAILABLE', grade: null, score: null, action: 'review', reason: 'gate_error', issues: [],
+        }))),
       ]);
-      if (visionQa?.ran) {
+      if (visionQa) {
         // eslint-disable-next-line no-console
-        console.info(`[assemble][vision-qa] grade=${visionQa.grade} score=${visionQa.score} action=${visionQa.action} issues=${visionQa.issues.map((i) => i.code).join(',') || 'none'}`);
+        console.info(`[assemble][vision-qa] status=${visionQa.status} grade=${visionQa.grade} score=${visionQa.score} action=${visionQa.action} reason=${visionQa.reason || 'none'} issues=${visionQa.issues.map((i) => i.code).join(',') || 'none'}`);
       }
       for (const q of sceneQa) {
         // eslint-disable-next-line no-console
         console.info(`[assemble][vision-qa] scene=${q.ordinal} grade=${q.grade} score=${q.score} action=${q.action} issues=${q.issues.join(',') || 'none'}`);
       }
-    } catch { /* fail-open — the vision gate can never break assembly */ }
+    } catch {
+      visionQa = visionQaUnavailable('gate_error');
+    } finally {
+      if (visionTimer) clearTimeout(visionTimer);
+      visionController.abort();
+    }
   }
 
   // Phase 7B — checkpoint the surviving clip URLs (keyed by the film token) so a later
@@ -1229,5 +1271,5 @@ async function assembleImpl(req: NextRequest) {
 
   // Return the resolved song URL so the client can drive a HeyGen singer-performance
   // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
-  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), ...(sceneQa.length ? { sceneQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), covered: Boolean(bag.covered), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
+  return NextResponse.json({ url: resultUrl, qa, ...(visionQa ? { visionQa } : {}), ...(sceneQa.length ? { sceneQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), covered: Boolean(bag.covered), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
 }

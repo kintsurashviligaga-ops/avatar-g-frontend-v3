@@ -9,6 +9,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { filmAssembleBody, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 /** Source without comments: the fixes' own explanations quote the code they replaced. */
@@ -85,17 +86,26 @@ describe('the final length reaches the render and the server cuts to it, or refu
   });
   test('the film client posts it to the assembler', () => {
     expect(filmClient).toMatch(/finalDurationSec\?: number;/);
-    expect(filmClient).toMatch(/\.\.\.\(typeof finalDurationSec === 'number' && finalDurationSec > 0 \? \{ finalDurationSec \} : \{\}\),/);
-    // …only for a cut of every planned scene: a salvaged cut goes without it (finalContractForCut, unit-tested beside it).
+    const partial: FilmStudioMatrix = {
+      sceneCount: 3, clipSec: 8, seed: 1, storyboard: 'succeeded', stitch: 'pending', audio: 'skipped',
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'https://storage.example/one.mp4' },
+        { ordinal: 2, status: 'failed', url: null },
+        { ordinal: 3, status: 'succeeded', url: 'https://storage.example/three.mp4' },
+      ],
+    };
+    // A failed scene cannot remove the requested duration from either driver's HTTP body.
+    const body = JSON.parse(JSON.stringify(filmAssembleBody({ finalDurationSec: 24 }, partial, 'brief')));
+    expect(body).toMatchObject({ finalDurationSec: 24, expectedSegments: 3 });
+    expect(body.segments).toHaveLength(2);
     // The body is built once (filmAssembleBody) for the tab and for the server that finishes a film whose tab closed.
     expect(filmClient).toMatch(/const finalDurationSec = finalContractForCut\(plan\.finalDurationSec, clipUrls\.length, scenesPlanned\);/);
     expect(filmClient).toMatch(/const assembledRes = await assembleMaster\(filmFollowPlan\(opts\), matrix, message, opts\.myVoiceNarration, signal\);/);
     expect(filmClient).toMatch(/body: JSON\.stringify\(filmAssembleBody\(plan, matrix, scorePrompt, finalVoiceUrl\)\),/);
     expect(filmClient).not.toMatch(/\{ finalDurationSec: plan\.finalDurationSec \}/);
   });
-  test('a clip the route drops as dead leaves a salvaged cut: no contract, and the response says how many were dropped', () => {
+  test('legacy salvage still reports the dropped clip count in the response and client result', () => {
     expect(route).toMatch(/const clipsDropped = handedOver\.length - segments\.length;/);
-    expect(route).toMatch(/body\.finalDurationSec === null \|\| clipsDropped > 0 \? null : finalCutForAssemble\(stitchSec, body\.finalDurationSec\)/);
     expect(route).toMatch(/\.\.\.\(clipsDropped > 0 \? \{ clipsDropped \} : \{\}\)/);
     expect(filmClient).toMatch(/scenesRendered: clips\.length - \(assembledRes && 'clipsDropped' in assembledRes \? \(assembledRes\.clipsDropped \?\? 0\) : 0\),/);
   });

@@ -210,6 +210,26 @@ describe('a film whose tab closed', () => {
     expect(f.refunds).toEqual(['f1']);
   });
 
+  test('a contracted partial film keeps its plan, fails on 422 and refunds once instead of waiting as busy', async () => {
+    const f = fake();
+    const id = await file(f, 'f1', { plan: { finalDurationSec: 24 } });
+    f.pollAnswer = (t) => ({ ...ready(t), sceneCount: 3, clipSec: 8, readyToStitch: false, clips: [
+      { ordinal: 1, status: 'succeeded', url: 'https://s/1.mp4' },
+      { ordinal: 2, status: 'failed', url: null },
+      { ordinal: 3, status: 'succeeded', url: 'https://s/3.mp4' },
+    ] });
+    f.stitchAnswer = async () => ({ status: 422, url: null, error: 'contracted_segment_unavailable' });
+    f.clock.now = T0 + 5 * 60_000;
+    expect((await sweep(f)).stitch).toEqual({ id, outcome: 'failed' });
+    expect(f.stitches[0].body).toMatchObject({ finalDurationSec: 24, expectedSegments: 3 });
+    expect(f.stitches[0].body.segments).toHaveLength(2);
+    expect(f.refunds).toEqual(['f1']);
+    f.clock.now += LEASE_MS + 1;
+    await sweep(f);
+    expect(f.stitches).toHaveLength(1);
+    expect(f.refunds).toEqual(['f1']);
+  });
+
   test('a stitch that died on the way is tried once more, then paid back: never more than two stitches', async () => {
     const f = fake();
     const id = await file(f, 'f1');

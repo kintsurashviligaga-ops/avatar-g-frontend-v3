@@ -68,7 +68,7 @@ export function sceneRedoAsk(text: string, totalScenes: number): { ordinal: numb
 // ─── What Agent G says ───────────────────────────────────────────────────────────────────────────────────────────
 
 /** A scene's vision grade as the film result carries it (the shape of lib/ai/visionQualityGate SceneQaEntry). */
-export interface SceneGrade { ordinal: number; grade: 'A' | 'B' | 'C' | 'F' }
+export interface SceneGrade { ordinal: number; grade: 'A' | 'B' | 'C' | 'F' | null; status?: 'PASS' | 'FAIL' | 'SKIPPED' | 'UNAVAILABLE' }
 
 /**
  * What the per-scene vision check found, said once under the film (audit item 3b): a scene graded F has a real flaw
@@ -76,10 +76,11 @@ export interface SceneGrade { ordinal: number; grade: 'A' | 'B' | 'C' | 'F' }
  * command that shoots the weakest one again. Nothing to say → ''.
  */
 export function weakScenesText(grades: ReadonlyArray<SceneGrade> | null | undefined, canRedo: boolean, locale: string | null | undefined): string {
-  const by = (g: SceneGrade['grade']) => (grades ?? []).filter((q) => q.grade === g).map((q) => q.ordinal).sort((a, b) => a - b);
+  const by = (g: SceneGrade['grade']) => (grades ?? []).filter((q) => q.grade === g && q.status !== 'SKIPPED' && q.status !== 'UNAVAILABLE').map((q) => q.ordinal).sort((a, b) => a - b);
   const flawed = by('F');
   const weak = by('C');
-  if (!flawed.length && !weak.length) return '';
+  const unverified = (grades ?? []).filter((q) => q.grade === null || q.status === 'SKIPPED' || q.status === 'UNAVAILABLE').map((q) => q.ordinal).sort((a, b) => a - b);
+  if (!flawed.length && !weak.length && !unverified.length) return '';
   const l = lang(locale);
   const list = (ns: number[]) => {
     const words = ns.map((n) => (l === 'ka' ? kaScene(n) : String(n)));
@@ -101,7 +102,14 @@ export function weakScenesText(grades: ReadonlyArray<SceneGrade> | null | undefi
         ? `ℹ️ Сцен${weak.length > 1 ? 'ы' : 'а'} ${list(weak)} получил${weak.length > 1 ? 'ись' : 'ась'} слабо.`
         : `ℹ️ ${list(weak)} სცენა სუსტად გამოვიდა.`);
   }
-  if (canRedo) {
+  if (unverified.length) {
+    lines.push(l === 'en'
+      ? `ℹ️ Visual quality was not verified for scene${unverified.length > 1 ? 's' : ''} ${list(unverified)}.`
+      : l === 'ru'
+        ? `ℹ️ Качество сцен${unverified.length > 1 ? ' ' : 'ы '}${list(unverified)} визуально не проверено.`
+        : `ℹ️ ${list(unverified)} სცენის ვიზუალური ხარისხი შემოწმებული არ არის.`);
+  }
+  if (canRedo && (flawed.length || weak.length)) {
     const n = flawed[0] ?? weak[0]!;
     lines.push(l === 'en'
       ? `If you like, write “change scene ${n}” and I'll shoot only that scene again at the scene's price.`

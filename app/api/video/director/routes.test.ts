@@ -276,6 +276,25 @@ describe('runs', () => {
 });
 
 describe('decision', () => {
+  it('persists unresolved submit evidence and refuses retry/edit at the HTTP boundary', async () => {
+    const id = await startRun();
+    const submit = jest.spyOn(engine, 'createClip').mockRejectedValueOnce(new Error('submit response lost'));
+    try {
+      const after = await step(id);
+      expect(after.run.pendingDecision.error).toMatchObject({ requiresReconciliation: true, retryable: false });
+      expect(after.run.pendingDecision.options).toEqual(['cancel']);
+      const stored = await (await getRun(req(`/api/video/director/runs/${id}`), { params: { id } })).json();
+      expect(stored.run.pendingDecision.error.requiresReconciliation).toBe(true);
+      for (const decision of ['retry', 'edit']) {
+        expect((await decide(req(`/api/video/director/runs/${id}/decision`, { decision }), { params: { id } })).status).toBe(409);
+      }
+      await step(id);
+      expect(submit).toHaveBeenCalledTimes(1);
+      expect(deductCredits).toHaveBeenCalledTimes(1);
+      expect((await decide(req(`/api/video/director/runs/${id}/decision`, { decision: 'cancel' }), { params: { id } })).status).toBe(200);
+    } finally { submit.mockRestore(); }
+  });
+
   it('refuses an unknown decision (400) and one that does not apply now (409)', async () => {
     const id = await startRun();
     await step(id);

@@ -63,8 +63,11 @@ with crossfade/dissolve on every multi-clip film), and camera "pan" chips that w
 
 ## 3. Transport selection
 
-`engine.veoTransport()`: **vertex** when `vertexConfig()` is complete and `VEO_TRANSPORT` is not `gemini`; else **gemini**
-when a Gemini key exists and `GEMINI_VEO_ENABLED` is not off; else none. Transport of an existing operation is
+`engine.veoTransport()`: unset, empty or explicit `auto` prefers **vertex** when `vertexConfig()` is complete, otherwise
+**gemini** when a Gemini key exists and `GEMINI_VEO_ENABLED` is not off. `vertex` and `gemini` pin exactly that transport;
+an unavailable pin or any other non-empty value refuses new generation before media preparation or provider IO. An invalid
+pin never becomes automatic selection, and diagnostics name `VEO_TRANSPORT` without echoing its value. Values are trimmed
+and case-insensitive. Transport of an existing operation is
 recoverable from its name (`projects/…` = Vertex, `models/…` = Gemini), so in-flight tokens keep polling across a
 switch. The engine string stays `gemini-veo` (double-voice guard, task-ref allowlist, provider badge depend on it).
 
@@ -75,7 +78,7 @@ Veo failure — surfaced honestly and refunded by the existing per-leg rollback 
 
 | Variable | Purpose |
 |---|---|
-| `VEO_TRANSPORT` | `vertex` \| `gemini` \| unset (auto) |
+| `VEO_TRANSPORT` | `vertex` \| `gemini` \| `auto` \| unset/empty (auto); any other value blocks new generation |
 | `GCP_PROJECT_ID` | Vertex project id |
 | `GCP_VEO_LOCATION` | default `us-central1` |
 | `GCP_VEO_BUCKET` | `gs://bucket[/prefix]` for Veo outputs and uploaded inputs |

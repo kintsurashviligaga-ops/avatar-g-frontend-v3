@@ -50,6 +50,11 @@ import type {
 export type ProgressListener = (event: ShotProgressEvent) => void;
 
 export const SHOT_DECISIONS: readonly ShotDecision[] = Object.freeze(['retry', 'edit', 'cancel'] as const);
+const RECONCILIATION_DECISIONS: readonly ShotDecision[] = Object.freeze(['cancel'] as const);
+
+/** An uncertain paid attempt is not evidence that another submit is safe, even after a user refund. */
+export const shotDecisionsFor = (error: ShotError): readonly ShotDecision[] =>
+  error.requiresReconciliation ? RECONCILIATION_DECISIONS : SHOT_DECISIONS;
 
 /** Per-shot progress for each stage (ShotProgressEvent.progress); `failed` keeps the shot's last value. */
 const STAGE_PROGRESS = { queued: 0, generating: 0.1, finalizing: 0.9, done: 1 } as const;
@@ -107,6 +112,9 @@ function assertExecutable(storyboard: unknown): asserts storyboard is FrozenStor
 function assertWaiting(run: StoryboardRun | null | undefined, decision: ShotDecision): asserts run is StoryboardRun & { pendingDecision: NonNullable<StoryboardRun['pendingDecision']> } {
   if (!run || run.state !== 'waiting_for_shot_decision' || !run.pendingDecision) {
     throw new RunDecisionError(`"${decision}" applies only to a run waiting for a shot decision (got ${run ? run.state : 'no run'})`);
+  }
+  if (!shotDecisionsFor(run.pendingDecision.error).includes(decision)) {
+    throw new RunDecisionError('the provider outcome must be reconciled before another attempt');
   }
 }
 
@@ -187,7 +195,7 @@ export function createVideoDirector(deps: VideoDirectorDeps): GoogleVideoDirecto
         const raw = err instanceof Error ? err.message : String(err);
         result = {
           ok: false,
-          error: { shotId: shot.id, reason: 'unknown', message: 'The video provider failed unexpectedly on this shot.', retryable: false, ...(raw ? { veoRawResponse: raw.slice(0, RAW_MAX_CHARS) } : {}) },
+          error: { shotId: shot.id, reason: 'unknown', message: 'The video provider failed unexpectedly on this shot. Its outcome needs review before another attempt.', retryable: false, requiresReconciliation: true, ...(raw ? { veoRawResponse: raw.slice(0, RAW_MAX_CHARS) } : {}) },
         };
       }
 
@@ -195,7 +203,7 @@ export function createVideoDirector(deps: VideoDirectorDeps): GoogleVideoDirecto
         const error: ShotError = { ...result.error, shotId: shot.id };
         errors.push(error);
         stage('failed', progress, error);
-        return finish('waiting_for_shot_decision', { shotId: shot.id, shotIndex: i, error, options: SHOT_DECISIONS });
+        return finish('waiting_for_shot_decision', { shotId: shot.id, shotIndex: i, error, options: shotDecisionsFor(error) });
       }
       clips.push({ shotId: shot.id, order: shot.order, url: result.clipUrl, durationSeconds: shot.durationSeconds, metadata: result.metadata });
       stage('done', STAGE_PROGRESS.done);

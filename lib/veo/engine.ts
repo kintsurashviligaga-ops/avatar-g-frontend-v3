@@ -36,9 +36,15 @@ const PROMPT_LOG_CHARS = 120;
 
 // ── Transport selection ──────────────────────────────────────────────────────────────────────────────────────────
 
-function forcedTransport(): VeoTransport | null {
+function forcedTransport(): VeoTransport | 'invalid' | null {
   const v = (process.env.VEO_TRANSPORT ?? '').trim().toLowerCase();
-  return v === 'vertex' || v === 'gemini' ? v : null;
+  if (!v || v === 'auto') return null;
+  return v === 'vertex' || v === 'gemini' ? v : 'invalid';
+}
+
+/** Configuration names only: an invalid value may itself contain a misplaced credential. */
+export function veoTransportConfigProblem(): string | null {
+  return forcedTransport() === 'invalid' ? 'VEO_TRANSPORT must be vertex, gemini, auto or unset' : null;
 }
 
 const vertexReady = (): boolean => vertexConfig() !== null;
@@ -48,10 +54,12 @@ const geminiReady = (): boolean => !!resolveGeminiKey() && isEnabledByDefault(pr
  * The transport new clips render on. Auto: Vertex once vertexConfig() is complete, else the Gemini API when a key
  * exists and GEMINI_VEO_ENABLED is not off, else null. VEO_TRANSPORT=vertex|gemini pins one transport; a pinned
  * transport that is not ready is null (→ `not_configured`, naming what is missing) rather than a quiet render on the
- * other one — an operator who pins a transport is asserting where clips render and bill.
+ * other one — an operator who pins a transport is asserting where clips render and bill. Unknown non-empty values
+ * refuse new generation; only unset/empty or explicit `auto` may select a transport automatically.
  */
 export function veoTransport(): VeoTransport | null {
   const forced = forcedTransport();
+  if (forced === 'invalid') return null;
   if (forced === 'vertex') return vertexReady() ? 'vertex' : null;
   if (forced === 'gemini') return geminiReady() ? 'gemini' : null;
   if (vertexReady()) return 'vertex';
@@ -69,6 +77,8 @@ export function transportOf(operationName: string): VeoTransport | null {
 
 /** Env variable NAMES only (vertexConfigProblems never returns values), so this is safe to log and to show. */
 function notConfiguredDetail(): string {
+  const invalid = veoTransportConfigProblem();
+  if (invalid) return invalid;
   const forced = forcedTransport();
   const vertexMissing = vertexConfigProblems().join(', ') || 'incomplete';
   const gemini = resolveGeminiKey() ? 'GEMINI_VEO_ENABLED is off' : 'no Gemini API key';

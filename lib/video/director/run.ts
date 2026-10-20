@@ -22,13 +22,14 @@
  * claimed (`submitting`) BEFORE it is charged or submitted, so two concurrent requests can never charge or submit the
  * same attempt twice; the loser of a race just reports the run as it now stands. A submit that dies between the claim
  * and Google's answer leaves the shot `submitting`; after `staleSubmitMs` it is failed as an interrupted submit
- * (refunded, the user decides) — never re-submitted on its own.
+ * with durable `requiresReconciliation` evidence (the user charge is refunded, but Google may still bill). Retry/edit
+ * cannot start another attempt from it. A late operation is retained for an operator without reviving delivery.
  *
  * Pure: the store, the billing and the provider are injected. ./runServer.ts binds them to Supabase, the credit ledger
  * and the live Veo engine.
  */
 import { PRICE_BOOK, veoRenderedSeconds, type ClipTier } from '@/lib/credits/priceBook';
-import { SHOT_DECISIONS } from './director';
+import { SHOT_DECISIONS, shotDecisionsFor } from './director';
 import { GoogleVeoProvider, type ShotTicket } from './googleVeoProvider';
 import { draftFromFrozen, isFrozen, shotsInOrder, StoryboardNotFrozenError } from './storyboard';
 import type { FrozenStoryboard, Shot, ShotDecision, ShotError, ShotMetadata, Storyboard } from './types';
@@ -178,7 +179,7 @@ export function viewOf(run: DirectorRunRecord): DirectorRunView {
   const current = run.shots[run.currentIndex];
   const pending =
     run.state === 'waiting_for_shot_decision' && current?.status === 'failed' && current.error
-      ? { shotId: current.shotId, shotIndex: run.currentIndex, error: current.error, options: SHOT_DECISIONS }
+      ? { shotId: current.shotId, shotIndex: run.currentIndex, error: current.error, options: shotDecisionsFor(current.error) }
       : undefined;
   return {
     id: run.id,
@@ -268,6 +269,22 @@ async function commit(ctx: StepContext, run: DirectorRunRecord, next: DirectorRu
   return { won: false, run: fresh };
 }
 
+/** A late submit may no longer drive the run, but its operation must not disappear after a timeout/cancel. */
+async function rememberLateTicket(ctx: StepContext, submittedRun: DirectorRunRecord, index: number, ticket: ShotTicket, fresh: DirectorRunRecord): Promise<DirectorRunRecord> {
+  const submitted = submittedRun.shots[index];
+  let current = fresh;
+  for (let tries = 0; tries < 3; tries++) {
+    const rec = current.shots[index];
+    if (!submitted || !rec || current.userId !== submittedRun.userId || rec.shotId !== submitted.shotId
+      || rec.attempt !== submitted.attempt || rec.status !== 'failed' || !rec.error?.requiresReconciliation || rec.ticket) return current;
+    // Preserve state, refund, attempt and error. Recording evidence does not authorize polling or delivery.
+    const saved = await commit(ctx, current, withShot(current, index, { ticket }, ctx.now()));
+    if (saved.won) return saved.run;
+    current = saved.run;
+  }
+  return current;
+}
+
 /** Give back the charge of every failed attempt not yet refunded. Safe to repeat: the ledger refund is idempotent. */
 async function settleRefunds(ctx: StepContext, run: DirectorRunRecord): Promise<DirectorRunRecord> {
   let current = run;
@@ -355,11 +372,11 @@ export async function advanceRun(deps: DirectorRunDeps, id: string, userId: stri
         submitted = await deps.provider.submitShot(input);
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
-        submitted = { ok: false, error: { shotId: shot.id, reason: 'unknown', message: 'The video provider failed unexpectedly on this shot.', retryable: false, ...(raw ? { veoRawResponse: raw.slice(0, 300) } : {}) } };
+        submitted = { ok: false, error: { shotId: shot.id, reason: 'unknown', message: 'The video provider failed unexpectedly on this shot. Its outcome needs review before another attempt.', retryable: false, requiresReconciliation: true, ...(raw ? { veoRawResponse: raw.slice(0, 300) } : {}) } };
       }
       if (!submitted.ok) return viewOf(await failShot(ctx, run, index, { ...submitted.error, shotId: shot.id }));
       const rendering = await commit(ctx, run, withShot(run, index, { status: 'rendering', ticket: submitted.ticket }, ctx.now()));
-      return viewOf(rendering.run);
+      return viewOf(rendering.won ? rendering.run : await rememberLateTicket(ctx, run, index, submitted.ticket, rendering.run));
     }
 
     case 'submitting': {
@@ -368,14 +385,15 @@ export async function advanceRun(deps: DirectorRunDeps, id: string, userId: stri
       return viewOf(await failShot(ctx, run, index, {
         shotId: shot.id,
         reason: 'veo_internal',
-        message: 'The submit of this shot was interrupted, so it is not known whether Veo started it. Nothing will be delivered for it; a retry renders it again.',
-        retryable: true,
+        message: 'The submit of this shot was interrupted. Veo may still render and bill it; the submission needs review before another attempt.',
+        retryable: false,
+        requiresReconciliation: true,
       }));
     }
 
     case 'rendering': {
       if (!rec.ticket) {
-        return viewOf(await failShot(ctx, run, index, { shotId: shot.id, reason: 'unknown', message: 'This shot lost its Veo job reference. A retry renders it again.', retryable: true }));
+        return viewOf(await failShot(ctx, run, index, { shotId: shot.id, reason: 'unknown', message: 'This shot lost its Veo job reference. Its outcome needs review before another attempt.', retryable: false, requiresReconciliation: true }));
       }
       let checked: Awaited<ReturnType<GoogleVeoProvider['checkShot']>>;
       try {
@@ -435,6 +453,9 @@ export async function decideRun(
   if (!SHOT_DECISIONS.includes(decision)) throw new DirectorRunDecisionError(`unknown decision "${String(decision)}"`);
   if (!(waiting || (decision === 'cancel' && betweenShots))) {
     throw new DirectorRunDecisionError(`"${decision}" does not apply to this run now (${run.state}${rec ? `, shot ${rec.status}` : ''})`);
+  }
+  if (waiting && rec?.error && !shotDecisionsFor(rec.error).includes(decision)) {
+    throw new DirectorRunDecisionError('the provider outcome must be reconciled before another attempt');
   }
   if (waiting && rec && !rec.refunded) {
     throw new DirectorRunDecisionError('the failed shot\'s charge is still being returned; try again in a moment');

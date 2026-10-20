@@ -17,7 +17,7 @@ import { AUDIO_URL, UPLOAD, fakeAudio, type FakeAudio } from '@/lib/agent/media/
 import { RESULT_URL as EDIT_URL, fakeEdit, type FakeEdit } from '@/lib/agent/media/testing/fakeEditDeps';
 import type { MemoryLeaseStore } from '@/lib/orchestrator/testing/memoryLeaseStore';
 import { RUN_TRANSITIONS, type RunStatus } from '../contracts';
-import { RUN_KIND, stepOf, type RunState } from './runEngine';
+import { RUN_KIND, TICK_LEASE_MS, stepOf, type RunState } from './runEngine';
 import { audioAdapter, editAdapter, montageAdapter } from './runAdapters';
 import {
   approveStep, cancelRun, planRun, readRun, resumeIdOf, resumeRun, startRun, sweepRuns, tickRun, type RunExecDeps, type StepAdapter,
@@ -278,7 +278,154 @@ describe('the chain: each step is an ordinary job of its own executor, its outpu
   });
 });
 
+describe('a replay must name the stored approved plan', () => {
+  test('the same approved plan still replays after completion without creating another child job', async () => {
+    const w = world();
+    const p = await planRun(w.deps, { userId: USER, spec: CHAIN });
+    if (!p.ok) throw new Error(p.error);
+    await startRun(w.deps, { userId: USER, spec: CHAIN, token: p.token });
+    expect((await drive(w, p.plan.runId)).status).toBe('completed');
+    const childIds = [...w.store.rows.keys()];
+    expect(await startRun(w.deps, { userId: USER, spec: CHAIN, token: p.token })).toEqual({ ok: true, runId: p.plan.runId, replay: true });
+    expect([...w.store.rows.keys()]).toEqual(childIds);
+    expect(w.a.extracts).toHaveLength(1);
+    expect(w.workers).toHaveLength(0);
+  });
+
+  test('the same signed run ID with another normalized spec is a conflict, not a replay', async () => {
+    const w = world();
+    w.deps.newId = () => 'same-run-id';
+    const first = await planRun(w.deps, { userId: USER, spec: CHAIN });
+    const changed = { ...CHAIN, title: 'A different approved plan' };
+    const second = await planRun(w.deps, { userId: USER, spec: changed });
+    if (!first.ok || !second.ok) throw new Error('plans unavailable');
+    expect(await startRun(w.deps, { userId: USER, spec: CHAIN, token: first.token })).toMatchObject({ ok: true, replay: false });
+    expect(await startRun(w.deps, { userId: USER, spec: changed, token: second.token })).toMatchObject({ ok: false, error: 'quote_changed' });
+    expect(runAt(w, first.plan.runId).spec).toEqual(first.spec);
+    expect(jobsOf(w, RUN_KIND)).toHaveLength(1);
+    expect(w.workers).toHaveLength(0);
+  });
+
+  test('a row without run state cannot count as an accepted replay', async () => {
+    const w = world();
+    const p = await planRun(w.deps, { userId: USER, spec: CHAIN });
+    if (!p.ok) throw new Error(p.error);
+    await startRun(w.deps, { userId: USER, spec: CHAIN, token: p.token });
+    delete w.store.rows.get(p.plan.runId)!.params._run;
+    expect(await startRun(w.deps, { userId: USER, spec: CHAIN, token: p.token })).toMatchObject({ ok: false, error: 'jobs_unavailable' });
+    expect(jobsOf(w, AUDIO_KIND)).toHaveLength(0);
+  });
+
+  test.each(['userId', 'quoteFingerprint'] as const)('a mismatched stored approval %s cannot authorize replay', async (field) => {
+    const w = world();
+    const p = await planRun(w.deps, { userId: USER, spec: CHAIN });
+    if (!p.ok) throw new Error(p.error);
+    await startRun(w.deps, { userId: USER, spec: CHAIN, token: p.token });
+    runAt(w, p.plan.runId).approval[field] = 'does-not-match';
+    expect(await startRun(w.deps, { userId: USER, spec: CHAIN, token: p.token })).toMatchObject({ ok: false, error: 'quote_changed' });
+    expect(jobsOf(w, RUN_KIND)).toHaveLength(1);
+    expect(w.workers).toHaveLength(0);
+  });
+});
+
 describe('races', () => {
+  const independent: RunSpec = { steps: [
+    { id: 'first', tool: 'audio_extract', source: { file: UPLOAD } },
+    { id: 'second', tool: 'audio_extract', source: { file: UPLOAD } },
+  ] };
+
+  test('a stop during the first quote prevents quoting another step', async () => {
+    const quoted: string[] = [];
+    let id = '';
+    const w = world({ adapters: (base) => ({ ...base, audio_extract: { ...base.audio_extract,
+      async quote(userId, step) {
+        quoted.push(step.id);
+        const q = await base.audio_extract.quote(userId, step);
+        if (step.id === 'first') await cancelRun(w.deps, { userId: USER, id });
+        return q;
+      },
+    } }) });
+    id = await started(w, independent);
+    await tick(w, id);
+    expect(quoted).toEqual(['first']);
+    expect(runAt(w, id).status).toBe('cancelled');
+    expect(jobsOf(w, AUDIO_KIND)).toHaveLength(0);
+    expect(w.workers).toHaveLength(0);
+    expect(w.a.extracts).toHaveLength(0);
+  });
+
+  test('a long quote renews the same-owner lease before the next quote, without quoting twice', async () => {
+    const quoted: string[] = [];
+    const currentLease: boolean[] = [];
+    let id = '';
+    const w = world({ adapters: (base) => ({ ...base, audio_extract: { ...base.audio_extract,
+      async quote(userId, step) {
+        quoted.push(step.id);
+        currentLease.push((runAt(w, id).tick?.until ?? 0) > w.clock.now);
+        const q = await base.audio_extract.quote(userId, step);
+        if (step.id === 'first') w.clock.now += TICK_LEASE_MS;
+        return q;
+      },
+    } }) });
+    id = await started(w, independent);
+    await tick(w, id);
+    expect(quoted).toEqual(['first', 'second']);
+    expect(currentLease).toEqual([true, true]);
+    expect(jobsOf(w, AUDIO_KIND)).toHaveLength(2);
+    expect(w.workers).toHaveLength(2);
+  });
+
+  test('a tick superseded while quoting cannot quote the next step or overwrite its successor', async () => {
+    const quoted: string[] = [];
+    let id = '';
+    const w = world({ adapters: (base) => ({ ...base, audio_extract: { ...base.audio_extract,
+      async quote(userId, step) {
+        quoted.push(step.id);
+        const q = await base.audio_extract.quote(userId, step);
+        runAt(w, id).tick = { owner: 'successor', until: w.clock.now + TICK_LEASE_MS };
+        return q;
+      },
+    } }) });
+    id = await started(w, independent);
+    await tick(w, id);
+    expect(quoted).toEqual(['first']);
+    expect(runAt(w, id).tick?.owner).toBe('successor');
+    expect(jobsOf(w, AUDIO_KIND)).toHaveLength(0);
+    expect(w.workers).toHaveLength(0);
+  });
+
+  test('a successor that wins the lease-renewal CAS prevents the stale tick from continuing', async () => {
+    const quoted: string[] = [];
+    let id = '';
+    let raced = false;
+    const w = world({ adapters: (base) => ({ ...base, audio_extract: { ...base.audio_extract,
+      async quote(userId, step) {
+        quoted.push(step.id);
+        const q = await base.audio_extract.quote(userId, step);
+        w.clock.now += TICK_LEASE_MS;
+        return q;
+      },
+    } }) });
+    id = await started(w, independent);
+    const expiry = w.clock.now + TICK_LEASE_MS;
+    w.store.beforeCas = async (rowId) => {
+      if (rowId !== id || raced || w.clock.now < expiry) return;
+      raced = true;
+      const row = (await w.store.read(id))!;
+      const run = row.params._run as RunState;
+      run.tick = { owner: 'successor', until: w.clock.now + TICK_LEASE_MS };
+      expect(await w.store.cas(id, { v: row.exec!.v, from: [row.status] }, {
+        params: { ...row.params, _exec: { ...row.exec!, v: row.exec!.v + 1 }, _run: run },
+      })).toBe(true);
+    };
+    await tick(w, id);
+    expect(raced).toBe(true);
+    expect(quoted).toEqual(['first']);
+    expect(runAt(w, id).tick?.owner).toBe('successor');
+    expect(jobsOf(w, AUDIO_KIND)).toHaveLength(0);
+    expect(w.workers).toHaveLength(0);
+  });
+
   test('two ticks at once start the step once: one quote, one job', async () => {
     const w = world();
     const id = await started(w);
