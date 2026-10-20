@@ -374,7 +374,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       const requested = String(g.lut || '').trim() as LutLook;
       lutLook = (['cinematic', 'night_neon', 'warm_golden'] as const).includes(requested)
         ? requested
-        : pickLutLook(typeof g.brief === 'string' ? g.brief : undefined);
+        : 'none'; // preserve natural Veo colors and true black background
       const cubePath = join(dir, LUT_FILENAME[lutLook]);
       await writeFile(cubePath, buildCubeFile(lutLook));
       lut3dPath = cubePath;
