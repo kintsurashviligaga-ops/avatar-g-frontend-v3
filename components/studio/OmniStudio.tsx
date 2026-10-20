@@ -6871,7 +6871,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // read the ORDER aloud; a line past 8 s was refused only after Create. Each is now said in words, before any card.
         if (gateMode === 'avatar') {
           const line = splitAvatarScript(promptText);
-          const fit = line.speech && !hasAudio ? avatarLineFit(line.speech) : null;
+          const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(promptText);
+          const fit = !isMultiScene && line.speech && !hasAudio ? avatarLineFit(line.speech) : null;
           const say = !door?.open ? avatarUnavailableText(locale)
             : !line.speech && !hasAudio ? avatarAskLineText(locale)
               : fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;
@@ -7064,7 +7065,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // plainly; no line → Agent G asks for it (the next message is the line, kept with the order's look); a line too long
       // for the 8 s clip → asked to shorten. No card, no price, nothing started — the photo stays attached for the answer.
       if (avatarLine && avatarDoor) {
-        const fit = avatarLine.speech ? avatarLineFit(avatarLine.speech) : null;
+        const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(text);
+        const fit = !isMultiScene && avatarLine.speech ? avatarLineFit(avatarLine.speech) : null;
         const say = !avatarDoor.open ? avatarUnavailableText(locale)
           : !avatarLine.speech ? avatarAskLineText(locale)
             : fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;
