@@ -9788,7 +9788,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
       analyzeOn: agentAnalyzeOn,
     };
-    const step = planChatTurn(text, snapshot);
+    const isVideoCreationAsk = /(?:შექმენ|დააგენერირ|ახალი\s*ვიდეო|სარეკლამო|3[- ]?სცენ|სცენა\s*[1-9]|სცენარ|რეფერენსად|კლიპი|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
+    const step = isVideoCreationAsk
+      ? { kind: "open" as const, videoMode: "documentary" as const, durationSec: 24, aspect: /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? ("9:16" as const) : undefined }
+      : planChatTurn(text, snapshot);
     if (step.kind === 'pass') return false;
 
     const clearComposer = () => { setInput(''); setAttachments([]); inputSourceRef.current = 'text'; stopDictationEcho(); };
@@ -9822,7 +9825,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (step.durationSec !== undefined) {
           const v = planFinalDuration(step.durationSec, videoCaps, videoPlanOpts);
           if (!v.ok) {
-            setMode('video'); setVideoMode(step.videoMode); if (o) setVideoOrientation(o);
+            setMode('video'); setVideoMode(step.videoMode === "musicvideo" ? "musicvideo" : "documentary"); if (o) setVideoOrientation(o);
             setVideoDuration(panelSecondsAfterBlock(v, videoCaps)); setVideoRequestedSec(null);
             // The words stay in the box: the refusal names the longest length that can be made, and the user decides.
             say(`${describeDurationBlock(v, locale)} ${tr('სიგრძე პანელში შეცვალე და ისევ გამომიგზავნე.', 'Change the length on the panel and send again.', 'Измените длину на панели и отправьте снова.')}`);
@@ -9839,7 +9842,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const len = formatVideoDuration(nativeSec, locale);
           lengthNote = tr(`სიგრძე ნათქვამი არ იყო — ${len} (შეცვალე პანელში).`, `No length was given — ${len} (change it on the panel).`, `Длина не указана — ${len} (измените на панели).`);
         }
-        setMode('video'); setVideoMode(step.videoMode); if (o) setVideoOrientation(o);
+        setMode('video'); setVideoMode(step.videoMode === "musicvideo" ? "musicvideo" : "documentary"); if (o) setVideoOrientation(o);
         const routeOrientation = step.videoMode === 'musicvideo' ? 'vertical' : (o ?? videoOrientation);
         const routeRefs = [...videoCharacterRefs, ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl)];
         // An attached track is not dropped: it stays in the box for the soundtrack slot (the board is planned without it).
