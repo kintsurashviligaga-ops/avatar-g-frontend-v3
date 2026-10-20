@@ -7053,6 +7053,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); stopDictationEcho();
       return;
     }
+    const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(text);
+    if (isMultiScene) {
+      const photoRefs = attachments.filter((a) => isImage(a.mimeType)).map((a) => a.url || a.dataUrl || '').filter(Boolean);
+      const ratio = aspectFromText(text, { ratioOnly: true });
+      const sbOrientation = (ratio ?? lipFormat) === '16:9' ? 'landscape' : 'vertical';
+      setAttachments([]);
+      setInput(''); stopDictationEcho();
+      await createStoryboard(text, photoRefs, sbOrientation);
+      return;
+    }
     if (studio) {
       // THE TALKING AVATAR RUNS IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat; 2026-10-17 07:39Z: „შექმენი
       // ავატარი რომელიც ამბობს ქართულად: …" made nothing). An order that names its line gets Agent G's card where the Veo
