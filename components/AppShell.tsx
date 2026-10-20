@@ -176,7 +176,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className='app-native-shell ag-fixed-shell relative flex min-h-[var(--app-screen-height)] w-full flex-col overflow-x-hidden'
+      className={isAdmin ? 'relative block min-h-screen w-full overflow-y-auto overflow-x-hidden bg-[#06060d]' : 'app-native-shell ag-fixed-shell relative flex min-h-[var(--app-screen-height)] w-full flex-col overflow-x-hidden'}
       style={{ color: 'var(--color-text)', isolation: 'isolate' }}
     >
       {/* Page-aware 4D AI environment — adapts mood per route */}
