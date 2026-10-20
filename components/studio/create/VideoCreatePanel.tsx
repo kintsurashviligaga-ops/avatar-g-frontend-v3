@@ -192,20 +192,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
         </VideoSettingRow>
         {film ? (
           <>
-            <VideoSettingRow label={vc(VIDEO_COPY.narrator, locale)}>
-              <VideoSelect label={vc(VIDEO_COPY.narrator, locale)} value={narrator} testId="video-narrator"
-                options={[
-                  { value: 'auto', label: vc(VIDEO_COPY.narratorAuto, locale) },
-                  { value: 'female', label: vc(VIDEO_COPY.female, locale) },
-                  { value: 'male', label: vc(VIDEO_COPY.male, locale) },
-                  { value: 'off', label: vc(VIDEO_COPY.narratorOff, locale) },
-                ]}
-                onChange={(v) => {
-                  if (v === 'off') { audio.onNarration(false); return; }
-                  audio.onNarratorGender(v);
-                  audio.onNarration(true);
-                }} />
-            </VideoSettingRow>
+            {/* Narrator dropdown removed: voice auto-detected from prompt/persona */}
             <VideoSettingRow label={vc(VIDEO_COPY.music, locale)}>
               <VideoSwitch label={vc(VIDEO_COPY.music, locale)} on={audio.music} onChange={audio.onMusic} testId="video-music" />
             </VideoSettingRow>
