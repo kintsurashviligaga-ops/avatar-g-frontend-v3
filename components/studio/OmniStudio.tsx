@@ -8201,28 +8201,33 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // it no longer stops after one word.
     // The first chunk is the first SENTENCE alone (when short): its audio comes back in a fraction of a 600-char
     // request, and the rest is synthesised while it plays.
-    const chunks = chunkForTts(text, 600, { leadSentence: true });
-    // Taken synchronously (before any await): a voice turn's reply may already be synthesising its first sentence.
+    const chunks = chunkForTts(text, 180, { leadSentence: true });
     const pre = ttsPrefetchRef.current;
     ttsPrefetchRef.current = null;
     if (!chunks.length) { dropTtsUrl(pre?.url); setSpeakingIdx(null); setSpeakPhase(null); return; }
 
     const synth = (chunk: string): Promise<string | null> => synthTtsUrl(chunk, locale);
-
-    // Revoke a still-pending prefetched chunk URL so an aborted read never leaks its blob.
     const drainNext = (pr: Promise<string | null>) => dropTtsUrl(pr);
     try {
       const first = pre && pre.text === chunks[0] ? pre.url : null;
       if (pre && !first) drainNext(pre.url);
-      let nextUrlPromise: Promise<string | null> = first ?? synth(chunks[0]!);
+      // Kick off up to 3 chunks in PARALLEL immediately so mid-text pauses never happen
+      const queue: Array<Promise<string | null> | null> = chunks.map((c, idx) =>
+        idx === 0 ? (first ?? synth(c)) : idx < 3 ? synth(c) : null
+      );
+      const drainRemaining = (fromIdx: number) => {
+        for (let k = fromIdx; k < queue.length; k++) {
+          if (queue[k]) drainNext(queue[k]!);
+        }
+      };
       for (let idx = 0; idx < chunks.length; idx++) {
-        const url = await nextUrlPromise;
-        if (!live()) { if (url) URL.revokeObjectURL(url); return; }
-        // Kick off the next chunk's synthesis while this one plays (hides the gap).
-        nextUrlPromise = idx + 1 < chunks.length ? synth(chunks[idx + 1]!) : Promise.resolve(null);
-        if (!url) continue; // a chunk failed → skip it, keep reading the rest
+        if (!queue[idx]) queue[idx] = synth(chunks[idx]!);
+        if (idx + 3 < chunks.length && !queue[idx + 3]) queue[idx + 3] = synth(chunks[idx + 3]!);
+        const url = await queue[idx]!;
+        if (!live()) { if (url) URL.revokeObjectURL(url); drainRemaining(idx + 1); return; }
+        if (!url) continue;
         const el = ttsAudioRef.current;
-        if (!el) { URL.revokeObjectURL(url); drainNext(nextUrlPromise); return; }
+        if (!el) { URL.revokeObjectURL(url); drainRemaining(idx + 1); return; }
         el.src = url; // reuse the SAME (already user-activated) element so play() is never blocked
         try { el.load(); } catch { /* noop */ } // iOS: force the element to (re)load the new WAV fully — without
         // this a reused element can play only the first moments of a swapped src, the "cuts off after a few words".
@@ -8267,7 +8272,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // play() rejecting IS about the call we just made, so it is always ours to handle.
           el.play().catch(done);
         });
-        if (!live()) { drainNext(nextUrlPromise); return; } // stopped mid-read → don't leak the prefetched chunk
+        if (!live()) { drainRemaining(idx + 1); return; } // stopped mid-read → don't leak the prefetched chunk
       }
       if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
     } catch {
@@ -9804,7 +9809,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
       analyzeOn: agentAnalyzeOn,
     };
-    const isVideoCreationAsk = /(?:შექმენ|დააგენერირ|ახალი\s*ვიდეო|სარეკლამო\s*(?:ვიდეო|კლიპ)|[1-6][- ]?სცენ|სცენა\s*[1-9]|მუსიკალურ\s*(?:კლიპ|ვიდეო)|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
+    const isOtherMediaAsk = /(?:სურათ|ფოტო|ნახატ|image|photo|picture|ავატარ|avatar)/iu.test(text) || (/(?:მუსიკ|სიმღერ|music|song)/iu.test(text) && !/(?:კლიპ|ვიდეო|video|clip|სცენ)/iu.test(text));
+    const isVideoCreationAsk = !isOtherMediaAsk && /(?:(?:შექმენ|დააგენერირ|გააკეთ|მინდა)[\s\S]{0,40}(?:ვიდეო|ფილმ|კლიპ|სცენ)|ახალი\s*ვიდეო|სარეკლამო\s*(?:ვიდეო|კლიპ)|[1-6][- ]?სცენ|სცენა\s*[1-9]|მუსიკალურ\s*(?:კლიპ|ვიდეო)|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
     const scHeaders = (text.match(/(?:სცენა|scene)\s*[1-9]/gi) || []).length;
     const scNumMatch = text.match(/\b([1-6])\s*(?:[- ]?სცენ|სცენა|scenes?)\b/i);
     const scWord = /(?:ერთი\s*სცენ|ერთსცენ|1[- ]?სცენ|8\s*წამ)/i.test(text) ? 1

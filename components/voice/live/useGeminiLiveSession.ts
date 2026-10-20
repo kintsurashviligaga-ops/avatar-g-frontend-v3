@@ -957,10 +957,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     ];
     return buildLiveSetup({
       model: modelRef.current ?? '',
-      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale)) + '\n'
-        + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE),
+      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural Georgian sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.",
       voiceName: sessionPreferencesRef.current?.voice ?? o.voiceName ?? 'Aoede',
-      ...(sessionPreferencesRef.current ? { turnEagerness: sessionPreferencesRef.current.eagerness } : {}),
+      turnEagerness: sessionPreferencesRef.current?.eagerness ?? "eager",
       ...(typeof o.temperature === 'number' ? { temperature: o.temperature } : {}),
       ...(parity
         ? {

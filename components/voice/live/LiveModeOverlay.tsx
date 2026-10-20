@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   Video,
   VideoOff,
+  SwitchCamera,
   Mic,
   MicOff,
   X,
@@ -131,6 +132,8 @@ export function LiveModeOverlay({
   videoRef,
   onToggleMute,
   onToggleCamera,
+  onFlipCamera,
+  cameraFacing,
   onEnd,
   onRetry,
   onStopSpeaking,
@@ -232,6 +235,17 @@ export function LiveModeOverlay({
             {cameraOn ? <Video size={20} /> : <VideoOff size={20} />}
           </button>
 
+          {cameraOn && onFlipCamera && (
+            <button
+              type="button"
+              onClick={onFlipCamera}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition-all hover:bg-white/25 active:scale-95"
+              aria-label="Flip camera"
+              title={cameraFacing === "user" ? "უკანა კამერა" : "სელფის კამერა"}
+            >
+              <SwitchCamera size={20} />
+            </button>
+          )}
           <button
             type="button"
             className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white/90 backdrop-blur-md transition-all hover:bg-white/15 active:scale-95"
@@ -320,7 +334,17 @@ export function LiveModeOverlay({
             <Plus size={22} />
           </button>
 
-          {/* 2. ვიდეო კამერის ღილაკი */}
+          {/* 2. ვიდეო კამერის და სელფის შემოტრიალების ღილაკი */}
+          {cameraOn && onFlipCamera && (
+            <button
+              type="button"
+              onClick={onFlipCamera}
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/15 text-white shadow-md backdrop-blur-xl transition-all hover:bg-white/25 active:scale-95"
+              aria-label="Flip camera"
+            >
+              <SwitchCamera size={20} />
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleCamera}
