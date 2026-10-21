@@ -11825,12 +11825,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
   // ONE DESCRIPTION BOX (GG's card, 2026-10-18 05:14Z: „დამალე"). Image and Music keep their description on the Create
-  // screen (it and the composer share `input`), so the composer's text box steps aside while that screen is on: below `lg`
-  // always (the sheet IS the prompt card), on a desktop while the panel is open — closing it brings the box back as Agent
+  // screen (it and the composer share `input`), so the composer's text box steps aside while that sheet or panel is open.
+  // Closing settings brings the box back as Agent
   // G's line. Mic, Live voice and Send stay in the pill. VIDEO is the other way round (GG 2026-10-18, „პრომპტი ჩატის ველში"):
   // its panel has no prompt, so this box and its priced Send stay beside the open panel.
   const composerTextHidden = (imageCreate || mode === 'music')
-    && (isDesktop ? panelOpen : true);
+    && (isDesktop ? panelOpen : optionsOpen);
   // …and on a desktop the box's own Send and enhance go with it: the panel beside it has the priced Create.
   const composerRunAside = composerTextHidden && isDesktop;
   // Music on a desktop: the latest track and the engines-and-prices list (ref6) lead the centre column; the feed — progress
@@ -12156,7 +12156,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {imageWorkspace && imageStudioAccess && (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
           <ImageWorkspace key={imageStudioAccess.userId} access={imageStudioAccess} locale={locale} initialPrompt={input}
-            onClose={() => { setImageWorkspaceOpen(false); if (!isDesktop) setOptionsOpen(true); }} />
+            onClose={() => { setImageWorkspaceOpen(false); setOptionsOpen(true); }} />
         </div>
       )}
       {imageDesk && imageDeskActions && (
@@ -12598,7 +12598,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
                 chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
             {!chatOnly && (
-              <div className="inline-flex h-10 min-w-0 items-center gap-0.5 rounded-full bg-app-accent/15 p-1 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
+              <div className="inline-flex h-10 min-w-0 max-w-full items-center gap-0.5 rounded-full bg-app-accent/15 p-1 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
                 {/* 1. სერვისის სწრაფი შეცვლა (ხსნის სერვისების სიას) */}
                 <button
                   type="button"
@@ -12607,7 +12607,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-app-accent transition-colors hover:bg-app-accent/20"
                 >
                   <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
-                  <span className="max-w-[110px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
+                  <span className="max-w-[88px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
                   <ChevronDown size={13} aria-hidden="true" className="shrink-0 opacity-80" />
                 </button>
 
@@ -12616,10 +12616,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   type="button"
                   onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}
                   data-testid="options-toggle"
+                  aria-expanded={isDesktop ? panelOpen : optionsOpen}
+                  aria-label={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
                   title={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
-                  className="inline-flex h-8 items-center gap-1 rounded-full bg-white/[0.06] px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
+                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-white/[0.06] px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
                 >
-                  <span className="truncate whitespace-nowrap">
+                  <SlidersHorizontal size={14} aria-hidden="true" className="shrink-0" />
+                  <span className="hidden max-w-[160px] truncate whitespace-nowrap sm:inline">
                     {toolSummary || (locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები')}
                   </span>
                 </button>
@@ -12639,7 +12642,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-rose-500/15 px-2.5 text-rose-300 transition-colors hover:bg-rose-500/25"
                 >
                   <X size={14} aria-hidden="true" />
-                  <span className="ml-0.5 text-[11px] font-medium">{locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი'}</span>
+                  <span className="ml-0.5 hidden text-[11px] font-medium sm:inline">{locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი'}</span>
                 </button>
               </div>
             )}

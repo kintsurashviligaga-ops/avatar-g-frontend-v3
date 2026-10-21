@@ -40,11 +40,16 @@ async function prepare(page: Page): Promise<{ modelsAsked: () => number }> {
 const shown = (page: Page, id: string) => page.evaluate((testId) => [...document.querySelectorAll(`[data-testid="${testId}"]`)]
   .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }).length, id);
 
-test('choosing Image shows its Create sheet and nothing over it; ✕ closes it and the chat is back', async ({ page }) => {
+test('Image keeps the composer until settings opens its Create sheet; ✕ returns to the composer', async ({ page }) => {
   const { modelsAsked } = await prepare(page);
   await page.goto('/ka/dashboard', { waitUntil: 'load' });
   await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
+  const settings = page.getByTestId('options-toggle');
+  await expect(settings).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('composer-input')).toBeVisible();
+  await settings.click();
+  await expect(settings).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByTestId('image-create-panel')).toBeVisible({ timeout: 10_000 });
   for (let i = 0; i < 30; i++) {
     expect(await shown(page, 'image-create-panel'), `Create sheet at sample ${i}`).toBe(1);

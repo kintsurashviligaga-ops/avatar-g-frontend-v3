@@ -103,11 +103,10 @@ test('a generated image lands in the feed, in the same window (no new tab)', asy
   await page.goto(`${HOME}/dashboard?tool=image`);
   const box = page.getByPlaceholder('აღწერე სურათი, რომ დაგიხატო…');
   await expect(box).toBeAttached({ timeout: 45_000 });
-  // On a desktop the Image panel opens with its tool and holds the description, so the chat box steps aside (GG's card,
-  // 2026-10-18). This test follows the chat's own path: put the panel away, as a person does, to write to Agent G.
+  // Follow the composer's own path, closing settings if this viewport already has them open.
   const chip = page.getByTestId('options-toggle');
-  await expect(chip).toHaveAttribute('aria-expanded', 'true');
-  await chip.click();
+  await expect(chip).toHaveAttribute('aria-expanded', /^(true|false)$/);
+  if (await chip.getAttribute('aria-expanded') === 'true') await chip.click();
   await expect(chip).toHaveAttribute('aria-expanded', 'false');
   await expect(box).toBeVisible();
   // The sign-in wall is not what is under test: lift it in this browser only, AFTER the shell has published its own

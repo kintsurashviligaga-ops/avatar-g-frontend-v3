@@ -89,14 +89,16 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
   });
 });
 
-describe('the phone: the sheet opens by itself and the composer\'s text box steps aside', () => {
-  test('choosing the Image tool (sidebar, "+", deep link) opens the Create sheet — the old start chips stay gone', () => {
-    expect(src).toMatch(/id === 'motion' \|\| id === 'image'( \|\| id === 'vfx')?\) setOptionsOpen\(true\)/);
+describe('the phone: settings open on demand and the composer remains available while closed', () => {
+  test('the settings button opens the Create sheet and exposes its current state', () => {
+    expect(src).toContain('setOptionsOpen((v) => !v)');
+    expect(src).toContain('aria-expanded={isDesktop ? panelOpen : optionsOpen}');
     expect(src).not.toContain('startChip');
   });
 
-  test('the EMPTY chat has the four quick buttons under its box (GG, 2026-10-18); a tap opens the tool like any other pick', () => {
-    expect(src).toMatch(/\{chatOnly && messages\.length === 0 && \(\s*<HomeQuickStart locale=\{locale\} onPick=\{\(id\) => selectTool\(id, 'quick-start'\)\} \/>\s*\)\}/);
+  test('the empty chat keeps the current service picker without the removed quick buttons', () => {
+    expect(studio).not.toContain('<HomeQuickStart');
+    expect(src).toContain('setToolPickOnly(true); setToolSheetOpen(true);');
   });
 
   test('"edit this image" opens the screen that holds the prompt and focuses ITS box', () => {
@@ -105,9 +107,9 @@ describe('the phone: the sheet opens by itself and the composer\'s text box step
     expect(edit).toContain('imgPromptRef.current ?? taRef.current');
   });
 
-  test('the composer\'s textarea steps aside while the Create screen holds the description: below lg in image and music, on a desktop while their panel is open (GG, 2026-10-18)', () => {
+  test('the composer textarea steps aside only while Image or Music settings are open', () => {
     expect(src).toContain("`${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none");
-    expect(src).toMatch(/const composerTextHidden = \(imageCreate \|\| mode === 'music'\)\s*&& \(isDesktop \? panelOpen : true\);/);
+    expect(src).toMatch(/const composerTextHidden = \(imageCreate \|\| mode === 'music'\)\s*&& \(isDesktop \? panelOpen : optionsOpen\);/);
   });
 
   test('VIDEO keeps the box and its priced Send beside the open panel: the prompt lives only in the chat (GG, 2026-10-18)', () => {
