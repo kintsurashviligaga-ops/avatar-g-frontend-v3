@@ -297,7 +297,8 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   //    missing.
   // თუ მომხმარებელი ვიდეოს/ავატარს/პერსონაჟს ქმნის, ფოტო არის რეფერენსი და არა მონტაჟი
   const isVideoOrAvatarPrompt = /(?:ვიდეო|ავატარ|მსახიობ|კადრ|პერსონაჟ|video|avatar|presenter|actor|scene|სცენა)/iu.test(text);
-  if (!isVideoOrAvatarPrompt && beatMontageAsk(text, kinds)) return act('agent.montage', 'attachment', params);
+  // The reference-photo guard must not discard actual footage. A montage naturally names a video too.
+  if ((nVideo > 0 || !isVideoOrAvatarPrompt) && beatMontageAsk(text, kinds)) return act('agent.montage', 'attachment', params);
   if (nAudio === 0 && nVideo + nImage >= 2 && nVideo + nImage === kinds.length && asksNarration(text) && hasMontageWords(text)) {
     return act('agent.montage', 'attachment', params, ['narration']);
   }
