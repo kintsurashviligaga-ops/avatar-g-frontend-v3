@@ -631,6 +631,11 @@ async function assembleImpl(req: NextRequest) {
     });
 
     // PRIMARY — ElevenLabs Music (instrumentals + sung vocals). Time-boxed.
+    const skipAiMusicForSpeech = !musicVideoMode && !body.customAudioUrl && !/\b(music|song|soundtrack|მუსიკ|სიმღერ|ტრეკ)\b/i.test(body.scorePrompt || "");
+    if (skipAiMusicForSpeech) {
+      console.log("[assemble] Speech/commercial film without explicit music request → skipping AI score generation to preserve clean voice");
+      return { url: null, fallback: null };
+    }
     if (hasElevenLabsMusicKey()) {
       try {
         // A longer song takes longer to compose: about a second per second of song, never under the old 90 s.

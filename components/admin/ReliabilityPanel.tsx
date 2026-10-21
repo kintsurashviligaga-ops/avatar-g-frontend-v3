@@ -157,7 +157,7 @@ export default function ReliabilityPanel({ ka }: { ka: boolean }) {
           </div>
 
           <p className="text-[11px] text-gray-600">
-            {ka ? 'ვიდეო მოდელი' : 'Video model'}: <span className="text-gray-400">{snap.videoModel}</span> · Runway: <span className="text-gray-400">{snap.runwayModel}</span> · {ka ? 'ფანჯარა' : 'window'}: {snap.reliability.windowDays}d
+            {ka ? 'ვიდეო მოდელი' : 'Video model'}: <span className="text-gray-400">{snap.videoModel}</span> · Transport: <span className="text-emerald-400">Google Vertex AI</span> · {ka ? 'ფანჯარა' : 'window'}: {snap.reliability.windowDays}d
           </p>
         </>
       )}

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export function PageTransitionWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  if (pathname && /\/admin(\/|$)/.test(pathname)) return <>{children}</>;
 
   return (
     // OPACITY-ONLY (no y/transform). The studio shell is `position: fixed inset-0`, and a

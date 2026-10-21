@@ -178,6 +178,16 @@ export default function GeminiLiveConversation({
   // a prompt, a chat message, a panel), so the user watches it happen instead of finding it after hanging up. The user
   // can flip either way (the bar's ⤢, the full screen's „ეკრანის ნახვა“), and so can the model (call_view).
   const [docked, setDocked] = useState(false);
+  // AUTO-DOCK: Immediately fold full-screen into compact LiveDock when agent triggers an action/plan
+  useEffect(() => {
+    if (liveActions.pendingRun || liveActions.screenSeq > 0) setDocked(true);
+  }, [liveActions.pendingRun, liveActions.screenSeq]);
+
+  useEffect(() => {
+    const onLiveAction = () => setDocked(true);
+    window.addEventListener("myavatar:live-action", onLiveAction);
+    return () => window.removeEventListener("myavatar:live-action", onLiveAction);
+  }, []);
   const { screenSeq, viewRequest } = liveActions;
   useEffect(() => { if (screenSeq > 0) setDocked(true); }, [screenSeq]);
   useEffect(() => { if (viewRequest) setDocked(viewRequest.view === 'screen'); }, [viewRequest]);
@@ -217,6 +227,7 @@ export default function GeminiLiveConversation({
   }, [planTold, sendNote]);
   useEffect(() => {
     const onResult = (e: Event) => {
+      setDocked(true);
       const n = (e as CustomEvent<LiveResultNote>).detail;
       if (!n || typeof n !== 'object') return;
       const what = typeof n.what === 'string' && n.what.trim() ? n.what.trim().slice(0, n.kind === 'plan' || n.kind === 'music' ? 240 : 160) : '';

@@ -78,25 +78,19 @@ export async function GET(request: NextRequest) {
     // "is generation degraded to deterministic beats?" signal.
     const has = (...names: string[]) => names.some((n) => String(process.env[n] || '').trim().length > 0);
     const providers = {
-      deepseekDirect: deepseekConfigured(),
-      atlasDeepseek: atlasConfigured(),
-      gemini: has('GEMINI_API_KEY'),
-      anthropic: has('ANTHROPIC_API_KEY'),
-      replicate: has('REPLICATE_API_TOKEN'),
-      runway: has('RUNWAY_API_KEY', 'RUNWAYML_API_SECRET'),
-      elevenlabs: has('ELEVENLABS_API_KEY'),
-      nanobanana: has('NANOBANANA_API_KEY'),
-      heygen: has('HEYGEN_API_KEY'),
-      udio: has('UDIO_API_KEY'),
-    };
+    vertex_veo: has('GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_VERTEX_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'GEMINI_API_KEY'),
+    gemini: has('GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'),
+    lyria_music: has('GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_VERTEX_PROJECT', 'GEMINI_API_KEY'),
+    supabase: has('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'),
+    stripe_bog: has('STRIPE_SECRET_KEY', 'BOG_CLIENT_ID'),
+  };
     // llmText is Gemini ONLY (PROJECT_MASTER R7): a bound DeepSeek / Atlas / Anthropic key no longer plans any scene.
     const scenePlanningLive = !!resolveGeminiKey();
 
     const warnings: string[] = [];
     if (!scenePlanningLive) warnings.push('No Gemini key bound — scene planning falls back to deterministic beats (llmText has no other provider). Bind GEMINI_API_KEY.');
     // TRACK 4 — HeyGen integration gate: the avatar/talking-photo path silently drops without this key.
-    if (!providers.heygen) warnings.push('HEYGEN_API_KEY not bound — the HeyGen avatar/talking-photo path is unavailable (renders fall to the Replicate lip-sync leg).');
-    if (/v1[.\-]?6/i.test((process.env.REPLICATE_VIDEO_MODEL || '').trim())) warnings.push('REPLICATE_VIDEO_MODEL pinned to a v1.6 tier — unset it to restore the Kling v2.1 lock.');
+    if (!providers.vertex_veo) warnings.push('Vertex AI / Veo credentials not bound — video generation requires Google Cloud / Vertex AI.');
     for (const s of reliability.perService) {
       if (s.successRate !== null && s.successRate < 0.7 && s.completed + s.failed >= 5) {
         warnings.push(`${s.service}: success rate ${Math.round(s.successRate * 100)}% over the last ${days}d (${s.failed} failed).`);
@@ -108,7 +102,7 @@ export async function GET(request: NextRequest) {
       generatedAt: new Date().toISOString(),
       scenePlanningLive,
       providers,
-      videoModel: (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v2.1').trim(),
+      videoModel: (process.env.VEO_MODEL || 'veo-3.1-generate-preview (Vertex AI)').trim(),
       runwayModel: runwayModel(),
       reliability,
       financials,

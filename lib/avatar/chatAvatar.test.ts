@@ -4,7 +4,7 @@
  * says what it will make before anything is charged.
  */
 import { AVATAR_TEMPLATES } from '@/lib/studio/templates';
-import { avatarAskLineText, avatarGenderFromText, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from './chatAvatar';
+import { avatarAskLineText, avatarGenderFromText, avatarVoiceGender, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from './chatAvatar';
 
 describe('Agent G in words, no card (GG 2026-10-18)', () => {
   it('asks for the line, says a closed door plainly, and asks to shorten — in ka · en · ru', () => {
@@ -88,5 +88,18 @@ describe('avatarOfferText', () => {
     expect(t).toContain('мужской голос (ElevenLabs)');
     expect(t).toContain('панели');
     expect(t).toContain('Начать?');
+  });
+});
+
+describe('one voice for the approval and every render path', () => {
+  it.each([
+    ['auto', 'Make a woman avatar that says: "Welcome aboard"', 'female'],
+    ['auto', 'Создай аватар мужчины, который говорит: Добро пожаловать', 'male'],
+    ['female', 'Make a man avatar that says: "Welcome aboard"', 'female'],
+    ['male', 'Make a woman avatar that says: "Welcome aboard"', 'male'],
+    ['auto', 'Make an avatar that says: "Every woman is welcome"', 'male'],
+    ['auto', '', 'male'],
+  ] as const)('selection %s resolves %s to a supported %s voice', (selection, text, expected) => {
+    expect(avatarVoiceGender(selection, text)).toBe(expected);
   });
 });

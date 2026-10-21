@@ -33,6 +33,7 @@ export function stockAvatarFace(gender: AvatarGender, aspect: AvatarAspect): str
 const EDGE = '(?:^|[\\s,.;:!?()"„“«»—-])';
 const END = '(?=$|[\\s,.;:!?()"„“«»—-])';
 // ქართული ბრუნვები (-ი, -მა, -ს, -ის, -ად), ბავშვი, მოხუცი, ბაბუა, ბებია
+// ქართული ბრუნვები (-ი, -მა, -ს, -ის, -ად), ბავშვი, მოხუცი, ბაბუა, ბებია
 const FEMALE = new RegExp(`${EDGE}(?:ქალ(?:ი|მა|ს|ის|ად|ბატონი|ბატონმა|ბატონს|ბატონის)?(?!აქ)|გოგო(?:ნა|ნამ|ნას|ს)?|დედა(?:მ|ს|ის)?|ბებია(?:მ|ს|ის)?|მოხუცი ქალ(?:ი|მა|ს|ის)?|ხანდაზმული ქალ(?:ი|მა|ს|ის)?|woman|female|girl|lady|grandma|grandmother|девушк\\S*|женщин\\S*|женск\\S*|бабушк\\S*)${END}`, 'iu');
 
 const MALE = new RegExp(`${EDGE}(?:კაც(?:ი|მა|ს|ის|ად)?|მამაკაც(?:ი|მა|ს|ის|ად)?|ბიჭ(?:ი|მა|ს|ის|ად|უნა|უნამ|უნას)?|ბაბუა(?:მ|ს|ის)?|პაპა(?:მ|ს|ის)?|მოხუცი კაც(?:ი|მა|ს|ის)?|მოხუცი მამაკაც(?:ი|მა|ს|ის)?|ხანდაზმული კაც(?:ი|მა|ს|ის)?|მსახიობი მამაკაც(?:ი|მა|ს|ის)?|man|male|guy|boy|grandfather|grandpa|мужчин\\S*|парень|парн\\S*|мужск\\S*|дедушк\\S*)${END}`, 'iu');
@@ -40,6 +41,8 @@ const MALE = new RegExp(`${EDGE}(?:კაც(?:ი|მა|ს|ის|ად)?|�
 const CHILD = new RegExp(`${EDGE}(?:ბავშვ(?:ი|მა|ს|ის|ად)?|პატარა ბავშვ(?:ი|მა|ს|ის)?|პატარა ბიჭ(?:ი|მა|ს|ის)?|პატარა გოგო(?:ნა|ს)?|ჩვილ(?:ი|მა|ს|ის)?|მოზარდ(?:ი|მა|ს|ის)?|child|kid|toddler|baby|ребенок|дитя)${END}`, 'iu');
 
 const ELDERLY = new RegExp(`${EDGE}(?:მოხუც(?:ი|მა|ს|ის|ად|ებული)?|ხანდაზმულ(?:ი|მა|ს|ის)?|ბებერ(?:ი|მა|ს|ის)?|elderly|senior|old person|пожилой|старик)${END}`, 'iu');
+
+
 
 
 
@@ -68,6 +71,11 @@ export function avatarGenderFromText(text: string): AvatarGender | null {
   }
 
   return null;
+}
+
+/** Resolve once for both the approval card and every render path. Explicit panel choices win. */
+export function avatarVoiceGender(selection: AvatarGender | 'auto', text = ''): AvatarGender {
+  return selection === 'auto' ? avatarGenderFromText(text) ?? 'male' : selection;
 }
 
 export interface AvatarOffer {

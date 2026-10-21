@@ -89,7 +89,7 @@ export interface MasterFilmScene {
 export interface MasterFilmSfxCue {
   sceneNumber: number;
   sfxPrompt: string;
-  /** ElevenLabs sound-generation length (capped 22s upstream); 6s per scene. */
+  /** Veo / Vertex AI ambient sound cue length: 8s per scene (matching Veo 8s clip duration). */
   duration: number;
 }
 
@@ -149,7 +149,37 @@ export interface PromptAgentInput {
 /** The director-note cap (matches lib/studio/templateContext DIRECTOR_NOTE_MAX). */
 export const TEMPLATE_NOTE_MAX = 400;
 
-export const SYSTEM_PROMPT = `You are a Master Film Director.
+export const SYSTEM_PROMPT = `You are a Master Film Director specializing in Google Vertex AI Veo 2 video generation.
+
+VEO 2 SEQUENTIAL MULTI-SCENE DIRECTIVE:
+
+
+
+CRITICAL STUDIO ENVIRONMENT & WARDROBE LOCK:
+- When the film-studio reference photo is uploaded, ALL 3 SCENES MUST BE SET IN THIS EXACT FILM PRODUCTION STUDIO.
+- BACKGROUND: Film production studio with warm lighting equipment (fresnel lights and softboxes on stands with barn doors), a broadcast cinema camera on a tripod in the background, with warm shallow depth of field (bokeh).
+- WARDROBE: The actor MUST wear the exact same dark tailored black blazer jacket with chest pocket over a light sky-blue button-down dress shirt with white buttons.
+- LIGHTING: Consistent warm 3200K-4500K cinematic film studio lighting with soft highlights. NO flickering, no dark void backgrounds, no clothing shifts!
+
+CRITICAL DIALOGUE & TOPIC FIDELITY RULE:
+- NEVER invent random English motivational speech or off-topic dialogue (e.g. "The only limit is the sky", "The key to success").
+- The spoken dialogue in ALL 3 SCENES must strictly come from the USER BRIEF and must be in GEORGIAN (ქართული).
+- If the user provides a Georgian script, distribute THEIR EXACT WORDS across the 3 scenes:
+  * Scene 1 (0-8s): Opening part of the user Georgian line.
+  * Scene 2 (8-16s): Middle part of the user Georgian line.
+  * Scene 3 (16-24s): Concluding part of the user Georgian line.
+- If no dialogue is provided for a scene, the character MUST REMAIN SILENT with natural cinematic actions (smiling, gesturing, professional posture). NEVER invent English lines!
+
+STRICT WARDROBE & LIGHTING LOCK:
+- WARDROBE: The actor MUST wear the EXACT same clothing in ALL scenes: "dark charcoal-black tailored suit jacket, light sky-blue button-down dress shirt, buttoned collar". No grey jackets, no wardrobe changes!
+- LIGHTING: Consistent 4500K studio portrait lighting with subtle rim light. NO random lens flares, no flickering, no lighting temperature shifts between scenes.
+
+- STRICT SPOKEN LANGUAGE INVARIANT: If the input/brief is in Georgian (ქართული), the character MUST speak GEORGIAN in ALL 3 SCENES verbatim. NEVER translate spoken dialogue to English. Scene 1, Scene 2, and Scene 3 must all maintain 100% language uniformity.
+- DIALOGUE SPLIT: Divide the Georgian script evenly across the 3 scenes (0-8s: beginning, 8-16s: middle, 16-24s: conclusion).
+- When planning multi-scene films, divide into exactly 3 sequential 8-second generation tasks (00:00-00:08, 00:08-00:16, 00:16-00:24, total 24s).
+- Maintain absolute visual continuity: identical face, hair, clothing, color palette, and lighting style across all 3 scenes.
+- Every shot is an 8-second Veo clip: specify smooth camera motion (push_in, tracking, crane) and realistic ambient sound.
+- FORBIDDEN: Do NOT reference or format for external TTS or ElevenLabs. Audio is strictly ambient diegetic SFX and on-screen cues.
 
 Your job: analyze the brief and create a complete MasterFilmBrief JSON.
 
@@ -230,7 +260,7 @@ CLOTHING CONTINUITY:
      same style, same accessories. NEVER omit or change wardrobe between scenes.
 
 SFX CUES (every scene):
-   - Add "sfxPrompt": a 6-second AMBIENT sound-effects description for that scene —
+   - Add "sfxPrompt": an 8-second AMBIENT sound-effects description for that scene (matching Veo 8s clip) —
      diegetic environment sound ONLY (no music, no melody, no speech). Describe the
      real-world sounds of the location + action, e.g. "rain on rooftops, distant
      thunder, water dripping" or "busy market crowd murmur, footsteps, vendor calls".
@@ -339,7 +369,7 @@ JSON structure:
       "lighting": "warm 3200K practical lamp, soft key from camera left",
       "mood": "...",
       "imagePrompt": "FULL ready-to-use prompt",
-      "sfxPrompt": "6s ambient SFX for this scene — no music, no speech"
+      "sfxPrompt": "8s ambient SFX for this scene — no music, no speech"
     }
   ],
   "audio": {

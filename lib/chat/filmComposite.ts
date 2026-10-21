@@ -405,7 +405,7 @@ export async function submitFilmClip(
         {
           userId: ctx.userId || null,
           agentId: 'video-agent',
-          workerKind: 'ltx',
+          workerKind: 'veo',
           action: 'generate_clip',
           promptSummary: clipReq.userPrompt,
           costWholesaleGel: forecastClipWholesale,

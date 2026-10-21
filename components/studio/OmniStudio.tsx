@@ -16,8 +16,6 @@ import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, us
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
-import { HomeQuickStart } from './HomeQuickStart';
-import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
@@ -107,7 +105,7 @@ import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { avatarRetakeText, filmRefineNote, improvedBrief, refineChange } from '@/lib/chat/refineRequest';
 import { quoteSceneRedo, runSceneRedo, sceneRedoAsk, sceneRedoOfferText, sceneRedoProgressText, sceneRedoResultText, weakScenesText } from '@/lib/chat/filmSceneRedoClient';
-import { type AvatarFace, avatarAskLineText, avatarGenderFromText, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
+import { type AvatarFace, avatarAskLineText, avatarVoiceGender, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
 import { GENJUTSU_HARD_CAP_MS } from '@/lib/genjutsu/limits';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
@@ -1850,7 +1848,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, cli
         {regenning && (
           <div className="absolute inset-0 z-30 overflow-hidden bg-black"><LoadingLoop /><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-medium text-white/85">{t.sbRegen}…</span></div>
         )}
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+        <input ref={fileRef} type="file" accept="image/*,audio/mpeg,audio/mp3,audio/wav,audio/m4a,audio/*" hidden onChange={onFile} />
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-2">
         <p className="text-[11.5px] font-semibold leading-snug text-app-text">{s.beat}</p>
@@ -2612,13 +2610,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [lipMyVoice, setLipMyVoice] = useState(false);
   // Avatar mode: cloned-voice gender + output format (the panel's selectable options).
   const [lipGender, setLipGender] = useState<'auto' | 'female' | 'male'>('auto');
-  const resolveLipGender = (hintText?: string): 'female' | 'male' => {
-    if (hintText) {
-      const fromText = avatarGenderFromText(hintText);
-      if (fromText) return fromText;
-    }
-    return lipGender === 'auto' ? 'male' : lipGender;
-  };
+  const resolveLipGender = (hintText?: string): 'female' | 'male' => avatarVoiceGender(lipGender, hintText);
   const [lipFormat, setLipFormat] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   // P8 — selected built-in avatar preset (a /public path used as the talking face).
   // Mutually exclusive with an uploaded face: picking one clears the other.
@@ -3272,12 +3264,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const onDelete = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) removeConversation(id); };
     const onClear = () => clearAllConversations();
     window.addEventListener('myavatar:resume-conversation', onResume as EventListener);
-    window.addEventListener('myavatar:new-chat', onNew);
+    const onNewWithReset = () => {
+      applyToolRef.current?.('chat');
+      setMode('chat');
+      setPanelService(null);
+      setOptionsOpen(false);
+      setPanelOpen(false);
+      setImageWorkspaceOpen(false);
+      setToolSheetOpen(false);
+      onNew();
+    };
+    window.addEventListener('myavatar:new-chat', onNewWithReset);
     window.addEventListener('myavatar:delete-conversation', onDelete as EventListener);
     window.addEventListener('myavatar:clear-conversations', onClear);
     return () => {
       window.removeEventListener('myavatar:resume-conversation', onResume as EventListener);
-      window.removeEventListener('myavatar:new-chat', onNew);
+      window.removeEventListener('myavatar:new-chat', onNewWithReset);
       window.removeEventListener('myavatar:delete-conversation', onDelete as EventListener);
       window.removeEventListener('myavatar:clear-conversations', onClear);
     };
@@ -3426,7 +3428,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // Tools whose inputs are uploads rather than words (a product photo, a source video, a motion reference)
     // open their settings, so the next step is on screen instead of behind a second tap.
     // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer. So is Video, and the VFX tool.
-    if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image' || id === 'vfx') setOptionsOpen(true);
+    setOptionsOpen(false); setPanelOpen(false);
   }, [setMode, setPanelService]);
   applyToolRef.current = applyTool;
   /** `surface` — where the pick came from, for the §50 `catalog_service_opened` event (none: a restart, not a pick). */
@@ -3446,7 +3448,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   // On a desktop the panel also hides the composer's text box in Image, Music and Video (composerTextHidden): closing it
   // brings the box back holding the description, so it is measured again then (the sizing effect above skips a hidden box).
   useEffect(() => {
@@ -3513,17 +3515,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const remixVideoRef = useRef<HTMLInputElement | null>(null);
   // A guest sees „შესვლა" in the desktop title bar. ChatChrome publishes the session on <html data-authed>.
   const [guest, setGuest] = useState(false);
-  // …and the signed-in user's first name (<html data-first-name>, ChatChrome), for the chat's personal greeting line.
-  const [firstName, setFirstName] = useState('');
   useEffect(() => {
     const el = document.documentElement;
     const read = () => {
       setGuest(el.dataset.authed === '0');
-      setFirstName((el.dataset.firstName ?? '').trim());
     };
     read();
     const mo = new MutationObserver(read);
-    mo.observe(el, { attributes: true, attributeFilter: ['data-authed', 'data-first-name'] });
+    mo.observe(el, { attributes: true, attributeFilter: ['data-authed'] });
     return () => mo.disconnect();
   }, []);
   // Asked again on every sign-in (an in-page email code does not reload the page); a guest never has it.
@@ -4759,6 +4758,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
+    // Live ETA notice for video generation
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        text: "🎬 **ვიდეოს გენერაცია დაიწყო (3 სცენა · 24 წმ)**\n\n⏳ **სავარაუდო დრო: ~5–10 წუთი.**\nმიმდინარეობს Veo 2-ის თანმიმდევრული დამუშავება სტუდიური ხარისხით. გთხოვთ დაელოდოთ...",
+      }
+    ]);
     // The failure, visible: the route's own sentence when it gave one (describeOpFailure keeps machine codes out of a
     // Georgian interface), the translated line otherwise — as the chat's error card, whose Retry plans the storyboard
     // again (never a render) and whose Dismiss puts it away. Nothing after a user cancel.
@@ -6871,7 +6878,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // read the ORDER aloud; a line past 8 s was refused only after Create. Each is now said in words, before any card.
         if (gateMode === 'avatar') {
           const line = splitAvatarScript(promptText);
-          const fit = line.speech && !hasAudio ? avatarLineFit(line.speech) : null;
+          const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(promptText);
+          const fit = !isMultiScene && line.speech && !hasAudio ? avatarLineFit(line.speech) : null;
           const say = !door?.open ? avatarUnavailableText(locale)
             : !line.speech && !hasAudio ? avatarAskLineText(locale)
               : fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;
@@ -7052,6 +7060,40 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); stopDictationEcho();
       return;
     }
+    // Smart Scene & Mode Detection (1 scene = 8s, 2 scenes = 16s, 3 scenes = 24s)
+    const sceneHeadersCount = (text.match(/(?:სცენა|scene)\s*[1-9]/gi) || []).length;
+    const explicitSceneNumMatch = text.match(/\b([1-6])\s*(?:[- ]?სცენ|სცენა|scenes?)\b/i);
+    const wordSceneCount = /(?:ერთი\s*სცენ|ერთსცენ|1[- ]?სცენ)/i.test(text) ? 1
+      : /(?:ორი\s*სცენ|ორსცენ|2[- ]?სცენ)/i.test(text) ? 2
+      : /(?:სამი\s*სცენ|სამსცენ|სამივე\s*სცენ|3[- ]?სცენ)/i.test(text) ? 3
+      : /(?:ოთხი\s*სცენ|ოთხსცენ|4[- ]?სცენ)/i.test(text) ? 4 : 0;
+
+    const detectedScenes = sceneHeadersCount >= 2
+      ? sceneHeadersCount
+      : explicitSceneNumMatch
+        ? parseInt(explicitSceneNumMatch[1] || "1", 10)
+        : wordSceneCount;
+
+    const isMultiScene = detectedScenes >= 2 || /(?:სთორიბორდ|storyboard|მრავალსცენ)/iu.test(text);
+    if (isMultiScene) {
+      const targetScenes = detectedScenes >= 1 ? Math.min(6, detectedScenes) : 2;
+      const targetSec = targetScenes * 8;
+      const photoRefs = attachments
+        .filter((a) => isImage(a.mimeType) || /\.(jpe?g|png|webp)$/i.test(a.name || ""))
+        .map((a) => a.dataUrl)
+        .filter(Boolean);
+      const attachedAudio = attachments.find((a) => isAudio(a.mimeType) || /\.(mp3|wav|m4a|aac|ogg)$/i.test(a.name || ""));
+      const isMusicVideoPrompt = /(?:მუსიკალურ\s*(?:კლიპ|ვიდეო)|სიმღერ[აი]|music\s*video|\bsong\b)/iu.test(text) || !!attachedAudio;
+      const ratio = aspectFromText(text, { ratioOnly: true });
+      const sbOrientation = (ratio ?? lipFormat) === "16:9" ? "landscape" : "vertical";
+      setAttachments([]);
+      setInput(""); stopDictationEcho();
+      await createStoryboard(text, photoRefs, sbOrientation, {
+        nativeSec: targetSec,
+        musicVideoMode: isMusicVideoPrompt
+      });
+      return;
+    }
     if (studio) {
       // THE TALKING AVATAR RUNS IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat; 2026-10-17 07:39Z: „შექმენი
       // ავატარი რომელიც ამბობს ქართულად: …" made nothing). An order that names its line gets Agent G's card where the Veo
@@ -7064,7 +7106,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // plainly; no line → Agent G asks for it (the next message is the line, kept with the order's look); a line too long
       // for the 8 s clip → asked to shorten. No card, no price, nothing started — the photo stays attached for the answer.
       if (avatarLine && avatarDoor) {
-        const fit = avatarLine.speech ? avatarLineFit(avatarLine.speech) : null;
+        const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(text);
+        const fit = !isMultiScene && avatarLine.speech ? avatarLineFit(avatarLine.speech) : null;
         const say = !avatarDoor.open ? avatarUnavailableText(locale)
           : !avatarLine.speech ? avatarAskLineText(locale)
             : fit && !fit.fits ? avatarShortenText(fit.seconds, locale) : null;
@@ -7544,9 +7587,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
       // Only the words go to the voice. "The avatar, emotionally, says: …" was read out whole (Production 2026-10-16):
       // the direction part ("emotionally, with gestures") is how it behaves, not what it says (lib/avatar/scriptSplit).
-      const parsedScript = splitAvatarScript(text); const spoken = parsedScript.speech || text;
-      // The voice the order names („ქალი ავატარი…"), else the panel's; the frame the words or the card named, else the panel's.
-      const detected = text ? avatarGenderFromText(text) : null; const voiceGender = lipGender === 'auto' ? (detected ?? 'male') : lipGender;
+      const spoken = splitAvatarScript(text).speech || text;
+      // The same voice shown on the approval card, resolved to a supported server value even in Auto mode.
+      const voiceGender = resolveLipGender(text);
       const namedRatio = opts?.aspect ?? (text ? aspectFromText(text, { ratioOnly: true }) : null);
       const veoAspect: '9:16' | '16:9' = (namedRatio ?? lipFormat) === '16:9' ? '16:9' : '9:16';
       // ⚠️ NO PHOTO AND NO PRESET WENT TO THE HEYGEN PRESENTER, which the Google-only boundary refuses (GG, 2026-10-17
@@ -7567,7 +7610,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             // Honour the panel's Voice (Female/Male) + Format selections.
-            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: resolveLipGender() }),
+            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: voiceGender }),
           });
           const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string; error?: string; code?: string };
           let sj: { success?: boolean; videoId?: string; error?: string; code?: string } = {};
@@ -7693,7 +7736,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           videoUrl,
           ...(audioUrl ? { audioUrl } : {}),
           ...(spoken ? { text: spoken } : {}),
-          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: lipGender }),
+          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: voiceGender }),
           orientation: lipOrientation, // honour the Format selector (9:16 / 16:9 / 1:1) in the HeyGen render
         });
         // START the job (returns fast) → poll in SHORT requests (mobile-safe). The
@@ -8157,28 +8200,33 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // it no longer stops after one word.
     // The first chunk is the first SENTENCE alone (when short): its audio comes back in a fraction of a 600-char
     // request, and the rest is synthesised while it plays.
-    const chunks = chunkForTts(text, 600, { leadSentence: true });
-    // Taken synchronously (before any await): a voice turn's reply may already be synthesising its first sentence.
+    const chunks = chunkForTts(text, 180, { leadSentence: true });
     const pre = ttsPrefetchRef.current;
     ttsPrefetchRef.current = null;
     if (!chunks.length) { dropTtsUrl(pre?.url); setSpeakingIdx(null); setSpeakPhase(null); return; }
 
     const synth = (chunk: string): Promise<string | null> => synthTtsUrl(chunk, locale);
-
-    // Revoke a still-pending prefetched chunk URL so an aborted read never leaks its blob.
     const drainNext = (pr: Promise<string | null>) => dropTtsUrl(pr);
     try {
       const first = pre && pre.text === chunks[0] ? pre.url : null;
       if (pre && !first) drainNext(pre.url);
-      let nextUrlPromise: Promise<string | null> = first ?? synth(chunks[0]!);
+      // Kick off up to 3 chunks in PARALLEL immediately so mid-text pauses never happen
+      const queue: Array<Promise<string | null> | null> = chunks.map((c, idx) =>
+        idx === 0 ? (first ?? synth(c)) : idx < 3 ? synth(c) : null
+      );
+      const drainRemaining = (fromIdx: number) => {
+        for (let k = fromIdx; k < queue.length; k++) {
+          if (queue[k]) drainNext(queue[k]!);
+        }
+      };
       for (let idx = 0; idx < chunks.length; idx++) {
-        const url = await nextUrlPromise;
-        if (!live()) { if (url) URL.revokeObjectURL(url); return; }
-        // Kick off the next chunk's synthesis while this one plays (hides the gap).
-        nextUrlPromise = idx + 1 < chunks.length ? synth(chunks[idx + 1]!) : Promise.resolve(null);
-        if (!url) continue; // a chunk failed → skip it, keep reading the rest
+        if (!queue[idx]) queue[idx] = synth(chunks[idx]!);
+        if (idx + 3 < chunks.length && !queue[idx + 3]) queue[idx + 3] = synth(chunks[idx + 3]!);
+        const url = await queue[idx]!;
+        if (!live()) { if (url) URL.revokeObjectURL(url); drainRemaining(idx + 1); return; }
+        if (!url) continue;
         const el = ttsAudioRef.current;
-        if (!el) { URL.revokeObjectURL(url); drainNext(nextUrlPromise); return; }
+        if (!el) { URL.revokeObjectURL(url); drainRemaining(idx + 1); return; }
         el.src = url; // reuse the SAME (already user-activated) element so play() is never blocked
         try { el.load(); } catch { /* noop */ } // iOS: force the element to (re)load the new WAV fully — without
         // this a reused element can play only the first moments of a swapped src, the "cuts off after a few words".
@@ -8223,7 +8271,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // play() rejecting IS about the call we just made, so it is always ours to handle.
           el.play().catch(done);
         });
-        if (!live()) { drainNext(nextUrlPromise); return; } // stopped mid-read → don't leak the prefetched chunk
+        if (!live()) { drainRemaining(idx + 1); return; } // stopped mid-read → don't leak the prefetched chunk
       }
       if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
     } catch {
@@ -9760,7 +9808,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
       analyzeOn: agentAnalyzeOn,
     };
-    const step = planChatTurn(text, snapshot);
+    const isOtherMediaAsk = /(?:სურათ|ფოტო|ნახატ|image|photo|picture|ავატარ|avatar)/iu.test(text) || (/(?:მუსიკ|სიმღერ|music|song)/iu.test(text) && !/(?:კლიპ|ვიდეო|video|clip|სცენ)/iu.test(text));
+    const isVideoCreationAsk = !isOtherMediaAsk && /(?:(?:შექმენ|დააგენერირ|გააკეთ|მინდა)[\s\S]{0,40}(?:ვიდეო|ფილმ|კლიპ|სცენ)|ახალი\s*ვიდეო|სარეკლამო\s*(?:ვიდეო|კლიპ)|[1-6][- ]?სცენ|სცენა\s*[1-9]|მუსიკალურ\s*(?:კლიპ|ვიდეო)|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
+    const scHeaders = (text.match(/(?:სცენა|scene)\s*[1-9]/gi) || []).length;
+    const scNumMatch = text.match(/\b([1-6])\s*(?:[- ]?სცენ|სცენა|scenes?)\b/i);
+    const scWord = /(?:ერთი\s*სცენ|ერთსცენ|1[- ]?სცენ|8\s*წამ)/i.test(text) ? 1
+      : /(?:ორი\s*სცენ|ორსცენ|2[- ]?სცენ|16\s*წამ)/i.test(text) ? 2
+      : /(?:სამი\s*სცენ|სამსცენ|სამივე\s*სცენ|3[- ]?სცენ|24\s*წამ)/i.test(text) ? 3
+      : /(?:ოთხი\s*სცენ|ოთხსცენ|4[- ]?სცენ|32\s*წამ)/i.test(text) ? 4 : 0;
+    const cleanWordsCount = text.replace(/(?:შექმენ|დააგენერირ|სარეკლამო|ვიდეო|ფორმატ|კინოსტუდი|9:16|16:9|რეფერენს|პროჟექტორ)/gi, "").trim().split(/\s+/).filter(Boolean).length;
+    const finalScenes = scHeaders >= 2 ? scHeaders : scNumMatch ? parseInt(scNumMatch[1] || "1", 10) : scWord > 0 ? scWord : (cleanWordsCount <= 18 ? 1 : cleanWordsCount <= 32 ? 2 : 3);
+    const autoSec = Math.min(6, Math.max(1, finalScenes)) * 8;
+    const autoVideoMode: "documentary" | "musicvideo" = /(?:მუსიკალურ\s*(?:კლიპ|ვიდეო)|სიმღერ[აი]|music\s*video|\bsong\b)/iu.test(text) ? "musicvideo" : "documentary";
+    const autoAspect: "9:16" | "16:9" | undefined = /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? "9:16" : /(?:16:9|ჰორიზონტალ|landscape)/iu.test(text) ? "16:9" : undefined;
+    const step = isVideoCreationAsk
+      ? { kind: "open" as const, videoMode: autoVideoMode, durationSec: autoSec, aspect: autoAspect }
+      : planChatTurn(text, snapshot);
     if (step.kind === 'pass') return false;
 
     const clearComposer = () => { setInput(''); setAttachments([]); inputSourceRef.current = 'text'; stopDictationEcho(); };
@@ -9794,7 +9857,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (step.durationSec !== undefined) {
           const v = planFinalDuration(step.durationSec, videoCaps, videoPlanOpts);
           if (!v.ok) {
-            setMode('video'); setVideoMode(step.videoMode); if (o) setVideoOrientation(o);
+            setMode('video'); setVideoMode(step.videoMode === "musicvideo" ? "musicvideo" : "documentary"); if (o) setVideoOrientation(o);
             setVideoDuration(panelSecondsAfterBlock(v, videoCaps)); setVideoRequestedSec(null);
             // The words stay in the box: the refusal names the longest length that can be made, and the user decides.
             say(`${describeDurationBlock(v, locale)} ${tr('სიგრძე პანელში შეცვალე და ისევ გამომიგზავნე.', 'Change the length on the panel and send again.', 'Измените длину на панели и отправьте снова.')}`);
@@ -9811,7 +9874,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const len = formatVideoDuration(nativeSec, locale);
           lengthNote = tr(`სიგრძე ნათქვამი არ იყო — ${len} (შეცვალე პანელში).`, `No length was given — ${len} (change it on the panel).`, `Длина не указана — ${len} (измените на панели).`);
         }
-        setMode('video'); setVideoMode(step.videoMode); if (o) setVideoOrientation(o);
+        setMode('video'); setVideoMode(step.videoMode === "musicvideo" ? "musicvideo" : "documentary"); if (o) setVideoOrientation(o);
         const routeOrientation = step.videoMode === 'musicvideo' ? 'vertical' : (o ?? videoOrientation);
         const routeRefs = [...videoCharacterRefs, ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl)];
         // An attached track is not dropped: it stays in the box for the soundtrack slot (the board is planned without it).
@@ -11792,11 +11855,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const chatSingleRow = chatOnly && isDesktop && attachments.length === 0 && !composerWrapped && !activePersona.name;
   // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
   const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
-  // „გამარჯობა, {name}" — Gemini's personal line above the greeting, for a signed-in user in the chat. Cyan fading
-  // into the text colour: one hue, no second accent (docs/DESIGN.md §6–§7).
-  const personalGreeting = chatOnly && firstName
-    ? (locale === 'en' ? `Hi, ${firstName}` : locale === 'ru' ? `Здравствуйте, ${firstName}` : `გამარჯობა, ${firstName}`)
-    : '';
   // ── The desktop's centre for the video tool (ref6): the RESULT pane — the latest video of this tool in the thread, or its
   // progress while one renders — and "Models & prices" (the Veo tiers priced per length, which also pick the model). Phones
   // have the create sheet only; the thread below the stage is unchanged.
@@ -11985,25 +12043,97 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
-            </div>
-            {/* THE HOME IS THE GREETING, THE BOX AND ITS FOUR QUICK BUTTONS (owner, 2026-10-02: no sub line, no starter
-                chips; GG's UI plan, 2026-10-18: the four quick actions under the box — HomeQuickStart).
-                The greeting carries its own soft halo of the brand blue as a layered text-shadow — a separate glow box
-                (tried first) made the feed scroll and cut a hard edge above the box, because anything that sticks out
-                of a scroll container is scrollable overflow and a shadow is not. It rises in once, and not at all under
-                reduced motion. */}
-            <div className="relative space-y-3 motion-safe:[animation:agSlideUp_0.7s_cubic-bezier(0.2,0.7,0.2,1)_both]">
-              {personalGreeting && (
-                <p data-testid="personal-greeting" className="bg-gradient-to-r from-app-accent to-app-text bg-clip-text pb-1 text-[18px] font-medium leading-[1.4] text-transparent sm:text-[20px]">
-                  {personalGreeting}
-                </p>
-              )}
-              {/* The locked greeting (docs/DESIGN.md §7). Solid ink, never gradient text: forced-colors mode strips the
-                  background a clipped gradient needs and would leave the page's one heading invisible. */}
-              <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text [text-shadow:0_0_28px_rgb(var(--app-accent)/0.38),0_0_80px_rgb(var(--app-accent)/0.22)] sm:text-[48px]">{t.greeting}</h1>
+            {/* Gemini Reference Bottom-Right Royal Blue Ambient Glow */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
+              style={{
+                background: "radial-gradient(ellipse 85% 55% at 78% 96%, rgba(29, 78, 216, 0.42) 0%, rgba(15, 23, 42, 0.22) 48%, rgba(0, 0, 0, 0) 75%)"
+              }}
+            />
+            <div className="relative z-10 flex flex-col items-center space-y-3.5 motion-safe:[animation:agSlideUp_0.6s_cubic-bezier(0.2,0.7,0.2,1)_both]">
+              {/* Small Glowing Blue Glass Sphere with Rocket */}
+              <div
+                className="relative mx-auto mb-1 flex h-14 w-14 items-center justify-center rounded-full sm:h-16 sm:w-16"
+                style={{
+                  background: "radial-gradient(circle at 35% 28%, rgba(56, 189, 248, 0.45) 0%, rgba(37, 99, 235, 0.65) 42%, rgba(10, 25, 65, 0.95) 78%, #020817 100%)",
+                  boxShadow: "0 0 28px rgba(14, 165, 233, 0.75), 0 0 56px rgba(37, 99, 235, 0.45), inset 0 0 16px rgba(125, 211, 252, 0.65)"
+                }}
+                aria-hidden="true"
+              >
+                {/* Glass rim & specular highlights */}
+                <span className="pointer-events-none absolute inset-0 rounded-full ring-[1.5px] ring-sky-300/80" />
+                <span className="pointer-events-none absolute left-2.5 top-1.5 h-2 w-4 -rotate-[28deg] rounded-full bg-white/70 blur-[1px]" />
+                <span className="pointer-events-none absolute bottom-1.5 right-2.5 h-1.5 w-3.5 -rotate-[28deg] rounded-full bg-sky-200/65 blur-[1px]" />
+
+                {/* 3D Rocket SVG with 4-leaf clover emblem & cyan flame */}
+                <svg viewBox="0 0 64 64" className="h-9 w-9 drop-shadow-[0_2px_8px_rgba(56,189,248,0.8)] sm:h-10 sm:w-10">
+                  <defs>
+                    <linearGradient id="rkBody" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#93c5fd" />
+                      <stop offset="45%" stopColor="#2563eb" />
+                      <stop offset="100%" stopColor="#1e3a8a" />
+                    </linearGradient>
+                    <linearGradient id="rkWing" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#e2e8f0" />
+                      <stop offset="50%" stopColor="#3b82f6" />
+                      <stop offset="100%" stopColor="#1d4ed8" />
+                    </linearGradient>
+                    <linearGradient id="rkFlame" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#ffffff" />
+                      <stop offset="45%" stopColor="#67e8f9" />
+                      <stop offset="100%" stopColor="#0284c7" />
+                    </linearGradient>
+                  </defs>
+                  {/* Exhaust Flame */}
+                  <path
+                    d="M22 42 C16 44, 13 50, 12 52 C14 51, 20 48, 22 42 Z"
+                    fill="url(#rkFlame)"
+                  />
+                  <path
+                    d="M24 40 C17 43, 13 51, 11 53 C16 52, 23 47, 26 42 Z"
+                    fill="url(#rkFlame)"
+                    opacity="0.85"
+                  />
+                  {/* Left & Right Fins */}
+                  <path
+                    d="M27 31 L17 34 C16 37, 17 40, 19 41 L26 38 Z"
+                    fill="url(#rkWing)"
+                    stroke="#bae6fd"
+                    strokeWidth="1"
+                  />
+                  <path
+                    d="M33 37 L30 45 C31 47, 34 48, 37 47 L40 37 Z"
+                    fill="url(#rkWing)"
+                    stroke="#bae6fd"
+                    strokeWidth="1"
+                  />
+                  {/* Rocket Main Fuselage (angled 45deg up-right) */}
+                  <path
+                    d="M49 15 C41 15, 31 21, 25 31 L33 39 C43 33, 49 23, 49 15 Z"
+                    fill="url(#rkBody)"
+                    stroke="#e0f2fe"
+                    strokeWidth="1.2"
+                  />
+                  {/* Nozzle Collar */}
+                  <path
+                    d="M24 32 L32 40 L29 42 L22 35 Z"
+                    fill="#cbd5e1"
+                    stroke="#94a3b8"
+                    strokeWidth="0.8"
+                  />
+                  {/* 4-Leaf Clover Emblem on Fuselage */}
+                  <g transform="translate(37.5, 26.5) rotate(45) scale(0.85)" fill="none" stroke="#0f172a" strokeWidth="1.6">
+                    <path d="M0 -1 C-2.5 -4.5, -5.5 -2, -2 0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
+                    <path d="M0 -1 C2.5 -4.5, 5.5 -2, 2 0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
+                    <path d="M0 1 C-2.5 4.5, -5.5 2, -2 -0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
+                    <path d="M0 1 C2.5 4.5, 5.5 2, 2 -0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
+                  </g>
+                </svg>
+              </div>
+              <h1 className="mx-auto max-w-[290px] text-balance font-display text-[28px] font-semibold leading-[1.22] tracking-[-0.02em] text-white sm:max-w-md sm:text-[36px]">
+                {locale === "en" ? "What should we focus on?" : locale === "ru" ? "На чём сфокусируемся?" : "რაზე გავამახვილოთ ყურადღება?"}
+              </h1>
               {/* In a TOOL (never the chat home, whose screen stays the greeting and the box): one quiet line saying where you
                   are and what this tool does — the panel beside it is the how. Without it every tool without a result pane of
                   its own opened on the home page's words alone. */}
@@ -12468,27 +12598,50 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
                 chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
             {!chatOnly && (
-              <button type="button" onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen(true))}
-                aria-haspopup={isDesktop ? undefined : 'dialog'} aria-expanded={isDesktop ? panelOpen : optionsOpen}
-                data-testid="options-toggle" title={settingsWord}
-                className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface max-[389px]:px-2 max-[359px]:w-11 max-[359px]:shrink-0 max-[359px]:justify-center max-[359px]:px-0 sm:px-3.5 sm:text-[13px]">
-                <ToolIcon size={15} aria-hidden="true" className="shrink-0 text-app-accent" />
-                {/* ⚠️ ON A PHONE THE CHIP IS TWO LINES — the tool, and under it its shape („9:16 · 24წმ"), small and muted. With
-                    the paperclip beside „+" (owner, 2026-10-03) one line left ~136 px at 390 and cut it to „ვიდეო · …". The
-                    „ · " stays in the text (screen-reader-only on a phone), so the chip's text and accessible name are
-                    still „ვიდეო · 9:16 · 24წმ". Under 360 px the words go screen-reader-only too: the icon is the chip. */}
-                <span className="flex min-w-0 flex-col items-start leading-[1.15] max-[359px]:sr-only sm:flex-row sm:items-center sm:leading-normal">
-                  <span className="max-w-full truncate whitespace-nowrap">{toolLabel}</span>
-                  {toolSummary ? (
-                    <>
-                      <span className="sr-only whitespace-pre text-app-muted sm:not-sr-only"> · </span>
-                      <span className="max-w-full truncate whitespace-nowrap text-[11px] text-app-muted sm:text-[13px]">{toolSummary}</span>
-                    </>
-                  ) : null}
-                </span>
-                {/* The chevron is from `sm` up: a phone's width goes to the words. */}
-                <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 text-app-muted sm:block" />
-              </button>
+              <div className="inline-flex h-10 min-w-0 items-center gap-0.5 rounded-full bg-app-accent/15 p-1 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
+                {/* 1. სერვისის სწრაფი შეცვლა (ხსნის სერვისების სიას) */}
+                <button
+                  type="button"
+                  onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
+                  title={locale === 'en' ? 'Switch service' : locale === 'ru' ? 'Сменить сервис' : 'სერვისის შეცვლა'}
+                  className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-app-accent transition-colors hover:bg-app-accent/20"
+                >
+                  <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
+                  <span className="max-w-[110px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
+                  <ChevronDown size={13} aria-hidden="true" className="shrink-0 opacity-80" />
+                </button>
+
+                {/* 2. პარამეტრების პანელის ჩაკეცვა / გახსნა */}
+                <button
+                  type="button"
+                  onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}
+                  data-testid="options-toggle"
+                  title={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
+                  className="inline-flex h-8 items-center gap-1 rounded-full bg-white/[0.06] px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
+                >
+                  <span className="truncate whitespace-nowrap">
+                    {toolSummary || (locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები')}
+                  </span>
+                </button>
+
+                {/* 3. ✕ სერვისის დახურვა და მთავარ ჩატში დაბრუნება */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPanelOpen(false);
+                    setOptionsOpen(false);
+                    setImageWorkspaceOpen(false);
+                    setPanelService(null);
+                    selectTool('chat');
+                  }}
+                  aria-label={locale === 'en' ? 'Close service and return to chat' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის დახურვა და ჩატში დაბრუნება'}
+                  title={locale === 'en' ? 'Close service (back to chat)' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის გათიშვა (ჩატში დაბრუნება)'}
+                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-rose-500/15 px-2.5 text-rose-300 transition-colors hover:bg-rose-500/25"
+                >
+                  <X size={14} aria-hidden="true" />
+                  <span className="ml-0.5 text-[11px] font-medium">{locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი'}</span>
+                </button>
+              </div>
             )}
             {/* The persona in use, as Gemini shows a chosen Gem: tap the name to change it, ✕ to go back to the
                 default assistant. The same choice the sidebar row and the switcher's persona row show. */}
@@ -12596,7 +12749,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 }}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
-                  className="group relative ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors duration-200 hover:bg-app-accent/10">
+                  className="group relative ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1d4ed8] text-white shadow-[0_0_20px_rgba(29,78,216,0.5)] transition-all duration-200 hover:bg-[#2563eb] active:scale-95">
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 )}
@@ -12650,9 +12803,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* Under the EMPTY chat's box: the four quick buttons and nothing else (GG's UI plan, 2026-10-18: one box and four
             quick actions — video, image, music, avatar). A tap opens that tool with what is typed here as its description;
             nothing is charged until the tool's own priced Create. Gone once the conversation starts. */}
-        {chatOnly && messages.length === 0 && (
-          <HomeQuickStart locale={locale} onPick={(id) => selectTool(id, 'quick-start')} />
-        )}
+        {/* HomeQuickStart 4 buttons removed */}
         {/* Otherwise NOTHING under the composer — in the chat or in any tool (owner, 2026-10-02: "minimalist, premium"; he
             had the „25 კრედიტი · ~5 წთ“ line removed too). A priced tool's price is ON its Generate button (lib/credits/quote —
             the same number the route charges), never a caption under the box; the AI notice lives in the Terms. */}

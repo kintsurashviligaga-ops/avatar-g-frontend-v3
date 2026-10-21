@@ -49,7 +49,7 @@ const TRANSLATE_SYSTEM =
   + 'genre, mood, tempo, instruments, subject, colours, camera, composition, and the number and '
   + 'gender of performers. If the brief names a language for the OUTPUT (for example "in Spanish"), '
   + 'keep that instruction in English rather than translating the brief into that language. '
-  + 'Keep proper nouns as they are. Be faithful and literal; add nothing that was not asked for.';
+  + 'Keep proper nouns as they are. Be faithful and literal; add nothing that was not asked for. CRITICAL SPOKEN DIALOGUE INVARIANT: If the prompt contains spoken dialogue, quotes, or lines that a character or actor speaks (e.g. text inside quotation marks "..." or „...“, or introduced by "ამბობს:", "says:"), NEVER translate the spoken dialogue into English! The spoken words inside quotes must remain verbatim in their original language (especially Georgian ქართული). Only translate visual scene, camera, setting, and lighting descriptions into English. Keep the spoken dialogue verbatim in quotes so the video generator renders speech in the native language.';
 
 /**
  * The Google-only pipeline translates with Gemini (docs/VEO_ENGINE.md §3). Same contract as the Anthropic leg:

@@ -295,7 +295,9 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   // 6) A montage of the attached pictures: to a track, under the clips' own sound, or with none sent (GG 2026-10-11
   //    17:38Z). Words that make the music the point with no track sent, or clips named but not attached: say what is
   //    missing.
-  if (beatMontageAsk(text, kinds)) return act('agent.montage', 'attachment', params);
+  // თუ მომხმარებელი ვიდეოს/ავატარს/პერსონაჟს ქმნის, ფოტო არის რეფერენსი და არა მონტაჟი
+  const isVideoOrAvatarPrompt = /(?:ვიდეო|ავატარ|მსახიობ|კადრ|პერსონაჟ|video|avatar|presenter|actor|scene|სცენა)/iu.test(text);
+  if (!isVideoOrAvatarPrompt && beatMontageAsk(text, kinds)) return act('agent.montage', 'attachment', params);
   if (nAudio === 0 && nVideo + nImage >= 2 && nVideo + nImage === kinds.length && asksNarration(text) && hasMontageWords(text)) {
     return act('agent.montage', 'attachment', params, ['narration']);
   }

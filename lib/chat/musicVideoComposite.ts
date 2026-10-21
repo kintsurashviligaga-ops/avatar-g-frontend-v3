@@ -263,7 +263,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
         {
           userId: input.userId || null,
           agentId: 'video-agent',
-          workerKind: 'ltx',
+          workerKind: 'veo',
           action: 'generate_clip',
           promptSummary: videoBrief,
           costWholesaleGel: forecast.legs.video.wholesale,

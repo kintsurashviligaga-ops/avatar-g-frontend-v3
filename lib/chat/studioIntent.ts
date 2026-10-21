@@ -280,6 +280,10 @@ export function detectStudioIntent(text: string | null | undefined): StudioInten
     if (n) params.slideCount = n;
   }
   if (hit.service === 'montage') {
+    // თუ მომხმარებელი ვიდეოს გენერაციას/შექმნას ითხოვს, არ გადავიდეს ცარიელ მონტაჟის თაიმლაინზე
+    if (/^(?:შექმენი|დამიგენერირე|გააკეთე|create|generate|make|produce)\b/iu.test(t.trim())) {
+      return null;
+    }
     const d = mineDurationSec(t);
     if (d) params.durationSec = d;
   }
