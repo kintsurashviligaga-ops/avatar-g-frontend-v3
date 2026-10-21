@@ -233,7 +233,12 @@ test('setup is the FIRST frame: parity setup (transcription, resumption, compres
   expect(ws.sent).toHaveLength(1);
   const { setup } = ws.sent[0]!;
   expect(setup.model).toBe('models/gemini-2.5-flash-native-audio-latest');
-  expect(setup.systemInstruction).toEqual({ parts: [{ text: 'SYS\n' + VOICE_UI_APPROVAL_RULE }] });
+  expect(setup.systemInstruction.parts).toHaveLength(1);
+  const instruction = setup.systemInstruction.parts[0].text as string;
+  // The existing fast-response appendix may follow, but the caller's instruction and full financial rule must lead.
+  expect(instruction.startsWith('SYS\n' + VOICE_UI_APPROVAL_RULE + '\n')).toBe(true);
+  expect(instruction).toContain('[FAST LIVE VOICE RULE]');
+  expect(instruction).toContain('prepare_generation');
   expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
   expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
   expect(setup.outputAudioTranscription).toEqual({});

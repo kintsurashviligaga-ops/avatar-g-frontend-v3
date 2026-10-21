@@ -142,13 +142,19 @@ const SPEND = new RegExp(
   ].join('|') + ')(/|$)',
 );
 
-export async function openLiveCall(page: Page, baseURL: string | undefined, live: FakeLive): Promise<string[]> {
+export async function openLiveCall(page: Page, baseURL: string | undefined, live: FakeLive, options: { micInApp?: boolean } = {}): Promise<string[]> {
   const spend: string[] = [];
   page.on('request', (r) => {
     const u = new URL(r.url());
     if (r.method() === 'POST' && SPEND.test(u.pathname)) spend.push(u.pathname);
   });
   await fakeMicrophone(page);
+  if (options.micInApp) await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, get: () => 'Mozilla/5.0 (Linux; Android 14; wv) Instagram' });
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { configurable: true, value: undefined });
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new DOMException('Clipboard denied', 'NotAllowedError'); } } });
+    document.execCommand = () => false;
+  });
   await signIn(page, baseURL);
   await live.install(page);
   await page.route('**/api/voice/live', (r) => r.fulfill({
@@ -178,7 +184,8 @@ export async function openLiveCall(page: Page, baseURL: string | undefined, live
   // The browser minted a token, opened the socket and sent the setup frame; the fake server said setupComplete.
   // CI trace 38593929938: the first lazy voice chunk took 15.9s to compile in next dev.
   // This is a bounded cold-start allowance, not a measured audio-response latency target.
-  await expect.poll(() => live.sent.some((s) => s.setup), { timeout: 45_000 }).toBe(true);
+  if (options.micInApp) await expect(page.getByRole('dialog', { name: 'ცოცხალი საუბარი' }).getByRole('alert')).toContainText('ამ აპის ბრაუზერში', { timeout: 45_000 });
+  else await expect.poll(() => live.sent.some((s) => s.setup), { timeout: 45_000 }).toBe(true);
   return spend;
 }
 

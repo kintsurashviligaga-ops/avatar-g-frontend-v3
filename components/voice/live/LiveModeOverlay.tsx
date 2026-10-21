@@ -17,6 +17,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
+import { copyLiveText, liveBrowserIntent, liveRecoveryLink } from '@/lib/voice/liveBrowserRecovery';
 import { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './liveOverlayCopy';
 import { LiveErrorPanel } from './LiveCallChrome';
 import type {
@@ -71,6 +72,21 @@ export interface LiveModeOverlayProps {
   jobs?: readonly LiveJobLine[];
 }
 
+function useCopyFeedback() {
+  const [state, setState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
+  useEffect(() => {
+    if (state !== 'copied' && state !== 'failed') return;
+    const timer = setTimeout(() => setState('idle'), 2000);
+    return () => clearTimeout(timer);
+  }, [state]);
+  const copy = async (text: string) => {
+    if (!text || state === 'copying') return;
+    setState('copying');
+    setState(await copyLiveText(text) ? 'copied' : 'failed');
+  };
+  return { state, copy };
+}
+
 export function LiveModeOverlay({
   locale = 'ka',
   status,
@@ -101,12 +117,8 @@ export function LiveModeOverlay({
   extraControls,
   showCaptions = true,
 }: LiveModeOverlayProps) {
-  const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
-  useEffect(() => {
-    if (copyState !== 'copied' && copyState !== 'failed') return;
-    const timer = setTimeout(() => setCopyState('idle'), 2000);
-    return () => clearTimeout(timer);
-  }, [copyState]);
+  const transcriptCopy = useCopyFeedback();
+  const linkCopy = useCopyFeedback();
   const [captionsOn, setCaptionsOn] = useState(true);
   const [dismissedLinks, setDismissedLinks] = useState<ReadonlySet<string>>(() => new Set());
   const t = LIVE_OVERLAY_STRINGS[locale];
@@ -122,17 +134,10 @@ export function LiveModeOverlay({
 
   const waveformState = isListening && muted ? 'idle' : orbStateFor(status);
 
-  const copyTranscript = async () => {
-    if (!lastAgentCaption || copyState === 'copying') return;
-    setCopyState('copying');
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
-      await navigator.clipboard.writeText(lastAgentCaption);
-      setCopyState('copied');
-    } catch {
-      setCopyState('failed');
-    }
-  };
+  const recoveryLink = error === 'mic_in_app' && typeof window !== 'undefined'
+    ? liveRecoveryLink(window.location.href) : '';
+  const browserIntent = recoveryLink && typeof navigator !== 'undefined'
+    ? liveBrowserIntent(recoveryLink, navigator.userAgent) : null;
 
   if (docked || isDocked) {
     const linkCard = actions.find((card) => card.action.type === 'open_url' && !dismissedLinks.has(card.id));
@@ -229,10 +234,21 @@ export function LiveModeOverlay({
             detailName={errorDetail?.name}
             locale={locale}
           >
+            {recoveryLink && <div className="flex w-full min-w-0 flex-col items-center gap-3">
+              <input aria-label={t.liveLink} readOnly value={recoveryLink} onFocus={(event) => event.currentTarget.select()}
+                className="min-h-11 w-full min-w-0 rounded-lg border border-white/20 bg-white/5 px-3 text-[14px] text-white" />
+              <button type="button" onClick={() => void linkCopy.copy(recoveryLink)} disabled={linkCopy.state === 'copying'}
+                className="inline-flex min-h-11 max-w-full items-center justify-center rounded-full border border-white/20 px-4 py-2 text-[16px] text-white">
+                {linkCopy.state === 'copied' ? t.copied : t.copyLink}
+              </button>
+              {linkCopy.state === 'failed' && <p role="status" className="text-[16px] text-white/80">{t.copyFailed}</p>}
+              {browserIntent && <a href={browserIntent} rel="noreferrer" className="inline-flex min-h-11 max-w-full items-center justify-center rounded-full bg-white px-4 py-2 text-[16px] font-semibold text-black">{t.openInBrowser}</a>}
+            </div>}
             {onRetry && (
               <button
+                type="button"
                 onClick={onRetry}
-                className="mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-black transition-all hover:bg-white/90 active:scale-95"
+                className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-black transition-all hover:bg-white/90 active:scale-95"
               >
                 <RotateCcw size={16} /> {t.retry}
               </button>
@@ -261,14 +277,14 @@ export function LiveModeOverlay({
                 <div className="flex items-center gap-4 text-xs text-white/50">
                   <button
                     type="button"
-                    onClick={copyTranscript}
-                    aria-label={copyState === 'copied' ? t.copied : t.copyText}
-                    disabled={copyState === 'copying'}
-                    className="transition-colors hover:text-white"
+                    onClick={() => void transcriptCopy.copy(lastAgentCaption)}
+                    aria-label={transcriptCopy.state === 'copied' ? t.copied : t.copyText}
+                    disabled={transcriptCopy.state === 'copying'}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-white/10 hover:text-white"
                   >
                     <Copy size={15} />
                   </button>
-                  {copyState === 'failed' && <span role="status">{t.copyFailed}</span>}
+                  {transcriptCopy.state === 'failed' && <span role="status">{t.copyFailed}</span>}
                 </div>
                 <span className="text-[11px] font-normal tracking-wide text-white/35">
                   {t.aiNotice}
@@ -289,7 +305,7 @@ export function LiveModeOverlay({
             onClick={onStopSpeaking}
             aria-label={LIVE_DOCK_STRINGS[locale].stopSpeaking}
             data-testid="live-stop-speaking"
-            className="mb-4 animate-pulse rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
+            className="mb-4 min-h-11 min-w-11 motion-safe:animate-pulse rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
           >
             {t.stopShort}
           </button>

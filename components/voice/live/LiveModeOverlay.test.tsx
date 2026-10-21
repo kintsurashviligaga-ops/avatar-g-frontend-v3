@@ -1,12 +1,11 @@
+/** @jest-environment-options {"url":"https://myavatar.ge/en/dashboard"} */
 /**
- * The Live screen: localized (ka/en/ru) 44 px controls, toggle state for assistive tech, error + retry, Escape ends
- * the call; captions expose only closed lines to screen readers; the orb follows the right level per state, runs
- * on requestAnimationFrame with transforms only, and stands still under prefers-reduced-motion.
- * Gemini Live frame: portalled onto <body>, pinned dark, above every toast/tray; a mic failure names the MICROPHONE
- * (never "connection dropped") with the browser's error name; captions toggle; the audio-driven waveform.
+ * Current ambient Live screen: localized unique controls, stateful toggles, errors/retry, browser recovery,
+ * focus/Escape and real captions. Desktop/phone browser checks measure actual control bounds.
+ * The reusable LiveOrb/LiveWaveform animation math remains independently tested below, including reduced motion.
  */
 import '@testing-library/jest-dom';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import LiveCaptions, { tailText } from './LiveCaptions';
 import { LIVE_DOCK_STRINGS } from './LiveDock';
@@ -25,51 +24,37 @@ const MIC_CODES = ALL_CODES.filter((c) => c.startsWith('mic_'));
 const handlers = () => ({ onToggleMute: jest.fn(), onToggleCamera: jest.fn(), onFlipCamera: jest.fn(), onEnd: jest.fn(), onRetry: jest.fn() });
 
 describe('LiveModeOverlay', () => {
-  it.each(['ka', 'en', 'ru'] as const)('%s: every control has a localized name and a ≥ 44 px target; the bottom row is 56 px round buttons with their word', (locale) => {
+  it.each(['ka', 'en', 'ru'] as const)('%s: current controls are unique, localized and keep their callbacks', (locale) => {
     const s = LIVE_OVERLAY_STRINGS[locale];
-    render(<LiveModeOverlay locale={locale} status="speaking" captions={[]} muted={false} cameraOn {...handlers()} onStopSpeaking={jest.fn()} />);
+    const h = handlers();
+    const stop = jest.fn();
+    render(<LiveModeOverlay locale={locale} status="speaking" captions={[]} muted={false} cameraOn {...h} onStopSpeaking={stop} />);
     expect(screen.getByRole('dialog', { name: s.title })).toBeTruthy();
-    // The bottom row: a 56 px circle per control, the whole column the target.
     const row = screen.getByTestId('live-controls');
-    const controls = Array.from(row.querySelectorAll<HTMLButtonElement>('button[data-control]'));
-    expect(controls).toHaveLength(4); // camera · stop-speaking · mute · End
-    for (const b of controls) {
-      expect(b.className).toMatch(/min-h-\[56px\]/);
-      expect(b.className).toMatch(/min-w-\[56px\]/);
-      // In px: the app's root font is 17 px, so a rem-sized circle would not be 56 px.
-      expect(b.querySelector('[data-circle]')!.className).toMatch(/\bh-\[56px\] w-\[56px\]/);
-      // The word under it is in its accessible name (WCAG 2.5.3) …
-      expect(b.getAttribute('aria-label')!.toLocaleLowerCase()).toContain(b.textContent!.toLocaleLowerCase());
-      // … and it appears from 360 px (icons alone fit a 320 px phone).
-      expect(b.lastElementChild!.className).toMatch(/\bhidden\b.*min-\[360px\]:block/);
+    expect(within(row).getAllByRole('button')).toHaveLength(4);
+    // Actual >=44px bounds are measured in the desktop/390px/320px browser tests, not inferred from old CSS classes.
+    for (const name of [s.mute, s.camera, s.end, LIVE_DOCK_STRINGS[locale].stopSpeaking]) {
+      fireEvent.click(within(row).getByRole('button', { name, exact: true }));
     }
-    for (const name of [s.mute, s.camera, s.end, LIVE_DOCK_STRINGS[locale].stopSpeaking]) expect(row).toContainElement(screen.getByRole('button', { name }));
-    // Flip and captions sit in the top bar.
-    for (const name of [s.flip, s.captions]) {
-      const cls = screen.getByRole('button', { name }).className;
-      expect(cls).toMatch(/\bh-11\b/);
-      expect(cls).toMatch(/\bw-11\b/);
-    }
+    expect(h.onToggleMute).toHaveBeenCalledTimes(1);
+    expect(h.onToggleCamera).toHaveBeenCalledTimes(1);
+    expect(h.onEnd).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('live-stop-speaking')).toHaveTextContent(s.stopShort);
+    for (const name of [s.flip, s.captions]) expect(row).not.toContainElement(screen.getByRole('button', { name, exact: true }));
     expect(screen.getByText(s.status.speaking)).toBeTruthy();
-    // End: a solid red circle with a phone-down icon and its word.
-    const end = screen.getByRole('button', { name: s.end });
-    expect(end.querySelector('[data-circle]')!.className).toMatch(/\bbg-app-danger\b/);
-    expect(end.querySelector('[data-circle] svg')).not.toBeNull();
-    expect(end.textContent).toBe(s.endShort);
-    expect(s.end).toContain(s.endShort);
   });
 
   it.each([
-    ['ka', 'უკავშირდება…', 'ცოცხალი ზარი'],
-    ['en', 'Connecting…', 'Live call'],
-    ['ru', 'Подключение…', 'Живой звонок'],
-  ] as const)('%s: connecting reads in the UI language, beside the waveform, under the breathing rocket', (locale, connecting, label) => {
-    expect(LIVE_OVERLAY_STRINGS[locale].status.connecting).toBe(connecting);
+    ['ka', 'უკავშირდება…'],
+    ['en', 'Connecting…'],
+    ['ru', 'Подключение…'],
+  ] as const)('%s: connecting exposes the localized status beside the current audio meter', (locale, connecting) => {
     render(<LiveModeOverlay locale={locale} status="connecting" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
-    expect(screen.getByTestId('live-status').textContent).toBe(connecting);
-    expect(screen.getByTestId('live-call-label').textContent).toBe(label);
-    expect(screen.getByRole('img', { name: connecting }).getAttribute('data-state')).toBe('connecting');
-    expect(screen.getByTestId('live-orb-arc').className).toMatch(/\bopacity-100\b/);
+    expect(screen.getByRole('dialog', { name: LIVE_OVERLAY_STRINGS[locale].title })).toBeTruthy();
+    expect(screen.getByTestId('live-status')).toHaveTextContent(connecting);
+    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')).toHaveAttribute('data-state', 'connecting');
+    expect(screen.getByRole('log', { name: LIVE_OVERLAY_STRINGS[locale].captions })).toBeEmptyDOMElement();
   });
 
   it('stop-speaking joins the row only while the agent speaks', () => {
@@ -82,26 +67,19 @@ describe('LiveModeOverlay', () => {
     expect(screen.getByTestId('live-stop-speaking').textContent).toBe(LIVE_OVERLAY_STRINGS.en.stopShort);
   });
 
-  it('the agent is the rocket: in the orb (whole, centred, never cropped) and large and faint behind it — no photo', () => {
+  it('the current ambient view uses no avatar photo and shows camera video only when enabled', () => {
     const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
     const dialog = screen.getByRole('dialog');
-    const rocket = dialog.querySelector<HTMLImageElement>('[data-testid="live-orb-rocket"]')!;
-    expect(rocket.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(rocket.getAttribute('srcset')).toBe('/brand/rocket-mark.png 256w, /brand/rocket-mark-512.png 512w');
-    expect(rocket.className).toMatch(/\bobject-contain\b/);
-    expect(rocket.className).toMatch(/inset-\[15%\].*h-\[70%\].*w-\[70%\]/);
-    const backdrop = dialog.querySelector('[data-testid="live-orb-backdrop"]')!;
-    expect(backdrop).not.toBeNull();
-    expect(backdrop.className).toMatch(/aspect-square/);
-    expect(backdrop.className).toMatch(/w-\[min\(92vw,34rem\)\]/); // always whole on a phone
-    expect(backdrop.querySelector('img')!.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(backdrop.querySelector('img')!.className).toMatch(/\bobject-contain\b/);
-    // Every picture on the call is the rocket (the enrolled-avatar photo is gone).
-    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/rocket-mark/);
-    // With the camera on, the camera is the background.
+    const video = dialog.querySelector('video')!;
+    expect(dialog.querySelectorAll('img')).toHaveLength(0);
+    expect(video).toHaveClass('hidden');
+    expect(video).toHaveProperty('muted', true);
+    expect(video).toHaveAttribute('playsinline');
     rerender(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn {...handlers()} />);
-    expect(screen.getByRole('dialog').querySelector('[data-testid="live-orb-backdrop"]')).toBeNull();
-    expect(screen.getByRole('dialog').querySelector('[data-testid="live-orb-rocket"]')).not.toBeNull();
+    expect(video).not.toHaveClass('hidden');
+    expect(screen.getByTestId('live-waveform')).toBeTruthy();
+    rerender(<LiveModeOverlay locale="en" status="error" error="connection_lost" captions={[]} muted={false} cameraOn {...handlers()} />);
+    expect(video).toHaveClass('hidden');
   });
 
   it('toggles expose aria-pressed and call their handlers; flip only while the camera is on', () => {
@@ -217,16 +195,17 @@ describe('LiveModeOverlay', () => {
     expect(screen.queryByRole('button', { name: s.captions })).toBeNull();
   });
 
-  it('mute inverts when active (the toggle grammar), and the waveform goes still', () => {
+  it('mute exposes its active state, changes its appearance and rests the input waveform', () => {
     const s = LIVE_OVERLAY_STRINGS.en;
     const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted cameraOn={false} {...handlers()} />);
-    const circle = () => screen.getByRole('button', { name: s.mute }).querySelector('[data-circle]')!.className;
-    expect(circle()).toMatch(/\bbg-app-text\b.*\btext-app-bg\b/);
-    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('idle');
+    const mute = screen.getByRole('button', { name: s.mute });
+    const mutedStyle = mute.className;
+    expect(mute).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')).toHaveAttribute('data-state', 'idle');
     rerender(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
-    expect(circle()).not.toMatch(/\bbg-app-text\b/);
-    expect(circle()).toMatch(/bg-white\/\[0\.09\]/); // glass when off
-    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('listening');
+    expect(mute).toHaveAttribute('aria-pressed', 'false');
+    expect(mute.className).not.toBe(mutedStyle);
+    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')).toHaveAttribute('data-state', 'listening');
   });
 
   it('a blocked audio context shows "tap to turn on sound", which resumes it inside the tap', () => {

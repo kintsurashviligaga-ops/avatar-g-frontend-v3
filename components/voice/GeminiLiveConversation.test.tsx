@@ -15,7 +15,7 @@ const mockReportError = jest.fn();
 jest.mock('../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReportError(...a) }));
 
 import '@testing-library/jest-dom';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 
 import { __resetLiveTelemetryBudget } from '@/lib/voice/liveTelemetry';
@@ -301,12 +301,11 @@ describe('voice-to-action', () => {
     }
   });
 
-  test('the call shows the rocket, never the user\'s enrolled avatar photo (no /api/avatar/core request)', async () => {
+  test('the current call uses an audio meter, never the enrolled avatar photo (no /api/avatar/core request)', async () => {
     await connectedCall();
     const dialog = screen.getByRole('dialog');
-    expect(dialog.querySelector('[data-testid="live-orb-rocket"]')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(dialog.querySelector('[data-testid="live-orb-backdrop"]')).not.toBeNull();
-    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/rocket-mark/);
+    expect(within(dialog).getByTestId('live-waveform')).toBeTruthy();
+    expect(dialog.querySelectorAll('img')).toHaveLength(0);
     expect((g.fetch as jest.Mock).mock.calls.some((c) => c[0] === '/api/avatar/core')).toBe(false);
   });
 

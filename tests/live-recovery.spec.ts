@@ -4,6 +4,36 @@ import { FakeLive, openLiveCall } from './fixtures/liveVoice';
 for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 320, height: 740 }]) {
   test.describe(`Live recovery ${viewport.width}px`, () => {
     test.use({ viewport });
+    test('in-app mic failure keeps a clean manual Live link when both clipboard paths refuse', async ({ page, baseURL }, info) => {
+      const live = new FakeLive();
+      const mintRequests: string[] = [];
+      page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/voice/live') mintRequests.push(request.method()); });
+      const spend = await openLiveCall(page, baseURL, live, { micInApp: true });
+      const dialog = page.getByRole('dialog', { name: 'ცოცხალი საუბარი' });
+      const link = dialog.getByRole('textbox', { name: 'ცოცხალი საუბრის ბმული' });
+      await expect(link).toHaveValue(`${baseURL}/ka/dashboard?voice=1`);
+      await expect(link).toHaveAttribute('readonly', '');
+      const mintedBeforeCopy = [...mintRequests]; // Initial warm/start mints are intercepted; Copy must not retry the call.
+      await dialog.getByRole('button', { name: 'ბმულის კოპირება', exact: true }).click();
+      await expect(dialog.getByRole('status')).toHaveText('კოპირება ვერ მოხერხდა');
+      await expect(link).toHaveValue(`${baseURL}/ka/dashboard?voice=1`);
+      expect(mintRequests).toEqual(mintedBeforeCopy);
+      expect(live.sent).toEqual([]);
+      expect(spend).toEqual([]);
+      for (const control of [link, dialog.getByRole('button', { name: 'ბმულის კოპირება', exact: true }), dialog.getByRole('button', { name: 'თავიდან ცდა', exact: true }), dialog.getByRole('button', { name: 'ზარის დასრულება', exact: true })]) {
+        const bounds = await control.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.height).toBeGreaterThanOrEqual(44);
+        expect(bounds!.y).toBeGreaterThanOrEqual(0);
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height + 1);
+        expect(bounds!.x).toBeGreaterThanOrEqual(0);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width + 1);
+      }
+      await page.screenshot({ path: info.outputPath('live-mic-recovery.png') });
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+    });
+
     test('the simulated call exposes its status, real caption and keyboard exit without spending', async ({ page, baseURL }, info) => {
       const live = new FakeLive();
       // The fixture replaces microphone capture with a silent synthetic stream and intercepts Google/Supabase.
@@ -45,6 +75,9 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       await expect(page.getByTestId('live-dock-link')).toHaveCount(0);
       await page.getByTestId('live-dock-expand').click();
       await expect(dialog.getByText('A prepared link', { exact: true })).toBeVisible();
+      const copyBounds = await dialog.getByRole('button', { name: 'ტექსტის კოპირება', exact: true }).boundingBox();
+      expect(copyBounds!.width).toBeGreaterThanOrEqual(44);
+      expect(copyBounds!.height).toBeGreaterThanOrEqual(44);
       const action = await dialog.getByTestId('live-action-card').first().boundingBox();
       expect(action).not.toBeNull();
       expect(action!.x).toBeGreaterThanOrEqual(0);
@@ -57,6 +90,8 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
         expect(bounds).not.toBeNull();
         expect(bounds!.width).toBeGreaterThanOrEqual(44);
         expect(bounds!.height).toBeGreaterThanOrEqual(44);
+        expect(bounds!.y).toBeGreaterThanOrEqual(0);
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height + 1);
         expect(bounds!.x).toBeGreaterThanOrEqual(0);
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width + 1);
       }

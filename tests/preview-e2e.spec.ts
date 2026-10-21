@@ -1,3 +1,4 @@
+import { say as sayWithVideoCoreHelper } from './video-core-live/_live';
 import { test, expect, type Page } from '@playwright/test';
 
 /**
@@ -72,7 +73,7 @@ test('a guest chat turn streams an assistant reply (keep-alive comments are invi
   await box.press('Enter');
   await expect(box).toHaveValue('გამარჯობა\n');
   expect(posts).toEqual([]);
-  await box.press('Control+Enter');
+  await sayWithVideoCoreHelper(page, 'გამარჯობა');
   await expect(box).toHaveValue('');
   await expect(page.getByText('გამარჯობა! რით დაგეხმარო?')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(': keep-alive')).toHaveCount(0);

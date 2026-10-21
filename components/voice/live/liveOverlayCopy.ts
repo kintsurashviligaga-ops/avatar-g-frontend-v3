@@ -28,6 +28,7 @@ interface Strings {
   retry: string;
   captions: string;
   copyLink: string;
+  liveLink: string;
   copyText: string;
   copyFailed: string;
   aiNotice: string;
@@ -88,6 +89,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     retry: 'თავიდან ცდა',
     captions: 'სუბტიტრები',
     copyLink: 'ბმულის კოპირება',
+    liveLink: 'ცოცხალი საუბრის ბმული',
     copyText: 'ტექსტის კოპირება',
     copyFailed: 'კოპირება ვერ მოხერხდა',
     aiNotice: 'Agent G ხელოვნური ინტელექტია და შეიძლება შეცდეს.',
@@ -145,6 +147,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     retry: 'Retry',
     captions: 'Captions',
     copyLink: 'Copy link',
+    liveLink: 'Live conversation link',
     copyText: 'Copy text',
     copyFailed: 'Could not copy',
     aiNotice: 'Agent G is AI and can make mistakes.',
@@ -202,6 +205,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     retry: 'Повторить',
     captions: 'Субтитры',
     copyLink: 'Скопировать ссылку',
+    liveLink: 'Ссылка на живой разговор',
     copyText: 'Скопировать текст',
     copyFailed: 'Не удалось скопировать',
     aiNotice: 'Agent G — искусственный интеллект и может ошибаться.',
