@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, type ReactNode, type Ref } from 'react';
+import React, { useEffect, useState, type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Menu,
+  Minimize2,
   Subtitles,
   Video,
   VideoOff,
@@ -11,10 +11,7 @@ import {
   Mic,
   MicOff,
   X,
-  Plus,
   RotateCcw,
-  ThumbsUp,
-  ThumbsDown,
   Copy,
   WifiOff,
   Volume2,
@@ -30,7 +27,8 @@ import type {
   LiveStatus,
 } from './useGeminiLiveSession';
 import { isMicErrorCode } from "./useGeminiLiveSession";
-import LiveDock from "./LiveDock";
+import LiveDock, { LIVE_DOCK_STRINGS } from "./LiveDock";
+import { LiveWaveform, orbStateFor } from "./LiveOrb";
 import { liveCurrentStep, type LiveJobLine } from "./LiveActivityFeed";
 import type { LiveActivityItem } from './liveActivity';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
@@ -103,7 +101,12 @@ export function LiveModeOverlay({
   extraControls,
   showCaptions = true,
 }: LiveModeOverlayProps) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
+  useEffect(() => {
+    if (copyState !== 'copied' && copyState !== 'failed') return;
+    const timer = setTimeout(() => setCopyState('idle'), 2000);
+    return () => clearTimeout(timer);
+  }, [copyState]);
   const [captionsOn, setCaptionsOn] = useState(true);
   const [dismissedLinks, setDismissedLinks] = useState<ReadonlySet<string>>(() => new Set());
   const t = LIVE_OVERLAY_STRINGS[locale];
@@ -117,18 +120,21 @@ export function LiveModeOverlay({
   const lastUserLine = [...captions].reverse().find((c) => c.role === 'user');
   const lastAgentCaption = lastAgentLine?.text || '';
 
-  const levels = getLevels ? getLevels() : { input: 0, output: 0 };
-  const activeLevel = isSpeaking ? levels.output : isListening ? levels.input : 0;
+  const waveformState = isListening && muted ? 'idle' : orbStateFor(status);
 
-  const copyTranscript = () => {
-    if (lastAgentCaption && typeof navigator !== 'undefined') {
-      void navigator.clipboard.writeText(lastAgentCaption);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const copyTranscript = async () => {
+    if (!lastAgentCaption || copyState === 'copying') return;
+    setCopyState('copying');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(lastAgentCaption);
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
     }
   };
 
-    if (docked || isDocked) {
+  if (docked || isDocked) {
     const linkCard = actions.find((card) => card.action.type === 'open_url' && !dismissedLinks.has(card.id));
     const link = linkCard?.action.type === 'open_url'
       ? { id: linkCard.id, url: linkCard.action.url, title: linkCard.action.title }
@@ -176,38 +182,26 @@ export function LiveModeOverlay({
         }}
       />
 
-      {/* 3. ზედა ზოლი (Top Bar): მენიუ მარცხნივ, კამერა და პარამეტრები მარჯვნივ */}
+      {/* Screen docking and secondary call controls. */}
       {!error && <div className="relative z-20 flex items-center justify-between px-5 pb-4 pt-12">
-        {/* მარცხენა მენიუ */}
-        <button
+        {onToggleDock ? <button
           type="button"
-          onClick={onEnd}
+          onClick={onToggleDock}
           className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white/90 backdrop-blur-md transition-all hover:bg-white/15 active:scale-95"
-          aria-label="Menu"
+          aria-label={t.showScreen}
+          data-testid="live-show-screen"
         >
-          <Menu size={22} />
-        </button>
+          <Minimize2 size={22} />
+        </button> : <span aria-hidden="true" />}
 
-        {/* მარჯვენა მართვა: კამერა და მეტი */}
         <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={onToggleCamera}
-            className={`flex h-11 w-11 items-center justify-center rounded-full backdrop-blur-md transition-all active:scale-95 ${
-              cameraOn ? 'bg-white text-black' : 'bg-white/10 text-white/90 hover:bg-white/15'
-            }`}
-            aria-label="Camera"
-          >
-            {cameraOn ? <Video size={20} /> : <VideoOff size={20} />}
-          </button>
-
           {cameraOn && onFlipCamera && (
             <button
               type="button"
               onClick={onFlipCamera}
               className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition-all hover:bg-white/25 active:scale-95"
-              aria-label="Flip camera"
-              title={cameraFacing === "user" ? "უკანა კამერა" : "სელფის კამერა"}
+              aria-label={t.flip}
+              title={cameraFacing === "user" ? t.backCamera : t.frontCamera}
             >
               <SwitchCamera size={20} />
             </button>
@@ -265,23 +259,19 @@ export function LiveModeOverlay({
             {showCaptions && captionsOn && lastAgentCaption && (
               <div className="flex flex-col gap-2 pt-2">
                 <div className="flex items-center gap-4 text-xs text-white/50">
-                  <button type="button" className="transition-colors hover:text-white">
-                    <ThumbsUp size={15} />
-                  </button>
-                  <button type="button" className="transition-colors hover:text-white">
-                    <ThumbsDown size={15} />
-                  </button>
                   <button
                     type="button"
                     onClick={copyTranscript}
-                    aria-label={copied ? t.copied : locale === 'ka' ? 'ტექსტის კოპირება' : locale === 'ru' ? 'Скопировать текст' : 'Copy text'}
+                    aria-label={copyState === 'copied' ? t.copied : t.copyText}
+                    disabled={copyState === 'copying'}
                     className="transition-colors hover:text-white"
                   >
                     <Copy size={15} />
                   </button>
+                  {copyState === 'failed' && <span role="status">{t.copyFailed}</span>}
                 </div>
                 <span className="text-[11px] font-normal tracking-wide text-white/35">
-                  Agent G is AI and can make mistakes.
+                  {t.aiNotice}
                 </span>
               </div>
             )}
@@ -297,9 +287,11 @@ export function LiveModeOverlay({
           <button
             type="button"
             onClick={onStopSpeaking}
+            aria-label={LIVE_DOCK_STRINGS[locale].stopSpeaking}
+            data-testid="live-stop-speaking"
             className="mb-4 animate-pulse rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
           >
-            Tap to interrupt
+            {t.stopShort}
           </button>
         )}
         {!error && extraControls && <div className="mb-3 flex max-w-full flex-wrap items-center justify-center gap-3">{extraControls}</div>}
@@ -307,61 +299,26 @@ export function LiveModeOverlay({
         {/* 5 ჰორიზონტალური ღილაკი ზუსტად რეფერენსის მიხედვით */}
         <div className="flex w-full max-w-sm items-center justify-center gap-3.5 sm:gap-5">
           {!error && <>
-          {/* 1. "+" ღილაკი */}
-          <button
-            type="button"
-            className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white shadow-md backdrop-blur-xl transition-all hover:bg-white/15 active:scale-95"
-            aria-label="Add"
-          >
-            <Plus size={22} />
-          </button>
-
-          {/* 2. ვიდეო კამერის და სელფის შემოტრიალების ღილაკი */}
-          {cameraOn && onFlipCamera && (
-            <button
-              type="button"
-              onClick={onFlipCamera}
-              className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/15 text-white shadow-md backdrop-blur-xl transition-all hover:bg-white/25 active:scale-95"
-              aria-label="Flip camera"
-            >
-              <SwitchCamera size={20} />
-            </button>
-          )}
           <button
             type="button"
             onClick={onToggleCamera}
             className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/10 shadow-md backdrop-blur-xl transition-all active:scale-95 ${
               cameraOn ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/15'
             }`}
-            aria-label="Toggle camera"
+            aria-label={t.camera}
+            aria-pressed={cameraOn}
           >
             {cameraOn ? <Video size={20} /> : <VideoOff size={20} />}
           </button>
 
-          {/* 3. ცენტრალური მანათობელი ცისფერი აუდიო-კაფსულა (Live Glowing Audio Pill) */}
+          {/* The audio meter is decorative; the separate native button interrupts speech. */}
           <div
-            onClick={isSpeaking && onStopSpeaking ? onStopSpeaking : undefined}
-            className="relative flex h-12 w-28 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-blue-400/50 shadow-[0_0_35px_rgba(59,130,246,0.6)] transition-all active:scale-95 sm:w-32"
-            style={{
-              background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #38bdf8 100%)',
-            }}
+            data-testid="live-waveform"
+            aria-hidden="true"
+            className="relative flex h-12 w-28 shrink-0 items-center justify-center overflow-hidden rounded-full border border-blue-400/50 shadow-[0_0_35px_rgba(59,130,246,0.6)] sm:w-32"
+            style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #38bdf8 100%)' }}
           >
-            {/* მოძრავი ხმის ტალღები კაფსულის შიგნით */}
-            <div className="flex items-center gap-1">
-              {[0.4, 0.8, 1, 0.7, 0.3].map((h, i) => (
-                <span
-                  key={i}
-                  className="w-1 rounded-full bg-white transition-all duration-150"
-                  style={{
-                    height:
-                      isSpeaking || isListening
-                        ? `${Math.max(6, 24 * h * (1 + activeLevel * 2))}px`
-                        : '6px',
-                    opacity: isSpeaking || isListening ? 1 : 0.6,
-                  }}
-                />
-              ))}
-            </div>
+            <LiveWaveform state={waveformState} getLevels={getLevels} className="[&_span]:bg-white" />
           </div>
 
           {/* 4. მიკროფონის ღილაკი */}
@@ -373,7 +330,8 @@ export function LiveModeOverlay({
                 ? 'border-rose-500/30 bg-rose-500/20 text-rose-300'
                 : 'bg-white/10 text-white hover:bg-white/15'
             }`}
-            aria-label="Mute"
+            aria-label={t.mute}
+            aria-pressed={muted}
           >
             {muted ? <MicOff size={20} /> : <Mic size={20} />}
           </button>

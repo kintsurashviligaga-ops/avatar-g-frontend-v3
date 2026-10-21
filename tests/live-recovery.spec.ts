@@ -11,6 +11,20 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       const dialog = page.getByRole('dialog', { name: 'ცოცხალი საუბარი' });
       await expect(dialog).toBeVisible();
       await expect(page.getByTestId('live-status')).toHaveText('გისმენ');
+      const mute = dialog.getByRole('button', { name: 'მიკროფონის დადუმება', exact: true });
+      await expect(mute).toHaveAttribute('aria-pressed', 'false');
+      await mute.click();
+      await expect(mute).toHaveAttribute('aria-pressed', 'true');
+      await expect(dialog.getByTestId('live-waveform').locator('[data-state]')).toHaveAttribute('data-state', 'idle');
+      await mute.click();
+      await expect(dialog.getByTestId('live-waveform').locator('[data-state]')).toHaveAttribute('data-state', 'listening');
+      // Keyboard docking keeps the same call alive; only End/Escape end it.
+      await dialog.getByRole('button', { name: 'ეკრანის ნახვა', exact: true }).press('Enter');
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByTestId('live-dock')).toBeVisible();
+      await page.getByTestId('live-dock-expand').click();
+      await expect(dialog).toBeVisible();
+
       await expect(page.getByText('გამარჯობა! რით შემიძლია დაგეხმაროთ?')).toHaveCount(0);
       live.say('This caption came from the simulated server.');
       await expect(page.getByText('This caption came from the simulated server.', { exact: true })).toBeVisible();

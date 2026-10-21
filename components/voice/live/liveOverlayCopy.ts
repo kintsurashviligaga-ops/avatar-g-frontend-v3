@@ -28,6 +28,9 @@ interface Strings {
   retry: string;
   captions: string;
   copyLink: string;
+  copyText: string;
+  copyFailed: string;
+  aiNotice: string;
   copied: string;
   openInBrowser: string;
   tapToStart: string;
@@ -85,6 +88,9 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     retry: 'თავიდან ცდა',
     captions: 'სუბტიტრები',
     copyLink: 'ბმულის კოპირება',
+    copyText: 'ტექსტის კოპირება',
+    copyFailed: 'კოპირება ვერ მოხერხდა',
+    aiNotice: 'Agent G ხელოვნური ინტელექტია და შეიძლება შეცდეს.',
     copied: 'დაკოპირდა',
     openInBrowser: 'ბრაუზერში გახსნა',
     tapToStart: 'შეეხე ხმის ჩასართავად',
@@ -139,6 +145,9 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     retry: 'Retry',
     captions: 'Captions',
     copyLink: 'Copy link',
+    copyText: 'Copy text',
+    copyFailed: 'Could not copy',
+    aiNotice: 'Agent G is AI and can make mistakes.',
     copied: 'Copied',
     openInBrowser: 'Open in browser',
     tapToStart: 'Tap to turn on sound',
@@ -193,6 +202,9 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     retry: 'Повторить',
     captions: 'Субтитры',
     copyLink: 'Скопировать ссылку',
+    copyText: 'Скопировать текст',
+    copyFailed: 'Не удалось скопировать',
+    aiNotice: 'Agent G — искусственный интеллект и может ошибаться.',
     copied: 'Скопировано',
     openInBrowser: 'Открыть в браузере',
     tapToStart: 'Нажмите, чтобы включить звук',
