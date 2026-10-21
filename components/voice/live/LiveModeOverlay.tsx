@@ -17,7 +17,11 @@ import {
   ThumbsDown,
   Copy,
   WifiOff,
+  Volume2,
 } from 'lucide-react';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
+import { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './liveOverlayCopy';
+import { LiveErrorPanel } from './LiveCallChrome';
 import type {
   LiveCaption,
   LiveErrorCode,
@@ -27,66 +31,13 @@ import type {
 } from './useGeminiLiveSession';
 import { isMicErrorCode } from "./useGeminiLiveSession";
 import LiveDock from "./LiveDock";
-import { liveCurrentStep } from "./LiveActivityFeed";
+import { liveCurrentStep, type LiveJobLine } from "./LiveActivityFeed";
+import type { LiveActivityItem } from './liveActivity';
+import type { LiveActionCard, LivePendingRun } from './liveActions';
 
 type Locale = 'ka' | 'en' | 'ru';
 
-export const LIVE_OVERLAY_STRINGS: Record<Locale, Record<string, any>> = {
-  ka: {
-    title: 'ცოცხალი საუბარი',
-    live: 'ცოცხალი ზარი',
-    status: {
-      idle: 'მზად არის',
-      connecting: 'უკავშირდება…',
-      listening: 'გისმენთ',
-      thinking: 'ვფიქრობ…',
-      speaking: 'ვსაუბრობ…',
-      reconnecting: 'კავშირის აღდგენა…',
-      error: 'კავშირი შეწყდა',
-      closed: 'ზარი დასრულდა',
-    },
-    errors: {
-      mic_denied: 'მიკროფონზე წვდომა არ არის დაშვებული.',
-      connection_lost: 'კავშირი შეწყდა.',
-    },
-  },
-  en: {
-    title: 'Live Conversation',
-    live: 'Live Call',
-    status: {
-      idle: 'Ready',
-      connecting: 'Connecting…',
-      listening: 'Listening',
-      thinking: 'Thinking…',
-      speaking: 'Speaking…',
-      reconnecting: 'Reconnecting…',
-      error: 'Connection lost',
-      closed: 'Call ended',
-    },
-    errors: {
-      mic_denied: "Microphone access isn't allowed.",
-      connection_lost: 'The connection was lost.',
-    },
-  },
-  ru: {
-    title: 'Живой разговор',
-    live: 'Живой звонок',
-    status: {
-      idle: 'Готово',
-      connecting: 'Подключение…',
-      listening: 'Слушаю',
-      thinking: 'Думаю…',
-      speaking: 'Говорю…',
-      reconnecting: 'Восстановление…',
-      error: 'Связь потеряна',
-      closed: 'Звонок завершён',
-    },
-    errors: {
-      mic_denied: 'Доступ к микрофону не разрешён.',
-      connection_lost: 'Связь потеряна.',
-    },
-  },
-};
+export { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './liveOverlayCopy';
 
 export interface LiveModeOverlayProps {
   locale?: Locale;
@@ -108,23 +59,24 @@ export interface LiveModeOverlayProps {
   onResumeAudio?: () => void;
   extraControls?: ReactNode;
   showCaptions?: boolean;
-  actions?: readonly any[];
-  onOpenAction?: (action: any) => void;
+  actions?: readonly LiveActionCard[];
+  onOpenAction?: (action: LiveActionCard) => void;
   onStopSpeaking?: () => void;
-  pendingRun?: any | null;
+  pendingRun?: LivePendingRun | null;
   onCancelRun?: () => void;
   isDocked?: boolean;
   docked?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
   onToggleDock?: () => void;
-  activity?: readonly any[];
-  jobs?: readonly any[];
+  activity?: readonly LiveActivityItem[];
+  jobs?: readonly LiveJobLine[];
 }
 
 export function LiveModeOverlay({
   locale = 'ka',
   status,
   error,
+  errorDetail,
   captions,
   muted,
   cameraOn,
@@ -143,20 +95,18 @@ export function LiveModeOverlay({
   pendingRun,
   onCancelRun,
   activity,
+  audioBlocked,
+  onResumeAudio,
 }: LiveModeOverlayProps) {
   const [copied, setCopied] = useState(false);
+  const t = LIVE_OVERLAY_STRINGS[locale];
+  const dialogRef = useDialogA11y<HTMLDivElement>(!(docked || isDocked), onEnd);
 
   const isSpeaking = status === 'speaking';
   const isListening = status === 'listening';
 
   // ბოლო ნათქვამი ფრაზა (თქვენს რეფერენსში: "გამარჯობა! რით შემიძლია დაგეხმაროთ?")
-  const lastAgentCaption =
-    [...captions].reverse().find((c: any) => c.speaker === 'agent' || c.role === 'model' || c.role === 'assistant')?.text ||
-    (status === 'connecting'
-      ? 'უკავშირდება…'
-      : status === 'speaking'
-        ? 'გამარჯობა! რით შემიძლია დაგეხმაროთ?'
-        : 'გისმენთ…');
+  const lastAgentCaption = [...captions].reverse().find((c) => c.role === 'assistant')?.text || '';
 
   const levels = getLevels ? getLevels() : { input: 0, output: 0 };
   const activeLevel = isSpeaking ? levels.output : isListening ? levels.input : 0;
@@ -174,9 +124,9 @@ export function LiveModeOverlay({
       <LiveDock
         locale={locale}
         status={status}
-        statusLabel={status === "speaking" ? "ვსაუბრობ…" : status === "listening" ? "გისმენთ…" : "მზად არის"}
-        captions={captions as any}
-        step={liveCurrentStep((activity || []) as any, locale)}
+        statusLabel={t.status[status]}
+        captions={captions}
+        step={liveCurrentStep(activity || [], locale)}
         muted={muted}
         getLevels={getLevels}
         onToggleMute={onToggleMute}
@@ -191,7 +141,8 @@ export function LiveModeOverlay({
   }
 
   const overlay = (
-    <div className="fixed inset-0 z-[130] flex select-none flex-col justify-between overflow-hidden bg-black text-white">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t.title} tabIndex={-1} data-theme="dark"
+      className="fixed inset-0 z-[130] flex select-none flex-col justify-between overflow-hidden bg-black text-white">
       {/* 1. კამერის ფონი (თუ კამერა ჩართულია) */}
       <video
         ref={videoRef}
@@ -211,7 +162,7 @@ export function LiveModeOverlay({
       />
 
       {/* 3. ზედა ზოლი (Top Bar): მენიუ მარცხნივ, კამერა და პარამეტრები მარჯვნივ */}
-      <div className="relative z-20 flex items-center justify-between px-5 pb-4 pt-12">
+      {!error && <div className="relative z-20 flex items-center justify-between px-5 pb-4 pt-12">
         {/* მარცხენა მენიუ */}
         <button
           type="button"
@@ -254,37 +205,44 @@ export function LiveModeOverlay({
             <MoreHorizontal size={20} />
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* 4. ცენტრალური სუბტიტრები (მოტივტივე რეალურ დროში) */}
       <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-start px-6 pt-10">
         {error ? (
-          <div className="mt-20 flex flex-col items-center justify-center space-y-4 text-center">
-            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-rose-400">
-              {isMicErrorCode(error) ? <MicOff size={32} /> : <WifiOff size={32} />}
-            </span>
-            <h2 className="text-xl font-semibold">
-              {locale === 'ka' ? 'კავშირი შეწყდა' : 'Connection error'}
-            </h2>
-            <p className="max-w-xs text-sm text-white/60">{error}</p>
+          <LiveErrorPanel
+            icon={isMicErrorCode(error) ? <MicOff size={32} /> : <WifiOff size={32} />}
+            headline={liveErrorHeadline(error, locale)}
+            reason={t.errors[error]}
+            hint={t.hints[error]}
+            detailName={errorDetail?.name}
+            locale={locale}
+          >
             {onRetry && (
               <button
                 onClick={onRetry}
                 className="mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-black transition-all hover:bg-white/90 active:scale-95"
               >
-                <RotateCcw size={16} /> {locale === 'ka' ? 'თავიდან ცდა' : 'Retry'}
+                <RotateCcw size={16} /> {t.retry}
               </button>
             )}
-          </div>
+          </LiveErrorPanel>
         ) : (
           <div className="space-y-4 animate-fade-in">
+            <p data-testid="live-status" role="status" className="text-[16px] leading-relaxed text-white/70">{t.status[status]}</p>
+            {audioBlocked && onResumeAudio && (
+              <button type="button" onClick={onResumeAudio}
+                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[16px] font-semibold text-black">
+                <Volume2 size={18} aria-hidden="true" /> {t.tapToStart}
+              </button>
+            )}
             {/* დიდი რეალურ დროში გამომავალი ქართული ტექსტი */}
             <p className="text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]">
               {lastAgentCaption}
             </p>
 
             {/* AI მინიშნება და მოქმედებების ღილაკები */}
-            {lastAgentCaption && lastAgentCaption !== 'გისმენთ…' && (
+            {lastAgentCaption && (
               <div className="flex flex-col gap-2 pt-2">
                 <div className="flex items-center gap-4 text-xs text-white/50">
                   <button type="button" className="transition-colors hover:text-white">
@@ -296,6 +254,7 @@ export function LiveModeOverlay({
                   <button
                     type="button"
                     onClick={copyTranscript}
+                    aria-label={copied ? t.copied : locale === 'ka' ? 'ტექსტის კოპირება' : locale === 'ru' ? 'Скопировать текст' : 'Copy text'}
                     className="transition-colors hover:text-white"
                   >
                     <Copy size={15} />
@@ -313,7 +272,7 @@ export function LiveModeOverlay({
       {/* 5. ქვედა სამართავი პანელი (Gemini Live Controls) */}
       <div className="relative z-20 flex w-full flex-col items-center justify-center px-4 pb-10 pt-4">
         {/* "Tap to interrupt" ღილაკი, როდესაც აგენტი საუბრობს */}
-        {isSpeaking && onStopSpeaking && (
+        {!error && isSpeaking && onStopSpeaking && (
           <button
             type="button"
             onClick={onStopSpeaking}
@@ -325,6 +284,7 @@ export function LiveModeOverlay({
 
         {/* 5 ჰორიზონტალური ღილაკი ზუსტად რეფერენსის მიხედვით */}
         <div className="flex w-full max-w-sm items-center justify-center gap-3.5 sm:gap-5">
+          {!error && <>
           {/* 1. "+" ღილაკი */}
           <button
             type="button"
@@ -397,11 +357,12 @@ export function LiveModeOverlay({
           </button>
 
           {/* 5. ზარის დასრულების ღილაკი (✕) */}
+          </>}
           <button
             type="button"
             onClick={onEnd}
             className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white shadow-md backdrop-blur-xl transition-all hover:border-rose-500/40 hover:bg-rose-500/25 hover:text-rose-300 active:scale-95"
-            aria-label="End call"
+            aria-label={t.end}
           >
             <X size={22} />
           </button>
