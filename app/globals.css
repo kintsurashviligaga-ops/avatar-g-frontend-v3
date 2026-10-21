@@ -4326,3 +4326,20 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
 @media (prefers-reduced-motion: reduce) {
   .sheet-rise, .sheet-fade { animation: none; }
 }
+
+
+/* ── Mobile 100dvh & Overscroll Hard-Lock ── */
+html, body {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  -webkit-overflow-scrolling: touch;
+}
+.app-native-shell,
+.ag-fixed-shell {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}

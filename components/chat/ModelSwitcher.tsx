@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { Wordmark } from '@/components/brand/Wordmark';
 import { CHAT_MODES, chatModeOption, type ChatModeId, type ChatModeLocale } from '@/lib/chat/chatModes';
 import { useChatMode } from '@/lib/chat/chatModeStore';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
@@ -47,39 +48,6 @@ export function useActivePersona(locale?: string): { id: string; name: string } 
   return useMemo(() => ({ id, name }), [id, name]);
 }
 
-export function RocketSphereLogo({ size = 32 }: { size?: number }) {
-  return (
-    <span
-      className="relative inline-flex shrink-0 items-center justify-center rounded-full"
-      style={{
-        width: size,
-        height: size,
-        background: 'radial-gradient(circle at 32% 28%, #7dd3fc 0%, #38bdf8 22%, #2563eb 52%, #1e3a8a 78%, #020817 100%)',
-        boxShadow: '0 0 16px rgba(14,165,233,0.9), 0 0 28px rgba(37,99,235,0.55), inset 0 0 10px rgba(186,230,253,0.85)',
-      }}
-      aria-hidden="true"
-    >
-      <span className="pointer-events-none absolute inset-0 rounded-full ring-[1.5px] ring-sky-300/90" />
-      <span className="pointer-events-none absolute left-1.5 top-1 h-1.5 w-3 -rotate-[28deg] rounded-full bg-white/85 blur-[0.4px]" />
-      <span className="pointer-events-none absolute bottom-1 right-1.5 h-1 w-2.5 -rotate-[28deg] rounded-full bg-sky-200/80 blur-[0.4px]" />
-      <svg viewBox="0 0 64 64" style={{ width: size * 0.68, height: size * 0.68 }} className="drop-shadow-[0_1px_5px_rgba(56,189,248,0.95)]">
-        <path d="M22 42 C15 45, 12 51, 11 53 C15 52, 22 48, 25 42 Z" fill="#67e8f9" />
-        <path d="M24 40 C18 43, 14 49, 13 51 C17 50, 22 46, 25 41 Z" fill="#ffffff" />
-        <path d="M27 31 L17 34 C16 37, 17 40, 19 41 L26 38 Z" fill="#3b82f6" stroke="#bae6fd" strokeWidth="1.2" />
-        <path d="M33 37 L30 45 C31 47, 34 48, 37 47 L40 37 Z" fill="#3b82f6" stroke="#bae6fd" strokeWidth="1.2" />
-        <path d="M49 15 C41 15, 31 21, 25 31 L33 39 C43 33, 49 23, 49 15 Z" fill="#2563eb" stroke="#e0f2fe" strokeWidth="1.4" />
-        <path d="M24 32 L32 40 L29 42 L22 35 Z" fill="#cbd5e1" />
-        <g transform="translate(37.5, 26.5) rotate(45) scale(0.85)" fill="#1e3a8a" stroke="#7dd3fc" strokeWidth="1.2">
-          <path d="M0 -1 C-2.5 -4.5, -5.5 -2, -2 0.5" />
-          <path d="M0 -1 C2.5 -4.5, 5.5 -2, 2 0.5" />
-          <path d="M0 1 C-2.5 4.5, -5.5 2, -2 -0.5" />
-          <path d="M0 1 C2.5 4.5, 5.5 2, 2 -0.5" />
-        </g>
-      </svg>
-    </span>
-  );
-}
-
 export interface ModelSwitcherProps {
   variant: 'desktop' | 'phone';
   locale?: string;
@@ -87,7 +55,7 @@ export interface ModelSwitcherProps {
   className?: string;
 }
 
-export function ModelSwitcher({ variant, locale, className = '' }: ModelSwitcherProps) {
+export function ModelSwitcher({ locale, className = '' }: ModelSwitcherProps) {
   const lang = toLang(locale);
   const [mode, setMode] = useChatMode();
   const current = chatModeOption(mode);
@@ -120,10 +88,12 @@ export function ModelSwitcher({ variant, locale, className = '' }: ModelSwitcher
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((v) => !v)}
-        className="group inline-flex h-11 min-w-0 items-center gap-2.5 rounded-full px-2 py-1 text-left transition-colors hover:bg-white/[0.06]"
+        className="group inline-flex h-11 min-w-0 items-center gap-2 rounded-full px-2.5 py-1 text-left transition-colors hover:bg-white/[0.06]"
       >
-        <RocketSphereLogo size={variant === 'phone' ? 30 : 34} />
-        <span className="min-w-0 truncate text-[15.5px] font-semibold tracking-tight text-white">
+        <span className="flex shrink-0 items-center" aria-hidden="true">
+          <Wordmark size="sm" mark />
+        </span>
+        <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-app-accent">
           {activeTitle}
         </span>
         <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-white/60 transition-transform duration-200 group-aria-expanded:rotate-180" />
@@ -150,7 +120,9 @@ export function ModelSwitcher({ variant, locale, className = '' }: ModelSwitcher
                 onClick={() => { setMode(m.id); setOpen(false); }}
                 className={`flex min-h-[54px] w-full items-center gap-3 rounded-[14px] px-3 py-2 text-left transition-colors hover:bg-white/[0.08] disabled:opacity-45 ${on ? 'bg-white/[0.06]' : ''}`}
               >
-                <RocketSphereLogo size={26} />
+                <span className="flex w-5 shrink-0 justify-center">
+                  {on && <Check size={18} aria-hidden="true" className="text-app-accent" />}
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2 text-[14.5px] font-semibold text-white">
                     <span>{cleanName(m.label)}</span>
@@ -158,7 +130,6 @@ export function ModelSwitcher({ variant, locale, className = '' }: ModelSwitcher
                   </span>
                   <span className="block text-[13px] text-white/60">{m.description[lang]}</span>
                 </span>
-                {on && <Check size={18} aria-hidden="true" className="shrink-0 text-sky-400" />}
               </button>
             );
           })}

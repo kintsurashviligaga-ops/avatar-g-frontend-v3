@@ -12083,7 +12083,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* Gemini Reference Bottom-Right Royal Blue Ambient Glow */}
             <div
               aria-hidden="true"
-              className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
+              className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
               style={{
                 background: "radial-gradient(ellipse 85% 55% at 78% 96%, rgba(29, 78, 216, 0.42) 0%, rgba(15, 23, 42, 0.22) 48%, rgba(0, 0, 0, 0) 75%)"
               }}
