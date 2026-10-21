@@ -9,7 +9,7 @@
  * only the menu subtitle; the answering model is reported back in the stream's meta frame and shown with
  * `displayNameFor()`.
  *
- * Why these four (2026-09-30, verified live on the funded key): the names people ask for — "Gemini 1.5 Pro / 1.5 Flash
+ * Why these four (2026-09-30, verified live on the funded key): the names people ask for — "1.5 Pro / 1.5 Flash
  * / 1.5 Flash-8B" — are retired (404). Their current equivalents are 3.1 Pro, 3.8 Flash and 3.1 Flash-Lite; "Thinking"
  * is Gemini's own reasoning mode of the same Flash model. Flash-Lite was checked for natural Georgian before shipping.
  */
@@ -28,7 +28,7 @@ export interface ChatModeOption {
   id: ChatModeId;
   /** Menu row title, Gemini-style ("3.8 Flash"). */
   label: string;
-  /** The full model name shown on the trigger / tooltip ("Gemini 3.8 Flash"). */
+  /** The full model name shown on the trigger / tooltip ("3.8 Flash"). */
   displayModel: string;
   /** One line under the row title. */
   description: Record<ChatModeLocale, string>;
@@ -43,7 +43,7 @@ export const CHAT_MODES: readonly ChatModeOption[] = [
   {
     id: 'fast',
     label: '3.8 Flash',
-    displayModel: 'Gemini 3.8 Flash',
+    displayModel: '3.8 Flash',
     description: {
       ka: 'სწრაფი პასუხები ყოველდღიური კითხვებისთვის',
       en: 'Fast all-around help',
@@ -56,7 +56,7 @@ export const CHAT_MODES: readonly ChatModeOption[] = [
   {
     id: 'thinking',
     label: '3.8 Flash Thinking',
-    displayModel: 'Gemini 3.8 Flash Thinking',
+    displayModel: '3.8 Flash Thinking',
     description: {
       ka: 'ფიქრობს პასუხამდე — რთული ამოცანებისთვის',
       en: 'Reasons before answering — for harder problems',
@@ -69,7 +69,7 @@ export const CHAT_MODES: readonly ChatModeOption[] = [
   {
     id: 'pro',
     label: '3.1 Pro',
-    displayModel: 'Gemini 3.1 Pro',
+    displayModel: '3.1 Pro',
     description: {
       ka: 'ყველაზე ძლიერი: კოდი, მათემატიკა, ანალიზი · დღიური ლიმიტით',
       en: 'Most capable: code, math, analysis · daily limit',
@@ -82,7 +82,7 @@ export const CHAT_MODES: readonly ChatModeOption[] = [
   {
     id: 'lite',
     label: '3.1 Flash-Lite',
-    displayModel: 'Gemini 3.1 Flash-Lite',
+    displayModel: '3.1 Flash-Lite',
     description: {
       ka: 'ყველაზე სწრაფი — მოკლე პასუხებისთვის',
       en: 'Fastest — for short replies',
@@ -119,24 +119,24 @@ export function resolveChatMode(mode: unknown, legacyTier?: unknown): ChatModeId
 
 /** ListModels displayName for the ids this product uses (verified 2026-09-30). */
 const DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  'gemini-3.8-flash': 'Gemini 3.8 Flash',
-  'gemini-3.7-flash': 'Gemini 3.7 Flash',
-  'gemini-3.6-flash': 'Gemini 3.6 Flash',
-  'gemini-3.5-flash': 'Gemini 3.5 Flash',
-  'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
-  'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
-  'gemini-3.1-pro-preview': 'Gemini 3.1 Pro',
-  'gemini-pro-latest': 'Gemini Pro',
-  'gemini-flash-latest': 'Gemini Flash',
-  'gemini-flash-lite-latest': 'Gemini Flash-Lite',
-  'gemini-2.5-pro': 'Gemini 2.5 Pro',
-  'gemini-2.5-flash': 'Gemini 2.5 Flash',
-  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash-Lite',
+  'gemini-3.8-flash': '3.8 Flash',
+  'gemini-3.7-flash': '3.7 Flash',
+  'gemini-3.6-flash': '3.6 Flash',
+  'gemini-3.5-flash': '3.5 Flash',
+  'gemini-3.5-flash-lite': '3.5 Flash-Lite',
+  'gemini-3.1-flash-lite': '3.1 Flash-Lite',
+  'gemini-3.1-pro-preview': '3.1 Pro',
+  'gemini-pro-latest': 'Pro',
+  'gemini-flash-latest': 'Flash',
+  'gemini-flash-lite-latest': 'Flash-Lite',
+  'gemini-2.5-pro': '2.5 Pro',
+  'gemini-2.5-flash': '2.5 Flash',
+  'gemini-2.5-flash-lite': '2.5 Flash-Lite',
 };
 
 /**
  * A human name for a model id — the badge that says which model ACTUALLY answered (a rotation can serve a turn from
- * the next model in the chain). Unknown ids are prettified ("gemini-4.0-flash" → "Gemini 4.0 Flash"); anything that
+ * the next model in the chain). Unknown ids are prettified ("gemini-4.0-flash" → "4.0 Flash"); anything that
  * is not a plausible model id comes back as-is, trimmed and bounded.
  */
 export function displayNameFor(modelId: string | null | undefined): string {
