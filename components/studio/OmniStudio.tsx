@@ -12080,14 +12080,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
-            {/* Gemini Reference Bottom-Right Royal Blue Ambient Glow */}
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
-              style={{
-                background: "radial-gradient(ellipse 85% 55% at 78% 96%, rgba(29, 78, 216, 0.42) 0%, rgba(15, 23, 42, 0.22) 48%, rgba(0, 0, 0, 0) 75%)"
-              }}
-            />
+            {/* Full-bleed background glow moved to outer viewport shell */}
             <div className="relative z-10 flex flex-col items-center space-y-3.5 motion-safe:[animation:agSlideUp_0.6s_cubic-bezier(0.2,0.7,0.2,1)_both]">
               {/* Sphere and rocket removed from main chat window per user request */}
               <h1 className="mx-auto max-w-[290px] text-balance font-display text-[28px] font-semibold leading-[1.22] tracking-[-0.02em] text-white sm:max-w-md sm:text-[36px]">

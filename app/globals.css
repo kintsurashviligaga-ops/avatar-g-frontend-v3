@@ -4343,3 +4343,13 @@ html, body {
   overflow: hidden !important;
   overscroll-behavior: none !important;
 }
+
+
+/* ── Full-Bleed 100vw x 100dvh Ambient Blue Background ── */
+.ag-fixed-shell {
+  width: 100vw !important;
+  min-height: 100dvh !important;
+  background-image: radial-gradient(ellipse 95% 70% at 78% 100%, rgba(29, 78, 216, 0.38) 0%, rgba(15, 23, 42, 0.2) 50%, rgba(0, 0, 0, 0) 85%) !important;
+  background-repeat: no-repeat !important;
+  background-size: 100% 100% !important;
+}
