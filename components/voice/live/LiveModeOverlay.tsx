@@ -359,7 +359,7 @@ export function LiveModeOverlay({
           {/* 3. ცენტრალური მანათობელი ცისფერი აუდიო-კაფსულა (Live Glowing Audio Pill) */}
           <div
             onClick={isSpeaking && onStopSpeaking ? onStopSpeaking : undefined}
-            className="relative flex h-12 w-28 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-blue-400/50 shadow-[0_0_35px_rgba(59,130,246,0.6)] transition-all active:scale-95 sm:w-32"
+            className="relative flex h-14 w-36 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-sky-300/40 shadow-[0_0_42px_rgba(37,99,235,0.65),inset_0_1px_2px_rgba(255,255,255,0.35)] transition-all hover:scale-[1.02] active:scale-95 sm:w-40"
             style={{
               background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #38bdf8 100%)',
             }}

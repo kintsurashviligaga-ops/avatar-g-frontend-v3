@@ -36,6 +36,7 @@ export interface ToolGroup {
 
 /** The chat is Agent G: every chat-backed service (writing, code, web search) is reached through it. */
 const AGENT_TOOL: ToolId = 'chat';
+const REMOVED_MENU_TOOLS = new Set<ToolId>(['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation']);
 
 /**
  * Every studio tool exactly once, under the category of the first usable catalog service that runs on it.

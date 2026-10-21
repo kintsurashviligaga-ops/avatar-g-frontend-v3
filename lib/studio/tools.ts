@@ -27,9 +27,9 @@ export type ToolLang = 'ka' | 'en' | 'ru';
 // frame, so „ვიდეოს რემიქსი" promised an edit it did not make. It stays a ToolId only for the chat's „edit this attached
 // video" lane (subtitles, colour, music, text, trim, speed: /api/video/remix), which names itself by TOOL_META below.
 // Not in ALL_TOOLS, so no menu, deep link, sidebar event, Live voice or panel command can open its panel.
-export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar'];
+export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'interior', 'music', 'avatar'];
 /** Tools that live one level down: video variants, motion, the four full studios and the photo culling workspace. */
-export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'vfx', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo'];
+export const MORE_TOOLS: readonly ToolId[] = ['product', 'vfx', 'montage', 'model3d'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
 
 export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n }> = {
@@ -42,18 +42,18 @@ export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n
   product: { Icon: Package, name: { ka: 'პროდუქტის რეკლამა', en: 'Product ad', ru: 'Реклама продукта' }, sub: { ka: 'ფოტოდან სარეკლამო რილი', en: 'An ad reel from a product photo', ru: 'Рекламный рилс из фото' } },
   swap: { Icon: Repeat, name: { ka: 'პერსონაჟის შეცვლა', en: 'Character swap', ru: 'Замена персонажа' }, sub: { ka: 'ვიდეოში სხვა სახე', en: 'Put another face in a video', ru: 'Другое лицо в видео' } },
   // ⚠️ The line says only what is open: today a photo becomes an 8 s VFX scene; motion transfer and swaps unlock in the panel itself.
-  vfx: { Icon: Sparkles, name: { ka: 'VFX ეფექტები', en: 'VFX effects', ru: 'VFX-эффекты' }, sub: { ka: 'ერთი შეხებით VFX ეფექტები შენი ფოტოებისთვის', en: 'One-tap VFX effects for your photos', ru: 'VFX-эффекты в одно касание для ваших фото' } },
+  vfx: { Icon: Sparkles, name: { ka: 'VFX', en: 'VFX', ru: 'VFX' }, sub: { ka: 'ერთი შეხებით VFX ეფექტები შენი ფოტოებისთვის', en: 'One-tap VFX effects for your photos', ru: 'VFX-эффекты в одно касание для ваших фото' } },
   motion: { Icon: PersonStanding, name: { ka: 'მოძრაობის გადატანა', en: 'Motion transfer', ru: 'Перенос движения' }, sub: { ka: 'ფოტო იმოძრავებს შენი აღწერით', en: 'A photo moves the way you describe', ru: 'Фото двигается по описанию' } },
-  montage: { Icon: Scissors, name: { ka: 'ვიდეოს მონტაჟი', en: 'Video editing', ru: 'Видеомонтаж' }, sub: { ka: 'კადრებიდან ერთი ფილმი', en: 'One film from your clips', ru: 'Один фильм из ваших клипов' } },
+  montage: { Icon: Scissors, name: { ka: 'მონტაჟი', en: 'Editing', ru: 'Монтаж' }, sub: { ka: 'კადრებიდან ერთი ფილმი', en: 'One film from your clips', ru: 'Один фильм из ваших клипов' } },
   dubbing: { Icon: Languages, name: { ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' }, sub: { ka: 'ვიდეო სხვა ენაზე', en: 'A video in another language', ru: 'Видео на другом языке' } },
-  model3d: { Icon: Box, name: { ka: '3D მოდელი', en: '3D model', ru: '3D-модель' }, sub: { ka: 'ტექსტიდან ან ფოტოდან', en: 'From text or a photo', ru: 'Из текста или фото' } },
+  model3d: { Icon: Box, name: { ka: '3D', en: '3D', ru: '3D' }, sub: { ka: 'ტექსტიდან ან ფოტოდან', en: 'From text or a photo', ru: 'Из текста или фото' } },
   presentation: { Icon: Presentation, name: { ka: 'პრეზენტაცია', en: 'Presentation', ru: 'Презентация' }, sub: { ka: 'თემიდან მზა სლაიდები', en: 'Slides from a topic', ru: 'Слайды по теме' } },
   // ⚠️ The line IS the promise: culling runs on the device (components/studio/photo — a same-origin worker, no
   // upload, no credits). Anything that ever sends a photo off the device must change this line in the same commit.
   photo: { Icon: Aperture, name: { ka: 'ფოტოების შერჩევა', en: 'Photo culling', ru: 'Отбор фото' }, sub: { ka: 'ფოტოები შენს მოწყობილობას არ ტოვებს', en: 'Photos never leave your device', ru: 'Фото не покидают ваше устройство' } },
   // `photoshoot` is NOT `photo`: `photo` is on-device culling (no upload, no credits) and stays untouched; this one makes new
   // pictures from yours (components/studio/create/PhotoshootCreatePanel.tsx) and spends credits per image.
-  interior: { Icon: Armchair, name: { ka: 'ინტერიერის დიზაინერი', en: 'Interior designer', ru: 'Дизайнер интерьеров' }, sub: { ka: 'გადააპროექტე ოთახი ფოტოდან', en: 'Redesign a room from a photo', ru: 'Новый дизайн комнаты по фото' } },
+  interior: { Icon: Armchair, name: { ka: 'ინტერიერი', en: 'Interior', ru: 'Интерьер' }, sub: { ka: 'გადააპროექტე ოთახი ფოტოდან', en: 'Redesign a room from a photo', ru: 'Новый дизайн комнаты по фото' } },
   photoshoot: { Icon: Camera, name: { ka: 'ფოტოგრაფი', en: 'Photographer', ru: 'Фотограф' }, sub: { ka: 'სტუდიური ფოტოსესია AI-სგან', en: 'A studio photoshoot by AI', ru: 'Студийная фотосессия от ИИ' } },
 };
 
