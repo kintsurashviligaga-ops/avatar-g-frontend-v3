@@ -28,6 +28,22 @@ code only. "Staged" means every new studio stays off or admin-only after the dep
 | 7 | Admin canary (GG signed in as admin, nothing paid): Image Studio opens for admin; an outside tool (e.g. upscale) shows "paused, not charged"; a Live call says the price and starts nothing on "კი"; Video Core film panel quotes as before | screenshots without private content |
 | 8 | Ordinary account (no credits): Image Studio and Music Studio are not visible; the Image tool quotes the same price | screenshots |
 
+## Release record (2026-10-16)
+
+| Step | Result |
+|---|---|
+| 0 | Preconditions held: GG tapped "Merge + deploy" 06:37:59Z (verified with fetch_thread); CI 10/10 on 8acfefcf (06:35Z); no Production build in flight; Video Core's paid run finished 05:20Z and it handed over the deploy slot; rollback target dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (369acfc) |
+| 1 | PR #74 merged 06:38:38Z with a merge commit: main ffde345c16980fe519045a89ba6ad4399e36b1b9 |
+| 2 | dpl_Jn9ucwhB5ND6STFgo1CPPVeswtLD READY 06:43Z (build time 06:42:57Z), assigned to Production |
+| 3 | `/api/version` and `/api/health` answer ffde345; `/api/health/public` 5 ok + voice down, unchanged |
+| 4 | `/ka`, `/en`, `/ru` 200; `/ka/create` ends on `/ka` (re-probed 07:15Z) |
+| 5 | Runtime errors 06:42–07:15Z: one group, the old `service_jobs` scan (first seen 2026-10-02, table pinned by the schema-drift ratchet); no new class. The sweep cron logged no error |
+| 6 | "BOG Production smoke (read-only)" run 38862914733 green |
+| 7 | (1) Image Studio opens for admin, 2 credits/image (GG's photos 06:49Z). (2) Outside engine refused live: `GET /api/video/lipsync?health=heygen` → `{"ok":false,"reason":"google_only"}` 07:14Z. (3) Spoken "კი" starts nothing: unit-proven, not yet seen in the Production UI. (4) Film price: `lib/credits/videoPricing.ts` identical to 369acfc |
+| 8 | Not run: this thread never signs in to Production; the gates are flags that stay unset (AGENT_G_MEDIA_EXEC admin, Music flags unset) |
+
+No P0, so no rollback. Video Core was told the slot is free again (07:15Z); its next deploy builds on ffde345c.
+
 ## Watch (first hours)
 
 Error rate, `generation_jobs` rows stuck in running, unsettled refunds and sweep failures (ops markers `music_studio_unsettled`,

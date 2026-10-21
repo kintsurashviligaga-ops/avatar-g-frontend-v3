@@ -1,19 +1,24 @@
 # CONTINUE FROM HERE — Final Integration & Production Release
 
-Last update: 2026-10-16 06:15Z. Branch `claude/final-integration-release-wt2y8s` = draft PR #74, main 369acfc0 (Video Core
-PR #78) merged in (01 row 10, full Jest green). Production serves 369acfc = dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (rollback target;
-deployed by the Video Core thread 05:58Z). Nothing deployed by this thread, nothing paid, no database touched.
+Last update: 2026-10-16 07:20Z. RELEASED. PR #74 was merged to main as ffde345c (06:38:38Z) after GG's tap on the
+"Merge + deploy" card at 06:37:59Z. Production has served dpl_Jn9ucwhB5ND6STFgo1CPPVeswtLD since 06:43Z. The rollback target is
+dpl_9Ux1s4yZLBiE1nC5GK7wi7SjHspp (369acfc), and no rollback was needed. Nothing paid, no database touched, no env or flag
+changed. Branch `claude/final-integration-release-wt2y8s` was restarted from main ffde345c for the post-release docs (a new
+draft PR; #74 is merged and must not be reused).
 
-- DONE: Phases 0–6; FR-1 closed (Video Core PR #76 in main and Production; re-checked here, 01 row 7); Phase 8 files
-  00–09, GO_NO_GO_KA.md, FINAL_OWNER_REPORT_KA.md (pre-release); regression tests for FR-6 (`components/studio/liveRunGate.test.ts`)
-  and FR-11 (`lib/routing/shellRedirects.test.ts`).
-- VERDICT: staged release CONDITIONAL GO; customer-wide NO-GO (GO_NO_GO_KA.md).
-- NEXT (first action): confirm CI 10/10 green on PR #74's head (merge b9c7fc6f + docs commit). The Video Core hold is over:
-  its third paid ad try finished 05:20Z and it deployed PR #78 at 05:58Z, then said the deploy slot is ours. Re-check no
-  Production build is in flight; then post GG one decision card: merge PR #74 + staged Production deploy (09 preconditions);
-  tell the Video Core thread when GG taps it. On the tap: 09 steps 1–6, then ask GG for the admin canary (step 7), then update
-  FINAL_OWNER_REPORT_KA.md item 10 and 04 T-19/T-20 in a docs follow-up on this branch name restarted from main.
-- OPEN, not blocking the staged release: FR-2 (BLOCKED_OWNER), FR-8, FR-12, FR-13; Video Core's FR-9, FR-10.
+- DONE: Phases 0–8. Release steps 1–7 are in 09 "Release record". 04 T-19 is PROVEN_PRODUCTION. T-20 is PARTIAL:
+  - Canary 1 (Image Studio for admin): GG's photos.
+  - Canary 2 (outside engine paused): live probe.
+  - Canary 4 (film price): code identity.
+  - Canary 3 (spoken "კი" starts nothing): unit-proven only.
+  - The 30-minute error watch found only the old `service_jobs` group.
+  - Video Core was told at 07:15Z that the Production slot is free; its next deploy builds on ffde345c.
+- VERDICT: the staged release is done. Customer-wide opening is still NO-GO (GO_NO_GO_KA.md).
+- NEXT: nothing is owed by this thread. When GG next uses Live voice, record canary 3 (a spoken "კი" quotes the price and
+  starts nothing). If a P0 shows up and Production still serves ffde345c, roll back to dpl_9Ux1s4… (09). If another thread
+  has deployed since, roll back only with that thread.
+- OPEN, not blocking: FR-2 (BLOCKED_OWNER), FR-8, FR-12, FR-13; Video Core's FR-9, FR-10; runbook step 8 (ordinary
+  account) not run because this thread never signs in to Production.
 - Owner-gated, not asked yet: isolated Preview Supabase, paid acceptance runs (Imagen, Lyria), real-device voice (08),
   dubbing/presentation prices, public flags.
 - Never: push to the branches of #60/#64/#65/#66/#67/#68; deploy over or roll back another thread's release; a new
