@@ -10779,7 +10779,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
                 {m.role === 'assistant' && m.text && !m.researchId && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
                   const isLast = i === messages.length - 1;
-                  const act = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
+                  const act = 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/60 transition-all duration-150 hover:bg-white/[0.08] hover:text-white active:scale-95 touch-manipulation';
                   const answeredBy = displayNameFor(m.chatModelId ?? m.chatModel);
                   // „Thinking“ is Flash with deep reasoning — name it as the menu does, so the label matches the choice.
                   const modelLabel = answeredBy && m.chatMode === 'thinking' && /flash/i.test(m.chatModelId ?? '') && !/lite/i.test(m.chatModelId ?? '')
@@ -10812,11 +10812,32 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         {copiedIdx === i ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
                       </button>
                       {process.env.NEXT_PUBLIC_VOICE_EXPERIENCE_V2 === '1' ? <ReadAloudControls text={m.text} locale={locale} /> : (
-                      <button type="button" onClick={() => void speakMsg(m.text, i)} aria-label={readWord} title={readWord}
-                        className={`${act} ${speakingIdx === i ? 'text-app-accent' : ''}`}>
-                        {speakingIdx === i
-                          ? (speakPhase === 'loading' ? <Loader2 size={18} aria-hidden="true" className="animate-spin" /> : <Square size={16} aria-hidden="true" />)
-                          : <Volume2 size={18} aria-hidden="true" />}
+                      <button
+                        type="button"
+                        onClick={() => void speakMsg(m.text, i)}
+                        aria-label={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : readWord}
+                        title={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : readWord}
+                        className={
+                          speakingIdx === i
+                            ? 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-blue-500/15 px-3 text-[12px] font-medium text-blue-400 ring-1 ring-blue-400/30 transition-all duration-150 hover:bg-blue-500/25 active:scale-95'
+                            : act
+                        }
+                      >
+                        {speakingIdx === i ? (
+                          speakPhase === 'loading' ? (
+                            <Loader2 size={17} aria-hidden="true" className="animate-spin text-blue-400" />
+                          ) : (
+                            <>
+                              <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
+                                <rect x="6" y="5" width="4" height="14" rx="1.2" />
+                                <rect x="14" y="5" width="4" height="14" rx="1.2" />
+                              </svg>
+                              <span>{locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა'}</span>
+                            </>
+                          )
+                        ) : (
+                          <Volume2 size={18} aria-hidden="true" />
+                        )}
                       </button>
                       )}
                       {modelLabel && (
@@ -11852,7 +11873,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // The chat composer's one-row shape (see the pill): while the text fits a line and nothing else needs the row.
   // Desktop only: Gemini's PHONE composer is two rows (the text full width on top, the controls under it) — squeezing
   // „+“, mic and Live beside the text left a ~180 px box that wrapped even the placeholder.
-  const chatSingleRow = chatOnly && isDesktop && attachments.length === 0 && !composerWrapped && !activePersona.name;
+  const chatSingleRow = false;
   // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
   const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
   // ── The desktop's centre for the video tool (ref6): the RESULT pane — the latest video of this tool in the thread, or its
@@ -12052,85 +12073,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               }}
             />
             <div className="relative z-10 flex flex-col items-center space-y-3.5 motion-safe:[animation:agSlideUp_0.6s_cubic-bezier(0.2,0.7,0.2,1)_both]">
-              {/* Small Glowing Blue Glass Sphere with Rocket */}
-              <div
-                className="relative mx-auto mb-1 flex h-14 w-14 items-center justify-center rounded-full sm:h-16 sm:w-16"
-                style={{
-                  background: "radial-gradient(circle at 35% 28%, rgba(56, 189, 248, 0.45) 0%, rgba(37, 99, 235, 0.65) 42%, rgba(10, 25, 65, 0.95) 78%, #020817 100%)",
-                  boxShadow: "0 0 28px rgba(14, 165, 233, 0.75), 0 0 56px rgba(37, 99, 235, 0.45), inset 0 0 16px rgba(125, 211, 252, 0.65)"
-                }}
-                aria-hidden="true"
-              >
-                {/* Glass rim & specular highlights */}
-                <span className="pointer-events-none absolute inset-0 rounded-full ring-[1.5px] ring-sky-300/80" />
-                <span className="pointer-events-none absolute left-2.5 top-1.5 h-2 w-4 -rotate-[28deg] rounded-full bg-white/70 blur-[1px]" />
-                <span className="pointer-events-none absolute bottom-1.5 right-2.5 h-1.5 w-3.5 -rotate-[28deg] rounded-full bg-sky-200/65 blur-[1px]" />
-
-                {/* 3D Rocket SVG with 4-leaf clover emblem & cyan flame */}
-                <svg viewBox="0 0 64 64" className="h-9 w-9 drop-shadow-[0_2px_8px_rgba(56,189,248,0.8)] sm:h-10 sm:w-10">
-                  <defs>
-                    <linearGradient id="rkBody" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#93c5fd" />
-                      <stop offset="45%" stopColor="#2563eb" />
-                      <stop offset="100%" stopColor="#1e3a8a" />
-                    </linearGradient>
-                    <linearGradient id="rkWing" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#e2e8f0" />
-                      <stop offset="50%" stopColor="#3b82f6" />
-                      <stop offset="100%" stopColor="#1d4ed8" />
-                    </linearGradient>
-                    <linearGradient id="rkFlame" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ffffff" />
-                      <stop offset="45%" stopColor="#67e8f9" />
-                      <stop offset="100%" stopColor="#0284c7" />
-                    </linearGradient>
-                  </defs>
-                  {/* Exhaust Flame */}
-                  <path
-                    d="M22 42 C16 44, 13 50, 12 52 C14 51, 20 48, 22 42 Z"
-                    fill="url(#rkFlame)"
-                  />
-                  <path
-                    d="M24 40 C17 43, 13 51, 11 53 C16 52, 23 47, 26 42 Z"
-                    fill="url(#rkFlame)"
-                    opacity="0.85"
-                  />
-                  {/* Left & Right Fins */}
-                  <path
-                    d="M27 31 L17 34 C16 37, 17 40, 19 41 L26 38 Z"
-                    fill="url(#rkWing)"
-                    stroke="#bae6fd"
-                    strokeWidth="1"
-                  />
-                  <path
-                    d="M33 37 L30 45 C31 47, 34 48, 37 47 L40 37 Z"
-                    fill="url(#rkWing)"
-                    stroke="#bae6fd"
-                    strokeWidth="1"
-                  />
-                  {/* Rocket Main Fuselage (angled 45deg up-right) */}
-                  <path
-                    d="M49 15 C41 15, 31 21, 25 31 L33 39 C43 33, 49 23, 49 15 Z"
-                    fill="url(#rkBody)"
-                    stroke="#e0f2fe"
-                    strokeWidth="1.2"
-                  />
-                  {/* Nozzle Collar */}
-                  <path
-                    d="M24 32 L32 40 L29 42 L22 35 Z"
-                    fill="#cbd5e1"
-                    stroke="#94a3b8"
-                    strokeWidth="0.8"
-                  />
-                  {/* 4-Leaf Clover Emblem on Fuselage */}
-                  <g transform="translate(37.5, 26.5) rotate(45) scale(0.85)" fill="none" stroke="#0f172a" strokeWidth="1.6">
-                    <path d="M0 -1 C-2.5 -4.5, -5.5 -2, -2 0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
-                    <path d="M0 -1 C2.5 -4.5, 5.5 -2, 2 0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
-                    <path d="M0 1 C-2.5 4.5, -5.5 2, -2 -0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
-                    <path d="M0 1 C2.5 4.5, 5.5 2, 2 -0.5" fill="#1d4ed8" stroke="#7dd3fc" strokeWidth="1" />
-                  </g>
-                </svg>
-              </div>
+              {/* Sphere and rocket removed from main chat window per user request */}
               <h1 className="mx-auto max-w-[290px] text-balance font-display text-[28px] font-semibold leading-[1.22] tracking-[-0.02em] text-white sm:max-w-md sm:text-[36px]">
                 {locale === "en" ? "What should we focus on?" : locale === "ru" ? "На чём сфокусируемся?" : "რაზე გავამახვილოთ ყურადღება?"}
               </h1>
@@ -12557,7 +12500,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               e.preventDefault();
               void ingestFiles(files);
             }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runTool(); } }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                runTool();
+                setInput('');
+                if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
+              }
+            }}
             onFocus={() => setTimeout(() => taRef.current?.scrollIntoView({ block: 'nearest' }), 120)}
             rows={1}
             disabled={enhancing}
@@ -12572,7 +12522,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
-          <div className={chatSingleRow ? 'contents' : `${chatOnly ? 'px-1' : 'mt-1'} flex items-center gap-1 max-[389px]:gap-0.5`}>
+          <div className="mt-1.5 flex w-full flex-wrap items-center justify-between gap-1.5 px-1 pt-1 border-t border-white/[0.06]">
             <button type="button" onClick={() => { setToolPickOnly(false); setToolSheetOpen(true); }}
               aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
               aria-label={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
@@ -12692,7 +12642,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* A product ad and a swap render through the Cap-3 queue, not `busy`: their Run stays on screen beside Stop
                 while another render runs (their panel buttons never had a busy gate; Stop must not be the only choice). */}
             {busy && !recording && !transcribing && canRun && (activeTool === 'product' || activeTool === 'swap') && (
-              <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
+              <button type="button" onClick={() => {
+                        runTool();
+                        setInput('');
+                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
+                      }} aria-label={runLabel} title={runLabel}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
                 <Send size={17} aria-hidden="true" />
               </button>
@@ -12783,12 +12737,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {canRun && !composerRunAside && (
                   chatOnly ? (
                     // Gemini's send: a filled circle with an up-arrow — the one accent-filled control in the chat.
-                    <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
+                    <button type="button" onClick={() => {
+                        runTool();
+                        setInput('');
+                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
+                      }} aria-label={runLabel} title={runLabel}
                       className={`${chatRound} ml-0.5 bg-app-accent text-app-bg hover:opacity-90`}>
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
+                    <button type="button" onClick={() => {
+                        runComposer();
+                        setInput('');
+                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
+                      }} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
                       className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
                       {composerQuote ? (
                         <>
@@ -13127,12 +13089,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       locale={locale}
       title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
       // The service catalog's categories (lib/catalog/nav.ts) — the same groups as the sidebar, every tool listed.
-      sections={toolGroups().map((g) => ({
-        id: g.id,
-        label: g.label[locale === 'en' || locale === 'ru' ? locale : 'ka'],
-        tools: g.tools.map(toolEntry),
-      }))}
-      extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
+      sections={toolGroups()
+        .map((g) => ({
+          id: g.id,
+          label: g.label[locale === 'en' || locale === 'ru' ? locale : 'ka'],
+          tools: g.tools
+            .filter((t) => !['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation'].includes(t))
+            .map(toolEntry),
+        }))
+        .filter((g) => g.tools.length > 0)}
+      extras={[]}
       activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id, 'tool-sheet'); }}
     />

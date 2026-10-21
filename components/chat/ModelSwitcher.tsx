@@ -216,8 +216,15 @@ export function ModelSwitcher({ variant, locale, brandClassName = 'max-[359px]:h
           onKeyDown={onTriggerKeyDown}
           className={`group inline-flex h-10 min-w-0 items-center gap-1.5 rounded-full pl-3 pr-2 text-[17px] font-medium text-app-text transition-colors duration-200 hover:bg-app-border/10 aria-expanded:bg-app-border/10 [@media(pointer:coarse)]:h-11 ${focusRing}`}
         >
-          <span className="shrink-0 text-app-muted">Gemini</span>
-          <span className="min-w-0 truncate">{current.label}</span>
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#1d4ed8] via-[#2563eb] to-[#38bdf8] shadow-[0_0_12px_rgba(37,99,235,0.5)] ring-1 ring-white/20" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+              <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+              <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+              <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+            </svg>
+          </span>
+          <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-white">{current.displayModel || current.label}</span>
           <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-app-muted transition-transform duration-200 group-aria-expanded:rotate-180 motion-reduce:transition-none" />
         </button>
       ) : (
@@ -234,8 +241,15 @@ export function ModelSwitcher({ variant, locale, brandClassName = 'max-[359px]:h
           onKeyDown={onTriggerKeyDown}
           className={`group inline-flex h-11 min-w-0 items-center gap-1.5 rounded-full pl-1 pr-2 transition-colors duration-200 hover:bg-app-elevated aria-expanded:bg-app-elevated touch-manipulation ${focusRing}`}
         >
-          <span className={`flex shrink-0 items-center ${brandClassName}`} aria-hidden="true"><Wordmark size="sm" /></span>
-          <span className="min-w-0 truncate text-[15px] font-medium text-app-accent">{current.label}</span>
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#1d4ed8] via-[#2563eb] to-[#38bdf8] shadow-[0_0_12px_rgba(37,99,235,0.5)] ring-1 ring-white/20" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+              <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+              <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+              <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+            </svg>
+          </span>
+          <span className="min-w-0 truncate text-[14.5px] font-semibold tracking-tight text-white">{current.displayModel || current.label}</span>
           <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-app-muted transition-transform duration-200 group-aria-expanded:rotate-180 motion-reduce:transition-none" />
         </button>
       )}
@@ -270,7 +284,10 @@ export function ModelSwitcher({ variant, locale, brandClassName = 'max-[359px]:h
                   {on && <Check size={18} aria-hidden="true" className="text-app-accent" />}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-medium leading-5 text-app-text">{m.label}</span>
+                  <span className="flex items-center gap-2 text-[15px] font-semibold leading-5 text-white">
+                    <span>{m.label}</span>
+                    <span className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[11.5px] font-medium text-sky-300">{m.displayModel}</span>
+                  </span>
                   <span className={`block text-app-muted ${subText(lang)}`}>{m.description[lang]}</span>
                 </span>
               </button>

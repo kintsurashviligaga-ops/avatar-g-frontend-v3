@@ -297,12 +297,12 @@ export function LiveModeOverlay({
         {!error && extraControls && <div className="mb-3 flex max-w-full flex-wrap items-center justify-center gap-3">{extraControls}</div>}
 
         {/* 5 ჰორიზონტალური ღილაკი ზუსტად რეფერენსის მიხედვით */}
-        <div className="flex w-full max-w-sm items-center justify-center gap-3.5 sm:gap-5">
+        <div className="flex w-full max-w-sm items-center justify-center gap-2 min-[360px]:gap-3.5 sm:gap-5">
           {!error && <>
           <button
             type="button"
             onClick={onToggleCamera}
-            className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/10 shadow-md backdrop-blur-xl transition-all active:scale-95 ${
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 shadow-md backdrop-blur-xl transition-all active:scale-95 ${
               cameraOn ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/15'
             }`}
             aria-label={t.camera}
@@ -315,7 +315,7 @@ export function LiveModeOverlay({
           <div
             data-testid="live-waveform"
             aria-hidden="true"
-            className="relative flex h-12 w-28 shrink-0 items-center justify-center overflow-hidden rounded-full border border-blue-400/50 shadow-[0_0_35px_rgba(59,130,246,0.6)] sm:w-32"
+            className="relative flex h-14 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-sky-300/40 shadow-[0_0_42px_rgba(37,99,235,0.65),inset_0_1px_2px_rgba(255,255,255,0.35)] min-[360px]:w-28 min-[390px]:w-36 sm:w-40"
             style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #38bdf8 100%)' }}
           >
             <LiveWaveform state={waveformState} getLevels={getLevels} className="[&_span]:bg-white" />
@@ -325,7 +325,7 @@ export function LiveModeOverlay({
           <button
             type="button"
             onClick={onToggleMute}
-            className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/10 shadow-md backdrop-blur-xl transition-all active:scale-95 ${
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 shadow-md backdrop-blur-xl transition-all active:scale-95 ${
               muted
                 ? 'border-rose-500/30 bg-rose-500/20 text-rose-300'
                 : 'bg-white/10 text-white hover:bg-white/15'
@@ -341,7 +341,7 @@ export function LiveModeOverlay({
           <button
             type="button"
             onClick={onEnd}
-            className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white shadow-md backdrop-blur-xl transition-all hover:border-rose-500/40 hover:bg-rose-500/25 hover:text-rose-300 active:scale-95"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white shadow-md backdrop-blur-xl transition-all hover:border-rose-500/40 hover:bg-rose-500/25 hover:text-rose-300 active:scale-95"
             aria-label={t.end}
           >
             <X size={22} />

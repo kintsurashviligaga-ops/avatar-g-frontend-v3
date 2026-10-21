@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { FakeLive, openLiveCall } from './fixtures/liveVoice';
 
-for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 320, height: 740 }]) {
   test.describe(`Live recovery ${viewport.width}px`, () => {
     test.use({ viewport });
     test('the simulated call exposes its status, real caption and keyboard exit without spending', async ({ page, baseURL }, info) => {
@@ -52,6 +52,15 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       const controls = await page.getByTestId('live-controls').boundingBox();
       expect(controls).not.toBeNull();
       expect(controls!.x + controls!.width).toBeLessThanOrEqual(viewport.width + 1);
+      for (const name of ['კამერა', 'მიკროფონის დადუმება', 'ზარის დასრულება']) {
+        const bounds = await dialog.getByRole('button', { name, exact: true }).boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.width).toBeGreaterThanOrEqual(44);
+        expect(bounds!.height).toBeGreaterThanOrEqual(44);
+        expect(bounds!.x).toBeGreaterThanOrEqual(0);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width + 1);
+      }
+
       await expect(dialog.getByTestId('live-content').locator('.animate-fade-in')).toHaveCSS('opacity', '1');
       await page.screenshot({ path: info.outputPath('live-current-screen.png') });
       await page.keyboard.press('Escape');
