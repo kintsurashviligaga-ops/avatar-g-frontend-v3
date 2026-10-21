@@ -1,27 +1,6 @@
 'use client';
 
-/**
- * components/chat/ModelSwitcher.tsx — the Gemini-style model picker at the top-left of the chat (docs/DESIGN.md §8).
- *
- * Two triggers, one menu:
- *  • 'desktop' — OmniStudio's own title bar (≥ 1024 px): a muted „Gemini“, the current mode and a chevron.
- *  • 'phone'   — ChatChrome's header (phones and tablets): the wordmark, the mode in the accent and a chevron, i.e.
- *                Gemini mobile's "Gemini · 3.8 Flash ⌄". The name steps aside below 360 px so the mode stays whole.
- *
- * The menu lists the chat modes of lib/chat/chatModes (label · one line in the UI language · a check on the chosen
- * one), then the persona — Gemini keeps its Gems one step from the model, and ours were only in the sidebar.
- *
- * STATE lives outside both headers: the mode in lib/chat/chatModeStore (read by the send path AT SEND TIME, so a
- * switch applies to the very next turn), the persona in PersonaPicker's localStorage key. Both switchers — and the
- * composer's persona chip — therefore agree without a prop being threaded through ChatChrome into OmniStudio.
- *
- * ⚠️ NO FIXED CHILDREN. ChatChrome's header is `sticky` with `backdrop-blur-xl`, which makes it the containing block
- * of a `position: fixed` descendant and its own stacking context: a fixed backdrop in there covers the header, not the
- * page (the LanguageSwitcher measured this — elementFromPoint returned the composer). Outside taps are caught by a
- * document-level capture listener instead, which does not care about stacking contexts.
- */
-
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { CHAT_MODES, chatModeOption, type ChatModeId, type ChatModeLocale } from '@/lib/chat/chatModes';
 import { useChatMode } from '@/lib/chat/chatModeStore';
@@ -29,89 +8,87 @@ import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { PERSONA_STORAGE_KEY, loadCustomPersonas, loadSelectedPersonaId } from '@/components/studio/PersonaPicker';
 import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
 
-/** Ask ChatChrome (the owner of PersonaPicker) to open the persona picker. */
 export const OPEN_PERSONA_EVENT = 'myavatar:open-persona';
-/**
- * The selected persona changed (detail: the new id, '' = default). PersonaPicker writes localStorage without telling
- * anyone; ChatChrome announces its picks with this, and the composer chip's ✕ clears through it — so the sidebar row,
- * both switchers and the chip never disagree about who the user is talking to.
- */
 export const PERSONA_CHANGED_EVENT = 'myavatar:persona-changed';
 
 const toLang = (locale?: string): ChatModeLocale => (locale === 'en' || locale === 'ru' ? locale : 'ka');
+const cleanName = (s?: string) => (s || '').replace(/^Gemini\s*/i, '').trim();
 
-/** The menu's items the arrows can land on — a disabled mode is skipped, as in Gemini's own picker. */
-const focusable = (items: Array<HTMLButtonElement | null>): HTMLButtonElement[] =>
-  items.filter((el): el is HTMLButtonElement => !!el && !el.disabled);
-
-/** Announce a persona change made elsewhere (the picker already saved it). */
 export function announcePersona(id: string): void {
   if (typeof window === 'undefined') return;
-  try { window.dispatchEvent(new CustomEvent<string>(PERSONA_CHANGED_EVENT, { detail: id })); } catch { /* old engines */ }
+  try { window.dispatchEvent(new CustomEvent<string>(PERSONA_CHANGED_EVENT, { detail: id })); } catch { /* noop */ }
 }
 
-/** Save + announce a persona choice ('' = back to the default assistant). */
 export function selectPersona(id: string): void {
   if (typeof window === 'undefined') return;
-  try { window.localStorage.setItem(PERSONA_STORAGE_KEY, id); } catch { /* private mode — the event still updates this page */ }
+  try { window.localStorage.setItem(PERSONA_STORAGE_KEY, id); } catch { /* noop */ }
   announcePersona(id);
 }
 
 function subscribePersona(onChange: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
-  const onEvent = () => onChange();
-  // Another tab picked a persona. `key === null` is a storage.clear() (sign-out wipes).
   const onStorage = (e: StorageEvent) => { if (e.key === null || e.key === PERSONA_STORAGE_KEY) onChange(); };
-  window.addEventListener(PERSONA_CHANGED_EVENT, onEvent);
+  window.addEventListener(PERSONA_CHANGED_EVENT, onChange);
   window.addEventListener('storage', onStorage);
   return () => {
-    window.removeEventListener(PERSONA_CHANGED_EVENT, onEvent);
+    window.removeEventListener(PERSONA_CHANGED_EVENT, onChange);
     window.removeEventListener('storage', onStorage);
   };
 }
 
-/**
- * The active persona: its id ('' = default) and its name in the UI language ('' when default or unknown). Reactive to
- * PERSONA_CHANGED_EVENT and to other tabs; the snapshot is a string, so an unchanged choice never re-renders.
- */
 export function useActivePersona(locale?: string): { id: string; name: string } {
   const id = useSyncExternalStore(subscribePersona, loadSelectedPersonaId, () => '');
   const lang = toLang(locale);
   const name = useMemo(() => {
     if (!id) return '';
-    const found = BUILT_IN_PERSONAS.find((p: Persona) => p.id === id)
-      ?? loadCustomPersonas().find((p: Persona) => p.id === id);
+    const found = BUILT_IN_PERSONAS.find((p: Persona) => p.id === id) ?? loadCustomPersonas().find((p: Persona) => p.id === id);
     return found ? personaName(found, lang) : '';
   }, [id, lang]);
   return useMemo(() => ({ id, name }), [id, name]);
 }
 
-const COPY: Record<ChatModeLocale, { open: string; current: string; menu: string; persona: string; personaDefault: string }> = {
-  ka: { open: 'მოდელის არჩევა', current: 'ამჟამად', menu: 'მოდელი', persona: 'პერსონა', personaDefault: 'ნაგულისხმევი' },
-  en: { open: 'Choose a model', current: 'current', menu: 'Model', persona: 'Persona', personaDefault: 'Default' },
-  ru: { open: 'Выбрать модель', current: 'сейчас', menu: 'Модель', persona: 'Персона', personaDefault: 'По умолчанию' },
-};
-
-/**
- * Georgian reading text stays at 16 px with a 1.6 line (docs/DESIGN.md §3): its tall glyphs turn to mush at Gemini's
- * 13 px. Latin and Cyrillic keep Gemini's quieter 13 px sub-line.
- */
-const subText = (lang: ChatModeLocale) => (lang === 'ka' ? 'text-[16px] leading-[1.6]' : 'text-[13px] leading-[1.45]');
+export function RocketSphereLogo({ size = 32 }: { size?: number }) {
+  return (
+    <span
+      className="relative inline-flex shrink-0 items-center justify-center rounded-full"
+      style={{
+        width: size,
+        height: size,
+        background: 'radial-gradient(circle at 32% 28%, #7dd3fc 0%, #38bdf8 22%, #2563eb 52%, #1e3a8a 78%, #020817 100%)',
+        boxShadow: '0 0 16px rgba(14,165,233,0.9), 0 0 28px rgba(37,99,235,0.55), inset 0 0 10px rgba(186,230,253,0.85)',
+      }}
+      aria-hidden="true"
+    >
+      <span className="pointer-events-none absolute inset-0 rounded-full ring-[1.5px] ring-sky-300/90" />
+      <span className="pointer-events-none absolute left-1.5 top-1 h-1.5 w-3 -rotate-[28deg] rounded-full bg-white/85 blur-[0.4px]" />
+      <span className="pointer-events-none absolute bottom-1 right-1.5 h-1 w-2.5 -rotate-[28deg] rounded-full bg-sky-200/80 blur-[0.4px]" />
+      <svg viewBox="0 0 64 64" style={{ width: size * 0.68, height: size * 0.68 }} className="drop-shadow-[0_1px_5px_rgba(56,189,248,0.95)]">
+        <path d="M22 42 C15 45, 12 51, 11 53 C15 52, 22 48, 25 42 Z" fill="#67e8f9" />
+        <path d="M24 40 C18 43, 14 49, 13 51 C17 50, 22 46, 25 41 Z" fill="#ffffff" />
+        <path d="M27 31 L17 34 C16 37, 17 40, 19 41 L26 38 Z" fill="#3b82f6" stroke="#bae6fd" strokeWidth="1.2" />
+        <path d="M33 37 L30 45 C31 47, 34 48, 37 47 L40 37 Z" fill="#3b82f6" stroke="#bae6fd" strokeWidth="1.2" />
+        <path d="M49 15 C41 15, 31 21, 25 31 L33 39 C43 33, 49 23, 49 15 Z" fill="#2563eb" stroke="#e0f2fe" strokeWidth="1.4" />
+        <path d="M24 32 L32 40 L29 42 L22 35 Z" fill="#cbd5e1" />
+        <g transform="translate(37.5, 26.5) rotate(45) scale(0.85)" fill="#1e3a8a" stroke="#7dd3fc" strokeWidth="1.2">
+          <path d="M0 -1 C-2.5 -4.5, -5.5 -2, -2 0.5" />
+          <path d="M0 -1 C2.5 -4.5, 5.5 -2, 2 0.5" />
+          <path d="M0 1 C-2.5 4.5, -5.5 2, -2 -0.5" />
+          <path d="M0 1 C2.5 4.5, 5.5 2, 2 -0.5" />
+        </g>
+      </svg>
+    </span>
+  );
+}
 
 export interface ModelSwitcherProps {
   variant: 'desktop' | 'phone';
   locale?: string;
-  /**
-   * Phone variant: classes for the wordmark beside the mode. Default hides it below 360 px (the mode must stay whole);
-   * ChatChrome also hides it on a tablet whose sidebar already carries the name.
-   */
   brandClassName?: string;
   className?: string;
 }
 
 export function ModelSwitcher({ variant, locale, className = '' }: ModelSwitcherProps) {
   const lang = toLang(locale);
-  const t = COPY[lang];
   const [mode, setMode] = useChatMode();
   const current = chatModeOption(mode);
   const persona = useActivePersona(lang);
@@ -119,193 +96,85 @@ export function ModelSwitcher({ variant, locale, className = '' }: ModelSwitcher
   const clamp = useViewportClamp(open);
   const menuId = useId();
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const itemsRef = useRef<Array<HTMLButtonElement | null>>([]);
-  // Which item takes focus when the menu opens: the checked mode (Enter / ArrowDown / a click) or the last item
-  // (ArrowUp), per the WAI-ARIA menu-button pattern.
-  const focusOnOpenRef = useRef<'checked' | 'last'>('checked');
 
-  const close = useCallback((restoreFocus: boolean) => {
-    setOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
-  }, []);
-
-  // Outside taps and Escape, at the document — see the header note on stacking contexts. Capture phase: Escape must
-  // close THIS menu without also closing whatever dialog sits under it (the phone drawer listens for Escape too).
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: Event) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      close(true);
-    };
+    const onDown = (e: Event) => { if (!wrapRef.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
     document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKey, true);
     };
-  }, [open, close]);
-
-  // Focus moves INTO the menu when it opens, so the arrows work straight away and a screen reader lands on a choice.
-  useEffect(() => {
-    if (!open) return;
-    const items = focusable(itemsRef.current);
-    const target = focusOnOpenRef.current === 'last'
-      ? items[items.length - 1]
-      : items.find((el) => el.getAttribute('aria-checked') === 'true') ?? items[0];
-    target?.focus();
-    focusOnOpenRef.current = 'checked';
   }, [open]);
 
-  const choose = (id: ChatModeId) => {
-    setMode(id);
-    close(true);
-  };
-
-  const openPersona = () => {
-    setOpen(false);
-    // The picker is a dialog of its own and takes the focus; nothing to restore here.
-    try { window.dispatchEvent(new Event(OPEN_PERSONA_EVENT)); } catch { /* old engines */ }
-  };
-
-  const onTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      focusOnOpenRef.current = e.key === 'ArrowUp' ? 'last' : 'checked';
-      setOpen(true);
-    }
-  };
-
-  const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const items = focusable(itemsRef.current);
-    if (!items.length) return;
-    const at = items.indexOf(document.activeElement as HTMLButtonElement);
-    const move = (to: number) => { e.preventDefault(); items[(to + items.length) % items.length]?.focus(); };
-    switch (e.key) {
-      case 'ArrowDown': move(at + 1); break;
-      case 'ArrowUp': move(at < 0 ? items.length - 1 : at - 1); break;
-      case 'Home': move(0); break;
-      case 'End': move(items.length - 1); break;
-      // Tab leaves a menu (it is not a tab stop of its own); focus continues from the trigger's position.
-      case 'Tab': setOpen(false); break;
-      default: break;
-    }
-  };
-
-  const label = `${t.open}, ${t.current}: ${current.displayModel}`;
-  const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60';
+  const activeTitle = cleanName(current.displayModel) || cleanName(current.label);
 
   return (
     <div ref={wrapRef} className={`relative min-w-0 ${className}`}>
-      {variant === 'desktop' ? (
-        <button
-          ref={triggerRef}
-          type="button"
-          data-testid="model-switcher"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          aria-controls={open ? menuId : undefined}
-          aria-label={label}
-          title={current.displayModel}
-          onClick={() => setOpen((v) => !v)}
-          onKeyDown={onTriggerKeyDown}
-          className={`group inline-flex h-10 min-w-0 items-center gap-1.5 rounded-full pl-3 pr-2 text-[17px] font-medium text-app-text transition-colors duration-200 hover:bg-app-border/10 aria-expanded:bg-app-border/10 [@media(pointer:coarse)]:h-11 ${focusRing}`}
-        >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#1d4ed8] via-[#2563eb] to-[#38bdf8] shadow-[0_0_12px_rgba(37,99,235,0.5)] ring-1 ring-white/20" aria-hidden="true">
-            <svg viewBox="0 0 24 24" className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
-              <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-              <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
-              <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
-            </svg>
-          </span>
-          <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-white">{current.displayModel || current.label}</span>
-          <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-app-muted transition-transform duration-200 group-aria-expanded:rotate-180 motion-reduce:transition-none" />
-        </button>
-      ) : (
-        <button
-          ref={triggerRef}
-          type="button"
-          data-testid="model-switcher"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          aria-controls={open ? menuId : undefined}
-          aria-label={label}
-          title={current.displayModel}
-          onClick={() => setOpen((v) => !v)}
-          onKeyDown={onTriggerKeyDown}
-          className={`group inline-flex h-11 min-w-0 items-center gap-1.5 rounded-full pl-1 pr-2 transition-colors duration-200 hover:bg-app-elevated aria-expanded:bg-app-elevated touch-manipulation ${focusRing}`}
-        >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#1d4ed8] via-[#2563eb] to-[#38bdf8] shadow-[0_0_12px_rgba(37,99,235,0.5)] ring-1 ring-white/20" aria-hidden="true">
-            <svg viewBox="0 0 24 24" className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
-              <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-              <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
-              <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
-            </svg>
-          </span>
-          <span className="min-w-0 truncate text-[14.5px] font-semibold tracking-tight text-white">{current.displayModel || current.label}</span>
-          <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-app-muted transition-transform duration-200 group-aria-expanded:rotate-180 motion-reduce:transition-none" />
-        </button>
-      )}
+      <button
+        type="button"
+        data-testid="model-switcher"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((v) => !v)}
+        className="group inline-flex h-11 min-w-0 items-center gap-2.5 rounded-full px-2 py-1 text-left transition-colors hover:bg-white/[0.06]"
+      >
+        <RocketSphereLogo size={variant === 'phone' ? 30 : 34} />
+        <span className="min-w-0 truncate text-[15.5px] font-semibold tracking-tight text-white">
+          {activeTitle}
+        </span>
+        <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-white/60 transition-transform duration-200 group-aria-expanded:rotate-180" />
+      </button>
 
       {open && (
         <div
           id={menuId}
           role="menu"
-          aria-label={t.menu}
           data-testid="model-menu"
-          onKeyDown={onMenuKeyDown}
-          // No entrance animation on purpose: the viewport clamp positions this panel with an inline transform, and a
-          // keyframe transform would override it for the animation's length and then jump sideways at 320 px.
           {...clamp.props}
-          className="absolute left-0 top-full z-50 mt-1 w-[min(22rem,calc(100vw-1rem))] rounded-[20px] bg-app-elevated p-2 shadow-[0_8px_28px_rgba(0,0,0,0.45)] ring-1 ring-app-border/10"
+          className="absolute left-0 top-full z-50 mt-1.5 w-[min(22rem,calc(100vw-1rem))] rounded-[22px] border border-white/10 bg-[#14161c]/95 p-2 shadow-[0_12px_36px_rgba(0,0,0,0.65)] backdrop-blur-xl"
         >
-          {CHAT_MODES.map((m, i) => {
+          {CHAT_MODES.map((m) => {
             const on = m.id === mode;
+            const mTitle = cleanName(m.displayModel) || cleanName(m.label);
             return (
               <button
                 key={m.id}
-                ref={(el) => { itemsRef.current[i] = el; }}
                 type="button"
                 role="menuitemradio"
                 aria-checked={on}
                 disabled={!m.enabled}
-                title={m.displayModel}
-                onClick={() => choose(m.id)}
-                className="flex min-h-[52px] w-full items-center gap-2 rounded-[12px] p-2 text-left transition-colors duration-200 hover:bg-app-border/10 focus-visible:bg-app-border/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-45 [@media(pointer:coarse)]:min-h-[56px]"
+                onClick={() => { setMode(m.id); setOpen(false); }}
+                className={`flex min-h-[54px] w-full items-center gap-3 rounded-[14px] px-3 py-2 text-left transition-colors hover:bg-white/[0.08] disabled:opacity-45 ${on ? 'bg-white/[0.06]' : ''}`}
               >
-                <span className="flex w-5 shrink-0 justify-center">
-                  {on && <Check size={18} aria-hidden="true" className="text-app-accent" />}
-                </span>
+                <RocketSphereLogo size={26} />
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2 text-[15px] font-semibold leading-5 text-white">
-                    <span>{m.label}</span>
-                    <span className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[11.5px] font-medium text-sky-300">{m.displayModel}</span>
+                  <span className="flex items-center gap-2 text-[14.5px] font-semibold text-white">
+                    <span>{cleanName(m.label)}</span>
+                    <span className="rounded-md bg-sky-500/15 px-1.5 py-0.5 text-[11.5px] font-medium text-sky-300">{mTitle}</span>
                   </span>
-                  <span className={`block text-app-muted ${subText(lang)}`}>{m.description[lang]}</span>
+                  <span className="block text-[13px] text-white/60">{m.description[lang]}</span>
                 </span>
+                {on && <Check size={18} aria-hidden="true" className="shrink-0 text-sky-400" />}
               </button>
             );
           })}
-          <div role="separator" className="my-1 h-px bg-app-border/10" />
+          <div role="separator" className="my-1 h-px bg-white/10" />
           <button
-            ref={(el) => { itemsRef.current[CHAT_MODES.length] = el; }}
             type="button"
             role="menuitem"
-            onClick={openPersona}
-            className="flex min-h-[52px] w-full items-center gap-2 rounded-[12px] p-2 text-left transition-colors duration-200 hover:bg-app-border/10 focus-visible:bg-app-border/10 focus-visible:outline-none [@media(pointer:coarse)]:min-h-[56px]"
+            onClick={() => { setOpen(false); window.dispatchEvent(new Event(OPEN_PERSONA_EVENT)); }}
+            className="flex min-h-[48px] w-full items-center gap-2.5 rounded-[14px] px-3 py-2 text-left transition-colors hover:bg-white/[0.08]"
           >
-            <span className="flex w-5 shrink-0 justify-center"><Sparkles size={18} aria-hidden="true" className="text-app-muted" /></span>
-            <span className={`min-w-0 flex-1 font-medium text-app-text ${subText(lang)}`}>{t.persona}</span>
-            <span className={`min-w-0 max-w-[50%] truncate ${subText(lang)} ${persona.name ? 'text-app-accent' : 'text-app-muted'}`}>
-              {persona.name || t.personaDefault}
+            <Sparkles size={17} className="shrink-0 text-sky-400" />
+            <span className="min-w-0 flex-1 text-[14px] font-medium text-white">
+              {lang === 'en' ? 'Persona' : lang === 'ru' ? 'Персона' : 'პერსონა'}
             </span>
-            <ChevronRight size={16} aria-hidden="true" className="shrink-0 text-app-muted" />
+            <span className="truncate text-[13px] text-sky-300">{persona.name || (lang === 'en' ? 'Default' : 'ნაგულისხმევი')}</span>
+            <ChevronRight size={15} className="shrink-0 text-white/50" />
           </button>
         </div>
       )}
