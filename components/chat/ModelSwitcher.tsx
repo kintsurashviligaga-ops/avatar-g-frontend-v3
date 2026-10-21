@@ -23,7 +23,6 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
-import { Wordmark } from '@/components/brand/Wordmark';
 import { CHAT_MODES, chatModeOption, type ChatModeId, type ChatModeLocale } from '@/lib/chat/chatModes';
 import { useChatMode } from '@/lib/chat/chatModeStore';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
@@ -110,7 +109,7 @@ export interface ModelSwitcherProps {
   className?: string;
 }
 
-export function ModelSwitcher({ variant, locale, brandClassName = 'max-[359px]:hidden', className = '' }: ModelSwitcherProps) {
+export function ModelSwitcher({ variant, locale, className = '' }: ModelSwitcherProps) {
   const lang = toLang(locale);
   const t = COPY[lang];
   const [mode, setMode] = useChatMode();

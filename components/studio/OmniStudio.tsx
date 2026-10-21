@@ -148,7 +148,7 @@ const COMPLETED_SERVICE: Readonly<Record<'image' | 'music' | 'video' | 'avatar' 
   remix: 'video.remix',
 };
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
-import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
+import { ResearchCard, researchStartedNote } from './research';
 import { MusicStudioCard, type MusicDraft } from './music/MusicStudioCard';
 import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './music/musicDraft';
 import { handleMusicVoice } from './music/musicVoiceBridge';
@@ -3329,12 +3329,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [busy, storyboardBusy, queueActiveNow]);
 
   // Auto-grow the composer textarea with its content (capped), like a modern chat.
-  //
-  // `composerWrapped` drives the chat composer's two shapes (Gemini): ONE row — „+“ · the text · mic · Send — while
-  // the text fits a line, and the text on its own full-width line with the controls below once it wraps. LATCHED
-  // until the box is emptied: in the one-row shape the text box is narrower, so wrapped text would fit again on the
-  // wider line and the composer would flip back and forth on every keystroke.
-  const [composerWrapped, setComposerWrapped] = useState(false);
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
@@ -3346,9 +3340,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // ⚠️ An EMPTY box keeps its one-line CSS height: Chrome counts a WRAPPED placeholder in scrollHeight, so sizing an
     // empty box from it grew the phone composer to two lines around nothing (83 px pill, placeholder off the controls).
     el.style.height = input ? `${Math.min(el.scrollHeight, 160)}px` : '';
-    if (!input) setComposerWrapped(false);
-    // One line is 44 px (24 px line + 20 px padding); anything taller has wrapped.
-    else if (input.includes('\n') || el.scrollHeight > 48) setComposerWrapped(true);
   }, [input, mode]);
 
   // ── THE ACTIVE TOOL (docs/DESIGN.md §8) ─────────────────────────────────────────────────────────────────
@@ -3505,8 +3496,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // same sheet opened from the settings' service card — the tools alone, no attachment tiles.
   const [toolSheetOpen, setToolSheetOpen] = useState(false);
   const [toolPickOnly, setToolPickOnly] = useState(false);
-  // The Deep Research and Connectors rows of the plus sheet - an empty list until the server says the feature exists here.
-  const researchExtras = useResearchToolExtras(locale, () => input);
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
