@@ -197,9 +197,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         style={
           isImmersiveWorkspace
             ? { zIndex: 2, height: '100dvh', minHeight: '100dvh', overflow: 'hidden' }
-            // Everything else (landing, auth, legal, admin, the share page, not-found) owns its own header and scrolls
-            // normally — nothing is reserved for bars that no longer exist.
-            : { zIndex: 2 }
+            // The bounded app viewport needs a real scroller for long documents. Admin owns its full layout.
+            : isAdmin ? { zIndex: 2 } : { zIndex: 2, minHeight: 0, overflowY: 'auto', overscrollBehaviorY: 'contain' }
         }
       >
         <ClientErrorBoundary>
