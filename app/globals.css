@@ -4326,3 +4326,30 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
 @media (prefers-reduced-motion: reduce) {
   .sheet-rise, .sheet-fade { animation: none; }
 }
+
+
+/* ── Mobile 100dvh & Overscroll Hard-Lock ── */
+html, body {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  -webkit-overflow-scrolling: touch;
+}
+.app-native-shell,
+.ag-fixed-shell {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+
+/* ── Full-Bleed 100vw x 100dvh Ambient Blue Background ── */
+.ag-fixed-shell {
+  width: 100vw !important;
+  min-height: 100dvh !important;
+  background-image: radial-gradient(ellipse 95% 70% at 78% 100%, rgba(29, 78, 216, 0.38) 0%, rgba(15, 23, 42, 0.2) 50%, rgba(0, 0, 0, 0) 85%) !important;
+  background-repeat: no-repeat !important;
+  background-size: 100% 100% !important;
+}

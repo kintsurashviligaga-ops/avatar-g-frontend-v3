@@ -26,7 +26,7 @@ describe('ModelSwitcher — the trigger', () => {
   it('desktop: the rocket, current mode and a localized closed menu button', () => {
     render(<ModelSwitcher variant="desktop" locale="ka" />);
     const t = trigger();
-    expect(t.textContent).toBe('3.8 Flash');
+    expect(t.textContent).toBe('MyAvatar.ge3.8 Flash');
     expect(t.getAttribute('aria-haspopup')).toBe('menu');
     expect(t.getAttribute('aria-expanded')).toBe('false');
     expect(t.getAttribute('aria-label')).toBe('მოდელის არჩევა, ამჟამად: 3.8 Flash');
@@ -36,8 +36,8 @@ describe('ModelSwitcher — the trigger', () => {
   it('phone: a decorative rocket and readable mode, without the removed provider wordmark', () => {
     render(<ModelSwitcher variant="phone" locale="ka" />);
     const t = trigger();
-    expect(t.textContent).toBe('3.8 Flash');
-    expect(t.querySelector('[aria-hidden="true"] svg')).not.toBeNull();
+    expect(t.textContent).toBe('MyAvatar.ge3.8 Flash');
+    expect(within(t).getByTestId('rocket-mark').getAttribute('src')).toBe('/brand/rocket-mark.png');
     expect(t.getAttribute('aria-label')).toBe('მოდელის არჩევა, ამჟამად: 3.8 Flash');
     expect(within(t).queryByRole('img')).toBeNull();
     expect(t.textContent).not.toContain('Gemini');
@@ -46,7 +46,7 @@ describe('ModelSwitcher — the trigger', () => {
   it('shows the saved mode on first paint', () => {
     window.localStorage.setItem(CHAT_MODE_STORAGE_KEY, 'pro');
     render(<ModelSwitcher variant="desktop" locale="en" />);
-    expect(trigger().textContent).toBe('3.1 Pro');
+    expect(trigger().textContent).toBe('MyAvatar.ge3.1 Pro');
     expect(trigger().getAttribute('aria-label')).toBe('Choose a model, current: 3.1 Pro');
   });
 });
@@ -58,9 +58,9 @@ describe('ModelSwitcher — choosing a model', () => {
     expect(trigger().getAttribute('aria-expanded')).toBe('true');
     expect(radios()).toHaveLength(CHAT_MODES.length);
     expect(radios().map((r) => r.getAttribute('aria-checked'))).toEqual(CHAT_MODES.map((m) => String(m.id === 'fast')));
-    // Every row now has the decorative rocket; only the chosen row adds a check.
-    expect(radios()[0]!.querySelectorAll('svg')).toHaveLength(2);
-    expect(radios()[1]!.querySelectorAll('svg')).toHaveLength(1);
+    // The restored wordmark stays in the trigger; only the chosen row has a check.
+    expect(radios()[0]!.querySelectorAll('svg')).toHaveLength(1);
+    expect(radios()[1]!.querySelectorAll('svg')).toHaveLength(0);
   });
 
   it('a pick is saved to the store the send path reads, closes the menu and returns focus to the trigger', () => {
@@ -70,7 +70,7 @@ describe('ModelSwitcher — choosing a model', () => {
     expect(getChatMode()).toBe('pro');
     expect(window.localStorage.getItem(CHAT_MODE_STORAGE_KEY)).toBe('pro');
     expect(menu()).toBeNull();
-    expect(trigger().textContent).toBe('3.1 Pro');
+    expect(trigger().textContent).toBe('MyAvatar.ge3.1 Pro');
     expect(document.activeElement).toBe(trigger());
   });
 

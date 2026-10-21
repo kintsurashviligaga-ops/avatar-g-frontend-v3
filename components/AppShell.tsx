@@ -176,7 +176,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className={isAdmin ? 'relative block min-h-screen w-full overflow-y-auto overflow-x-hidden bg-[#06060d]' : 'app-native-shell ag-fixed-shell relative flex min-h-[var(--app-screen-height)] w-full flex-col overflow-x-hidden'}
+      className={isAdmin ? 'relative block min-h-screen w-full overflow-y-auto overflow-x-hidden bg-[#06060d]' : 'app-native-shell ag-fixed-shell relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden'}
       style={{ color: 'var(--color-text)', isolation: 'isolate' }}
     >
       {/* Page-aware 4D AI environment — adapts mood per route */}
@@ -196,7 +196,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="relative flex-1 w-full focus:outline-none"
         style={
           isImmersiveWorkspace
-            ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
+            ? { zIndex: 2, height: '100dvh', minHeight: '100dvh', overflow: 'hidden' }
             // Everything else (landing, auth, legal, admin, the share page, not-found) owns its own header and scrolls
             // normally — nothing is reserved for bars that no longer exist.
             : { zIndex: 2 }

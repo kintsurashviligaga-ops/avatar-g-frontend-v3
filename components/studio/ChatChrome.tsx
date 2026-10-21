@@ -1136,7 +1136,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             used to sit beside the name (and in the header), reading as a second logo; the cut-out has no box and
             lives inside the wordmark's single role="img". */}
         <div className="flex items-center justify-between px-4 pb-3 pt-3">
-          <span className="text-[20px] font-semibold tracking-tight text-white">MyAvatar</span>
+          <span className="flex h-10 min-w-0 items-center"><Wordmark size="sm" mark /></span>
           <div className="flex items-center gap-2">
             <button
               type="button"
