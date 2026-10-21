@@ -13111,7 +13111,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             .map(toolEntry),
         }))
         .filter((g) => g.tools.length > 0)}
-      extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
+      extras={[]}
       activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id, 'tool-sheet'); }}
     />
