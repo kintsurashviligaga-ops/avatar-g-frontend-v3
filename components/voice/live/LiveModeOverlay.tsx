@@ -4,7 +4,7 @@ import React, { useState, type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Menu,
-  MoreHorizontal,
+  Subtitles,
   Video,
   VideoOff,
   SwitchCamera,
@@ -34,6 +34,7 @@ import LiveDock from "./LiveDock";
 import { liveCurrentStep, type LiveJobLine } from "./LiveActivityFeed";
 import type { LiveActivityItem } from './liveActivity';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
+import LiveActionCards from './LiveActionCards';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -97,8 +98,14 @@ export function LiveModeOverlay({
   activity,
   audioBlocked,
   onResumeAudio,
+  actions = [],
+  onOpenAction,
+  extraControls,
+  showCaptions = true,
 }: LiveModeOverlayProps) {
   const [copied, setCopied] = useState(false);
+  const [captionsOn, setCaptionsOn] = useState(true);
+  const [dismissedLinks, setDismissedLinks] = useState<ReadonlySet<string>>(() => new Set());
   const t = LIVE_OVERLAY_STRINGS[locale];
   const dialogRef = useDialogA11y<HTMLDivElement>(!(docked || isDocked), onEnd);
 
@@ -106,7 +113,9 @@ export function LiveModeOverlay({
   const isListening = status === 'listening';
 
   // ბოლო ნათქვამი ფრაზა (თქვენს რეფერენსში: "გამარჯობა! რით შემიძლია დაგეხმაროთ?")
-  const lastAgentCaption = [...captions].reverse().find((c) => c.role === 'assistant')?.text || '';
+  const lastAgentLine = [...captions].reverse().find((c) => c.role === 'assistant');
+  const lastUserLine = [...captions].reverse().find((c) => c.role === 'user');
+  const lastAgentCaption = lastAgentLine?.text || '';
 
   const levels = getLevels ? getLevels() : { input: 0, output: 0 };
   const activeLevel = isSpeaking ? levels.output : isListening ? levels.input : 0;
@@ -120,12 +129,16 @@ export function LiveModeOverlay({
   };
 
     if (docked || isDocked) {
+    const linkCard = actions.find((card) => card.action.type === 'open_url' && !dismissedLinks.has(card.id));
+    const link = linkCard?.action.type === 'open_url'
+      ? { id: linkCard.id, url: linkCard.action.url, title: linkCard.action.title }
+      : null;
     const dock = (
       <LiveDock
         locale={locale}
         status={status}
         statusLabel={t.status[status]}
-        captions={captions}
+        captions={showCaptions && captionsOn ? captions : []}
         step={liveCurrentStep(activity || [], locale)}
         muted={muted}
         getLevels={getLevels}
@@ -135,6 +148,8 @@ export function LiveModeOverlay({
         {...(onStopSpeaking ? { onStopSpeaking } : {})}
         pendingRun={pendingRun}
         {...(onCancelRun ? { onCancelRun } : {})}
+        link={link}
+        onDismissLink={(id) => setDismissedLinks((previous) => new Set(previous).add(id))}
       />
     );
     return typeof document === "undefined" ? dock : createPortal(dock, document.body);
@@ -197,18 +212,20 @@ export function LiveModeOverlay({
               <SwitchCamera size={20} />
             </button>
           )}
-          <button
+          {showCaptions && <button
             type="button"
+            onClick={() => setCaptionsOn((value) => !value)}
             className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white/90 backdrop-blur-md transition-all hover:bg-white/15 active:scale-95"
-            aria-label="Settings"
+            aria-label={t.captions}
+            aria-pressed={captionsOn}
           >
-            <MoreHorizontal size={20} />
-          </button>
+            <Subtitles size={20} />
+          </button>}
         </div>
       </div>}
 
       {/* 4. ცენტრალური სუბტიტრები (მოტივტივე რეალურ დროში) */}
-      <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-start px-6 pt-10">
+      <div data-testid="live-content" className="relative z-10 mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col justify-start overflow-y-auto overscroll-contain px-6 pb-3 pt-10">
         {error ? (
           <LiveErrorPanel
             icon={isMicErrorCode(error) ? <MicOff size={32} /> : <WifiOff size={32} />}
@@ -229,7 +246,7 @@ export function LiveModeOverlay({
           </LiveErrorPanel>
         ) : (
           <div className="space-y-4 animate-fade-in">
-            <p data-testid="live-status" role="status" className="text-[16px] leading-relaxed text-white/70">{t.status[status]}</p>
+            <p data-testid="live-status" aria-live="polite" className="text-[16px] leading-relaxed text-white/70">{t.status[status]}</p>
             {audioBlocked && onResumeAudio && (
               <button type="button" onClick={onResumeAudio}
                 className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[16px] font-semibold text-black">
@@ -237,12 +254,15 @@ export function LiveModeOverlay({
               </button>
             )}
             {/* დიდი რეალურ დროში გამომავალი ქართული ტექსტი */}
-            <p className="text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]">
-              {lastAgentCaption}
-            </p>
+            {showCaptions && captionsOn && <div role="log" aria-live="polite" aria-relevant="additions" aria-label={t.captions} className="space-y-3">
+              {lastUserLine && <p aria-hidden={lastUserLine.final ? undefined : true} className="text-[16px] leading-relaxed text-white/60">{lastUserLine.text}</p>}
+              {lastAgentLine && <p aria-hidden={lastAgentLine.final ? undefined : true} className="text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]">
+                {lastAgentCaption}
+              </p>}
+            </div>}
 
             {/* AI მინიშნება და მოქმედებების ღილაკები */}
-            {lastAgentCaption && (
+            {showCaptions && captionsOn && lastAgentCaption && (
               <div className="flex flex-col gap-2 pt-2">
                 <div className="flex items-center gap-4 text-xs text-white/50">
                   <button type="button" className="transition-colors hover:text-white">
@@ -265,12 +285,13 @@ export function LiveModeOverlay({
                 </span>
               </div>
             )}
+            {onOpenAction && <LiveActionCards cards={actions} locale={locale} onOpen={onOpenAction} className="-mx-6" />}
           </div>
         )}
       </div>
 
       {/* 5. ქვედა სამართავი პანელი (Gemini Live Controls) */}
-      <div className="relative z-20 flex w-full flex-col items-center justify-center px-4 pb-10 pt-4">
+      <div data-testid="live-controls" className="relative z-20 flex w-full shrink-0 flex-col items-center justify-center px-4 pb-10 pt-4">
         {/* "Tap to interrupt" ღილაკი, როდესაც აგენტი საუბრობს */}
         {!error && isSpeaking && onStopSpeaking && (
           <button
@@ -281,6 +302,7 @@ export function LiveModeOverlay({
             Tap to interrupt
           </button>
         )}
+        {!error && extraControls && <div className="mb-3 flex max-w-full flex-wrap items-center justify-center gap-3">{extraControls}</div>}
 
         {/* 5 ჰორიზონტალური ღილაკი ზუსტად რეფერენსის მიხედვით */}
         <div className="flex w-full max-w-sm items-center justify-center gap-3.5 sm:gap-5">

@@ -289,6 +289,9 @@ describe('voice-to-action', () => {
       await waitFor(() => expect(lastToolResponse(ws)).toBeTruthy());
       expect(artifacts).toEqual([{ title: 'Hello', language: 'typescript', code: 'export const x = 1;' }]);
       expect(lastToolResponse(ws)!.toolResponse.functionResponses[0]).toMatchObject({ id: 'k1', response: { ok: true } });
+      // Showing the canvas now docks the call; its full-screen action card remains available on Expand.
+      expect(await screen.findByTestId('live-dock')).toBeTruthy();
+      fireEvent.click(screen.getByTestId('live-dock-expand'));
       expect(await screen.findByText('Hello')).toBeTruthy();
 
       act(() => ws.receive({ toolCallCancellation: { ids: ['k1'] } }));
