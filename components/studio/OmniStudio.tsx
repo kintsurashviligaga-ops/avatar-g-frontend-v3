@@ -12504,8 +12504,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 runTool();
-                setInput('');
-                if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
+                // The accepted send path clears the composer; failed/auth-gated sends keep the draft.
               }
             }}
             onFocus={() => setTimeout(() => taRef.current?.scrollIntoView({ block: 'nearest' }), 120)}
@@ -12642,11 +12641,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* A product ad and a swap render through the Cap-3 queue, not `busy`: their Run stays on screen beside Stop
                 while another render runs (their panel buttons never had a busy gate; Stop must not be the only choice). */}
             {busy && !recording && !transcribing && canRun && (activeTool === 'product' || activeTool === 'swap') && (
-              <button type="button" onClick={() => {
-                        runTool();
-                        setInput('');
-                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
-                      }} aria-label={runLabel} title={runLabel}
+              <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
                 <Send size={17} aria-hidden="true" />
               </button>
@@ -12737,20 +12732,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {canRun && !composerRunAside && (
                   chatOnly ? (
                     // Gemini's send: a filled circle with an up-arrow — the one accent-filled control in the chat.
-                    <button type="button" onClick={() => {
-                        runTool();
-                        setInput('');
-                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
-                      }} aria-label={runLabel} title={runLabel}
+                    <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
                       className={`${chatRound} ml-0.5 bg-app-accent text-app-bg hover:opacity-90`}>
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={() => {
-                        runComposer();
-                        setInput('');
-                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
-                      }} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
+                    <button type="button" onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
                       className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
                       {composerQuote ? (
                         <>

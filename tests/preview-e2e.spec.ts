@@ -70,6 +70,10 @@ test('a guest chat turn streams an assistant reply (keep-alive comments are invi
   const box = page.getByPlaceholder(COMPOSER);
   await box.fill('გამარჯობა');
   await box.press('Enter');
+  await expect(box).toHaveValue('გამარჯობა\n');
+  expect(posts).toEqual([]);
+  await box.press('Control+Enter');
+  await expect(box).toHaveValue('');
   await expect(page.getByText('გამარჯობა! რით დაგეხმარო?')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(': keep-alive')).toHaveCount(0);
   expect(posts).toEqual(['/api/chat/gemini']);
@@ -86,7 +90,7 @@ test('a guest asking for a paid tool gets sign-in, and nothing is sent', async (
   await openHome(page);
   const box = page.getByPlaceholder(COMPOSER);
   await box.fill('გამიკეთე ვიდეო ზღვაზე');
-  await box.press('Enter');
+  await box.press('Control+Enter');
   await expect(page.locator('input[type="email"]')).toBeVisible();
   await page.waitForTimeout(500);
   expect(posts).toEqual([]);
