@@ -13102,11 +13102,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       locale={locale}
       title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
       // The service catalog's categories (lib/catalog/nav.ts) — the same groups as the sidebar, every tool listed.
-      sections={toolGroups().map((g) => ({
-        id: g.id,
-        label: g.label[locale === 'en' || locale === 'ru' ? locale : 'ka'],
-        tools: g.tools.map(toolEntry),
-      }))}
+      sections={toolGroups()
+        .map((g) => ({
+          id: g.id,
+          label: g.label[locale === 'en' || locale === 'ru' ? locale : 'ka'],
+          tools: g.tools
+            .filter((t) => !['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation'].includes(t))
+            .map(toolEntry),
+        }))
+        .filter((g) => g.tools.length > 0)}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
       activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id, 'tool-sheet'); }}
