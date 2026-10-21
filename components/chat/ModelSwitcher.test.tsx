@@ -23,29 +23,31 @@ beforeEach(() => {
 });
 
 describe('ModelSwitcher — the trigger', () => {
-  it('desktop: a muted „Gemini“, the current mode and a closed menu button', () => {
+  it('desktop: the rocket, current mode and a localized closed menu button', () => {
     render(<ModelSwitcher variant="desktop" locale="ka" />);
     const t = trigger();
-    expect(t.textContent).toBe('Gemini3.8 Flash');
+    expect(t.textContent).toBe('3.8 Flash');
     expect(t.getAttribute('aria-haspopup')).toBe('menu');
     expect(t.getAttribute('aria-expanded')).toBe('false');
-    expect(t.getAttribute('aria-label')).toBe('მოდელის არჩევა, ამჟამად: Gemini 3.8 Flash');
+    expect(t.getAttribute('aria-label')).toBe('მოდელის არჩევა, ამჟამად: 3.8 Flash');
     expect(menu()).toBeNull();
   });
 
-  it('phone: the wordmark and the mode in the accent; the wordmark classes come from the header', () => {
-    render(<ModelSwitcher variant="phone" locale="ka" brandClassName="max-[359px]:hidden md:hidden" />);
+  it('phone: a decorative rocket and readable mode, without the removed provider wordmark', () => {
+    render(<ModelSwitcher variant="phone" locale="ka" />);
     const t = trigger();
-    expect(within(t).getByRole('img', { hidden: true }).getAttribute('aria-label')).toBe('MyAvatar.ge');
-    expect(within(t).getByText('3.8 Flash').className).toContain('text-app-accent');
-    expect(t.querySelector('.md\\:hidden')).not.toBeNull();
+    expect(t.textContent).toBe('3.8 Flash');
+    expect(t.querySelector('[aria-hidden="true"] svg')).not.toBeNull();
+    expect(t.getAttribute('aria-label')).toBe('მოდელის არჩევა, ამჟამად: 3.8 Flash');
+    expect(within(t).queryByRole('img')).toBeNull();
+    expect(t.textContent).not.toContain('Gemini');
   });
 
   it('shows the saved mode on first paint', () => {
     window.localStorage.setItem(CHAT_MODE_STORAGE_KEY, 'pro');
     render(<ModelSwitcher variant="desktop" locale="en" />);
-    expect(trigger().textContent).toBe('Gemini3.1 Pro');
-    expect(trigger().getAttribute('aria-label')).toBe('Choose a model, current: Gemini 3.1 Pro');
+    expect(trigger().textContent).toBe('3.1 Pro');
+    expect(trigger().getAttribute('aria-label')).toBe('Choose a model, current: 3.1 Pro');
   });
 });
 
@@ -56,9 +58,9 @@ describe('ModelSwitcher — choosing a model', () => {
     expect(trigger().getAttribute('aria-expanded')).toBe('true');
     expect(radios()).toHaveLength(CHAT_MODES.length);
     expect(radios().map((r) => r.getAttribute('aria-checked'))).toEqual(CHAT_MODES.map((m) => String(m.id === 'fast')));
-    // The check mark is drawn only on the chosen row.
-    expect(radios()[0]!.querySelector('svg')).not.toBeNull();
-    expect(radios()[1]!.querySelector('svg')).toBeNull();
+    // Every row now has the decorative rocket; only the chosen row adds a check.
+    expect(radios()[0]!.querySelectorAll('svg')).toHaveLength(2);
+    expect(radios()[1]!.querySelectorAll('svg')).toHaveLength(1);
   });
 
   it('a pick is saved to the store the send path reads, closes the menu and returns focus to the trigger', () => {
@@ -68,7 +70,7 @@ describe('ModelSwitcher — choosing a model', () => {
     expect(getChatMode()).toBe('pro');
     expect(window.localStorage.getItem(CHAT_MODE_STORAGE_KEY)).toBe('pro');
     expect(menu()).toBeNull();
-    expect(trigger().textContent).toBe('Gemini3.1 Pro');
+    expect(trigger().textContent).toBe('3.1 Pro');
     expect(document.activeElement).toBe(trigger());
   });
 
@@ -90,6 +92,8 @@ describe('ModelSwitcher — choosing a model', () => {
     fireEvent.click(trigger());
     expect(within(menu()!).getByText('Быстрая помощь на каждый день')).toBeTruthy();
     expect(within(menu()!).getByText('Персона')).toBeTruthy();
+    expect(within(menu()!).getByText('По умолчанию')).toBeTruthy();
+    expect(trigger().getAttribute('aria-label')).toBe('Выбрать модель, сейчас: 3.8 Flash');
   });
 
   it('Georgian descriptions keep 16 px on a 1.6 line; Latin ones take Gemini’s quieter size', () => {
@@ -183,12 +187,12 @@ describe('ModelSwitcher — the persona row', () => {
     render(<ModelSwitcher variant="desktop" locale="en" />);
     fireEvent.click(trigger());
     const name = () => within(within(menu()!).getByRole('menuitem')).getAllByText(/./).find((el) => el.className.includes('truncate'))!;
-    expect(name().className).toContain('text-app-accent');
+    expect(name().className).toContain('text-sky-300');
     expect(name().textContent).not.toBe('Default');
     act(() => { selectPersona(''); });
     expect(window.localStorage.getItem(PERSONA_STORAGE_KEY)).toBe('');
     expect(name().textContent).toBe('Default');
-    expect(name().className).toContain('text-app-muted');
+    expect(name().className).toContain('text-white/60');
   });
 });
 

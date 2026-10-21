@@ -148,7 +148,11 @@ test.describe('voice mode, end to end', () => {
     expect(s1.controls.length).toBeGreaterThan(3);
     expect(s1.results).toEqual([]);
 
-    // 2 — „click Music": the sidebar's row is pressed like a tap, the call docks, the music studio opens.
+    // 2 — follow the visible composer Tools menu; studios no longer live in the thread sidebar.
+    expect(await live.call('click', { target: 'ხელსაწყოები' })).toMatchObject({ ok: true });
+    // The user reveals the lower row in the scrollable sheet; the agent only operates visible controls.
+    await page.getByRole('dialog', { name: 'ხელსაწყოები' }).getByRole('button', { name: /^მუსიკა / }).scrollIntoViewIfNeeded();
+    await expect.poll(async () => (await screen()).controls.some(c => c.name.startsWith('მუსიკა'))).toBe(true);
     const clicked = await live.call('click', { target: 'მუსიკა' });
     expect(clicked).toMatchObject({ ok: true, summary: expect.stringMatching(/Pressed/) });
     await expect(page.getByTestId('live-dock')).toBeVisible();
@@ -166,7 +170,8 @@ test.describe('voice mode, end to end', () => {
     expect(box).toBeTruthy();
     const typed = await live.call('type_text', { target: box!.id, text: 'მშვიდი პიანინო წვიმაში', submit: 'on' });
     expect(typed).toMatchObject({ ok: true, summary: expect.stringMatching(/NOT submitted/) });
-    await expect(page.getByRole('textbox', { name: 'აღწერე სიმღერა' })).toHaveValue('მშვიდი პიანინო წვიმაში');
+    // The studio and composer share this draft; the current layout returns to the composer after typing.
+    await expect(page.getByTestId('composer-input')).toHaveValue('მშვიდი პიანინო წვიმაში');
 
     // 5 — a website is read (title, text, links) and put on screen as a link to tap.
     const read = await live.call('read_webpage', { url: 'example.ge' });

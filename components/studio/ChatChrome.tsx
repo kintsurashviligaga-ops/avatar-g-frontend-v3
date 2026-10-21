@@ -22,10 +22,10 @@ import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Music2, PenSquare, Search, Wallet,
+  X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeft, ScanFace, PenSquare, Search, Wallet, Volume2,
 } from 'lucide-react';
 import { TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
-import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
+import { toolGroups } from '@/lib/catalog/nav';
 import { isStudioPath } from '@/lib/routing/landing';
 import { keepOpenChat } from '@/lib/chat/keepOpenChat';
 
@@ -64,7 +64,7 @@ import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import { isTwinEnabled } from '@/lib/twin/flag';
 import { twinCopy } from '@/components/twin/copy';
 import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
-import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
+import { type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { paymentReturnMessage, pollBogOrder } from '@/lib/billing/bogCheckoutClient';
@@ -72,8 +72,7 @@ import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
-import { trackCategoryViewed } from '@/lib/analytics/serviceEvents';
-import { getService, searchServices, serviceHref, type ServiceCategory, type ServiceDefinition } from '@/lib/catalog/services';
+import { searchServices, serviceHref, type ServiceDefinition } from '@/lib/catalog/services';
 import { ServiceSearchResults } from '@/components/studio/ServiceSearchResults';
 import { formatCreditBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
@@ -90,7 +89,7 @@ import { requestMicRelease } from '@/lib/voice/micBus';
 import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
-import { ResearchHost, ResearchSidebarRow } from '@/components/studio/research';
+import { ResearchHost } from '@/components/studio/research';
 import { dedupeConversations } from '@/lib/chat/conversationSync';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -624,7 +623,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [personaOpen, setPersonaOpen] = useState(false);
   const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false);
   const voiceV2 = process.env.NEXT_PUBLIC_VOICE_EXPERIENCE_V2 === '1';
-  // Only used for the "a persona is active" dot — read once on mount (localStorage is not reactive).
+  // Keep the active Live custom persona synchronized with the picker and composer.
   const [activePersonaId, setActivePersonaId] = useState('');
   useEffect(() => { setActivePersonaId(loadSelectedPersonaId()); }, []);
   // The persona is chosen in three places now — this sidebar row, the model switcher's persona row (both open the
@@ -642,22 +641,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       window.removeEventListener(OPEN_PERSONA_EVENT, onOpen);
     };
   }, []);
-  /**
-   * ⚠️ THE ROW SAID "პერსონა" AND A DOT. The dot told you a persona was active and nothing else — so the
-   * one thing you actually want to know, WHO you are talking to, required opening the picker to find out.
-   * A persona changes the assistant's tone and which studio it reaches for; leaving that unnamed on the
-   * only always-visible surface is the difference between a setting and a setting you can trust.
-   *
-   * Custom personas are resolved from local storage too, so a user's own specialist is named like the
-   * built-ins rather than falling back to the generic label.
-   */
-  const activePersonaName = useMemo(() => {
-    if (!activePersonaId) return '';
-    const lang: 'ka' | 'en' | 'ru' = locale === 'en' || locale === 'ru' ? locale : 'ka';
-    const found = BUILT_IN_PERSONAS.find((p: Persona) => p.id === activePersonaId)
-      ?? loadCustomPersonas().find((p: Persona) => p.id === activePersonaId);
-    return found ? personaName(found, lang) : '';
-  }, [activePersonaId, locale]);
+
   // Desktop/iPad (>=md) COLLAPSE. On mobile the drawer is toggled by `sidebarOpen`; at >=md the sidebar was
   // permanently pinned with no way to hide it. This lets desktop/iPad users collapse it (persisted) — when
   // collapsed the aside is md:hidden and the top bar shows a re-open control + the brand so nothing is lost.
@@ -772,23 +756,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // The menu is the service catalog's categories (lib/catalog/nav.ts): Agent G first, then CREATE and WORK. Every tool is
   // always listed: the „Plugins" switches that hid tools from it were retired 2026-10-09 (the owner: „confusing").
   const navGroups = useMemo(() => toolGroups().filter((g) => g.tools.length > 0), []);
-  const navCategories = useMemo(() => navGroups.filter((g) => g.id !== 'agent-g'), [navGroups]);
-  // A category row opens its first tool; its chevron shows the rest. The category holding the active tool opens itself.
-  const [openCats, setOpenCats] = useState<ReadonlySet<string>>(() => new Set());
-  useEffect(() => {
-    if (!activeTool) return;
-    const g = navCategories.find((x) => x.tools.indexOf(activeTool) > 0);
-    if (g) setOpenCats((prev) => (prev.has(g.id) ? prev : new Set([...prev, g.id])));
-  }, [activeTool, navCategories]);
-  const toggleCat = useCallback((id: string) => {
-    // §50 — a category the user opens (not the auto-open above, which follows the active tool).
-    if (!openCats.has(id)) trackCategoryViewed(id as ServiceCategory | 'agent-g', 'sidebar');
-    setOpenCats((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, [openCats]);
   const [searchOpen, setSearchOpen] = useState(false);
   // VOICE CONTROL (a Live call's open_panel, lib/voice/liveTools.ts): open the chat search, or show the history — the
   // phone's drawer, or a desktop sidebar that was collapsed to its rail.
@@ -1015,7 +982,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const tDelete = locale === 'en' ? 'Delete' : locale === 'ru' ? 'Удалить' : 'წაშლა';
   const tNewSession = locale === 'en' ? 'New session' : locale === 'ru' ? 'Новая сессия' : 'ახალი სესია';
   const tSearchRow = locale === 'en' ? 'Search' : locale === 'ru' ? 'Поиск' : 'ძებნა';
-  const tMore = locale === 'en' ? 'More' : locale === 'ru' ? 'Ещё' : 'მეტი';
   const tRecent = locale === 'en' ? 'Recent' : locale === 'ru' ? 'Недавние' : 'ბოლო';
   const tBalance = locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი';
   const tCollapse = locale === 'en' ? 'Collapse sidebar' : locale === 'ru' ? 'Свернуть панель' : 'გვერდითი პანელის დაკეცვა';
@@ -1520,6 +1486,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               )}
 
               <div className={settingsDivider} />
+              {voiceV2 && <button type="button" className={drawerRow}
+                onClick={() => { setMenuOpen(false); setVoiceSettingsOpen(true); }}>
+                <Volume2 className="h-[18px] w-[18px] text-app-muted" aria-hidden="true" />
+                {VOICE_SETTINGS_LABEL[lang]}
+              </button>}
               {/* SECTION 2 — APPEARANCE */}
               <p className={sectionHdr}>{locale === 'en' ? 'Appearance' : locale === 'ru' ? 'Внешний вид' : 'გარეგნობა'}</p>
               <p className="px-2 pb-1.5 pt-1 text-[12px] text-app-muted">{t.theme}</p>
@@ -1638,7 +1609,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             ? <VoicePreferencesProvider userId={voiceV2 ? liveUid : ''}><GeminiLiveConversation userId={liveUid} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)}
                 // The persona the chat is using speaks on the call too (read at open time; localStorage is not reactive).
                 personaId={loadSelectedPersonaId() || undefined}
-                customPersona={loadCustomPersonas().find((p: Persona) => p.id === loadSelectedPersonaId())} /></VoicePreferencesProvider>
+                customPersona={loadCustomPersonas().find((p: Persona) => p.id === activePersonaId)} /></VoicePreferencesProvider>
             : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />
       )}
 

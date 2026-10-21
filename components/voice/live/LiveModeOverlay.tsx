@@ -167,7 +167,7 @@ export function LiveModeOverlay({
   }
 
   const overlay = (
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t.title} tabIndex={-1} data-theme="dark"
+    <div ref={dialogRef} role="dialog" aria-modal="true" data-live-call-ui data-live-status={status} aria-label={t.title} tabIndex={-1} data-theme="dark"
       className="fixed inset-0 z-[130] flex select-none flex-col justify-between overflow-hidden bg-black text-white">
       {/* 1. კამერის ფონი (თუ კამერა ჩართულია) */}
       <video

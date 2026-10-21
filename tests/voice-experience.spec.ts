@@ -14,8 +14,10 @@ for (const [locale,title,personality,voice] of [
   await expect(page.locator('html')).not.toHaveAttribute('data-live-call','1',{timeout:10000});
   await page.goto('/'+locale+'/dashboard?tool=chat');
   const menu=locale==='ka'?'მენიუ':locale==='en'?'Menu':'Меню';
+  const settings=locale==='ka'?'პარამეტრები':locale==='en'?'Settings':'Настройки';
   const openMenu=page.getByRole('button',{name:menu,exact:true}).filter({visible:true}).first();
   if(await openMenu.isVisible()) await openMenu.click();
+  await page.getByRole('button',{name:settings,exact:true}).filter({visible:true}).click();
   await page.getByRole('button',{name:title,exact:true}).click();
   const panel=page.getByRole('region',{name:title});
   await expect(panel).toBeVisible();
@@ -25,6 +27,7 @@ for (const [locale,title,personality,voice] of [
   await page.screenshot({path:info.outputPath('settings-'+locale+'-'+size.name+'.png')});
   await page.reload();
   if(await openMenu.isVisible()) await openMenu.click();
+  await page.getByRole('button',{name:settings,exact:true}).filter({visible:true}).click();
   await page.getByRole('button',{name:title,exact:true}).click();
   await expect(page.getByRole('combobox',{name:personality,exact:true})).toHaveValue('coach');
   await expect(page.getByRole('combobox',{name:voice,exact:true})).toHaveValue('Charon');

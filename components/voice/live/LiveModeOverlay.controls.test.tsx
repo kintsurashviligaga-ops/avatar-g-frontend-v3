@@ -2,8 +2,19 @@ import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import LiveModeOverlay, { LIVE_OVERLAY_STRINGS } from './LiveModeOverlay';
 import { LIVE_DOCK_STRINGS } from './LiveDock';
+import { findControl, guardOf, snapshotControls } from '@/lib/voice/liveUi';
 
 const handlers = () => ({ onToggleMute: jest.fn(), onToggleCamera: jest.fn(), onEnd: jest.fn() });
+
+test('the agent sees app controls through the full call, but cannot press its own call controls', () => {
+  render(<><button type="button">Music studio</button><LiveModeOverlay locale="en" status="listening"
+    captions={[]} muted={false} cameraOn={false} {...handlers()} /></>);
+  const end = screen.getByRole('button', { name: LIVE_OVERLAY_STRINGS.en.end });
+  expect(guardOf(end)).toBe('call');
+  expect(snapshotControls(document).controls.map(c => c.name)).toEqual(['Music studio']);
+  expect(findControl(LIVE_OVERLAY_STRINGS.en.end, document)).toBeNull();
+  expect(findControl('Music studio', document)).toBe(screen.getByRole('button', { name: 'Music studio' }));
+});
 
 test.each(['ka', 'en', 'ru'] as const)('%s controls are unique, localized and expose their state', (locale) => {
   const t = LIVE_OVERLAY_STRINGS[locale];
