@@ -135,14 +135,31 @@ const shape = (attempts: Array<{ model: string; code?: string; usage?: unknown; 
 const textOf = (frames: ChatFrame[]) => frames.map((f) => ('text' in f ? f.text : '')).join('');
 const kinds = (frames: ChatFrame[]) => frames.map((f) => Object.keys(f)[0]);
 
+/** Vertex AI with Workload Identity: the only transport (MASTER TASK v3.1). The models themselves are mocked above. */
+const WIF = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
+const savedEnv: Record<string, string | undefined> = {};
+
 let warnSpy: jest.SpyInstance;
 beforeEach(() => {
   mockModels.clear();
   mockCreateGoogle.mockClear();
   warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  for (const k of [...Object.keys(WIF), 'GEMINI_TRANSPORT']) savedEnv[k] = process.env[k];
+  delete process.env.GEMINI_TRANSPORT;
+  Object.assign(process.env, WIF);
 });
 afterEach(() => {
   warnSpy.mockRestore();
+  for (const [k, v] of Object.entries(savedEnv)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
 });
 
 // ─── streamGeminiChat ────────────────────────────────────────────────────────
@@ -163,7 +180,11 @@ describe('streamGeminiChat — happy path', () => {
     expect(textOf(frames)).toBe('Hello!');
     expect(frames[frames.length - 1]).toEqual({ usage: { model: 'gemini-3.8-flash', inputTokens: 12, outputTokens: 7, totalTokens: 19 } });
     expect(res.usage).toEqual({ inputTokens: 12, outputTokens: 7, totalTokens: 19 });
-    expect(mockCreateGoogle).toHaveBeenCalledWith({ apiKey: 'test-key' });
+    // The SDK runs on Vertex (lib/ai/google/provider): its publisher base URL, never the caller's key.
+    expect(mockCreateGoogle).toHaveBeenCalledWith(expect.objectContaining({
+      baseURL: 'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google',
+    }));
+    expect(JSON.stringify(mockCreateGoogle.mock.calls)).not.toContain('test-key');
   });
 
   it('emits one deduped, http(s)-only sources frame at the end, before usage, and counts grounding queries', async () => {
@@ -553,8 +574,9 @@ describe('streamGeminiChat — terminal failures', () => {
     expect(second.doStreamCalls).toHaveLength(0);
   });
 
-  it('a missing API key fails as auth without touching the provider', async () => {
-    const { frames, promise } = run(['gemini-3.8-flash'], { apiKey: '   ' });
+  it('an unconfigured Vertex fails as auth without touching the provider, whatever key is passed', async () => {
+    delete process.env.GCP_PROJECT_ID;
+    const { frames, promise } = run(['gemini-3.8-flash'], { apiKey: 'test-key' });
     const res = await promise;
     expect(res).toMatchObject({ ok: false, model: null, error: { code: 'auth', retryable: false } });
     expect(mockCreateGoogle).not.toHaveBeenCalled();

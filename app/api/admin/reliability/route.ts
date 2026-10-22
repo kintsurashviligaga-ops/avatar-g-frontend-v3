@@ -16,7 +16,8 @@ import { BANK_FEE_RATE } from '@/lib/financials/constants';
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
 import { atlasConfigured } from '@/lib/ai/atlasClient';
 import { deepseekConfigured } from '@/lib/ai/deepseekClient';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleTransportBlocker } from '@/lib/ai/google/transport';
+import { vertexConfig } from '@/lib/veo/vertexAuth';
 import { runwayModel } from '@/lib/ai/runway';
 
 export const dynamic = 'force-dynamic';
@@ -78,17 +79,18 @@ export async function GET(request: NextRequest) {
     // "is generation degraded to deterministic beats?" signal.
     const has = (...names: string[]) => names.some((n) => String(process.env[n] || '').trim().length > 0);
     const providers = {
-    vertex_veo: has('GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_VERTEX_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'GEMINI_API_KEY'),
-    gemini: has('GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'),
-    lyria_music: has('GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_VERTEX_PROJECT', 'GEMINI_API_KEY'),
+    // Vertex AI is the only Google transport (MASTER TASK v3.1): an AI Studio key makes none of these available.
+    vertex_veo: vertexConfig() !== null,
+    gemini: !googleTransportBlocker(),
+    lyria_music: !googleTransportBlocker(),
     supabase: has('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'),
     stripe_bog: has('STRIPE_SECRET_KEY', 'BOG_CLIENT_ID'),
   };
     // llmText is Gemini ONLY (PROJECT_MASTER R7): a bound DeepSeek / Atlas / Anthropic key no longer plans any scene.
-    const scenePlanningLive = !!resolveGeminiKey();
+    const scenePlanningLive = !googleTransportBlocker();
 
     const warnings: string[] = [];
-    if (!scenePlanningLive) warnings.push('No Gemini key bound — scene planning falls back to deterministic beats (llmText has no other provider). Bind GEMINI_API_KEY.');
+    if (!scenePlanningLive) warnings.push('Vertex AI is not configured — scene planning falls back to deterministic beats (llmText has no other provider).');
     // TRACK 4 — HeyGen integration gate: the avatar/talking-photo path silently drops without this key.
     if (!providers.vertex_veo) warnings.push('Vertex AI / Veo credentials not bound — video generation requires Google Cloud / Vertex AI.');
     for (const s of reliability.perService) {

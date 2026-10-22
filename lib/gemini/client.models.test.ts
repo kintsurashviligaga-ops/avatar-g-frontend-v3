@@ -2,18 +2,36 @@
 /**
  * generateWithGemini's per-call `model` (llmText's geminiModel ← VEO_DIRECTOR_MODEL) gets the same guard as the tier
  * env (lib/ai/google/retiredModels.test.ts): a retired, empty or malformed id never reaches the Google URL — the tier
- * model answers instead. No network: fetch is a stub.
+ * model answers instead. No network: fetch and the Vertex token are stubs. v3.1: the URL is Vertex AI's, never the
+ * Developer API's, whatever AI Studio key is set.
  */
+jest.mock('../veo/vertexAuth', () => ({
+  ...jest.requireActual('../veo/vertexAuth'),
+  getVertexAccessToken: jest.fn(async () => 'vertex-token'),
+}));
+
 import { DEFAULT_REST_TIER_MODELS } from '@/lib/ai/google/models';
 
 import { generateWithGemini } from './client';
 
-const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const BASE = 'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models';
 const ENV = { ...process.env };
 const realFetch = global.fetch;
 
 beforeEach(() => {
-  process.env = { ...ENV, GEMINI_API_KEY: 'test-key' };
+  process.env = {
+    ...ENV,
+    GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+    GCP_PROJECT_NUMBER: '467145118875',
+    GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+    GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+    GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+    // A leftover AI Studio key changes nothing.
+    GEMINI_API_KEY: 'test-key',
+  };
+  delete process.env.GEMINI_TRANSPORT;
+  delete process.env.GCP_GEMINI_LOCATION;
+  delete process.env.GCP_VEO_LOCATION;
 });
 
 afterEach(() => {
@@ -31,8 +49,11 @@ async function urlFor(model: string | undefined, tier: 'pro' | 'flash' = 'pro'):
   global.fetch = fetchMock as unknown as typeof fetch;
   const out = await generateWithGemini({ prompt: 'hi', tier, model });
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  const url = fetchMock.mock.calls[0]![0];
+  const [url, init] = fetchMock.mock.calls[0]!;
   expect(url).toBe(`${BASE}/${out.model}:generateContent`);
+  const headers = init!.headers as Record<string, string>;
+  expect(headers.Authorization).toBe('Bearer vertex-token');
+  expect(headers['x-goog-api-key']).toBeUndefined();
   return url;
 }
 

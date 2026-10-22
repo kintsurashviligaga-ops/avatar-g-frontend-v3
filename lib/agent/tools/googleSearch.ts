@@ -23,7 +23,6 @@ import 'server-only';
 import { streamGeminiChat, unbookedAttempts } from '@/lib/ai/google/chatStream';
 import { chatModelChain } from '@/lib/ai/google/models';
 import { safetySettingsFor } from '@/lib/agents/profile';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
 import type { ChatErrorCode } from '@/lib/chat/sse';
@@ -67,16 +66,14 @@ export async function groundedWebSearch(
   const q = typeof query === 'string' ? query.trim().slice(0, MAX_QUERY_CHARS) : '';
   if (q.length < 2) return { ok: false, code: 'bad_request' };
 
-  const apiKey = resolveGeminiKey();
-  // The key matters on the Gemini API transport only; on Vertex the transport's identity serves the call.
-  if (googleTransportBlocker(apiKey)) return { ok: false, code: 'auth' };
+  // Vertex AI (v3.1: the only transport) must be able to serve; its Workload Identity serves the call, no key.
+  if (googleTransportBlocker()) return { ok: false, code: 'auth' };
 
   const models = chatModelChain('standard');
   const inputText = `${GROUNDED_SEARCH_SYSTEM} ${q}`;
   if (!(await chatBudgetAllows(inputText, models[0]))) return { ok: false, code: 'budget' };
 
   const res = await streamGeminiChat({
-    apiKey,
     models,
     messages: [{ role: 'user', content: q }],
     config: {

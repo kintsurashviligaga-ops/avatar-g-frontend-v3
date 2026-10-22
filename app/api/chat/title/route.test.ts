@@ -2,7 +2,7 @@
 /**
  * POST /api/chat/title — signed-in only, thinking OFF with a sane token cap (the old 24-token cap was eaten by
  * the flash tier's default thinking → empty titles), booked for the user. Gemini, the guard, the session and
- * the budget are mocked — no network, no spend.
+ * the budget are mocked; the Vertex gate is real — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 
@@ -21,8 +21,6 @@ jest.mock('../../../../lib/api/rate-limit', () => ({
 }));
 const mockGemini = jest.fn();
 jest.mock('../../../../lib/gemini/client', () => ({ generateWithGemini: (...a: unknown[]) => mockGemini(...a) }));
-let mockKey = 'test-key';
-jest.mock('../../../../lib/orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => mockKey }));
 const mockAllows = jest.fn(async () => true);
 const mockBook = jest.fn(async () => undefined);
 jest.mock('../../../../lib/services/billing/chatBudget', () => ({
@@ -35,6 +33,14 @@ import { POST } from './route';
 
 const USER = '11111111-2222-4333-8444-555555555555';
 const ENV = { ...process.env };
+// Vertex AI is the only transport (v3.1): the real gate reads these; an AI Studio key is neither needed nor enough.
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/chat/title', {
@@ -47,9 +53,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockGuardUser = { userId: USER };
   mockBearerUser = null;
-  mockKey = 'test-key';
   mockAllows.mockResolvedValue(true);
   delete process.env.FILM_ALLOW_ANONYMOUS;
+  delete process.env.GEMINI_TRANSPORT;
+  Object.assign(process.env, VERTEX_ENV);
 });
 afterEach(() => {
   process.env = { ...ENV };
@@ -93,10 +100,19 @@ test('best-effort: a Gemini failure answers 200 with an empty title', async () =
   expect(await res.json()).toEqual({ title: '' });
 });
 
-test('budget refusal and a missing key never call Gemini', async () => {
+test('budget refusal and an unconfigured Vertex never call Gemini', async () => {
   mockAllows.mockResolvedValueOnce(false);
   expect(await (await POST(post({ prompt: 'x', locale: 'en' }))).json()).toEqual({ title: null, reason: 'budget_exhausted' });
-  mockKey = '';
+  delete process.env.GCP_PROJECT_ID;
+  process.env.GEMINI_API_KEY = 'ai-studio-key';
   expect(await (await POST(post({ prompt: 'x', locale: 'en' }))).json()).toEqual({ title: '' });
   expect(mockGemini).not.toHaveBeenCalled();
+});
+
+test('GEMINI_TRANSPORT=gemini_api is refused before any call, key or not', async () => {
+  process.env.GEMINI_TRANSPORT = 'gemini_api';
+  process.env.GEMINI_API_KEY = 'ai-studio-key';
+  expect(await (await POST(post({ prompt: 'x', locale: 'en' }))).json()).toEqual({ title: '' });
+  expect(mockGemini).not.toHaveBeenCalled();
+  expect(mockAllows).not.toHaveBeenCalled();
 });

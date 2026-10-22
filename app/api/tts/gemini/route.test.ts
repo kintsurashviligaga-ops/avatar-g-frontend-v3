@@ -6,7 +6,8 @@
  *   · the "Read aloud verbatim:" directive and the 3-attempt retry are kept;
  *   · the voice follows voice > gender > persona > Aoede, and Georgian only ever gets a verified voice;
  *   · locale → speechConfig.languageCode for en/ru only (never ka), dropped after a 400, switchable off;
- *   · usage is booked (real usageMetadata when Google reports it) and a budget refusal spends nothing.
+ *   · usage is booked (real usageMetadata when Google reports it) and a budget refusal spends nothing;
+ *   · v3.1: the call goes to Vertex AI with a Workload Identity token; an AI Studio key is never read or sent.
  */
 jest.mock('server-only', () => ({}));
 
@@ -75,6 +76,15 @@ type SentBody = {
 };
 
 const ENV = { ...process.env };
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
+const VERTEX_TTS_URL =
+  'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent';
 let fetchSpy: jest.SpyInstance;
 const sent = (i = 0): SentBody => JSON.parse(String((fetchSpy.mock.calls[i]![1] as RequestInit).body)) as SentBody;
 const sentUrl = (i = 0) => String(fetchSpy.mock.calls[i]![0]);
@@ -89,12 +99,18 @@ beforeEach(() => {
   delete process.env.GEMINI_TTS_LANGUAGE_CODE;
   delete process.env.GEMINI_API_KEYS;
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  delete process.env.GEMINI_TRANSPORT;
+  delete process.env.GCP_GEMINI_LOCATION;
+  delete process.env.GCP_VEO_LOCATION;
+  Object.assign(process.env, VERTEX_ENV);
+  // A leftover AI Studio key must change nothing (asserted on every request below).
   process.env.GEMINI_API_KEY = 'test-gemini-key';
   budgetMock.mockResolvedValue(true);
   fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => okAudio());
 });
 
 afterEach(() => {
+  for (const [url] of fetchSpy.mock.calls) expect(String(url)).not.toContain('generativelanguage.googleapis.com');
   fetchSpy.mockRestore();
   process.env = { ...ENV };
 });
@@ -134,7 +150,7 @@ test('empty text is a 400 and nothing is called', async () => {
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-test('a signed-in caller gets a WAV; the key rides in the header, the directive is kept, Aoede is the default', async () => {
+test('a signed-in caller gets a WAV from Vertex AI (bearer token, no key); the directive is kept, Aoede is the default', async () => {
   const res = await POST(post({ text: 'გამარჯობა, როგორ ხარ?', locale: 'ka' }));
   expect(res.status).toBe(200);
   expect(res.headers.get('content-type')).toBe('audio/wav');
@@ -143,9 +159,10 @@ test('a signed-in caller gets a WAV; the key rides in the header, the directive 
   expect(wav.readUInt32LE(24)).toBe(24_000);
   expect(wav.byteLength).toBe(44 + 48_000);
 
-  expect(sentUrl()).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent');
+  expect(sentUrl()).toBe(VERTEX_TTS_URL);
   expect(sentUrl()).not.toContain('key=');
-  expect(sentHeaders()['x-goog-api-key']).toBe('test-gemini-key');
+  expect(sentHeaders().Authorization).toBe('Bearer vertex-token');
+  expect(sentHeaders()['x-goog-api-key']).toBeUndefined();
   const b = sent();
   expect(b.contents[0]!.parts[0]!.text).toBe('Read aloud verbatim: გამარჯობა, როგორ ხარ?');
   expect(b.generationConfig.responseModalities).toEqual(['AUDIO']);
@@ -244,40 +261,31 @@ test('a budget refusal is a 503 before Google is called', async () => {
   expect(budgetMock).toHaveBeenCalledWith('hello', 'gemini-2.5-flash-preview-tts');
 });
 
-test('no Gemini key → 503 gemini_key_missing', async () => {
-  delete process.env.GEMINI_API_KEY;
+test('Vertex AI unconfigured → 503 gemini_key_missing, and an AI Studio key is not used instead', async () => {
+  for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
   const res = await POST(post({ text: 'hello', locale: 'en' }));
   expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ error: 'gemini_key_missing' });
   expect(fetchSpy).not.toHaveBeenCalled();
+  expect(bookMock).not.toHaveBeenCalled();
 });
 
-test('GEMINI_TRANSPORT=vertex: the same request goes to Vertex AI with a bearer token and no API key', async () => {
-  Object.assign(process.env, {
-    GEMINI_TRANSPORT: 'vertex',
-    GCP_PROJECT_ID: 'gen-lang-client-0671348730',
-    GCP_PROJECT_NUMBER: '467145118875',
-    GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
-    GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
-    GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
-  });
-  delete process.env.GCP_GEMINI_LOCATION;
-  delete process.env.GCP_VEO_LOCATION;
+test('GEMINI_TRANSPORT=vertex is the same as unset: Vertex AI with a bearer token', async () => {
+  process.env.GEMINI_TRANSPORT = 'vertex';
   const res = await POST(post({ text: 'hello', locale: 'en' }));
   expect(res.status).toBe(200);
-  expect(sentUrl()).toBe(
-    'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent',
-  );
+  expect(sentUrl()).toBe(VERTEX_TTS_URL);
   expect(sentHeaders().Authorization).toBe('Bearer vertex-token');
   expect(sentHeaders()['x-goog-api-key']).toBeUndefined();
   expect(sent().generationConfig.responseModalities).toEqual(['AUDIO']);
 });
 
-test('GEMINI_TRANSPORT=vertex without its config → 503, and the API key is not used instead', async () => {
-  process.env.GEMINI_TRANSPORT = 'vertex';
-  for (const k of ['GCP_PROJECT_ID', 'GCP_PROJECT_NUMBER', 'GCP_SERVICE_ACCOUNT_EMAIL', 'GCP_WORKLOAD_IDENTITY_POOL_ID', 'GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID']) {
-    delete process.env[k];
+test('GEMINI_TRANSPORT=gemini_api (the Developer API) → 503 before any provider I/O', async () => {
+  for (const value of ['gemini_api', 'gemini']) {
+    process.env.GEMINI_TRANSPORT = value;
+    const res = await POST(post({ text: 'hello', locale: 'en' }));
+    expect(res.status).toBe(503);
   }
-  const res = await POST(post({ text: 'hello', locale: 'en' }));
-  expect(res.status).toBe(503);
   expect(fetchSpy).not.toHaveBeenCalled();
+  expect(bookMock).not.toHaveBeenCalled();
 });

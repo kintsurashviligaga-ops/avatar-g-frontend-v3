@@ -1,8 +1,10 @@
 /** @jest-environment node */
-let mockKey = '';
-jest.mock('../orchestrator/gemini-guard', () => ({
-  ...jest.requireActual('../orchestrator/gemini-guard'),
-  resolveGeminiKey: jest.fn(() => mockKey),
+/** What googleTransportBlocker answers: null = Vertex can serve. Calls go through global.fetch so each test drives them. */
+let mockBlocker: string | null = null;
+jest.mock('./google/transport', () => ({
+  googleTransportBlocker: jest.fn(() => mockBlocker),
+  googleModelFetch: jest.fn((model: string, method: string, init: RequestInit) =>
+    global.fetch(`https://aiplatform.googleapis.com/v1/projects/p/locations/global/publishers/google/models/${model}:${method}`, init)),
 }));
 
 jest.mock('../services/billing/BillingGuard', () => ({
@@ -15,19 +17,19 @@ import { generateLyriaTrack, hasLyriaProvider, LYRIA_FALLBACK, lyriaModel, lyria
 import { reportGeminiFallback } from './geminiFallbackReport';
 
 /**
- * Locks the LIVE-BY-DEFAULT contract: with a Gemini key present, Lyria 3 is the PRIMARY music engine unless
+ * Locks the LIVE-BY-DEFAULT contract: with Vertex AI able to serve, Lyria 3 is the PRIMARY music engine unless
  * LYRIA_ENABLED is explicitly falsy (the kill-switch; with it off, studio music's Auto has no engine at all).
  *
- * ⚠️ THIS FILE USED TO PIN THE OPPOSITE ("OFF when the flag is unset") — and passed, because the test env has
- * no Gemini key, so `hasLyriaProvider()` was false for the key's sake, not the flag's. The key is mocked now,
- * so every case below is decided by the flag alone (plus one case for the missing key).
+ * ⚠️ THIS FILE USED TO PIN THE OPPOSITE ("OFF when the flag is unset") — and passed, because the test env had no
+ * credential, so `hasLyriaProvider()` was false for that reason, not the flag's. The transport is mocked now, so
+ * every case below is decided by the flag alone (plus one case for an unconfigured Vertex).
  */
 describe('lyriaMusic gating', () => {
   const orig = process.env.LYRIA_ENABLED;
-  beforeEach(() => { mockKey = 'test-gemini-key'; });
+  beforeEach(() => { mockBlocker = null; });
   afterEach(() => { if (orig === undefined) delete process.env.LYRIA_ENABLED; else process.env.LYRIA_ENABLED = orig; });
 
-  it('is ON by default when a key is present and the flag is unset', () => {
+  it('is ON by default when Vertex can serve and the flag is unset', () => {
     delete process.env.LYRIA_ENABLED;
     expect(hasLyriaProvider()).toBe(true);
   });
@@ -46,8 +48,8 @@ describe('lyriaMusic gating', () => {
     }
   });
 
-  it('is OFF without a Gemini key, whatever the flag says', () => {
-    mockKey = '';
+  it('is OFF when Vertex cannot serve, whatever the flag says (a Developer API key does not count)', () => {
+    mockBlocker = 'Vertex AI is not configured';
     for (const v of [undefined, '1']) {
       if (v === undefined) delete process.env.LYRIA_ENABLED; else process.env.LYRIA_ENABLED = v;
       expect(hasLyriaProvider()).toBe(false);
@@ -67,9 +69,8 @@ describe('a Lyria miss reports no fallback engine', () => {
   const realFetch = global.fetch;
   const report = reportGeminiFallback as jest.Mock;
   beforeEach(() => {
-    mockKey = 'test-gemini-key';
+    mockBlocker = null;
     delete process.env.LYRIA_ENABLED;
-    delete process.env.GEMINI_TRANSPORT;
     report.mockClear();
   });
   afterAll(() => { global.fetch = realFetch; });
@@ -89,7 +90,7 @@ describe('a Lyria miss reports no fallback engine', () => {
 
 describe('lyriaRequest (Music Studio) — controlled provider faults: one call, never a retry, no audio invented', () => {
   const realFetch = global.fetch;
-  beforeEach(() => { mockKey = 'test-gemini-key'; delete process.env.GEMINI_TRANSPORT; });
+  beforeEach(() => { mockBlocker = null; });
   afterAll(() => { global.fetch = realFetch; });
 
   it.each([
@@ -105,6 +106,25 @@ describe('lyriaRequest (Music Studio) — controlled provider faults: one call, 
     const r = await lyriaRequest('calm piano', 'lyria-3-clip-preview', new AbortController().signal);
     expect(r).toMatchObject({ ok: false, ...expected });
     expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('every request goes to Vertex :generateContent, never the Developer API', async () => {
+    const f = jest.fn(async () => new Response('busy', { status: 503 }));
+    global.fetch = f as unknown as typeof fetch;
+    await lyriaRequest('calm piano', 'lyria-3-clip-preview', new AbortController().signal);
+    await generateLyriaTrack({ prompt: 'calm piano', instrumental: true });
+    const urls = f.mock.calls.map((c) => String((c as unknown[])[0]));
+    expect(urls).toHaveLength(2);
+    for (const u of urls) expect(u).toMatch(/aiplatform\.googleapis\.com\/.*lyria-3-clip-preview:generateContent$/);
+  });
+
+  it('an unconfigured Vertex never reaches the provider', async () => {
+    mockBlocker = 'Vertex AI is not configured';
+    const f = jest.fn();
+    global.fetch = f as unknown as typeof fetch;
+    expect(await lyriaRequest('calm piano', 'lyria-3-clip-preview', new AbortController().signal)).toMatchObject({ ok: false, reason: 'not_configured' });
+    await expect(generateLyriaTrack({ prompt: 'calm piano', instrumental: true })).resolves.toBeNull();
+    expect(f).not.toHaveBeenCalled();
   });
 
   it('an empty prompt never reaches the provider', async () => {

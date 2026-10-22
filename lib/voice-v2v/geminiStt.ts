@@ -15,20 +15,18 @@ import 'server-only';
  * audio track Gemini also understands. (3) is UNVERIFIED for audio-only files (`native: false` marks it); the
  * real fix is the client recording WAV (AudioWorklet), which this route already accepts.
  *
- * The call goes through the Google transport (lib/ai/google/transport, GEMINI_TRANSPORT): on the Gemini API the key
- * comes from the shared pool (resolveGeminiKey) and travels in the x-goog-api-key HEADER — a key in a URL lands in
- * every proxy log, trace and error string on the way to Google; on Vertex AI it is a Workload Identity token. Neither
- * is ever logged or returned, and a missing transport is an `auth` error, never a switch to the other one.
+ * The call goes through lib/ai/google/transport: Vertex AI with a Workload Identity token, the only transport under
+ * MASTER TASK v3.1 (no AI Studio key is read). The token is never logged or returned, and an unconfigured Vertex AI
+ * is an `auth` error before any provider I/O, never a switch to another transport.
  */
 import { NotConfiguredError } from '@/lib/contracts/geminiTransport';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { googleModelFetch, googleTransportBlocker, googleTransportKind } from '@/lib/ai/google/transport';
+import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
 import { catalogEntry } from '@/lib/models/catalog';
 import { DEFAULT_STT_MODEL, isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
 
-/** True when the selected Google transport can serve a call (the name predates GEMINI_TRANSPORT). */
+/** True when Vertex AI can serve a call (the name predates Vertex; no key is involved). */
 export function hasGeminiSttKey(): boolean {
-  return !googleTransportBlocker(resolveGeminiKey());
+  return !googleTransportBlocker();
 }
 
 // ─── Model chain ─────────────────────────────────────────────────────────────
@@ -38,27 +36,21 @@ export function hasGeminiSttKey(): boolean {
  * silently killed Georgian dictation), so a model-missing / overloaded answer moves to the next id. Retired ids
  * (gemini-2.0-*, 1.5-*) never appear — `gemini-2.0-flash-lite` used to be the last step here — and neither does a
  * 2.5 id: a new Google project's key answers 404 "no longer available to new users" for them. The default leads the
- * step-downs so an operator override that fails still falls back to it (the chain de-duplicates).
+ * step-downs so an operator override that fails still falls back to it (the chain de-duplicates). `gemini-flash-latest`
+ * was the last step until v3.1: it is a Gemini-API-only alias and answers 404 on Vertex AI.
  */
-const STT_STEP_DOWNS = [DEFAULT_STT_MODEL, 'gemini-3.7-flash', 'gemini-flash-latest'] as const;
+const STT_STEP_DOWNS = [DEFAULT_STT_MODEL, 'gemini-3.7-flash'] as const;
 
-/** On Vertex AI, ids the ModelCatalog marks Gemini-API only (the `-latest` aliases answer 404 there) are skipped. */
-function onVertex(): boolean {
-  try {
-    return googleTransportKind() === 'vertex';
-  } catch {
-    return false;
-  }
-}
-
-/** [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped, and on Vertex the API-only aliases. */
+/**
+ * [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped, and the ids the ModelCatalog marks
+ * Gemini-API only (the `-latest` aliases answer 404 on Vertex AI, the only transport).
+ */
 export function geminiSttModelChain(): string[] {
-  const vertex = onVertex();
   const out: string[] = [];
   for (const raw of [sttModel(), ...STT_STEP_DOWNS]) {
     const id = normalizeModelId(raw);
     if (!id || isRetiredModel(id) || out.includes(id)) continue;
-    if (vertex && catalogEntry(id)?.transport === 'gemini_api') continue;
+    if (catalogEntry(id)?.transport === 'gemini_api') continue;
     out.push(id);
   }
   return out;
@@ -258,7 +250,7 @@ function cleanTranscript(raw: string): string {
 
 /**
  * Transcribe a short clip with Gemini. Rotates to the next model only when the model is missing or overloaded;
- * an auth / quota / rate-limit / bad-request answer throws a GeminiSttError at once (another model on the same key
+ * an auth / quota / rate-limit / bad-request answer throws a GeminiSttError at once (another model on the same project
  * would fail the same way — and bill another attempt). Bounded by ONE overall deadline across all attempts, so it
  * can never outlive the route's maxDuration.
  */
@@ -268,7 +260,7 @@ export async function transcribeWithGeminiDetailed(
   language: string,
   opts: { models?: readonly string[]; timeoutMs?: number } = {},
 ): Promise<GeminiSttResult> {
-  const notReady = googleTransportBlocker(resolveGeminiKey());
+  const notReady = googleTransportBlocker();
   if (notReady) throw new GeminiSttError(notReady, 'auth');
   const models = (opts.models?.length ? [...opts.models] : geminiSttModelChain())
     .map((m) => normalizeModelId(m))

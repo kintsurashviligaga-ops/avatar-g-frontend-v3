@@ -1,7 +1,8 @@
 /** @jest-environment node */
 /**
  * groundedWebSearch — the agent's web_search on Gemini + Google Search grounding.
- * streamGeminiChat, the key resolver and the budget are mocked: no network, no spend.
+ * streamGeminiChat and the budget are mocked: no network, no spend. v3.1: the gate is Vertex AI's configuration,
+ * never an AI Studio key.
  */
 jest.mock('server-only', () => ({}));
 
@@ -10,8 +11,6 @@ jest.mock('../../ai/google/chatStream', () => ({
   streamGeminiChat: (...a: unknown[]) => mockStream(...a),
   unbookedAttempts: jest.requireActual('../../ai/google/chatStream').unbookedAttempts,
 }));
-let mockKey = 'test-key';
-jest.mock('../../orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => mockKey }));
 const mockAllows = jest.fn(async () => true);
 const mockBook = jest.fn(async () => undefined);
 jest.mock('../../services/billing/chatBudget', () => ({
@@ -22,12 +21,25 @@ jest.mock('../../services/billing/chatBudget', () => ({
 import { groundedWebSearch, GROUNDED_SEARCH_SYSTEM } from './googleSearch';
 
 const USER = '11111111-2222-4333-8444-555555555555';
+const ENV = { ...process.env };
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockKey = 'test-key';
   mockAllows.mockResolvedValue(true);
   delete process.env.GEMINI_CHAT_MODELS;
+  delete process.env.GEMINI_TRANSPORT;
+  Object.assign(process.env, VERTEX_ENV);
+  process.env.GEMINI_API_KEY = 'test-key';
+});
+afterEach(() => {
+  process.env = { ...ENV };
 });
 
 test('a grounded answer comes back in the Tavily shape, and the call is booked with grounding queries + user', async () => {
@@ -57,7 +69,9 @@ test('a grounded answer comes back in the Tavily shape, and the call is booked w
   });
 
   const input = mockStream.mock.calls[0][0];
-  expect(input.apiKey).toBe('test-key');
+  // No AI Studio key travels to the model call (v3.1).
+  expect(input.apiKey).toBeUndefined();
+  expect(JSON.stringify(input)).not.toContain('test-key');
   expect(input.models).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']);
   expect(input.messages).toEqual([{ role: 'user', content: 'capital of Georgia' }]);
   expect(input.config).toMatchObject({
@@ -96,10 +110,13 @@ test('the budget guard refuses before any Gemini call', async () => {
   expect(mockStream).not.toHaveBeenCalled();
 });
 
-test('no key → auth, an empty query → bad_request; neither calls Gemini', async () => {
-  mockKey = '';
+test('Vertex AI unconfigured → auth (an AI Studio key does not help), an empty query → bad_request; neither calls Gemini', async () => {
+  for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
   await expect(groundedWebSearch('anything')).resolves.toEqual({ ok: false, code: 'auth' });
-  mockKey = 'test-key';
+  Object.assign(process.env, VERTEX_ENV);
+  process.env.GEMINI_TRANSPORT = 'gemini_api';
+  await expect(groundedWebSearch('anything')).resolves.toEqual({ ok: false, code: 'auth' });
+  delete process.env.GEMINI_TRANSPORT;
   await expect(groundedWebSearch('  ')).resolves.toEqual({ ok: false, code: 'bad_request' });
   expect(mockStream).not.toHaveBeenCalled();
 });

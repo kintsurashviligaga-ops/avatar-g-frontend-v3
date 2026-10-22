@@ -2,9 +2,10 @@
 /**
  * The Google transport selector (Part 2, A2; contract lib/contracts/geminiTransport.ts).
  *
- * Pinned: GEMINI_TRANSPORT unset keeps today's Gemini API call byte for byte (URL, header auth, no key in the URL);
- * `vertex` goes to aiplatform with a bearer token and never carries the API key; an unconfigured transport throws
- * NotConfiguredError naming variables, and NEVER falls back to the other transport; an unknown value fails closed.
+ * Pinned (MASTER TASK v3.1, Vertex only): GEMINI_TRANSPORT unset or `vertex` goes to aiplatform with a bearer token
+ * and never carries an API key; `gemini_api` / `gemini` throw NotConfiguredError even with a key and Vertex configured;
+ * an unconfigured Vertex throws NotConfiguredError naming variables; an unknown value fails closed. No call ever
+ * reaches generativelanguage.googleapis.com, whatever key is in the environment.
  * Only the token mint is mocked (vertexAuth's env reading is real); fetch is a spy; nothing reaches the network.
  */
 jest.mock('server-only', () => ({}));
@@ -16,6 +17,7 @@ jest.mock('../../veo/vertexAuth', () => ({
 import { isNotConfiguredError } from '@/lib/contracts/geminiTransport';
 import { getVertexAccessToken } from '../../veo/vertexAuth';
 import {
+  DEVELOPER_API_REFUSED,
   googleAiConfigured,
   googleCallAttempts,
   googleModelFetch,
@@ -35,7 +37,7 @@ const WIF = {
   GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
 };
 const ENV = [
-  'GEMINI_TRANSPORT', 'GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GCP_GEMINI_LOCATION',
+  'GEMINI_TRANSPORT', 'GEMINI_IMAGE_TRANSPORT', 'GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GCP_GEMINI_LOCATION',
   'GCP_PREDICT_LOCATION', 'GCP_VEO_BUCKET', 'GCP_SERVICE_ACCOUNT_KEY', ...Object.keys(WIF),
 ];
 const saved: Record<string, string | undefined> = {};
@@ -56,6 +58,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Whatever the test set, nothing may have gone to the Developer API.
+  expect(fetchSpy.mock.calls.map(([url]) => String(url)).filter((u) => u.includes('generativelanguage'))).toEqual([]);
   fetchSpy.mockRestore();
   for (const k of ENV) {
     if (saved[k] === undefined) delete process.env[k];
@@ -65,57 +69,97 @@ afterEach(() => {
 
 describe('which transport', () => {
   it.each([
-    [undefined, 'gemini_api'],
-    ['', 'gemini_api'],
-    ['gemini_api', 'gemini_api'],
-    ['gemini', 'gemini_api'],
-    [' Vertex ', 'vertex'],
-  ])('GEMINI_TRANSPORT=%p → %s', (value, kind) => {
-    expect(googleTransportKind(value === undefined ? {} : { GEMINI_TRANSPORT: value })).toBe(kind);
+    [undefined],
+    [''],
+    [' Vertex '],
+  ])('GEMINI_TRANSPORT=%p → vertex', (value) => {
+    expect(googleTransportKind(value === undefined ? {} : { GEMINI_TRANSPORT: value })).toBe('vertex');
+  });
+
+  it.each(['gemini_api', 'gemini', ' GEMINI_API '])('GEMINI_TRANSPORT=%p is refused with NotConfiguredError', (value) => {
+    let err: unknown;
+    try {
+      googleTransportKind({ GEMINI_TRANSPORT: value });
+    } catch (e) {
+      err = e;
+    }
+    expect(isNotConfiguredError(err)).toBe(true);
+    expect(err).toMatchObject({ transportKind: 'gemini_api', missingVars: [DEVELOPER_API_REFUSED] });
   });
 
   it('an unknown value fails closed: no transport is configured, nothing is called', async () => {
     process.env.GEMINI_TRANSPORT = 'openai';
     process.env.GEMINI_API_KEY = 'gemini-key';
-    expect(() => googleTransportKind()).toThrow('GEMINI_TRANSPORT must be gemini_api or vertex');
+    Object.assign(process.env, WIF);
+    expect(() => googleTransportKind()).toThrow('GEMINI_TRANSPORT must be vertex or unset');
     expect(googleAiConfigured()).toBe(false);
-    expect(googleTransportBlocker('gemini-key')).toMatch(/GEMINI_TRANSPORT/);
+    expect(googleTransportBlocker('gemini-key')).toBe('GEMINI_TRANSPORT is not vertex');
     await expect(googleModelFetch('gemini-3.8-flash', 'generateContent', { method: 'POST' })).rejects.toThrow();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
-describe('gemini_api (GEMINI_TRANSPORT unset) — today\'s call, unchanged', () => {
-  it('calls generativelanguage with the key in a header, never in the URL', async () => {
+describe('the Developer API is never a transport (v3.1)', () => {
+  it.each(['gemini_api', 'gemini'])('GEMINI_TRANSPORT=%s with a key AND Vertex configured: refused, nothing sent', async (value) => {
+    process.env.GEMINI_TRANSPORT = value;
     process.env.GEMINI_API_KEY = 'gemini-key';
-    await googleModelFetch('gemini-3.8-flash', 'generateContent', { method: 'POST', body: '{}' });
-    const { url, init } = call();
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
-    expect(url).not.toContain('key=');
-    expect(init.headers['x-goog-api-key']).toBe('gemini-key');
-    expect(init.headers.Authorization).toBeUndefined();
-    expect(init.redirect).toBe('manual');
+    Object.assign(process.env, WIF);
+    expect(googleAiConfigured()).toBe(false);
+    expect(googleTransportBlocker('gemini-key')).toBe('GEMINI_TRANSPORT is not vertex');
+    expect(googleCallAttempts(['gemini-key'])).toEqual([]);
+    const err = await googleModelFetch('gemini-3.8-flash', 'generateContent', { method: 'POST' }).catch((e) => e);
+    expect(isNotConfiguredError(err)).toBe(true);
+    expect(err).toMatchObject({ transportKind: 'gemini_api', missingVars: [DEVELOPER_API_REFUSED] });
+    expect(err.message).not.toContain('gemini-key');
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(getVertexAccessToken).not.toHaveBeenCalled();
   });
 
-  it('streams with alt=sse and strips a `models/` prefix', async () => {
+  it('unset with only a key (Vertex unconfigured): NotConfiguredError for vertex, and the key is not used instead', async () => {
     process.env.GEMINI_API_KEY = 'gemini-key';
-    await googleModelFetch('models/gemini-3.8-flash', 'streamGenerateContent', { method: 'POST' });
-    expect(call().url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse');
-  });
-
-  it('without a key it is NotConfiguredError naming GEMINI_API_KEY, even with Vertex fully configured', async () => {
-    Object.assign(process.env, WIF);
+    process.env.GEMINI_API_KEYS = 'k1,k2';
     expect(googleAiConfigured()).toBe(false);
-    expect(googleTransportBlocker('')).toBe('Gemini API key is not configured');
+    expect(googleTransportBlocker('gemini-key')).toBe('Vertex AI is not configured');
     const err = await googleModelFetch('gemini-3.8-flash', 'generateContent', { method: 'POST' }).catch((e) => e);
     expect(isNotConfiguredError(err)).toBe(true);
-    expect(err).toMatchObject({ transportKind: 'gemini_api', missingVars: ['GEMINI_API_KEY'] });
+    expect(err.transportKind).toBe('vertex');
+    expect(err.missingVars).toContain('GCP_PROJECT_ID');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('rejects a malformed model id before any request', async () => {
+  it('selectFixed(gemini_api) is refused even with a key and Vertex configured', () => {
     process.env.GEMINI_API_KEY = 'gemini-key';
+    Object.assign(process.env, WIF);
+    expect(() => googleTransports.selectFixed('gemini_api')).toThrow(`gemini_api transport is not configured: missing ${DEVELOPER_API_REFUSED}`);
+  });
+});
+
+describe('GEMINI_TRANSPORT unset is Vertex', () => {
+  it('calls the global Vertex endpoint with a bearer token; the key in the environment is not sent', async () => {
+    Object.assign(process.env, WIF);
+    process.env.GEMINI_API_KEY = 'gemini-key';
+    expect(googleAiConfigured()).toBe(true);
+    expect(googleTransports.select().kind).toBe('vertex');
+    await googleModelFetch('gemini-3.8-flash', 'generateContent', { method: 'POST', body: '{}' });
+    const { url, init } = call();
+    expect(url).toBe(
+      'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.8-flash:generateContent',
+    );
+    expect(init.headers.Authorization).toBe('Bearer vertex-token');
+    expect(init.headers['x-goog-api-key']).toBeUndefined();
+    expect(JSON.stringify(init.headers)).not.toContain('gemini-key');
+  });
+
+  it('streams with alt=sse and strips a `models/` prefix', async () => {
+    Object.assign(process.env, WIF);
+    await googleModelFetch('models/gemini-3.8-flash', 'streamGenerateContent', { method: 'POST' });
+    expect(call().url).toBe(
+      'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.8-flash:streamGenerateContent?alt=sse',
+    );
+  });
+
+  it('rejects a malformed model id before any request', async () => {
+    Object.assign(process.env, WIF);
     await expect(googleModelFetch('../../evil?x=1', 'generateContent', { method: 'POST' })).rejects.toThrow('Invalid Google model id');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -175,9 +219,9 @@ describe('vertex', () => {
     expect(call(1).url).toMatch(/^https:\/\/us-central1-aiplatform\.googleapis\.com\/.*\/locations\/us-central1\/.*:predict$/);
   });
 
-  it('selectFixed returns exactly the transport asked for, or NotConfiguredError', () => {
+  it('selectFixed returns Vertex, or NotConfiguredError', () => {
+    expect(() => googleTransports.selectFixed('vertex')).toThrow(/vertex transport is not configured: missing .*GCP_PROJECT_ID/);
     Object.assign(process.env, WIF);
-    expect(() => googleTransports.selectFixed('gemini_api')).toThrow('gemini_api transport is not configured: missing GEMINI_API_KEY');
     expect(googleTransports.selectFixed('vertex').kind).toBe('vertex');
   });
 });
@@ -215,8 +259,15 @@ describe('SDK factory (lib/ai/google/provider)', () => {
     expect(isNotConfiguredError(err)).toBe(true);
   });
 
-  it('gemini_api without a key throws NotConfiguredError', () => {
-    expect(() => createGoogleGenerativeAI()).toThrow('gemini_api transport is not configured: missing GEMINI_API_KEY');
+  it('GEMINI_TRANSPORT=gemini_api throws NotConfiguredError even with a key and Vertex configured', () => {
+    process.env.GEMINI_TRANSPORT = 'gemini_api';
+    Object.assign(process.env, WIF);
+    expect(() => createGoogleGenerativeAI({ apiKey: 'caller-key' })).toThrow(`gemini_api transport is not configured: missing ${DEVELOPER_API_REFUSED}`);
+  });
+
+  it('unset without Vertex config throws NotConfiguredError for vertex, not a Developer API client', () => {
+    process.env.GEMINI_API_KEY = 'gemini-key';
+    expect(() => createGoogleGenerativeAI()).toThrow(/vertex transport is not configured/);
   });
 });
 
@@ -230,23 +281,21 @@ describe('Lyria 3 on Vertex', () => {
 });
 
 describe('the 19-importer Gemini REST client follows the transport', () => {
-  it('generateWithGemini on vertex calls aiplatform with a bearer token; unset keeps generativelanguage', async () => {
+  it('generateWithGemini: a key alone sends nothing; with Vertex configured (unset) it calls aiplatform with a bearer token', async () => {
     const { generateWithGemini } = await import('../../gemini/client');
     const answer = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }), { status: 200 });
 
     process.env.GEMINI_API_KEY = 'gemini-key';
-    fetchSpy.mockResolvedValueOnce(answer());
-    await generateWithGemini({ prompt: 'hi', tier: 'flash', model: 'gemini-3.8-flash' });
-    expect(call(0).url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
+    await expect(generateWithGemini({ prompt: 'hi', tier: 'flash', model: 'gemini-3.8-flash' })).rejects.toThrow();
+    expect(fetchSpy).not.toHaveBeenCalled();
 
-    process.env.GEMINI_TRANSPORT = 'vertex';
     Object.assign(process.env, WIF);
     fetchSpy.mockResolvedValueOnce(answer());
     const res = await generateWithGemini({ prompt: 'hi', tier: 'flash', model: 'gemini-3.8-flash' });
     expect(res.text).toBe('ok');
-    expect(call(1).url).toMatch(/^https:\/\/aiplatform\.googleapis\.com\/v1\/projects\/gen-lang-client-0671348730\/locations\/global\/publishers\/google\/models\/gemini-3\.8-flash:generateContent$/);
-    expect(call(1).init.headers.Authorization).toBe('Bearer vertex-token');
-    expect(call(1).init.headers['x-goog-api-key']).toBeUndefined();
+    expect(call(0).url).toMatch(/^https:\/\/aiplatform\.googleapis\.com\/v1\/projects\/gen-lang-client-0671348730\/locations\/global\/publishers\/google\/models\/gemini-3\.8-flash:generateContent$/);
+    expect(call(0).init.headers.Authorization).toBe('Bearer vertex-token');
+    expect(call(0).init.headers['x-goog-api-key']).toBeUndefined();
   });
 });
 
@@ -297,7 +346,7 @@ describe('speech-to-text and embeddings follow the transport', () => {
     });
   });
 
-  it('embedContent is a Gemini API method: asking Vertex for it throws before any request', async () => {
+  it('embedContent is a Developer API method: asking Vertex for it throws before any request', async () => {
     useVertex();
     await expect(googleModelFetch('gemini-embedding-001', 'embedContent', { method: 'POST' })).rejects.toThrow(/use predict/);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -305,27 +354,33 @@ describe('speech-to-text and embeddings follow the transport', () => {
 });
 
 describe('key-rotating callers (orchestrator script / interior routes)', () => {
-  it('one attempt per pooled key on the Gemini API, exactly one on Vertex, none when the transport cannot serve', () => {
-    expect(googleCallAttempts(['k1', ' k2 ', 'k1', ''])).toEqual(['k1', 'k2']);
+  it('exactly one attempt on Vertex, none when it cannot serve; a key pool never adds attempts', () => {
+    expect(googleCallAttempts(['k1', ' k2 ', 'k1', ''])).toEqual([]); // unconfigured Vertex: the pool is NOT used instead
     expect(googleCallAttempts([])).toEqual([]);
-    process.env.GEMINI_TRANSPORT = 'vertex';
-    expect(googleCallAttempts(['k1', 'k2'])).toEqual([]); // unconfigured Vertex: the pool is NOT used instead
     Object.assign(process.env, WIF);
     expect(googleCallAttempts(['k1', 'k2'])).toEqual([undefined]);
+    expect(googleCallAttempts([])).toEqual([undefined]);
+    process.env.GEMINI_TRANSPORT = 'gemini_api';
+    expect(googleCallAttempts(['k1'])).toEqual([]);
     process.env.GEMINI_TRANSPORT = 'bogus';
     expect(googleCallAttempts(['k1'])).toEqual([]);
   });
 });
 
 describe('image transport override (GEMINI_IMAGE_TRANSPORT)', () => {
-  it('follows GEMINI_TRANSPORT when unset', () => {
-    expect(googleImageTransportKind({})).toBe('gemini_api');
+  it('follows GEMINI_TRANSPORT when unset: Vertex', () => {
+    expect(googleImageTransportKind({})).toBe('vertex');
     expect(googleImageTransportKind({ GEMINI_TRANSPORT: 'vertex' })).toBe('vertex');
+    expect(googleImageTransportKind({ GEMINI_TRANSPORT: 'gemini_api', GEMINI_IMAGE_TRANSPORT: 'vertex' })).toBe('vertex');
   });
 
-  it('keeps images on the API key while text and music use Vertex', () => {
-    expect(googleImageTransportKind({ GEMINI_TRANSPORT: 'vertex', GEMINI_IMAGE_TRANSPORT: 'gemini_api' })).toBe('gemini_api');
-    expect(googleImageTransportKind({ GEMINI_TRANSPORT: 'gemini_api', GEMINI_IMAGE_TRANSPORT: 'vertex' })).toBe('vertex');
+  it('a leftover GEMINI_IMAGE_TRANSPORT=gemini_api refuses images instead of moving them to the AI Studio key', async () => {
+    expect(() => googleImageTransportKind({ GEMINI_TRANSPORT: 'vertex', GEMINI_IMAGE_TRANSPORT: 'gemini_api' })).toThrow(DEVELOPER_API_REFUSED);
+    const { googleImageModelFetch, googleImageTransportBlocker } = await import('./transport');
+    Object.assign(process.env, WIF, { GEMINI_API_KEY: 'gemini-key', GEMINI_IMAGE_TRANSPORT: 'gemini_api' });
+    expect(googleImageTransportBlocker()).toBe('GEMINI_IMAGE_TRANSPORT is not vertex');
+    await expect(googleImageModelFetch('gemini-3.1-flash-image', 'generateContent', { method: 'POST' })).rejects.toMatchObject({ code: 'not_configured' });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('fails closed on an unknown value', () => {

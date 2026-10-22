@@ -90,13 +90,36 @@ it('a Google refusal is reported with its status and redacted text', async () =>
   expect(JSON.stringify(body)).not.toContain('ya29.secret-token');
 });
 
-it('unset: the Gemini API with the key in a header', async () => {
+it('unset: Vertex AI (v3.1), never the Developer API, even with an AI Studio key set', async () => {
+  process.env.GEMINI_API_KEY = 'gemini-key';
+  Object.assign(process.env, WIF);
+  const body = await (await GET(req())).json();
+  expect(body).toMatchObject({ transport: 'vertex', configured: true, ok: true, location: 'global' });
+  expect(fetchSpy).toHaveBeenCalledTimes(2);
+  for (const [url, init] of fetchSpy.mock.calls as Array<[string, RequestInit & { headers: Record<string, string> }]>) {
+    expect(url).toMatch(/^https:\/\/aiplatform\.googleapis\.com\/v1\/projects\/gen-lang-client-0671348730\/locations\/global\/publishers\/google\/models\/[\w.-]+:countTokens$/);
+    expect(init.headers.Authorization).toBe('Bearer vertex-token');
+    expect(init.headers['x-goog-api-key']).toBeUndefined();
+  }
+  expect(JSON.stringify(body)).not.toContain('gemini-key');
+});
+
+it('unset without Workload Identity: Vertex AI not configured, and the AI Studio key is not used instead', async () => {
   process.env.GEMINI_API_KEY = 'gemini-key';
   const body = await (await GET(req())).json();
-  expect(body).toMatchObject({ transport: 'gemini_api', ok: true });
-  const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
-  expect(url).toMatch(/^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/models\/[\w.-]+:countTokens$/);
-  expect(init.headers['x-goog-api-key']).toBe('gemini-key');
+  expect(body).toMatchObject({ transport: 'vertex', configured: false, ok: false });
+  expect(body.missing).toEqual(expect.arrayContaining(['GCP_PROJECT_ID']));
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+it.each(['gemini_api', 'gemini'])('GEMINI_TRANSPORT=%s is reported as refused by policy, and nothing is called', async (value) => {
+  process.env.GEMINI_TRANSPORT = value;
+  process.env.GEMINI_API_KEY = 'gemini-key';
+  Object.assign(process.env, WIF);
+  const body = await (await GET(req())).json();
+  expect(body).toMatchObject({ transport: 'gemini_api', configured: false, ok: false, steps: [] });
+  expect(body.missing).toEqual([expect.stringMatching(/GEMINI_TRANSPORT=vertex/)]);
+  expect(fetchSpy).not.toHaveBeenCalled();
 });
 
 it('an unknown GEMINI_TRANSPORT is reported, not guessed', async () => {

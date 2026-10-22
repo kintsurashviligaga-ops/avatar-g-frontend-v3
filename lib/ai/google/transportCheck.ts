@@ -1,10 +1,11 @@
 /**
- * lib/ai/google/transportCheck.ts — does the selected Google transport (GEMINI_TRANSPORT) reach Google's models?
+ * lib/ai/google/transportCheck.ts — does Vertex AI, the only Google model transport under MASTER TASK v3.1, reach
+ * Google's models?
  *
- * Asks `countTokens` (free on both the Gemini API and Vertex AI: nothing is generated or billed) of the chat model and
- * the storyboard image model through lib/ai/google/transport — the same URL builder, credential and identity every
- * Gemini call uses. On `vertex` a pass proves the Workload Identity token, the service account's model permission and
- * the endpoint for the exact identity the deployment's functions run as.
+ * Asks `countTokens` (free: nothing is generated or billed) of the chat model and the storyboard image model through
+ * lib/ai/google/transport — the same URL builder, credential and identity every Gemini call uses. A pass proves the
+ * Workload Identity token, the service account's model permission and the endpoint for the exact identity the
+ * deployment's functions run as. GEMINI_TRANSPORT=gemini_api is reported as refused by policy; nothing is called.
  *
  * Used by GET /api/admin/google-transport (admin, full report) and GET /api/preview/google-check (Preview only, no
  * sign-in, statuses only). Returns the transport, variable NAMES that are missing, HTTP statuses and Google's redacted
@@ -13,6 +14,7 @@
 import 'server-only';
 import { geminiTierModel } from '@/lib/ai/google/models';
 import { geminiFrameModel } from '@/lib/ai/geminiImage';
+import { isNotConfiguredError } from '@/lib/contracts/geminiTransport';
 import { googleModelFetch, googleTransportKind, googleTransportProblems } from '@/lib/ai/google/transport';
 import { redactSecrets, vertexAiConfig } from '@/lib/veo/vertexAuth';
 
@@ -31,6 +33,7 @@ export interface TransportStep {
 }
 
 export interface TransportCheck {
+  /** `gemini_api` only reports a GEMINI_TRANSPORT that asks for the refused Developer API (never a transport run). */
   transport: 'gemini_api' | 'vertex' | 'invalid';
   configured: boolean;
   ok: boolean;
@@ -73,15 +76,19 @@ async function step(model: string): Promise<TransportStep> {
 
 /** One run of the free check. */
 export async function checkGoogleTransport(): Promise<TransportCheck> {
-  let kind: 'gemini_api' | 'vertex';
+  let kind: 'vertex';
   try {
     kind = googleTransportKind();
-  } catch {
+  } catch (e) {
+    if (isNotConfiguredError(e)) {
+      console.warn(`[google-transport] ok=false transport=${e.transportKind} refused`);
+      return { transport: e.transportKind, configured: false, ok: false, missing: e.missingVars, steps: [] };
+    }
     console.warn('[google-transport] ok=false transport=invalid');
-    return { transport: 'invalid', configured: false, ok: false, detail: 'GEMINI_TRANSPORT is not gemini_api or vertex', steps: [] };
+    return { transport: 'invalid', configured: false, ok: false, detail: 'GEMINI_TRANSPORT is not vertex', steps: [] };
   }
   const missing = googleTransportProblems(kind);
-  const location = kind === 'vertex' ? vertexAiConfig()?.location ?? undefined : undefined;
+  const location = vertexAiConfig()?.location ?? undefined;
   if (missing.length) {
     console.warn(`[google-transport] ok=false transport=${kind} missing=${missing.join(',')}`);
     return { transport: kind, configured: false, ok: false, missing, steps: [] };

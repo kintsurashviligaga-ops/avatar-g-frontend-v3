@@ -133,13 +133,14 @@ describe('the video row names the engine that renders film clips', () => {
 
 describe('no row repeats the stale provider claims', () => {
   it('fully configured, Google-only: Lyria (not Udio), Gemini anchor, NanoBanana base — no FLUX, no Kling', async () => {
-    setEnv({ ...SECRETS });
+    setEnv({ ...SECRETS, ...VERTEX_ENV });
     const h = await checkPipelineHealth();
     for (const s of h.services) expect(text(s)).not.toMatch(/udio \(primary\)/i);
 
     const anchor = row(h, 'სურათი (Anchor)');
     expect(anchor.provider).toBe('Gemini gemini-3.1-flash-image');
     expect(anchor.available).toBe(true);
+    expect(anchor.note).toMatch(/on Vertex AI/);
     expect(anchor.provider).not.toMatch(/flux/i);
 
     const base = row(h, 'სურათი (Base)');
@@ -170,12 +171,20 @@ describe('no row repeats the stale provider claims', () => {
     expect(music.note).toMatch(/Udio \/ ElevenLabs Music \/ MusicGen removed/);
   });
 
-  it('an unknown GEMINI_TRANSPORT fails closed for the frames and Lyria without throwing', async () => {
-    setEnv({ ...SECRETS, GEMINI_TRANSPORT: 'bogus' });
+  it.each(['bogus', 'gemini_api'])('GEMINI_TRANSPORT=%s fails closed for the frames and Lyria without throwing', async (value) => {
+    setEnv({ ...SECRETS, ...VERTEX_ENV, GEMINI_TRANSPORT: value });
     const h = await checkPipelineHealth();
     expect(row(h, 'სურათი (Anchor)').available).toBe(false);
     expect(row(h, 'მუსიკა').available).toBe(false);
-    expect(row(h, 'სურათი (Anchor)').note).toMatch(/GEMINI_TRANSPORT/);
+    expect(row(h, 'სურათი (Anchor)').note).toMatch(/GEMINI_TRANSPORT \(not vertex\)/);
+  });
+
+  it('an AI Studio key alone serves no frame and no Lyria track (v3.1: Vertex AI only)', async () => {
+    setEnv({ GEMINI_API_KEY: SECRETS.GEMINI_API_KEY });
+    const h = await checkPipelineHealth();
+    expect(row(h, 'სურათი (Anchor)').available).toBe(false);
+    expect(row(h, 'სურათი (Anchor)').note).toMatch(/GCP_PROJECT_ID/);
+    expect(row(h, 'მუსიკა').available).toBe(false);
   });
 
   it('VIDEO_GOOGLE_ONLY=0 is reported honestly as the legacy multi-vendor paths', async () => {
@@ -188,7 +197,7 @@ describe('no row repeats the stale provider claims', () => {
 });
 
 describe('overall follows the CRITICAL rows (Base, Clips, TTS, Music)', () => {
-  const CORE = { GEMINI_API_KEY: SECRETS.GEMINI_API_KEY, ELEVENLABS_API_KEY: SECRETS.ELEVENLABS_API_KEY, NANOBANANA_API_KEY: SECRETS.NANOBANANA_API_KEY };
+  const CORE = { ...VERTEX_ENV, ELEVENLABS_API_KEY: SECRETS.ELEVENLABS_API_KEY, NANOBANANA_API_KEY: SECRETS.NANOBANANA_API_KEY };
 
   it('healthy on Google + ElevenLabs + the base-image reseller alone (no Replicate needed)', async () => {
     setEnv(CORE);
@@ -198,9 +207,9 @@ describe('overall follows the CRITICAL rows (Base, Clips, TTS, Music)', () => {
   });
 
   it('degraded with one critical row down, critical with two', async () => {
-    setEnv({ GEMINI_API_KEY: CORE.GEMINI_API_KEY, NANOBANANA_API_KEY: CORE.NANOBANANA_API_KEY });
+    setEnv({ ...VERTEX_ENV, NANOBANANA_API_KEY: CORE.NANOBANANA_API_KEY });
     expect((await checkPipelineHealth()).overall).toBe('degraded');
-    setEnv({ GEMINI_API_KEY: CORE.GEMINI_API_KEY });
+    setEnv({ ...VERTEX_ENV });
     expect((await checkPipelineHealth()).overall).toBe('critical');
   });
 });

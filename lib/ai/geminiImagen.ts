@@ -1,27 +1,25 @@
 /**
- * lib/ai/geminiImagen.ts — Google **Imagen 4** via the Gemini API (generativelanguage), the Master Task's
- * specified image engine (§1.6.2 / §3.2.2).
+ * lib/ai/geminiImagen.ts — Google **Imagen 4** on Vertex AI (the image transport, lib/ai/google/transport), the
+ * Master Task's specified image engine (§1.6.2 / §3.2.2). MASTER TASK v3.1 allows Vertex only, so the Developer API
+ * route this module used (generativelanguage with the AI Studio key) is gone.
  *
- * Mirrors the shape of lib/ai/geminiVeo.ts on purpose: same key resolution, same live-by-default flag with a
- * one-env kill-switch, and the same NEVER-THROWS contract. Every function returns null on any miss (no key,
- * no access, quota, timeout, contract drift) so `ServiceManager.runTextToImage` falls straight through to the
- * proven FLUX → NanoBanana cascade. Adding a primary engine must not be able to break image generation.
+ * OPT-IN (GEMINI_IMAGEN_ENABLED=1) and NEVER-THROWS: every function returns null on any miss (Vertex not configured,
+ * no access, quota, timeout, contract drift) so `ServiceManager.runTextToImage` falls through to its next engine.
+ * Adding a primary engine must not be able to break image generation.
  *
- * WIRE CONTRACT (the `:predict` surface, NOT `:generateContent`):
- *   POST /v1beta/models/<model>:predict   (key ONLY in the x-goog-api-key header — never `?key=`: a URL lands in
- *   logs, traces and error reports; Google's own 404 page echoes the request URL back into `detail`)
+ * WIRE CONTRACT (the regional `:predict` surface, NOT `:generateContent`; bearer token, no key):
+ *   POST …/locations/<GCP_PREDICT_LOCATION>/publishers/google/models/<model>:predict
  *   { instances: [{ prompt }], parameters: { sampleCount, aspectRatio, personGeneration, negativePrompt? } }
  *   → { predictions: [{ bytesBase64Encoded, mimeType }] }
  * Imagen returns base64 IMAGE BYTES inline — there is no operation to poll and no URL to fetch, so the
  * result is hosted here and the caller gets a normal https asset URL.
  */
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleImageModelFetch, googleImageTransportBlocker } from '@/lib/ai/google/transport';
 import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
 import { isTruthyFlag } from '@/lib/env/flag';
 
-const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const TIMEOUT_MS = 20_000;
-/** Short-lived memo of a hard billing/quota wall (402/403/429). An unfunded key must not cost a
+/** Short-lived memo of a hard billing/quota wall (402/403/429). An unfunded project must not cost a
  *  round-trip on every generation; the wall expires on its own so a top-up self-heals with no redeploy. */
 let quotaWallUntil = 0;
 const QUOTA_WALL_MS = 10 * 60_000;
@@ -31,13 +29,12 @@ export function geminiImagenModel(): string {
   return (process.env.GEMINI_IMAGEN_MODEL || 'imagen-4.0-generate-001').trim();
 }
 
-/** True iff a Gemini key is present AND Imagen isn't explicitly killed (GEMINI_IMAGEN_ENABLED=0). */
+/** True iff GEMINI_IMAGEN_ENABLED is on AND Vertex AI can serve image calls. */
 export function hasGeminiImagenProvider(): boolean {
-  // OPT-IN, not opt-out. A Gemini key being PRESENT is not evidence that it is FUNDED: with Google's
-  // balance empty this leg 429s on every single generation, and because ServiceManager.runTextToImage
-  // tries it FIRST, every user waited out that round-trip before NanoBanana/FLUX even started.
-  // Re-enable with GEMINI_IMAGEN_ENABLED=1 once billing is topped up — no code push needed.
-  return isTruthyFlag(process.env.GEMINI_IMAGEN_ENABLED) && !!resolveGeminiKey();
+  // OPT-IN, not opt-out. A configured transport is not evidence that it is FUNDED: with the balance empty this
+  // leg 429s on every single generation, and because ServiceManager.runTextToImage tries it FIRST, every user
+  // waited out that round-trip before the next engine even started. GEMINI_IMAGEN_ENABLED=1 turns it on.
+  return isTruthyFlag(process.env.GEMINI_IMAGEN_ENABLED) && !googleImageTransportBlocker();
 }
 
 /** Imagen accepts these five ratios; anything else (4:5, 2:3, …) is snapped to the nearest supported one. */
@@ -70,9 +67,8 @@ export interface ImagenImage {
  * Generate 1–4 images. Returns null on ANY miss so the caller can fall through to the existing cascade.
  */
 export async function generateImagenImages(args: ImagenGenerateArgs): Promise<ImagenImage[] | null> {
-  const key = resolveGeminiKey();
   const prompt = String(args.prompt ?? '').trim();
-  if (!key || !prompt) return null;
+  if (googleImageTransportBlocker() || !prompt) return null;
   // A known billing/quota wall → skip WITHOUT a round-trip (the caller falls through to FLUX/NanoBanana).
   if (Date.now() < quotaWallUntil) return null;
 
@@ -84,18 +80,16 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
   const parameters: Record<string, unknown> = {
     sampleCount,
     aspectRatio: mapImagenAspect(args.aspectRatio),
-    // Match the Veo integration: 'allow_all' is the value this project's key is provisioned for.
+    // Match the Veo integration: 'allow_all' is the value this project is provisioned for.
     personGeneration: 'allow_all',
   };
   const negative = String(args.negativePrompt ?? '').trim();
   if (negative) parameters.negativePrompt = negative.slice(0, 480);
 
   try {
-    const res = await fetch(`${GL_BASE}/models/${model}:predict`, {
+    const res = await googleImageModelFetch(model, 'predict', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       cache: 'no-store',
-      redirect: 'manual',
       body: JSON.stringify({ instances: [{ prompt: prompt.slice(0, 2000) }], parameters }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -105,8 +99,7 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
       // identically for every caller until the operator acts, so arm the wall instead of re-paying the
       // latency on each generation.
       if (res.status === 429 || res.status === 402 || res.status === 403) quotaWallUntil = Date.now() + QUOTA_WALL_MS;
-      // `detail` goes to Sentry: whatever a provider body or a thrown message carries, never the key.
-      reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', status: res.status, detail: body.split(key).join('[redacted]'), model: geminiImagenModel() });
+      reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', status: res.status, detail: body, model: geminiImagenModel() });
       return null;
     }
     const j = (await res.json().catch(() => ({}))) as {
@@ -123,8 +116,7 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
     }
     return out.length ? out : null;
   } catch (e) {
-    const detail = (e instanceof Error ? e.message : String(e)).split(key).join('[redacted]');
-    reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', detail, model: geminiImagenModel() });
+    reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', detail: e instanceof Error ? e.message : String(e), model: geminiImagenModel() });
     return null;
   }
 }

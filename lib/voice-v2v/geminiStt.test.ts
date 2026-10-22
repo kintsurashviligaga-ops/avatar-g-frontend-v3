@@ -3,6 +3,10 @@
  * lib/voice-v2v/geminiStt — the container fix, the model chain and the error taxonomy. fetch is mocked; no network.
  */
 jest.mock('server-only', () => ({}));
+jest.mock('../veo/vertexAuth', () => ({
+  ...jest.requireActual('../veo/vertexAuth'),
+  getVertexAccessToken: jest.fn(async () => 'vertex-token'),
+}));
 
 import {
   classifySttStatus,
@@ -31,6 +35,15 @@ const WAV = bytes('RIFF', [0, 0, 0, 0], 'WAVE');
 const WEBM = bytes([0x1a, 0x45, 0xdf, 0xa3]);
 const MP4 = bytes([0, 0, 0, 0x20], 'ftypM4A ');
 const GP3 = bytes([0, 0, 0, 0x20], 'ftyp3gp4');
+
+/** A complete keyless (WIF) Vertex AI config; the token is mocked above, so nothing leaves the process. */
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
 
 describe('sniffAudioContainer', () => {
   it('recognises every documented container and the two browser-recorder ones by magic bytes', () => {
@@ -92,32 +105,35 @@ describe('geminiSttModelChain', () => {
   const ENV = { ...process.env };
   afterEach(() => { process.env = { ...ENV }; });
 
-  it('defaults to gemini-3.8-flash, then 3.7-flash and flash-latest; never a retired 2.0 model or a 2.5 one (404 on a new project)', () => {
+  it('defaults to gemini-3.8-flash, then 3.7-flash; never a retired 2.0 model or a 2.5 one (404 on a new project)', () => {
     delete process.env.GEMINI_STT_MODEL;
     delete process.env.VOICE_V2V_GEMINI_MODEL;
-    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
     expect(geminiSttModelChain().some((m) => m.startsWith('gemini-2.'))).toBe(false);
   });
 
   it('an allowlisted override leads and the default stays behind it; a retired / unknown one is ignored', () => {
     process.env.GEMINI_STT_MODEL = 'gemini-3.6-flash';
-    expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.7-flash']);
     process.env.GEMINI_STT_MODEL = 'gemini-2.0-flash-lite';
     delete process.env.VOICE_V2V_GEMINI_MODEL;
-    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
     expect(geminiSttModelChain().some((m) => m.startsWith('gemini-2.0'))).toBe(false);
     // The legacy 2.5 default is no longer allowlisted, so an old env value cannot put a 404 first.
     process.env.GEMINI_STT_MODEL = 'gemini-2.5-flash';
-    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
   });
 
-  it('on Vertex AI the Gemini-API-only alias is skipped (it answers 404 there), even as an override', () => {
+  it('a Gemini-API-only alias never enters the chain (it answers 404 on Vertex AI), even as an override', () => {
     delete process.env.VOICE_V2V_GEMINI_MODEL;
-    process.env.GEMINI_TRANSPORT = 'vertex';
-    delete process.env.GEMINI_STT_MODEL;
-    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
-    process.env.GEMINI_STT_MODEL = 'gemini-pro-latest';
-    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
+    for (const transport of [undefined, 'vertex']) {
+      if (transport) process.env.GEMINI_TRANSPORT = transport;
+      else delete process.env.GEMINI_TRANSPORT;
+      delete process.env.GEMINI_STT_MODEL;
+      expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
+      process.env.GEMINI_STT_MODEL = 'gemini-pro-latest';
+      expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
+    }
   });
 });
 
@@ -167,10 +183,16 @@ describe('transcribeWithGeminiDetailed', () => {
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     delete process.env.GEMINI_STT_MODEL;
     delete process.env.VOICE_V2V_GEMINI_MODEL;
+    delete process.env.GEMINI_TRANSPORT;
+    delete process.env.GCP_GEMINI_LOCATION;
+    delete process.env.GCP_VEO_LOCATION;
+    Object.assign(process.env, VERTEX_ENV);
+    // A leftover AI Studio key changes nothing: it is never read, sent or echoed.
     process.env.GEMINI_API_KEY = 'test-key';
     fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => ok('გამარჯობა'));
   });
   afterEach(() => {
+    for (const [url] of fetchSpy.mock.calls) expect(String(url)).not.toContain('generativelanguage.googleapis.com');
     fetchSpy.mockRestore();
     process.env = { ...ENV };
   });
@@ -180,13 +202,17 @@ describe('transcribeWithGeminiDetailed', () => {
     generationConfig: { temperature: number; thinkingConfig?: { thinkingBudget: number } };
   };
 
-  it('the key rides in x-goog-api-key, never the URL; audio goes inline with the given MIME', async () => {
+  it('goes to Vertex AI with a bearer token and no key; audio goes inline with the given MIME', async () => {
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE');
     expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-3.8-flash' });
     const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
+    expect(url).toBe(
+      'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.8-flash:generateContent',
+    );
     expect(url).not.toMatch(/key=/);
-    expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('test-key');
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer vertex-token');
+    expect(headers['x-goog-api-key']).toBeUndefined();
     const b = sentBody();
     expect(b.contents[0]!.parts[1]!.inline_data).toEqual({ mime_type: 'audio/wav', data: 'QUJD' });
     expect(b.generationConfig.temperature).toBe(0);
@@ -224,14 +250,11 @@ describe('transcribeWithGeminiDetailed', () => {
     expect(sentBody(1).generationConfig.thinkingConfig).toBeUndefined();
   });
 
-  it('rotates all the way to the flash-latest alias when the two named models are gone', async () => {
-    fetchSpy.mockImplementationOnce(async () => new Response('model is no longer available', { status: 404 }));
-    fetchSpy.mockImplementationOnce(async () => new Response('model is no longer available', { status: 404 }));
-    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US');
-    expect(r.model).toBe('gemini-flash-latest');
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
-    // flash-latest is an alias whose family can change → no thinking field.
-    expect(sentBody(2).generationConfig.thinkingConfig).toBeUndefined();
+  it('when both named models are gone it stops with model_missing — no Developer-API-only alias is tried', async () => {
+    fetchSpy.mockImplementation(async () => new Response('model is no longer available', { status: 404 }));
+    await expect(transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US')).rejects.toMatchObject({ code: 'model_missing' });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls.map(([url]) => String(url)).join(' ')).not.toMatch(/latest/);
   });
 
   it('does NOT rotate on quota / auth / bad request — throws a typed error after one call', async () => {
@@ -254,13 +277,21 @@ describe('transcribeWithGeminiDetailed', () => {
     expect(err.message).not.toContain('test-key');
   });
 
-  it('no key → auth error and no call; hasGeminiSttKey reads the shared pool', async () => {
-    delete process.env.GEMINI_API_KEY;
+  it('Vertex AI unconfigured → auth error and no call, whatever AI Studio keys exist', async () => {
+    for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
+    process.env.GEMINI_API_KEYS = 'pool-a, pool-b';
     expect(hasGeminiSttKey()).toBe(false);
     await expect(transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US')).rejects.toMatchObject({ code: 'auth' });
     expect(fetchSpy).not.toHaveBeenCalled();
-    process.env.GEMINI_API_KEYS = 'pool-a, pool-b';
+    Object.assign(process.env, VERTEX_ENV);
     expect(hasGeminiSttKey()).toBe(true);
+  });
+
+  it('GEMINI_TRANSPORT=gemini_api (the Developer API) → auth error before any provider I/O', async () => {
+    process.env.GEMINI_TRANSPORT = 'gemini_api';
+    expect(hasGeminiSttKey()).toBe(false);
+    await expect(transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US')).rejects.toMatchObject({ code: 'auth' });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('the legacy text-only wrapper still works', async () => {

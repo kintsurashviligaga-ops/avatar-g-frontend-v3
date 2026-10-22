@@ -1,36 +1,24 @@
 /**
- * lib/ai/lyriaMusic.ts — Google **Lyria 3** music generation via the Gemini **Interactions API**, wired as
- * the OPTIONAL PRIMARY music/song engine. Unlike Lyria 2 (instrumental, Vertex-only), Lyria 3 runs on the
- * Gemini API with a plain API key AND generates FULL SONGS — vocals, timed lyrics (via [Verse]/[Chorus]
- * tags), and instrumental arrangements. So it serves BOTH instrumental tracks and vocal songs. Cost bills to
- * the Gemini API account tied to the key.
+ * lib/ai/lyriaMusic.ts — Google **Lyria 3** music generation on **Vertex AI** (MASTER TASK v3.1: Lyria is the
+ * authorized music path, Vertex the only transport). Lyria 3 generates FULL SONGS — vocals, timed lyrics (via
+ * [Verse]/[Chorus] tags) — and instrumental arrangements, so it serves both. Cost bills to the Google Cloud project.
  *
- * Endpoint (VERIFIED LIVE against this project's Gemini key, 2026-07-25):
- *   POST https://generativelanguage.googleapis.com/v1beta/interactions
- *   header  x-goog-api-key: <GEMINI_API_KEY>
- *   body    { model, input: "<prompt string>", response_format: { type: "audio" } }
- *   → SYNCHRONOUS 200 { status:"completed", steps:[…] }; the audio lands as base64 MP3 in a
- *     steps[].content[] block: { type:"audio", mime_type:"audio/mpeg", data:"<base64>" }.
- *   (Probed: /interactions → 200 with a ~900KB audio/mpeg blob; the models:*:generateContent
- *    path 503s for lyria-3 — so /interactions is the CORRECT surface, not :generateContent.)
+ * Vertex has no Interactions surface: the model answers `:generateContent` on the global endpoint, and ONLY with
+ * `responseModalities: ["AUDIO","TEXT"]` (["AUDIO"] alone is a 400 INVALID_ARGUMENT) — both proven in the Part 0 T2
+ * test, 2026-10-08 (30.8 s MP3). The audio comes back as an inlineData part, which extractAudio's deep search finds.
+ * The Developer API's /v1beta/interactions route (the AI Studio key) is gone: with GEMINI_TRANSPORT unset or `vertex`
+ * the call goes to Vertex, and with anything else, or Vertex unconfigured, Lyria is "not configured" and nothing is sent.
  *
- * LIVE-BY-DEFAULT when a Gemini key is present (the endpoint + models are verified working); LYRIA_ENABLED=0
- * switches it off, which leaves studio music's Auto with NO engine (app/api/ai/music: "Lyria is not configured").
- * EVERY path is null/failure-safe: no key/access, quota, timeout, or a contract drift returns null, and the
- * music route answers that with an explicit 502 and a refund. Nothing runs behind Lyria (R7: the old
- * Udio → ElevenLabs → MusicGen failover was removed), so a transient preview-model 503 is a failed request.
- *
- * On Vertex AI (GEMINI_TRANSPORT=vertex, Part 2 A2) there is no Interactions surface: the same model answers
- * `:generateContent` on the global endpoint, and ONLY with `responseModalities: ["AUDIO","TEXT"]` (["AUDIO"] alone is a
- * 400 INVALID_ARGUMENT) — both proven in the Part 0 T2 test, 2026-10-08 (30.8 s MP3). The audio comes back as an
- * inlineData part, which extractAudio's deep search already finds.
+ * LIVE-BY-DEFAULT when Vertex is configured; LYRIA_ENABLED=0 switches it off, which leaves studio music's Auto with NO
+ * engine (app/api/ai/music: "Lyria is not configured"). EVERY path is null/failure-safe: no access, quota, timeout, or
+ * a contract drift returns null, and the music route answers that with an explicit 502 and a refund. Nothing runs
+ * behind Lyria (R7: the old Udio → ElevenLabs → MusicGen failover was removed), so a transient preview-model 503 is a
+ * failed request.
  */
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { googleModelFetch, googleTransportBlocker, googleTransportKind } from '@/lib/ai/google/transport';
+import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
 import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
 import { isEnabledByDefault } from '@/lib/env/flag';
 
-const INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 const GEN_TIMEOUT_MS = 150_000; // bounded under the route's 300s ceiling
 /** What a Lyria miss falls back to, as the fallback report states it: nothing (R7) — the music route fails and refunds. */
 export const LYRIA_FALLBACK = 'nothing (no fallback engine, R7): the request fails and is refunded';
@@ -42,11 +30,10 @@ export function lyriaModel(): string {
   return (process.env.LYRIA_MODEL || 'lyria-3-clip-preview').trim();
 }
 
-/** True iff a Gemini key is present AND Lyria isn't explicitly killed (LYRIA_ENABLED=0/false/no/off).
- *  LIVE-BY-DEFAULT: the /interactions surface + clip model are verified working, so the presence of a key
- *  is enough to make Lyria the primary music engine; the flag exists only as an instant revert. */
+/** True iff Vertex AI can serve AND Lyria isn't explicitly killed (LYRIA_ENABLED=0/false/no/off). LIVE-BY-DEFAULT: a
+ *  configured Vertex is enough to make Lyria the primary music engine; the flag exists only as an instant revert. */
 export function hasLyriaProvider(): boolean {
-  return isEnabledByDefault(process.env.LYRIA_ENABLED) && !googleTransportBlocker(resolveGeminiKey());
+  return isEnabledByDefault(process.env.LYRIA_ENABLED) && !googleTransportBlocker();
 }
 
 /** The Vertex request body (exported for tests): plain generateContent, audio + text modalities. */
@@ -68,10 +55,10 @@ function looksBase64(s: unknown): s is string {
 }
 
 /**
- * Find the audio payload in a Lyria 3 Interactions response. The exact shape of the audio field is not
- * stable across the preview (it may be output_audio, a steps[].model_output inlineData block, or a
- * candidates/parts inlineData), so rather than hard-code one path we DEEP-SEARCH for the LARGEST base64
- * blob in the whole response — for an audio response that blob IS the track — and pick up a sibling mime.
+ * Find the audio payload in a Lyria 3 response. The exact shape of the audio field is not stable across the
+ * preview (a candidates/parts inlineData block today), so rather than hard-code one path we DEEP-SEARCH for the
+ * LARGEST base64 blob in the whole response — for an audio response that blob IS the track — and pick up a sibling
+ * mime.
  */
 function extractAudio(j: unknown): LyriaTrack | null {
   if (j == null || typeof j !== 'object') return null;
@@ -133,13 +120,11 @@ export async function recordMusicUsage(model: string = lyriaModel()): Promise<vo
 /**
  * Generate a Lyria 3 track (instrumental OR vocal song). Returns { base64, mime } or null on ANY miss; the
  * caller turns null into its own explicit failure (no other engine runs behind Lyria, R7). Never throws.
- * `model` (default lyriaModel()) is the clip or Pro: both go over the same transport — Vertex :generateContent when
- * GEMINI_TRANSPORT=vertex, the Interactions API otherwise.
+ * `model` (default lyriaModel()) is the clip or Pro: both go to Vertex `:generateContent`.
  */
 export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean; model?: string }): Promise<LyriaTrack | null> {
-  const key = resolveGeminiKey();
   const model = args.model?.trim() || lyriaModel();
-  if (googleTransportBlocker(key) || !args.prompt?.trim()) return null;
+  if (googleTransportBlocker() || !args.prompt?.trim()) return null;
 
   // BUDGET GATE (Master Task §2.1.1). Music is a real per-track provider charge, so it passes the same
   // guard as image/video. A refusal returns null — the SAME shape every other miss returns here — so the
@@ -158,20 +143,12 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
   else if (args.lyrics?.trim()) input += `\n\nLyrics:\n${args.lyrics.trim().slice(0, 1500)}`;
 
   try {
-    const res = googleTransportKind() === 'vertex'
-      ? await googleModelFetch(model, 'generateContent', {
-          method: 'POST',
-          cache: 'no-store',
-          body: JSON.stringify(buildLyriaVertexBody(input)),
-          signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
-        })
-      : await fetch(INTERACTIONS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-          cache: 'no-store',
-          body: JSON.stringify({ model, input, response_format: { type: 'audio' } }),
-          signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
-        });
+    const res = await googleModelFetch(model, 'generateContent', {
+      method: 'POST',
+      cache: 'no-store',
+      body: JSON.stringify(buildLyriaVertexBody(input)),
+      signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
+    });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, status: res.status, detail: body, model });
@@ -219,22 +196,13 @@ export type LyriaResult =
  * aborts it. Never throws; the provider's body is reported, never returned.
  */
 export async function lyriaRequest(input: string, model: string, signal: AbortSignal): Promise<LyriaResult> {
-  const key = resolveGeminiKey();
-  if (googleTransportBlocker(key) || !input.trim()) return { ok: false, reason: 'not_configured' };
+  if (googleTransportBlocker() || !input.trim()) return { ok: false, reason: 'not_configured' };
   const timeout = AbortSignal.timeout(GEN_TIMEOUT_MS);
   const both = typeof (AbortSignal as unknown as { any?: unknown }).any === 'function'
     ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any([signal, timeout])
     : signal;
   try {
-    const res = googleTransportKind() === 'vertex'
-      ? await googleModelFetch(model, 'generateContent', { method: 'POST', cache: 'no-store', body: JSON.stringify(buildLyriaVertexBody(input)), signal: both })
-      : await fetch(INTERACTIONS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-          cache: 'no-store',
-          body: JSON.stringify({ model, input, response_format: { type: 'audio' } }),
-          signal: both,
-        });
+    const res = await googleModelFetch(model, 'generateContent', { method: 'POST', cache: 'no-store', body: JSON.stringify(buildLyriaVertexBody(input)), signal: both });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, status: res.status, detail: body, model });

@@ -4,8 +4,8 @@
  * Gemini REST client supporting Pro and Flash model tiers.
  * Implements multimodal inputs (image base64, PDF, video URL).
  * Uses native fetch — no SDK package required at compile time.
- * The endpoint and credential come from the selected Google transport (lib/ai/google/transport: the Gemini API key, or
- * Vertex AI with Workload Identity when GEMINI_TRANSPORT=vertex). An unconfigured transport throws NotConfiguredError.
+ * The endpoint and credential come from lib/ai/google/transport: Vertex AI with Workload Identity, the only transport
+ * under MASTER TASK v3.1 (no AI Studio key is read). An unconfigured Vertex AI throws NotConfiguredError.
  */
 
 import { geminiTierModel, isRetiredModel, normalizeModelId } from '@/lib/ai/google/models';

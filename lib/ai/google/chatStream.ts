@@ -61,7 +61,8 @@ export interface GeminiChatConfig {
 }
 
 export interface StreamGeminiChatInput {
-  apiKey: string;
+  /** Ignored since MASTER TASK v3.1 (Vertex AI only, lib/ai/google/transport): no key makes a call possible. */
+  apiKey?: string;
   models: string[];
   /** ai `ModelMessage[]`; typed `unknown` so callers don't need to import ai's types. */
   messages: unknown;
@@ -603,7 +604,7 @@ async function runAttempt(
 
   try {
     const { config } = input;
-    const google = createGoogleGenerativeAI({ apiKey: input.apiKey });
+    const google = createGoogleGenerativeAI();
     const providerOptions = buildProviderOptions(modelId, config);
     const tools = chatToolsFor(config, google.tools);
 
@@ -780,8 +781,7 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
   });
 
   try {
-    const apiKey = typeof input.apiKey === 'string' ? input.apiKey.trim() : '';
-    const notReady = googleTransportBlocker(apiKey);
+    const notReady = googleTransportBlocker();
     if (notReady) {
       const res = failure('auth', notReady, null);
       return await finish(res, [errorFrame(res.error!)]);
@@ -801,7 +801,7 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
       else signal.addEventListener('abort', onAbort, { once: true });
       return () => signal.removeEventListener('abort', onAbort);
     };
-    const attemptInput: StreamGeminiChatInput = { ...input, apiKey };
+    const attemptInput: StreamGeminiChatInput = { ...input };
 
     let last: { model: string; index: number; outcome: AttemptOutcome } | null = null;
     /** `retryTransientOnce` spends its one retry per turn, so a busy model costs at most one backoff. */
