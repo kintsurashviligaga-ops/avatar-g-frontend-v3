@@ -29,7 +29,7 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { markFreeOutput } from '@/lib/billing/entitlements';
-import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { firstUnreadableOwnUrl } from '@/lib/security/callerMedia';
 import { actorOf } from '@/lib/video/assembleActor';
 import { saveFilmStitchRecord } from '@/lib/chat/filmSceneBook';
@@ -44,7 +44,8 @@ import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { cutMasterToLength, isFinalCutRejected } from '@/lib/video/finalCut';
 import { type ElevenAlignment, wordsToAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
-import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt, filmSongSeconds } from '@/lib/elevenlabs/music';
+import { buildSongPrompt, filmSongSeconds } from '@/lib/audio/songPrompt';
+import { composeLyriaBed, lyriaBedPlan, lyriaBedReady } from '@/lib/audio/lyriaBed';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
@@ -60,9 +61,9 @@ import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
 import { saveClipCheckpoints } from '@/lib/pipeline/checkpoints';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
-// ISSUE 5 — the VIDEO pipeline uses ElevenLabs Music ONLY. Udio is intentionally NOT imported here so it can
-// never score a video; it stays confined to the standalone /api/ai/music surface — and Replicate MusicGen, once the
-// "silent-safety last resort", is gone too (PROJECT_MASTER R7: no silent fallback — see resolveMusicBed).
+// The VIDEO pipeline's score is Lyria on Vertex ONLY (MASTER TASK v3.1; ElevenLabs Music left in PR 6). Udio is not
+// imported here so it can never score a video, and Replicate MusicGen, once the "silent-safety last resort", is gone
+// too (PROJECT_MASTER R7: no silent fallback — see resolveMusicBed).
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -190,7 +191,7 @@ interface AssembleBody {
    *  the one ad price, not a second charge. Unlike filmTokenId it triggers NO
    *  film-specific side-effects (no assembling/failed status writes, no 'cut' transition). */
   billingToken?: string | null;
-  /** PHASE 55 §2 — the film brief, used to compose the ElevenLabs Music score
+  /** PHASE 55 §2 — the film brief, used to compose the Lyria score
    *  when no upstream / uploaded track is supplied. */
   scorePrompt?: string | null;
   /** B2B commercials only — the director's marketing copy. When present, the finished
@@ -203,13 +204,13 @@ interface AssembleBody {
    *  heuristic; omitted → fall back to isMusicVideoBrief(scorePrompt). */
   musicVideoMode?: boolean;
   /** v330 — a user-supplied soundtrack (uploaded beat/song). When present it BECOMES
-   *  the master music bed, bypassing the ElevenLabs Music score,
+   *  the master music bed, bypassing the Lyria score,
    *  and the LTX/compositing pipeline anchors onto it. */
   customAudioUrl?: string | null;
   /** v330 — caption language for the burned-in lower-third (ka/en/ru). Drives the
    *  FiraGO script + casing. Omitted → auto-detected from the brief. */
   captionLang?: 'ka' | 'en' | 'ru';
-  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer).
+  /** v330 — selected sung-vocal gender for the score's singer (steers the AI singer).
    *  'duet' → a male + female duet. */
   vocalGender?: 'male' | 'female' | 'duet';
   /** STEP 2.3 — ElevenLabs with-timestamps alignment → word-synced burned captions on
@@ -590,7 +591,7 @@ async function assembleImpl(req: NextRequest) {
   const musicBugSpec = musicVideoMode ? deriveMusicBug(body.scorePrompt ?? '', body.vocalGender, captionLang) : null;
 
   // STEP 3 (v331) — AUDIO BED runs CONCURRENTLY with the segment re-signing rather
-  // than strictly before it, so a slow score gen (EL Music) no longer
+  // than strictly before it, so a slow score gen (Lyria) no longer
   // SERIALLY eats the stitch's window — the cause of the ~197s "dispatch stalled"
   // timeout. `audioTotalSec` is derived from the RAW segments (re-signing changes
   // URLs, not durations) so the score gen can start without waiting on the re-sign.
@@ -601,12 +602,11 @@ async function assembleImpl(req: NextRequest) {
   // now the film's own length: the contracted final cut when there is one, else what the clips stitch to.
   const audioTotalSec = filmSongSeconds(finalCut?.ok ? finalCut.finalSec : stitchSec);
 
-  // AUDIO BED — VIDEO pipeline is ElevenLabs-ONLY (ISSUE 5). ElevenLabs is THE engine
-  // for instrumentals + sung vocals (and ElevenLabs sound-generation already powers the
-  // SFX/effects leg upstream). Udio is NOT used for video — it stays on the standalone
-  // /api/ai/music surface only. Fail-open — never a 500.
-  //   custom upload / upstream musicUrl  >  ElevenLabs Music  >  no music (scoreFallback: null)
-  type AudioEngine = 'custom-upload' | 'upstream' | 'elevenlabs-music' | null;
+  // AUDIO BED — the VIDEO pipeline's one engine is Lyria on Vertex (lib/audio/lyriaBed), and only for what is verified
+  // on this project: an instrumental score on the clip model (about 30 s, so a longer film plays its last part without
+  // music until Lyria Pro is verified), a sung song only once Lyria vocals are verified. Fail-open — never a 500.
+  //   custom upload / upstream musicUrl  >  Lyria  >  no music (scoreFallback: null)
+  type AudioEngine = 'custom-upload' | 'upstream' | 'lyria' | null;
   const resolveMusicBed = async (): Promise<{ url: string | null; fallback: AudioEngine }> => {
     // A user-uploaded soundtrack (or an upstream track) is the master bed and wins.
     if (body.customAudioUrl) {
@@ -618,52 +618,48 @@ async function assembleImpl(req: NextRequest) {
     if (body.noMusic) return { url: null, fallback: null };
 
     // ONE shared song spec (e.g. a sung Georgian R&B track for a music video, or an
-    // instrumental film score) — the brief ElevenLabs Music composes from.
+    // instrumental film score) — the brief Lyria composes from.
     // The engine reads English: the brief goes to it translated (a Georgian brief quoted verbatim was noise to it, and
-    // the song ignored the theme). The song's language still follows what the user typed (buildElevenMusicPrompt).
+    // the song ignored the theme). The song's language still follows what the user typed (buildSongPrompt).
     const scoreBrief = typeof body.scorePrompt === 'string' ? body.scorePrompt : '';
     const theme = scoreBrief.trim() ? await promptToEnglish(scoreBrief, 'music').catch(() => scoreBrief) : '';
-    const { prompt, instrumental } = buildElevenMusicPrompt({
+    const songSpec = (totalSec: number) => buildSongPrompt({
       brief: scoreBrief,
-      totalSec: audioTotalSec,
+      totalSec,
       musicVideoMode,
       vocalGender: body.vocalGender,
       theme,
       sceneSec: clipSecOfRender,
     });
+    const { instrumental } = songSpec(audioTotalSec);
 
-    // PRIMARY — ElevenLabs Music (instrumentals + sung vocals). Time-boxed.
     const skipAiMusicForSpeech = !musicVideoMode && !body.customAudioUrl && !/\b(music|song|soundtrack|მუსიკ|სიმღერ|ტრეკ)\b/i.test(body.scorePrompt || "");
     if (skipAiMusicForSpeech) {
       console.log("[assemble] Speech/commercial film without explicit music request → skipping AI score generation to preserve clean voice");
       return { url: null, fallback: null };
     }
-    if (hasElevenLabsMusicKey()) {
-      try {
-        // A longer song takes longer to compose: about a second per second of song, never under the old 90 s.
-        const EL_MUSIC_BUDGET_MS = Math.min(200_000, Math.max(90_000, audioTotalSec * 1_000));
-        const { audio, contentType } = await Promise.race([
-          composeElevenLabsMusic({ prompt, lengthMs: audioTotalSec * 1000, instrumental }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('elevenlabs music timed out')), EL_MUSIC_BUDGET_MS)),
-        ]);
-        const path = `films/elmusic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-        const url = (await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800)) ?? null;
-        // eslint-disable-next-line no-console
-        console.log('[assemble] ElevenLabs Music track ready:', url ? `yes (${instrumental ? 'instrumental' : 'sung'})` : 'no');
-        if (url) return { url, fallback: 'elevenlabs-music' };
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[assemble] ElevenLabs Music failed → film has no music (no fallback, R7):', err instanceof Error ? err.message : err);
-      }
+    // PRIMARY — Lyria (generateLyriaTrack is time-boxed and budget-gated, and never throws).
+    const plan = lyriaBedPlan(audioTotalSec, instrumental);
+    if (!plan) {
+      // A sung song before Lyria vocals are verified: no instrumental is put in its place (no silent substitution).
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] a sung song was asked for and Lyria vocals are not verified → film has no music');
+      return { url: null, fallback: null };
+    }
+    if (lyriaBedReady()) {
+      const url = await composeLyriaBed({ prompt: songSpec(plan.sec).prompt, plan, instrumental, folder: 'films' });
+      // eslint-disable-next-line no-console
+      console.log('[assemble] Lyria track:', url ? `ready (${plan.model}, ~${plan.sec}s, ${instrumental ? 'instrumental' : 'sung'})` : 'missed → film has no music (no fallback, R7)');
+      if (url) return { url, fallback: 'lyria' };
     }
 
     // ISSUE 5 — the Udio fallback that used to sit here has been REMOVED so the video
     // pipeline never scores a film with Udio.
     //
     // ⚠️ …AND SO HAS THE REPLICATE MUSICGEN ONE THAT REPLACED IT (PROJECT_MASTER R7 — no silent fallback). With
-    // REPLICATE_API_TOKEN set, an ElevenLabs miss was quietly re-scored on MusicGen, a provider the platform no longer
-    // allows, and the film shipped with a bed nobody chose. The score is one leg of a film that otherwise renders, so an
-    // ElevenLabs miss is that leg's own explicit outcome: no music, `scoreFallback: null` in the response — which the
+    // REPLICATE_API_TOKEN set, a score miss was quietly re-scored on MusicGen, a provider the platform no longer
+    // allows, and the film shipped with a bed nobody chose. The score is one leg of a film that otherwise renders, so a
+    // Lyria miss is that leg's own explicit outcome: no music, `scoreFallback: null` in the response — which the
     // studio already turns into its "music unavailable" note (lib/chat/filmDelivery) — and never a second provider.
     return { url: null, fallback: null };
   };
@@ -1021,7 +1017,7 @@ async function assembleImpl(req: NextRequest) {
         }
         let timer: ReturnType<typeof setTimeout> | null = null;
         // v330 — make the deadline RELATIVE to time already spent on the synchronous
-        // audio legs (EL Music). A fixed 270s deadline could push total past
+        // audio legs (the Lyria score). A fixed 270s deadline could push total past
         // maxDuration (300s) → platform hard-kill BEFORE this timer fires → saga compensate
         // skipped → stranded credits. Cap it to the remaining budget (minus a response/
         // compensate reserve) so the timer always fires inside the function.

@@ -192,7 +192,11 @@ test('Cancel mid-render returns the credits exactly once; Try again makes a NEW 
   const { jobId } = await confirm(page, card, user.id);
   await expect(card.getByTestId('music-cancel')).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => balanceOf(user.id), { timeout: 30_000 }).toBe(before - MUSIC_PRICE);
+  // The stop's own answer, so a refused stop fails here with its code instead of as a 60 s wait for "cancelled".
+  const stopped = page.waitForResponse((r) => r.url().includes(`/api/music/studio/jobs/${jobId}/cancel`));
   await card.getByTestId('music-cancel').click();
+  const answer = await stopped;
+  expect({ status: answer.status(), body: await answer.json().catch(() => null) }).toMatchObject({ status: 200, body: { ok: true } });
   await waitPhase(card, 'cancelled', 60_000);
   await expect(card).toContainText('Cancelled. The reserved credits were returned.');
   await expect.poll(async () => (await ledgerForJob(user.id, jobId)).map((r) => r.delta), { timeout: 60_000 }).toEqual([-MUSIC_PRICE, MUSIC_PRICE]);

@@ -1,8 +1,9 @@
 /** @jest-environment node */
 /**
- * POST /api/video/remix op=productad — the single-clip ad's music bed is ElevenLabs Music and NOTHING else.
+ * POST /api/video/remix op=productad — the single-clip ad's music bed is Lyria on Vertex and NOTHING else (MASTER TASK
+ * v3.1; ElevenLabs Music left in PR 6): an instrumental on the clip model, the one Lyria capability proven here.
  *
- * ⚠️ PROJECT_MASTER R7 (no silent fallback): an ElevenLabs Music miss used to drop to Replicate MusicGen, so the ad
+ * ⚠️ PROJECT_MASTER R7 (no silent fallback): a score miss used to drop to Replicate MusicGen, so the ad
  * came back scored by a provider the platform no longer allows, with nothing in the response to say so. The bed is an
  * optional leg of an ad that is already rendered and paid for, so its failure is the leg's own explicit outcome — the
  * clip delivered WITHOUT music and reported `music: false` — and never a second provider. MusicGen is mocked to
@@ -41,7 +42,11 @@ jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
   createSignedAssetUrl: jest.fn(),
   uploadAndSign: jest.fn(async () => 'https://storage.example/ad-music.mp3'),
 }));
-jest.mock('../../../../lib/elevenlabs/music', () => ({ composeElevenLabsMusic: jest.fn(), hasElevenLabsMusicKey: jest.fn(() => true) }));
+jest.mock('../../../../lib/audio/lyriaBed', () => ({
+  ...jest.requireActual('../../../../lib/audio/lyriaBed'),
+  lyriaBedReady: jest.fn(() => true),
+  composeLyriaBed: jest.fn(),
+}));
 // Not imported by the route any more — mocked (to SUCCEED) so a fallback put back through it would be caught.
 jest.mock('../../../../lib/ai/replicate', () => ({ generateMusic: jest.fn(async () => ({ audioUrl: 'https://replicate.delivery/musicgen.mp3' })) }));
 jest.mock('../../../../lib/supabase/server', () => ({
@@ -64,7 +69,7 @@ jest.mock('../../../../lib/veo/policy', () => ({ isGoogleOnly: jest.fn(() => tru
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '../../../../lib/elevenlabs/music';
+import { composeLyriaBed, lyriaBedReady } from '../../../../lib/audio/lyriaBed';
 import { generateMusic } from '../../../../lib/ai/replicate';
 import { muxAudioOntoVideo } from '../../../../lib/video/remixOps';
 import { deductCreditsOnce, refundCredits } from '../../../../lib/orchestrator/ledger';
@@ -81,24 +86,27 @@ const AD = { op: 'productad', imageUrl: 'https://cdn.example.com/product.jpg', p
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (hasElevenLabsMusicKey as jest.Mock).mockReturnValue(true);
-  (composeElevenLabsMusic as jest.Mock).mockResolvedValue({ audio: Buffer.from('el'), contentType: 'audio/mpeg' });
+  (lyriaBedReady as jest.Mock).mockReturnValue(true);
+  (composeLyriaBed as jest.Mock).mockResolvedValue('https://storage.example/ad-music.mp3');
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterEach(() => jest.restoreAllMocks());
 
-test('ElevenLabs Music scores the clip (the baseline): music: true', async () => {
+test('Lyria scores the clip (the baseline): an 8 s instrumental on the clip model, music: true', async () => {
   const res = await POST(post(AD));
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ url: 'https://storage.example/scored.mp4', music: true, charged: true });
-  expect(composeElevenLabsMusic).toHaveBeenCalledTimes(1);
+  expect(composeLyriaBed).toHaveBeenCalledTimes(1);
+  expect(composeLyriaBed).toHaveBeenCalledWith(expect.objectContaining({
+    instrumental: true, folder: 'productad-music', plan: { model: 'lyria-3-clip-preview', sec: 8 },
+  }));
   expect(muxAudioOntoVideo).toHaveBeenCalledWith('https://storage.example/veo-ad.mp4', 'https://storage.example/ad-music.mp3', 'under', 12);
   expect(generateMusic).not.toHaveBeenCalled();
 });
 
-test('an ElevenLabs Music FAILURE ships the clip without music, says so — and MusicGen is never asked', async () => {
-  (composeElevenLabsMusic as jest.Mock).mockRejectedValue(new Error('ElevenLabs 429'));
+test('a Lyria miss ships the clip without music, says so — and MusicGen is never asked', async () => {
+  (composeLyriaBed as jest.Mock).mockResolvedValue(null);
   const res = await POST(post(AD));
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ url: 'https://storage.example/veo-ad.mp4', music: false, charged: true });
@@ -109,11 +117,11 @@ test('an ElevenLabs Music FAILURE ships the clip without music, says so — and 
   expect(refundCredits).not.toHaveBeenCalled();
 });
 
-test('no ElevenLabs key: the same — no music, no MusicGen', async () => {
-  (hasElevenLabsMusicKey as jest.Mock).mockReturnValue(false);
+test('Lyria not configured: the same — no music, no MusicGen', async () => {
+  (lyriaBedReady as jest.Mock).mockReturnValue(false);
   const json = await (await POST(post(AD))).json();
   expect(json).toMatchObject({ url: 'https://storage.example/veo-ad.mp4', music: false });
-  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(composeLyriaBed).not.toHaveBeenCalled();
   expect(generateMusic).not.toHaveBeenCalled();
 });
 
@@ -122,7 +130,7 @@ test('a replayed charge (same jobId and body, already charged) is refused with 4
   const res = await POST(post(AD));
   expect(res.status).toBe(409);
   expect(await res.json()).toMatchObject({ url: null, success: false, code: 'duplicate_request' });
-  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(composeLyriaBed).not.toHaveBeenCalled();
   expect(muxAudioOntoVideo).not.toHaveBeenCalled();
   expect(refundCredits).not.toHaveBeenCalled();
 });

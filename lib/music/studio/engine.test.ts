@@ -304,6 +304,19 @@ describe('failures refund exactly once', () => {
     await expect(cancelMusic(h.deps, USER, q.jobId)).rejects.toMatchObject({ code: 'not_running' });
   });
 
+  test('a stop whose write cannot land says so (503 cancel_busy), never "already finished", and refunds nothing', async () => {
+    const h = harness();
+    const q = await quoted(h);
+    await startMusic(h.deps, USER, q.plan, q.token, true);
+    h.store.down = true;
+    await expect(cancelMusic(h.deps, USER, q.jobId)).rejects.toMatchObject({ code: 'cancel_busy', status: 503 });
+    h.store.down = false;
+    expect(h.store.rows.get(q.jobId)!.status).toBe('pending');
+    expect(h.refunds).toHaveLength(0);
+    expect((await cancelMusic(h.deps, USER, q.jobId)).status).toBe('cancelled');
+    expect(h.refunds).toHaveLength(1);
+  });
+
   test('another user can neither read nor cancel the job', async () => {
     const h = harness();
     const q = await quoted(h);

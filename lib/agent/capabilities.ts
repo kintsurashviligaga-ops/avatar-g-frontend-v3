@@ -102,7 +102,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'video.remix': c({
     id: 'video.remix', serviceId: 'video.remix', does: 'Edit a video the user has: trim, captions, colour, speed, music, voice, style',
     routes: ['/api/video/remix'],
-    engine: 'trim, captions, colour, speed, stabilise: ffmpeg; music: ElevenLabs Music (Lyria in PR 6); voiceover: Google Cloud TTS; restyle, background, character, redub: refused (no Google engine)',
+    engine: 'trim, captions, colour, speed, stabilise: ffmpeg; music: Lyria 3 instrumental (~30 s until Lyria Pro is verified); voiceover: Google Cloud TTS; restyle, background, character, redub: refused (no Google engine)',
     pricing: { key: 'remix', charge: 'charged' }, approval: 'remix-card', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'signed intent per charge; a free op runs once per send', cancel: 'client-abort', qc: null, artifact: 'video',
     library: 'filed', label: 'BLOCKED_OWNER',
@@ -152,7 +152,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'music.generate': c({
     id: 'music.generate', serviceId: 'music.generate', does: 'A track, a song or a soundtrack',
-    routes: ['/api/ai/music'], engine: 'Lyria; ElevenLabs Music for a Georgian song; a cover or a trained voice is refused',
+    routes: ['/api/ai/music'], engine: 'Lyria 3; a cover or a trained voice is refused',
     pricing: { key: 'music', charge: 'charged' }, approval: 'agent-card', timeoutSec: 300, retry: 'refund-on-miss',
     idempotency: 'one job per confirm (the client queue)', cancel: 'client-abort', qc: null, artifact: 'audio', library: 'filed',
     label: 'BLOCKED_OWNER',

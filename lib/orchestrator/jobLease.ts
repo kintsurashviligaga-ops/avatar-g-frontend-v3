@@ -269,13 +269,28 @@ export function fail(store: LeaseStore, id: string, owner: string, error: string
   );
 }
 
-export type CancelResult = { ok: true; row: LeaseRow } | { ok: false; reason: 'missing' | 'not_owner' | 'final' };
+/** 'busy': the row was still live after every attempt (other writes kept landing first, or ours did not get through). */
+export type CancelResult = { ok: true; row: LeaseRow } | { ok: false; reason: 'missing' | 'not_owner' | 'final' | 'busy' };
 
-/** The owner stops a queued or running job. The worker sees it on its next heartbeat and kills its render. */
+/** Pauses between cancel attempts: long enough for the burst around a start (hold released, claim, dispatch) to pass. */
+const CANCEL_PAUSE_MS = [100, 250, 500, 1_000];
+
+/**
+ * The owner stops a queued or running job. The worker sees it on its next heartbeat and kills its render.
+ *
+ * A compare-and-set that does not land means another write moved the row in between (the enqueuing request releasing
+ * its hold, a worker claiming it or recording its dispatch, a heartbeat) or this write did not get through. Read again
+ * after a pause and retry. 'final' only when a read shows the row final: a row still live after every attempt is
+ * 'busy', so the caller never tells the owner a job is finished while its render runs on.
+ */
 export async function cancel(store: LeaseStore, id: string, userId: string, error: string, owe: boolean): Promise<CancelResult> {
-  for (let i = 0; i < 3; i += 1) {
+  let seen = false;
+  for (let i = 0; i <= CANCEL_PAUSE_MS.length; i += 1) {
+    if (i > 0) await new Promise((r) => setTimeout(r, CANCEL_PAUSE_MS[i - 1]));
     const row = await store.read(id);
-    if (!row || !row.exec) return { ok: false, reason: 'missing' };
+    if (!row) continue; // the live store answers a failed read as null: read again
+    seen = true;
+    if (!row.exec) return { ok: false, reason: 'missing' };
     if (row.userId !== userId) return { ok: false, reason: 'not_owner' };
     if (!LIVE.includes(row.status)) return { ok: false, reason: 'final' };
     const exec = bump(row.exec, { hold: undefined, lastError: 'cancelled', ...(owe ? { owe: 'refund' as const } : {}) });
@@ -283,7 +298,7 @@ export async function cancel(store: LeaseStore, id: string, userId: string, erro
       return { ok: true, row: { ...row, status: 'failed', exec, params: withExec(row, exec) } };
     }
   }
-  return { ok: false, reason: 'final' };
+  return { ok: false, reason: seen ? 'busy' : 'missing' };
 }
 
 /** Clear a paid debt. Only after the effect landed; a lost clear just means the (idempotent) effect runs again. */

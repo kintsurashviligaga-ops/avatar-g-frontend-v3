@@ -1,19 +1,19 @@
 /** @jest-environment node */
 /**
  * The Georgian song's instrumental bed runs ONE engine (the owner, 2026-10-09: no silent fallback to another outside
- * provider): ElevenLabs Music when its key is present, and its miss is a miss, never a MusicGen (Replicate) render.
- * Without the key there is no bed at all: MusicGen has no Google engine (MASTER TASK v3.1), whatever MEDIA_GOOGLE_ONLY says.
+ * provider): Lyria on Vertex when it is configured (ElevenLabs Music left in PR 6), and its miss is a miss, never a
+ * MusicGen (Replicate) render. Without Lyria there is no bed at all: MusicGen has no Google engine (MASTER TASK v3.1),
+ * whatever MEDIA_GOOGLE_ONLY says.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('ffmpeg-static', () => null);
 jest.mock('../observability/report-error', () => ({ reportError: jest.fn() }));
 jest.mock('../chat/filmVoiceover', () => ({ textToHostedSpeech: jest.fn() }));
-const composeElevenLabsMusic = jest.fn();
-const hasElevenLabsMusicKey = jest.fn();
-jest.mock('../elevenlabs/music', () => ({
-  ...jest.requireActual('../elevenlabs/music'),
-  composeElevenLabsMusic: (...a: unknown[]) => composeElevenLabsMusic(...a),
-  hasElevenLabsMusicKey: () => hasElevenLabsMusicKey(),
+const generateLyriaTrack = jest.fn();
+const hasLyriaProvider = jest.fn(() => true);
+jest.mock('../ai/lyriaMusic', () => ({
+  generateLyriaTrack: (...a: unknown[]) => generateLyriaTrack(...a),
+  hasLyriaProvider: () => hasLyriaProvider(),
 }));
 const generateMusic = jest.fn();
 jest.mock('../ai/replicate', () => ({ generateMusic: (...a: unknown[]) => generateMusic(...a) }));
@@ -26,27 +26,28 @@ import { instrumentalBed, instrumentalPrompt, writeGeorgianLyrics, cleanGeorgian
 
 beforeEach(() => jest.clearAllMocks());
 
-it('ElevenLabs configured and it misses → null, and MusicGen is never called', async () => {
-  hasElevenLabsMusicKey.mockReturnValue(true);
-  composeElevenLabsMusic.mockRejectedValue(new Error('EL 500'));
+it('Lyria configured and it misses → null, and MusicGen is never called', async () => {
+  hasLyriaProvider.mockReturnValue(true);
+  generateLyriaTrack.mockResolvedValue(null);
   await expect(instrumentalBed('funk', 30)).resolves.toBeNull();
   expect(generateMusic).not.toHaveBeenCalled();
 });
 
-it('ElevenLabs configured and it lands → its hosted bed', async () => {
-  hasElevenLabsMusicKey.mockReturnValue(true);
-  composeElevenLabsMusic.mockResolvedValue({ audio: Buffer.from([1]), contentType: 'audio/mpeg' });
+it('Lyria configured and it lands → its hosted bed: an instrumental on the clip model', async () => {
+  hasLyriaProvider.mockReturnValue(true);
+  generateLyriaTrack.mockResolvedValue({ base64: 'AQ==', mime: 'audio/mpeg' });
   await expect(instrumentalBed('funk', 30)).resolves.toBe('https://x.supabase.co/bed.mp3');
+  expect(generateLyriaTrack).toHaveBeenCalledWith(expect.objectContaining({ instrumental: true, model: 'lyria-3-clip-preview' }));
   expect(generateMusic).not.toHaveBeenCalled();
 });
 
 it.each([{}, { MEDIA_GOOGLE_ONLY: '0' }, { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' }])(
-  'no ElevenLabs key (env %o) → no bed, and MusicGen is never called',
+  'Lyria not configured (env %o) → no bed, and MusicGen is never called',
   async (env) => {
     const saved = { ...process.env };
     Object.assign(process.env, env);
     try {
-      hasElevenLabsMusicKey.mockReturnValue(false);
+      hasLyriaProvider.mockReturnValue(false);
       generateMusic.mockResolvedValue({ audioUrl: 'https://replicate.delivery/x.mp3' });
       await expect(instrumentalBed('funk', 30)).resolves.toBeNull();
       expect(generateMusic).not.toHaveBeenCalled();

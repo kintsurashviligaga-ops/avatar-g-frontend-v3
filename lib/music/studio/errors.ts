@@ -3,7 +3,7 @@ export type MusicErrorCode =
   | 'not_enabled' | 'not_configured' | 'unsupported' | 'validation_failed' | 'confirmation_required'
   | 'quote_invalid' | 'quote_changed' | 'quote_expired' | 'quote_used'
   | 'insufficient_credits' | 'billing_unavailable' | 'budget_exhausted' | 'queue_full' | 'jobs_unavailable'
-  | 'not_found' | 'not_running' | 'cancelled'
+  | 'not_found' | 'not_running' | 'cancel_busy' | 'cancelled'
   | 'provider_failed' | 'provider_timeout' | 'provider_outcome_unknown' | 'quality_failed' | 'storage_failed'
   | 'edit_failed' | 'unknown_error';
 

@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const who = await musicUser(req);
   if ('response' in who) return who.response;
-  const rl = await checkRateLimit(req, RATE_LIMITS.WRITE, who.userId); // per user, not per shared IP
+  const rl = await checkRateLimit(req, RATE_LIMITS.CANCEL, who.userId); // per user, not per shared IP
   if (rl) return rl;
   try {
     return NextResponse.json(await cancelMusic(liveMusicDeps(), who.userId, params.id));

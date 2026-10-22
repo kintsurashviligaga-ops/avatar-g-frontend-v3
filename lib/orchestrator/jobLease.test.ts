@@ -183,6 +183,52 @@ describe('heartbeat, progress and the end of a run are fenced by the lease', () 
     const row = s.rows.get('j1')!;
     expect(row.status === 'completed' ? d : c.ok).toBe(true);
   });
+
+  // A worker's write (its claim, dispatch, a heartbeat) landing between the cancel's read and its compare-and-set.
+  const competingWrites = (s: ReturnType<typeof memoryLeaseStore>, times: number) => {
+    let n = 0;
+    s.beforeCas = (id) => {
+      if (n >= times) return;
+      n += 1;
+      const r = s.rows.get(id)!;
+      r.exec = { ...r.exec!, v: r.exec!.v + 1 };
+      r.params = { ...r.params, _exec: r.exec };
+    };
+  };
+
+  test('a cancel that loses three races in a row to the worker still stops the job (it used to answer "final")', async () => {
+    const s = memoryLeaseStore(now);
+    await put(s);
+    await claim(s, 'j1', 'A', now());
+    competingWrites(s, 3);
+    const r = await cancel(s, 'j1', 'u1', 'cancelled by the user', true);
+    expect(r.ok).toBe(true);
+    expect(s.rows.get('j1')).toMatchObject({ status: 'failed', error: 'cancelled by the user', exec: { owe: 'refund' } });
+    expect(await heartbeat(s, 'j1', 'A', now())).toBe('stopped');
+  });
+
+  test('a row still live after every attempt is "busy", never "final", and is left running untouched', async () => {
+    const s = memoryLeaseStore(now);
+    await put(s);
+    await claim(s, 'j1', 'A', now());
+    competingWrites(s, Infinity);
+    expect(await cancel(s, 'j1', 'u1', 'cancelled by the user', true)).toEqual({ ok: false, reason: 'busy' });
+    expect(s.rows.get('j1')).toMatchObject({ status: 'processing', error: null });
+    expect(s.rows.get('j1')!.exec!.owe).toBeUndefined();
+  });
+
+  test('a cancel whose writes do not get through is "busy"; dropped reads are read again', async () => {
+    const s = memoryLeaseStore(now);
+    await put(s);
+    await claim(s, 'j1', 'A', now());
+    s.down = true;
+    expect(await cancel(s, 'j1', 'u1', 'cancelled by the user', false)).toEqual({ ok: false, reason: 'busy' });
+    expect(s.rows.get('j1')!.status).toBe('processing');
+    s.down = false;
+    s.dropReads = 2;
+    expect((await cancel(s, 'j1', 'u1', 'cancelled by the user', false)).ok).toBe(true);
+    expect(await cancel(s, 'nope', 'u1', 'cancelled by the user', false)).toEqual({ ok: false, reason: 'missing' });
+  });
 });
 
 describe('debts: the refund owed by a failed row is written with the failure and paid once', () => {

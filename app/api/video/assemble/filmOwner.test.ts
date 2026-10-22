@@ -52,11 +52,10 @@ jest.mock('../../../../lib/video/finalCut', () => ({
 }));
 jest.mock('../../../../lib/pipeline/compositing/word-synced-captions', () => ({}));
 jest.mock('../../../../lib/pipeline/compositing/caption-burn', () => ({ overlayCaptionsOnUrl: jest.fn() }));
-jest.mock('../../../../lib/elevenlabs/music', () => ({
-  composeElevenLabsMusic: jest.fn(),
-  hasElevenLabsMusicKey: jest.fn(() => true),
-  buildElevenMusicPrompt: jest.fn(() => ({ prompt: 'cinematic instrumental film score', instrumental: true })),
-  filmSongSeconds: jest.requireActual('../../../../lib/elevenlabs/music').filmSongSeconds,
+jest.mock('../../../../lib/audio/lyriaBed', () => ({
+  lyriaBedReady: jest.fn(() => true),
+  lyriaBedPlan: jest.fn(() => ({ model: 'lyria-3-clip-preview', sec: 30 })),
+  composeLyriaBed: jest.fn(),
 }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => `EN: ${p}`) }));
 jest.mock('../../../../lib/orchestrator/masterQa', () => ({}));
@@ -88,12 +87,11 @@ import { decideFilmWaiver } from '../../../../lib/chat/filmBilling';
 import { claimIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits } from '../../../../lib/orchestrator/ledger';
 import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
-import { hasElevenLabsMusicKey } from '../../../../lib/elevenlabs/music';
+import { composeLyriaBed, lyriaBedReady } from '../../../../lib/audio/lyriaBed';
 import { firstUnreadableOwnUrl } from '../../../../lib/security/callerMedia';
 import { keepLiveClips } from '../../../../lib/pipeline/qaAgent';
 import { muxAudioOntoVideo } from '../../../../lib/video/remixOps';
 import { assembleWithFfmpeg } from '../../../../lib/orchestrator/ffmpeg-assembly';
-import { composeElevenLabsMusic } from '../../../../lib/elevenlabs/music';
 import { cutMasterToLength } from '../../../../lib/video/finalCut';
 
 const post = (body: unknown) =>
@@ -110,7 +108,7 @@ const record = (payerUid: string | null) => ({ tokenId: TOKEN, phase: 'ready', c
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
-  (hasElevenLabsMusicKey as jest.Mock).mockReturnValue(false); // no score leg: the test is about who may stamp the film
+  (lyriaBedReady as jest.Mock).mockReturnValue(false); // no score leg: the test is about who may stamp the film
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -162,7 +160,7 @@ describe('an explicit final duration never authorizes a partial film', () => {
   const second = { url: 'https://storage.example/clip-1.mp4', durationSec: 8 };
   const noRenderOrBilling = () => {
     for (const fn of [decideFilmWaiver, claimIdempotencyKey, deductCredits, recordFilmAssembling,
-      recordFilmMaster, recordFilmFailed, recordCompletedFilm, muxAudioOntoVideo, assembleWithFfmpeg, composeElevenLabsMusic, cutMasterToLength]) {
+      recordFilmMaster, recordFilmFailed, recordCompletedFilm, muxAudioOntoVideo, assembleWithFfmpeg, composeLyriaBed, cutMasterToLength]) {
       expect(fn).not.toHaveBeenCalled();
     }
   };

@@ -228,6 +228,7 @@ export async function cancelImage(deps: ImageDeps, userId: string, id: string) {
   const before = await deps.store.read(id);
   if (!isImage(before, userId)) throw new ImageError('not_found', 'Image job not found.', 404);
   const r = await cancel(deps.store, id, userId, 'cancelled: stopped by the user', stateOf(before).billing !== 'rejected');
+  if (!r.ok && r.reason === 'busy') throw new ImageError('jobs_unavailable', 'The image job is still running; the stop did not land. Try again.', 503);
   if (!r.ok) throw new ImageError('not_running', 'This image job is already final.', 409);
   await settleImage(deps, id);
   // If inference is active, keep its admission until worker cleanup / TTL; HTTP abort is not remote completion.

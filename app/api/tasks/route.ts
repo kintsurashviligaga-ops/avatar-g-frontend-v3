@@ -97,7 +97,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const r = await cancelTask(liveTaskDeps(), { userId: user.id, id });
     if (r.ok) return NextResponse.json(r, { headers: NO_STORE });
     if (r.error === 'not_found') return notFound();
-    return NextResponse.json(r, { status: 409, headers: NO_STORE });
+    // busy: still running, the stop did not land (other writes kept winning); asking again is safe.
+    return NextResponse.json(r, { status: r.error === 'busy' ? 503 : 409, headers: NO_STORE });
   }
 
   if (action !== 'plan' && action !== 'run' && action !== 'approve' && action !== 'resume') {

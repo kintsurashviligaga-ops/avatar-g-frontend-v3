@@ -19,7 +19,6 @@ jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: j
 jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ response: null, auth: null, budgetRemaining: null })) }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/elevenlabs/music', () => ({ composeElevenLabsMusic: jest.fn(), hasElevenLabsMusicKey: jest.fn(() => false) }));
 jest.mock('../../../../lib/ai/replicate', () => ({ generateMusicCover: jest.fn(), generateVoiceSong: jest.fn(), generateMusic: jest.fn() }));
 jest.mock('../../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
 jest.mock('../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(), generateLyriaTrack: jest.fn() }));
@@ -62,7 +61,6 @@ jest.mock('../../../../lib/audio/trackDuration', () => ({ probeTrackDurationSec:
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '../../../../lib/elevenlabs/music';
 import { generateLyriaTrack, hasLyriaProvider } from '../../../../lib/ai/lyriaMusic';
 import { generateMusic, generateMusicCover, generateVoiceSong } from '../../../../lib/ai/replicate';
 import { generateUdioTrack } from '../../../../lib/udio/client';
@@ -71,6 +69,9 @@ import { transcodeVoiceToMp3 } from '../../../../lib/audio/transcode';
 import { createSignedAssetUrl } from '../../../../lib/orchestrator/storage-adapter';
 import { refundCredits } from '../../../../lib/orchestrator/ledger';
 import { runWithLatencyFailover } from '../../../../lib/providers/latencyFailover';
+
+/** Any request that reached ElevenLabs (its Music client is gone, PR 6; the fetch spy would still see one). */
+const elevenLabsCalls = () => (global.fetch as unknown as jest.Mock).mock.calls.filter(([u]) => /elevenlabs\.io/.test(String(u)));
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/ai/music', {
@@ -86,9 +87,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (hasLyriaProvider as jest.Mock).mockReturnValue(true);
   (hasUdioApiKey as jest.Mock).mockReturnValue(true);
-  (hasElevenLabsMusicKey as jest.Mock).mockReturnValue(true);
   (generateLyriaTrack as jest.Mock).mockResolvedValue({ base64: 'AAAA', mime: 'audio/mpeg' });
-  (composeElevenLabsMusic as jest.Mock).mockResolvedValue({ audio: Buffer.from('el'), contentType: 'audio/mpeg' });
   (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
   (generateMusic as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/track.mp3' });
   (generateMusicCover as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/cover.mp3' });
@@ -111,7 +110,7 @@ describe('`engine` — the model pill picks the ONE engine that runs', () => {
   test('without it (Auto) Lyria runs — and only Lyria is handed to the failover', async () => {
     expect(await servedBy(SONG)).toBe('Lyria');
     expect(attemptsHanded()).toEqual(['lyria']);
-    expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+    expect(elevenLabsCalls()).toEqual([]);
   });
 
   test('Auto: a Lyria miss is the explicit, refunded 502 — Udio, ElevenLabs and MusicGen are never asked', async () => {
@@ -124,7 +123,7 @@ describe('`engine` — the model pill picks the ONE engine that runs', () => {
     }
     expect(refundCredits).toHaveBeenCalledTimes(2);
     expect(generateUdioTrack).not.toHaveBeenCalled();
-    expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+    expect(elevenLabsCalls()).toEqual([]);
     expect(generateMusic).not.toHaveBeenCalled();
   });
 
@@ -135,7 +134,7 @@ describe('`engine` — the model pill picks the ONE engine that runs', () => {
     expect(await res.json()).toMatchObject({ success: false, refunded: true });
     expect(runWithLatencyFailover).not.toHaveBeenCalled();
     expect(generateUdioTrack).not.toHaveBeenCalled();
-    expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+    expect(elevenLabsCalls()).toEqual([]);
     expect(generateMusic).not.toHaveBeenCalled();
   });
 

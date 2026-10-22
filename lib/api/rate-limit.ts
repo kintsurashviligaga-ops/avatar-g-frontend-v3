@@ -149,6 +149,9 @@ export const RATE_LIMITS = {
   EXPENSIVE: { maxRequests: 5,   windowMs: 60_000,       keyPrefix: 'rl:exp'   } as const,
   // Music Studio edits (free ffmpeg trim / fade / volume / convert / join): per user, apart from paid starts.
   MUSIC_EDIT: { maxRequests: 20, windowMs: 60_000,       keyPrefix: 'rl:mus-ed' } as const,
+  // Stopping a paid job: its own bucket, so quotes, commands and other WRITE routes can never use up the allowance a
+  // user needs to press Stop. A cancel only fails its own row, so a burst costs nothing.
+  CANCEL:    { maxRequests: 30, windowMs: 60_000,       keyPrefix: 'rl:cancel' } as const,
   // /api/tasks (EF-7): every progress surface polls it (the job tray every 7 s, a studio panel or montage every 2.5 s,
   // a chat job card every 3 s), so it has its own bucket instead of draining READ, which every other read route shares.
   TASKS:     { maxRequests: 120, windowMs: 60_000,       keyPrefix: 'rl:tasks' } as const,

@@ -171,6 +171,13 @@ test('stop: a lease job through its executor (200); a studio render 409 not_canc
   expect((await post('not json')).status).toBe(400);
 });
 
+test('stop that did not land yet (busy): 503, so the tray says to try again instead of "already finished"', async () => {
+  mockKind.cancel.mockResolvedValueOnce('busy' as never);
+  const r = await post({ action: 'cancel', id: 'job-m' });
+  expect(r.status).toBe(503);
+  expect(await r.json()).toEqual({ ok: false, error: 'busy' });
+});
+
 test('its own rate-limit bucket, keyed by the user: the tray, the panels and the chat cards poll it, not the shared read budget', async () => {
   await get('?active=1');
   await get('?id=job-m');

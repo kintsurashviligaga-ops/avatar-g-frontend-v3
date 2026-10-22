@@ -46,11 +46,10 @@ jest.mock('../../../../lib/video/surgicalOps', () => ({ probeDimensions: jest.fn
 jest.mock('../../../../lib/orchestrator/ffmpeg-assembly', () => ({ assembleWithFfmpeg: jest.fn() }));
 jest.mock('../../../../lib/pipeline/compositing/word-synced-captions', () => ({}));
 jest.mock('../../../../lib/pipeline/compositing/caption-burn', () => ({ overlayCaptionsOnUrl: jest.fn() }));
-jest.mock('../../../../lib/elevenlabs/music', () => ({
-  composeElevenLabsMusic: jest.fn(),
-  hasElevenLabsMusicKey: jest.fn(() => true),
-  buildElevenMusicPrompt: jest.fn(() => ({ prompt: 'cinematic instrumental film score', instrumental: true })),
-  filmSongSeconds: jest.requireActual('../../../../lib/elevenlabs/music').filmSongSeconds,
+jest.mock('../../../../lib/audio/lyriaBed', () => ({
+  lyriaBedReady: jest.fn(() => true),
+  lyriaBedPlan: jest.fn(() => ({ model: 'lyria-3-clip-preview', sec: 30 })),
+  composeLyriaBed: jest.fn(),
 }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => `EN: ${p}`) }));
 jest.mock('../../../../lib/orchestrator/masterQa', () => ({}));
@@ -82,7 +81,7 @@ import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { runSaga } from '../../../../lib/orchestrator/saga';
 import { evaluateRenderQuality, evaluateSceneClips, visionQaEnabled } from '../../../../lib/ai/visionQualityGate';
-import { hasElevenLabsMusicKey } from '../../../../lib/elevenlabs/music';
+import { lyriaBedReady } from '../../../../lib/audio/lyriaBed';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/video/assemble', {
@@ -105,7 +104,7 @@ const GRADES = [
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
-  (hasElevenLabsMusicKey as jest.Mock).mockReturnValue(false);
+  (lyriaBedReady as jest.Mock).mockReturnValue(false);
   (runSaga as jest.Mock).mockImplementation(async (_steps: unknown, { bag }: { bag: Record<string, unknown> }) => {
     bag.tempUrl = MASTER;
     return { ok: true, sagaId: 'saga-1' };

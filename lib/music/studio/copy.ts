@@ -19,6 +19,7 @@ const T: Record<MusicErrorCode, [ka: string, en: string, ru: string]> = {
   jobs_unavailable: ['სამუშაოს ჩაწერა ვერ მოხერხდა — სცადე ხელახლა.', 'The job could not be recorded — please try again.', 'Не удалось записать задачу — попробуйте снова.'],
   not_found: ['ტრეკი ვერ მოიძებნა.', 'Track not found.', 'Трек не найден.'],
   not_running: ['ეს ტრეკი უკვე დასრულებულია.', 'This track is already finished.', 'Этот трек уже завершён.'],
+  cancel_busy: ['გაჩერება ჯერ ვერ მოხერხდა — სცადე ხელახლა.', 'The track could not be stopped yet — please try again.', 'Остановить трек пока не удалось — попробуйте ещё раз.'],
   cancelled: ['გაუქმდა. კრედიტი დაგიბრუნდა.', 'Cancelled. Your credits were returned.', 'Отменено. Кредиты возвращены.'],
   provider_failed: ['მუსიკის ძრავამ ტრეკი ვერ დააბრუნა. კრედიტი დაგიბრუნდა.', 'The music engine did not return a track. Your credits were returned.', 'Музыкальный движок не вернул трек. Кредиты возвращены.'],
   provider_timeout: ['ძრავამ დროულად არ უპასუხა. კრედიტი დაგიბრუნდა.', 'The engine did not answer in time. Your credits were returned.', 'Движок не ответил вовремя. Кредиты возвращены.'],
