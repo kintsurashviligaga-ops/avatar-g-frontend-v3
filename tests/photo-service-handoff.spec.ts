@@ -47,14 +47,31 @@ for (const width of [390, 1440]) {
       await expect(composer).toHaveValue('');
       expect(new URL(page.url()).pathname).toBe(`/${locale}/dashboard`);
       expect(mutations).toEqual([]);
+      // Linux runners need not have Arial, which next/font uses for its optional OS fallback.
+      // Model that absence on every host; verifying the packaged faces must not load local fallbacks.
+      const fallbackCount = await page.evaluate(() => {
+        let replaced = 0;
+        for (const face of [...document.fonts]) {
+          if (!face.family.includes('_Fallback')) continue;
+          document.fonts.delete(face);
+          document.fonts.add(new FontFace(face.family, 'local("MyAvatar-Deliberately-Absent-OS-Font")', {
+            weight: face.weight, style: face.style,
+          }));
+          replaced++;
+        }
+        return replaced;
+      });
+      expect(fallbackCount).toBe(3);
       const loadedFonts = await page.evaluate(async () => {
         const css = getComputedStyle(document.documentElement);
         return Promise.all(([
           ['--font-ui', 'MyAvatarПривет'], ['--font-display', 'MyAvatarПривет'], ['--font-georgian', 'ქართული'],
         ] as const).map(async ([variable, text]) => {
-          const family = css.getPropertyValue(variable).trim();
+          // Loading the full CSS stack also tries next/font's local("Arial") face and rejects on
+          // a Linux host without Arial, even when the downloaded primary face loaded successfully.
+          const family = css.getPropertyValue(variable).split(',')[0].trim();
           const faces = family ? await document.fonts.load(`500 16px ${family}`, text) : [];
-          return { variable, loaded: faces.length > 0 && faces.every(face => face.status === 'loaded') };
+          return { variable, loaded: faces.length > 0 && faces.every(face => face.status === 'loaded' && !face.family.includes('_Fallback')) };
         }));
       });
       expect(loadedFonts).toEqual(['--font-ui', '--font-display', '--font-georgian'].map(variable => ({ variable, loaded: true })));
