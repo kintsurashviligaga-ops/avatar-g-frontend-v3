@@ -19,6 +19,8 @@ const mockProblems = jest.fn();
 jest.mock('../../../../lib/veo/vertexAuth', () => ({ vertexConfigProblems: () => mockProblems() }));
 const mockAuth = jest.fn();
 jest.mock('../../../../lib/veo/authCheck', () => ({ checkVertexAuth: () => mockAuth() }));
+const mockReadiness = jest.fn();
+jest.mock('../../../../lib/ai/google/readiness', () => ({ checkGoogleAiReadiness: (o: unknown) => mockReadiness(o) }));
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
@@ -39,6 +41,7 @@ beforeEach(() => {
   mockGate.mockReturnValue({ ok: true });
   mockTransport.mockReturnValue('vertex');
   mockProblems.mockReturnValue([]);
+  mockReadiness.mockResolvedValue({ configured: true, ok: true, detail: 'vertex · location:global · mode:wif · token:ok' });
   warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -61,6 +64,7 @@ it('answers 404 to a caller who is not an admin, and probes nothing', async () =
 
 it('never generates or spends Developer API balance during a diagnostic GET, even with a configured key', async () => {
   process.env.GEMINI_API_KEY = 'gemini-test-key';
+  process.env.ANTHROPIC_API_KEY = 'anthropic-test-key';
   mockAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok'] });
   const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ models: [] }), { status: 200 }));
   try {
@@ -70,6 +74,7 @@ it('never generates or spends Developer API balance during a diagnostic GET, eve
     expect(fetchSpy).toHaveBeenCalled();
     for (const [url, init] of fetchSpy.mock.calls) {
       expect(String(url)).not.toMatch(/:generateContent|:streamGenerateContent|:predict|interactions/);
+      expect(String(url)).not.toContain('generativelanguage.googleapis.com');
       expect(init?.method ?? 'GET').toBe('GET');
     }
     expect(body.billingVerification).toMatchObject({ status: 'not_tested', paidInference: false });
@@ -78,6 +83,24 @@ it('never generates or spends Developer API balance during a diagnostic GET, eve
   } finally {
     fetchSpy.mockRestore();
   }
+});
+
+it('reports Gemini as Vertex AI readiness (a minted token), never as an AI Studio key', async () => {
+  process.env.GEMINI_API_KEY = 'gemini-test-key';
+  mockAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok'] });
+  const res = await GET(req());
+  const body = (await res.json()) as { results: Array<{ provider: string; configured: boolean; ok: boolean; detail: string }> };
+  expect(mockReadiness).toHaveBeenCalledWith({ live: true });
+  expect(body.results.find((r) => r.provider === 'gemini')).toEqual({
+    provider: 'gemini',
+    configured: true,
+    ok: true,
+    detail: 'vertex · location:global · mode:wif · token:ok',
+  });
+
+  mockReadiness.mockResolvedValue({ configured: false, ok: false, detail: 'vertex · missing GCP_PROJECT_ID' });
+  const unset = (await (await GET(req())).json()) as { summary: { not_configured: string[] } };
+  expect(unset.summary.not_configured).toContain('gemini');
 });
 
 it('logs the passing keyless chain as one status line', async () => {

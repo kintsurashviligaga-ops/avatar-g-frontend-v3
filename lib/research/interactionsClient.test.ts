@@ -48,20 +48,20 @@ describe('the start request', () => {
     expect(String(calls[0]!.init.body)).not.toContain(KEY);
   });
 
-  test('no configured key → not_configured, and nothing is sent', async () => {
+  test('no injected credential → not_configured, and nothing is sent, even with an AI Studio key in the environment', async () => {
     const f = jest.fn();
-    const client = createInteractionsClient({ fetch: f as unknown as typeof fetch, apiKey: '' });
-    const prev = { a: process.env.GEMINI_API_KEY, b: process.env.GOOGLE_GENERATIVE_AI_API_KEY, c: process.env.GEMINI_API_KEYS };
-    delete process.env.GEMINI_API_KEY;
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    delete process.env.GEMINI_API_KEYS;
+    const prev = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'AQ.env-key-that-must-not-be-used'; // v3.1: the client never reads the environment
     try {
-      expect(await client.start({ agent: 'a', input: 'q' })).toMatchObject({ ok: false, failure: 'not_configured', ambiguous: false });
+      for (const client of [createInteractionsClient({ fetch: f as unknown as typeof fetch }), createInteractionsClient({ fetch: f as unknown as typeof fetch, apiKey: '' })]) {
+        expect(await client.start({ agent: 'a', input: 'q' })).toMatchObject({ ok: false, failure: 'not_configured', ambiguous: false });
+        expect(await client.poll('v1_abcd')).toMatchObject({ ok: false, kind: 'auth' });
+        expect(await client.cancel('v1_abcd')).toMatchObject({ ok: false, kind: 'transient' });
+      }
       expect(f).not.toHaveBeenCalled();
     } finally {
-      if (prev.a !== undefined) process.env.GEMINI_API_KEY = prev.a;
-      if (prev.b !== undefined) process.env.GOOGLE_GENERATIVE_AI_API_KEY = prev.b;
-      if (prev.c !== undefined) process.env.GEMINI_API_KEYS = prev.c;
+      if (prev === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = prev;
     }
   });
 });

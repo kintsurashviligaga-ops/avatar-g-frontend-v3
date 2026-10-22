@@ -6,6 +6,7 @@ import { isGoogleOnly } from '@/lib/veo/policy';
 import { checkVertexAuth } from '@/lib/veo/authCheck';
 import { describeElevenLabsAccount, elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
 import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
+import { checkGoogleAiReadiness } from '@/lib/ai/google/readiness';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,27 +64,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!gate.ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const results = await Promise.all([
-    // GEMINI — chat, Imagen (images), Lyria (music) AND Veo (video) all ride this one key, which is why
-    // it is first and why its failure is the most expensive one in the system.
-    probe('gemini', process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY, async (k) => {
-      // Header, not `?key=`: a key in a URL ends up in every proxy and access log between here and Google.
-      const r = await get('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { headers: { 'x-goog-api-key': k } });
-      if (!r.ok) {
-        const body = await r.text().catch(() => '');
-        return { provider: 'gemini', configured: true, ok: false, detail: `HTTP ${r.status} ${body.slice(0, 180)}` };
-      }
-      const j = (await r.json()) as { models?: Array<{ name?: string }> };
-      const names = (j.models ?? []).map((m) => m.name ?? '');
-      // Naming the four capabilities separately: the key can be valid while the ACCOUNT lacks access to
-      // Veo or Imagen, which presents as a working chat and a silently downgraded video pipeline.
-      const has = (re: RegExp) => names.some((n) => re.test(n));
-      return {
-        provider: 'gemini',
-        configured: true,
-        ok: true,
-        detail: `${names.length} models · veo:${has(/veo/i)} imagen:${has(/imagen/i)} lyria:${has(/lyria/i)}`,
-      };
-    }),
+    // GEMINI — chat, images and Lyria run on Vertex AI only (MASTER TASK v3.1). The probe asks whether Vertex can serve
+    // them: the policy, the variable names and a minted Workload Identity token. No model call, nothing billed, and an
+    // AI Studio key is neither read nor sent (the Developer API listing this replaces proved nothing about Vertex).
+    checkGoogleAiReadiness({ live: true }).then(
+      (r): ProbeResult => ({ provider: 'gemini', configured: r.configured, ok: r.ok, detail: r.detail }),
+    ),
 
     // VEO — which Google route renders clips right now, and what still keeps Vertex AI off (variable NAMES only).
     // With Vertex configured it also proves the keyless chain works: token, bucket, signBlob — no Veo call, free.

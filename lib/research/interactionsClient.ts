@@ -16,15 +16,15 @@
  * a second run. Every doubtful outcome — a timeout, a dropped connection, a 5xx, a 2xx with no usable id — is reported as
  * `ambiguous`, and the caller refunds instead of re-sending. Nothing in this file retries.
  *
- * GEMINI_TRANSPORT DOES NOT APPLY HERE (Part 2 A2): the Interactions API and its Deep Research agent exist on the Gemini
- * API only, so this client is pinned to it — the contract's `selectFixed('gemini_api')`, stated, never a fallback. With
- * `GEMINI_TRANSPORT=vertex` a research run still bills the API key's account, not the Google Cloud project.
+ * ⚠️ MASTER TASK v3.1 REFUSES THIS TRANSPORT. The Interactions API and its Deep Research agent exist on the Developer API
+ * only, so the client never reads a key from the environment: the credential comes from lib/research/provider, which
+ * returns none, and a client without one refuses every call before any I/O. The protocol below stays, pinned by fixture
+ * tests, for an owner-approved transport.
  *
  * Injectable `fetch` and key, so the whole client is unit-tested against fixtures with no network.
  */
 import 'server-only';
 import { classifyProviderError, type ProviderFailure } from '@/lib/api/providerError';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { parseInteraction, parseInteractionId, type ParsedInteraction } from './parse';
 
 export const INTERACTIONS_HOST = 'generativelanguage.googleapis.com';
@@ -87,7 +87,7 @@ export interface InteractionsClient {
 
 export interface InteractionsClientOptions {
   fetch?: typeof fetch;
-  /** Defaults to resolveGeminiKey() at call time. */
+  /** The only credential the client uses (lib/research/provider). Absent → every call refuses before any I/O. */
   apiKey?: string;
   baseUrl?: string;
 }
@@ -130,7 +130,7 @@ const errText = (e: unknown, key: string): string => {
 export function createInteractionsClient(opts: InteractionsClientOptions = {}): InteractionsClient {
   const doFetch = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const base = (opts.baseUrl ?? INTERACTIONS_BASE).replace(/\/$/, '');
-  const key = () => (opts.apiKey ?? resolveGeminiKey()).trim();
+  const key = () => (opts.apiKey ?? '').trim();
 
   const call = (url: string, init: RequestInit, timeoutMs: number, k: string): Promise<Response> =>
     doFetch(url, {
@@ -144,7 +144,7 @@ export function createInteractionsClient(opts: InteractionsClientOptions = {}): 
   return {
     async start(req) {
       const k = key();
-      if (!k) return { ok: false, failure: 'not_configured', ambiguous: false, detail: 'no Gemini API key configured' };
+      if (!k) return { ok: false, failure: 'not_configured', ambiguous: false, detail: 'no Deep Research provider (the Developer API is refused under MASTER TASK v3.1)' };
       let res: Response;
       try {
         res = await call(base, { method: 'POST', body: JSON.stringify(startBody(req)) }, START_TIMEOUT_MS, k);
@@ -177,7 +177,7 @@ export function createInteractionsClient(opts: InteractionsClientOptions = {}): 
 
     async poll(id, popts) {
       const k = key();
-      if (!k) return { ok: false, kind: 'auth', detail: 'no Gemini API key configured' };
+      if (!k) return { ok: false, kind: 'auth', detail: 'no Deep Research provider (the Developer API is refused under MASTER TASK v3.1)' };
       if (!isInteractionId(id)) return { ok: false, kind: 'not_found', detail: 'not an interaction id' };
       let res: Response;
       try {
@@ -202,7 +202,7 @@ export function createInteractionsClient(opts: InteractionsClientOptions = {}): 
 
     async cancel(id) {
       const k = key();
-      if (!k) return { ok: false, kind: 'transient', detail: 'no Gemini API key configured' };
+      if (!k) return { ok: false, kind: 'transient', detail: 'no Deep Research provider (the Developer API is refused under MASTER TASK v3.1)' };
       if (!isInteractionId(id)) return { ok: false, kind: 'not_found', detail: 'not an interaction id' };
       let res: Response;
       try {

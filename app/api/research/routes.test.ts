@@ -37,6 +37,11 @@ jest.mock('../../../lib/api/rate-limit', () => ({
   checkRateLimit: (...a: unknown[]) => mockRateIp(...a),
   checkRateLimitByKey: (...a: unknown[]) => mockRateKeyed(...a),
 }));
+// MASTER TASK v3.1: no Deep Research provider exists (lib/research/provider), so production answers `no_transport`. The
+// routes are pinned with a provider mocked in, its credential injected into the REAL client; `mockProvider = null` is
+// the production state.
+let mockProvider: { apiKey: string } | null = null;
+jest.mock('../../../lib/research/provider', () => ({ researchProvider: () => mockProvider }));
 jest.mock('../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 jest.mock('../../../lib/observability/reliability', () => ({ opsMarker: jest.fn() }));
 
@@ -69,7 +74,7 @@ beforeEach(() => {
     savedEnv[k] = env[k];
     delete env[k];
   }
-  env.GEMINI_API_KEY = GOOGLE_KEY;
+  mockProvider = { apiKey: GOOGLE_KEY };
   env.CRON_SECRET = 'cron-secret-test';
   mockUser = 'u1';
   mockDb = new FakeDb({}, RESEARCH_DB_OPTIONS);
@@ -115,7 +120,8 @@ describe('GET /api/research/capabilities', () => {
     ['the table is not migrated', () => { mockDb.failNext('research_jobs', 'select', 'relation "research_jobs" does not exist', '42P01'); }, 'schema'],
     ['RESEARCH_ENABLED is off', () => { env.RESEARCH_ENABLED = 'off'; }, 'disabled'],
     ['RESEARCH_DAILY_CAP is 0 (the kill switch)', () => { env.RESEARCH_DAILY_CAP = '0'; }, 'disabled'],
-    ['there is no Gemini key', () => { delete env.GEMINI_API_KEY; }, 'no_key'],
+    // v3.1 production: no provider, and an AI Studio key in the environment does not make one.
+    ['there is no Deep Research provider (an AI Studio key set)', () => { mockProvider = null; env.GEMINI_API_KEY = GOOGLE_KEY; }, 'no_transport'],
   ])('NOT available when %s', async (_n, arrange, reason) => {
     arrange();
     const r = await capsGET(get('/api/research/capabilities'));
