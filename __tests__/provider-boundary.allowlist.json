@@ -1,6 +1,42 @@
 {
-  "note": "Frozen 2026-10-09 from the tree: runtime files that still reach a non-Google, non-ElevenLabs AI vendor (R7). Only delete lines; __tests__/provider-boundary.test.ts fails on a new file and on a stale line.",
+  "note": "Frozen 2026-10-09 from the tree, widened 2026-10-22 to MASTER TASK v3.1 (gemini_developer_api and elevenlabs added): runtime files that still reach a forbidden AI vendor. Only delete lines; __tests__/provider-boundary.test.ts fails on a new file and on a stale line.",
   "files": {
+    "gemini_developer_api": [
+      "app/api/admin/provider-probe/route.ts",
+      "app/api/health/services/route.ts",
+      "app/api/voice/live/route.ts",
+      "lib/ai/geminiImagen.ts",
+      "lib/ai/geminiVeo.ts",
+      "lib/ai/google/transport.ts",
+      "lib/ai/lyriaMusic.ts",
+      "lib/calls/whatsapp/liveSession.ts",
+      "lib/models/verify.ts",
+      "lib/research/interactionsClient.ts",
+      "lib/security/csp.js",
+      "lib/system/provider-health.ts",
+      "lib/veo/geminiTransport.ts",
+      "lib/voice/geminiLive.ts"
+    ],
+    "elevenlabs": [
+      "app/api/admin/avatar-providers/route.ts",
+      "app/api/admin/provider-probe/route.ts",
+      "app/api/elevenlabs/sound/route.ts",
+      "app/api/elevenlabs/tts/route.ts",
+      "app/api/health/public/route.ts",
+      "app/api/health/services/route.ts",
+      "app/api/pipeline/route.ts",
+      "app/api/voice/clone/route.ts",
+      "lib/agent-g/voice/tts.ts",
+      "lib/ai/elevenlabs.ts",
+      "lib/chat/filmVoiceover.ts",
+      "lib/config.ts",
+      "lib/elevenlabs/audioIsolation.ts",
+      "lib/elevenlabs/music.ts",
+      "lib/elevenlabs/ttsTimestamps.ts",
+      "lib/security/csp.js",
+      "lib/services/dubbing/elevenScribe.ts",
+      "lib/voice-v2v/providers.ts"
+    ],
     "replicate": [
       "app/api/admin/provider-probe/route.ts",
       "app/api/film/storyboard/route.ts",
