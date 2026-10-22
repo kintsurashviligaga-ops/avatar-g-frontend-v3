@@ -53,6 +53,7 @@ export interface QaIssue {
   code:
     | 'empty_master'
     | 'silent_master'
+    | 'audio_stream_unverified'
     | 'duration_drift'
     | 'bitrate_bloat'
     | 'sub_1080p'
@@ -87,6 +88,15 @@ export function expectedMasterDuration(nClips: number, clipSec = 6, transitionSe
 
 export function validateMaster(f: MasterFacts): QaReport {
   const issues: QaIssue[] = [];
+
+  // Exact picture frames do not verify the contracted soundtrack. A failed probe must withhold an audible master.
+  // Legacy masters retain their historical best-effort probe policy; deliberately silent contracts need no audio.
+  if (typeof f.expectedFrames === 'number' && f.expectedFrames > 0 && f.audioExpected && f.audioPresent === null) {
+    issues.push({
+      code: 'audio_stream_unverified', severity: 'critical',
+      detail: 'the contracted soundtrack could not be verified: the master audio probe did not complete',
+    });
+  }
 
   // 1 — a real video, not a truncated/empty stub. A genuine 1080p film is always
   //     hundreds of KB minimum; anything under 50 KB is a failed render.

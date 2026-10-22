@@ -53,6 +53,24 @@ function steps(assemble: () => Promise<{ url: string; qa: QaReport }>, log: stri
 }
 
 describe('the saga on a rejected master (real runner)', () => {
+  test('unverified contracted audio with exact picture frames cannot commit and compensates once', async () => {
+    const log: string[] = [];
+    const bag: Record<string, unknown> = {};
+    const qa = validateMaster({
+      sizeBytes: 6_000_000, expectedDurSec: 24, actualDurSec: 24, audioExpected: true, audioPresent: null,
+      width: 1920, height: 1080, expectedFrames: 720, actualFrames: 720,
+    });
+    const saga = await runSaga(steps(async () => {
+      if (!qa.pass) throw new MasterQaRejected(qa);
+      return { url: 'https://r/master.mp4', qa };
+    }, log), { sagaId: 'audio_probe_unavailable', bag });
+    expect(saga.ok).toBe(false);
+    expect(saga.failedStep).toBe('dispatch');
+    expect(log).toEqual(['debit', 'refund:audio_probe_unavailable']);
+    expect(bag.qcRejected).toEqual(['audio_stream_unverified']);
+    expect(bag.tempUrl).toBeUndefined();
+  });
+
   test('890 of 891 frames → dispatch fails, commit never runs, the reservation is refunded exactly once, the report is kept', async () => {
     const log: string[] = [];
     const bag: Record<string, unknown> = {};
