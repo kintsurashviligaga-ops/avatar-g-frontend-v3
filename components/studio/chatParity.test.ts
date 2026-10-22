@@ -52,7 +52,12 @@ describe('pure chat has no settings (keyed on the TOOL, never on the mode)', () 
 
   it('renders no settings toggle and no tool chip in the chat', () => {
     expect(omni).toMatch(/\{!chatOnly && \(\s*<button type="button" onClick=\{\(\) => setPanelOpen\(\(v\) => !v\)\}/);
-    expect(omni).toMatch(/\{!chatOnly && \(\s*<button type="button" onClick=\{\(\) => \(isDesktop \? setPanelOpen/);
+    // The phone/desktop settings toggle sits inside the tool chip's pill (GG's service pill, 2026-10-21), which is itself
+    // behind `!chatOnly`: nothing between the pill's opening and the toggle closes that block.
+    const pill = omni.match(/\{!chatOnly && \(\s*<div className="inline-flex h-10[\s\S]*?data-testid="options-toggle"/);
+    expect(pill).toBeTruthy();
+    expect(pill![0]).not.toMatch(/\n\s*\)\}\n/);
+    expect(pill![0]).toContain('onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}');
   });
 
   it('puts the model switcher in the desktop title bar, which stays ONE <header>', () => {
@@ -63,7 +68,7 @@ describe('pure chat has no settings (keyed on the TOOL, never on the mode)', () 
 
 describe('the Gemini chat surface', () => {
   it('declares its new hooks above the surgical early return (a hook below it is React error #300)', () => {
-    for (const hook of ['useMicRelease(', 'const activePersona = useActivePersona(', 'const [composerWrapped, setComposerWrapped] = useState(false)']) {
+    for (const hook of ['useMicRelease(', 'const activePersona = useActivePersona(']) {
       expect(beforeSurgicalReturn).toContain(hook);
     }
   });
@@ -80,9 +85,10 @@ describe('the Gemini chat surface', () => {
   });
 
   it('the chat composer is the pill; its textarea is never re-parented', () => {
-    // One textarea with the composer's test id, and the one-row shape is made with `contents` + `order`.
+    // One textarea with the composer's test id. The composer is two rows since GG's 2026-10-21 chatbox fix (the text
+    // on top, the controls under it), so no shape moves the textarea out of the pill.
     expect(omni.match(/data-testid="composer-input"/g)).toHaveLength(1);
-    expect(omni).toContain("<div className={chatSingleRow ? 'contents' :");
+    expect(omni).toContain('const chatSingleRow = false;');
     expect(omni).toContain("'ჰკითხე MyAvatar-ს'");
   });
 

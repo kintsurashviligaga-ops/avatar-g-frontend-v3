@@ -10768,7 +10768,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
                 {m.role === 'assistant' && m.text && !m.researchId && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
                   const isLast = i === messages.length - 1;
-                  const act = 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/60 transition-all duration-150 hover:bg-white/[0.08] hover:text-white active:scale-95 touch-manipulation';
+                  const act = 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/60 transition-all duration-150 hover:bg-white/[0.08] hover:text-white touch-manipulation';
                   const answeredBy = displayNameFor(m.chatModelId ?? m.chatModel);
                   // „Thinking“ is Flash with deep reasoning — name it as the menu does, so the label matches the choice.
                   const modelLabel = answeredBy && m.chatMode === 'thinking' && /flash/i.test(m.chatModelId ?? '') && !/lite/i.test(m.chatModelId ?? '')
@@ -10808,7 +10808,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         title={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : readWord}
                         className={
                           speakingIdx === i
-                            ? 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-blue-500/15 px-3 text-[12px] font-medium text-blue-400 ring-1 ring-blue-400/30 transition-all duration-150 hover:bg-blue-500/25 active:scale-95'
+                            ? 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-blue-500/15 px-3 text-[12px] font-medium text-blue-400 ring-1 ring-blue-400/30 transition-all duration-150 hover:bg-blue-500/25'
                             : act
                         }
                       >

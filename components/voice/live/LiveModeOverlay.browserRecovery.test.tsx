@@ -65,6 +65,9 @@ test('clipboard refusal can use the supported legacy copy fallback and restores 
   const fallback = jest.fn(() => true);
   Object.defineProperty(document, 'execCommand', { configurable: true, value: fallback });
   render(<LiveModeOverlay locale="en" status="error" error="mic_in_app" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
+  // Let the dialog make its own first-frame focus move (hooks/useDialogA11y) before the person focuses Copy; on a slow
+  // runner that frame otherwise lands after the click and takes focus to the link field.
+  await act(async () => { await new Promise((resolve) => requestAnimationFrame(() => resolve(null))); });
   const copy = screen.getByRole('button', { name: 'Copy link' });
   copy.focus();
   await act(async () => { fireEvent.click(copy); });

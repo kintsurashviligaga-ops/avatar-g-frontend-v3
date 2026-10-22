@@ -58,7 +58,7 @@ test('interior: GG\'s order — header · prompt · upload · room · styles · 
     .map((id) => screen.getByTestId(id));
   for (let i = 0; i < order.length - 1; i++) expect({ i, ok: before(order[i]!, order[i + 1]!) }).toEqual({ i, ok: true });
   // The header names the tool, offers the switcher and a ✕; the upload card is dashed and says its limit.
-  expect(within(screen.getByTestId('interior-header')).getByRole('button', { name: /Interior designer/ })).toBeTruthy();
+  expect(within(screen.getByTestId('interior-header')).getByRole('button', { name: /^Interior —/ })).toBeTruthy();
   expect(screen.getByTestId('interior-close')).toBeTruthy();
   expect(screen.getByTestId('interior-dropzone').className).toMatch(/border-dashed/);
   expect(screen.getByTestId('interior-dropzone').textContent).toContain('up to 3');
