@@ -38,7 +38,7 @@ Source: Veo 3.1 model page (last updated 2026-10-21).
 |---|---|---|---|
 | `imagen-3.0-generate-002` (and other Imagen 3 generation/capability endpoints) | **lifecycle-blocked** (`BLOCKED_MODEL_LIFECYCLE`) | Vertex AI release notes, 24 Mar 2026: listed as discontinued endpoint; spec v3.1 records discontinuation 30 Jun 2026 | `gemini-2.5-flash-image` |
 
-What the code uses today for Photo (not an authorised substitute for Imagen 3 until GG decides):
+GG's decision (2026-10-22): Photo uses `gemini-3.1-flash-image` as the Imagen 3 replacement, as the codebase structures it. What the code uses today for Photo:
 
 | Model id | Where | Status |
 |---|---|---|
@@ -50,6 +50,9 @@ What the code uses today for Photo (not an authorised substitute for Imagen 3 un
 Operation split required by spec: generation, reference customisation and mask editing are different contracts and must each have their own adapter and status row once a target is chosen.
 
 ## Avatar / lip-sync (mandated, capability gap)
+
+GG's decision (2026-10-22): built-in (curated) avatars only for now. Custom avatars stay off.
+
 
 | Capability | Documented Google-native route | Status |
 |---|---|---|
