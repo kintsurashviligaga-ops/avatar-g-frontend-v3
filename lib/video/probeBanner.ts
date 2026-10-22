@@ -27,7 +27,8 @@ export function parseProbeBanner(stderr: string): BannerProbe {
     .find((m) => !/attached pic/i.test(m[0])) ?? null;
   const audio = /Stream #\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?: Audio: ([a-z0-9_]+)/i.exec(text);
   const size = video ? /[,\s](\d{2,5})x(\d{2,5})[,\s\]]/.exec(video[0]) : null;
-  const rot = /displaymatrix: rotation of (-?\d+(?:\.\d+)?) degrees/i.exec(text) ?? /\brotate\s*:\s*(-?\d+)/i.exec(text);
+  // Newer FFmpeg banners spell this "Display Matrix"; older versions use "displaymatrix".
+  const rot = /display[ \t]*matrix: rotation of (-?\d+(?:\.\d+)?) degrees/i.exec(text) ?? /\brotate\s*:\s*(-?\d+)/i.exec(text);
   const rotation = rot ? Math.round(Number(rot[1])) : 0;
   return {
     durationSec: parseFfmpegDuration(text),

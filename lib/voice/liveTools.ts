@@ -89,8 +89,8 @@ export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
  * in the icon set and this file is shared with the token route). open_studio reaches all of them.
  */
 export const LIVE_OPEN_TOOLS = [
-  'chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar',
-  'product', 'swap', 'vfx', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo',
+  'chat', 'video', 'image', 'interior', 'music', 'avatar',
+  'product', 'vfx', 'montage', 'model3d',
 ] as const;
 export type LiveOpenTool = (typeof LIVE_OPEN_TOOLS)[number];
 
@@ -337,9 +337,8 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   },
   {
     name: 'open_studio',
-    description: 'Switch the app to a tool without preparing anything in it: chat, video, image, photoshoot (photographer), '
-      + 'interior (interior designer), music, avatar, product (product ad), swap (character swap), vfx, motion, '
-      + 'montage (video editor), dubbing, model3d, presentation, photo (photo culling).',
+    description: 'Switch the app to a current menu tool without preparing anything in it: chat, video, image, '
+      + 'interior, music, avatar, product (product ad), vfx, montage (video editor), model3d.',
     parameters: {
       type: 'OBJECT',
       properties: { tool: { type: 'STRING', enum: [...LIVE_OPEN_TOOLS], description: 'The tool to open.' } },
@@ -992,20 +991,22 @@ function asEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
   return (allowed as readonly string[]).includes(t) ? (t as T) : null;
 }
 
-const OPEN_TOOL_ALIASES: Readonly<Record<string, LiveOpenTool>> = {
+const OPEN_TOOL_ALIASES: Readonly<Record<string, string>> = {
   ...TOOL_ALIASES,
   chat: 'chat', text: 'chat', photographer: 'photoshoot', photoshoot: 'photoshoot', interior: 'interior',
   interior_designer: 'interior', product: 'product', product_ad: 'product', swap: 'swap',
   character_swap: 'swap', vfx: 'vfx', motion: 'motion', montage: 'montage', editor: 'montage', video_editor: 'montage',
   dubbing: 'dubbing', dub: 'dubbing', model3d: 'model3d', '3d': 'model3d', presentation: 'presentation', slides: 'presentation',
-  deck: 'presentation', culling: 'photo', photo_culling: 'photo',
+  // Keep the old Photo tool distinct from the prepare-generation synonym for Image.
+  deck: 'presentation', photo: 'photo', culling: 'photo', photo_culling: 'photo',
 };
 
 function asOpenTool(v: unknown): LiveOpenTool | null {
   if (typeof v !== 'string') return null;
   const t = v.trim().toLowerCase().replace(/[\s-]+/g, '_');
   if ((LIVE_OPEN_TOOLS as readonly string[]).includes(t)) return t as LiveOpenTool;
-  return OPEN_TOOL_ALIASES[t] ?? OPEN_TOOL_ALIASES[t.replace(/_/g, ' ')] ?? null;
+  // Old aliases must not bypass the same current-menu allowlist as canonical names.
+  return asEnum(OPEN_TOOL_ALIASES[t] ?? OPEN_TOOL_ALIASES[t.replace(/_/g, ' ')], LIVE_OPEN_TOOLS);
 }
 
 function asSwitch(v: unknown): boolean | null {

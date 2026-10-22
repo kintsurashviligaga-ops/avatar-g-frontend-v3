@@ -152,16 +152,9 @@ describe('the quality select is priced with the quote (the number the chat box\'
 });
 
 describe('the sound switches are the studio\'s own state', () => {
-  test('a film: Narrator (off · female · male), Music and — while someone narrates — Subtitles (off by default); no lip-sync', () => {
+  test('a film keeps Music and Subtitles without a narrator dropdown; no lip-sync', () => {
     const { calls } = setup();
-    const narrator = screen.getByTestId('video-narrator') as HTMLSelectElement;
-    expect(Array.from(narrator.options).map((o) => o.textContent)).toEqual(['Off', 'Female', 'Male']);
-    expect(narrator.value).toBe('female');
-    fireEvent.change(narrator, { target: { value: 'male' } });
-    expect(calls.onNarratorGender).toHaveBeenCalledWith('male');
-    expect(calls.onNarration).toHaveBeenLastCalledWith(true);
-    fireEvent.change(narrator, { target: { value: 'off' } });
-    expect(calls.onNarration).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByTestId('video-narrator')).toBeNull();
     const music = screen.getByTestId('video-music');
     expect(music.getAttribute('aria-checked')).toBe('true');
     fireEvent.click(music);
@@ -173,9 +166,9 @@ describe('the sound switches are the studio\'s own state', () => {
     expect(screen.queryByTestId('video-lipsync')).toBeNull();
   });
 
-  test('no narrator → no subtitles row; the select says Off', () => {
+  test('no narrator → no subtitles row or narrator dropdown', () => {
     setup({}, {}, {}, { narration: false });
-    expect((screen.getByTestId('video-narrator') as HTMLSelectElement).value).toBe('off');
+    expect(screen.queryByTestId('video-narrator')).toBeNull();
     expect(screen.queryByTestId('video-subtitles')).toBeNull();
   });
 
@@ -426,8 +419,7 @@ describe('the other languages', () => {
     expect(screen.getByTestId('video-sound').getAttribute('aria-label')).toBe(locale === 'ka' ? 'ხმა' : 'Звук');
     expect(qualityText()).toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'documentary' })}`);
     expect(screen.getByTestId('video-prompt-hint').textContent).not.toMatch(/chat box/);
-    expect(Array.from((screen.getByTestId('video-narrator') as HTMLSelectElement).options).map((o) => o.textContent))
-      .toEqual(locale === 'ka' ? ['ავტო', 'ქალი', 'კაცი', 'გამორთული'] : ['Авто', 'Женский', 'Мужской', 'Выкл']);
+    expect(screen.queryByTestId('video-narrator')).toBeNull();
   });
 });
 

@@ -297,10 +297,12 @@ describe('validateLiveToolCall — open_studio, end_call, junk', () => {
 describe('validateLiveToolCall — the screen-control functions', () => {
   it('open_studio: every tool, plus spoken aliases', () => {
     for (const t of ALL_TOOLS) expect(ok('open_studio', { tool: t })).toEqual({ type: 'open_studio', tool: t });
-    expect(ok('open_studio', { tool: 'Photographer' })).toEqual({ type: 'open_studio', tool: 'photoshoot' });
     expect(ok('open_studio', { tool: 'video editor' })).toEqual({ type: 'open_studio', tool: 'montage' });
-    expect(ok('open_studio', { tool: 'slides' })).toEqual({ type: 'open_studio', tool: 'presentation' });
     expect(err('open_studio', { tool: 'settings' })).toMatchObject({ field: 'tool' });
+  });
+
+  it.each(['swap', 'character swap', 'photo', 'photo culling', 'photoshoot', 'Photographer', 'motion', 'dubbing', 'dub', 'presentation', 'slides', 'deck'])('open_studio refuses tools removed from the current menu, including aliases: %s', (tool) => {
+    expect(err('open_studio', { tool })).toMatchObject({ code: 'invalid_args', field: 'tool' });
   });
 
   it('update_settings: at least one setting, each validated like prepare_generation; instrumental is on/off', () => {

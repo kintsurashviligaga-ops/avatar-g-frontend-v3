@@ -87,7 +87,7 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain('ratio=12'); // 30% → round(8 + 0.3*12) = 12 (strong duck)
     expect(g.filter).toContain('asplit=2');
     expect(g.filter).toContain('volume=1.25'); // voice lifted on top
-    expect(g.filter).toContain('volume=0.6');  // music/SFX bed sits lower
+    expect(g.filter).toContain('[3:a]volume=0.18[bglow]'); // current narration-first bed, before dynamic ducking
     expect(g.amap).toBe('[aout]');
   });
 
@@ -240,6 +240,7 @@ describe('buildFilterComplex', () => {
     expect(off).not.toContain('sidechaincompress');   // no ducking
     expect(off).not.toContain('[vkey]');              // voice is not split for a sidechain key
     expect(off).toContain('volume=1.25');             // voice still lifted on top
+    expect(off).toContain('[4:a]volume=0.18[bglow]'); // disabling pumping keeps the same quiet background bed
     expect(off).toContain('amix=inputs=2:normalize=0[apre]'); // static voice+bed mix
   });
 

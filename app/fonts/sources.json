@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "google_fonts_commit": "45e3d5269e4a17d823f6d84470bc084dc5ae46f6",
+  "source_repository": "https://github.com/google/fonts",
+  "conversion": {
+    "fontTools": "4.60.2",
+    "woff2_brotli": "Node zlib (font mode), lossless table round trip",
+    "optical_width_policy": "Freeze default unrequested axes: Inter opsz14, Noto Georgian wdth100; retain weight axis. No glyph subsetting."
+  },
+  "fonts": [
+    {
+      "file": "Inter-roman.var.woff2",
+      "family": "Inter",
+      "source": "https://raw.githubusercontent.com/google/fonts/45e3d5269e4a17d823f6d84470bc084dc5ae46f6/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf",
+      "source_sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+      "sha256": "b30dd38f082a2881ab101fae208a027706103f0f0cb73fccd0e73218258da5a6",
+      "bytes": 236640,
+      "fixed_axes": {
+        "opsz": 14
+      },
+      "axes": {
+        "wght": [
+          100.0,
+          400.0,
+          900.0
+        ]
+      },
+      "glyphs": 2933,
+      "cmap_count": 2849,
+      "metrics": {
+        "unitsPerEm": 2048,
+        "ascent": 1984,
+        "descent": -494,
+        "lineGap": 0,
+        "typoAscent": 1984,
+        "typoDescent": -494
+      },
+      "round_trip_metrics_cmap_glyph_order": "PASS",
+      "license": "inter-OFL.txt"
+    },
+    {
+      "file": "Montserrat-roman.var.woff2",
+      "family": "Montserrat",
+      "source": "https://raw.githubusercontent.com/google/fonts/45e3d5269e4a17d823f6d84470bc084dc5ae46f6/ofl/montserrat/Montserrat%5Bwght%5D.ttf",
+      "source_sha256": "0f7b311b2f3279e4eef9b2f968bcdbab6e28f4daeb1f049f4f278a902bcd82f7",
+      "sha256": "6e712eafc11f23dc2b0651c0849c1a331aa81a3a4499ba61ef5091e5c123c796",
+      "bytes": 215968,
+      "fixed_axes": {},
+      "axes": {
+        "wght": [
+          100.0,
+          100.0,
+          900.0
+        ]
+      },
+      "glyphs": 2747,
+      "cmap_count": 1312,
+      "metrics": {
+        "unitsPerEm": 1000,
+        "ascent": 968,
+        "descent": -251,
+        "lineGap": 0,
+        "typoAscent": 968,
+        "typoDescent": -251
+      },
+      "round_trip_metrics_cmap_glyph_order": "PASS",
+      "license": "montserrat-OFL.txt",
+      "legacy_family": "Montserrat Thin"
+    },
+    {
+      "file": "NotoSansGeorgian-roman.var.woff2",
+      "family": "Noto Sans Georgian",
+      "source": "https://raw.githubusercontent.com/google/fonts/45e3d5269e4a17d823f6d84470bc084dc5ae46f6/ofl/notosansgeorgian/NotoSansGeorgian%5Bwdth%2Cwght%5D.ttf",
+      "source_sha256": "dc591156f36842d38996c4a7a17fee9bb58e45da3e2cac7a31b7d33de700adb9",
+      "sha256": "b999f4f432220a0ed8e74898dce2779b21b0c18690df99beac297f8072647973",
+      "bytes": 71548,
+      "fixed_axes": {
+        "wdth": 100
+      },
+      "axes": {
+        "wght": [
+          100.0,
+          400.0,
+          900.0
+        ]
+      },
+      "glyphs": 554,
+      "cmap_count": 509,
+      "metrics": {
+        "unitsPerEm": 1000,
+        "ascent": 1068,
+        "descent": -292,
+        "lineGap": 0,
+        "typoAscent": 1068,
+        "typoDescent": -292
+      },
+      "round_trip_metrics_cmap_glyph_order": "PASS",
+      "license": "notosansgeorgian-OFL.txt"
+    }
+  ]
+}

@@ -73,6 +73,11 @@ export function avatarGenderFromText(text: string): AvatarGender | null {
   return null;
 }
 
+/** Resolve once for both the approval card and every render path. Explicit panel choices win. */
+export function avatarVoiceGender(selection: AvatarGender | 'auto', text = ''): AvatarGender {
+  return selection === 'auto' ? avatarGenderFromText(text) ?? 'male' : selection;
+}
+
 export interface AvatarOffer {
   speech: string;
   direction: string;

@@ -170,14 +170,14 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
       ru: 'AI Фотостудия',
     },
     description: {
-      en: 'Background removal, professional retouching, and batch processing for entire photo sets in seconds.',
-      ka: 'ფონის წაშლა, პროფესიონალური რეტუში და ფოტო ნაკრებების ჯგუფური დამუშავება წამებში.',
-      ru: 'Удаление фона, профессиональная ретушь и пакетная обработка целых фотосетов за секунды.',
+      en: 'Create photos from a description or edit uploaded reference images in the Image studio.',
+      ka: 'შექმენი ფოტო აღწერით ან დაარედაქტირე ატვირთული საცნობარო ფოტო სურათის სტუდიაში.',
+      ru: 'Создавайте фотографии по описанию или редактируйте загруженные изображения в студии изображений.',
     },
     features: {
-      en: ['Background remove + replace', 'Retouch preset library', 'Batch processing', 'Before/after comparison'],
-      ka: ['ფონის წაშლა + ჩანაცვლება', 'რეტუშის პრესეტების ბიბლიოთეკა', 'ჯგუფური დამუშავება', 'შედარება: წინ/შემდეგ'],
-      ru: ['Удаление + замена фона', 'Библиотека ретушь-пресетов', 'Пакетная обработка', 'Сравнение до/после'],
+      en: ['Photo generation from text', 'Uploaded reference images', 'Image editing', 'Preview and download'],
+      ka: ['ფოტო აღწერით', 'ატვირთული საცნობარო ფოტოები', 'სურათის რედაქტირება', 'გადახედვა და ჩამოტვირთვა'],
+      ru: ['Фото по описанию', 'Загруженные референсы', 'Редактирование изображений', 'Просмотр и скачивание'],
     },
   },
   'image': {

@@ -106,8 +106,9 @@ export async function storyFeaturesPerson(brief: string): Promise<boolean | null
  * clothing follows the shot when the shot names it, and the photo's own background and light never enter the frame.
  */
 export const REFERENCE_PERSON_CLAUSE =
-  'Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features, and EXACT same clothing (dark tailored black blazer jacket over light-blue button-down shirt). ' +
-  'The background, studio set, lighting equipment, and environment MUST BE IDENTICAL to the reference photo (the professional film production studio set with warm lighting equipment, softboxes and fresnel lights on stands with barn doors, a cinema camera on a tripod in the background, and warm cinematic studio bokeh).';
+  'Featuring the EXACT same person as the reference image — identical face, hair, skin tone and facial features. ' +
+  'The person wears the clothing this shot describes (the reference\'s own clothing only when the shot names none), ' +
+  'and the background, location and lighting are the ones this shot describes, not the reference photo\'s.';
 
 /**
  * A MUSIC VIDEO follows one performer through every shot, so the outfit is locked too (Production 2026-10-16, GG: the
@@ -116,7 +117,7 @@ export const REFERENCE_PERSON_CLAUSE =
 export const MUSIC_VIDEO_PERSON_CLAUSE =
   'Featuring the EXACT same person as the reference image — identical face, hair, skin tone and facial features — ' +
   'wearing the SAME outfit and accessories as in the reference image, unchanged in every shot. ' +
-  'The background, studio set, lighting equipment, and environment MUST BE IDENTICAL to the reference photo (professional film studio with lighting rigs and cinema camera in the background).';
+  'The background, location and lighting are the ones this shot describes.';
 
 const RESTAGE_SYSTEM =
   'Someone uploaded ONE photo of a person and wrote a short brief (any language: Georgian, English, Russian …) for a video ' +

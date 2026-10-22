@@ -272,12 +272,12 @@ describe('StreamingBubble — stop', () => {
 
 describe('formatModelBadge', () => {
   it('names a Gemini model the way people read it, marks a fallback, and hides the budget notice', () => {
-    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-3.8-flash' })).toBe('Gemini 3.8 Flash');
-    expect(formatModelBadge({ provider: 'gemini', model: 'models/gemini-3.1-pro-preview' })).toBe('Gemini 3.1 Pro');
+    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-3.8-flash' })).toBe('3.8 Flash');
+    expect(formatModelBadge({ provider: 'gemini', model: 'models/gemini-3.1-pro-preview' })).toBe('3.1 Pro');
     // A model the catalogue doesn't list yet is still prettified, never shown as a raw id.
-    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-4.0-flash' })).toBe('Gemini 4.0 Flash');
+    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-4.0-flash' })).toBe('4.0 Flash');
     // A rotation inside the Gemini chain names the model that really answered, without a warning.
-    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-2.5-flash', mode: 'fast', fallback: true })).toBe('Gemini 2.5 Flash');
+    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-2.5-flash', mode: 'fast', fallback: true })).toBe('2.5 Flash');
     expect(formatModelBadge({ provider: 'anthropic', model: 'claude-haiku-4-5' })).toBe('⚠ claude-haiku-4-5 (fallback)');
     expect(formatModelBadge({ provider: 'budget', model: 'none' })).toBeNull();
     expect(formatModelBadge({ provider: 'gemini', model: '   ' })).toBeNull();

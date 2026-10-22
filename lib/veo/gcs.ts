@@ -98,8 +98,8 @@ function bucketLocation(cfg: VertexConfig): { bucket: string; prefix: string } {
  * re-render of the same scene never lands in the prefix of an earlier attempt, where the poller could pick up the
  * old `sample_0.mp4`.
  */
-export function veoOutputPrefix(sessionId: string, ordinal: number): string {
-  const { bucket, prefix } = bucketLocation(requireConfig());
+export function veoOutputPrefix(sessionId: string, ordinal: number, cfg: VertexConfig = requireConfig()): string {
+  const { bucket, prefix } = bucketLocation(cfg);
   const ord = Number.isFinite(ordinal) && ordinal >= 0 ? Math.floor(ordinal) : 0;
   const rand = randomBytes(4).toString('hex');
   return toGsUri(bucket, `${joinPath(prefix, 'veo', sessionSegment(sessionId), `${ord}-${rand}`)}/`);

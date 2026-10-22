@@ -143,7 +143,8 @@ export const VIDEO_LANES: readonly VideoLaneContract[] = [
     note: 'ffmpeg ops are local; several ops call non-Google providers (B6). No frame-exact QC on its outputs yet.',
   },
   {
-    id: 'motion', service: null, tools: ['motion'], capabilities: ['video.motion'],
+    // No studio tool since GG's 2026-10-21 menu clean-up (lib/studio/tools.ts): the op stays on the remix route.
+    id: 'motion', service: null, tools: [], capabilities: ['video.motion'],
     entry: 'the Motion tool: a photo moves as described (an i2v op on the remix route)',
     routes: ['app/api/video/remix/route.ts'], modules: ['lib/video/remixOps.ts'],
     duration: 'native', approval: 'panel', qc: 'none', billing: 'per-op',
@@ -151,7 +152,8 @@ export const VIDEO_LANES: readonly VideoLaneContract[] = [
     note: 'Provider policy B6; not changed here.',
   },
   {
-    id: 'swap', service: null, tools: ['swap'], capabilities: ['video.character-swap'],
+    // No studio tool since GG's 2026-10-21 menu clean-up (lib/studio/tools.ts): the op stays on the remix route.
+    id: 'swap', service: null, tools: [], capabilities: ['video.character-swap'],
     entry: 'the Swap tool: another face / character in a video (the remix route’s `character` op)',
     routes: ['app/api/video/remix/route.ts'], modules: ['lib/video/remixOps.ts'],
     duration: 'native', approval: 'panel', qc: 'none', billing: 'per-op',
@@ -186,7 +188,7 @@ export const VIDEO_REFUSALS: readonly VideoRefusal[] = [
   { code: 'final_duration_invalid', lanes: ['film', 'single-clip', 'music-video'], where: 'app/api/video/assemble/route.ts', http: 400, means: 'the final length cannot be cut from the clips handed over (longer than the stitch, off the frame grid, …)', charge: 'before any charge' },
   { code: 'media_not_yours', lanes: ['film', 'single-clip', 'music-video', 'product-ad', 'montage', 'editing'], where: 'app/api/video/assemble/route.ts', http: 403, means: 'a file handed over is not readable by the caller', charge: 'before any charge' },
   { code: 'insufficient_credits', lanes: ['film', 'single-clip', 'music-video', 'product-ad', 'longform', 'montage', 'editing', 'remix', 'motion', 'swap', 'vfx'], where: 'app/api/video/assemble/route.ts', http: 402, means: 'the wallet cannot cover the quote', charge: 'before any charge' },
-  { code: 'qc_rejected', lanes: ['film', 'single-clip', 'music-video'], where: 'app/api/video/assemble/route.ts', http: 502, means: 'the finished master (or the single clip’s cut) failed a critical quality check (frame_count_mismatch, frame_count_unverified — a count that could not be read is a refusal too, silent_master, empty_master) and was withheld', charge: 'refunded once' },
+  { code: 'qc_rejected', lanes: ['film', 'single-clip', 'music-video'], where: 'app/api/video/assemble/route.ts', http: 502, means: 'the finished master (or the single clip’s cut) failed a critical quality check (frame_count_mismatch, frame_count_unverified — a count that could not be read is a refusal too, audio_stream_unverified, silent_master, empty_master) and was withheld', charge: 'refunded once' },
   { code: 'assembly_failed', lanes: ['film', 'music-video'], where: 'app/api/video/assemble/route.ts', http: 502, means: 'the stitch failed or stalled (saga path)', charge: 'refunded once' },
   { code: 'music_unreadable', lanes: ['film', 'music-video'], where: 'app/api/video/assemble/route.ts', http: 422, means: 'an audio lane (the soundtrack, the narration, the sfx) has no readable audio stream: the assembler refused before any encode (round 3), nothing hosted', charge: 'refunded once' },
   { code: 'assemble_failed', lanes: ['single-clip'], where: 'app/api/video/assemble/route.ts', http: 500, means: 'the single clip could not be fetched or cut — the legacy spelling of assembly_failed on the single-clip path (consolidation plan D5 unifies it)', charge: 'refunded once' },

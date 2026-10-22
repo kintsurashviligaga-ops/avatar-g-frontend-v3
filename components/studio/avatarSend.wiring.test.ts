@@ -18,9 +18,18 @@ describe('avatar send wiring', () => {
   });
   it('only the spoken words reach the voice, in both the presenter and the photo path', () => {
     expect(lip).toContain('splitAvatarScript(text).speech');
-    expect(lip).toContain('JSON.stringify({ text: spoken, orientation: lipOrientation, gender: lipGender })');
+    expect(lip).toContain('JSON.stringify({ text: spoken, orientation: lipOrientation, gender: voiceGender })');
     expect(lip).toContain('...(spoken ? { text: spoken } : {})');
     expect(lip).not.toMatch(/\.\.\.\(text \? \{ text \} : \{\}\)/);
+  });
+  it('the card, Veo, presenter and dub use the same resolved voice; auto never reaches a voice API', () => {
+    expect(src).toContain('avatarVoiceGender(lipGender, hintText)');
+    expect(src).toContain('gender: resolveLipGender(promptText)');
+    expect(src).toContain('gender: resolveLipGender(text)');
+    expect(lip).toContain('const voiceGender = resolveLipGender(text);');
+    expect(lip).toContain('aspect: veoAspect, voiceGender,');
+    expect(lip).toContain('...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: voiceGender })');
+    expect(lip).not.toContain('gender: lipGender');
   });
 });
 

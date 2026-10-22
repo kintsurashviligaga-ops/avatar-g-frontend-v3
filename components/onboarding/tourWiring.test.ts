@@ -4,7 +4,8 @@
  * behind a dynamic import, so — like the other studio suites — these read the SOURCE for the lines each promise
  * hangs on):
  *  · the composer pill carries data-tour="composer", with the composer textarea inside it;
- *  · every sidebar tool row and collapsed-rail button carries data-tour="tool-<id>" (step 2 points at tool-avatar);
+ *  · every collapsed-rail tool button carries data-tour="tool-<id>" (step 2 points at tool-avatar; GG took the tool rows out
+ *    of the expanded sidebar on 2026-10-21, and the tour skips a step whose anchor is not showing);
  *  · the twin entry is an anchor ONLY behind NEXT_PUBLIC_TWIN_ENABLED;
  *  · ServiceHub mounts the tour once, on the studio surface, through next/dynamic (never in the first load).
  */
@@ -30,8 +31,8 @@ describe('tour anchors', () => {
     expect(between).toContain('<textarea');
   });
 
-  it('every sidebar tool row and every collapsed-rail tool button is a tool-<id> anchor', () => {
-    expect(chrome.match(/data-tour=\{`tool-\$\{id\}`\}/g)?.length).toBeGreaterThanOrEqual(2);
+  it('every collapsed-rail tool button is a tool-<id> anchor', () => {
+    expect(chrome.match(/data-tour=\{`tool-\$\{id\}`\}/g)?.length).toBeGreaterThanOrEqual(1);
   });
 
   it('the twin entry is an anchor only with NEXT_PUBLIC_TWIN_ENABLED on', () => {

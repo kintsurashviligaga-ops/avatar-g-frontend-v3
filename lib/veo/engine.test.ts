@@ -24,6 +24,8 @@ jest.mock('./gcs', () => ({
 }));
 
 import { setVeoCapDepsForTests, type VeoSpendStore } from './dailyCap';
+import { createHash } from 'node:crypto';
+import type { VeoSubmissionEvidence } from './submissionJournal';
 import { createVeoClip, deliverableUrl, isGoogleOnly, pollVeoClip, transportOf, veoTransport, type CreateVeoClipInput } from './engine';
 import { signedReadUrl, uploadVeoInput, veoOutputPrefix, VeoGcsError } from './gcs';
 import { getVertexAccessToken, vertexConfig, vertexConfigProblems } from './vertexAuth';
@@ -223,7 +225,7 @@ describe('createVeoClip — Vertex', () => {
     expect(res.model).toBe(VERTEX_MODEL);
     expect(res.outcome).toStrictEqual({ ok: true, operation: { transport: 'vertex', name: VERTEX_OP, model: VERTEX_MODEL, outputPrefix: PREFIX } });
     expect(res.request).toMatchObject({ aspect: '16:9', durationSec: 8, resolution: '1080p', tier: 'standard', generateAudio: true });
-    expect(prefixMock).toHaveBeenCalledWith('sess-1', 2);
+    expect(prefixMock).toHaveBeenCalledWith('sess-1', 2, CFG);
     expect(uploadMock).not.toHaveBeenCalled();
     expect(calls()).toHaveLength(1);
     expect(calls()[0]?.[0]).toBe(VERTEX_SUBMIT);
@@ -775,5 +777,95 @@ describe('deliverableUrl', () => {
   it('a signing failure throws rather than reading as "host it yourself"', async () => {
     signMock.mockRejectedValueOnce(new VeoGcsError('storage_failed', 'GCS sign failed (HTTP 403)', 403));
     await expect(deliverableUrl({ kind: 'gcs', gcsUri: `${PREFIX}sample_0.mp4`, mimeType: 'video/mp4' })).rejects.toBeInstanceOf(VeoGcsError);
+  });
+});
+
+describe('durable submission fence — no real network', () => {
+  it('records prefix before upload and the exact body hash after auth, before the only POST', async () => {
+    useVertex();
+    const events: string[] = [];
+    const journal: VeoSubmissionEvidence[] = [];
+    uploadMock.mockImplementation(async (media) => {
+      events.push('upload');
+      expect(journal[0]).toMatchObject({ phase: 'prepared', outputPrefix: PREFIX, projectId: CFG.projectId, location: CFG.location });
+      return uploadAsGcs(media);
+    });
+    tokenMock.mockImplementation(async () => { events.push('auth'); return TOKEN; });
+    routeFetch({ vertex: async () => {
+      events.push('post');
+      expect(journal).toHaveLength(2);
+      expect(journal[1].bodySha256).toBe(createHash('sha256').update(String(calls()[0][1].body)).digest('hex'));
+      return json(200, { name: VERTEX_OP });
+    } });
+    const result = await createVeoClip(input({ prompt: 'approved scene', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }, {
+      submissionJournal: async (evidence) => { events.push(evidence.phase); journal.push({ ...evidence }); return true; },
+    }));
+    expect(result.outcome.ok).toBe(true);
+    expect(events).toEqual(['prepared', 'upload', 'auth', 'posting', 'post']);
+    expect(journal[0].requestSha256).toBe(createHash('sha256').update(JSON.stringify(result.request)).digest('hex'));
+    expect(JSON.stringify(journal)).not.toMatch(/SIGNED-SECRET|ya29|base64|approved scene/);
+    expect(bodyOf(VERTEX_SUBMIT).parameters.storageUri).toBe(journal[0].outputPrefix);
+    expect(prefixMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['prepared', 'posting'] as const)('a refused %s persistence never reaches Google', async (phase) => {
+    useVertex(); routeFetch();
+    const result = await createVeoClip(input({ prompt: 'scene', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }, {
+      submissionJournal: async (evidence) => evidence.phase !== phase,
+    }));
+    expect(failed(result.outcome)).toMatchObject({ reason: 'invalid_request', retryable: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+    if (phase === 'prepared') { expect(uploadMock).not.toHaveBeenCalled(); expect(tokenMock).not.toHaveBeenCalled(); }
+  });
+
+  it('a journal exception is sanitized and prevents input storage', async () => {
+    useVertex(); routeFetch();
+    const result = await createVeoClip(input({ prompt: 'scene', aspect: '16:9' }, {
+      submissionJournal: async () => { throw new Error('private persistence credentials'); },
+    }));
+    expect(result.outcome.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toContain('private persistence credentials');
+    expect(uploadMock).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the normalized request snapshot when caller input changes during persistence', async () => {
+    useVertex(); routeFetch();
+    const imageInput: VeoMedia = { kind: 'gcs', uri: 'gs://owned-bucket/original.png', mimeType: 'image/png' };
+    const result = await createVeoClip(input({ prompt: 'original', aspect: '16:9', startImage: imageInput }, {
+      submissionJournal: async () => { imageInput.uri = 'gs://owned-bucket/replaced.png'; return true; },
+    }));
+    expect(result.outcome.ok).toBe(true);
+    expect(bodyOf(VERTEX_SUBMIT).instances[0].image).toMatchObject({ gcsUri: 'gs://owned-bucket/original.png' });
+  });
+
+  it('also fences the historical Gemini transport without calling its API', async () => {
+    useGemini(); routeFetch();
+    const phases: string[] = [];
+    const result = await createVeoClip(input({ prompt: 'scene', aspect: '16:9' }, {
+      submissionJournal: async (evidence) => { phases.push(evidence.phase); return evidence.phase === 'prepared'; },
+    }));
+    expect(phases).toEqual(['prepared', 'posting']);
+    expect(failed(result.outcome)).toMatchObject({ reason: 'invalid_request', retryable: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('journal configuration fence', () => {
+  it('refuses a configuration switch while the prepared evidence is persisted, before upload', async () => {
+    useVertex(); routeFetch();
+    const result = await createVeoClip(input({ prompt: 'scene', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }, {
+      submissionJournal: async () => { vertexConfigMock.mockReturnValue({ ...CFG, projectId: 'different-project' }); return true; },
+    }));
+    expect(result.outcome.ok).toBe(false);
+    expect(uploadMock).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('refuses a configuration switch during auth or the final persistence fence', async () => {
+    useVertex(); routeFetch();
+    tokenMock.mockImplementation(async () => { vertexConfigMock.mockReturnValue({ ...CFG, location: 'europe-west1' }); return TOKEN; });
+    const journal = jest.fn(async () => true);
+    const result = await createVeoClip(input({ prompt: 'scene', aspect: '16:9' }, { submissionJournal: journal }));
+    expect(result.outcome.ok).toBe(false);
+    expect(journal).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

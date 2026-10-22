@@ -18,13 +18,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex, joinOverlaps, resolveJoins } from './ffmpeg-filtergraph';
-import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
+import { buildCubeFile, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { keepsOnlySong } from './songMix';
 import { matchClipLooks, parseSignalStats, type ClipStats } from '@/lib/video/clipLook';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, MasterQaRejected, type QaReport } from './masterQa';
 import { SoundtrackUnreadable } from './soundtrackUnreadable';
 import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
+import { contractedSegmentsError } from '@/lib/video/assemblyInput';
 import { countDecodedFrames } from '@/lib/video/frameCount';
 import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
 import { readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
@@ -225,6 +226,15 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
   const bin = ffmpegStatic as unknown as string | null;
   if (!bin) throw new Error('ffmpeg binary unavailable');
 
+  // Enforce this at the renderer boundary too: internal callers need the same no-partial rule as the HTTP route.
+  // Reject before downloading clips/audio or invoking optional providers; a missing scene is never filtered away.
+  if (m.finalDurationSec !== undefined && m.finalDurationSec !== null) {
+    if (typeof m.finalDurationSec !== 'number' || !Number.isFinite(m.finalDurationSec) || m.finalDurationSec <= 0) {
+      throw new Error('contracted final duration invalid');
+    }
+    const reason = contractedSegmentsError(m.segments);
+    if (reason) throw new Error(`contracted segments invalid: ${reason}`);
+  }
   const segs = (m.segments ?? []).filter(s => s?.url);
   if (segs.length < 1) throw new Error('no segments to assemble');
 

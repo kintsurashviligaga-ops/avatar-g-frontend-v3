@@ -21,14 +21,16 @@ export type ToolId =
 type L10n = { ka: string; en: string; ru: string };
 export type ToolLang = 'ka' | 'en' | 'ru';
 
-// ⚠️ `photoshoot` (the photographer) and `interior` (the interior designer) are PRIMARY on purpose: they were lost from the
-// studio once, and a tool one level down is a tool people do not find. They sit beside `image`, the tool they specialise.
+// ⚠️ `interior` is PRIMARY on purpose: it was lost from the studio once, and a tool one level down is a tool people do not
+// find. It sits beside `image`, the tool it specialises.
+// ⚠️ GG's menu clean-up (2026-10-21) took `photoshoot`, `swap`, `motion`, `dubbing`, `presentation` and `photo` out of
+// every menu. Like `remix` below they stay ToolIds with their TOOL_META lines, but not in ALL_TOOLS, so nothing opens them.
 // ⚠️ `remix` IS RETIRED FROM EVERY MENU (GG's UI plan, 2026-10-18): its restyle / character ops made a NEW ~5 s clip from one
 // frame, so „ვიდეოს რემიქსი" promised an edit it did not make. It stays a ToolId only for the chat's „edit this attached
 // video" lane (subtitles, colour, music, text, trim, speed: /api/video/remix), which names itself by TOOL_META below.
 // Not in ALL_TOOLS, so no menu, deep link, sidebar event, Live voice or panel command can open its panel.
 export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'interior', 'music', 'avatar'];
-/** Tools that live one level down: video variants, motion, the four full studios and the photo culling workspace. */
+/** Tools that live one level down: the product ad and VFX video variants, the montage editor and 3D. */
 export const MORE_TOOLS: readonly ToolId[] = ['product', 'vfx', 'montage', 'model3d'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
 

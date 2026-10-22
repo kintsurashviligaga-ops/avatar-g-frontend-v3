@@ -33,11 +33,11 @@ jest.mock('../web/publicFetch', () => {
   const { readFileSync, copyFileSync, statSync } = jest.requireActual('node:fs');
   return {
     MEDIA_TYPES: /.*/,
-    fetchPublic: async (url: string) => {
+    fetchPublic: jest.fn(async (url: string) => {
       const src = mockFiles.get(url.split('?')[0]!);
       if (!src) return { ok: false, error: 'fetch_failed' };
       return { ok: true, res: new Response(readFileSync(src)), url };
-    },
+    }),
     fetchPublicToFile: async (url: string, path: string) => {
       const src = mockFiles.get(url.split('?')[0]!);
       if (!src) return { ok: false, error: 'fetch_failed' };
@@ -75,6 +75,7 @@ import { finalCutArgs, cutMasterToLength } from '../video/finalCut';
 import * as frameCount from '../video/frameCount';
 import { countDecodedFrames, decodedFrameArgs, frameExactVerdict } from '../video/frameCount';
 import { framesFor } from '../video/durationContract';
+import { fetchPublic } from '../web/publicFetch';
 
 jest.setTimeout(900_000);
 const bin = ffmpegStatic as unknown as string;
@@ -113,6 +114,34 @@ beforeAll(() => {
 afterAll(() => {
   if (process.env.VIDEO_CORE_EVIDENCE_OUT) writeFileSync(process.env.VIDEO_CORE_EVIDENCE_OUT, JSON.stringify(evidence, null, 1));
   if (dir) rmSync(dir, { recursive: true, force: true });
+});
+
+describe('contracted assembler input before any media I/O', () => {
+  const ready = { url: 'https://media.test/in/ready.mp4', durationSec: 8 };
+  test.each([0, -1, NaN, Infinity])('invalid contracted duration %s cannot fall back to legacy padding', async (finalDurationSec) => {
+    jest.mocked(fetchPublic).mockClear();
+    const priorUploads = uploads.length;
+    await expect(assembleWithFfmpeg({ segments: [ready], finalDurationSec })).rejects.toThrow('contracted final duration invalid');
+    expect(fetchPublic).not.toHaveBeenCalled();
+    expect(uploads).toHaveLength(priorUploads);
+  });
+  test.each([
+    ['not_an_array', null],
+    ['empty', []],
+    ['too_many', Array.from({ length: 25 }, (_, i) => ({ ...ready, url: `${ready.url}/${i}` }))],
+    ['missing_url', [ready, { durationSec: 8 }]],
+    ['duplicate_url', [ready, { ...ready }]],
+    ['unknown_duration', [ready, { url: 'https://media.test/in/other.mp4' }]],
+    ['duplicate_ordinal', [{ ...ready, ordinal: 1 }, { ...ready, url: 'https://media.test/in/other.mp4', ordinal: 1 }]],
+  ])('%s refuses the complete attempt without download or upload', async (reason, segments) => {
+    jest.mocked(fetchPublic).mockClear();
+    const priorUploads = uploads.length;
+    await expect(assembleWithFfmpeg({
+      segments: segments as Parameters<typeof assembleWithFfmpeg>[0]['segments'], finalDurationSec: 16,
+    })).rejects.toThrow(`contracted segments invalid: ${reason}`);
+    expect(fetchPublic).not.toHaveBeenCalled();
+    expect(uploads).toHaveLength(priorUploads);
+  });
 });
 
 maybe('the film assembler, contracted (Video Core v1.0 §4), on the real ffmpeg', () => {
