@@ -84,7 +84,7 @@ export interface MasterFilmScene {
   sfxPrompt?: string;
 }
 
-/** PHASE 2 L3 — one per-scene SFX cue, fed to the EXISTING generateFilmSfx() loop. */
+/** PHASE 2 L3 — one per-scene SFX cue. Recorded with the film only since MASTER TASK v3.1 PR 5e (no sound-effects bed). */
 export interface MasterFilmSfxCue {
   sceneNumber: number;
   sfxPrompt: string;
@@ -111,8 +111,8 @@ export interface MasterFilmBrief {
   scenes: MasterFilmScene[];
   audio: MasterFilmAudio;
   /** PHASE 2 L3 — ordered per-scene SFX cues (one per scene). Derived in coerceBrief
-   *  from each scene's sfxPrompt (or a fallback). The live film loops the EXISTING
-   *  generateFilmSfx() over these instead of one whole-film bed. */
+   *  from each scene's sfxPrompt (or a fallback). Since MASTER TASK v3.1 PR 5e no
+   *  sound-effects bed is generated (its engine was ElevenLabs); the cues are only recorded. */
   sfxCues: MasterFilmSfxCue[];
 }
 

@@ -440,6 +440,8 @@ describe('sttModel', () => {
     'gemini-2.5-flash-preview-tts', // a TTS model cannot transcribe
     TRANSCRIBE_LIVE_MODEL, // Live-style; not a generateContent model
     'gemini-2.0-flash-lite', // retired (was in geminiStt.ts's list)
+    'gemini-flash-latest', // Gemini-API-only alias: 404 on Vertex AI, the only transport (v3.1)
+    'gemini-pro-latest',
     'gemini flash',
     '',
   ])('GEMINI_STT_MODEL=%p (not allowlisted / retired / malformed / empty) → default', (v) => {
@@ -448,14 +450,16 @@ describe('sttModel', () => {
   });
 
   it('falls back to the legacy VOICE_V2V_GEMINI_MODEL when GEMINI_STT_MODEL is unset or rejected', () => {
-    process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-flash-latest';
-    expect(sttModel()).toBe('gemini-flash-latest');
+    process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-3.5-flash';
+    expect(sttModel()).toBe('gemini-3.5-flash');
     process.env.GEMINI_STT_MODEL = 'not/valid';
-    expect(sttModel()).toBe('gemini-flash-latest');
+    expect(sttModel()).toBe('gemini-3.5-flash');
+    process.env.GEMINI_STT_MODEL = 'gemini-pro-latest';
+    expect(sttModel()).toBe('gemini-3.5-flash');
   });
 
   it('GEMINI_STT_MODEL wins over the legacy name', () => {
-    process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-flash-latest';
+    process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-3.5-flash';
     process.env.GEMINI_STT_MODEL = 'gemini-3.6-flash';
     expect(sttModel()).toBe('gemini-3.6-flash');
   });

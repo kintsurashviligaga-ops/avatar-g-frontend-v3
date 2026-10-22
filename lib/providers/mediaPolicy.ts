@@ -74,4 +74,13 @@ export const GATED_ENTRIES: ReadonlyArray<{ file: string; when: string }> = [
   { file: 'app/api/replicate/generate/route.ts', when: 'raw Replicate route → refused' },
   { file: 'app/api/udio/generate/route.ts', when: 'raw Udio route → refused' },
   { file: 'app/api/ltx-video/route.ts', when: 'raw LTX route → refused' },
+  // MASTER TASK v3.1 PR 5d / 5e: the voice is Google Cloud TTS; what only ElevenLabs offered is refused.
+  { file: 'app/api/elevenlabs/tts/route.ts', when: 'a named (ElevenLabs) voice → refused; no voice named, Cloud TTS reads it' },
+  { file: 'app/api/orbit/[service]/route.ts', when: 'voice-synthesis in a named (ElevenLabs) voice → refused; no voice named, Cloud TTS reads it' },
+  { file: 'app/api/voice-lab/jobs/route.ts', when: 'a job in a named (ElevenLabs) voice → refused; no voice named, Cloud TTS reads it' },
+  { file: 'app/api/voice/clone/route.ts', when: 'voice cloning (ElevenLabs) → refused; the list, the default and deleting an earlier clone stay open' },
+  { file: 'app/api/elevenlabs/sound/route.ts', when: 'sound effects (ElevenLabs sound-generation) → refused' },
+  { file: 'app/api/audio/isolate/route.ts', when: 'vocal isolation (ElevenLabs Voice Isolator) → refused' },
+  { file: 'app/api/ads/tts/route.ts', when: 'ad narration with character timings (ElevenLabs) → refused' },
+  { file: 'app/api/v2/dubbing/start/route.ts', when: 'dubbing (ElevenLabs Scribe + timed TTS) → refused' },
 ];

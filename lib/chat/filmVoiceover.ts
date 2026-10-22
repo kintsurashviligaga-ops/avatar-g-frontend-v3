@@ -34,7 +34,7 @@ import { genderForPersona, isLastingTtsRefusal, synthesizeGoogleTts, ttsLanguage
 import { personaToGender, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
 import { uploadAndSign, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { mp3DurationSec } from '@/lib/audio/mp3Duration';
-import { transcribeWithScribe } from '@/lib/services/dubbing/elevenScribe';
+import { transcribeWithGeminiDetailed } from '@/lib/voice-v2v/geminiStt';
 import type { CaptionWord } from '@/lib/pipeline/compositing/word-synced-captions';
 import { checkFilmVoice, type VoiceVerdict } from './filmVoiceCheck';
 
@@ -154,22 +154,6 @@ export function parseDialogueScript(script: string): DialogueTurn[] {
     else merged.push({ ...turn });
   }
   return merged;
-}
-
-/**
- * Why ElevenLabs refused a request, for the log: the HTTP status and ElevenLabs' own error code (detail.status / detail.code,
- * e.g. `api_key_id_used_as_api_key`, `quota_exceeded`). Never the request, never the key. Never throws.
- */
-export async function elevenLabsRefusal(res: { status: number; text: () => Promise<string> }): Promise<string> {
-  let code = '';
-  try {
-    const body = JSON.parse(await res.text()) as { detail?: { status?: unknown; code?: unknown } | string } | null;
-    const detail = body?.detail;
-    if (detail && typeof detail === 'object') {
-      code = [detail.code, detail.status].filter((x): x is string => typeof x === 'string' && /^[a-z0-9_]{1,64}$/i.test(x)).join(' / ');
-    }
-  } catch { /* not JSON: the status alone */ }
-  return code ? `${res.status} ${code}` : String(res.status);
 }
 
 /** How one line is read: the speaker's gender, and which of that gender's best voices (a character's place in the cast). */
@@ -330,26 +314,31 @@ export async function generateFilmVoiceover(opts: FilmVoiceoverOptions): Promise
 /** A film narration that was listened to after it was read (./filmVoiceCheck). */
 export interface CheckedFilmVoiceover {
   url: string;
-  /** How closely what Scribe heard matches the script (0–1); null = Scribe did not answer, the voice is unverified. */
+  /** How closely what the listener heard matches the script (0–1); null = it did not answer, the voice is unverified. */
   score: number | null;
   verdict: VoiceVerdict | null;
   /** 1, or 2 when the first read did not say its words. */
   reads: number;
-  /** The script's own words, timed from the audio: the film's subtitles, when the user asks for them. */
+  /**
+   * The script's own words, timed from the audio: the film's subtitles, when the user asks for them. Always null since
+   * MASTER TASK v3.1 PR 5e: the listener is Gemini, which hears text but no word timings, so subtitles are paused until a
+   * timed Google engine is approved (GG's choice, 2026-10-22).
+   */
   words: CaptionWord[] | null;
 }
 
 /**
- * generateFilmVoiceover, listened to: Scribe (ElevenLabs speech-to-text) hears the read, and a read that does not say its
- * words is read once more (./filmVoiceCheck checkFilmVoice). The better read is hosted, with its score and the script's
- * words timed for subtitles. A verdict of 'fail' is the caller's to act on (a film whose voice is its only speech is not
- * made with it). Never throws; null when no voice came back.
+ * generateFilmVoiceover, listened to: Gemini on Vertex (lib/voice-v2v/geminiStt) hears the read, and a read that does not
+ * say its words is read once more (./filmVoiceCheck checkFilmVoice). The better read is hosted, with its score. The
+ * listener was ElevenLabs Scribe until MASTER TASK v3.1 PR 5e and also timed the words for subtitles; Gemini gives text
+ * only. A verdict of 'fail' is the caller's to act on (a film whose voice is its only speech is not made with it). Never
+ * throws; null when no voice came back.
  */
 export async function generateCheckedFilmVoiceover(opts: FilmVoiceoverOptions): Promise<CheckedFilmVoiceover | null> {
   try {
     const narration = await filmNarration(opts);
     if (!narration) return null;
-    const languageCode = isGeorgianText(narration.script) ? 'ka' : null;
+    const language = isGeorgianText(narration.script) ? 'ka-GE' : '';
     const outcome = await checkFilmVoice({
       script: narration.script,
       read: async () => {
@@ -360,8 +349,9 @@ export async function generateCheckedFilmVoiceover(opts: FilmVoiceoverOptions): 
       },
       listen: async ({ buf }) => {
         // Bounded well under the dispatch's budget: a check that cannot answer leaves the voice unverified, never late.
-        const heard = await transcribeWithScribe(buf, { languageCode, diarize: false, timeoutMs: 30_000 });
-        return heard ? { text: heard.text, words: heard.words ?? [] } : null;
+        // No word timings come back, so the words list is empty and nothing is timed for subtitles.
+        const heard = await transcribeWithGeminiDetailed(buf.toString('base64'), 'audio/mpeg', language, { timeoutMs: 30_000 }).catch(() => null);
+        return heard ? { text: heard.text, words: [] } : null;
       },
     });
     if (!outcome) return null;
@@ -480,73 +470,6 @@ export async function generateDialogueStems(opts: {
     const mergedPath = `${opts.compositeId}/dialogue.mp3`;
     const mergedUrl = (await uploadAndSign('renders', mergedPath, Buffer.concat(ok.map((r) => r.buf)).toString('base64'), 'audio/mpeg', 7200)) ?? null;
     return { stems, mergedUrl };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * ⚠️ ElevenLabs refuses a sound-generation `text` over 450 characters (`400 text_too_long`): the brief was cut at 280 but
- * the fixed words around it add 181, so a full brief sent 461 and the film lost its whole ambience bed (live E2E
- * 2026-10-17, film B). The brief now gets only the room the fixed words leave.
- */
-export const SFX_TEXT_MAX = 450;
-const SFX_HEAD = 'Cinematic, immersive sound design and ambience for this film scene: ';
-const SFX_TAIL = '. Layered environmental sound effects and foley that fit the location and action. No music, no melody, no speech.';
-export function sfxPromptText(brief: string): string {
-  return `${SFX_HEAD}${brief.slice(0, SFX_TEXT_MAX - SFX_HEAD.length - SFX_TAIL.length)}${SFX_TAIL}`;
-}
-
-/**
- * Synthesise a cinematic SOUND-DESIGN / ambience track via the ElevenLabs
- * sound-generation API (text → layered SFX, foley, atmosphere). The FFmpeg master
- * mixes this UNDER the music so the film has real environmental sound, not just a
- * score. Fail-open: any miss returns null and the film keeps its music-only mix.
- */
-async function synthesizeSfx(brief: string, totalSec: number): Promise<{ base64: string; contentType: string } | null> {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return null;
-  // The sound-generation endpoint caps at 22s; ask for as much as fits the film.
-  const duration = Math.max(8, Math.min(22, Math.round(totalSec)));
-  const text = sfxPromptText(brief);
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 40_000);
-  try {
-    const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
-      method: 'POST',
-      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-      body: JSON.stringify({ text, duration_seconds: duration, prompt_influence: 0.4 }),
-      signal: ac.signal,
-    });
-    if (!res.ok) {
-      // eslint-disable-next-line no-console
-      console.warn(`[sfx] ElevenLabs sound generation refused: ${await elevenLabsRefusal(res)}`);
-      return null;
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength < 1024) return null;
-    return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * End-to-end SFX leg: brief → sound design → hosted signed URL. Always resolves;
- * returns null (never throws) so the caller falls back to the music-only mix.
- */
-export async function generateFilmSfx(opts: {
-  brief: string;
-  totalSec: number;
-  compositeId: string;
-}): Promise<string | null> {
-  try {
-    const audio = await synthesizeSfx(opts.brief, opts.totalSec);
-    if (!audio) return null;
-    const path = `${opts.compositeId}/sfx.mp3`;
-    return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
   } catch {
     return null;
   }

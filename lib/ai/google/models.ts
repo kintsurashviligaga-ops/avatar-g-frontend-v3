@@ -110,15 +110,17 @@ export const DEFAULT_STT_MODEL = 'gemini-3.8-flash';
  * ⚠️ `gemini-3.5-transcribe-live` is deliberately NOT here: its name says it is a Live (bidi) model, and pointing
  * the generateContent STT path at it would fail every transcription with no rotation. It is exported separately
  * (TRANSCRIBE_LIVE_MODEL) for a future streaming-transcription path. UNVERIFIED whether it serves generateContent.
+ *
+ * Neither are `gemini-flash-latest` and `gemini-pro-latest` (MASTER TASK v3.1): they are Gemini-API-only aliases and
+ * answer 404 on Vertex AI, the only transport (lib/models/catalog marks them `gemini_api`), so an override naming one
+ * falls back to the default instead of reaching the chain.
  */
 export const STT_MODELS: readonly string[] = [
   DEFAULT_STT_MODEL,
   'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
-  'gemini-flash-latest',
   'gemini-3.1-pro-preview',
-  'gemini-pro-latest',
 ];
 
 /** Streaming transcription model on the key (Live-style). Not used by any path yet. */

@@ -216,8 +216,10 @@ interface AssembleBody {
    *  the CPU-FFmpeg master (fail-open; absent → no captions, path unchanged). */
   captionAlignment?: ElevenAlignment | null;
   /** The user asked for subtitles on a chat film (the panel's switch, or the brief in so many words; never on by default — the
-   *  owner's word 2026-10-17). With filmTokenId and no captionAlignment, the narration's words as Scribe timed them at the film's
-   *  start (lib/chat/filmVoiceCheck, kept 24 h for the film's owner only) are burned. Nothing kept → no subtitles, path unchanged. */
+   *  owner's word 2026-10-17). With filmTokenId and no captionAlignment, the narration's words as the voice check timed them at the
+   *  film's start (lib/chat/filmVoiceCheck, kept 24 h for the film's owner only) are burned. Nothing kept → no subtitles, path
+   *  unchanged. Since MASTER TASK v3.1 PR 5e nothing is kept: the check runs on Gemini, which gives no word times (subtitles are
+   *  paused until a timed Google engine is approved). */
   subtitles?: boolean;
   /** v357 — the structured film script (scriptSchema shape). Threaded to the assembler where
    *  (under FILM_AUDIO_MIX_ENABLED) its explicit muteWindows drive the hard-mute post-pass.

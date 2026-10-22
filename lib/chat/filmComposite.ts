@@ -51,9 +51,8 @@ import { filmSceneShares } from './filmSceneRefund';
 import { saveFilmSceneBook } from './filmSceneBook';
 import type { FilmBookScene } from './filmSceneRedo';
 import { claimPaidStartKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
-import { generateCheckedFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type CheckedFilmVoiceover, type DialogueStem } from './filmVoiceover';
+import { generateCheckedFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, type CheckedFilmVoiceover, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
-import { enrichSfxBrief } from './sfxTriggers';
 import { evaluateFilmQa } from '@/lib/ai/qaDirectorAgent';
 import {
   planFilmScenes,
@@ -976,7 +975,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // Which legs Veo already speaks in-clip is known only after dispatch (the double-voice guard below), so the sources take
   // that decision as an argument. An off-camera voice film has nothing delegated (its clips are silent), so its voice can be
   // made before anything is charged or sent.
-  //   narration  → generateCheckedFilmVoiceover.narrationScript  (the sanitized VO spine, verbatim; listened to by Scribe)
+  //   narration  → generateCheckedFilmVoiceover.narrationScript  (the sanitized VO spine, verbatim; listened to by Gemini)
   //   dialogue   → generateDialogueVoiceover.turns         (per-SPEAKER N-character casting)
   const filmVoiceSpec = (veoSpeaks: { dialogueLeg: boolean; narrationLeg: boolean; narrationSpine: string | null }) => {
     const suppressDialogueLeg = veoSpeaks.dialogueLeg;
@@ -1031,7 +1030,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // failed leg, or no ElevenLabs key) it returns null and we fall through to the EXACT single-track
   // path below — so every single-voice / narration film is byte-identical to before. No double-render:
   // generateDialogueStems returns null (never a partial upload) before we reach generateDialogueVoiceover.
-  // `checked` is the narration as Scribe heard it (lib/chat/filmVoiceCheck): its score, and its words timed for subtitles.
+  // `checked` is the narration as Gemini heard it (lib/chat/filmVoiceCheck): its score (its words are not timed since PR 5e).
   const renderVoiceTrack = async (spec: ReturnType<typeof filmVoiceSpec>): Promise<{ voiceUrl: string | null; dialogueStems: DialogueStem[] | null; checked?: CheckedFilmVoiceover | null }> => {
     const { masterTurns, dialogueScript, customNarration, narratorGender, voiceLanguage, voicePersona, voiceTone, suppressDialogueLeg, delegatedNarrationSpine } = spec;
     const heard: { v: CheckedFilmVoiceover | null } = { v: null };
@@ -1486,19 +1485,16 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // Music primary, Replicate MusicGen fallback), so the film's async audio leg no longer
   // mints a workId — `musicWorkId` stays null and the union poll reports audio 'skipped'.
 
-  // ── Legs 4b + 4c: narration voice-over (PHASE 48 §2) + cinematic SFX (§49.7) ─
-  // These two are INDEPENDENT (both derive from the brief, not from each other or
-  // the clips) and both STRICTLY fail-open + unbilled, so we run them CONCURRENTLY
-  // instead of back-to-back — the audio legs finish in max(voice, sfx) rather than
-  // their sum. Voice-over only fires when the brief asks for a commentator/narrator
-  // OR the user typed verbatim dialogue (narrationScript); SFX runs for every film.
+  // ── Leg 4b: narration voice-over (PHASE 48 §2) ─
+  // STRICTLY fail-open + unbilled. Voice-over only fires when the brief asks for a commentator/narrator
+  // OR the user typed verbatim dialogue (narrationScript). The SFX leg (§49.7) is gone since PR 5e.
   // (voiceMeta + parsedMaster are resolved up-front, before the plan — the scene grid and the per-scene
   // spoken lines both derive from the same parse.)
   // (The voice's sources and its render: filmVoiceSpec / renderVoiceTrack, above the charge.)
   // PHASE 25 (VECTOR 2) — QA DIRECTOR AGENT pre-assembly gate. Pure, deterministic, fail-open. It
   // grades the collective PLANNING output (character lock, scene count, empty/monotone scenes,
-  // orientation) and applies the ONE provably-safe single-pass correction — filling any missing
-  // per-scene SFX cue — which then feeds the SFX brief below. Everything else is a graded FLAG
+  // orientation). Its one correction, filling a missing per-scene SFX cue, fed the SFX brief, which is gone
+  // since PR 5e, so it is no longer adopted. Everything is a graded FLAG
   // (logged + returned in metadata.film.qa), NOT an unbounded LLM re-generation loop (see the module
   // header for why that would spiral cost/latency). Async per-clip render outcomes are out of scope
   // here — they resolve at poll time and are covered by the Phase-23 retry/down-shift + salvage gate.
@@ -1513,8 +1509,6 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       sceneCount,
     });
     qaVerdict = { grade: qa.grade, pass: qa.pass, issues: qa.issues };
-    // Bounded auto-fix: adopt the QA-completed per-scene SFX cues (gaps filled) for the SFX brief below.
-    sfxCues = qa.correctedSfxCues.map((c) => ({ sceneNumber: c.sceneNumber, sfxPrompt: c.sfxPrompt, duration: grid.clipSec }));
     // eslint-disable-next-line no-console
     console.info(`[film][qa] grade=${qa.grade} pass=${qa.pass} issues=${qa.issues.map((i) => i.code).join(',') || 'none'}`);
   } catch (err) {
@@ -1522,36 +1516,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     console.warn('[film][qa] gate errored (fail-open, skipping):', err instanceof Error ? err.message : err);
   }
 
-  // ⚠️ ElevenLabs sound-generation is an English text→audio model, and this brief FALLS BACK TO THE RAW USER
-  // MESSAGE whenever the Prompt Agent produced no per-scene cues — so a Georgian film brief was going to it
-  // verbatim and the film's whole ambience bed was whatever the model's priors invented. A sound DESCRIPTION
-  // is never reproduced content, so translating it is safe. It also makes enrichSfxBrief work: that matcher
-  // keys off English triggers (stadium / goal / gunshot / storm / birds) and could never fire on Georgian.
-  // Computed HERE rather than inside the Promise.all literal so the voice leg still dispatches in parallel.
-  const sfxCueText = sfxCues?.length
-    ? sfxCues.map((c) => c.sfxPrompt).filter(Boolean).join('. ').slice(0, 280)
-    : '';
-  const sfxBriefEn = sfxCueText ? await promptToEnglish(sfxCueText, 'video') : messageEn;
-
-  const [voiceResult, sfxUrl] = await Promise.all([
-    // An off-camera voice was made before the clips (AN OFF-CAMERA VOICE IS MADE FIRST); every other film's voice is made here.
-    voiceMadeFirst ?? renderVoiceTrack(filmVoiceSpec({ dialogueLeg: suppressDialogueLeg, narrationLeg: suppressNarrationLeg, narrationSpine: delegatedNarrationSpine })),
-    generateFilmSfx({
-      // PHASE 2 L3 — when the Prompt Agent produced per-scene SFX cues, compose them
-      // into a scene-aware ambience brief (no music/speech) instead of the generic
-      // film brief. Strictly additive: without cues this is exactly input.message.
-      // PHASE 25 (VECTOR 1) — enrichSfxBrief prepends precise, curated cues for high-impact
-      // triggers (stadium/goal/gunshot/storm/birds…). Pure + no-op when nothing matches; this
-      // fixes the Prompt-Agent-bypassed path where the brief was the raw user message.
-      brief: enrichSfxBrief(sfxBriefEn),
-      totalSec: plan.shared.totalSec,
-      compositeId,
-    }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn('[film] sfx leg failed:', err instanceof Error ? err.message : err);
-      return null;
-    }),
-  ]);
+  // An off-camera voice was made before the clips (AN OFF-CAMERA VOICE IS MADE FIRST); every other film's voice is made here.
+  const voiceResult = await (voiceMadeFirst ?? renderVoiceTrack(filmVoiceSpec({ dialogueLeg: suppressDialogueLeg, narrationLeg: suppressNarrationLeg, narrationSpine: delegatedNarrationSpine })));
+  // No sound-effects bed: it was ElevenLabs sound-generation, which has no Google engine (MASTER TASK v3.1 PR 5e). Veo's own
+  // audio carries each clip's ambience; the field stays for the assembly contract and is always null.
+  const sfxUrl: string | null = null;
   const voiceUrl = voiceResult.voiceUrl;
   if (voiceResult.checked) {
     // eslint-disable-next-line no-console

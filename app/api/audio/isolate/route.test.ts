@@ -1,15 +1,11 @@
 /** @jest-environment node */
 /**
- * POST /api/audio/isolate — the ElevenLabs Voice Isolator for the singer lip-sync. Signed-in only, own-storage audio
- * only (SSRF), and, since it bills no credits (gap C3), one per-account daily ceiling shared with the other paid audio
- * helpers. Any miss answers { vocalUrl: null } so the caller falls back to the full mix; the ceiling answers 429.
+ * POST /api/audio/isolate — refused (MASTER TASK v3.1 PR 5e). It ran the ElevenLabs Voice Isolator for the HeyGen singer
+ * pass; neither has a Google engine. Every request answers 503 google_only before the session, the limit, the fetch of
+ * the song or the isolator. All of them are mocked so any call is caught — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
-
-let mockUser: { id: string } | null = { id: 'user-1' };
-jest.mock('../../../../lib/supabase/auth', () => ({
-  requireAuthenticatedUser: jest.fn(async () => { if (!mockUser) throw new Error('UNAUTHENTICATED'); return mockUser; }),
-}));
+jest.mock('../../../../lib/supabase/auth', () => ({ requireAuthenticatedUser: jest.fn(async () => ({ id: 'user-1' })) }));
 jest.mock('../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
   checkRateLimitByKey: jest.fn(async () => null),
@@ -18,47 +14,41 @@ jest.mock('../../../../lib/api/rate-limit', () => ({
 jest.mock('../../../../lib/elevenlabs/audioIsolation', () => ({ isolateVocal: jest.fn(async () => 'https://x.supabase.co/vocal.mp3') }));
 
 import { NextRequest } from 'next/server';
-import { checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
+import { requireAuthenticatedUser } from '../../../../lib/supabase/auth';
+import { checkRateLimit, checkRateLimitByKey } from '../../../../lib/api/rate-limit';
 import { isolateVocal } from '../../../../lib/elevenlabs/audioIsolation';
 import { POST } from './route';
 
 const OURS = 'https://x.supabase.co/storage/v1/object/sign/music/song.mp3?token=t';
-const ENV = { ...process.env };
-const post = (body: unknown) =>
+const post = (body: unknown, locale?: string) =>
   POST(new NextRequest('https://myavatar.ge/api/audio/isolate', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(locale ? { cookie: `NEXT_LOCALE=${locale}` } : {}) },
+    body: JSON.stringify(body),
   }));
 
-beforeAll(() => { process.env.SUPABASE_URL = 'https://x.supabase.co'; process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://x.supabase.co'; });
-afterAll(() => { process.env = ENV; });
+let fetchSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
-  mockUser = { id: 'user-1' };
+  fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
 });
+afterEach(() => fetchSpy.mockRestore());
 
-test('signed out: 401, nothing spent, nothing isolated', async () => {
-  mockUser = null;
-  expect((await post({ audioUrl: OURS })).status).toBe(401);
+test.each([
+  ['own audio', { audioUrl: OURS }],
+  ['no audio', {}],
+])('%s → 503 google_only, and nothing runs', async (_name, body) => {
+  const res = await post(body);
+  expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ success: false, url: null, jobId: null, code: 'google_only', error: 'google_only' });
+  expect(requireAuthenticatedUser).not.toHaveBeenCalled();
+  expect(checkRateLimit).not.toHaveBeenCalled();
   expect(checkRateLimitByKey).not.toHaveBeenCalled();
   expect(isolateVocal).not.toHaveBeenCalled();
+  expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-test('own audio is counted against the session user before the isolator runs', async () => {
-  const res = await post({ audioUrl: OURS });
-  expect(await res.json()).toEqual({ vocalUrl: 'https://x.supabase.co/vocal.mp3' });
-  expect(checkRateLimitByKey).toHaveBeenCalledWith('user-1', RATE_LIMITS.AUDIO_GEN_USER);
-  expect((checkRateLimitByKey as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan((isolateVocal as jest.Mock).mock.invocationCallOrder[0]);
-});
-
-test('over the daily ceiling the limiter answers and the isolator is not called', async () => {
-  (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
-  expect((await post({ audioUrl: OURS })).status).toBe(429);
-  expect(isolateVocal).not.toHaveBeenCalled();
-});
-
-test('audio we do not host is never fetched and spends none of the allowance', async () => {
-  const res = await post({ audioUrl: 'http://169.254.169.254/latest/meta-data/' });
-  expect(await res.json()).toEqual({ vocalUrl: null });
-  expect(checkRateLimitByKey).not.toHaveBeenCalled();
-  expect(isolateVocal).not.toHaveBeenCalled();
+test('the refusal speaks the caller\'s language', async () => {
+  expect((await (await post({ audioUrl: OURS }, 'en')).json()).message).toMatch(/^This tool is paused/);
+  expect((await (await post({ audioUrl: OURS }, 'ru')).json()).message).toMatch(/^Этот инструмент/);
 });

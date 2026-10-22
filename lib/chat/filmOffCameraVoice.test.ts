@@ -32,7 +32,6 @@ jest.mock('./filmVoiceover', () => ({
   generateDialogueStems: jest.fn(async () => null),
   dialogueStemsViable: jest.fn(() => false),
   wantsCommentary: jest.fn(() => false),
-  generateFilmSfx: jest.fn(async () => null),
 }));
 jest.mock('../ai/qaDirectorAgent', () => ({ evaluateFilmQa: jest.fn(async () => null) }));
 jest.mock('../elevenlabs/music', () => ({ hasElevenLabsMusicKey: jest.fn(() => false) }));
@@ -252,7 +251,7 @@ describe('no voice, no film: the off-camera voice is made before anything is cha
   });
 });
 
-describe('the voice must say the film’s words: Scribe listens before anything is charged', () => {
+describe('the voice must say the film’s words: the listener (Gemini) checks it before anything is charged', () => {
   const checked = (verdict: 'pass' | 'weak' | 'fail', score: number, words: Array<{ text: string; startSec: number; endSec: number }> | null = null) => ({
     url: 'https://store.local.test/voiceover.mp3', score, verdict, reads: verdict === 'pass' ? 1 : 2, words,
   });
@@ -279,7 +278,7 @@ describe('the voice must say the film’s words: Scribe listens before anything 
     expect(res.message).toMatch(/თანხა არ ჩამოგეჭრა/);
   });
 
-  test('a weak read (most words there) still makes the film: Scribe is never held to an exact match', async () => {
+  test('a weak read (most words there) still makes the film: the listener is never held to an exact match', async () => {
     (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(checked('weak', 0.62));
     const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
     expect(res.success).toBe(true);
@@ -287,14 +286,14 @@ describe('the voice must say the film’s words: Scribe listens before anything 
     expect(clipCalls()).toHaveLength(4);
   });
 
-  test('a voice Scribe could not check (no transcript) goes ahead unverified, as before', async () => {
+  test('a voice the listener could not check (no transcript) goes ahead unverified, as before', async () => {
     const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));
     expect(res.success).toBe(true);
     expect(clipCalls()).toHaveLength(4);
     expect(mockRecordCaptions).not.toHaveBeenCalled();
   });
 
-  test('the narration’s timed words are kept for the owner’s film (burned only if the user asks for subtitles)', async () => {
+  test('timed words, when the check returns them, are kept for the owner’s film (none since PR 5e: Gemini gives text only)', async () => {
     const words = [{ text: 'წარმოგიდგენთ', startSec: 0.1, endSec: 0.9 }, { text: 'ახალ', startSec: 1, endSec: 1.3 }];
     (generateCheckedFilmVoiceover as jest.Mock).mockResolvedValue(checked('pass', 0.94, words));
     const res = await handleFilmComposite(input(adPanel(KA_SCRIPT)));

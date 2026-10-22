@@ -3,13 +3,15 @@ import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
-import { generateVoice } from '@/lib/ai/elevenlabs';
+import { synthesizeGoogleTts, ttsLanguageCode } from '@/lib/audio/google-tts';
+import { mp3DurationSec } from '@/lib/audio/mp3Duration';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import type { VoiceJob } from '@/lib/voice-lab/types';
 import { getBillingSnapshot } from '@/lib/billing/enforce';
 import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { requestedVoiceId } from '@/lib/audio/voiceId';
 
-/** The most text one voice job may synthesize — ElevenLabs bills per character. */
+/** The most text one voice job may synthesize — Cloud TTS bills per character. */
 const MAX_VOICE_TEXT_CHARS = 5000;
 
 export const dynamic = 'force-dynamic';
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ guest: true, job: null, message: 'Guest mode runs jobs locally in UI.' });
     }
 
-    // ⚠️ Signed-in was the only guard on an ElevenLabs synthesis of UNBOUNDED text (billed per character), and sign-up
+    // ⚠️ Signed-in was the only guard on a paid synthesis of UNBOUNDED text (billed per character), and sign-up
     // is self-service. Per-ACCOUNT daily cap on unbilled paid audio (AUDIO_GEN_USER) + a text ceiling.
     const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.AUDIO_GEN_USER);
     if (capped) return capped;
@@ -72,10 +74,15 @@ export async function POST(request: NextRequest) {
     if (rawText.length > MAX_VOICE_TEXT_CHARS) {
       return apiError(new Error('text too long'), 413, `Voice text is limited to ${MAX_VOICE_TEXT_CHARS} characters`);
     }
-    // The voice goes into the ElevenLabs URL path (lib/audio/voiceId), so it is checked before a job row exists.
+    // Checked before a job row exists. A malformed id stays the 400 it was (it once sat in an ElevenLabs URL path). A
+    // named voice was an ElevenLabs voice: Cloud TTS cannot speak in it, and another voice would be the silent swap R7
+    // forbids, so it is refused with google_only (MASTER TASK v3.1 PR 5e). No voice named: Cloud TTS's best voice.
     const askedVoice = requestedVoiceId(payload.data.input.provider_voice_id);
     if (askedVoice === null) {
       return apiError(new Error('invalid provider_voice_id'), 400, 'provider_voice_id is not a valid voice id');
+    }
+    if (askedVoice) {
+      return refuseOutsideEngine(request);
     }
 
     const supabase = createServiceRoleClient();
@@ -104,7 +111,6 @@ export async function POST(request: NextRequest) {
 
     const input = payload.data.input;
     const sourceText = String(input.text ?? input.prompt ?? '').trim();
-    const voiceId = askedVoice ?? String(process.env.ELEVENLABS_VOICE_ID ?? '').trim();
     const snapshot = await getBillingSnapshot(user.id);
     const qualityByPlan: Record<string, 'draft' | 'standard' | 'studio'> = {
       FREE: 'draft',
@@ -118,22 +124,28 @@ export async function POST(request: NextRequest) {
       return apiError(new Error('Text is required'), 400, 'Voice job requires input text');
     }
 
-    if (!voiceId) {
-      return apiError(new Error('ELEVENLABS_VOICE_ID missing'), 500, 'Voice provider configuration missing');
+    // `quality` is kept on the job for the panel; Cloud TTS reads every plan in the language's best voice.
+    const audio = await synthesizeGoogleTts(sourceText, { languageCode: ttsLanguageCode(sourceText) });
+    if (!audio || audio.byteLength < 1024) {
+      await supabase
+        .from('voice_jobs')
+        .update({ status: 'failed', error: 'voice synthesis unavailable', updated_at: new Date().toISOString() })
+        .eq('id', createdJob.id)
+        .eq('owner_id', user.id);
+      return apiError(new Error('google_tts_failed'), 502, 'Voice synthesis is unavailable');
     }
-
-    const voice = await generateVoice(sourceText, voiceId, quality === 'studio' ? 'excited' : 'neutral');
-    const audioBase64 = Buffer.from(voice.audioBuffer).toString('base64');
+    const bytes = new Uint8Array(audio);
+    const audioBase64 = Buffer.from(bytes).toString('base64');
     const output = {
-      provider: 'elevenlabs',
+      provider: 'google-cloud-tts',
       quality,
       title: String(input.title ?? 'Voice Lab Output'),
       text: sourceText,
       language: String(input.language ?? 'en'),
       profile_name: String(input.profile_name ?? 'Default Voice'),
       audio_url: `data:audio/mpeg;base64,${audioBase64}`,
-      duration_seconds: voice.duration,
-      voice_id: voice.voiceId,
+      duration_seconds: Math.max(1, Math.round(mp3DurationSec(bytes) ?? sourceText.length / 15)),
+      voice_id: null,
     };
 
     const { data: doneJob, error: doneError } = await supabase

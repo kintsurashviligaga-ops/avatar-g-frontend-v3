@@ -9,12 +9,9 @@
     "elevenlabs": [
       "app/api/admin/avatar-providers/route.ts",
       "app/api/admin/provider-probe/route.ts",
-      "app/api/elevenlabs/sound/route.ts",
       "app/api/health/public/route.ts",
       "app/api/health/services/route.ts",
       "app/api/voice/clone/route.ts",
-      "lib/ai/elevenlabs.ts",
-      "lib/chat/filmVoiceover.ts",
       "lib/config.ts",
       "lib/elevenlabs/audioIsolation.ts",
       "lib/elevenlabs/music.ts",
