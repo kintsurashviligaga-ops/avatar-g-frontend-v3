@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Montserrat, Noto_Sans_Georgian } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import Providers from "@/app/providers";
 import { AppShell } from "@/components/AppShell";
@@ -10,8 +10,11 @@ import { PostHogProvider } from "@/components/analytics/PostHogProvider";
 import { SITE_URL } from "@/lib/seo/site";
 import { OG_IMAGE, SITE_NAME } from "@/lib/seo/metadata";
 
-const inter = Inter({
-	subsets: ["latin", "cyrillic"],
+// Pinned brand faces build without a Google Fonts CSS/network dependency. Sources/licenses: ./fonts/README.md.
+const inter = localFont({
+	src: "./fonts/Inter-roman.var.woff2",
+	weight: "100 900",
+	style: "normal",
 	variable: "--font-ui",
 	display: "swap",
 });
@@ -20,28 +23,30 @@ const inter = Inter({
 // tagline; Inter (above) for text and UI. They replace Syne and DM Sans. The old variable names stay as
 // aliases on <html> (--font-syne → display, --font-dm → ui), so every `font-syne` / `font-dm` utility and any
 // CSS still naming them lands on the brand faces without a sweep.
-const montserrat = Montserrat({
-	subsets: ["latin", "cyrillic"],
+const montserrat = localFont({
+	src: "./fonts/Montserrat-roman.var.woff2",
 	variable: "--font-display",
 	display: "swap",
-	weight: ["500", "600", "700", "800"],
+	weight: "500 800",
+	style: "normal",
 });
 
 // Iteration 4 — brand Georgian type. 'Noto Sans Georgian' was referenced in the font stacks but never
-// LOADED (no @font-face), so ka glyphs fell back to an OS font. Loading it via next/font gives clean,
+// LOADED (no @font-face), so ka glyphs fell back to an OS font. Loading the pinned local face gives clean,
 // uniform brand typography for the primary audience. display:'swap' + the metric-compatible fallback that
 // next/font auto-inserts keep layout metrics stable (no CLS / truncation shift). Latin/Cyrillic still
 // render in Inter / Montserrat — the browser only reaches this family for Georgian glyphs (per-char fallthrough):
 // neither brand face has a Georgian glyph, and the brand sheet's own mockups set Georgian the same way.
-const notoGeorgian = Noto_Sans_Georgian({
-	subsets: ["georgian"],
+const notoGeorgian = localFont({
+	src: "./fonts/NotoSansGeorgian-roman.var.woff2",
 	variable: "--font-georgian",
 	display: "swap",
-	weight: ["400", "500", "600", "700"],
+	weight: "400 700",
+	style: "normal",
 });
 
 // "Geist" requested by the user; this Next.js version doesn't expose Geist
-// via next/font/google. Inter is visually equivalent (Geist is a fork of
+// via the pinned Next.js Google catalog. Inter is visually equivalent (Geist is a fork of
 // Inter's geometry) and is already loaded above. We alias it as --font-geist
 // so app code can reference it consistently.
 

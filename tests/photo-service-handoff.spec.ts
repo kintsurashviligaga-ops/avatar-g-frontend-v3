@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 const COPY = {
-  ka: { tool: 'სურათი', action: 'სტუდიაში გახსნა', placeholder: 'აღწერე სურათი, რომ დაგიხატო…' },
-  en: { tool: 'Image', action: 'Open in the studio', placeholder: 'Describe an image to generate…' },
-  ru: { tool: 'Изображение', action: 'Открыть в студии', placeholder: 'Опишите изображение для генерации…' },
+  ka: { tool: 'სურათი', action: 'სტუდიაში გახსნა', placeholder: 'აღწერე სურათი, რომ დაგიხატო…', description: 'შექმენი ფოტო აღწერით ან დაარედაქტირე ატვირთული საცნობარო ფოტო სურათის სტუდიაში.' },
+  en: { tool: 'Image', action: 'Open in the studio', placeholder: 'Describe an image to generate…', description: 'Create photos from a description or edit uploaded reference images in the Image studio.' },
+  ru: { tool: 'Изображение', action: 'Открыть в студии', placeholder: 'Опишите изображение для генерации…', description: 'Создавайте фотографии по описанию или редактируйте загруженные изображения в студии изображений.' },
 } as const;
 
 for (const width of [390, 1440]) {
@@ -16,6 +16,8 @@ for (const width of [390, 1440]) {
         localStorage.setItem('myavatar:welcomed', '1');
       });
       const mutations: string[] = [];
+      const fontRequests: string[] = [];
+      page.on('request', request => { if (request.resourceType() === 'font') fontRequests.push(request.url()); });
       // Every API is intercepted. A handoff must not start a chat, quote, generation or job.
       await page.route('**/api/**', async route => {
         const req = route.request();
@@ -25,6 +27,7 @@ for (const width of [390, 1440]) {
       });
       await page.goto(`/${locale}/services/photo`);
       const c = COPY[locale];
+      await expect(page.getByText(c.description, { exact: true })).toBeVisible();
       await expect(page.locator('#studio-tool-name')).toHaveText(c.tool);
       const primary = page.getByTestId('service-primary');
       await expect(primary).toHaveCount(1);
@@ -44,6 +47,19 @@ for (const width of [390, 1440]) {
       await expect(composer).toHaveValue('');
       expect(new URL(page.url()).pathname).toBe(`/${locale}/dashboard`);
       expect(mutations).toEqual([]);
+      const loadedFonts = await page.evaluate(async () => {
+        const css = getComputedStyle(document.documentElement);
+        return Promise.all(([
+          ['--font-ui', 'MyAvatarПривет'], ['--font-display', 'MyAvatarПривет'], ['--font-georgian', 'ქართული'],
+        ] as const).map(async ([variable, text]) => {
+          const family = css.getPropertyValue(variable).trim();
+          const faces = family ? await document.fonts.load(`500 16px ${family}`, text) : [];
+          return { variable, loaded: faces.length > 0 && faces.every(face => face.status === 'loaded') };
+        }));
+      });
+      expect(loadedFonts).toEqual(['--font-ui', '--font-display', '--font-georgian'].map(variable => ({ variable, loaded: true })));
+      expect(fontRequests.length).toBeGreaterThanOrEqual(3);
+      expect(fontRequests.every(url => new URL(url).origin === new URL(page.url()).origin)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
       await page.screenshot({ path: info.outputPath('image-handoff.png') });
     });
