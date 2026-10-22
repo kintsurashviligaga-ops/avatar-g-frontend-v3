@@ -46,6 +46,9 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   const rootRef = useRef<HTMLDivElement | null>(null);
   /** Set synchronously when an edit starts: a second tap or call in the same tick sees it (state would not yet). */
   const busyRef = useRef(false);
+  const cancelBusyRef = useRef(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   // Quote once (the server prices it; nothing is charged).
   useEffect(() => {
@@ -92,10 +95,23 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   }, [phase, draft.id]);
 
   const cancel = useCallback(async () => {
-    if (phase.k !== 'job') return;
-    const v = await cancelCall(phase.jobId);
-    if (v.ok) setPhase({ k: 'job', jobId: phase.jobId, view: v });
-  }, [phase]);
+    if (phase.k !== 'job' || !phase.view?.cancellable || cancelBusyRef.current) return false;
+    cancelBusyRef.current = true;
+    setCancelBusy(true);
+    setCancelError(null);
+    try {
+      const v = await cancelCall(phase.jobId);
+      if (!v.ok) {
+        setCancelError(v.message ?? c.cancelFailed);
+        return false;
+      }
+      setPhase({ k: 'job', jobId: phase.jobId, view: v });
+      return v.status === 'cancelled';
+    } finally {
+      cancelBusyRef.current = false;
+      setCancelBusy(false);
+    }
+  }, [phase, c.cancelFailed]);
 
   const editNow = useCallback(async (jobId: string, text: string, newest: string | undefined, spoken: boolean): Promise<{ ok: boolean; message?: string }> => {
     setEdit((e) => ({ ...e, busy: true, note: null }));
@@ -158,8 +174,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
     async cancel() {
       const ph = cur.current.phase;
       if (ph.k !== 'job' || !ph.view?.cancellable) return false;
-      await cancelRef.current();
-      return true;
+      return cancelRef.current();
     },
     edit: (text) => editRef.current(text),
     addVersion: (ver) => setEdit((e) => (e.versions.some((x) => x.jobId === ver.jobId) ? e : { ...e, versions: [ver, ...e.versions] })),
@@ -218,7 +233,8 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
       <div className={shell} aria-live="polite" aria-busy="true" data-testid="music-card" data-phase="running" data-stage={v?.stage ?? 'queued'} ref={rootRef}>
         <div aria-hidden="true" data-testid="music-loop" className="relative mb-2 h-[120px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15"><LoadingLoop /></div>
         <p className="text-[13px] text-app-text" data-testid="music-stage">{stageText(v?.stage ?? 'queued', locale)}</p>
-        {v?.cancellable && <button type="button" data-testid="music-cancel" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={cancel}><X className="h-4 w-4" aria-hidden />{c.cancel}</button>}
+        {v?.cancellable && <button type="button" data-testid="music-cancel" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={cancel} disabled={cancelBusy}><X className="h-4 w-4" aria-hidden />{c.cancel}</button>}
+        {cancelError && <p role="alert" className="mt-2 text-[13px] text-app-text">{cancelError}</p>}
       </div>
     );
   }

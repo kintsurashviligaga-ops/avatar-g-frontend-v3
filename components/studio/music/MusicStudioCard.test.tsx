@@ -74,6 +74,62 @@ test('a reload follows the remembered job instead of quoting again; Cancel stops
   await screen.findByText(/Cancelled\. The reserved credits were returned\./);
 });
 
+test('a refused cancellation stays running, shows the server error, and retries only on another tap', async () => {
+  localStorage.setItem(`music-studio:job:${DRAFT.id}`, 'job-1');
+  let attempts = 0;
+  handler = (u) => {
+    if (u.endsWith('/cancel')) {
+      attempts += 1;
+      return attempts === 1
+        ? { status: 429, body: { ok: false, code: 'rate_limit', message: 'Please wait before cancelling again.' } }
+        : { body: view('cancelled', { error: 'cancelled' }) };
+    }
+    return { body: view('running') };
+  };
+  render(<MusicStudioCard draft={DRAFT} locale="en" />);
+  const cancel = await screen.findByRole('button', { name: /Cancel/ });
+  await act(async () => { fireEvent.click(cancel); });
+  expect(await screen.findByRole('alert')).toHaveTextContent('Please wait before cancelling again.');
+  expect(screen.getByTestId('music-card')).toHaveAttribute('data-phase', 'running');
+  expect(screen.queryByText(/reserved credits were returned/i)).toBeNull();
+  expect(attempts).toBe(1);
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Cancel/ })); });
+  await screen.findByText(/Cancelled\. The reserved credits were returned\./);
+  expect(attempts).toBe(2);
+  expect(calls.some((c) => c.url.endsWith('/quote') || c.url.endsWith('/jobs'))).toBe(false);
+});
+
+test('two taps during a pending cancellation send one request', async () => {
+  localStorage.setItem(`music-studio:job:${DRAFT.id}`, 'job-1');
+  handler = () => ({ body: view('running') });
+  render(<MusicStudioCard draft={DRAFT} locale="en" />);
+  const cancel = await screen.findByRole('button', { name: /Cancel/ });
+  let finish!: (response: Response) => void;
+  const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+  fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  const before = fetchMock.mock.calls.length;
+  act(() => { fireEvent.click(cancel); fireEvent.click(cancel); });
+  expect(cancel).toBeDisabled();
+  expect(fetchMock.mock.calls.slice(before).map(([url]) => String(url))).toEqual(['/api/music/studio/jobs/job-1/cancel']);
+  await act(async () => { finish({ ok: true, json: async () => view('cancelled', { error: 'cancelled' }) } as Response); });
+  await screen.findByText(/Cancelled\. The reserved credits were returned\./);
+});
+
+test.each(COPY_LANGS)('a cancellation network failure has an honest localized fallback in %s', async (locale) => {
+  localStorage.setItem(`music-studio:job:${DRAFT.id}`, 'job-1');
+  handler = (u) => {
+    if (u.endsWith('/cancel')) throw new Error('offline');
+    return { body: view('running') };
+  };
+  render(<MusicStudioCard draft={DRAFT} locale={locale} />);
+  const cancel = await screen.findByRole('button', { name: musicCardCopy(locale).cancel });
+  await act(async () => { fireEvent.click(cancel); });
+  expect(await screen.findByRole('alert')).toHaveTextContent(musicCardCopy(locale).cancelFailed);
+  expect(screen.getByTestId('music-card')).toHaveAttribute('data-phase', 'running');
+  expect(cancel).toBeEnabled();
+  expect(calls.filter((c) => c.url.endsWith('/cancel'))).toHaveLength(1);
+});
+
 test('a refused song (vocals unverified) says so — never an instrumental — and offers no button', async () => {
   handler = () => ({ status: 400, body: { ok: false, code: 'unsupported', message: 'ეს შესაძლებლობა ამ მოდელზე ჯერ დადასტურებული არ არის. თანხა არ ჩამოგეჭრა.' } });
   render(<MusicStudioCard draft={{ ...DRAFT, request: { ...DRAFT.request, mode: 'song' } }} locale="ka" />);
