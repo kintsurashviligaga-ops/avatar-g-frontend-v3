@@ -2,13 +2,8 @@
   "note": "Frozen 2026-10-09 from the tree, widened 2026-10-22 to MASTER TASK v3.1 (gemini_developer_api and elevenlabs added): runtime files that still reach a forbidden AI vendor. Only delete lines; __tests__/provider-boundary.test.ts fails on a new file and on a stale line.",
   "files": {
     "gemini_developer_api": [
-      "app/api/admin/provider-probe/route.ts",
-      "app/api/health/services/route.ts",
-      "app/api/voice/live/route.ts",
-      "lib/calls/whatsapp/liveSession.ts",
       "lib/research/interactionsClient.ts",
       "lib/security/csp.js",
-      "lib/system/provider-health.ts",
       "lib/voice/geminiLive.ts"
     ],
     "elevenlabs": [

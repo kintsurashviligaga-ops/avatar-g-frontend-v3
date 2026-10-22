@@ -2,7 +2,8 @@ import 'server-only';
 
 import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
 import { resolveUdioApiKey } from '@/lib/chat/mediaKeys';
-import { geminiTierModel } from '@/lib/ai/google/models';
+import { checkGoogleAiReadiness } from '@/lib/ai/google/readiness';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 /**
  * One slow vendor must not stall the audit: every live probe gets this long, and they run side by side. Before, the
@@ -36,7 +37,8 @@ const PROVIDER_ENV: Record<ProviderName, string> = {
   heygen: 'HEYGEN_API_KEY',
   ltx: 'LTX_VIDEO_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
-  gemini: 'GEMINI_API_KEY',
+  // Not a key: Gemini runs on Vertex AI under Workload Identity (MASTER TASK v3.1), so the row names the project variable.
+  gemini: 'GCP_PROJECT_ID',
 };
 
 const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provider: ProviderName }> = [
@@ -49,6 +51,8 @@ const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provide
 ];
 
 function hasKey(provider: ProviderName): boolean {
+  // An AI Studio key is not a Gemini credential under v3.1: Gemini is "configured" when Vertex AI can serve it.
+  if (provider === 'gemini') return googleAiConfigured();
   // PHASE 45/46 §1 — LTX and Udio ship under several historical aliases; honour all.
   if (provider === 'ltx') return resolveLtxApiKey() !== null;
   if (provider === 'udio') return resolveUdioApiKey() !== null;
@@ -91,6 +95,12 @@ function extractCredits(payload: unknown): number | null {
 }
 
 async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: string; creditsRemaining: number | null }> {
+  if (provider === 'gemini') {
+    // Vertex AI readiness: the policy, the variable names and a minted Workload Identity token. No model is called and
+    // nothing is billed. The Developer API probe this replaces spent one generated token on the AI Studio balance.
+    const readiness = await checkGoogleAiReadiness({ live: true });
+    return { ok: readiness.ok, detail: readiness.detail, creditsRemaining: null };
+  }
   const key = getKey(provider);
   if (!key) {
     return { ok: false, detail: 'Missing API key', creditsRemaining: null };
@@ -186,39 +196,6 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       return { ok: false, detail: `No LTX probe URL reachable (last status ${lastStatus})`, creditsRemaining: null };
     }
 
-    if (provider === 'gemini') {
-      // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
-        headers: { 'x-goog-api-key': key },
-        cache: 'no-store',
-        redirect: 'manual',
-      });
-      if (response.status === 400 || response.status === 401 || response.status === 403) {
-        return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
-      }
-      if (!response.ok) return { ok: false, detail: `HTTP ${response.status}`, creditsRemaining: null };
-
-      // ⚠️ LISTING MODELS IS FREE, SO IT STAYS GREEN WHILE THE PREPAID BALANCE IS EMPTY — that is exactly how every chat,
-      // Veo, Lyria and TTS call answered 402 for days behind a "healthy" key (and how a Production row still holding an
-      // old, empty key looked fine). One generated token (well under $0.0001) is the cheapest question billing answers.
-      const model = geminiTierModel('flash');
-      const gen = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
-          method: 'POST',
-          headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: 'ok' }] }], generationConfig: { maxOutputTokens: 1 } }),
-          cache: 'no-store',
-          redirect: 'manual',
-        },
-      );
-      if (gen.status === 402) return { ok: false, detail: 'Out of credit (402): the prepaid balance is empty', creditsRemaining: null };
-      if (gen.status === 404) return { ok: false, detail: `Model ${model} is not available to this key (404)`, creditsRemaining: null };
-      if (gen.status === 429) return { ok: true, detail: 'Reachable, rate limited (429)', creditsRemaining: null };
-      if (gen.status === 401 || gen.status === 403) return { ok: false, detail: `Generation auth failed (${gen.status})`, creditsRemaining: null };
-      return { ok: gen.ok, detail: gen.ok ? 'Models and generation OK' : `Generation HTTP ${gen.status}`, creditsRemaining: null };
-    }
-
     // WorldLabs probe — first try authenticated paths, then fall back to a host
     // liveness check. Any HTTP response (incl. 404) from api.worldlabs.ai means
     // the host is alive, even if we don't know the exact API surface.
@@ -298,7 +275,9 @@ export async function runProviderHealthAudit(options: { live?: boolean; deadline
       const envKey = PROVIDER_ENV[provider];
       const configured = hasKey(provider);
       if (!configured) {
-        return { provider, envKey, configured: false, status: 'missing_key', detail: 'API key is not configured', creditsRemaining: null };
+        // Gemini names what Vertex AI lacks (variable names only) instead of a key it no longer reads.
+        const detail = provider === 'gemini' ? (await checkGoogleAiReadiness()).detail : 'API key is not configured';
+        return { provider, envKey, configured: false, status: 'missing_key', detail, creditsRemaining: null };
       }
       if (!live) {
         return { provider, envKey, configured: true, status: 'configured', detail: 'Configured (live probe skipped)', creditsRemaining: null };

@@ -1,12 +1,14 @@
 /** @jest-environment node */
 /**
- * POST /api/voice/live — the Gemini Live ephemeral-token mint, pinned with every provider mocked (no network).
+ * POST /api/voice/live — the Gemini Live session mint, pinned with every provider mocked (no network).
  *
- *   · kill switch / key / IP limit / sign-in / per-user cap run in that order, before any mint;
+ *   · MASTER TASK v3.1: with no Live minter (the production state: the Developer API token is refused, Vertex AI has no
+ *     browser-safe one) the route answers 503 before any limit, sign-in or I/O, whatever AI Studio key is set;
+ *   · kill switch / minter / IP limit / sign-in / per-user cap run in that order, before any mint;
  *   · the model is allowlisted (a body value can never pick an unlisted or retired model);
  *   · the agent profile is resolved SERVER-side and systemInstruction + voice + generationConfig are locked into
  *     bidiGenerateContentSetup (built by buildLiveSetup) and returned as `setupMessage` for the browser;
- *   · the key rides in x-goog-api-key, never the URL;
+ *   · the route itself makes no network request and reads no key: the minter (mocked here) owns the transport;
  *   · a rejected full lock may use a server-owned legacy setup; a rejected legacy setup never mints a model-only token;
  *   · the platform budget refuses before the mint;
  *   · voice-to-action: `actions: true` locks the UI-action functionDeclarations (+ their instruction) ahead of search;
@@ -59,6 +61,15 @@ jest.mock('../../../../lib/voice/liveThreadStore', () => ({
 const mockMemory = jest.fn(async (_userId: string): Promise<string | null> => null);
 jest.mock('../../../../lib/memory/context', () => ({ memoryContextOf: (u: string) => mockMemory(u) }));
 
+// The Live minter (lib/voice/liveMint): none exists under v3.1. Mocked as present so the server-owned lock stays pinned;
+// `mockMinterPresent = false` is the production state.
+let mockMinterPresent = true;
+const mockMint = jest.fn();
+jest.mock('../../../../lib/voice/liveMint', () => ({
+  LIVE_TRANSPORT_UNAVAILABLE: 'no Live transport',
+  liveTokenMinter: () => (mockMinterPresent ? { mint: (...a: unknown[]) => mockMint(...a) } : null),
+}));
+
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
@@ -98,8 +109,9 @@ const post = (body: unknown, headers: Record<string, string> = {}) =>
   });
 
 const ENV = { ...process.env };
-let fetchSpy: jest.SpyInstance;
-const mintBody = (i = 0): MintBody => JSON.parse(String((fetchSpy.mock.calls[i]![1] as RequestInit).body)) as MintBody;
+let netSpy: jest.SpyInstance;
+const mintSpy = mockMint;
+const mintBody = (i = 0): MintBody => mintSpy.mock.calls[i]![0] as MintBody;
 const lockedText = (i = 0) => mintBody(i).bidiGenerateContentSetup.systemInstruction?.parts[0]?.text ?? '';
 
 beforeEach(() => {
@@ -113,14 +125,19 @@ beforeEach(() => {
   delete process.env.GEMINI_LIVE_ACTIONS;
   delete process.env.GEMINI_API_KEYS;
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_API_KEY = 'test-gemini-key'; // present on purpose: the route must never read or send it
   budgetMock.mockResolvedValue(true);
-  fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () =>
+  mockMinterPresent = true;
+  mintSpy.mockReset().mockImplementation(async () =>
     new Response(JSON.stringify({ name: 'auth_tokens/eph-123' }), { status: 200 }));
+  netSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => {
+    throw new Error('the Live route must make no network request of its own');
+  });
 });
 
 afterEach(() => {
-  fetchSpy.mockRestore();
+  expect(netSpy).not.toHaveBeenCalled();
+  netSpy.mockRestore();
   process.env = { ...ENV };
 });
 
@@ -130,14 +147,19 @@ describe('gates', () => {
     const res = await POST(post({}));
     expect(res.status).toBe(503);
     expect(ipLimitMock).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
   });
 
-  test('no key → 503', async () => {
-    delete process.env.GEMINI_API_KEY;
+  test('v3.1: no Live minter → 503 live_transport_unavailable before the limit or sign-in, an AI Studio key notwithstanding', async () => {
+    mockMinterPresent = false;
     const res = await POST(post({}));
     expect(res.status).toBe(503);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ error: 'live_transport_unavailable' });
+    expect(ipLimitMock).not.toHaveBeenCalled();
+    expect(perUserMock).not.toHaveBeenCalled();
+    expect(budgetMock).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
+    expect(logMock).toHaveBeenCalledWith('warn', 'voice.live.transport_unavailable', { reason: 'no Live transport' });
   });
 
   test('IP limit is VOICE_TOKEN; signed out → 401 without a mint', async () => {
@@ -145,7 +167,7 @@ describe('gates', () => {
     const res = await POST(post({}));
     expect(res.status).toBe(401);
     expect(ipLimitMock).toHaveBeenCalledWith(expect.anything(), RATE_LIMITS.VOICE_TOKEN);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
   });
 
   test('the per-user daily cap is keyed on the session user, never a body userId', async () => {
@@ -153,7 +175,7 @@ describe('gates', () => {
     const res = await POST(post({ userId: 'someone-else' }));
     expect(res.status).toBe(429);
     expect(perUserMock).toHaveBeenCalledWith('user-1', RATE_LIMITS.VOICE_TOKEN_USER);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
   });
 
   test('a budget refusal is a 503 (the client drops to the REST loop) and nothing is minted', async () => {
@@ -162,17 +184,18 @@ describe('gates', () => {
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ error: 'budget_exhausted' });
     expect(budgetMock).toHaveBeenCalledWith(expect.any(String), 'gemini-2.5-flash-native-audio-latest');
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
   });
 });
 
 describe('the mint', () => {
-  test('the key rides in x-goog-api-key, never the URL', async () => {
+  test('the minter gets a one-use lock and the full-lock timeout; the route sends no key anywhere', async () => {
     await POST(post({}));
-    const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1alpha/auth_tokens');
-    expect(url).not.toContain('key=');
-    expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('test-gemini-key');
+    expect(mintSpy).toHaveBeenCalledTimes(1);
+    const [request, timeoutMs] = mintSpy.mock.calls[0]! as [MintBody, number];
+    expect(request).toMatchObject({ uses: 1, expireTime: expect.any(String), newSessionExpireTime: expect.any(String) });
+    expect(timeoutMs).toBe(12_000);
+    expect(JSON.stringify(mintSpy.mock.calls)).not.toContain('test-gemini-key');
   });
 
   test('default request: allowlisted default model, full setup locked (voice + instruction + thinking), returned to the browser', async () => {
@@ -215,11 +238,11 @@ describe('the mint', () => {
 
   test('a hostile / retired / unlisted model can never be locked into the token', async () => {
     for (const model of ['gemini-3.1-pro-preview', 'models/gemini-2.0-flash-live-001', '../../x?key=1', 42]) {
-      fetchSpy.mockClear();
+      mintSpy.mockClear();
       await POST(post({ model }));
       expect(mintBody().bidiGenerateContentSetup.model).toBe('models/gemini-2.5-flash-native-audio-latest');
     }
-    fetchSpy.mockClear();
+    mintSpy.mockClear();
     await POST(post({ model: 'gemini-3.8-live' }));
     const s = mintBody().bidiGenerateContentSetup;
     expect(s.model).toBe('models/gemini-3.8-live');
@@ -268,7 +291,7 @@ describe('the mint', () => {
     expect(s.outputAudioTranscription).toEqual({});
     expect(s.contextWindowCompression).toEqual({ slidingWindow: {} });
     expect(s.sessionResumption).toEqual({ handle: 'handle-abc' });
-    fetchSpy.mockClear();
+    mintSpy.mockClear();
     await POST(post({ resumptionHandle: null }));
     expect(mintBody().bidiGenerateContentSetup.sessionResumption).toEqual({});
   });
@@ -284,12 +307,12 @@ describe('the mint', () => {
   });
 
   test('a 400 on the full lock falls back to the server-owned LEGACY lock, and the browser gets that same frame', async () => {
-    fetchSpy
+    mintSpy
       .mockImplementationOnce(async () => new Response('Unknown name "tools"', { status: 400 }))
       .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-2' }), { status: 200 }));
     const res = await POST(post({ transcribe: true, compression: true }));
     expect(res.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mintSpy).toHaveBeenCalledTimes(2);
     const legacy = mintBody(1).bidiGenerateContentSetup;
     expect(legacy.model).toBe('models/gemini-2.5-flash-native-audio-latest');
     expect(legacy.systemInstruction).toBeDefined(); // still server-owned
@@ -318,17 +341,17 @@ describe('the mint', () => {
   });
 
   test('a rejected legacy setup lock fails closed without minting a model-only token', async () => {
-    fetchSpy
+    mintSpy
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response('bad again', { status: 400 }))
       .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-3' }), { status: 200 }));
     const res = await POST(post({}));
     expect(res.status).toBe(503);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mintSpy).toHaveBeenCalledTimes(2);
     const j = await res.json();
     expect(j).toMatchObject({ error: 'live_token_unavailable' });
     expect(j.token).toBeUndefined();
-    for (let i = 0; i < fetchSpy.mock.calls.length; i++) {
+    for (let i = 0; i < mintSpy.mock.calls.length; i++) {
       expect(mintBody(i).bidiGenerateContentSetup.systemInstruction).toBeDefined();
     }
     expect(logMock).toHaveBeenCalledWith('warn', 'voice.live.setup_lock_rejected', expect.objectContaining({ lock: 'legacy' }));
@@ -338,18 +361,18 @@ describe('the mint', () => {
     process.env.GEMINI_LIVE_LOCK_SETUP = '0';
     const res = await POST(post({}));
     expect(res.status).toBe(503);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
     expect(await res.json()).toEqual({ error: 'live_setup_lock_required' });
   });
 
   test('a non-400 mint failure is a 503 that leaks neither the upstream body nor the key', async () => {
-    fetchSpy.mockImplementation(async () => new Response('internal detail test-gemini-key', { status: 500 }));
+    mintSpy.mockImplementation(async () => new Response('internal detail upstream-secret', { status: 500 }));
     const res = await POST(post({}));
     expect(res.status).toBe(503);
     const raw = await res.text();
     expect(raw).not.toContain('internal detail');
-    expect(raw).not.toContain('test-gemini-key');
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(raw).not.toContain('upstream-secret');
+    expect(mintSpy).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -359,7 +382,7 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
   test('actions: true → the locked setup carries the declarations and the instruction that explains them', async () => {
     const res = await POST(post({ locale: 'en', transcribe: true, compression: true, actions: true }));
     expect(res.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(mintSpy).toHaveBeenCalledTimes(1);
     const s = mintBody().bidiGenerateContentSetup;
     expect(s.tools).toEqual([DECLS]);
     expect(lockedText()).toContain(LIVE_ACTIONS_RULE);
@@ -380,7 +403,7 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
 
   test('GEMINI_LIVE_ACTIONS=0 is the kill switch: no declarations, no rule, and the call still mints', async () => {
     for (const off of ['0', 'false', 'off']) {
-      fetchSpy.mockClear();
+      mintSpy.mockClear();
       process.env.GEMINI_LIVE_ACTIONS = off;
       const res = await POST(post({ locale: 'en', actions: true }));
       expect(res.status).toBe(200);
@@ -416,12 +439,12 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
 
   test('a 400 on the lock WITH declarations retries the same parity lock WITHOUT them first (captions survive)', async () => {
     process.env.GEMINI_LIVE_GOOGLE_SEARCH = '1';
-    fetchSpy
+    mintSpy
       .mockImplementationOnce(async () => new Response('Invalid JSON payload: functionDeclarations', { status: 400 }))
       .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-na' }), { status: 200 }));
     const res = await POST(post({ locale: 'ka', transcribe: true, compression: true, actions: true }));
     expect(res.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mintSpy).toHaveBeenCalledTimes(2);
     expect(mintBody(0).bidiGenerateContentSetup.tools).toEqual([DECLS, { googleSearch: {} }]);
     const retry = mintBody(1).bidiGenerateContentSetup;
     expect(retry.tools).toEqual([{ googleSearch: {} }]);
@@ -435,14 +458,14 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
   });
 
   test('rejected action, parity and legacy locks return 503 without a fourth weaker mint', async () => {
-    fetchSpy
+    mintSpy
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-m' }), { status: 200 }));
     const res = await POST(post({ locale: 'en', transcribe: true, actions: true }));
     expect(res.status).toBe(503);
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(mintSpy).toHaveBeenCalledTimes(3);
     const legacy = mintBody(2).bidiGenerateContentSetup;
     expect(legacy.tools).toBeUndefined();
     expect(legacy.inputAudioTranscription).toBeUndefined();
@@ -457,11 +480,11 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
   });
 
   test('a non-400 failure with declarations is still a clean 503 (no retry loop, nothing leaked)', async () => {
-    fetchSpy.mockImplementation(async () => new Response('upstream test-gemini-key', { status: 500 }));
+    mintSpy.mockImplementation(async () => new Response('upstream upstream-secret', { status: 500 }));
     const res = await POST(post({ actions: true }));
     expect(res.status).toBe(503);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(await res.text()).not.toContain('test-gemini-key');
+    expect(mintSpy).toHaveBeenCalledTimes(1);
+    expect(await res.text()).not.toContain('upstream-secret');
   });
 });
 
@@ -492,7 +515,7 @@ describe('talk to a research report (researchId)', () => {
     const res = await POST(post({ researchId: RID }));
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'report_unavailable' });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
   });
 
   test('a malformed id never reaches the store', async () => {
@@ -500,7 +523,7 @@ describe('talk to a research report (researchId)', () => {
       expect((await POST(post({ researchId: bad }))).status).toBe(404);
     }
     expect(mockGetReport).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
   });
 
   test('report TEXT sent by the browser is ignored — only the id counts', async () => {
@@ -526,12 +549,12 @@ describe('talk to a research report (researchId)', () => {
   });
 
   test('the report survives the fallback chain: a 400 on the full lock still locks it into the legacy lock', async () => {
-    fetchSpy
+    mintSpy
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
       .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-r' }), { status: 200 }));
     const res = await POST(post({ locale: 'en', researchId: RID, transcribe: true }));
     expect(res.status).toBe(200);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mintSpy).toHaveBeenCalledTimes(2);
     expect(lockedText(1)).toContain('Exports are concentrated in three markets.');
     expect((await res.json()).setupMessage.setup.systemInstruction.parts[0].text).toContain('Dependence on one market.');
   });

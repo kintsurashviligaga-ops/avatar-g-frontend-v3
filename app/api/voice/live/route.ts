@@ -1,11 +1,15 @@
 /**
- * app/api/voice/live/route.ts — mints a SHORT-LIVED EPHEMERAL token for a browser-direct Gemini
- * Multimodal Live session. This route is request/response (Vercel-safe); the persistent WebSocket to
- * Gemini is opened by the BROWSER (lib/voice/geminiLive.ts) using this token, so the raw GEMINI_API_KEY
- * never reaches the client.
+ * app/api/voice/live/route.ts — mints a SHORT-LIVED credential for a browser-direct Gemini Multimodal Live session.
+ * This route is request/response (Vercel-safe); the persistent WebSocket is opened by the BROWSER
+ * (lib/voice/geminiLive.ts) with that credential, so no long-lived credential ever reaches the client.
  *
- * ON BY DEFAULT (Gemini Live is the live-validated default voice); a 503 kill-switch returns when
- * GEMINI_LIVE_ENABLED is set falsy ('0'|'false'|'no'|'off') OR no Gemini key is configured — the client
+ * ⚠️ MASTER TASK v3.1: NO MINTER EXISTS TODAY (lib/voice/liveMint.ts). The only one Live had was the Gemini Developer
+ * API's ephemeral-token endpoint on the AI Studio key, which v3.1 refuses; Vertex AI Live needs a server relay that is not
+ * built yet. So Gate 2 answers 503 `live_transport_unavailable` before the rate limit, sign-in or any provider I/O, and
+ * the browser falls back to the REST voice loop, which runs on Vertex AI. Everything below Gate 2 (the server-owned
+ * lock, its fallback chain, reports, thread and memory) is kept for the relay and pinned by tests with a mocked minter.
+ *
+ * A 503 kill-switch also returns when GEMINI_LIVE_ENABLED is set falsy ('0'|'false'|'no'|'off') — the client
  * then falls back to the REST voice loop at runtime (GeminiLiveConversation.onUnavailable). The
  * principal is the AUTHENTICATED CALLER (requireUser → session cookie), never a userId from the request
  * body — otherwise anyone could mint a cost-bearing token against another account (IDOR). Voice is
@@ -32,14 +36,14 @@
  * (custom personas re-sanitized and clamped) into systemInstruction + voice + generationConfig, built once with
  * buildLiveSetup and minted into the token's bidiGenerateContentSetup.
  *
- * VERIFIED LIVE 2026-09-30 (funded key, gemini-2.5-flash-native-audio-latest): the full lock — Georgian
+ * VERIFIED LIVE 2026-09-30 on the Developer API, before v3.1 (funded key, gemini-2.5-flash-native-audio-latest): the full lock — Georgian
  * `languageCodes` hint, both transcriptions, sessionResumption, contextWindowCompression — mints (200) and completes
  * setup on the Constrained endpoint; one turn returned audio, a Georgian outputTranscription and a resumption handle,
  * and a FRESH token minted with that handle resumed the session. The browser sends the returned `setupMessage`, so the
  * frame always matches the lock.
  *   googleSearch IS part of the default lock (it minted and completed setup in that same probe): a voice call answers
  *   news, prices, scores and weather from the web like the text chat does. GEMINI_LIVE_GOOGLE_SEARCH=0 is the kill
- *   switch. A session that rejects it may retry with `tools: false`; this is still Developer API, not Vertex billing.
+ *   switch. A session that rejects it may retry with `tools: false`.
  * Fallback if Google ever rejects the lock (HTTP 400): the verified LEGACY lock (model + generationConfig +
  * systemInstruction — still server-owned, no tools) and `setupMessage` becomes that legacy frame. If that is
  * rejected too, return 503 without issuing a weaker token. Each step logs `voice.live.setup_lock_rejected`.
@@ -54,7 +58,7 @@
  *   gemini-2.5-flash-native-audio-latest. So a 400 on a lock WITH the declarations first retries the SAME parity lock
  *   WITHOUT them (captions, resumption and search survive; `actions: false` tells the browser) — only then the legacy
  *   chain above. A rejected declaration costs the actions, never the call. `node scripts/probe-live-actions.mjs` (owner,
- *   funded key) mints + opens these three locks — full, actions dropped, no tools — and reports which reach setupComplete.
+ *   AI Studio key; Developer API, so not to be run under v3.1) mints + opens these three locks — full, actions dropped, no tools — and reports which reach setupComplete.
  * `tools: false` is the browser's degraded legacy retry: NO tools at all (search included), so the lock matches the
  * legacy frame it will send (useGeminiLiveSession strips PARITY_FIELDS, `tools` among them).
  */
@@ -63,7 +67,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { requireUser } from '@/lib/supabase/server';
 import { buildLiveSetup, type LiveSetupMessage, type LiveTool } from '@/lib/voice/geminiLive';
 import { validateVoicePreferences, voiceStyleInstruction, VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
@@ -75,12 +78,12 @@ import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { loadLiveReportBlock } from '@/lib/research/liveContext';
 import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
+import { LIVE_TRANSPORT_UNAVAILABLE, liveTokenMinter } from '@/lib/voice/liveMint';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-const AUTH_TOKEN_URL = 'https://generativelanguage.googleapis.com/v1alpha/auth_tokens';
 const SESSION_TTL_MS = 30 * 60 * 1000; // token valid ~30 min
 const NEW_SESSION_WINDOW_MS = 2 * 60 * 1000; // must OPEN the session within ~2 min
 
@@ -166,7 +169,7 @@ export async function POST(request: NextRequest) {
     // ── Gate 1: feature flag. Native Gemini Live is the DEFAULT voice (live-validated), so it is ON unless
     // GEMINI_LIVE_ENABLED is explicitly set falsy ('0'|'false'|'no'|'off') — the kill-switch. Its 503 makes
     // the client fall back to the REST voice loop at runtime (GeminiLiveConversation.onUnavailable). The
-    // remaining gates (key, IP rate-limit, auth, per-user cap, budget) fully protect the cost-bearing mint. ──
+    // remaining gates (minter, IP rate-limit, auth, per-user cap, budget) fully protect the cost-bearing mint. ──
     if (!isEnabledByDefault(process.env.GEMINI_LIVE_ENABLED)) {
       return NextResponse.json({ error: 'gemini_live_disabled' }, { status: 503 });
     }
@@ -175,10 +178,13 @@ export async function POST(request: NextRequest) {
     if (!isEnabledByDefault(process.env.GEMINI_LIVE_LOCK_SETUP)) {
       return NextResponse.json({ error: 'live_setup_lock_required' }, { status: 503 });
     }
-    // ── Gate 2: key present (fail-closed, never leaked) ──────────────────────
-    const apiKey = resolveGeminiKey();
-    if (!apiKey) {
-      return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
+    // ── Gate 2: a Live minter exists (lib/voice/liveMint). Under v3.1 none does: the Developer API token is refused
+    // and Vertex has no browser-safe one, so this answers before any limit, sign-in or provider I/O. An AI Studio key,
+    // set or not, changes nothing. ──
+    const minter = liveTokenMinter();
+    if (!minter) {
+      structuredLog('warn', 'voice.live.transport_unavailable', { reason: LIVE_TRANSPORT_UNAVAILABLE });
+      return NextResponse.json({ error: 'live_transport_unavailable' }, { status: 503 });
     }
     // ── Gate 3: IP burst limit on a cost-bearing mint (forgiving VOICE_TOKEN limit — reconnects/voice-
     // toggle must not 429; the auth (Gate 4) + per-user daily cap (Gate 5) are the real per-account guards) ──
@@ -283,15 +289,10 @@ export async function POST(request: NextRequest) {
     const newSessionExpireTime = new Date(now + NEW_SESSION_WINDOW_MS).toISOString();
 
     // The lock field is `bidiGenerateContentSetup` — verified live: the earlier `liveConnectConstraints` name is
-    // rejected by the auth_tokens API with HTTP 400 ("Unknown name … Cannot find field").
-    // The key rides in the x-goog-api-key HEADER: a key in the URL lands in every proxy and access log.
+    // rejected by the auth_tokens API with HTTP 400 ("Unknown name … Cannot find field"). The minter owns its own
+    // transport and credential; the timeout turns a hung mint into the already-handled 503 path.
     const mint = (lock: object, timeoutMs: number) =>
-      fetch(AUTH_TOKEN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: lock }),
-        signal: AbortSignal.timeout(timeoutMs), // a hung mint becomes the already-handled 503 path
-      });
+      minter.mint({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: lock }, timeoutMs);
 
     // The frame the browser will send — always the one the token was minted for.
     let frame: LiveSetupMessage = setupMessage;

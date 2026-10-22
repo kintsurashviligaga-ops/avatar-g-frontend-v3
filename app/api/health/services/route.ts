@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminKeyHeaderMatches } from '@/lib/security/opsAccess';
 import { isAdmin } from '@/lib/auth/adminGuard';
 import { describeElevenLabsAccount, elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
+import { checkGoogleAiReadiness } from '@/lib/ai/google/readiness';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -83,6 +84,14 @@ async function probe(
   }
 }
 
+async function googleGeminiProbe(): Promise<ProbeResult> {
+  const base = { service: 'Google Gemini (Vertex AI)', category: 'llm', envVar: 'GCP_PROJECT_ID' } as const;
+  const t0 = Date.now();
+  const readiness = await checkGoogleAiReadiness({ live: true });
+  if (!readiness.configured) return { ...base, status: 'UNCONFIGURED', latencyMs: null, message: readiness.detail };
+  return { ...base, status: readiness.ok ? 'CONNECTED' : 'ERROR', latencyMs: Date.now() - t0, message: readiness.detail };
+}
+
 export async function GET(req: NextRequest) {
   // Auth gate — only admins can see the integration surface (header key, constant-time; or an admin session).
   if (!adminKeyHeaderMatches(req) && !(await isAdmin().catch(() => false))) {
@@ -103,14 +112,9 @@ export async function GET(req: NextRequest) {
       });
       return { ok: r.ok, message: r.ok ? `${r.status} OK` : `${r.status} ${r.statusText}` };
     }),
-    probe('Google Gemini', 'llm', 'GEMINI_API_KEY', process.env.GEMINI_API_KEY, async () => {
-      // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
-      const r = await fetchWithTimeout('https://generativelanguage.googleapis.com/v1beta/models', {
-        headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY! },
-        redirect: 'manual',
-      });
-      return { ok: r.ok, message: r.ok ? `${r.status} OK` : `${r.status} ${r.statusText}` };
-    }),
+    // Gemini runs on Vertex AI only (MASTER TASK v3.1): the policy, the variable names and a minted Workload Identity
+    // token. No model call, nothing billed, and an AI Studio key is neither read nor sent.
+    googleGeminiProbe(),
 
     // ── Image ──────────────────────────────────────────────────────────────
     probe('NanoBanana (image)', 'image', 'NANOBANANA_API_KEY', process.env.NANOBANANA_API_KEY, async () => {

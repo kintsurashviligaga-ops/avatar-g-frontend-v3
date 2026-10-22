@@ -9,8 +9,12 @@
  *
  * Unlike the browser's mint (app/api/voice/live), there is no unlocked fallback: a session whose lock Google refuses is
  * a failed call (`live_failed`), never a bridge-chosen setup.
+ *
+ * ⚠️ MASTER TASK v3.1: the mint goes through lib/voice/liveMint, and no minter exists today (the Developer API
+ * ephemeral token is refused; Vertex AI Live needs a server relay). So a session answers `live_transport_unavailable`
+ * before memory, budget or any provider I/O, whatever AI Studio key is set. The whole calling feature is also off by
+ * default (WHATSAPP_CALLING_ENABLED).
  */
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { resolveLiveModel } from '@/lib/ai/google/models';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
@@ -19,29 +23,27 @@ import type { LiveSetupMessage } from '@/lib/voice/geminiLive';
 import { buildPhoneLiveSetup } from './phoneSetup';
 import { agentScope } from './phoneTools';
 import type { CallTicket } from './ticket';
+import { liveTokenMinter, type LiveTokenMinter } from '@/lib/voice/liveMint';
 
-const AUTH_TOKEN_URL = 'https://generativelanguage.googleapis.com/v1alpha/auth_tokens';
 const MAX_SESSION_MS = 30 * 60_000;
 const NEW_SESSION_WINDOW_MS = 60_000;
 
 export type CallSession =
   | { ok: true; token: string; setupMessage: LiveSetupMessage; expiresAt: string }
-  | { ok: false; error: 'gemini_key_missing' | 'budget_exhausted' | 'live_token_unavailable' };
+  | { ok: false; error: 'live_transport_unavailable' | 'budget_exhausted' | 'live_token_unavailable' };
 
 export interface CallSessionDeps {
-  apiKey(): string;
+  minter(): LiveTokenMinter | null;
   memory(userId: string): Promise<string>;
   budgetAllows(text: string, model: string): Promise<boolean>;
-  fetch: typeof fetch;
   now(): number;
   env: NodeJS.ProcessEnv;
 }
 
 export const liveCallSessionDeps = (): CallSessionDeps => ({
-  apiKey: resolveGeminiKey,
+  minter: liveTokenMinter,
   memory: async (userId) => (await import('@/lib/memory/context').then((m) => m.memoryContextOf(userId)).catch(() => null)) ?? '',
   budgetAllows: chatBudgetAllows,
-  fetch: (...a) => fetch(...a),
   now: () => Date.now(),
   env: process.env,
 });
@@ -51,8 +53,8 @@ export async function mintCallSession(
   ticket: Pick<CallTicket, 'userId' | 'locale' | 'exp'>,
   resumptionHandle: string | null,
 ): Promise<CallSession> {
-  const apiKey = deps.apiKey();
-  if (!apiKey) return { ok: false, error: 'gemini_key_missing' };
+  const minter = deps.minter();
+  if (!minter) return { ok: false, error: 'live_transport_unavailable' };
   const model = resolveLiveModel(deps.env.WHATSAPP_CALL_LIVE_MODEL ?? null);
   const now = deps.now();
   const frame = buildPhoneLiveSetup({
@@ -69,17 +71,15 @@ export async function mintCallSession(
   const expires = Math.min(now + MAX_SESSION_MS, Math.max(now + NEW_SESSION_WINDOW_MS, ticket.exp));
   const expireTime = new Date(expires).toISOString();
   try {
-    const res = await deps.fetch(AUTH_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({
+    const res = await minter.mint(
+      {
         uses: 1,
         expireTime,
         newSessionExpireTime: new Date(now + NEW_SESSION_WINDOW_MS).toISOString(),
         bidiGenerateContentSetup: frame.setup,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+      },
+      10_000,
+    );
     if (!res.ok) {
       console.warn('[WhatsApp.Calls] live_mint_refused', { status: res.status });
       return { ok: false, error: 'live_token_unavailable' };

@@ -2,17 +2,17 @@
  * lib/research/capabilities.ts — "is Deep Research available on this deployment?" — answered by PROBING, never assumed.
  *
  * The migration (20261003b) is applied by the owner, later, by hand; the feature must be invisible-but-harmless until then.
- * So availability is the AND of: the opt-out switch (RESEARCH_ENABLED, and a RESEARCH_DAILY_CAP above 0), a Google key, and
- * the `research_jobs` table being there (a `select … limit 1` probe, cached — the pattern of lib/billing/bogSchemaReady).
+ * So availability is the AND of: the opt-out switch (RESEARCH_ENABLED, and a RESEARCH_DAILY_CAP above 0), an allowed
+ * provider (lib/research/provider: none under MASTER TASK v3.1, whatever key is set), and the `research_jobs` table being there (a `select … limit 1` probe, cached — the pattern of lib/billing/bogSchemaReady).
  * The UI shows an unavailable mode as "opening soon" and routes answer 503 `unavailable`; nothing ever 500s over a missing table.
  */
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { researchProvider } from './provider';
 import { researchLimits, type ResearchLimits } from './limits';
 import { researchCredits } from './pricing';
 
 type Db = { from: (t: string) => any }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-export type ResearchUnavailableReason = 'disabled' | 'no_key' | 'schema';
+export type ResearchUnavailableReason = 'disabled' | 'no_transport' | 'schema';
 
 export interface ResearchCapabilities {
   available: boolean;
@@ -49,14 +49,14 @@ export function resetResearchSchemaProbe(): void {
 
 export async function getResearchCapabilities(
   db: Db | null,
-  opts: { limits?: ResearchLimits; hasKey?: boolean; now?: number } = {},
+  opts: { limits?: ResearchLimits; hasProvider?: boolean; now?: number } = {},
 ): Promise<ResearchCapabilities> {
   const limits = opts.limits ?? researchLimits();
   const base = { credits: researchCredits(), maxActive: limits.maxActive };
   const filesAvailable = db ? await tableReady(db, 'research_context_files', opts.now) : false;
   if (!limits.enabled || limits.globalDaily <= 0) return { ...base, available: false, reason: 'disabled', filesAvailable };
-  const hasKey = opts.hasKey ?? !!resolveGeminiKey();
-  if (!hasKey) return { ...base, available: false, reason: 'no_key', filesAvailable };
+  const hasProvider = opts.hasProvider ?? researchProvider() !== null;
+  if (!hasProvider) return { ...base, available: false, reason: 'no_transport', filesAvailable };
   if (!db || !(await tableReady(db, 'research_jobs', opts.now))) return { ...base, available: false, reason: 'schema', filesAvailable };
   return { ...base, available: true, filesAvailable };
 }

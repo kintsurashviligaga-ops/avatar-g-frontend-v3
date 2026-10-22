@@ -16,6 +16,7 @@ import { reportError } from '@/lib/observability/report-error';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { createInteractionsClient } from './interactionsClient';
+import { researchProvider } from './provider';
 import type { LiveReportDeps } from './liveContext';
 import { notificationText } from './notify';
 import { createResearchService, type ResearchService } from './service';
@@ -42,7 +43,8 @@ export function getResearchRuntime(): ResearchRuntime | null {
   const files = createLocalFilesStore(db as never);
   const service = createResearchService({
     store,
-    client: createInteractionsClient(),
+    // No provider under v3.1 (lib/research/provider): a client without a credential refuses before any I/O.
+    client: createInteractionsClient(researchProvider() ?? {}),
     ledger: {
       deduct: (userId, credits, ref) => deductCredits(userId, credits, ref),
       refundByRef: (userId, ref, claimed) => refundDebitByRef(userId, ref, claimed),
