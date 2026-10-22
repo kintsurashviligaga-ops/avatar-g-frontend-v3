@@ -31,7 +31,6 @@ import type { CameraSpec, OutputFormat, VeoTier } from '@/lib/veo/types';
 import { cameraPhrase } from '@/lib/veo/cinematography';
 import { framingHintFor } from '@/lib/veo/capabilities';
 import { normalizeNegativePrompt } from '@/lib/veo/promptCompiler';
-import { isGoogleOnly } from '@/lib/veo/policy';
 
 /**
  * Strip a trailing `Negative: …` list from a scene description.
@@ -1245,9 +1244,9 @@ export function buildFilmClipRequest(scene: FilmScene, shared: FilmShared): Film
   // this leg drops, without re-rolling a fresh (off-model) character.
   selectedOptions.contingency = JSON.stringify(scene.contingency);
   // ── GOOGLE VEO (docs/VEO_ENGINE.md) — the film-level plan the Veo leg in ServiceManager turns into a request. ──
-  // googleOnly is decided HERE, per film, so a clip can never be half-Google: ServiceManager then refuses every
-  // non-Google fallback for it and reports a Veo miss as a Veo failure.
-  if (isGoogleOnly()) selectedOptions.googleOnly = '1';
+  // googleOnly is set HERE, per film, so a clip can never be half-Google: ServiceManager then refuses every
+  // non-Google fallback for it and reports a Veo miss as a Veo failure. Always, since MASTER TASK v3.1.
+  selectedOptions.googleOnly = '1';
   const veo = shared.veo;
   if (veo) {
     selectedOptions.veoTier = veo.tier;

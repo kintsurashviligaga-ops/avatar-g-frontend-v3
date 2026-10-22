@@ -27,7 +27,7 @@
  */
 
 import 'server-only';
-import { hasVideoProvider, videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
+import { videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
 import { BUDGET_ERROR_PREFIX, budgetReasonOf, budgetRefusalMessage, isBudgetRefusal } from '@/lib/services/billing/budgetMessage';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
@@ -43,7 +43,6 @@ import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { PipelineTimer } from '@/lib/pipeline/timing';
 import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
-import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid, getFilmStartReplay, recordFilmStartReplay, recordFilmCaptions } from './filmStatusStore';
@@ -84,9 +83,7 @@ import {
   mapWithConcurrency,
 } from './filmClipRetry';
 import { filmBalanceDecision } from './filmBalanceGate';
-import { visionQaEnabled, qaHealKeyframes } from '@/lib/pipeline/quality/scene-qa';
 import { runPromptAgent, type MasterFilmSfxCue } from './promptAgent';
-import { isGoogleOnly } from '@/lib/veo/policy';
 import { parseSceneMeta, parseVeoRenderOptions } from '@/lib/veo/renderOptions';
 import { nativeAspectFor } from '@/lib/veo/capabilities';
 import { veoTransport } from '@/lib/veo/engine';
@@ -233,60 +230,6 @@ export async function isAdminUser(userId: string): Promise<boolean> {
 // server imports. Re-exported for callers that import it from here.
 export { filmBalanceDecision };
 
-/**
- * PER-SCENE IDENTITY FRAME (NanoBanana → LTX-2). Stylize the user's uploaded
- * selfie into THIS scene's exact composition + camera framing as a photorealistic
- * cinematic still, then hand that hosted frame to LTX-2 as the image-to-video
- * anchor — so the protagonist IS the uploaded person, shot-to-shot, instead of a
- * freshly-invented character. NanoBanana returns a hosted https URL synchronously
- * (with a Replicate-FLUX fallback when out of credits).
- *
- * Best-effort by construction: returns null on any failure or after a hard 35s
- * cap, and the caller falls back to the raw reference (or text-to-video) so a
- * slow/failed frame never blocks or fails the clip.
- */
-async function stylizeSceneFrame(
-  input: OrchestratorInput,
-  scene: FilmScene,
-  shared: FilmShared,
-): Promise<string | null> {
-  // OFF by default. Live measurement showed per-scene NanoBanana frame
-  // generation pushes the synchronous dispatch to ~200s (Gemini throttles the
-  // concurrent image calls, so even Promise.all serialises behind the provider)
-  // — that's near the route timeout and a terrible "dispatching" wait. Until
-  // it's moved off the dispatch hot-path, the pipeline anchors LTX-2 directly to
-  // the uploaded selfie (fast dispatch, identity still locked). Flip
-  // FILM_STYLE_FRAMES=1 to re-enable the stylized-frame chain.
-  if (process.env.FILM_STYLE_FRAMES !== '1') return null;
-  // This chain renders on ServiceManager's image path (FLUX / NanoBanana); a Google-only film takes no such frame.
-  if (isGoogleOnly()) return null;
-  const selfie = shared.referenceImages?.[0] ?? shared.avatarReference ?? null;
-  if (!selfie) return null;
-  const work = (async (): Promise<string | null> => {
-    try {
-      const framePrompt =
-        `Cinematic film still. ${scene.prompt} Featuring the EXACT same person as the reference image — ` +
-        `identical face, hair and wardrobe. Photorealistic, professional cinematic colour, 16:9 composition.`;
-      const r = await serviceManager.execute({
-        sessionId: input.sessionId,
-        serviceContext: 'image',
-        intent: 'image_generation',
-        userPrompt: framePrompt,
-        imageUrl: selfie,
-        selectedOptions: { aspect: '16:9', aspectRatio: '16:9' },
-        locale: input.locale,
-      });
-      return typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
-    } catch {
-      return null;
-    }
-  })();
-  return Promise.race([
-    work,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 35_000)),
-  ]);
-}
-
 /** Dispatch a single film clip through ServiceManager/LTX, traced for cost. */
 async function renderClip(
   input: OrchestratorInput,
@@ -302,15 +245,9 @@ async function renderClip(
   /** The NEXT scene's first frame: this clip ends on it (Veo interpolation) so the cut is seamless. */
   nextSceneFrame: string | null = null,
 ): Promise<FilmClipResult> {
-  // Gate on the SAME predicate as the pipeline pre-flight (hasVideoProvider =
-  // LTX OR Replicate). The runtime now renders via Replicate as a primary when no
-  // LTX key is present (see ServiceManager.runLtxVideo), so this leg only skips
-  // when NEITHER provider exists — which the door-level pre-flight already caught.
-  // Using hasLtxApiKey() here would skip every clip on a Replicate-only config the
-  // pre-flight had waved through, re-creating the ~38% silent-skip-after-spend trap.
-  // The same test the door used: a Google-only film needs a Veo route (a Vertex-only deployment has no Gemini, LTX or
-  // Replicate key at all, and hasVideoProvider() would skip every clip the door had just waved through).
-  if (!(isGoogleOnly() ? veoTransport() !== null : hasVideoProvider())) {
+  // The same test the door used: a film needs a Veo route (MASTER TASK v3.1: Veo is the only clip engine). A clip is
+  // skipped only when there is none, which the door-level pre-flight already caught.
+  if (veoTransport() === null) {
     return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0, debited: false };
   }
 
@@ -536,14 +473,13 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // debit — so a missing infrastructure token can never burn a founder free-film
   // slot or a GEL charge, and never strands the user at the ~38% "Video skipped
   // (no provider)" mark. Returns a clean, localized, zero-cost failure instead.
-  // Google-only (docs/VEO_ENGINE.md §3): the door needs a Veo route (Vertex or the Gemini API) — an LTX or Replicate
+  // Google-only (docs/VEO_ENGINE.md §3, always since MASTER TASK v3.1): the door needs a Veo route. An LTX or Replicate
   // key alone must not wave a film through that would then refuse every non-Google engine clip by clip.
-  const googleOnly = isGoogleOnly();
   // veoTransport() also honours a VEO_TRANSPORT pin: a pinned-but-unready transport is no route at all.
-  const providerReady = googleOnly ? veoTransport() !== null : hasVideoProvider();
+  const providerReady = veoTransport() !== null;
   if (!providerReady) {
     // eslint-disable-next-line no-console
-    console.error(`[film] aborted pre-storyboard: no video provider configured (${googleOnly ? 'Google-only: Vertex AI is not configured for Veo' : 'LTX / Replicate both absent'})`);
+    console.error('[film] aborted pre-storyboard: no video provider configured (Vertex AI is not configured for Veo)');
     return {
       success: false,
       intent: 'video_generation',
@@ -554,7 +490,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         composite: true,
         providerUnavailable: true,
         // Names-only — surfaced for diagnostics, never a secret value.
-        missingEnv: googleOnly ? vertexConfigProblems() : ['LTX2_API_KEY', 'REPLICATE_API_TOKEN'],
+        missingEnv: vertexConfigProblems(),
       },
     };
   }
@@ -804,7 +740,6 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // audio OFF keeps its ElevenLabs dialogue leg.
   const clipTransport = veoTransport();
   const nativeSpeech = clipTransport !== null
-    && (googleOnly || (effectiveVideoModel !== 'kling' && effectiveVideoModel !== 'hailuo'))
     && veoPlan?.film.generateAudio !== false;
 
   // Per-scene spoken lines, index-aligned with the scenes. Sources, best first: the line written inside
@@ -993,7 +928,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
 
   // ⚠️ NO VEO PLAN SENT (an older client, a direct caller) → render on the STUDIO default tier, explicitly. Left unset the engine
   // falls to its own default (Standard, $0.40/s) while the film is priced on Fast — a $3.20 render sold for ~$0.93 a clip.
-  if (googleOnly && !plan.shared.veo) {
+  if (!plan.shared.veo) {
     plan.shared.veo = { tier: STUDIO_DEFAULT_VEO_TIER, format: orientation === 'vertical' ? '9:16' : '16:9', referenceMode: 'first_frame', generateAudio: true, seedLock: true, enhancePrompt: false };
   }
 
@@ -1223,7 +1158,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // free film is $19.20 of Google spend for an e-mail address; on Fast ($0.12/s at 1080p) it is $5.76. Google-only
     // free films therefore render on Fast at most (Lite stays Lite). Founder/admin renders and paid films keep the
     // tier they chose.
-    if (hasFreeFilm && googleOnly && plan.shared.veo?.tier !== 'lite') {
+    if (hasFreeFilm && plan.shared.veo?.tier !== 'lite') {
       plan.shared.veo = plan.shared.veo
         ? { ...plan.shared.veo, tier: 'fast' }
         : { tier: 'fast', format: orientation === 'vertical' ? '9:16' : '16:9', referenceMode: 'first_frame', generateAudio: true, seedLock: true, enhancePrompt: false };
@@ -1354,10 +1289,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   try {
     // PREFER approved storyboard frames (from /api/film/storyboard) as the
     // per-scene identity anchors: the user reviewed them, so the render MATCHES
-    // the storyboard — and we skip the costly on-dispatch frame generation that
-    // made stylizeSceneFrame too slow to keep on the hot-path. They align with
-    // plan.scenes by index (same deterministic plan/prompt/seed produced both).
-    // Fall back to stylizeSceneFrame (off by default) only when none were given.
+    // the storyboard. They align with plan.scenes by index (same deterministic
+    // plan/prompt/seed produced both). Without them a scene has no frame: the
+    // on-dispatch frame chain (FLUX / NanoBanana via ServiceManager) is gone.
     const approvedFrames = Array.isArray(input.metadata?.sceneFrames)
       ? (input.metadata.sceneFrames as unknown[]).map((f) =>
           typeof f === 'string' && /^https?:\/\//i.test(f) ? f : null)
@@ -1365,56 +1299,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // REFERENCE MODE (the studio's Veo plan): the photos ride as Veo asset references and Veo composes each scene
     // itself — a first frame would be dropped by the engine (it cannot take both), so no frame is made or paid for.
     const referenceMode = veoPlan?.film.referenceMode === 'reference';
-    let sceneFrames = referenceMode
+    const sceneFrames = referenceMode
       ? plan.scenes.map(() => null as string | null)
       : approvedFrames && approvedFrames.length === plan.scenes.length
         ? approvedFrames
-        : await Promise.all(plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)));
-    // AUTO CHARACTER-ANCHOR — a text-only brief (no uploaded photo, no storyboard frames)
-    // has no i2v start image, so clips fall to LTX text-to-video even when Kling is selected.
-    // Generate ONE flux-schnell portrait (~3.65s) from the locked character and reuse it as
-    // the start image for EVERY clip → the i2v (Kling/LTX-2) path fires with a consistent
-    // identity. DEFAULT-OFF (opt-in via AUTO_ANCHOR_FRAME=1): enabling it routes text-only
-    // films onto the i2v path, but Kling is Replicate-only and the prod Replicate account is
-    // currently throttled to 6/min+burst-1 (<$5 credit) → Kling creates 429 and the film
-    // FAILS instead of falling to the working (direct) LTX text-to-video. Turn this on once
-    // Replicate has ≥$5 credit. Fail-open: a miss leaves sceneFrames null → unchanged LTX path.
-    const autoAnchorOn = /^(1|true|on)$/i.test((process.env.AUTO_ANCHOR_FRAME || '').trim());
-    // Source for the anchor portrait: the Prompt Agent's character fragment is often EMPTY
-    // (the character lives in the scene scripts), so fall back to the first scene prompt,
-    // then the raw brief — otherwise the anchor silently skips and clips drop to LTX.
-    // ⚠️ THE ANCHOR IS DRAWN BY AN IMAGE MODEL, SO IT NEEDS THE ENGLISH. All three fallbacks here had the
-    // raw Georgian while the scene prompts beside them were translated — and this one matters more than a
-    // single clip: the anchor portrait is what LOCKS the character's appearance across the whole film, so a
-    // wrong anchor makes every clip consistently wrong. Uses the same values already computed above; each
-    // is a DESCRIPTION of who to draw, never spoken content.
-    const anchorDesc =
-      (characterLockEn && characterLockEn.trim()) ||
-      (Array.isArray(sceneScriptsEn) && sceneScriptsEn.find((s) => typeof s === 'string' && s.trim())) ||
-      messageEn.slice(0, 400);
-    // Skipped in reference mode (see above) and when Google-only: the anchor is drawn by FLUX on Replicate.
-    if (autoAnchorOn && !referenceMode && !googleOnly && anchorDesc && hostedCount === 0 && !sceneFrames.some(Boolean)) {
-      const tAnchor = Date.now();
-      const anchor = await generateAnchorFrame(anchorDesc, orientation === 'vertical' ? '9:16' : '16:9');
-      if (anchor) {
-        sceneFrames = plan.scenes.map(() => anchor);
-        // eslint-disable-next-line no-console
-        console.log(`[filmComposite] auto-anchor ready in ${Date.now() - tAnchor}ms → i2v start image set for all ${plan.scenes.length} clips`);
-      }
-    }
-    // Vision QA heal pass (env-gated FILM_VISION_QA=1) — inspect each storyboard keyframe
-    // for severe artifacts/face-melting and regenerate failures via the SAME stylizeSceneFrame
-    // path BEFORE the costly render. Fail-OPEN per scene; structured report logged.
-    // The keyframe QA reads the frames with Claude vision — not behind a Google-only film.
-    if (visionQaEnabled() && !referenceMode && !googleOnly) {
-      const qa = await qaHealKeyframes(sceneFrames, (i) => {
-        const sc = plan.scenes[i];
-        return sc ? stylizeSceneFrame(input, sc, plan.shared) : Promise.resolve(null);
-      });
-      sceneFrames = qa.frames;
-      // eslint-disable-next-line no-console
-      console.info('[film] vision-qa report:', JSON.stringify(qa.report));
-    }
+        : plan.scenes.map(() => null as string | null);
     // FRAME CHAINING — each clip ends on the next scene's first frame (Veo first→last interpolation), so every
     // join is a match cut: same framing, light, pose and wardrobe on both sides of the cut. Independent clips
     // rendered in parallel each drifted on their own (the 2026-10-16 ad: framing, background and colour jumped at
@@ -1425,7 +1314,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // read; without one, and for anything the chain does not cover, the scenes render side by side exactly as before.
     const sequential = filmSequentialChainOn({
       sceneCount: plan.scenes.length,
-      googleOnly,
+      googleOnly: true,
       referenceMode,
       musicVideo: !!input.metadata?.musicVideoMode,
       owner: input.userId,

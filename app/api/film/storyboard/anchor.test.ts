@@ -56,7 +56,7 @@ let logSpy: jest.SpyInstance;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  delete process.env.VIDEO_GOOGLE_ONLY; // default on → the Gemini image path, the one Production uses
+  delete process.env.VIDEO_GOOGLE_ONLY; // no longer read: Gemini is the only frame engine (MASTER TASK v3.1)
   fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
 });

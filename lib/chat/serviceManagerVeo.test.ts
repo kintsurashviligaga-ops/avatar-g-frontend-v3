@@ -280,10 +280,10 @@ describe('execute() → createVeoClip carries the studio’s Veo plan exactly', 
     expectNoOtherEngine();
   });
 
-  it('the process-wide policy alone (no googleOnly option) also keeps the leg on Veo', async () => {
+  it('with no googleOnly option the leg still stays on Veo', async () => {
     createVeoClipMock.mockResolvedValue(refusedClip('quota', false) as never);
     const { googleOnly: _g, ...noOption } = STUDIO_PLAN;
-    const res = await new ServiceManager().execute(videoRequest(noOption)); // VIDEO_GOOGLE_ONLY unset → ON
+    const res = await new ServiceManager().execute(videoRequest(noOption)); // Veo always (MASTER TASK v3.1)
     expect(res.metadata.veoFailure).toEqual({ reason: 'quota', retryable: false });
     expectNoOtherEngine();
   });
@@ -518,20 +518,22 @@ describe('execute() → the budget guard is priced on what Veo will actually ren
     expect(actualCost({ success: true, metadata: {} as never })).toBeUndefined();
   });
 
-  it('a non-Google-only render keeps the flat video line (no Veo price is invented for it)', async () => {
-    process.env.VIDEO_GOOGLE_ONLY = '0';
-    // Let the multi-vendor path fail fast and locally: no Replicate token, no LTX key.
-    const saved = { r: process.env.REPLICATE_API_TOKEN, l: process.env.LTX_VIDEO_API_KEY, l2: process.env.LTX_API_KEY };
-    delete process.env.REPLICATE_API_TOKEN; delete process.env.LTX_VIDEO_API_KEY; delete process.env.LTX_API_KEY;
+  it.each([
+    { VIDEO_GOOGLE_ONLY: '0' },
+    { VIDEO_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' },
+  ])('no env value re-opens the multi-vendor legs (%o): the clip is priced and submitted as Veo', async (env) => {
+    const saved = process.env.OUTSIDE_ENGINES_APPROVED;
+    Object.assign(process.env, env);
     try {
-      await new ServiceManager().execute(videoRequest({ veoTier: 'fast', duration: '5' })).catch(() => undefined);
+      await new ServiceManager().execute(videoRequest({ veoTier: 'fast', duration: '5' }));
       const opts = lastGuardOpts();
-      expect(opts.unitCostUsd).toBeUndefined();
-      expect(opts.units).toBe(5); // guardVideoSeconds: ceil, clamped to 4–10
+      expect(opts.unitCostUsd).toBeGreaterThan(0); // the exact Veo $/s, not the flat video line
+      expect(opts.units).toBe(6); // 5 s rounds UP to Veo's 6 s clip
+      expect(createVeoClipMock).toHaveBeenCalledTimes(1);
+      expectNoOtherEngine();
     } finally {
-      if (saved.r !== undefined) process.env.REPLICATE_API_TOKEN = saved.r;
-      if (saved.l !== undefined) process.env.LTX_VIDEO_API_KEY = saved.l;
-      if (saved.l2 !== undefined) process.env.LTX_API_KEY = saved.l2;
+      if (saved === undefined) delete process.env.OUTSIDE_ENGINES_APPROVED;
+      else process.env.OUTSIDE_ENGINES_APPROVED = saved;
     }
   });
 });

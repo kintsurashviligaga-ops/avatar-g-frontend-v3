@@ -68,11 +68,20 @@ test('HF_ENABLED_MODELS decides first; then the keys', async () => {
   expect(r['nb/pro']).toMatchObject({ available: true });
 });
 
-test('no Veo transport under VIDEO_GOOGLE_ONLY: the film rows close; with the fallbacks allowed they stay open', async () => {
+test.each([
+  {},
+  { VIDEO_GOOGLE_ONLY: '0' },
+  { VIDEO_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' },
+])('no Veo transport closes the film rows, and no env value re-opens them (%o)', async (env) => {
   (veoTransport as jest.Mock).mockReturnValue(null);
-  expect((await rows('video'))['google/veo-3.1-lite']).toMatchObject({ available: false, reason: 'not_configured' });
-  process.env.VIDEO_GOOGLE_ONLY = '0';
-  expect((await rows('video'))['google/veo-3.1-lite']).toMatchObject({ available: true });
+  const approval = process.env.OUTSIDE_ENGINES_APPROVED;
+  Object.assign(process.env, env);
+  try {
+    expect((await rows('video'))['google/veo-3.1-lite']).toMatchObject({ available: false, reason: 'not_configured' });
+  } finally {
+    if (approval === undefined) delete process.env.OUTSIDE_ENGINES_APPROVED;
+    else process.env.OUTSIDE_ENGINES_APPROVED = approval;
+  }
 });
 
 test('music follows the engines\' own status: no key → not_configured, breaker open → busy', async () => {

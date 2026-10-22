@@ -39,12 +39,10 @@ import ffmpegStatic from 'ffmpeg-static';
 import { googleAiConfigured, googleTransportKind, googleTransportProblems } from '@/lib/ai/google/transport';
 import { geminiFrameModel } from '@/lib/ai/geminiImage';
 import { hasLyriaProvider, lyriaModel } from '@/lib/ai/lyriaMusic';
-import { hasVideoProvider } from '@/lib/chat/videoProvider';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { resolveModel } from '@/lib/veo/capabilities';
 import { veoNotConfiguredDetail, veoTransport } from '@/lib/veo/engine';
-import { isGoogleOnly } from '@/lib/veo/policy';
 
 export type ServiceTier = 'high' | 'medium' | 'low' | 'unavailable';
 
@@ -84,7 +82,6 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
 
     const hasReplicate = present(env.REPLICATE_API_TOKEN);
     const hasElevenLabs = present(env.ELEVENLABS_API_KEY);
-    const googleOnly = isGoogleOnly();
 
     // Vertex AI, the only Google model transport under v3.1, which the frame model and Lyria call through. A
     // GEMINI_TRANSPORT other than vertex/unset throws there and fails closed — reported here as a name, never thrown.
@@ -96,21 +93,19 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     }
     const hasGoogleAi = googleAiConfigured();
 
-    // 1 · ANCHOR / STORYBOARD FRAME — Google-only (default): Gemini's image model (GEMINI_FRAME_MODEL, default
-    //     gemini-3.1-flash-image) draws every storyboard frame + the character anchor; a miss is an empty tile.
-    //     VIDEO_GOOGLE_ONLY=0 restores the legacy Replicate chain (google/nano-banana → FLUX 1.1 Pro).
-    const anchorAvail = googleOnly ? hasGoogleAi : hasReplicate;
-    const anchorTier: ServiceTier = !anchorAvail ? 'unavailable' : googleOnly ? 'high' : 'medium';
+    // 1 · ANCHOR / STORYBOARD FRAME — Gemini's image model (GEMINI_FRAME_MODEL, default gemini-3.1-flash-image) draws
+    //     every storyboard frame + the character anchor; a miss is an empty tile. The legacy Replicate chain
+    //     (google/nano-banana → FLUX 1.1 Pro) is gone (MASTER TASK v3.1), whatever VIDEO_GOOGLE_ONLY says.
+    const anchorAvail = hasGoogleAi;
+    const anchorTier: ServiceTier = anchorAvail ? 'high' : 'unavailable';
     services.push({
       service: 'სურათი (Anchor)',
-      provider: googleOnly ? `Gemini ${geminiFrameModel()}` : 'nano-banana → FLUX (Replicate)',
+      provider: `Gemini ${geminiFrameModel()}`,
       available: anchorAvail,
       tier: anchorTier,
-      note: !googleOnly
-        ? (hasReplicate ? 'VIDEO_GOOGLE_ONLY off — legacy Replicate frames (nano-banana → FLUX 1.1 Pro)' : 'VIDEO_GOOGLE_ONLY off and REPLICATE_API_TOKEN missing')
-        : !anchorAvail
-          ? `${googleMissing.join(', ') || 'Google AI transport'} missing — frames come back empty, Veo animates from text`
-          : 'storyboard + anchor frames on Vertex AI; a miss is an empty tile — no FLUX fallback',
+      note: !anchorAvail
+        ? `${googleMissing.join(', ') || 'Google AI transport'} missing — frames come back empty, Veo animates from text`
+        : 'storyboard + anchor frames on Vertex AI; a miss is an empty tile — no FLUX fallback',
       icon: dot(anchorAvail, anchorTier),
     });
 
@@ -120,21 +115,17 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     const transport = veoTransport();
     const veoModel = transport ? resolveModel(transport, STUDIO_DEFAULT_VEO_TIER) : null;
     const veoMissing = (): string => `no Veo route — ${veoNotConfiguredDetail()}`;
-    // Same door test filmComposite runs: Google-only needs a Veo route; the legacy cascade any video key.
-    const videoAvail = googleOnly ? transport !== null : hasVideoProvider();
-    const videoTier: ServiceTier = transport ? 'high' : videoAvail ? 'medium' : 'unavailable';
+    // Same door test filmComposite runs: a film needs a Veo route.
+    const videoAvail = transport !== null;
+    const videoTier: ServiceTier = videoAvail ? 'high' : 'unavailable';
     services.push({
       service: 'ვიდეო (Clips)',
-      provider: !googleOnly
-        ? 'Veo → Runway/Kling/LTX (legacy cascade)'
-        : transport ? 'Veo 3.1 (Vertex AI)' : 'Veo 3.1',
+      provider: transport ? 'Veo 3.1 (Vertex AI)' : 'Veo 3.1',
       available: videoAvail,
       tier: videoTier,
-      note: !googleOnly
-        ? `VIDEO_GOOGLE_ONLY off — Veo${mark(transport !== null)} then the multi-vendor fallbacks (Replicate${mark(hasReplicate)})`
-        : transport
-          ? `${veoModel} (default tier ${STUDIO_DEFAULT_VEO_TIER}) — Google-only: a Veo miss is a failed leg, no other engine`
-          : veoMissing(),
+      note: transport
+        ? `${veoModel} (default tier ${STUDIO_DEFAULT_VEO_TIER}) — Google-only: a Veo miss is a failed leg, no other engine`
+        : veoMissing(),
       icon: dot(videoAvail, videoTier),
     });
 
@@ -222,11 +213,6 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     });
 
     // ── WARNINGS ──────────────────────────────────────────────────────────────
-    // VIDEO_GOOGLE_ONLY=0 is the kill switch that brings back every legacy multi-vendor path at once (R7 says none).
-    if (!googleOnly) {
-      const autoAnchor = /^(1|true|on)$/i.test((env.AUTO_ANCHOR_FRAME || '').trim());
-      warnings.push(`VIDEO_GOOGLE_ONLY is off — legacy multi-vendor paths are live: clips can fall from Veo to Runway/Kling/LTX and storyboard frames come from Replicate${autoAnchor ? ', plus a FLUX Auto-Anchor (AUTO_ANCHOR_FRAME)' : ''}.`);
-    }
     const unavailable = services.filter((s) => !s.available);
     if (unavailable.length) warnings.push(`${unavailable.length} service(s) unavailable: ${unavailable.map((s) => s.service).join(', ')}`);
 

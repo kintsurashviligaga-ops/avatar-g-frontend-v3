@@ -21,7 +21,6 @@ import 'server-only';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
 import { geminiTierModel, isRetiredModel, normalizeModelId } from '@/lib/ai/google/models';
-import { isGoogleOnly } from '@/lib/veo/policy';
 import { stripNegativeTail } from './filmPipeline';
 import type { CameraAngle, CameraMove, LensLook, ShotSize } from '@/lib/veo/types';
 
@@ -535,11 +534,11 @@ export function buildDirectorUserContent(input: PromptAgentInput, sceneCount: nu
  */
 /**
  * The model that writes the director's brief, for labels (the storyboard's `scriptModel`), never sent anywhere. Mirrors
- * runPromptAgent's llmText call: VEO_DIRECTOR_MODEL under Google-only when it is a usable id (generateWithGemini's
+ * runPromptAgent's llmText call: VEO_DIRECTOR_MODEL when it is a usable id (generateWithGemini's
  * guard: well-formed, not retired), else the flash tier. llmText has no other provider, so this is always a Gemini id.
  */
 export function promptAgentModel(): string {
-  const director = isGoogleOnly() ? normalizeModelId(process.env.VEO_DIRECTOR_MODEL) : null;
+  const director = normalizeModelId(process.env.VEO_DIRECTOR_MODEL);
   return director && !isRetiredModel(director) ? director : geminiTierModel('flash');
 }
 
@@ -556,19 +555,16 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
   // wardrobe in every scene.imagePrompt → a flat cap truncates the JSON).
   const maxTokens = Math.min(8000, 1500 + sceneCount * 400);
 
-  // ONE live-provider chain: DeepSeek-V3 (Atlas) → Gemini → Anthropic. This is the
-  // character-lock / master-brief brain; it MUST hit a live model or the render loses
-  // identity consistency (Anthropic is dead in prod, which is why this used to fail-open
-  // to the deterministic plan). Backstop race guards against any provider hanging.
+  // The character-lock / master-brief brain: Gemini only (MASTER TASK v3.1; the old DeepSeek / Anthropic chain is
+  // gone). It MUST hit a live model or the render loses identity consistency. Backstop race guards against a hang.
   const work = (async (): Promise<MasterFilmBrief | null> => {
     const t0 = Date.now();
     // Google-only (docs/VEO_ENGINE.md §3): the director is Gemini, asked for a JSON document directly. The model is
     // VEO_DIRECTOR_MODEL when set (e.g. gemini-3.1-pro-preview for a slower, stronger plan), else the flash tier.
-    const googleOnly = isGoogleOnly();
     const directorModel = (process.env.VEO_DIRECTOR_MODEL || '').trim() || undefined;
     const text = await llmText({
       system: SYSTEM_PROMPT, user: userContent, maxTokens, temperature: 0.6, timeoutMs: timeoutMs - 4_000,
-      ...(googleOnly ? { googleOnly: true, json: true, ...(directorModel ? { geminiModel: directorModel } : {}) } : {}),
+      googleOnly: true, json: true, ...(directorModel ? { geminiModel: directorModel } : {}),
     });
     const brief = text ? coerceBrief(extractJson(text), sceneCount) : null;
     // HARD LOCK: when the photo was vision-extracted, the character fragment threaded to the render is the GROUND

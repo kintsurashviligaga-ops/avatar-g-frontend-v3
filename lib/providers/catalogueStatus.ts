@@ -3,7 +3,7 @@
  *
  * Every answer is derived from the same gate the runner itself applies, never restated:
  *   studio → registry.isModelEnabled (HF_ENABLED_MODELS) · studioV2Enabled (STUDIO_V2) · hfAuthHeaderFromEnv (HF keys)
- *   film   → a Veo transport (lib/veo/engine), or VIDEO_GOOGLE_ONLY off (the multi-vendor fallbacks render)
+ *   film   → a Veo transport (lib/veo/engine); Veo is the only film engine, whatever VIDEO_GOOGLE_ONLY says
  *   music  → lib/ai/musicEnginesStatus (keys + each engine's circuit breaker)
  *   image  → always: the route's own cascade refunds a miss
  *
@@ -23,7 +23,6 @@ import {
 import type { MusicEnginesStatus } from '@/lib/studio/musicEngines';
 import { studioV2Enabled } from '@/lib/studio/flags';
 import { veoTransport } from '@/lib/veo/engine';
-import { isGoogleOnly } from '@/lib/veo/policy';
 
 export interface CatalogueStatusRow extends Availability {
   id: string;
@@ -34,7 +33,7 @@ export interface CatalogueStatusDeps {
   music?: () => Promise<MusicEnginesStatus | null>;
 }
 
-const filmReady = (): boolean => veoTransport() !== null || !isGoogleOnly();
+const filmReady = (): boolean => veoTransport() !== null; // Veo is the only film engine (MASTER TASK v3.1)
 
 export async function catalogueStatus(
   service: CatalogueService | undefined,

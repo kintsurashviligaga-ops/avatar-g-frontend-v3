@@ -25,12 +25,11 @@ import { lipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { isGoogleOnly } from '@/lib/veo/policy';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
+export const maxDuration = 300; // HeyGen avatar polling can take up to 150s
 
 // ⚠️ THE TEXT SERVICES HAVE NO ANTHROPIC OR OPENAI CLIENT (PROJECT_MASTER R7, "NO SILENT FALLBACK"): they run on Gemini
 // only. This OpenAI client serves ONLY the voice leg's TTS behind ElevenLabs, which itself runs only with the Google-only
@@ -329,63 +328,6 @@ async function rehostHeygenVideo(providerUrl: string): Promise<string> {
     return (await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800)) || providerUrl;
   } catch {
     return providerUrl;
-  }
-}
-
-async function generateVideo(
-  prompt: string,
-  answers: Record<string, string | string[]>,
-): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
-  // Prefer LTX when key is available (higher quality, synchronous)
-  const ltxKey = process.env.LTX_VIDEO_API_KEY;
-  if (ltxKey) {
-    const resolution = String(answers.resolution ?? '1920x1080');
-    const duration   = Number(answers.duration ?? 6);
-    const fps        = Number(answers.fps ?? 24);
-    const model      = String(answers.ltx_model ?? 'ltx-2-3-fast');
-
-    try {
-      const ltxRes = await fetch('https://api.ltx.video/v1/text-to-video', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${ltxKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, model, resolution, duration, fps, generate_audio: false }),
-      });
-
-      if (ltxRes.ok) {
-        const arrayBuf = await ltxRes.arrayBuffer();
-        const base64 = Buffer.from(arrayBuf).toString('base64');
-        return { resultUrl: `data:video/mp4;base64,${base64}`, outputKind: 'video' };
-      }
-
-      const errText = await ltxRes.text().catch(() => '');
-      console.warn('[pipeline/video] LTX failed, falling back to Replicate:', ltxRes.status, errText);
-    } catch (ltxErr) {
-      console.warn('[pipeline/video] LTX error, falling back to Replicate:', ltxErr);
-    }
-  }
-
-  // Fallback: Replicate minimax/video-01-live (returns a URL)
-  try {
-    const { runReplicateModel } = await import('@/lib/replicate/client');
-    const output = await runReplicateModel('minimax/video-01-live', {
-      prompt,
-      prompt_optimizer: true,
-    });
-
-    const videoUrl =
-      typeof output === 'string'
-        ? output
-        : output instanceof URL
-          ? output.href
-          : Array.isArray(output) && output.length > 0
-            ? String(output[0])
-            : null;
-
-    if (!videoUrl) return { outputKind: 'video', error: 'No video URL returned from model' };
-    return { resultUrl: videoUrl, outputKind: 'video' };
-  } catch (replicateErr) {
-    const msg = replicateErr instanceof Error ? replicateErr.message : 'Video generation failed';
-    return { outputKind: 'video', error: msg };
   }
 }
 
@@ -816,9 +758,6 @@ async function handleGenerate(
         // rawScript = what the user actually typed (the speech text)
         genResult = await generateAvatar(rawScript, answers, mediaFiles);
         break;
-      case 'video':
-        genResult = await generateVideo(effectivePrompt, answers);
-        break;
       case 'image':
         genResult = await generateImage(effectivePrompt, answers, mediaFiles);
         break;
@@ -984,8 +923,9 @@ export async function POST(req: NextRequest) {
         const limited = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
         if (limited) return limited;
         // Google-only (docs/VEO_ENGINE.md §3): video renders on Veo, in the studio, where it is planned and billed.
-        // This wizard's video leg is LTX / Replicate — a non-Google engine with no charge — so it is closed here.
-        if (isGoogleOnly() && normalizeServiceId(serviceId) === ('video' as ServiceId)) {
+        // This wizard's video leg was LTX / Replicate, a non-Google engine with no charge; it is gone (MASTER TASK
+        // v3.1), whatever VIDEO_GOOGLE_ONLY says.
+        if (normalizeServiceId(serviceId) === ('video' as ServiceId)) {
           return NextResponse.json(
             { error: 'video_moved', message: locale === 'en' ? 'Video is made in the Studio now.' : locale === 'ru' ? 'Видео теперь создаётся в Студии.' : 'ვიდეო ახლა სტუდიაში იქმნება.' },
             { status: 409 },

@@ -198,10 +198,10 @@ describe('promptAgentModel — names the Gemini model the director really uses',
     expect(promptAgentModel()).toBe(DEFAULT_REST_TIER_MODELS.flash);
   });
 
-  it('Google-only off → the director model is not passed, so the flash tier', () => {
+  it('VIDEO_GOOGLE_ONLY=0 changes nothing: the director model is still used (MASTER TASK v3.1)', () => {
     process.env.VIDEO_GOOGLE_ONLY = '0';
     process.env.VEO_DIRECTOR_MODEL = 'gemini-3.1-pro-preview';
-    expect(promptAgentModel()).toBe(DEFAULT_REST_TIER_MODELS.flash);
+    expect(promptAgentModel()).toBe('gemini-3.1-pro-preview');
   });
 
   it('never a non-Gemini id', () => {

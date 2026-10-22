@@ -247,8 +247,9 @@ describe('the route wiring', () => {
     expect(route.slice(gateAt, gateAt + 1400)).toMatch(/if \(!gate\.ok\) \{\s*await releaseIdem\(\);/);
   });
 
-  it('skips the Kling (Replicate) leg when the pipeline is Google-only, keeping the free Ken Burns fallback', () => {
-    expect(route).toContain('veoAd?.url || (isGoogleOnly() ? null : await klingI2v(startImg, adPrompt, aspectP))');
+  it('never runs the Kling (Replicate) leg (Veo only, MASTER TASK v3.1), keeping the free Ken Burns fallback', () => {
+    expect(route).toContain('const animated = veoAd?.url || null;');
+    expect(route).not.toContain('klingI2v(startImg, adPrompt');
     expect(route).toContain('const url = animated || (await kenBurnsClip(startImg, 5, aspectP));');
     expect(route).toContain("if (!animated) await refundCharge('fallback-kenburns');");
   });

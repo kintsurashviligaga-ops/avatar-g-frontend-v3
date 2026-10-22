@@ -9,7 +9,6 @@ import { NextResponse } from 'next/server';
 import { isTruthyFlag } from '@/lib/env/flag';
 import { veoCapEnforced } from '@/lib/veo/dailyCap';
 import { veoTransport } from '@/lib/veo/engine';
-import { isGoogleOnly } from '@/lib/veo/policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +35,7 @@ export async function GET() {
   const vertex = transport === 'vertex';
   const body: VideoEngineInfo = {
     transport,
-    googleOnly: isGoogleOnly(),
+    googleOnly: true, // always, MASTER TASK v3.1 (lib/veo/policy)
     audioToggle: vertex,
     enhancePrompt: false,
     nativeCameraControl: vertex && isTruthyFlag(process.env.VEO_NATIVE_CAMERA_CONTROL),

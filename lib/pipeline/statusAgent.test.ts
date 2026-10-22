@@ -195,12 +195,13 @@ describe('no row repeats the stale provider claims', () => {
     expect(row(h, 'მუსიკა').available).toBe(false);
   });
 
-  it('VIDEO_GOOGLE_ONLY=0 is reported honestly as the legacy multi-vendor paths', async () => {
-    setEnv({ ...SECRETS, VIDEO_GOOGLE_ONLY: '0', AUTO_ANCHOR_FRAME: '1' });
+  it('VIDEO_GOOGLE_ONLY=0 with an owner approval re-opens nothing: the rows name Veo and Gemini (MASTER TASK v3.1)', async () => {
+    setEnv({ ...SECRETS, ...VERTEX_ENV, VIDEO_GOOGLE_ONLY: '0', AUTO_ANCHOR_FRAME: '1' });
     const h = await checkPipelineHealth();
-    expect(row(h, 'ვიდეო (Clips)').provider).toMatch(/legacy cascade/);
-    expect(row(h, 'სურათი (Anchor)').provider).toMatch(/Replicate/);
-    expect(h.warnings.some((w) => /VIDEO_GOOGLE_ONLY is off.*Auto-Anchor/.test(w))).toBe(true);
+    expect(row(h, 'ვიდეო (Clips)').provider).toBe('Veo 3.1 (Vertex AI)');
+    expect(row(h, 'სურათი (Anchor)').provider).toBe('Gemini gemini-3.1-flash-image');
+    expect(text(row(h, 'ვიდეო (Clips)')) + text(row(h, 'სურათი (Anchor)'))).not.toMatch(/legacy cascade|kling|runway|ltx|nano-banana/i);
+    expect(h.warnings.join(' ')).not.toMatch(/VIDEO_GOOGLE_ONLY|Auto-Anchor/);
   });
 });
 

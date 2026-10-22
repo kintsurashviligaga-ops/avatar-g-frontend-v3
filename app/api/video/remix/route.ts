@@ -43,7 +43,6 @@ import { quoteCredits } from '@/lib/credits/quote';
 import { CHARGED_REMIX_OPS, canonicalRemixOp, remixOpCredits } from '@/lib/video/remixCharge';
 import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
-import { isGoogleOnly } from '@/lib/veo/policy';
 import {
   gateProductAdSecondaryClip, isProductAdSecondaryRequest, productAdSecondariesKey, readProductAdPrimaryNetDebit, remixTxnRef,
 } from '@/lib/video/productAdCharge';
@@ -406,25 +405,17 @@ export async function POST(req: NextRequest) {
       // ServiceManager, which this route never touches. lib/ai/veoClipSync closes that, with the same
       // image+prompt+aspect → URL|null contract as klingI2v so it drops straight into the chain.
       //
-      // Kling is KEPT BELOW IT, for two concrete reasons rather than caution:
-      //   · Veo has NO 1:1, and this route honours a square ad (body.aspect === '1:1'). veoCanRender
-      //     refuses square, so square keeps an engine that can actually produce it instead of being
-      //     silently handed a landscape video for a square placement.
-      //   · A Veo miss (quota, transient 5xx, undeliverable download) would otherwise drop straight to
-      //     kenBurnsClip — a slow pan over the product still, for the full price of a video ad.
-      //
-      // ⚠️ …EXCEPT WHEN THE PIPELINE IS GOOGLE-ONLY (isGoogleOnly(), ON by default — lib/veo/policy). Then
-      // a Veo miss is a Veo miss: no Replicate/Kling call, and the chain falls straight to the LOCAL ffmpeg
-      // Ken Burns pan, which is free — and which the refund just below already delivers free of charge. So
-      // under Google-only a square ad (no Veo 1:1) is a still pan at no cost, never a hidden Kling spend.
-      // VIDEO_GOOGLE_ONLY=0 restores the Kling leg.
+      // A Veo miss is a Veo miss (MASTER TASK v3.1: the Kling leg that used to sit below it is gone, whatever
+      // VIDEO_GOOGLE_ONLY says): no Replicate/Kling call, and the chain falls straight to the LOCAL ffmpeg Ken Burns
+      // pan, which is free — and which the refund just below already delivers free of charge. So a square ad (Veo
+      // has no 1:1, and veoCanRender refuses square) is a still pan at no cost, never a hidden Kling spend.
       const veoAd = await renderVeoClipSync({
         startImage: startImg, promptText: adPrompt, aspect: aspectP,
         durationSec: 8, folder: `product-ad/${remixUid ?? 'anon'}`, budgetMs: 240_000,
         // Books the Google spend against this user in the budget guard (veoClipSync → guardedCall).
         userId: remixUid,
       });
-      const animated = veoAd?.url || (isGoogleOnly() ? null : await klingI2v(startImg, adPrompt, aspectP));
+      const animated = veoAd?.url || null;
       const url = animated || (await kenBurnsClip(startImg, 5, aspectP));
       if (!url) return failRefund('Product ad generation failed.', 'render-null');
       // ⚠️ A STILL PAN IS NOT A GENERATED AD, SO IT MUST NOT COST ONE. When both paid engines miss and

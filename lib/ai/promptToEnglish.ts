@@ -1,9 +1,7 @@
 import 'server-only';
-import Anthropic from '@anthropic-ai/sdk';
 import { reportError } from '@/lib/observability/report-error';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
-import { isGoogleOnly } from '@/lib/veo/policy';
 
 /**
  * Render a generation brief into English for the model that will execute it.
@@ -30,7 +28,10 @@ import { isGoogleOnly } from '@/lib/veo/policy';
  * CHEAP AND SKIPPABLE: a prompt that is already Latin script returns immediately, unchanged, with no
  * network call — so English and Spanish briefs cost nothing and the common case is untouched.
  *
- * FAIL-OPEN, ALWAYS: any error, missing key or timeout returns the ORIGINAL text. Today's behaviour is
+ * ONE TRANSLATOR: Gemini on Vertex AI (MASTER TASK v3.1). The Anthropic leg that ran with VIDEO_GOOGLE_ONLY switched
+ * off is gone, whatever that variable says.
+ *
+ * FAIL-OPEN, ALWAYS: any error, missing transport or timeout returns the ORIGINAL text. Today's behaviour is
  * that the raw prompt goes to the provider; that is the floor this can never fall below, and a
  * translation outage must never turn a working render into a failed one.
  */
@@ -41,8 +42,6 @@ function isLatinScript(s: string): boolean {
   return !/[԰-֏֐-׿؀-ۿႠ-ჿЀ-ӿ぀-ヿ一-鿿가-힯]/.test(s);
 }
 
-const MODEL = process.env.ANTHROPIC_TRANSLATE_MODEL || 'claude-haiku-4-5-20251001';
-
 const TRANSLATE_SYSTEM =
   'You translate generation briefs into English for an AI media model. Output ONLY the translated '
   + 'brief — no preamble, no quotes, no commentary, no explanation. Preserve every concrete detail: '
@@ -52,8 +51,8 @@ const TRANSLATE_SYSTEM =
   + 'Keep proper nouns as they are. Be faithful and literal; add nothing that was not asked for. CRITICAL SPOKEN DIALOGUE INVARIANT: If the prompt contains spoken dialogue, quotes, or lines that a character or actor speaks (e.g. text inside quotation marks "..." or „...“, or introduced by "ამბობს:", "says:"), NEVER translate the spoken dialogue into English! The spoken words inside quotes must remain verbatim in their original language (especially Georgian ქართული). Only translate visual scene, camera, setting, and lighting descriptions into English. Keep the spoken dialogue verbatim in quotes so the video generator renders speech in the native language.';
 
 /**
- * The Google-only pipeline translates with Gemini (docs/VEO_ENGINE.md §3). Same contract as the Anthropic leg:
- * temperature 0, fail-open to the original text, every miss logged.
+ * The translation, with Gemini (docs/VEO_ENGINE.md §3): temperature 0 (a transcription of intent, not a creative act;
+ * a translator that embellishes reintroduces the exact problem), fail-open to the original text, every miss logged.
  */
 async function viaGemini(raw: string, kind: string): Promise<string> {
   // Vertex AI is the transport (MASTER TASK v3.1): an AI Studio key neither enables nor is needed for this call.
@@ -111,35 +110,5 @@ export async function promptToEnglish(
 ): Promise<string> {
   const raw = String(text ?? '').trim();
   if (!raw || isLatinScript(raw)) { note(kind, 'skipped_latin'); return raw; }
-  if (isGoogleOnly()) return viaGemini(raw, kind);
-
-  const key = (process.env.ANTHROPIC_API_KEY || '').trim();
-  if (!key) { note(kind, 'no_key', 'ANTHROPIC_API_KEY is unset on this deployment'); return raw; }
-
-  try {
-    const client = new Anthropic({ apiKey: key });
-    const res = await client.messages.create({
-      model: MODEL,
-      max_tokens: 400,
-      // Temperature 0: this is a transcription of intent, not a creative act. A translator that
-      // embellishes reintroduces the exact problem — a result that is not what the user asked for.
-      temperature: 0,
-      system: TRANSLATE_SYSTEM,
-      messages: [{ role: 'user', content: `Medium: ${kind}.\n\nBrief:\n${raw}` }],
-    }, { timeout: 12_000 });
-
-    const out = res.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join(' ')
-      .trim();
-
-    // A suspiciously empty or truncated answer is worse than the original — keep what the user wrote.
-    if (out.length >= 3) { note(kind, 'ok'); return out; }
-    note(kind, 'empty_result', `provider returned ${out.length} chars`);
-    return raw;
-  } catch (e) {
-    note(kind, 'provider_error', e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120));
-    return raw;
-  }
+  return viaGemini(raw, kind);
 }
