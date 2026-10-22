@@ -1211,7 +1211,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           )}
           {serviceHits.length > 0 && <ServiceSearchResults services={serviceHits} lang={lang} onOpen={openService} rowClassName={sideRow} />}
           {authed && onStudioHome && !historySynced && conversations.length === 0 ? (
-            <SkeletonList count={3} locale={lang} rowClassName="h-11 w-full rounded-lg [@media(pointer:fine)]:h-[38px]" className="space-y-0.5 pb-2" testId="history-skeleton" />
+            <SkeletonList count={3} locale={lang} rowClassName="h-11 w-full rounded-lg" className="space-y-0.5 pb-2" testId="history-skeleton" />
           ) : conversations.length === 0 ? (
             <EmptyState compact icon={ChatIcon} line={tNoHistory} actionLabel={tStartChat} onAction={startChat} testId="history-empty" />
           ) : convMatches.length === 0 ? (
@@ -1222,14 +1222,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 <div key={g.key} className="space-y-0.5">
                   <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-medium text-app-muted/70">{g.label}</p>
                   {g.items.map((c) => (
-                    <div key={c.id} className="group relative">
-                      {/* pr-9 leaves room for the delete control so the title never sits under it. */}
-                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="flex min-h-[44px] [@media(pointer:fine)]:min-h-[38px] w-full items-center truncate rounded-lg pl-2.5 pr-9 text-left text-[13.5px] text-app-text/90 transition-colors hover:bg-app-elevated">
+                    <div key={c.id} className="group flex min-h-11 items-center">
+                      {/* Separate targets keep long titles and neighboring rows clear of Delete. */}
+                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="flex min-h-[44px] min-w-0 flex-1 items-center truncate rounded-lg px-2.5 text-left text-[13.5px] text-app-text/90 transition-colors hover:bg-app-elevated">
                         {c.title}
                       </button>
-                      {/* Delete: always tappable on mobile; hover-reveal on desktop (md). */}
+                      {/* No translated centering or expanded pseudo-hitbox: active scaling stays centered. */}
                       <button type="button" onClick={(e) => handleDeleteConversation(c.id, e)} aria-label={tDelete} title={tDelete}
-                        className="tap-44 absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-app-muted/70 opacity-100 transition-colors hover:bg-red-500/15 hover:text-red-400 touch-manipulation md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-app-muted transition-colors hover:bg-app-elevated hover:text-red-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-app-accent touch-manipulation">
                         <X className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>

@@ -17,9 +17,10 @@ const omni = readFileSync(join(__dirname, 'OmniStudio.tsx'), 'utf8');
 describe('while the history loads', () => {
   it('a signed-in studio shows skeleton rows, sized like the rows, until the sync has answered', () => {
     expect(chrome).toContain('{authed && onStudioHome && !historySynced && conversations.length === 0 ? (');
-    expect(chrome).toMatch(/<SkeletonList count=\{3\} locale=\{lang\} rowClassName="h-11 w-full rounded-lg \[@media\(pointer:fine\)\]:h-\[38px\]"/);
-    // The real rows: 44 px on touch, 38 px with a mouse — the skeleton matches, so nothing jumps when they land.
-    expect(chrome).toContain('min-h-[44px] [@media(pointer:fine)]:min-h-[38px] w-full items-center truncate rounded-lg');
+    expect(chrome).toMatch(/<SkeletonList count=\{3\} locale=\{lang\} rowClassName="h-11 w-full rounded-lg"/);
+    // Both targets and their skeleton reserve 44 px on every pointer type.
+    expect(chrome).toContain('group flex min-h-11 items-center');
+    expect(chrome).toContain('min-h-[44px] min-w-0 flex-1 items-center truncate rounded-lg');
   });
 
   it('listens for the sync and caps the wait', () => {
