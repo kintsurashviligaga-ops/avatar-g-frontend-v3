@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Text generation ran only on OpenRouter / OpenAI / DeepSeek (lib/providers/text-factory). It was refused while
+    // Text generation ran only on OpenRouter / OpenAI / DeepSeek (an old text factory, deleted in PR 5f). It was refused while
     // AI_GOOGLE_ONLY was on, and the kill switch that re-opened it is gone (MASTER TASK v3.1, audit F-04): refused
     // before any balance read or charge.
     if (taskType === 'text-generation') {

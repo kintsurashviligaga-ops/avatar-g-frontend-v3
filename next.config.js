@@ -119,10 +119,6 @@ const nextConfig = {
       '/api/ai/edit': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // AI Audio Studio: pitch/speed/trim/fade run through ffmpeg-static (lib/audio/audioOps).
       '/api/ai/edit-audio': ['./node_modules/ffmpeg-static/**'],
-      // Dubbing Studio: THREE ffmpeg passes in ONE request (lib/services/dubbing/dubbingFfmpeg) — audio
-      // extraction off the source, the timed dub mix, then the mux back onto the picture. Without this entry
-      // the whole service ENOENTs on leg 1 in production while working perfectly on a dev machine.
-      '/api/v2/dubbing/start': ['./node_modules/ffmpeg-static/**'],
       // Montage: conform pass per source + the N-input stitch + the music mux, all ffmpeg-static. Captions
       // rasterise through @resvg (drawtext is unavailable on Vercel — no libfreetype), so both binaries ride.
       '/api/v2/montage/render': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],

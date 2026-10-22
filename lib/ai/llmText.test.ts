@@ -6,8 +6,9 @@
  * answered by a forbidden vendor. Pinned here: Gemini is the only provider whatever the routing flags say, and a Gemini miss
  * (an error, an empty reply, Vertex AI not configured) is null, the "no result" the callers already handle. Every other vendor is mocked to
  * SUCCEED (and Anthropic's constructor is a spy), so a reinstated fallback would turn each `null` below into its text.
- * The two callers named in the change (the deck outline, the dubbing translation) are run against the real helper to show
- * they still end on their deterministic fallbacks. No network, no spend.
+ * The deck outline, a caller named in the change, is run against the real helper to show it still ends on its
+ * deterministic fallback (the other one, the dubbing translation, left with the dubbing pipeline in PR 5f). No network,
+ * no spend.
  */
 jest.mock('server-only', () => ({}));
 
@@ -34,7 +35,6 @@ jest.mock('@anthropic-ai/sdk', () => ({ __esModule: true, default: function Anth
 import { llmText, type LlmTextOpts } from './llmText';
 import { generateOutline } from '../services/presentation/deckOutline';
 import { fallbackOutline, type DeckRequest } from '../services/presentation/deckPlan';
-import { translateSegments } from '../services/dubbing/translateSegments';
 
 const ENV = { ...process.env };
 // Vertex AI is the only transport (v3.1): the real gate reads these; an AI Studio key is neither needed nor enough.
@@ -179,18 +179,6 @@ describe('the callers keep working on null', () => {
     expectNoOtherVendor();
   });
 
-  test('translateSegments: a Gemini miss leaves every line in its source language, timings untouched', async () => {
-    const segs = [
-      { startSec: 0, endSec: 1.5, text: 'Hello there.' },
-      { startSec: 1.5, endSec: 3, text: 'How are you?', speaker: 'B' },
-    ];
-    const out = await translateSegments(segs, 'ka', 'en');
-    expect(out.untranslated).toBe(2);
-    expect(out.segments).toEqual(segs.map((s) => ({ ...s, translated: s.text })));
-    // The batch call, then one call per line — every one of them Gemini.
-    expect(mockGemini).toHaveBeenCalledTimes(3);
-    expectNoOtherVendor();
-  });
 });
 
 describe('a miss says why in the logs', () => {

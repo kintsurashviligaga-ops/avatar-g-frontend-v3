@@ -133,8 +133,8 @@ export async function muxAudioOntoVideo(
     // ONLY THE AUDIO CHANGES HERE, so the picture is stream-COPIED whenever the source allows it.
     // Re-encoding a master we did not touch costs a full x264 pass over every frame (a 3-minute 1080p
     // montage master is ~45-90s of lambda CPU), adds a generation of loss, and re-inflates a file that
-    // renderConcat deliberately VBV-capped to fit the storage limit. dubbingFfmpeg.muxDubOntoVideo has
-    // always copied for exactly this reason. The probe keeps the OUTPUT identical in codec, pixel
+    // renderConcat deliberately VBV-capped to fit the storage limit. The old dubbing mux always copied for
+    // exactly this reason. The probe keeps the OUTPUT identical in codec, pixel
     // format and orientation: anything not already H.264 8-bit 4:2:0 and unrotated takes X264 as before.
     const vcodec = (await videoStreamIsMp4Copyable(videoUrl)) ? ['-c:v', 'copy'] : X264;
     const replaceArgs = [
