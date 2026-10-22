@@ -11,6 +11,12 @@
  * runs whatever it is handed in order (the route now hands it ONE engine — R7) — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
+// The platform budget guard reads a spend ledger these tests do not have, and it fails closed (MASTER TASK v3.1): here
+// the ledger is readable and has room. The guard's own refusals are pinned in lib/services/billing and ./platformBudget.test.
+jest.mock('../../../../lib/services/billing/BillingGuard', () => ({
+  canProceed: jest.fn(async () => ({ allowed: true, reason: 'ok', mode: 'normal', projectedDaily: 0, projectedMonthly: 0, degraded: false })),
+  recordUsage: jest.fn(async () => {}),
+}));
 
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: { id: 'user-1' } })) }));
 jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ response: null, auth: null, budgetRemaining: null })) }));

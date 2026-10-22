@@ -75,10 +75,10 @@ describe('answerAboutReport', () => {
     expect(calls).toEqual([]);
   });
 
-  test('a guard fault in the budget check fails OPEN (chat\'s rule) and the call proceeds', async () => {
+  test('a guard fault in the budget check fails CLOSED (MASTER TASK v3.1) and the model is never called', async () => {
     const { d, calls } = deps({ budgetAllows: async () => { throw new Error('guard down'); } });
-    expect((await answerAboutReport(d, input)).ok).toBe(true);
-    expect(calls).toHaveLength(1);
+    expect(await answerAboutReport(d, input)).toEqual({ ok: false, code: 'budget_exhausted' });
+    expect(calls).toEqual([]);
   });
 
   test('a provider error becomes a bare code — its text never leaves this module', async () => {
