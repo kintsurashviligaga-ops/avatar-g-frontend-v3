@@ -1,56 +1,26 @@
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
-import { createJob, failJob, recordCompletedFilm } from '@/lib/orchestrator/jobs';
-import { settleParams } from '@/lib/orchestrator/unpolledSettle';
+import { failJob, recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { classifyProviderError } from '@/lib/api/providerError';
-import { reportError } from '@/lib/observability/report-error';
 import { creditCostFor } from '@/lib/credits/pricing';
-import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { PRESENTER_DEFAULT_FACE_URL, audioFingerprint, avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, holdReleasableFor, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
-import { randomUUID } from 'crypto';
-import { fetchPublicBytes } from '@/lib/web/publicFetch';
-import { serviceOffResponse } from '@/lib/server/serviceSwitches';
+import { chargeForPolledId } from '@/lib/billing/avatarCharge';
 
 /**
- * /api/heygen/presenter — "Presenter mode"
- * ========================================
- * A consistent HeyGen presenter speaks a script in the user's CLONED GEORGIAN VOICE.
- * We synthesize the line with our cloned eleven_v3 voice first, host it, then drive
- * a DEFAULT presenter face through HeyGen's fast `talking_photo` path with
- * `voice.type:'audio'` so the lips track native Georgian.
+ * /api/heygen/presenter — "Presenter mode": a HeyGen presenter face speaking a script in the cloned Georgian voice.
  *
- * WHY talking_photo (not a stock `avatar`): HeyGen's /v2/avatars list is unusably
- * slow on our account (>40s — it was the root of the original gateway 504s). The
- * talking_photo upload host (/v1/talking_photo) is fast and is the same proven path
- * the photo-driven lip-sync uses, so the presenter rides a default bundled face.
- *
- * TWO-PHASE START + POLL (mobile-safe, neither request nears the gateway limit):
- *   POST { text, orientation? }   → { success, phase:'synthesized', audioUrl }  (Phase A: TTS only, ~4s)
- *   POST { audioUrl, faceUrl? }   → { success, videoId, audioUrl }              (Phase B: talking_photo submit)
- *   GET  ?id=<videoId>            → { done, url, error }                         (quick poll)
+ * HeyGen has no Google engine (MASTER TASK v3.1), so both start phases (Phase A: the TTS line; Phase B: the
+ * talking_photo submit) are refused before any TTS, charge, upload or provider call. GET ?id=<videoId> stays open, so a
+ * presenter started before this change still polls to its re-hosted result, and a reserved render's terminal failure
+ * still refunds its reservation exactly once.
  */
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 120; // headroom for the final-poll re-host (fetch + Supabase upload)
 
 const HEYGEN_BASE = 'https://api.heygen.com';
-/** Bundled default presenter portrait — pin to the CANONICAL public domain, never
- *  req.nextUrl.origin (on Vercel that can be the auth-protected *.vercel.app
- *  deployment host, which 401s the self-fetch). Overridable via env. */
-const DEFAULT_FACE_URL = process.env.PRESENTER_FACE_URL || PRESENTER_DEFAULT_FACE_URL;
-
-// SECURITY (audit HIGH — cross-tenant leak): the presenter face is a DEDICATED, non-user photo,
-// NEVER an arbitrary account photo. HeyGen's talking_photo.list is shared across ALL users of
-// this account, so reusing data[0] could serve another user's uploaded selfie as the "default
-// presenter". We resolve a PINNED env photo, else a cached default-face upload, else upload the
-// canonical placeholder — we NEVER enumerate the shared account's photos. Cached per warm instance.
-let cachedTalkingPhotoId: string | null = null;
 
 /** Re-host a finished HeyGen presenter video to a stable 7-day Supabase URL. HeyGen's
  *  result URL expires (~1h) → blank player on revisit (the same issue the photo lip-sync
@@ -68,179 +38,9 @@ async function rehostPresenterVideo(providerUrl: string): Promise<string> {
   }
 }
 
-type ReserveOutcome = { ok: true; ref: string | null } | { ok: false; res: NextResponse };
-
-/**
- * Reserve the avatar price under a fresh server ref before any paid work. Signed-in only (anonymous reaches here
- * only on a FILM_ALLOW_ANONYMOUS demo, which stays unbilled → ref null). Anything but a clean debit refuses:
- * ⚠️ the read-only hasSufficientBalance gate this replaces failed OPEN on a ledger error (its own try/catch AND the
- * helper's internal `return true`), so a DB blip was a free render, and parallel POSTs all passed one stale balance.
- */
-async function reservePresenter(userId: string | null, kind: 'presenter' | 'presenter-tts'): Promise<ReserveOutcome> {
-  if (!userId) return { ok: true, ref: null };
-  if (!avatarChargeSigningReady()) {
-    return { ok: false, res: NextResponse.json({ success: false, error: 'ledger_unavailable', code: 'ledger_unavailable' }, { status: 503 }) };
-  }
-  const ref = avatarChargeRef(kind, userId, randomUUID());
-  const debit = await deductCredits(userId, creditCostFor('avatar'), ref);
-  if (debit.ok) return { ok: true, ref };
-  if (debit.reason === 'insufficient') {
-    return { ok: false, res: NextResponse.json({ success: false, error: 'insufficient_credits', code: 'insufficient_credits', topUpNeeded: true }, { status: 402 }) };
-  }
-  return { ok: false, res: NextResponse.json({ success: false, error: 'ledger_unavailable', code: 'ledger_unavailable' }, { status: 503 }) };
-}
-
+/** Both start phases: refused before any charge, upload or provider call, whatever MEDIA_GOOGLE_ONLY says. */
 export async function POST(req: NextRequest) {
-  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
-  // before any charge. Off (the default) → no-op.
-  const outside = refuseOutsideEngine(req);
-  if (outside) return outside;
-  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
-  const serviceOff = await serviceOffResponse('avatar');
-  if (serviceOff) return serviceOff;
-  // Two POSTs per generation (synthesize + submit), so use the AI tier (10/min)
-  // rather than EXPENSIVE (5/min) which a couple of generations would exhaust.
-  const rl = await checkRateLimit(req, RATE_LIMITS.AI);
-  if (rl) return rl;
-  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate), before the body is read and before any TTS or HeyGen call. The old
-  // balance gate applied to a signed-in caller only, so a direct anonymous POST got the cloned-voice
-  // TTS and a HeyGen render on the platform's keys for free. FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo.
-  const { user } = await authedClientFromRequest(req);
-  if (mustSignInToGenerate(user?.id)) {
-    return NextResponse.json({ code: 'auth_required', ...signInToGenerateBody() }, { status: 401 });
-  }
-  const userId = user?.id ?? null;
-  // ONE ENGINE: the presenter is HeyGen. Phase A used to run without a key because its audio fed a SadTalker (Replicate)
-  // fallback; that fallback is gone (the owner, 2026-10-09: no silent fallback to another outside provider), so without
-  // a key Phase A refuses BEFORE the hold — nothing is charged for a voice no render can use.
-  const apiKey = process.env.HEYGEN_API_KEY?.trim();
-
-  const body = (await req.json().catch(() => ({}))) as { text?: string; audioUrl?: string; faceUrl?: string; orientation?: 'landscape' | 'vertical' | 'square'; gender?: 'female' | 'male'; chargeToken?: unknown };
-  const cost = creditCostFor('avatar');
-
-  // ── PHASE A — synthesize the line in the CLONED Georgian voice → public mp3 url.
-  // TTS only (no HeyGen calls here), so it stays ~4s — comfortably under 60s.
-  if (!body.audioUrl) {
-    const text = typeof body.text === 'string' ? body.text.trim() : '';
-    if (!text) return NextResponse.json({ success: false, error: 'text is required' }, { status: 400 });
-    if (!apiKey) return NextResponse.json({ success: false, error: 'HeyGen not configured', code: 'heygen_not_configured' }, { status: 503 });
-    // HOLD the price before the TTS. The hold token handed back lets the NEXT phase (the HeyGen submit) release it as it
-    // reserves its own render — so one presenter costs one avatar price, and a TTS whose render is never started stays
-    // paid for.
-    const hold = await reservePresenter(userId, 'presenter-tts');
-    if (!hold.ok) return hold.res;
-    // Honour the caller's Female/Male choice via the cloned-voice map; falls back to
-    // the female clone when unspecified.
-    const gender = body.gender === 'male' ? 'male' : 'female';
-    const audioUrl = await textToHostedSpeech(text.slice(0, 1500), georgianVoiceId(gender)).catch(() => null);
-    if (!audioUrl) {
-      if (userId && hold.ref) await refundDebitByRef(userId, hold.ref, cost).catch(() => null);
-      return NextResponse.json({ success: false, error: 'voice synthesis failed (no cloned-voice audio)' }, { status: 502 });
-    }
-    // The hold is bound to THIS audio (lib/billing/avatarCharge holdReleasableFor): only a render of exactly this
-    // file, on the presenter face, may release it — never one the caller can make fail on purpose.
-    const chargeToken = userId && hold.ref ? signAvatarCharge({ k: 'presenter-hold', u: userId, r: hold.ref, j: null, a: audioFingerprint(audioUrl) }) : null;
-    // heygenReady is always true here now (Phase A refuses without a key); kept for clients that still read it.
-    return NextResponse.json({ success: true, phase: 'synthesized', audioUrl, heygenReady: !!apiKey, voiceProvider: 'elevenlabs:cloned-ka', ...(chargeToken ? { chargeToken } : {}) });
-  }
-
-  // ── PHASE B — drive the default presenter face with the hosted audio via HeyGen's
-  // talking_photo path (upload + submit, both internally timeout-bounded → fast).
-  // A Phase B without a key (a key removed between the phases) refuses here; nothing was reserved for it yet.
-  if (!apiKey) return NextResponse.json({ success: false, error: 'HeyGen not configured', code: 'heygen_not_configured' }, { status: 503 });
-  const audioUrl = body.audioUrl;
-  const faceUrl = body.faceUrl && /^https?:\/\//.test(body.faceUrl) ? body.faceUrl : DEFAULT_FACE_URL;
-
-  // Release Phase A's hold, then reserve THIS render. Release-then-reserve (never "adopt"): a hold token replayed
-  // N times releases once — refundDebitByRef is net-capped by the ledger — while every HeyGen render still reserves
-  // its own price. Releasing first also means a user whose balance covers exactly one presenter is not refused.
-  // ⚠️ Only toward the render the hold paid the voice for: Phase A's own audio on the default face. A different
-  // `audioUrl` (or a custom face) is a render the caller can make fail — its refund would hand the TTS out free.
-  const holdToken = verifyAvatarCharge(body.chargeToken, 'presenter-hold');
-  if (userId && holdReleasableFor(holdToken, userId, { audioUrl, faceUrl })) await refundDebitByRef(userId, holdToken.r, cost).catch(() => null);
-  const reserve = await reservePresenter(userId, 'presenter');
-  if (!reserve.ok) return reserve.res;
-  const chargeRef = reserve.ref;
-  // Every exit below without a videoId means HeyGen rendered nothing for this reservation → give it back.
-  const fail = async (payload: Record<string, unknown>, status: number): Promise<NextResponse> => {
-    if (userId && chargeRef) await refundDebitByRef(userId, chargeRef, cost).catch(() => null);
-    return NextResponse.json(payload, { status });
-  };
-
-  try {
-    // Resolve a talking_photo_id SCOPED to a dedicated presenter face — never an arbitrary
-    // shared-account photo (audit HIGH cross-tenant leak):
-    //   1) PRESENTER_TALKING_PHOTO_ID env — a dedicated pinned presenter photo (the real fix)
-    //   2) cached default-face upload from this warm instance
-    //   3) upload the canonical DEFAULT_FACE_URL placeholder (or the caller's OWN faceUrl) — never
-    //      another user's photo. We do NOT enumerate the shared account's talking_photo.list.
-    const pinnedPhotoId = process.env.PRESENTER_TALKING_PHOTO_ID?.trim() || null;
-    // ⚠️ The warm-instance cache holds the DEFAULT face only. It used to cache whatever was uploaded — a caller's own
-    // faceUrl included — so the next caller on that instance was rendered with someone else's face.
-    const customFace = faceUrl !== DEFAULT_FACE_URL;
-    let talkingPhotoId = pinnedPhotoId || (customFace ? null : cachedTalkingPhotoId);
-    if (!talkingPhotoId) {
-      // A caller's faceUrl is a caller-chosen address: public only, redirects re-checked, an image, capped
-      // (lib/web/publicFetch). The error names no status — it used to echo the target's HTTP status, a port scanner.
-      let faceBytes: Uint8Array<ArrayBuffer> | null = null;
-      let faceMime = 'image/jpeg';
-      if (customFace) {
-        const face = await fetchPublicBytes(faceUrl, { maxBytes: 10 * 1024 * 1024, accept: /^image\//, timeoutMs: 15_000 });
-        if (face.ok) { faceBytes = new Uint8Array(face.bytes.byteLength); faceBytes.set(face.bytes); faceMime = face.contentType; }
-      } else {
-        const faceRes = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
-        if (faceRes?.ok) { faceMime = faceRes.headers.get('content-type') || faceMime; faceBytes = new Uint8Array(await faceRes.arrayBuffer()); }
-      }
-      if (!faceBytes?.byteLength) return fail({ success: false, error: 'presenter face unreachable' }, 502);
-      const tpRes = await fetch('https://upload.heygen.com/v1/talking_photo', {
-        method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': faceMime }, body: faceBytes, signal: AbortSignal.timeout(30_000),
-      }).catch(() => null);
-      const tpText = tpRes ? await tpRes.text().catch(() => '') : '';
-      if (!tpRes || !tpRes.ok) return fail({ success: false, error: `HeyGen talking_photo ${tpRes?.status ?? 'timeout'}`, detail: tpText.slice(0, 300) }, 502);
-      try { talkingPhotoId = JSON.parse(tpText)?.data?.talking_photo_id ?? null; } catch { talkingPhotoId = null; }
-    }
-    if (!talkingPhotoId) return fail({ success: false, error: 'no dedicated presenter photo available — set PRESENTER_TALKING_PHOTO_ID' }, 502);
-    // Cache ONLY a self-provisioned default-face upload; a pinned env id is already stable.
-    if (!pinnedPhotoId && !customFace) cachedTalkingPhotoId = talkingPhotoId;
-
-    // 2) Generate the audio-driven video. Capture HeyGen's actual reply.
-    const dimension = body.orientation === 'vertical'
-      ? { width: 720, height: 1280 }
-      : body.orientation === 'square'
-        ? { width: 720, height: 720 }
-        : { width: 1280, height: 720 };
-    const genRes = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
-      method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ video_inputs: [{ character: { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: body.orientation === 'square' ? 'square' : 'normal' }, voice: { type: 'audio', audio_url: audioUrl } }], dimension }),
-      signal: AbortSignal.timeout(20_000),
-    }).catch(() => null);
-    const genText = genRes ? await genRes.text().catch(() => '') : '';
-    if (!genRes || !genRes.ok) return fail({ success: false, error: `HeyGen generate ${genRes?.status ?? 'timeout'}`, detail: genText.slice(0, 300) }, 502);
-    const videoId = (() => { try { const j = JSON.parse(genText); return j?.data?.video_id ?? j?.video_id ?? null; } catch { return null; } })();
-    if (!videoId || typeof videoId !== 'string') return fail({ success: false, error: 'HeyGen generate: no video_id', detail: genText.slice(0, 300) }, 502);
-
-    // The charge token rides INSIDE videoId (lib/billing/avatarCharge): the client polls `?id=<videoId>` verbatim,
-    // so the GET learns the job is paid without any client change — and never deducts it a second time.
-    if (!userId || !chargeRef) return NextResponse.json({ success: true, videoId, audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
-    const chargeToken = signAvatarCharge({ k: 'presenter', u: userId, r: chargeRef, j: videoId });
-    if (!chargeToken) {
-      // Unreachable while signing was ready at reserve time; if it ever happens, the bare id is charged by the
-      // GET's legacy deduct, so the reservation must go back or the render is billed twice.
-      if (chargeRef) await refundDebitByRef(userId, chargeRef, cost).catch(() => null);
-      return NextResponse.json({ success: true, videoId, audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
-    }
-    // ⚠️ THE REFUND (AND THE LIBRARY FILING) USED TO LIVE ONLY IN THE BROWSER'S POLL: close the tab mid-render and a
-    // failed presenter kept its reservation forever. The durable row — the id the GET's success write uses — carries
-    // `_settle`, so the cron asks HeyGen for the verdict and delivers or refunds (same ref, idempotent with the GET).
-    const filed = await createJob({
-      id: `presenter:${videoId}`, userId, serviceType: 'film', status: 'processing',
-      params: { subtype: 'presenter', ...settleParams({ kind: 'presenter', job: `heygen:${videoId}`, ref: chargeRef, credits: cost }) },
-    });
-    if (!filed) reportError(new Error('presenter settle row not filed'), { route: 'heygen.presenter', ref: chargeRef });
-    return NextResponse.json({ success: true, videoId: withChargeToken(videoId, chargeToken), chargeToken, audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
-  } catch {
-    return fail({ success: false, error: 'presenter start failed' }, 500);
-  }
+  return refuseOutsideEngine(req);
 }
 
 /**

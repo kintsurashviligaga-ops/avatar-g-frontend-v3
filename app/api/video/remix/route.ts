@@ -6,9 +6,10 @@
  *   captions   — burn a title / caption lower-third onto it (ffmpeg overlay)
  *   voiceover  — synthesize AI narration and mix it under the audio (ffmpeg)
  *   music      — lay an uploaded track over the video (replace or duck-mix)
- *   redub      — lip-sync the speaker to new TTS text or an uploaded track (Wav2Lip)
- *   restyle    — re-imagine the look: keyframe → image restyle → i2v re-animate
- *   character  — replace / insert a character: keyframe → character swap → i2v
+ *   productad, color_grade, speed, stabilize, watermark — Veo and local ffmpeg ops
+ *
+ * redub, restyle, character and background_remove ran on outside engines (lip-sync, NanoBanana + Kling, roop) and are
+ * refused (503 google_only) since MASTER TASK v3.1.
  *
  * Every op is STRICTLY fail-open: a miss returns { url: null, error } and the
  * client keeps the original. The actual wallet charge is unchanged (the client
@@ -21,14 +22,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, addWatermark, roopFaceSwapVideo, fitImageToAspect, fitAspect, type GradeStyle } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, kenBurnsClip, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, addWatermark, fitImageToAspect, type GradeStyle } from '@/lib/video/remixOps';
 import { renderVeoClipSync } from '@/lib/ai/veoClipSync';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
-import { generateNanoBananaImage } from '@/lib/nanobanana/client';
-import { promptToEnglish } from '@/lib/ai/promptToEnglish';
-import { filmLipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
@@ -50,8 +48,8 @@ import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-// 600s: roop video face-swap (the character op's primary path) can run several minutes on
-// longer clips; the other ops finish in seconds. Bounded under Vercel's ceiling.
+// 600s: the product ad waits for its Veo render in this request; the other ops finish in seconds. Bounded under
+// Vercel's ceiling.
 export const maxDuration = 600;
 
 const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
@@ -71,26 +69,6 @@ const ok = (url: string | null, extra: Record<string, unknown> = {}) => NextResp
 const fail = (error: string) => NextResponse.json({ url: null, error });
 /** The remix ops with no Google / ElevenLabs engine (MEDIA_GOOGLE_ONLY refuses them). */
 const OUTSIDE_ENGINE_OPS = new Set(['restyle', 'character', 'background_remove', 'redub']);
-
-// Lip-sync (Wav2Lip) create + bounded poll — the redub op's engine.
-async function runLipsync(videoUrl: string, audioUrl: string): Promise<string | null> {
-  // Redub lip-syncs an existing VIDEO master to new audio. SadTalker/HeyGen
-  // (lipsyncCreate) are TALKING-PHOTO engines — they take a still IMAGE, so feeding
-  // them a video silently fails ("Lip-sync is unavailable right now"). The correct
-  // engine for a video→audio relip is sync/lipsync-2 (filmLipsyncCreate), which takes
-  // { video, audio }. lipsyncFetch already polls its "sync:<id>" jobs.
-  const id = await filmLipsyncCreate(videoUrl, audioUrl).catch(() => null);
-  if (!id) return null;
-  const deadline = Date.now() + 240_000;
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 4_000));
-    const s = await lipsyncFetch(id).catch(() => null);
-    if (!s) continue;
-    if (s.status === 'succeeded' && s.url) return s.url;
-    if (s.status === 'failed' || s.status === 'canceled') return null;
-  }
-  return null;
-}
 
 // FIX 3 — preset-appropriate background score for a SINGLE-clip product ad, hosted to a
 // fetchable URL. (Multi-clip ads already get a music bed from /api/video/assemble.)
@@ -142,13 +120,10 @@ export async function POST(req: NextRequest) {
   if (body.characterRef === undefined && p.characterRef !== undefined) body.characterRef = p.characterRef;
   if (body.factor === undefined && p.factor !== undefined) body.factor = p.factor;
 
-  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): these four ops reach outside engines (NanoBanana + Kling, roop, sync
-  // lip-sync), so the switch refuses them here, before the charge. The ffmpeg ops, ElevenLabs voiceover / music and the
-  // Veo product ad still run. Off (the default) → no-op.
-  if (OUTSIDE_ENGINE_OPS.has(op)) {
-    const outside = refuseOutsideEngine(req);
-    if (outside) return outside;
-  }
+  // These four ops ran on outside engines (NanoBanana + Kling, roop, sync lip-sync) with no Google engine: refused here,
+  // before the charge, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The ffmpeg ops, ElevenLabs voiceover / music
+  // and the Veo product ad run.
+  if (OUTSIDE_ENGINE_OPS.has(op)) return refuseOutsideEngine(req);
     // Admin service switch (lib/server/serviceSwitches): the op names the tool — product ad, character swap, or touch-up.
     const serviceOff = await serviceOffResponse(op === 'productad' ? 'product' : op === 'character' ? 'swap' : 'remix');
     if (serviceOff) return serviceOff;
@@ -576,15 +551,6 @@ export async function POST(req: NextRequest) {
         return url ? await finishOk(url) : failRefund('Adding the music failed.');
       }
 
-      case 'redub': {
-        // Audio source: synthesized from text in the chosen voice, or an upload.
-        const uploaded = await resolveMedia(body.audioUrl, remixUid);
-        const audioUrl = uploaded || (text ? await textToHostedSpeech(text, georgianVoiceId(gender)) : null);
-        if (!audioUrl) return failRefund('Add redub text or an audio track.', 'no-audio');
-        const url = await runLipsync(videoUrl, audioUrl);
-        return url ? await finishOk(url) : failRefund('Lip-sync is unavailable right now.');
-      }
-
       case 'color_grade': {
         const g = String(body.grade ?? '');
         const grade = (['vintage', 'neon', 'noir', 'dramatic'].includes(g) ? g : 'cinematic') as GradeStyle;
@@ -619,91 +585,6 @@ export async function POST(req: NextRequest) {
       case 'watermark': {
         const url = await addWatermark(videoUrl);
         return url ? ok(url) : fail('ვოთერმარკის დადება ვერ მოხერხდა.');
-      }
-
-      case 'restyle':
-      case 'character':
-      case 'background_remove': {
-        // Anchor frame → image model (restyle / character swap / bg removal) → re-animate.
-        const frame = await extractFrame(videoUrl, 0.5);
-        if (!frame) return failRefund('ვიდეოდან კადრის წაკითხვა ვერ მოხერხდა.', 'frame-read');
-        // TASK 1 — character swap with an UPLOADED PHOTO.
-        const swapPhoto = op === 'character' ? await resolveMedia(body.characterRef, remixUid) : null;
-        // A swap photo → roop video face-swap: the SAME video with the face replaced throughout, motion preserved.
-        // ⚠️ NO SILENT SWITCH (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). A roop miss used to
-        // fall through to the keyframe path below: two other outside engines (NanoBanana, then Kling) making a different
-        // product — a fresh ~5s clip from one frame, the original motion gone — for the same 15 credits. It now refunds.
-        if (op === 'character' && swapPhoto) {
-          const swapped = await roopFaceSwapVideo(videoUrl, swapPhoto);
-          if (swapped) return await finishOk(swapped, { method: 'faceswap' });
-          return failRefund('სახის შეცვლა ვერ მოხერხდა.', 'faceswap-miss');
-        }
-        // ⚠️ TRANSLATED HERE AND NOWHERE ELSE IN THIS ROUTE, AND THE SCOPE IS THE WHOLE POINT.
-        // On these three ops `text` is a DESCRIPTION of what to generate — the replacement
-        // character, the new visual style, the backdrop to substitute — and it goes to
-        // generateNanoBananaImage and then klingI2v, both trained overwhelmingly on English.
-        // A Georgian description arrived as noise, the model fell back to its priors, and the
-        // user got a competent-looking person or style with no relationship to what they asked
-        // for. Two callers feed Georgian straight in: the Remix panel's `remixText` and, worse,
-        // OmniStudio's chat path, which forwards the RAW user message as `text` for whatever op
-        // /api/video/remix-intent classified.
-        //
-        // The SAME `text` (parsed once above) is SPOKEN verbatim by `voiceover` and `redub` and
-        // BURNED onto the frame by `captions`. Translating it there would replace the user's own
-        // content with a translation of it, so this deliberately introduces a new local instead of
-        // reassigning `text`.
-        //
-        // FAIL-OPEN and usually free: promptToEnglish returns Latin-script input unchanged with no
-        // network call, and returns the ORIGINAL on any error, missing key or timeout. It also runs
-        // only AFTER the roop early-return above, so the primary face-swap path pays nothing.
-        const editText = text ? await promptToEnglish(text, 'image') : '';
-        const editPrompt =
-          op === 'restyle'
-            ? `Restyle this exact scene: ${editText || 'cinematic, film-grade color grade'}. Keep the composition and subjects, change only the visual style.`
-            : op === 'background_remove'
-              ? `Remove the background behind the subject and replace it with ${editText || 'a clean, plain neutral studio backdrop'}. Keep the subject exactly as-is.`
-              : `${editText || 'replace the main character with a new person'}. Keep the background, framing and lighting; change the character${swapPhoto ? ' to the reference person, preserving their face and identity' : ' to match this description'}.`;
-        const styled = await generateNanoBananaImage({
-          prompt: editPrompt,
-          referenceImageDataUrl: frame,
-          aspectRatio: aspect,
-        }).catch(() => null);
-        // ⚠️ A MISSED EDIT IS A FAILURE, NOT THE ORIGINAL FRAME RE-ANIMATED. The start image used to fall back to the frame, sending the
-        // UNCHANGED frame on to Kling, so a restyle / background swap / character change that never happened came back as
-        // a "reanimated" clip of the original, charged in full and labelled as done.
-        if (!styled?.url) return failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : op === 'background_remove' ? 'ფონის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.', 'edit-miss');
-        const startImage = styled.url;
-        // Same brief, same English-only engine (Kling). Reuses editText so the translation costs
-        // one call, not two; the English defaults are unchanged when the user typed nothing.
-        const motionPrompt = op === 'restyle' ? (editText || 'cinematic motion') : (editText || 'natural character motion');
-        // Premium i2v if a token is set, else a guaranteed Ken-Burns animation so the
-        // user ALWAYS gets a moving, restyled clip. The swap photo (if any) rides along as
-        // the kling identity reference.
-        // ⚠️ THESE TWO OUTCOMES ARE NOT THE SAME PRODUCT, AND BOTH USED TO REPORT PLAIN SUCCESS.
-        // klingI2v re-animates; kenBurnsClip is a slow pan over a STILL. A user who asked to restyle
-        // their video and receives a 5-second pan over one frame has not received a lesser version of
-        // what they asked for — they have received a different thing entirely, and nothing said so.
-        // Likewise for `character`: the roop path above swaps the face THROUGHOUT the original video
-        // with its motion intact, while this path generates a fresh ~5s clip from a single frame,
-        // because Kling is i2v-only. The engine that actually ran is now named in the response.
-        const animated = await klingI2v(startImage, motionPrompt, aspect, swapPhoto ? [swapPhoto] : undefined);
-        const url = animated || (await kenBurnsClip(startImage, 5, aspect));
-        if (!url) return failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.');
-        // ⚠️ SAME CHARGE, DIFFERENT PRODUCT — SO DO NOT CHARGE. The comment above already says these two
-        // outcomes "are not the same product": klingI2v re-animates, kenBurnsClip pans over one still.
-        // Naming the engine in the response fixed the honesty of the label but not the invoice — the
-        // 15-credit charge stood either way, because a Ken-Burns url is still a url. It does not stand
-        // any more. The pan still ships; it is just free.
-        if (!animated) await refundCharge('fallback-kenburns');
-        const method = animated ? 'reanimated' : 'stillPan';
-        // Kling v2.1 (the locked default) infers the output ratio from the START IMAGE and IGNORES
-        // aspect_ratio (remixOps only sets it for v1.6). So a requested aspect that differs from the
-        // source frame is silently dropped. Post-fit to the requested aspect, mirroring the
-        // Motion Control path. Fail-open: keep the raw clip if the fit itself misses.
-        const fitted = await fitAspect(url, aspect).catch(() => null);
-        // Fail-open keeps the clip — correct — but the requested aspect was then silently dropped and
-        // the card went on displaying it as though it had been honoured. Report what shipped.
-        return await finishOk(fitted || url, { still: styled.url, method, aspectApplied: Boolean(fitted) });
       }
 
       default:

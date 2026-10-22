@@ -2,6 +2,7 @@
 /**
  * The Georgian song's instrumental bed runs ONE engine (the owner, 2026-10-09: no silent fallback to another outside
  * provider): ElevenLabs Music when its key is present, and its miss is a miss, never a MusicGen (Replicate) render.
+ * Without the key there is no bed at all: MusicGen has no Google engine (MASTER TASK v3.1), whatever MEDIA_GOOGLE_ONLY says.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('ffmpeg-static', () => null);
@@ -39,11 +40,21 @@ it('ElevenLabs configured and it lands → its hosted bed', async () => {
   expect(generateMusic).not.toHaveBeenCalled();
 });
 
-it('no ElevenLabs key → MusicGen is the configured engine', async () => {
-  hasElevenLabsMusicKey.mockReturnValue(false);
-  generateMusic.mockResolvedValue({ audioUrl: 'https://replicate.delivery/x.mp3' });
-  await expect(instrumentalBed('funk', 30)).resolves.toBe('https://replicate.delivery/x.mp3');
-});
+it.each([{}, { MEDIA_GOOGLE_ONLY: '0' }, { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' }])(
+  'no ElevenLabs key (env %o) → no bed, and MusicGen is never called',
+  async (env) => {
+    const saved = { ...process.env };
+    Object.assign(process.env, env);
+    try {
+      hasElevenLabsMusicKey.mockReturnValue(false);
+      generateMusic.mockResolvedValue({ audioUrl: 'https://replicate.delivery/x.mp3' });
+      await expect(instrumentalBed('funk', 30)).resolves.toBeNull();
+      expect(generateMusic).not.toHaveBeenCalled();
+    } finally {
+      process.env = saved;
+    }
+  },
+);
 
 describe('the Georgian song is written FROM THE BRIEF (it was one fixed funk template for every request)', () => {
   const brief = 'სიმღერა ჩემს ბებიაზე, რომელიც რაჭაში ცხოვრობს, ხალხური';

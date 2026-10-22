@@ -1,14 +1,13 @@
 /** @jest-environment node */
 /**
- * POST /api/nanobanana/image — the client's `style` is bounded before it reaches the paid prompt, and only a KNOWN
- * label is forwarded as the provider's own `style` field (lib/studio/style.ts).
+ * POST /api/nanobanana/image — the client's `style` is bounded before it reaches the paid prompt (lib/studio/style.ts).
  *
  * ⚠️ The route did `STYLE_SUFFIXES[label] ?? label`: unknown text was appended to the render prompt verbatim (any
  * length, newlines, bidi overrides) AND forwarded raw as NanoBanana's `style` parameter; an inherited key like
- * 'constructor' "matched" and appended a function's source. Pinned at the arguments NanoBanana receives. The
- * NanoBanana leg throws, so the request ends on the 502-refund path (it is the route's only engine — no Grok / FLUX
- * fallback, PROJECT_MASTER R7): no fetch, no re-host, no spend — every provider, the ledger and the idempotency store
- * are mocked.
+ * 'constructor' "matched" and appended a function's source. Pinned at the arguments Google's image model receives (the
+ * route's one engine, MASTER TASK v3.1): the style lives only in the prompt, there is no separate style field. The
+ * engine misses, so the request ends on the 502-refund path: no fetch, no re-host, no spend — the engine, the ledger and
+ * the idempotency store are mocked.
  */
 jest.mock('server-only', () => ({}));
 
@@ -18,18 +17,20 @@ jest.mock('../../../../lib/api/guard', () => ({
 }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/nanobanana/client', () => ({
-  generateNanoBananaImage: jest.fn(async () => { throw new Error('nanobanana stopped by the test'); }),
+jest.mock('../../../../lib/ai/geminiImage', () => ({
+  generateGeminiImage: jest.fn(async () => null),
+  geminiFrameModel: jest.fn(() => 'gemini-3.1-flash-image'),
 }));
-jest.mock('../../../../lib/ai/xaiImage', () => ({ generateGrokImage: jest.fn(async () => null) }));
-jest.mock('../../../../lib/ai/fluxImage', () => ({ generateFluxProImage: jest.fn(async () => null) }));
+jest.mock('../../../../lib/services/billing/budgetCheck', () => ({ platformBudgetRefusal: jest.fn(async () => null) }));
+jest.mock('../../../../lib/services/billing/guardedCall', () => {
+  class BudgetExceededError extends Error {}
+  return { BudgetExceededError, guardedCall: jest.fn(async (_meta: unknown, fn: () => Promise<unknown>) => fn()) };
+});
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedAsset: jest.fn() }));
 jest.mock('../../../../lib/audio/voiceModel', () => ({ DEMO_VOICE_USER_ID: 'demo' }));
 jest.mock('../../../../lib/orchestrator/idempotency', () => ({
-  isProviderTripped: jest.fn(async () => false),
-  recordProviderResult: jest.fn(async () => undefined),
   claimIdempotencyKey: jest.fn(async () => true),
   releaseIdempotencyKey: jest.fn(async () => undefined),
   hashPayload: jest.fn(async () => 'hash'),
@@ -42,9 +43,7 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { generateNanoBananaImage } from '../../../../lib/nanobanana/client';
-import { generateGrokImage } from '../../../../lib/ai/xaiImage';
-import { generateFluxProImage } from '../../../../lib/ai/fluxImage';
+import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
 import { hashPayload } from '../../../../lib/orchestrator/idempotency';
 import { refundCredits } from '../../../../lib/orchestrator/ledger';
 
@@ -67,20 +66,17 @@ beforeEach(() => {
 });
 afterEach(() => fetchSpy.mockRestore());
 
-/** What NanoBanana was handed. */
+/** What Google's image model was handed. */
 async function render(style: unknown): Promise<{ nb: { prompt: string; style?: string } }> {
   const res = await POST(post({ prompt: PROMPT, quality: 'standard', aspectRatio: '1:1', ...(style === undefined ? {} : { style }) }));
-  expect(res.status).toBe(502); // NanoBanana was made to miss, and nothing stands behind it
+  expect(res.status).toBe(502); // the engine was made to miss, and nothing stands behind it
   expect(refundCredits).toHaveBeenCalledTimes(1);
   expect(fetchSpy).not.toHaveBeenCalled();
-  expect(generateNanoBananaImage).toHaveBeenCalledTimes(1);
-  // R7 — the old prompt-only fallbacks are never reached.
-  expect(generateGrokImage).not.toHaveBeenCalled();
-  expect(generateFluxProImage).not.toHaveBeenCalled();
-  return { nb: (generateNanoBananaImage as jest.Mock).mock.calls[0][0] };
+  expect(generateGeminiImage).toHaveBeenCalledTimes(1);
+  return { nb: (generateGeminiImage as jest.Mock).mock.calls[0][0] };
 }
 
-test('free text is capped at 80 characters, stripped of bidi/zero-width characters and the smuggled line, and NOT forwarded as the provider style', async () => {
+test('free text is capped at 80 characters and stripped of bidi/zero-width characters and the smuggled line', async () => {
   const { nb } = await render(HOSTILE);
   expect(nb.style).toBeUndefined();
   expect(nb.prompt).toBe(`${PROMPT}, ${CLEAN}`);
@@ -89,19 +85,19 @@ test('free text is capped at 80 characters, stripped of bidi/zero-width characte
   expect((hashPayload as jest.Mock).mock.calls[0][0].s).toBe(CLEAN);
 });
 
-test('a known label expands to its directive and is the only thing forwarded as the provider style', async () => {
+test('a known label expands to its directive in the prompt; no separate style field reaches the engine', async () => {
   const { nb } = await render('Anime');
-  expect(nb.style).toBe('Anime');
+  expect(nb.style).toBeUndefined();
   expect(nb.prompt).toBe(`${PROMPT}, anime style, manga, cel shaded, studio ghibli quality, clean line art`);
 });
 
 test('a known label wrapped in invisible characters is still recognised once cleaned', async () => {
   const { nb } = await render('​Oil Painting‬\n');
-  expect(nb.style).toBe('Oil Painting');
+  expect(nb.style).toBeUndefined();
   expect(nb.prompt).toContain('oil painting, brushstrokes');
 });
 
-test.each(['constructor', 'toString', '__proto__'])('an inherited key (%s) is not a known label — no function source in the prompt, no provider style', async (k) => {
+test.each(['constructor', 'toString', '__proto__'])('an inherited key (%s) is not a known label — no function source in the prompt', async (k) => {
   const { nb } = await render(k);
   expect(nb.style).toBeUndefined();
   expect(nb.prompt).toBe(`${PROMPT}, ${k}`);

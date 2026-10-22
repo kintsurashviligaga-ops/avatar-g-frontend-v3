@@ -318,67 +318,14 @@ test('a reference that cannot be signed is 422 reference_unavailable — nothing
   expect(deductCredits).not.toHaveBeenCalled();
 });
 
-// ─── motion — Higgsfield through the studio saga ────────────────────────────────────────────────────────────────
+// ─── motion — Higgsfield, which has no Google engine: refused (MASTER TASK v3.1) ──────────────────────────────────
 
 const VIDEO = { path: mine('v.mp4'), durationSec: 12, sizeBytes: 9_000_000 };
 const MOTION = { op: 'motion', preset: 'fire', video: VIDEO, references: [{ ref: mine('c.jpg'), role: 'character' }, { ref: mine('p.jpg'), role: 'product' }], referencesTotal: 2, confirmedGel: 7.2 };
-const JOB_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
 function saga(create: jest.Mock) {
   (getStudioRuntime as jest.Mock).mockReturnValue({ saga: { create, quote: jest.fn() } });
 }
-
-test('motion: the stored video is MEASURED (not trusted), the saga is given Kling Motion Control\'s input and the confirmed price', async () => {
-  (opStatuses as jest.Mock).mockReturnValue(status({ motion: OPEN }));
-  (verifyStoredVideo as jest.Mock).mockResolvedValue({ ok: true, durationSec: 11.96, sizeBytes: 9_000_000 });
-  const create = jest.fn(async () => ({ ok: true, job: { id: JOB_ID }, price: { credits: 72, gel: 7.2, usd: 2 } }));
-  saga(create);
-  const res = await POST(post(MOTION));
-  expect(res.status).toBe(202);
-  expect(verifyStoredVideo).toHaveBeenCalledWith(`https://signed.example/${VIDEO.path}`);
-  const call = create.mock.calls[0]![0] as { userId: string; modelId: string; params: Record<string, unknown>; confirmedGel: number };
-  expect(call).toMatchObject({ userId: UID, modelId: 'hf/kling-3-motion-std', confirmedGel: 7.2 });
-  // Kling takes ONE image: the first character photo (the product photo is not sent).
-  expect(call.params).toMatchObject({ image_url: `https://signed.example/${mine('c.jpg')}`, video_url: `https://signed.example/${VIDEO.path}`, keep_original_sound: 'yes', character_orientation: 'video' });
-  expect(String(call.params.prompt)).toContain('Fire VFX');
-  expect(await res.json()).toMatchObject({ success: true, op: 'motion', jobId: `hf:${JOB_ID}`, credits: 72, refsUsed: 1, refsTotal: 2, seconds: 12 });
-  // The route itself charged nothing — the saga did.
-  expect(deductCredits).not.toHaveBeenCalled();
-});
-
-test('motion: a video the file proves out of range is refused with the FILE\'s reason, whatever the browser claimed', async () => {
-  (opStatuses as jest.Mock).mockReturnValue(status({ motion: OPEN }));
-  const create = jest.fn();
-  saga(create);
-  for (const code of ['video_duration', 'video_unreadable', 'video_missing', 'video_size']) {
-    (verifyStoredVideo as jest.Mock).mockResolvedValue({ ok: false, code });
-    const res = await POST(post(MOTION));
-    expect(res.status).toBe(422);
-    expect((await res.json()).issues).toEqual([{ path: 'video', code }]);
-  }
-  expect(create).not.toHaveBeenCalled();
-});
-
-test('motion: pro quality runs on the Pro model; the saga\'s own refusals pass through with their codes and the fresh price', async () => {
-  (opStatuses as jest.Mock).mockReturnValue(status({ motion: OPEN }));
-  (verifyStoredVideo as jest.Mock).mockResolvedValue({ ok: true, durationSec: 12, sizeBytes: 9_000_000 });
-  const create = jest.fn(async () => ({ ok: false, code: 'price_changed', price: { credits: 80, gel: 8, usd: 2.2 } }));
-  saga(create);
-  const res = await POST(post({ ...MOTION, quality: 'pro' }));
-  expect((create.mock.calls[0]![0] as { modelId: string }).modelId).toBe('hf/kling-3-motion-pro');
-  expect(res.status).toBe(409);
-  expect(await res.json()).toMatchObject({ error: 'price_changed', price: { credits: 80 } });
-  expect(releaseDailySlot).toHaveBeenCalled();
-});
-
-test('motion with no studio runtime (no Supabase service role) is 503 not_configured — nothing charged', async () => {
-  (opStatuses as jest.Mock).mockReturnValue(status({ motion: OPEN }));
-  (verifyStoredVideo as jest.Mock).mockResolvedValue({ ok: true, durationSec: 12, sizeBytes: 9_000_000 });
-  (getStudioRuntime as jest.Mock).mockReturnValue(null);
-  const res = await POST(post(MOTION));
-  expect(res.status).toBe(503);
-  expect((await res.json()).error).toBe('not_configured');
-});
 
 test('motion without a character photo, or with a video outside 3–30 s, never gets past the contract', async () => {
   (opStatuses as jest.Mock).mockReturnValue(status({ motion: OPEN }));
@@ -396,8 +343,12 @@ test('swap is locked while its model is not registered (423), even with the flag
   expect(res.status).toBe(423);
 });
 
-test('MEDIA_GOOGLE_ONLY: motion (Higgsfield) is refused before the rate limit or the saga; scene (Veo) still renders', async () => {
-  process.env.MEDIA_GOOGLE_ONLY = '1';
+test.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-higgsfield' },
+])('motion (Higgsfield) is refused before the rate limit or the saga, whatever the env says (%o); scene (Veo) still renders', async (env) => {
+  const saved = { ...process.env };
+  Object.assign(process.env, env);
   try {
     (opStatuses as jest.Mock).mockReturnValue(status({ motion: OPEN }));
     const create = jest.fn();
@@ -406,11 +357,13 @@ test('MEDIA_GOOGLE_ONLY: motion (Higgsfield) is refused before the rate limit or
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ code: 'google_only' });
     expect(checkRateLimitByKey).not.toHaveBeenCalled();
+    expect(verifyStoredVideo).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
 
     expect((await POST(post(SCENE))).status).toBe(202);
     expect(submitScene).toHaveBeenCalledTimes(1);
   } finally {
-    delete process.env.MEDIA_GOOGLE_ONLY;
+    process.env = saved;
   }
 });

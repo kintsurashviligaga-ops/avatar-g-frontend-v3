@@ -1,12 +1,12 @@
 /** @jest-environment node */
 /**
- * /api/voice/train — POST is signed-in only, and the session lookup fails CLOSED.
+ * /api/voice/train — a personal RVC voice model (training on Replicate).
  *
- * ⚠️ A guest used to fall back to DEMO_VOICE_USER_ID, so an anonymous POST started a paid Replicate RVC training on
- * the platform's key (and overwrote the shared demo voice). Pinned here: a guest — even with FILM_ALLOW_ANONYMOUS=1 —
- * or an unverifiable session is refused before the body is read, the dataset is built or Replicate is touched; a
- * signed-in caller trains under THEIR OWN id; GET keeps the free demo-status fallback.
- * RVC, the voice-model store and storage are mocked — no network, no spend.
+ * ⚠️ RVC has no Google engine, so every new training is refused with 503 google_only BEFORE the session, the rate limit,
+ * the body, the dataset or Replicate, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The guards that used to stand in
+ * front of it (a guest, FILM_ALLOW_ANONYMOUS=1, an unverifiable session, an internal host, another account's upload) all
+ * end on that same refusal now. GET stays open: it settles a training started before the change, and keeps the free
+ * demo-status fallback for a guest. RVC, the voice-model store and storage are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 
@@ -44,8 +44,9 @@ jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
 import { checkRateLimit } from '../../../../lib/api/rate-limit';
-import { prepareDatasetZip, startRvcTraining, rvcNameFor } from '../../../../lib/audio/rvc';
-import { saveTrainingJob, getLatestTraining } from '../../../../lib/audio/voiceModel';
+import { prepareDatasetZip, startRvcTraining, rvcNameFor, pollRvcPrediction, rehostModel } from '../../../../lib/audio/rvc';
+import { saveTrainingJob, getLatestTraining, markTrainingDone } from '../../../../lib/audio/voiceModel';
+import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { createSignedAssetUrl, uploadAndSign } from '../../../../lib/orchestrator/storage-adapter';
 
 const rateMock = checkRateLimit as jest.MockedFunction<typeof checkRateLimit>;
@@ -67,22 +68,25 @@ const post = (body: unknown, headers: Record<string, string> = {}) =>
     body: JSON.stringify(body),
   });
 
+const ENV = { ...process.env };
 let fetchSpy: jest.SpyInstance;
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockUser = null;
   lookupThrows = false;
-  delete process.env.FILM_ALLOW_ANONYMOUS;
   fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 });
 
 afterEach(() => {
   fetchSpy.mockRestore();
-  delete process.env.FILM_ALLOW_ANONYMOUS;
+  process.env = { ...ENV };
 });
 
 function expectNothingStarted() {
+  expect(authedClientFromRequest).not.toHaveBeenCalled();
+  expect(rateMock).not.toHaveBeenCalled();
+  expect(nameMock).not.toHaveBeenCalled();
   expect(datasetMock).not.toHaveBeenCalled();
   expect(trainMock).not.toHaveBeenCalled();
   expect(saveMock).not.toHaveBeenCalled();
@@ -91,75 +95,47 @@ function expectNothingStarted() {
   expect(fetchSpy).not.toHaveBeenCalled();
 }
 
-test('a guest is refused (401 auth_required) and Replicate is never called', async () => {
-  const res = await POST(post({ voiceReference: VOICE }));
-  expect(res.status).toBe(401);
-  expect(await res.json()).toMatchObject({ success: false, error: 'auth_required', authRequired: true });
+async function expectRefused(res: Response) {
+  expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ success: false, url: null, jobId: null, code: 'google_only', error: 'google_only' });
   expectNothingStarted();
+}
+
+describe.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0' },
+  { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' },
+])('env %p — a new training is refused before anything runs', (env) => {
+  beforeEach(() => { Object.assign(process.env, env); });
+
+  test('a signed-in caller with a valid recording', async () => {
+    mockUser = { id: USER_ID };
+    await expectRefused(await POST(post({ voiceReference: VOICE })));
+  });
+
+  test('a guest, even with FILM_ALLOW_ANONYMOUS=1 (no shared demo voice is trained)', async () => {
+    process.env.FILM_ALLOW_ANONYMOUS = '1';
+    await expectRefused(await POST(post({ voiceReference: VOICE })));
+  });
+
+  test('a session lookup that would throw', async () => {
+    lookupThrows = true;
+    await expectRefused(await POST(post({ voiceReference: VOICE })));
+  });
+
+  test.each([
+    'http://169.254.169.254/latest/meta-data/',
+    'omni-uploads/someone-else/voice.mp3',
+  ])('a recording the old guards refused (%s) — nothing is fetched or signed', async (voiceReference) => {
+    mockUser = { id: USER_ID };
+    await expectRefused(await POST(post({ voiceReference })));
+  });
 });
 
-test('the refusal speaks the caller\'s language (Accept-Language)', async () => {
-  const res = await POST(post({ voiceReference: VOICE }, { 'accept-language': 'en-US,en;q=0.9' }));
-  expect(res.status).toBe(401);
-  expect((await res.json()).message).toMatch(/^Sign in/);
-});
-
-test('FILM_ALLOW_ANONYMOUS=1 does NOT re-open training — no shared demo voice is trained', async () => {
-  process.env.FILM_ALLOW_ANONYMOUS = '1';
-  const res = await POST(post({ voiceReference: VOICE }));
-  expect(res.status).toBe(401);
-  expectNothingStarted();
-  expect(nameMock).not.toHaveBeenCalledWith('demo-voice-user');
-});
-
-test('a session lookup that throws is refused (401), not trained under the demo identity', async () => {
-  lookupThrows = true;
-  const res = await POST(post({ voiceReference: VOICE }));
-  expect(res.status).toBe(401);
-  expectNothingStarted();
-});
-
-test('the IP rate limit still runs first', async () => {
-  rateMock.mockResolvedValueOnce(new Response('{}', { status: 429 }) as never);
-  mockUser = { id: USER_ID };
-  const res = await POST(post({ voiceReference: VOICE }));
-  expect(res.status).toBe(429);
-  expectNothingStarted();
-});
-
-test('a signed-in caller trains under their own id, never the demo one', async () => {
-  mockUser = { id: USER_ID };
-  const res = await POST(post({ voiceReference: VOICE }));
-  expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ success: true, jobId: 'pred-123', status: 'processing' });
-  expect(nameMock).toHaveBeenCalledWith(USER_ID);
-  expect(datasetMock).toHaveBeenCalledWith(VOICE, `rvc_${USER_ID.slice(0, 8)}`);
-  expect(trainMock).toHaveBeenCalledTimes(1);
-  expect(saveMock).toHaveBeenCalledWith(USER_ID, 'pred-123', `rvc_${USER_ID.slice(0, 8)}`);
-});
-
-test.each([
-  'http://127.0.0.1/voice.mp3',
-  'http://169.254.169.254/latest/meta-data/',
-  'http://localhost:3000/voice.mp3',
-  'http://10.0.0.7/voice.mp3',
-])('a signed-in caller cannot point the server fetch at an internal host (%s)', async (url) => {
-  mockUser = { id: USER_ID };
-  const res = await POST(post({ voiceReference: url }));
-  expect(res.status).toBe(400);
-  expectNothingStarted();
-});
-
-test('a bare storage path must be the caller’s own upload: another account’s recording is refused, never signed', async () => {
-  mockUser = { id: USER_ID };
-  for (const p of ['omni-uploads/someone-else/voice.mp3', 'someone-else/voice.mp3', 'audio-studio/1-a.mp3']) {
-    const res = await POST(post({ voiceReference: p }));
-    expect(res.status).toBe(403);
-  }
-  expect(createSignedAssetUrl).not.toHaveBeenCalled();
-  expectNothingStarted();
-  await POST(post({ voiceReference: `omni-uploads/${USER_ID}/voice.mp3` }));
-  expect(createSignedAssetUrl).toHaveBeenCalledWith('uploads', `omni-uploads/${USER_ID}/voice.mp3`, 3600);
+test('the refusal speaks the caller\'s language', async () => {
+  const res = await POST(post({ voiceReference: VOICE }, { cookie: 'NEXT_LOCALE=en' }));
+  expect(res.status).toBe(503);
+  expect((await res.json()).message).toMatch(/^This tool is paused/);
 });
 
 test('GET keeps the demo fallback for a guest (a free status poll)', async () => {
@@ -170,16 +146,14 @@ test('GET keeps the demo fallback for a guest (a free status poll)', async () =>
   expect(trainMock).not.toHaveBeenCalled();
 });
 
-test('MEDIA_GOOGLE_ONLY: a new training is refused before the session, the limit or Replicate; the status GET stays open', async () => {
-  process.env.MEDIA_GOOGLE_ONLY = '1';
-  try {
-    mockUser = { id: USER_ID };
-    const res = await POST(post({ voiceReference: VOICE }));
-    expect(res.status).toBe(503);
-    expect(await res.json()).toMatchObject({ code: 'google_only' });
-    expect(rateMock).not.toHaveBeenCalled();
-    expectNothingStarted();
-  } finally {
-    delete process.env.MEDIA_GOOGLE_ONLY;
-  }
+test('GET settles a training started before the change: a finished model is copied to permanent storage', async () => {
+  mockUser = { id: USER_ID };
+  latestMock.mockResolvedValueOnce({ id: 'pred-old', status: 'processing', name: 'rvc_11111111' } as never);
+  (pollRvcPrediction as jest.Mock).mockResolvedValueOnce({ status: 'succeeded', modelUrl: 'https://replicate.delivery/m.zip' });
+  (rehostModel as jest.Mock).mockResolvedValueOnce('https://x.supabase.co/models/m.zip');
+  const res = await GET(new NextRequest('https://myavatar.ge/api/voice/train'));
+  expect(await res.json()).toEqual({ status: 'completed', name: 'rvc_11111111' });
+  expect(latestMock).toHaveBeenCalledWith(USER_ID);
+  expect(markTrainingDone).toHaveBeenCalledWith('pred-old', 'https://x.supabase.co/models/m.zip');
+  expect(trainMock).not.toHaveBeenCalled();
 });

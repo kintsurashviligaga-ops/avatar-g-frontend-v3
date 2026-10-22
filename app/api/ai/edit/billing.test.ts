@@ -1,8 +1,10 @@
 /** @jest-environment node */
 /**
- * POST /api/ai/edit (inpaint) — the generative object-removal is refused (503) when the ledger DEFINITIVELY failed.
- * Before: the code said so itself — "a 'skipped' (RPC absent) or transient 'error' degrades to proceeding" — so a
- * ledger outage made every inpaint free. Every provider, ffmpeg op and the ledger are mocked — no network, no spend.
+ * POST /api/ai/edit (inpaint) — the generative object-removal ran on a Replicate masked-inpaint model, which has no Google
+ * engine. It is refused with 503 google_only right after the action check, before the guard, the ledger or any model,
+ * whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1); the fail-closed charge it used to pin went with the code. The
+ * deterministic ffmpeg actions still reach their guard. Every provider, ffmpeg op and the ledger are mocked — no network,
+ * no spend.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../lib/api/generationGuard', () => ({
@@ -36,41 +38,45 @@ import { createPrediction } from '../../../../lib/replicate/client';
 import { guardGeneration } from '../../../../lib/api/generationGuard';
 
 const ENV = { ...process.env };
-const post = () => POST(new NextRequest('https://myavatar.ge/api/ai/edit', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ action: 'inpaint', mediaUrl: 'user-1/photo.png', maskUrl: 'data:image/png;base64,AAAA', prompt: 'remove the cup' }),
-}));
+const post = (body: Record<string, unknown> = { action: 'inpaint', mediaUrl: 'user-1/photo.png', maskUrl: 'data:image/png;base64,AAAA', prompt: 'remove the cup' }) =>
+  POST(new NextRequest('https://myavatar.ge/api/ai/edit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
 
 beforeEach(() => {
   jest.clearAllMocks();
   process.env = { ...ENV, REPLICATE_API_TOKEN: 'test-token', REPLICATE_INPAINT_MODEL: 'owner/inpaint' };
+  (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 afterAll(() => { process.env = ENV; });
 
-test('a ledger error → 503 billing_unavailable (localized), and the inpaint model never runs', async () => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason: 'error' });
+test.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0' },
+  { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' },
+])('env %p: the Replicate inpaint is refused before the guard, the ledger or the model', async (env) => {
+  Object.assign(process.env, env);
   const res = await post();
   expect(res.status).toBe(503);
-  const j = await res.json();
-  expect(j).toMatchObject({ url: null, error: 'billing_unavailable' });
-  expect(j.message).toMatch(/ничего не списано/);
+  expect(await res.json()).toMatchObject({ url: null, code: 'google_only', error: 'google_only' });
+  expect(guardGeneration).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
   expect(createPrediction).not.toHaveBeenCalled();
 });
 
-test('a ledger without the RPC (skipped) still proceeds uncharged — the documented degrade', async () => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason: 'skipped' });
-  await post();
-  expect(createPrediction).toHaveBeenCalledTimes(1);
+test('an unknown action is still a 400, before anything runs', async () => {
+  const res = await post({ action: 'restyle', mediaUrl: 'user-1/photo.png' });
+  expect(res.status).toBe(400);
+  expect(guardGeneration).not.toHaveBeenCalled();
 });
 
-test('MEDIA_GOOGLE_ONLY: the Replicate inpaint is refused before the guard, the ledger or the model', async () => {
-  process.env.MEDIA_GOOGLE_ONLY = '1';
-  const res = await post();
-  expect(res.status).toBe(503);
-  expect(await res.json()).toMatchObject({ code: 'google_only' });
-  expect(guardGeneration).not.toHaveBeenCalled();
-  expect(deductCredits).not.toHaveBeenCalled();
+test('a deterministic ffmpeg action still reaches its guard', async () => {
+  (guardGeneration as jest.Mock).mockResolvedValueOnce({ ok: false, response: new Response('{}', { status: 401 }) });
+  const res = await post({ action: 'crop', mediaUrl: 'user-1/clip.mp4' });
+  expect(res.status).toBe(401);
+  expect(guardGeneration).toHaveBeenCalledTimes(1);
   expect(createPrediction).not.toHaveBeenCalled();
 });

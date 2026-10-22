@@ -22,8 +22,6 @@
  * not synthesize is dropped from the mix and counted, because losing one line beats losing the film.
  */
 import 'server-only';
-import { extractInstrumentalStem } from '@/lib/audio/instrumentalStem';
-import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -199,27 +197,11 @@ export async function runDubbing(
     stepsRun.push('sync');
 
     await stage(jobId, 'mix');
-    // ⚠️ THE BED USED TO BE THE ORIGINAL AUDIO, MERELY DUCKED — so the original speakers stayed audible
-    // underneath the dub and the viewer heard two languages at once. Ducking cannot fix that: voices and
-    // music are the same signal, so ducking harder removes the music too. dubbingFfmpeg's header called
-    // this out as a known, audible limitation and named the remedy — "wiring a separator later only
-    // changes `bedUrl`" — so that is precisely what this is.
-    //
-    // Demucs was already running in this repo for the audio studio's splitter; it was simply unreachable
-    // from here. On success the bed becomes music + ambience with the voices REMOVED, which is what
-    // "preserve background audio" was always supposed to mean.
-    //
-    // Fail-open to the previous behaviour: no token, a miss, or a timeout returns null and the ducked
-    // original is used exactly as before. A dub that ships with the old bed is today's product; a dub
-    // that fails because a separator was unavailable would be a regression caused by an improvement.
-    let bedUrl: string | null = req.preserveBackgroundAudio ? req.sourceVideoUrl : null;
-    let bedSeparated = false;
-    // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): Demucs is an outside engine, so with the switch on the dub keeps the
-    // ducked original bed (bedSeparated stays false and is reported as such).
-    if (bedUrl && !isMediaGoogleOnly()) {
-      const stem = await extractInstrumentalStem(bedUrl).catch(() => null);
-      if (stem?.url) { bedUrl = stem.url; bedSeparated = true; }
-    }
+    // The bed is the original audio, ducked under the dub. A voice/music separator would remove the original
+    // speakers, but the one this repo had (Demucs) runs on Replicate and has no Google engine (MASTER TASK v3.1),
+    // so it is never called: backgroundSeparated is always false.
+    const bedUrl: string | null = req.preserveBackgroundAudio ? req.sourceVideoUrl : null;
+    const bedSeparated = false;
     const audioUrl = await mixDubbedTrack(clips, {
       bedUrl,
       totalSec,

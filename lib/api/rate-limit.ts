@@ -209,7 +209,7 @@ export const RATE_LIMITS = {
   // real day for one person, far below a scripted drain:
   //   DUBBING_USER       — /api/v2/dubbing/start: ElevenLabs dubbing of up to 10 minutes per call.
   //   PRESENTATION_USER  — /api/v2/presentation/build: a Gemini deck plus one image per slide.
-  //   UPSCALE_USER       — /api/ai/upscale: one outside-engine upscale (refused outright under MEDIA_GOOGLE_ONLY).
+  //   UPSCALE_USER       — /api/ai/upscale: one outside-engine upscale (the route now refuses outright, MASTER TASK v3.1).
   //   MONTAGE_USER       — /api/v2/montage/render and Agent G montage `run` (free by the owner's 2026-10-09 choice):
   //                        minutes of ffmpeg encode on a lambda each. Shared, so two doors don't double the allowance.
   //   ANALYZE_USER       — Agent G analyze-my-file: one Gemini read of a file or a public video, booked against the AI

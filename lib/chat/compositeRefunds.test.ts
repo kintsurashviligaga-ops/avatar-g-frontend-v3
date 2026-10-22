@@ -28,7 +28,8 @@ describe('music-video composite', () => {
   // lib/chat/musicVideoCompositeCharge.test.ts drives it for real. These structural guards keep the shape from drifting back.
   it('no leg debits on its own any more (a per-leg debit calls a function that does not exist, and would double-charge if it did)', () => {
     expect(src).not.toMatch(/deduct: true/);
-    expect((src.match(/^\s+deduct: false,/gm) ?? []).length).toBe(3);
+    // Two traced legs (the lyrics and the clip). The Udio song leg is gone: it has no Google engine (MASTER TASK v3.1).
+    expect((src.match(/^\s+deduct: false,/gm) ?? []).length).toBe(2);
   });
 
   it('is charged once, up front, through the ledger — and never credits through the GEL wallet RPC', () => {

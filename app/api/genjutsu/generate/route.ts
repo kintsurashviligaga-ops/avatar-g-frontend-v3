@@ -4,10 +4,9 @@
  *
  *   op=scene   → Google Veo 3.1 reference-to-video (lib/genjutsu/veoScene). Priced by lib/genjutsu/pricing — the SAME
  *                function that labels the Generate button; a stale `expectedCredits` is refused (409) before any charge.
- *   op=motion  → Higgsfield Kling 3 Motion Control, through the studio saga (lib/genjutsu/hfMotion). The saga prices it
- *   op=swap    → from Higgsfield's live /estimate and charges only a `confirmedGel` that equals a fresh quote.
+ *   op=motion, op=swap → refused 503 `google_only` (they ran on Higgsfield, which has no Google engine; MASTER TASK v3.1).
  *
- * Both answer 202 `{ success, jobId, credits, refsUsed, refsTotal, … }` — the client then polls
+ * A scene answers 202 `{ success, jobId, credits, refsUsed, refsTotal, … }` — the client then polls
  * GET /api/genjutsu/status?id=<jobId>. A closed op answers 423 `locked` (the panel never offers one that is not open;
  * this is the answer to a forged call), a rejected request 400/422 with `issues`, money 402/409, an outage 503 —
  * `refunded: true` ONLY when the credit-back actually landed.
@@ -18,7 +17,7 @@
  * the reservation is stamped `_reserve` on a durable row BEFORE the provider call so the render drainer can refund a
  * request the platform killed mid-flight.
  *
- * ⚠️ THE ORDER IS THE SAFETY: validate (free) → rate / cap → owner-check + sign → measure the stored video (motion/swap) →
+ * ⚠️ THE ORDER IS THE SAFETY: validate (free) → rate / cap → owner-check + sign →
  * translate the user's line → file the job row → RESERVE → submit once → on any miss refund by ref (what the LEDGER
  * shows, once) and fail the row. A ledger that cannot answer — including "no RPC at all" — is a 503, never a free render.
  */
@@ -28,12 +27,10 @@ import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { billingLocale, ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { opStatuses, motionModelId, SWAP_MODEL_ID } from '@/lib/genjutsu/capabilities';
+import { opStatuses } from '@/lib/genjutsu/capabilities';
 import { genjutsuChargeReady, genjutsuChargeRef, genjutsuJobId, composeVeoJobId, signGenjutsuCharge, withGenjutsuCharge } from '@/lib/genjutsu/chargeToken';
 import { ownsUploadPath, parseGenjutsuRequest, type GenjutsuRequest } from '@/lib/genjutsu/contract';
 import { ENGINES, modelLabel } from '@/lib/genjutsu/engines';
-import { buildHfInput, hfPublicId } from '@/lib/genjutsu/hfMotion';
-import { verifyStoredVideo } from '@/lib/genjutsu/mp4Duration';
 import { genjutsuCredits } from '@/lib/genjutsu/pricing';
 import { composeGenjutsuPrompt, getPreset } from '@/lib/genjutsu/presets';
 import { selectReferences } from '@/lib/genjutsu/selection';
@@ -43,11 +40,8 @@ import { reportError } from '@/lib/observability/report-error';
 import { claimIdempotencyKey, hashPayload, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { createJob, failJob } from '@/lib/orchestrator/jobs';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
-import { formatGel } from '@/lib/providers/pricing';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
-import { REFERENCE_URL_TTL_SEC } from '@/lib/studio/media';
-import { getStudioRuntime } from '@/lib/studio/runtime';
-import { readJson, sagaError } from '@/lib/studio/http';
+import { readJson } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
@@ -103,12 +97,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 3. Is the op open? A locked op never reaches a provider, whatever the client believed.
   if (!opStatuses()[r.op].open) return fail(423, 'locked', { op: r.op });
-  // MEDIA_GOOGLE_ONLY: motion and swap run on Higgsfield, so the switch refuses them here, before any rate or charge.
-  // `scene` is Veo and stays open.
-  if (r.op !== 'scene') {
-    const outside = refuseOutsideEngine(req);
-    if (outside) return outside;
-  }
+  // Motion and swap run on Higgsfield, which has no Google engine: refused here, before any rate or charge, whatever
+  // MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). `scene` is Veo.
+  if (r.op !== 'scene') return refuseOutsideEngine(req);
     // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
     const serviceOff = await serviceOffResponse('vfx');
     if (serviceOff) return serviceOff;
@@ -126,7 +117,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const release = await claimInflight(userId, r);
   if (!release) return fail(409, 'duplicate_request');
   try {
-    return r.op === 'scene' ? await startScene(userId, r, locale) : await startHigg(userId, r);
+    return await startScene(userId, r, locale);
   } finally {
     await release();
   }
@@ -209,53 +200,6 @@ async function startScene(userId: string, r: GenjutsuRequest, locale: ReturnType
     {
       success: true, op: 'scene', jobId: withGenjutsuCharge(jobId, token), credits,
       refsUsed: pick.used.length, refsTotal: r.referencesTotal, engine: modelLabel('scene', r.quality, 'en'),
-    },
-    { status: 202 },
-  );
-}
-
-// ─── motion / swap — Higgsfield, through the studio saga ───────────────────────────────────────────────────────
-
-async function startHigg(userId: string, r: GenjutsuRequest): Promise<NextResponse> {
-  const engine = ENGINES[r.op];
-  const video = r.video;
-  if (!video) return fail(400, 'invalid_request', { issues: [{ path: 'video', code: 'video_required' }] });
-
-  const modelId = r.op === 'motion' ? motionModelId(r.quality) : SWAP_MODEL_ID;
-  const pick = selectReferences(r.references.map((x) => ({ id: x.ref, role: x.role })), engine.maxRefs);
-
-  // The stored video, signed — then MEASURED. What it costs scales with its seconds, so the file's own length decides,
-  // never the number the browser put in the request.
-  const signedVideo = await signOwnedPaths(userId, [video.path], REFERENCE_URL_TTL_SEC);
-  if (!signedVideo.ok) return fail(422, 'invalid_input', { issues: [{ path: 'video.path', code: signedVideo.code }] });
-  const verdict = await verifyStoredVideo(signedVideo.urls[0]!);
-  if (!verdict.ok) return fail(422, 'invalid_input', { issues: [{ path: 'video', code: verdict.code }] });
-
-  const signedRefs = await signOwnedPaths(userId, pick.used.map((u) => u.id), REFERENCE_URL_TTL_SEC);
-  if (!signedRefs.ok) return fail(422, 'invalid_input', { issues: [{ path: `references.${signedRefs.index}`, code: signedRefs.code }] });
-
-  const english = r.prompt ? await promptToEnglish(r.prompt, 'video') : '';
-  const prompt = composeGenjutsuPrompt({ preset: getPreset(r.preset), op: r.op, userText: english, roles: pick.used.map((u) => u.role) });
-
-  const input = buildHfInput({ modelId, imageUrls: signedRefs.urls, videoUrl: signedVideo.urls[0]!, prompt, keepSound: r.keepSound });
-  if (!input) return fail(503, 'model_unavailable');
-
-  const rt = getStudioRuntime();
-  if (!rt) return fail(503, 'not_configured');
-
-  if (!(await claimDailySlot())) return fail(429, 'rate_limited', { scope: 'daily' });
-
-  // The saga quotes live, refuses a price the user did not confirm, reserves, submits ONCE and settles — and refunds on
-  // every failure (webhook, poll and sweeper all land on the same idempotent `${ref}:refund`).
-  const res = await rt.saga.create({ userId, modelId, params: input, confirmedGel: r.confirmedGel, promptOriginal: r.prompt || r.preset });
-  if (!res.ok) {
-    await releaseDailySlot();
-    return sagaError(res.code, { price: res.price, issues: res.issues });
-  }
-  return NextResponse.json(
-    {
-      success: true, op: r.op, jobId: hfPublicId(res.job.id), credits: res.price.credits, gel: res.price.gel, display: formatGel(res.price.gel),
-      refsUsed: pick.used.length, refsTotal: r.referencesTotal, engine: modelLabel(r.op, r.quality, 'en'), seconds: Math.ceil(verdict.durationSec),
     },
     { status: 202 },
   );

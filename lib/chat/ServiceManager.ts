@@ -3,16 +3,11 @@ import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guarded
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { generateImagenImages, hasGeminiImagenProvider, geminiImagenModel } from '@/lib/ai/geminiImagen';
 import type { ServiceType as BillingServiceType } from '@/lib/services/billing/costModel';
-import { z } from 'zod';
 
-import { generateNanoBananaImage } from '@/lib/nanobanana/client';
-import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { createPrediction, pollPrediction } from '@/lib/replicate/client';
-import { resolveModel } from '@/lib/replicate/models';
-import { buildModelInput, validateInput } from '@/lib/replicate/schemas';
+import { pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
 import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
@@ -27,7 +22,7 @@ import { veoSafetyCategory } from '@/lib/veo/safetyCodes';
 import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
-import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
+import { GOOGLE_ONLY_CODE, googleOnlyMessage } from '@/lib/providers/mediaPolicy';
 import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { withColorScience } from '@/lib/video/colorScience';
@@ -64,13 +59,6 @@ function firstVeoDecline(key: string): boolean {
 // URL it can stream natively — with a 7-day signed lifetime so the asset
 // survives well past the render session.
 const LTX_REHOST_TTL_SEC = 7 * 24 * 60 * 60;
-
-const heygenRequestSchema = z.object({
-  script: z.string().min(1).max(1500),
-  aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
-  voiceGender: z.enum(['female', 'male']).default('female'),
-  voiceLanguage: z.string().min(2).max(8).default('en'),
-});
 
 type EncodedTaskRef = {
   v: number;
@@ -125,49 +113,6 @@ export interface ServiceManagerResponse {
     [key: string]: unknown;
   };
 }
-
-/**
- * PHASE 56 (root-cause) — a NanoBanana response with NO media URL is not always
- * a success. The image provider returns soft failures — HTTP 402 "insufficient
- * credits", quota/rate limits, auth faults — as an ordinary JSON body carrying a
- * numeric `code` >= 400 and a human message, rather than throwing. The no-URL
- * branch previously laundered that into `success:true responseType:'text'`, so
- * the client believed generation succeeded and opened a preview with no asset to
- * mount — the exact "preview never shows the image / hangs" report. This returns
- * the provider's error message when the result is a failure, or null when it is a
- * genuine text answer (so a real text reply still flows through untouched).
- */
-function detectNanoProviderError(result: { url?: string; text?: string; raw: unknown }): string | null {
-  if (result.url) return null;
-  let code: number | undefined;
-  let rawMsg: string | undefined;
-  if (result.raw && typeof result.raw === 'object') {
-    const r = result.raw as Record<string, unknown>;
-    if (typeof r.code === 'number') code = r.code;
-    const m = r.msg ?? r.message ?? r.error;
-    if (typeof m === 'string') rawMsg = m;
-  }
-  const text = (result.text || rawMsg || '').trim();
-  const errorByCode = typeof code === 'number' && code >= 400;
-  const errorByText = /insufficient|top.?up|quota|rate.?limit|unauthor|invalid api|forbidden|denied|payment|balance/i.test(text);
-  if (errorByCode || errorByText) {
-    return text || `Image provider error${typeof code === 'number' ? ` (HTTP ${code})` : ''}`;
-  }
-  return null;
-}
-
-const HEYGEN_VOICE_MAP: Record<'female' | 'male', Record<string, string>> = {
-  female: {
-    en: '1bd001e7e50f421d891986aad5158bc8',
-    ru: 'a50d990a4bd14da4a49d0f4d10310a6b',
-    ka: '1bd001e7e50f421d891986aad5158bc8',
-  },
-  male: {
-    en: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
-    ru: 'a50d990a4bd14da4a49d0f4d10310a6b',
-    ka: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
-  },
-};
 
 const TERMINAL_LTX_STATUS = new Set(['completed', 'succeeded', 'success', 'failed', 'error', 'canceled']);
 const FAILED_LTX_STATUS = new Set(['failed', 'error', 'canceled']);
@@ -326,52 +271,23 @@ export class ServiceManager {
   }
 
   private async runTextToImage(rawRequest: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    // ⚠️ ONE TRANSLATION FOR ALL FOUR LEGS. Imagen, NanoBanana, Grok and FLUX each read
-    // `request.userPrompt` verbatim, and every one of them is trained overwhelmingly on English — so a
-    // Georgian brief was noise to all four and each fell back to its priors, returning a competent
-    // image unrelated to the request. Rebinding the request here fixes the whole cascade at its single
-    // entry point rather than at four call sites (and at the fifth engine added tomorrow). Only the
+    // ⚠️ ONE TRANSLATION FOR EVERY LEG. Imagen and the Gemini image model read `request.userPrompt` verbatim and are
+    // trained overwhelmingly on English — so a Georgian brief was noise and each fell back to its priors, returning a
+    // competent image unrelated to the request. Rebinding the request here fixes it at the single entry point. Only the
     // DESCRIPTION passes through — this path carries no lyrics, dialogue or on-screen copy. Fail-open:
     // any error/missing key/timeout returns the ORIGINAL text, so this can never break generation.
     const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
     const request: ServiceManagerRequest = { ...rawRequest, userPrompt: await promptToEnglish(rawRequest.userPrompt, 'image') };
 
-    // ⚠️ NO SILENT FALLBACK TO ANOTHER OUTSIDE PROVIDER (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ
-    // დაუშვა"). The cascade was Imagen → FLUX → NanoBanana → FLUX → Grok: a miss of one outside engine started a render on
-    // another one nobody chose. A job now runs ONE outside engine at most, and a miss may move only to Google's own image
-    // model (lib/ai/geminiImage — the model the NanoBanana reseller sold, called directly):
-    //   · Imagen (opt-in, GEMINI_IMAGEN_ENABLED) → Gemini image → an honest failure;
-    //   · otherwise the configured engine (FLUX, or NanoBanana when picked / IMAGE_PRIMARY_PROVIDER=nanobanana)
-    //     → Gemini image → that engine's honest failure.
-    //
-    // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy, opt-in, default off): no outside engine runs at all, whatever was
-    // configured or picked: Imagen (prompt-only, when enabled) → Gemini image → an honest failure.
-    if (isMediaGoogleOnly()) {
-      if (hasGeminiImagenProvider() && !request.imageUrl) {
-        const imagen = await this.tryImagenImage(request);
-        if (imagen) return imagen;
-      }
-      return (await this.tryGeminiImage(request, 'google-only')) ?? this.imageFailure(request, 'nanobanana', 'Image generation failed. Please try again.');
-    }
-    if (this.imagenApplies(request)) {
+    // ⚠️ GOOGLE ONLY (MASTER TASK v3.1, audit F-04): no outside engine runs, whatever was configured or picked and
+    // whatever MEDIA_GOOGLE_ONLY says. Imagen (prompt-only, when enabled) → Google's own image model (lib/ai/geminiImage,
+    // the model the NanoBanana reseller sold, called directly) → an honest failure. The FLUX, NanoBanana and Grok legs
+    // are gone, and no miss moves to another vendor.
+    if (hasGeminiImagenProvider() && !request.imageUrl) {
       const imagen = await this.tryImagenImage(request);
       if (imagen) return imagen;
-      return (await this.tryGeminiImage(request, 'imagen')) ?? this.imageFailure(request, 'nanobanana', 'Image generation failed. Please try again.');
     }
-
-    const provider = this.resolveImageProvider(request.selectedOptions);
-    let primary: ServiceManagerResponse;
-    try {
-      // createPrediction is `Prefer: respond-async`, so FLUX's NORMAL success carries a `predictionId` (the client polls
-      // it) and no `assetUrl`: an in-flight prediction counts as landed.
-      primary = provider === 'replicate' ? await this.runReplicateImage(request) : await this.runNanoBananaImage(request);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(`[image] ${provider} threw:`, err instanceof Error ? err.message : err);
-      primary = this.imageFailure(request, provider, 'Image generation failed. Please try again.');
-    }
-    if (primary.success && (primary.assetUrl || primary.predictionId) && primary.predictionStatus !== 'failed') return primary;
-    return (await this.tryGeminiImage(request, provider)) ?? primary;
+    return (await this.tryGeminiImage(request, 'google-only')) ?? this.imageFailure(request, 'nanobanana', 'Image generation failed. Please try again.');
   }
 
   /** A failed image leg in the shape every caller already reports ("this leg didn't run"). */
@@ -438,25 +354,6 @@ export class ServiceManager {
     } catch {
       return null;
     }
-  }
-
-  /** Imagen runs only for a prompt-only request with no outside engine named (see the EDIT GUARD below). */
-  private imagenApplies(request: ServiceManagerRequest): boolean {
-    if (!hasGeminiImagenProvider()) return false;
-    // ⚠️ EDIT GUARD — the reason an attached photo used to be thrown away.
-    //
-    // Imagen's :predict surface is PROMPT-ONLY; there is nowhere to put a source image. Imagen runs FIRST
-    // for every text-to-image, so "make this a watercolour" WITH a photo attached silently discarded the
-    // photo, generated an unrelated image from the words alone, returned it as
-    // predictionStatus:'succeeded' — and charged for it. No error, and nothing anywhere said the reference
-    // had been dropped. The sibling surface (/api/nanobanana/image) skips its own prompt-only legs for
-    // exactly this reason; this leg is the one that never got the guard.
-    //
-    // A reference request goes to the configured engine, which accepts one.
-    if (request.imageUrl) return false;
-    // An explicit engine pick opts OUT of Imagen, mirroring the Kling/Hailuo opt-out on the video side.
-    const picked = (this.getOption(request.selectedOptions || {}, ['imageModel', 'image_model', 'provider']) || '').toLowerCase();
-    return !(picked === 'nanobanana' || picked === 'replicate' || picked === 'flux');
   }
 
   /**
@@ -526,24 +423,21 @@ export class ServiceManager {
   private async runVideoAvatar(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
     const provider = this.resolveVideoProvider(request);
     if (provider === 'heygen') {
-      // MEDIA_GOOGLE_ONLY: the presenter has no Google engine yet, so it is refused before HeyGen is called (the chat
-      // hold is given back on any failed answer). The branch ran before the video switch below, so it was never covered.
-      if (isMediaGoogleOnly()) {
-        const message = googleOnlyMessage(request.locale);
-        return {
-          success: false,
-          provider: 'heygen',
-          operation: 'video-avatar',
-          responseType: 'text',
-          message,
-          predictionStatus: 'failed',
-          metadata: {
-            provider: 'heygen', operation: 'video-avatar', sessionId: request.sessionId, outputType: 'text',
-            promptHash: this.hashPrompt(request.userPrompt), confidence: request.confidence, code: GOOGLE_ONLY_CODE, error: message,
-          },
-        };
-      }
-      return this.runHeygenAvatarVideo(request);
+      // The presenter (HeyGen) has no Google engine, so it is refused before HeyGen is called, whatever
+      // MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The chat hold is given back on any failed answer.
+      const message = googleOnlyMessage(request.locale);
+      return {
+        success: false,
+        provider: 'heygen',
+        operation: 'video-avatar',
+        responseType: 'text',
+        message,
+        predictionStatus: 'failed',
+        metadata: {
+          provider: 'heygen', operation: 'video-avatar', sessionId: request.sessionId, outputType: 'text',
+          promptHash: this.hashPrompt(request.userPrompt), confidence: request.confidence, code: GOOGLE_ONLY_CODE, error: message,
+        },
+      };
     }
 
     // ⚠️ ENGLISH FOR THE ENGINE. Veo is trained overwhelmingly on English, and the Veo leg below reads
@@ -930,203 +824,6 @@ export class ServiceManager {
     return undefined;
   }
 
-  private async runNanoBananaImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    const options = request.selectedOptions || {};
-    const promptHash = this.hashPrompt(request.userPrompt);
-
-    const requestedEndpoint = resolveNanoBananaEndpoint(
-      this.getOption(options, ['nanobanana_endpoint', 'nanobananaEndpoint', 'endpoint']),
-    );
-    const highQualityRequested = this.isHighQualityRequest(options);
-    const endpoint = highQualityRequested ? 'pro-4k' : requestedEndpoint;
-
-    const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio', 'img-size']));
-    const style = this.getOption(options, ['style', 'img-style', 'imgStyle']) || undefined;
-
-    const result = await generateNanoBananaImage({
-      // Strict pass-through: do not rewrite user prompt for image generation.
-      prompt: request.userPrompt,
-      endpoint,
-      aspectRatio,
-      style,
-      referenceImageDataUrl: request.imageUrl,
-      service: request.serviceContext,
-    });
-
-    if (result.url) {
-      return {
-        success: true,
-        provider: 'nanobanana',
-        operation: 'text-to-image',
-        responseType: 'image',
-        message: 'Image generation completed successfully.',
-        assetUrl: result.url,
-        assetType: 'image',
-        predictionStatus: 'succeeded',
-        metadata: {
-          provider: 'nanobanana',
-          operation: 'text-to-image',
-          sessionId: request.sessionId,
-          endpoint,
-          creditCost: getNanoBananaCreditCost(endpoint),
-          outputType: 'image',
-          promptHash,
-          confidence: request.confidence,
-          raw: result.raw,
-        },
-      };
-    }
-
-    // PHASE 56 (root-cause) — a no-URL result that carries a provider error (402 insufficient credits, quota, auth)
-    // means NanoBanana produced NOTHING: report it as a failed leg with the provider's own message. It used to fail
-    // over to FLUX and then Grok here; runTextToImage now decides what a miss may move to (Google's image model only —
-    // the owner, 2026-10-09: no silent fallback to another outside provider).
-    const providerError = detectNanoProviderError(result);
-    if (providerError) {
-      return {
-        success: false,
-        provider: 'nanobanana',
-        operation: 'text-to-image',
-        responseType: 'text',
-        message: providerError,
-        predictionStatus: 'failed',
-        metadata: {
-          provider: 'nanobanana',
-          operation: 'text-to-image',
-          sessionId: request.sessionId,
-          endpoint,
-          creditCost: getNanoBananaCreditCost(endpoint),
-          outputType: 'text',
-          promptHash,
-          confidence: request.confidence,
-          raw: result.raw,
-          error: providerError,
-        },
-      };
-    }
-
-    return {
-      success: true,
-      provider: 'nanobanana',
-      operation: 'text-to-image',
-      responseType: 'text',
-      message: result.text || 'NanoBanana task completed without media URL.',
-      predictionStatus: 'succeeded',
-      metadata: {
-        provider: 'nanobanana',
-        operation: 'text-to-image',
-        sessionId: request.sessionId,
-        endpoint,
-        creditCost: getNanoBananaCreditCost(endpoint),
-        outputType: 'text',
-        promptHash,
-        confidence: request.confidence,
-        raw: result.raw,
-      },
-    };
-  }
-
-  private async runReplicateImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    const options = request.selectedOptions || {};
-    const promptHash = this.hashPrompt(request.userPrompt);
-    const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio', 'img-size']));
-    const style = this.getOption(options, ['style', 'img-style', 'imgStyle']) || undefined;
-    const quality = this.mapReplicateQuality(this.getOption(options, ['quality', 'img-quality', 'imgQuality']));
-
-    const validation = validateInput({
-      service: 'image',
-      prompt: request.userPrompt,
-      // FLUX 1.1 Pro is the Replicate image quality (owner decision 2026-07-11): this path is BOTH
-      // the explicit-replicate branch and the NanoBanana error-fallback, so 'general' → flux-pro
-      // (models.ts image.variants) upgrades the fallback off the cheap flux-schnell 'fast' tier.
-      variant: 'general',
-      quality,
-      aspectRatio,
-      style,
-      imageUrl: request.imageUrl,
-    });
-
-    if (!validation.valid || !validation.sanitized) {
-      throw new Error(validation.error || 'Invalid text-to-image payload for Replicate');
-    }
-
-    validation.sanitized.prompt = request.userPrompt;
-
-    const model = resolveModel('image', validation.sanitized.variant || 'general');
-    const modelInput = buildModelInput(validation.sanitized);
-    const prediction = await createPrediction(model.id, modelInput);
-
-    if (prediction.status === 'succeeded') {
-      const normalized = normalizeOutput(
-        'image',
-        model.label,
-        model.outputType,
-        prediction.id,
-        prediction.status,
-        prediction.output,
-        prediction.error,
-        prediction.metrics as unknown as Record<string, unknown> | undefined,
-      );
-
-      if (normalized.url || normalized.text) {
-        return {
-          success: normalized.success,
-          provider: 'replicate',
-          operation: 'text-to-image',
-          responseType: normalized.url ? 'image' : 'text',
-          message: normalized.text || 'Image generation completed successfully.',
-          assetUrl: normalized.url,
-          assetType: normalized.url ? 'image' : undefined,
-          predictionStatus: 'succeeded',
-          metadata: {
-            provider: 'replicate',
-            model: model.label,
-            operation: 'text-to-image',
-            outputType: model.outputType,
-            sessionId: request.sessionId,
-            providerTaskId: prediction.id,
-            promptHash,
-            confidence: request.confidence,
-            metrics: prediction.metrics,
-          },
-        };
-      }
-    }
-
-    const taskRef = this.encodeTaskRef({
-      provider: 'replicate',
-      providerTaskId: prediction.id,
-      sessionId: request.sessionId,
-      serviceContext: request.serviceContext,
-      intent: request.intent,
-      operation: 'text-to-image',
-      responseType: 'image',
-      promptHash,
-      createdAt: Date.now(),
-    });
-
-    return {
-      success: true,
-      provider: 'replicate',
-      operation: 'text-to-image',
-      responseType: 'image',
-      message: 'Image generation started.',
-      predictionId: taskRef,
-      predictionStatus: prediction.status === 'failed' ? 'failed' : 'processing',
-      metadata: {
-        provider: 'replicate',
-        model: model.label,
-        operation: 'text-to-image',
-        outputType: model.outputType,
-        sessionId: request.sessionId,
-        taskRef,
-        providerTaskId: prediction.id,
-        promptHash,
-        confidence: request.confidence,
-      },
-    };
-  }
-
   // PHASE 51 §2 — Re-host an LTX binary MP4 to our Supabase storage and return a
   // CSP-allowed *.supabase.co signed URL the browser can stream natively. The
   // sync LTX API returns the MP4 *binary* directly; turning that into a
@@ -1151,99 +848,6 @@ export class ServiceManager {
     } catch {
       return dataUrl;
     }
-  }
-
-  private async runHeygenAvatarVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    const apiKey = process.env.HEYGEN_API_KEY?.trim();
-    if (!apiKey) {
-      throw new Error('HEYGEN_API_KEY is not configured');
-    }
-
-    const options = request.selectedOptions || {};
-    const promptHash = this.hashPrompt(request.userPrompt);
-
-    const parsed = heygenRequestSchema.parse({
-      script: request.userPrompt,
-      aspectRatio: this.normalizeHeygenAspect(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])),
-      voiceGender: this.normalizeVoiceGender(this.getOption(options, ['voice_gender', 'voiceGender'])),
-      voiceLanguage: this.getOption(options, ['voice_language', 'voiceLanguage']) || (request.locale || 'en'),
-    });
-
-    const voiceId = this.getOption(options, ['voice_id', 'voiceId'])
-      || await this.getHeygenVoiceId(apiKey, parsed.voiceGender, parsed.voiceLanguage);
-
-    const avatarId = this.getOption(options, ['avatar_id', 'avatarId']) || await this.getHeygenFirstAvatar(apiKey);
-    const avatarStyle = this.normalizeHeygenAvatarStyle(this.getOption(options, ['avatar_style', 'avatarStyle', 'style']));
-    const dimension = this.mapHeygenDimension(parsed.aspectRatio);
-
-    const response = await fetch(`${HEYGEN_BASE_URL}/v2/video/generate`, {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        video_inputs: [{
-          character: {
-            type: 'avatar',
-            avatar_id: avatarId,
-            avatar_style: avatarStyle,
-          },
-          voice: {
-            type: 'text',
-            input_text: parsed.script,
-            voice_id: voiceId,
-          },
-        }],
-        dimension,
-      }),
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`HeyGen video generation failed (${response.status}): ${err || 'unknown error'}`);
-    }
-
-    const payload = await response.json().catch(() => ({}));
-    const providerTaskId = this.extractTaskId(payload);
-    if (!providerTaskId) {
-      throw new Error('HeyGen returned no video task ID');
-    }
-
-    const taskRef = this.encodeTaskRef({
-      provider: 'heygen',
-      providerTaskId,
-      sessionId: request.sessionId,
-      serviceContext: request.serviceContext,
-      intent: request.intent,
-      operation: 'video-avatar',
-      responseType: 'video',
-      promptHash,
-      createdAt: Date.now(),
-    });
-
-    return {
-      success: true,
-      provider: 'heygen',
-      operation: 'video-avatar',
-      responseType: 'video',
-      message: 'Avatar generation started. Waiting for HeyGen completion.',
-      predictionId: taskRef,
-      predictionStatus: 'processing',
-      metadata: {
-        provider: 'heygen',
-        model: 'heygen-v2-video',
-        operation: 'video-avatar',
-        outputType: 'video',
-        sessionId: request.sessionId,
-        taskRef,
-        providerTaskId,
-        promptHash,
-        confidence: request.confidence,
-        raw: payload,
-      },
-    };
   }
 
   private async pollReplicateTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
@@ -1707,16 +1311,6 @@ export class ServiceManager {
     return 'text-to-image';
   }
 
-  private resolveImageProvider(selectedOptions?: Record<string, string>): 'nanobanana' | 'replicate' {
-    const preferred = this.getOption(selectedOptions || {}, ['provider', 'image_provider', 'providerMode'])?.toLowerCase();
-    if (preferred === 'replicate') return 'replicate';
-    if (preferred === 'nanobanana') return 'nanobanana';
-    // P90 — the BASE image now defaults to FLUX 1.1 Pro (Replicate) for elite photoreal quality; the prior
-    // NanoBanana default was a cost choice. Ops can revert per-deploy with IMAGE_PRIMARY_PROVIDER=nanobanana
-    // (no code push). A FLUX miss moves only to Google's image model (runTextToImage), never to NanoBanana.
-    return (process.env.IMAGE_PRIMARY_PROVIDER || '').trim().toLowerCase() === 'nanobanana' ? 'nanobanana' : 'replicate';
-  }
-
   private resolveVideoProvider(request: ServiceManagerRequest): 'ltx' | 'heygen' {
     const preferred = this.getOption(request.selectedOptions || {}, ['provider', 'video_provider', 'providerMode']);
     const avatar = request.intent === 'avatar_generation' || request.serviceContext === 'avatar';
@@ -1736,16 +1330,6 @@ export class ServiceManager {
     }
 
     return 'ltx';
-  }
-
-  private isHighQualityRequest(options: Record<string, string>): boolean {
-    const endpoint = this.getOption(options, ['nanobanana_endpoint', 'nanobananaEndpoint', 'endpoint']);
-    const quality = this.getOption(options, ['quality', 'img-quality', 'imgQuality']);
-    const resolution = this.getOption(options, ['resolution', 'size']);
-
-    return [endpoint, quality, resolution]
-      .filter((item): item is string => Boolean(item))
-      .some((item) => /pro-4k|4k|ultra|high|hd/i.test(item));
   }
 
   private normalizeAspectRatio(value?: string): '1:1' | '4:5' | '16:9' | '9:16' | '4:3' | '3:4' {
@@ -1771,46 +1355,6 @@ export class ServiceManager {
     };
 
     return fromMap[normalized] || '1:1';
-  }
-
-  private normalizeHeygenAspect(value?: string): '16:9' | '9:16' | '1:1' {
-    const normalized = this.normalizeAspectRatio(value);
-    if (normalized === '9:16') return '9:16';
-    if (normalized === '1:1') return '1:1';
-    return '16:9';
-  }
-
-  private normalizeVoiceGender(value?: string): 'female' | 'male' {
-    return String(value || '').toLowerCase() === 'male' ? 'male' : 'female';
-  }
-
-  // PHASE 39 §2 — avatar_style is no longer hardcoded. The user's selected
-  // framing flows through (normal / circle / closeUp), so the engine honors the
-  // active prompt's face/body intent instead of a locked default.
-  private normalizeHeygenAvatarStyle(value?: string): 'normal' | 'circle' | 'closeUp' {
-    const v = String(value || '').toLowerCase().replace(/[\s_-]/g, '');
-    if (v === 'circle') return 'circle';
-    if (v === 'closeup' || v === 'close') return 'closeUp';
-    return 'normal';
-  }
-
-  private mapHeygenDimension(aspectRatio: '16:9' | '9:16' | '1:1'): { width: number; height: number } {
-    if (aspectRatio === '9:16') {
-      return { width: 720, height: 1280 };
-    }
-
-    if (aspectRatio === '1:1') {
-      return { width: 720, height: 720 };
-    }
-
-    return { width: 1280, height: 720 };
-  }
-
-  private mapReplicateQuality(value?: string): 'standard' | 'high' | 'ultra' {
-    if (!value) return 'high';
-    if (/ultra|4k/i.test(value)) return 'ultra';
-    if (/high|hd|pro/i.test(value)) return 'high';
-    return 'standard';
   }
 
   private getOption(options: Record<string, string>, keys: string[]): string | undefined {
@@ -2020,69 +1564,4 @@ export class ServiceManager {
     return undefined;
   }
 
-  private async getHeygenVoiceId(apiKey: string, gender: 'female' | 'male', language: string): Promise<string> {
-    try {
-      const res = await fetch(`${HEYGEN_BASE_URL}/v2/voices`, {
-        headers: { 'X-Api-Key': apiKey },
-        cache: 'no-store',
-      });
-
-      if (!res.ok) {
-        throw new Error('voices endpoint failed');
-      }
-
-      const payload = await res.json() as {
-        data?: {
-          voices?: Array<{ voice_id: string; language?: string; gender?: string }>;
-        };
-      };
-
-      const voices = payload.data?.voices || [];
-      const langCode = (language === 'ka' ? 'en' : language).toLowerCase();
-
-      const exact = voices.find((voice) => (
-        voice.gender?.toLowerCase() === gender
-        && voice.language?.toLowerCase().startsWith(langCode)
-      ));
-
-      if (exact?.voice_id) {
-        return exact.voice_id;
-      }
-
-      const byGender = voices.find((voice) => voice.gender?.toLowerCase() === gender);
-      if (byGender?.voice_id) {
-        return byGender.voice_id;
-      }
-    } catch {
-      // Fallback to static IDs below.
-    }
-
-    const genderMap = HEYGEN_VOICE_MAP[gender];
-    return genderMap[language] || genderMap.en || '1bd001e7e50f421d891986aad5158bc8';
-  }
-
-  private async getHeygenFirstAvatar(apiKey: string): Promise<string> {
-    const res = await fetch(`${HEYGEN_BASE_URL}/v2/avatars`, {
-      headers: { 'X-Api-Key': apiKey },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`HeyGen avatars list failed (${res.status}): ${err || 'unknown error'}`);
-    }
-
-    const payload = await res.json() as {
-      data?: {
-        avatars?: Array<{ avatar_id: string }>;
-      };
-    };
-
-    const avatarId = payload.data?.avatars?.[0]?.avatar_id;
-    if (!avatarId) {
-      throw new Error('No HeyGen avatar is available in this account');
-    }
-
-    return avatarId;
-  }
 }

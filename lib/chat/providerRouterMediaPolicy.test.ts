@@ -1,11 +1,11 @@
 /** @jest-environment node */
 /**
- * orchestrate() under the Google-only switches, and the order of its first checks — behaviourally, through the real
- * router (every provider module mocked; nothing here can reach the network).
+ * orchestrate() and the outside engines (MASTER TASK v3.1), and the order of its first checks — behaviourally, through
+ * the real router (every provider module mocked; nothing here can reach the network).
  *
- *   · MEDIA_GOOGLE_ONLY on: the chat branches whose only engines are outside ones (music on Udio / MusicGen, the
- *     Replicate intents, the interior redesign and the 3D room) answer the paused-tool sentence before any balance
- *     read, charge or provider call. Off: they run as before.
+ *   · The chat branches whose only engines are outside ones (music on Udio / MusicGen, the Replicate intents, the
+ *     interior redesign and the 3D room) answer the paused-tool sentence before any balance read, charge or provider
+ *     call, whatever MEDIA_GOOGLE_ONLY or OUTSIDE_ENGINES_APPROVED say.
  *   · An explicit film dispatch (the music-video flag, the storyboard's signals) reaches the film pipeline whatever the
  *     brief says: a brief with "room" or "space" in it used to be answered "Upload a room photo" by the 3D-interior
  *     branch, and one with a reference image could be answered as text by the vision branch.
@@ -81,7 +81,7 @@ const VERTEX_ENV = {
   GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
   GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
 };
-const ENV = ['MEDIA_GOOGLE_ONLY', 'FILM_ALLOW_ANONYMOUS', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'UDIO_API_KEY', 'REPLICATE_API_TOKEN', ...Object.keys(VERTEX_ENV)];
+const ENV = ['MEDIA_GOOGLE_ONLY', 'OUTSIDE_ENGINES_APPROVED', 'FILM_ALLOW_ANONYMOUS', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'UDIO_API_KEY', 'REPLICATE_API_TOKEN', ...Object.keys(VERTEX_ENV)];
 const saved: Record<string, string | undefined> = {};
 let fetchSpy: jest.SpyInstance;
 
@@ -91,7 +91,6 @@ beforeEach(() => {
     saved[k] = process.env[k];
     delete process.env[k];
   }
-  process.env.MEDIA_GOOGLE_ONLY = '0'; // explicit opt-out: unset is fail-closed ON
   (isMusicVideoComposite as jest.Mock).mockReturnValue(false);
   (startUdioGeneration as jest.Mock).mockResolvedValue({ workId: 'w1', model: 'udio-test' });
   fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
@@ -113,9 +112,12 @@ function expectNoOutsideEngine(): void {
   expect(sm.execute).not.toHaveBeenCalled();
 }
 
-describe('MEDIA_GOOGLE_ONLY on: chat branches with only outside engines are refused before any charge', () => {
+describe.each([
+  ['unset', {}],
+  ['the old opt-out with an owner approval', { MEDIA_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' }],
+])('chat branches with only outside engines are refused before any charge (%s)', (_l, env) => {
   beforeEach(() => {
-    process.env.MEDIA_GOOGLE_ONLY = '1';
+    Object.assign(process.env, env);
     process.env.UDIO_API_KEY = 'udio-test';
     process.env.REPLICATE_API_TOKEN = 'r8-test';
   });
@@ -138,9 +140,9 @@ describe('MEDIA_GOOGLE_ONLY on: chat branches with only outside engines are refu
   });
 });
 
-describe.each([['off', ''], ['on', '1']])('chat music (Udio / MusicGen) is refused whatever MEDIA_GOOGLE_ONLY says (%s) — Music Studio v1 boundary', (_l, flag) => {
+describe.each([['unset', {}], ['the old opt-out with an owner approval', { MEDIA_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-udio' }]])('chat music (Udio / MusicGen) is refused whatever the env says (%s) — Music Studio v1 boundary', (_l, env) => {
   beforeEach(() => {
-    if (flag) process.env.MEDIA_GOOGLE_ONLY = flag; else delete process.env.MEDIA_GOOGLE_ONLY;
+    Object.assign(process.env, env);
     process.env.UDIO_API_KEY = 'udio-test';
     process.env.REPLICATE_API_TOKEN = 'r8-test';
   });
@@ -160,13 +162,6 @@ describe.each([['off', ''], ['on', '1']])('chat music (Udio / MusicGen) is refus
     const res = await orchestrate(input({ locale: 'ka' }));
     expect(res.message).toMatch(/Google Lyria/);
     expect(res.message).toMatch(/თანხა არ ჩამოგეჭრა/);
-  });
-});
-
-describe('MEDIA_GOOGLE_ONLY off: the same branches run as before', () => {
-  it('the interior service without a photo still asks for one', async () => {
-    const res = await orchestrate(input({ message: 'redesign my living room', serviceContext: 'interior' }));
-    expect(res.metadata).toMatchObject({ provider: 'worldlabs', validation: 'blocked_missing_image' });
   });
 });
 

@@ -68,10 +68,12 @@ describe('the engine', () => {
     expect(imageModelFor(null).id).toBe('nb/auto');
     // The price does not depend on the model: one image's quote at every model and size (the route's only charge).
     expect(imageCredits(1)).toBe(creditCostFor('image'));
-    // ⚠️ NanoBanana is the route's ONLY engine (PROJECT_MASTER R7, no silent fallback): the Grok (xAI) and FLUX 1.1 Pro
-    // (Replicate) legs that stood behind it are gone, so the label the picker prints is the engine that renders.
+    // ⚠️ Google's image model is the route's ONE engine (MASTER TASK v3.1; PROJECT_MASTER R7, no silent fallback): the
+    // NanoBanana leg and the Grok (xAI) and FLUX 1.1 Pro (Replicate) legs that stood behind it are gone, whatever
+    // MEDIA_GOOGLE_ONLY says. The picker's tiers still choose the endpoint the reply and the double-click key name.
     expect(route).not.toMatch(/generateGrokImage|generateFluxProImage|@\/lib\/ai\/xaiImage|@\/lib\/ai\/fluxImage/);
-    expect(route.match(/\bgenerateNanoBananaImage\(/g)).toHaveLength(1);
+    expect(route).not.toMatch(/generateNanoBananaImage|@\/lib\/nanobanana\/client|isMediaGoogleOnly/);
+    expect(route.match(/\bgenerateGeminiImage\(/g)).toHaveLength(1);
   });
 });
 

@@ -68,7 +68,6 @@ const BODY = { prompt: 'a calm Scandinavian living room, oak floor, morning ligh
 
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env.MEDIA_GOOGLE_ONLY = '1';
   mockBudget.mockResolvedValue(null);
   mockGuarded.mockImplementation(async (_meta: unknown, fn: () => Promise<unknown>) => fn());
   (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
@@ -78,10 +77,7 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
-afterEach(() => {
-  jest.restoreAllMocks();
-  process.env.MEDIA_GOOGLE_ONLY = '0';
-});
+afterEach(() => jest.restoreAllMocks());
 
 test('a spent daily limit refuses before the credit is reserved: 503 platform_budget, nothing charged, Google not called', async () => {
   mockBudget.mockResolvedValue('daily_limit');

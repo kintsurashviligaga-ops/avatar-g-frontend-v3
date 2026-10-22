@@ -1,71 +1,62 @@
 /** @jest-environment node */
 /**
- * POST /api/ltx-video — reserved BEFORE the render; an LTX refusal or a throw gives it back.
+ * POST /api/ltx-video — a raw LTX render.
  *
- * ⚠️ Before: LTX rendered, then `deductCredits(...).catch(() => {})` ran and the video streamed back whether the charge
- * landed or not — a free render on any failed deduct (parallel burst, ledger error). LTX is mocked — no spend.
+ * ⚠️ LTX has no Google engine, so every request is refused with 503 google_only before the limit, the guard, the charge
+ * or LTX itself, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). Video is made in the studio on Veo. The
+ * reserve-before-render rules it used to pin went with the code.
+ * Every collaborator the route used to call is mocked so any call is caught — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
-jest.mock('../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), RATE_LIMITS: { EXPENSIVE: {} } }));
-jest.mock('../../../lib/api/generationGuard', () => ({
-  guardGeneration: jest.fn(async () => ({ ok: true, userId: 'user-1', locale: 'en' })),
-  insufficientCreditsMessage: () => 'Insufficient Credits',
-}));
-jest.mock('../../../lib/orchestrator/ledger', () => ({ deductCredits: jest.fn(), refundCredits: jest.fn(async () => ({ ok: true })) }));
+jest.mock('../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn() }));
+jest.mock('../../../lib/api/generationGuard', () => ({ guardGeneration: jest.fn() }));
+jest.mock('../../../lib/orchestrator/ledger', () => ({ deductCredits: jest.fn(), refundCredits: jest.fn() }));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
+import { checkRateLimit } from '../../../lib/api/rate-limit';
+import { guardGeneration } from '../../../lib/api/generationGuard';
 import { deductCredits, refundCredits } from '../../../lib/orchestrator/ledger';
-import { creditCostFor } from '../../../lib/credits/pricing';
 
-const ENV = { ...process.env };
-const realFetch = global.fetch;
-let ltx: jest.Mock;
-const post = () => POST(new NextRequest('https://myavatar.ge/api/ltx-video', {
-  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: 'a lighthouse at dusk' }),
+const post = (body: unknown, locale?: string) => POST(new NextRequest('https://myavatar.ge/api/ltx-video', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...(locale ? { cookie: `NEXT_LOCALE=${locale}` } : {}) },
+  body: JSON.stringify(body),
 }));
+const ENV = { ...process.env };
 
+let fetchSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env = { ...ENV, LTX_VIDEO_API_KEY: 'k' };
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
-  ltx = jest.fn(async () => new Response(new Uint8Array(16), { status: 200, headers: { 'content-type': 'video/mp4' } }));
-  global.fetch = ltx as unknown as typeof fetch;
-  jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
 });
-afterEach(() => { global.fetch = realFetch; jest.restoreAllMocks(); });
-afterAll(() => { process.env = ENV; });
-
-test('the reservation lands BEFORE the render, and a delivered video keeps it', async () => {
-  const res = await post();
-  expect(res.status).toBe(200);
-  expect((deductCredits as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(ltx.mock.invocationCallOrder[0]!);
-  expect(refundCredits).not.toHaveBeenCalled();
+afterEach(() => {
+  fetchSpy.mockRestore();
+  process.env = { ...ENV };
 });
 
-test.each([
-  ['insufficient', 402],
-  ['error', 503],
-])('a %s debit → %i and NO render (it used to render free)', async (reason, status) => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason });
-  expect((await post()).status).toBe(status);
-  expect(ltx).not.toHaveBeenCalled();
+describe.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0' },
+  { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-ltx' },
+])('env %p', (env) => {
+  beforeEach(() => { Object.assign(process.env, env); });
+
+  test.each([
+    ['a render', { prompt: 'a lighthouse at dusk' }],
+  ])('%s → 503 google_only before anything runs', async (_name, body) => {
+    const res = await post(body);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ success: false, url: null, jobId: null, code: 'google_only', error: 'google_only' });
+    expect(checkRateLimit).not.toHaveBeenCalled();
+    expect(guardGeneration).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(refundCredits).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });
 
-test('an LTX refusal → refunded once, a code instead of LTX’s words, and never LTX’s own status', async () => {
-  ltx.mockResolvedValue(new Response(JSON.stringify({ error: { message: 'Insufficient balance on account acct_42' } }), { status: 402 }));
-  const res = await post();
-  expect(res.status).toBe(503); // OUR outage — a provider 402 must not read as the user being out of credit
-  const j = await res.json();
-  expect(refundCredits).toHaveBeenCalledTimes(1);
-  expect((refundCredits as jest.Mock).mock.calls[0]).toEqual(['user-1', creditCostFor('video'), expect.stringMatching(/^ltx:user-1:.*:refund$/)]);
-  expect(j).toEqual({ error: 'provider_unfunded', refunded: true });
-});
-
-test('a thrown fetch → refunded', async () => {
-  ltx.mockRejectedValue(new Error('socket hang up'));
-  const j = await (await post()).json();
-  expect(refundCredits).toHaveBeenCalledTimes(1);
-  expect(j.refunded).toBe(true);
+test('the refusal speaks the caller\'s language', async () => {
+  expect((await (await post({ prompt: 'a lighthouse at dusk' }, 'en')).json()).message).toMatch(/^This tool is paused/);
+  expect((await (await post({ prompt: 'a lighthouse at dusk' }, 'ru')).json()).message).toMatch(/^Этот инструмент/);
 });

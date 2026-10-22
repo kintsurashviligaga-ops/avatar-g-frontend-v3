@@ -1,9 +1,9 @@
 /** @jest-environment node */
 /**
- * ServiceManager's image legs: NO SILENT FALLBACK TO ANOTHER OUTSIDE PROVIDER (the owner, 2026-10-09). The cascade was
- * Imagen → FLUX → NanoBanana → FLUX → Grok; a job now runs one outside engine at most, and a miss may move only to
- * Google's own image model (lib/ai/geminiImage). Every engine is mocked — no network, no spend — so a regression shows
- * up as a call to an engine that must not run.
+ * ServiceManager's image legs: GOOGLE ONLY (MASTER TASK v3.1, audit F-04). The cascade was Imagen → FLUX → NanoBanana →
+ * FLUX → Grok; a chat image now runs on Imagen (prompt-only, when enabled) or Google's own image model
+ * (lib/ai/geminiImage), whatever was configured or picked and whatever MEDIA_GOOGLE_ONLY says. Every engine is mocked —
+ * no network, no spend — so a regression shows up as a call to an engine that must not run.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../ai/geminiImagen', () => ({
@@ -58,81 +58,75 @@ const req = (over: Partial<ServiceManagerRequest> = {}): ServiceManagerRequest =
 
 const GEMINI_OK = { base64: 'aW1n', mimeType: 'image/png', model: 'gemini-3.1-flash-image' };
 
+const ENV = { ...process.env };
+
 beforeEach(() => {
   jest.clearAllMocks();
   delete process.env.IMAGE_PRIMARY_PROVIDER;
-  process.env.MEDIA_GOOGLE_ONLY = '0';
+  delete process.env.MEDIA_GOOGLE_ONLY;
+  delete process.env.OUTSIDE_ENGINES_APPROVED;
   imagenOn.mockReturnValue(false);
   blocker.mockReturnValue(null);
   gemini.mockResolvedValue(GEMINI_OK);
 });
+afterEach(() => { process.env = { ...ENV }; });
 
-describe('FLUX is the configured engine (the default)', () => {
-  it('a FLUX miss moves to Google image — never NanoBanana, never Grok', async () => {
-    flux.mockRejectedValue(new Error('replicate 503'));
+function expectNoOutsideEngine(): void {
+  expect(flux).not.toHaveBeenCalled();
+  expect(nano).not.toHaveBeenCalled();
+  expect(grok).not.toHaveBeenCalled();
+}
+
+describe('no outside engine runs, whatever is configured, picked or set', () => {
+  it.each([
+    {},
+    { IMAGE_PRIMARY_PROVIDER: 'nanobanana' },
+    { IMAGE_PRIMARY_PROVIDER: 'replicate', MEDIA_GOOGLE_ONLY: '0' },
+    { IMAGE_PRIMARY_PROVIDER: 'nanobanana', MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-nanobanana' },
+  ])('Google image answers (%o)', async (env) => {
+    Object.assign(process.env, env);
     const r = await new ServiceManager().execute(req());
     expect(r.success).toBe(true);
     expect(r.metadata.imageProvider).toBe('gemini-image');
-    expect(r.metadata.imageFallback).toBe('replicate->gemini-image');
-    expect(nano).not.toHaveBeenCalled();
-    expect(grok).not.toHaveBeenCalled();
+    expect(r.metadata.imageFallback).toBe('google-only->gemini-image');
+    expectNoOutsideEngine();
   });
 
-  it('a FLUX miss with no Google transport is an honest failure, with no other outside engine tried', async () => {
-    flux.mockRejectedValue(new Error('replicate 503'));
+  it('an explicit FLUX pick does not reach FLUX', async () => {
+    process.env.MEDIA_GOOGLE_ONLY = '0';
+    process.env.OUTSIDE_ENGINES_APPROVED = 'owner-2026-10-20-replicate';
+    await new ServiceManager().execute(req({ selectedOptions: { imageModel: 'flux' } }));
+    expectNoOutsideEngine();
+    expect(gemini).toHaveBeenCalled();
+  });
+
+  it('Google unavailable is an honest failure, not an outside engine', async () => {
     blocker.mockReturnValue('no key');
     const r = await new ServiceManager().execute(req());
     expect(r.success).toBe(false);
     expect(r.predictionStatus).toBe('failed');
-    expect(r.message).not.toMatch(/replicate 503/); // the provider's internals stay in the log
     expect(gemini).not.toHaveBeenCalled();
-    expect(nano).not.toHaveBeenCalled();
-    expect(grok).not.toHaveBeenCalled();
-  });
-
-  it('a started FLUX prediction is the result: nothing else runs', async () => {
-    flux.mockResolvedValue({ id: 'p1', status: 'starting' });
-    const r = await new ServiceManager().execute(req());
-    expect(r.success).toBe(true);
-    expect(r.predictionId).toBeTruthy();
-    expect(gemini).not.toHaveBeenCalled();
-    expect(nano).not.toHaveBeenCalled();
-  });
-});
-
-describe('NanoBanana is the configured engine', () => {
-  beforeEach(() => { process.env.IMAGE_PRIMARY_PROVIDER = 'nanobanana'; });
-
-  it('a NanoBanana 402 no longer fails over to FLUX or Grok; Google image may answer', async () => {
-    nano.mockResolvedValue({ url: null, text: null, raw: { code: 402, msg: 'insufficient credits' } });
-    const r = await new ServiceManager().execute(req());
-    expect(flux).not.toHaveBeenCalled();
-    expect(grok).not.toHaveBeenCalled();
-    expect(r.success).toBe(true);
-    expect(r.metadata.imageFallback).toBe('nanobanana->gemini-image');
-  });
-
-  it('with Google also unavailable, the NanoBanana error itself is returned', async () => {
-    nano.mockResolvedValue({ url: null, text: null, raw: { code: 402, msg: 'insufficient credits' } });
-    blocker.mockReturnValue('no key');
-    const r = await new ServiceManager().execute(req());
-    expect(r.success).toBe(false);
-    expect(r.provider).toBe('nanobanana');
-    expect(flux).not.toHaveBeenCalled();
-    expect(grok).not.toHaveBeenCalled();
+    expectNoOutsideEngine();
   });
 });
 
 describe('Imagen (opt-in) is the engine', () => {
   beforeEach(() => { imagenOn.mockReturnValue(true); });
 
+  it('runs first for a prompt-only request', async () => {
+    imagen.mockResolvedValue([{ base64: 'aW1n', mimeType: 'image/png' }]);
+    await new ServiceManager().execute(req());
+    expect(imagen).toHaveBeenCalled();
+    expect(gemini).not.toHaveBeenCalled();
+    expectNoOutsideEngine();
+  });
+
   it('an Imagen miss moves to Google image, never to FLUX or NanoBanana', async () => {
     imagen.mockResolvedValue(null);
     const r = await new ServiceManager().execute(req());
     expect(r.success).toBe(true);
-    expect(r.metadata.imageFallback).toBe('imagen->gemini-image');
-    expect(flux).not.toHaveBeenCalled();
-    expect(nano).not.toHaveBeenCalled();
+    expect(r.metadata.imageProvider).toBe('gemini-image');
+    expectNoOutsideEngine();
   });
 
   it('Imagen and Google image both missing is an honest failure', async () => {
@@ -140,61 +134,22 @@ describe('Imagen (opt-in) is the engine', () => {
     gemini.mockResolvedValue(null);
     const r = await new ServiceManager().execute(req());
     expect(r.success).toBe(false);
-    expect(flux).not.toHaveBeenCalled();
-    expect(nano).not.toHaveBeenCalled();
-    expect(grok).not.toHaveBeenCalled();
+    expectNoOutsideEngine();
   });
 });
 
 it("a photo edit sends the photo to Google image and requires it to load (an edit never becomes an unrelated image)", async () => {
-  flux.mockRejectedValue(new Error('down'));
   await new ServiceManager().execute(req({ imageUrl: 'https://x.supabase.co/me.jpg' }));
   expect(gemini).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: ['https://x.supabase.co/me.jpg'], requireReferences: true }));
+  expectNoOutsideEngine();
 });
 
-describe('MEDIA_GOOGLE_ONLY on — no outside engine runs, whatever is configured or picked', () => {
-  beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; });
-  afterAll(() => { process.env.MEDIA_GOOGLE_ONLY = '0'; });
-
-  it('the configured NanoBanana is skipped; Google image answers', async () => {
-    process.env.IMAGE_PRIMARY_PROVIDER = 'nanobanana';
-    const r = await new ServiceManager().execute(req());
-    expect(r.success).toBe(true);
-    expect(r.metadata.imageFallback).toBe('google-only->gemini-image');
-    expect(nano).not.toHaveBeenCalled();
-    expect(flux).not.toHaveBeenCalled();
-    expect(grok).not.toHaveBeenCalled();
-  });
-
-  it('an explicit FLUX pick does not reach FLUX', async () => {
-    await new ServiceManager().execute(req({ selectedOptions: { imageModel: 'flux' } }));
-    expect(flux).not.toHaveBeenCalled();
-    expect(gemini).toHaveBeenCalled();
-  });
-
-  it('Imagen (when enabled) runs first for a prompt-only request', async () => {
-    imagenOn.mockReturnValue(true);
-    imagen.mockResolvedValue([{ base64: 'aW1n', mimeType: 'image/png' }]);
-    await new ServiceManager().execute(req());
-    expect(imagen).toHaveBeenCalled();
-    expect(flux).not.toHaveBeenCalled();
-    expect(nano).not.toHaveBeenCalled();
-  });
-
-  it('Google unavailable is an honest failure, not an outside engine', async () => {
-    blocker.mockReturnValue('no key');
-    const r = await new ServiceManager().execute(req());
-    expect(r.success).toBe(false);
-    expect(flux).not.toHaveBeenCalled();
-    expect(nano).not.toHaveBeenCalled();
-    expect(grok).not.toHaveBeenCalled();
-  });
-});
-
-describe('MEDIA_GOOGLE_ONLY and the chat avatar (HeyGen)', () => {
-  it('is refused before HeyGen is called, in the user\'s language', async () => {
-    process.env.MEDIA_GOOGLE_ONLY = '1';
-    process.env.HEYGEN_API_KEY = 'hg-test';
+describe('the chat avatar (HeyGen)', () => {
+  it.each([
+    {},
+    { MEDIA_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-heygen' },
+  ])('is refused before HeyGen is called, in the user\'s language (%o)', async (env) => {
+    Object.assign(process.env, env, { HEYGEN_API_KEY: 'hg-test' });
     const fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
     try {
       const r = await new ServiceManager().execute(req({ intent: 'avatar_generation', serviceContext: 'avatar', userPrompt: 'Hello from Tbilisi' }));
@@ -205,7 +160,6 @@ describe('MEDIA_GOOGLE_ONLY and the chat avatar (HeyGen)', () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
-      delete process.env.HEYGEN_API_KEY;
     }
   });
 });

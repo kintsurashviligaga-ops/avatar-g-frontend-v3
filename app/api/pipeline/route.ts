@@ -8,20 +8,10 @@ import {
 } from '@/lib/agent-g-clarifier';
 import { SERVICE_REGISTRY } from '@/lib/registry';
 import type { ServiceId } from '@/lib/registry';
-import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
-import { generateNanoBananaImage } from '@/lib/nanobanana/client';
-import { resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
-import { generateUdioTrack } from '@/lib/udio/client';
-import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from '@/lib/chat/iteration-store';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { reportError } from '@/lib/observability/report-error';
-import { selectTtsModel, voiceSettingsForModel } from '@/lib/audio/tts-model';
-import { georgianVoiceId } from '@/lib/audio/georgian-voice';
-import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
-import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { lipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -29,32 +19,7 @@ import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // HeyGen avatar polling can take up to 150s
-
-// ⚠️ THE TEXT SERVICES HAVE NO ANTHROPIC OR OPENAI CLIENT (PROJECT_MASTER R7, "NO SILENT FALLBACK"): they run on Gemini
-// only. This OpenAI client serves ONLY the voice leg's TTS behind ElevenLabs, which itself runs only with the Google-only
-// switch turned off (AI_GOOGLE_ONLY=0, the kill switch) — see the `voice` case in handleGenerate.
-
-const HEYGEN_BASE = 'https://api.heygen.com';
-/** Bundled default presenter portrait — same canonical face the presenter route uses.
- *  Never derive from the request origin (the *.vercel.app host 401s a self-fetch). */
-const AVATAR_DEFAULT_FACE_URL = process.env.PRESENTER_FACE_URL || 'https://myavatar.ge/presenter/default-female.jpg';
-/** Reuse a resolved talking_photo across warm invocations (HeyGen caps photo avatars
- *  at 3 — uploading a new one per call hits error 401028). */
-let cachedAvatarTalkingPhotoId: string | null = null;
-
-/** First existing talking_photo_id on the account (avoids the 3-photo cap and avoids
- *  the unusably slow /v2/avatars list that was the root of the original 504s).
- *  The list shape uses `id` (a HeyGen quirk), not `talking_photo_id`. */
-async function firstExistingTalkingPhotoId(apiKey: string): Promise<string | null> {
-  try {
-    const r = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, { headers: { 'X-Api-Key': apiKey }, signal: AbortSignal.timeout(15_000) });
-    if (!r.ok) return null;
-    const j = (await r.json().catch(() => null)) as { data?: Array<{ id?: string; talking_photo_id?: string }> } | null;
-    for (const item of (j?.data ?? [])) { const id = item?.id || item?.talking_photo_id; if (id) return id; }
-    return null;
-  } catch { return null; }
-}
+export const maxDuration = 300; // a long Gemini text service (a full design document) stays well inside it
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -76,8 +41,6 @@ const PipelineRequestSchema = z.object({
   jobId:        z.string().optional(),
   locale:       z.string().default('ka'),
 });
-
-type MediaFile = z.infer<typeof MediaFileSchema>;
 
 // ─── Service intent detection ─────────────────────────────────────────────────
 
@@ -183,395 +146,7 @@ function handleConfirm(serviceId: ServiceId, userInput: string, answers: Record<
 
 // ─── HeyGen helpers (inlined — no internal HTTP calls) ────────────────────────
 
-/** Upload raw image bytes to HeyGen's UPLOAD host and get a talking_photo_id back in
- *  one call. NOTE the host: uploads go to upload.heygen.com — the previous code posted
- *  a multipart asset to api.heygen.com/v1/asset, which 404s (that host has no /v1/asset).
- *  This is the exact endpoint the (working) presenter route uses. */
-async function uploadTalkingPhoto(apiKey: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<{ id: string | null; detail?: string }> {
-  try {
-    const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
-      method: 'POST',
-      headers: { 'X-Api-Key': apiKey, 'Content-Type': mime || 'image/jpeg' },
-      body: bytes,
-      signal: AbortSignal.timeout(30_000),
-    });
-    const text = await r.text().catch(() => '');
-    if (!r.ok) return { id: null, detail: `HeyGen ${r.status}: ${text.slice(0, 200)}` };
-    let id: string | null = null;
-    try { id = JSON.parse(text)?.data?.talking_photo_id ?? null; } catch { id = null; }
-    return { id, detail: id ? undefined : `no talking_photo_id in: ${text.slice(0, 200)}` };
-  } catch (e) {
-    return { id: null, detail: `upload threw: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200) };
-  }
-}
-
-async function heygenCreateVideo(
-  apiKey: string,
-  character: Record<string, unknown>,
-  voice: Record<string, unknown>,
-  dimension: { width: number; height: number },
-): Promise<string> {
-  const res = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
-    method: 'POST',
-    headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      video_inputs: [{ character, voice }],
-      dimension,
-    }),
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`video/generate ${res.status}: ${err}`);
-  }
-  const data = await res.json() as { data?: { video_id?: string }; video_id?: string };
-  const videoId = data.data?.video_id ?? data.video_id;
-  if (!videoId) throw new Error('no video_id returned');
-  return videoId;
-}
-
-async function heygenPoll(apiKey: string, videoId: string): Promise<string> {
-  for (let i = 0; i < 30; i++) {
-    await new Promise<void>(r => setTimeout(r, 5000));
-    const res = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${videoId}`, {
-      headers: { 'X-Api-Key': apiKey },
-    });
-    if (!res.ok) throw new Error(`poll error: ${res.status}`);
-    const data = await res.json() as { data?: { status?: string; video_url?: string; error?: string } };
-    const { status, video_url, error } = data.data ?? {};
-    if (status === 'completed' && video_url) return video_url;
-    if (status === 'failed') throw new Error(error ?? 'HeyGen generation failed');
-  }
-  throw new Error('HeyGen timed out after 150s');
-}
-
 // ─── Inline generators ────────────────────────────────────────────────────────
-
-async function generateAvatar(
-  script: string,
-  answers: Record<string, string | string[]>,
-  mediaFiles: MediaFile[],
-): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
-  const videoFormat = String(answers.video_format ?? '16:9');
-  const dimension = videoFormat === '9:16'
-    ? { width: 720,  height: 1280 }
-    : videoFormat === '1:1'
-      ? { width: 720,  height: 720  }
-      : { width: 1280, height: 720  };
-
-  // Voice: synthesize the script in our CLONED Georgian voice (honouring the user's
-  // Female/Male choice) and drive the render with voice.type:'audio' — far better than
-  // HeyGen's own generic English voices, and it lip-syncs native Georgian.
-  const gender = String(answers.voice_gender ?? 'female').toLowerCase() === 'male' ? 'male' : 'female';
-  const audioUrl = await textToHostedSpeech(script.slice(0, 1500), georgianVoiceId(gender)).catch(() => null);
-  if (!audioUrl) return { outputKind: 'video', error: 'voice synthesis failed (no cloned-voice audio)' };
-
-  const photoFile = mediaFiles.find(f => f.type === 'image');
-
-  // ── USER PHOTO → talk THAT face via lipsyncCreate: HeyGen when configured, otherwise SadTalker on Replicate. One
-  // engine per job (2026-10-09): a HeyGen miss (e.g. its 3-photo-avatar cap) is a miss, not a SadTalker re-run.
-  if (photoFile) {
-    const raw = (photoFile.dataUrl.includes(',') ? photoFile.dataUrl.split(',')[1] : photoFile.dataUrl) ?? '';
-    const faceUrl = await uploadAndSign('uploads', `avatar-face/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`, raw, photoFile.mimeType || 'image/jpeg', 3600);
-    if (!faceUrl) return { outputKind: 'video', error: 'photo upload failed' };
-    const jobId = await lipsyncCreate(faceUrl, audioUrl);
-    if (!jobId) return { outputKind: 'video', error: 'lip-sync provider unavailable' };
-    // Poll to completion, bounded by the route budget (~240s).
-    const deadline = Date.now() + 240_000;
-    let out: string | null = null;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 5000));
-      const st = await lipsyncFetch(jobId);
-      if (st.status === 'succeeded' && st.url) { out = st.url; break; }
-      if (st.status === 'failed' || st.status === 'canceled') return { outputKind: 'video', error: st.error || 'lip-sync render failed' };
-    }
-    if (!out) return { outputKind: 'video', error: 'lip-sync timed out' };
-    return { resultUrl: await rehostHeygenVideo(out), outputKind: 'video' };
-  }
-
-  // ── NO PHOTO → consistent HeyGen presenter. Reuse an existing talking_photo (never the
-  // unusably slow /v2/avatars list — the root of the original 504s); upload the default
-  // presenter face only if the account has none.
-  const apiKey = process.env.HEYGEN_API_KEY;
-  if (!apiKey) return { outputKind: 'video', error: 'HEYGEN_API_KEY not configured' };
-  let talkingPhotoId = cachedAvatarTalkingPhotoId || await firstExistingTalkingPhotoId(apiKey);
-  let uploadDetail: string | undefined;
-  if (!talkingPhotoId) {
-    const faceRes = await fetch(AVATAR_DEFAULT_FACE_URL, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
-    if (faceRes && faceRes.ok) {
-      const mime = faceRes.headers.get('content-type') || 'image/jpeg';
-      const up = await uploadTalkingPhoto(apiKey, new Uint8Array(await faceRes.arrayBuffer()), mime);
-      talkingPhotoId = up.id;
-      uploadDetail = up.detail;
-    }
-  }
-  cachedAvatarTalkingPhotoId = talkingPhotoId;
-  if (!talkingPhotoId) return { outputKind: 'video', error: `talking_photo unavailable (HeyGen)${uploadDetail ? ` — ${uploadDetail}` : ''}` };
-
-  const character = { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: 'square' as const };
-  const videoId  = await heygenCreateVideo(apiKey, character, { type: 'audio', audio_url: audioUrl }, dimension);
-  const videoUrl = await heygenPoll(apiKey, videoId);
-  // Re-host to a stable 7-day Supabase URL: HeyGen's result URL expires (~1h) → a blank
-  // player on revisit. Fail-open — any miss returns the raw provider URL.
-  return { resultUrl: await rehostHeygenVideo(videoUrl), outputKind: 'video' };
-}
-
-/** Re-host a finished HeyGen video to a stable 7-day Supabase URL (mirrors the
- *  presenter route). Fail-open: returns the raw provider URL on any miss. */
-async function rehostHeygenVideo(providerUrl: string): Promise<string> {
-  try {
-    const r = await fetch(providerUrl, { signal: AbortSignal.timeout(45_000) });
-    if (!r.ok) return providerUrl;
-    const buf = Buffer.from(await r.arrayBuffer());
-    if (buf.byteLength < 1024 || buf.byteLength > 80 * 1024 * 1024) return providerUrl;
-    const path = `avatar/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return (await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800)) || providerUrl;
-  } catch {
-    return providerUrl;
-  }
-}
-
-async function generateImage(
-  prompt: string,
-  answers: Record<string, string | string[]>,
-  mediaFiles: MediaFile[],
-): Promise<{ resultUrl?: string; resultText?: string; outputKind: string; error?: string }> {
-  const provider = String(
-    answers.provider
-      ?? answers.image_provider
-      ?? answers.model_provider
-      ?? 'replicate',
-  ).toLowerCase();
-
-  const endpoint = resolveNanoBananaEndpoint(
-    answers.nanobanana_endpoint
-      ?? answers.nanobananaEndpoint
-      ?? answers.endpoint,
-  );
-
-  const aspectRatio = String(answers.aspect ?? '1:1');
-  const style = String(answers.style ?? 'photorealistic');
-
-  const refImage = mediaFiles.find(f => f.type === 'image');
-  // ⚠️ BOTH BRANCHES BELOW READ ENGLISH ONLY (NanoBanana, then Replicate/FLUX). The brief was
-  // interpolated verbatim, so a Georgian prompt reached the model as noise and it rendered its priors.
-  // Only the DESCRIPTION is translated — this lane carries no text the image must reproduce. The
-  // English reference-image note stays English. Fail-open: a miss returns the ORIGINAL text.
-  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
-  const promptEn = await promptToEnglish(prompt, 'image');
-  const enhancedPrompt = refImage
-    ? `${promptEn} [Reference image provided for composition/style guidance]`
-    : promptEn;
-
-  if (provider === 'nanobanana') {
-    try {
-      const nanoResult = await generateNanoBananaImage({
-        prompt: enhancedPrompt,
-        endpoint,
-        aspectRatio,
-        style,
-        referenceImageDataUrl: refImage?.dataUrl,
-        service: 'image',
-      });
-
-      if (nanoResult.url) {
-        return { resultUrl: nanoResult.url, outputKind: 'image' };
-      }
-
-      if (nanoResult.text) {
-        return { resultText: nanoResult.text, outputKind: 'text' };
-      }
-
-      return { outputKind: 'image', error: 'NanoBanana did not return an output.' };
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'NanoBanana generation failed';
-      return { outputKind: 'image', error: msg };
-    }
-  }
-
-  const { createPrediction, pollUntilDone } = await import('@/lib/replicate/client');
-  const { resolveModel }                    = await import('@/lib/replicate/models');
-  const { validateInput, buildModelInput }  = await import('@/lib/replicate/schemas');
-  const { normalizeOutput }                 = await import('@/lib/replicate/normalizer');
-
-  const quality = String(answers.quality ?? 'standard');
-
-  const validation = validateInput({ service: 'image', prompt: enhancedPrompt, quality, aspectRatio, style });
-  if (!validation.valid || !validation.sanitized) {
-    return { outputKind: 'image', error: validation.error ?? 'Invalid input' };
-  }
-
-  const model      = resolveModel('image', validation.sanitized.variant);
-  const modelInput = buildModelInput(validation.sanitized);
-  const prediction = await createPrediction(model.id, modelInput);
-  const completed  = prediction.status === 'succeeded' && prediction.output
-    ? prediction
-    : await pollUntilDone(prediction.id, 30, 2000);
-
-  const normalized = normalizeOutput(
-    'image', model.label, model.outputType,
-    completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics,
-  );
-
-  if (!normalized.url) return { outputKind: 'image', error: normalized.error ?? 'No image URL returned' };
-  return { resultUrl: normalized.url, outputKind: 'image' };
-}
-
-async function generateInterior(
-  prompt: string,
-  answers: Record<string, string | string[]>,
-  mediaFiles: MediaFile[],
-): Promise<{
-  resultUrl?: string;
-  resultText?: string;
-  outputKind: string;
-  error?: string;
-  spatialLink?: string | null;
-  modelUrl?: string | null;
-  previewImageUrl?: string | null;
-  provider?: string;
-  creditsRemaining?: number | null;
-  adminAlertTriggered?: boolean;
-}> {
-  const imageFile = mediaFiles.find((file) => file.type === 'image');
-  if (!imageFile?.dataUrl) {
-    return { outputKind: 'text', error: 'Upload a clear room photo before starting 3D interior generation.' };
-  }
-
-  const width = Number(answers.image_width ?? 0);
-  const height = Number(answers.image_height ?? 0);
-  if (Number.isFinite(width) && Number.isFinite(height) && (width < 960 || height < 720)) {
-    return {
-      outputKind: 'text',
-      error: 'To get the best 3D result, please upload a high-resolution photo with clear lighting.',
-    };
-  }
-
-  const confirmed = String(answers.confirm_design_brief ?? 'false').toLowerCase() === 'true';
-  if (!confirmed) {
-    return {
-      outputKind: 'text',
-      error: 'Please confirm the generated Design Brief before generating the Interior Design.',
-    };
-  }
-
-  const designBrief = buildInteriorDesignBrief({
-    userPrompt: String(prompt || ''),
-    answers: {
-      primaryGoal: String(answers.primary_goal || 'full_renovation'),
-      colorPalette: String(answers.color_palette || 'neutral_scandi'),
-      materials: String(answers.materials || 'natural_wood'),
-      lightingVibe: String(answers.lighting_vibe || 'natural_sunlight'),
-    },
-  });
-
-  try {
-    const world = await generateWorldLabsInterior({
-      imageDataUrl: imageFile.dataUrl,
-      prompt: designBrief,
-      filename: imageFile.name,
-    });
-
-    return {
-      outputKind: 'text',
-      resultUrl: world.previewImageUrl || world.spatialLink || undefined,
-      resultText: world.spatialLink
-        ? '3D interior world generated successfully. Open embedded viewer below.'
-        : world.message || '3D interior generation completed.',
-      spatialLink: world.spatialLink,
-      modelUrl: world.glbUrl,
-      previewImageUrl: world.previewImageUrl,
-      provider: 'worldlabs',
-      creditsRemaining: world.creditsRemaining,
-      adminAlertTriggered: world.adminAlertTriggered,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Interior Design generation failed';
-    return { outputKind: 'text', error: message };
-  }
-}
-
-async function generateMusic(
-  prompt: string,
-  answers: Record<string, string | string[]>,
-): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
-  const provider = String(
-    answers.provider
-      ?? answers.music_provider
-      ?? answers.musicProvider
-      ?? (process.env.UDIO_API_KEY?.trim() ? 'udio' : 'replicate'),
-  ).toLowerCase();
-
-  if (provider === 'udio') {
-    const styleTags = Array.isArray(answers.style_tags)
-      ? answers.style_tags.map((item) => String(item).trim()).filter(Boolean)
-      : typeof answers.style_tags === 'string'
-        ? answers.style_tags.split(',').map((item) => item.trim()).filter(Boolean)
-        : [];
-
-    const lyricsMode = String(answers.lyrics_mode ?? '').toLowerCase();
-    const makeInstrumental = lyricsMode === 'instrumental'
-      || String(answers.make_instrumental ?? answers.instrumental ?? '').toLowerCase() === 'true';
-
-    try {
-      const result = await generateUdioTrack({
-        prompt,
-        lyrics: typeof answers.lyrics === 'string' ? answers.lyrics : undefined,
-        style: typeof answers.style === 'string' ? answers.style : undefined,
-        title: typeof answers.title === 'string' ? answers.title : undefined,
-        genre: typeof answers.genre === 'string' ? answers.genre : undefined,
-        mood: typeof answers.mood === 'string' ? answers.mood : undefined,
-        styleTags,
-        model: typeof answers.model === 'string' ? answers.model : undefined,
-        makeInstrumental,
-      }, {
-        maxAttempts: 40,
-        pollIntervalMs: 3000,
-      });
-
-      if (result.status === 'failed') {
-        return { outputKind: 'audio', error: result.message || 'Udio generation failed' };
-      }
-
-      if (!result.audioUrl) {
-        return { outputKind: 'audio', error: 'Udio completed without audio URL' };
-      }
-
-      return { resultUrl: result.audioUrl, outputKind: 'audio' };
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Udio generation failed';
-      return { outputKind: 'audio', error: msg };
-    }
-  }
-
-  const { createPrediction, pollUntilDone } = await import('@/lib/replicate/client');
-  const { resolveModel } = await import('@/lib/replicate/models');
-  const { validateInput, buildModelInput } = await import('@/lib/replicate/schemas');
-  const { normalizeOutput } = await import('@/lib/replicate/normalizer');
-
-  const quality = String(answers.quality ?? 'standard');
-  const variant = String(answers.variant ?? 'soundtrack');
-
-  const validation = validateInput({ service: 'music', prompt, quality, variant });
-  if (!validation.valid || !validation.sanitized) {
-    return { outputKind: 'audio', error: validation.error ?? 'Invalid music input' };
-  }
-
-  const model = resolveModel('music', validation.sanitized.variant);
-  const modelInput = buildModelInput(validation.sanitized);
-  const prediction = await createPrediction(model.id, modelInput);
-  const completed = prediction.status === 'succeeded' && prediction.output
-    ? prediction
-    : await pollUntilDone(prediction.id, 40, 2500);
-
-  const normalized = normalizeOutput(
-    'music', model.label, model.outputType,
-    completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics,
-  );
-
-  if (!normalized.url) return { outputKind: 'audio', error: normalized.error ?? 'No audio URL returned' };
-  return { resultUrl: normalized.url, outputKind: 'audio' };
-}
 
 // ─── Main generate handler ────────────────────────────────────────────────────
 
@@ -581,11 +156,9 @@ const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'conte
 async function handleGenerate(
   serviceId: ServiceId,
   finalPrompt: string,
-  rawScript: string,
   sessionId: string,
   locale: string,
   answers: Record<string, string | string[]>,
-  mediaFiles: MediaFile[],
 ) {
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const iterative = buildIterativePrompt({
@@ -738,118 +311,9 @@ async function handleGenerate(
     }
   }
 
-  // ── Media services — inline API calls ────────────────────────────────────
-  try {
-    let genResult: {
-      resultUrl?: string;
-      resultText?: string;
-      outputKind: string;
-      error?: string;
-      spatialLink?: string | null;
-      modelUrl?: string | null;
-      previewImageUrl?: string | null;
-      provider?: string;
-      creditsRemaining?: number | null;
-      adminAlertTriggered?: boolean;
-    };
-
-    switch (serviceId) {
-      case 'avatar':
-        // rawScript = what the user actually typed (the speech text)
-        genResult = await generateAvatar(rawScript, answers, mediaFiles);
-        break;
-      case 'image':
-        genResult = await generateImage(effectivePrompt, answers, mediaFiles);
-        break;
-      case 'music':
-        genResult = await generateMusic(effectivePrompt, answers);
-        break;
-      case 'interior':
-        genResult = await generateInterior(effectivePrompt, answers, mediaFiles);
-        break;
-      case 'voice': {
-        // ⚠️ THE SPEECH MODEL READ THE INSTRUCTIONS ALOUD. `effectivePrompt` is a prompt for a TEXT model: the clarifier
-        // wraps the user's words („Synthesize the following text in ka with a neutral tone:\n\n…") and the iteration
-        // store prepends the previous request („…\n\nRefinement request: …"). Text-to-speech has no instructions to
-        // follow — it says every character — so the voiceover opened with that English sentence. It speaks exactly
-        // what the user typed (rawScript), as the avatar branch above already does.
-        const speech = rawScript.trim();
-        const elevenKey = process.env.ELEVENLABS_API_KEY;
-        // v329 — Georgian → the CLONED native voice on eleven_v3 (the only model that
-        // supports `ka`); other languages keep the configured voice on turbo. The old
-        // code hard-coded turbo (which mangles Georgian) + the non-native voice.
-        const isKa = /[ა-ჿ]/.test(speech);
-        const voiceId = isKa
-          ? georgianVoiceId('female')
-          : (process.env.ELEVENLABS_VOICE_ID || georgianVoiceId('female'));
-        const modelId = selectTtsModel(speech);
-        if (elevenKey) {
-          // Buffered (binary) — the plain endpoint returns audio bytes, and eleven_v3
-          // is not reliably served by the streaming endpoint.
-          const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-            method: 'POST',
-            headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-            body: JSON.stringify({ text: speech.slice(0, 5000), model_id: modelId, voice_settings: voiceSettingsForModel(modelId) }),
-          });
-
-          if (ttsRes.ok) {
-            const buf = Buffer.from(await ttsRes.arrayBuffer());
-            if (buf.byteLength > 1024) {
-              genResult = { outputKind: 'audio', resultUrl: `data:audio/mpeg;base64,${buf.toString('base64')}` };
-              break;
-            }
-          }
-        }
-
-        // PROJECT_MASTER §A / R7: a failed voice is an error. The OpenAI voice behind it was a silent vendor swap; the
-        // AI_GOOGLE_ONLY=0 switch that re-opened it is gone (MASTER TASK v3.1, audit F-04).
-        genResult = { outputKind: 'audio', error: 'Voice generation failed' };
-        break;
-      }
-      default:
-        genResult = { outputKind: 'text', error: `Unknown service: ${serviceId}` };
-    }
-
-    if (genResult.error) {
-      return NextResponse.json({ jobId, status: 'error', serviceId, error: genResult.error }, { status: 200 });
-    }
-
-    if (genResult.outputKind === 'text' || genResult.outputKind === 'code') {
-      if (!genResult.resultText) {
-        return NextResponse.json({ jobId, status: 'error', serviceId, error: 'Missing text output' }, { status: 200 });
-      }
-
-      return NextResponse.json({
-        jobId,
-        status: 'done',
-        serviceId,
-        outputKind: genResult.outputKind,
-        result: genResult.resultText,
-      });
-    }
-
-    if (!genResult.resultUrl) {
-      return NextResponse.json({ jobId, status: 'error', serviceId, error: 'Missing result URL' }, { status: 200 });
-    }
-
-      return NextResponse.json({
-        jobId, status: 'done', serviceId,
-        outputKind: genResult.outputKind,
-        result_url: genResult.resultUrl,
-        result: genResult.resultText,
-        spatial_link: genResult.spatialLink,
-        model_url: genResult.modelUrl,
-        preview_image_url: genResult.previewImageUrl,
-        provider: genResult.provider,
-        credits_remaining: genResult.creditsRemaining,
-        admin_alert_triggered: genResult.adminAlertTriggered,
-        iteration: iterative.iteration,
-      });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Generation failed';
-    reportError(err, { route: '/api/pipeline', stage: 'generate', serviceId, jobId });
-    return NextResponse.json({ jobId, status: 'error', serviceId, error: msg }, { status: 200 });
-  }
+  // Every media service (avatar, image, music, interior, voice) is refused in POST before it gets here: they ran on
+  // outside engines with no Google path (MASTER TASK v3.1), and video moved to the studio.
+  return NextResponse.json({ jobId, status: 'error', serviceId, error: `Unknown service: ${serviceId}` }, { status: 200 });
 }
 
 // ─── Frontend → backend service ID aliases ────────────────────────────────────
@@ -876,7 +340,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    const { action, userInput, answers, mediaFiles, locale, sessionId } = parsed.data;
+    const { action, userInput, answers, locale, sessionId } = parsed.data;
     const serviceId = parsed.data.serviceId ? normalizeServiceId(parsed.data.serviceId) : undefined;
 
     switch (action) {
@@ -910,13 +374,12 @@ export async function POST(req: NextRequest) {
         if (mustSignInToGenerate(user?.id)) {
           return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
         }
-        // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this wizard's media legs are Nano Banana, HeyGen, World Labs,
-        // Udio and the lip-sync cascade — all outside engines with no charge of their own — so with the switch on only
-        // the text services (Gemini) still run. Refused before the rate limit, so a refusal spends none of it. Video is
-        // VIDEO_GOOGLE_ONLY's (just below), as everywhere else.
+        // This wizard's media legs (Nano Banana, HeyGen, World Labs, Udio, ElevenLabs voice, the lip-sync cascade) ran
+        // on outside engines with no charge of their own and no Google path: only the text services (Gemini) run, whatever
+        // MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). Refused before the rate limit, so a refusal spends none of it. Video
+        // has its own answer just below.
         if (!TEXT_SERVICES.includes(serviceId as ServiceId) && normalizeServiceId(serviceId) !== ('video' as ServiceId)) {
-          const outside = refuseOutsideEngine(req);
-          if (outside) return outside;
+          return refuseOutsideEngine(req);
         }
         // Every generate spends a paid provider, and this legacy surface has no credit charge of its own: bound it
         // like the other expensive routes.
@@ -937,11 +400,9 @@ export async function POST(req: NextRequest) {
         return handleGenerate(
           serviceId as ServiceId,
           finalPrompt,
-          userInput,      // raw script (used for avatar)
           sessionId || `pipeline_${Date.now()}`,
           locale,
           answers ?? {},
-          mediaFiles ?? [],
         );
       }
 

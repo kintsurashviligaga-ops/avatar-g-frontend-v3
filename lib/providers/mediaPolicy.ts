@@ -1,34 +1,21 @@
 /**
- * MEDIA_GOOGLE_ONLY — the switch that makes every user-facing media tool run on Google or ElevenLabs only
- * (PROJECT_MASTER R7, certification §L, owner action 9).
+ * lib/providers/mediaPolicy.ts — the refusal for a media tool with no Google engine (MASTER TASK v3.1, audit F-04).
  *
- * OPT-OUT, DEFAULT ON (global E2E 2026-10-14, P1 provider boundary). It used to be opt-in, so an unset env — every
- * Preview and Production today — sent paid jobs to HeyGen / Kling / NanoBanana / Replicate / Higgsfield / Udio, outside
- * the Google + ElevenLabs boundary, with no owner decision behind it. Fail closed: only an explicit falsy value
- * (MEDIA_GOOGLE_ONLY=0 | false | off | no) TOGETHER WITH an owner approval reference in OUTSIDE_ENGINES_APPROVED re-opens
- * the outside engines (final repair run: a falsy flag alone is ignored); unsetting either is the rollback. VIDEO_GOOGLE_ONLY (lib/veo/policy) and AI_GOOGLE_ONLY
- * (lib/ai/google/policy, always on under v3.1) already hold video and text to Google; this covers what they never reached: image,
- * avatar, music extras, remix edits, motion, 3D, the photo / audio editors and the raw vendor routes.
- *
- * When ON:
+ * MEDIA_GOOGLE_ONLY used to be an opt-out switch: an explicit falsy value together with an owner approval reference in
+ * OUTSIDE_ENGINES_APPROVED re-opened HeyGen, Kling, NanoBanana, Replicate, Higgsfield, Udio and LTX. v3.1 denies every
+ * cross-provider fallback, so neither variable is read any more and the legs the switch guarded are deleted:
  *   · image (the Image tool and chat images) renders on Google's own image model (lib/ai/geminiImage);
- *   · a tool with no Google / ElevenLabs engine yet refuses BEFORE any charge or provider call — 503 `google_only`,
- *     said in the user's language — instead of reaching an outside engine. Nothing is ever re-routed silently;
- *   · status / poll routes are never gated, so a job started before the switch still finishes and settles.
+ *   · a tool with no Google / ElevenLabs engine refuses BEFORE any charge, upload or provider call — 503 `google_only`,
+ *     said in the user's language. Nothing is ever re-routed silently;
+ *   · status / poll routes are never refused, so a job started before this change still finishes and settles.
  *
- * Every gated entry is listed in GATED_ENTRIES below, and lib/providers/mediaPolicy.test.ts checks that each listed
- * file really calls the guard — so the list is the switch's documentation and cannot drift from the code.
+ * Every entry that refuses is listed in GATED_ENTRIES below, and lib/providers/mediaPolicy.test.ts checks that each
+ * listed file really calls the guard, so the list cannot drift from the code.
  */
 import { NextResponse } from 'next/server';
-import { googleOnlySwitch } from '@/lib/env/providerBoundary';
 import { billingLocale } from '@/lib/api/billingCopy';
 
 export const GOOGLE_ONLY_CODE = 'google_only' as const;
-
-export function isMediaGoogleOnly(env: NodeJS.ProcessEnv = process.env): boolean {
-  // A falsy value re-opens outside engines only with OUTSIDE_ENGINES_APPROVED on record (lib/env/providerBoundary).
-  return googleOnlySwitch(env.MEDIA_GOOGLE_ONLY, env);
-}
 
 const MESSAGE = {
   ka: 'ეს ხელსაწყო დროებით შეჩერებულია, სანამ Google-ის ძრავაზე გადავა. თანხა არ ჩამოგეჭრა.',
@@ -41,12 +28,11 @@ export function googleOnlyMessage(locale: string | null | undefined): string {
 }
 
 /**
- * The refusal for an entry that would reach an outside engine, or null when the switch is off. Call it before any
- * charge, upload or provider call. The body carries every field the studio's readers look at (`code` / `error` for
- * describeGenerationFailure, `message` for describeOpFailure, `url` / `jobId` null for the panels that test those).
+ * The refusal for an entry whose only engine is outside Google. Call it before any charge, upload or provider call. The
+ * body carries every field the studio's readers look at (`code` / `error` for describeGenerationFailure, `message` for
+ * describeOpFailure, `url` / `jobId` null for the panels that test those).
  */
-export function refuseOutsideEngine(req?: Request | null, env: NodeJS.ProcessEnv = process.env): NextResponse | null {
-  if (!isMediaGoogleOnly(env)) return null;
+export function refuseOutsideEngine(req?: Request | null): NextResponse {
   return NextResponse.json(
     {
       success: false,
@@ -60,37 +46,25 @@ export function refuseOutsideEngine(req?: Request | null, env: NodeJS.ProcessEnv
   );
 }
 
-/**
- * Every user-facing entry the switch governs, with what it does when ON. `file` is the route that calls
- * refuseOutsideEngine / isMediaGoogleOnly (pinned by the test).
- */
+/** Every user-facing entry that refuses, with what it refuses. `file` calls refuseOutsideEngine (pinned by the test). */
 export const GATED_ENTRIES: ReadonlyArray<{ file: string; when: string }> = [
-  { file: 'app/api/nanobanana/image/route.ts', when: 'Image tool → Google image model instead of NanoBanana' },
-  { file: 'lib/chat/ServiceManager.ts', when: 'chat images → Imagen / Google image model only; chat avatar (HeyGen) → refused' },
-  { file: 'lib/chat/providerRouter.ts', when: 'chat music (Udio / MusicGen), Replicate intents (BLIP, generic models), interior redesign (FLUX depth), 3D room (WorldLabs) → refused' },
-  { file: 'lib/chat/musicVideoComposite.ts', when: 'chat music video runs without its Udio music leg' },
   { file: 'app/api/ai/edit/route.ts', when: 'object removal (Replicate inpaint) → refused; ffmpeg ops run' },
   { file: 'app/api/voice/train/route.ts', when: 'voice training (RVC on Replicate) → refused; the status GET stays open' },
-  { file: 'lib/audio/georgianSong.ts', when: 'Georgian song bed: ElevenLabs Music only, no MusicGen' },
-  { file: 'app/api/motion-control/status/route.ts', when: 'the MusicGen background on a motion clip is skipped (silent clip); the poll stays open' },
   { file: 'app/api/generate/route.ts', when: 'studio models (Higgsfield) → refused; the job list stays open' },
   { file: 'app/api/genjutsu/generate/route.ts', when: 'motion / swap (Higgsfield) → refused; scene (Veo) runs' },
-  { file: 'lib/orchestrator/ffmpeg-assembly.ts', when: 'film lip-sync cascade (HeyGen, Replicate) held off whatever FILM_LIPSYNC_ENABLED says' },
   { file: 'app/api/pipeline/route.ts', when: 'legacy wizard media legs (Nano Banana, HeyGen, World Labs, Udio, lip-sync) → refused; its text services run' },
-  { file: 'app/api/app/jobs/[id]/route.ts', when: 'image-creator jobs (Stability) are not auto-processed' },
-  { file: 'app/api/heygen/presenter/route.ts', when: 'Avatar presenter (HeyGen) → refused' },
-  { file: 'app/api/heygen/avatar/route.ts', when: 'HeyGen avatar video → refused' },
+  { file: 'app/api/heygen/presenter/route.ts', when: 'Avatar presenter (HeyGen) → refused; the status GET stays open' },
+  { file: 'app/api/heygen/avatar/route.ts', when: 'HeyGen avatar video → refused; the poll GET stays open' },
   { file: 'app/api/video/voice-narration/route.ts', when: 'film narration in the trained voice (RVC on Replicate, uncharged) → refused; the film keeps its original narration' },
   { file: 'app/api/avatar/live/session/route.ts', when: 'live avatar session (HeyGen LiveAvatar, uncharged) → refused' },
   { file: 'app/api/video/lipsync/route.ts', when: 'talking photo / film lip-sync (HeyGen, SadTalker, sync) → refused' },
-  // app/api/ai/music/route.ts and lib/ai/musicEnginesStatus.ts left this list: since Music Studio v1 (Phase 2) they refuse /
-  // show off every non-Google music engine ALWAYS, not only under this switch (lib/music/studio/boundary).
+  // app/api/ai/music/route.ts and lib/ai/musicEnginesStatus.ts are not listed: since Music Studio v1 (Phase 2) they refuse /
+  // show off every non-Google music engine with their own answer (lib/music/studio/boundary).
   { file: 'app/api/video/remix/route.ts', when: 'restyle / character / background / redub (NanoBanana, Kling, roop, sync) → refused; ffmpeg ops, voiceover and the Veo product ad run' },
   { file: 'app/api/motion-control/route.ts', when: 'Motion transfer (Kling) → refused' },
   { file: 'app/api/v2/model3d/create/route.ts', when: '3D (TRELLIS) → refused' },
   { file: 'app/api/ai/edit-photo/route.ts', when: 'photo editor (Replicate) → refused' },
   { file: 'app/api/ai/upscale/route.ts', when: 'upscale (Replicate) → refused' },
-  { file: 'lib/services/dubbing/dubbingPipeline.ts', when: 'dubbing keeps the ducked original bed instead of a Demucs split' },
   { file: 'app/api/replicate/image/route.ts', when: 'raw Replicate route → refused' },
   { file: 'app/api/replicate/video/route.ts', when: 'raw Replicate route → refused' },
   { file: 'app/api/replicate/audio/route.ts', when: 'raw Replicate route → refused' },

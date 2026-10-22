@@ -28,7 +28,7 @@ type Known =
   // A credit-priced generation that failed AFTER its charge was refunded — said only when the route reports
   // `refunded: true` (see describeGenerationFailure).
   | 'generation_refunded'
-  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): a tool with no Google / ElevenLabs engine yet refuses before any charge.
+  // lib/providers/mediaPolicy: a tool with no Google / ElevenLabs engine refuses before any charge.
   | 'google_only'
   // A music option outside Google Lyria (a cover, a sampled voice, another engine) — refused before any charge. It used
   // to fall through to the loose /unsupported/ rule and read as „this format can't be read, try MP3 or WAV" (2026-10-16).

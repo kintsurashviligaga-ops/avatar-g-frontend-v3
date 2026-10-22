@@ -72,18 +72,6 @@
     "app/api/agent/video-queue/route.ts": [
       "replicate"
     ],
-    "app/api/ai/edit-audio/route.ts": [
-      "replicate"
-    ],
-    "app/api/ai/edit-photo/route.ts": [
-      "replicate"
-    ],
-    "app/api/ai/edit/route.ts": [
-      "replicate"
-    ],
-    "app/api/ai/upscale/route.ts": [
-      "replicate"
-    ],
     "app/api/app/health/route.ts": [
       "anthropic",
       "heygen",
@@ -92,22 +80,15 @@
       "udio",
       "worldlabs"
     ],
-    "app/api/app/jobs/[id]/route.ts": [
-      "stability"
-    ],
     "app/api/app/worker/tick/route.ts": [
       "elevenlabs",
       "openai"
     ],
     "app/api/audio/georgian-song/route.ts": [
-      "elevenlabs",
-      "replicate"
+      "elevenlabs"
     ],
     "app/api/audio/isolate/route.ts": [
       "elevenlabs"
-    ],
-    "app/api/avatar/live/session/route.ts": [
-      "liveavatar"
     ],
     "app/api/avatar/veo/route.ts": [
       "elevenlabs"
@@ -123,11 +104,9 @@
       "kling",
       "ltx",
       "luma",
-      "nanobananaapi",
       "replicate",
       "runway",
-      "udio",
-      "worldlabs"
+      "udio"
     ],
     "app/api/chat/stream/route.ts": [
       "elevenlabs",
@@ -135,11 +114,9 @@
       "kling",
       "ltx",
       "luma",
-      "nanobananaapi",
       "replicate",
       "runway",
-      "udio",
-      "worldlabs"
+      "udio"
     ],
     "app/api/connectors/files/route.ts": [
       "gemini_developer_api"
@@ -176,7 +153,6 @@
       "kling",
       "ltx",
       "luma",
-      "nanobananaapi",
       "replicate",
       "runway"
     ],
@@ -186,7 +162,6 @@
       "kling",
       "ltx",
       "luma",
-      "nanobananaapi",
       "replicate",
       "runway"
     ],
@@ -196,11 +171,9 @@
       "kling",
       "ltx",
       "luma",
-      "nanobananaapi",
       "replicate",
       "runway",
-      "udio",
-      "worldlabs"
+      "udio"
     ],
     "app/api/generate/[id]/route.ts": [
       "higgsfield"
@@ -243,7 +216,6 @@
       "heygen"
     ],
     "app/api/heygen/presenter/route.ts": [
-      "elevenlabs",
       "heygen"
     ],
     "app/api/image/assets/[id]/route.ts": [
@@ -276,12 +248,6 @@
     "app/api/image/operations/validate/route.ts": [
       "nanobananaapi"
     ],
-    "app/api/ltx-video/route.ts": [
-      "ltx"
-    ],
-    "app/api/motion-control/route.ts": [
-      "replicate"
-    ],
     "app/api/motion-control/status/route.ts": [
       "replicate"
     ],
@@ -303,45 +269,19 @@
     "app/api/music/studio/sweep/route.ts": [
       "replicate"
     ],
-    "app/api/nanobanana/image/route.ts": [
-      "nanobananaapi"
-    ],
     "app/api/orbit/[service]/route.ts": [
       "elevenlabs"
-    ],
-    "app/api/orchestrator/produce/route.ts": [
-      "heygen",
-      "replicate"
     ],
     "app/api/pipeline/remix/route.ts": [
       "heygen",
       "kling",
       "ltx",
       "luma",
-      "nanobananaapi",
       "replicate",
       "runway"
     ],
-    "app/api/pipeline/route.ts": [
-      "elevenlabs",
-      "heygen",
-      "nanobananaapi",
-      "replicate",
-      "udio",
-      "worldlabs"
-    ],
     "app/api/preview/google-check/route.ts": [
       "nanobananaapi"
-    ],
-    "app/api/replicate/avatar/route.ts": [
-      "replicate"
-    ],
-    "app/api/replicate/generate/route.ts": [
-      "replicate"
-    ],
-    "app/api/replicate/image/route.ts": [
-      "nanobananaapi",
-      "replicate"
     ],
     "app/api/research/[id]/ask/route.ts": [
       "gemini_developer_api"
@@ -372,11 +312,7 @@
       "replicate"
     ],
     "app/api/v2/dubbing/start/route.ts": [
-      "elevenlabs",
-      "replicate"
-    ],
-    "app/api/v2/model3d/create/route.ts": [
-      "replicate"
+      "elevenlabs"
     ],
     "app/api/v2/model3d/status/route.ts": [
       "replicate"
@@ -390,12 +326,10 @@
       "kling",
       "ltx",
       "luma",
-      "nanobananaapi",
       "replicate",
       "runway"
     ],
     "app/api/video/lipsync/route.ts": [
-      "elevenlabs",
       "heygen",
       "replicate"
     ],
@@ -405,12 +339,8 @@
       "kling",
       "ltx",
       "luma",
-      "nanobananaapi",
       "replicate",
       "runway"
-    ],
-    "app/api/video/voice-narration/route.ts": [
-      "replicate"
     ],
     "app/api/voice-lab/jobs/route.ts": [
       "elevenlabs"

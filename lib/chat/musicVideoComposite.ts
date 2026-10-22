@@ -32,7 +32,6 @@
 
 import 'server-only';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
-import { startUdioGeneration } from '@/lib/udio/client';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
@@ -40,8 +39,6 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { ServiceManager } from './ServiceManager';
 import { encodeCompositeRef } from './compositeTaskRef';
 import { hasVideoProvider } from './videoProvider';
-import { hasUdioApiKey } from './mediaKeys';
-import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { insufficientCreditsResponse, chargeRefusedResponse } from './chatBilling';
@@ -212,47 +209,11 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   const opts = input.selectedOptions || {};
   const baseStyle = opts.style?.toLowerCase() || 'hip-hop';
 
-  // Music leg — Udio. Under MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy) Udio is never called: the composite runs
-  // without its music leg, exactly as it does when no Udio key is configured.
-  const musicPromise: Promise<string | null> = hasUdioApiKey() && !isMediaGoogleOnly()
-    ? withTrace(
-        {
-          userId: input.userId || null,
-          agentId: 'music-agent',
-          workerKind: 'udio',
-          action: 'generate_track',
-          promptSummary: input.message,
-          costWholesaleGel: forecast.legs.music.wholesale,
-          costRetailGel: forecast.legs.music.retail,
-          metadata: { composite: true, leg: 'music', style: baseStyle },
-          deduct: false, // the composite is charged once, up front (mvCharged) — never per leg
-          deductRef: `${compositeId}:music`,
-        },
-        // ⚠️ THE USER'S BRIEF WAS INTERPOLATED INTO AN ENGLISH SENTENCE IN WHATEVER ALPHABET THEY TYPED.
-        // Udio reads English, so "…based on: <Georgian text>" gave it a well-formed instruction ending in
-        // noise — it kept the English scaffolding and invented the part that mattered. Same defect as the
-        // chat music lane, in the music-VIDEO path. `plan.lyrics` stays untranslated: those are sung.
-        async () =>
-          startUdioGeneration({
-            prompt: `${baseStyle} 30 second instrumental with vocal hook based on: ${await (async () => {
-              const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
-              return promptToEnglish(input.message, 'music');
-            })()}`,
-            lyrics: plan.lyrics ?? undefined,
-            style: baseStyle,
-            genre: baseStyle,
-            makeInstrumental: false,
-          }),
-      )
-        .then((r) => r.workId)
-        .catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[composite] music leg failed:', err instanceof Error ? err.message : err);
-          return null;
-        })
-    : Promise.resolve(null);
+  // Music leg — none. It was Udio, which has no Google engine (MASTER TASK v3.1): the composite runs without its music
+  // leg, exactly as it did when no Udio key was configured, whatever MEDIA_GOOGLE_ONLY says.
+  const musicPromise: Promise<string | null> = Promise.resolve(null);
 
-  // Video leg — LTX via ServiceManager. The lyrics text (when available)
+  // Video leg — Veo via ServiceManager. The lyrics text (when available)
   // flows into the video brief so the cinematic clip lines up with the
   // song's narrative beats.
   const videoBrief = plan.lyrics

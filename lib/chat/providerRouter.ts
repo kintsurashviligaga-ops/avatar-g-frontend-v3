@@ -9,28 +9,20 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { detectIntent, intentToReplicateService, type DetectedIntent, type IntentCategory } from './intentDetector';
-import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replicate/schemas';
-import { resolveModel } from '@/lib/replicate/models';
-import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
-import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { detectIntent, type DetectedIntent, type IntentCategory } from './intentDetector';
 import { reportError } from '@/lib/observability/report-error';
-import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
 import { getUdioGenerationStatus } from '@/lib/udio/client';
-import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
-import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
-import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
 import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
 import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { billableCreditCost, chargeRefusedResponse, insufficientCreditsResponse } from './chatBilling';
 import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
-import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
+import { GOOGLE_ONLY_CODE, googleOnlyMessage } from '@/lib/providers/mediaPolicy';
 import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
@@ -270,13 +262,11 @@ function refuseAnonymousGeneration(input: OrchestratorInput, intent: IntentCateg
 }
 
 /**
- * MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy, opt-in, default off) for the chat branches whose only engines are
- * outside ones — chat music (Udio / MusicGen), the Replicate intents (BLIP captions, generic models), the interior
- * redesign (FLUX depth) and the 3D room (WorldLabs). With the switch on they answer the same paused-tool sentence the
- * studio routes do, before any balance read, charge or provider call. Off → null, and the branch runs as before.
+ * The chat branches whose only engines are outside ones — the Replicate intents (BLIP captions, generic models), the
+ * interior redesign (FLUX depth) and the 3D room (WorldLabs) — answer the same paused-tool sentence the studio routes
+ * do, before any balance read, charge or provider call, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1).
  */
-function refuseOutsideEngineInChat(input: OrchestratorInput, intent: IntentCategory): ChatResponse | null {
-  if (!isMediaGoogleOnly()) return null;
+function refuseOutsideEngineInChat(input: OrchestratorInput, intent: IntentCategory): ChatResponse {
   return {
     success: false,
     intent,
@@ -287,9 +277,9 @@ function refuseOutsideEngineInChat(input: OrchestratorInput, intent: IntentCateg
 }
 
 /**
- * ⚠️ CHAT MUSIC (Udio / MusicGen) IS OUTSIDE THE PROVIDER BOUNDARY — REFUSED ALWAYS (Music Studio v1, Phase 2), not only
- * under MEDIA_GOOGLE_ONLY: its only engines are outside ones. The user is pointed to the Music tool (Google Lyria), and
- * nothing is charged or sent to a provider.
+ * ⚠️ CHAT MUSIC (Udio / MusicGen) IS OUTSIDE THE PROVIDER BOUNDARY — REFUSED ALWAYS (Music Studio v1, Phase 2), whatever
+ * any env says: its only engines are outside ones. The user is pointed to the Music tool (Google Lyria), and nothing is
+ * charged or sent to a provider.
  */
 function refuseChatMusic(input: OrchestratorInput, intent: IntentCategory): ChatResponse {
   const l = input.locale;
@@ -343,23 +333,16 @@ export async function orchestrate(
       ?? handleFilmComposite(input);
   }
 
-  // PHASE 56 — Interior REDESIGN (depth-locked FLUX ControlNet) takes priority
-  // over the WorldLabs 3D-world route: when a room photo is attached in the
-  // Interior service and the user hasn't explicitly asked for a 3D world /
-  // walkthrough, re-render the SAME room with new materials, furniture and
-  // lighting. Explicit 3D/world asks still fall through to WorldLabs below.
+  // Interior redesign (depth-locked FLUX ControlNet) and the WorldLabs 3D room have no Google engine: both are refused
+  // before any charge or provider call (MASTER TASK v3.1). The two checks stay so each answers under its own intent.
   if (shouldRedesignInterior(input)) {
     return refuseAnonymousGeneration(input, 'image_generation')
-      ?? refuseOutsideEngineInChat(input, 'image_generation')
-      ?? (await refuseSwitchedOffInChat(input, 'image_generation', 'interior'))
-      ?? handleInteriorRedesign(input);
+      ?? refuseOutsideEngineInChat(input, 'image_generation');
   }
 
   if (shouldRouteInteriorToWorldLabs(input)) {
     return refuseAnonymousGeneration(input, 'image_generation')
-      ?? refuseOutsideEngineInChat(input, 'image_generation')
-      ?? (await refuseSwitchedOffInChat(input, 'image_generation', 'interior'))
-      ?? handleInteriorIntent(input);
+      ?? refuseOutsideEngineInChat(input, 'image_generation');
   }
 
   // PHASE 56 — Gemini multimodal VISION, unleashed across EVERY conversational
@@ -454,9 +437,7 @@ export async function orchestrate(
   // 2. Route to the right provider
   if (detected.provider === 'replicate') {
     return refuseAnonymousGeneration(input, detected.intent)
-      ?? refuseOutsideEngineInChat(input, detected.intent)
-      ?? (await refuseSwitchedOffInChat(input, detected.intent, toolForIntent(detected.intent)))
-      ?? handleReplicateIntent(input, detected);
+      ?? refuseOutsideEngineInChat(input, detected.intent);
   }
 
   return handleTextIntent(input, detected);
@@ -931,13 +912,6 @@ function filmStitchToClientStatus(
   return anyClipPending ? 'queued' : 'pending';
 }
 
-// PHASE 56 — Interior REDESIGN engine model. Black Forest Labs' official
-// FLUX.1 [Dev] depth-ControlNet: it derives a depth map from the uploaded room
-// photo (locking walls, windows, proportions and camera perspective) and
-// re-renders photorealistic materials, furniture, decor and lighting from the
-// user's brief onto that exact geometry. Env-overridable for a later pin/swap.
-const INTERIOR_REDESIGN_MODEL = process.env.REPLICATE_INTERIOR_MODEL || 'black-forest-labs/flux-depth-dev';
-
 // The pure redesign-vs-WorldLabs decision lives in a dependency-free module so
 // it can be unit-tested in isolation (providerRouter pulls in heavy SDKs).
 export { shouldRedesignInterior } from './interiorRouting';
@@ -945,149 +919,6 @@ import { shouldRedesignInterior } from './interiorRouting';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
 import type { SwitchableTool } from '@/lib/server/serviceSwitches';
 import { googleAiConfigured } from '@/lib/ai/google/transport';
-
-/** Normalize the many shapes a Replicate image output can take into a URL. */
-function extractReplicateImageUrl(output: unknown): string | null {
-  if (typeof output === 'string') return output;
-  if (Array.isArray(output)) {
-    const first = output.find((o) => typeof o === 'string');
-    return typeof first === 'string' ? first : null;
-  }
-  if (output && typeof output === 'object') {
-    const obj = output as Record<string, unknown>;
-    if (typeof obj.url === 'string') return obj.url;
-    if (Array.isArray(obj.output)) {
-      const first = obj.output.find((o) => typeof o === 'string');
-      return typeof first === 'string' ? first : null;
-    }
-  }
-  return null;
-}
-
-/**
- * PHASE 56 — Interior REDESIGN handler (Replicate · FLUX.1 [Dev] + depth
- * ControlNet). Locks the room's spatial geometry from the uploaded photo and
- * re-renders photorealistic materials, furniture and lighting from the user's
- * restyle brief onto the SAME space. Returns a flat 2D "after" image.
- *
- * Synchronous create + poll: the orchestrate route's maxDuration=300 gives a
- * single depth render plenty of headroom. Failures degrade to an honest,
- * localized message — never a fabricated success.
- */
-async function handleInteriorRedesign(input: OrchestratorInput): Promise<ChatResponse> {
-  const iterative = buildIterativePrompt({
-    sessionId: input.sessionId,
-    serviceContext: 'interior',
-    message: input.message,
-    selectedOptions: input.selectedOptions,
-    imageUrl: input.imageUrl,
-  });
-
-  const opts = input.selectedOptions || {};
-  const controlImage = input.imageUrl || opts.image_url || opts.reference_image || '';
-
-  // Compose a depth-locked restyle brief: the user's words lead, the UI design
-  // answers follow, and a geometry-preservation guardrail anchors the depth
-  // ControlNet so the room's walls/windows/proportions/perspective stay intact.
-  const styleAnswers = [
-    opts.primary_goal && `goal: ${opts.primary_goal.replace(/_/g, ' ')}`,
-    opts.color_palette && `palette: ${opts.color_palette.replace(/_/g, ' ')}`,
-    opts.materials && `materials: ${opts.materials.replace(/_/g, ' ')}`,
-    opts.lighting_vibe && `lighting: ${opts.lighting_vibe.replace(/_/g, ' ')}`,
-    opts.style && `style: ${opts.style}`,
-  ]
-    .filter(Boolean)
-    .join(', ');
-
-  // ⚠️ THE DEPTH-CONTROLNET MODEL READS ENGLISH ONLY. `iterative.prompt` is the user's own words and
-  // it LEADS this composed brief, so a Georgian request ("დაამატე ხის აქცენტები") arrived as noise and
-  // the engine restyled the room to its priors — geometry preserved, intent gone. The guardrail clause
-  // and `styleAnswers` are already English and pass through untouched. Fail-open: a miss returns the
-  // ORIGINAL text, which is exactly today's behaviour.
-  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
-  const briefEn = await promptToEnglish(iterative.prompt.trim(), 'image');
-  const prompt = [
-    briefEn,
-    styleAnswers,
-    'photorealistic interior redesign of the same room, preserve the exact geometry, walls, windows, doorways, proportions and camera perspective, only re-render materials, furniture, decor and lighting, professional architectural visualization, natural light, high detail, 8k',
-  ]
-    .filter(Boolean)
-    .join('. ');
-
-  try {
-    const created = await createPrediction(INTERIOR_REDESIGN_MODEL, {
-      prompt,
-      control_image: controlImage,
-      guidance: 10,
-      num_inference_steps: 28,
-      megapixels: '1',
-      num_outputs: 1,
-      output_format: 'webp',
-      output_quality: 90,
-    });
-
-    const done =
-      created.status === 'succeeded' || created.status === 'failed' || created.status === 'canceled'
-        ? created
-        : await pollUntilDone(created.id, 90, 2000);
-
-    if (done.status !== 'succeeded') {
-      throw new Error(done.error || `redesign ${done.status}`);
-    }
-
-    const assetUrl = extractReplicateImageUrl(done.output);
-    if (!assetUrl) {
-      throw new Error('redesign produced no image');
-    }
-
-    const loc = input.locale || 'ka';
-    const message =
-      loc === 'en'
-        ? 'Interior redesign ready — same room, restyled materials, furniture and lighting. Send a follow-up to iterate.'
-        : loc === 'ru'
-          ? 'Редизайн интерьера готов — та же комната, новые материалы, мебель и освещение. Напишите уточнение, и я доработаю.'
-          : 'ინტერიერის რედიზაინი მზადაა — იგივე ოთახი, განახლებული მასალები, ავეჯი და განათება. მომწერეთ დამატება და დავხვეწავ.';
-
-    return {
-      success: true,
-      intent: 'image_generation',
-      responseType: 'image',
-      message,
-      assetUrl,
-      assetType: 'image',
-      metadata: {
-        provider: 'replicate',
-        model: INTERIOR_REDESIGN_MODEL,
-        engine: 'flux-depth-controlnet',
-        predictId: done.id,
-        predictTime: done.metrics?.predict_time,
-        iteration: iterative.iteration,
-      },
-    };
-  } catch (error) {
-    const raw = error instanceof Error ? error.message : 'Interior redesign failed.';
-    const loc = input.locale || 'ka';
-    const friendly =
-      loc === 'en'
-        ? 'The Interior redesign engine hit a snag rendering your room — please try again shortly.'
-        : loc === 'ru'
-          ? 'Движок редизайна интерьера не смог отрисовать комнату — попробуйте чуть позже.'
-          : 'ინტერიერის რედიზაინის ძრავმა ვერ დაარენდერა ოთახი — სცადეთ ცოტა ხანში.';
-    return {
-      success: false,
-      intent: 'image_generation',
-      responseType: 'text',
-      message: friendly,
-      metadata: {
-        provider: 'replicate',
-        model: INTERIOR_REDESIGN_MODEL,
-        engine: 'flux-depth-controlnet',
-        iteration: iterative.iteration,
-        error: raw,
-      },
-    };
-  }
-}
 
 function shouldRouteInteriorToWorldLabs(input: OrchestratorInput): boolean {
   const context = String(input.serviceContext || '').toLowerCase();
@@ -1131,147 +962,6 @@ async function loadImageAsDataUrl(imageUrl: string): Promise<string> {
       ? 'Reference image must be a public URL.' : 'Unable to load reference image.');
   }
   return ensureImageDataUrl(got.bytes.toString('base64'), got.contentType || 'image/jpeg');
-}
-
-function runOutputValidation(input: {
-  requestedPrompt: string;
-  selectedOptions?: Record<string, string>;
-  spatialLink?: string | null;
-  glbUrl?: string | null;
-}): { status: 'pass' | 'review' | 'fail'; note: string } {
-  if (!input.spatialLink && !input.glbUrl) {
-    return { status: 'fail', note: 'Generated output missing both viewer and model links.' };
-  }
-
-  const values = Object.values(input.selectedOptions || {})
-    .map((value) => value.trim().toLowerCase())
-    .filter((value) => value.length > 2)
-    .slice(0, 8);
-  const prompt = input.requestedPrompt.toLowerCase();
-  const missing = values.filter((value) => !prompt.includes(value));
-
-  if (missing.length > 0) {
-    return {
-      status: 'review',
-      note: `Output generated, but prompt alignment needs review (${missing.join(', ')}).`,
-    };
-  }
-
-  return { status: 'pass', note: 'Output passed alignment checks.' };
-}
-
-async function handleInteriorIntent(input: OrchestratorInput): Promise<ChatResponse> {
-  const iterative = buildIterativePrompt({
-    sessionId: input.sessionId,
-    serviceContext: 'interior',
-    message: input.message,
-    selectedOptions: input.selectedOptions,
-    imageUrl: input.imageUrl,
-  });
-
-  const selectedOptions = input.selectedOptions || {};
-  const designBrief = buildInteriorDesignBrief({
-    userPrompt: iterative.prompt,
-    answers: {
-      primaryGoal: String(selectedOptions.primary_goal || 'full_renovation'),
-      colorPalette: String(selectedOptions.color_palette || 'neutral_scandi'),
-      materials: String(selectedOptions.materials || 'natural_wood'),
-      lightingVibe: String(selectedOptions.lighting_vibe || 'natural_sunlight'),
-    },
-  });
-
-  const imageUrl = input.imageUrl || selectedOptions.image_url || selectedOptions.reference_image;
-  if (!imageUrl) {
-    return {
-      success: false,
-      intent: 'image_generation',
-      responseType: 'action_suggestions',
-      message: 'Upload a clear room photo first, then I will generate the 3D interior world.',
-      metadata: {
-        provider: 'worldlabs',
-        model: 'marble',
-        validation: 'blocked_missing_image',
-        iteration: iterative.iteration,
-      },
-    };
-  }
-
-  try {
-    const imageDataUrl = await loadImageAsDataUrl(imageUrl);
-    const world = await generateWorldLabsInterior({
-      imageDataUrl,
-      prompt: designBrief,
-      filename: 'interior-reference.jpg',
-    });
-
-    const validation = runOutputValidation({
-      requestedPrompt: designBrief,
-      selectedOptions,
-      spatialLink: world.spatialLink,
-      glbUrl: world.glbUrl,
-    });
-
-    if (validation.status === 'fail') {
-      return {
-        success: false,
-        intent: 'image_generation',
-        responseType: 'text',
-        message: `Output validation failed: ${validation.note} Please retry with a clearer photo or refined brief.`,
-        metadata: {
-          provider: 'worldlabs',
-          model: 'marble',
-          validation: validation.status,
-          iteration: iterative.iteration,
-        },
-      };
-    }
-
-    const completionNote = validation.status === 'review'
-      ? `${validation.note} You can send follow-up refinements and I will iterate.`
-      : 'Interior world ready. You can send follow-up refinements and I will regenerate.';
-
-    return {
-      success: true,
-      intent: 'image_generation',
-      responseType: 'image',
-      message: completionNote,
-      assetUrl: world.previewImageUrl || world.spatialLink,
-      assetType: '3d-world',
-      metadata: {
-        provider: 'worldlabs',
-        model: 'marble',
-        spatial_link: world.spatialLink,
-        model_url: world.glbUrl,
-        credits_remaining: world.creditsRemaining,
-        output_validation: validation.status,
-        output_validation_note: validation.note,
-        iteration: iterative.iteration,
-      },
-    };
-  } catch (error) {
-    // Graceful degradation: keep the raw provider error in metadata for
-    // diagnostics, but show the user a premium, non-breaking message instead
-    // of a raw "no Route matched" string. Honest wording — the service is
-    // temporarily unavailable, not silently "succeeding".
-    const raw = error instanceof Error ? error.message : 'Interior Design generation failed.';
-    const loc = input.locale || 'ka';
-    const friendly =
-      loc === 'en' ? 'The Interior Design engine is reconnecting to the spatial agent — please try again shortly.'
-      : loc === 'ru' ? 'Движок дизайна интерьера переподключается к пространственному агенту — попробуйте чуть позже.'
-      : 'ინტერიერის დიზაინის ძრავი სინქრონიზდება სპატიალურ აგენტთან — სცადეთ ცოტა ხანში.';
-    return {
-      success: false,
-      intent: 'image_generation',
-      responseType: 'text',
-      message: friendly,
-      metadata: {
-        provider: 'worldlabs',
-        model: 'marble',
-        iteration: iterative.iteration,
-        error: raw,
-      },
-    };
-  }
 }
 
 async function pollUdioTask(workId: string, predictionId: string): Promise<ChatResponse> {
@@ -1547,203 +1237,7 @@ async function handleTextIntent(
 
 // ─── Replicate generation path (direct, no HTTP self-fetch) ──────────────────
 
-async function handleReplicateIntent(
-  rawInput: OrchestratorInput,
-  detected: DetectedIntent,
-): Promise<ChatResponse> {
-  const replicateService = intentToReplicateService(detected.intent);
-  if (!replicateService) {
-    // Fallback to text if intent mapping fails
-    return handleTextIntent(rawInput, { ...detected, provider: 'text-llm' });
-  }
-
-  // ⚠️ FLUX AND NANOBANANA READ ENGLISH ONLY. `input.message` is the user's brief in their own
-  // language and it reaches the provider verbatim — both in the `raw.prompt` below AND in
-  // handleNanoBananaIntent, which receives this same object. So a Georgian request produced a
-  // competent image of whatever the model's priors suggested. Rebinding once here covers both paths.
-  // ONLY the image service is translated: video and music briefs are composed elsewhere and are not
-  // this lane's to touch. Fail-open — a miss returns the ORIGINAL message.
-  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
-  const input: OrchestratorInput = replicateService === 'image'
-    ? { ...rawInput, message: await promptToEnglish(rawInput.message, 'image') }
-    : rawInput;
-
-  const opts = input.selectedOptions || {};
-  const selectedProvider = String(
-    opts.provider || opts.image_provider || opts.imageProvider || '',
-  ).toLowerCase();
-
-  const canUseNanoBanana = selectedProvider === 'nanobanana'
-    && (replicateService === 'image' || input.serviceContext === 'interior');
-
-  if (canUseNanoBanana) {
-    return handleNanoBananaIntent(input, detected, opts);
-  }
-
-  // Build and validate the generation input
-  const raw: Record<string, unknown> = {
-    service: replicateService,
-    prompt: input.message,
-    quality: opts.quality?.toLowerCase() || 'high',
-    variant: opts.variant?.toLowerCase() || opts.model?.toLowerCase(),
-    style: opts.style?.toLowerCase(),
-    aspectRatio: opts.ratio || opts.aspectRatio || opts.aspectratio,
-    ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
-  };
-
-  const validation = validateInput(raw);
-  if (!validation.valid || !validation.sanitized) {
-    return {
-      success: false,
-      intent: detected.intent,
-      responseType: 'text',
-      message: validation.error || 'Invalid input for generation.',
-      metadata: { provider: 'replicate', confidence: detected.confidence },
-    };
-  }
-
-  const sanitized: GenerateInput = validation.sanitized;
-
-  // Resolve the model and build its specific input
-  const model = resolveModel(sanitized.service, sanitized.variant);
-  const modelInput = buildModelInput(sanitized);
-
-  try {
-    const prediction = await createPrediction(model.id, modelInput);
-
-    const responseType = mapResponseType(detected.intent);
-
-    // If output is immediately available (sync models like blip)
-    if (prediction.output) {
-      const artifact = extractMediaArtifact(prediction.output, intentToMediaKind(detected.intent));
-
-      return {
-        success: true,
-        intent: detected.intent,
-        responseType,
-        message: artifact.text || readyMessage(detected.intent),
-        assetUrl: artifact.url,
-        assetType: replicateService,
-        predictionId: prediction.id,
-        predictionStatus: 'succeeded',
-        metadata: {
-          provider: 'replicate',
-          model: model.label,
-          confidence: detected.confidence,
-        },
-      };
-    }
-
-    // Async prediction — return predictionId for polling
-    return {
-      success: true,
-      intent: detected.intent,
-      responseType,
-      message: startedMessage(detected.intent),
-      predictionId: prediction.id,
-      predictionStatus: prediction.status || 'starting',
-      assetType: replicateService,
-      metadata: {
-        provider: 'replicate',
-        model: model.label,
-        outputType: model.outputType,
-        confidence: detected.confidence,
-      },
-    };
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Replicate generation failed';
-    return {
-      success: false,
-      intent: detected.intent,
-      responseType: 'text',
-      message: errorMsg,
-      metadata: { provider: 'replicate', confidence: detected.confidence },
-    };
-  }
-}
-
-async function handleNanoBananaIntent(
-  input: OrchestratorInput,
-  detected: DetectedIntent,
-  opts: Record<string, string>,
-): Promise<ChatResponse> {
-  const endpoint = resolveNanoBananaEndpoint(
-    opts.nanobanana_endpoint || opts.nanobananaEndpoint || opts.endpoint,
-  );
-
-  try {
-    const result = await generateNanoBananaImage({
-      prompt: input.message,
-      endpoint,
-      aspectRatio: opts.ratio || opts.aspectRatio || opts.aspectratio,
-      style: opts.style || opts.imgStyle || opts.imgstyle,
-      referenceImageDataUrl: input.imageUrl,
-      service: input.serviceContext || 'image',
-    });
-
-    if (result.url) {
-      return {
-        success: true,
-        intent: detected.intent,
-        responseType: 'image',
-        message: readyMessage(detected.intent),
-        assetUrl: result.url,
-        assetType: 'image',
-        metadata: {
-          provider: 'nanobanana',
-          model: endpoint,
-          creditCost: getNanoBananaCreditCost(endpoint),
-          confidence: detected.confidence,
-        },
-      };
-    }
-
-    return {
-      success: true,
-      intent: detected.intent,
-      responseType: 'text',
-      message: result.text || 'Task details ready.',
-      metadata: {
-        provider: 'nanobanana',
-        model: endpoint,
-        creditCost: getNanoBananaCreditCost(endpoint),
-        confidence: detected.confidence,
-      },
-    };
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'NanoBanana generation failed';
-    return {
-      success: false,
-      intent: detected.intent,
-      responseType: 'text',
-      message: errorMsg,
-      metadata: {
-        provider: 'nanobanana',
-        model: endpoint,
-        confidence: detected.confidence,
-      },
-    };
-  }
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function mapResponseType(intent: IntentCategory): ChatResponse['responseType'] {
-  switch (intent) {
-    case 'avatar_generation':
-    case 'image_generation':
-    case 'photo_edit':
-      return 'image';
-    case 'video_generation':
-      return 'video';
-    case 'music_generation':
-      return 'audio';
-    case 'visual_analysis':
-      return 'analysis';
-    default:
-      return 'text';
-  }
-}
 
 function extractUdioWorkId(predictionId: string): string | null {
   if (!predictionId.startsWith(UDIO_PREDICTION_PREFIX)) {
@@ -1752,23 +1246,6 @@ function extractUdioWorkId(predictionId: string): string | null {
 
   const workId = predictionId.slice(UDIO_PREDICTION_PREFIX.length).trim();
   return workId || null;
-}
-
-function intentToMediaKind(intent: IntentCategory): MediaKind {
-  switch (intent) {
-    case 'avatar_generation':
-    case 'image_generation':
-    case 'photo_edit':
-      return 'image';
-    case 'video_generation':
-      return 'video';
-    case 'music_generation':
-      return 'audio';
-    case 'visual_analysis':
-      return 'analysis';
-    default:
-      return 'text';
-  }
 }
 
 function startedMessage(intent: IntentCategory): string {

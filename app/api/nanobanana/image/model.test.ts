@@ -4,9 +4,9 @@
  *
  * ⚠️ A client can never run a model the catalogue does not list for this route: an unknown id, another service's model, a
  * Studio β (Higgsfield) model, or a hand-picked NanoBanana endpoint outside the catalogue's own is refused 400 BEFORE the
- * mutex, the charge and any provider call. A valid pick renders on its own endpoint; no `model` renders exactly what the
- * route always rendered (Auto). The NanoBanana leg is made to throw and both fallbacks miss, so a passing request ends on the
- * 502-refund path — no fetch, no spend; every provider, the ledger and the idempotency store are mocked.
+ * mutex, the charge and any provider call. Google's image model renders every valid pick (MASTER TASK v3.1); the pick is
+ * still the endpoint the double-click key and the reply name, and no `model` names exactly what the route always named
+ * (Auto). Google's image model, storage, the ledger and the idempotency store are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 
@@ -16,18 +16,20 @@ jest.mock('../../../../lib/api/guard', () => ({
 }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/nanobanana/client', () => ({
-  generateNanoBananaImage: jest.fn(async () => { throw new Error('nanobanana stopped by the test'); }),
+jest.mock('../../../../lib/ai/geminiImage', () => ({
+  generateGeminiImage: jest.fn(async () => ({ base64: 'aGk=', mimeType: 'image/png' })),
+  geminiFrameModel: jest.fn(() => 'gemini-3.1-flash-image'),
 }));
-jest.mock('../../../../lib/ai/xaiImage', () => ({ generateGrokImage: jest.fn(async () => null) }));
-jest.mock('../../../../lib/ai/fluxImage', () => ({ generateFluxProImage: jest.fn(async () => null) }));
+jest.mock('../../../../lib/services/billing/budgetCheck', () => ({ platformBudgetRefusal: jest.fn(async () => null) }));
+jest.mock('../../../../lib/services/billing/guardedCall', () => {
+  class BudgetExceededError extends Error {}
+  return { BudgetExceededError, guardedCall: jest.fn(async (_meta: unknown, fn: () => Promise<unknown>) => fn()) };
+});
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
-jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
+jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => 'https://signed.example/out.png') }));
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedAsset: jest.fn() }));
 jest.mock('../../../../lib/audio/voiceModel', () => ({ DEMO_VOICE_USER_ID: 'demo' }));
 jest.mock('../../../../lib/orchestrator/idempotency', () => ({
-  isProviderTripped: jest.fn(async () => false),
-  recordProviderResult: jest.fn(async () => undefined),
   claimIdempotencyKey: jest.fn(async () => true),
   releaseIdempotencyKey: jest.fn(async () => undefined),
   hashPayload: jest.fn(async () => 'hash'),
@@ -40,7 +42,7 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { generateNanoBananaImage } from '../../../../lib/nanobanana/client';
+import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
 import { claimIdempotencyKey, hashPayload } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits } from '../../../../lib/orchestrator/ledger';
 
@@ -58,12 +60,12 @@ beforeEach(() => {
 });
 afterEach(() => fetchSpy.mockRestore());
 
-/** The endpoint NanoBanana was asked for (the request ran to the provider leg). */
+/** The endpoint the reply names (the request rendered on Google's image model). */
 async function endpointFor(body: Record<string, unknown>): Promise<string> {
   const res = await POST(post(body));
-  expect(res.status).toBe(502); // every leg was made to miss → refunded
-  expect(generateNanoBananaImage).toHaveBeenCalledTimes(1);
-  return (generateNanoBananaImage as jest.Mock).mock.calls[0][0].endpoint;
+  expect(res.status).toBe(200);
+  expect(generateGeminiImage).toHaveBeenCalledTimes(1);
+  return (await res.json()).endpoint;
 }
 
 describe('a pick the catalogue does not list for this route is refused before anything costs anything', () => {
@@ -80,12 +82,12 @@ describe('a pick the catalogue does not list for this route is refused before an
     expect(await res.json()).toMatchObject({ success: false, code: 'unknown_model' });
     expect(claimIdempotencyKey).not.toHaveBeenCalled();
     expect(deductCredits).not.toHaveBeenCalled();
-    expect(generateNanoBananaImage).not.toHaveBeenCalled();
+    expect(generateGeminiImage).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
-describe('a valid pick renders on its own endpoint', () => {
+describe('a valid pick is filed under its own endpoint', () => {
   test('no `model` → Auto: exactly the old size map', async () => {
     expect(await endpointFor({ quality: 'standard' })).toBe('v2-1k');
     jest.clearAllMocks();
@@ -96,7 +98,7 @@ describe('a valid pick renders on its own endpoint', () => {
     expect(await endpointFor({})).toBe('v2-2k'); // no quality → high, as before
   });
 
-  test('V2 stays V2 at 4K; Pro stays Pro at 2K — and a 1K request on Pro renders its 2K', async () => {
+  test('V2 stays V2 at 4K; Pro stays Pro at 2K — and a 1K request on Pro is filed as its 2K', async () => {
     expect(await endpointFor({ model: 'nb/v2', quality: 'ultra' })).toBe('v2-4k');
     jest.clearAllMocks();
     expect(await endpointFor({ model: 'nb/pro', quality: 'high' })).toBe('pro-1k2k');
