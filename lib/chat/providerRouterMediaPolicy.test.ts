@@ -74,7 +74,14 @@ function input(over: Partial<OrchestratorInput> = {}): OrchestratorInput {
   };
 }
 
-const ENV = ['MEDIA_GOOGLE_ONLY', 'FILM_ALLOW_ANONYMOUS', 'GEMINI_API_KEY', 'UDIO_API_KEY', 'REPLICATE_API_TOKEN'];
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
+const ENV = ['MEDIA_GOOGLE_ONLY', 'FILM_ALLOW_ANONYMOUS', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'UDIO_API_KEY', 'REPLICATE_API_TOKEN', ...Object.keys(VERTEX_ENV)];
 const saved: Record<string, string | undefined> = {};
 let fetchSpy: jest.SpyInstance;
 
@@ -175,7 +182,7 @@ describe('an explicit film dispatch reaches the film pipeline whatever the brief
   });
 
   it('a storyboard render with a reference photo is not answered as text by the vision branch', async () => {
-    process.env.GEMINI_API_KEY = 'g-test';
+    Object.assign(process.env, VERTEX_ENV); // the vision branch runs on Vertex AI
     await orchestrate(input({ message: 'a calm ocean wave at sunset', imageUrl: 'https://x.supabase.co/ref.jpg', metadata: { sceneFrames: ['https://x/1.webp'] } }));
     expect(handleFilmComposite).toHaveBeenCalledTimes(1);
     expect(generateWithGemini).not.toHaveBeenCalled();

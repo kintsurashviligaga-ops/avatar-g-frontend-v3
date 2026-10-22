@@ -34,6 +34,7 @@ import {
 import { computeEditorReadiness } from '@/lib/chat/filmReadiness';
 import { getUdioCredits } from '@/lib/udio/client';
 import { opsCallerAllowed, opsNotFound } from '@/lib/security/opsAccess';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest) {
 
   // ── 1. Nine-provider ecosystem map (env presence, names only) ──────────────
   const providers: Provider[] = [
-    { key: 'gemini', role: 'Director / storyboard orchestrator', present: envPresent('GEMINI_API_KEY', 'GEMINI_API_KEYS'), critical: true },
+    { key: 'gemini', role: 'Director / storyboard orchestrator', present: googleAiConfigured(), critical: true },
     { key: 'ltx2', role: 'Cinematic clip render engine', present: resolveAliasName(LTX_API_KEY_ALIASES) !== null, critical: true },
     { key: 'nanobanana', role: 'Stylized identity frame synthesis', present: resolveAliasName(NANOBANANA_API_KEY_ALIASES) !== null, critical: false },
     { key: 'udio', role: 'Original score composition', present: resolveAliasName(UDIO_API_KEY_ALIASES) !== null, critical: false },

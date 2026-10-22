@@ -6,6 +6,7 @@
 
 import { geminiTierModel } from '@/lib/ai/google/models';
 import { shouldUseRealProvider } from '@/lib/server/provider-mode';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export interface RouterInput {
   userId: string;
@@ -158,6 +159,9 @@ const AGENTS: Record<string, AgentDef> = {
 
 // ─── Service → Agent mapping ─────────────────────────────────────────────────
 
+// The Gemini agents run on Vertex AI (MASTER TASK v3.1); an AI Studio key no longer decides which agent answers.
+const GOOGLE_AI = googleAiConfigured();
+
 const SERVICE_AGENT_MAP: Record<string, string> = {
   avatar: 'avatar_face_agent',
   video: 'video_agent',
@@ -166,17 +170,17 @@ const SERVICE_AGENT_MAP: Record<string, string> = {
   photo: 'image_agent',
   image: 'image_agent',
   interior: 'interior_agent',
-  media: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
-  text: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
-  prompt: process.env.GEMINI_API_KEY ? 'gemini_flash_agent' : 'agent_g_director',
-  'visual-intel': process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
-  workflow: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
-  business: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'business_agent',
-  tourism: process.env.GEMINI_API_KEY ? 'gemini_flash_agent' : 'agent_g_director',
-  game: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
+  media: GOOGLE_AI ? 'gemini_pro_agent' : 'agent_g_director',
+  text: GOOGLE_AI ? 'gemini_pro_agent' : 'agent_g_director',
+  prompt: GOOGLE_AI ? 'gemini_flash_agent' : 'agent_g_director',
+  'visual-intel': GOOGLE_AI ? 'gemini_pro_agent' : 'agent_g_director',
+  workflow: GOOGLE_AI ? 'gemini_pro_agent' : 'agent_g_director',
+  business: GOOGLE_AI ? 'gemini_pro_agent' : 'business_agent',
+  tourism: GOOGLE_AI ? 'gemini_flash_agent' : 'agent_g_director',
+  game: GOOGLE_AI ? 'gemini_pro_agent' : 'agent_g_director',
   software: 'software_agent',
   shop: 'shop_agent',
-  'agent-g': process.env.GEMINI_API_KEY ? 'gemini_flash_agent' : 'agent_g_director',
+  'agent-g': GOOGLE_AI ? 'gemini_flash_agent' : 'agent_g_director',
 };
 
 // ─── Provider routing rules (Phase 7) ────────────────────────────────────────

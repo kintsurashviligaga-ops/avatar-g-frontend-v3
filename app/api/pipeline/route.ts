@@ -29,6 +29,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -132,8 +133,8 @@ function toGeminiContext(serviceId: ServiceId): GeminiServiceContext {
 }
 
 async function generateTextWithGemini(serviceId: ServiceId, locale: string, prompt: string): Promise<string> {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not configured');
+  if (!googleAiConfigured()) {
+    throw new Error('Vertex AI is not configured');
   }
 
   const context = toGeminiContext(serviceId);

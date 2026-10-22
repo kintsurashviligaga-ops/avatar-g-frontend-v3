@@ -90,6 +90,7 @@ import { isGoogleOnly } from '@/lib/veo/policy';
 import { parseSceneMeta, parseVeoRenderOptions } from '@/lib/veo/renderOptions';
 import { nativeAspectFor } from '@/lib/veo/capabilities';
 import { veoTransport } from '@/lib/veo/engine';
+import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { resolveFilmTemplate } from '@/lib/studio/templateContext';
 
@@ -542,7 +543,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const providerReady = googleOnly ? veoTransport() !== null : hasVideoProvider();
   if (!providerReady) {
     // eslint-disable-next-line no-console
-    console.error(`[film] aborted pre-storyboard: no video provider configured (${googleOnly ? 'Google-only: neither Vertex AI nor a Gemini Veo key' : 'LTX / Replicate both absent'})`);
+    console.error(`[film] aborted pre-storyboard: no video provider configured (${googleOnly ? 'Google-only: Vertex AI is not configured for Veo' : 'LTX / Replicate both absent'})`);
     return {
       success: false,
       intent: 'video_generation',
@@ -553,7 +554,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         composite: true,
         providerUnavailable: true,
         // Names-only — surfaced for diagnostics, never a secret value.
-        missingEnv: googleOnly ? ['GEMINI_API_KEY', 'GCP_PROJECT_ID', 'GCP_VEO_BUCKET'] : ['LTX2_API_KEY', 'REPLICATE_API_TOKEN'],
+        missingEnv: googleOnly ? vertexConfigProblems() : ['LTX2_API_KEY', 'REPLICATE_API_TOKEN'],
       },
     };
   }

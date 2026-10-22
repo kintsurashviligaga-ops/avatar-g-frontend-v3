@@ -171,6 +171,15 @@ describe('the default key check also asks the transport (a Vertex project has no
     expect(extract).not.toHaveBeenCalled();
   });
 
+  test('an AI Studio key without Vertex no longer starts the extraction (MASTER TASK v3.1)', async () => {
+    mockGoogleAiConfigured.mockReturnValue(false);
+    process.env.GEMINI_API_KEY = 'AQ.test-key';
+    const extract = jest.fn(async () => ['a']);
+    const v = await evaluateRenderQuality({ videoUrl: 'https://cdn/clip.mp4' }, { enabled: () => true, extract });
+    expect(v.reason).toBe('no_key');
+    expect(extract).not.toHaveBeenCalled();
+  });
+
   test('an async keyPresent is awaited (a pending promise is not "present")', async () => {
     const extract = jest.fn(async () => ['a']);
     const v = await evaluateRenderQuality({ videoUrl: 'https://cdn/clip.mp4' }, { enabled: () => true, keyPresent: async () => false, extract });

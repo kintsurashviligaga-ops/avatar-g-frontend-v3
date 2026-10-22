@@ -59,6 +59,13 @@ const post = (body: unknown) =>
   });
 
 const ENV = { ...process.env };
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -67,7 +74,8 @@ beforeEach(() => {
   mockCapped = false;
   mockBudgetOk = true;
   delete process.env.FILM_ALLOW_ANONYMOUS;
-  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  delete process.env.GEMINI_TRANSPORT;
+  Object.assign(process.env, VERTEX_ENV); // the route serves on Vertex AI (MASTER TASK v3.1)
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role';
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);

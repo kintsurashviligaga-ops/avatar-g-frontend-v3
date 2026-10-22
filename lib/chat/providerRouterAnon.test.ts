@@ -81,7 +81,14 @@ function input(over: Partial<OrchestratorInput> = {}): OrchestratorInput {
   };
 }
 
-const ENV = ['FILM_ALLOW_ANONYMOUS', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'UDIO_API_KEY', 'REPLICATE_API_TOKEN'];
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
+const ENV = ['FILM_ALLOW_ANONYMOUS', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'ANTHROPIC_API_KEY', 'UDIO_API_KEY', 'REPLICATE_API_TOKEN', ...Object.keys(VERTEX_ENV)];
 const saved: Record<string, string | undefined> = {};
 let fetchSpy: jest.SpyInstance;
 
@@ -182,7 +189,7 @@ describe('anonymous generation commands are refused before any provider', () => 
   });
 
   it('an attached photo does not smuggle a generation command past the gate through Gemini vision', async () => {
-    process.env.GEMINI_API_KEY = 'test-key-not-real';
+    Object.assign(process.env, VERTEX_ENV); // Gemini runs on Vertex AI (MASTER TASK v3.1)
     const res = await orchestrate(input({ message: IMAGE_CMD, imageUrl: 'data:image/png;base64,iVBORw0KGgo=' }));
     expect(res.metadata.authRequired).toBe(true);
     expect(generateWithGemini).not.toHaveBeenCalled();
@@ -243,7 +250,7 @@ describe('signed-in users and the demo switch are not refused', () => {
 
 describe('text chat is not a generation', () => {
   it('an anonymous plain question is answered, not refused', async () => {
-    process.env.GEMINI_API_KEY = 'test-key-not-real';
+    Object.assign(process.env, VERTEX_ENV); // Gemini runs on Vertex AI (MASTER TASK v3.1)
     const res = await orchestrate(input({ message: 'what is the capital of Georgia?' }));
     expect(res.metadata.authRequired).toBeUndefined();
     expect(generateWithGemini).toHaveBeenCalled();

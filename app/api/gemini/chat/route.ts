@@ -7,6 +7,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
 import { providerErrorBody } from '@/lib/api/providerError';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 /** The longest message one turn may carry — a pasted book is not a chat turn, and every character is billed. */
 const MAX_MESSAGE_CHARS = 16_000;
@@ -81,8 +82,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'budget_exhausted' }, { status: 503 });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
+    if (!googleAiConfigured()) {
+      return NextResponse.json({ error: 'Vertex AI is not configured' }, { status: 503 });
     }
 
     const tier = attachments?.length || (history && history.length > 10) ? 'pro' : 'flash';
