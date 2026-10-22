@@ -261,6 +261,24 @@ test('a budget refusal is a 503 before Google is called', async () => {
   expect(budgetMock).toHaveBeenCalledWith('hello', 'gemini-2.5-flash-preview-tts');
 });
 
+test('a spend ledger that cannot be read is a 503 before Google is called (the real guard, failing closed)', async () => {
+  // The real gate and the real BillingGuard. This file gives the guard no service-role client, which is exactly an
+  // unreadable ledger: it must refuse, never wave read-aloud through unmetered (MASTER TASK v3.1, audit F-05).
+  const real = jest.requireActual('../../../../lib/services/billing/chatBudget') as typeof import('../../../../lib/services/billing/chatBudget');
+  budgetMock.mockImplementationOnce(real.chatBudgetAllows);
+  const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const res = await POST(post({ text: 'hello', locale: 'en' }));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: 'budget_exhausted' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(bookMock).not.toHaveBeenCalled();
+    expect(err).toHaveBeenCalledWith('[BillingGuard] spend ledger unreadable → refusing chat (fails closed)');
+  } finally {
+    err.mockRestore();
+  }
+});
+
 test('Vertex AI unconfigured → 503 gemini_key_missing, and an AI Studio key is not used instead', async () => {
   for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
   const res = await POST(post({ text: 'hello', locale: 'en' }));

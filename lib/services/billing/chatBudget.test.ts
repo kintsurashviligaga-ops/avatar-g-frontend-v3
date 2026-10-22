@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
  * chatBudget — the gate in front of every LLM surface (7 routes + llmText's 14 internal callers).
- * The properties that matter are the failure modes: it must refuse when the budget says so, and it must
- * NEVER be the reason chat goes down.
+ * The properties that matter are the failure modes: it must refuse when the budget says so, it must refuse when the
+ * guard cannot answer (MASTER TASK v3.1: billing fails closed), and booking must never throw into a delivered reply.
  */
 
 const canProceed = jest.fn();
@@ -14,7 +14,7 @@ jest.mock('./BillingGuard', () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE, UNSPECIFIED_CHAT_MODEL } from './chatBudget';
+import { chatBudgetAllows, chatBudgetRefusal, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE, GUARD_UNAVAILABLE, UNSPECIFIED_CHAT_MODEL } from './chatBudget';
 
 beforeEach(() => { canProceed.mockReset(); recordUsage.mockReset().mockResolvedValue(undefined); });
 
@@ -29,9 +29,21 @@ describe('chatBudgetAllows', () => {
     await expect(chatBudgetAllows('hello there')).resolves.toBe(false);
   });
 
-  it('FAILS OPEN when the guard throws — chat must not go down with the ledger', async () => {
+  it('FAILS CLOSED when the guard throws: the turn is refused as guard_unavailable, never waved through', async () => {
     canProceed.mockRejectedValue(new Error('supabase unreachable'));
-    await expect(chatBudgetAllows('hello')).resolves.toBe(true);
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(chatBudgetAllows('hello')).resolves.toBe(false);
+    await expect(chatBudgetRefusal('hello')).resolves.toBe(GUARD_UNAVAILABLE);
+    expect(GUARD_UNAVAILABLE).toBe('guard_unavailable');
+    expect(err).toHaveBeenCalledWith('[chatBudget] budget check threw → refusing the turn:', 'supabase unreachable');
+    err.mockRestore();
+  });
+
+  it('passes the guard\'s own reason through, including an unreadable ledger', async () => {
+    canProceed.mockResolvedValue({ allowed: false, reason: 'guard_unavailable', degraded: true });
+    await expect(chatBudgetRefusal('hello')).resolves.toBe('guard_unavailable');
+    canProceed.mockResolvedValue({ allowed: false, reason: 'monthly_limit' });
+    await expect(chatBudgetRefusal('hello')).resolves.toBe('monthly_limit');
   });
 
   it('estimates from the outbound text plus a reply allowance', async () => {
@@ -54,9 +66,17 @@ describe('bookChatUsage', () => {
     expect(booked.outputTokens).toBe(400); // 1600 chars / 4
   });
 
-  it('never throws, whatever the ledger does', async () => {
+  it('never throws, whatever the ledger does, and says so in a structured line instead of swallowing it', async () => {
     recordUsage.mockRejectedValue(new Error('ledger down'));
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
     await expect(bookChatUsage('hi', 40)).resolves.toBeUndefined();
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(err.mock.calls[0]![0]))).toEqual({
+      level: 'error',
+      event: 'billing.booking_failed',
+      data: { service: 'chat', model: UNSPECIFIED_CHAT_MODEL, error: 'ledger down' },
+    });
+    err.mockRestore();
   });
 
   it('treats a junk char count as zero output rather than NaN', async () => {
@@ -180,7 +200,10 @@ describe('bookChatUsage — the real-usage (object) shape', () => {
 
   it('never throws, whatever the ledger does', async () => {
     recordUsage.mockRejectedValue(new Error('ledger down'));
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
     await expect(bookChatUsage({ model: 'gemini-2.5-flash', inputTokens: 1, outputTokens: 1, userId: USER })).resolves.toBeUndefined();
+    expect(JSON.parse(String(err.mock.calls[0]![0])).data.model).toBe('gemini-2.5-flash');
+    err.mockRestore();
   });
 });
 

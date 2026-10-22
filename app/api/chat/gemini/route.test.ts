@@ -468,6 +468,39 @@ describe('in-stream refusals', () => {
     expect(bookChatUsage).not.toHaveBeenCalled();
   });
 
+  test('a budget guard that cannot read the spend refuses in-stream ("try again shortly"); the model is never called', async () => {
+    // The real gate and the real BillingGuard. This file gives the guard no service-role client, which is exactly an
+    // unreadable ledger (MASTER TASK v3.1, audit F-05: billing fails closed).
+    const real = jest.requireActual('../../../../lib/services/billing/chatBudget') as typeof import('../../../../lib/services/billing/chatBudget');
+    (chatBudgetRefusal as jest.Mock).mockImplementationOnce(real.chatBudgetRefusal);
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const notice = budgetRefusalMessage('ka', 'guard_unavailable');
+      expect(await framesOf(await POST(post(userTurn('გამარჯობა'))))).toEqual([
+        { meta: { provider: 'budget', model: 'none' } },
+        { text: notice },
+        { error: { code: 'budget', retryable: false, message: notice, lang: 'ka' } },
+        'DONE',
+      ]);
+      expect(mockStream).not.toHaveBeenCalled();
+      expect(bookChatUsage).not.toHaveBeenCalled();
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  test('a budget check that rejects outright is refused the same way, never read as "allowed"', async () => {
+    (chatBudgetRefusal as jest.Mock).mockRejectedValueOnce(new Error('guard module failed to load'));
+    const notice = budgetRefusalMessage('ka', 'guard_unavailable');
+    expect(await framesOf(await POST(post(userTurn('გამარჯობა'))))).toEqual([
+      { meta: { provider: 'budget', model: 'none' } },
+      { text: notice },
+      { error: { code: 'budget', retryable: false, message: notice, lang: 'ka' } },
+      'DONE',
+    ]);
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
   test('the budget estimate covers the platform prompt and the history, not just the last message', async () => {
     await (await POST(post(userTurn('short')))).text();
     const estimateText = (chatBudgetRefusal as jest.Mock).mock.calls[0][0] as string;

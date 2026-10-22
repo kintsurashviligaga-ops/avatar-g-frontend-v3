@@ -44,10 +44,17 @@ export function budgetReasonOf(value: unknown): string | undefined {
 
 /**
  * The refusal, in the person's language. `reason` is the guard's (`daily_limit`, `monthly_limit`,
- * `service_suspended`, `full_stop`); anything else reads as the daily limit, the common case.
+ * `service_suspended`, `full_stop`, `guard_unavailable`); anything else reads as the daily limit, the common case.
  */
 export function budgetRefusalMessage(locale: string | null | undefined, reason?: string | null): string {
   const l = loc(locale);
+  if (reason === 'guard_unavailable') {
+    // The guard could not read the spend, so it refused (MASTER TASK v3.1: billing fails closed). Not a limit, and
+    // no reset time: it clears as soon as the ledger answers again.
+    if (l === 'en') return "The platform can't check its AI budget right now, so new generations are paused for a moment. Nothing was taken from your balance. Please try again shortly.";
+    if (l === 'ru') return 'Платформа сейчас не может проверить бюджет ИИ, поэтому новые генерации ненадолго приостановлены. С баланса ничего не списано. Попробуйте чуть позже.';
+    return 'პლატფორმა ახლა ვერ ამოწმებს AI ბიუჯეტს, ამიტომ ახალი გენერაცია ცოტა ხნით შეჩერებულია. ბალანსიდან არაფერი ჩამოგეჭრა. სცადეთ ცოტა ხანში.';
+  }
   if (reason === 'monthly_limit' || reason === 'full_stop') {
     if (l === 'en') return "The platform's AI budget for this month is used up, so new generations are paused. Nothing was taken from your balance.";
     if (l === 'ru') return 'Бюджет ИИ платформы на этот месяц исчерпан, новые генерации приостановлены. С баланса ничего не списано.';

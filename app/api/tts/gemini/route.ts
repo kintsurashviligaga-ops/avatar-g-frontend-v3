@@ -155,7 +155,8 @@ export async function POST(req: NextRequest) {
   });
   const voiceName = pickVoice(profile, body.voice, body.gender, locale);
 
-  // Platform budget pre-check (fails OPEN inside chatBudgetAllows — a guard fault never silences read-aloud).
+  // Platform budget pre-check, before any provider I/O. Fails CLOSED inside chatBudgetAllows (MASTER TASK v3.1): a guard
+  // fault is a 503 here too, never unmetered speech.
   if (!(await chatBudgetAllows(text, model))) {
     return NextResponse.json({ error: 'budget_exhausted' }, { status: 503 });
   }

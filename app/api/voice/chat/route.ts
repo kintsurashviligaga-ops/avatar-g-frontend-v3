@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
 
     // The memory read and the budget check are independent round-trips: run them TOGETHER (a voice turn waits on
     // every millisecond before the model starts). The budget estimate leaves out the memory preamble — a few dozen
-    // tokens, and the guard fails open anyway.
+    // tokens.
     const [facts, saved, budgetRefused] = await Promise.all([
       getUserProfileFacts(supabase, user.id).catch(() => null),
       newestSavedFacts(supabase, user.id),
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
     }
 
     // An exhausted platform budget is said out loud. (llmText re-checks it; the guard's read is cached, so the
-    // second check is free.) Fails OPEN like every chatBudget call.
+    // second check is free.) Fails CLOSED like every chatBudget call: a guard fault is said as "try again shortly".
     if (budgetRefused) {
       return NextResponse.json({ reply: budgetRefusalMessage(locale, budgetRefused), locale, gender, voice, code: 'budget', budgetReason: budgetRefused });
     }

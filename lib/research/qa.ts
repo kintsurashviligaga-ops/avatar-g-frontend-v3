@@ -65,7 +65,7 @@ export async function answerAboutReport(deps: QaDeps, input: AskInput): Promise<
   const prompt = `${wrapReportForModel(ctx, { title: input.title })}${question ? `\n\nREADER'S QUESTION: ${question}` : ''}`;
   const systemPrompt = qaSystemPrompt(input.mode, input.locale);
 
-  if (!(await deps.budgetAllows(`${systemPrompt}\n${prompt}`).catch(() => true))) return { ok: false, code: 'budget_exhausted' };
+  if (!(await deps.budgetAllows(`${systemPrompt}\n${prompt}`).catch(() => false))) return { ok: false, code: 'budget_exhausted' };
 
   let out: Awaited<ReturnType<QaDeps['generate']>>;
   try {

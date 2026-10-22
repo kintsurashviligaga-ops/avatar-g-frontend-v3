@@ -47,14 +47,14 @@ export function liveAnalyzeDeps(): AnalyzeDeps {
     model: () => analyzeModel(),
     generate: (model, body, signal) => googleModelFetch(model, 'generateContent', { method: 'POST', body: JSON.stringify(body), signal }),
     async budgetAllows(inputTokens, model) {
-      // FAILS OPEN like the chat's gate (lib/services/billing/chatBudget): a guard fault must not take the feature down.
+      // FAILS CLOSED like the chat's gate (lib/services/billing/chatBudget, MASTER TASK v3.1): a guard fault refuses.
       try {
         const { canProceed } = await import('@/lib/services/billing/BillingGuard');
         const { estimateCost } = await import('@/lib/services/billing/costModel');
         const decision = await canProceed(estimateCost({ service: 'chat', model, inputTokens, outputTokens: OUTPUT_ESTIMATE_TOKENS }));
         return decision.allowed;
       } catch {
-        return true;
+        return false;
       }
     },
     book: (u) => bookChatUsage({ model: u.model, userId: u.userId, ...(u.inputTokens !== undefined ? { inputTokens: u.inputTokens } : {}), ...(u.outputTokens !== undefined ? { outputTokens: u.outputTokens } : {}) }),
