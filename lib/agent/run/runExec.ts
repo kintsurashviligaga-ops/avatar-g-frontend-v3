@@ -22,7 +22,7 @@ import { createHash } from 'node:crypto';
 import { enqueue, type LeaseRow, type LeaseStore, type LeaseWrite } from '@/lib/orchestrator/jobLease';
 import type { ProduceKind } from '@/lib/orchestrator/rate-limit';
 import type { AuditEvent } from '@/lib/agent/media/montageExec';
-import { QUOTE_TTL_MS, signQuote, verifyQuote } from '@/lib/agent/media/quoteToken';
+import { QUOTE_TTL_MS, quoteBinding, signQuote, verifyQuote } from '@/lib/agent/media/quoteToken';
 import type { AgentApproval } from '../contracts';
 import {
   RUN_KIND, TICK_LEASE_MS, emit, isFinalStep, isTerminalRun, moveStep, newRun, planTick, resolvedRefs, resumedRun, runOf, settle,
@@ -77,6 +77,9 @@ export const quoteIdOf = (token: string): string => createHash('sha256').update(
 /** A run with a montage or an edit files as a film; a run of extractions only, as music (generation_jobs.service_type). */
 const serviceOf = (spec: RunSpec): ProduceKind => (spec.steps.some((s) => s.tool === 'montage' || s.tool === 'edit') ? 'film' : 'music');
 const listTotal = (deps: RunExecDeps, spec: RunSpec): number => spec.steps.reduce((n, s) => n + deps.adapters[s.tool].listPrice, 0);
+/** What a plan's token binds (lib/agent/media/quoteToken v2): the step tools in order, run by this server, priced per step. */
+export const runQuoteBinding = (spec: RunSpec) =>
+  quoteBinding({ cap: 'agent.run', model: spec.steps.map((s) => s.tool).join('+'), transport: 'local', units: spec.steps.length });
 
 /** Codes a queued quote can never recover from: the step ends with it. Anything else is tried again on the next tick. */
 const FATAL_ENQUEUE = new Set(['invalid_request', 'quote_invalid', 'quote_changed']);
@@ -99,7 +102,7 @@ export async function planRun(deps: RunExecDeps, input: { userId: string; spec: 
   const runId = deps.newId();
   const credits = listTotal(deps, spec);
   const expiresAt = deps.now() + QUOTE_TTL_MS;
-  const token = signQuote({ u: input.userId, j: runId, f: specFingerprint(spec), c: credits, x: expiresAt }, deps.key());
+  const token = signQuote({ u: input.userId, j: runId, f: specFingerprint(spec), c: credits, x: expiresAt }, deps.key(), runQuoteBinding(spec));
   if (!token) return err('not_configured', 'Plans cannot be signed on this server.');
   await deps.audit({ userId: input.userId, op: 'agent_run', phase: 'quote', outcome: 'ok', runId, credits, detail: `${spec.steps.length} steps` });
   return {
@@ -120,15 +123,16 @@ export async function startRun(
   if (!valid.ok) return err('bad_spec', valid.message, valid.step);
   const spec = valid.spec;
   const fingerprint = specFingerprint(spec);
-  const check = verifyQuote(input.token, deps.key(), { userId, fingerprint, now: deps.now() });
+  // A price or a price book that moved since the plan was shown is not what the user said yes to: verifyQuote refuses it.
+  const check = verifyQuote(input.token, deps.key(), { userId, fingerprint, now: deps.now(), credits: listTotal(deps, spec), binding: runQuoteBinding(spec) });
   if (!check.ok) {
-    await deps.audit({ userId, op: 'agent_run', phase: 'run', outcome: 'refused', detail: `plan_${check.reason}` });
+    await deps.audit({ userId, op: 'agent_run', phase: 'run', outcome: 'refused', detail: `plan_${check.reason}${check.reason === 'changed' ? `:${check.field}` : ''}` });
     if (check.reason === 'expired') return err('quote_expired', 'This plan has expired. Ask again for a fresh one.');
-    if (check.reason === 'changed') return err('quote_changed', 'The run differs from the plan.');
+    if (check.reason === 'changed') {
+      return err('quote_changed', check.field === 'fingerprint' ? 'The run differs from the plan.' : 'The price changed since the plan was shown. Ask again for a fresh one.');
+    }
     return err('quote_invalid', 'This plan is not valid.');
   }
-  // A price that moved since the plan was shown is not what the user said yes to.
-  if (check.claims.c !== listTotal(deps, spec)) return err('quote_changed', 'The price changed since the plan was shown. Ask again for a fresh one.');
   const runId = check.claims.j;
   const now = deps.now();
   const approval: AgentApproval = {

@@ -36,14 +36,13 @@ jest.mock('../../observability/report-error', () => ({ reportError: (e: unknown)
 jest.mock('../../supabase/server', () => ({ createServiceRoleClient: () => db, createSupabaseServerClient: () => db }));
 
 import { LEASE_MS, HOLD_MS, claim, enqueue } from '@/lib/orchestrator/jobLease';
-import { bodyFingerprint, produceRef } from '@/lib/orchestrator/idemRef';
+import { produceRef } from '@/lib/orchestrator/idemRef';
 import { liveMontageDeps } from './montageLive';
 import { liveAudioDeps } from './audioLive';
 import { cancelMontageJob, enqueueMontageJob, quoteMontage, MONTAGE_KIND, type MontageExecDeps } from './montageExec';
 import { GAVE_UP, HOLD_ABANDONED, sweepMontageJobs, workMontageJob } from './montageWorker';
 import { enqueueAudioJob, quoteAudioExtract } from './audioExtract';
 import { AUDIO_GAVE_UP, sweepAudioJobs, workAudioJob } from './audioWorker';
-import { signQuote } from './quoteToken';
 import { FILES, MASTER_URL, fake, frameOf, shotSourceAt, type Fake } from './testing/fakeMontageDeps';
 import { AUDIO_URL, LINK, fakeAudio, type FakeAudio } from './testing/fakeAudioDeps';
 import { enqueueEditJob, quoteEdit } from './editExec';
@@ -100,10 +99,14 @@ async function ledger(user: string) {
 
 /** Quote → (priced?) → queued, as user A. A priced quote is charged for real by deduct_credits. */
 async function queued(f: Fake, credits = 0, user = A): Promise<string> {
+  // A priced montage is the executor's price hook: the quote signs it and the run requires it again. Only this
+  // quote and its run are priced; the fake's own price comes back after.
+  const before = f.deps.price;
+  if (credits > 0) f.deps.price = () => credits;
   const q = await quoteMontage(f.deps, { userId: user, files: FILES });
   if (!q.ok) throw new Error(q.error);
-  const token = credits > 0 ? signQuote({ u: user, j: q.quote.jobId, f: bodyFingerprint(q.request), c: credits, x: f.clock.now + 60_000 }, 'k')! : q.token;
-  const r = await enqueueMontageJob(f.deps, { userId: user, request: q.request, token });
+  const r = await enqueueMontageJob(f.deps, { userId: user, request: q.request, token: q.token });
+  f.deps.price = before;
   if (!r.ok) throw new Error(`${r.error}: ${r.message}`);
   return q.quote.jobId;
 }

@@ -3,6 +3,7 @@
  * lease store that has the live store's semantics. The provider is FAKED here (no Lyria call is made); real-provider
  * execution is Phase 8 and is not claimed by this file.
  */
+import { createHmac } from 'node:crypto';
 import { memoryLeaseStore, type MemoryLeaseStore } from '@/lib/orchestrator/testing/memoryLeaseStore';
 import { musicCapabilities } from './capabilities';
 import { cancelMusic, musicStatus, quoteMusic, settleMusic, startMusic, sweepMusic, workMusic, priceOf, type MusicDeps } from './engine';
@@ -174,6 +175,34 @@ describe('start → work → deliver', () => {
     h.clock.now += 31 * 60_000;
     await expect(startMusic(h.deps, USER, q.plan, q.token, true)).rejects.toMatchObject({ code: 'quote_expired' });
     expect(h.ledger.size).toBe(0);
+  });
+
+  test('a quote made while Vertex billed another Google Cloud project is refused before any charge (F-06)', async () => {
+    const before = process.env.GCP_PROJECT_ID;
+    process.env.GCP_PROJECT_ID = ENV.GCP_PROJECT_ID;
+    try {
+      const h = harness();
+      const q = await quoted(h);
+      process.env.GCP_PROJECT_ID = 'another-project';
+      await expect(startMusic(h.deps, USER, q.plan, q.token, true)).rejects.toMatchObject({ code: 'quote_changed' });
+      expect(h.ledger.size).toBe(0);
+      expect(h.store.rows.size).toBe(0);
+    } finally {
+      if (before === undefined) delete process.env.GCP_PROJECT_ID; else process.env.GCP_PROJECT_ID = before;
+    }
+  });
+
+  test('a v1 quote shown before v2 shipped still starts its job once, at its price, until it expires', async () => {
+    const h = harness();
+    const q = await quoted(h);
+    const claims = JSON.parse(Buffer.from(q.token.split('.')[1]!, 'base64url').toString('utf8')) as Record<string, unknown>;
+    const payload = Buffer.from(JSON.stringify({ v: 1, u: claims.u, j: claims.j, f: claims.f, c: claims.c, x: claims.x })).toString('base64url');
+    const v1 = `${payload}.${createHmac('sha256', 'secret').update(`agent-g-media-quote:v1:${payload}`).digest('base64url')}`;
+    const s = await startMusic(h.deps, USER, q.plan, v1, true);
+    expect(s.replay).toBeFalsy();
+    expect(h.ledger.get(`music-studio-v1:${q.jobId}`)).toBe(3);
+    expect((await startMusic(h.deps, USER, q.plan, v1, true)).replay).toBe(true);
+    expect(h.ledger.size).toBe(1);
   });
 
   test('insufficient credits: refused, row failed, nothing owed', async () => {

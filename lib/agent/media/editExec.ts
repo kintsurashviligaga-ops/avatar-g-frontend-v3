@@ -27,11 +27,14 @@ import {
 import { findLayers, type Anchor, type Layer, type LayerTarget } from './layers';
 import type { LayerQcRecord } from './layerQc';
 import type { OverlayQcRecord } from './overlayFx';
-import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
+import { QUOTE_TTL_MS, quoteBinding, signQuote, verifyQuote } from './quoteToken';
 import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 import type { AuditEvent, FileRef } from './montageExec';
 
 export { EDIT_KIND, EDIT_PRICE_CREDITS };
+
+/** What the quote binds an edit to (./quoteToken v2): this server's ffmpeg, a flat price. */
+export const editQuoteBinding = () => quoteBinding({ cap: 'media.edit', model: 'ffmpeg-edit', transport: 'local', units: 1 });
 
 export type EditErrorCode =
   | EditPlanError['error']
@@ -348,7 +351,7 @@ export async function quoteEdit(deps: EditExecDeps, input: EditQuoteInput): Prom
   const jobId = deps.newId();
   const credits = EDIT_PRICE_CREDITS;
   const expiresAt = deps.now() + QUOTE_TTL_MS;
-  const token = signQuote({ u: userId, j: jobId, f: bodyFingerprint(request), c: credits, x: expiresAt }, deps.key());
+  const token = signQuote({ u: userId, j: jobId, f: bodyFingerprint(request), c: credits, x: expiresAt }, deps.key(), editQuoteBinding());
   if (!token) return refuse(err('not_configured', 'Quotes cannot be signed on this server.'));
   await deps.audit({
     userId, op: 'media_edit', phase: 'quote', outcome: 'ok', jobId, files: 1, credits, durationSec: resolved.plan.durationSec,
@@ -420,11 +423,15 @@ export async function enqueueEditJob(deps: EditExecDeps, input: EditRunInput): P
   const approval = input.approval ?? TAP;
   const request = validateEditRequest(input.request);
   if (!request) return err('invalid_request', 'The plan is not valid.');
-  const check = verifyQuote(input.token, deps.key(), { userId, fingerprint: bodyFingerprint(request), now: deps.now() });
+  const check = verifyQuote(input.token, deps.key(), {
+    userId, fingerprint: bodyFingerprint(request), now: deps.now(), credits: EDIT_PRICE_CREDITS, binding: editQuoteBinding(),
+  });
   if (!check.ok) {
-    await deps.audit({ userId, op: 'media_edit', phase: 'run', outcome: 'refused', detail: `quote_${check.reason}` });
+    await deps.audit({ userId, op: 'media_edit', phase: 'run', outcome: 'refused', detail: `quote_${check.reason}${check.reason === 'changed' ? `:${check.field}` : ''}` });
     if (check.reason === 'expired') return err('quote_expired', 'This plan has expired. Ask again for a fresh one.');
-    if (check.reason === 'changed') return err('quote_changed', 'The plan differs from the one quoted.');
+    if (check.reason === 'changed') {
+      return err('quote_changed', check.field === 'fingerprint' ? 'The plan differs from the one quoted.' : 'The price or the engine changed since the plan. Ask again for a fresh one.');
+    }
     return err('quote_invalid', 'This plan is not valid.');
   }
   const jobId = check.claims.j;

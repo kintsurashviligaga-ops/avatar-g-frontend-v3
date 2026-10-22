@@ -119,7 +119,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // No token ⇒ a quote: nothing reserved, nothing run. The panel shows the price and a Confirm button.
   if (!wantsToConfirm(raw)) {
-    const quote = issueServiceQuote({ service: 'dubbing', userId: user.id, raw, credits: cost, jobId: randomUUID(), now: Date.now() });
+    const quote = issueServiceQuote({ service: 'dubbing', userId: user.id, raw, credits: cost, units: minutes, jobId: randomUUID(), now: Date.now() });
     if (!quote) return NextResponse.json({ error: 'billing_unavailable' }, { status: 503 });
     return NextResponse.json({ requiresConfirm: true, quote: { ...quote, minutes, durationSec: Math.ceil(durationSec) } });
   }
@@ -133,6 +133,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     userId: user.id,
     raw,
     credits: cost,
+    units: minutes,
     serviceType: 'film',
     params: { subtype: 'dubbing', targetLanguage: request.targetLanguage, minutes },
   });

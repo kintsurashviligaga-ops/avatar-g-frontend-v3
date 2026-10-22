@@ -5,7 +5,7 @@
  */
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import {
-  AUDIO_KIND, AUDIO_KICK_AFTER_MS, MAX_SOURCE_SEC, MP3_BITRATE_KBPS, audioCodeOfRow, audioJobStatus, cancelAudioJob,
+  AUDIO_KIND, AUDIO_KICK_AFTER_MS, MAX_SOURCE_SEC, MP3_BITRATE_KBPS, audioCodeOfRow, audioJobStatus, audioQuoteBinding, cancelAudioJob,
   enqueueAudioJob, qcMp3, quoteAudioExtract, validateAudioRequest, type AudioRequest,
 } from './audioExtract';
 import { signQuote } from './quoteToken';
@@ -147,7 +147,7 @@ describe('run: only the quoted plan, queued once', () => {
     expect(await enqueueAudioJob(f.deps, { userId: USER, request: q.request, token: q.token })).toMatchObject({ ok: false, error: 'quote_expired' });
     // A plan pointing at a platform cannot be signed into a run, even with a valid signature over it.
     const yt: AudioRequest = { ...q.request, source: { kind: 'link', url: 'https://www.youtube.com/watch?v=1' } };
-    const token = signQuote({ u: USER, j: 'job-9', f: bodyFingerprint(yt), c: 0, x: f.clock.now + 60_000 }, 'k')!;
+    const token = signQuote({ u: USER, j: 'job-9', f: bodyFingerprint(yt), c: 0, x: f.clock.now + 60_000 }, 'k', audioQuoteBinding())!;
     expect(await enqueueAudioJob(f.deps, { userId: USER, request: yt, token })).toMatchObject({ ok: false, error: 'invalid_request' });
     expect(f.store.rows.size).toBe(0);
   });

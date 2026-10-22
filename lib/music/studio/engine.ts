@@ -22,7 +22,7 @@
  */
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { quoteCredits } from '@/lib/credits/quote';
-import { signQuote, verifyQuote, QUOTE_TTL_MS } from '@/lib/agent/media/quoteToken';
+import { signQuote, verifyQuote, quoteBinding, QUOTE_TTL_MS } from '@/lib/agent/media/quoteToken';
 import {
   enqueue, release, cancel, claim, heartbeat, mustStop, complete, fail, settled, reap, claimable, HEARTBEAT_MS,
   type LeaseRow, type LeaseStore,
@@ -67,6 +67,9 @@ const stateOf = (row: LeaseRow): MusicState => row.params._music as MusicState;
 const reserveOf = (row: LeaseRow) => row.params._reserve as { ref: string; credits: number };
 const fingerprint = (plan: MusicPlan) => bodyFingerprint({ domain: MUSIC_KIND, plan });
 export const priceOf = (plan: Pick<MusicPlan, 'billedSec'>) => quoteCredits({ tool: 'music', seconds: plan.billedSec });
+/** What the quote binds (lib/agent/media/quoteToken v2): the plan's Lyria model on the transport that will run it, per second. */
+export const musicQuoteBinding = (plan: Pick<MusicPlan, 'request' | 'transport' | 'billedSec'>) =>
+  quoteBinding({ cap: 'music.studio', model: plan.request.modelId, transport: plan.transport, units: plan.billedSec });
 const isMusic = (row: LeaseRow | null, userId?: string): row is LeaseRow =>
   !!row && row.exec?.kind === MUSIC_KIND && (!userId || row.userId === userId);
 
@@ -95,7 +98,7 @@ export async function quoteMusic(deps: MusicDeps, userId: string, value: unknown
   const jobId = deps.newId();
   const credits = priceOf(plan);
   const expiresAt = deps.now() + QUOTE_TTL_MS;
-  const token = signQuote({ u: userId, j: jobId, f: fingerprint(plan), c: credits, x: expiresAt }, deps.key());
+  const token = signQuote({ u: userId, j: jobId, f: fingerprint(plan), c: credits, x: expiresAt }, deps.key(), musicQuoteBinding(plan));
   if (!token) throw new MusicError('not_configured', 'Music quotes are unavailable.', 503);
   await deps.audit({ userId, jobId, phase: 'quote', code: 'prepared', credits });
   return {
@@ -159,8 +162,16 @@ async function liveCount(deps: MusicDeps, userId: string, except: string): Promi
 export async function startMusic(deps: MusicDeps, userId: string, value: unknown, token: unknown, confirmed: unknown) {
   if (confirmed !== true) throw new MusicError('confirmation_required', 'Confirm the displayed music quote before starting.', 400);
   const plan = parseMusicPlan(value);
-  const signed = verifyQuote(token, deps.key(), { userId, fingerprint: fingerprint(plan), now: deps.now() });
+  // The binding is built from the engine that would run it now (the capability matrix's transport), so a changed
+  // transport, project, price book or price is refused before anything is reserved.
+  // A capability that is gone now is refused below as before (planFor throws), so it binds the plan's own transport here.
+  let current: MusicPlan | null = null;
+  try { current = planFor(plan.request, deps.caps()); } catch { current = null; }
+  const signed = verifyQuote(token, deps.key(), {
+    userId, fingerprint: fingerprint(plan), now: deps.now(), credits: priceOf(plan), binding: musicQuoteBinding(current ?? plan),
+  });
   if (!signed.ok) {
+    if (signed.reason === 'changed' && signed.field !== 'fingerprint') throw new MusicError('quote_changed', 'The engine or price changed. Request a new quote.', 409);
     throw new MusicError(signed.reason === 'expired' ? 'quote_expired' : signed.reason === 'changed' ? 'quote_changed' : 'quote_invalid', 'The quote is invalid, changed or expired.', 409);
   }
   const { j: id, c: credits } = signed.claims;

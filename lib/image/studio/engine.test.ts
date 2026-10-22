@@ -30,6 +30,19 @@ test('tampering, wrong user, stale quote or different transport spends nothing',
   await expect(startImage(f.deps, USER, q.plan, q.token, true)).rejects.toMatchObject({ code: 'quote_expired' });
   expect(f.deps.reserve).not.toHaveBeenCalled();
 });
+test('a quote made while Vertex billed another Google Cloud project spends nothing (MASTER TASK v3.1, F-06)', async () => {
+  const before = process.env.GCP_PROJECT_ID;
+  process.env.GCP_PROJECT_ID = 'gen-lang-client-0671348730';
+  try {
+    const f = await fakeImage(), q = await quoteImage(f.deps, USER, imageRequest());
+    process.env.GCP_PROJECT_ID = 'another-project';
+    await expect(startImage(f.deps, USER, q.plan, q.token, true)).rejects.toMatchObject({ code: 'quote_changed' });
+    expect(f.store.rows.size).toBe(0);
+    expect(f.deps.reserve).not.toHaveBeenCalled();
+  } finally {
+    if (before === undefined) delete process.env.GCP_PROJECT_ID; else process.env.GCP_PROJECT_ID = before;
+  }
+});
 test('eight concurrent confirms and workers charge/infer/save once; refresh reuses the completed row', async () => {
   const f = await fakeImage(), q = await quoteImage(f.deps, USER, imageRequest());
   const starts = await Promise.all(Array.from({ length: 8 }, () => startImage(f.deps, USER, q.plan, q.token, true)));

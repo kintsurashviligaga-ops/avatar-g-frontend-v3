@@ -14,11 +14,13 @@
  *    confirmation of the same quote finds the row and is refused) and the charge ref is `<service>:<job id>`.
  *
  * Token construction is lib/agent/media/quoteToken (HMAC-SHA256, constant-time compare, no key ⇒ no token). The service
- * name is folded into the fingerprint so a quote for one service can never confirm another.
+ * name is folded into the fingerprint so a quote for one service can never confirm another. Since quote token v2 the
+ * token also binds the service's engine, its transport and project, the price book and the units priced (SERVICE_ENGINE),
+ * and a confirmation refuses any that changed.
  */
 import { createHash } from 'node:crypto';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
-import { signQuote, verifyQuote, QUOTE_TTL_MS, type QuoteCheck } from '@/lib/agent/media/quoteToken';
+import { signQuote, verifyQuote, quoteBinding, QUOTE_TTL_MS, type QuoteBinding, type QuoteCheck } from '@/lib/agent/media/quoteToken';
 
 import type { GatedService } from './pricingApproval';
 export { ownerApprovedPrice, type GatedService } from './pricingApproval';
@@ -39,6 +41,17 @@ export function serviceQuoteKey(env: NodeJS.ProcessEnv = process.env): string {
   return env.AGENT_G_QUOTE_SECRET || env.SUPABASE_SERVICE_ROLE_KEY || '';
 }
 
+/** What renders each gated service: the model its route's budget estimate names, and how it is reached. */
+export const SERVICE_ENGINE: Readonly<Record<GatedService, { model: string; transport: string }>> = {
+  dubbing: { model: 'eleven-multilingual-v2', transport: 'elevenlabs' },
+  presentation: { model: 'gemini-imagen', transport: 'vertex' },
+};
+
+/** The binding a service quote signs and its confirmation requires again (quoteToken v2). `units` is what the price counts. */
+export function serviceQuoteBinding(service: GatedService, units: number): QuoteBinding {
+  return quoteBinding({ cap: `paid.${service}`, ...SERVICE_ENGINE[service], units });
+}
+
 export interface ServiceQuote {
   token: string;
   jobId: string;
@@ -47,13 +60,14 @@ export interface ServiceQuote {
 }
 
 export function issueServiceQuote(
-  input: { service: GatedService; userId: string; raw: unknown; credits: number; jobId: string; now: number },
+  input: { service: GatedService; userId: string; raw: unknown; credits: number; units: number; jobId: string; now: number },
   key: string = serviceQuoteKey(),
 ): ServiceQuote | null {
   const expiresAt = input.now + QUOTE_TTL_MS;
   const token = signQuote(
     { u: input.userId, j: input.jobId, f: quoteFingerprint(input.service, input.raw), c: input.credits, x: expiresAt },
     key,
+    serviceQuoteBinding(input.service, input.units),
   );
   return token ? { token, jobId: input.jobId, credits: input.credits, expiresAt } : null;
 }
@@ -62,17 +76,22 @@ export type ConfirmCheck = QuoteCheck | { ok: false; reason: 'not_confirmed' | '
 
 /**
  * A confirmation is valid only with `confirm === true`, a token signed for this user and this exact request, unexpired,
- * at the price the server computes NOW (a source that measures longer, or a repriced service, needs a new quote).
+ * at the price the server computes NOW (a source that measures longer, or a repriced service, needs a new quote), on the
+ * engine and price book the server would quote now.
  */
 export function checkServiceConfirmation(
-  input: { service: GatedService; userId: string; raw: unknown; credits: number; now: number },
+  input: { service: GatedService; userId: string; raw: unknown; credits: number; units: number; now: number },
   key: string = serviceQuoteKey(),
 ): ConfirmCheck {
   const body = input.raw as { confirm?: unknown; quoteToken?: unknown } | null;
   if (!body || body.confirm !== true) return { ok: false, reason: 'not_confirmed' };
-  const v = verifyQuote(body.quoteToken, key, { userId: input.userId, fingerprint: quoteFingerprint(input.service, input.raw), now: input.now });
-  if (!v.ok) return v;
-  if (v.claims.c !== input.credits) return { ok: false, reason: 'price_changed', credits: input.credits };
+  const v = verifyQuote(body.quoteToken, key, {
+    userId: input.userId, fingerprint: quoteFingerprint(input.service, input.raw), now: input.now,
+    credits: input.credits, binding: serviceQuoteBinding(input.service, input.units),
+  });
+  if (!v.ok && v.reason === 'changed' && (v.field === 'credits' || v.field === 'units' || v.field === 'pricing')) {
+    return { ok: false, reason: 'price_changed', credits: input.credits };
+  }
   return v;
 }
 

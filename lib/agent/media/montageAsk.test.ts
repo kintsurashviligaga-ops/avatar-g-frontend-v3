@@ -1,4 +1,4 @@
-/** Agent G montage: the quote token, the shape and input rules, QC, and who the feature is open to. */
+/** Agent G montage: the shape and input rules, QC, and who the feature is open to (the quote token: ./quoteToken.test). */
 jest.mock('../../admin/guard', () => ({ isAdminUser: (u: { app_metadata?: { role?: string } } | null) => u?.app_metadata?.role === 'admin' }));
 
 import type { User } from '@supabase/supabase-js';
@@ -9,33 +9,10 @@ import { planBeatCuts } from '@/lib/services/montage/beatPlan';
 import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC, timelineDuration } from '@/lib/services/montage/montagePlan';
 import { MIXED_STYLES, planTransitions } from '@/lib/services/montage/transitionPlan';
 import type { AgentMontageRequest } from './montageManifest';
-import { signQuote, verifyQuote } from './quoteToken';
 import { agentMediaAccess, agentMediaOpenTo } from './access';
 
 const P = (o: Partial<BannerProbe>): BannerProbe => ({
   durationSec: 10, hasVideo: true, hasAudio: true, width: 1920, height: 1080, rotation: 0, videoCodec: 'h264', audioCodec: 'aac', ...o,
-});
-
-describe('quote token', () => {
-  const claims = { u: 'u1', j: 'job-1', f: 'fp', c: 0, x: 2000 };
-  const ok = { userId: 'u1', fingerprint: 'fp', now: 1000 };
-  test('round-trips for its user, plan and time', () => {
-    const t = signQuote(claims, 'key')!;
-    expect(verifyQuote(t, 'key', ok)).toEqual({ ok: true, claims });
-  });
-  test('refuses another user, another plan, a late run, another key, a tampered payload, and no key', () => {
-    const t = signQuote(claims, 'key')!;
-    expect(verifyQuote(t, 'key', { ...ok, userId: 'u2' })).toEqual({ ok: false, reason: 'not_yours' });
-    expect(verifyQuote(t, 'key', { ...ok, fingerprint: 'other' })).toEqual({ ok: false, reason: 'changed' });
-    expect(verifyQuote(t, 'key', { ...ok, now: 2000 })).toEqual({ ok: false, reason: 'expired' });
-    expect(verifyQuote(t, 'other', ok)).toEqual({ ok: false, reason: 'invalid' });
-    const [payload, mac] = t.split('.');
-    const forged = Buffer.from(JSON.stringify({ v: 1, ...claims, c: -5 })).toString('base64url');
-    expect(verifyQuote(`${forged}.${mac}`, 'key', ok)).toEqual({ ok: false, reason: 'invalid' });
-    expect(verifyQuote(`${payload}.${mac}.x`, 'key', ok)).toEqual({ ok: false, reason: 'invalid' });
-    expect(signQuote(claims, '')).toBeNull();
-    expect(verifyQuote(t, '', ok)).toEqual({ ok: false, reason: 'invalid' });
-  });
 });
 
 describe('inputs and shape', () => {
