@@ -40,7 +40,7 @@ import { sceneCredits } from '@/lib/credits/priceBook';
 import { TRIAL } from '@/lib/billing/tiers';
 import { insufficientCreditsResponse, chargeRefusedResponse } from './chatBilling';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
-import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
+import { lyriaBedReady } from '@/lib/audio/lyriaBed';
 import { PipelineTimer } from '@/lib/pipeline/timing';
 import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
 import { ServiceManager } from './ServiceManager';
@@ -93,8 +93,8 @@ import { resolveFilmTemplate } from '@/lib/studio/templateContext';
 const serviceManager = new ServiceManager();
 
 // v330 — buildMusicRequest (the Udio request builder) was removed with the Udio
-// retirement. Music is now generated at the assemble step: ElevenLabs Music
-// (buildElevenMusicPrompt in lib/elevenlabs/music.ts) primary, MusicGen fallback.
+// retirement. Music is now generated at the assemble step: Lyria on Vertex
+// (buildSongPrompt in lib/audio/songPrompt.ts, lib/audio/lyriaBed.ts), with no fallback engine.
 
 export { isThirtySecondFilm } from './filmPipeline';
 
@@ -1474,12 +1474,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   if (hasCustomSoundtrack) {
     // eslint-disable-next-line no-console
     console.log('[film] custom soundtrack supplied → skipping the Udio audio leg (no generation, no charge)');
-  } else if (hasElevenLabsMusicKey()) {
-    // v330 — ElevenLabs Music is the master audio layer and runs SYNCHRONOUSLY at the
-    // assemble step, so the async Udio leg is skipped entirely (no workId, no charge).
-    // Udio remains the fallback only when no ElevenLabs key is configured.
+  } else if (lyriaBedReady()) {
+    // The score is Lyria on Vertex and runs SYNCHRONOUSLY at the assemble step (lib/audio/lyriaBed), so there is
+    // no async audio leg here (no workId, no charge).
     // eslint-disable-next-line no-console
-    console.log('[film] ElevenLabs Music configured → song synthesized at assemble; skipping the legacy audio leg');
+    console.log('[film] Lyria configured → score composed at assemble; no audio leg here');
   }
   // v330 — Udio is fully retired. Music is generated at the ASSEMBLE step (ElevenLabs
   // Music primary, Replicate MusicGen fallback), so the film's async audio leg no longer
@@ -1629,9 +1628,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       ? `🎥 Scene 1 dispatched; scenes 2–${sceneCount} each start from the previous scene's last frame (shared seed ${plan.shared.seed})`
       : `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
     '✂️ Editor will stitch the final cut',
-    // musicWorkId is always null (Udio retired) — the score is generated at the ASSEMBLE step (ElevenLabs
-    // Music / MusicGen) or the user's custom soundtrack is used. So don't tell every user "Score skipped".
-    (hasCustomSoundtrack || hasElevenLabsMusicKey()) ? '🎵 Score added at final assembly' : '⚠️ No score',
+    // musicWorkId is always null (Udio retired) — the score is generated at the ASSEMBLE step (Lyria) or the
+    // user's custom soundtrack is used. So don't tell every user "Score skipped".
+    (hasCustomSoundtrack || lyriaBedReady()) ? '🎵 Score added at final assembly' : '⚠️ No score',
   ].join('\n');
 
   timer.mark('dispatch-complete');

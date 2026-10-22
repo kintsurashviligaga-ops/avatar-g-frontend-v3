@@ -24,9 +24,9 @@
  *  - TTS is Google Cloud TTS only (lib/audio/google-tts, on the Vertex Workload Identity token; used by
  *    lib/chat/filmVoiceover and /api/elevenlabs/tts): the best voice for the language and gender. No ElevenLabs or
  *    Azure fallback (R7). Chat read-aloud (/api/tts/gemini) is separate.
- *  - Studio music (app/api/ai/music) Auto = Lyria 3 ALONE, no failover (R7); ElevenLabs Music / Udio / MusicGen
- *    run only when the user explicitly picks one. A FILM's score is ElevenLabs Music at /api/video/assemble —
- *    a miss ships the film without music; the Udio and MusicGen fallbacks were removed.
+ *  - Studio music (app/api/ai/music) Auto = Lyria 3 ALONE, no failover (R7). A FILM's score is Lyria 3 too, at
+ *    /api/video/assemble (lib/audio/lyriaBed) — a miss ships the film without music; ElevenLabs Music, Udio and
+ *    MusicGen are gone.
  *  - Lip-sync: film masters (kind:'film') → sync/lipsync-2 on Replicate only (lib/ai/lipsync filmLipsyncCreate);
  *    avatar talking-photo → HeyGen, or SadTalker on Replicate when HeyGen is off — one engine per job, a HeyGen miss is
  *    not re-run on SadTalker (2026-10-09). (The assemble-stage FILM_LIPSYNC_ENABLED pass is a DB/env flag, off by default.)
@@ -40,7 +40,9 @@ import { googleAiConfigured, googleTransportKind, googleTransportProblems } from
 import { geminiFrameModel } from '@/lib/ai/geminiImage';
 import { hasLyriaProvider, lyriaModel } from '@/lib/ai/lyriaMusic';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
-import { isEnabledByDefault } from '@/lib/env/flag';
+import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
+import { lyriaProMaxSec } from '@/lib/music/studio/capabilities';
+import { LYRIA_CLIP_MAX_SEC } from '@/lib/studio/musicEngines';
 import { resolveModel } from '@/lib/veo/capabilities';
 import { veoNotConfiguredDetail, veoTransport } from '@/lib/veo/engine';
 
@@ -174,17 +176,21 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       icon: dot(lyriaOn, lyriaOn ? 'high' : 'unavailable'),
     });
 
-    // 6 · FILM SCORE — /api/video/assemble: ElevenLabs Music is the film's only score generator; a miss ships the film
-    //     with no music (scoreFallback null). A user-uploaded soundtrack bypasses it.
+    // 6 · FILM SCORE — /api/video/assemble: Lyria 3 (lib/audio/lyriaBed) is the film's only score generator; a miss
+    //     ships the film with no music (scoreFallback null). A user-uploaded soundtrack bypasses it. Only what is
+    //     verified is asked for: the clip model's ~30 s until Pro is verified, and no sung song until vocals are.
+    const proSec = lyriaProMaxSec(env);
+    const scoreLength = proSec > LYRIA_CLIP_MAX_SEC ? `up to ${proSec} s on Pro` : `~${LYRIA_CLIP_MAX_SEC} s (clip; Pro not verified)`;
+    const vocals = isTruthyFlag(env.MUSIC_LYRIA_VOCALS_VERIFIED) ? 'sung songs on' : 'no sung song until Lyria vocals are verified';
     services.push({
       service: 'მუსიკა (ფილმი)',
-      provider: 'ElevenLabs Music',
-      available: hasElevenLabs,
-      tier: hasElevenLabs ? 'high' : 'unavailable',
-      note: hasElevenLabs
-        ? 'film score at assemble; a miss = no music, no fallback (R7); an uploaded soundtrack bypasses it'
-        : 'ELEVENLABS_API_KEY missing — films get no generated score (an uploaded soundtrack still works)',
-      icon: dot(hasElevenLabs, hasElevenLabs ? 'high' : 'unavailable'),
+      provider: 'Lyria 3 (Vertex)',
+      available: lyriaOn,
+      tier: lyriaOn ? 'high' : 'unavailable',
+      note: lyriaOn
+        ? `film score at assemble: ${scoreLength} · ${vocals} · a miss = no music, no fallback (R7); an uploaded soundtrack bypasses it`
+        : `${lyriaWhy} — films get no generated score (an uploaded soundtrack still works)`,
+      icon: dot(lyriaOn, lyriaOn ? 'high' : 'unavailable'),
     });
 
     // 7 · BASE IMAGE — app/api/nanobanana/image: the NanoBanana reseller is the route's ONLY engine (miss / open breaker

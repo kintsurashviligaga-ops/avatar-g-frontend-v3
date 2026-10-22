@@ -44,6 +44,14 @@ export function buildLyriaVertexBody(input: string): Record<string, unknown> {
   };
 }
 
+/** The timeout joined with the caller's signal (the caller's alone where AbortSignal.any is missing). */
+function withCaller(timeout: AbortSignal, caller?: AbortSignal): AbortSignal {
+  if (!caller) return timeout;
+  return typeof (AbortSignal as unknown as { any?: unknown }).any === 'function'
+    ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any([caller, timeout])
+    : caller;
+}
+
 export interface LyriaTrack {
   base64: string;
   mime: string;
@@ -123,9 +131,9 @@ export async function recordMusicUsage(model: string = lyriaModel()): Promise<vo
 /**
  * Generate a Lyria 3 track (instrumental OR vocal song). Returns { base64, mime } or null on ANY miss; the
  * caller turns null into its own explicit failure (no other engine runs behind Lyria, R7). Never throws.
- * `model` (default lyriaModel()) is the clip or Pro: both go to Vertex `:generateContent`.
+ * `model` (default lyriaModel()) is the clip or Pro: both go to Vertex `:generateContent`. The caller's `signal` aborts it.
  */
-export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean; model?: string }): Promise<LyriaTrack | null> {
+export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean; model?: string; signal?: AbortSignal }): Promise<LyriaTrack | null> {
   const model = args.model?.trim() || lyriaModel();
   if (googleTransportBlocker() || !args.prompt?.trim()) return null;
 
@@ -150,7 +158,7 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
       method: 'POST',
       cache: 'no-store',
       body: JSON.stringify(buildLyriaVertexBody(input)),
-      signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
+      signal: withCaller(AbortSignal.timeout(GEN_TIMEOUT_MS), args.signal),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
@@ -200,10 +208,7 @@ export type LyriaResult =
  */
 export async function lyriaRequest(input: string, model: string, signal: AbortSignal): Promise<LyriaResult> {
   if (googleTransportBlocker() || !input.trim()) return { ok: false, reason: 'not_configured' };
-  const timeout = AbortSignal.timeout(GEN_TIMEOUT_MS);
-  const both = typeof (AbortSignal as unknown as { any?: unknown }).any === 'function'
-    ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any([signal, timeout])
-    : signal;
+  const both = withCaller(AbortSignal.timeout(GEN_TIMEOUT_MS), signal);
   try {
     const res = await googleModelFetch(model, 'generateContent', { method: 'POST', cache: 'no-store', body: JSON.stringify(buildLyriaVertexBody(input)), signal: both });
     if (!res.ok) {

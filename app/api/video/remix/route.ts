@@ -26,9 +26,8 @@ import { muxAudioOntoVideo, kenBurnsClip, colorGrade, changeSpeed, changeSpeedRa
 import { renderVeoClipSync } from '@/lib/ai/veoClipSync';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
-import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
-import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
+import { composeLyriaBed, lyriaBedPlan, lyriaBedReady } from '@/lib/audio/lyriaBed';
 import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
 import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
@@ -71,9 +70,9 @@ const OUTSIDE_ENGINE_OPS = new Set(['restyle', 'character', 'background_remove',
 
 // FIX 3 — preset-appropriate background score for a SINGLE-clip product ad, hosted to a
 // fetchable URL. (Multi-clip ads already get a music bed from /api/video/assemble.)
-// ElevenLabs Music (instrumental) → null (caller ships the clip without music and says so: `music: false`).
+// Lyria on Vertex (instrumental, the clip model) → null (caller ships the clip without music and says so: `music: false`).
 //
-// ⚠️ NO MUSICGEN BEHIND IT (PROJECT_MASTER R7 — no silent fallback). An ElevenLabs miss used to drop to Replicate
+// ⚠️ NO MUSICGEN BEHIND IT (PROJECT_MASTER R7 — no silent fallback). A score miss used to drop to Replicate
 // MusicGen, a provider the platform no longer allows, and the ad came back scored by an engine nobody chose with
 // nothing in the response to say so. The music bed is an optional leg of an ad that is already rendered and paid
 // for, so its failure is the leg's own explicit outcome — the clip without music, reported as `music: false` — and
@@ -86,16 +85,12 @@ const AD_MUSIC_PROMPTS: Record<string, string> = {
 };
 async function presetAdMusicUrl(presetKey: string, lengthSec = 8): Promise<string | null> {
   const prompt = AD_MUSIC_PROMPTS[presetKey] ?? AD_MUSIC_PROMPTS.luxury!;
-  if (!hasElevenLabsMusicKey()) return null;
-  try {
-    const { audio, contentType } = await composeElevenLabsMusic({ prompt, lengthMs: lengthSec * 1000, instrumental: true });
-    const path = `productad-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-    return (await uploadAndSign(UPLOAD_BUCKET, path, audio.toString('base64'), contentType, 604800)) || null;
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[video/remix] productad EL music failed → clip ships without music (no fallback, R7):', e instanceof Error ? e.message : e);
-    return null;
-  }
+  const plan = lyriaBedPlan(lengthSec, true);
+  if (!plan || !lyriaBedReady()) return null;
+  const url = await composeLyriaBed({ prompt, plan, instrumental: true, bucket: UPLOAD_BUCKET, folder: 'productad-music' });
+  // eslint-disable-next-line no-console
+  if (!url) console.warn('[video/remix] productad Lyria bed missed → clip ships without music (no fallback, R7)');
+  return url;
 }
 
 export async function POST(req: NextRequest) {
@@ -120,8 +115,8 @@ export async function POST(req: NextRequest) {
   if (body.factor === undefined && p.factor !== undefined) body.factor = p.factor;
 
   // These four ops ran on outside engines (NanoBanana + Kling, roop, sync lip-sync) with no Google engine: refused here,
-  // before the charge, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The ffmpeg ops, ElevenLabs voiceover / music
-  // and the Veo product ad run.
+  // before the charge, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The ffmpeg ops, the Cloud TTS voiceover, the
+  // Lyria music bed and the Veo product ad run.
   if (OUTSIDE_ENGINE_OPS.has(op)) return refuseOutsideEngine(req);
     // Admin service switch (lib/server/serviceSwitches): the op names the tool — product ad, character swap, or touch-up.
     const serviceOff = await serviceOffResponse(op === 'productad' ? 'product' : op === 'character' ? 'swap' : 'remix');
@@ -454,7 +449,7 @@ export async function POST(req: NextRequest) {
       // assemble pipeline scores the stitched master, so per-clip music would clash.
       // `noMusic` ALSO skips it: the caller (Product-Ad with a voiceover/overlay) sends
       // this clip straight to /api/video/assemble, which scores + dubs + overlays in one
-      // pass — baking music here would only be replaced and waste an ElevenLabs Music call.
+      // pass — baking music here would only be replaced and waste a Lyria call.
       // Fail-open: any music miss returns the (silent) clip — still a working ad, reported `music: false`.
       if (sceneIdx < 0 && body.noMusic !== true) {
         const music = await presetAdMusicUrl(presetKey, 8);

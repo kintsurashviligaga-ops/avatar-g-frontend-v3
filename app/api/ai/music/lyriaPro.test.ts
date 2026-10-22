@@ -13,7 +13,6 @@ jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: j
 jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ response: null, auth: null, budgetRemaining: null })) }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/elevenlabs/music', () => ({ composeElevenLabsMusic: jest.fn(), hasElevenLabsMusicKey: jest.fn(() => true) }));
 jest.mock('../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(() => true), generateLyriaTrack: jest.fn() }));
 jest.mock('../../../../lib/audio/voiceModel', () => ({ getUserVoiceModel: jest.fn(async () => null), DEMO_VOICE_USER_ID: 'demo' }));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => 'https://storage.example/signed.mp3'), createSignedAssetUrl: jest.fn() }));
@@ -39,13 +38,15 @@ jest.mock('../../../../lib/services/billing/budgetCheck', () => ({ platformBudge
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { composeElevenLabsMusic } from '../../../../lib/elevenlabs/music';
 import { generateLyriaTrack } from '../../../../lib/ai/lyriaMusic';
 import { isProviderTripped } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
 import { platformBudgetRefusal } from '../../../../lib/services/billing/budgetCheck';
 import { creditCostFor } from '../../../../lib/credits/pricing';
 import { LYRIA_PRO_MODEL } from '../../../../lib/studio/musicEngines';
+
+/** Any request that reached ElevenLabs (its Music client is gone, PR 6; the fetch spy would still see one). */
+const elevenLabsCalls = () => (global.fetch as unknown as jest.Mock).mock.calls.filter(([u]) => /elevenlabs\.io/.test(String(u)));
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/ai/music', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -85,7 +86,7 @@ test('60 s is Lyria 3 Pro, steered to 60 s; billed at the 60 s tier; never Eleve
   expect(isProviderTripped).toHaveBeenCalledWith('lyria-pro');
   expect(platformBudgetRefusal).toHaveBeenCalledWith({ service: 'music', model: LYRIA_PRO_MODEL, units: 1 });
   expect((deductCredits as jest.Mock).mock.calls[0][1]).toBe(creditCostFor('music', { seconds: 60 }));
-  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(elevenLabsCalls()).toEqual([]);
 });
 
 test('Full song is Lyria 3 Pro, steered to a complete ~3-minute song — still billed at the 90 s tier', async () => {
@@ -94,7 +95,7 @@ test('Full song is Lyria 3 Pro, steered to a complete ~3-minute song — still b
   expect(lyriaCall().model).toBe(LYRIA_PRO_MODEL);
   expect(lyriaCall().prompt).toMatch(/^A complete full-length song of about 3 minutes/);
   expect((deductCredits as jest.Mock).mock.calls[0][1]).toBe(creditCostFor('music', { seconds: 90 }));
-  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(elevenLabsCalls()).toEqual([]);
 });
 
 test('genre / style handling is the same brief on both models: only the length direction is added', async () => {

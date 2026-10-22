@@ -20,7 +20,6 @@ jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: j
 jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ response: null, auth: null, budgetRemaining: null })) }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/elevenlabs/music', () => ({ composeElevenLabsMusic: jest.fn(), hasElevenLabsMusicKey: jest.fn(() => true) }));
 jest.mock('../../../../lib/ai/replicate', () => ({ generateMusicCover: jest.fn(), generateVoiceSong: jest.fn(), generateMusic: jest.fn() }));
 jest.mock('../../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
 jest.mock('../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(() => true), generateLyriaTrack: jest.fn() }));
@@ -51,7 +50,6 @@ jest.mock('../../../../lib/audio/trackDuration', () => ({ probeTrackDurationSec:
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { composeElevenLabsMusic } from '../../../../lib/elevenlabs/music';
 import { generateLyriaTrack } from '../../../../lib/ai/lyriaMusic';
 import { generateMusic } from '../../../../lib/ai/replicate';
 import { generateUdioTrack } from '../../../../lib/udio/client';
@@ -75,7 +73,6 @@ beforeEach(() => {
   (generateLyriaTrack as jest.Mock).mockResolvedValue({ base64: 'AAAA', mime: 'audio/mpeg' });
   // Every other engine WOULD succeed — so any track that comes back from one of them is a fallback that ran.
   (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
-  (composeElevenLabsMusic as jest.Mock).mockResolvedValue({ audio: Buffer.from('el'), contentType: 'audio/mpeg' });
   (generateMusic as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/track.mp3' });
   // Cover art (Pollinations) and the re-host both go through fetch — refuse them locally; the route keeps the URL.
   jest.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 500 }));
@@ -97,7 +94,7 @@ async function expectExplicitFailure(body: unknown, ran: jest.Mock | null): Prom
   expect(deductCredits).toHaveBeenCalledTimes(1);
   expect(refundCredits).toHaveBeenCalledTimes(1);
   expect((refundCredits as jest.Mock).mock.calls[0][2]).toMatch(/:refund$/);
-  for (const engine of [generateLyriaTrack, generateUdioTrack, composeElevenLabsMusic, generateMusic] as jest.Mock[]) {
+  for (const engine of [generateLyriaTrack, generateUdioTrack, generateMusic] as jest.Mock[]) {
     if (engine !== ran) expect(engine).not.toHaveBeenCalled();
   }
 }
@@ -147,7 +144,7 @@ describe.each([['MEDIA_GOOGLE_ONLY unset', ''], ['MEDIA_GOOGLE_ONLY=0, the old o
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ success: false, code: 'unsupported' });
     expect(deductCredits).not.toHaveBeenCalled();
-    for (const engine of [generateLyriaTrack, generateUdioTrack, composeElevenLabsMusic, generateMusic] as jest.Mock[]) {
+    for (const engine of [generateLyriaTrack, generateUdioTrack, generateMusic] as jest.Mock[]) {
       expect(engine).not.toHaveBeenCalled();
     }
   });

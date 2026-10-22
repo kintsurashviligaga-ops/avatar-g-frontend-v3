@@ -9,11 +9,11 @@ jest.mock('ffmpeg-static', () => '/usr/bin/ffmpeg');
 jest.mock('../observability/report-error', () => ({ reportError: jest.fn() }));
 const textToHostedSpeech = jest.fn();
 jest.mock('../chat/filmVoiceover', () => ({ textToHostedSpeech: (...a: unknown[]) => textToHostedSpeech(...a) }));
-const composeElevenLabsMusic = jest.fn();
-jest.mock('../elevenlabs/music', () => ({
-  ...jest.requireActual('../elevenlabs/music'),
-  composeElevenLabsMusic: (...a: unknown[]) => composeElevenLabsMusic(...a),
-  hasElevenLabsMusicKey: () => true,
+const generateLyriaTrack = jest.fn();
+const hasLyriaProvider = jest.fn(() => true);
+jest.mock('../ai/lyriaMusic', () => ({
+  generateLyriaTrack: (...a: unknown[]) => generateLyriaTrack(...a),
+  hasLyriaProvider: () => hasLyriaProvider(),
 }));
 jest.mock('../ai/replicate', () => ({ generateMusic: jest.fn() }));
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
@@ -30,16 +30,18 @@ it('a lyric-writer miss returns null before any voice or music is composed', asy
   generateWithGemini.mockRejectedValue(new Error('Gemini 503'));
   await expect(generateGeorgianSong('სიმღერა ზღვაზე', 'female', 32)).resolves.toBeNull();
   expect(textToHostedSpeech).not.toHaveBeenCalled();
-  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(generateLyriaTrack).not.toHaveBeenCalled();
 });
 
-it('with lyrics in hand, the cloned voice reads THOSE lyrics, and the bed is composed for the full song length', async () => {
+it('with lyrics in hand, the cloned voice reads THOSE lyrics, and the bed is Lyria\'s clip until Pro is verified', async () => {
   generateWithGemini.mockResolvedValue({ text: 'ზღვა ანათებს დილით ადრე\nტალღა მღერის ჩემთან ერთად\nქარი მოდის შორი გზიდან\nზღვა ანათებს, გული ფრინავს' });
   textToHostedSpeech.mockResolvedValue(null); // stop at the mix: the legs are what this test checks
-  composeElevenLabsMusic.mockResolvedValue({ audio: Buffer.from([1]), contentType: 'audio/mpeg' });
+  generateLyriaTrack.mockResolvedValue({ base64: 'AQ==', mime: 'audio/mpeg' });
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   await generateGeorgianSong('სიმღერა ზღვაზე', 'female', 48, undefined, { sceneSec: 8 });
   expect(textToHostedSpeech.mock.calls[0][0]).toContain('ზღვა ანათებს დილით ადრე');
-  expect(composeElevenLabsMusic).toHaveBeenCalledWith(expect.objectContaining({ lengthMs: 48_000, instrumental: true }));
-  expect((composeElevenLabsMusic.mock.calls[0][0] as { prompt: string }).prompt).toContain('90 BPM');
+  expect(generateLyriaTrack).toHaveBeenCalledWith(expect.objectContaining({ instrumental: true, model: 'lyria-3-clip-preview' }));
+  const { prompt } = generateLyriaTrack.mock.calls[0][0] as { prompt: string };
+  expect(prompt).toContain('90 BPM');
+  expect(prompt).toContain('A 30-second'); // the clip's own length, not the song's 48 s (lib/audio/lyriaBed)
 });

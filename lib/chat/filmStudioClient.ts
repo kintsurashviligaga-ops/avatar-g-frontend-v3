@@ -136,7 +136,7 @@ export interface FilmStudioResult {
   scoreFallback?: string | null;
   /** Each scene clip's own vision grade, when the assembler ran the check (FILM_VISION_QA): names a weak scene. */
   sceneQa?: SceneQaEntry[];
-  /** The resolved song/vocal URL (ElevenLabs Music / Udio) — drives the HeyGen
+  /** The resolved song/vocal URL (the Lyria score, or the Georgian song) — drives the HeyGen
    *  singer-performance lip-sync (face frame + this vocal). Null when silent. */
   musicUrl?: string | null;
   /** The film's status token — passed to a lip-sync/composite RE-STITCH assemble so the
@@ -190,7 +190,7 @@ export interface DriveFilmOptions {
    * is implied true. Absent/false → narration-forward documentary mix.
    */
   musicVideoMode?: boolean;
-  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer).
+  /** v330 — selected sung-vocal gender for the song (steers the AI singer).
    *  'duet' → a male + female duet (two lead vocalists). */
   vocalGender?: 'male' | 'female' | 'duet';
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
@@ -747,7 +747,7 @@ export function filmAssembleBody(plan: FilmFollowPlan, matrix: FilmStudioMatrix,
     ...(customAudioUrl ? { customAudioUrl } : {}),
     // v330 — caption language for the FiraGO lower-third (ka/en/ru).
     ...(captionLang ? { captionLang } : {}),
-    // v330 — selected sung-vocal gender (steers the ElevenLabs Music singer).
+    // v330 — selected sung-vocal gender (steers the song's singer).
     ...(plan.vocalGender ? { vocalGender: plan.vocalGender } : {}),
     // Scene transition + L2/L6 audio knobs. globalRender wins over the route's
     // film-token default ('cut'), so the user's choices are honoured.

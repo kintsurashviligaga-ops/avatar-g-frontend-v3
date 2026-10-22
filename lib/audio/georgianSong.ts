@@ -1,16 +1,17 @@
 /**
  * lib/audio/georgianSong.ts
  * =========================
- * Real GEORGIAN vocals for a music video. ElevenLabs Music v1 can't sing Georgian,
+ * Real GEORGIAN vocals for a music video. The music engine is not relied on to sing Georgian,
  * so we build the song ourselves: Georgian lyrics written from the brief → a Georgian Cloud TTS
  * voice (textToHostedSpeech) → mixed OVER an instrumental bed in the brief's genre
- * (ElevenLabs Music instrumental; there is no MusicGen fallback) with the vocal up front. The
+ * (Lyria on Vertex, lib/audio/lyriaBed; there is no MusicGen fallback) with the vocal up front. The
  * resulting hosted MP3 is handed to the pipeline as the master soundtrack, so the
  * assemble + lip-sync + composite all run unchanged — and the lips track a REAL
- * Georgian vocal.
+ * Georgian vocal. The bed is Lyria's clip (about 30 s) until Lyria Pro is verified, so a longer
+ * song carries on over silence after it.
  *
- * Strictly fail-open: any miss returns null and the caller falls back to the normal
- * (English) ElevenLabs Music path.
+ * Strictly fail-open: any miss returns null and the caller falls back to the assemble
+ * route's own score.
  */
 import 'server-only';
 import { reportError } from '@/lib/observability/report-error';
@@ -21,7 +22,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
-import { composeElevenLabsMusic, hasElevenLabsMusicKey, genreBpm, sceneAlignedBpm, songGenreFromBrief } from '@/lib/elevenlabs/music';
+import { genreBpm, sceneAlignedBpm, songGenreFromBrief } from '@/lib/audio/songPrompt';
+import { composeLyriaBed, lyriaBedPlan, lyriaBedReady } from '@/lib/audio/lyriaBed';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -94,7 +96,7 @@ export async function writeGeorgianLyrics(brief: string, totalSec: number): Prom
 
 /**
  * The instrumental bed's prompt: the genre the brief names (funk / R&B / hip-hop groove when it names none), at the tempo
- * where every scene cut lands on a bar line (lib/elevenlabs/music sceneAlignedBpm), and the brief's theme in English.
+ * where every scene cut lands on a bar line (lib/audio/songPrompt sceneAlignedBpm), and the brief's theme in English.
  */
 export function instrumentalPrompt(brief: string, totalSec: number, opts: { theme?: string; sceneSec?: number } = {}): string {
   const theme = (opts.theme || '').trim() || brief;
@@ -110,28 +112,18 @@ export function instrumentalPrompt(brief: string, totalSec: number, opts: { them
 }
 
 /**
- * Resolve the instrumental bed → hosted URL. ONE ENGINE: ElevenLabs Music when its key is present, and no bed on a
- * deployment without one (MusicGen on Replicate stood in there; it has no Google engine, MASTER TASK v3.1).
- * ⚠️ NO SILENT FALLBACK (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). An ElevenLabs miss used to
- * fall through to MusicGen, an outside engine nobody chose; it is now a miss (null — the caller reports it).
+ * Resolve the instrumental bed → hosted URL. ONE ENGINE: Lyria on Vertex (lib/audio/lyriaBed), and no bed on a
+ * deployment where it is not configured (MusicGen on Replicate stood in once; it has no Google engine, MASTER TASK v3.1).
+ * ⚠️ NO SILENT FALLBACK (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). A miss is a miss
+ * (null — the caller reports it); no other engine is tried.
  */
 export async function instrumentalBed(brief: string, totalSec: number, signal?: AbortSignal, opts: { theme?: string; sceneSec?: number } = {}): Promise<string | null> {
-  if (hasElevenLabsMusicKey()) {
-    try {
-      const { audio, contentType } = await composeElevenLabsMusic({
-        prompt: instrumentalPrompt(brief, totalSec, opts), lengthMs: totalSec * 1000, instrumental: true, signal,
-      });
-      const path = `films/kabed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-      return await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[ka-song] EL instrumental failed (no other engine is tried):', err instanceof Error ? err.message : err);
-      return null;
-    }
-  }
-  // No ElevenLabs Music key → no bed, which the song builder already handles as a miss. MusicGen (Replicate) used to
-  // stand in; it has no Google engine (MASTER TASK v3.1) and is never called, whatever MEDIA_GOOGLE_ONLY says.
-  return null;
+  const plan = lyriaBedPlan(totalSec, true);
+  if (!plan || !lyriaBedReady()) return null;
+  const url = await composeLyriaBed({ prompt: instrumentalPrompt(brief, plan.sec, opts), plan, instrumental: true, folder: 'films', signal });
+  // eslint-disable-next-line no-console
+  if (!url) console.warn('[ka-song] Lyria instrumental missed (no other engine is tried)');
+  return url;
 }
 
 /**
@@ -158,13 +150,8 @@ export async function diagnoseGeorgianSong(
     try { out.vocal = !!(await textToHostedSpeech(lyrics, gender)); }
     catch (e) { out.vocal = false; out.vocalErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
   } else out.vocal = 'skipped (no lyrics)';
-  out.elMusicKey = hasElevenLabsMusicKey();
-  if (hasElevenLabsMusicKey()) {
-    try {
-      const r = await composeElevenLabsMusic({ prompt: instrumentalPrompt(brief, totalSec), lengthMs: totalSec * 1000, instrumental: true, signal });
-      out.elMusic = !!(r.audio && r.audio.length > 1024);
-    } catch (e) { out.elMusic = false; out.elMusicErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
-  }
+  out.lyria = lyriaBedReady();
+  if (lyriaBedReady()) out.lyriaBed = !!(await instrumentalBed(brief, totalSec, signal));
   out.musicGen = 'off (no Google engine)';
   return out;
 }
@@ -190,10 +177,9 @@ export async function generateGeorgianSong(
   if (!lyrics) return null;
   const theme = await themeP;
   // 1. Georgian vocal (Cloud TTS) + 2. instrumental bed in the brief's genre, concurrently.
-  // Each leg is bounded by its OWN timeout: the long vocal is read in several Cloud TTS parts and the
-  // ElevenLabs Music call has no native timeout, so a single slow leg used to pin the route until its 240s maxDuration
-  // (the georgian-song timeout). Now a slow leg resolves to null within budget and
-  // the route degrades gracefully (caller falls back to the assemble EL-Music bed).
+  // Each leg is bounded by its OWN timeout: the long vocal is read in several Cloud TTS parts, and a slow
+  // music leg used to pin the route until its 240s maxDuration (the georgian-song timeout). Now a slow leg
+  // resolves to null within budget and the route degrades gracefully (caller falls back to the assemble score).
   const LEG_TIMEOUT_MS = 110_000;
   const withTimeout = <T,>(p: Promise<T>, label: string): Promise<T | null> =>
     Promise.race([

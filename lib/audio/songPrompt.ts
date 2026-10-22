@@ -1,76 +1,8 @@
-import 'server-only';
-import { withRetry } from '@/lib/utils/withRetry';
-import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
-
-// ElevenLabs Music — the v330 master audio layer. Unlike the legacy Udio path
-// (async start → workId → poll), ElevenLabs Music returns the finished track
-// SYNCHRONOUSLY as audio bytes from POST /v1/music, so it slots in at the
-// assemble step (where the MusicGen fallback already runs synchronously) with no
-// poll machinery. force_instrumental toggles a sung song (music video) vs. an
-// instrumental score (narrative film). Docs: https://elevenlabs.io/docs/api-reference/music
-const EL_MUSIC_URL = 'https://api.elevenlabs.io/v1/music';
-
-/** True when an ElevenLabs key is configured (Music shares the account key). */
-export function hasElevenLabsMusicKey(env: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean((env.ELEVENLABS_API_KEY || '').trim());
-}
-
-export interface ComposeMusicInput {
-  prompt: string;
-  /** Track length in ms; clamped to the API's 3,000–600,000 ms window. */
-  lengthMs: number;
-  /** force_instrumental — true for a vocal-free score, false (default) for a sung song. */
-  instrumental?: boolean;
-  modelId?: 'music_v1' | 'music_v2';
-  signal?: AbortSignal;
-}
-
-export interface ComposeMusicResult {
-  audio: Buffer;
-  contentType: string;
-}
-
 /**
- * Compose a complete track (sung vocals + backing, or instrumental) via ElevenLabs
- * Music. Returns the raw MP3 bytes. Throws on a missing key, a non-200, or an empty
- * body so the caller can fall back (MusicGen) and the film is never silently broken.
+ * lib/audio/songPrompt.ts — what a film's song or score is asked to be: its length, genre, tempo, vocalist and language,
+ * from the brief. Pure, engine-neutral text (it was part of the ElevenLabs Music client, deleted in PR 6); the engine is
+ * Lyria on Vertex (lib/audio/lyriaBed).
  */
-export async function composeElevenLabsMusic(input: ComposeMusicInput): Promise<ComposeMusicResult> {
-  const key = (process.env.ELEVENLABS_API_KEY || '').trim();
-  if (!key) throw new Error('ELEVENLABS_API_KEY is not configured');
-  const music_length_ms = Math.max(3_000, Math.min(600_000, Math.round(input.lengthMs)));
-  // Retry transient failures (5xx / network) before the caller falls back to MusicGen.
-  // A caller-aborted request (input.signal) bails immediately inside withRetry.
-  // Each attempt runs inside the shared ElevenLabs concurrency gate so a Music call
-  // can't collide with a concurrent TTS call and trip the account's 2-concurrent 429.
-  const audio = await withRetry(() => withElevenLabsSlot(async () => {
-    const res = await fetch(EL_MUSIC_URL, {
-      method: 'POST',
-      headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-      body: JSON.stringify({
-        prompt: input.prompt.slice(0, 2_000),
-        music_length_ms,
-        model_id: input.modelId ?? 'music_v1',
-        output_format: 'mp3_44100_128',
-        ...(input.instrumental ? { force_instrumental: true } : {}),
-      }),
-      ...(input.signal ? { signal: input.signal } : {}),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      const err = new Error(`ElevenLabs Music ${res.status}: ${detail.slice(0, 300)}`);
-      // Retry 429 (concurrent_limit_exceeded) and 5xx only. A 401 (bad key / quota_exceeded) or 422
-      // is deterministic: the current 3-attempt policy fires three identical paid-surface requests and
-      // sleeps 2s + 4s before the caller drops to MusicGen. Same final error, 6s sooner, 2 fewer calls.
-      if (res.status !== 429 && res.status < 500) err.name = 'NonRetryableError';
-      throw err;
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 1_024) throw new Error('ElevenLabs Music returned an empty track');
-    return buf;
-  }), { maxAttempts: 3, baseDelayMs: 2000, label: 'elevenlabs-music' });
-  return { audio, contentType: 'audio/mpeg' };
-}
 
 /** The longest film song composed in one request (s): the longest film the studio makes (lib/video/duration VIDEO_MAX_SEC). */
 export const FILM_SONG_MAX_SEC = 240;
@@ -139,15 +71,15 @@ export function sceneAlignedBpm(preferredBpm: number, sceneSec: number): number 
 }
 
 /**
- * Build an ElevenLabs Music prompt + instrumental flag from a film brief. Mirrors the
- * genre / vocalist / lyric-language / mood detection used for the legacy Udio request
- * so a music video gets a real sung song and a narrative film gets a cohesive score.
+ * The music engine's prompt and instrumental flag for a film brief: a music video gets a sung song (genre, vocalist,
+ * lyric language, mood), a narrative film a cohesive instrumental score.
  *
  * `theme` is the brief in English (the engine reads English: a Georgian brief quoted verbatim reached it as noise, and
  * it composed from its own priors, Production 2026-10-16). The song's LANGUAGE still comes from what the user typed.
  * `sceneSec` is the length of one scene: a music video's song keeps one tempo at which every cut lands on a bar line.
+ * `totalSec` is the length of the track the engine is asked for (lib/audio/lyriaBed lyriaBedPlan).
  */
-export function buildElevenMusicPrompt(o: { brief: string; totalSec: number; musicVideoMode?: boolean; vocalGender?: 'male' | 'female' | 'duet'; theme?: string; sceneSec?: number }): {
+export function buildSongPrompt(o: { brief: string; totalSec: number; musicVideoMode?: boolean; vocalGender?: 'male' | 'female' | 'duet'; theme?: string; sceneSec?: number }): {
   prompt: string;
   instrumental: boolean;
 } {

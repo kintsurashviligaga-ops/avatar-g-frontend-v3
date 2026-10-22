@@ -161,7 +161,7 @@ describe('no row repeats the stale provider claims', () => {
     expect(music.note).toMatch(/Auto = Lyria 3 only, no failover/);
     expect(music.note).not.toMatch(/→|chain/i);
 
-    expect(row(h, 'მუსიკა (ფილმი)').provider).toBe('ElevenLabs Music');
+    expect(row(h, 'მუსიკა (ფილმი)').provider).toBe('Lyria 3 (Vertex)');
     expect(row(h, 'ხმა (TTS)').provider).toMatch(/^ElevenLabs/);
     expect(row(h, 'ლიპ-სინქი').provider).toBe('sync/lipsync-2 (Replicate)');
     expect(h.services.some((s) => s.service === 'Auto-Anchor')).toBe(false);
@@ -177,6 +177,25 @@ describe('no row repeats the stale provider claims', () => {
     expect(music.note).toMatch(/Auto fails — LYRIA_ENABLED is off/);
     // Music Studio v1: no other engine can be picked, whatever keys exist.
     expect(music.note).toMatch(/Udio \/ ElevenLabs Music \/ MusicGen removed/);
+  });
+
+  it('the film score is Lyria at only its verified length, and says when a sung song cannot be made', async () => {
+    setEnv({ ...SECRETS, ...VERTEX_ENV });
+    let score = row(await checkPipelineHealth(), 'მუსიკა (ფილმი)');
+    expect(score.available).toBe(true);
+    expect(score.note).toMatch(/~30 s \(clip; Pro not verified\)/);
+    expect(score.note).toMatch(/no sung song until Lyria vocals are verified/);
+    expect(score.note).not.toMatch(/ElevenLabs/);
+
+    setEnv({ ...SECRETS, ...VERTEX_ENV, MUSIC_LYRIA_PRO_VERIFIED: '1', MUSIC_LYRIA_PRO_SECONDS: '120', MUSIC_LYRIA_VOCALS_VERIFIED: '1' });
+    score = row(await checkPipelineHealth(), 'მუსიკა (ფილმი)');
+    expect(score.note).toMatch(/up to 120 s on Pro · sung songs on/);
+
+    // An ElevenLabs key is no score: with Lyria off, films get none.
+    setEnv({ ...SECRETS, ...VERTEX_ENV, LYRIA_ENABLED: '0' });
+    score = row(await checkPipelineHealth(), 'მუსიკა (ფილმი)');
+    expect(score.available).toBe(false);
+    expect(score.note).toMatch(/^LYRIA_ENABLED is off — films get no generated score/);
   });
 
   it.each(['bogus', 'gemini_api'])('GEMINI_TRANSPORT=%s fails closed for the frames and Lyria without throwing', async (value) => {

@@ -74,16 +74,12 @@
     "app/api/app/worker/tick/route.ts": [
       "openai"
     ],
-    "app/api/audio/georgian-song/route.ts": [
-      "elevenlabs"
-    ],
     "app/api/calls/bridge/[op]/route.ts": [
       "gemini_developer_api",
       "nanobananaapi",
       "replicate"
     ],
     "app/api/chat/orchestrate/route.ts": [
-      "elevenlabs",
       "heygen",
       "kling",
       "ltx",
@@ -93,7 +89,6 @@
       "udio"
     ],
     "app/api/chat/stream/route.ts": [
-      "elevenlabs",
       "heygen",
       "kling",
       "ltx",
@@ -126,7 +121,6 @@
       "higgsfield"
     ],
     "app/api/film/scene/redo/route.ts": [
-      "elevenlabs",
       "heygen",
       "kling",
       "ltx",
@@ -135,7 +129,6 @@
       "runway"
     ],
     "app/api/film/scene/redo/stitch/route.ts": [
-      "elevenlabs",
       "heygen",
       "kling",
       "ltx",
@@ -144,7 +137,6 @@
       "runway"
     ],
     "app/api/film/sweep/route.ts": [
-      "elevenlabs",
       "heygen",
       "kling",
       "ltx",
@@ -293,7 +285,6 @@
       "replicate"
     ],
     "app/api/video/assemble/route.ts": [
-      "elevenlabs",
       "heygen",
       "kling",
       "ltx",
@@ -306,7 +297,6 @@
       "replicate"
     ],
     "app/api/video/remix/route.ts": [
-      "elevenlabs",
       "heygen",
       "kling",
       "ltx",

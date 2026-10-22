@@ -12,7 +12,6 @@
       "app/api/health/public/route.ts",
       "app/api/health/services/route.ts",
       "app/api/voice/clone/route.ts",
-      "lib/elevenlabs/music.ts",
       "lib/security/csp.js"
     ],
     "replicate": [

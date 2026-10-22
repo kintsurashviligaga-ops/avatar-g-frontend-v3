@@ -2,12 +2,9 @@
  * lib/ai/musicEnginesStatus.ts — which music engines /api/ai/music would actually run RIGHT NOW, for the Create
  * screen's model picker and its "Engines & prices" list.
  *
- * The answer is derived from the SAME gates the route builds its chain with (`composeTrackUrl`), never restated:
- *   · Lyria 3        — `hasLyriaProvider()` (a Gemini key, and LYRIA_ENABLED not switched off)
- *   · Udio           — `hasUdioApiKey()` and MUSIC_PROVIDER !== 'elevenlabs' (that setting drops Udio from the chain)
- *   · ElevenLabs     — `hasElevenLabsMusicKey()`
- *   · MusicGen       — Replicate's token (the route always lists it, but without a token every call would fail)
- * plus each engine's Redis circuit breaker (`isProviderTripped`): three consecutive failures open it for ~30 s, and the
+ * The answer is derived from the SAME gate the route runs on, never restated: Lyria 3 — `hasLyriaProvider()` (Vertex
+ * configured, and LYRIA_ENABLED not switched off). Udio, ElevenLabs Music and MusicGen are always off (engineConfigured),
+ * and the ElevenLabs Music client itself is gone (PR 6). Plus each engine's Redis circuit breaker (`isProviderTripped`): three consecutive failures open it for ~30 s, and the
  * route will not run a tripped engine — so an engine that is out of funds shows as busy instead of being offered.
  * "+ Audio" (MusicGen's melody model) and "+ Voice" (MiniMax) both run on Replicate, hence `references`.
  *

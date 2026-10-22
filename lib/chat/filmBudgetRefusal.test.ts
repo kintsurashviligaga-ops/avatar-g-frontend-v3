@@ -33,7 +33,7 @@ jest.mock('./filmVoiceover', () => ({
   wantsCommentary: jest.fn(() => false),
 }));
 jest.mock('../ai/qaDirectorAgent', () => ({ evaluateFilmQa: jest.fn(async () => null) }));
-jest.mock('../elevenlabs/music', () => ({ hasElevenLabsMusicKey: jest.fn(() => false) }));
+jest.mock('../audio/lyriaBed', () => ({ lyriaBedReady: jest.fn(() => false) }));
 jest.mock('./filmClipRetry', () => {
   const actual = jest.requireActual('./filmClipRetry');
   return { ...actual, MAX_CLIP_DISPATCH_ATTEMPTS: 3, clipDispatchJitterMs: () => 0, clipRetryBackoffMs: () => 0 };
