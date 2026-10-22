@@ -175,12 +175,14 @@ describe('voice/telephony hardening (regression guards)', () => {
     expect(session).toMatch(/throw new Error\('voice_session_secret_missing'\)/);
   });
 
-  it('the call transcriber never invents a transcript and caps the audio (2026-10-09)', () => {
+  it('the call transcriber never invents a transcript, and (retired under v3.1) never reads the audio at all', () => {
     const src = read('app/api/agent-g/calls/transcribe/route.ts');
     // It used to answer { provider: 'mock-stt' } with the client's own hint (or "Transcribed audio from …") as if heard.
     expect(src).not.toMatch(/mock-stt|Transcribed audio from/);
-    expect(src).toMatch(/audio\.size > 25_000_000/);
-    expect(src).toMatch(/audioBase64: z\.string\(\)\.min\(1\)\.max\(35_000_000\)/);
+    // Its engines were OpenAI and Deepgram, so it now refuses before the body is read: no size cap is left to keep,
+    // because no byte of the audio is parsed, buffered or sent anywhere.
+    expect(src).not.toMatch(/request\.(json|formData|arrayBuffer|text|blob)\(/);
+    expect(src).toMatch(/apiError\(new Error\('google_only'\), 503/);
   });
 
   it('the job-notify route is gated by the internal worker token (no anonymous paid-call trigger)', () => {

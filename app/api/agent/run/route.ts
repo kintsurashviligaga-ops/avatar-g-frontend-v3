@@ -6,7 +6,7 @@
  * Agent Terminal can render Thought/Action/Observation. The loop is always terminal
  * (final | max_steps | llm_error) — the request can never hang.
  *
- * Google-only by default (AI_GOOGLE_ONLY, lib/ai/google/policy.ts): the brain is Gemini alone and
+ * Google-only, always (MASTER TASK v3.1, lib/ai/google/policy.ts): the brain is Gemini alone and
  * web_search is Gemini + Google Search grounding — both decided in lib/agent/react/bindLiveAgent.ts.
  * The only media tool QUOTES: optional `files` (the user's own uploads, at most 13) give the agent
  * quote_montage_to_music when AGENT_G_MEDIA_EXEC is open to this user. It renders nothing; the signed

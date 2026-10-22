@@ -15,7 +15,8 @@
  *      (lib/agents/profile) turns persona + prompt into the Gemini config, and the mode lays its generation settings
  *      over it (`applyChatMode`);
  *   8. lib/ai/google/chatStream streams the turn across chatModelChain(mode) with typed errors;
- *   9. the Anthropic fallback ONLY when AI_GOOGLE_ONLY is off (default: Google only);
+ *   9. no other vendor: a Gemini failure is a notice, never an Anthropic answer (no env value restores the old
+ *      fallback, MASTER TASK v3.1);
  *  10. real token usage booked with the user id, before the stream closes.
  *
  * WIRE (lib/chat/sse.ts — one encoder here, one parser in the browser):
@@ -74,7 +75,6 @@ import {
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { chatModelChain } from '@/lib/ai/google/models';
 import { chatModeOption, resolveChatMode, type ChatModeId } from '@/lib/chat/chatModes';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { streamGeminiChat, unbookedAttempts, type GeminiChatConfig, type StreamGeminiChatResult } from '@/lib/ai/google/chatStream';
 import { wantsUrlContext } from '@/lib/chat/urlContext';
 import { encodeFrame, SSE_KEEPALIVE, type ChatErrorCode, type ChatFrame, type ChatMeta } from '@/lib/chat/sse';
@@ -143,10 +143,6 @@ const MODE_MIN_OUTPUT_TOKENS: Readonly<Record<ChatModeId, number>> = { fast: 16_
  * the ones that are about Pro's MODEL, not the account (auth, quota), the request (bad_request) or the prompt (safety).
  */
 const PRO_FALLBACK_ON: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>(['rate_limited', 'unavailable', 'model_missing', 'network']);
-
-/** The Anthropic model the legacy fallback uses when AI_GOOGLE_ONLY is off — unchanged from the old route. */
-const FALLBACK_MODEL_ID = 'claude-haiku-4-5-20251001';
-const FALLBACK_MODEL_LABEL = 'claude-haiku-4-5';
 
 const HTTP_RE = /^https?:\/\//i;
 
@@ -422,71 +418,6 @@ async function buildProfileFactsPreamble(supabase: AnyAuthedClient, userId: stri
   } catch {
     return null;
   }
-}
-
-// ─── Anthropic fallback (AI_GOOGLE_ONLY=0 only) ──────────────────────────────
-
-interface FallbackOutcome {
-  text: string;
-  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-}
-
-/**
- * The legacy multi-vendor fallback, kept ONLY behind the AI_GOOGLE_ONLY kill switch. Text-only (the old route did
- * the same: Haiku got "[image attached]" in place of media). Loaded lazily so a Google-only deployment never even
- * imports the Anthropic SDK.
- *
- * ⚠️ `fullStream`, not `textStream`, for the same reason as chatStream.ts: `textStream` swallows the error part.
- * ⚠️ `onError: () => {}` — the SDK default console.error()s the whole request, i.e. the user's conversation.
- */
-async function streamAnthropicFallback(input: {
-  config: GeminiChatConfig;
-  wire: readonly WireMessage[];
-  signal: AbortSignal;
-  write: (frame: ChatFrame) => void;
-}): Promise<FallbackOutcome> {
-  const out: FallbackOutcome = { text: '' };
-  const apiKey = (process.env.ANTHROPIC_API_KEY ?? '').trim();
-  if (!apiKey) return out;
-  try {
-    const [{ streamText }, { createAnthropic }] = await Promise.all([import('ai'), import('@ai-sdk/anthropic')]);
-    const anthropic = createAnthropic({ apiKey });
-    const messages: ModelMessage[] = input.wire.map((m): ModelMessage => {
-      const text = textOfWire(m) || '[attachment]';
-      return m.role === 'assistant' ? { role: 'assistant', content: text } : { role: 'user', content: text };
-    });
-    const result = streamText({
-      model: anthropic(FALLBACK_MODEL_ID),
-      system: input.config.system,
-      messages,
-      // Thinking / Pro omit temperature (the model default); Anthropic's own default is also 1.
-      ...(typeof input.config.temperature === 'number' ? { temperature: Math.min(1, input.config.temperature) } : {}),
-      maxOutputTokens: input.config.maxOutputTokens,
-      maxRetries: 1,
-      abortSignal: input.signal,
-      onError: () => {},
-    });
-    for await (const part of result.fullStream) {
-      if (input.signal.aborted) break;
-      if (part.type === 'text-delta') {
-        if (!part.text) continue;
-        if (!out.text) input.write({ meta: { provider: 'anthropic', model: FALLBACK_MODEL_LABEL } });
-        input.write({ text: part.text });
-        out.text += part.text;
-      } else if (part.type === 'finish') {
-        const u = part.totalUsage;
-        const usage = { inputTokens: u?.inputTokens, outputTokens: u?.outputTokens, totalTokens: u?.totalTokens };
-        if (hasTokens(usage)) out.usage = usage;
-      } else if (part.type === 'error') {
-        console.warn('[/api/chat/gemini] Anthropic fallback stream error');
-        break;
-      }
-    }
-    if (out.usage) input.write({ usage: { model: FALLBACK_MODEL_LABEL, ...out.usage } });
-  } catch (err) {
-    console.warn('[/api/chat/gemini] Anthropic fallback failed:', err instanceof Error ? err.name : 'error');
-  }
-  return out;
 }
 
 // ─── Route ───────────────────────────────────────────────────────────────────
@@ -843,24 +774,6 @@ export async function POST(req: NextRequest) {
             partial: streamed,
             mode,
           });
-        }
-
-        // ⚠️ A SAFETY STOP IS NEVER RE-ASKED ELSEWHERE. Another vendor answering a prompt Google blocked is a filter
-        // bypass, not resilience. And once text has streamed, a second answer would be appended to the first.
-        if (!streamed && failure.code !== 'safety' && !isAiGoogleOnly()) {
-          const fb = await streamAnthropicFallback({ config, wire, signal: abort.signal, write: (f) => write(decorate(f)) });
-          if (fb.text || fb.usage) {
-            bookings.push(
-              bookChatUsage({
-                model: FALLBACK_MODEL_LABEL,
-                ...fb.usage,
-                chars: fb.text.length,
-                inputChars,
-                userId: accountId,
-              }),
-            );
-          }
-          if (fb.text || abort.signal.aborted) return;
         }
 
         notice(failure.code, { afterText: streamed, retryable: failure.retryable });

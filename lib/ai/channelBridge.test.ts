@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
- * generateChannelReply — the channel doors answer from the SAME engine as the website. While AI_GOOGLE_ONLY is on
- * (the default) that is the product Gemini chain; the OpenAI chatEngine (which production never calls) only with it off.
+ * generateChannelReply — the channel doors answer from the SAME engine as the website: the product Gemini chain, always
+ * (MASTER TASK v3.1). The old OpenAI chatEngine leg is gone; chatEngine stays mocked so any call to it is caught.
  * Pinned too: the budget gate, `answered` on a miss, the channel style note, and that a non-account id (a Telegram chat,
  * a phone number) is never booked as a user id.
  */
@@ -60,11 +60,13 @@ test('the budget gate refuses before any model is called', async () => {
   expect(gemini).not.toHaveBeenCalled();
 });
 
-test('AI_GOOGLE_ONLY=0 restores the multi-vendor chatEngine, with the style note as a system turn', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  (execute as jest.Mock).mockResolvedValue({ text: 'hello', model: 'gpt', tokensIn: 1, tokensOut: 2, costEstimate: 0, dualStage: false, durationMs: 5 });
+test.each([
+  { AI_GOOGLE_ONLY: '0' },
+  { AI_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' },
+])('no env value re-opens the multi-vendor chatEngine (%o): Gemini answers', async (env) => {
+  Object.assign(process.env, env);
   const out = await generateChannelReply({ channel: 'whatsapp', userId: UID, externalId: '1', text: 'hi', systemNote: 'WA STYLE' });
-  expect((execute as jest.Mock).mock.calls[0][0].messages[0]).toEqual({ role: 'system', content: 'WA STYLE' });
-  expect(out).toMatchObject({ reply: 'hello', answered: true });
-  expect(gemini).not.toHaveBeenCalled();
+  expect(execute).not.toHaveBeenCalled();
+  expect(gemini).toHaveBeenCalledTimes(1);
+  expect(out).toMatchObject({ reply: 'გამარჯობა!', model: 'gemini-x', answered: true });
 });

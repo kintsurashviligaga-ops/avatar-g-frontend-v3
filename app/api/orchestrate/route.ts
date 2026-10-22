@@ -7,11 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
-import { textProviderFactory, type TextProviderId } from '@/lib/providers/text-factory';
 import { toolRegistry, type ToolId } from '@/lib/tools/registry';
 import { reportError } from '@/lib/observability/report-error';
 import { getAgent } from '@/lib/agents/registry';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,7 +18,6 @@ interface OrchestrationRequest {
   agentId: string;
   taskType: 'text-generation' | 'tool-execution';
   input: Record<string, unknown>;
-  providerPreference?: TextProviderId;
   toolId?: ToolId;
 }
 
@@ -41,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     // 2. Parse request
     const body: OrchestrationRequest = await request.json();
-    const { agentId, taskType, input, providerPreference, toolId } = body;
+    const { agentId, taskType, input, toolId } = body;
 
     if (!agentId || !taskType || !input) {
       return NextResponse.json(
@@ -59,6 +56,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Text generation ran only on OpenRouter / OpenAI / DeepSeek (lib/providers/text-factory). It was refused while
+    // AI_GOOGLE_ONLY was on, and the kill switch that re-opened it is gone (MASTER TASK v3.1, audit F-04): refused
+    // before any balance read or charge.
+    if (taskType === 'text-generation') {
+      return NextResponse.json({ error: 'google_only', message: 'Text runs on Google models only.' }, { status: 503 });
+    }
+
     // 4. Estimate credits (basic estimation)
     const creditsRequired = estimateCredits(taskType, input);
 
@@ -73,59 +77,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. Process based on task type
-    let result: Record<string, unknown>;
-    let tokensIn = 0;
-    let tokensOut = 0;
-    let costUsd = 0;
-    let providerId = 'none';
-
-    if (taskType === 'text-generation') {
-      // AI_GOOGLE_ONLY (lib/ai/google/policy, on by default): this factory only knows OpenRouter / OpenAI / DeepSeek,
-      // so with the switch on the request is refused instead of answered by an outside model.
-      if (isAiGoogleOnly()) {
-        return NextResponse.json({ error: 'google_only', message: 'Text runs on Google models only.' }, { status: 503 });
-      }
-      // Text generation via LLM provider
-      const provider = textProviderFactory.selectProvider(providerPreference);
-      providerId = provider.name;
-
-      const textResult = await provider.generateText({
-        prompt: String(input.prompt || ''),
-        system_prompt: String(input.system_prompt || ''),
-        max_tokens: Number(input.max_tokens || 1000),
-        temperature: Number(input.temperature ?? 0.7),
-        model: String(input.model || ''),
-      });
-
-      tokensIn = textResult.tokens_in;
-      tokensOut = textResult.tokens_out;
-      costUsd = textResult.cost_usd;
-
-      result = {
-        text: textResult.text,
-        model: textResult.model,
-        generation_time_ms: textResult.generation_time_ms,
-      };
-
-    } else if (taskType === 'tool-execution') {
-      // Tool execution
-      if (!toolId) {
-        return NextResponse.json(
-          { error: 'toolId required for tool-execution' },
-          { status: 400 }
-        );
-      }
-
-      providerId = 'internal-tool';
-      result = await toolRegistry.executeTool(toolId, input);
-
-    } else {
+    // 6. Run the tool (the only task type left).
+    if (taskType !== 'tool-execution') {
       return NextResponse.json(
         { error: `Unsupported task type: ${taskType}` },
         { status: 400 }
       );
     }
+    if (!toolId) {
+      return NextResponse.json(
+        { error: 'toolId required for tool-execution' },
+        { status: 400 }
+      );
+    }
+    const providerId = 'internal-tool';
+    const result: Record<string, unknown> = await toolRegistry.executeTool(toolId, input);
+    const tokensIn = 0;
+    const tokensOut = 0;
+    const costUsd = 0;
 
     const executionTime = Date.now() - startTime;
 

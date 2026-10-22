@@ -7,7 +7,7 @@
  * the Google + ElevenLabs boundary, with no owner decision behind it. Fail closed: only an explicit falsy value
  * (MEDIA_GOOGLE_ONLY=0 | false | off | no) TOGETHER WITH an owner approval reference in OUTSIDE_ENGINES_APPROVED re-opens
  * the outside engines (final repair run: a falsy flag alone is ignored); unsetting either is the rollback. VIDEO_GOOGLE_ONLY (lib/veo/policy) and AI_GOOGLE_ONLY
- * (lib/ai/google/policy) already hold video and text to Google, default ON; this covers what they never reached: image,
+ * (lib/ai/google/policy, always on under v3.1) already hold video and text to Google; this covers what they never reached: image,
  * avatar, music extras, remix edits, motion, 3D, the photo / audio editors and the raw vendor routes.
  *
  * When ON:

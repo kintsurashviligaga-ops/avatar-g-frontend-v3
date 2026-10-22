@@ -4,24 +4,19 @@
  * Same rules as the product chat (/api/chat/gemini), because it spends the same keys:
  *   • sign-in required (mustSignInToChat → 401; FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo deployment);
  *   • the per-account daily chat allowance (CHAT_USER, keyed on the verified uid);
- *   • Google only while AI_GOOGLE_ONLY is on (the default): the reply comes from the product Gemini chain and the
- *     OpenAI-backed chatEngine / Anthropic legs are skipped; with it off, the old chain runs as before;
+ *   • Google only: the reply comes from the product Gemini chain. The OpenAI-backed chatEngine and the Anthropic leg
+ *     that AI_GOOGLE_ONLY=0 used to restore are gone (MASTER TASK v3.1, audit F-04);
  *   • provider wording never reaches the browser (the old `diagnostics` field carried it verbatim).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { generateText } from 'ai';
-import { createAnthropic } from '@ai-sdk/anthropic';
 import { apiSuccess, apiError } from '@/lib/api/response';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { execute } from '@/lib/ai/chatEngine';
 import { getAllAgents } from '@/lib/agents/agentRegistry';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
-import { agentGSystemPrompt } from '@/lib/agent-g-orchestrator';
-import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
+import { chatBudgetAllows, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { geminiReply } from '@/lib/ai/google/reply';
 
 type Loc = 'ka' | 'en' | 'ru';
@@ -170,13 +165,10 @@ export async function POST(req: NextRequest) {
       context,
       serviceId,
       conversationId,
-      sessionId,
       history,
-      attachments,
       flags,
       locale,
       language,
-      channel,
       metadata,
     } = parsed.data;
     demoModeRequested = flags?.demoMode ?? false;
@@ -211,8 +203,6 @@ export async function POST(req: NextRequest) {
     if (mustSignInToChat(verifiedId)) {
       return NextResponse.json({ ...signInToGenerateBody(loc), message: SIGN_IN_TO_CHAT[loc] }, { status: 401 });
     }
-    // 'anonymous' only survives the gate on a demo deployment (FILM_ALLOW_ANONYMOUS=1).
-    const userId = verifiedId || 'anonymous';
     fallbackUserId = verifiedId;
     fallbackLoc = loc;
 
@@ -236,72 +226,28 @@ export async function POST(req: NextRequest) {
       { role: 'user' as const, content: sanitizedMessage },
     ];
 
-    // BUDGET GATE (§2.1.1). This is the main chat surface; `execute()` fans out to the provider chain, so
-    // the guard sits in front of it. A refusal is a normal 200 response — the shell renders it as an
-    // assistant turn rather than an error state.
+    // BUDGET GATE (§2.1.1). This is the main chat surface, so the guard sits in front of the model call. A refusal is
+    // a normal 200 response — the shell renders it as an assistant turn rather than an error state.
     const budgetText = messageHistory.map((m: { content?: unknown }) => (typeof m.content === 'string' ? m.content : '')).join(' ');
     if (!(await chatBudgetAllows(budgetText))) {
       return apiSuccess({ response: BUDGET_EXHAUSTED_MESSAGE, provider: 'budget', model: 'none', agentId: resolvedAgentId });
     }
 
-    // GOOGLE ONLY (the default): the product Gemini chain answers; the OpenAI-backed chatEngine is not called.
-    if (isAiGoogleOnly()) {
-      const g = await geminiReply(messageHistory, verifiedId, req.signal, { locale: loc });
-      return apiSuccess({
-        response: g ? g.text : UNAVAILABLE[loc],
-        provider: g ? 'gemini' : 'provider-fallback',
-        model: g ? g.model : 'none',
-        agentId: resolvedAgentId,
-        context,
-        serviceId,
-        demoMode: flags?.demoMode ?? false,
-        agentEnabled: flags?.agentEnabled ?? true,
-        conversationId: conversationId || `conv_${Date.now()}`,
-        language: locale || language,
-        metadata: { ...(metadata || {}), serviceId },
-        artifacts: buildDemoArtifacts(context, sanitizedMessage),
-      });
-    }
-
-    // Execute through central chatEngine (multi-vendor; only when AI_GOOGLE_ONLY=0)
-    const result = await execute({
-      agentId: resolvedAgentId,
-      userId,
-      sessionId: sessionId || conversationId || `chat_${Date.now()}`,
-      channel,
-      messages: messageHistory,
-      files: attachments?.map((file) => ({
-        name: file.name,
-        type: file.type || 'application/octet-stream',
-        content: file.content || '',
-      })),
-    });
-
-    void bookChatUsage(budgetText, (result.text || '').length, result.model || 'chat');
-
-    const artifacts = buildDemoArtifacts(context, sanitizedMessage);
-
+    // The product Gemini chain answers.
+    const g = await geminiReply(messageHistory, verifiedId, req.signal, { locale: loc });
     return apiSuccess({
-      response: result.text,
-      provider: result.model,
-      model: result.model,
-      agentId: result.agentId,
-      tokensIn: result.tokensIn,
-      tokensOut: result.tokensOut,
-      costEstimate: result.costEstimate,
-      durationMs: result.durationMs,
-      dualStage: result.dualStage,
+      response: g ? g.text : UNAVAILABLE[loc],
+      provider: g ? 'gemini' : 'provider-fallback',
+      model: g ? g.model : 'none',
+      agentId: resolvedAgentId,
       context,
       serviceId,
       demoMode: flags?.demoMode ?? false,
       agentEnabled: flags?.agentEnabled ?? true,
       conversationId: conversationId || `conv_${Date.now()}`,
       language: locale || language,
-      metadata: {
-        ...(metadata || {}),
-        serviceId,
-      },
-      artifacts,
+      metadata: { ...(metadata || {}), serviceId },
+      artifacts: buildDemoArtifacts(context, sanitizedMessage),
     });
   } catch (error) {
     console.error('[Chat API Error]', error);
@@ -323,7 +269,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (throttled || unavailable) {
-      // Real fallback: try Gemini, then Anthropic, before giving up
+      // Real fallback: try Gemini again before giving up
       const failures: FallbackFailures = {};
       const realFallback = await tryRealFallback(fallbackHistory, failures, fallbackUserId, fallbackLoc);
       if (realFallback) {
@@ -338,9 +284,8 @@ export async function POST(req: NextRequest) {
 
       // All providers failed — the diagnostic goes to the server log (operators), never to the browser.
       const diag = [
-        `openai: ${normalized.slice(0, 120)}`,
+        `error: ${normalized.slice(0, 120)}`,
         failures.gemini && `gemini: ${failures.gemini}`,
-        failures.anthropic && `anthropic: ${failures.anthropic}`,
       ].filter(Boolean).join(' | ');
       console.error('[Chat API] every provider failed:', diag);
 
@@ -357,11 +302,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ─── Real-AI fallback chain (Gemini rotation → Anthropic) ────────────────────
-// Used when chatEngine (OpenAI) throws a quota/rate-limit/availability error.
-// Each Gemini model variant has a separate free-tier quota bucket, so we
-// rotate through them on quota errors before giving up.
-// Returns null only if all Gemini variants and Anthropic fail.
+// ─── Real-AI fallback (the Gemini chain again) ───────────────────────────────
+// Used when the handler throws a quota/rate-limit/availability error. Returns null when no Gemini model answers;
+// the Anthropic leg that followed it is gone (MASTER TASK v3.1, audit F-04).
 
 // Tiny in-memory cache so identical messages don't re-hit the quota.
 // 5-minute TTL, capped at 100 entries to bound memory.
@@ -402,7 +345,6 @@ function setCached(
 
 interface FallbackFailures {
   gemini?: string;
-  anthropic?: string;
 }
 
 async function tryRealFallback(
@@ -426,35 +368,6 @@ async function tryRealFallback(
     return { text: g.text, provider: 'gemini', model: g.model };
   }
   failures.gemini = 'no Gemini model answered';
-
-  // Anthropic Claude Haiku — never while Google-only is on.
-  if (isAiGoogleOnly()) return null;
-  try {
-    const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
-    if (apiKey) {
-      const anthropic = createAnthropic({ apiKey });
-      const result = await generateText({
-        model: anthropic('claude-haiku-4-5-20251001'),
-        // No Google Search tool on this leg, so the prompt must not promise one.
-        system: agentGSystemPrompt({ locale: loc, googleSearch: false }),
-        messages,
-        maxOutputTokens: 2048,
-        temperature: 0.7,
-        maxRetries: 0,
-      });
-      if (result.text?.trim()) {
-        setCached(messages, { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' }, userId);
-        return { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' };
-      }
-      failures.anthropic = 'empty response';
-    } else {
-      failures.anthropic = 'no API key';
-    }
-  } catch (err) {
-    failures.anthropic = err instanceof Error ? err.message.slice(0, 200) : 'unknown error';
-    console.error('[Chat fallback] Anthropic also failed:', failures.anthropic);
-  }
-
   return null;
 }
 

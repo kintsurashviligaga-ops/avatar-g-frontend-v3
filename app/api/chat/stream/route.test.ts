@@ -32,6 +32,7 @@ jest.mock('../../../../lib/ai/google/chatStream', () => ({
   unbookedAttempts: jest.requireActual('../../../../lib/ai/google/chatStream').unbookedAttempts,
 }));
 jest.mock('../../../../lib/orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => 'test-key' }));
+// The SDKs of the Anthropic leg the route used to have, mocked so that any call to them is caught.
 const mockAnthropic = jest.fn();
 jest.mock('@ai-sdk/anthropic', () => ({ createAnthropic: () => (id: string) => mockAnthropic(id) }));
 jest.mock('ai', () => ({
@@ -109,10 +110,12 @@ test('Google-only (the default): a Gemini failure never falls to Anthropic, and 
   expect(body).toContain('temporarily unavailable');
 });
 
-test('AI_GOOGLE_ONLY=0 restores the Anthropic leg after a Gemini failure', async () => {
+test('AI_GOOGLE_ONLY=0 with an owner approval no longer restores the Anthropic leg (MASTER TASK v3.1)', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
+  process.env.OUTSIDE_ENGINES_APPROVED = 'owner-2026-10-20-anthropic';
   mockGemini.mockImplementationOnce(failed);
   const ev = await events(await POST(post(turn)));
-  expect(mockAnthropic).toHaveBeenCalled();
-  expect(ev).toEqual(expect.arrayContaining([{ token: 'claude says hi' }, expect.objectContaining({ done: true, provider: 'anthropic' })]));
+  expect(mockAnthropic).not.toHaveBeenCalled();
+  expect(ev).not.toContainEqual({ token: 'claude says hi' });
+  expect(ev).toContainEqual({ error: expect.stringContaining('temporarily unavailable') });
 });

@@ -53,17 +53,14 @@
     ],
     "openai": [
       "app/api/health/services/route.ts",
-      "app/api/pipeline/route.ts",
       "lib/agent-g/voice/stt.ts",
       "lib/ai/chatEngine.ts",
       "lib/ai/openai.ts",
       "lib/config.ts",
-      "lib/memory/embed.ts",
       "lib/openai.ts",
       "lib/providers/openai.ts",
       "lib/security/csp.js",
       "lib/system/provider-health.ts",
-      "lib/voice-v2v/providers.ts",
       "services/voice-v2v-node/server.mjs"
     ],
     "openrouter": [
@@ -72,11 +69,7 @@
     ],
     "anthropic": [
       "app/api/admin/provider-probe/route.ts",
-      "app/api/chat/gemini/route.ts",
-      "app/api/chat/route.ts",
-      "app/api/chat/stream/route.ts",
       "app/api/health/services/route.ts",
-      "app/api/video/remix-intent/route.ts",
       "lib/ai/promptToEnglish.ts",
       "lib/pipeline/agents/claude-director.ts",
       "lib/pipeline/quality/vision-gate.ts",
@@ -144,12 +137,6 @@
       "app/api/health/services/route.ts",
       "lib/models/catalog.ts",
       "lib/nanobanana/client.ts"
-    ],
-    "cartesia": [
-      "lib/voice-v2v/providers.ts"
-    ],
-    "deepgram": [
-      "lib/voice-v2v/providers.ts"
     ],
     "udio": [
       "app/api/health/services/route.ts",

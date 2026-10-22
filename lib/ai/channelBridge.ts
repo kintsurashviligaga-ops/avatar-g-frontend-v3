@@ -1,18 +1,16 @@
 /**
  * Channel Bridge — the one door through which omni-channel messages (WhatsApp, Telegram, Phone) get an AI answer.
  * All channel AI responses MUST pass through this bridge to ensure:
- * 1. The same engine as the website: the product Gemini chain while AI_GOOGLE_ONLY is on (the default), the
- *    multi-vendor chatEngine only when it is switched off
+ * 1. The same engine as the website: the product Gemini chain (the multi-vendor chatEngine that AI_GOOGLE_ONLY=0
+ *    used to restore is gone, MASTER TASK v3.1)
  * 2. The shared chat budget gate (a refusal is a polite reply, never an error)
  * 3. Usage booking per account
  * 4. Memory isolation per user+channel (the caller passes this channel's own history)
  *
- * ⚠️ BEFORE 2026-10-03 THIS CALLED chatEngine ONLY — an OpenAI client production does not use. With AI_GOOGLE_ONLY on,
- * every WhatsApp/Telegram/phone answer could only ever be the fallback apology.
+ * ⚠️ BEFORE 2026-10-03 THIS CALLED chatEngine ONLY — an OpenAI client production does not use, so every
+ * WhatsApp/Telegram/phone answer could only ever be the fallback apology.
  */
 
-import { execute, type ChatEngineRequest, type ChatEngineResponse } from '@/lib/ai/chatEngine';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 
 export type ChannelType = 'whatsapp' | 'telegram' | 'phone' | 'web';
@@ -74,58 +72,29 @@ export async function generateChannelReply(req: ChannelAIRequest): Promise<Chann
 
   if (!(await chatBudgetAllows(messages.map((m) => m.content).join(' ')))) return fallback('budget');
 
-  if (isAiGoogleOnly()) {
-    try {
-      // Lazy: the reply module is server-only, and the routes that import this bridge are loaded in plain jest too.
-      const { geminiReply } = await import('@/lib/ai/google/reply');
-      const g = await geminiReply(
-        messages,
-        UUID_RE.test(req.userId) ? req.userId : null, // a Telegram/phone id is not an account — book it unattributed
-        AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-        { systemNote: req.systemNote, locale: req.locale, ...(req.googleSearch === false ? { googleSearch: false } : {}) },
-      );
-      if (!g) return fallback('fallback');
-      return {
-        reply: g.text,
-        model: g.model,
-        tokensIn: 0,
-        tokensOut: 0,
-        costEstimate: 0,
-        dualStage: false,
-        durationMs: Date.now() - started,
-        agentId,
-        answered: true,
-      };
-    } catch (error) {
-      console.error(`[ChannelBridge] ${req.channel} Gemini error:`, error instanceof Error ? error.message : 'unknown');
-      return fallback('fallback');
-    }
-  }
-
-  const engineInput: ChatEngineRequest = {
-    agentId,
-    messages: req.systemNote ? [{ role: 'system', content: req.systemNote }, ...messages] : messages,
-    userId: req.userId,
-    sessionId: req.sessionId || `${req.channel}:${req.externalId}`,
-    channel: req.channel,
-  };
-
   try {
-    const result: ChatEngineResponse = await execute(engineInput);
-
+    // Lazy: the reply module is server-only, and the routes that import this bridge are loaded in plain jest too.
+    const { geminiReply } = await import('@/lib/ai/google/reply');
+    const g = await geminiReply(
+      messages,
+      UUID_RE.test(req.userId) ? req.userId : null, // a Telegram/phone id is not an account — book it unattributed
+      AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+      { systemNote: req.systemNote, locale: req.locale, ...(req.googleSearch === false ? { googleSearch: false } : {}) },
+    );
+    if (!g) return fallback('fallback');
     return {
-      reply: result.text,
-      model: result.model,
-      tokensIn: result.tokensIn,
-      tokensOut: result.tokensOut,
-      costEstimate: result.costEstimate,
-      dualStage: result.dualStage,
-      durationMs: result.durationMs,
+      reply: g.text,
+      model: g.model,
+      tokensIn: 0,
+      tokensOut: 0,
+      costEstimate: 0,
+      dualStage: false,
+      durationMs: Date.now() - started,
       agentId,
-      answered: Boolean(result.text?.trim()),
+      answered: true,
     };
   } catch (error) {
-    console.error(`[ChannelBridge] ${req.channel} error:`, error instanceof Error ? error.message : 'unknown');
+    console.error(`[ChannelBridge] ${req.channel} Gemini error:`, error instanceof Error ? error.message : 'unknown');
     return fallback('fallback');
   }
 }

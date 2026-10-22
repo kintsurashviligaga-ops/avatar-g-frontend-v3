@@ -4,7 +4,7 @@
  *
  *   · a guest is refused (401, generationGate body shape) before any model, budget or memory call;
  *   · frames arrive in the documented order and the legacy {text}/{meta}/[DONE] stay readable by today's client;
- *   · Google-only (the default) never touches Anthropic; the kill switch (AI_GOOGLE_ONLY=0) restores the fallback;
+ *   · Google only: no env value touches Anthropic (the AI_GOOGLE_ONLY=0 fallback is gone, MASTER TASK v3.1);
  *   · a provider 402 / quota reads as OUR outage, localized — never the provider's wording;
  *   · a safety stop is a localized notice, never a fallback;
  *   · the budget refusal and the per-user daily cap are delivered in-stream;
@@ -63,7 +63,7 @@ jest.mock('../../../../lib/chat/userMemory', () => ({
 
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
-// The fallback's SDKs. The route imports them lazily, only when AI_GOOGLE_ONLY is off.
+// The SDKs of the Anthropic fallback the route used to have, mocked so that any call to them is caught.
 const mockAnthropicModel = jest.fn((id: string) => ({ provider: 'anthropic', modelId: id }));
 jest.mock('@ai-sdk/anthropic', () => ({ createAnthropic: jest.fn(() => mockAnthropicModel) }));
 jest.mock('ai', () => ({ streamText: jest.fn() }));
@@ -143,7 +143,7 @@ function geminiFailure(code: 'quota' | 'safety' | 'unavailable', extra: Partial<
   );
 }
 
-/** A fake ai@6 streamText result for the Anthropic fallback. */
+/** A fake ai@6 streamText result, as the old Anthropic fallback would have read it. */
 function anthropicStream(parts: Array<Record<string, unknown>>) {
   return {
     fullStream: (async function* () {
@@ -397,8 +397,9 @@ describe('provider failures', () => {
     expect(frames[0]).toEqual({ text: '⚠️ AI-сервис временно недоступен. Попробуйте ещё раз.' });
   });
 
-  test('Google-only (the default) never calls Anthropic, whatever the failure', async () => {
-    for (const flag of [undefined, '1', 'true']) {
+  test('no env value calls Anthropic, whatever the failure (MASTER TASK v3.1)', async () => {
+    process.env.OUTSIDE_ENGINES_APPROVED = 'owner-2026-10-20-anthropic';
+    for (const flag of [undefined, '1', 'true', '0', 'false', 'off']) {
       if (flag === undefined) delete process.env.AI_GOOGLE_ONLY;
       else process.env.AI_GOOGLE_ONLY = flag;
       mockStream.mockImplementation(geminiFailure('unavailable'));
@@ -409,36 +410,16 @@ describe('provider failures', () => {
     expect(streamText).not.toHaveBeenCalled();
   });
 
-  test('AI_GOOGLE_ONLY=0 restores the Anthropic fallback, badged, with the Gemini error dropped, and books it', async () => {
+  test('AI_GOOGLE_ONLY=0 with an owner approval no longer restores the Anthropic fallback: the Gemini failure is reported honestly', async () => {
     process.env.AI_GOOGLE_ONLY = '0';
+    process.env.OUTSIDE_ENGINES_APPROVED = 'owner-2026-10-20-anthropic';
     mockStream.mockImplementation(geminiFailure('quota'));
-    (streamText as jest.Mock).mockReturnValue(
-      anthropicStream([
-        { type: 'text-delta', text: 'Hello ' },
-        { type: 'text-delta', text: 'from Haiku' },
-        { type: 'finish', totalUsage: { inputTokens: 900, outputTokens: 12, totalTokens: 912 } },
-      ]),
-    );
-    const frames = await framesOf(await POST(post(userTurn('hello there'))));
-    expect(frames).toEqual([
-      { meta: { provider: 'anthropic', model: 'claude-haiku-4-5', mode: 'fast', fallback: true } },
-      { text: 'Hello ' },
-      { text: 'from Haiku' },
-      { usage: { model: 'claude-haiku-4-5', inputTokens: 900, outputTokens: 12, totalTokens: 912 } },
-      'DONE',
-    ]);
-    expect(createAnthropic).toHaveBeenCalledWith({ apiKey: 'test-anthropic-key' });
-    expect(bookChatUsage).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'claude-haiku-4-5', inputTokens: 900, outputTokens: 12, userId: USER_ID }),
-    );
-  });
-
-  test('AI_GOOGLE_ONLY=0 but the fallback is empty → the Gemini failure is reported honestly', async () => {
-    process.env.AI_GOOGLE_ONLY = '0';
-    mockStream.mockImplementation(geminiFailure('quota'));
-    (streamText as jest.Mock).mockReturnValue(anthropicStream([{ type: 'error', error: new Error('overloaded') }]));
+    (streamText as jest.Mock).mockReturnValue(anthropicStream([{ type: 'text-delta', text: 'Hello from Haiku' }]));
     const frames = await framesOf(await POST(post(userTurn('გამარჯობა'))));
     expect(frames).toEqual([{ text: OUR_OUTAGE_KA }, { error: { code: 'quota', retryable: false, message: OUR_OUTAGE_KA, lang: 'ka' } }, 'DONE']);
+    expect(createAnthropic).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+    expect(bookChatUsage).not.toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-haiku-4-5' }));
   });
 
   test('a safety stop is a localized notice — never re-asked of another vendor, even with the kill switch off', async () => {

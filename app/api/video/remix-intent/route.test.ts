@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
- * POST /api/video/remix-intent — Gemini (JSON mode) under AI_GOOGLE_ONLY, Claude only with the kill switch
- * off, the keyword matcher for guests and for every model miss, and model params reduced to the per-op keys
+ * POST /api/video/remix-intent — Gemini (JSON mode) only, whatever the env says (the Claude classifier is gone,
+ * MASTER TASK v3.1), the keyword matcher for guests and for every model miss, and model params reduced to the per-op keys
  * the remix route reads. Gemini, Anthropic, the session and the budget are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
@@ -123,14 +123,12 @@ test('Vertex not configured → keyword matcher (an AI Studio key does not help)
   expect(mockClaudeCreate).not.toHaveBeenCalled();
 });
 
-test('kill switch AI_GOOGLE_ONLY=0: Claude classifies (params sanitized too); Gemini is not called', async () => {
+test('AI_GOOGLE_ONLY=0 with an owner approval no longer reaches Claude: Gemini classifies, params sanitized', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
-  mockClaudeCreate.mockResolvedValueOnce({
-    content: [{ type: 'text', text: '```json\n{"op":"speed_ramp","params":{"factor":2,"audioUrl":"https://evil.test/a.mp3"}}\n```' }],
-    usage: { input_tokens: 30, output_tokens: 8 },
-  });
+  process.env.OUTSIDE_ENGINES_APPROVED = 'owner-2026-10-20-anthropic';
+  mockGemini.mockResolvedValueOnce(gemReply('{"op":"speed_ramp","params":{"factor":2,"audioUrl":"https://evil.test/a.mp3"}}'));
   expect(await (await POST(post({ message: 'ramp' }))).json()).toEqual({ op: 'speed_ramp', params: { factor: 2 } });
-  expect(mockGemini).not.toHaveBeenCalled();
+  expect(mockClaudeCreate).not.toHaveBeenCalled();
 });
 
 test('an empty message answers the safe default without any lookup', async () => {

@@ -1,46 +1,27 @@
 /** @jest-environment node */
 /**
- * POST /api/orbit/agent — no forbidden-vendor answer while AI_GOOGLE_ONLY is on.
+ * POST /api/orbit/agent — retired: 404 with no provider code behind it (MASTER TASK v3.1, audit F-04).
  *
- * Before (2026-10-09): the route streamed chatEngine (OpenRouter / OpenAI) to any signed-in user whatever
- * AI_GOOGLE_ONLY said, with no credit charged, though no screen calls it. Now it is 404 under Google-only (the
- * default) and only the AI_GOOGLE_ONLY=0 kill switch brings the old stream back.
+ * Before (2026-10-09): the route streamed chatEngine (OpenRouter / OpenAI) to any signed-in user, with no credit charged,
+ * though no screen calls it. Then it was 404 unless AI_GOOGLE_ONLY=0 brought the old stream back. No env value does now.
  */
-jest.mock('server-only', () => ({}));
-type DoneCb = { onDone: (r: Record<string, unknown>) => void };
-const mockExecuteStream = jest.fn(async (_req: unknown, cb: DoneCb) => {
-  cb.onDone({ model: 'test', tokensIn: 1, tokensOut: 1, costEstimate: 0 });
-});
-jest.mock('../../../../lib/ai/chatEngine', () => ({ executeStream: (req: unknown, cb: DoneCb) => mockExecuteStream(req, cb) }));
-jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ auth: { userId: 'user-1' } })) }));
-jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimitByKey: jest.fn(async () => null), RATE_LIMITS: { AI: {}, CHAT_USER: {} } }));
-jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: null })) }));
-
-import { NextRequest } from 'next/server';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { POST } from './route';
 
 const ENV = { ...process.env };
-const post = () =>
-  POST(new NextRequest('https://myavatar.ge/api/orbit/agent', { method: 'POST', body: JSON.stringify({ message: 'hi' }) }));
+afterEach(() => { process.env = { ...ENV }; });
 
-beforeEach(() => {
-  process.env = { ...ENV };
-  delete process.env.AI_GOOGLE_ONLY;
-  mockExecuteStream.mockClear();
-});
-afterAll(() => { process.env = ENV; });
+test.each([{}, { AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' }])(
+  'env %p: 404, whoever asks',
+  async (env) => {
+    Object.assign(process.env, env);
+    const res = await POST();
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Not found' });
+  },
+);
 
-test('Google-only (the default): 404 and no chatEngine call, even for a signed-in user', async () => {
-  const res = await post();
-  expect(res.status).toBe(404);
-  expect(await res.json()).toEqual({ error: 'Not found' });
-  expect(mockExecuteStream).not.toHaveBeenCalled();
-});
-
-test('AI_GOOGLE_ONLY=0 (kill switch): the old stream runs', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  const res = await post();
-  expect(res.status).toBe(200);
-  expect(await res.text()).toContain('"done":true');
-  expect(mockExecuteStream).toHaveBeenCalledTimes(1);
+test('the route imports no engine', () => {
+  expect(readFileSync(join(__dirname, 'route.ts'), 'utf8')).not.toMatch(/^import /m);
 });

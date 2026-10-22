@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { acceptTranscript } from '@/lib/voice/sttAccept';
 import { transcriptSpeechLang } from '@/lib/voice/speechLang';
-import { transcribeRealtimePcmChunk } from '@/lib/voice-v2v/providers';
 import {
   geminiAudioInput,
   hasGeminiSttKey,
@@ -9,12 +8,10 @@ import {
   GeminiSttError,
   type GeminiSttResult,
 } from '@/lib/voice-v2v/geminiStt';
-import { transcribeWithReplicateWhisper, hasReplicateSttKey } from '@/lib/voice-v2v/replicateStt';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { effectiveAdminAllowlist } from '@/lib/auth/adminGuard';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { bookChatUsage } from '@/lib/services/billing/chatBudget';
 
 export const dynamic = 'force-dynamic';
@@ -44,16 +41,13 @@ export const maxDuration = 30;
  * and diagnostics for admins only. NOTE: the studio's dictation mic has no guest check of its own yet, so a guest's
  * recorder pass now gets this 401 — the composer should raise `myavatar:auth-required` before recording instead.
  *
- * ENGINES:
- *   • AI_GOOGLE_ONLY (default ON): Gemini only (sttModel() + step-downs). Replicate / OpenAI / Deepgram are never
- *     called, not even as a fallback — a Google miss is an empty transcript, never a silent vendor swap.
- *   • AI_GOOGLE_ONLY=0: the legacy cascade below, unchanged in order.
+ * ENGINE: Gemini on Vertex AI only (sttModel() + step-downs). A Google miss is an empty transcript, never a silent vendor
+ * swap. The legacy Replicate / OpenAI / Deepgram cascade that AI_GOOGLE_ONLY=0 used to restore is gone (MASTER TASK v3.1,
+ * audit F-04): no env value reaches it.
  */
 
 /** Gemini takes ≤20 MB of INLINE request; base64 inflates by 4/3, and the prompt rides along. */
 const GEMINI_INLINE_MAX_BYTES = 14 * 1024 * 1024;
-/** Whisper's API hard limit (the legacy cascade). */
-const LEGACY_MAX_BYTES = 25 * 1024 * 1024;
 
 type SttLanguage = 'ka-GE' | 'en-US' | 'ru-RU' | 'auto';
 
@@ -123,8 +117,6 @@ export async function POST(req: NextRequest) {
     const audio = form.get('audio');
     const langInput = String(form.get('language') || 'ka-GE');
     const language: SttLanguage = langInput === 'en-US' || langInput === 'ru-RU' || langInput === 'auto' ? langInput : 'ka-GE';
-    // The legacy providers take a fixed language; 'auto' reaches them as their old default.
-    const legacyLanguage = language === 'auto' ? 'ka-GE' : language;
 
     if (!audio || typeof audio === 'string') {
       return NextResponse.json({ error: 'audio is required' }, { status: 400 });
@@ -134,8 +126,7 @@ export async function POST(req: NextRequest) {
     if (bytes.byteLength === 0) {
       return NextResponse.json({ error: 'empty audio' }, { status: 400 });
     }
-    const googleOnly = isAiGoogleOnly();
-    const maxBytes = googleOnly ? GEMINI_INLINE_MAX_BYTES : LEGACY_MAX_BYTES;
+    const maxBytes = GEMINI_INLINE_MAX_BYTES;
     if (bytes.byteLength > maxBytes) {
       return NextResponse.json({ error: `audio too large (${Math.round(maxBytes / (1024 * 1024))}MB max)` }, { status: 413 });
     }
@@ -152,11 +143,8 @@ export async function POST(req: NextRequest) {
     let text = '';
     let provider = 'none';
     let code: 'unsupported_format' | 'stt_unavailable' | undefined;
-    let primaryErrMsg: string | null = null;
     let geminiErrMsg: string | null = null;
-    let replicateErrMsg: string | null = null;
     const geminiKeyPresent = hasGeminiSttKey();
-    const replicateKeyPresent = googleOnly ? false : hasReplicateSttKey();
 
     const runGemini = async (): Promise<void> => {
       if (!gem.mimeType) { code = 'unsupported_format'; return; }
@@ -179,61 +167,9 @@ export async function POST(req: NextRequest) {
     // dictationMetrics) split each pass's round-trip into the engine's share and the network's.
     const sttStartedAt = Date.now();
     const timing = () => ({ 'Server-Timing': `stt;dur=${Date.now() - sttStartedAt}` });
-    if (googleOnly) {
-      // ── Google only: Gemini is the whole engine. ──
-      if (geminiKeyPresent) await runGemini();
-      else code = 'stt_unavailable';
-    } else {
-      // ── Legacy cascade (AI_GOOGLE_ONLY=0) ──
-      const mimeType = declaredMime || 'audio/webm';
-      // ⚠️ GEORGIAN GOES TO THE ONLY ENGINE THAT CAN DO IT — FIRST. The cascade below advances on
-      // `!accept(...)`, and for every other language that is still "first non-empty wins". But Georgian
-      // was reaching Replicate whisper-large-v3 (the sole ka-capable engine here, and the one this file
-      // already calls out as what "rescues the REAL mic") only if BOTH earlier legs came back empty — and
-      // they never do. OpenAI gpt-4o-mini-transcribe does not list Georgian as supported and Gemini is an
-      // LLM being asked to transcribe; on Georgian audio both return HTTP 200 with a fluent, confident,
-      // WRONG string. Non-empty, so the cascade stopped there, every time.
-      const georgianFirst = language === 'ka-GE' && replicateKeyPresent;
-      if (georgianFirst) {
-        try {
-          text = await transcribeWithReplicateWhisper(audioBase64, mimeType, language);
-          if (acceptTranscript(text, language)) provider = 'replicate-whisper';
-          else text = '';
-        } catch (kaErr) {
-          replicateErrMsg = kaErr instanceof Error ? kaErr.message : String(kaErr);
-          // eslint-disable-next-line no-console
-          console.warn('[transcribe] replicate (ka-first) failed:', replicateErrMsg);
-        }
-      }
-      // Skipped entirely when the ka-first leg already produced an ACCEPTED transcript.
-      if (!text) {
-        try {
-          const result = await transcribeRealtimePcmChunk({ audioBase64, language: legacyLanguage, mimeType });
-          const t = (result.text ?? '').trim();
-          // ⚠️ NON-EMPTY IS NOT SUCCESS FOR GEORGIAN — see lib/voice/sttAccept. A transliteration or an
-          // English rendering is a MISS, and treating it as an answer is what buried the working engine.
-          if (acceptTranscript(t, language)) { text = t; provider = result.provider; }
-        } catch (primaryErr) {
-          primaryErrMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-          // eslint-disable-next-line no-console
-          console.warn('[transcribe] primary STT failed:', primaryErrMsg);
-        }
-      }
-      // Fallback 1 — Gemini (always configured for chat), now with the container fix (geminiAudioInput).
-      if (!text && geminiKeyPresent) await runGemini();
-      // Fallback 2 — Replicate Whisper-large-v3: accepts webm/mp4/mp3/wav alike on the REPLICATE_API_TOKEN the
-      // video pipeline already uses. Slower (it polls), so it is the last resort after the instant paths.
-      if (!text && replicateKeyPresent && !georgianFirst) {
-        try {
-          const t = await transcribeWithReplicateWhisper(audioBase64, mimeType, language);
-          if (acceptTranscript(t, language)) { text = t; provider = 'replicate-whisper'; code = undefined; }
-        } catch (replicateErr) {
-          replicateErrMsg = replicateErr instanceof Error ? replicateErr.message : String(replicateErr);
-          // eslint-disable-next-line no-console
-          console.warn('[transcribe] replicate STT fallback failed:', replicateErrMsg);
-        }
-      }
-    }
+    // Gemini is the whole engine.
+    if (geminiKeyPresent) await runGemini();
+    else code = 'stt_unavailable';
 
     if (text) code = undefined;
     const headers = timing();
@@ -243,17 +179,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ...payload,
         diag: {
-          googleOnly,
+          googleOnly: true,
           mimeType: declaredMime,
           container: gem.container,
           geminiMime: gem.mimeType,
           geminiNative: gem.native,
           audioBytes: bytes.byteLength,
           geminiKeyPresent,
-          replicateKeyPresent,
-          primaryError: primaryErrMsg,
           geminiError: geminiErrMsg,
-          replicateError: replicateErrMsg,
         },
       }, { headers });
     }

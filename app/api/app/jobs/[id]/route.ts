@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { StabilityAvatarProvider } from '@/lib/providers/stability';
-import { OpenAIProvider } from '@/lib/providers/openai';
-import { OpenRouterProvider } from '@/lib/providers/openrouter';
-import { DeepSeekProvider } from '@/lib/providers/deepseek';
 import { recordMeteringEvent } from '@/lib/monetization/metering';
 import { logJobExecution } from '@/lib/observability/runtime';
 import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -209,212 +205,6 @@ async function processImageCreatorJob(input: {
   }
 }
 
-async function processTextIntelligenceJob(input: {
-  supabase: ReturnType<typeof createServerClient>;
-  userId: string;
-  job: ServiceJobRecord;
-}) {
-  if (input.job.service_slug !== 'text-intelligence') {
-    return input.job;
-  }
-
-  const claimed = await input.supabase
-    .from('service_jobs')
-    .update({
-      status: 'processing',
-      progress: 20,
-      heartbeat_at: new Date().toISOString(),
-      attempt_count: (input.job.attempt_count ?? 0) + 1,
-      error_message: null,
-    })
-    .eq('id', input.job.id)
-    .eq('user_id', input.userId)
-    .eq('status', 'queued')
-    .select('*')
-    .single();
-
-  if (claimed.error || !claimed.data) {
-    return input.job;
-  }
-
-  const feature = String(claimed.data.input_payload?.feature ?? 'summarize');
-  const prompt = String(claimed.data.input_payload?.prompt ?? '').trim();
-
-  const openrouter = new OpenRouterProvider();
-  const openai = new OpenAIProvider();
-  const deepseek = new DeepSeekProvider();
-  const provider = openrouter.isAvailable()
-    ? openrouter
-    : openai.isAvailable()
-    ? openai
-    : deepseek.isAvailable()
-    ? deepseek
-    : null;
-
-  if (!provider) {
-    const { data: failedJob } = await input.supabase
-      .from('service_jobs')
-      .update({
-        status: 'failed',
-        progress: 100,
-        error_message: 'No real text provider configured (OPENROUTER_API_KEY, OPENAI_API_KEY or DEEPSEEK_API_KEY required)',
-        heartbeat_at: new Date().toISOString(),
-      })
-      .eq('id', input.job.id)
-      .eq('user_id', input.userId)
-      .select('*')
-      .single();
-
-    return (failedJob ?? claimed.data) as ServiceJobRecord;
-  }
-
-  const systemPromptMap: Record<string, string> = {
-    summarize: 'Summarize the input text in Georgian. Keep key facts and clear structure.',
-    translate: 'Translate the input text to English while preserving meaning and tone.',
-    seo: 'Rewrite and optimize this text for SEO with readable structure and keyword relevance.',
-    sentiment: 'Analyze sentiment and provide concise explanation with positive/neutral/negative balance.',
-  };
-
-  try {
-    const started = Date.now();
-    await input.supabase
-      .from('service_jobs')
-      .update({ progress: 60, heartbeat_at: new Date().toISOString() })
-      .eq('id', input.job.id)
-      .eq('user_id', input.userId);
-
-    const generated = await provider.generateText({
-      prompt,
-      system_prompt: systemPromptMap[feature] ?? systemPromptMap.summarize,
-      max_tokens: 1200,
-      temperature: feature === 'translate' ? 0.2 : 0.5,
-    });
-
-    const { data: output } = await input.supabase
-      .from('service_outputs')
-      .insert({
-        user_id: input.userId,
-        service_slug: 'text-intelligence',
-        job_id: input.job.id,
-        output_type: 'text',
-        external_url: `data:text/plain;charset=utf-8,${encodeURIComponent(generated.text)}`,
-        metadata: {
-          feature,
-          prompt,
-          provider: provider.name,
-          model: generated.model,
-          tokens_in: generated.tokens_in,
-          tokens_out: generated.tokens_out,
-          cost_usd: generated.cost_usd,
-          generation_time_ms: generated.generation_time_ms,
-        },
-      })
-      .select('*')
-      .single();
-
-    const { data: completedJob } = await input.supabase
-      .from('service_jobs')
-      .update({
-        status: 'completed',
-        progress: 100,
-        heartbeat_at: new Date().toISOString(),
-        output_payload: {
-          text: generated.text,
-          output_id: output?.id ?? null,
-          provider: provider.name,
-          model: generated.model,
-          usage: {
-            tokens_in: generated.tokens_in,
-            tokens_out: generated.tokens_out,
-            cost_usd: generated.cost_usd,
-          },
-        },
-      })
-      .eq('id', input.job.id)
-      .eq('user_id', input.userId)
-      .select('*')
-      .single();
-
-    const { count: completedCount } = await input.supabase
-      .from('service_jobs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', input.userId)
-      .eq('status', 'completed');
-
-    if ((completedCount ?? 0) <= 1) {
-      await input.supabase.from('events').insert({
-        type: 'first_success_output_next_step',
-        user_id: input.userId,
-        org_id: (claimed.data as { org_id?: string | null }).org_id ?? null,
-        metadata: {
-          service_slug: 'text-intelligence',
-          job_id: input.job.id,
-          suggestion: 'Use this result in Prompt Builder or Social Media workflows.',
-        },
-      });
-    }
-
-    await Promise.all([
-      recordMeteringEvent({
-        user_id: input.userId,
-        org_id: (claimed.data as { org_id?: string | null }).org_id ?? null,
-        service_id: 'text-intelligence',
-        route: '/api/app/jobs/[id]',
-        units: Number(generated.tokens_in ?? 0) + Number(generated.tokens_out ?? 0),
-        event_type: 'tokens',
-        metadata: {
-          job_id: input.job.id,
-          provider: provider.name,
-          model: generated.model,
-        },
-      }),
-      recordMeteringEvent({
-        user_id: input.userId,
-        org_id: (claimed.data as { org_id?: string | null }).org_id ?? null,
-        service_id: 'text-intelligence',
-        route: '/api/app/jobs/[id]',
-        units: 1,
-        event_type: 'job_execution',
-        metadata: {
-          job_id: input.job.id,
-        },
-      }),
-      logJobExecution({
-        job_id: input.job.id,
-        queue: String((claimed.data as { queue_name?: string }).queue_name ?? 'default'),
-        duration_ms: Date.now() - started,
-        retries: Number((claimed.data as { attempt_count?: number }).attempt_count ?? 0),
-        status: 'completed',
-      }),
-    ]);
-
-    return (completedJob ?? claimed.data) as ServiceJobRecord;
-  } catch (error) {
-    await logJobExecution({
-      job_id: input.job.id,
-      queue: String((claimed.data as { queue_name?: string }).queue_name ?? 'default'),
-      duration_ms: claimed.data.started_at ? Date.now() - new Date(claimed.data.started_at).getTime() : 0,
-      retries: Number((claimed.data as { attempt_count?: number }).attempt_count ?? 0),
-      status: 'failed',
-    });
-
-    const { data: failedJob } = await input.supabase
-      .from('service_jobs')
-      .update({
-        status: 'failed',
-        progress: 100,
-        error_message: error instanceof Error ? error.message : 'Text processing failed',
-        heartbeat_at: new Date().toISOString(),
-      })
-      .eq('id', input.job.id)
-      .eq('user_id', input.userId)
-      .select('*')
-      .single();
-
-    return (failedJob ?? claimed.data) as ServiceJobRecord;
-  }
-}
-
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createServerClient();
   const {
@@ -438,20 +228,11 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
   const shouldAutoProcess = _request.nextUrl.searchParams.get('autoProcess') !== '0';
   if (shouldAutoProcess && (data.status === 'queued' || data.status === 'processing')) {
-    // Neither processor has a Google engine: image-creator renders on Stability, text-intelligence answers on
-    // OpenRouter / OpenAI / DeepSeek. Under the Google-only switches (MEDIA_GOOGLE_ONLY, opt-in; AI_GOOGLE_ONLY, on by
-    // default) the job is returned as it stands and never handed to them.
+    // Neither processor has a Google engine. image-creator renders on Stability and runs only when MEDIA_GOOGLE_ONLY is
+    // off. text-intelligence answered on OpenRouter / OpenAI / DeepSeek; its processor is gone (MASTER TASK v3.1, audit
+    // F-04), so its jobs are returned as they stand.
     if (data.service_slug === 'image-creator' && !isMediaGoogleOnly()) {
       const job = await processImageCreatorJob({
-        supabase,
-        userId: user.id,
-        job: data as ServiceJobRecord,
-      });
-      return NextResponse.json({ job });
-    }
-
-    if (data.service_slug === 'text-intelligence' && !isAiGoogleOnly()) {
-      const job = await processTextIntelligenceJob({
         supabase,
         userId: user.id,
         job: data as ServiceJobRecord,

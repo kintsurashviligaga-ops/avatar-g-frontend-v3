@@ -4,7 +4,7 @@
  * The same chain, the same platform prompt and the same Google Search grounding as the product chat
  * (/api/chat/gemini), for every door that wants a whole answer at once: /api/chat (the service widgets) and the
  * channels — WhatsApp, Telegram, phone (lib/ai/channelBridge.ts). Before this, channels went through the OpenAI-backed
- * chatEngine (which production never calls while AI_GOOGLE_ONLY is on), and /api/chat sent the legacy 13.7 KB
+ * chatEngine (which production never called while AI_GOOGLE_ONLY was on), and /api/chat sent the legacy 13.7 KB
  * AGENT_G_SYSTEM_PROMPT instead of lib/chat/platformPrompt — two different Agent Gs depending on the door.
  */
 import 'server-only';

@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
- * The live agent binding: Gemini-only brain + Google-grounded web_search under AI_GOOGLE_ONLY (the default),
- * the old chain + Tavily with the kill switch off, and no render tool (orchestrate_media queued orphaned, unbilled
+ * The live agent binding: Gemini-only brain + Google-grounded web_search whatever AI_GOOGLE_ONLY says (MASTER TASK
+ * v3.1; Tavily stays mocked so any call to it is caught), and no render tool (orchestrate_media queued orphaned, unbilled
  * generation_jobs rows). The one media tool, quote_montage_to_music, exists only for a request with files when media
  * execution is open to the user, and it only quotes. Every provider is mocked — no network, no spend.
  */
@@ -195,12 +195,15 @@ test('Google-only (default): the brain is llmText with googleOnly, and the syste
   expect(opts.system).not.toContain('orchestrate_media');
 });
 
-test('kill switch AI_GOOGLE_ONLY=0: the old multi-vendor chain (googleOnly false)', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  mockLlm.mockResolvedValueOnce('{"final":"ok"}');
-  await runLiveAgent('hello', CTX);
-  expect(mockLlm.mock.calls[0][0].googleOnly).toBe(false);
-});
+test.each([{ AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-deepseek' }])(
+  'no env value brings back the multi-vendor chain (%o): the brain stays Google-only',
+  async (env) => {
+    Object.assign(process.env, env);
+    mockLlm.mockResolvedValueOnce('{"final":"ok"}');
+    await runLiveAgent('hello', CTX);
+    expect(mockLlm.mock.calls[0][0].googleOnly).toBe(true);
+  },
+);
 
 test('Google-only web_search is Gemini grounding, attributed to the user; Tavily is never called', async () => {
   mockGrounded.mockResolvedValueOnce({ ok: true, answer: 'A', results: [{ title: 't', url: 'https://x.test/', content: '' }], model: 'gemini-3.8-flash' });
@@ -217,11 +220,11 @@ test('a grounding failure becomes an error observation that names the cause', as
   await expect(tool('web_search').run({ query: 'q' })).resolves.toEqual({ error: 'search unavailable (quota)' });
 });
 
-test('kill switch off: web_search stays on Tavily', async () => {
-  process.env.AI_GOOGLE_ONLY = 'off';
-  mockTavily.mockResolvedValueOnce({ answer: 'T', results: [] });
-  await expect(tool('web_search').run({ query: 'q' })).resolves.toEqual({ answer: 'T', results: [] });
-  expect(mockGrounded).not.toHaveBeenCalled();
+test('AI_GOOGLE_ONLY=off with an owner approval: web_search is still Gemini grounding, never Tavily', async () => {
+  Object.assign(process.env, { AI_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-tavily' });
+  mockGrounded.mockResolvedValueOnce({ ok: true, answer: 'G', results: [], model: 'gemini-3.8-flash' });
+  await expect(tool('web_search').run({ query: 'q' })).resolves.toEqual({ answer: 'G', results: [] });
+  expect(mockTavily).not.toHaveBeenCalled();
 });
 
 test('an empty query never reaches a provider', async () => {

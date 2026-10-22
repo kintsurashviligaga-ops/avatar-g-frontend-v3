@@ -11,8 +11,8 @@
  * Synchronous full-response buffer (PHASE 35): the client awaits the whole reply, hands it to TTS in ONE call and
  * plays a single unbroken buffer — no chunk slicing, no dropped words. `llmText` is bounded (12s timeout).
  *
- * ENGINE: llmText with googleOnly = isAiGoogleOnly() — Gemini only by default (no DeepSeek / Atlas / Anthropic leg);
- * AI_GOOGLE_ONLY=0 restores the old multi-vendor chain. Google Search grounding rides along on the Gemini leg
+ * ENGINE: llmText — Gemini only (no DeepSeek / Atlas / Anthropic leg; the AI_GOOGLE_ONLY=0 switch that restored the old
+ * multi-vendor chain is gone, MASTER TASK v3.1). Google Search grounding rides along on the Gemini leg
  * (VOICE_SEARCH_RULE; VOICE_GOOGLE_SEARCH=0 turns it off). The budget guard runs inside llmText; this route pre-checks
  * it too, so an exhausted budget is SPOKEN as such instead of as "sorry, I didn't catch that".
  */
@@ -21,7 +21,6 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { llmText } from '@/lib/ai/llmText';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
@@ -138,7 +137,7 @@ export async function POST(req: NextRequest) {
     const spoken = toGeminiLiveSetup({ ...profile, voice: voiceFor(profile, body?.voice, body?.gender) }, { locale });
     const voice = spoken.voiceName as LiveVoice;
     const gender: 'male' | 'female' = MALE_VOICES.has(voice) ? 'male' : 'female';
-    const search = profile.googleSearch && isAiGoogleOnly() && isEnabledByDefault(process.env.VOICE_GOOGLE_SEARCH);
+    const search = profile.googleSearch && isEnabledByDefault(process.env.VOICE_GOOGLE_SEARCH);
     // The length rule stays LAST (the model weighs the last instruction most); the search rule sits before it.
     let effectiveSystem = `${spoken.systemInstruction}\n\n${search ? `${VOICE_SEARCH_RULE}\n\n` : ''}${VOICE_LENGTH_RULE}`;
 
@@ -176,7 +175,6 @@ export async function POST(req: NextRequest) {
       temperature: personaActive ? spoken.temperature : DEFAULT_VOICE_TEMPERATURE,
       // A grounded turn spends a search round-trip first; it gets a little more room inside maxDuration.
       timeoutMs: search ? 15_000 : 12_000,
-      googleOnly: isAiGoogleOnly(),
       ...(search ? { googleSearch: true } : {}),
     }).catch(() => null);
     const cleaned = trimForSpeech(raw, SPEECH_CHAR_CAP * 2);

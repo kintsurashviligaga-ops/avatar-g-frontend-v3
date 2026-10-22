@@ -156,13 +156,22 @@ describe('/api/voice/inbound (Vapi asks which assistant answers)', () => {
 });
 
 describe('/api/voice/web-token (Vapi in the browser, Anthropic model)', () => {
-  it('AI_GOOGLE_ONLY on (the default): 503, no assistant or system prompt sent, no row', async () => {
-    const res = await voiceWebToken(post('/api/voice/web-token', {}));
-    expect(res.status).toBe(503);
-    const json = await res.json();
-    expect(json.error).toBe('voice_provider_not_allowed');
-    expect(json.assistant).toBeUndefined();
-    expect(json.token).toBeUndefined();
-    nothingRan();
-  });
+  it.each([{}, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-vapi' }])(
+    'env %p: 503, no assistant or system prompt sent, no row (no env value re-opens it, MASTER TASK v3.1)',
+    async (env) => {
+      const saved = { ...process.env };
+      Object.assign(process.env, env);
+      try {
+        const res = await voiceWebToken(post('/api/voice/web-token', {}));
+        expect(res.status).toBe(503);
+        const json = await res.json();
+        expect(json.error).toBe('voice_provider_not_allowed');
+        expect(json.assistant).toBeUndefined();
+        expect(json.token).toBeUndefined();
+        nothingRan();
+      } finally {
+        process.env = saved;
+      }
+    },
+  );
 });
