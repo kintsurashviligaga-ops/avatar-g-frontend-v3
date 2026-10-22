@@ -5,8 +5,9 @@
  * now count as forbidden vendors next to Replicate, OpenAI, HeyGen, Runway, … No NEW runtime code may reach one, and
  * the code that still does can only go away.
  *
- * Many files still reach a forbidden vendor — most behind VIDEO_GOOGLE_ONLY / AI_GOOGLE_ONLY, some live. v3.1 Phase 1
- * removes them (strict Vertex transport, then the non-Google fallbacks); this test only stops the lists growing. It
+ * Many files still reach a forbidden vendor — AI_GOOGLE_ONLY and VIDEO_GOOGLE_ONLY are constants now, so the rest sit
+ * behind MEDIA_GOOGLE_ONLY or run live. v3.1 Phase 1 removes them (strict Vertex transport, then the non-Google
+ * fallbacks, one switch at a time); this test only stops the lists growing. It
  * reads the code itself, not comments: a vendor counts when a string or template literal names its API host, or when
  * a value import / require / import() loads its SDK (`import type` compiles away and is not counted).
  *

@@ -6,13 +6,12 @@
  */
 import 'server-only';
 import { llmText } from '@/lib/ai/llmText';
-import { isGoogleOnly } from '@/lib/veo/policy';
 import type { DirectorGenerate } from './director';
 
 const DEFAULT_TIMEOUT_MS = 86_000;
 
 /**
- * The same call runPromptAgent makes (Google-only JSON when VIDEO_GOOGLE_ONLY, VEO_DIRECTOR_MODEL honoured). A
+ * The same call runPromptAgent makes (Google-only JSON, VEO_DIRECTOR_MODEL honoured). A
  * deadline wrapper's `timeoutMs` / `signal` (director.DirectorCallOptions) only ever SHORTEN the call.
  */
 export const llmDirectorGenerate: DirectorGenerate = async (prompt, opts) => {
@@ -27,6 +26,8 @@ export const llmDirectorGenerate: DirectorGenerate = async (prompt, opts) => {
     temperature: opts.temperature,
     timeoutMs: capped,
     ...(opts.signal ? { signal: opts.signal } : {}),
-    ...(isGoogleOnly() ? { googleOnly: true, json: true, ...(directorModel ? { geminiModel: directorModel } : {}) } : {}),
+    googleOnly: true,
+    json: true,
+    ...(directorModel ? { geminiModel: directorModel } : {}),
   });
 };

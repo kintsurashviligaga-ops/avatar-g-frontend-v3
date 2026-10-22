@@ -203,14 +203,21 @@ describe('transportOf', () => {
 });
 
 describe('isGoogleOnly', () => {
-  it('is ON by default and OFF only when explicitly disabled', () => {
+  it('is always ON (MASTER TASK v3.1): no VIDEO_GOOGLE_ONLY value, approved or not, turns it off', () => {
     expect(isGoogleOnly()).toBe(true);
-    for (const v of ['0', 'false', 'no', 'off']) {
-      process.env.VIDEO_GOOGLE_ONLY = v;
-      expect(isGoogleOnly()).toBe(false);
+    const approval = process.env.OUTSIDE_ENGINES_APPROVED;
+    try {
+      for (const v of ['0', 'false', 'no', 'off', '1']) {
+        process.env.VIDEO_GOOGLE_ONLY = v;
+        delete process.env.OUTSIDE_ENGINES_APPROVED;
+        expect(isGoogleOnly()).toBe(true);
+        process.env.OUTSIDE_ENGINES_APPROVED = 'owner-2026-10-20-replicate';
+        expect(isGoogleOnly()).toBe(true);
+      }
+    } finally {
+      if (approval === undefined) delete process.env.OUTSIDE_ENGINES_APPROVED;
+      else process.env.OUTSIDE_ENGINES_APPROVED = approval;
     }
-    process.env.VIDEO_GOOGLE_ONLY = '1';
-    expect(isGoogleOnly()).toBe(true);
   });
 });
 

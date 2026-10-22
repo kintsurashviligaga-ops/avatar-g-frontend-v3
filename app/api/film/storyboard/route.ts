@@ -24,16 +24,9 @@ import { describeCharacterFromImage } from '@/lib/gemini/image-analysis';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
-import { ServiceManager } from '@/lib/chat/ServiceManager';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
-import { resolveModel } from '@/lib/replicate/models';
-import { createPrediction, pollPrediction } from '@/lib/replicate/client';
-import { normalizeOutput } from '@/lib/replicate/normalizer';
-import { withRetry } from '@/lib/utils/withRetry';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
-import { isGoogleOnly } from '@/lib/veo/policy';
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
@@ -43,18 +36,12 @@ import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveFilmTemplate } from '@/lib/studio/templateContext';
 import { MUSIC_VIDEO_PERSON_CLAUSE, REFERENCE_PERSON_CLAUSE, briefRestagesPhoto, storyFeaturesPerson } from '@/lib/chat/storyPerson';
 
-/** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
- *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
-const FAST_IMAGE_MODEL = /^(1|true|on|flux|flux-schnell)$/i.test((process.env.FAST_IMAGE_MODEL || '').trim());
-
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-// Master Contract V4 — anti-collage guards for storyboard FRAMES. The positive clause is the load-bearing
-// one: it reaches all three frame providers (flux-schnell / NanoBanana / Replicate FLUX), and flux-schnell
-// accepts no negative_prompt at all. The negative is passed additionally on the NanoBanana path where it is
-// honoured. Together they stop the reported split-screen / grid / comic-panel storyboard tiles.
+// Master Contract V4 — anti-collage guards for storyboard FRAMES. The positive clause is the load-bearing one: the
+// Gemini image model takes no negative prompt. It stops the reported split-screen / grid / comic-panel storyboard tiles.
 const SINGLE_SHOT_CLAUSE =
   'A single, unified, continuous cinematic film still. One isolated focused shot. Strictly single frame — ' +
   'NOT a collage, not split-screen, no grid, no multiple panels, no side-by-side frames, no borders, no ' +
@@ -64,8 +51,6 @@ const _STORYBOARD_FRAME_NEGATIVE =
   'split screen, collage, grid, panels, comic templates, comic book style, diptych, triptych, multiple ' +
   'angles, floating objects, ungrounded physics, borders, dividers, picture-in-picture, deformed face, ' +
   'extra limbs, watermark, text';
-
-const _serviceManager = new ServiceManager();
 
 /**
  * Script Agent — turn the brief into EXACTLY `count` sequential, brief-specific
@@ -94,36 +79,11 @@ async function generateSceneScripts(brief: string, count: number): Promise<strin
   // too slow to lead the board, but superb when Gemini is down). Generous timeout so the
   // fallback can still complete within the client's wait window. (Anthropic is dead in prod.)
   // Google-only (docs/VEO_ENGINE.md §3): Gemini writes the shots or nobody does — a miss keeps the deterministic beats.
-  const text = await llmText({ system: SYS, user: USER, maxTokens: 2000, temperature: 0.6, geminiFirst: true, googleOnly: isGoogleOnly(), timeoutMs: 85_000 });
+  const text = await llmText({ system: SYS, user: USER, maxTokens: 2000, temperature: 0.6, geminiFirst: true, googleOnly: true, timeoutMs: 85_000 });
   return text ? parseScripts(text) : null;
 }
 
-/**
- * Re-host a provider temp URL to Supabase. CRITICAL: the app CSP `img-src` allows
- * `*.supabase.co` but NOT NanoBanana's raw host (`tempfile.aiquickdraw.com`), so a
- * raw frame URL is BLOCKED by the browser (blank tiles) AND expires — which also
- * breaks the render anchor (LTX can't fetch an expired temp URL). Copying the bytes
- * to a 7-day signed Supabase URL fixes both. Fail-open: keep the raw URL on any miss.
- */
-async function reHostFrame(url: string): Promise<string> {
-  try {
-    const ac = new AbortController();
-    const to = setTimeout(() => ac.abort(), 25_000);
-    const res = await fetch(url, { signal: ac.signal }).finally(() => clearTimeout(to));
-    if (!res.ok) return url;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > 18 * 1024 * 1024) return url;
-    const ct = res.headers.get('content-type') || 'image/jpeg';
-    const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg';
-    const path = `storyboard/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const signed = await uploadAndSign('uploads', path, buf.toString('base64'), ct, 604800);
-    return signed || url;
-  } catch {
-    return url;
-  }
-}
-
-/** Host a data: URI reference to a signed https URL (NanoBanana needs a fetchable image). */
+/** Host a data: URI reference to a signed https URL (the render needs a fetchable image). */
 async function hostRef(ref: string, i: number): Promise<string> {
   if (!ref.startsWith('data:')) return ref;
   try {
@@ -135,145 +95,6 @@ async function hostRef(ref: string, i: number): Promise<string> {
     return (await uploadAndSign('uploads', path, b64, mime, 7200)) || ref;
   } catch {
     return ref;
-  }
-}
-
-/**
- * Storyboard-frame FALLBACK: when the primary frame provider (NanoBanana) is
- * unavailable — e.g. its key is missing on a given deployment, which left all six
- * tiles blank — render the frame on Replicate FLUX instead (the same provider that
- * already backs the film clips, so its key is present wherever clips render).
- * Polled to completion server-side so the storyboard still returns a real URL.
- * Fail-open: any miss returns null and the slot degrades gracefully.
- */
-async function genFrameViaReplicate(framePrompt: string, aspect: string, refUrl?: string | null): Promise<string | null> {
-  try {
-    // quality 'high' (not 'standard'): the frame becomes the i2v START IMAGE for the Veo clip, so its
-    // fidelity propagates into the whole 8s shot. refUrl → flux-1.1-pro's `image_prompt` (identity anchor).
-    const validation = validateInput({
-      service: 'image', prompt: framePrompt, quality: 'high', aspectRatio: aspect,
-      ...(refUrl && /^https?:\/\//i.test(refUrl) ? { imageUrl: refUrl } : {}),
-    });
-    if (!validation.valid || !validation.sanitized) return null;
-    const model = resolveModel('image', validation.sanitized.variant);
-    const modelInput = buildModelInput(validation.sanitized);
-    let pred = await createPrediction(model.id, modelInput);
-    const deadline = Date.now() + 70_000;
-    while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled' && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 2500));
-      pred = await pollPrediction(pred.id);
-    }
-    if (pred.status !== 'succeeded') return null;
-    const norm = normalizeOutput('image', model.label, model.outputType, pred.id, pred.status, pred.output, pred.error ?? null, pred.metrics) as { url?: string };
-    return typeof norm.url === 'string' && /^https?:\/\//i.test(norm.url) ? norm.url : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Storyboard-frame FAST path (gated by FAST_IMAGE_MODEL) — Replicate `flux-schnell`
- * renders a frame in ~3–4s vs NanoBanana's ~30s+ (benchmarked at 3.65s on prod). Uses
- * `Prefer: wait` so the create blocks until the image is ready in ONE round-trip, with a
- * short backoff retry on Replicate's 6/min create throttle (429). Fail-open: any miss
- * returns null and genFrame falls through to the unchanged NanoBanana → Replicate-FLUX chain.
- */
-async function genFrameViaFluxSchnell(framePrompt: string, aspect: string): Promise<string | null> {
-  const token = (process.env.REPLICATE_API_TOKEN || '').trim();
-  if (!token) return null;
-  const aspect_ratio = aspect === '9:16' ? '9:16' : aspect === '1:1' ? '1:1' : '16:9';
-  try {
-    return await withRetry(async () => {
-      const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'wait' },
-        cache: 'no-store',
-        body: JSON.stringify({ input: { prompt: framePrompt.slice(0, 2_000), aspect_ratio, num_outputs: 1, output_format: 'jpg' } }),
-        signal: AbortSignal.timeout(40_000),
-      });
-      if (res.status === 429 || res.status >= 500) throw new Error(`flux-schnell ${res.status}`);
-      if (!res.ok) return null;
-      const j = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown; urls?: { get?: string } };
-      // Same fix as the nano-banana leg: poll instead of discarding a still-running prediction.
-      return await awaitReplicateOutput(token, j, 60_000);
-    }, { maxAttempts: 3, baseDelayMs: 6000, label: 'flux-schnell-frame' });
-  } catch {
-    return null;
-  }
-}
-
-/** Pull the last https URL out of a Replicate `output` (string | string[] | nested). */
-function pickOutputUrl(o: unknown): string | null {
-  return typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pickOutputUrl(o[o.length - 1]) : null;
-}
-
-/**
- * Resolve a Replicate prediction to its output URL, POLLING when needed.
- *
- * `Prefer: wait` blocks for at most ~60s and then returns the prediction as-is — often still `processing`.
- * The old code treated anything that wasn't already `succeeded` as a MISS and threw the (already paid-for,
- * still-running) prediction away, which is exactly why a storyboard came back "2/3 ready" with one tile
- * permanently empty: the frame WAS being generated, we just stopped listening. Now a slow model simply takes
- * longer instead of losing the frame. Terminal failure / deadline → null (caller falls through its chain).
- */
-async function awaitReplicateOutput(
-  token: string,
-  created: { id?: string; status?: string; output?: unknown; urls?: { get?: string } },
-  deadlineMs: number,
-): Promise<string | null> {
-  if (created?.status === 'succeeded') return pickOutputUrl(created.output);
-  if (created?.status === 'failed' || created?.status === 'canceled') return null;
-  const url = created?.urls?.get || (created?.id ? `https://api.replicate.com/v1/predictions/${created.id}` : null);
-  if (!url) return null;
-  const deadline = Date.now() + deadlineMs;
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 2500));
-    try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(15_000) });
-      if (!res.ok) continue;
-      const j = (await res.json().catch(() => ({}))) as { status?: string; output?: unknown };
-      if (j.status === 'succeeded') return pickOutputUrl(j.output);
-      if (j.status === 'failed' || j.status === 'canceled') return null;
-    } catch { /* transient — keep polling until the deadline */ }
-  }
-  return null;
-}
-
-/**
- * IDENTITY-CONDITIONED frame — Google **nano-banana** (Gemini 2.5 Flash Image) on Replicate. This is the ONE
- * frame provider that actually accepts the user's reference photo: its live schema takes
- * `image_input: string[]` (verified against the Replicate model API), so the uploaded selfie CONDITIONS the
- * render instead of being described in words and ignored.
- *
- * THE BUG THIS FIXES: every previous frame provider was text-only — flux-schnell has no image input, and the
- * FLUX 1.1 Pro path dropped `imageUrl` in buildModelInput. So scenes 2..N were told "the EXACT same person as
- * the reference image" while the model never received that image, and it invented a new person every time
- * (the man's selfie → a young woman in scene 2). Scene 1 only looked right because it IS the uploaded file.
- *
- * Fail-open: any miss returns null and genFrame falls through to the existing chain.
- */
-async function genFrameViaNanoBananaRef(framePrompt: string, aspect: string, refUrl: string): Promise<string | null> {
-  const token = (process.env.REPLICATE_API_TOKEN || '').trim();
-  if (!token || !/^https?:\/\//i.test(refUrl)) return null;
-  const aspect_ratio = aspect === '9:16' ? '9:16' : aspect === '1:1' ? '1:1' : '16:9';
-  try {
-    return await withRetry(async () => {
-      const res = await fetch('https://api.replicate.com/v1/models/google/nano-banana/predictions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'wait' },
-        cache: 'no-store',
-        body: JSON.stringify({ input: { prompt: framePrompt.slice(0, 2_000), image_input: [refUrl], aspect_ratio, output_format: 'jpg' } }),
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (res.status === 429 || res.status >= 500) throw new Error(`nano-banana ${res.status}`);
-      if (!res.ok) return null;
-      const j = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown; urls?: { get?: string } };
-      // POLL when `Prefer: wait` returned before the model finished — otherwise a slow (but successful)
-      // render was discarded and that scene's tile stayed permanently empty.
-      return await awaitReplicateOutput(token, j, 90_000);
-    }, { maxAttempts: 3, baseDelayMs: 6000, label: 'nano-banana-frame' });
-  } catch {
-    return null;
   }
 }
 
@@ -400,9 +221,9 @@ export async function POST(req: NextRequest) {
   // One preview frame for a scene — 1K (fastest tier) so six land well within
   // maxDuration, and v2-1k still honours the reference-image (selfie) anchor.
   // Fail-open: any miss returns null and the scene plan still surfaces.
-  // Diagnostic — which provider produced each frame (returned in the response so a
-  // benchmark can confirm flux-schnell is actually firing; the re-host hides the source URL).
-  const frameSourceTally = { fluxSchnell: 0, nanobanana: 0, replicateFlux: 0, gemini: 0 };
+  // Diagnostic — how many frames Gemini drew (returned in the response). Since MASTER TASK v3.1 it is the only frame
+  // engine: the NanoBanana, flux-schnell and Replicate FLUX chain is gone, whatever VIDEO_GOOGLE_ONLY says.
+  const frameSourceTally = { gemini: 0 };
   // Set when the platform budget refused a frame: the board then says which limit and when it lifts, instead of
   // promising the empty tile "fills in automatically" (it cannot while the limit holds) and retrying it.
   let budgetRefusal: string | null = null;
@@ -415,11 +236,10 @@ export async function POST(req: NextRequest) {
   // character 450-510, so the cut dropped it from the frames while the clips kept it.
   const genFrame = async (scenePrompt: string, look?: string): Promise<string | null> => {
     try {
-      // Master Contract V4 — a positive SINGLE-SHOT clause is the only anti-collage lever that reaches ALL
-      // three frame providers (flux-schnell takes no negative_prompt), fixing the reported split-screen /
-      // grid / comic-panel storyboard frames. The selfie branch also tightens the identity lock so the
+      // Master Contract V4 — a positive SINGLE-SHOT clause is the anti-collage lever (the image model takes no
+      // negative prompt), fixing the reported split-screen / grid / comic-panel storyboard frames. The selfie branch also tightens the identity lock so the
       // uploaded character photo is actually honoured per frame.
-      // ⚠️ THE FRAME PROVIDERS READ ENGLISH ONLY. nano-banana, flux-schnell and FLUX 1.1 Pro are trained
+      // ⚠️ THE FRAME MODEL READS ENGLISH BEST. The image models this board has used are trained
       // overwhelmingly on English, so a Georgian shot description arrived as noise, the model fell back to its
       // priors, and the tile came back as a competent image of something else. That is not cosmetic here: this
       // frame becomes the i2v START IMAGE for the scene's Veo clip, so a wrong frame propagates into the whole
@@ -436,51 +256,23 @@ export async function POST(req: NextRequest) {
       // GOOGLE-ONLY (docs/VEO_ENGINE.md §3): the frame comes straight from Gemini's image model, the selfie passed as
       // an inline reference so the same person is in every frame. No Replicate, no FLUX: a miss is an empty tile
       // (the render then animates the scene from text), never a non-Google image.
-      if (isGoogleOnly()) {
-        // Inside the daily budget envelope like every other paid call: a refusal is an empty tile, not a frame.
-        let img: Awaited<ReturnType<typeof generateGeminiImage>> = null;
-        try {
-          img = await guardedCall(
-            { service: 'image', model: 'gemini-image', units: 1, userId: sessionUser?.id ?? null, promptSummary: sceneEn.slice(0, 200), actualCost: (r) => (r ? undefined : 0) },
-            () => generateGeminiImage({ prompt: framePrompt, referenceImages: selfie ? [selfie] : [], aspectRatio: aspect }),
-          );
-        } catch (err) {
-          if (!(err instanceof BudgetExceededError)) throw err;
-          console.warn(`[storyboard] frame refused by the budget guard (${err.reason})`);
-          budgetRefusal = err.reason;
-          return null;
-        }
-        if (!img) return null;
-        frameSourceTally.gemini += 1;
-        const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
-        return await uploadAndSign('uploads', `storyboard/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800);
+      // Inside the daily budget envelope like every other paid call: a refusal is an empty tile, not a frame.
+      let img: Awaited<ReturnType<typeof generateGeminiImage>> = null;
+      try {
+        img = await guardedCall(
+          { service: 'image', model: 'gemini-image', units: 1, userId: sessionUser?.id ?? null, promptSummary: sceneEn.slice(0, 200), actualCost: (r) => (r ? undefined : 0) },
+          () => generateGeminiImage({ prompt: framePrompt, referenceImages: selfie ? [selfie] : [], aspectRatio: aspect }),
+        );
+      } catch (err) {
+        if (!(err instanceof BudgetExceededError)) throw err;
+        console.warn(`[storyboard] frame refused by the budget guard (${err.reason})`);
+        budgetRefusal = err.reason;
+        return null;
       }
-      // Primary = NanoBanana (via ServiceManager). ISOLATE its failure: if it throws
-      // (e.g. the key is absent on this deployment, which left storyboards blank) or
-      // returns nothing, we still fall through to the Replicate FLUX fallback below —
-      // FLUX backs the film clips too, so its key is present wherever clips render.
-      let raw: string | null = null;
-      let source: 'fluxSchnell' | 'nanobanana' | 'replicateFlux' | null = null;
-      // IDENTITY FIRST — when the user attached a photo, render the frame with nano-banana (Gemini image),
-      // the only provider that actually CONSUMES the reference (image_input). This is what keeps the same
-      // person in every scene; the text-only providers below can only ever invent a new face.
-      if (selfie) { raw = await genFrameViaNanoBananaRef(framePrompt, aspect, selfie); if (raw) source = 'nanobanana'; }
-      // FAST path (gated by FAST_IMAGE_MODEL): flux-schnell renders in ~3.65s; on any
-      // miss/429 it returns null and we fall through to the NanoBanana primary below.
-      // NOTE: skipped when a selfie exists — flux-schnell is text-only, so it would silently break identity.
-      if (!raw && FAST_IMAGE_MODEL && !selfie) { raw = await genFrameViaFluxSchnell(framePrompt, aspect); if (raw) source = 'fluxSchnell'; }
-      // NOTE — a serviceManager.execute() leg used to sit here. It was DEAD WEIGHT that actively broke the
-      // board: Replicate creates are async (`Prefer: respond-async`), so it returned a predictionId and NO
-      // assetUrl, `raw` stayed null, the running prediction was orphaned, and we immediately created a SECOND
-      // prediction below. That doubled the Replicate create rate (2 per frame + the anchor), which is what
-      // pushed a 3-scene board over the 6-creates/min throttle and left one tile permanently empty — while
-      // also double-billing FLUX (~$0.04 each). The chain below is nano-banana → FLUX, one create per frame.
-      let resolved = raw;
-      if (!resolved) { resolved = await genFrameViaReplicate(framePrompt, aspect, selfie); if (resolved) source = 'replicateFlux'; }
-      if (source) frameSourceTally[source] += 1;
-      // Re-host to a CSP-allowed Supabase URL (a raw provider temp URL is blocked by
-      // img-src AND expires, which would break the render anchor too).
-      return resolved ? await reHostFrame(resolved) : null;
+      if (!img) return null;
+      frameSourceTally.gemini += 1;
+      const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
+      return await uploadAndSign('uploads', `storyboard/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800);
     } catch {
       return null;
     }
@@ -686,23 +478,19 @@ export async function POST(req: NextRequest) {
     ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, ...templatePlan, orientation, clipSec, sceneScripts, totalSec: sceneTotalSec, musicVideo, ...(characterLock ? { characterLock } : {}) })
     : plan;
 
-  // Frame dispatch concurrency = 3. NOTE (benchmarked): on a Replicate token with the
-  // reduced 6/min + burst-1 limit, flux-schnell only lands ~2-3 of 6 frames (the rest
-  // 429 → NanoBanana fallback) REGARDLESS of concurrency — and serializing to 1 was
-  // strictly WORSE (295s vs 164s) because it stops the NanoBanana fallbacks from
-  // overlapping. So we keep 3 (overlaps the fallbacks) and the real lever for full
-  // flux-schnell coverage is a higher Replicate rate-limit tier, not a concurrency knob.
+  // Frame dispatch concurrency = 3 (benchmarked when this board had a multi-vendor chain: serializing to 1 was
+  // strictly worse, 295s vs 164s).
   const frameConcurrency = 3;
   const tFrames = Date.now();
   // VECTOR 1 — Scene 1 is FORCE-ANCHORED to the EXACT uploaded image (never a generated frame), so the film opens on
   // the real person and the identity can never drift on the first shot. Only scenes 2..N are generated (each still
-  // identity-locked to the selfie). We skip generating frame[0] entirely — no wasted flux call, no throwaway frame.
+  // identity-locked to the selfie). We skip generating frame[0] entirely — no wasted image call, no throwaway frame.
   // (With ≥2 uploads the anchorModeFull path below already maps every scene to its own uploaded frame.)
   // …unless the brief restages the person (another place or other clothes): the same rule as the planOnly board above.
   const lockScene1 = !!selfie && hostedRefs.length < 2 && (await briefRestagesPhoto(prompt)) !== true;
   const frames = await mapWithConcurrency(storyPlan.scenes, frameConcurrency, (scene, i) =>
     (i === 0 && lockScene1) ? Promise.resolve<string | null>(selfie) : genFrame(scene.prompt));
-  // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —
+  // Retry any frame that failed (a transient miss or rate limit) in a second pass —
   // so the storyboard rarely shows a scene with a missing image ("not all scenes
   // generate"). One extra attempt per missing frame; still fail-soft to null.
   const missing = frames.map((f, i) => (f ? -1 : i)).filter((i) => i >= 0);
@@ -746,8 +534,7 @@ export async function POST(req: NextRequest) {
     // Prompt-Agent locked character fragment — threaded to the render so the
     // protagonist's appearance is identical across every clip.
     character: characterLock,
-    // Diagnostic — provider that produced each frame (confirms flux-schnell vs the
-    // NanoBanana/Replicate-FLUX fallback; the re-host hides it from the frame URLs).
+    // Diagnostic — how many frames the image model drew (Gemini is the only frame engine).
     frameSources: frameSourceTally,
     // Diagnostic — the Prompt-Agent model used (always Gemini: llmText has no other provider) + the
     // script/frames time split.

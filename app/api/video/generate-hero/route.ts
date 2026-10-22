@@ -1,50 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Replicate from 'replicate';
 
 import { isAdmin } from '@/lib/auth/adminGuard';
-import { isGoogleOnly } from '@/lib/veo/policy';
 
 /**
- * POST /api/video/generate-hero
- * Triggers the hero (marketing) video generation via Replicate.
+ * POST /api/video/generate-hero — the admin hero (marketing) render, retired.
  *
- * ADMIN-ONLY: fires a PAID Replicate render with NO per-user billing and has no product callers, so it
- * must never be open — gated to the admin allowlist so it can't be used anonymously to drain quota.
+ * It rendered on Replicate MiniMax and ran only with VIDEO_GOOGLE_ONLY switched off. Video renders on Veo only, and
+ * since MASTER TASK v3.1 no env value re-opens another engine, so it keeps its admin gate and refuses with no provider
+ * code behind it. A hero film is made in the Studio, where Veo plans and bills it.
  */
-
-const PROMPT = `Create a 30-second cinematic commercial for an AI platform called "MyAvatar". Style: photorealistic, cinematic, futuristic AI technology commercial. Visual tone: dark modern UI, deep black background, soft blue and violet glow, futuristic digital environment, premium SaaS interface. Scenes: Logo intro with glow reveal, platform interface with AI chat, user typing prompt, multi-agent AI network (Avatar, Video, Music, Subtitle agents), avatar builder generating photorealistic avatar, video creation with music and subtitles, full platform ecosystem zoom-out, Agent G automation, final montage with logo. Camera: smooth cinematic zooms, clean UI transitions. Lighting: soft futuristic blue highlights. Quality: ultra realistic premium technology commercial.`;
-
 export async function POST(_req: NextRequest) {
   if (!(await isAdmin())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
-  // VIDEO_GOOGLE_ONLY (lib/veo/policy, default ON): video renders on Veo only. This admin tool renders on Replicate
-  // MiniMax, so it runs only where the owner has turned the video switch off.
-  if (isGoogleOnly()) {
-    return NextResponse.json({ error: 'google_only', message: 'Video renders on Veo only while VIDEO_GOOGLE_ONLY is on.' }, { status: 503 });
-  }
-
-  const token = process.env.REPLICATE_API_TOKEN;
-  if (!token) {
-    return NextResponse.json({ error: 'REPLICATE_API_TOKEN not configured' }, { status: 500 });
-  }
-
-  try {
-    const replicate = new Replicate({ auth: token });
-
-    const output = await replicate.run('minimax/video-01-live', {
-      input: { prompt: PROMPT, prompt_optimizer: true },
-    });
-
-    const videoUrl = typeof output === 'string' ? output : (Array.isArray(output) ? output[0] : null);
-
-    if (!videoUrl) {
-      return NextResponse.json({ error: 'No video URL returned' }, { status: 502 });
-    }
-
-    return NextResponse.json({ url: videoUrl });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return NextResponse.json({ error: 'google_only', message: 'Video renders on Veo only.' }, { status: 503 });
 }

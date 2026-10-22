@@ -3,8 +3,8 @@
  * GET /api/health/providers — the admin diagnostic names the engines the code runs, not the pre-Google-only ones.
  *
  * Before (2026-10-09): `pipeline` always said the film anchor was "FLUX 1.1 Pro" and the clip model Kling
- * (REPLICATE_VIDEO_MODEL), though under VIDEO_GOOGLE_ONLY (on by default) clips are Veo alone and the frames are
- * Gemini's image model — the FLUX anchor and Kling run only with Google-only switched off.
+ * (REPLICATE_VIDEO_MODEL), though clips are Veo alone and the frames are Gemini's image model. Since MASTER TASK v3.1
+ * the FLUX anchor and Kling are gone too, so no env value names them again.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../lib/supabase/server', () => ({
@@ -54,16 +54,14 @@ test('Google-only with no Veo route: no clip model is claimed', async () => {
   expect((await pipeline()).videoClipModel).toBeNull();
 });
 
-test('Google-only switched off: the legacy Replicate legs are named again', async () => {
-  process.env.VIDEO_GOOGLE_ONLY = '0';
-  process.env.REPLICATE_VIDEO_MODEL = 'kwaivgi/kling-v1.6-standard';
-  let p = await pipeline();
-  expect(p.googleOnly).toBe(false);
-  expect(p.videoClipModel).toBe('kwaivgi/kling-v1.6-standard');
-  expect(p.videoPinnedToV16).toBe(true);
-  expect(p.anchor).toBe('nano-banana → FLUX (Replicate)');
-  process.env.AUTO_ANCHOR_FRAME = '1';
-  process.env.ANCHOR_MODEL = 'schnell';
-  p = await pipeline();
-  expect(p.anchor).toBe('FLUX Schnell');
-});
+test.each([{ VIDEO_GOOGLE_ONLY: '0' }, { VIDEO_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-kling' }])(
+  'no env value names the legacy Replicate legs again (%o)',
+  async (env) => {
+    Object.assign(process.env, env, { REPLICATE_VIDEO_MODEL: 'kwaivgi/kling-v1.6-standard', AUTO_ANCHOR_FRAME: '1', ANCHOR_MODEL: 'schnell' });
+    const p = await pipeline();
+    expect(p).toMatchObject({ googleOnly: true, videoClipEngine: 'Veo', videoPinnedToV16: false, anchor: 'Gemini gemini-3.1-flash-image' });
+    // imageBase is the chat text-to-image engine, which follows the media switch, not this one.
+    const { imageBase: _imageBase, ...video } = p as Record<string, unknown>;
+    expect(JSON.stringify(video)).not.toMatch(/kling|flux/i);
+  },
+);

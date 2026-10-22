@@ -18,7 +18,7 @@ describe('provider boundary: a falsy *_GOOGLE_ONLY alone never re-opens outside 
     expect(googleOnlySwitch('0', env({ OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-heygen' }))).toBe(false);
     expect(outsideEnginesApproved(env({ OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-heygen' }))).toBe(true);
   });
-  it('the video switch follows the same rule; the text switch no longer reads it at all', async () => {
+  it('neither the video switch nor the text switch reads it any more (MASTER TASK v3.1)', async () => {
     const saved = { ...process.env };
     process.env.VIDEO_GOOGLE_ONLY = '0'; process.env.AI_GOOGLE_ONLY = '0'; delete process.env.OUTSIDE_ENGINES_APPROVED;
     const { isGoogleOnly } = await import('../veo/policy');
@@ -26,7 +26,7 @@ describe('provider boundary: a falsy *_GOOGLE_ONLY alone never re-opens outside 
     expect(isGoogleOnly()).toBe(true);
     expect(isAiGoogleOnly()).toBe(true);
     process.env.OUTSIDE_ENGINES_APPROVED = 'owner-2026-10-20-runway';
-    expect(isGoogleOnly()).toBe(false);
+    expect(isGoogleOnly()).toBe(true);
     expect(isAiGoogleOnly()).toBe(true);
     process.env = saved;
   });

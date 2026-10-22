@@ -67,26 +67,19 @@
       "replicate"
     ],
     "app/api/agent/video-queue/drain/route.ts": [
-      "anthropic",
       "replicate"
     ],
     "app/api/agent/video-queue/route.ts": [
-      "anthropic",
       "replicate"
     ],
     "app/api/ai/edit-audio/route.ts": [
       "replicate"
     ],
     "app/api/ai/edit-photo/route.ts": [
-      "anthropic",
       "replicate"
     ],
     "app/api/ai/edit/route.ts": [
-      "anthropic",
       "replicate"
-    ],
-    "app/api/ai/music/route.ts": [
-      "anthropic"
     ],
     "app/api/ai/upscale/route.ts": [
       "replicate"
@@ -107,7 +100,6 @@
       "openai"
     ],
     "app/api/audio/georgian-song/route.ts": [
-      "anthropic",
       "elevenlabs",
       "replicate"
     ],
@@ -126,7 +118,6 @@
       "replicate"
     ],
     "app/api/chat/orchestrate/route.ts": [
-      "anthropic",
       "elevenlabs",
       "heygen",
       "kling",
@@ -139,7 +130,6 @@
       "worldlabs"
     ],
     "app/api/chat/stream/route.ts": [
-      "anthropic",
       "elevenlabs",
       "heygen",
       "kling",
@@ -165,7 +155,6 @@
       "gemini_developer_api"
     ],
     "app/api/cron/studio-sweep/route.ts": [
-      "anthropic",
       "higgsfield"
     ],
     "app/api/editing/jobs/[id]/route.ts": [
@@ -179,11 +168,9 @@
       "elevenlabs"
     ],
     "app/api/estimate/route.ts": [
-      "anthropic",
       "higgsfield"
     ],
     "app/api/film/scene/redo/route.ts": [
-      "anthropic",
       "elevenlabs",
       "heygen",
       "kling",
@@ -194,7 +181,6 @@
       "runway"
     ],
     "app/api/film/scene/redo/stitch/route.ts": [
-      "anthropic",
       "elevenlabs",
       "heygen",
       "kling",
@@ -204,18 +190,7 @@
       "replicate",
       "runway"
     ],
-    "app/api/film/storyboard/route.ts": [
-      "anthropic",
-      "heygen",
-      "kling",
-      "ltx",
-      "luma",
-      "nanobananaapi",
-      "replicate",
-      "runway"
-    ],
     "app/api/film/sweep/route.ts": [
-      "anthropic",
       "elevenlabs",
       "heygen",
       "kling",
@@ -228,26 +203,21 @@
       "worldlabs"
     ],
     "app/api/generate/[id]/route.ts": [
-      "anthropic",
       "higgsfield"
     ],
     "app/api/generate/route.ts": [
-      "anthropic",
       "higgsfield"
     ],
     "app/api/genjutsu/capabilities/route.ts": [
       "higgsfield"
     ],
     "app/api/genjutsu/generate/route.ts": [
-      "anthropic",
       "higgsfield"
     ],
     "app/api/genjutsu/quote/route.ts": [
-      "anthropic",
       "higgsfield"
     ],
     "app/api/genjutsu/status/route.ts": [
-      "anthropic",
       "higgsfield",
       "replicate"
     ],
@@ -310,7 +280,6 @@
       "ltx"
     ],
     "app/api/motion-control/route.ts": [
-      "anthropic",
       "replicate"
     ],
     "app/api/motion-control/status/route.ts": [
@@ -335,7 +304,6 @@
       "replicate"
     ],
     "app/api/nanobanana/image/route.ts": [
-      "anthropic",
       "nanobananaapi"
     ],
     "app/api/orbit/[service]/route.ts": [
@@ -346,7 +314,6 @@
       "replicate"
     ],
     "app/api/pipeline/remix/route.ts": [
-      "anthropic",
       "heygen",
       "kling",
       "ltx",
@@ -356,10 +323,8 @@
       "runway"
     ],
     "app/api/pipeline/route.ts": [
-      "anthropic",
       "elevenlabs",
       "heygen",
-      "ltx",
       "nanobananaapi",
       "replicate",
       "udio",
@@ -375,7 +340,6 @@
       "replicate"
     ],
     "app/api/replicate/image/route.ts": [
-      "anthropic",
       "nanobananaapi",
       "replicate"
     ],
@@ -412,7 +376,6 @@
       "replicate"
     ],
     "app/api/v2/model3d/create/route.ts": [
-      "anthropic",
       "replicate"
     ],
     "app/api/v2/model3d/status/route.ts": [
@@ -421,11 +384,7 @@
     "app/api/v2/montage/render/route.ts": [
       "replicate"
     ],
-    "app/api/v2/presentation/build/route.ts": [
-      "anthropic"
-    ],
     "app/api/video/assemble/route.ts": [
-      "anthropic",
       "elevenlabs",
       "heygen",
       "kling",
@@ -435,19 +394,12 @@
       "replicate",
       "runway"
     ],
-    "app/api/video/generate-hero/route.ts": [
-      "replicate"
-    ],
-    "app/api/video/generate-promo/route.ts": [
-      "replicate"
-    ],
     "app/api/video/lipsync/route.ts": [
       "elevenlabs",
       "heygen",
       "replicate"
     ],
     "app/api/video/remix/route.ts": [
-      "anthropic",
       "elevenlabs",
       "heygen",
       "kling",
@@ -479,7 +431,6 @@
       "nanobananaapi"
     ],
     "app/api/webhooks/higgsfield/route.ts": [
-      "anthropic",
       "higgsfield"
     ],
     "app/api/webhooks/whatsapp/route.ts": [

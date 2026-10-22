@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
 import { veoTransport } from '@/lib/veo/engine';
-import { isGoogleOnly } from '@/lib/veo/policy';
 import { checkVertexAuth } from '@/lib/veo/authCheck';
 import { describeElevenLabsAccount, elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
 import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
@@ -76,7 +75,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     (async (): Promise<ProbeResult> => {
       const transport = veoTransport();
       const missing = vertexConfigProblems();
-      const detail = `transport:${transport ?? 'none'} · google-only:${isGoogleOnly()} · vertex:${missing.length ? `missing ${missing.join(', ')}` : 'ready'}`;
+      const detail = `transport:${transport ?? 'none'} · google-only:true · vertex:${missing.length ? `missing ${missing.join(', ')}` : 'ready'}`;
       const result: ProbeResult = missing.length
         ? { provider: 'veo', configured: transport !== null, ok: transport !== null, detail }
         : await checkVertexAuth(get).then((auth) => ({

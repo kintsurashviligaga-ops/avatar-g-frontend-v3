@@ -15,7 +15,7 @@ jest.mock('../veo/vertexAuth', () => ({
 
 import { promptToEnglish } from './promptToEnglish';
 
-// No key → the module must short-circuit to the original rather than construct a client.
+// An Anthropic key must never matter (Gemini is the only translator); it is cleared so a stray call would fail loudly.
 const ORIGINAL_KEY = process.env.ANTHROPIC_API_KEY;
 beforeEach(() => { delete process.env.ANTHROPIC_API_KEY; });
 afterAll(() => { if (ORIGINAL_KEY) process.env.ANTHROPIC_API_KEY = ORIGINAL_KEY; });
@@ -71,7 +71,7 @@ describe('the Google-only pipeline translates with Gemini on Vertex AI (docs/VEO
     GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
     GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
   };
-  const ENV = ['GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'VIDEO_GOOGLE_ONLY', ...Object.keys(WIF)];
+  const ENV = ['GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'VIDEO_GOOGLE_ONLY', 'OUTSIDE_ENGINES_APPROVED', ...Object.keys(WIF)];
   const ORIGINAL_FETCH = global.fetch;
   const saved: Record<string, string | undefined> = {};
   beforeEach(() => {
@@ -116,11 +116,17 @@ describe('the Google-only pipeline translates with Gemini on Vertex AI (docs/VEO
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('VIDEO_GOOGLE_ONLY=0 keeps the Anthropic translator (no key here → the original)', async () => {
-    process.env.VIDEO_GOOGLE_ONLY = '0';
-    process.env.GEMINI_API_KEY = 'test-key';
-    global.fetch = jest.fn() as unknown as typeof fetch;
-    await expect(promptToEnglish('ქართული ტექსტი', 'video')).resolves.toBe('ქართული ტექსტი');
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
+  it.each([{ VIDEO_GOOGLE_ONLY: '0' }, { VIDEO_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-anthropic' }])(
+    'no env value brings back the Anthropic translator (%o): Gemini on Vertex translates',
+    async (env) => {
+      Object.assign(process.env, env, { ANTHROPIC_API_KEY: 'must-not-be-used' });
+      const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: 'Georgian text' }] } }],
+      }), { status: 200 }));
+      global.fetch = fetchMock as unknown as typeof fetch;
+      await expect(promptToEnglish('ქართული ტექსტი', 'video')).resolves.toBe('Georgian text');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]![0])).toMatch(/^https:\/\/aiplatform\.googleapis\.com\//);
+    },
+  );
 });

@@ -6,33 +6,27 @@ import type { ServiceType as BillingServiceType } from '@/lib/services/billing/c
 import { z } from 'zod';
 
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
-import { withRetry } from '@/lib/utils/withRetry';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { resolveModel } from '@/lib/replicate/models';
-import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { buildModelInput, validateInput } from '@/lib/replicate/schemas';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
-import { extractPromptTraits, enrichVideoPrompt } from '@/lib/chat/promptTraits';
-import { extractAspectDirective } from '@/lib/chat/outputEnforcement';
-import { resolveLtxApiKey, hasLtxApiKey } from '@/lib/chat/ltxKey';
-import { selectVideoPrimaryProvider } from '@/lib/chat/videoProvider';
-import { submitVideoWithFallback, pollVideoProvider, shouldUseNativeCascade, type VideoGenInput, type Aspect } from '@/lib/video/videoProviderCascade';
+import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
+import { pollVideoProvider } from '@/lib/video/videoProviderCascade';
 import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
 import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { hasRunwayProvider, runwayModel, createRunwayI2V, pollRunwayTask } from '@/lib/ai/runway';
+import { runwayModel, pollRunwayTask } from '@/lib/ai/runway';
 import { createVeoClip, pollVeoClip, transportOf, veoTransport } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { veoSafetyCategory } from '@/lib/veo/safetyCodes';
 import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
-import { isGoogleOnly } from '@/lib/veo/policy';
 import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -50,13 +44,6 @@ type ResponseType = 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_
 
 const LTX_BASE_URL = 'https://api.ltx.video';
 const HEYGEN_BASE_URL = 'https://api.heygen.com';
-// PHASE 60 — Replicate-hosted LTX-Video (the SAME Lightricks model) used as the
-// default render path: the direct api.ltx.video account was charging-but-never-
-// completing in prod, while this funded, verified Replicate model generates real
-// mp4s end-to-end. Pinned version is env-overridable for a clean future bump.
-const REPLICATE_LTX_VIDEO_VERSION =
-  process.env.REPLICATE_LTX_VIDEO_VERSION ||
-  '8c47da666861d081eeb4d1261853087de23923a268a69b63febdf5dc1dee08e4';
 const TASK_REF_VERSION = 1;
 
 // Veo refusals already written to the log, per warm instance. Bounded: past the cap it starts over, which at worst
@@ -69,38 +56,6 @@ function firstVeoDecline(key: string): boolean {
   return true;
 }
 
-// PHASE 47 §3 — Radical agent recovery. A film clip's LTX dispatch is retried up
-// to 3 times with exponential backoff before the master agent falls back to the
-// amber strip. We retry ONLY transient failures (network throw / 429 / 5xx); a
-// deterministic 4xx (401/403/400 — auth or bad request) fails fast on the first
-// try so we never burn three slow round-trips on a credential that will never
-// validate. A failed dispatch creates no provider job, so retrying can never
-// double-render or double-charge.
-const LTX_MAX_DISPATCH_ATTEMPTS = 3;
-const LTX_RETRY_BASE_MS = 400;
-// Hard ceiling on a single provider *create* (queue-a-job) call. A create returns
-// in a few seconds when healthy; without this cap a degraded/hanging provider can
-// stall the synchronous film dispatch past the 300s gateway limit → a 504 that
-// looks like "video generation is broken". On abort the caller falls through to
-// the legacy model / per-clip retry, so the dispatch always returns its poll token.
-const PROVIDER_CREATE_TIMEOUT_MS = 25_000;
-
-// ── PHOTOREALISTIC i2v UPGRADE ──────────────────────────────────────────────
-// The premium image-to-video model that animates a clip FROM its per-scene
-// identity frame (Kling by default — smooth photorealistic motion + zero
-// character drift, the gap vs the legacy LTX clips). Tried FIRST whenever a
-// Replicate token + a start image both exist; on ANY miss the dispatch falls
-// straight through to the proven LTX path, so this can never break a render.
-// DAY-6 — default upgraded to Kling v2.1 (verified live on Replicate: 4.1M runs; input schema = start_image +
-// prompt + duration + negative_prompt, no aspect_ratio, which buildI2vInput's v2.1 branch already matches).
-// Override with REPLICATE_VIDEO_MODEL (e.g. kwaivgi/kling-v1.6-standard for the cheaper tier, bytedance/
-// seedance-1-lite); kill with VIDEO_I2V_DISABLED=1. The provider cascade (Luma/LTX/Replicate) remains the
-// safety net — a v2.1 miss still falls through, so this can never leave a render with no engine.
-const VIDEO_I2V_MODEL = VIDEO_PRIMARY; // hard-locked Kling v2.1 default (env-overridable) — see lib/video/modelLock
-const VIDEO_I2V_DISABLED = process.env.VIDEO_I2V_DISABLED === '1';
-const VIDEO_I2V_NEGATIVE =
-  'blurry, distorted face, different person, deformed, low quality, cartoon, illustration, morphing, flickering, extra limbs, watermark, text overlay, bad anatomy, deformed hands, glitch, artifact, overexposed, underexposed, inconsistent clothing';
-
 // PHASE 51 §2 — Re-hosted LTX render URLs live for 7 days. A sync LTX call
 // returns the MP4 *binary*; turning that into a multi-MB `data:` URL is the
 // known iOS / standalone-PWA infinite-spinner failure (the <video> element
@@ -109,42 +64,6 @@ const VIDEO_I2V_NEGATIVE =
 // URL it can stream natively — with a 7-day signed lifetime so the asset
 // survives well past the render session.
 const LTX_REHOST_TTL_SEC = 7 * 24 * 60 * 60;
-
-const LTX_SUPPORTED_RESOLUTIONS: Record<'ltx-2-3-fast' | 'ltx-2-3-pro', readonly string[]> = {
-  'ltx-2-3-fast': ['1920x1080', '1080x1920', '2560x1440', '3840x2160'],
-  'ltx-2-3-pro': ['1920x1080', '1080x1920', '2560x1440', '3840x2160'],
-};
-const LTX_ALLOWED_FPS = [24, 25, 30] as const;
-
-const ltxRequestSchema = z.object({
-  prompt: z.string().min(1).max(1500),
-  model: z.enum(['ltx-2-3-fast', 'ltx-2-3-pro']).default('ltx-2-3-fast'),
-  resolution: z
-    .enum(['1920x1080', '1080x1920', '2560x1440', '3840x2160'])
-    .default('1920x1080'),
-  duration: z.number().int().min(2).max(60).default(6),
-  fps: z
-    .number()
-    .int()
-    .refine((v) => (LTX_ALLOWED_FPS as readonly number[]).includes(v), {
-      message: 'fps must be one of 24, 25, 30',
-    })
-    .default(24),
-  // PHASE 40 §1 — audio is no longer hardcoded off. Driven by acoustic intent
-  // extracted from the prompt (see promptTraits) so cinematic / spoken clips
-  // ship with LTX's native synchronized audio track instead of silent video.
-  generateAudio: z.boolean().default(true),
-  // PHASE 42 §1 — continuity controls for the 30-second-film pipeline. A fixed
-  // seed re-anchors the protagonist across consecutive clips so the character
-  // never mutates; characterReference pins the user's avatar identity.
-  seed: z.number().int().min(0).max(2_147_483_647).optional(),
-  characterReference: z.string().min(1).max(2048).optional(),
-  // PHASE 50 §3 — image-to-video anchor. When the user triggers "Turn this into
-  // a video" from an existing image card, the originating asset URL is bound here
-  // as a HARD first-frame / conditioning reference so LTX animates the actual
-  // image instead of writing a fresh text-to-video prompt from scratch.
-  imageReference: z.string().min(1).max(4096).optional(),
-});
 
 const heygenRequestSchema = z.object({
   script: z.string().min(1).max(1500),
@@ -295,11 +214,11 @@ export class ServiceManager {
     const service: BillingServiceType = operation === 'text-to-image' ? 'image'
       : request.intent === 'avatar_generation' ? 'avatar'
       : 'video';
-    // A Google-only clip renders on Veo and nothing else, so the guard can price it exactly (tier × resolution ×
+    // A clip renders on Veo and nothing else, so the guard can price it exactly (tier × resolution ×
     // audio) instead of the flat video line — which under-reserves a Standard clip ~3×.
     // Any request that will RENDER on Veo is priced as a Veo clip — including an "avatar" request whose provider
     // option routes it past HeyGen (it would otherwise be booked at the $0.05 avatar line for a $0.40/s render).
-    const rendersOnVeo = operation !== 'text-to-image' && this.resolveVideoProvider(request) !== 'heygen' && this.isGoogleOnlyVideo(request);
+    const rendersOnVeo = operation !== 'text-to-image' && this.resolveVideoProvider(request) !== 'heygen';
     const veoPrice = rendersOnVeo ? this.veoGuardPrice(request) : null;
     // Seconds for video (the guard prices video per second), one artefact otherwise. ⚠️ NEVER the raw option: the
     // duration is caller-supplied, and `duration: '0.001'` booked a whole clip at a fraction of a cent — the budget
@@ -627,9 +546,8 @@ export class ServiceManager {
       return this.runHeygenAvatarVideo(request);
     }
 
-    // ⚠️ ENGLISH FOR THE ENGINE. Veo, Runway, Kling, Seedance and LTX are trained overwhelmingly on English,
-    // and EVERY leg below reads `request.userPrompt`: tryI2vClip (Veo → Runway → Kling → cascade), runLtxVideo
-    // and runReplicateLtxVideo. expandCinematicPrompt does not rescue this — its deterministic fallback merely
+    // ⚠️ ENGLISH FOR THE ENGINE. Veo is trained overwhelmingly on English, and the Veo leg below reads
+    // `request.userPrompt`. expandCinematicPrompt does not rescue this — its deterministic fallback merely
     // APPENDS an English suffix to the untouched base. So a Georgian chat brief reached the engine as noise,
     // the model fell back to its priors, and the clip came back competent and unrelated. On video that failure
     // is invisible: it plays fine, it just is not the video that was asked for.
@@ -643,7 +561,7 @@ export class ServiceManager {
     //     gap: it is the same fix applied at the only point where the two can still be told apart.
     //   · an avatar request, whose prompt is a SCRIPT to be spoken. It normally leaves via the heygen branch
     //     above; this covers the explicit `provider=ltx` override, which would otherwise route a to-be-spoken
-    //     script through here.
+    //     script through here (it renders on Veo too).
     //
     // FAIL-OPEN, and free for Latin-script text (promptToEnglish returns immediately, no network call).
     const carriesVerbatimSpeech =
@@ -654,38 +572,10 @@ export class ServiceManager {
       ? request
       : { ...request, userPrompt: await promptToEnglish(request.userPrompt, 'video') };
 
-    // GOOGLE-ONLY (lib/veo/policy · docs/VEO_ENGINE.md §3) — Veo is the ONLY engine. No Runway / Kling / LTX
-    // fallback, no engine down-shift, and the Cinema panel's Kling/Hailuo pick does not apply: a Veo miss comes
-    // back as a failed leg carrying metadata.veoFailure, never as a clip quietly rendered by another vendor.
-    if (this.isGoogleOnlyVideo(request)) return this.runVeoOnly(videoRequest);
-
-    // PHOTOREALISTIC i2v — try the premium image-to-video model (Kling/Seedance)
-    // FIRST: it animates the clip FROM this scene's identity frame, so motion is
-    // smooth + photorealistic and the character never drifts. Returns null when
-    // disabled, no Replicate token, no start image, or the create failed → fall
-    // straight through to the proven LTX engine below (the upgrade never breaks a
-    // render). The returned `replicate` task-ref is resolved by the SAME poll path.
-    const i2v = await this.tryI2vClip(videoRequest);
-    if (i2v) return i2v;
-
-    // VIDEO ENGINE — prefer the DIRECT LTX-2.3 API (api.ltx.video) whenever a
-    // funded LTX key is configured: the operator provisioned LTX_VIDEO_API_KEY to
-    // spend their LTX.video balance, so that account is the PRIMARY render engine.
-    // runLtxVideo itself fails over to the Replicate-hosted LTX path on a credit/
-    // auth error, so a dry/invalid LTX key can never dead-end the render. Set
-    // LTX_VIA_REPLICATE=1 to force the Replicate-hosted LTX-2-fast path instead
-    // (e.g. while the direct account is empty). Either way the engine is LTX-2.
-    const forceReplicate = process.env.LTX_VIA_REPLICATE === '1';
-    const hasReplicate = typeof process.env.REPLICATE_API_TOKEN === 'string' && process.env.REPLICATE_API_TOKEN.trim().length > 0;
-
-    if (!forceReplicate && hasLtxApiKey()) {
-      return this.runLtxVideo(request);
-    }
-    if (hasReplicate) {
-      return this.runReplicateLtxVideo(request);
-    }
-    // No LTX key and no Replicate token → still attempt direct LTX (honest fail).
-    return this.runLtxVideo(request);
+    // GOOGLE-ONLY, always (MASTER TASK v3.1 · lib/veo/policy · docs/VEO_ENGINE.md §3) — Veo is the ONLY engine. No
+    // Runway / Kling / LTX leg, no engine down-shift, and the Cinema panel's Kling/Hailuo pick does not apply: a Veo
+    // miss comes back as a failed leg carrying metadata.veoFailure, never as a clip quietly rendered by another vendor.
+    return this.runVeoOnly(videoRequest);
   }
 
   /**
@@ -704,247 +594,6 @@ export class ServiceManager {
       if (w > 0 && h > 0) return w > h ? '16:9' : w < h ? '9:16' : '1:1';
     }
     return /vert|portrait|9:16|story|tall/i.test(a) ? '9:16' : '16:9';
-  }
-
-  /**
-   * Build the Replicate `input` for the configured i2v model. Each family names
-   * its first-frame + control params differently, so map by model owner/name and
-   * only ever send keys that model's schema accepts (an unknown key → 422). `aspect`
-   * is already clamped (toI2vAspect) to 16:9 / 9:16 / 1:1.
-   */
-  private buildI2vInput(model: string, prompt: string, aspect: string, startImage: string, negative?: string): Record<string, unknown> {
-    // PHASE 24 (VECTOR 2) — the SAME shared colour-science grade Runway's promptText gets, so a
-    // mid-storyboard Runway→Kling fallback keeps identical tone/contrast (no seam across providers).
-    const fullPrompt = withColorScience(`${prompt}, photorealistic, cinematic`, 900);
-    // PHASE 22 (VECTOR 1) — the Director's scene-tailored negative (from the film pipeline's
-    // selectedOptions.negativePrompt) is MERGED ahead of the fixed baseline and passed to the model's
-    // NATIVE negative_prompt field — where it's weighted far more heavily than any in-prompt "no x".
-    // This is the wire that was missing: previously every Kling clip got only VIDEO_I2V_NEGATIVE and
-    // the per-scene negative (tint/deform suppression) was dropped. Capped so it can't blow the field.
-    const neg = negative && negative.trim()
-      ? `${VIDEO_I2V_NEGATIVE}, ${negative.trim()}`.slice(0, 600)
-      : VIDEO_I2V_NEGATIVE;
-    const m = model.toLowerCase();
-    if (/kling/.test(m)) {
-      // kling-v2.1 has no aspect_ratio (it's inferred from start_image); v1.6 does.
-      const base: Record<string, unknown> = { start_image: startImage, prompt: fullPrompt, negative_prompt: neg, duration: 10 }; // 8s grid: Kling's 10s option → assembler trims to the 8s slot (5s would freeze-pad)
-      if (/v1\.6|v1-6|kling-v1/.test(m)) { base.aspect_ratio = aspect; base.cfg_scale = 0.5; }
-      return base;
-    }
-    if (/seedance/.test(m)) {
-      return { image: startImage, prompt: fullPrompt, aspect_ratio: aspect, duration: 10, resolution: '1080p', fps: 24 };
-    }
-    if (/wan-?2|wan2|wan-video/.test(m)) {
-      return { image: startImage, prompt: fullPrompt, negative_prompt: neg, aspect_ratio: aspect };
-    }
-    if (/minimax|hailuo|video-01/.test(m)) {
-      return { first_frame_image: startImage, prompt: fullPrompt, prompt_optimizer: true };
-    }
-    // Generic i2v fallback — the most widely-accepted shape.
-    return { image: startImage, prompt: fullPrompt };
-  }
-
-  /**
-   * PHOTOREALISTIC i2v clip — animate this scene FROM its identity frame using the
-   * premium model (Kling by default). Self-contained Replicate create that returns
-   * a `replicate` task-ref the EXISTING poll path (pollReplicateTask →
-   * normalizeOutput('video')) resolves to the mp4 — exactly like runReplicateLtxVideo.
-   *
-   * Returns null (so the caller falls through to LTX) when: the feature is disabled,
-   * no Replicate token, NO start image (i2v needs a first frame — text-to-video stays
-   * on LTX), or the create failed/timed-out/returned no id. NEVER throws.
-   */
-  private async tryI2vClip(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
-    if (VIDEO_I2V_DISABLED) return null;
-    // PHASE 23 — explicit engine DOWN-SHIFT. When the film retry loop has already spent Kling's
-    // attempts (a prior full Kling+LTX attempt failed), it sets skipI2v so THIS retry skips the
-    // premium i2v create entirely and lands straight on the proven LTX-2 engine — no wasted Kling
-    // create-timeout under cluster saturation. Returning null routes execute() to LTX, which still
-    // honours the character/image anchor + the in-prompt drift clause, so identity continuity holds.
-    if (this.getOption(request.selectedOptions || {}, ['skipI2v', 'forceLtx', 'skip_i2v'])) return null;
-    const startImage = this.resolveClipImage(request);
-    // Veo is the one engine here that also does TEXT-to-video (`image` is optional on its create), and
-    // it is the only engine that can SPEAK a scene's dialogue in-clip. Gating the whole block on an anchor
-    // frame meant a text-only FILM silently skipped Veo and landed on LTX — no native audio, no spoken
-    // line. So with no start image we still try Veo *when the caller opted in* (buildFilmClipRequest sets
-    // veoTextToVideo for film clips), then bail — Runway/Kling/LTX all require the frame, exactly as
-    // before. The opt-in keeps plain chat video ("make me a video of a cat", no image) on its existing
-    // cheaper engine instead of moving the whole text-to-video population onto Veo.
-    const veoEngineOk = request.videoModel !== 'kling' && request.videoModel !== 'hailuo' && veoTransport() !== null;
-    const veoTextToVideoOk = !!this.getOption(request.selectedOptions || {}, ['veoTextToVideo', 'allowVeoT2v']);
-    const veoEligible = veoEngineOk && (!!startImage || veoTextToVideoOk);
-    if (!startImage && !veoEligible) return null; // i2v needs an anchor frame; without one, keep LTX
-
-    const aspect = this.toI2vAspect(
-      this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) || undefined,
-    );
-    // PHASE 22 (VECTOR 1) — the Director's scene negative threaded by the film pipeline. Passed to
-    // buildI2vInput so Kling's NATIVE negative_prompt suppresses the flagged artifacts (sepia/deform).
-    const negativePromptOpt = this.getOption(request.selectedOptions || {}, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
-
-    // DAY-3 Task 2 — invisibly enrich the raw prompt with cinematic properties (shot type, camera motion,
-    // framing, lens, dramatic lighting, mood) before the engine sees it. Film scene prompts are already
-    // cinematically planned → looksEnriched() short-circuits the LLM for them; only a bare user clip triggers
-    // one bounded call, and the deterministic fallback guarantees an enriched string even if the LLM is down.
-    const enrichedPrompt = await expandCinematicPrompt(request.userPrompt, llmText, { timeoutMs: 9_000 });
-
-    // PHASE 24 — RUNWAY Gen-3 Alpha is the PRIMARY premium i2v engine. Try it FIRST; on no key / no
-    // image / any create failure (401/429/quota/timeout) it returns null and we fall straight through
-    // to the existing Replicate Kling→LTX cascade below — same scene params, seamless colour-science.
-    // Inert + byte-identical in prod until RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is set + verified.
-    // Master Contract V3 — the Cinema-panel engine toggle is now authoritative: selecting Kling opts OUT
-    // of the Runway attempt (Kling-first); 'runway'/unset keeps the Runway-first cascade (the default).
-    // GOOGLE VEO — the PRIMARY video engine, on Vertex AI only (v3.1). Tried BEFORE Runway; on a provable refusal
-    // the legacy Runway→Kling→LTX cascade runs as before. Off unless veoTransport() has a Vertex route. Respects the
-    // same Cinema-panel engine opt-out as Runway (explicit Kling/Hailuo selection skips both premium tiers).
-    if (veoEligible) {
-      const veo = await this.submitVeoClip(request, startImage, enrichedPrompt);
-      if (veo.ok) return veo.response;
-      // ⚠️ An AMBIGUOUS Veo submit (timeout / 5xx) may already have created a job Google will bill — falling through
-      // to Runway / Kling would pay for the same clip twice. Only a provable refusal hands the clip to the next engine.
-      if (veo.reason === 'ambiguous') return this.veoFailureResponse(request, veo);
-    }
-    // Every remaining premium engine is image-to-video only.
-    if (!startImage) return null;
-
-    if (request.videoModel !== 'kling' && request.videoModel !== 'hailuo') {
-      const runway = await this.tryRunwayClip(request, startImage, aspect, enrichedPrompt);
-      if (runway) return runway;
-    }
-
-    // DAY-3 — native multi-engine cascade (Kling-native → Luma → LTX → Replicate). Gated on a genuinely
-    // NEW provider key (Kling AK/SK or Luma) being provisioned: prod today has only Replicate + LTX, so this
-    // is skipped entirely and the VERIFIED path below runs byte-identical. When a native key IS present the
-    // cascade submits (fast) and returns a 'video-cascade' task-ref the poll dispatcher resolves per-provider.
-    if (shouldUseNativeCascade(process.env)) {
-      const cascade = await this.tryVideoCascade(request, startImage, aspect, enrichedPrompt);
-      if (cascade) return cascade;
-      // every configured tier failed to accept → fall through to the legacy Replicate/LTX path below
-    }
-
-    const token = process.env.REPLICATE_API_TOKEN;
-    if (!token) return null;
-    // PHASE 2 L5 — per-render i2v model: the Cinema panel's Kling/Hailuo toggle wins,
-    // else the REPLICATE_VIDEO_MODEL env default. buildI2vInput already shapes the
-    // input per model family (kling start_image / minimax first_frame_image).
-    const KLING_I2V = VIDEO_PRIMARY; // hard-locked to Kling v2.1 (was v1.6-standard) — see lib/video/modelLock
-    const model =
-      request.videoModel === 'hailuo' ? 'minimax/hailuo-02'
-      : request.videoModel === 'kling' ? KLING_I2V
-      : VIDEO_I2V_MODEL;
-    const promptHash = this.hashPrompt(request.userPrompt);
-
-    // ONE create+accept attempt for a specific model. Returns the processing task-ref (or a rare
-    // immediate success), or null on ANY failure (create 4xx/5xx, timeout, no id, throw) so the
-    // caller can fail over. NEVER throws — the never-throws contract lives here.
-    const attempt = async (modelId: string): Promise<ServiceManagerResponse | null> => {
-      const input = this.buildI2vInput(modelId, enrichedPrompt, aspect, startImage, negativePromptOpt);
-      try {
-        // One quick retry on a transient 5xx/network blip; each attempt gets a fresh timeout so a
-        // real latency stall (TimeoutError) bails fast and hands off to the failover / LTX.
-        const res = await withRetry(
-          async () => {
-            const r = await fetch(`https://api.replicate.com/v1/models/${modelId}/predictions`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-              cache: 'no-store',
-              body: JSON.stringify({ input }),
-              signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
-            });
-            if (!r.ok && r.status >= 500) throw new Error(`i2v create ${r.status}`);
-            return r;
-          },
-          { maxAttempts: 2, baseDelayMs: 800, label: `i2v-${modelId}` },
-        );
-        if (!res.ok) {
-          // eslint-disable-next-line no-console
-          console.warn(`[i2v] ${modelId} create ${res.status}`);
-          return null;
-        }
-        const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
-        if (!pred.id) return null;
-
-        // Rare immediate completion.
-        const immediateUrl = this.extractUrl(pred.output);
-        if (pred.status === 'succeeded' && immediateUrl) {
-          return {
-            success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
-            message: 'Video generation completed successfully.', assetUrl: immediateUrl, assetType: 'video',
-            predictionStatus: 'succeeded',
-            metadata: { provider: 'replicate', model: modelId, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, providerTaskId: pred.id, promptHash },
-          };
-        }
-        const taskRef = this.encodeTaskRef({
-          provider: 'replicate', providerTaskId: pred.id, sessionId: request.sessionId,
-          serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
-          responseType: 'video', promptHash, createdAt: Date.now(),
-        });
-        // eslint-disable-next-line no-console
-        console.log(`[i2v] ${modelId} accepted clip (${pred.id}) — photorealistic i2v engaged`);
-        return {
-          success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
-          message: `${modelId} accepted the request. Polling for completion.`,
-          predictionId: taskRef, predictionStatus: pred.status === 'failed' ? 'failed' : 'processing',
-          metadata: { provider: 'replicate', model: modelId, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: pred.id, promptHash },
-        };
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn(`[i2v] ${modelId} create error:`, err instanceof Error ? err.message : err);
-        return null;
-      }
-    };
-
-    // CINEMA FAILSAFE MATRIX — the EXPERIMENTAL Hailuo leg fails over to the PROVEN Kling i2v
-    // BEFORE the caller drops to LTX, so a Hailuo latency spike / rate-limit never stalls the
-    // render nor silently skips the hardened Kling tier. Kling/env primaries are unchanged
-    // (a failure returns null → the caller's LTX fallback, exactly as before).
-    const primary = await attempt(model);
-    if (primary) return primary;
-    if (request.videoModel === 'hailuo' && model !== KLING_I2V) {
-      // eslint-disable-next-line no-console
-      console.warn('[i2v] hailuo unavailable → Kling failover (then LTX if that also fails)');
-      const failover = await attempt(KLING_I2V);
-      if (failover) return failover;
-    }
-    return null; // → caller's LTX fallback
-  }
-
-  /**
-   * DAY-3 native multi-engine cascade. Submits the i2v clip through the ordered provider array
-   * (Kling-native → Luma → LTX → Replicate) — a fast, non-blocking SUBMIT that falls through on any
-   * provider failure. Returns a 'video-cascade' task-ref (winning provider encoded) that pollVideoCascadeTask
-   * resolves, or null when every configured tier declined (→ the legacy Replicate/LTX path). NEVER throws.
-   */
-  private async tryVideoCascade(request: ServiceManagerRequest, startImage: string, aspect: string, prompt: string): Promise<ServiceManagerResponse | null> {
-    try {
-      const input: VideoGenInput = {
-        prompt: prompt || request.userPrompt,
-        imageUrl: startImage,
-        aspectRatio: (aspect as Aspect) || '9:16',
-        negativePrompt: 'blur, distortion, low quality, watermark, extra people, deformed face',
-        durationSec: 10, // 8s grid: request the 10s option so the film assembler trims to the 8s slot (5s default would freeze-pad)
-      };
-      const { provider, taskId } = await submitVideoWithFallback(input);
-      const composite = `${provider}::${taskId}`;
-      const promptHash = this.hashPrompt(request.userPrompt);
-      const taskRef = this.encodeTaskRef({
-        provider: 'video-cascade', providerTaskId: composite, sessionId: request.sessionId,
-        serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
-        responseType: 'video', promptHash, createdAt: Date.now(),
-      });
-      // eslint-disable-next-line no-console
-      console.log(`[video-cascade] ${provider} accepted clip (${taskId})`);
-      return {
-        success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
-        message: `${provider} accepted the request. Polling for completion.`,
-        predictionId: taskRef, predictionStatus: 'processing',
-        metadata: { provider: 'replicate' as const, videoProvider: provider, model: provider, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: composite, promptHash },
-      };
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[video-cascade] all providers declined:', err instanceof Error ? err.message : err);
-      return null; // → legacy Replicate/LTX path
-    }
   }
 
   /** Resolve a 'video-cascade' task-ref by dispatching to the winning provider's poll (encoded as "name::id"). */
@@ -973,42 +622,6 @@ export class ServiceManager {
     return {
       success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
       message: 'Rendering…', predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
-    };
-  }
-
-  /**
-   * PHASE 24 — RUNWAY Gen-3 Alpha PRIMARY i2v. A fast, non-blocking CREATE that returns a 'runway'
-   * task-ref the async film poll resolves via pollRunwayTaskRef. Gated on a Runway key + a start frame
-   * (Gen-3's API is image-to-video). Returns null on no key / no image / ANY create failure so the
-   * caller falls through to the Replicate Kling→LTX cascade. NEVER throws. Inert until a key is set.
-   */
-  private async tryRunwayClip(request: ServiceManagerRequest, startImage: string, aspect: string, prompt: string): Promise<ServiceManagerResponse | null> {
-    if (!hasRunwayProvider()) return null;
-    const seedRaw = this.getOption(request.selectedOptions || {}, ['seed', 'consistencySeed']);
-    const seedParsed = seedRaw != null ? Number.parseInt(seedRaw, 10) : NaN;
-    // Runway promptText is capped at 512 chars — withColorScience clamps + appends the shared grade.
-    const created = await createRunwayI2V({
-      promptImage: startImage,
-      promptText: withColorScience(prompt || request.userPrompt, 512),
-      aspect,
-      durationSec: 8, // 8s grid: mapRunwayDuration(8)=10 → a 10s clip the film assembler trims to the 8s slot (no freeze-pad vs a 5s clip)
-      ...(Number.isFinite(seedParsed) && seedParsed >= 0 ? { seed: seedParsed } : {}),
-    });
-    if (!created?.id) return null; // → Replicate/LTX cascade
-    const promptHash = this.hashPrompt(request.userPrompt);
-    const model = runwayModel();
-    const taskRef = this.encodeTaskRef({
-      provider: 'runway', providerTaskId: created.id, sessionId: request.sessionId,
-      serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
-      responseType: 'video', promptHash, createdAt: Date.now(),
-    });
-    // eslint-disable-next-line no-console
-    console.log(`[runway] ${model} accepted clip (${created.id})`);
-    return {
-      success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
-      message: `Runway (${model}) accepted the request. Polling for completion.`,
-      predictionId: taskRef, predictionStatus: 'processing',
-      metadata: { provider: 'replicate' as const, videoProvider: 'runway', model, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: created.id, promptHash },
     };
   }
 
@@ -1064,11 +677,6 @@ export class ServiceManager {
     const seconds = this.getOption(opts, ['veoReferenceMode']) === 'reference' ? 8 : asked <= 4 ? 4 : asked <= 6 ? 6 : 8;
     const audio = this.getOption(opts, ['veoGenerateAudio']) !== '0';
     return { model, perSecondUsd: costPerSecondUsd(model, resolutionFor(seconds), audio, transport), seconds };
-  }
-
-  /** Google-only for this request: the film decided it per clip (buildFilmClipRequest), or the process policy. */
-  private isGoogleOnlyVideo(request: ServiceManagerRequest): boolean {
-    return this.getOption(request.selectedOptions || {}, ['googleOnly']) === '1' || isGoogleOnly();
   }
 
   /** The Google-only render: Veo or a reported miss. Prompt enrichment runs on Gemini only, like everything else here. */
@@ -1286,96 +894,6 @@ export class ServiceManager {
   }
 
   /**
-   * PHASE 60 — Dispatch a clip to Replicate-hosted `lightricks/ltx-video` (the
-   * same Lightricks model), returning a `replicate` task-ref so the EXISTING,
-   * proven Replicate poll path (pollReplicateTask → normalizeOutput('video'))
-   * resolves the mp4. Self-contained: the input is the model's exact schema
-   * ({prompt, aspect_ratio, length, target_size, [image]}), so it never collides
-   * with the shared zeroscope input builder. renderClip's retry loop covers a
-   * transient create failure (this throws on a non-2xx create).
-   */
-  private async runReplicateLtxVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    const token = process.env.REPLICATE_API_TOKEN;
-    if (!token) return this.runLtxVideo(request); // safety net: no token → direct API
-    const promptHash = this.hashPrompt(request.userPrompt);
-    const aspect =
-      this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) ||
-      '16:9';
-    // IDENTITY LOCK — the uploaded reference photo IS the protagonist. The film
-    // pipeline carries it in selectedOptions.characterReference(s); feeding it as
-    // the image-to-video anchor makes every clip animate FROM the user's subject
-    // (same face/wardrobe), not a freshly-invented character.
-    const imageUrl = this.resolveClipImage(request);
-    // LTX-2 (native 1080p + synced audio) with automatic fallback to the proven
-    // legacy clip model, so an LTX-2 hiccup can never break the render pipeline.
-    const { pred, modelLabel } = await this.createReplicateLtxPrediction(
-      token,
-      request.userPrompt,
-      aspect,
-      imageUrl,
-    );
-    // The helper guarantees an id (it throws otherwise); this guard narrows the
-    // optional type for the encodeTaskRef / metadata uses below.
-    if (!pred.id) {
-      throw new Error('Replicate LTX returned no prediction id');
-    }
-    // Rare immediate completion — hand back the URL straight away.
-    const immediateUrl = this.extractUrl(pred.output);
-    if (pred.status === 'succeeded' && immediateUrl) {
-      return {
-        success: true,
-        provider: 'replicate',
-        operation: 'video-avatar',
-        responseType: 'video',
-        message: 'Video generation completed successfully.',
-        assetUrl: immediateUrl,
-        assetType: 'video',
-        predictionStatus: 'succeeded',
-        metadata: {
-          provider: 'replicate',
-          model: modelLabel,
-          operation: 'video-avatar',
-          outputType: 'video',
-          sessionId: request.sessionId,
-          providerTaskId: pred.id,
-          promptHash,
-        },
-      };
-    }
-
-    const taskRef = this.encodeTaskRef({
-      provider: 'replicate',
-      providerTaskId: pred.id,
-      sessionId: request.sessionId,
-      serviceContext: request.serviceContext,
-      intent: request.intent,
-      operation: 'video-avatar',
-      responseType: 'video',
-      promptHash,
-      createdAt: Date.now(),
-    });
-    return {
-      success: true,
-      provider: 'replicate',
-      operation: 'video-avatar',
-      responseType: 'video',
-      message: 'LTX-Video (Replicate) accepted the request. Polling for completion.',
-      predictionId: taskRef,
-      predictionStatus: pred.status === 'failed' ? 'failed' : 'processing',
-      metadata: {
-        provider: 'replicate',
-        model: modelLabel,
-        operation: 'video-avatar',
-        outputType: 'video',
-        sessionId: request.sessionId,
-        taskRef,
-        providerTaskId: pred.id,
-        promptHash,
-      },
-    };
-  }
-
-  /**
    * Resolve the identity-anchor image for a clip → the LTX image-to-video input.
    *
    * Priority: an explicit request.imageUrl, then the film pipeline's
@@ -1410,87 +928,6 @@ export class ServiceManager {
       }
     }
     return undefined;
-  }
-
-  /**
-   * Create a Replicate clip prediction, preferring LTX-2 with graceful fallback.
-   *
-   * LTX-2 (`lightricks/ltx-2-fast` by default, env `REPLICATE_LTX_MODEL`) is the
-   * production-grade Lightricks model: native 1080p/4K with SYNCHRONISED AUDIO
-   * (voices, music, SFX) generated in the same pass — the full LTX-2 capability
-   * set. It is run by MODEL NAME (`/v1/models/{owner}/{name}/predictions`) so it
-   * always uses the latest published version, with a minimal, confirmed input
-   * ({prompt, duration[, image]}); audio + resolution use the model's defaults.
-   *
-   * SAFETY: if the LTX-2 create fails for ANY reason (schema drift, model
-   * unavailable, quota), it transparently falls back to the proven legacy
-   * `lightricks/ltx-video` (pinned version, 640p, no audio). So upgrading the
-   * clip model can never break the just-stabilised render pipeline — worst case
-   * is a silent downgrade to the old quality, never a failed film.
-   *
-   * Returns the raw prediction plus the model label that actually accepted it
-   * (for honest telemetry).
-   */
-  private async createReplicateLtxPrediction(
-    token: string,
-    prompt: string,
-    aspect: string,
-    imageUrl?: string,
-  ): Promise<{ pred: { id?: string; status?: string; output?: unknown }; modelLabel: string }> {
-    const ltx2Model = (process.env.REPLICATE_LTX_MODEL || 'lightricks/ltx-2-fast').trim();
-
-    if (/ltx-2/i.test(ltx2Model)) {
-      // Try image-to-video FIRST (identity-locked to the uploaded subject). If
-      // that create fails — a rejected or oversized reference — retry the SAME
-      // model text-to-video, so a bad image never fails a clip that would
-      // otherwise render (it just loses the photo anchor, keeps LTX-2 quality).
-      const attempts: Array<Record<string, unknown>> = imageUrl
-        ? [{ prompt, duration: 6, image: imageUrl }, { prompt, duration: 6 }]
-        : [{ prompt, duration: 6 }];
-      for (const input of attempts) {
-        try {
-          const res = await fetch(`https://api.replicate.com/v1/models/${ltx2Model}/predictions`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            cache: 'no-store',
-            body: JSON.stringify({ input }),
-            signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
-          });
-          if (res.ok) {
-            const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
-            if (pred.id) return { pred, modelLabel: ltx2Model };
-          }
-          // Non-ok → try the next attempt (image-less), then the legacy model.
-        } catch {
-          /* network/other → try next attempt / legacy */
-        }
-      }
-    }
-
-    // Legacy proven path: lightricks/ltx-video (640p, no audio) by pinned version.
-    const input: Record<string, unknown> = {
-      prompt,
-      aspect_ratio: aspect,
-      length: 97,
-      target_size: 640,
-    };
-    if (imageUrl) input.image = imageUrl;
-    const res = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({ version: REPLICATE_LTX_VIDEO_VERSION, input }),
-      signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw new Error(`Replicate LTX create failed (${res.status}): ${txt.slice(0, 180)}`);
-    }
-    const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
-    if (!pred.id) {
-      throw new Error('Replicate LTX returned no prediction id');
-    }
-    return { pred, modelLabel: 'lightricks/ltx-video' };
   }
 
   private async runNanoBananaImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
@@ -1684,514 +1121,6 @@ export class ServiceManager {
         sessionId: request.sessionId,
         taskRef,
         providerTaskId: prediction.id,
-        promptHash,
-        confidence: request.confidence,
-      },
-    };
-  }
-
-  /**
-   * PHASE 57 — Replicate (Zeroscope) text-to-video fallback. Mirrors
-   * runReplicateImage: validate → resolve the funded `video` route → fire a
-   * prediction → return an immediate asset URL when synchronous, else a
-   * replicate taskRef the existing poll path already understands. Used as the
-   * automatic failover when the primary LTX provider is out of funds (402).
-   * The text-to-video route can't honor an image-anchor, but a generated clip
-   * beats a hard error; image anchors degrade gracefully to prompt-only.
-   */
-  private async runReplicateVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    const options = request.selectedOptions || {};
-    const promptHash = this.hashPrompt(request.userPrompt);
-    const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
-
-    const validation = validateInput({
-      service: 'video',
-      prompt: request.userPrompt,
-      variant: 'text-to-video',
-      quality: 'high',
-      aspectRatio,
-    });
-
-    if (!validation.valid || !validation.sanitized) {
-      throw new Error(validation.error || 'Invalid text-to-video payload for Replicate');
-    }
-
-    validation.sanitized.prompt = request.userPrompt;
-
-    const model = resolveModel('video', validation.sanitized.variant || 'text-to-video');
-    const modelInput = buildModelInput(validation.sanitized);
-    const prediction = await createPrediction(model.id, modelInput);
-
-    if (prediction.status === 'succeeded') {
-      const normalized = normalizeOutput(
-        'video',
-        model.label,
-        model.outputType,
-        prediction.id,
-        prediction.status,
-        prediction.output,
-        prediction.error,
-        prediction.metrics as unknown as Record<string, unknown> | undefined,
-      );
-
-      if (normalized.url) {
-        return {
-          success: true,
-          provider: 'replicate',
-          operation: 'video-avatar',
-          responseType: 'video',
-          message: 'Video generation completed successfully.',
-          assetUrl: normalized.url,
-          assetType: 'video',
-          predictionStatus: 'succeeded',
-          metadata: {
-            provider: 'replicate',
-            model: model.label,
-            operation: 'video-avatar',
-            outputType: model.outputType,
-            sessionId: request.sessionId,
-            providerTaskId: prediction.id,
-            promptHash,
-            confidence: request.confidence,
-            metrics: prediction.metrics,
-          },
-        };
-      }
-    }
-
-    const taskRef = this.encodeTaskRef({
-      provider: 'replicate',
-      providerTaskId: prediction.id,
-      sessionId: request.sessionId,
-      serviceContext: request.serviceContext,
-      intent: request.intent,
-      operation: 'video-avatar',
-      responseType: 'video',
-      promptHash,
-      createdAt: Date.now(),
-    });
-
-    return {
-      success: true,
-      provider: 'replicate',
-      operation: 'video-avatar',
-      responseType: 'video',
-      message: 'Video generation started.',
-      predictionId: taskRef,
-      predictionStatus: prediction.status === 'failed' ? 'failed' : 'processing',
-      metadata: {
-        provider: 'replicate',
-        model: model.label,
-        operation: 'video-avatar',
-        outputType: model.outputType,
-        sessionId: request.sessionId,
-        taskRef,
-        providerTaskId: prediction.id,
-        promptHash,
-        confidence: request.confidence,
-      },
-    };
-  }
-
-  /**
-   * PHASE 57 — true when a provider HTTP failure means "no output is possible"
-   * for a billing/auth reason (out of funds, quota, payment, unauthorized) as
-   * opposed to a deterministic bad-request bug we'd want to surface. Drives the
-   * automatic LTX→Replicate video failover.
-   */
-  private isProviderCreditError(status: number, text: string): boolean {
-    if (status === 402 || status === 429) return true;
-    return /insufficient|insufficient_funds|top.?up|quota|exceeded|payment|balance|out of credit|unauthor|forbidden|denied/i.test(text || '');
-  }
-
-  /** PHASE 47 §3 — abortable sleep used between backoff attempts. */
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  /** A 5xx or 429 is transient and worth retrying; a 4xx is deterministic. */
-  private isRetryableLtxStatus(status: number): boolean {
-    return status === 429 || status >= 500;
-  }
-
-  /**
-   * PHASE 47 §3 — Dispatch the LTX render with bounded exponential backoff.
-   *
-   * Returns the first successful (`response.ok`) Response, OR the final Response
-   * even when it is a non-retryable error — so the caller's existing
-   * `if (!response.ok)` branch still produces the exact provider error text.
-   * Only transient failures (network throw / 429 / 5xx) consume a retry; a
-   * deterministic 4xx returns immediately. Backoff grows 400ms → 800ms → 1600ms
-   * with light jitter to avoid thundering-herd retries across the 5 parallel
-   * clip legs.
-   */
-  private async dispatchLtxWithRetry(url: string, init: RequestInit): Promise<Response> {
-    let lastError: unknown = null;
-    for (let attempt = 1; attempt <= LTX_MAX_DISPATCH_ATTEMPTS; attempt++) {
-      try {
-        // Bound each direct-LTX create attempt so a hanging api.ltx.video call
-        // can't stall the synchronous film dispatch past the gateway limit
-        // (mirrors the Replicate create timeout). A fresh signal per attempt;
-        // respect a caller-supplied signal if one was passed.
-        const attemptInit: RequestInit = {
-          ...init,
-          signal: init.signal ?? AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
-        };
-        const response = await fetch(url, attemptInit);
-        if (response.ok || !this.isRetryableLtxStatus(response.status)) {
-          return response;
-        }
-        // Transient HTTP error — drain the body so the socket can be reused,
-        // then back off and retry (unless this was the final attempt).
-        await response.text().catch(() => undefined);
-        lastError = new Error(`LTX transient HTTP ${response.status}`);
-        if (attempt === LTX_MAX_DISPATCH_ATTEMPTS) return response;
-      } catch (err) {
-        // Network/DNS/abort throw — retry unless we're out of attempts.
-        lastError = err;
-        if (attempt === LTX_MAX_DISPATCH_ATTEMPTS) throw err;
-      }
-      const backoff = LTX_RETRY_BASE_MS * 2 ** (attempt - 1);
-      const jitter = Math.floor(Math.random() * 120);
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[ltx] dispatch attempt ${attempt}/${LTX_MAX_DISPATCH_ATTEMPTS} transient failure; retrying in ${backoff + jitter}ms:`,
-        lastError instanceof Error ? lastError.message : lastError,
-      );
-      await this.delay(backoff + jitter);
-    }
-    // Unreachable (the loop always returns/throws on the final attempt), but the
-    // type checker needs a terminal throw.
-    throw lastError instanceof Error ? lastError : new Error('LTX dispatch failed');
-  }
-
-  private async runLtxVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    // PHASE 45 §1 — accept the key under any provisioned alias.
-    const apiKey = resolveLtxApiKey();
-    if (!apiKey) {
-      // LTX absent. Replicate is normally the *failover* triggered once a
-      // configured LTX endpoint returns a credit/auth error — but with NO LTX key
-      // at all that failover branch (below) is never reached. `selectVideoPrimaryProvider`
-      // is the single source of truth for this choice: with no LTX key it promotes a
-      // provisioned Replicate token to the PRIMARY render path. This is what makes a
-      // Replicate-only deployment actually render clips, instead of the pipeline
-      // pre-flight (hasVideoProvider = LTX || Replicate) waving the run through only
-      // for every clip to skip at ~38% AFTER a founder slot / GEL was reserved.
-      const decision = selectVideoPrimaryProvider();
-      if (decision.primary === 'replicate') {
-        const primary = await this.runReplicateVideo(request);
-        return {
-          ...primary,
-          metadata: {
-            ...primary.metadata,
-            videoPrimary: 'replicate',
-            primaryProviderReason: decision.reason,
-          },
-        };
-      }
-      throw new Error('LTX video API key is not configured (LTX_VIDEO_API_KEY / LTX_API_KEY / LTX2_API_KEY)');
-    }
-
-    const options = request.selectedOptions || {};
-    const promptHash = this.hashPrompt(request.userPrompt);
-
-    // PHASE 40 §2 — Cognitive Prompt Deep-Exploitation. Mine the raw prompt for
-    // camera/style/lighting/tone/audio intent, then (a) decide whether LTX must
-    // generate a synchronized audio track and (b) fold the extracted directorial
-    // traits back into the prompt so none of the user's nuance is truncated.
-    // @Film / cinematic video defaults to audio-on (defaultAudio) — a muted
-    // cinematic clip is exactly the failure mode we are eliminating.
-    const traits = extractPromptTraits(request.userPrompt, { defaultAudio: true });
-    const explicitAudio = this.getOption(options, ['generate_audio', 'generateAudio', 'audio']);
-    const wantAudio = explicitAudio != null
-      ? !/^(false|0|off|no|mute|silent)$/i.test(explicitAudio)
-      : traits.wantsAudio;
-    const enrichedPrompt = enrichVideoPrompt(request.userPrompt, traits, 1500);
-
-    // PHASE 42 §1 — continuity controls. A film-pipeline clip carries a fixed
-    // seed (shared across the 5 consecutive clips) and, when the user supplies a
-    // custom avatar, a character reference — so the protagonist stays identical.
-    const seedRaw = this.getOption(options, ['seed', 'consistencySeed']);
-    const seedParsed = seedRaw != null ? Number.parseInt(seedRaw, 10) : NaN;
-    const seedOpt = Number.isFinite(seedParsed) && seedParsed >= 0 ? seedParsed : undefined;
-    const charRefOpt = this.getOption(options, ['characterReference', 'character_reference', 'avatarReference']) || undefined;
-    // PHASE 45 §2 — multimodal IP-Adapter array: 1–3 reference images locking the
-    // protagonist's identity across the clip. Arrives JSON-encoded from the film
-    // pipeline; falls back silently to the single-ref path when absent/invalid.
-    const charRefsOpt = this.getOption(options, ['characterReferences', 'character_references']);
-    let characterReferences: string[] = [];
-    if (charRefsOpt) {
-      try {
-        const parsedRefs: unknown = JSON.parse(charRefsOpt);
-        if (Array.isArray(parsedRefs)) {
-          characterReferences = parsedRefs
-            .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-            .slice(0, 3);
-        }
-      } catch { /* not JSON — the single characterReference path already covers it */ }
-    }
-
-    // PHASE 50 §3 — image-to-video anchor resolution. "Turn this into a video"
-    // from an existing image card binds the prior asset URL as a HARD first-frame
-    // reference. Accepted under several aliases from the orchestrate selectedOptions,
-    // and falls back to request.imageUrl if a single-image edit context flows in.
-    const imageReferenceOpt =
-      this.getOption(options, [
-        'image_reference', 'imageReference',
-        'frame_input', 'frameInput',
-        'first_frame', 'firstFrame',
-        'sourceImage', 'source_image', 'image_url',
-      ]) || request.imageUrl || undefined;
-
-    // CRITICAL IDENTITY FIX — the film studio uploads the protagonist's selfie as
-    // `characterReference` (NOT as an explicit image_reference). Previously that
-    // only ever reached the /v2/text-to-video endpoint, where LTX does NOT lock to
-    // the face — so the uploaded photo never appeared in the rendered film (the
-    // live "my image isn't in the video" report). When there is no explicit anchor
-    // but a usable HOSTED (https) character reference exists, promote THAT selfie to
-    // the image-to-video first-frame anchor so every clip animates FROM the real
-    // subject. https-only: the film pipeline hosts the selfie to a signed https URL
-    // (well under the imageReference schema bound), and the provider rejects raw
-    // data: URIs; an unhosted data: ref still rides as `character_reference` below
-    // and the Replicate fallback path attempts it image-first.
-    const charRefIsHostedImage =
-      typeof charRefOpt === 'string' && /^https?:\/\//i.test(charRefOpt) && charRefOpt.length <= 4096;
-    const effectiveImageRef =
-      imageReferenceOpt || (charRefIsHostedImage ? charRefOpt : undefined);
-
-    // When an anchor is present, the Video Agent is FORBIDDEN from inventing a
-    // fresh scene: it must ingest and expand upon the active visual. We prepend a
-    // hard continuity directive so the prompt enriches the existing frame rather
-    // than describing something new, then re-clamp to the 1500-char schema bound.
-    const anchoredPrompt = imageReferenceOpt
-      ? enrichVideoPrompt(
-          `Animate the supplied source image as the opening frame. Preserve its exact subject, composition, colour palette and identity, then add natural cinematic motion. ${request.userPrompt}`.trim(),
-          traits,
-          1500,
-        )
-      : enrichedPrompt;
-
-    // PHASE 52 TASK 5 — strict prompt mirroring for framing. If the user TYPED an
-    // explicit orientation ("vertical reel", "anamorphic", "widescreen"), that
-    // directive OVERRIDES the UI/default aspect so an anamorphic ask never ships
-    // as a portrait clip (and vice-versa). When the prompt says nothing about
-    // framing, the selected/default aspect stands.
-    const selectedAspect = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
-    const promptAspect = extractAspectDirective(request.userPrompt);
-    const aspectRatio = promptAspect
-      ? (promptAspect === '9:16' || promptAspect === '4:5' || promptAspect === '3:4' ? '9:16' : '16:9')
-      : selectedAspect;
-    const requestedModel = this.getOption(options, ['model', 'videoModel']) === 'ltx-2-3-pro' ? 'ltx-2-3-pro' : 'ltx-2-3-fast';
-    // PHASE 22 (VECTOR 1) — LTX-2 has NO native negative_prompt field (ltxRequestSchema omits it), so
-    // the only safe lever is an IN-PROMPT drift clause — the same idiom the film prompts already use
-    // ("No on-screen text, titles..."). Applied ONLY when the film pipeline threaded a negative (i.e.
-    // selectedOptions.negativePrompt is set), so standalone video generation stays byte-identical.
-    // Clamped so the appended clause keeps the total within the schema's 1500-char bound.
-    const LTX_DRIFT_CLAUSE = ' Natural true-to-life colour, neutral white balance. No yellow or sepia tint, no facial distortion, no deformed hands, no cartoon or illustration look.';
-    const hasFilmNegative = !!this.getOption(options, ['negativePrompt', 'negative_prompt', 'negative']);
-    const ltxPrompt = hasFilmNegative
-      ? (anchoredPrompt.slice(0, 1500 - LTX_DRIFT_CLAUSE.length) + LTX_DRIFT_CLAUSE)
-      : anchoredPrompt;
-    const parsed = ltxRequestSchema.parse({
-      prompt: ltxPrompt,
-      model: requestedModel,
-      resolution: this.mapLtxResolution(this.getOption(options, ['resolution', 'size']), aspectRatio, requestedModel),
-      duration: this.toNumber(this.getOption(options, ['duration', 'durationSec', 'seconds']), 6),
-      fps: this.clampLtxFps(this.toNumber(this.getOption(options, ['fps']), 24)),
-      generateAudio: wantAudio,
-      ...(seedOpt != null ? { seed: seedOpt } : {}),
-      ...(charRefOpt ? { characterReference: charRefOpt } : {}),
-      ...(effectiveImageRef ? { imageReference: effectiveImageRef } : {}),
-    });
-
-    // PHASE 51 §1 — When an image anchor is present we MUST call the dedicated
-    // image-to-video endpoint and pass the parent asset as the documented
-    // `image_uri` first-frame field, else the endpoint generates an unrelated
-    // scene from prompt text alone (the live "ignored the image" failure).
-    //
-    // PHASE 59 — CRITICAL VERSION FIX. The live API is /v2/, not /v1/. Probing
-    // api.ltx.video confirmed POST /v1/text-to-video still 401s (a lingering
-    // legacy route) BUT the async STATUS endpoint only exists on /v2/
-    // (GET /v1/text-to-video/{id} → 404, GET /v2/text-to-video/{id} → 401). So a
-    // /v1 dispatch could never be polled to completion — every status read 404'd
-    // and the clip span "processing" until the deadline (the 0/5 stall). Per
-    // docs.ltx.video the contract is: POST /v2/{text,image}-to-video → { id },
-    // then poll GET /v2/{...}/{id} until status==completed → result.video_url.
-    const isImageToVideo = !!parsed.imageReference;
-    const ltxEndpoint = isImageToVideo
-      ? `${LTX_BASE_URL}/v2/image-to-video`
-      : `${LTX_BASE_URL}/v2/text-to-video`;
-
-    // Runtime trace — make the LTX create boundary explicit (no secret values):
-    // which endpoint, whether the identity image actually rode along, model + dur.
-    // This is the line that proves an uploaded photo reached the render engine.
-    // eslint-disable-next-line no-console
-    console.log('[ltx:create]', {
-      endpoint: ltxEndpoint.replace(LTX_BASE_URL, ''),
-      model: parsed.model,
-      durationSec: parsed.duration,
-      characterRef: parsed.characterReference ? (/^https?:\/\//i.test(parsed.characterReference) ? 'https' : 'inline') : 'none',
-      characterRefs: characterReferences.length,
-      // 'explicit' = a "turn this into a video" anchor; 'character' = the film
-      // selfie promoted to the first-frame anchor (the identity fix); 'no' = pure
-      // text-to-video. This line PROVES the uploaded face reached the engine.
-      imageAnchor: parsed.imageReference ? (imageReferenceOpt ? 'explicit' : 'character') : 'no',
-    });
-    // PHASE 47 §3 — dispatch through the bounded exponential-backoff retry so a
-    // transient provider blip (the exact failure that dropped clips 3 & 4 in the
-    // PHASE 46 live-fire) self-heals before the master agent gives up.
-    const response = await this.dispatchLtxWithRetry(ltxEndpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: parsed.prompt,
-        model: parsed.model,
-        resolution: parsed.resolution,
-        duration: parsed.duration,
-        fps: parsed.fps,
-        generate_audio: parsed.generateAudio,
-        ...(parsed.seed != null ? { seed: parsed.seed } : {}),
-        ...(parsed.characterReference ? { character_reference: parsed.characterReference } : {}),
-        ...(characterReferences.length ? { character_references: characterReferences } : {}),
-        // PHASE 51 §1 — bind the parent image as the hard first-frame anchor on
-        // the image-to-video endpoint. `image_uri` is the authoritative field
-        // name (docs.ltx.video). This is the line that makes LTX animate the
-        // ACTUAL image instead of hallucinating a fresh scene from text.
-        ...(parsed.imageReference ? { image_uri: parsed.imageReference } : {}),
-      }),
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      // PHASE 57 — a billing/auth failure from LTX (e.g. 402 insufficient_funds)
-      // must NOT be a dead end: transparently fail over to the funded Replicate
-      // (Zeroscope) text-to-video path so the user still receives a clip. Only
-      // genuine credit/auth failures fall over; a deterministic 4xx bad-request
-      // still surfaces so we never mask our own bugs.
-      if (this.isProviderCreditError(response.status, err)) {
-        const fallback = await this.runReplicateVideo(request).catch(() => null);
-        if (fallback && fallback.success) {
-          return {
-            ...fallback,
-            metadata: {
-              ...fallback.metadata,
-              videoFallback: 'ltx->replicate',
-              primaryProvider: 'ltx',
-              primaryProviderError: `LTX request failed (${response.status})`,
-            },
-          };
-        }
-      }
-      throw new Error(`LTX request failed (${response.status}): ${err || 'unknown error'}`);
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-
-    if (contentType.includes('application/json')) {
-      const payload = await response.json().catch(() => ({}));
-      const outputUrl = this.extractUrl(payload);
-      const providerTaskId = this.extractTaskId(payload);
-
-      if (outputUrl) {
-        return {
-          success: true,
-          provider: 'ltx',
-          operation: 'video-avatar',
-          responseType: 'video',
-          message: 'Video generation completed successfully.',
-          assetUrl: outputUrl,
-          assetType: 'video',
-          predictionStatus: 'succeeded',
-          metadata: {
-            provider: 'ltx',
-            model: parsed.model,
-            operation: 'video-avatar',
-            outputType: 'video',
-            audioEnabled: parsed.generateAudio,
-            imageAnchored: !!parsed.imageReference,
-            sessionId: request.sessionId,
-            promptHash,
-            confidence: request.confidence,
-            raw: payload,
-          },
-        };
-      }
-
-      if (providerTaskId) {
-        const taskRef = this.encodeTaskRef({
-          provider: 'ltx',
-          providerTaskId,
-          sessionId: request.sessionId,
-          serviceContext: request.serviceContext,
-          intent: request.intent,
-          operation: 'video-avatar',
-          responseType: 'video',
-          promptHash,
-          createdAt: Date.now(),
-        });
-
-        return {
-          success: true,
-          provider: 'ltx',
-          operation: 'video-avatar',
-          responseType: 'video',
-          message: this.extractText(payload) || 'LTX accepted request. Polling for completion.',
-          predictionId: taskRef,
-          predictionStatus: 'processing',
-          metadata: {
-            provider: 'ltx',
-            model: parsed.model,
-            operation: 'video-avatar',
-            outputType: 'video',
-            audioEnabled: parsed.generateAudio,
-            sessionId: request.sessionId,
-            taskRef,
-            providerTaskId,
-            promptHash,
-            confidence: request.confidence,
-            raw: payload,
-          },
-        };
-      }
-
-      throw new Error(this.extractText(payload) || 'LTX returned no output URL or task ID');
-    }
-
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.byteLength > 20 * 1024 * 1024) {
-      throw new Error('LTX returned oversized video payload for inline transport');
-    }
-
-    // PHASE 51 §2 — re-host the binary MP4 to CSP-allowed *.supabase.co storage
-    // and serve a real https URL. A multi-MB inline `data:` video is the known
-    // iOS / standalone-PWA infinite-spinner failure — the <video> element never
-    // fires loadedmetadata for a giant data: source, so PreviewWorkspace hangs
-    // on "assembling" forever even though the render succeeded. Fail-safe: the
-    // helper falls back to the data: URL when storage is unconfigured.
-    const hostedUrl = await this.rehostLtxVideo(bytes, contentType, request.sessionId, promptHash);
-
-    return {
-      success: true,
-      provider: 'ltx',
-      operation: 'video-avatar',
-      responseType: 'video',
-      message: 'Video generation completed successfully.',
-      assetUrl: hostedUrl,
-      assetType: 'video',
-      predictionStatus: 'succeeded',
-      metadata: {
-        provider: 'ltx',
-        model: parsed.model,
-        operation: 'video-avatar',
-        outputType: 'video',
-        audioEnabled: parsed.generateAudio,
-        imageAnchored: !!parsed.imageReference,
-        rehosted: /^https:\/\//i.test(hostedUrl),
-        sessionId: request.sessionId,
         promptHash,
         confidence: request.confidence,
       },
@@ -2844,43 +1773,6 @@ export class ServiceManager {
     return fromMap[normalized] || '1:1';
   }
 
-  private mapLtxResolution(
-    value: string | undefined,
-    aspectRatio: string,
-    model: 'ltx-2-3-fast' | 'ltx-2-3-pro' = 'ltx-2-3-fast',
-  ): '1920x1080' | '1080x1920' | '2560x1440' | '3840x2160' {
-    const supported = LTX_SUPPORTED_RESOLUTIONS[model];
-    const normalized = (value || '').trim().toLowerCase().replace(/\s+/g, '');
-
-    // Honor an explicit, supported resolution if the caller provided one.
-    if (supported.includes(normalized)) {
-      return normalized as '1920x1080' | '1080x1920' | '2560x1440' | '3840x2160';
-    }
-
-    // Otherwise derive from aspect ratio. Vertical → portrait HD, everything
-    // else → landscape HD. (Square/4:3 have no native LTX size, so we land on
-    // the safe 16:9 default the API always accepts.)
-    if (aspectRatio === '9:16' || aspectRatio === '3:4') {
-      return '1080x1920';
-    }
-    return '1920x1080';
-  }
-
-  private clampLtxFps(value: number): 24 | 25 | 30 {
-    if (!Number.isFinite(value)) return 24;
-    // Snap to the nearest LTX-accepted frame rate (24 / 25 / 30).
-    let nearest: 24 | 25 | 30 = 24;
-    let bestDelta = Infinity;
-    for (const candidate of LTX_ALLOWED_FPS) {
-      const delta = Math.abs(candidate - value);
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        nearest = candidate;
-      }
-    }
-    return nearest;
-  }
-
   private normalizeHeygenAspect(value?: string): '16:9' | '9:16' | '1:1' {
     const normalized = this.normalizeAspectRatio(value);
     if (normalized === '9:16') return '9:16';
@@ -2919,11 +1811,6 @@ export class ServiceManager {
     if (/ultra|4k/i.test(value)) return 'ultra';
     if (/high|hd|pro/i.test(value)) return 'high';
     return 'standard';
-  }
-
-  private toNumber(value: string | undefined, fallback: number): number {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
   }
 
   private getOption(options: Record<string, string>, keys: string[]): string | undefined {
