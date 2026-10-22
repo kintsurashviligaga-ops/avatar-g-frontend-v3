@@ -32,7 +32,10 @@ export function imageTaskKind(deps: () => ImageDeps, startWorker: (id: string) =
     },
     async cancel(userId, id) {
       try { await cancelImage(deps(), userId, id); return 'ok'; }
-      catch (e) { return (e as { code?: string }).code === 'not_running' ? 'not_running' : 'not_found'; }
+      catch (e) {
+        const code = (e as { code?: string }).code;
+        return code === 'not_running' ? 'not_running' : code === 'jobs_unavailable' ? 'busy' : 'not_found';
+      }
     },
     startWorker,
   };

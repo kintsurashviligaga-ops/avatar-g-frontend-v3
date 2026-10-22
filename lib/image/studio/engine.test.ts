@@ -91,6 +91,14 @@ test('queued cancel refunds and prohibits late delivery', async () => {
   expect(f.deps.generate).not.toHaveBeenCalled();
   expect(f.net()).toBe(0);
 });
+test('a cancel whose write cannot land answers a retryable 503, not "already final", and leaves the job running', async () => {
+  const f = await queued();
+  f.store.down = true;
+  await expect(cancelImage(f.deps, USER, f.q.jobId)).rejects.toMatchObject({ code: 'jobs_unavailable', status: 503 });
+  f.store.down = false;
+  expect(f.store.rows.get(f.q.jobId)!.status).toBe('pending');
+  expect((await cancelImage(f.deps, USER, f.q.jobId)).status).toBe('cancelled');
+});
 test('cancel while provider is in flight fences late output and keeps remote capacity until TTL', async () => {
   const f = await queued(), entered = deferred<void>(), output = deferred<Awaited<ReturnType<typeof f.deps.generate>>>();
   f.deps.generate = jest.fn(async () => { entered.resolve(); return output.promise; });

@@ -62,8 +62,8 @@ function after(name: string, work: () => Promise<unknown>): void {
   if (!runAfterResponse(work, name)) void work().catch(() => undefined);
 }
 
-const cancelled = (r: { ok: true } | { ok: false; error: string }): 'ok' | 'not_running' | 'not_found' =>
-  r.ok ? 'ok' : r.error === 'not_running' ? 'not_running' : 'not_found';
+const cancelled = (r: { ok: true } | { ok: false; error: string }): 'ok' | 'not_running' | 'not_found' | 'busy' =>
+  r.ok ? 'ok' : r.error === 'not_running' ? 'not_running' : r.error === 'jobs_unavailable' ? 'busy' : 'not_found';
 
 const lease = (row: TaskRow) => leaseRowOf(row as unknown as Record<string, unknown>);
 

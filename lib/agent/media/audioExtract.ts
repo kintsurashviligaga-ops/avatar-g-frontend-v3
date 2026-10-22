@@ -382,7 +382,9 @@ export async function cancelAudioJob(deps: AudioExecDeps, input: { userId: strin
   const before = jobId ? await deps.store.read(jobId) : null;
   if (!before || before.exec?.kind !== AUDIO_KIND) return err('not_found', 'No such job.');
   const r = await cancel(deps.store, jobId, input.userId, AUDIO_CANCELLED, false);
-  if (!r.ok) return r.reason === 'final' ? err('not_running', 'This is no longer running.', { jobId }) : err('not_found', 'No such job.');
+  if (!r.ok) return r.reason === 'final' ? err('not_running', 'This is no longer running.', { jobId })
+    : r.reason === 'busy' ? err('jobs_unavailable', 'It is still running; the stop did not land. Try again.', { jobId })
+    : err('not_found', 'No such job.');
   await deps.audit({ userId: input.userId, op: 'audio_extract', phase: 'cancel', outcome: 'cancelled', jobId });
   return { ok: true };
 }

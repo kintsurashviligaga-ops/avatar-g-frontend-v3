@@ -262,6 +262,7 @@ export async function cancelMusic(deps: MusicDeps, userId: string, id: string) {
   const before = await deps.store.read(id);
   if (!isMusic(before, userId)) throw new MusicError('not_found', 'Music job not found.', 404);
   const r = await cancel(deps.store, id, userId, 'cancelled: stopped by the user', stateOf(before).billing !== 'rejected');
+  if (!r.ok && r.reason === 'busy') throw new MusicError('cancel_busy', 'The music job is still running; the stop did not land.', 503);
   if (!r.ok) throw new MusicError('not_running', 'This music job is already final.', 409);
   await settleMusic(deps, id);
   await deps.audit({ userId, jobId: id, phase: 'cancel', code: 'cancelled' });

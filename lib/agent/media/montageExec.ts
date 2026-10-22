@@ -797,7 +797,9 @@ export async function cancelMontageJob(
   const before = jobId ? await deps.store.read(jobId) : null;
   if (!before || before.exec?.kind !== MONTAGE_KIND) return err('not_found', 'No such edit.');
   const r = await cancel(deps.store, jobId, input.userId, CANCELLED, reserveOf(before) !== null);
-  if (!r.ok) return r.reason === 'final' ? err('not_running', 'This edit is no longer running.', { jobId }) : err('not_found', 'No such edit.');
+  if (!r.ok) return r.reason === 'final' ? err('not_running', 'This edit is no longer running.', { jobId })
+    : r.reason === 'busy' ? err('jobs_unavailable', 'The edit is still running; the stop did not land. Try again.', { jobId })
+    : err('not_found', 'No such edit.');
   await deps.audit({ userId: input.userId, op: 'montage', phase: 'cancel', outcome: 'cancelled', jobId });
   await payDebt(deps, r.row);
   return { ok: true };

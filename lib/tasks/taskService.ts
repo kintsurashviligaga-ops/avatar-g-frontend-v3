@@ -28,7 +28,7 @@ export interface TaskKind {
   status(row: TaskRow, userId: string, opts: ReadOpts): Promise<{ task: TaskView; needsWorker: boolean } | null>;
   /** The view for a list: no recovery, no re-signing. */
   view(row: TaskRow): TaskView | null;
-  cancel(userId: string, id: string): Promise<'ok' | 'not_running' | 'not_found'>;
+  cancel(userId: string, id: string): Promise<'ok' | 'not_running' | 'not_found' | 'busy'>;
   startWorker(id: string): void;
 }
 
@@ -75,7 +75,7 @@ export async function listTasks(deps: TaskDeps, input: { userId: string; active:
 
 export type CancelOutcome =
   | { ok: true; task: TaskView | null }
-  | { ok: false; error: 'not_found' | 'not_running' | 'not_cancellable' };
+  | { ok: false; error: 'not_found' | 'not_running' | 'not_cancellable' | 'busy' };
 
 /** Stop one of the caller's tasks. Only a lease job can be stopped server-side. */
 export async function cancelTask(deps: TaskDeps, input: { userId: string; id: string }): Promise<CancelOutcome> {
