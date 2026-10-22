@@ -91,7 +91,7 @@ function extractAudio(j: unknown): LyriaTrack | null {
  * Ask the budget guard whether one more track fits.
  *
  * ⚠️ FAILS CLOSED (Music Studio v1, Phase 2). This used to answer `true` when the guard threw, and accepted a verdict the
- * guard reached without a readable spend ledger (`degraded`, which BillingGuard defaults to "allowed"), so a broken
+ * guard reached without a readable spend ledger (`degraded`, which BillingGuard then answered "allowed"), so a broken
  * budget check silently authorized a paid Lyria call. Now a guard that throws or cannot read the spend refuses; the
  * caller's failure path refunds the reserved credits (the request is never charged for a track it did not get).
  */
@@ -112,8 +112,11 @@ export async function recordMusicUsage(model: string = lyriaModel()): Promise<vo
     const { recordUsage } = await import('@/lib/services/billing/BillingGuard');
     const { estimateCost } = await import('@/lib/services/billing/costModel');
     await recordUsage(estimateCost({ service: 'music', model, units: 1 }));
-  } catch {
-    /* bookkeeping only — never surfaces to the caller */
+  } catch (err) {
+    // Never surfaces to the caller (the track is already in hand). recordUsage itself never throws and keeps a row the
+    // ledger refused, so this is the guard module or the estimate failing: the track's cost is unknown. Said loudly.
+    // eslint-disable-next-line no-console
+    console.error('[lyria] booking failed, the track is unbooked:', err instanceof Error ? err.message : err);
   }
 }
 
@@ -129,7 +132,7 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
   // BUDGET GATE (Master Task §2.1.1). Music is a real per-track provider charge, so it passes the same
   // guard as image/video. A refusal returns null — the SAME shape every other miss returns here — so the
   // caller's existing failure path (502 + refund) handles it without a new error path. `guardedCall` books the cost
-  // only on success, and fails OPEN if the guard itself is broken.
+  // only on success, and refuses if the guard itself is broken.
   if (!(await musicWithinBudget(model))) {
     // eslint-disable-next-line no-console
     console.warn('[lyria] refused by the platform budget guard → the request fails (no fallback, R7)');

@@ -6,9 +6,10 @@
  * Master Task §2.1.1 says the guard runs before EVERY API call. Threading four separate steps through a
  * dozen call sites by hand is how one of them ends up unguarded, so the sequence lives here once.
  *
- * DEGRADES, NEVER BREAKS: if the guard itself throws, the call still runs. A bookkeeping fault must not
- * take the product down — that is what the loud `console.error` and the `ledger_unavailable` alert are for.
- * The only thing that stops a call is an explicit "no" from the budget.
+ * FAILS CLOSED (MASTER TASK v3.1, audit F-05): if the guard itself throws, the call does NOT run. It is refused as
+ * `guard_unavailable`, exactly like an unreadable ledger, because a guard that cannot answer has not said yes. This
+ * used to run the call anyway. Booking after a successful call never throws into the caller (recordUsage keeps a row
+ * the ledger refused; see BillingGuard UNBOOKED).
  */
 
 import 'server-only';
@@ -47,16 +48,16 @@ export interface GuardedCallOptions extends EstimateInput {
 export async function guardedCall<T>(opts: GuardedCallOptions, fn: () => Promise<T>): Promise<T> {
   const estimate = estimateCost(opts);
 
-  let allowed = true;
-  let reason = 'ok';
+  let allowed = false;
+  let reason = 'guard_unavailable';
   try {
     const decision = await canProceed(estimate, opts.isFreeTier === undefined ? {} : { isFreeTier: opts.isFreeTier });
     allowed = decision.allowed;
     reason = decision.reason;
   } catch (err) {
-    // The guard broke, not the budget. Fail OPEN and shout — see the fail-direction note in BillingGuard.
+    // The guard broke, not the budget. Refuse and shout — see FAIL DIRECTION in BillingGuard.
     // eslint-disable-next-line no-console
-    console.error('[guardedCall] budget check threw → allowing the call:', err instanceof Error ? err.message : err);
+    console.error('[guardedCall] budget check threw → refusing the call:', err instanceof Error ? err.message : err);
   }
   if (!allowed) throw new BudgetExceededError(opts.service, reason);
 

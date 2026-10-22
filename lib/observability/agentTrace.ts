@@ -8,8 +8,10 @@
  * canonical wholesale-vs-retail ledger to aggregate over.
  *
  * Failure-safe: if the service-role client is unconfigured or the insert
- * errors out, the trace is silently dropped. The user-facing flow MUST NOT
- * depend on the trace landing.
+ * errors out, the trace is dropped (logged, never thrown). The user-facing
+ * flow MUST NOT depend on the trace landing. recordTrace answers whether the
+ * row landed, so a caller whose row IS money (BillingGuard.recordUsage) can
+ * keep what was lost instead of silently forgetting it.
  */
 
 import 'server-only';
@@ -61,20 +63,25 @@ export interface AgentTraceRow {
   deductRef?: string;
 }
 
-/** Insert one row. Silently swallows errors. */
-export async function recordTrace(row: AgentTraceRow): Promise<void> {
+/**
+ * Insert one row. Never throws. Resolves true when the row landed, false when it did not: no service-role client, the
+ * insert threw, or the insert ANSWERED an error (supabase-js returns `{ error }` instead of throwing, and that answer
+ * used to be ignored, so a rejected row looked exactly like a written one).
+ */
+export async function recordTrace(row: AgentTraceRow): Promise<boolean> {
   let supabase;
   try {
     supabase = createServiceRoleClient();
   } catch (err) {
-    // No service-role client configured — drop trace silently.
+    // No service-role client configured — the trace is dropped.
     // eslint-disable-next-line no-console
     console.warn('[agentTrace] service-role client unavailable:', err instanceof Error ? err.message : err);
-    return;
+    return false;
   }
 
+  let landed = false;
   try {
-    await supabase.from('agent_evolution_traces').insert({
+    const res = await supabase.from('agent_evolution_traces').insert({
       user_id: row.userId,
       agent_id: row.agentId,
       worker_kind: row.workerKind,
@@ -87,6 +94,13 @@ export async function recordTrace(row: AgentTraceRow): Promise<void> {
       status: row.status ?? 'succeeded',
       metadata: row.metadata ?? {},
     });
+    const error = (res as { error?: { message?: string } | null } | null | undefined)?.error;
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.warn('[agentTrace] insert rejected:', error.message ?? 'unknown error');
+    } else {
+      landed = true;
+    }
   } catch (err) {
     // Trace is observability, never user-facing — log and move on.
     // eslint-disable-next-line no-console
@@ -104,7 +118,7 @@ export async function recordTrace(row: AgentTraceRow): Promise<void> {
     row.costRetailGel > 0;
 
   // Never debit Production wallets from an unisolated Preview (lib/env/previewIsolation).
-  if (!shouldDebit || paidWritesBlockedOnPreview()) return;
+  if (!shouldDebit || paidWritesBlockedOnPreview()) return landed;
 
   const ref = row.deductRef ?? `${row.agentId}:${row.action ?? 'run'}:${row.userId}:${Date.now()}`;
 
@@ -122,6 +136,7 @@ export async function recordTrace(row: AgentTraceRow): Promise<void> {
     // eslint-disable-next-line no-console
     console.warn('[agentTrace] debit_wallet_gel call failed:', err instanceof Error ? err.message : err);
   }
+  return landed;
 }
 
 /**

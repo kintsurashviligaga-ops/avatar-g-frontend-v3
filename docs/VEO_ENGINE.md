@@ -94,7 +94,7 @@ Veo failure — surfaced honestly and refunded by the existing per-leg rollback 
 | `VIDEO_GOOGLE_ONLY` | default on |
 | `FILM_ALLOW_ANONYMOUS` | default **off**: every paid generation (film, chat image/video/music/avatar, storyboard, remix) needs a session — `lib/auth/generationGate.ts` |
 | `DAILY_COST_LIMIT` / `MONTHLY_COST_LIMIT` | budget guard ceilings in USD (defaults $10 / $300); Google-only clips are priced at the real Veo rate |
-| `BILLING_GUARD_FAIL_CLOSED` | `1` refuses paid calls while the guard cannot read spend (default fails open) |
+| `BILLING_GUARD_FAIL_CLOSED` | Removed. The guard always refuses paid calls while it cannot read spend (MASTER TASK v3.1, fails closed) |
 | `GEMINI_PROBE_MODEL` | the model the admin provider probe spends one token on to prove the prepaid balance (default `gemini-2.5-flash`) |
 
 Setup runbook: `docs/VEO_VERTEX_SETUP.md`.

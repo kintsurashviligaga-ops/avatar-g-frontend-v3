@@ -619,7 +619,7 @@ export interface RunInput {
 export const CANCELLED = 'cancelled by the user';
 
 /** The platform budget's refusal reasons (lib/services/billing/budgetPolicy), each its own montage code. */
-export const BUDGET_REASONS = ['daily_limit', 'monthly_limit', 'service_suspended', 'full_stop'] as const;
+export const BUDGET_REASONS = ['daily_limit', 'monthly_limit', 'service_suspended', 'full_stop', 'guard_unavailable'] as const;
 export type BudgetReason = (typeof BUDGET_REASONS)[number];
 
 /** The error column of a failed row → the code the chat speaks. Rows are written `<code>: <detail>`. */

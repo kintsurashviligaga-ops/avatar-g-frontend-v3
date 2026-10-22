@@ -10,7 +10,7 @@
  *      together; refused IN-STREAM (a guest's refusal is `auth_required`, which opens the sign-in sheet);
  *   5. the chat MODE (the header's Fast · Thinking · Pro · Lite picker, lib/chat/chatModes): a Pro turn also draws on
  *      the per-user Pro allowance (CHAT_PRO_USER) and is DOWNGRADED to Fast — not refused — once that is spent;
- *   6. the platform budget pre-check at the mode's primary model's rate (BillingGuard, fails open) — refused IN-STREAM;
+ *   6. the platform budget pre-check at the mode's primary model's rate (BillingGuard, fails closed) — refused IN-STREAM;
  *   7. platform prompt (lib/chat/platformPrompt) + the user's profile facts + vector memory, then the agent profile
  *      (lib/agents/profile) turns persona + prompt into the Gemini config, and the mode lays its generation settings
  *      over it (`applyChatMode`);
@@ -57,7 +57,7 @@ import { savedFactsBlock } from '@/lib/memory/context';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, refundRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isReplyLocale, resolveReplyLocale } from '@/lib/chat/replyLocale';
-import { chatBudgetRefusal, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { chatBudgetRefusal, bookChatUsage, GUARD_UNAVAILABLE } from '@/lib/services/billing/chatBudget';
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { anonymousGenerationAllowed, isAnonymousUser, signInToGenerateBody } from '@/lib/auth/generationGate';
 import {
@@ -637,7 +637,7 @@ export async function POST(req: NextRequest) {
   // Started now, awaited inside the stream: their latencies overlap each other and the Response is returned at once.
   // The budget estimate covers the platform prompt and the history text, not just the latest message, and is priced
   // at the mode's PRIMARY model — a Pro turn pre-checked at the flat Flash rate looked cheaper than it is.
-  const budgetPromise = chatBudgetRefusal(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => null);
+  const budgetPromise = chatBudgetRefusal(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => GUARD_UNAVAILABLE);
   const preamblesPromise: Promise<[string | null, string | null]> =
     auth.supabase && accountId
       ? Promise.all([
@@ -724,7 +724,7 @@ export async function POST(req: NextRequest) {
 
       try {
         // ── BUDGET GATE (Master Task §2.1.1) — in-stream, so a refusal is a normal assistant message, not a dead
-        //    turn. Fails OPEN on a guard fault.
+        //    turn. Fails CLOSED on a guard fault (`guard_unavailable`, worded "try again shortly").
         const budgetRefused = await budgetPromise;
         if (budgetRefused) {
           tryWrite({ meta: { provider: 'budget', model: 'none' } });

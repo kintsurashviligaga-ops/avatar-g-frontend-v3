@@ -65,7 +65,8 @@ export interface Alert {
     | 'free_tier_restricted'
     | 'chat_image_only'
     | 'full_stop'
-    | 'ledger_unavailable';
+    | 'ledger_unavailable'
+    | 'booking_unrecorded';
   message: string;
   /** The window that triggered it, when applicable. */
   usage?: UsageWindow;
@@ -131,8 +132,11 @@ export interface ProceedInput extends PolicyInput {
 export interface ProceedDecision {
   allowed: boolean;
   mode: BudgetMode;
-  /** Machine-readable reason when `allowed` is false — surfaced to the UI as "ბიუჯეტი ამოიწურა". */
-  reason: 'ok' | 'daily_limit' | 'monthly_limit' | 'service_suspended' | 'full_stop';
+  /**
+   * Machine-readable reason when `allowed` is false — surfaced to the UI as "ბიუჯეტი ამოიწურა". `guard_unavailable` is
+   * the shell's (BillingGuard), never this pure core's: the spend could not be read, so nothing may run.
+   */
+  reason: 'ok' | 'daily_limit' | 'monthly_limit' | 'service_suspended' | 'full_stop' | 'guard_unavailable';
   /** Projected spend if this call goes ahead. */
   projectedDaily: number;
   projectedMonthly: number;

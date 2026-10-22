@@ -39,6 +39,17 @@ describe('budgetRefusalMessage', () => {
     expect(budgetRefusalMessage('en', 'service_suspended')).toMatch(/paused for the rest of the month/);
   });
 
+  it('an unavailable guard is "try again shortly": no limit, no reset time, nothing charged', () => {
+    for (const l of ['ka', 'en', 'ru']) {
+      const m = budgetRefusalMessage(l, 'guard_unavailable');
+      expect(m).not.toBe(budgetRefusalMessage(l, 'daily_limit'));
+      expect(m).not.toContain('04:00');
+    }
+    expect(budgetRefusalMessage('en', 'guard_unavailable')).toMatch(/can't check its AI budget right now.*Nothing was taken from your balance.*try again shortly/);
+    expect(budgetRefusalMessage('ka', 'guard_unavailable')).toContain('ბალანსიდან არაფერი ჩამოგეჭრა');
+    expect(budgetRefusalMessage('ru', 'guard_unavailable')).toContain('С баланса ничего не списано');
+  });
+
   it('an unknown or missing reason reads as the daily limit, the common case', () => {
     expect(budgetRefusalMessage('en', null)).toBe(budgetRefusalMessage('en', 'daily_limit'));
     expect(budgetRefusalMessage('en', 'something_else')).toBe(budgetRefusalMessage('en', 'daily_limit'));

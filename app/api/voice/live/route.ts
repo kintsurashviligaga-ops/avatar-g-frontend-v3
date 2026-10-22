@@ -277,7 +277,7 @@ export async function POST(request: NextRequest) {
     };
     const setupMessage = parityFor(actionsWanted);
 
-    // ── Gate 6: platform budget (fails OPEN inside chatBudgetAllows, like every budget check). A refusal is a 503,
+    // ── Gate 6: platform budget (fails CLOSED inside chatBudgetAllows, like every budget check). A refusal is a 503,
     // so the client drops to the REST loop, which speaks the budget message instead of dead-ending. ──
     if (!(await chatBudgetAllows(live.systemInstruction, model))) {
       structuredLog('warn', 'voice.live.budget_refused', { model });

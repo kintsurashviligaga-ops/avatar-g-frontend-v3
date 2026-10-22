@@ -27,12 +27,16 @@ export const BUDGET_EXHAUSTED_MESSAGE =
  */
 export const UNSPECIFIED_CHAT_MODEL = 'chat';
 
+/** The refusal reason when the guard cannot answer (BillingGuard's FAIL DIRECTION). */
+export const GUARD_UNAVAILABLE = 'guard_unavailable';
+
 /**
  * May this LLM turn run? Estimates from the OUTBOUND text plus a typical reply allowance.
  *
- * FAILS OPEN. A guard fault must never make chat unavailable — the alternative is a broken Supabase
- * connection silently taking the whole product offline, which is far worse than a bounded overspend that
- * the per-user credit wallet still gates independently.
+ * FAILS CLOSED (MASTER TASK v3.1, audit F-05). This used to answer yes whenever the guard threw, on the theory that a
+ * broken Supabase connection must not take chat down. But chat and read-aloud have no per-user wallet behind them, so
+ * that "yes" was unmetered paid spend for as long as the ledger was down. A guard fault is now a refusal, and every
+ * surface already turns a refusal into a notice before any provider I/O.
  */
 export async function chatBudgetAllows(inputText: string, model: string = UNSPECIFIED_CHAT_MODEL): Promise<boolean> {
   return (await chatBudgetRefusal(inputText, model)) === null;
@@ -41,7 +45,8 @@ export async function chatBudgetAllows(inputText: string, model: string = UNSPEC
 /**
  * The same check, answering WHY when it refuses: the guard's reason (`daily_limit`, `monthly_limit`, …) or null when the
  * turn may run. A route that tells the person about the refusal uses this, so the notice can say which limit stopped the
- * chat and when it lifts (lib/services/billing/budgetMessage). Fails OPEN exactly like chatBudgetAllows.
+ * chat and when it lifts (lib/services/billing/budgetMessage). Fails CLOSED exactly like chatBudgetAllows: a guard that
+ * throws answers `guard_unavailable`.
  */
 export async function chatBudgetRefusal(inputText: string, model: string = UNSPECIFIED_CHAT_MODEL): Promise<string | null> {
   try {
@@ -51,8 +56,10 @@ export async function chatBudgetRefusal(inputText: string, model: string = UNSPE
       estimateCost({ service: 'chat', model: modelLabel(model), inputTokens: approximateTokens(inputText), outputTokens: 800 }),
     );
     return decision.allowed ? null : decision.reason;
-  } catch {
-    return null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[chatBudget] budget check threw → refusing the turn:', err instanceof Error ? err.message : err);
+    return GUARD_UNAVAILABLE;
   }
 }
 
@@ -83,8 +90,8 @@ export interface ChatUsage {
 }
 
 /**
- * Book a completed turn. Best-effort — the reply has already been delivered, so a bookkeeping failure must
- * never surface to the caller.
+ * Book a completed turn. Never throws — the reply has already been delivered. A row the ledger refuses is kept and
+ * written back by BillingGuard (UNBOOKED); a fault before the row even exists is logged as `billing.booking_failed`.
  *
  * Two call shapes, both supported indefinitely:
  *  - `bookChatUsage({ model, inputTokens, outputTokens, userId, groundingQueries, … })` — real usage.
@@ -123,8 +130,17 @@ export async function bookChatUsage(
       }),
       { userId: ledgerUserId(usage.userId) },
     );
-  } catch {
-    /* bookkeeping only */
+  } catch (err) {
+    // recordUsage never throws, so this is the estimate or the guard module itself failing: the turn ran and its cost
+    // is unknown. Said loudly (and in structured form, so it can be counted), never to the person.
+    // eslint-disable-next-line no-console
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        event: 'billing.booking_failed',
+        data: { service: 'chat', model: modelLabel(typeof usageOrInput === 'object' && usageOrInput ? usageOrInput.model : model), error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200) },
+      }),
+    );
   }
 }
 
@@ -185,10 +201,10 @@ function modelLabel(model: unknown): string {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * ⚠️ Only a real auth UUID is forwarded. `agent_evolution_traces.user_id` is `UUID REFERENCES auth.users`, and
- * supabase-js RETURNS the insert error instead of throwing (recordTrace ignores it) — so a malformed id would not
- * just lose the attribution, it would silently drop the whole SPEND row and the budget guard would never see
- * the money. A guest turn is booked with a null user instead.
+ * ⚠️ Only a real auth UUID is forwarded. `agent_evolution_traces.user_id` is `UUID REFERENCES auth.users`, so a
+ * malformed id makes the insert refuse the whole SPEND row. (That refusal used to be silent; recordTrace now reports
+ * it and BillingGuard keeps the row, but a row that can never land is still spend booked late.) A guest turn is booked
+ * with a null user instead.
  */
 function ledgerUserId(userId: unknown): string | null {
   return typeof userId === 'string' && UUID_RE.test(userId.trim()) ? userId.trim() : null;

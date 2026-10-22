@@ -17,7 +17,9 @@ jest.mock('../../../../lib/ai/google/chatStream', () => ({
 }));
 jest.mock('../../../../lib/services/billing/chatBudget', () => {
   const actual = jest.requireActual('../../../../lib/services/billing/chatBudget');
-  return { ...actual, chatBudgetAllows: jest.fn(async () => true), bookChatUsage: jest.fn(async () => undefined) };
+  // The route asks chatBudgetRefusal (null = may run). This used to mock chatBudgetAllows, which the route never calls,
+  // so the REAL guard ran with no ledger and only passed because it failed open; it fails closed now (v3.1, F-05).
+  return { ...actual, chatBudgetRefusal: jest.fn(async () => null), bookChatUsage: jest.fn(async () => undefined) };
 });
 jest.mock('../../../../lib/api/rate-limit', () => {
   // The REAL limiter — only its 5-minute sweep timer is unref'd so jest can exit.

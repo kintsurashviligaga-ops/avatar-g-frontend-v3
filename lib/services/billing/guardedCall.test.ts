@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
  * guardedCall — the sequence every provider call runs through. The properties that matter are about what
- * happens when things go WRONG: a refused budget must stop the call, a broken guard must not.
+ * happens when things go WRONG: a refused budget stops the call, and so does a broken guard (MASTER TASK v3.1).
  */
 
 const canProceed = jest.fn();
@@ -45,11 +45,23 @@ describe('guardedCall', () => {
       .rejects.toMatchObject({ reason: 'full_stop', service: 'music' });
   });
 
-  it('FAILS OPEN when the guard itself throws — a bookkeeping fault must not take the product down', async () => {
+  it('FAILS CLOSED when the guard itself throws: refused as guard_unavailable, the provider is never called', async () => {
     canProceed.mockRejectedValue(new Error('supabase unreachable'));
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
     const fn = jest.fn().mockResolvedValue('ok');
-    await expect(guardedCall({ service: 'chat', model: 'gemini', inputTokens: 100 }, fn)).resolves.toBe('ok');
-    expect(fn).toHaveBeenCalledTimes(1);
+    await expect(guardedCall({ service: 'chat', model: 'gemini', inputTokens: 100 }, fn))
+      .rejects.toMatchObject({ name: 'BudgetExceededError', reason: 'guard_unavailable', message: 'budget_exceeded:guard_unavailable' });
+    expect(fn).not.toHaveBeenCalled();
+    expect(recordUsage).not.toHaveBeenCalled();
+    expect(err).toHaveBeenCalledWith('[guardedCall] budget check threw → refusing the call:', 'supabase unreachable');
+    err.mockRestore();
+  });
+
+  it('an unreadable ledger (the guard\'s own guard_unavailable) is a refusal too', async () => {
+    canProceed.mockResolvedValue({ allowed: false, reason: 'guard_unavailable', mode: 'normal', projectedDaily: 0, projectedMonthly: 0, degraded: true });
+    const fn = jest.fn();
+    await expect(guardedCall({ service: 'video', model: 'veo-3.1', units: 8 }, fn)).rejects.toMatchObject({ reason: 'guard_unavailable' });
+    expect(fn).not.toHaveBeenCalled();
   });
 
   it('does NOT book a failed provider call — a broken provider must not starve the budget', async () => {
