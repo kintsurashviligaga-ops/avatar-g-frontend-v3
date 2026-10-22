@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminKeyHeaderMatches } from '@/lib/security/opsAccess';
 import { isAdmin } from '@/lib/auth/adminGuard';
-import { describeElevenLabsAccount, elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
+import { checkCloudTts } from '@/lib/audio/google-tts';
 import { checkGoogleAiReadiness } from '@/lib/ai/google/readiness';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +90,15 @@ async function googleGeminiProbe(): Promise<ProbeResult> {
   const readiness = await checkGoogleAiReadiness({ live: true });
   if (!readiness.configured) return { ...base, status: 'UNCONFIGURED', latencyMs: null, message: readiness.detail };
   return { ...base, status: readiness.ok ? 'CONNECTED' : 'ERROR', latencyMs: Date.now() - t0, message: readiness.detail };
+}
+
+/** Every spoken line runs on Google Cloud TTS with the Vertex identity (PR 5d): its free ka-GE voices list, nothing synthesised. */
+async function cloudTtsProbe(): Promise<ProbeResult> {
+  const base = { service: 'Google Cloud TTS (voice)', category: 'voice', envVar: 'GCP_PROJECT_ID' } as const;
+  const t0 = Date.now();
+  const check = await checkCloudTts();
+  if (check.state === 'unconfigured') return { ...base, status: 'UNCONFIGURED', latencyMs: null, message: check.detail };
+  return { ...base, status: check.state === 'ok' ? 'CONNECTED' : 'ERROR', latencyMs: Date.now() - t0, message: check.detail };
 }
 
 export async function GET(req: NextRequest) {
@@ -171,16 +180,8 @@ export async function GET(req: NextRequest) {
     }),
 
     // ── Voice TTS ──────────────────────────────────────────────────────────
-    probe('ElevenLabs (TTS)', 'voice', 'ELEVENLABS_API_KEY', process.env.ELEVENLABS_API_KEY, async () => {
-      const r = await fetchWithTimeout('https://api.elevenlabs.io/v1/user', {
-        headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY! },
-      });
-      if (!r.ok) return { ok: false, message: `${r.status} ${r.statusText}` };
-      // The key is not the voice: the plan must allow the cloned Georgian voices and have characters left
-      // (2026-10-17 09:31Z, `401 subscription_required / ivc_not_permitted` while this said OK).
-      const account = readElevenLabsAccount(await r.json().catch(() => null));
-      return { ok: elevenLabsVoiceState(account) === 'ok', message: `${r.status} · ${describeElevenLabsAccount(account)}`.slice(0, 160) };
-    }),
+    // ElevenLabs reads no line since PR 5d, so it is no longer probed (PR 6b).
+    cloudTtsProbe(),
 
     // ── Avatar / Talking Head ──────────────────────────────────────────────
     probe('HeyGen (avatar)', 'avatar', 'HEYGEN_API_KEY', process.env.HEYGEN_API_KEY, async () => {

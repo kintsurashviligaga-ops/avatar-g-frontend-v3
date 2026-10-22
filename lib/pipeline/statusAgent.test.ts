@@ -162,7 +162,8 @@ describe('no row repeats the stale provider claims', () => {
     expect(music.note).not.toMatch(/→|chain/i);
 
     expect(row(h, 'მუსიკა (ფილმი)').provider).toBe('Lyria 3 (Vertex)');
-    expect(row(h, 'ხმა (TTS)').provider).toMatch(/^ElevenLabs/);
+    expect(row(h, 'ხმა (TTS)').provider).toBe('Google Cloud TTS (Vertex)');
+    expect(row(h, 'ხმა (TTS)').note).not.toMatch(/ElevenLabs/);
     expect(row(h, 'ლიპ-სინქი').provider).toBe('sync/lipsync-2 (Replicate)');
     expect(h.services.some((s) => s.service === 'Auto-Anchor')).toBe(false);
     expect(h.warnings.join(' ')).not.toMatch(/AUTO_ANCHOR_FRAME|LTX instead of Kling/);
@@ -225,20 +226,23 @@ describe('no row repeats the stale provider claims', () => {
 });
 
 describe('overall follows the CRITICAL rows (Base, Clips, TTS, Music)', () => {
-  const CORE = { ...VERTEX_ENV, ELEVENLABS_API_KEY: SECRETS.ELEVENLABS_API_KEY, NANOBANANA_API_KEY: SECRETS.NANOBANANA_API_KEY };
+  const CORE = { ...VERTEX_ENV, NANOBANANA_API_KEY: SECRETS.NANOBANANA_API_KEY };
 
-  it('healthy on Google + ElevenLabs + the base-image reseller alone (no Replicate needed)', async () => {
+  it('healthy on Google + the base-image reseller alone (no ElevenLabs, no Replicate needed)', async () => {
     setEnv(CORE);
     const h = await checkPipelineHealth();
     expect(h.overall).toBe('healthy');
+    expect(row(h, 'ხმა (TTS)').available).toBe(true); // Cloud TTS on the Vertex identity
     expect(row(h, 'ლიპ-სინქი').available).toBe(false); // not critical
   });
 
   it('degraded with one critical row down, critical with two', async () => {
-    setEnv({ ...VERTEX_ENV, NANOBANANA_API_KEY: CORE.NANOBANANA_API_KEY });
-    expect((await checkPipelineHealth()).overall).toBe('degraded');
     setEnv({ ...VERTEX_ENV });
-    expect((await checkPipelineHealth()).overall).toBe('critical');
+    expect((await checkPipelineHealth()).overall).toBe('degraded'); // the base image only
+    setEnv({ NANOBANANA_API_KEY: CORE.NANOBANANA_API_KEY, ELEVENLABS_API_KEY: SECRETS.ELEVENLABS_API_KEY });
+    const h = await checkPipelineHealth(); // no Vertex: clips, voice and music are down, whatever ElevenLabs key is set
+    expect(h.overall).toBe('critical');
+    expect(row(h, 'ხმა (TTS)')).toMatchObject({ available: false, note: expect.stringMatching(/^Vertex AI config missing — no voice-over/) });
   });
 });
 
@@ -251,7 +255,9 @@ describe('never a secret value', () => {
     const out = JSON.stringify(h);
     expect(out).not.toContain('sk-should-not-leak');
     for (const value of Object.values(SECRETS)) expect(out).not.toContain(value);
-    // Presence is still reported — as booleans/marks, not values.
-    expect(row(h, 'ხმა (TTS)').note).toMatch(/female=✅ male=✅/);
+    // Presence is still reported — as booleans/marks, not values. (The TTS row no longer lists the ElevenLabs voice-id
+    // overrides: Cloud TTS picks its own ka-GE voice and never reads them, PR 6b.)
+    expect(row(h, 'ლიპ-სინქი').note).toMatch(/sync\/lipsync-2✅/);
+    expect(row(h, 'ხმა (TTS)').note).not.toMatch(/female=|male=/);
   });
 });

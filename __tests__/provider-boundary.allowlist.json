@@ -7,12 +7,7 @@
       "lib/voice/geminiLive.ts"
     ],
     "elevenlabs": [
-      "app/api/admin/avatar-providers/route.ts",
-      "app/api/admin/provider-probe/route.ts",
-      "app/api/health/public/route.ts",
-      "app/api/health/services/route.ts",
-      "app/api/voice/clone/route.ts",
-      "lib/security/csp.js"
+      "app/api/voice/clone/route.ts"
     ],
     "replicate": [
       "app/api/admin/provider-probe/route.ts",

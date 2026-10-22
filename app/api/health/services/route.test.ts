@@ -28,7 +28,7 @@ const VERTEX_ENV = {
   GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
   GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
 };
-const ENV_VARS = ['ADMIN_KEY', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'ANTHROPIC_API_KEY', ...Object.keys(VERTEX_ENV)] as const;
+const ENV_VARS = ['ADMIN_KEY', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'ANTHROPIC_API_KEY', 'ELEVENLABS_API_KEY', ...Object.keys(VERTEX_ENV)] as const;
 const saved: Record<string, string | undefined> = {};
 const realFetch = global.fetch;
 const fetchMock = jest.fn();
@@ -99,6 +99,34 @@ test('a token the chain cannot mint is an ERROR', async () => {
   const gemini = (await run()).find((r) => r.service === GEMINI);
   expect(gemini?.status).toBe('ERROR');
   expect(gemini?.message).toContain('token:failed');
+});
+
+test('voice is Cloud TTS on the same token (its free ka-GE voices list); ElevenLabs is never asked, whatever key is set', async () => {
+  process.env.ELEVENLABS_API_KEY = 'el-should-not-be-sent';
+  fetchMock.mockImplementation(async (url: string) =>
+    url.startsWith('https://texttospeech.googleapis.com/')
+      ? new Response(JSON.stringify({ voices: [{ name: 'ka-GE-Chirp3-HD-Aoede', languageCodes: ['ka-GE'] }] }), { status: 200 })
+      : new Response('{}', { status: 200 }));
+  const results = await run();
+  expect(results.find((r) => r.service === 'Google Cloud TTS (voice)')).toMatchObject({
+    status: 'CONNECTED', envVar: 'GCP_PROJECT_ID', message: '1 ka-GE voices · best ka-GE-Chirp3-HD-Aoede',
+  });
+  expect(results.some((r) => /elevenlabs/i.test(r.service))).toBe(false);
+  const urls = (fetchMock.mock.calls as [string][]).map(([u]) => u);
+  expect(urls).toContain('https://texttospeech.googleapis.com/v1/voices?languageCode=ka-GE');
+  expect(urls.some((u) => u.includes('elevenlabs.io'))).toBe(false);
+  expect(urls.some((u) => u.includes('text:synthesize'))).toBe(false);
+});
+
+test('voice: a Cloud TTS refusal is an ERROR that says why; no Vertex config is UNCONFIGURED', async () => {
+  fetchMock.mockImplementation(async (url: string) =>
+    new Response('{}', { status: url.startsWith('https://texttospeech.googleapis.com/') ? 403 : 200 }));
+  let voice = (await run()).find((r) => r.service === 'Google Cloud TTS (voice)');
+  expect(voice?.status).toBe('ERROR');
+  expect(voice?.message).toMatch(/HTTP 403 \(the Cloud Text-to-Speech API is off/);
+  delete process.env.GCP_PROJECT_ID;
+  voice = (await run()).find((r) => r.service === 'Google Cloud TTS (voice)');
+  expect(voice?.status).toBe('UNCONFIGURED');
 });
 
 test('no outbound URL carries any `key=` query parameter', async () => {

@@ -6,13 +6,14 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
 /**
- * Admin diagnostic — enumerates avatar/voice provider capabilities using the
- * production keys (HeyGen + ElevenLabs are Vercel "Sensitive" vars and cannot be
- * read off-platform, so we probe them here). Answers:
+ * Admin diagnostic — enumerates avatar provider capabilities using the
+ * production key (HEYGEN_API_KEY is a Vercel "Sensitive" var and cannot be
+ * read off-platform, so we probe it here). Answers:
  *   - Does HeyGen expose Georgian voices?
  *   - What avatars exist?
  *   - Is the Interactive/Streaming Avatar API available on this plan?
- *   - What is the best real-human Georgian voice in ElevenLabs (account + library)?
+ * The ElevenLabs voice and library listings left in PR 6b: speech is Google Cloud TTS (PR 5d), and nothing reads an
+ * ElevenLabs voice any more.
  *
  * Auth: x-admin-key == MIGRATION_RUN_KEY (or ADMIN_KEY).
  */
@@ -92,52 +93,14 @@ async function liveAvatar(key: string) {
   return out;
 }
 
-async function elevenVoices(key: string) {
-  const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
-  if (!r.ok) return { ok: false, status: r.status, detail: (await r.text()).slice(0, 160) };
-  const j = await r.json() as { voices?: Array<Record<string, unknown>> };
-  const voices = j.voices ?? [];
-  return {
-    ok: true,
-    total: voices.length,
-    list: voices.map(v => ({ voice_id: v['voice_id'], name: v['name'], category: v['category'], labels: v['labels'] })),
-  };
-}
-
-async function elevenGeorgianLibrary(key: string) {
-  // ElevenLabs public voice library filtered to Georgian — to find a real,
-  // native-sounding Georgian voice with good pronunciation.
-  const url = 'https://api.elevenlabs.io/v1/shared-voices?language=ka&page_size=30&sort=cloned_by_count';
-  const r = await fetch(url, { headers: { 'xi-api-key': key } });
-  if (!r.ok) return { ok: false, status: r.status, detail: (await r.text()).slice(0, 160) };
-  const j = await r.json() as { voices?: Array<Record<string, unknown>> };
-  const voices = j.voices ?? [];
-  return {
-    ok: true,
-    total: voices.length,
-    list: voices.slice(0, 30).map(v => ({
-      voice_id: v['voice_id'],
-      name: v['name'],
-      accent: v['accent'],
-      language: v['language'],
-      gender: v['gender'],
-      description: v['description'],
-      use_case: v['use_case'],
-      cloned_by_count: v['cloned_by_count'],
-      preview: v['preview_url'],
-    })),
-  };
-}
-
 export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!authorized(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const heygenKey = norm(process.env.HEYGEN_API_KEY);
-  const elevenKey = norm(process.env.ELEVENLABS_API_KEY);
 
   const result: Record<string, unknown> = {
     ok: true,
-    keys: { heygen: Boolean(heygenKey), elevenlabs: Boolean(elevenKey) },
+    keys: { heygen: Boolean(heygenKey) },
   };
 
   const tasks: Array<Promise<void>> = [];
@@ -146,10 +109,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     tasks.push(heygenAvatars(heygenKey).then(d => { result['heygen_avatars'] = d; }).catch(e => { result['heygen_avatars'] = { ok: false, error: String(e) }; }));
     tasks.push(heygenStreaming(heygenKey).then(d => { result['heygen_streaming'] = d; }).catch(e => { result['heygen_streaming'] = { ok: false, error: String(e) }; }));
     tasks.push(liveAvatar(heygenKey).then(d => { result['liveavatar'] = d; }).catch(e => { result['liveavatar'] = { error: String(e) }; }));
-  }
-  if (elevenKey) {
-    tasks.push(elevenVoices(elevenKey).then(d => { result['elevenlabs_voices'] = d; }).catch(e => { result['elevenlabs_voices'] = { ok: false, error: String(e) }; }));
-    tasks.push(elevenGeorgianLibrary(elevenKey).then(d => { result['elevenlabs_georgian_library'] = d; }).catch(e => { result['elevenlabs_georgian_library'] = { ok: false, error: String(e) }; }));
   }
 
   await Promise.all(tasks);

@@ -109,6 +109,43 @@ test('a 403 (the API off on the project, or the account not allowed) is heard on
   expect(tts.isLastingTtsRefusal(403)).toBe(true);
 });
 
+describe('checkCloudTts — the free health check', () => {
+  test('ok: the ka-GE voices list, on the bearer token only, names the best voice; nothing is synthesised', async () => {
+    fetchMock.mockResolvedValueOnce(json(200, VOICES));
+    expect(await tts.checkCloudTts()).toEqual({ state: 'ok', detail: '4 ka-GE voices · best ka-GE-Chirp3-HD-Aoede' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, Init];
+    expect(url).toBe('https://texttospeech.googleapis.com/v1/voices?languageCode=ka-GE');
+    expect(init.headers.Authorization).toBe('Bearer ya29.test-token');
+    expect(init.redirect).toBe('manual');
+    noKeyAnywhere();
+  });
+
+  test('no config is unconfigured and no token is down, both before any request', async () => {
+    (vertexAiConfig as jest.Mock).mockReturnValueOnce(null);
+    expect((await tts.checkCloudTts()).state).toBe('unconfigured');
+    (getVertexAccessToken as jest.Mock).mockRejectedValueOnce(new Error('token_failed'));
+    expect(await tts.checkCloudTts()).toEqual({ state: 'down', detail: 'no Vertex access token' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('a refusal is down and says why; it is asked again next time, even after synthesis stopped asking', async () => {
+    fetchMock.mockResolvedValue(json(403, {}));
+    expect(await tts.synthesizeGoogleTts('hello')).toBeNull(); // the module now remembers the refusal
+    const check = await tts.checkCloudTts();
+    expect(check.state).toBe('down');
+    expect(check.detail).toMatch(/HTTP 403 \(the Cloud Text-to-Speech API is off/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('a list without a Georgian voice is degraded; no answer is down', async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { voices: [{ name: 'en-US-Standard-A', languageCodes: ['en-US'] }] }));
+    expect((await tts.checkCloudTts()).state).toBe('degraded');
+    fetchMock.mockRejectedValueOnce(new Error('ECONNRESET'));
+    expect(await tts.checkCloudTts()).toEqual({ state: 'down', detail: 'voices list did not answer' });
+  });
+});
+
 test('an outage is not remembered: the next request asks again', async () => {
   fetchMock.mockResolvedValueOnce(json(503, {})).mockResolvedValueOnce(json(200, VOICES)).mockResolvedValueOnce(audio());
   const heard: number[] = [];
