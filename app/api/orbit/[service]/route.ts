@@ -1,13 +1,15 @@
 import { Buffer } from 'node:buffer';
 import { NextRequest, NextResponse } from 'next/server';
-import { generateVoice } from '@/lib/ai/elevenlabs';
+import { synthesizeGoogleTts, ttsLanguageCode } from '@/lib/audio/google-tts';
+import { mp3DurationSec } from '@/lib/audio/mp3Duration';
 import { requestedVoiceId } from '@/lib/audio/voiceId';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { providerErrorBody } from '@/lib/api/providerError';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
-/** The longest text the voice proxy will synthesize in one call — ElevenLabs bills per character. */
+/** The longest text the voice proxy will synthesize in one call — Cloud TTS bills per character. */
 const MAX_VOICE_CHARS = 2500;
 
 export const dynamic = 'force-dynamic';
@@ -199,7 +201,7 @@ export async function POST(
     return jsonError('Unknown orbit service', 404);
   }
 
-  // ⚠️ SIGN-IN, SERVER-SIDE, BEFORE ANY BRANCH. 'voice-synthesis' called ElevenLabs DIRECTLY on the platform key for
+  // ⚠️ SIGN-IN, SERVER-SIDE, BEFORE ANY BRANCH. 'voice-synthesis' called ElevenLabs (Cloud TTS since PR 5e) DIRECTLY for
   // anyone — no session, no rate limit, no length cap — while every other branch proxies to a route that gates itself.
   // One gate here covers them all: per-IP burst guard → verified session → (voice) per-account daily cap.
   const limited = await checkRateLimit(request, RATE_LIMITS.WRITE);
@@ -224,8 +226,6 @@ export async function POST(
       case 'voice-synthesis': {
         const text = String(body.text ?? body.prompt ?? '').trim();
         const askedVoice = requestedVoiceId(body.provider_voice_id ?? body.voiceId);
-        const voiceId = askedVoice ?? String(process.env.ELEVENLABS_VOICE_ID ?? '').trim();
-        const emotion = String(body.emotion ?? 'neutral');
 
         if (!text) {
           return jsonError('text is required');
@@ -234,12 +234,14 @@ export async function POST(
           return jsonError(`text is limited to ${MAX_VOICE_CHARS} characters`, 413);
         }
 
-        // The voice goes into the ElevenLabs URL path (lib/audio/voiceId).
+        // A malformed id stays the 400 it was (it once sat in an ElevenLabs URL path, lib/audio/voiceId).
         if (askedVoice === null) {
           return jsonError('voiceId is not a valid voice id');
         }
-        if (!voiceId) {
-          return jsonError('Voice provider is not configured', 503);
+        // A named voice was an ElevenLabs voice. Cloud TTS cannot speak in it, and another voice would be the silent swap
+        // R7 forbids, so it is refused (MASTER TASK v3.1 PR 5e). No voice named: Cloud TTS's best voice for the language.
+        if (askedVoice) {
+          return refuseOutsideEngine(request);
         }
 
         if (userId) {
@@ -247,19 +249,24 @@ export async function POST(
           if (capped) return capped;
         }
 
-        const voice = await generateVoice(text, voiceId, emotion);
-        const audioUrl = `data:audio/mpeg;base64,${Buffer.from(voice.audioBuffer).toString('base64')}`;
+        const audio = await synthesizeGoogleTts(text, { languageCode: ttsLanguageCode(text), gender: body.gender === 'male' ? 'MALE' : 'FEMALE' });
+        if (!audio || audio.byteLength < 1024) {
+          return jsonError('Voice synthesis is unavailable', 502);
+        }
+        const bytes = new Uint8Array(audio);
+        const duration = Math.max(1, Math.round(mp3DurationSec(bytes) ?? text.length / 15));
+        const audioUrl = `data:audio/mpeg;base64,${Buffer.from(bytes).toString('base64')}`;
 
         return NextResponse.json({
           service: resolvedService,
           status: 'completed',
           title: String(body.title ?? 'Voice Synthesis Output'),
           output: text,
-          detail: `Generated ${voice.duration}s audio clip`,
+          detail: `Generated ${duration}s audio clip`,
           audioUrl,
           metadata: {
-            voiceId: voice.voiceId,
-            duration: voice.duration,
+            voiceId: null,
+            duration,
             language: body.language ?? 'en',
           },
         });

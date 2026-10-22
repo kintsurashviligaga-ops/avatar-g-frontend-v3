@@ -100,8 +100,8 @@ export const MODEL_CATALOG: ModelCatalog = {
       capabilities: ['text', 'code', 'reasoning', 'transcribe'],
       focusModes: ['code', 'search', 'files', 'stt'],
       notes:
-        'Google alias; last STT step-down. Points at whichever Flash Google chooses, so no verifiedAt of its own. ' +
-        `Gemini API only: ${VERTEX_ALIAS_404}`,
+        'Google alias. Points at whichever Flash Google chooses, so no verifiedAt of its own. ' +
+        `Gemini API only, so not in the STT allowlist (lib/ai/google/models STT_MODELS): ${VERTEX_ALIAS_404}`,
     }),
     text('gemini-pro-latest', 'Gemini Pro (latest alias)', {
       enabled: true,
@@ -109,8 +109,8 @@ export const MODEL_CATALOG: ModelCatalog = {
       capabilities: ['text', 'code', 'reasoning', 'transcribe'],
       focusModes: ['code', 'search', 'files', 'stt'],
       notes:
-        'Google alias; observed answering as gemini-3.1-pro (lib/ai/google/models.ts). Allowed for STT only. ' +
-        `Gemini API only: ${VERTEX_ALIAS_404}`,
+        'Google alias; observed answering as gemini-3.1-pro (lib/ai/google/models.ts). ' +
+        `Gemini API only, so not in the STT allowlist (lib/ai/google/models STT_MODELS): ${VERTEX_ALIAS_404}`,
     }),
 
     // ── Image ───────────────────────────────────────────────────────────────────────────────────────────────────

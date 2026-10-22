@@ -6,7 +6,7 @@
  * refusal shape and its three languages, and that every entry GATED_ENTRIES lists really calls the guard, so the list
  * cannot drift from the code.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as policy from './mediaPolicy';
 import { GATED_ENTRIES, GOOGLE_ONLY_CODE, googleOnlyMessage, refuseOutsideEngine } from './mediaPolicy';
@@ -67,5 +67,13 @@ describe('GATED_ENTRIES documents every refusing entry and matches the code', ()
   it.each(GATED_ENTRIES.map((e) => [e.file]))('%s calls the guard', (file) => {
     const src = readFileSync(join(ROOT, file), 'utf8');
     expect(src).toMatch(/refuseOutsideEngine\(/);
+  });
+
+  it('every route that calls the guard is listed', () => {
+    const routes = (dir: string): string[] => readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((d) =>
+      d.isDirectory() ? routes(`${dir}/${d.name}`) : d.name === 'route.ts' ? [`${dir}/${d.name}`] : []);
+    const listed = new Set(GATED_ENTRIES.map((e) => e.file));
+    const refusing = routes('app').filter((f) => /refuseOutsideEngine\(/.test(readFileSync(join(ROOT, f), 'utf8')));
+    expect(refusing.filter((f) => !listed.has(f))).toEqual([]);
   });
 });

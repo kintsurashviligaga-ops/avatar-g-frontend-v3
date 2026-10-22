@@ -2,8 +2,8 @@
 /**
  * /api/voice/clone — pinned with ElevenLabs (fetch) and Supabase mocked: no network, no spend, no DB.
  *
- *   · POST is rate-limited (EXPENSIVE), takes audio/* only and at most 10 MB (413 above), and tags every clone with
- *     its owner in the provider-side description;
+ *   · POST is refused with 503 google_only before anything runs (MASTER TASK v3.1 PR 5e: cloning was ElevenLabs only);
+ *     every clone made before it carries its owner in the provider-side description;
  *   · DELETE calls ElevenLabs DELETE /v1/voices/{id} BEFORE the row goes — and only for a voice the provider says
  *     was cloned for THIS caller. The row's external_id is user-writable (RLS insert/update), so a row naming the
  *     platform's Georgian voice or another user's clone must never delete it.
@@ -66,9 +66,9 @@ jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
   removeStorageObjects: (...a: unknown[]) => mockRemove(...a),
 }));
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { GET, POST, DELETE } from './route';
-import { checkRateLimit, RATE_LIMITS } from '../../../../lib/api/rate-limit';
+import { checkRateLimit } from '../../../../lib/api/rate-limit';
 
 const rateMock = checkRateLimit as jest.MockedFunction<typeof checkRateLimit>;
 
@@ -110,110 +110,30 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 // ── POST ─────────────────────────────────────────────────────────────────────
 
-function upload(opts: { bytes?: number; type?: string; name?: string; headers?: Record<string, string> } = {}) {
+function upload(opts: { headers?: Record<string, string> } = {}) {
   const form = new FormData();
-  const data = new Uint8Array(opts.bytes ?? 4096);
-  form.append('audio', new Blob([data], { type: opts.type ?? 'audio/webm;codecs=opus' }), 'sample.webm');
-  form.append('name', opts.name ?? 'My voice');
+  form.append('audio', new Blob([new Uint8Array(4096)], { type: 'audio/webm;codecs=opus' }), 'sample.webm');
+  form.append('name', 'My voice');
   return new NextRequest('https://myavatar.ge/api/voice/clone', { method: 'POST', body: form, headers: opts.headers });
 }
 
-describe('POST', () => {
-  test('an oversize upload (> 10 MB) is refused with 413 before any provider call', async () => {
-    const res = await POST(upload({ bytes: 10 * 1024 * 1024 + 1 }));
-    expect(res.status).toBe(413);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('an honest Content-Length over the cap is refused (413) before the body is parsed', async () => {
-    const req = upload({ headers: { 'content-length': String(50 * 1024 * 1024) } });
-    const parse = jest.spyOn(req, 'formData');
-    const res = await POST(req);
-    expect(res.status).toBe(413);
-    expect(parse).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test.each(['video/mp4', 'application/octet-stream', 'image/png', ''])(
-    'a non-audio upload (%p) is refused with 415 before any provider call',
-    async (type) => {
-      const res = await POST(upload({ type }));
-      expect(res.status).toBe(415);
-      expect(fetchSpy).not.toHaveBeenCalled();
-    },
-  );
-
-  test('the EXPENSIVE rate limit applies, before auth and before any provider call', async () => {
-    rateMock.mockResolvedValueOnce(NextResponse.json({ error: 'Too many requests' }, { status: 429 }));
+// MASTER TASK v3.1 PR 5e: cloning was ElevenLabs only and has no Google engine.
+describe('POST is refused', () => {
+  test('a valid sample → 503 google_only before the limit, the session, storage or ElevenLabs', async () => {
     const res = await POST(upload());
-    expect(res.status).toBe(429);
-    expect(rateMock).toHaveBeenCalledWith(expect.anything(), RATE_LIMITS.EXPENSIVE);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ success: false, url: null, jobId: null, code: 'google_only', error: 'google_only' });
+    expect(rateMock).not.toHaveBeenCalled();
+    expect(mockUploadAndSign).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test('a guest is refused (401) and nothing is cloned', async () => {
+  test('a guest gets the same refusal, in the caller\'s language', async () => {
     mockUser = null;
-    const res = await POST(upload());
-    expect(res.status).toBe(401);
+    const res = await POST(upload({ headers: { cookie: 'NEXT_LOCALE=en' } }));
+    expect(res.status).toBe(503);
+    expect((await res.json()).message).toMatch(/^This tool is paused/);
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('a 10 MB audio sample clones, tagged with its owner in the provider-side description', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(json({ voice_id: VOICE_ID }))
-      .mockResolvedValueOnce(new Response('preview off', { status: 500 }));
-    const res = await POST(upload({ bytes: 10 * 1024 * 1024, name: `  ${'n'.repeat(300)}  ` }));
-    expect(res.status).toBe(201);
-    expect(await res.json()).toMatchObject({ voiceId: VOICE_ID, sample: { external_id: VOICE_ID, user_id: USER_ID } });
-    const [url, init] = calls()[0]!;
-    expect(url).toBe('https://api.elevenlabs.io/v1/voices/add');
-    const sent = init!.body as FormData;
-    expect(String(sent.get('description'))).toContain(`myavatar-owner:${USER_ID}`);
-    expect(String(sent.get('name'))).toHaveLength(100);
-  });
-
-  test('the preview clip is stored at voices/<user>/<voice>.mp3 in the private upload bucket, never `media`', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(json({ voice_id: VOICE_ID }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
-    const res = await POST(upload());
-    expect(res.status).toBe(201);
-    expect(mockUploadAndSign).toHaveBeenCalledWith(
-      'uploads', `voices/${USER_ID}/${VOICE_ID}.mp3`, Buffer.from([1, 2, 3]).toString('base64'), 'audio/mpeg', 6 * 60 * 60,
-    );
-    const body = await res.json();
-    expect(body.previewUrl).toContain(`/uploads/voices/${USER_ID}/${VOICE_ID}.mp3`);
-    expect(body.sample.preview_url).toBe(body.previewUrl);
-  });
-
-  test('a failed preview upload still saves the clone, without a preview', async () => {
-    mockUploadAndSign.mockResolvedValueOnce(null);
-    fetchSpy
-      .mockResolvedValueOnce(json({ voice_id: VOICE_ID }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([1]), { status: 200 }));
-    const res = await POST(upload());
-    expect(res.status).toBe(201);
-    expect((await res.json()).sample.preview_url).toBeNull();
-  });
-
-  test('a provider rejection never echoes the provider body to the user', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('{"detail":"quota exceeded, upgrade at elevenlabs.io/billing"}', { status: 401 }));
-    const res = await POST(upload());
-    expect(res.status).toBe(502);
-    const body = await res.json();
-    expect(JSON.stringify(body)).not.toMatch(/elevenlabs|quota|billing/i);
-  });
-
-  test('a failed row insert deletes the just-created provider voice (no orphan)', async () => {
-    insertError = { message: 'insert failed' };
-    fetchSpy
-      .mockResolvedValueOnce(json({ voice_id: VOICE_ID }))
-      .mockResolvedValueOnce(new Response('preview off', { status: 500 }))
-      .mockResolvedValueOnce(json({ status: 'ok' }));
-    const res = await POST(upload());
-    expect(res.status).toBe(500);
-    const del = calls().find(([, init]) => init?.method === 'DELETE');
-    expect(del?.[0]).toBe(EL_VOICE_URL);
   });
 });
 

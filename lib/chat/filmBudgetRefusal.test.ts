@@ -31,7 +31,6 @@ jest.mock('./filmVoiceover', () => ({
   generateDialogueStems: jest.fn(async () => null),
   dialogueStemsViable: jest.fn(() => false),
   wantsCommentary: jest.fn(() => false),
-  generateFilmSfx: jest.fn(async () => null),
 }));
 jest.mock('../ai/qaDirectorAgent', () => ({ evaluateFilmQa: jest.fn(async () => null) }));
 jest.mock('../elevenlabs/music', () => ({ hasElevenLabsMusicKey: jest.fn(() => false) }));

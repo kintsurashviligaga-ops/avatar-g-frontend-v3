@@ -59,7 +59,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'video.generate': c({
     id: 'video.generate', serviceId: 'video.generate', does: 'A film from an idea: storyboard, Veo clips, voice, music, assembled',
     routes: ['/api/film/storyboard', '/api/chat/orchestrate', '/api/video/assemble'],
-    engine: 'Veo + Gemini + ElevenLabs voice; the HeyGen talking-head pass is refused (no Google engine)',
+    engine: 'Veo + Gemini + Google Cloud TTS voice; the HeyGen talking-head pass is refused (no Google engine)',
     pricing: { key: 'video', charge: 'charged' }, approval: 'storyboard', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'one film per storyboard approval; clips refunded one by one', cancel: 'client-abort',
     qc: 'V1–V6 invariants (lib/veo)', artifact: 'video', library: 'filed', label: 'BUILT_NOT_PROVEN',
@@ -102,7 +102,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'video.remix': c({
     id: 'video.remix', serviceId: 'video.remix', does: 'Edit a video the user has: trim, captions, colour, speed, music, voice, style',
     routes: ['/api/video/remix'],
-    engine: 'trim, captions, colour, speed, stabilise, music, voiceover: ffmpeg + ElevenLabs; restyle, background, character, redub: refused (no Google engine)',
+    engine: 'trim, captions, colour, speed, stabilise: ffmpeg; music: ElevenLabs Music (Lyria in PR 6); voiceover: Google Cloud TTS; restyle, background, character, redub: refused (no Google engine)',
     pricing: { key: 'remix', charge: 'charged' }, approval: 'remix-card', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'signed intent per charge; a free op runs once per send', cancel: 'client-abort', qc: null, artifact: 'video',
     library: 'filed', label: 'BLOCKED_OWNER',
@@ -164,10 +164,10 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'voice.dubbing': c({
     id: 'voice.dubbing', serviceId: 'voice.dubbing', does: 'The user\'s video in another language',
-    routes: ['/api/v2/dubbing/start'], engine: 'ElevenLabs Scribe + TTS, Gemini translation; the bed is the ducked original',
-    // OFF until OWNER_APPROVED_PRICING names its price (proposed 10 cr per started minute, measured on the server).
-    pricing: { key: null, charge: 'not-charged-yet' }, approval: 'panel-button', timeoutSec: 600, retry: 'none',
-    idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
+    routes: ['/api/v2/dubbing/start'], engine: 'refused (no Google engine: it ran on ElevenLabs Scribe + timed TTS)',
+    // MASTER TASK v3.1 PR 5e: the route answers 503 google_only. It was already OFF (no OWNER_APPROVED_PRICING price).
+    pricing: { key: null, charge: 'not-charged-yet' }, approval: 'none', timeoutSec: 0, retry: 'none',
+    idempotency: 'none', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'DISABLED',
   }),
   'text.write': c({
     id: 'text.write', serviceId: 'text.write', does: 'Articles, scripts, ad copy, posts, translation',

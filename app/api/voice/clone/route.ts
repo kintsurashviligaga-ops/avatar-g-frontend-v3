@@ -2,20 +2,22 @@
  * Voice Clone API
  *
  * GET    /api/voice/clone           — list user's cloned voice samples (newest first)
- * POST   /api/voice/clone           — multipart upload of audio sample (audio/*, ≤ 10 MB) + name → ElevenLabs clone
+ * POST   /api/voice/clone           — refused with 503 google_only: cloning was ElevenLabs only (MASTER TASK v3.1, PR 5e)
  * DELETE /api/voice/clone?id=xxx    — delete the voice at ElevenLabs (when it is provably this user's), then the row
  * PATCH  /api/voice/clone           — set a sample as default; clears default on the user's other rows
+ *
+ * DELETE stays open so a user can still remove a clone made before PR 5e: it deletes their voice at ElevenLabs (an
+ * unbilled call) and then their row. GET and PATCH only read and write our own rows.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import {
   createSignedAssetUrl,
   describeSupabaseObjectUrl,
   ownStorageHosts,
   removeStorageObjects,
-  uploadAndSign,
 } from '@/lib/orchestrator/storage-adapter';
 
 export const runtime = 'nodejs';
@@ -23,15 +25,13 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1';
-const PREVIEW_TEXT = 'გამარჯობა, ეს თქვენი კლონირებული ხმაა.';
-const PREVIEW_MODEL = 'eleven_multilingual_v2';
-const MAX_SAMPLE_BYTES = 10 * 1024 * 1024;
-/** Room for the multipart framing + the name field around the sample in the Content-Length pre-check. */
-const MULTIPART_SLACK_BYTES = 64 * 1024;
-const MAX_NAME_CHARS = 100;
 const PROVIDER_TIMEOUT_MS = 15_000;
 /** ElevenLabs voice ids are short alphanumerics; anything else never reaches a provider URL path. */
 const VOICE_ID_RE = /^[A-Za-z0-9]{1,64}$/;
+/**
+ * The owner tag every clone was created with, in its ElevenLabs description (`MyAvatar voice clone · myavatar-owner:<user
+ * id>`). It is the ONLY proof DELETE accepts that a provider voice belongs to the caller — see `removeProviderVoice`.
+ */
 const OWNER_TAG_RE = /myavatar-owner:([0-9a-f-]{36})/i;
 /** The one object path a preview clip is ever stored at: `voices/<user id>/<voice id>.mp3`. */
 const PREVIEW_PATH_RE = /^voices\/([0-9a-f-]{36})\/[A-Za-z0-9]{1,64}\.mp3$/i;
@@ -64,14 +64,6 @@ async function previewLink(stored: unknown, userId: string): Promise<string | nu
   const owner = ref.path.match(PREVIEW_PATH_RE)?.[1];
   if (!owner || owner.toLowerCase() !== userId.toLowerCase()) return null;
   return createSignedAssetUrl(ref.bucket, ref.path, PREVIEW_LINK_TTL_SEC);
-}
-
-/**
- * The description every clone is created with. It is the ONLY proof DELETE accepts that a provider voice belongs to
- * the caller — see `removeProviderVoice`.
- */
-function ownerDescription(userId: string): string {
-  return `MyAvatar voice clone · myavatar-owner:${userId}`;
 }
 
 type ProviderDelete = 'deleted' | 'gone' | 'error';
@@ -107,7 +99,7 @@ async function deleteVoiceAtProvider(apiKey: string, voiceId: string): Promise<P
  * through PostgREST with the public anon key, so `external_id` can name ANY voice in our ElevenLabs account — the
  * native Georgian voices every ka synthesis uses (lib/audio/georgian-voice.ts), the narrators, another user's clone.
  * Deleting whatever the row names would hand every signed-in user a "delete the platform's voices" button. So the
- * proof lives provider-side, where only our key can write: the owner tag POST puts in the voice's description.
+ * proof lives provider-side, where only our key can write: the owner tag POST put in the voice's description.
  * A voice without this caller's tag (a legacy clone from before the tag, or anything that isn't theirs) is left
  * alone — 'skipped' — and only the row goes.
  */
@@ -177,172 +169,11 @@ export async function GET(): Promise<NextResponse> {
   }
 }
 
-// ── POST: upload audio → clone via ElevenLabs ────────────────────────────────
+// ── POST: refused ───────────────────────────────────────────────────────────
+// Cloning was ElevenLabs only. It has no Google engine, so every new clone is refused with 503 google_only before the
+// session, the limit or ElevenLabs (MASTER TASK v3.1, PR 5e, lib/providers/mediaPolicy).
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // Every POST is a paid ElevenLabs clone + a preview synthesis on the platform's key.
-  const rl = await checkRateLimit(request, RATE_LIMITS.EXPENSIVE);
-  if (rl) return rl;
-  try {
-    const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
-    }
-
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Voice provider not configured' }, { status: 500 });
-    }
-
-    // An honest Content-Length over the cap is refused before the multipart body is buffered; the parsed size
-    // check below catches the rest (chunked / lying headers).
-    const declared = Number(request.headers.get('content-length') ?? '');
-    if (Number.isFinite(declared) && declared > MAX_SAMPLE_BYTES + MULTIPART_SLACK_BYTES) {
-      return NextResponse.json({ error: 'Audio sample is too large (max 10 MB)' }, { status: 413 });
-    }
-
-    const form = await request.formData();
-    const audio = form.get('audio');
-    const name = String(form.get('name') ?? '').trim().slice(0, MAX_NAME_CHARS);
-
-    if (!(audio instanceof Blob) || audio.size === 0) {
-      return NextResponse.json({ error: 'audio is required' }, { status: 400 });
-    }
-    if (audio.size > MAX_SAMPLE_BYTES) {
-      return NextResponse.json({ error: 'Audio sample is too large (max 10 MB)' }, { status: 413 });
-    }
-    if (!audio.type.toLowerCase().startsWith('audio/')) {
-      return NextResponse.json({ error: 'Only audio files can be cloned' }, { status: 415 });
-    }
-    if (!name) {
-      return NextResponse.json({ error: 'name is required' }, { status: 400 });
-    }
-
-    // 1. Submit to ElevenLabs to create the voice clone
-    const cloneForm = new FormData();
-    cloneForm.append('name', name);
-    cloneForm.append('description', ownerDescription(user.id));
-    cloneForm.append(
-      'files',
-      audio,
-      audio instanceof File && audio.name ? audio.name : 'sample.webm',
-    );
-
-    const cloneRes = await fetch(`${ELEVENLABS_BASE}/voices/add`, {
-      method: 'POST',
-      headers: { 'xi-api-key': apiKey },
-      body: cloneForm,
-    });
-
-    if (!cloneRes.ok) {
-      const errBody = await cloneRes.text().catch(() => '');
-      reportError(new Error('ElevenLabs clone failed'), {
-        route: '/api/voice/clone',
-        status: cloneRes.status,
-        body: errBody.slice(0, 200),
-        userId: user.id,
-      });
-      // The provider's body stays in the server log — it never reaches the user (lib/api/providerError.ts).
-      return NextResponse.json({ error: 'Voice clone provider rejected the sample' }, { status: 502 });
-    }
-
-    const cloneJson = (await cloneRes.json()) as { voice_id?: string };
-    const voiceId = cloneJson.voice_id;
-    if (!voiceId) {
-      return NextResponse.json({ error: 'Provider did not return a voice_id' }, { status: 502 });
-    }
-
-    // 2. Generate a short preview clip
-    let previewUrl: string | null = null;
-    try {
-      const ttsRes = await fetch(`${ELEVENLABS_BASE}/text-to-speech/${voiceId}`, {
-        method: 'POST',
-        headers: {
-          'xi-api-key': apiKey,
-          'Content-Type': 'application/json',
-          Accept: 'audio/mpeg',
-        },
-        body: JSON.stringify({
-          text: PREVIEW_TEXT,
-          model_id: PREVIEW_MODEL,
-        }),
-      });
-
-      if (ttsRes.ok && VOICE_ID_RE.test(voiceId)) {
-        const buf = Buffer.from(await ttsRes.arrayBuffer());
-        previewUrl = await uploadAndSign(
-          previewBucket(),
-          previewPath(user.id, voiceId),
-          buf.toString('base64'),
-          'audio/mpeg',
-          PREVIEW_LINK_TTL_SEC,
-        );
-        if (!previewUrl) {
-          reportError(new Error('Preview upload failed'), {
-            route: '/api/voice/clone',
-            op: 'preview-upload',
-            userId: user.id,
-            voiceId,
-          });
-        }
-      } else if (!ttsRes.ok) {
-        const detail = await ttsRes.text().catch(() => '');
-        reportError(new Error('Preview synth failed'), {
-          route: '/api/voice/clone',
-          status: ttsRes.status,
-          detail: detail.slice(0, 200),
-          userId: user.id,
-        });
-      }
-    } catch (previewErr) {
-      reportError(previewErr, {
-        route: '/api/voice/clone',
-        op: 'preview',
-        userId: user.id,
-        voiceId,
-      });
-    }
-
-    // 3. Persist row using the user-scoped client (RLS-enforced)
-    const { data: inserted, error: insertErr } = await supabase
-      .from('voice_samples')
-      .insert({
-        user_id: user.id,
-        name,
-        provider: 'elevenlabs',
-        external_id: voiceId,
-        preview_url: previewUrl,
-        is_default: false,
-      })
-      .select('*')
-      .single();
-
-    if (insertErr || !inserted) {
-      reportError(insertErr ?? new Error('insert failed'), {
-        route: '/api/voice/clone',
-        op: 'insert',
-        userId: user.id,
-        voiceId,
-      });
-      // No row → nothing could ever delete this voice later. We created it a moment ago, so it is ours to remove.
-      await deleteVoiceAtProvider(apiKey, voiceId);
-      return NextResponse.json({ error: 'Failed to save voice sample' }, { status: 500 });
-    }
-
-    return NextResponse.json(
-      {
-        voiceId,
-        previewUrl,
-        sample: inserted as VoiceSampleRow,
-      },
-      { status: 201 },
-    );
-  } catch (error) {
-    reportError(error, { route: '/api/voice/clone', op: 'POST' });
-    return NextResponse.json({ error: 'Failed to clone voice' }, { status: 500 });
-  }
+  return refuseOutsideEngine(request);
 }
 
 // ── DELETE: remove the provider voice, then the row (RLS-enforced) ───────────

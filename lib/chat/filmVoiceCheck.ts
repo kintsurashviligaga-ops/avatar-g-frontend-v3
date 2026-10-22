@@ -1,15 +1,17 @@
 /**
  * lib/chat/filmVoiceCheck.ts — does the film's voice say the film's words? (the owner's audit, 2026-10-17, item 3: "the
- * Georgian voice / subtitle check"). ElevenLabs reads the narration; Scribe, ElevenLabs' own speech-to-text, listens to what
- * came back; this module compares the two, reads it once more when they disagree, and, from Scribe's word timings, times the
- * narration's OWN words for the subtitles a user may ask for. Pure: the reading, the listening and the upload are injected.
+ * Georgian voice / subtitle check"). Cloud TTS reads the narration and a speech-to-text listener hears what came back (Gemini
+ * on Vertex since MASTER TASK v3.1 PR 5e; ElevenLabs Scribe before it). This module compares the two, reads it once more when
+ * they disagree, and, when the listener gives word timings, times the narration's OWN words for the subtitles a user may ask
+ * for. Gemini gives none, so subtitles are paused (GG's choice, 2026-10-22). Pure: the reading, the listening and the upload
+ * are injected.
  *
- * ⚠️ WHY A SECOND READ AND NOT A HARD GATE. eleven_v3 (the only ElevenLabs model with native Georgian) is generative: the
- * same text can come back clean on one request and skip a sentence or slur a phrase on the next. One more read fixes most of
- * those. Scribe's own Georgian is good but not perfect, so a transcript is never held to an exact match: the score is the
+ * ⚠️ WHY A SECOND READ AND NOT A HARD GATE. A read can come back skipping a sentence or slurring a phrase (eleven_v3, the
+ * first engine, was generative and did so often). One more read fixes most of those. A listener's Georgian is good but not
+ * perfect, so a transcript is never held to an exact match: the score is the
  * character-level similarity of the two texts once case, punctuation and spacing are taken out, a clean read lands well above
- * VOICE_PASS, and only a read that lost most of its words (below VOICE_REFUSE after both reads) is refused. A Scribe that does
- * not answer (no key, an outage) never blocks a film: the voice goes on unverified, as it always did.
+ * VOICE_PASS, and only a read that lost most of its words (below VOICE_REFUSE after both reads) is refused. A listener that
+ * does not answer (no config, an outage) never blocks a film: the voice goes on unverified, as it always did.
  */
 import type { CaptionWord } from '@/lib/pipeline/compositing/word-synced-captions';
 
@@ -20,14 +22,14 @@ export const VOICE_REFUSE = 0.5;
 /** Longest text compared (a 4-minute narration is ~2 400 characters): bounds the comparison's cost. */
 const MAX_COMPARE_CHARS = 3000;
 
-/** A word Scribe heard, with when it was said in the audio (seconds). */
+/** A word the listener heard, with when it was said in the audio (seconds). */
 export interface HeardWord {
   text: string;
   startSec: number;
   endSec: number;
 }
 
-/** What Scribe heard in one read. */
+/** What the listener heard in one read. */
 export interface Heard {
   text: string;
   words: HeardWord[];
@@ -59,7 +61,7 @@ function levenshtein(a: string, b: string): number {
   return prev[b.length]!;
 }
 
-/** 1 = the same words, 0 = nothing in common. Spacing is ignored, so a word Scribe split or joined costs nothing. */
+/** 1 = the same words, 0 = nothing in common. Spacing is ignored, so a word the listener split or joined costs nothing. */
 export function spokenSimilarity(expected: string, heard: string): number {
   const a = squeeze(expected).slice(0, MAX_COMPARE_CHARS);
   const b = squeeze(heard).slice(0, MAX_COMPARE_CHARS);
@@ -77,10 +79,10 @@ export function voiceVerdict(score: number): VoiceVerdict {
 const wordSimilarity = (a: string, b: string): number => (a === b ? 1 : 1 - levenshtein(a, b) / Math.max(a.length, b.length, 1));
 
 /**
- * Time the narration's own words from what Scribe heard. The two word lists are aligned (a longest common subsequence where
+ * Time the narration's own words from what the listener heard. The two word lists are aligned (a longest common subsequence where
  * "the same word" allows a misheard letter or two); each matched word takes the time it was heard at, and every word between
  * two matches is placed by its position in the text between them. The subtitles show the words the user wrote, never
- * Scribe's spelling of them. null when nothing could be matched (no subtitles beat subtitles at guessed times).
+ * the listener's spelling of them. null when nothing could be matched (no subtitles beat subtitles at guessed times).
  */
 export function timeScriptWords(script: string, heard: readonly HeardWord[], audioSec?: number | null): CaptionWord[] | null {
   // The script's words as written (punctuation kept for display); a token with no letters rides on the word before it.
@@ -155,11 +157,11 @@ export interface VoiceRead<A> {
 export interface VoiceCheckOutcome<A> {
   /** The read to use (the better of the two when it was read twice). */
   read: VoiceRead<A>;
-  /** null = Scribe did not answer: the voice is unverified, never refused for that. */
+  /** null = the listener did not answer: the voice is unverified, never refused for that. */
   score: number | null;
   verdict: VoiceVerdict | null;
   reads: number;
-  /** The narration's own words, timed from what Scribe heard (for subtitles); null when they could not be timed. */
+  /** The narration's own words, timed from what the listener heard (for subtitles); null when they could not be timed. */
   words: CaptionWord[] | null;
 }
 

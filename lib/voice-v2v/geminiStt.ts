@@ -20,7 +20,6 @@ import 'server-only';
  */
 import { NotConfiguredError } from '@/lib/contracts/geminiTransport';
 import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
-import { catalogEntry } from '@/lib/models/catalog';
 import { DEFAULT_STT_MODEL, isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
 
 /** True when Vertex AI can serve a call (the name predates Vertex; no key is involved). */
@@ -41,15 +40,16 @@ export function hasGeminiSttKey(): boolean {
 const STT_STEP_DOWNS = [DEFAULT_STT_MODEL, 'gemini-3.7-flash'] as const;
 
 /**
- * [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped, and the ids the ModelCatalog marks
- * Gemini-API only (the `-latest` aliases answer 404 on Vertex AI, the only transport).
+ * [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped. Every id is one Vertex AI serves:
+ * sttModel() only answers from STT_MODELS, which leaves out the Gemini-API-only `-latest` aliases (they answer 404
+ * on Vertex AI, the only transport). No ModelCatalog lookup is needed, so the film voice check that imports this
+ * module does not pull the whole catalog in (MASTER TASK v3.1 PR 5e).
  */
 export function geminiSttModelChain(): string[] {
   const out: string[] = [];
   for (const raw of [sttModel(), ...STT_STEP_DOWNS]) {
     const id = normalizeModelId(raw);
     if (!id || isRetiredModel(id) || out.includes(id)) continue;
-    if (catalogEntry(id)?.transport === 'gemini_api') continue;
     out.push(id);
   }
   return out;
