@@ -24,7 +24,7 @@ import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/st
 import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
-import type { VeoAspect, VeoFailureReason, VeoResizeMode, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
+import type { VeoAspect, VeoFailureReason, VeoMedia, VeoResizeMode, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { SCENE_SECONDS } from './limits';
 import type { GenjutsuQuality } from './types';
 
@@ -58,10 +58,10 @@ export interface SceneSubmitInput {
   /** Groups the Vertex GCS inputs/outputs of this scene. */
   sessionId: string;
   /**
-   * The Veo avatar (lib/avatar/veoAvatar): the user's face photo as the clip's FIRST FRAME instead of references (Veo
-   * takes one or the other). A signed URL of our own storage, like the references.
+   * The Veo avatar (lib/avatar/veoAvatar): a built-in avatar's face, read by the server from its own files
+   * (lib/avatar/curatedFace), as the clip's FIRST FRAME instead of references (Veo takes one or the other).
    */
-  startImageUrl?: string;
+  startImage?: VeoMedia & { kind: 'bytes' };
   /** How the first frame fits the aspect when its shape differs (Vertex; Google's default letterboxes it). */
   resizeMode?: VeoResizeMode;
   /** Replaces the VFX scene's negative prompt (the avatar's own). */
@@ -99,8 +99,8 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
             durationSec: SCENE_SECONDS,
             generateAudio: audio,
             negativePrompt: input.negativePrompt ?? SCENE_NEGATIVE_PROMPT,
-            ...(input.startImageUrl && input.resizeMode ? { resizeMode: input.resizeMode } : {}),
-            ...(input.startImageUrl ? { startImage: { kind: 'url' as const, url: input.startImageUrl } } : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
+            ...(input.startImage && input.resizeMode ? { resizeMode: input.resizeMode } : {}),
+            ...(input.startImage ? { startImage: input.startImage } : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
           },
           tier,
           sessionId: input.sessionId,

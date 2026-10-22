@@ -114,6 +114,9 @@ const nextConfig = {
       // inside the poll that delivers it (and crops a Gemini-API clip's mark there). Without the binary a voiced avatar
       // would never deliver and be refunded at the hard cap.
       '/api/genjutsu/status': ['./node_modules/ffmpeg-static/**'],
+      // The talking avatar's built-in faces (lib/avatar/curatedFace, MASTER TASK v3.1 PR 9): the route reads the preset it
+      // is named from public/, which Vercel serves from its CDN but leaves out of the lambda unless it is listed here.
+      '/api/avatar/veo': ['./public/avatars/**'],
       // Surgical Editor: deterministic ops shell out to ffmpeg-static (lib/video/{trimClip,surgicalOps}); text
       // overlays rasterise via @resvg (drawtext is unavailable on Vercel — no libfreetype). Both binaries must ride.
       '/api/ai/edit': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],

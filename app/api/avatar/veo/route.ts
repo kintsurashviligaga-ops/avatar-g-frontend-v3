@@ -1,20 +1,26 @@
 /**
- * POST /api/avatar/veo — start ONE talking-avatar clip on Google Veo (lib/avatar/veoAvatar): the caller's own face photo
- * is the first frame, Veo speaks their words, their direction moves it. The client polls the same status route as the
- * VFX scene: GET /api/genjutsu/status?id=<jobId> (refunds a failed render by its signed charge token).
+ * POST /api/avatar/veo — start ONE talking-avatar clip on Google Veo (lib/avatar/veoAvatar): a built-in avatar's face is
+ * the first frame, Veo speaks the caller's words, their direction moves it. The client polls the same status route as
+ * the VFX scene: GET /api/genjutsu/status?id=<jobId> (refunds a failed render by its signed charge token).
+ *
+ * ⚠️ BUILT-IN AVATARS ONLY (GG, 2026-10-22; MASTER TASK v3.1 PR 9). The body names the face (`avatar`, a preset's public
+ * path) and the server reads it from its own files (lib/avatar/curatedFace); nothing the caller uploaded reaches Veo. A
+ * `photo`, or any face that is not a preset, answers 422 `capability_unavailable` (gap `custom_avatar`) at the parse,
+ * before the rate limit, the voice and the charge (lib/avatar/curated).
  *
  * ⚠️ ADMIN ONLY until the owner opens it. GG chose this engine on 2026-10-16 (the HeyGen avatar is refused by the
  * Google-only boundary); its first paid test and its public price are theirs to approve, so a non-admin is refused 423
  * unless AVATAR_VEO_PUBLIC=1 (a public flag: GG's word).
  *
- * THE ORDER IS THE SAFETY, as in /api/genjutsu/generate: sign-in → admin/flag → parse (free) → rate → own photo →
- * price check → balance → the Georgian voice → daily slot → durable row with `_reserve` → RESERVE → submit once →
- * refund on any miss.
+ * THE ORDER IS THE SAFETY, as in /api/genjutsu/generate: sign-in → admin/flag → parse (free; a custom face ends here) →
+ * rate → the built-in face → price check → balance → the Georgian voice → daily slot → durable row with `_reserve` →
+ * RESERVE → submit once → refund on any miss.
  *
- * ⚠️ A GEORGIAN LINE IS ELEVENLABS' VOICE (GG, 2026-10-17 07:54Z). It is made BEFORE anything is charged: no voice, or a
- * line longer than the clip, is an honest refusal with nothing taken. Veo then says the line in Latin letters (its
- * Georgian is garbled), so its mouth makes those syllables, and the status route replaces Veo's voice with the line,
- * fitted phrase by phrase onto where Veo spoke, before it is shown (lib/avatar/voicedClip, lib/avatar/speechMatch).
+ * ⚠️ A GEORGIAN LINE IS A SEPARATE VOICE (GG, 2026-10-17 07:54Z; Google Cloud TTS since MASTER TASK v3.1 PR 5d). It is
+ * made BEFORE anything is charged: no voice, or a line longer than the clip, is an honest refusal with nothing taken.
+ * Veo then says the line in Latin letters (its Georgian is garbled), so its mouth makes those syllables, and the status
+ * route replaces Veo's voice with the line, fitted phrase by phrase onto where Veo spoke, before it is shown
+ * (lib/avatar/voicedClip, lib/avatar/speechMatch).
  * The `::v` in the signed job id is what tells it to.
  *
  * GET answers whether this caller may use it, and at what price — the studio's card and panel print that price.
@@ -25,6 +31,8 @@ import { billingLocale, ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { isAdminIdentity } from '@/lib/auth/adminGuard';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { customAvatarBody } from '@/lib/avatar/curated';
+import { loadCuratedFace } from '@/lib/avatar/curatedFace';
 import {
   VEO_AVATAR_NEGATIVE, VEO_AVATAR_SECONDS, avatarVoiceByTts, avatarVoicePath, buildVeoAvatarPrompt, parseVeoAvatarRequest,
   veoAvatarCredits, veoAvatarPublic,
@@ -37,7 +45,6 @@ import { reportError } from '@/lib/observability/report-error';
 import { createJob, failJob } from '@/lib/orchestrator/jobs';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { removeStorageObjects } from '@/lib/orchestrator/storage-adapter';
-import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { readJson } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
@@ -47,7 +54,6 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const ROUTE = '/api/avatar/veo';
-const PHOTO_TTL_SEC = 3_600;
 /** The line may end a hair after the picture (an mp3's own lead-in and tail): the clip's last frame ends it. */
 const VOICE_SLACK_SEC = 0.25;
 
@@ -81,15 +87,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!veoAvatarPublic() && !(await isAdminIdentity(user).catch(() => false))) return fail(423, 'locked', { op: 'avatar' });
 
   const parsed = parseVeoAvatarRequest(await readJson(req));
+  if (!parsed.ok && parsed.code === 'custom') return NextResponse.json(customAvatarBody(locale), { status: 422 });
   if (!parsed.ok) return fail(400, 'invalid_request', { issues: [{ path: parsed.field, code: parsed.code }] });
   const r = parsed.value;
 
   const limited = await checkRateLimitByKey(userId, GENJUTSU_RATE);
   if (limited) return limited;
 
-  // Our own storage only, and only the caller's own object.
-  const photo = await resolveCallerMedia(r.photo, userId, PHOTO_TTL_SEC);
-  if (!photo.ok || !photo.own) return fail(422, 'invalid_input', { issues: [{ path: 'photo', code: photo.ok ? 'not_own_storage' : photo.reason }] });
+  // The built-in face, from the deployment's own files. Missing means a deployment without public/avatars traced in.
+  const face = await loadCuratedFace(r.avatar);
+  if (!face) {
+    reportError(new Error('built-in avatar face not readable'), { route: ROUTE, avatar: r.avatar });
+    return fail(503, 'not_configured', { refunded: false });
+  }
 
   const credits = veoAvatarCredits();
   if (r.expectedCredits !== null && r.expectedCredits !== credits) return fail(409, 'price_changed', { credits });
@@ -141,7 +151,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const sub = await submitScene({
     prompt: buildVeoAvatarPrompt({ speech: r.speech, direction: r.direction, ...(voicedSec !== undefined ? { voicedSec } : {}) }),
-    aspect: r.aspect, quality: 'fast', referenceUrls: [], startImageUrl: photo.url,
+    aspect: r.aspect, quality: 'fast', referenceUrls: [], startImage: face,
     // The faces are square: Veo's default pads them into 9:16 with black bars above and below (the 2026-10-17 runs).
     // Cropping keeps the centred face and fills the frame; 16:9 keeps the bars rather than cut off the head.
     ...(r.aspect === '9:16' ? { resizeMode: 'crop' as const } : {}),

@@ -18,15 +18,27 @@ describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
     expect(veoAvatarCredits()).toBe(sceneCredits('fast', false, 8));
     expect(veoAvatarCredits()).toBe(71);
   });
-  it('parses strictly: words required, a too-long line refused, 9:16 by default', () => {
-    expect(parseVeoAvatarRequest({ photo: 'omni-uploads/u/a.jpg', speech: 'hi' })).toEqual({ ok: true, value: { photo: 'omni-uploads/u/a.jpg', speech: 'hi', direction: '', aspect: '9:16', voiceGender: null, expectedCredits: null } });
-    expect(parseVeoAvatarRequest({ photo: 'x', speech: '' })).toEqual({ ok: false, field: 'speech', code: 'required' });
-    expect(parseVeoAvatarRequest({ speech: 'hi' })).toEqual({ ok: false, field: 'photo', code: 'required' });
-    expect(parseVeoAvatarRequest({ photo: 'x', speech: 'a'.repeat(VEO_AVATAR_SPEECH_MAX + 1) })).toMatchObject({ ok: false, code: 'too_long' });
-    expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', aspect: '1:1' })).toMatchObject({ ok: false, field: 'aspect' });
-    expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', expectedCredits: 'free' })).toMatchObject({ ok: false, field: 'expectedCredits' });
-    expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', voiceGender: 'female' })).toMatchObject({ ok: true, value: { voiceGender: 'female' } });
-    expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', voiceGender: 'robot' })).toEqual({ ok: false, field: 'voiceGender', code: 'invalid' });
+  it('parses strictly: a built-in face and words required, a too-long line refused, 9:16 by default', () => {
+    const avatar = '/avatars/preset-2.jpg';
+    expect(parseVeoAvatarRequest({ avatar, speech: 'hi' })).toEqual({ ok: true, value: { avatar, speech: 'hi', direction: '', aspect: '9:16', voiceGender: null, expectedCredits: null } });
+    expect(parseVeoAvatarRequest({ avatar, speech: '' })).toEqual({ ok: false, field: 'speech', code: 'required' });
+    expect(parseVeoAvatarRequest({ speech: 'hi' })).toEqual({ ok: false, field: 'avatar', code: 'required' });
+    expect(parseVeoAvatarRequest({ avatar, speech: 'a'.repeat(VEO_AVATAR_SPEECH_MAX + 1) })).toMatchObject({ ok: false, code: 'too_long' });
+    expect(parseVeoAvatarRequest({ avatar, speech: 'hi', aspect: '1:1' })).toMatchObject({ ok: false, field: 'aspect' });
+    expect(parseVeoAvatarRequest({ avatar, speech: 'hi', expectedCredits: 'free' })).toMatchObject({ ok: false, field: 'expectedCredits' });
+    expect(parseVeoAvatarRequest({ avatar, speech: 'hi', voiceGender: 'female' })).toMatchObject({ ok: true, value: { voiceGender: 'female' } });
+    expect(parseVeoAvatarRequest({ avatar, speech: 'hi', voiceGender: 'robot' })).toEqual({ ok: false, field: 'voiceGender', code: 'invalid' });
+  });
+
+  // GG, 2026-10-22: built-in avatars only (MASTER TASK v3.1 PR 9).
+  it.each([
+    ['the caller\'s own photo', { photo: 'omni-uploads/u/a.jpg' }],
+    ['a photo beside a built-in face', { photo: 'omni-uploads/u/a.jpg', avatar: '/avatars/preset-2.jpg' }],
+    ['a signed URL', { avatar: 'https://x.supabase.co/storage/v1/object/sign/twin/u/front.jpg?token=t' }],
+    ['a path outside the presets', { avatar: '/avatars/../og.png' }],
+    ['another public image', { avatar: '/templates/music/retro-jazz-lounge.jpg' }],
+  ])('%s is a custom avatar, refused at the parse', (_name, face) => {
+    expect(parseVeoAvatarRequest({ ...face, speech: 'hi' })).toEqual({ ok: false, field: 'avatar', code: 'custom' });
   });
 
   // GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა" chose a separate Georgian voice; it is Cloud TTS since MASTER TASK v3.1 PR 5d.

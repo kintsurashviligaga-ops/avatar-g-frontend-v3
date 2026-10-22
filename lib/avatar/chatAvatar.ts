@@ -4,8 +4,9 @@
  *
  * ⚠️ THE ORDER USED TO END ON A HEYGEN REFUSAL. With no photo and no preset picked, the avatar tool sent the words to the
  * HeyGen presenter, which the Google-only boundary refuses („ეს ხელსაწყო დროებით შეჩერებულია…"), so nothing was made.
- * Where the Veo avatar is open to the caller (GET /api/avatar/veo), a face is now always found — the photo the user
- * gave, the preset they picked, else a ready presenter matched to the voice and the frame — and the order goes to Veo.
+ * Where the Veo avatar is open to the caller (GET /api/avatar/veo), a face is now always found — the preset they picked,
+ * else a ready presenter matched to the voice and the frame — and the order goes to Veo. Built-in avatars only (GG,
+ * 2026-10-22; MASTER TASK v3.1 PR 9): an own photo is a custom avatar and gets the gap in words (lib/avatar/curated).
  *
  * Agent G's card says what will be made before anything is charged: the line, the voice (a Georgian line is spoken by
  * Google Cloud TTS — a separate voice was GG's choice, 2026-10-17 07:54Z; Cloud TTS since MASTER TASK v3.1 PR 5d — and
@@ -19,8 +20,8 @@ import { splitAvatarScript } from './scriptSplit';
 
 export type AvatarGender = 'female' | 'male';
 export type AvatarAspect = '9:16' | '16:9';
-/** Where the face comes from: the user's own photo, the preset (or twin) picked in the Avatar panel, a ready presenter. */
-export type AvatarFace = 'photo' | 'preset' | 'stock';
+/** Where the face comes from: the built-in avatar picked in the Avatar panel, or a ready presenter. */
+export type AvatarFace = 'preset' | 'stock';
 
 /** A ready presenter for this voice and frame (the Avatar panel's own presets): same gender, same frame when one has it. */
 export function stockAvatarFace(gender: AvatarGender, aspect: AvatarAspect): string {
@@ -105,13 +106,11 @@ export function avatarOfferText(o: AvatarOffer): string {
       : ru ? `**Голос:** грузинский ${o.gender === 'female' ? 'женский' : 'мужской'} голос (Google Cloud TTS), подогнанный к губам по фразам.`
         : `**ხმა:** ქართული ${o.gender === 'female' ? 'ქალის' : 'კაცის'} ხმა (Google Cloud TTS), ტუჩებს ფრაზა-ფრაზა მოერგება.`)
     : (en ? '**Voice:** the video engine’s own voice.' : ru ? '**Голос:** собственный голос видеодвижка.' : '**ხმა:** ვიდეოს ძრავის საკუთარი ხმა.');
-  const face = o.face === 'photo'
-    ? (en ? '**Face:** your photo.' : ru ? '**Лицо:** ваше фото.' : '**სახე:** შენი ფოტო.')
-    : o.face === 'preset'
-      ? (en ? '**Face:** the one picked in the Avatar panel.' : ru ? '**Лицо:** выбранное в панели «Аватар».' : '**სახე:** ავატარის პანელში არჩეული.')
-      : (en ? '**Face:** a ready presenter. For your own face, attach a photo and send the order with it.'
-        : ru ? '**Лицо:** готовый ведущий. Для своего лица прикрепите фото и отправьте заказ с ним.'
-          : '**სახე:** მზა წამყვანი. შენი სახით გინდა? ფოტო მიამაგრე და ისე მომწერე.');
+  const face = o.face === 'preset'
+    ? (en ? '**Face:** the one picked in the Avatar panel.' : ru ? '**Лицо:** выбранное в панели «Аватар».' : '**სახე:** ავატარის პანელში არჩეული.')
+    : (en ? '**Face:** a ready presenter. Another built-in face can be picked in the Avatar panel.'
+      : ru ? '**Лицо:** готовый ведущий. Другое готовое лицо можно выбрать в панели «Аватар».'
+        : '**სახე:** მზა წამყვანი. სხვა მზა სახე ავატარის პანელში აირჩიე.');
   const how = o.direction
     ? (en ? `**How:** ${clip(o.direction, 120)}` : ru ? `**Как:** ${clip(o.direction, 120)}` : `**როგორ:** ${clip(o.direction, 120)}`)
     : '';

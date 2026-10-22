@@ -10,8 +10,9 @@ import { openStudio, openVideoTool, waitForBoard, json, ROUTE_CHECK_MS, typeFilm
  *     is free and nothing renders before its Generate;
  *   · „შექმენი ავატარი რომელიც ამბობს ქართულად: გადადი მაი ავატარ ჯიზე და დაიწყე" ended on „ეს ხელსაწყო დროებით
  *     შეჩერებულია…": with no photo it went to the HeyGen presenter, which the Google-only boundary refuses. Now Agent G's
- *     card names the line, the ElevenLabs voice, a ready presenter and Veo's price (25); its yes sends the Veo avatar
- *     that presenter's face, the words alone, the voice's gender and the price on screen. HeyGen is never called.
+ *     card names the line, the Cloud TTS voice, a ready presenter and Veo's price (25); its yes NAMES that presenter's
+ *     built-in face to the Veo avatar (MASTER TASK v3.1 PR 9: built-in avatars only, nothing uploaded), with the words
+ *     alone, the voice's gender and the price on screen. HeyGen is never called.
  */
 
 const FILM_URL = 'https://e2e-media.supabase.co/films/final-master.mp4';
@@ -70,7 +71,7 @@ test.describe('make it better, and the talking avatar in the chat (GG, 2026-10-1
     await page.route('**/api/avatar/veo', async (r: Route) => {
       if (r.request().method() === 'GET') { await r.fulfill(json(200, { success: true, open: true, credits: 25, seconds: 8 })); return; }
       veo.push((r.request().postDataJSON() ?? {}) as Record<string, unknown>);
-      await r.fulfill(json(202, { success: true, op: 'avatar', jobId: 'operations/e2e::9:16::1760000000000~gj1.t', credits: 25, engine: 'Veo', voice: 'ElevenLabs' }));
+      await r.fulfill(json(202, { success: true, op: 'avatar', jobId: 'operations/e2e::9:16::1760000000000~gj1.t', credits: 25, engine: 'Veo', voice: 'Google Cloud TTS' }));
     });
     await page.route('**/api/genjutsu/status**', (r) => r.fulfill(json(200, { success: true, done: true, state: 'ready', videoUrl: AVATAR_URL })));
     await page.route('**/api/heygen/**', (r) => { heygen.push(r.request().url()); return r.fulfill(json(503, { success: false, error: 'google_only' })); });
@@ -83,7 +84,7 @@ test.describe('make it better, and the talking avatar in the chat (GG, 2026-10-1
     await expect(card).toBeVisible({ timeout: 15_000 });
     const offer = page.getByText('I’ll make an 8-second talking avatar (9:16).', { exact: false }).first();
     await expect(offer).toBeVisible();
-    for (const words of [`“${GG_LINE}”`, 'a Georgian female voice (ElevenLabs)', 'a ready presenter', '25 credits']) {
+    for (const words of [`“${GG_LINE}”`, 'a Georgian female voice (Google Cloud TTS)', 'a ready presenter', '25 credits']) {
       await expect(page.getByText(words, { exact: false }).first()).toBeVisible();
     }
     expect(veo).toHaveLength(0); // nothing before the yes
@@ -91,8 +92,9 @@ test.describe('make it better, and the talking avatar in the chat (GG, 2026-10-1
     await say(page, 'yes');
     await expect.poll(() => veo.length, { timeout: 20_000 }).toBe(1);
     expect(veo[0]).toMatchObject({ speech: GG_LINE, direction: '', aspect: '9:16', voiceGender: 'female', expectedCredits: 25 });
-    expect(String(veo[0]!.photo)).toMatch(/^omni-uploads\/u\/file-\d+$/); // the presenter's face, re-hosted to the caller's storage
-    expect(calls.sign.at(-1)).toMatchObject({ contentType: 'image/jpeg' });
+    expect(String(veo[0]!.avatar)).toMatch(/^\/avatars\/preset-\d\.jpg$/); // the presenter's built-in face, by name
+    expect(veo[0]).not.toHaveProperty('photo');
+    expect(calls.sign).toHaveLength(0); // nothing uploaded
     await expect(page.locator(`video[src^="${AVATAR_URL}"]`).first()).toBeAttached({ timeout: 20_000 });
 
     // „make it better" after the avatar offers another take of the SAME line at its price — never a new line.

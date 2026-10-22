@@ -73,11 +73,18 @@ describe('avatarOfferText', () => {
     expect(t.trim().endsWith('დავიწყო?')).toBe(true);
   });
 
+  // GG, 2026-10-22 (MASTER TASK v3.1 PR 9): built-in avatars only, so the card points to the panel's faces, never a photo.
+  it.each(['ka', 'en', 'ru'])('a ready presenter (%s) is offered with the built-in faces, never with an own photo', (locale) => {
+    const t = avatarOfferText({ ...base, locale });
+    expect(t).toMatch(/ავატარის პანელში|Avatar panel|панели «Аватар»/);
+    expect(t).not.toMatch(/ფოტო|photo|фото/i);
+  });
+
   it('a line in English keeps the video engine’s own voice; the face and the direction are named', () => {
-    const t = avatarOfferText({ ...base, speech: 'Welcome aboard', direction: 'smiling', face: 'photo', aspect: '16:9', credits: 25, locale: 'en' });
+    const t = avatarOfferText({ ...base, speech: 'Welcome aboard', direction: 'smiling', face: 'preset', aspect: '16:9', credits: 25, locale: 'en' });
     expect(t).not.toContain('Cloud TTS');
     expect(t).toContain('engine’s own voice');
-    expect(t).toContain('your photo');
+    expect(t).toContain('the one picked in the Avatar panel');
     expect(t).toContain('smiling');
     expect(t).toContain('(16:9)');
     expect(t).toContain('25 credits');

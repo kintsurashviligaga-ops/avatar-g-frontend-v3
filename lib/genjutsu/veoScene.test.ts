@@ -63,20 +63,23 @@ test('submits ONE 8 s reference-to-video request: the references as our own URLs
   expect(SCENE_NEGATIVE_PROMPT).not.toMatch(/logo|\btext\b/i);
 });
 
+/** A built-in avatar's face as the first frame (lib/avatar/curatedFace). */
+const FACE = { kind: 'bytes' as const, base64: '/9j/4AAQ', mimeType: 'image/jpeg' };
+
 test('a scene asked for no sound renders silent at the silent rate; every other scene keeps its sound', async () => {
   (veoTransport as jest.Mock).mockReturnValue('vertex');
-  await submitScene({ ...input, referenceUrls: [], startImageUrl: 'https://signed.example/face.jpg', audio: false });
+  await submitScene({ ...input, referenceUrls: [], startImage: FACE, audio: false });
   expect((createVeoClip as jest.Mock).mock.calls[0]![0].request.generateAudio).toBe(false);
   const silent = (guardedCall as jest.Mock).mock.calls[0]![0].unitCostUsd;
-  await submitScene({ ...input, referenceUrls: [], startImageUrl: 'https://signed.example/face.jpg' });
+  await submitScene({ ...input, referenceUrls: [], startImage: FACE });
   expect((createVeoClip as jest.Mock).mock.calls[1]![0].request.generateAudio).toBe(true);
   expect(silent).toBeLessThan((guardedCall as jest.Mock).mock.calls[1]![0].unitCostUsd);
 });
 
 test('a first frame carries its resizeMode to the request; references never do', async () => {
-  await submitScene({ ...input, referenceUrls: [], startImageUrl: 'https://signed.example/face.jpg', resizeMode: 'crop' });
+  await submitScene({ ...input, referenceUrls: [], startImage: FACE, resizeMode: 'crop' });
   const withFace = (createVeoClip as jest.Mock).mock.calls[0]![0].request;
-  expect(withFace.startImage).toEqual({ kind: 'url', url: 'https://signed.example/face.jpg' });
+  expect(withFace.startImage).toEqual(FACE);
   expect(withFace.resizeMode).toBe('crop');
   await submitScene({ ...input, resizeMode: 'crop' });
   expect((createVeoClip as jest.Mock).mock.calls[1]![0].request.resizeMode).toBeUndefined();

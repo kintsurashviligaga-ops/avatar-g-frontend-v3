@@ -1,110 +1,26 @@
-// Avatar Generation API Route
-// POST /api/avatar/generate
-
+/**
+ * POST /api/avatar/generate — a custom avatar drawn from a text prompt. Built-in avatars only (GG, 2026-10-22; MASTER
+ * TASK v3.1 PR 9): a signed-in caller gets 422 `capability_unavailable` (gap `custom_avatar`) before anything is written.
+ * The route used to queue `avatars` and `jobs` rows for a Stability / Replicate / OpenAI worker that no longer exists, so
+ * every request it accepted stayed queued; v3.1 forbids those engines.
+ */
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { apiError, apiSuccess } from '@/lib/api/response';
-import { AvatarGenerationSchema, validateInput } from '@/lib/api/validation';
+import { billingLocale } from '@/lib/api/billingCopy';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { isKeyAvailable } from '@/lib/api/key-checker';
-import type { GenerateAvatarRequest } from '@/types/avatar-builder';
+import { customAvatarBody } from '@/lib/avatar/curated';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs'; // Stability AI + Supabase operations require nodejs
-export const maxDuration = 30;
+export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   const rateLimitError = await checkRateLimit(request, RATE_LIMITS.WRITE);
   if (rateLimitError) return rateLimitError;
 
-  try {
-    // 0. Avatar generation can be served by any of: Stability AI, Replicate, OpenAI.
-    //    Only 503 if NONE of the image-gen providers are configured. The worker
-    //    picks whichever is available.
-    const hasImageProvider =
-      isKeyAvailable('stability') ||
-      isKeyAvailable('replicate') ||
-      isKeyAvailable('openai');
-    if (!hasImageProvider) {
-      return apiError(
-        new Error('No image generation provider configured'),
-        503,
-        'Avatar generation service is not available. Please try again later.'
-      );
-    }
+  // getUser(), not getSession(): getSession() trusts the cookie without asking the Auth server, so a stale or
+  // tampered session would pass this check. getUser() validates the token with Supabase Auth.
+  const { data: { user }, error: authError } = await createRouteHandlerClient().auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' }, { status: 401 });
 
-    // 1. Auth check
-    const supabase = createRouteHandlerClient();
-    // getUser(), not getSession(): getSession() trusts the cookie without asking the Auth server, so a stale or
-    // tampered session would pass this check. getUser() validates the token with Supabase Auth.
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
-        { status: 401 }
-      );
-    }
-
-    const userId = user.id;
-
-    // 2. Parse + validate request body
-    const body: GenerateAvatarRequest = await request.json();
-    const validation = validateInput(AvatarGenerationSchema, body);
-
-    if (!validation.success) {
-      return apiError(new Error(validation.error), 400, 'Invalid request');
-    }
-
-    const input = validation.data;
-
-    // 3. Create avatar record in DB (status: queued)
-    const { data: avatar, error: insertError } = await supabase
-      .from('avatars')
-      .insert({
-        user_id: userId,
-        prompt: input.prompt,
-        negative_prompt: body.negative_prompt,
-        style_preset: input.stylePreset,
-        body_type: input.bodyType,
-        pose: input.pose,
-        seed: input.seed,
-        status: 'queued',
-        progress: 0
-      })
-      .select()
-      .single();
-
-    if (insertError || !avatar) {
-      return apiError(insertError, 500, 'Failed to create avatar record');
-    }
-
-    // 4. Create job record
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
-      .insert({
-        user_id: userId,
-        type: 'generate_avatar',
-        status: 'queued',
-        progress: 0,
-        related_id: avatar.id,
-        input_json: input
-      })
-      .select()
-      .single();
-
-    if (jobError) {
-      return apiError(jobError, 500, 'Failed to create job');
-    }
-
-    // 5. Return job info (worker will process)
-    return apiSuccess({
-      job_id: job?.id,
-      avatar_id: avatar.id,
-      status: 'queued'
-    });
-
-  } catch (error) {
-    return apiError(error, 500);
-  }
+  return NextResponse.json(customAvatarBody(billingLocale(request)), { status: 422 });
 }

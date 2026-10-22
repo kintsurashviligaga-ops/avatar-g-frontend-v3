@@ -10,6 +10,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
+import { customAvatarText } from '@/lib/avatar/curated';
 import { secretMatches } from '@/lib/security/secretMatch';
 
 export const dynamic = 'force-dynamic';
@@ -131,7 +132,9 @@ async function dispatchAgent(
     throw new Error(`ვიდეოს გენერაცია ვერ მოხდა (LTX ${res.status})`);
   }
 
-  // ── Avatar (HeyGen talking avatar) ──────────────────────────────────────────
+  // ── Avatar ──────────────────────────────────────────────────────────────────
+  // The full video went to HeyGen (refused by the Google-only boundary). Built-in avatars only (GG, 2026-10-22; MASTER
+  // TASK v3.1 PR 9): the talking avatar is rendered in the Avatar tool (/api/avatar/veo), so a sub-task names the gap.
   if (agent === 'avatar' || agent === 'avatar-builder') {
     if (action === 'generate_avatar_brief') {
       // Just return a brief description without hitting HeyGen
@@ -144,15 +147,7 @@ async function dispatchAgent(
         },
       };
     }
-    // Full avatar video via HeyGen
-    const startRes = await callJson(origin, headers, '/api/heygen/avatar', 'POST', {
-      script: goal,
-      locale,
-    });
-    if (!startRes.ok) throw new Error(`HeyGen ავატარი ვერ დაიწყო (${startRes.status})`);
-    const videoId = (startRes.json as { videoId?: string })?.videoId;
-    if (!videoId) throw new Error('HeyGen: videoId არ დაბრუნდა');
-    return { output: { type: 'video', subtype: 'avatar', videoId, goal } };
+    throw new Error(customAvatarText(locale));
   }
 
   // ── Chat / AI reply ──────────────────────────────────────────────────────────

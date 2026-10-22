@@ -105,9 +105,9 @@ export async function GET(req: NextRequest) {
   if (status === 'failed' || status === 'canceled') {
     const refunded = await refundReserved(error || 'render failed');
     // ⚠️ `error` STAYS THE PROVIDER'S RAW TEXT HERE, DELIBERATELY: it is MACHINE INPUT, not copy. The avatar composer
-    // reads it to tell SadTalker's known transient crash ('ANTIALIAS', CUDA/OOM — lib/avatar/renderAttempts) from a
-    // real failure and retries only the former; a sanitised code would silently end every such retry. No client
-    // renders it verbatim (OmniStudio ignores it, LipsyncStudio/MotionControlPanel map it through their own copy).
+    // read it to retry SadTalker's known transient crash ('ANTIALIAS', CUDA/OOM) until it stopped calling this route
+    // (MASTER TASK v3.1 PR 9: built-in avatars only). No client renders it verbatim (LipsyncStudio/MotionControlPanel
+    // map it through their own copy).
     return NextResponse.json({ done: true, url: null, error, refunded });
   }
   // ⚠️ A TERMINAL STATUS WITH NO URL USED TO FALL THROUGH TO `{done:false}` FOREVER. `lipsyncFetch`
