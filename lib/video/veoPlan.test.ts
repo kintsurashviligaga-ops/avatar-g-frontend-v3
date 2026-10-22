@@ -43,6 +43,19 @@ describe('the Veo contract is enforced in the state, not discovered at render ti
     expect(p.tier).toBe('standard');
   });
 
+  it('the rule is the tier\'s Vertex row, not its name: a tier whose model is refused takes no references either', () => {
+    const saved = process.env.VEO_MODEL_FAST;
+    process.env.VEO_MODEL_FAST = 'veo-3.2-fast-generate-001';
+    try {
+      const p = run(initialVeoPlan({ tier: 'standard' }), { type: 'referenceMode', mode: 'reference' }, { type: 'tier', tier: 'fast' });
+      expect(p.tier).toBe('fast');
+      expect(p.referenceMode).toBe('first_frame');
+    } finally {
+      if (saved === undefined) delete process.env.VEO_MODEL_FAST;
+      else process.env.VEO_MODEL_FAST = saved;
+    }
+  });
+
   it('camera intensity is clamped to 1…10 and merged, not replaced', () => {
     const p = run(initialVeoPlan(), { type: 'sceneCamera', index: 0, camera: { move: 'pan_left', intensity: 99 } }, { type: 'sceneCamera', index: 0, camera: { shot: 'close_up' } });
     expect(p.scenes[0]!.camera).toEqual({ ...DEFAULT_CAMERA, move: 'pan_left', intensity: 10, shot: 'close_up' });

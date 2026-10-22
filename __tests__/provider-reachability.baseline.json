@@ -14,8 +14,6 @@
       "replicate"
     ],
     "app/api/admin/reliability/route.ts": [
-      "atlascloud",
-      "deepseek",
       "runway"
     ],
     "app/api/agent-g/telegram/route.ts": [

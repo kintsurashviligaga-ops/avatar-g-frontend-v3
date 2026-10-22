@@ -495,7 +495,7 @@ export function VideoSwitch({ label, on, onChange, testId, locked, lockedReason 
  * composer's Send carries. „Other models…" opens the studio's ModelPicker (the Higgsfield models, where this deployment
  * runs them); a picked one is named as the selected option.
  */
-export function VideoQualitySelect({ locale, tier, mode, seconds, onTier, otherName, onOtherModels }: {
+export function VideoQualitySelect({ locale, tier, mode, seconds, onTier, otherName, onOtherModels, tiers }: {
   locale: string;
   tier: VideoQuality;
   mode: VideoMode;
@@ -504,12 +504,18 @@ export function VideoQualitySelect({ locale, tier, mode, seconds, onTier, otherN
   /** A picked model that is not a Veo tier: its name (selected). */
   otherName?: string;
   onOtherModels: () => void;
+  /** GET /api/video/engine `tiers`: a tier whose model is refused there is offered disabled. Absent → all open. */
+  tiers?: Partial<Record<VideoQuality, { available: boolean }>>;
 }) {
   const order: VideoQuality[] = ['lite', 'fast', 'standard'];
   const OTHER = '__other';
   const PICKED = '__picked';
   const options = [
-    ...order.map((t) => ({ value: t as string, label: `${tierName(t, locale)} · ✦ ${videoQuote({ seconds, tier: t, mode })}` })),
+    ...order.map((t) => {
+      const closed = tiers?.[t]?.available === false;
+      const label = closed ? `${tierName(t, locale)} · ${vc(VIDEO_COPY.tierUnavailable, locale)}` : `${tierName(t, locale)} · ✦ ${videoQuote({ seconds, tier: t, mode })}`;
+      return { value: t as string, label, disabled: closed };
+    }),
     ...(otherName ? [{ value: PICKED, label: otherName }] : []),
     { value: OTHER, label: vc(VIDEO_COPY.otherModels, locale) },
   ];

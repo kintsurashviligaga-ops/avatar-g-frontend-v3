@@ -10,6 +10,7 @@
  * What is NOT here, on purpose: the post-production audio lanes (music bed, narration voices, ducking, lip-sync)
  * and the documentary / music-video mode. Those shape the edit after Veo, not the Veo request.
  */
+import { vertexVariant } from '@/lib/veo/capabilities';
 import type { CameraSpec, OutputFormat, Transition, VeoTier } from '@/lib/veo/types';
 import { VIDEO_DURATION_STOPS } from '@/lib/video/duration';
 
@@ -128,6 +129,9 @@ export type VeoPlanAction =
 
 const clampIntensity = (n: number) => (Number.isFinite(n) ? Math.min(10, Math.max(1, Math.round(n))) : 5);
 
+/** Whether the tier's Vertex row (lib/veo/capabilities) takes asset reference images. A refused model takes none. */
+const takesReferences = (tier: VeoTier): boolean => (vertexVariant(tier)?.maxReferenceImages ?? 0) > 0;
+
 function mergeCamera(base: CameraSpec, patch: Partial<CameraSpec>): CameraSpec {
   const next = { ...base, ...patch };
   return { ...next, intensity: clampIntensity(next.intensity) };
@@ -144,15 +148,15 @@ export function veoPlanReducer(plan: VeoPlan, action: VeoPlanAction): VeoPlan {
     }
     case 'tier': {
       if (plan.tier === action.tier) return plan;
-      // Lite takes no reference images (Google: "Veo 3.1 and Fast only"): picking Lite hands the photos back to
-      // the first-frame path rather than silently dropping them at render time.
-      const referenceMode = action.tier === 'lite' && plan.referenceMode === 'reference' ? 'first_frame' : plan.referenceMode;
+      // A tier whose Vertex row takes no reference images (Lite — Google: "Veo 3.1 and Fast only") hands the photos
+      // back to the first-frame path rather than silently dropping them at render time.
+      const referenceMode = !takesReferences(action.tier) && plan.referenceMode === 'reference' ? 'first_frame' : plan.referenceMode;
       return { ...plan, tier: action.tier, referenceMode };
     }
     case 'referenceMode': {
       if (plan.referenceMode === action.mode) return plan;
-      // …and the reverse: references need Standard or Fast.
-      const tier = action.mode === 'reference' && plan.tier === 'lite' ? 'standard' : plan.tier;
+      // …and the reverse: references need a tier whose row takes them.
+      const tier = action.mode === 'reference' && !takesReferences(plan.tier) ? 'standard' : plan.tier;
       return { ...plan, referenceMode: action.mode, tier };
     }
     case 'nativeAudio':

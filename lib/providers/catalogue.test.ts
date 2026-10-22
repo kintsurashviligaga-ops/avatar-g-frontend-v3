@@ -84,10 +84,11 @@ describe('capabilities are the wrapped modules\' own facts', () => {
     }
   });
 
-  test('Veo: per tier, lib/veo/capabilities (references, native aspects, the longest clip); the tier IS the model', () => {
+  test('Veo: per tier, the Vertex row in lib/veo/capabilities (references, native aspects, the longest clip); the tier IS the model', () => {
     for (const tier of ['lite', 'fast', 'standard'] as const) {
       const e = videoModelForTier(tier);
-      const c = capsFor(DEFAULT_MODEL_IDS.gemini[tier]);
+      const c = capsFor(DEFAULT_MODEL_IDS.vertex[tier], 'vertex');
+      expect(c.inferred).toBeUndefined();
       expect(e.caps.references).toBe(c.maxReferenceImages);
       expect([...e.caps.aspectRatios]).toEqual([...c.aspects]);
       expect(e.caps.maxDurationSec).toBe(8);

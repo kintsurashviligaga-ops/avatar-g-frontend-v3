@@ -45,7 +45,7 @@ import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import { lyriaProMaxSec } from '@/lib/music/studio/capabilities';
 import { LYRIA_CLIP_MAX_SEC } from '@/lib/studio/musicEngines';
 import { resolveModel } from '@/lib/veo/capabilities';
-import { veoNotConfiguredDetail, veoTransport } from '@/lib/veo/engine';
+import { veoModelProblem, veoNotConfiguredDetail, veoTransport } from '@/lib/veo/engine';
 
 export type ServiceTier = 'high' | 'medium' | 'low' | 'unavailable';
 
@@ -113,21 +113,27 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
 
     // 2 · VIDEO CLIPS — Google Veo 3.1 through lib/veo/engine (veoTransport: Vertex AI when GCP_PROJECT_ID +
     //     GCP_VEO_BUCKET + WIF/key are complete; VEO_TRANSPORT=gemini is refused, never honoured). Studio films render
-    //     the STUDIO_DEFAULT_VEO_TIER model unless the plan picks another.
+    //     the STUDIO_DEFAULT_VEO_TIER model unless the plan picks another. A tier whose model has no verified Vertex row
+    //     (or whose row does not list GCP_VEO_LOCATION) is refused before any call (engine.veoModelProblem).
     const transport = veoTransport();
     const veoModel = transport ? resolveModel(transport, STUDIO_DEFAULT_VEO_TIER) : null;
     const veoMissing = (): string => `no Veo route — ${veoNotConfiguredDetail()}`;
-    // Same door test filmComposite runs: a film needs a Veo route.
-    const videoAvail = transport !== null;
+    const defaultRefused = transport ? veoModelProblem(STUDIO_DEFAULT_VEO_TIER) : null;
+    const refusedTiers = transport ? (['lite', 'fast', 'standard'] as const).filter((t) => veoModelProblem(t) !== null) : [];
+    // A film needs a Veo route (filmComposite's door test), and its default tier a model the engine will submit.
+    const videoAvail = transport !== null && defaultRefused === null;
     const videoTier: ServiceTier = videoAvail ? 'high' : 'unavailable';
+    const refusedNote = refusedTiers.length ? ` · refused before any call: ${refusedTiers.join(', ')}` : '';
     services.push({
       service: 'ვიდეო (Clips)',
       provider: transport ? 'Veo 3.1 (Vertex AI)' : 'Veo 3.1',
       available: videoAvail,
       tier: videoTier,
-      note: transport
-        ? `${veoModel} (default tier ${STUDIO_DEFAULT_VEO_TIER}) — Google-only: a Veo miss is a failed leg, no other engine`
-        : veoMissing(),
+      note: !transport
+        ? veoMissing()
+        : defaultRefused
+          ? `${defaultRefused} — default-tier clips are refused before any call (no other model, no other engine)${refusedNote}`
+          : `${veoModel} (default tier ${STUDIO_DEFAULT_VEO_TIER}) — Google-only: a Veo miss is a failed leg, no other engine${refusedNote}`,
       icon: dot(videoAvail, videoTier),
     });
 

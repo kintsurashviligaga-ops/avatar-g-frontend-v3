@@ -12,6 +12,9 @@ import {
   normalizeClipRequest,
   resolutionFor,
   resolveModel,
+  VERTEX_VEO_MODEL_IDS,
+  veoModelRefusal,
+  vertexVariant,
   type VeoClipInput,
 } from './capabilities';
 import type { VeoMedia, VeoTier, VeoTransport } from './types';
@@ -184,6 +187,53 @@ describe('resolveModel', () => {
     expect(resolveModel('vertex', 'fast')).toBe(V_FAST);
     process.env.GEMINI_VEO_MODEL = 'models/veo?x=1';
     expect(resolveModel('gemini', 'standard')).toBe(G_STD);
+  });
+});
+
+describe('veoModelRefusal / vertexVariant — only a verified Vertex row renders (MASTER TASK v3.1)', () => {
+  it('the renderable ids are exactly the three catalogued Vertex rows, each served from us-central1', () => {
+    expect([...VERTEX_VEO_MODEL_IDS].sort()).toEqual([V_FAST, V_LITE, V_STD].sort());
+    for (const id of VERTEX_VEO_MODEL_IDS) {
+      expect(veoModelRefusal(id)).toBeNull();
+      expect(veoModelRefusal(id, 'us-central1')).toBeNull();
+      expect(VEO_MODELS[id]?.locations).toEqual(['us-central1']);
+    }
+    for (const id of [G_STD, G_FAST, G_LITE]) expect(VEO_MODELS[id]?.locations).toEqual([]);
+  });
+
+  it('refuses the Gemini Developer API ids, catalogued or not', () => {
+    for (const id of [G_STD, G_FAST, G_LITE, 'veo-9-generate-preview', 'veo-3.2-generate-preview']) {
+      expect(veoModelRefusal(id)).toBe(`${id} is a Gemini Developer API model id; new clips render on Vertex AI only`);
+    }
+  });
+
+  it('refuses an id with no Vertex row (veo-3.2, veo-9, a typo), naming the verified ones', () => {
+    for (const id of ['veo-3.2-generate-001', 'veo-3.2-fast-generate-001', 'veo-3.2-lite-generate-001', 'veo-9-generate-001', 'veo-3.1-generate-002']) {
+      expect(veoModelRefusal(id)).toBe(`${id} is not a verified Vertex Veo model (verified: ${V_STD}, ${V_FAST}, ${V_LITE})`);
+    }
+    expect(veoModelRefusal('  ')).toMatch(/^An empty model id is not a verified Vertex Veo model/);
+    // Own-property lookup: a prototype member is no row.
+    expect(veoModelRefusal('constructor')).toMatch(/^constructor is not a verified Vertex Veo model/);
+  });
+
+  it('refuses a region the row does not list; trims the id', () => {
+    expect(veoModelRefusal(V_STD, 'europe-west4')).toBe(`${V_STD} is not served from europe-west4 (only us-central1)`);
+    expect(veoModelRefusal(V_FAST, '')).toBe(`${V_FAST} is not served from an empty location (only us-central1)`);
+    expect(veoModelRefusal(` ${V_LITE} `, 'us-central1')).toBeNull();
+  });
+
+  it('vertexVariant is the tier\'s catalogued Vertex row, and null when its override is refused', () => {
+    expect(vertexVariant('standard')).toBe(VEO_MODELS[V_STD]);
+    expect(vertexVariant('fast')).toBe(VEO_MODELS[V_FAST]);
+    expect(vertexVariant('lite')).toBe(VEO_MODELS[V_LITE]);
+    expect(vertexVariant('lite')?.maxReferenceImages).toBe(0);
+    process.env.VEO_MODEL_FAST = 'veo-3.2-fast-generate-001';
+    process.env.VEO_MODEL_LITE = G_LITE;
+    expect(vertexVariant('fast')).toBeNull();
+    expect(vertexVariant('lite')).toBeNull();
+    // An override naming another catalogued Vertex row is that row.
+    process.env.VEO_MODEL_STANDARD = V_FAST;
+    expect(vertexVariant('standard')).toBe(VEO_MODELS[V_FAST]);
   });
 });
 

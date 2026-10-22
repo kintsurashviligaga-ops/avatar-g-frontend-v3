@@ -3,7 +3,8 @@
  *
  *   veoTransport()   Vertex AI once configured, else null — MASTER TASK v3.1: new clips never render on the Gemini
  *                    Developer API (an unset VEO_TRANSPORT, or a key, never selects it)
- *   createVeoClip()  normalise → gate cameraControl → upload media to GCS → submit exactly once
+ *   createVeoClip()  refuse an unverified model or region → normalise → gate cameraControl → upload media to GCS →
+ *                    submit exactly once
  *   pollVeoClip()    poll by operation name on Vertex AI. A historical `models/…` name (made on the Developer API
  *                    before v3.1) is answered `failed` without calling that API; the name itself is left untouched
  *   deliverableUrl() a playable URL for a finished Vertex clip (V4 signed); bytes clips are hosted by the caller
@@ -18,7 +19,7 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { isTruthyFlag } from '@/lib/env/flag';
-import { DEFAULT_TIER, estimateClipCostUsd, normalizeClipRequest, resolveModel, type VeoClipAdjustment, type VeoClipInput } from './capabilities';
+import { DEFAULT_TIER, estimateClipCostUsd, normalizeClipRequest, resolveModel, veoModelRefusal, type VeoClipAdjustment, type VeoClipInput } from './capabilities';
 import { releaseVeoSpend, reserveVeoSpend, veoCapRefusalDetail } from './dailyCap';
 import { signedReadUrl, uploadVeoInput, VEO_INPUT_FETCH_TIMEOUT_MS, VEO_INPUT_MAX_BYTES, veoOutputPrefix, VeoGcsError } from './gcs';
 import { vertexConfig, vertexConfigProblems } from './vertexAuth';
@@ -75,6 +76,15 @@ export function veoNotConfiguredDetail(): string {
   if (invalid) return invalid;
   if (forcedTransport() === 'gemini') return VEO_DEVELOPER_API_REFUSED;
   return `Vertex AI is not configured for Veo: ${vertexConfigProblems().join(', ') || 'incomplete'}`;
+}
+
+/**
+ * Why `tier` cannot render a new clip on this deployment, or null: its model (VEO_MODEL_* or the catalogue default) and
+ * GCP_VEO_LOCATION checked against the model's Vertex row (capabilities.veoModelRefusal). Says nothing about the rest of
+ * the config; veoTransport() answers that.
+ */
+export function veoModelProblem(tier: VeoTier): string | null {
+  return veoModelRefusal(resolveModel('vertex', tier), vertexConfig()?.location);
 }
 
 // ── Input preparation ────────────────────────────────────────────────────────────────────────────────────────────
@@ -202,6 +212,7 @@ async function submitViaVertex(request: VeoClipRequest, model: string, input: Cr
  *   2. capabilities.normalizeClipRequest for that model and transport (adjustments recorded);
  *   3. native cameraControl kept only when VEO_NATIVE_CAMERA_CONTROL is on — it is undocumented for Veo 3.x, so the
  *      default is the prompt's camera language alone (normalisation already dropped it without a first frame);
+ *   3b. a model without a verified Vertex row, or a GCP_VEO_LOCATION its row does not list, is `not_configured` here;
  *   4. the daily Veo ceiling (dailyCap.ts, VEO_DAILY_LIMIT_USD): the clip's price reserved, or a `quota` refusal with no submit;
  *   5. media uploaded to GCS, plus an output prefix;
  *   6. exactly one submit.
@@ -240,6 +251,15 @@ export async function createVeoClip(input: CreateVeoClipInput): Promise<CreateVe
   // Capture output location/request before any input upload or provider POST. Hooks receive no media or credentials.
   const selectedConfig = vertexConfig();
   const cfg = selectedConfig ? { ...selectedConfig, auth: { ...selectedConfig.auth } } : null;
+
+  // MASTER TASK v3.1: only a verified Vertex row renders, in a region it lists. A -preview id, an id with no row (a
+  // VEO_MODEL_* naming veo-3.2 or veo-9) or another GCP_VEO_LOCATION stops here: no journal entry, no reserve, no upload.
+  const refusal = veoModelRefusal(model, cfg?.location);
+  if (refusal) {
+    const refused: CreateVeoClipResult = { outcome: failure('not_configured', false, refusal), request, adjustments, model, transport };
+    logSubmit(refused);
+    return refused;
+  }
   const sameConfig = () => !cfg || JSON.stringify(vertexConfig()) === JSON.stringify(cfg);
   let storageUri = '';
   let evidence: VeoSubmissionEvidence | undefined;

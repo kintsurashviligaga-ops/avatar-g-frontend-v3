@@ -133,9 +133,12 @@ const MARKETING_ASPECTS = ['auto', '1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9
 /** Pages read for the owner's "full suite" pass. */
 const READ_1002 = '(read 2026-10-02)';
 
-/** Veo's own facts per tier (lib/veo/capabilities — docs/VEO_ENGINE.md §1, Google docs verified 2026-09-29). */
+/**
+ * Veo's own facts per tier, from the Vertex row the tier renders on (lib/veo/capabilities — docs/VEO_ENGINE.md §1). Not
+ * the Gemini API's row: no new clip renders there (MASTER TASK v3.1), so its facts are not what a person is choosing.
+ */
 function veoCaps(tier: VeoTier): ModelCapabilities {
-  const c = capsFor(DEFAULT_MODEL_IDS.gemini[tier]);
+  const c = capsFor(DEFAULT_MODEL_IDS.vertex[tier], 'vertex');
   // One CLIP: the film pipeline stitches scenes up to FILM_MAX_SEC, but that is the pipeline, not the model.
   return { fromText: true, fromImage: true, references: c.maxReferenceImages, maxDurationSec: Math.max(...c.durations), aspectRatios: [...c.aspects] };
 }

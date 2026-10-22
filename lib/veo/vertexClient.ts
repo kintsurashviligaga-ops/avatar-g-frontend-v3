@@ -12,6 +12,7 @@
  * Google call uses `redirect: 'manual'`, so neither the token nor the body is ever re-sent to a redirect target.
  */
 import 'server-only';
+import { veoModelRefusal } from './capabilities';
 import { buildVertexPayload, VeoPayloadError } from './payload';
 import { getVertexAccessToken, redactSecrets, VertexAuthError } from './vertexAuth';
 import type {
@@ -271,7 +272,8 @@ function tokenFailure(err: unknown): VeoCreateFailure {
 
 /**
  * Submit ONE clip to Vertex AI. Exactly one POST at most — see the header. Total: every failure is an outcome, and
- * everything that can be refused locally (model id, config, payload contract, token) is refused before the POST.
+ * everything that can be refused locally (model id and its verified row, config, payload contract, token) is refused
+ * before the POST.
  */
 export async function submitVertexVeo(req: VeoClipRequest, cfg: VertexConfig, opts: SubmitVertexOptions): Promise<VeoCreateOutcome> {
   const model = typeof opts.model === 'string' ? opts.model.trim() : '';
@@ -279,6 +281,10 @@ export async function submitVertexVeo(req: VeoClipRequest, cfg: VertexConfig, op
   if (!PROJECT_RE.test(cfg.projectId) || !LOCATION_RE.test(cfg.location)) {
     return failure('not_configured', false, 'Vertex project id or location is malformed');
   }
+  // The engine refuses these first; this is the one POST, so it holds the line too (MASTER TASK v3.1: no verified
+  // capability row, or a region the row does not list → no token, no POST).
+  const refusal = veoModelRefusal(model, cfg.location);
+  if (refusal) return failure('not_configured', false, refusal);
   const timeoutMs = positiveMs(opts.timeoutMs, VEO_SUBMIT_TIMEOUT_MS);
 
   const personGeneration = opts.personGeneration ?? envPersonGeneration();
