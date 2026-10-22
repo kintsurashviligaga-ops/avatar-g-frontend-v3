@@ -2,13 +2,14 @@ import 'server-only';
 /**
  * The realtime voice engines this app server calls (MASTER TASK v3.1: Google only for chat, voice and agents). The
  * OpenAI and Deepgram STT, the Cartesia TTS fallback and the OpenAI assistant stream are gone: the realtime STT refuses
- * (/api/voice/transcribe runs Gemini instead), and the TTS is ElevenLabs only until Cloud TTS replaces it.
+ * (/api/voice/transcribe runs Gemini instead), and the TTS is Google Cloud TTS on the Vertex Workload Identity token
+ * (lib/audio/google-tts; ElevenLabs is gone since PR 5d).
  */
 import type { RealtimeVoiceLanguage } from '@/types/voice';
-import { KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
+import { synthesizeGoogleTts } from '@/lib/audio/google-tts';
 
 export type SttProviderName = 'openai-whisper-3-turbo' | 'deepgram-nova-2';
-export type TtsProviderName = 'elevenlabs-multilingual-v2' | 'cartesia-sonic';
+export type TtsProviderName = 'google-cloud-tts';
 
 export type SttResult = {
   text: string;
@@ -39,21 +40,13 @@ function sttProviderPreference(): 'openai' | 'deepgram' {
   return 'openai';
 }
 
-function ttsProviderPreference(): 'elevenlabs' | 'cartesia' {
-  const value = String(process.env.VOICE_V2V_TTS_PROVIDER || '').trim().toLowerCase();
-  if (value === 'cartesia') {
-    return 'cartesia';
-  }
-  return 'elevenlabs';
-}
-
 export function getRealtimeProviderSnapshot(): {
   stt: SttProviderName;
   tts: TtsProviderName;
 } {
   return {
     stt: sttProviderPreference() === 'deepgram' ? 'deepgram-nova-2' : 'openai-whisper-3-turbo',
-    tts: ttsProviderPreference() === 'cartesia' ? 'cartesia-sonic' : 'elevenlabs-multilingual-v2',
+    tts: 'google-cloud-tts',
   };
 }
 
@@ -113,51 +106,6 @@ export function createSemanticChunkAccumulator(minChunkChars = 64): {
   };
 }
 
-async function synthesizeWithElevenLabs(text: string, language: RealtimeVoiceLanguage): Promise<TtsResult> {
-  const apiKey = String(process.env.ELEVENLABS_API_KEY || '').trim();
-  // Georgian → the CLONED native voice (shared default) unless an env override is set.
-  const georgianVoice = String(process.env.ELEVENLABS_GEORGIAN_VOICE_ID || '').trim() || KA_VOICE_FEMALE;
-  const defaultVoice = String(process.env.ELEVENLABS_VOICE_ID || '').trim();
-  const voiceId = language === 'ka-GE' ? georgianVoice : (defaultVoice || georgianVoice);
-
-  if (!apiKey || !voiceId) {
-    throw new Error('elevenlabs_config_missing');
-  }
-
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=mp3_44100_128`, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': apiKey,
-      'Content-Type': 'application/json',
-      Accept: 'audio/mpeg',
-    },
-    body: JSON.stringify({
-      text,
-      model_id: 'eleven_multilingual_v2',
-      optimize_streaming_latency: 3,
-      voice_settings: {
-        stability: 0.55,
-        similarity_boost: 0.78,
-        style: 0.32,
-        use_speaker_boost: true,
-      },
-    }),
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    throw new Error(`elevenlabs_tts_failed_${response.status}`);
-  }
-
-  const bytes = await response.arrayBuffer();
-
-  return {
-    audioBase64: bytesToBase64(bytes),
-    mimeType: 'audio/mpeg',
-    provider: 'elevenlabs-multilingual-v2',
-  };
-}
-
 export async function synthesizeSpeechChunk(input: {
   text: string;
   language: RealtimeVoiceLanguage;
@@ -167,7 +115,15 @@ export async function synthesizeSpeechChunk(input: {
     throw new Error('empty_tts_text');
   }
 
-  // ElevenLabs is the one voice engine here, so a miss is an ElevenLabs failure, never a silent Cartesia answer, whatever
-  // AI_GOOGLE_ONLY or VOICE_V2V_TTS_PROVIDER says.
-  return synthesizeWithElevenLabs(text, input.language);
+  // Cloud TTS is the one voice engine here, so a miss is a Cloud TTS failure, never a silent ElevenLabs or Cartesia
+  // answer, whatever AI_GOOGLE_ONLY or VOICE_V2V_TTS_PROVIDER says.
+  const audio = await synthesizeGoogleTts(text, { languageCode: input.language });
+  if (!audio || !audio.byteLength) {
+    throw new Error('google_tts_failed');
+  }
+  return {
+    audioBase64: bytesToBase64(audio),
+    mimeType: 'audio/mpeg',
+    provider: 'google-cloud-tts',
+  };
 }

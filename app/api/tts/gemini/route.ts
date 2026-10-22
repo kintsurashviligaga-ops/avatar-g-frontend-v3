@@ -15,8 +15,8 @@
  * the active persona's voice > Aoede. ⚠️ Only Aoede and Charon are verified speaking Georgian, so a Georgian chunk
  * maps Kore → Aoede and Puck → Charon (lib/agents/profile liveVoiceFor) — the same rule Live uses.
  *
- * This is SEPARATE from /api/elevenlabs/tts on purpose — that route still powers film/voiceover; only the
- * chat read-aloud is migrated off ElevenLabs here.
+ * This is SEPARATE from /api/elevenlabs/tts on purpose — that route (Cloud TTS since MASTER TASK v3.1 PR 5d) powers
+ * the film and orchestrator voice-overs; this one is the chat read-aloud.
  */
 import { NextRequest, NextResponse } from 'next/server';
 

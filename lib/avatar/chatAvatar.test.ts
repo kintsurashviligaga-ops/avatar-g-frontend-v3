@@ -60,11 +60,11 @@ describe('avatarGenderFromText', () => {
 describe('avatarOfferText', () => {
   const base = { speech: 'გადადი მაი ავატარ ჯიზე და დაიწყე', direction: '', gender: 'female' as const, aspect: '9:16' as const, face: 'stock' as const, credits: 25, locale: 'ka' };
 
-  it('GG’s order: the line, the ElevenLabs Georgian voice, a ready presenter, 8 s, the price, and a question', () => {
+  it('GG’s order: the line, the Cloud TTS Georgian voice, a ready presenter, 8 s, the price, and a question', () => {
     const t = avatarOfferText(base);
     expect(t).toContain('„გადადი მაი ავატარ ჯიზე და დაიწყე“');
-    expect(t).toContain('ElevenLabs');
-    expect(t).toContain('ქალის ხმა');
+    expect(t).toContain('ქალის ხმა (Google Cloud TTS)');
+    expect(t).not.toContain('ElevenLabs');
     expect(t).toContain('ტუჩებს ფრაზა-ფრაზა მოერგება'); // GG 10:15Z: "approximately" was not true; 10:22Z tap
     expect(t).not.toContain('მიახლოებით');
     expect(t).toContain('მზა წამყვანი');
@@ -75,7 +75,7 @@ describe('avatarOfferText', () => {
 
   it('a line in English keeps the video engine’s own voice; the face and the direction are named', () => {
     const t = avatarOfferText({ ...base, speech: 'Welcome aboard', direction: 'smiling', face: 'photo', aspect: '16:9', credits: 25, locale: 'en' });
-    expect(t).not.toContain('ElevenLabs');
+    expect(t).not.toContain('Cloud TTS');
     expect(t).toContain('engine’s own voice');
     expect(t).toContain('your photo');
     expect(t).toContain('smiling');
@@ -85,7 +85,7 @@ describe('avatarOfferText', () => {
 
   it('Russian copy, and the preset picked in the panel', () => {
     const t = avatarOfferText({ ...base, gender: 'male', face: 'preset', locale: 'ru' });
-    expect(t).toContain('мужской голос (ElevenLabs)');
+    expect(t).toContain('мужской голос (Google Cloud TTS)');
     expect(t).toContain('панели');
     expect(t).toContain('Начать?');
   });

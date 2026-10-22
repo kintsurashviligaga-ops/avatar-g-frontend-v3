@@ -21,9 +21,9 @@
  *  - The studio base image (app/api/nanobanana/image) is the NanoBanana RESELLER (lib/nanobanana/client →
  *    nanobananaapi.ai) and nothing else: a miss is a refunded 502, the Grok → FLUX fallbacks are gone (R7).
  *    It is a legacy vendor reselling Google's image model, NOT a direct Google call.
- *  - TTS is ElevenLabs only (lib/chat/filmVoiceover, /api/elevenlabs/tts): eleven_v3 for Georgian, retried on
- *    eleven_multilingual_v2 (same provider), turbo v2.5 otherwise; the cloned ka voices are code defaults
- *    (lib/audio/georgian-voice). No Azure/Google TTS fallback (R7). Chat read-aloud (/api/tts/gemini) is separate.
+ *  - TTS is Google Cloud TTS only (lib/audio/google-tts, on the Vertex Workload Identity token; used by
+ *    lib/chat/filmVoiceover and /api/elevenlabs/tts): the best voice for the language and gender. No ElevenLabs or
+ *    Azure fallback (R7). Chat read-aloud (/api/tts/gemini) is separate.
  *  - Studio music (app/api/ai/music) Auto = Lyria 3 ALONE, no failover (R7); ElevenLabs Music / Udio / MusicGen
  *    run only when the user explicitly picks one. A FILM's score is ElevenLabs Music at /api/video/assemble —
  *    a miss ships the film without music; the Udio and MusicGen fallbacks were removed.

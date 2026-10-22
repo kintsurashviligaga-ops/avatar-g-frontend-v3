@@ -7,11 +7,12 @@
  * language), and the user's "how it behaves" text directs the motion. One 8 s clip, priced as one Veo clip from the
  * video price SSoT (lib/credits/videoPricing) — no new price constant.
  *
- * ⚠️ A GEORGIAN LINE IS HEARD IN ELEVENLABS' VOICE, NOT VEO'S (GG's tap, 2026-10-17 07:54Z: „ElevenLabs ხმა"). Veo's own
- * Georgian is garbled (the 2026-10-16 film). Veo first rendered the person talking with NO sound and the line was laid
- * over it: the mouth moved on its own and did not match at all (GG, 10:15Z). Now Veo SAYS the line, in Latin letters,
- * so its mouth follows its own voice; that voice is replaced by the cloned native-Georgian line, fitted phrase by
- * phrase onto where Veo spoke (lib/avatar/speechMatch, on delivery in app/api/genjutsu/status) — GG's tap 10:22Z
+ * ⚠️ A GEORGIAN LINE IS HEARD IN A GOOGLE CLOUD TTS VOICE, NOT VEO'S. Veo's own Georgian is garbled (the 2026-10-16
+ * film), so GG chose a separate voice for it (tap 2026-10-17 07:54Z: „ElevenLabs ხმა"; since MASTER TASK v3.1 PR 5d it
+ * is Cloud TTS's best native Georgian voice, lib/audio/google-tts). Veo first rendered the person talking with NO sound
+ * and the line was laid over it: the mouth moved on its own and did not match at all (GG, 10:15Z). Now Veo SAYS the
+ * line, in Latin letters, so its mouth follows its own voice; that voice is replaced by the Georgian line, fitted phrase
+ * by phrase onto where Veo spoke (lib/avatar/speechMatch, on delivery in app/api/genjutsu/status) — GG's tap 10:22Z
  * „Veo ლაპარაკობს". English and Russian keep Veo's own voice.
  *
  * Pure: the route (app/api/avatar/veo) owns auth, money and the provider.
@@ -48,16 +49,16 @@ export interface VeoAvatarInput {
   speech: string;
   direction: string;
   aspect: VeoAspect;
-  /** The voice the user picked for a line ElevenLabs speaks; null = told by the words (lib/chat/filmVoiceover). */
+  /** The voice the user picked for a line Cloud TTS speaks; null = told by the words (lib/chat/filmVoiceover). */
   voiceGender: 'male' | 'female' | null;
 }
 
-/** Georgian words are voiced by ElevenLabs over a silent Veo clip; any other language is Veo's own voice. */
-export function avatarVoiceByElevenLabs(speech: string): boolean {
+/** Georgian words are voiced by Cloud TTS over Veo's mouth; any other language is Veo's own voice. */
+export function avatarVoiceByTts(speech: string): boolean {
   return isGeorgianText(speech);
 }
 
-/** The ElevenLabs line and the voiced clip of one avatar job, at fixed paths in `renders`: the job's uuid finds both again. */
+/** The Cloud TTS line and the voiced clip of one avatar job, at fixed paths in `renders`: the job's uuid finds both again. */
 export const avatarVoicePath = (uuid: string): string => `avatar-veo/${uuid}/voice.mp3`;
 export const avatarVoicedPath = (uuid: string): string => `avatar-veo/${uuid}/voiced.mp4`;
 
@@ -95,7 +96,7 @@ export function buildVeoAvatarPrompt({ speech, direction, voicedSec }: { speech:
   return [
     'The person in the first frame looks into the camera and talks to the viewer. Keep their face, hair, clothes and the background exactly as in the first frame; a steady medium close-up.',
     act.trim(),
-    // A line voiced by ElevenLabs: Veo says the same syllables in Latin letters, at the ElevenLabs line's length, so its
+    // A line voiced by Cloud TTS: Veo says the same syllables in Latin letters, at the spoken line's length, so its
     // mouth makes them; its own voice is then replaced (lib/avatar/speechMatch).
     voicedSec !== undefined ? dubbedLineDirection(speech, voicedSec) : buildSpeechDirection(speech),
   ].join(' ');

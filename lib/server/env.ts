@@ -99,12 +99,6 @@ export const ENV_REGISTRY: Record<string, EnvVar> = {
     required: false,
     usedBy: ['speech-to-text', 'audio transcription'],
   },
-  GOOGLE_TTS_API_KEY: {
-    name: 'GOOGLE_TTS_API_KEY',
-    scope: 'server',
-    required: false,
-    usedBy: ['text-to-speech'],
-  },
 
   // Cloudflare R2 Storage (OPTIONAL)
   R2_ACCOUNT_ID: {

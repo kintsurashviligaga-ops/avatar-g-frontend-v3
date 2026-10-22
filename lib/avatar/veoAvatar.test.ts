@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { avatarVoiceByElevenLabs, avatarVoicePath, avatarVoicedPath, buildVeoAvatarPrompt, parseVeoAvatarRequest, veoAvatarCredits, VEO_AVATAR_NEGATIVE, VEO_AVATAR_SPEECH_MAX } from './veoAvatar';
+import { avatarVoiceByTts, avatarVoicePath, avatarVoicedPath, buildVeoAvatarPrompt, parseVeoAvatarRequest, veoAvatarCredits, VEO_AVATAR_NEGATIVE, VEO_AVATAR_SPEECH_MAX } from './veoAvatar';
 import { sceneCredits } from '../credits/priceBook';
 
 describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
@@ -29,11 +29,11 @@ describe('Veo avatar (GG 2026-10-16: Google-only talking avatar)', () => {
     expect(parseVeoAvatarRequest({ photo: 'x', speech: 'hi', voiceGender: 'robot' })).toEqual({ ok: false, field: 'voiceGender', code: 'invalid' });
   });
 
-  // GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა".
-  it('a Georgian line is ElevenLabs\' voice; English and Russian stay Veo\'s', () => {
-    expect(avatarVoiceByElevenLabs('გადადი მაი ავატარ ჯიზე და დაიწყე')).toBe(true);
-    expect(avatarVoiceByElevenLabs('Welcome to MyAvatar.ge')).toBe(false);
-    expect(avatarVoiceByElevenLabs('Добро пожаловать')).toBe(false);
+  // GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა" chose a separate Georgian voice; it is Cloud TTS since MASTER TASK v3.1 PR 5d.
+  it('a Georgian line is the Cloud TTS voice; English and Russian stay Veo\'s', () => {
+    expect(avatarVoiceByTts('გადადი მაი ავატარ ჯიზე და დაიწყე')).toBe(true);
+    expect(avatarVoiceByTts('Welcome to MyAvatar.ge')).toBe(false);
+    expect(avatarVoiceByTts('Добро пожаловать')).toBe(false);
   });
   // GG 10:15Z: "the lip sync does not match at all" — Veo had been told only how long to talk. Tap 10:22Z „Veo ლაპარაკობს".
   it('a voiced prompt has Veo SAY the line in Latin letters at the voice\'s length, never in Georgian script', () => {

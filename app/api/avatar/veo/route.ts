@@ -26,7 +26,7 @@ import { checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { isAdminIdentity } from '@/lib/auth/adminGuard';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import {
-  VEO_AVATAR_NEGATIVE, VEO_AVATAR_SECONDS, avatarVoiceByElevenLabs, avatarVoicePath, buildVeoAvatarPrompt, parseVeoAvatarRequest,
+  VEO_AVATAR_NEGATIVE, VEO_AVATAR_SECONDS, avatarVoiceByTts, avatarVoicePath, buildVeoAvatarPrompt, parseVeoAvatarRequest,
   veoAvatarCredits, veoAvatarPublic,
 } from '@/lib/avatar/veoAvatar';
 import { speakAvatarLine } from '@/lib/chat/filmVoiceover';
@@ -98,13 +98,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const uuid = randomUUID();
   // The Georgian line, spoken now — before the slot, the row and the charge, so a miss costs the user nothing.
-  const voiced = avatarVoiceByElevenLabs(r.speech);
+  const voiced = avatarVoiceByTts(r.speech);
   let voicedSec: number | undefined;
   if (voiced) {
     const line = await speakAvatarLine({ text: r.speech, gender: r.voiceGender, path: avatarVoicePath(uuid) });
     if (!line) return fail(503, 'voice_unavailable', { refunded: false });
-    // ElevenLabs refused for good (2026-10-17 09:31Z: the plan does not allow the cloned Georgian voices) — a retry
-    // cannot help, so the user is not told to try again in a minute.
+    // Cloud TTS refused for good (a 4xx such as the API off on the project or the account not allowed; first seen with
+    // ElevenLabs, 2026-10-17 09:31Z) — a retry cannot help, so the user is not told to try again in a minute.
     if ('off' in line) return fail(503, 'voice_off', { refunded: false });
     if (line.seconds > VEO_AVATAR_SECONDS + VOICE_SLACK_SEC) {
       await removeStorageObjects('renders', [avatarVoicePath(uuid)]).catch(() => {});
@@ -160,5 +160,5 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const refunded = await refund('no charge token');
     return fail(503, 'billing_unavailable', { refunded });
   }
-  return NextResponse.json({ success: true, op: 'avatar', jobId: withGenjutsuCharge(jobId, token), credits, engine: 'Veo', ...(voiced ? { voice: 'ElevenLabs' } : {}) }, { status: 202 });
+  return NextResponse.json({ success: true, op: 'avatar', jobId: withGenjutsuCharge(jobId, token), credits, engine: 'Veo', ...(voiced ? { voice: 'Google Cloud TTS' } : {}) }, { status: 202 });
 }

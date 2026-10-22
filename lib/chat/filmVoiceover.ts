@@ -12,12 +12,12 @@
  * This module fills that gap as a self-contained, STRICTLY FAIL-OPEN leg:
  *
  *   1. `wantsCommentary(brief)` — cheap intent detector (en / ka / ru).
- *   2. Claude writes the spoken narration in the SAME language as the brief.
- *   3. ElevenLabs synthesises it with the SAME tuned Georgian-stable multilingual
- *      voice settings the live /api/elevenlabs/tts route uses (natural, not robotic).
+ *   2. Gemini writes the spoken narration in the SAME language as the brief.
+ *   3. Google Cloud TTS reads it (lib/audio/google-tts, on the Vertex Workload
+ *      Identity token) in the best voice for its language and the speaker's gender.
  *   4. The clip is uploaded to a private bucket and a signed URL is returned.
  *
- * Every step returns `null` on any failure (missing key, model error, empty
+ * Every step returns `null` on any failure (missing config, model error, empty
  * audio, upload failure). A null voice-over leaves the existing music-only
  * pipeline byte-for-byte unchanged — the worst case is "no commentary", never a
  * broken render. The leg is also NOT separately billed: the commentary rides on
@@ -29,15 +29,11 @@ import 'server-only';
 import { sanitizeSpokenText, splitSpokenText } from './spokenText';
 import { castRoster, collapseVoicedTurns, type CastTurn, type VoicedTurn } from './dialogueCasting';
 import { llmText } from '@/lib/ai/llmText';
-import { selectTtsModel, voiceSettingsForModel, isGeorgianText, type ElevenLabsModelId } from '@/lib/audio/tts-model';
-import { genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
-import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
-import { isElevenLabsVoiceId } from '@/lib/audio/voiceId';
-import { resolveVoiceId, personaToGender, toneToVoiceSettings, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
+import { isGeorgianText } from '@/lib/audio/tts-model';
+import { genderForPersona, isLastingTtsRefusal, synthesizeGoogleTts, ttsLanguageCode, type TtsGender } from '@/lib/audio/google-tts';
+import { personaToGender, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
 import { uploadAndSign, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { mp3DurationSec } from '@/lib/audio/mp3Duration';
-import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
-import { isLastingVoiceRefusal } from '@/lib/elevenlabs/account';
 import { transcribeWithScribe } from '@/lib/services/dubbing/elevenScribe';
 import type { CaptionWord } from '@/lib/pipeline/compositing/word-synced-captions';
 import { checkFilmVoice, type VoiceVerdict } from './filmVoiceCheck';
@@ -110,34 +106,8 @@ async function generateNarrationScript(brief: string, totalSec: number): Promise
 // re-exported so existing importers (the assembler) keep resolving it from here.
 export { sanitizeSpokenText };
 
-/**
- * Synthesise `text` to an MP3 with the SAME tuned voice the live TTS route uses
- * (Georgian → eleven_multilingual_v2, natural settings). Returns base64 + content
- * type, or null on any failure.
- */
-/**
- * Per-character Georgian voice map. To get a NATURAL, ACCENT-FREE Georgian read you
- * need a Georgian-native voice (ElevenLabs has no built-in one). Two ways to fill
- * these IN CODE (deploys via git — NO Vercel access needed):
- *   • paste a cloned/library Georgian voice ID as the string default below, OR
- *   • set the matching env var (ELEVENLABS_KA_*).
- * Until a slot is filled it falls back to ELEVENLABS_GEORGIAN_VOICE_ID → the single
- * configured voice, so nothing ever breaks. The persona is auto-detected from the
- * brief so a male/female/child/elder/young story gets a fitting voice.
- */
+/** The persona a brief implies, which sets the narrator's gender when the panel named none. */
 type VoicePersona = 'male' | 'female' | 'child' | 'elder' | 'young' | 'narrator';
-// v329 — NATIVE Georgian voices cloned (ElevenLabs IVC) from real Georgian
-// speakers supplied by the founder, read on eleven_v3 (the ka-capable model) for a
-// natural, accent-free result. Male personas → the male clone; female/child → the
-// female clone. Env (ELEVENLABS_KA_*) still overrides per-persona if ever needed.
-const KA_VOICE_DEFAULTS: Record<VoicePersona, string> = {
-  male: KA_VOICE_MALE,
-  narrator: KA_VOICE_MALE,
-  elder: KA_VOICE_MALE,
-  young: KA_VOICE_MALE,
-  female: KA_VOICE_FEMALE,
-  child: KA_VOICE_FEMALE,
-};
 function detectPersona(brief: string): VoicePersona {
   const b = (brief || '').toLowerCase();
   if (/\b(child|kid|boy|girl|baby|toddler)\b|ბავშვ|ბიჭუნა|გოგონა/.test(b)) return 'child';
@@ -146,36 +116,6 @@ function detectPersona(brief: string): VoicePersona {
   if (/\b(woman|girl|lady|female|she|her|mother|sister|wife)\b|ქალ|გოგო|დედ|დის|ცოლ/.test(b)) return 'female';
   if (/\b(man|male|soldier|father|brother|king|warrior)\b|კაც|მამაკაც|ჯარისკაც|მამა|ძმ|მეფ|მებრძ/.test(b)) return 'male';
   return 'narrator';
-}
-/** Resolve the Georgian voice for a brief: env slot → code default → single fallback. */
-function pickGeorgianVoiceId(brief: string): string | null {
-  const persona = detectPersona(brief);
-  const envSlot = process.env[`ELEVENLABS_KA_${persona.toUpperCase()}`];
-  return (
-    (envSlot && envSlot.trim()) ||
-    (KA_VOICE_DEFAULTS[persona] && KA_VOICE_DEFAULTS[persona].trim()) ||
-    (process.env.ELEVENLABS_GEORGIAN_VOICE_ID && process.env.ELEVENLABS_GEORGIAN_VOICE_ID.trim()) ||
-    (process.env.ELEVENLABS_VOICE_ID && process.env.ELEVENLABS_VOICE_ID.trim()) ||
-    null
-  );
-}
-
-/**
- * Resolve the narrator voice for an EXPLICIT gender choice (the video panel's
- * 👩 ქალი / 👨 კაცი selector). Order: the task-specified env override
- * (ELEVENLABS_VOICE_ID_FEMALE / _MALE) → the cloned native-Georgian voice for that
- * gender (georgianVoiceId, which itself honours ELEVENLABS_GEORGIAN_VOICE_ID) →
- * the single configured voice. Fail-soft: returns null only when nothing at all
- * is configured, so a missing voice ID degrades to the auto pick rather than crashing.
- */
-function pickNarratorVoiceId(gender: 'male' | 'female'): string | null {
-  const envSlot = (gender === 'male' ? process.env.ELEVENLABS_VOICE_ID_MALE : process.env.ELEVENLABS_VOICE_ID_FEMALE) || '';
-  return (
-    envSlot.trim() ||
-    (georgianVoiceId(gender) || '').trim() ||
-    (process.env.ELEVENLABS_VOICE_ID && process.env.ELEVENLABS_VOICE_ID.trim()) ||
-    null
-  );
 }
 
 /**
@@ -232,110 +172,53 @@ export async function elevenLabsRefusal(res: { status: number; text: () => Promi
   return code ? `${res.status} ${code}` : String(res.status);
 }
 
-async function synthesizeVoiceover(
-  text: string,
-  voiceIdOverride?: string | null,
-  // Only ever steered the Azure / Google fallback voices, which are gone (R7, below). The ElevenLabs voice is already
-  // gender-matched by every caller through `voiceIdOverride`; kept so the call sites stay as they are.
-  _gender?: TtsGender,
-  // PHASE 2 L1 — optional tone-driven voice-setting nudges, merged OVER the model
-  // defaults. Empty/{} → byte-identical to the previous behaviour.
-  extraVoiceSettings?: Record<string, number>,
-  // Told each ElevenLabs refusal's HTTP status (0 when no answer came), so a caller can tell a plan / key refusal from
-  // a passing outage.
-  onRefusal?: (status: number) => void,
-): Promise<{ base64: string; contentType: string } | null> {
-  const georgian = isGeorgianText(text);
-  const apiKey = process.env.ELEVENLABS_API_KEY;
+/** How one line is read: the speaker's gender, and which of that gender's best voices (a character's place in the cast). */
+interface VoiceSpec {
+  gender: TtsGender;
+  variant?: number;
+  /** Told each Cloud TTS refusal's HTTP status (0 when no answer came), so a caller can tell a lasting refusal from an outage. */
+  onRefusal?: (status: number) => void;
+}
 
-  // PRIMARY: ElevenLabs. For Georgian the caller passes a CLONED native-Georgian
-  // voice (KA_VOICE_DEFAULTS — real Georgian speakers, IVC) read on eleven_v3 (the
-  // ka-capable model) → natural, accent-free, and the user's own chosen voices.
-  // For non-Georgian it's the configured voice on turbo. ElevenLabs is the ONLY provider
-  // here — see the R7 note at the end of this function.
-  if (apiKey) {
-    const voiceId =
-      (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
-      ((georgian && process.env.ELEVENLABS_GEORGIAN_VOICE_ID
-        ? process.env.ELEVENLABS_GEORGIAN_VOICE_ID
-        : undefined) ?? process.env.ELEVENLABS_VOICE_ID)?.trim(); // a pasted env value often ends in a newline
-    // An override that is not a voice id never reaches the provider URL path (lib/audio/voiceId): no voice, no call.
-    if (voiceId && isElevenLabsVoiceId(voiceId)) {
-      const primaryModel = selectTtsModel(text);
-      // eleven_v3 is the ONLY EL model with native `ka`, but it is alpha / limited-access — if the
-      // account can't use it the request 4xxs and Georgian voiceover fails entirely (avatar + video
-      // dub break). Fall back to eleven_multilingual_v2 (phonetic ka — imperfect but audible) so a
-      // voice always comes out. Non-Georgian keeps its single turbo model.
-      const modelChain: ElevenLabsModelId[] = primaryModel === 'eleven_v3'
-        ? ['eleven_v3', 'eleven_multilingual_v2']
-        : [primaryModel];
-      const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 30_000);
-      try {
-        // Hold a shared ElevenLabs concurrency slot for the whole request+read so a
-        // TTS call can't collide with a concurrent Music call (the song build fires
-        // both) and trip the account's 2-concurrent 429.
-        const out = await withElevenLabsSlot(async () => {
-          for (const m of modelChain) {
-            const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-              method: 'POST',
-              headers: {
-                'xi-api-key': apiKey,
-                'Content-Type': 'application/json',
-                Accept: 'audio/mpeg',
-              },
-              body: JSON.stringify({
-                text,
-                model_id: m,
-                voice_settings: { ...voiceSettingsForModel(m), ...(extraVoiceSettings ?? {}) },
-              }),
-              signal: ac.signal,
-            });
-            if (res.ok) {
-              const buf = Buffer.from(await res.arrayBuffer());
-              // Guard against an empty / error-page body masquerading as audio.
-              if (buf.byteLength >= 1024) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' as const };
-            } else {
-              // Named, never silent: on 2026-10-17 every voice of a paid film came back null with nothing in the logs, and
-              // the cause (the key's ID set where the key belongs) was only found in the Music leg's warning.
-              // eslint-disable-next-line no-console
-              console.warn(`[tts] ElevenLabs ${m} refused: ${await elevenLabsRefusal(res)}`);
-              onRefusal?.(res.status);
-            }
-            // else: try the next model in the chain (e.g. eleven_v3 not enabled on this account)
-          }
-          return null;
-        });
-        if (out) return out;
-      } catch {
-        /* fall through to the explicit miss below */
-        onRefusal?.(0); // a timeout or a dropped connection: no answer, so never a lasting one
-      } finally {
-        clearTimeout(timer);
-      }
-    }
+/**
+ * One line read aloud on Google Cloud TTS (lib/audio/google-tts): the best voice for the text's language and the
+ * speaker's gender, on the Vertex Workload Identity token. Cloud TTS is the only engine (MASTER TASK v3.1 denies every
+ * cross-provider fallback; ElevenLabs, Azure and the API-key Google path are gone), so its miss is null, which every
+ * caller already handles as its own no-voice path: a film keeps its music-only master, and the dub / redub / avatar
+ * routes answer their existing error.
+ */
+async function synthesizeVoiceover(text: string, voice: VoiceSpec): Promise<{ base64: string; contentType: string } | null> {
+  const audio = await synthesizeGoogleTts(text, {
+    languageCode: ttsLanguageCode(text),
+    gender: voice.gender,
+    variant: voice.variant,
+    onRefusal: voice.onRefusal,
+  });
+  // Guard against an empty body masquerading as audio.
+  if (!audio || audio.byteLength < 1024) return null;
+  return { base64: Buffer.from(audio).toString('base64'), contentType: 'audio/mpeg' };
+}
+
+/** Each speaker's place among the cast of its gender, in order of first line: which Google voice of that gender it gets. */
+function castVariants(turns: readonly { speaker: string; gender: 'male' | 'female' }[]): Map<string, number> {
+  const seen = new Map<string, number>();
+  const count = { male: 0, female: 0 };
+  for (const t of turns) {
+    if (seen.has(t.speaker)) continue;
+    seen.set(t.speaker, count[t.gender]++);
   }
-
-  // ⚠️ NO FALLBACK PROVIDER (PROJECT_MASTER R7 — no silent fallback). When ElevenLabs was absent or down this fell to
-  // Azure's native ka voices (Eka/Giorgi) for Georgian, then to Google Cloud TTS — so a film, a dub or an avatar line
-  // could be voiced by a different provider's different voice from the one the user cast, with nothing to say so, and
-  // Azure is not an allowed provider at all. A request uses ONE provider: ElevenLabs (the eleven_v3 → multilingual_v2
-  // retry above stays on it). Its miss is this function's explicit outcome — null — which every caller already
-  // handles as its own no-voice path (a film keeps its music-only master; the dub / redub / presenter routes answer
-  // their existing error).
-  return null;
+  return seen;
 }
 
 /**
  * Speak ARBITRARY user text → an mp3 hosted at a fetchable https URL. Powers the
- * lip-sync "dub from text" flow (and any other text-to-voice need). Returns null on
- * any failure so the caller can fall back. `voiceId` overrides the auto voice pick.
+ * remix voice-over, the Georgian song's vocal and the assembler's voice-over script.
+ * Returns null on any failure so the caller can fall back. `gender` overrides the
+ * voice the text itself suggests.
  */
-export async function textToHostedSpeech(text: string, voiceId?: string | null): Promise<string | null> {
+export async function textToHostedSpeech(text: string, gender?: 'male' | 'female' | null): Promise<string | null> {
   try {
-    // Fall back to the hardcoded KA voice map (pickGeorgianVoiceId) — NOT just the env
-    // voice — so TTS never silently returns null when ELEVENLABS_VOICE_ID is unset.
-    const audio = await synthesizeVoiceover(text, voiceId ?? pickGeorgianVoiceId(text), genderForPersona(detectPersona(text)));
+    const audio = await synthesizeVoiceover(text, { gender: gender ? (gender === 'male' ? 'MALE' : 'FEMALE') : genderForPersona(detectPersona(text)) });
     if (!audio) return null;
     const path = `lipsync-tts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
     return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
@@ -345,24 +228,21 @@ export async function textToHostedSpeech(text: string, voiceId?: string | null):
 }
 
 /**
- * The talking avatar's line (app/api/avatar/veo, GG's 2026-10-17 07:54Z choice: its Georgian is ElevenLabs', the picture
- * Veo's). ONE request in the voice of the chosen gender — the cloned native-Georgian voice for a Georgian line — hosted at
- * `path` (a fixed path, so the status route finds it again by the job alone), with how long it plays: the route refuses a
- * line longer than the clip BEFORE it charges. `{ off: true }` when ElevenLabs refused it for good (a plan without the
- * cloned voices, a spent quota, a wrong key); null on any other miss (no key, an outage, empty audio, a failed upload).
+ * The talking avatar's line (app/api/avatar/veo: the voice is Cloud TTS', the picture Veo's). ONE read in the voice of
+ * the chosen gender, hosted at `path` (a fixed path, so the status route finds it again by the job alone), with how long
+ * it plays: the route refuses a line longer than the clip BEFORE it charges. `{ off: true }` when Cloud TTS refused it
+ * for good (the API not enabled on the project, the service account not allowed); null on any other miss (no config,
+ * an outage, empty audio, a failed upload).
  */
 export async function speakAvatarLine(opts: { text: string; gender?: 'male' | 'female' | null; path: string }): Promise<{ url: string; seconds: number } | { off: true } | null> {
   try {
     const text = sanitizeSpokenText(opts.text).trim();
     if (!text) return null;
-    const voiceId = opts.gender ? pickNarratorVoiceId(opts.gender) : pickGeorgianVoiceId(text);
     const gender: TtsGender = opts.gender ? (opts.gender === 'male' ? 'MALE' : 'FEMALE') : genderForPersona(detectPersona(text));
     const refusals: number[] = [];
-    const audio = await synthesizeVoiceover(text, voiceId, gender, undefined, (status) => { refusals.push(status); });
-    // Every model ElevenLabs was asked refused in a way a retry cannot change (2026-10-17 09:31Z: `401
-    // subscription_required / ivc_not_permitted` — the plan does not allow the cloned Georgian voices): the voice is
-    // off, and the user is not told to "try in a minute".
-    if (!audio) return refusals.length > 0 && refusals.every(isLastingVoiceRefusal) ? { off: true } : null;
+    const audio = await synthesizeVoiceover(text, { gender, onRefusal: (status) => { refusals.push(status); } });
+    // Cloud TTS refused in a way a retry cannot change: the voice is off, and the user is not told to "try in a minute".
+    if (!audio) return refusals.length > 0 && refusals.every(isLastingTtsRefusal) ? { off: true } : null;
     const buf = Buffer.from(audio.base64, 'base64');
     const seconds = mp3DurationSec(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
     if (seconds === null) return null;
@@ -409,26 +289,17 @@ async function filmNarration(opts: FilmVoiceoverOptions): Promise<{ script: stri
   const custom = sanitized.length >= 3 ? sanitized : null;
   const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
   if (!script) return null;
-  // PHASE 2 L1 — the Character Voice selector wins when present (lang+persona);
-  // else the explicit panel gender; else a brief-detected persona voice. The two
-  // legacy branches are untouched so existing renders behave identically.
-  let voiceId: string | null;
-  let ttsGender: TtsGender;
-  if (opts.voicePersona && opts.voiceLanguage) {
-    voiceId = resolveVoiceId(opts.voiceLanguage, opts.voicePersona) ?? pickGeorgianVoiceId(opts.brief);
-    ttsGender = personaToGender(opts.voicePersona) === 'male' ? 'MALE' : 'FEMALE';
-  } else if (opts.narratorGender) {
-    voiceId = pickNarratorVoiceId(opts.narratorGender);
-    ttsGender = opts.narratorGender === 'male' ? 'MALE' : 'FEMALE';
-  } else {
-    voiceId = pickGeorgianVoiceId(opts.brief);
-    ttsGender = genderForPersona(detectPersona(opts.brief));
-  }
-  const settings = toneToVoiceSettings(opts.voiceTone);
+  // The Character Voice selector's persona wins when present (with its language); else the explicit panel gender; else
+  // the persona the brief implies. Only the gender reaches the voice: the panel's tone has no Cloud TTS counterpart.
+  const ttsGender: TtsGender = opts.voicePersona && opts.voiceLanguage
+    ? (personaToGender(opts.voicePersona) === 'male' ? 'MALE' : 'FEMALE')
+    : opts.narratorGender
+      ? (opts.narratorGender === 'male' ? 'MALE' : 'FEMALE')
+      : genderForPersona(detectPersona(opts.brief));
   const speak = async (): Promise<{ base64: string; contentType: string } | null> => {
-    // One voice, read in order: each part is the same voice and settings, and the mp3 frames concatenate into one track
-    // (the dialogue leg below joins its lines the same way). A part that fails fails the whole voice — never a hole.
-    const parts = await Promise.all(splitSpokenText(script, TTS_PART_CHARS).map((p) => synthesizeVoiceover(p, voiceId, ttsGender, settings)));
+    // One voice, read in order: each part is the same voice, and the mp3 frames concatenate into one track (the
+    // dialogue leg below joins its lines the same way). A part that fails fails the whole voice — never a hole.
+    const parts = await Promise.all(splitSpokenText(script, TTS_PART_CHARS).map((p) => synthesizeVoiceover(p, { gender: ttsGender })));
     if (!parts.length || parts.some((p) => !p)) return null;
     const read = parts as { base64: string; contentType: string }[];
     return read.length === 1
@@ -506,7 +377,7 @@ export async function generateCheckedFilmVoiceover(opts: FilmVoiceoverOptions): 
  * Multi-character dialogue voice-over: parse the script into speaker turns, TTS
  * each turn in the matching gendered voice (concurrently, order preserved), then
  * concatenate the MP3 segments into one continuous track and host it. The segments
- * share the same ElevenLabs mp3 format, so a byte-concat plays back as sequential
+ * share the same Cloud TTS mp3 format, so a byte-concat plays back as sequential
  * dialogue (woman → man → …). Strictly fail-open: any miss returns null and the
  * film falls back to the music-only mix. Not separately billed.
  */
@@ -519,8 +390,8 @@ export async function generateDialogueVoiceover(opts: {
 }): Promise<string | null> {
   try {
     // Structured per-speaker turns → a stable cast voice per character; else the legacy gender-tagged script.
-    // Each voiced line keeps its persona GENDER for the TTS settings (stability 0.48 is untouched) — only the
-    // voice ID varies per character. The speaker key drives casting AND the same-speaker merge below.
+    // Each voiced line keeps its persona GENDER; the speaker's place in the cast of that gender picks its Google voice.
+    // The speaker key drives casting AND the same-speaker merge below.
     let voiced: VoicedTurn[];
     if (opts.turns && opts.turns.length) {
       const roster = castRoster(opts.turns);
@@ -529,21 +400,22 @@ export async function generateDialogueVoiceover(opts: {
         const cast = roster.get(speaker);
         // Parity with the narration leg: scrub any production annotation from the (folded narrator + dialogue)
         // turn text so nothing but the spoken words is voiced. Clean prose (incl. all Georgian) passes through.
-        return { speaker, text: sanitizeSpokenText(t.text), voiceId: cast?.voiceId ?? pickNarratorVoiceId(cast?.gender ?? 'female'), gender: cast?.gender ?? 'female' };
+        return { speaker, text: sanitizeSpokenText(t.text), voiceId: cast?.voiceId ?? null, gender: cast?.gender ?? 'female' };
       });
     } else {
       // Legacy gender-tagged path — byte-identical to before: speaker key = gender, no sanitize.
-      voiced = parseDialogueScript(opts.script ?? '').map((turn) => ({ speaker: turn.gender, text: turn.text, voiceId: pickNarratorVoiceId(turn.gender), gender: turn.gender }));
+      voiced = parseDialogueScript(opts.script ?? '').map((turn) => ({ speaker: turn.gender, text: turn.text, voiceId: null, gender: turn.gender }));
     }
     // Merge consecutive SAME-speaker lines into one breath, then bound to 12 turns while RESERVING the
     // narrator VO spine from truncation (see collapseVoicedTurns).
     voiced = collapseVoicedTurns(voiced, 12);
     if (!voiced.length) return null;
+    const variants = castVariants(voiced);
     const segments = await Promise.all(
       voiced.map((v) => {
         const text = v.text.slice(0, 400);
         if (!text) return Promise.resolve<{ base64: string; contentType: string } | null>(null);
-        return synthesizeVoiceover(text, v.voiceId, v.gender === 'male' ? 'MALE' : 'FEMALE').catch(() => null);
+        return synthesizeVoiceover(text, { gender: v.gender === 'male' ? 'MALE' : 'FEMALE', variant: variants.get(v.speaker) }).catch(() => null);
       }),
     );
     const buffers = segments
@@ -577,7 +449,7 @@ export function dialogueStemsViable(turns: readonly (CastTurn & { startSec?: num
  * synthesised ONCE in its cast voice (castRoster) and uploaded as its own stem; the same buffers are also
  * concatenated into a `mergedUrl` single-track fallback (so no line is rendered twice). Returns null when the
  * turns aren't multi-voice-viable (→ caller uses generateDialogueVoiceover's single track) or any leg misses,
- * so the film ALWAYS gets a voice track. Casting only picks voice IDs — stability 0.48 is untouched.
+ * so the film ALWAYS gets a voice track. Casting sets each speaker's gender and its place in the cast.
  */
 export async function generateDialogueStems(opts: {
   turns: (CastTurn & { startSec?: number | null })[];
@@ -587,12 +459,14 @@ export async function generateDialogueStems(opts: {
     const turns = (opts.turns ?? []).filter((t) => t && (t.speaker ?? '').trim());
     if (!dialogueStemsViable(turns)) return null;
     const roster = castRoster(turns);
+    const speakerOf = (t: CastTurn) => (t.speaker ?? '').trim().toLowerCase();
+    const variants = castVariants(turns.map((t) => ({ speaker: speakerOf(t), gender: roster.get(speakerOf(t))?.gender ?? 'female' })));
     const rendered = await Promise.all(turns.map(async (t, i) => {
-      const speaker = (t.speaker ?? '').trim().toLowerCase();
+      const speaker = speakerOf(t);
       const cast = roster.get(speaker);
       const text = sanitizeSpokenText(t.text).slice(0, 400);
       if (!text) return null;
-      const audio = await synthesizeVoiceover(text, cast?.voiceId ?? pickNarratorVoiceId(cast?.gender ?? 'female'), (cast?.gender ?? 'female') === 'male' ? 'MALE' : 'FEMALE').catch(() => null);
+      const audio = await synthesizeVoiceover(text, { gender: (cast?.gender ?? 'female') === 'male' ? 'MALE' : 'FEMALE', variant: variants.get(speaker) }).catch(() => null);
       if (!audio) return null;
       const path = `${opts.compositeId}/dstem-${i}-${speaker.replace(/[^a-z0-9]+/gi, '').slice(0, 16) || 'x'}.mp3`;
       const url = await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200);

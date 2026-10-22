@@ -3,34 +3,32 @@
  * lib/chat/filmVoiceover — a long narration is read WHOLE, in one voice.
  *
  * ⚠️ The narration leg cut every script at 600 characters, mid-sentence, with nothing to say so. A Georgian film is now
- * voiced entirely off camera (one ElevenLabs voice over the whole cut, 2026-10-16), so a 48 s or 60 s narration would
- * have lost its ending. It is read in sentence-sized parts in the same voice and joined into one track. Every provider
- * and storage call is mocked — no network, no spend.
+ * voiced entirely off camera (one voice over the whole cut, 2026-10-16; Cloud TTS since MASTER TASK v3.1 PR 5d), so a
+ * 48 s or 60 s narration would have lost its ending. It is read in sentence-sized parts in the same voice and joined into
+ * one track. Every provider and storage call is mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../ai/llmText', () => ({ llmText: jest.fn(async () => null) }));
 jest.mock('../veo/policy', () => ({ isGoogleOnly: jest.fn(() => true) }));
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => 'https://storage.example/voiceover.mp3') }));
-jest.mock('../elevenlabs/concurrency', () => ({ withElevenLabsSlot: jest.fn(<T,>(fn: () => Promise<T>) => fn()) }));
+jest.mock('../audio/google-tts', () => ({
+  ...jest.requireActual('../audio/google-tts'),
+  synthesizeGoogleTts: jest.fn(),
+}));
 
 import { generateFilmVoiceover } from './filmVoiceover';
 import { splitSpokenText } from './spokenText';
 import { uploadAndSign } from '../orchestrator/storage-adapter';
+import { synthesizeGoogleTts } from '../audio/google-tts';
 
 const SENTENCE = 'წარმოგიდგენთ ახალ ქართულ სტუდიას, სადაც ერთი ფანჯრიდან ქმნით ვიდეოს, ხმას და მუსიკას.';
 const LONG = Array.from({ length: 16 }, (_, i) => `${i + 1}. ${SENTENCE}`).join(' '); // ~1500 chars
-const ENV = { ...process.env };
-let fetchSpy: jest.SpyInstance;
-const sentTexts = () => fetchSpy.mock.calls.map((c) => (JSON.parse(String((c[1] as RequestInit).body)) as { text: string }).text);
+const google = synthesizeGoogleTts as jest.MockedFunction<typeof synthesizeGoogleTts>;
+const sentTexts = () => google.mock.calls.map((c) => c[0]);
 
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env = { ...ENV, ELEVENLABS_API_KEY: 'el-test-key' };
-  fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(new Uint8Array(2048).fill(7), { status: 200 }));
-});
-afterEach(() => {
-  fetchSpy.mockRestore();
-  process.env = { ...ENV };
+  google.mockImplementation(async () => new Uint8Array(2048).fill(7).buffer);
 });
 
 test('a 1500-character Georgian narration is read whole, in order, in parts of at most 600 characters', async () => {
@@ -42,7 +40,8 @@ test('a 1500-character Georgian narration is read whole, in order, in parts of a
   for (const t of texts) expect(t.length).toBeLessThanOrEqual(600);
   expect(texts.join(' ')).toBe(LONG);
   // Every part in the same voice.
-  expect(new Set(fetchSpy.mock.calls.map((c) => String(c[0]))).size).toBe(1);
+  expect(new Set(google.mock.calls.map((c) => JSON.stringify(c[1]))).size).toBe(1);
+  expect(google.mock.calls[0]![1]).toMatchObject({ languageCode: 'ka-GE', gender: 'MALE' });
   // One track: the parts' bytes, joined, uploaded once.
   expect(uploadAndSign).toHaveBeenCalledTimes(1);
   const b64 = (uploadAndSign as jest.Mock).mock.calls[0]![2] as string;
@@ -55,10 +54,8 @@ test('a short narration is still exactly one request (unchanged)', async () => {
 });
 
 test('a part the provider cannot read fails the whole voice — never a track with a hole in it', async () => {
-  // The part holding sentence 9 is refused on every model.
-  fetchSpy.mockImplementation(async (_url: unknown, init: RequestInit) => (String(init.body).includes('9. ')
-    ? new Response('quota', { status: 429 })
-    : new Response(new Uint8Array(2048), { status: 200 })));
+  // The part holding sentence 9 is refused.
+  google.mockImplementation(async (text: string) => (text.includes('9. ') ? null : new Uint8Array(2048).buffer));
   expect(await generateFilmVoiceover({ brief: 'ad', totalSec: 120, compositeId: 'film:s:3', narrationScript: LONG, voicePersona: 'male', voiceLanguage: 'ka' })).toBeNull();
   expect(uploadAndSign).not.toHaveBeenCalled();
 });

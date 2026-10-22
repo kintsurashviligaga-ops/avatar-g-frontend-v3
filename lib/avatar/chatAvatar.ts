@@ -8,13 +8,13 @@
  * gave, the preset they picked, else a ready presenter matched to the voice and the frame — and the order goes to Veo.
  *
  * Agent G's card says what will be made before anything is charged: the line, the voice (a Georgian line is spoken by
- * ElevenLabs — GG's choice, 2026-10-17 07:54Z — and fitted to the mouth phrase by phrase since the 10:22Z tap, see
- * lib/avatar/speechMatch), the face, the frame, the price.
+ * Google Cloud TTS — a separate voice was GG's choice, 2026-10-17 07:54Z; Cloud TTS since MASTER TASK v3.1 PR 5d — and
+ * fitted to the mouth phrase by phrase since the 10:22Z tap, see lib/avatar/speechMatch), the face, the frame, the price.
  */
 import { AVATAR_TEMPLATES } from '@/lib/studio/templates';
 import { creditsLabel } from '@/lib/credits/quote';
 import { OVERFLOW_TOLERANCE, speechSeconds } from '@/lib/video/speechTiming';
-import { VEO_AVATAR_SECONDS, VEO_AVATAR_SPEECH_MAX, avatarVoiceByElevenLabs } from './veoAvatar';
+import { VEO_AVATAR_SECONDS, VEO_AVATAR_SPEECH_MAX, avatarVoiceByTts } from './veoAvatar';
 import { splitAvatarScript } from './scriptSplit';
 
 export type AvatarGender = 'female' | 'male';
@@ -94,16 +94,16 @@ const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n -
 export function avatarOfferText(o: AvatarOffer): string {
   const en = o.locale === 'en';
   const ru = o.locale === 'ru';
-  const eleven = avatarVoiceByElevenLabs(o.speech);
+  const dubbed = avatarVoiceByTts(o.speech);
   const line = clip(o.speech, 200);
   const head = en ? `I’ll make an ${VEO_AVATAR_SECONDS}-second talking avatar (${o.aspect}).`
     : ru ? `Сделаю говорящего аватара на ${VEO_AVATAR_SECONDS} секунд (${o.aspect}).`
       : `გავაკეთებ ${VEO_AVATAR_SECONDS} წამიან მოლაპარაკე ავატარს (${o.aspect}).`;
   const says = en ? `**Says:** “${line}”` : ru ? `**Скажет:** «${line}»` : `**იტყვის:** „${line}“`;
-  const voice = eleven
-    ? (en ? `**Voice:** a Georgian ${o.gender} voice (ElevenLabs), fitted to the lips phrase by phrase.`
-      : ru ? `**Голос:** грузинский ${o.gender === 'female' ? 'женский' : 'мужской'} голос (ElevenLabs), подогнанный к губам по фразам.`
-        : `**ხმა:** ქართული ${o.gender === 'female' ? 'ქალის' : 'კაცის'} ხმა (ElevenLabs), ტუჩებს ფრაზა-ფრაზა მოერგება.`)
+  const voice = dubbed
+    ? (en ? `**Voice:** a Georgian ${o.gender} voice (Google Cloud TTS), fitted to the lips phrase by phrase.`
+      : ru ? `**Голос:** грузинский ${o.gender === 'female' ? 'женский' : 'мужской'} голос (Google Cloud TTS), подогнанный к губам по фразам.`
+        : `**ხმა:** ქართული ${o.gender === 'female' ? 'ქალის' : 'კაცის'} ხმა (Google Cloud TTS), ტუჩებს ფრაზა-ფრაზა მოერგება.`)
     : (en ? '**Voice:** the video engine’s own voice.' : ru ? '**Голос:** собственный голос видеодвижка.' : '**ხმა:** ვიდეოს ძრავის საკუთარი ხმა.');
   const face = o.face === 'photo'
     ? (en ? '**Face:** your photo.' : ru ? '**Лицо:** ваше фото.' : '**სახე:** შენი ფოტო.')
@@ -138,7 +138,7 @@ export function avatarUnavailableText(locale: string): string {
 
 /**
  * Will the line fit the one 8-second clip? The route refuses past VEO_AVATAR_SPEECH_MAX characters (HTTP 400) and a Georgian
- * line whose spoken voice runs past the clip (422 speech_too_long — it measures the real ElevenLabs take, which the
+ * line whose spoken voice runs past the clip (422 speech_too_long — it measures the real Cloud TTS take, which the
  * browser cannot). Here the film pipeline's own conservative pace estimate (lib/video/speechTiming) asks to shorten
  * first, before any card.
  */
@@ -146,7 +146,7 @@ export function avatarLineFit(speech: string): { fits: boolean; seconds: number 
   const s = speech.trim();
   const seconds = Math.round(speechSeconds(s) * 10) / 10;
   if (s.length > VEO_AVATAR_SPEECH_MAX) return { fits: false, seconds };
-  if (avatarVoiceByElevenLabs(s) && seconds > VEO_AVATAR_SECONDS * OVERFLOW_TOLERANCE) return { fits: false, seconds };
+  if (avatarVoiceByTts(s) && seconds > VEO_AVATAR_SECONDS * OVERFLOW_TOLERANCE) return { fits: false, seconds };
   return { fits: true, seconds };
 }
 

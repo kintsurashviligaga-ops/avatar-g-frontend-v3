@@ -1,13 +1,14 @@
 /**
- * POST /api/orchestrator/voice/produce — Voice (ElevenLabs) Swarm (SSE).
+ * POST /api/orchestrator/voice/produce — Voice Swarm (SSE).
  *
- * text → Agent H (vocal mastery: dynamic range + emotional timbre) → ElevenLabs
- * synthesis → upload to Storage → signed audio URL for the inline player.
+ * text → Agent H (vocal mastery: dynamic range + emotional timbre) → Google Cloud
+ * TTS (/api/elevenlabs/tts, MASTER TASK v3.1 PR 5d) → upload to Storage → signed
+ * audio URL for the inline player.
  * Streams: [Agent H: Synthesizing Vocal Frequency Spectrum…] →
- *          [ElevenLabs: Injecting Emotional Voice Clones…] → completed | failed.
+ *          [Voice: Reading the script aloud…] → completed | failed.
  * Authenticated (dev-bypass under `next dev`). Persona/emotion is inferred from
- * the text via Agent V's directive (carried as metadata; ElevenLabs voice is the
- * working synthesis path).
+ * the text via Agent V's directive (carried as metadata; Cloud TTS reads the
+ * text in its language's best voice).
  */
 import { NextRequest } from 'next/server';
 import { forwardSessionHeaders } from '@/lib/api/forwardSession';
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
           if (jobId && reservation.charged) await recordJobReservation(jobId, { ref, credits: PRODUCE_COST.voice });
         }
         emit({ stage: 'synthesizing', pct: 15, ticker: '[Agent H: Synthesizing Vocal Frequency Spectrum…]', expression: persona.expression });
-        emit({ stage: 'cloning', pct: 40, ticker: '[ElevenLabs: Injecting Emotional Voice Clones…]' });
+        emit({ stage: 'cloning', pct: 40, ticker: '[Voice: Reading the script aloud…]' });
 
         // The caller's session travels with the self-call — the TTS route is sign-in only.
         const res = await fetch(`${origin}/api/elevenlabs/tts`, {

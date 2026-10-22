@@ -2,8 +2,8 @@
  * lib/audio/georgianSong.ts
  * =========================
  * Real GEORGIAN vocals for a music video. ElevenLabs Music v1 can't sing Georgian,
- * so we build the song ourselves: Georgian lyrics written from the brief → the cloned Georgian
- * voice (KA clone via textToHostedSpeech) → mixed OVER an instrumental bed in the brief's genre
+ * so we build the song ourselves: Georgian lyrics written from the brief → a Georgian Cloud TTS
+ * voice (textToHostedSpeech) → mixed OVER an instrumental bed in the brief's genre
  * (ElevenLabs Music instrumental; there is no MusicGen fallback) with the vocal up front. The
  * resulting hosted MP3 is handed to the pipeline as the master soundtrack, so the
  * assemble + lip-sync + composite all run unchanged — and the lips track a REAL
@@ -21,7 +21,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
-import { KA_VOICE_MALE, KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, genreBpm, sceneAlignedBpm, songGenreFromBrief } from '@/lib/elevenlabs/music';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
@@ -155,9 +154,8 @@ export async function diagnoseGeorgianSong(
   }
   const lyrics = await writeGeorgianLyrics(brief, totalSec);
   out.lyricsLen = lyrics?.length ?? 0;
-  const voiceId = gender === 'male' ? KA_VOICE_MALE : KA_VOICE_FEMALE;
   if (lyrics) {
-    try { out.vocal = !!(await textToHostedSpeech(lyrics, voiceId)); }
+    try { out.vocal = !!(await textToHostedSpeech(lyrics, gender)); }
     catch (e) { out.vocal = false; out.vocalErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
   } else out.vocal = 'skipped (no lyrics)';
   out.elMusicKey = hasElevenLabsMusicKey();
@@ -174,7 +172,7 @@ export async function diagnoseGeorgianSong(
 /**
  * Build the full Georgian song (vocal mixed over the instrumental bed) → hosted MP3 URL. Null on any miss, the lyric
  * writer's included.
- * @param gender steers the cloned voice (male = deeper soul/rap timbre).
+ * @param gender steers the voice (male = deeper soul/rap timbre).
  */
 export async function generateGeorgianSong(
   brief: string,
@@ -191,9 +189,9 @@ export async function generateGeorgianSong(
   const lyrics = await writeGeorgianLyrics(brief, totalSec);
   if (!lyrics) return null;
   const theme = await themeP;
-  // 1. Georgian vocal (cloned KA voice) + 2. instrumental bed in the brief's genre, concurrently.
-  // Each leg is bounded by its OWN timeout: ElevenLabs TTS / Music have no native
-  // timeout, so a single slow leg used to pin the route until its 240s maxDuration
+  // 1. Georgian vocal (Cloud TTS) + 2. instrumental bed in the brief's genre, concurrently.
+  // Each leg is bounded by its OWN timeout: the long vocal is read in several Cloud TTS parts and the
+  // ElevenLabs Music call has no native timeout, so a single slow leg used to pin the route until its 240s maxDuration
   // (the georgian-song timeout). Now a slow leg resolves to null within budget and
   // the route degrades gracefully (caller falls back to the assemble EL-Music bed).
   const LEG_TIMEOUT_MS = 110_000;
@@ -206,9 +204,8 @@ export async function generateGeorgianSong(
         resolve(null);
       }, LEG_TIMEOUT_MS)),
     ]);
-  const voiceId = gender === 'male' ? KA_VOICE_MALE : KA_VOICE_FEMALE;
   const [vocalUrl, bedUrl] = await Promise.all([
-    withTimeout(textToHostedSpeech(lyrics, voiceId).catch(() => null), 'vocal'),
+    withTimeout(textToHostedSpeech(lyrics, gender).catch(() => null), 'vocal'),
     withTimeout(instrumentalBed(brief, totalSec, signal, { theme, ...(opts.sceneSec ? { sceneSec: opts.sceneSec } : {}) }), 'instrumental-bed'),
   ]);
   if (!vocalUrl || !bedUrl) {

@@ -35,9 +35,9 @@ type Known =
   | 'option_unavailable'
   // Final P0/P1 repair run: dubbing / decks stay off until the owner approves their price; the quote/confirm codes.
   | 'pricing_not_approved' | 'duration_unmeasurable' | 'quote_invalid' | 'job_unavailable'
-  // The talking avatar's Georgian line (app/api/avatar/veo): ElevenLabs did not speak it, or it runs past the 8 s clip.
-  // Both are refused before any charge. `voice_off`: ElevenLabs refused it for good (a plan without the cloned Georgian
-  // voices, 2026-10-17 09:31Z) — a retry cannot help, so its copy never says "try again in a minute".
+  // The talking avatar's Georgian line (app/api/avatar/veo): Cloud TTS did not speak it, or it runs past the 8 s clip.
+  // Both are refused before any charge. `voice_off`: Cloud TTS refused it for good (a 4xx such as the API off on the
+  // project; first seen with ElevenLabs, 2026-10-17 09:31Z) — a retry cannot help, so its copy never says "try again".
   | 'voice_unavailable' | 'speech_too_long' | 'voice_off'
   // 423 `locked`: the tool is not open to this account yet (app/api/avatar/veo, the VFX ops) — refused before any charge.
   | 'locked';
