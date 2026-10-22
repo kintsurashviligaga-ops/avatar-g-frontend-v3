@@ -5,12 +5,10 @@
       "app/api/admin/provider-probe/route.ts",
       "app/api/health/services/route.ts",
       "app/api/voice/live/route.ts",
-      "lib/ai/geminiVeo.ts",
       "lib/calls/whatsapp/liveSession.ts",
       "lib/research/interactionsClient.ts",
       "lib/security/csp.js",
       "lib/system/provider-health.ts",
-      "lib/veo/geminiTransport.ts",
       "lib/voice/geminiLive.ts"
     ],
     "elevenlabs": [

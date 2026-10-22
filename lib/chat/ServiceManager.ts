@@ -29,15 +29,13 @@ import { hasRunwayProvider, runwayModel, createRunwayI2V, pollRunwayTask } from 
 import { createVeoClip, pollVeoClip, transportOf, veoTransport } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { veoSafetyCategory } from '@/lib/veo/safetyCodes';
-import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
-import { stripBottomWatermark } from '@/lib/video/remixOps';
-import { createSignedAssetUrl, removeStorageObjects, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { withColorScience } from '@/lib/video/colorScience';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
@@ -796,10 +794,9 @@ export class ServiceManager {
     // Inert + byte-identical in prod until RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is set + verified.
     // Master Contract V3 — the Cinema-panel engine toggle is now authoritative: selecting Kling opts OUT
     // of the Runway attempt (Kling-first); 'runway'/unset keeps the Runway-first cascade (the default).
-    // GEMINI VEO — the OPT-IN PRIMARY video engine (Veo, native audio baked in). Tried BEFORE Runway; on
-    // no access / quota / timeout / any miss it returns null and the proven Runway→Kling→LTX cascade runs
-    // BYTE-IDENTICAL (zero regression). Off unless GEMINI_VEO_ENABLED is set. Respects the same Cinema-panel
-    // engine opt-out as Runway (explicit Kling/Hailuo selection skips both premium tiers).
+    // GOOGLE VEO — the PRIMARY video engine, on Vertex AI only (v3.1). Tried BEFORE Runway; on a provable refusal
+    // the legacy Runway→Kling→LTX cascade runs as before. Off unless veoTransport() has a Vertex route. Respects the
+    // same Cinema-panel engine opt-out as Runway (explicit Kling/Hailuo selection skips both premium tiers).
     if (veoEligible) {
       const veo = await this.submitVeoClip(request, startImage, enrichedPrompt);
       if (veo.ok) return veo.response;
@@ -1056,7 +1053,8 @@ export class ServiceManager {
    */
   private veoGuardPrice(request: ServiceManagerRequest): { model: string; perSecondUsd: number; seconds: number } {
     const opts = request.selectedOptions || {};
-    const transport = veoTransport() ?? 'gemini';
+    // Priced as Vertex AI renders it, the only Veo transport (v3.1); with no route nothing is submitted anyway.
+    const transport = veoTransport() ?? 'vertex';
     const tierRaw = this.getOption(opts, ['veoTier']);
     const tier: VeoTier = tierRaw === 'fast' || tierRaw === 'lite' || tierRaw === 'standard' ? tierRaw : STUDIO_DEFAULT_VEO_TIER;
     const model = resolveVeoModel(transport, tier);
@@ -1064,7 +1062,7 @@ export class ServiceManager {
     const asked = Number.isFinite(raw) && raw > 0 ? raw : 8;
     // Reference mode pins the clip to 8 s (→ 1080p); otherwise the clip's own length decides the resolution.
     const seconds = this.getOption(opts, ['veoReferenceMode']) === 'reference' ? 8 : asked <= 4 ? 4 : asked <= 6 ? 6 : 8;
-    const audio = transport === 'gemini' || this.getOption(opts, ['veoGenerateAudio']) !== '0';
+    const audio = this.getOption(opts, ['veoGenerateAudio']) !== '0';
     return { model, perSecondUsd: costPerSecondUsd(model, resolutionFor(seconds), audio, transport), seconds };
   }
 
@@ -1180,7 +1178,8 @@ export class ServiceManager {
     if (!outcome.ok) return { ok: false, reason: outcome.reason, retryable: outcome.retryable };
 
     const promptHash = this.hashPrompt(request.userPrompt);
-    // The NATIVE aspect Veo rendered (not the output format) — the poll crops the Gemini watermark at this size.
+    // `::<native aspect>` keeps the task ref's historical shape; the poll reads only the operation (Vertex stamps no
+    // visible watermark, so nothing is cropped at that size any more).
     const providerTaskId = `${outcome.operation.name}::${result.request.aspect}`;
     const taskRef = this.encodeTaskRef({
       provider: 'gemini-veo', providerTaskId, sessionId: request.sessionId,
@@ -1205,18 +1204,15 @@ export class ServiceManager {
   }
 
   /**
-   * Resolve a 'gemini-veo' task-ref: poll the operation on the transport that created it, then deliver the clip.
-   * Vertex writes to our GCS bucket → a V4 signed URL (no visible watermark to remove). The Gemini API serves a
-   * key-gated file → downloaded SERVER-SIDE (the key never leaves), the bottom watermark cropped (audio kept) and
-   * hosted at a path fixed per operation, so the film poll — which re-polls finished clips every tick until the
-   * whole film is done — re-signs one object instead of re-downloading, re-cropping and re-uploading it each time.
-   * A transient miss keeps polling; only a definitive verdict (filtered / failed / undeliverable) is terminal.
+   * Resolve a 'gemini-veo' task-ref: poll the operation, then deliver the clip. Vertex writes to our GCS bucket (or
+   * returns inline bytes); either is hosted at a path fixed per operation, so the film poll — which re-polls finished
+   * clips every tick until the whole film is done — re-signs one object instead of re-uploading it each time. An
+   * operation made on the Gemini Developer API (`models/…`, before v3.1) is answered `failed` by pollVeoClip with no
+   * call. A transient miss keeps polling; only a definitive verdict (filtered / failed / undeliverable) is terminal.
    */
   private async pollVeoTaskRef(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
     const sep = decoded.providerTaskId.indexOf('::');
     const operation = sep > 0 ? decoded.providerTaskId.slice(0, sep) : decoded.providerTaskId;
-    const aspectRaw = sep > 0 ? decoded.providerTaskId.slice(sep + 2) : '16:9';
-    const aspect: '9:16' | '16:9' | '1:1' = aspectRaw === '9:16' || aspectRaw === '1:1' ? aspectRaw : '16:9';
     const transport = transportOf(operation);
     const engine = veoEngineLabel(transport, null);
     const baseMeta = {
@@ -1230,7 +1226,7 @@ export class ServiceManager {
 
     const r = await pollVeoClip(operation);
     if (r.state === 'succeeded') {
-      const url = await this.deliverVeoVideo(r.videos[0], operation, decoded.sessionId, aspect);
+      const url = await this.deliverVeoVideo(r.videos[0], operation, decoded.sessionId);
       if (url) {
         return {
           success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
@@ -1238,8 +1234,8 @@ export class ServiceManager {
           predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
         };
       }
-      // Generated but not deliverable (download / hosting / signing miss). Failing the leg lets the film report
-      // it; the raw Veo file is key- or IAM-gated, so it can never be handed to the browser as-is.
+      // Generated but not deliverable (hosting / signing miss). Failing the leg lets the film report it; the raw
+      // Veo object is IAM-gated, so it can never be handed to the browser as-is.
       return failed(`${engine} post-processing failed.`);
     }
     // ⚠️ GOOGLE'S REASON WAS THROWN AWAY HERE. Both branches returned a fixed sentence and logged nothing, so the ad film's
@@ -1270,7 +1266,7 @@ export class ServiceManager {
   }
 
   /** A playable URL for a finished Veo video, or null when it cannot be delivered. Never throws. */
-  private async deliverVeoVideo(video: VeoVideo | undefined, operation: string, sessionId: string, aspect: '9:16' | '16:9' | '1:1'): Promise<string | null> {
+  private async deliverVeoVideo(video: VeoVideo | undefined, operation: string, sessionId: string): Promise<string | null> {
     if (!video) return null;
     const opKey = createHash('sha256').update(operation).digest('hex').slice(0, 24);
     const session = sessionId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'session';
@@ -1278,32 +1274,15 @@ export class ServiceManager {
     // Vertex: our own bucket, no visible watermark — copied once into Supabase so the Library can keep re-signing it
     // (a GCS V4 signature dies after 7 days). Idempotent on the same fixed path.
     if (video.kind === 'gcs') return hostGcsVideo(video, path);
+    // A Developer API file (`gemini-file`) is never fetched under v3.1: that would need the AI Studio key.
+    if (video.kind !== 'bytes') return null;
 
     const existing = await createSignedAssetUrl('renders', path, 604_800);
     if (existing) return existing;
-
-    const buf = video.kind === 'bytes' ? Buffer.from(video.base64, 'base64') : await downloadGeminiVideo(video.uri);
-    if (!buf || buf.byteLength < 1_024) return null;
-    // ffmpeg reads the crop input over https; that staging copy is removed once the clean clip is hosted.
-    const rawPath = `veo/${session}/${opKey}-raw.mp4`;
-    const raw = await uploadBufferAndSign('renders', rawPath, buf, 'video/mp4', 3_600);
-    if (!raw) return null;
-    // Only a Gemini-API file carries the visible bottom mark. Inline `bytes` come from Vertex, which stamps none —
-    // cropping those would cut real picture off the bottom.
-    const clean = video.kind === 'gemini-file'
-      ? await stripBottomWatermark(raw, aspect, undefined, { bucket: 'renders', path }).catch(() => null)
-      : null;
-    // ⚠️ stripBottomWatermark hands back its INPUT when the crop is switched off (VEO_WATERMARK_CROP_PCT=0) — that is
-    // the raw staging URL, deleted three lines down. Only a result hosted at the fixed path is the cropped clip.
-    let final = clean && clean !== raw ? clean : null;
-    if (!final) {
-      // A crop miss keeps the uncropped clip at the SAME fixed path, so the next tick finds it and stops — unless a
-      // concurrent poll has meanwhile put the CROPPED clip there, which must not be replaced by the watermarked one.
-      final = (await createSignedAssetUrl('renders', path, 604_800))
-        ?? (await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800));
-    }
-    await removeStorageObjects('renders', [rawPath]);
-    return final;
+    const buf = Buffer.from(video.base64, 'base64');
+    if (buf.byteLength < 1_024) return null;
+    // Inline bytes come from Vertex, which stamps no visible mark: hosted as-is at the fixed path.
+    return uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800);
   }
 
   /**

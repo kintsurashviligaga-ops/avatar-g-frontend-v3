@@ -31,7 +31,6 @@ import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
-import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { LONGFORM_SCENE_SEC } from './plan';
 import { jobFromRow, jobPatchToColumns, sceneFromRow, scenePatchToColumns, type Row } from './rows';
@@ -177,10 +176,11 @@ export function createVeoLongformEngine(): LongformEngine {
         const url = await hostGcsVideo(video, path);
         return url ? { state: 'delivered', url, path, bytes: null } : { state: 'undeliverable' };
       }
+      // A Developer API file would need the AI Studio key, which v3.1 never uses: undeliverable, not fetched.
+      if (video.kind !== 'bytes') return { state: 'undeliverable' };
       const existing = await createSignedAssetUrl(BUCKET, path, WEEK_SEC);
       if (existing) return { state: 'delivered', url: existing, path, bytes: null };
-      const buf = video.kind === 'bytes' ? Buffer.from(video.base64, 'base64') : await downloadGeminiVideo(video.uri).catch(() => null);
-      const hosted = buf ? await hostVideoBuffer(buf, path) : null;
+      const hosted = await hostVideoBuffer(Buffer.from(video.base64, 'base64'), path);
       return hosted ? { state: 'delivered', url: hosted.url, path, bytes: hosted.bytes } : { state: 'undeliverable' };
     },
 

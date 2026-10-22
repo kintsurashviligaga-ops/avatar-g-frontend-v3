@@ -70,7 +70,8 @@ describe('checkPipelineHealth — with no env at all', () => {
     expect(h.warnings.some((w) => /7 service\(s\) unavailable/.test(w))).toBe(true);
     // The card names what is missing (env NAMES), it does not go blank.
     expect(row(h, 'ვიდეო (Clips)').note).toMatch(/GCP_PROJECT_ID/);
-    expect(row(h, 'ვიდეო (Clips)').note).toMatch(/GEMINI_API_KEY/);
+    expect(row(h, 'ვიდეო (Clips)').note).toMatch(/^no Veo route — Vertex AI is not configured for Veo: GCP_PROJECT_ID/);
+    expect(row(h, 'ვიდეო (Clips)').note).not.toMatch(/GEMINI_API_KEY/);
     expect(row(h, 'სურათი (Base)').note).toMatch(/NANOBANANA_API_KEY/);
   });
 
@@ -89,14 +90,21 @@ describe('checkPipelineHealth — with no env at all', () => {
 });
 
 describe('the video row names the engine that renders film clips', () => {
-  it('Veo 3.1 on the Gemini API with a Gemini key — never Kling, even with Replicate configured', async () => {
+  it('an AI Studio key is no Veo route (v3.1) — and never Kling, even with Replicate configured', async () => {
     setEnv({ ...SECRETS });
     const video = row(await checkPipelineHealth(), 'ვიდეო (Clips)');
-    expect(video.provider).toBe('Veo 3.1 (Gemini API)');
-    expect(video.available).toBe(true);
-    expect(video.tier).toBe('high');
-    expect(video.note).toMatch(/veo-3\.1-fast-generate-preview/);
-    expect(text(video)).not.toMatch(/kling|runway|ltx|replicate/i);
+    expect(video.provider).toBe('Veo 3.1');
+    expect(video.available).toBe(false);
+    expect(video.tier).toBe('unavailable');
+    expect(video.note).toMatch(/Vertex AI is not configured for Veo/);
+    expect(text(video)).not.toMatch(/kling|runway|ltx|replicate|Gemini API/i);
+  });
+
+  it('VEO_TRANSPORT=gemini is refused even with Vertex complete, and the row says why', async () => {
+    setEnv({ ...SECRETS, ...VERTEX_ENV, VEO_TRANSPORT: 'gemini' });
+    const video = row(await checkPipelineHealth(), 'ვიდეო (Clips)');
+    expect(video.available).toBe(false);
+    expect(video.note).toMatch(/Developer API, which is not an allowed transport/);
   });
 
   it('Veo 3.1 on Vertex AI once the Vertex config is complete', async () => {
@@ -118,7 +126,7 @@ describe('the video row names the engine that renders film clips', () => {
     setEnv({ GEMINI_API_KEY: SECRETS.GEMINI_API_KEY, VEO_TRANSPORT: 'vertex' });
     const video = row(await checkPipelineHealth(), 'ვიდეო (Clips)');
     expect(video.available).toBe(false);
-    expect(video.note).toMatch(/^VEO_TRANSPORT=vertex but Vertex AI is missing .*GCP_PROJECT_ID/);
+    expect(video.note).toMatch(/^no Veo route — Vertex AI is not configured for Veo: .*GCP_PROJECT_ID/);
   });
 
   it.each([false, true])('an invalid transport pin is unavailable without leaking its value (Vertex ready: %s)', async (vertexReady) => {

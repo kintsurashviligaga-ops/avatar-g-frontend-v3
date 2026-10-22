@@ -25,7 +25,6 @@ jest.mock('../../services/billing/guardedCall', () => {
 });
 jest.mock('../../veo/engine', () => ({ createVeoClip: jest.fn(), pollVeoClip: jest.fn(), veoTransport: jest.fn() }));
 jest.mock('../../veo/deliver', () => ({ hostGcsVideo: jest.fn() }));
-jest.mock('../../veo/geminiTransport', () => ({ downloadGeminiVideo: jest.fn() }));
 
 import { llmText } from '../../ai/llmText';
 import { uploadBufferAndSign } from '../../orchestrator/storage-adapter';
@@ -33,7 +32,6 @@ import { BudgetExceededError, guardedCall } from '../../services/billing/guarded
 import { costPerSecondUsd } from '../../veo/capabilities';
 import { hostGcsVideo } from '../../veo/deliver';
 import { createVeoClip, veoTransport, type CreateVeoClipInput, type CreateVeoClipResult } from '../../veo/engine';
-import { downloadGeminiVideo } from '../../veo/geminiTransport';
 import { veoWireFields } from './googleVeoProvider';
 import { createGoogleVideoDirector, liveVeoEngine } from './server';
 
@@ -41,7 +39,6 @@ const guardedMock = guardedCall as jest.MockedFunction<typeof guardedCall>;
 const createMock = createVeoClip as jest.MockedFunction<typeof createVeoClip>;
 const transportMock = veoTransport as jest.MockedFunction<typeof veoTransport>;
 const hostMock = hostGcsVideo as jest.MockedFunction<typeof hostGcsVideo>;
-const downloadMock = downloadGeminiVideo as jest.MockedFunction<typeof downloadGeminiVideo>;
 const uploadMock = uploadBufferAndSign as jest.MockedFunction<typeof uploadBufferAndSign>;
 
 const INPUT: CreateVeoClipInput = {
@@ -51,16 +48,16 @@ const INPUT: CreateVeoClipInput = {
   ordinal: 1,
 };
 const OK: CreateVeoClipResult = {
-  outcome: { ok: true, operation: { transport: 'gemini', name: 'models/veo-3.1-fast-generate-preview/operations/op-1', model: 'veo-3.1-fast-generate-preview' } },
+  outcome: { ok: true, operation: { transport: 'vertex', name: 'projects/p/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001/operations/op-1', model: 'veo-3.1-fast-generate-001' } },
   request: { prompt: INPUT.request.prompt, aspect: '16:9', durationSec: 8, resolution: '1080p', tier: 'fast', generateAudio: true, seed: 42, enhancePrompt: false },
   adjustments: [],
-  model: 'veo-3.1-fast-generate-preview',
-  transport: 'gemini',
+  model: 'veo-3.1-fast-generate-001',
+  transport: 'vertex',
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
-  transportMock.mockReturnValue('gemini');
+  transportMock.mockReturnValue('vertex');
   createMock.mockResolvedValue(OK);
 });
 
@@ -77,9 +74,9 @@ describe('liveVeoEngine.createClip', () => {
     expect(createMock.mock.calls[0]![0]).toBe(INPUT);
     expect(guardedMock.mock.calls[0]![0]).toMatchObject({
       service: 'video',
-      model: 'veo-3.1-fast-generate-preview',
+      model: 'veo-3.1-fast-generate-001',
       units: 8,
-      unitCostUsd: costPerSecondUsd('veo-3.1-fast-generate-preview', '1080p', true, 'gemini'),
+      unitCostUsd: costPerSecondUsd('veo-3.1-fast-generate-001', '1080p', true, 'vertex'),
       userId: 'user-1',
     });
   });
@@ -100,7 +97,7 @@ describe('liveVeoEngine.createClip', () => {
 });
 
 describe('liveVeoEngine.deliver', () => {
-  const ctx = { storyboardId: 'sb/1?', shotId: 'a', order: 2, operationName: 'models/m/operations/op-1', aspect: '16:9' as const };
+  const ctx = { storyboardId: 'sb/1?', shotId: 'a', order: 2, operationName: 'projects/p/locations/us-central1/operations/op-1', aspect: '16:9' as const };
 
   it('hosts a Vertex clip once, at a stable per-operation path', async () => {
     hostMock.mockResolvedValueOnce('https://storage.example.com/a.mp4');
@@ -112,14 +109,21 @@ describe('liveVeoEngine.deliver', () => {
     expect(hostMock.mock.calls[1]![1]).toBe(path);
   });
 
-  it('downloads a Gemini clip server-side and hosts it as rendered; a stub file is not a clip', async () => {
-    downloadMock.mockResolvedValueOnce(Buffer.alloc(4_096, 1));
+  it('hosts inline Vertex bytes as rendered; a stub file is not a clip', async () => {
     uploadMock.mockResolvedValueOnce('https://storage.example.com/g.mp4');
-    expect(await liveVeoEngine.deliver({ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1beta/files/x', mimeType: 'video/mp4' }, ctx)).toBe('https://storage.example.com/g.mp4');
+    const clip = (n: number) => ({ kind: 'bytes' as const, base64: Buffer.alloc(n, 1).toString('base64'), mimeType: 'video/mp4' });
+    expect(await liveVeoEngine.deliver(clip(4_096), ctx)).toBe('https://storage.example.com/g.mp4');
     expect(uploadMock.mock.calls[0]![0]).toBe('renders');
 
-    downloadMock.mockResolvedValueOnce(Buffer.alloc(10));
-    expect(await liveVeoEngine.deliver({ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1beta/files/y', mimeType: 'video/mp4' }, ctx)).toBeNull();
+    expect(await liveVeoEngine.deliver(clip(10), ctx)).toBeNull();
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a Developer API file is never fetched (v3.1): null, nothing hosted', async () => {
+    const file = { kind: 'gemini-file' as const, uri: 'https://generativelanguage.googleapis.com/v1beta/files/x', mimeType: 'video/mp4' };
+    expect(await liveVeoEngine.deliver(file, ctx)).toBeNull();
+    expect(uploadMock).not.toHaveBeenCalled();
+    expect(hostMock).not.toHaveBeenCalled();
   });
 
   it('never throws: a hosting failure is a null', async () => {

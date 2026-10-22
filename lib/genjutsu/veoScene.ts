@@ -7,7 +7,7 @@
  * `app/api/genjutsu/**` (its `app/api/**` catch-all is 15 s), and a closed phone tab must not decide whether a paid
  * render is delivered. So the scene is SUBMIT now, POLL later — two short requests — the shape ServiceManager's film
  * clips and /api/motion-control already use. The create and the delivery below are the same primitives those use
- * (createVeoClip · pollVeoClip · hostGcsVideo · downloadGeminiVideo · stripBottomWatermark), not a second engine.
+ * (createVeoClip · pollVeoClip · hostGcsVideo), not a second engine.
  *
  * ⚠️ THE SUBMIT RUNS INSIDE guardedCall — the platform's own Google budget envelope — priced at the seconds Veo
  * RENDERS at the exact tier × resolution × audio rate, like every other Veo call site. A refusal is a refusal, never a
@@ -20,13 +20,11 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
-import { createSignedAssetUrl, removeStorageObjects, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
-import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import type { VeoAspect, VeoFailureReason, VeoResizeMode, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
-import { stripBottomWatermark } from '@/lib/video/remixOps';
 import { SCENE_SECONDS } from './limits';
 import type { GenjutsuQuality } from './types';
 
@@ -146,46 +144,32 @@ export function scenePath(userId: string, operation: string): string {
 /**
  * A playable, 7-day URL for a finished clip, hosted in our storage at `path` — or null. Never throws.
  *   · Vertex (`gcs`)   → copied once into Supabase (hostGcsVideo); Vertex stamps no visible mark, so no crop.
- *   · Gemini API       → downloaded SERVER-SIDE (the key never leaves), the visible bottom mark cropped, hosted once.
+ *   · inline `bytes`   → Vertex's output too: hosted once at `path`, uncropped.
+ *   · a Developer API file → null. v3.1 no longer calls that API (engine.pollVeoClip never returns one now).
  */
-export async function deliverScene(video: VeoVideo | undefined, aspect: VeoAspect, path: string): Promise<string | null> {
+export async function deliverScene(video: VeoVideo | undefined, path: string): Promise<string | null> {
   if (!video) return null;
   try {
     if (video.kind === 'gcs') return await hostGcsVideo(video, path);
+    if (video.kind !== 'bytes') return null;
 
     const existing = await createSignedAssetUrl('renders', path, WEEK_SEC);
     if (existing) return existing;
 
-    const buf = video.kind === 'bytes' ? Buffer.from(video.base64, 'base64') : await downloadGeminiVideo(video.uri);
-    if (!buf || buf.byteLength < MIN_CLIP_BYTES) return null;
-
-    // ffmpeg reads the crop input over https; the staging copy is removed once the clean clip is hosted.
-    const rawPath = path.replace(/\.mp4$/, '-raw.mp4');
-    const raw = await uploadBufferAndSign('renders', rawPath, buf, 'video/mp4', 3_600);
-    if (!raw) return null;
-    // Only a Gemini-API file carries the visible bottom mark; inline bytes come from Vertex, which stamps none.
-    const clean = video.kind === 'gemini-file'
-      ? await stripBottomWatermark(raw, aspect, undefined, { bucket: 'renders', path }).catch(() => null)
-      : null;
-    // stripBottomWatermark hands back its INPUT when the crop is switched off (VEO_WATERMARK_CROP_PCT=0) — that is the
-    // staging URL, deleted below. Only a result hosted at the fixed path is the cropped clip.
-    let final = clean && clean !== raw ? clean : null;
-    if (!final) {
-      final = (await createSignedAssetUrl('renders', path, WEEK_SEC)) ?? (await uploadBufferAndSign('renders', path, buf, 'video/mp4', WEEK_SEC));
-    }
-    await removeStorageObjects('renders', [rawPath]);
-    return final;
+    const buf = Buffer.from(video.base64, 'base64');
+    if (buf.byteLength < MIN_CLIP_BYTES) return null;
+    return await uploadBufferAndSign('renders', path, buf, 'video/mp4', WEEK_SEC);
   } catch {
     return null;
   }
 }
 
 /** Poll once. `userId` only names the delivery path. Never throws — a transient miss reads as "still working". */
-export async function pollScene(operation: string, aspect: VeoAspect, userId: string): Promise<SceneProgress> {
+export async function pollScene(operation: string, userId: string): Promise<SceneProgress> {
   const r = await pollVeoClip(operation).catch(() => null);
   if (!r || r.state === 'processing') return { state: 'processing' };
   if (r.state === 'filtered') return { state: 'failed', reason: 'filtered' };
   if (r.state === 'failed') return { state: 'failed', reason: 'generation_failed' };
-  const url = await deliverScene(r.videos[0], aspect, scenePath(userId, operation));
+  const url = await deliverScene(r.videos[0], scenePath(userId, operation));
   return url ? { state: 'ready', url } : { state: 'delivering' };
 }

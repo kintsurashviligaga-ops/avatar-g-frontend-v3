@@ -318,7 +318,7 @@ export class GoogleVeoProvider implements VideoGenProvider {
     }
 
     const transport = this.engine.transport();
-    if (!transport) return fail('unknown', 'No Veo transport is configured (Vertex AI or the Gemini API).', false);
+    if (!transport) return fail('unknown', 'No Veo transport is configured (Vertex AI).', false);
 
     const tier = shot.quality as VeoTier;
     const createInput: CreateVeoClipInput = {

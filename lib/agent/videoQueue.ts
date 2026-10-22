@@ -8,7 +8,6 @@ import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guarded
 import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
-import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import type { OutputFormat } from '@/lib/veo/types';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { addWatermark } from '@/lib/video/remixOps';
@@ -187,11 +186,9 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
       url = await hostGcsVideo(video, `agentq/${item.id}.mp4`).catch(() => null);
       if (!url) { await fail(svc, item, userId, 'video could not be hosted'); return { action: 'failed', item }; }
     } else {
-      // A Gemini API file needs the key to read, so it is downloaded server-side (the key never leaves);
-      // `bytes` is Vertex's inline output. Either way the clip is hosted once, at a path fixed per item.
-      const buf = video.kind === 'bytes'
-        ? Buffer.from(video.base64, 'base64')
-        : await downloadGeminiVideo(video.uri).catch(() => null);
+      // `bytes` is Vertex's inline output, hosted once at a path fixed per item. A Developer API file is never fetched
+      // (v3.1: that API is not called; engine.pollVeoClip no longer returns one), so it reads as undownloadable.
+      const buf = video.kind === 'bytes' ? Buffer.from(video.base64, 'base64') : null;
       if (!buf || buf.byteLength < MIN_CLIP_BYTES) { await fail(svc, item, userId, 'video could not be downloaded'); return { action: 'failed', item }; }
 
       url = await uploadBufferAndSign('uploads', `agentq/${item.id}.mp4`, buf, 'video/mp4', DELIVERY_TTL_SEC);

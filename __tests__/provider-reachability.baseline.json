@@ -21,9 +21,6 @@
       "deepseek",
       "runway"
     ],
-    "app/api/admin/veo-smoke/route.ts": [
-      "gemini_developer_api"
-    ],
     "app/api/ads/tts/route.ts": [
       "elevenlabs"
     ],
@@ -87,12 +84,10 @@
     ],
     "app/api/agent/video-queue/drain/route.ts": [
       "anthropic",
-      "gemini_developer_api",
       "replicate"
     ],
     "app/api/agent/video-queue/route.ts": [
       "anthropic",
-      "gemini_developer_api",
       "replicate"
     ],
     "app/api/ai/edit-audio/route.ts": [
@@ -144,9 +139,7 @@
       "liveavatar"
     ],
     "app/api/avatar/veo/route.ts": [
-      "elevenlabs",
-      "gemini_developer_api",
-      "replicate"
+      "elevenlabs"
     ],
     "app/api/calls/bridge/[op]/route.ts": [
       "gemini_developer_api",
@@ -160,7 +153,6 @@
     "app/api/chat/orchestrate/route.ts": [
       "anthropic",
       "elevenlabs",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",
@@ -180,7 +172,6 @@
     "app/api/chat/stream/route.ts": [
       "anthropic",
       "elevenlabs",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",
@@ -200,9 +191,6 @@
     "app/api/cron/drain-renders/route.ts": [
       "heygen",
       "replicate"
-    ],
-    "app/api/cron/longform-tick/route.ts": [
-      "gemini_developer_api"
     ],
     "app/api/cron/research-sweep/route.ts": [
       "gemini_developer_api"
@@ -228,7 +216,6 @@
     "app/api/film/scene/redo/route.ts": [
       "anthropic",
       "elevenlabs",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",
@@ -240,7 +227,6 @@
     "app/api/film/scene/redo/stitch/route.ts": [
       "anthropic",
       "elevenlabs",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",
@@ -251,7 +237,6 @@
     ],
     "app/api/film/storyboard/route.ts": [
       "anthropic",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",
@@ -263,7 +248,6 @@
     "app/api/film/sweep/route.ts": [
       "anthropic",
       "elevenlabs",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",
@@ -283,23 +267,18 @@
       "higgsfield"
     ],
     "app/api/genjutsu/capabilities/route.ts": [
-      "gemini_developer_api",
       "higgsfield"
     ],
     "app/api/genjutsu/generate/route.ts": [
       "anthropic",
-      "gemini_developer_api",
-      "higgsfield",
-      "replicate"
+      "higgsfield"
     ],
     "app/api/genjutsu/quote/route.ts": [
       "anthropic",
-      "gemini_developer_api",
       "higgsfield"
     ],
     "app/api/genjutsu/status/route.ts": [
       "anthropic",
-      "gemini_developer_api",
       "higgsfield",
       "replicate"
     ],
@@ -309,7 +288,6 @@
     "app/api/health/providers/route.ts": [
       "atlascloud",
       "deepseek",
-      "gemini_developer_api",
       "runway"
     ],
     "app/api/health/public/route.ts": [
@@ -414,12 +392,8 @@
       "heygen",
       "replicate"
     ],
-    "app/api/pipeline/health/route.ts": [
-      "gemini_developer_api"
-    ],
     "app/api/pipeline/remix/route.ts": [
       "anthropic",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",
@@ -472,7 +446,6 @@
       "gemini_developer_api"
     ],
     "app/api/studio/catalogue/route.ts": [
-      "gemini_developer_api",
       "higgsfield"
     ],
     "app/api/system/film-selftest/route.ts": [
@@ -502,7 +475,6 @@
     "app/api/video/assemble/route.ts": [
       "anthropic",
       "elevenlabs",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",
@@ -510,27 +482,6 @@
       "nanobananaapi",
       "replicate",
       "runway"
-    ],
-    "app/api/video/director/plan/route.ts": [
-      "gemini_developer_api"
-    ],
-    "app/api/video/director/route.ts": [
-      "gemini_developer_api"
-    ],
-    "app/api/video/director/runs/[id]/advance/route.ts": [
-      "gemini_developer_api"
-    ],
-    "app/api/video/director/runs/[id]/decision/route.ts": [
-      "gemini_developer_api"
-    ],
-    "app/api/video/director/runs/[id]/route.ts": [
-      "gemini_developer_api"
-    ],
-    "app/api/video/director/runs/route.ts": [
-      "gemini_developer_api"
-    ],
-    "app/api/video/engine/route.ts": [
-      "gemini_developer_api"
     ],
     "app/api/video/generate-hero/route.ts": [
       "replicate"
@@ -549,7 +500,6 @@
     "app/api/video/remix/route.ts": [
       "anthropic",
       "elevenlabs",
-      "gemini_developer_api",
       "heygen",
       "kling",
       "ltx",

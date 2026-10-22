@@ -11,8 +11,8 @@
  * secret value, only whether each key is present + which engine/model is active.
  *
  * Reality notes (read from the code paths that run today, not from their comments):
- *  - Film clips render on Google Veo 3.1 ONLY: lib/veo/engine veoTransport() (Vertex AI once configured, else the
- *    Gemini API). VIDEO_GOOGLE_ONLY is ON by default, so ServiceManager.runVeoOnly turns a Veo miss into a failed
+ *  - Film clips render on Google Veo 3.1 ONLY: lib/veo/engine veoTransport() (Vertex AI once configured; the
+ *    Gemini Developer API is never a Veo transport under v3.1). VIDEO_GOOGLE_ONLY is ON by default, so ServiceManager.runVeoOnly turns a Veo miss into a failed
  *    leg — no Runway/Kling/LTX clip. Kling (lib/video/modelLock) is reachable only with VIDEO_GOOGLE_ONLY=0.
  *  - The film's anchor/storyboard frames are drawn by Gemini's image model (app/api/film/storyboard →
  *    lib/ai/geminiImage); a miss is an empty tile and Veo animates the scene from text. FLUX, the per-scene
@@ -42,11 +42,9 @@ import { hasLyriaProvider, lyriaModel } from '@/lib/ai/lyriaMusic';
 import { hasVideoProvider } from '@/lib/chat/videoProvider';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isEnabledByDefault } from '@/lib/env/flag';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { resolveModel } from '@/lib/veo/capabilities';
-import { veoTransport, veoTransportConfigProblem } from '@/lib/veo/engine';
+import { veoNotConfiguredDetail, veoTransport } from '@/lib/veo/engine';
 import { isGoogleOnly } from '@/lib/veo/policy';
-import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
 
 export type ServiceTier = 'high' | 'medium' | 'low' | 'unavailable';
 
@@ -117,20 +115,11 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     });
 
     // 2 · VIDEO CLIPS — Google Veo 3.1 through lib/veo/engine (veoTransport: Vertex AI when GCP_PROJECT_ID +
-    //     GCP_VEO_BUCKET + WIF/key are complete, else the Gemini API key unless GEMINI_VEO_ENABLED is off;
-    //     VEO_TRANSPORT pins one). Studio films render the STUDIO_DEFAULT_VEO_TIER model unless the plan picks another.
+    //     GCP_VEO_BUCKET + WIF/key are complete; VEO_TRANSPORT=gemini is refused, never honoured). Studio films render
+    //     the STUDIO_DEFAULT_VEO_TIER model unless the plan picks another.
     const transport = veoTransport();
     const veoModel = transport ? resolveModel(transport, STUDIO_DEFAULT_VEO_TIER) : null;
-    const pin = (env.VEO_TRANSPORT ?? '').trim().toLowerCase();
-    const veoMissing = (): string => {
-      const invalid = veoTransportConfigProblem();
-      if (invalid) return invalid;
-      const vertexMissing = vertexConfigProblems().join(', ') || 'incomplete';
-      const gemini = resolveGeminiKey() ? 'GEMINI_VEO_ENABLED is off' : 'no GEMINI_API_KEY';
-      if (pin === 'vertex') return `VEO_TRANSPORT=vertex but Vertex AI is missing ${vertexMissing}`;
-      if (pin === 'gemini') return `VEO_TRANSPORT=gemini but ${gemini}`;
-      return `no Veo route — Vertex AI missing ${vertexMissing}; Gemini API: ${gemini}`;
-    };
+    const veoMissing = (): string => `no Veo route — ${veoNotConfiguredDetail()}`;
     // Same door test filmComposite runs: Google-only needs a Veo route; the legacy cascade any video key.
     const videoAvail = googleOnly ? transport !== null : hasVideoProvider();
     const videoTier: ServiceTier = transport ? 'high' : videoAvail ? 'medium' : 'unavailable';
@@ -138,7 +127,7 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       service: 'ვიდეო (Clips)',
       provider: !googleOnly
         ? 'Veo → Runway/Kling/LTX (legacy cascade)'
-        : transport ? `Veo 3.1 (${transport === 'vertex' ? 'Vertex AI' : 'Gemini API'})` : 'Veo 3.1',
+        : transport ? 'Veo 3.1 (Vertex AI)' : 'Veo 3.1',
       available: videoAvail,
       tier: videoTier,
       note: !googleOnly

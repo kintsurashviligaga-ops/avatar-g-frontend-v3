@@ -80,7 +80,7 @@ async function veoScene(id: string, userId: string): Promise<NextResponse> {
     return NextResponse.json({ success: true, done: true, state: 'failed', error, refunded: !!back?.ok }, { headers: noStore });
   };
 
-  const progress = await pollScene(job.operation, job.aspect, userId);
+  const progress = await pollScene(job.operation, userId);
 
   if (progress.state === 'failed') {
     return giveUp(progress.reason === 'filtered' ? 'content_rejected' : 'generation_failed', `veo ${progress.reason}`);
