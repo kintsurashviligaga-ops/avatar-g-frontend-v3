@@ -1,22 +1,25 @@
 /** @jest-environment node */
 /**
- * Provider boundary ratchet: Google and ElevenLabs are the only AI vendors (PROJECT_MASTER R7), so no NEW runtime file
- * may call another one, and the files that still do can only go away.
+ * Provider boundary ratchet. MASTER TASK v3.1 (2026-10-22) narrows PROJECT_MASTER R7: Vertex AI and server-side Google
+ * Cloud TTS are the only AI transports, so ElevenLabs and the Gemini Developer API (generativelanguage.googleapis.com)
+ * now count as forbidden vendors next to Replicate, OpenAI, HeyGen, Runway, … No NEW runtime code may reach one, and
+ * the code that still does can only go away.
  *
- * Many files still reach a non-Google vendor (Replicate, OpenAI, HeyGen, Runway, …) — most behind VIDEO_GOOGLE_ONLY /
- * AI_GOOGLE_ONLY, some live (image, avatar, music: certification §L, owner action 9). Removing them is the owner's
- * call; this test only stops the list growing. It reads the code itself, not comments: a vendor counts when a string
- * or template literal names its API host, or when a value import / require / import() loads its SDK (`import type`
- * compiles away and is not counted).
+ * Many files still reach a forbidden vendor — most behind VIDEO_GOOGLE_ONLY / AI_GOOGLE_ONLY, some live. v3.1 Phase 1
+ * removes them (strict Vertex transport, then the non-Google fallbacks); this test only stops the lists growing. It
+ * reads the code itself, not comments: a vendor counts when a string or template literal names its API host, or when
+ * a value import / require / import() loads its SDK (`import type` compiles away and is not counted).
  *
- * Two lines are held against __tests__/provider-boundary.allowlist.json:
- *  1. no runtime file outside the list for a vendor references that vendor (a new file → fail; route it through a
- *     Google / ElevenLabs engine instead);
- *  2. every listed file still references it (a stale entry → fail; delete the line, so the list only shrinks).
+ * Two ratchets, each held both ways (a new entry fails; a stale entry fails too, so each list only shrinks):
+ *  1. Files, against __tests__/provider-boundary.allowlist.json: no runtime file outside a vendor's list references
+ *     that vendor (route it through a Vertex engine instead).
+ *  2. Routes, against __tests__/provider-reachability.baseline.json: no app/api route reaches a vendor through its
+ *     value-import closure unless its baseline line names it. That closure is what a request can get to, so a shared
+ *     helper that starts calling a vendor shows up on every route that imports it.
  */
 import ts from 'typescript';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 
 const ROOT = process.cwd();
 const rel = (f: string) => relative(ROOT, f).split(sep).join('/');
@@ -26,8 +29,10 @@ const SOURCES = ['app', 'lib', 'components', 'workers', 'services', 'hooks', 'st
 const EXTS = ['.ts', '.tsx', '.js', '.mjs', '.cjs'];
 const NOT_RUNTIME = /(\.test\.|\.spec\.|\/__tests__\/|\/__mocks__\/|\/testing\/)/;
 
-/** Non-Google, non-ElevenLabs AI vendors: API hosts (matched inside string literals) and SDK packages. */
+/** Forbidden AI vendors: API hosts (matched inside string literals) and SDK packages. Vertex and Cloud TTS are not here. */
 const VENDORS: Record<string, { hosts: RegExp; sdks?: string[] }> = {
+  gemini_developer_api: { hosts: /\bgenerativelanguage\.googleapis\.com\b/, sdks: ['@google/generative-ai'] },
+  elevenlabs: { hosts: /\bapi\.elevenlabs\.io\b/, sdks: ['elevenlabs', '@elevenlabs/elevenlabs-js'] },
   replicate: { hosts: /(^|[/.])replicate\.(com|delivery)\b/, sdks: ['replicate'] },
   openai: { hosts: /\bapi\.openai\.com\b/, sdks: ['openai', '@ai-sdk/openai'] },
   openrouter: { hosts: /\bopenrouter\.ai\b/ },
@@ -65,30 +70,41 @@ function walk(p: string, out: string[]): string[] {
 
 const sdkOf = (spec: string) => (spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]!);
 
-/** The vendors one source text reaches: hosts in string / template literals, SDKs in value imports. */
-function vendorsIn(fileName: string, text: string): Set<string> {
-  const found = new Set<string>();
+/** `import type X` and `import { type A, type B }` both compile away; a bare `import './x'` does not. */
+const typeOnly = (n: ts.ImportDeclaration) => {
+  const c = n.importClause;
+  if (!c) return false;
+  if (c.isTypeOnly) return true;
+  const named = c.namedBindings;
+  return !c.name && !!named && ts.isNamedImports(named) && named.elements.length > 0 && named.elements.every((e) => e.isTypeOnly);
+};
+
+/** One source text: the vendors it reaches (hosts in string / template literals, SDKs it loads) and the modules it loads. */
+function scanSource(fileName: string, text: string): { vendors: Set<string>; imports: string[] } {
+  const vendors = new Set<string>();
+  const imports: string[] = [];
   const sf = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, false, fileName.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const literal = (s: string) => {
-    for (const [name, v] of Object.entries(VENDORS)) if (v.hosts.test(s)) found.add(name);
+    for (const [name, v] of Object.entries(VENDORS)) if (v.hosts.test(s)) vendors.add(name);
   };
-  const sdk = (spec: string) => {
+  const load = (spec: string) => {
+    imports.push(spec);
     const pkg = sdkOf(spec);
-    for (const [name, v] of Object.entries(VENDORS)) if (v.sdks?.includes(pkg)) found.add(name);
+    for (const [name, v] of Object.entries(VENDORS)) if (v.sdks?.includes(pkg)) vendors.add(name);
   };
   const visit = (n: ts.Node): void => {
     if (ts.isImportDeclaration(n)) {
-      if (!n.importClause?.isTypeOnly && ts.isStringLiteral(n.moduleSpecifier)) sdk(n.moduleSpecifier.text);
+      if (!typeOnly(n) && ts.isStringLiteral(n.moduleSpecifier)) load(n.moduleSpecifier.text);
       return;
     }
     if (ts.isExportDeclaration(n)) {
-      if (!n.isTypeOnly && n.moduleSpecifier && ts.isStringLiteral(n.moduleSpecifier)) sdk(n.moduleSpecifier.text);
+      if (!n.isTypeOnly && n.moduleSpecifier && ts.isStringLiteral(n.moduleSpecifier)) load(n.moduleSpecifier.text);
       return;
     }
     if (ts.isCallExpression(n) && n.arguments.length > 0 && ts.isStringLiteralLike(n.arguments[0]!)) {
       const callee = n.expression;
       if (callee.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(callee) && callee.text === 'require')) {
-        sdk((n.arguments[0] as ts.StringLiteralLike).text);
+        load((n.arguments[0] as ts.StringLiteralLike).text);
       }
     }
     if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) literal(n.text);
@@ -96,22 +112,77 @@ function vendorsIn(fileName: string, text: string): Set<string> {
     ts.forEachChild(n, visit);
   };
   visit(sf);
-  return found;
+  return { vendors, imports };
 }
+
+const vendorsIn = (fileName: string, text: string) => scanSource(fileName, text).vendors;
+
+const scanned = new Map<string, ReturnType<typeof scanSource>>();
+const scanFile = (f: string) => {
+  let s = scanned.get(f);
+  if (!s) scanned.set(f, (s = scanSource(f, readFileSync(f, 'utf8'))));
+  return s;
+};
 
 function scan(): Record<string, string[]> {
   const byVendor: Record<string, string[]> = Object.fromEntries(Object.keys(VENDORS).map((k) => [k, []]));
   const files = SOURCES.flatMap((s) => walk(join(ROOT, s), [])).sort();
-  for (const f of files) for (const v of vendorsIn(f, readFileSync(f, 'utf8'))) byVendor[v]!.push(rel(f));
+  for (const f of files) for (const v of scanFile(f).vendors) byVendor[v]!.push(rel(f));
   return byVendor;
+}
+
+/** `@/x` and relative specifiers to a runtime file in the repo; packages and anything unresolvable to null. */
+const CANDIDATES = ['', ...EXTS, ...EXTS.map((e) => `/index${e}`)];
+function resolveImport(spec: string, from: string): string | null {
+  const base = spec.startsWith('@/') ? join(ROOT, spec.slice(2)) : spec.startsWith('.') ? join(dirname(from), spec) : null;
+  if (!base) return null;
+  for (const c of CANDIDATES) {
+    const p = base + c;
+    if (EXTS.some((e) => p.endsWith(e)) && existsSync(p) && statSync(p).isFile()) return NOT_RUNTIME.test(rel(p)) ? null : p;
+  }
+  return null;
+}
+
+const deps = new Map<string, string[]>();
+const depsOf = (f: string) => {
+  let d = deps.get(f);
+  if (!d) deps.set(f, (d = [...new Set(scanFile(f).imports.map((s) => resolveImport(s, f)).filter((p): p is string => !!p))]));
+  return d;
+};
+
+/** Every app/api route that reaches a forbidden vendor, with the vendors its value-import closure reaches. */
+function routeReach(): Record<string, string[]> {
+  const routes = walk(join(ROOT, 'app/api'), []).filter((f) => /\/route\.(ts|js)$/.test(f)).sort();
+  const out: Record<string, string[]> = {};
+  for (const r of routes) {
+    const seen = new Set([r]);
+    const stack = [r];
+    const hit = new Set<string>();
+    while (stack.length) {
+      const f = stack.pop()!;
+      for (const v of scanFile(f).vendors) hit.add(v);
+      for (const d of depsOf(f)) {
+        if (!seen.has(d)) {
+          seen.add(d);
+          stack.push(d);
+        }
+      }
+    }
+    if (hit.size) out[rel(r)] = [...hit].sort();
+  }
+  return out;
 }
 
 const ALLOWLIST: Record<string, string[]> = JSON.parse(
   readFileSync(join(ROOT, '__tests__/provider-boundary.allowlist.json'), 'utf8'),
 ).files;
+const BASELINE: Record<string, string[]> = JSON.parse(
+  readFileSync(join(ROOT, '__tests__/provider-reachability.baseline.json'), 'utf8'),
+).routes;
 
-describe('provider boundary (R7: Google + ElevenLabs only)', () => {
+describe('provider boundary (v3.1: Vertex + Cloud TTS only)', () => {
   const actual = scan();
+  const reach = routeReach();
 
   test('the scanner sees hosts in code and SDK value imports, not comments or type imports', () => {
     expect([...vendorsIn('a.ts', "const u = 'https://api.replicate.com/v1/predictions';")]).toEqual(['replicate']);
@@ -119,21 +190,36 @@ describe('provider boundary (R7: Google + ElevenLabs only)', () => {
     expect([...vendorsIn('a.ts', "import OpenAI from 'openai';")]).toEqual(['openai']);
     expect([...vendorsIn('a.ts', "const A = await import('@anthropic-ai/sdk');")]).toEqual(['anthropic']);
     expect([...vendorsIn('a.ts', "const R = require('replicate/lib');")]).toEqual(['replicate']);
+    expect([...vendorsIn('a.ts', "fetch('https://generativelanguage.googleapis.com/v1beta/models')")]).toEqual(['gemini_developer_api']);
+    expect([...vendorsIn('a.ts', 'fetch(`https://api.elevenlabs.io/v1/text-to-speech/${id}`)')]).toEqual(['elevenlabs']);
     expect(vendorsIn('a.ts', '// was https://api.replicate.com/v1, now Veo').size).toBe(0);
     expect(vendorsIn('a.ts', "import type OpenAI from 'openai';").size).toBe(0);
-    expect(vendorsIn('a.ts', "fetch('https://generativelanguage.googleapis.com/v1beta'); fetch('https://api.elevenlabs.io/v1')").size).toBe(0);
+    expect(vendorsIn('a.ts', "import { type ClientOptions } from 'openai';").size).toBe(0);
+    expect(
+      vendorsIn('a.ts', "fetch(`https://${loc}-aiplatform.googleapis.com/v1/projects/${p}`); fetch('https://texttospeech.googleapis.com/v1/text:synthesize')").size,
+    ).toBe(0);
   });
 
-  test('every vendor in the allowlist is one the scanner knows', () => {
+  test('the import walk follows value imports, re-exports, import() and require(), not type-only imports', () => {
+    const { imports } = scanSource(
+      'a.ts',
+      "import a from './a'; import type B from './b'; import { type C } from './c'; import { d, type D } from './d';" +
+        " export * from './e'; export type { F } from './f'; const g = await import('./g'); const h = require('./h'); import './i';",
+    );
+    expect(imports).toEqual(['./a', './d', './e', './g', './h', './i']);
+  });
+
+  test('every vendor in the allowlist and the baseline is one the scanner knows', () => {
     expect(Object.keys(ALLOWLIST).filter((v) => !(v in VENDORS))).toEqual([]);
+    expect([...new Set(Object.values(BASELINE).flat())].filter((v) => !(v in VENDORS))).toEqual([]);
   });
 
-  test('no new runtime file reaches a non-Google, non-ElevenLabs AI vendor', () => {
+  test('no new runtime file reaches a forbidden AI vendor', () => {
     const added = Object.entries(actual).flatMap(([v, files]) =>
       files.filter((f) => !(ALLOWLIST[v] ?? []).includes(f)).map((f) => `${v}: ${f}`),
     );
-    // A new line here means new code calls a forbidden vendor. Route it through a Google / ElevenLabs engine instead;
-    // only the owner can widen R7.
+    // A new line here means new code calls a forbidden vendor. Route it through a Vertex engine instead; only the
+    // owner can widen the boundary.
     expect(added).toEqual([]);
   });
 
@@ -142,6 +228,24 @@ describe('provider boundary (R7: Google + ElevenLabs only)', () => {
       files.filter((f) => !(actual[v] ?? []).includes(f)).map((f) => `${v}: ${f}`),
     );
     // A line here is good news: that file no longer reaches the vendor. Delete it from the allowlist.
+    expect(stale).toEqual([]);
+  });
+
+  test('no route reaches a forbidden vendor its baseline line does not name', () => {
+    const added = Object.entries(reach).flatMap(([r, vs]) =>
+      vs.filter((v) => !(BASELINE[r] ?? []).includes(v)).map((v) => `${r}: ${v}`),
+    );
+    // A new line here means a request to that route can now get to a forbidden vendor, directly or through a helper it
+    // imports. Find the import that brought the vendor in and keep the route on Vertex.
+    expect(added).toEqual([]);
+  });
+
+  test('the baseline only shrinks: every listed route still reaches its vendors', () => {
+    const stale = Object.entries(BASELINE).flatMap(([r, vs]) =>
+      vs.filter((v) => !(reach[r] ?? []).includes(v)).map((v) => `${r}: ${v}`),
+    );
+    // A line here is good news: that route no longer reaches the vendor. Delete it from the baseline (and the route's
+    // key once its list is empty).
     expect(stale).toEqual([]);
   });
 });

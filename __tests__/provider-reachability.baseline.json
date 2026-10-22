@@ -1,0 +1,723 @@
+{
+  "note": "Frozen 2026-10-22 from the tree (MASTER TASK v3.1 Phase 1, PR 1): every app/api route whose value-import closure reaches a forbidden AI vendor, with the vendors it reaches. Only delete entries; __tests__/provider-boundary.test.ts fails on a new reach and on a stale one.",
+  "routes": {
+    "app/api/admin/avatar-providers/route.ts": [
+      "elevenlabs",
+      "heygen",
+      "liveavatar"
+    ],
+    "app/api/admin/google-transport/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/admin/model-catalog/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/admin/provider-probe/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "replicate"
+    ],
+    "app/api/admin/reliability/route.ts": [
+      "atlascloud",
+      "deepseek",
+      "runway"
+    ],
+    "app/api/admin/veo-smoke/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/ads/tts/route.ts": [
+      "elevenlabs"
+    ],
+    "app/api/agent-g/calls/transcribe/route.ts": [
+      "cartesia",
+      "deepgram",
+      "elevenlabs",
+      "openai"
+    ],
+    "app/api/agent-g/calls/tts/route.ts": [
+      "cartesia",
+      "deepgram",
+      "elevenlabs",
+      "openai"
+    ],
+    "app/api/agent-g/chat/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/agent-g/orchestrate/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/agent-g/telegram/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api",
+      "openai",
+      "openrouter"
+    ],
+    "app/api/agent-g/telegram/webhook/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api",
+      "openai",
+      "openrouter"
+    ],
+    "app/api/agent-g/webhook/telegram/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api",
+      "openai",
+      "openrouter"
+    ],
+    "app/api/agent-g/webhook/whatsapp/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi",
+      "openai",
+      "openrouter",
+      "replicate"
+    ],
+    "app/api/agent/approvals/route.ts": [
+      "replicate"
+    ],
+    "app/api/agent/media/analyze/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi",
+      "replicate"
+    ],
+    "app/api/agent/media/audio/route.ts": [
+      "replicate"
+    ],
+    "app/api/agent/media/edit/route.ts": [
+      "replicate"
+    ],
+    "app/api/agent/media/montage/route.ts": [
+      "replicate"
+    ],
+    "app/api/agent/media/sweep/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi",
+      "replicate"
+    ],
+    "app/api/agent/run/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi",
+      "replicate",
+      "tavily"
+    ],
+    "app/api/agent/video-queue/drain/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/agent/video-queue/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/ai/edit-audio/route.ts": [
+      "replicate"
+    ],
+    "app/api/ai/edit-photo/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/ai/edit/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/ai/lyrics/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/ai/magic-wand/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/ai/music/engines/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/ai/music/route.ts": [
+      "anthropic",
+      "gemini_developer_api"
+    ],
+    "app/api/ai/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/ai/upscale/route.ts": [
+      "replicate"
+    ],
+    "app/api/app/health/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "heygen",
+      "ltx",
+      "openai",
+      "udio",
+      "worldlabs"
+    ],
+    "app/api/app/jobs/[id]/route.ts": [
+      "deepseek",
+      "openai",
+      "openrouter",
+      "stability"
+    ],
+    "app/api/app/worker/tick/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api",
+      "openai",
+      "openrouter"
+    ],
+    "app/api/audio/georgian-song/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/audio/isolate/route.ts": [
+      "elevenlabs"
+    ],
+    "app/api/avatar/live/session/route.ts": [
+      "liveavatar"
+    ],
+    "app/api/avatar/veo/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/calls/bridge/[op]/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi",
+      "replicate"
+    ],
+    "app/api/chat/gemini/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "openai"
+    ],
+    "app/api/chat/orchestrate/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "openai",
+      "replicate",
+      "runway",
+      "udio",
+      "worldlabs"
+    ],
+    "app/api/chat/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "openai",
+      "openrouter"
+    ],
+    "app/api/chat/stream/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "replicate",
+      "runway",
+      "udio",
+      "worldlabs"
+    ],
+    "app/api/chat/title/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/connectors/files/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/connectors/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/cron/drain-renders/route.ts": [
+      "heygen",
+      "replicate"
+    ],
+    "app/api/cron/longform-tick/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/cron/research-sweep/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/cron/studio-sweep/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "higgsfield"
+    ],
+    "app/api/editing/jobs/[id]/route.ts": [
+      "openai",
+      "replicate"
+    ],
+    "app/api/elevenlabs/sound/route.ts": [
+      "elevenlabs"
+    ],
+    "app/api/elevenlabs/tts/route.ts": [
+      "elevenlabs"
+    ],
+    "app/api/estimate/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "higgsfield"
+    ],
+    "app/api/film/scene/redo/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "replicate",
+      "runway"
+    ],
+    "app/api/film/scene/redo/stitch/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "replicate",
+      "runway"
+    ],
+    "app/api/film/storyboard/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "replicate",
+      "runway"
+    ],
+    "app/api/film/sweep/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "replicate",
+      "runway",
+      "udio",
+      "worldlabs"
+    ],
+    "app/api/gemini/analyze/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/gemini/chat/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/generate/[id]/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "higgsfield"
+    ],
+    "app/api/generate/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "higgsfield"
+    ],
+    "app/api/genjutsu/capabilities/route.ts": [
+      "gemini_developer_api",
+      "higgsfield"
+    ],
+    "app/api/genjutsu/generate/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "higgsfield",
+      "replicate"
+    ],
+    "app/api/genjutsu/quote/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "higgsfield"
+    ],
+    "app/api/genjutsu/status/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "higgsfield",
+      "replicate"
+    ],
+    "app/api/health/embed/route.ts": [
+      "gemini_developer_api",
+      "openai"
+    ],
+    "app/api/health/providers/route.ts": [
+      "atlascloud",
+      "deepseek",
+      "gemini_developer_api",
+      "runway"
+    ],
+    "app/api/health/public/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api"
+    ],
+    "app/api/health/services/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "ltx",
+      "nanobananaapi",
+      "openai",
+      "replicate",
+      "udio"
+    ],
+    "app/api/heygen/avatar/route.ts": [
+      "heygen"
+    ],
+    "app/api/heygen/presenter/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen"
+    ],
+    "app/api/image/assets/[id]/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/assets/[id]/versions/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/capabilities/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/commands/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/jobs/[id]/cancel/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/jobs/[id]/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/jobs/quote/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/jobs/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/models/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/image/operations/validate/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/ltx-video/route.ts": [
+      "ltx"
+    ],
+    "app/api/memory/route.ts": [
+      "gemini_developer_api",
+      "openai"
+    ],
+    "app/api/motion-control/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/motion-control/status/route.ts": [
+      "replicate"
+    ],
+    "app/api/music/studio/capabilities/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/music/studio/commands/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/music/studio/edit/route.ts": [
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/music/studio/jobs/[id]/cancel/route.ts": [
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/music/studio/jobs/[id]/route.ts": [
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/music/studio/jobs/route.ts": [
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/music/studio/quote/route.ts": [
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/music/studio/sweep/route.ts": [
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/nanobanana/image/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/orbit/[service]/route.ts": [
+      "elevenlabs"
+    ],
+    "app/api/orbit/agent/route.ts": [
+      "openai",
+      "openrouter"
+    ],
+    "app/api/orchestrate/route.ts": [
+      "deepseek",
+      "openai",
+      "openrouter"
+    ],
+    "app/api/orchestrator/image/produce/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/orchestrator/interior/analyze/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/orchestrator/interior/produce/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/orchestrator/interior/style/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/orchestrator/produce/route.ts": [
+      "gemini_developer_api",
+      "heygen",
+      "replicate"
+    ],
+    "app/api/orchestrator/script-context/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/orchestrator/script/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/pipeline/health/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/pipeline/remix/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "replicate",
+      "runway"
+    ],
+    "app/api/pipeline/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "ltx",
+      "nanobananaapi",
+      "openai",
+      "replicate",
+      "udio",
+      "worldlabs"
+    ],
+    "app/api/preview/google-check/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi"
+    ],
+    "app/api/replicate/avatar/route.ts": [
+      "replicate"
+    ],
+    "app/api/replicate/generate/route.ts": [
+      "replicate"
+    ],
+    "app/api/replicate/image/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "nanobananaapi",
+      "replicate"
+    ],
+    "app/api/research/[id]/ask/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/research/[id]/cancel/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/research/[id]/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/research/capabilities/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/research/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/research/start/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/studio/catalogue/route.ts": [
+      "gemini_developer_api",
+      "higgsfield"
+    ],
+    "app/api/system/film-selftest/route.ts": [
+      "udio"
+    ],
+    "app/api/tasks/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi",
+      "replicate"
+    ],
+    "app/api/tts/gemini/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/v2/dubbing/start/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/v2/model3d/create/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "replicate"
+    ],
+    "app/api/v2/model3d/status/route.ts": [
+      "replicate"
+    ],
+    "app/api/v2/montage/render/route.ts": [
+      "replicate"
+    ],
+    "app/api/v2/presentation/build/route.ts": [
+      "anthropic",
+      "gemini_developer_api"
+    ],
+    "app/api/video/assemble/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "replicate",
+      "runway"
+    ],
+    "app/api/video/director/plan/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/video/director/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/video/director/runs/[id]/advance/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/video/director/runs/[id]/decision/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/video/director/runs/[id]/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/video/director/runs/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/video/engine/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/video/generate-hero/route.ts": [
+      "replicate"
+    ],
+    "app/api/video/generate-promo/route.ts": [
+      "replicate"
+    ],
+    "app/api/video/lipsync/route.ts": [
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "replicate"
+    ],
+    "app/api/video/longform/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/video/remix-intent/route.ts": [
+      "anthropic",
+      "gemini_developer_api"
+    ],
+    "app/api/video/remix/route.ts": [
+      "anthropic",
+      "elevenlabs",
+      "gemini_developer_api",
+      "heygen",
+      "kling",
+      "ltx",
+      "luma",
+      "nanobananaapi",
+      "replicate",
+      "runway"
+    ],
+    "app/api/video/voice-narration/route.ts": [
+      "replicate"
+    ],
+    "app/api/voice-lab/jobs/route.ts": [
+      "elevenlabs"
+    ],
+    "app/api/voice/chat/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/voice/clone/route.ts": [
+      "elevenlabs"
+    ],
+    "app/api/voice/live/route.ts": [
+      "gemini_developer_api"
+    ],
+    "app/api/voice/realtime/session/route.ts": [
+      "cartesia",
+      "deepgram",
+      "elevenlabs",
+      "openai"
+    ],
+    "app/api/voice/train/route.ts": [
+      "replicate"
+    ],
+    "app/api/voice/transcribe/route.ts": [
+      "cartesia",
+      "deepgram",
+      "elevenlabs",
+      "gemini_developer_api",
+      "nanobananaapi",
+      "openai",
+      "replicate"
+    ],
+    "app/api/webhooks/higgsfield/route.ts": [
+      "anthropic",
+      "gemini_developer_api",
+      "higgsfield"
+    ],
+    "app/api/webhooks/phone/route.ts": [
+      "gemini_developer_api",
+      "openai",
+      "openrouter"
+    ],
+    "app/api/webhooks/whatsapp/route.ts": [
+      "gemini_developer_api",
+      "nanobananaapi",
+      "openai",
+      "openrouter",
+      "replicate"
+    ]
+  }
+}
