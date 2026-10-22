@@ -38,4 +38,46 @@ describe('chunkForTts', () => {
     expect(chunkForTts('Sure, here it is. The', 600, { leadSentence: true })).toEqual(['Sure, here it is.', 'The']);
     expect(chunkForTts('Sure, here it is. The answer is 4.', 600, { leadSentence: true })[0]).toBe('Sure, here it is.');
   });
+
+  test.each([
+    'natural speech needs whole words at every boundary',
+    'გამართული მეტყველება სიტყვების საზღვრებს უნდა ინარჩუნებდეს',
+    'Ровная речь сохраняет слова целиком на границах',
+  ])('a long sentence breaks at words instead of splitting their pronunciation: %s', (text) => {
+    const chunks = chunkForTts(text, 18);
+    expect(chunks.join(' ')).toBe(text);
+    expect(chunks.every(c => c.length <= 18 && c === c.trim())).toBe(true);
+  });
+
+  test('an isolated lead sentence still obeys the request size bound', () => {
+    const chunks = chunkForTts('This is a complete first sentence. The rest.', 18, { leadSentence: true });
+    expect(chunks.every(c => c.length <= 18)).toBe(true);
+    expect(chunks.join(' ')).toBe('This is a complete first sentence. The rest.');
+  });
+
+  test('hard splits retain every Unicode character without broken surrogate pairs', () => {
+    const text = 'a😀😀😀😀😀😀';
+    const chunks = chunkForTts(text, 4);
+    expect(chunks.join('')).toBe(text);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(4);
+      expect(chunk).not.toMatch(/^[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/);
+    }
+  });
+
+  test('leading punctuation is retained rather than silently dropped', () => {
+    expect(chunkForTts('?! Keep all words.', 600)).toEqual(['?! Keep all words.']);
+    expect(chunkForTts('?! Keep all words.', 600, { leadSentence: true })).toEqual(['?! Keep all words.']);
+  });
+
+  test.each([0, 1, -2, NaN, Infinity, 2.5])('an invalid size %s is refused instead of looping or splitting a Unicode pair', (size) => {
+    expect(() => chunkForTts('a long enough sentence', size)).toThrow(RangeError);
+  });
+
+  test('all normalized text survives a realistic multilingual read within the existing 180-unit limit', () => {
+    const text = 'Hello 😀. გამართული ტექსტი სიტყვებს სრულად ინარჩუნებს და დასასრულამდე იკითხება. Ровная речь сохраняет каждое слово. '.repeat(30).trim();
+    const chunks = chunkForTts(text, 180, { leadSentence: true });
+    expect(chunks.join(' ')).toBe(text);
+    expect(chunks.every(c => c.length <= 180)).toBe(true);
+  });
 });
