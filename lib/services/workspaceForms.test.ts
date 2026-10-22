@@ -120,7 +120,7 @@ describe('servicePlan — a studio tool, or the page\'s own form', () => {
     expect(servicePlan('music')).toEqual({ kind: 'studio', tool: 'music' });
     expect(servicePlan('avatar')).toEqual({ kind: 'studio', tool: 'avatar' });
     expect(servicePlan('interior')).toEqual({ kind: 'studio', tool: 'interior' });
-    expect(servicePlan('photo')).toEqual({ kind: 'studio', tool: 'photoshoot' });
+    expect(servicePlan('photo')).toEqual({ kind: 'studio', tool: 'image' });
     expect(servicePlan('editing')).toEqual({ kind: 'studio', tool: 'montage' });
   });
 
@@ -149,7 +149,7 @@ describe('servicePlan — a studio tool, or the page\'s own form', () => {
 
   test('studioToolHref opens the studio on the tool, in a known language', () => {
     expect(studioToolHref('ka', 'video')).toBe('/ka/dashboard?tool=video');
-    expect(studioToolHref('en', 'photoshoot')).toBe('/en/dashboard?tool=photoshoot');
+    expect(studioToolHref('en', 'image')).toBe('/en/dashboard?tool=image');
     expect(studioToolHref('ru', 'chat')).toBe('/ru/dashboard?tool=chat');
     expect(studioToolHref('xx', 'music')).toBe('/ka/dashboard?tool=music');
   });
