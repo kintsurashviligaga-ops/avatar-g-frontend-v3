@@ -9,15 +9,16 @@
  * Models available to this project's key (listed 2026-09-29): gemini-3.1-flash-image (GA, default),
  * gemini-3-pro-image (GA, higher fidelity), gemini-2.5-flash-image. Override with GEMINI_FRAME_MODEL.
  *
- * The endpoint and credential come from the selected Google transport (lib/ai/google/transport): the API key, or
- * Vertex AI with Workload Identity when GEMINI_TRANSPORT=vertex (gemini-3.1-flash-image answered there in the Part 0
- * T2 test, 2026-10-08).
+ * The endpoint and credential come from lib/ai/google/transport: Vertex AI with Workload Identity, the only transport
+ * under MASTER TASK v3.1 (gemini-3.1-flash-image answered there in the Part 0 T2 test, 2026-10-08). A retired model
+ * (Imagen 3, lib/image/lifecycle) named by GEMINI_FRAME_MODEL or a caller is refused before any reference is loaded.
  *
  * NEVER THROWS: null on any miss (no transport, 4xx/5xx, safety block, no image part, timeout).
  */
 import 'server-only';
 import { googleImageModelFetch, googleImageTransportBlocker } from '@/lib/ai/google/transport';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
+import { imageLifecycleRefusal } from '@/lib/image/lifecycle';
 const MAX_REF_BYTES = 12 * 1024 * 1024;
 
 export function geminiFrameModel(): string {
@@ -86,6 +87,11 @@ export function retryAfterMs(header: string | null): number | null {
 export async function generateGeminiImage(args: GeminiImageArgs): Promise<GeminiImageResult | null> {
   if (googleImageTransportBlocker() || !args.prompt?.trim()) return null;
   const model = (args.model || geminiFrameModel()).trim();
+  const retired = imageLifecycleRefusal(model);
+  if (retired) {
+    console.warn(`[gemini-image] ${retired}`);
+    return null;
+  }
   const wanted = (args.referenceImages ?? []).slice(0, 3);
   const refs = (await Promise.all(wanted.map(toInlinePart)))
     .filter((p): p is { inlineData: { mimeType: string; data: string } } => !!p);

@@ -47,6 +47,7 @@ const words = {
   cancelledJob: ['დავალება გაუქმდა.', 'The job was cancelled.', 'Задача отменена.'],
   notFound: ['სურათი ვერ მოიძებნა.', 'The image was not found.', 'Изображение не найдено.'],
   unsupported: ['ეს შესაძლებლობა ამ სამუშაო ფანჯარაში ხელმისაწვდომი არ არის.', 'This capability is unavailable in this workspace.', 'Эта возможность недоступна в этой студии.'],
+  retired: ['ეს მოდელი Google-მა გააუქმა. ახალი სურათები Gemini 3.1 Flash Image-ით იქმნება. არაფერი ჩამოგეჭრა.', 'Google has retired this model. New images use Gemini 3.1 Flash Image. Nothing was charged.', 'Google вывел эту модель из эксплуатации. Новые изображения создаёт Gemini 3.1 Flash Image. Ничего не списано.'],
   config: ['გენერაციისთვის საჭირო სერვისი გამართული არ არის.', 'A required generation service is not configured.', 'Не настроен необходимый сервис генерации.'],
   size: ['აირჩიე PNG, JPEG ან WebP, მაქსიმუმ 12 MB; სულ 4 რეფერენსი.', 'Use PNG, JPEG or WebP, up to 12 MB each; at most 4 references.', 'PNG, JPEG или WebP, до 12 МБ каждый; максимум 4 референса.'],
   close: ['დახურვა', 'Close', 'Закрыть'],
@@ -99,6 +100,6 @@ export function imageErrorCopy(code: string, locale: string) {
  return c.t(code === 'unauthenticated' ? 'auth' : code === 'quote_expired' ? 'expired'
    : code === 'insufficient_credits' ? 'insufficient' : code === 'queue_full' ? 'queueFull' : code === 'prompt_safety' ? 'safety'
    : code === 'quote_used' ? 'quoteUsed' : code === 'cancelled' ? 'cancelledJob' : code === 'not_found' ? 'notFound'
-   : code === 'unsupported_capability' ? 'unsupported'
+   : code === 'unsupported_capability' ? 'unsupported' : code === 'lifecycle_blocked' ? 'retired'
    : code === 'not_configured' ? 'config' : code === 'provider_timeout' || code === 'provider_outcome_unknown' ? 'unknown' : 'failure');
 }

@@ -4,7 +4,7 @@ const LOCALES = ['ka', 'en', 'ru'];
 
 test('codes that need a different action than "try again" get their own message in every language', () => {
   const generic = LOCALES.map((l) => imageErrorCopy('provider_failed', l));
-  for (const code of ['insufficient_credits', 'queue_full', 'prompt_safety', 'quote_used', 'cancelled', 'not_found']) {
+  for (const code of ['insufficient_credits', 'queue_full', 'prompt_safety', 'quote_used', 'cancelled', 'not_found', 'lifecycle_blocked']) {
     LOCALES.forEach((l, i) => {
       const text = imageErrorCopy(code, l);
       expect(text).not.toBe(generic[i]);
@@ -14,6 +14,10 @@ test('codes that need a different action than "try again" get their own message 
   }
   expect(imageErrorCopy('insufficient_credits', 'ka')).toMatch(/კრედიტ/);
   expect(imageErrorCopy('insufficient_credits', 'ru')).toMatch(/кредит/i);
+  // A retired model (Imagen 3) names what new images use instead, and that nothing was charged.
+  expect(imageErrorCopy('lifecycle_blocked', 'en')).toMatch(/Gemini 3\.1 Flash Image.*Nothing was charged/);
+  expect(imageErrorCopy('lifecycle_blocked', 'ka')).toMatch(/Gemini 3\.1 Flash Image/);
+  expect(imageErrorCopy('lifecycle_blocked', 'ru')).toMatch(/Gemini 3\.1 Flash Image/);
 });
 
 test('the stages a claimed job writes (starting, retrying) are named, not shown as "Queued"', () => {
