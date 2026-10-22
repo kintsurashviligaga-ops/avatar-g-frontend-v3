@@ -66,7 +66,7 @@ export type OpStatus =
   | 'PROVEN'
   /** Runs on an allowed engine; its cost is list price × an assumed size, not yet seen in Production. */
   | 'ESTIMATED'
-  /** No Google / ElevenLabs / FFmpeg engine exists for it: under MEDIA_GOOGLE_ONLY it is refused, so it gets no price. */
+  /** No Google / ElevenLabs / FFmpeg engine exists for it: it is always refused, so it gets no price. */
   | 'BLOCKED'
   /** Free by design, inside daily caps. */
   | 'FREE_CAPPED';

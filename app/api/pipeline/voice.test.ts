@@ -2,33 +2,21 @@
 /**
  * POST /api/pipeline `generate` · voice — the /services/voice voiceover.
  *
- * ⚠️ It used to speak the TEXT-MODEL prompt: „Synthesize the following text in ka with a neutral tone:" (the clarifier's
- * wrapper) and, on a second short request in the same session, the previous text plus „Refinement request: …" (the
- * iteration store). Pinned here: ElevenLabs receives exactly what the user typed, every time; and a failed ElevenLabs
- * call is an error, never a silent OpenAI voice, whatever the env says (PROJECT_MASTER §A, R7; MASTER TASK v3.1).
+ * ⚠️ It ran on ElevenLabs (with an OpenAI voice behind it until MASTER TASK v3.1) and spoke the TEXT-MODEL prompt. The
+ * wizard's voice leg has no Google engine and no charge of its own, so it is refused (503 google_only, the body the
+ * studio already renders) before any voice is made, whatever MEDIA_GOOGLE_ONLY or AI_GOOGLE_ONLY says. Voiceovers are
+ * made in the studio. Pinned here: nothing reaches ElevenLabs or OpenAI under any env value.
  */
 jest.mock('server-only', () => ({}));
 
 jest.mock('../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: { id: 'u1' } })) }));
-jest.mock('@anthropic-ai/sdk', () => ({ __esModule: true, default: jest.fn().mockImplementation(() => ({ messages: { create: jest.fn() } })) }));
 const mockSpeech = jest.fn();
 jest.mock('openai', () => ({ __esModule: true, default: jest.fn().mockImplementation(() => ({ audio: { speech: { create: mockSpeech } } })) }));
 jest.mock('../../../lib/gemini/client', () => ({ generateWithGemini: jest.fn() }));
-jest.mock('../../../lib/nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
-jest.mock('../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
-jest.mock('../../../lib/worldlabs/client', () => ({ generateWorldLabsInterior: jest.fn() }));
-jest.mock('../../../lib/chat/filmVoiceover', () => ({ textToHostedSpeech: jest.fn() }));
-jest.mock('../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
-jest.mock('../../../lib/ai/lipsync', () => ({ lipsyncCreate: jest.fn(), lipsyncFetch: jest.fn() }));
 jest.mock('../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
 import { NextRequest } from 'next/server';
-
-// The route used to build an OpenAI client at load time; the key is set before it is required, so the "no silent OpenAI"
-// tests would catch a client that came back.
-process.env.OPENAI_API_KEY = 'test-openai-key';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { POST } = require('./route') as typeof import('./route');
+import { POST } from './route';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/pipeline', {
@@ -42,16 +30,11 @@ const voice = (userInput: string, sessionId = 's-voice') =>
 
 const ENV = { ...process.env };
 let fetchSpy: jest.SpyInstance;
-const spokenTexts = () =>
-  fetchSpy.mock.calls
-    .filter(([url]) => String(url).includes('api.elevenlabs.io/v1/text-to-speech/'))
-    .map(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { text: string }).text);
 
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.ELEVENLABS_API_KEY = 'test-el-key';
   process.env.OPENAI_API_KEY = 'test-openai-key';
-  delete process.env.AI_GOOGLE_ONLY;
   fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(new Uint8Array(4096), { status: 200, headers: { 'content-type': 'audio/mpeg' } }));
 });
 
@@ -60,26 +43,16 @@ afterEach(() => {
   process.env = { ...ENV };
 });
 
-test('ElevenLabs speaks exactly what the user typed — no instruction wrapper', async () => {
+test.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0' },
+  { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-elevenlabs' },
+  { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' },
+])('env %p: the voiceover is refused google_only before any voice is made — no ElevenLabs, no OpenAI', async (env) => {
+  Object.assign(process.env, env);
   const res = await POST(voice('გამარჯობა, ეს არის ჩემი პირველი გახმოვანება.'));
-  expect(await res.json()).toMatchObject({ status: 'done', outputKind: 'audio' });
-  expect(spokenTexts()).toEqual(['გამარჯობა, ეს არის ჩემი პირველი გახმოვანება.']);
+  expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ success: false, url: null, code: 'google_only', error: 'google_only' });
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(mockSpeech).not.toHaveBeenCalled();
 });
-
-test('a second short voiceover in the same session is not merged with the first', async () => {
-  await POST(voice('პირველი ტექსტი.', 's-merge'));
-  await POST(voice('მეორე ტექსტი.', 's-merge'));
-  expect(spokenTexts()).toEqual(['პირველი ტექსტი.', 'მეორე ტექსტი.']);
-});
-
-test.each([{}, { AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' }])(
-  'env %p: a failed ElevenLabs call is an error, never a silent OpenAI voice',
-  async (env) => {
-    Object.assign(process.env, env);
-    fetchSpy.mockImplementation(async () => new Response('nope', { status: 500 }));
-    mockSpeech.mockResolvedValue({ arrayBuffer: async () => new Uint8Array(8).buffer });
-    const res = await POST(voice('Hello there.'));
-    expect(await res.json()).toMatchObject({ status: 'error' });
-    expect(mockSpeech).not.toHaveBeenCalled();
-  },
-);

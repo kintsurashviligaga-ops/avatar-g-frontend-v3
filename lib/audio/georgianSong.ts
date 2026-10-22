@@ -4,7 +4,7 @@
  * Real GEORGIAN vocals for a music video. ElevenLabs Music v1 can't sing Georgian,
  * so we build the song ourselves: Georgian lyrics written from the brief → the cloned Georgian
  * voice (KA clone via textToHostedSpeech) → mixed OVER an instrumental bed in the brief's genre
- * (ElevenLabs Music instrumental, MusicGen fallback) with the vocal up front. The
+ * (ElevenLabs Music instrumental; there is no MusicGen fallback) with the vocal up front. The
  * resulting hosted MP3 is handed to the pipeline as the master soundtrack, so the
  * assemble + lip-sync + composite all run unchanged — and the lips track a REAL
  * Georgian vocal.
@@ -25,8 +25,6 @@ import { KA_VOICE_MALE, KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, genreBpm, sceneAlignedBpm, songGenreFromBrief } from '@/lib/elevenlabs/music';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
-import { generateMusic } from '@/lib/ai/replicate';
-import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 const exec = promisify(execFile);
@@ -113,8 +111,8 @@ export function instrumentalPrompt(brief: string, totalSec: number, opts: { them
 }
 
 /**
- * Resolve the instrumental bed → hosted URL. ONE ENGINE: ElevenLabs Music when its key is present, MusicGen
- * (Replicate) only on a deployment without one.
+ * Resolve the instrumental bed → hosted URL. ONE ENGINE: ElevenLabs Music when its key is present, and no bed on a
+ * deployment without one (MusicGen on Replicate stood in there; it has no Google engine, MASTER TASK v3.1).
  * ⚠️ NO SILENT FALLBACK (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). An ElevenLabs miss used to
  * fall through to MusicGen, an outside engine nobody chose; it is now a miss (null — the caller reports it).
  */
@@ -132,15 +130,9 @@ export async function instrumentalBed(brief: string, totalSec: number, signal?: 
       return null;
     }
   }
-  // MusicGen (Replicate) is the bed only when no ElevenLabs Music key is set. Under MEDIA_GOOGLE_ONLY it is never
-  // called: no bed, which the song builder already handles as a miss.
-  if (isMediaGoogleOnly()) return null;
-  try {
-    const score = await generateMusic(instrumentalPrompt(brief, totalSec, opts), totalSec);
-    return score.audioUrl ?? null;
-  } catch {
-    return null;
-  }
+  // No ElevenLabs Music key → no bed, which the song builder already handles as a miss. MusicGen (Replicate) used to
+  // stand in; it has no Google engine (MASTER TASK v3.1) and is never called, whatever MEDIA_GOOGLE_ONLY says.
+  return null;
 }
 
 /**
@@ -175,11 +167,7 @@ export async function diagnoseGeorgianSong(
       out.elMusic = !!(r.audio && r.audio.length > 1024);
     } catch (e) { out.elMusic = false; out.elMusicErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
   }
-  if (isMediaGoogleOnly()) out.musicGen = 'off (MEDIA_GOOGLE_ONLY)';
-  else {
-    try { const s = await generateMusic(instrumentalPrompt(brief, totalSec), totalSec); out.musicGen = !!s.audioUrl; }
-    catch (e) { out.musicGen = false; out.musicGenErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
-  }
+  out.musicGen = 'off (no Google engine)';
   return out;
 }
 

@@ -9,8 +9,8 @@
  *
  * so the refund only ever fired when even ffmpeg failed. When the paid engines missed and kenBurnsClip
  * answered, `url` was truthy, the request "succeeded", and the user paid the full price — 25–45 credits
- * for a product ad, 15 for restyle / character / background_remove — for a slow pan over one of their own
- * frames. The route's own comments already said the fallback "is not the same product" and that it costs
+ * for a product ad — for a slow pan over one of their own frames. (Restyle / character / background_remove
+ * had the same fallback; they ran on Kling and are refused since MASTER TASK v3.1, noSilentSwitch.test.ts.) The route's own comments already said the fallback "is not the same product" and that it costs
  * "the full price of a video ad"; the invoice just never agreed.
  *
  * Structural, not behavioural: the handler is ~900 lines behind a dozen provider imports. What this
@@ -24,7 +24,6 @@ const src = readFileSync(join(__dirname, 'route.ts'), 'utf8');
 /** The paid ops that can silently fall through to a local Ken-Burns pan. */
 const FALLBACK_SITES = [
   { name: 'productad', anchor: "failRefund('Product ad generation failed.', 'render-null')" },
-  { name: 'restyle / character / background_remove', anchor: "const method = animated ? 'reanimated' : 'stillPan'" },
 ];
 
 describe('Ken-Burns fallback is not charged', () => {

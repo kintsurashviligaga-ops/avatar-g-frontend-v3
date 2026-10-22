@@ -13,7 +13,6 @@
       "app/api/elevenlabs/tts/route.ts",
       "app/api/health/public/route.ts",
       "app/api/health/services/route.ts",
-      "app/api/pipeline/route.ts",
       "app/api/voice/clone/route.ts",
       "lib/agent-g/voice/tts.ts",
       "lib/ai/elevenlabs.ts",
@@ -76,7 +75,6 @@
       "app/api/health/services/route.ts",
       "app/api/heygen/avatar/route.ts",
       "app/api/heygen/presenter/route.ts",
-      "app/api/pipeline/route.ts",
       "lib/ai/lipsync.ts",
       "lib/chat/ServiceManager.ts",
       "lib/pipeline/lipsync/lipsyncNode.ts",
@@ -95,12 +93,10 @@
     ],
     "liveavatar": [
       "app/api/admin/avatar-providers/route.ts",
-      "app/api/avatar/live/session/route.ts",
       "lib/security/csp.js"
     ],
     "ltx": [
       "app/api/health/services/route.ts",
-      "app/api/ltx-video/route.ts",
       "lib/chat/ServiceManager.ts",
       "lib/security/csp.js",
       "lib/system/provider-health.ts",

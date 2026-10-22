@@ -10,10 +10,9 @@
  * TWO CLASSES OF ACTION:
  *   • DETERMINISTIC (split · crop · detach · color · fade) — non-generative, lossless-where-possible pixel
  *     math. NO AI provider call, so these are FREE (auth-only gate; anonymous is still blocked).
- *   • GENERATIVE (inpaint) — object removal via a masked-inpaint model. This IS generative: it SYNTHESISES
- *     new pixels inside the mask (good inpainting keeps the surrounding pixels intact, but the filled region
- *     is invented, not "surgical"). It is auth+balance gated and metered like an image generation, and is
- *     inert (clean 503) until REPLICATE_API_TOKEN + REPLICATE_INPAINT_MODEL are configured.
+ *   • GENERATIVE (inpaint) — object removal ran on a Replicate masked-inpaint model, which has no Google engine. It
+ *     is refused with 503 google_only before the guard, any charge or provider call, whatever MEDIA_GOOGLE_ONLY
+ *     says (MASTER TASK v3.1, lib/providers/mediaPolicy).
  *
  * Every op is FAIL-OPEN: a miss returns { url: null, error } (never a 500 dead-end).
  */
@@ -21,28 +20,17 @@ import { NextRequest, NextResponse } from 'next/server';
 // Provider bodies must never reach the client — see lib/api/providerError.
 import { providerErrorBody } from '@/lib/api/providerError';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
-import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
-import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
-import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
-import { creditCostFor } from '@/lib/credits/pricing';
+import { guardGeneration } from '@/lib/api/generationGuard';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { trimClip } from '@/lib/video/trimClip';
 import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, renderConcat, type RenderDraft } from '@/lib/video/surgicalOps';
-import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
-import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { maxrateForTarget } from '@/lib/services/montage/montagePlan';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 300; // ffmpeg re-encode / inpaint poll headroom
-
-// TEXT-GUIDED inpainting (inputs: image + mask + prompt) — the panel takes an optional description
-// ("replace the background with a beach"), so a prompt-aware model makes that description actually matter. This is
-// the very stable, widely-run SD-inpainting checkpoint; createPrediction resolves its latest version, and a bad
-// slug fails cleanly + refunds. Operators wanting pure LaMa object-removal can pin REPLICATE_INPAINT_MODEL instead.
-const DEFAULT_INPAINT_MODEL = 'stability-ai/stable-diffusion-inpainting';
+export const maxDuration = 300; // ffmpeg re-encode headroom
 
 /**
  * Resolve a client media ref (https / bare storage path from uploadBigFile) to a fetchable https URL.
@@ -135,6 +123,7 @@ export async function POST(req: NextRequest) {
   if (!action || (!DETERMINISTIC.has(action) && action !== 'inpaint')) {
     return NextResponse.json({ url: null, error: 'unknown action' }, { status: 400 });
   }
+  if (action === 'inpaint') return refuseOutsideEngine(req);
 
   // ── MULTI-CLIP concat export — uses `sources` (not a single mediaUrl). Handled first. ──────────────
   if (action === 'render' && Array.isArray(body?.sources) && body.sources.length > 1 && Array.isArray(body?.sequence)) {
@@ -285,98 +274,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── GENERATIVE inpaint — object removal via a masked-inpaint model. Auth + balance gate + metered. ──
-  // Honest labelling: this SYNTHESISES pixels inside the mask; it is not a deterministic "surgical" op.
-  // MEDIA_GOOGLE_ONLY: the inpaint model is a Replicate one, so the switch refuses it here, before any charge. The
-  // ffmpeg ops above never reach an outside engine and stay open.
-  const outside = refuseOutsideEngine(req);
-  if (outside) return outside;
-  const guard = await guardGeneration(req, 'image');
-  if (!guard.ok) return guard.response;
-
-  // Read the operator's pinned model; if unset, fall back to a standard LaMa-style object-removal model (which
-  // takes {image, mask}) and WARN in non-prod so nobody ships on an unverified default. Still needs the token.
-  const model = process.env.REPLICATE_INPAINT_MODEL?.trim() || DEFAULT_INPAINT_MODEL;
-  if (!process.env.REPLICATE_INPAINT_MODEL && process.env.NODE_ENV !== 'production') {
-    console.warn(`[ai/edit] REPLICATE_INPAINT_MODEL unset — falling back to default inpaint model "${DEFAULT_INPAINT_MODEL}". Pin your own via the env var.`);
-  }
-  if (!process.env.REPLICATE_API_TOKEN) {
-    return NextResponse.json(
-      { url: null, error: 'inpaint_unconfigured', message: 'AI object-removal needs REPLICATE_API_TOKEN.' },
-      { status: 503 },
-    );
-  }
-  const rawMask = typeof body?.maskUrl === 'string' ? body.maskUrl : '';
-  if (!rawMask) {
-    return NextResponse.json({ url: null, error: 'maskUrl required (paint the region to remove)' }, { status: 400 });
-  }
-  const src = await resolveMedia(mediaUrl, guard.userId);
-  // A mask is a data: URI (painted client-side) or a storage path — accept the data URI verbatim.
-  const mask = /^data:/i.test(rawMask) ? rawMask : await resolveMedia(rawMask, guard.userId);
-  if (!src || !mask) {
-    return NextResponse.json({ url: null, error: 'could not resolve media or mask' }, { status: 400 });
-  }
-
-  const cost = creditCostFor('image');
-  const ref = `edit:inpaint:${guard.userId}:${Date.now()}`;
-  // Reserve-before-render: debit FIRST and HONOR the result. The pre-gate is fail-OPEN (a transient balance
-  // read-miss lets a user through), so a genuinely broke user can reach here — an insufficient debit must block
-  // the paid provider call, not fall through to a free inpaint.
-  const debit = await deductCredits(guard.userId, cost, ref);
-  if (!debit.ok && debit.reason === 'insufficient') {
-    return NextResponse.json(
-      { url: null, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) },
-      { status: 402 },
-    );
-  }
-  // ⚠️ A LEDGER THAT DEFINITIVELY FAILED NO LONGER RENDERS FOR FREE. Only `insufficient` used to stop the paid call;
-  // an `error` debit (ledger unreachable / write refused) proceeded unbilled. Now: 503 billing_unavailable, nothing
-  // charged, nothing rendered. `skipped` (no ledger RPC at all) still proceeds uncharged — the documented degrade.
-  if (!debit.ok && debit.reason === 'error') {
-    return NextResponse.json({ url: null, ...ledgerUnavailableBody(guard.locale) }, { status: 503 });
-  }
-  try {
-    // The inpaint prompt DESCRIBES what to synthesise inside the mask ("ზღვის ფონი დაუყენე") and the
-    // checkpoint reading it is English-only — a Georgian description was noise, so the model invented
-    // something unrelated inside the mask and the credit was spent on it. Nothing on this path is
-    // reproduced verbatim: the mask region is generated pixels, never text. Fail-open by construction.
-    const inpaintPrompt = await promptToEnglish(typeof body?.prompt === 'string' ? body.prompt : '', 'image');
-    const created = await createPrediction(model, { image: src, mask, prompt: inpaintPrompt });
-    let out = created;
-    if (created.status !== 'succeeded' && created.status !== 'failed') {
-      // ⚠️ THIS WAS A SINGLE `pollPrediction`, AND IT MADE OBJECT REMOVAL FAIL 100% OF THE TIME.
-      //
-      // createPrediction sends `Prefer: respond-async` (lib/replicate/client.ts:53), so it returns as
-      // soon as the job is QUEUED — status 'starting'. Polling once, milliseconds later, still reads
-      // 'starting', so `url` came out null, the credit was refunded and the route answered 502
-      // "inpaint produced no output". An inpaint takes tens of seconds; it was never given any of them.
-      // The Replicate token is valid — this failed with a perfectly good key.
-      //
-      // pollUntilDone already existed for exactly this (client.ts:94) and is what the storyboard and
-      // pipeline routes use. Bounded to 240s so it always loses to maxDuration=300 and the caller gets
-      // a real JSON reason rather than a gateway timeout with an unparseable body.
-      out = await pollUntilDone(created.id, 120, 2000);
-    }
-    const url = out.status === 'succeeded' ? firstUrl(out.output) : null;
-    if (!url) {
-      if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // compensation ONLY if we charged
-      return NextResponse.json({ url: null, error: 'inpaint produced no output' }, { status: 502 });
-    }
-    await saveCreation(guard.userId, url, 'inpaint', 'image'); // inpaint output is always an image
-    return NextResponse.json({ url });
-  } catch (e) {
-    if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // refund only a real charge
-    const safe = providerErrorBody(e);
-    return NextResponse.json({ url: null, error: safe.error, message: safe.message }, { status: safe.status });
-  }
-}
-
-/** Replicate outputs vary (string | string[] | object) — take the first URL-ish value. */
-function firstUrl(output: unknown): string | null {
-  if (typeof output === 'string') return output;
-  if (Array.isArray(output)) {
-    const s = output.find((v) => typeof v === 'string');
-    return typeof s === 'string' ? s : null;
-  }
-  return null;
+  // Unreachable: every deterministic action returns above, and inpaint is refused before the guard.
+  return NextResponse.json({ url: null, error: 'unknown action' }, { status: 400 });
 }

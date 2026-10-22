@@ -17,7 +17,6 @@
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../server/feature-flags', () => ({ getFeatureFlag: async () => false }));
-jest.mock('../providers/mediaPolicy', () => ({ isMediaGoogleOnly: () => true }));
 jest.mock('../pipeline/compositing/ffmpeg-overlay', () => ({ renderOverlayPng: async () => null, renderMusicBugPng: async () => null }));
 jest.mock('../pipeline/compositing/caption-burn', () => ({ burnCaptionSegments: async () => null }));
 jest.mock('../security/allowlistedAudioFetch', () => ({ readBodyWithCap: async (res: Response) => Buffer.from(await res.arrayBuffer()) }));

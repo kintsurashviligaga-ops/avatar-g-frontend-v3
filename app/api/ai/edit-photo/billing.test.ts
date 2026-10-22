@@ -1,64 +1,70 @@
 /** @jest-environment node */
 /**
- * POST /api/ai/edit-photo — a ledger that DEFINITIVELY failed refuses the paid chain (503) instead of running it
- * unbilled. Before: only `insufficient` blocked; an `error` debit fell through to a free Replicate chain.
- * Every provider and the ledger are mocked — no network, no spend.
+ * POST /api/ai/edit-photo — the photo editor (background removal and the like, on Replicate).
+ *
+ * ⚠️ It has no Google engine, so every request is refused with 503 google_only before the guard, the limit, the charge,
+ * storage or Replicate, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The fail-closed charge it used to pin went
+ * with the code.
+ * Every collaborator the route used to call is mocked so any call is caught — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
-jest.mock('../../../../lib/api/generationGuard', () => ({
-  guardGeneration: jest.fn(async () => ({ ok: true, userId: 'user-1', locale: 'en' })),
-  insufficientCreditsMessage: () => 'Insufficient Credits',
-}));
-jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), RATE_LIMITS: { EXPENSIVE: {} } }));
-jest.mock('../../../../lib/orchestrator/ledger', () => ({ deductCredits: jest.fn(), refundCredits: jest.fn(async () => ({ ok: true })) }));
-jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
-  reSignIfInternal: jest.fn(async (u: string) => u),
-  createSignedAssetUrl: jest.fn(async () => 'https://proj.supabase.co/storage/v1/object/sign/uploads/p.png?token=t'),
-  parseSupabaseObjectUrl: jest.fn(() => null),
-  uploadAndSign: jest.fn(async () => null),
-}));
-jest.mock('../../../../lib/replicate/client', () => ({
-  createPrediction: jest.fn(async () => ({ id: 'p1', status: 'succeeded', output: 'https://replicate.delivery/out.png' })),
-  pollUntilDone: jest.fn(),
-}));
-jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
-jest.mock('../../../../lib/orchestrator/saveEditorOutput', () => ({ saveEditorOutput: jest.fn(async () => undefined) }));
+jest.mock('../../../../lib/api/generationGuard', () => ({ guardGeneration: jest.fn() }));
+jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn() }));
+jest.mock('../../../../lib/orchestrator/ledger', () => ({ deductCredits: jest.fn(), refundCredits: jest.fn() }));
+jest.mock('../../../../lib/replicate/client', () => ({ createPrediction: jest.fn(), pollUntilDone: jest.fn() }));
+jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ createSignedAssetUrl: jest.fn(), uploadAndSign: jest.fn() }));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { deductCredits } from '../../../../lib/orchestrator/ledger';
-import { createPrediction } from '../../../../lib/replicate/client';
+import { guardGeneration } from '../../../../lib/api/generationGuard';
+import { checkRateLimit } from '../../../../lib/api/rate-limit';
+import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
+import { createPrediction, pollUntilDone } from '../../../../lib/replicate/client';
+import { createSignedAssetUrl, uploadAndSign } from '../../../../lib/orchestrator/storage-adapter';
 
-const ENV = { ...process.env };
-const post = () => POST(new NextRequest('https://myavatar.ge/api/ai/edit-photo', {
+const post = (body: unknown, locale?: string) => POST(new NextRequest('https://myavatar.ge/api/ai/edit-photo', {
   method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ action: 'remove_bg', mediaUrl: 'user-1/photo.png' }),
+  headers: { 'content-type': 'application/json', ...(locale ? { cookie: `NEXT_LOCALE=${locale}` } : {}) },
+  body: JSON.stringify(body),
 }));
+const ENV = { ...process.env };
 
+let fetchSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env = { ...ENV, REPLICATE_API_TOKEN: 'test-token' };
-  global.fetch = jest.fn(async () => new Response('', { status: 500 })) as unknown as typeof fetch;
+  fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
 });
-afterAll(() => { process.env = ENV; });
-
-test('a ledger error → 503 billing_unavailable, and the paid chain never runs', async () => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason: 'error' });
-  const res = await post();
-  expect(res.status).toBe(503);
-  expect(await res.json()).toMatchObject({ url: null, error: 'billing_unavailable' });
-  expect(createPrediction).not.toHaveBeenCalled();
+afterEach(() => {
+  fetchSpy.mockRestore();
+  process.env = { ...ENV };
 });
 
-test('insufficient → 402, the paid chain never runs (unchanged)', async () => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason: 'insufficient' });
-  expect((await post()).status).toBe(402);
-  expect(createPrediction).not.toHaveBeenCalled();
+describe.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0' },
+  { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' },
+])('env %p', (env) => {
+  beforeEach(() => { Object.assign(process.env, env); });
+
+  test.each([
+    ['a background removal', { action: 'remove_bg', mediaUrl: 'user-1/photo.png' }],
+  ])('%s → 503 google_only before anything runs', async (_name, body) => {
+    const res = await post(body);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ success: false, url: null, jobId: null, code: 'google_only', error: 'google_only' });
+    expect(guardGeneration).not.toHaveBeenCalled();
+    expect(checkRateLimit).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(refundCredits).not.toHaveBeenCalled();
+    expect(createPrediction).not.toHaveBeenCalled();
+    expect(pollUntilDone).not.toHaveBeenCalled();
+    expect(createSignedAssetUrl).not.toHaveBeenCalled();
+    expect(uploadAndSign).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });
 
-test('a charged chain runs (unchanged)', async () => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
-  await post();
-  expect(createPrediction).toHaveBeenCalledTimes(1);
+test('the refusal speaks the caller\'s language', async () => {
+  expect((await (await post({ action: 'remove_bg', mediaUrl: 'user-1/photo.png' }, 'en')).json()).message).toMatch(/^This tool is paused/);
+  expect((await (await post({ action: 'remove_bg', mediaUrl: 'user-1/photo.png' }, 'ru')).json()).message).toMatch(/^Этот инструмент/);
 });

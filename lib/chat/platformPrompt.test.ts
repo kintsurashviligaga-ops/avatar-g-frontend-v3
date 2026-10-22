@@ -45,11 +45,11 @@ describe('buildPlatformPrompt — engines', () => {
     }
   });
 
-  it('gives the Image tool NO engine while its route has no Gemini leg (see TOOL_ENGINE)', () => {
+  it('names Gemini image for the Image tool, whose route renders on Google image only (see TOOL_ENGINE)', () => {
     const p = build('en');
     const line = p.split('\n').find((l) => l.startsWith(`- ${TOOL_META.image.name.en} — `));
     expect(line).toBeDefined();
-    expect(line).not.toContain('·');
+    expect(line).toMatch(/ · Gemini image$/);
   });
 });
 
@@ -62,6 +62,8 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
       if (credits === 0) continue;
       // Not owner-approved yet (lib/billing/paidServiceGate): never quoted — see the test below.
       if (action === 'dubbing_per_minute' || action === 'presentation_deck') continue;
+      // No Google engine, so the tool is closed and never priced (MASTER TASK v3.1) — see the closed-tool tests below.
+      if (action === 'avatar_30s' || action === 'model3d') continue;
       expect({ action, present: p.includes(cr(credits)) }).toEqual({ action, present: true });
     }
     expect(p).toContain(`1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾`);
@@ -122,7 +124,8 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     const pct = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
     expect(p).toContain(`Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)}`);
     expect(p).toContain('Lite −30%, Max +210%, music video +3%');
-    expect(p).toContain(`film lip-sync +${creditCostFor('avatar')} cr`);
+    // The lip-sync pass ran on the old avatar engine, which is always refused, so it is never priced.
+    expect(p).not.toContain('film lip-sync');
     expect(p).toContain('product ad = a Fast film of its length');
   });
 
@@ -143,8 +146,8 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     expect(creditCostFor('image', { count: 1 })).toBe(C.image_generate);
     expect(creditCostFor('avatar')).toBe(C.avatar_30s);
     expect(creditCostFor('remix')).toBe(C.remix_video);
-    // 3D shares its number with music_30s today, so the loop above cannot tell whether 3D is quoted at all.
-    expect(p).toContain(`3D model ${cr(C.model3d)}`);
+    // 3D has no Google engine, so it is named as not available and never priced.
+    expect(p).not.toContain('3D model');
     expect(creditCostFor('model3d')).toBe(C.model3d);
   });
 });
@@ -154,8 +157,8 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
   const toolLine = (p: string, id: (typeof ALL_TOOLS)[number], locale: PlatformPromptLocale) =>
     p.includes(`- ${TOOL_META[id].name[locale]} — ${TOOL_META[id].sub[locale]}`);
 
-  it.each(LOCALES)('with the media switch on, the outside-engine tools are not listed or priced (%s)', (locale) => {
-    const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly: true });
+  it.each(LOCALES)('the outside-engine tools are not listed or priced (%s)', (locale) => {
+    const p = buildPlatformPrompt({ locale, now: NOW });
     for (const id of OUTSIDE_ENGINE_TOOLS) {
       expect({ id, listed: toolLine(p, id, locale) }).toEqual({ id, listed: false });
       expect(notYetNames(p)).toContain(TOOL_META[id].name[locale]);
@@ -163,7 +166,7 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     expect(p).not.toContain('talking avatar');
     expect(p).not.toContain('film lip-sync');
     expect(p).not.toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
-    // The touch-up has no menu row (GG 2026-10-18): it is listed with the way to reach it, says what the switch refuses,
+    // The touch-up has no menu row (GG 2026-10-18): it is listed with the way to reach it, says what the route refuses,
     // and its ffmpeg ops stay priced.
     expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (attach a video here; no restyle, background or redub)`);
     expect(p).toContain(`touch-up: voice-over ${cr(PRICE_BOOK.remixVoiceover)}, own music ${cr(PRICE_BOOK.remixMusic)}`);
@@ -171,23 +174,27 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     expect(p.length).toBeLessThanOrEqual(5000);
   });
 
-  it.each(LOCALES)('with the switch off, the same tools are listed and priced again (%s)', (locale) => {
-    const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly: false });
-    // …the ones the side menu still has: GG's 2026-10-21 clean-up took swap and motion out of every menu (lib/catalog/nav HIDE).
-    const inMenu = new Set(toolGroups().flatMap((g) => g.tools));
-    for (const id of OUTSIDE_ENGINE_TOOLS.filter((t) => inMenu.has(t))) expect({ id, listed: toolLine(p, id, locale) }).toEqual({ id, listed: true });
-    expect(p).toContain(`talking avatar ${cr(CREDIT_COSTS.avatar_30s)}`);
-    expect(p).toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
-    expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (attach a video here)`);
-    expect(p).not.toContain('no restyle, background or redub');
+  it.each([
+    { MEDIA_GOOGLE_ONLY: '0' },
+    { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-heygen' },
+  ])('no env value lists or prices them again (%o)', (env) => {
+    const saved = { ...process.env };
+    const before = build('en');
+    Object.assign(process.env, env);
+    const p = build('en');
+    process.env = saved;
+    expect(p).toBe(before);
+    expect(p).not.toContain('talking avatar');
+    expect(p).not.toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
+    expect(p).toContain('(attach a video here; no restyle, background or redub)');
   });
 
   it.each(LOCALES)('a user who may run the Veo avatar is offered it at the Veo clip price, with Veo named (%s)', (locale) => {
-    const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly: true, veoAvatar: true });
+    const p = buildPlatformPrompt({ locale, now: NOW, veoAvatar: true });
     expect(p).toContain(`- ${TOOL_META.avatar.name[locale]} — ${TOOL_META.avatar.sub[locale]} · Veo`);
     expect(p).toContain(`talking avatar ${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip`);
     expect(notYetNames(p)).not.toContain(TOOL_META.avatar.name[locale]);
-    // The film's lip-sync pass stays on the old engine, which the switch still refuses.
+    // The film's lip-sync pass was the old engine, which is always refused.
     expect(p).not.toContain('film lip-sync');
     for (const id of OUTSIDE_ENGINE_TOOLS.filter((t) => t !== 'avatar')) expect(notYetNames(p)).toContain(TOOL_META[id].name[locale]);
     expect(p.length).toBeLessThanOrEqual(5000);
@@ -212,21 +219,7 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     if (saved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = saved;
   });
 
-  it('follows the switch the routes read, fail-closed when it is unset', () => {
-    const saved = { m: process.env.MEDIA_GOOGLE_ONLY, a: process.env.OUTSIDE_ENGINES_APPROVED };
-    delete process.env.MEDIA_GOOGLE_ONLY;
-    delete process.env.OUTSIDE_ENGINES_APPROVED;
-    expect(build('en')).toBe(buildPlatformPrompt({ locale: 'en', now: NOW, mediaGoogleOnly: true }));
-    process.env.MEDIA_GOOGLE_ONLY = '0'; // a falsy switch alone does not reopen outside engines (lib/env/providerBoundary)
-    expect(build('en')).toBe(buildPlatformPrompt({ locale: 'en', now: NOW, mediaGoogleOnly: true }));
-    process.env.OUTSIDE_ENGINES_APPROVED = 'owner-test-approval';
-    expect(build('en')).toBe(buildPlatformPrompt({ locale: 'en', now: NOW, mediaGoogleOnly: false }));
-    for (const [k, v] of [['MEDIA_GOOGLE_ONLY', saved.m], ['OUTSIDE_ENGINES_APPROVED', saved.a]] as const) {
-      if (v === undefined) delete process.env[k]; else process.env[k] = v;
-    }
-  });
-
-  it('closes exactly the tools whose route the switch refuses', () => {
+  it('closes exactly the tools whose route always refuses them', () => {
     // Read as text: mediaPolicy imports next/server, which needs the node test environment this suite does not use.
     const policy = readFileSync(join(process.cwd(), 'lib/providers/mediaPolicy.ts'), 'utf8');
     const gated = new Set([...policy.matchAll(/\{ file: '([^']+)'/g)].map((m) => m[1]));
@@ -343,12 +336,12 @@ describe('buildPlatformPrompt — locale variants', () => {
   });
 
   it.each(LOCALES)('lists every studio tool under its %s UI name and tagline, or names it as not available yet', (locale) => {
-    for (const mediaGoogleOnly of [true, false]) {
-      const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly });
+    for (const veoAvatar of [false, true]) {
+      const p = buildPlatformPrompt({ locale, now: NOW, veoAvatar });
       const closed = notYetNames(p);
       for (const id of ALL_TOOLS) {
         const listed = p.includes(`- ${TOOL_META[id].name[locale]} — ${TOOL_META[id].sub[locale]}`);
-        expect({ id, mediaGoogleOnly, listed, closed: closed.includes(TOOL_META[id].name[locale]) }).toEqual({ id, mediaGoogleOnly, listed, closed: !listed });
+        expect({ id, veoAvatar, listed, closed: closed.includes(TOOL_META[id].name[locale]) }).toEqual({ id, veoAvatar, listed, closed: !listed });
       }
     }
   });

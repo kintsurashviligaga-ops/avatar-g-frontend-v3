@@ -1,61 +1,27 @@
 /**
- * POST /api/generate — the ONE entry point for studio generations (brief §4), used by the studio UI and,
- * later, by Agent G's tools. Nothing here — and nothing Agent G does — spends money without a price the
- * user confirmed.
- *
- * Body: { modelId, params, confirmedGel, promptOriginal? }
- *   409 confirmation_required / price_changed → { price } — show it, ask again, resend with confirmedGel
- *   402 insufficient_credits → { price }
- *   202 → { job } — then poll GET /api/generate/:id
+ * POST /api/generate — the studio generations entry (brief §4). Its models run on Higgsfield, which has no Google
+ * engine, so every start is refused with 503 google_only before any quote, charge or provider call, whatever
+ * MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1, lib/providers/mediaPolicy).
  *
  * GET /api/generate[?limit=12] — the caller's most recent jobs, newest first. A reload, or a start whose
  * answer was lost, must not make a job the user paid for disappear from their screen.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { studioV2Enabled } from '@/lib/studio/flags';
-import { getStudioRuntime, signUploadedReference } from '@/lib/studio/runtime';
+import { getStudioRuntime } from '@/lib/studio/runtime';
 import { publicJob } from '@/lib/studio/saga';
-import { mediaParams, notFound, publicPrice, readJson, sagaError, unauthorized } from '@/lib/studio/http';
+import { notFound, sagaError, unauthorized } from '@/lib/studio/http';
 import { TERMINAL_JOB_STATUSES } from '@/lib/studio/store';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
-import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-// One submit POST (≤ 30 s) plus estimate and ledger round-trips.
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   if (!studioV2Enabled()) return notFound();
-  // MEDIA_GOOGLE_ONLY: every studio model runs on Higgsfield (lib/studio/runtime), so the switch refuses a new job
-  // here, before the estimate or the ledger. GET (the job list and its polls) stays open so running jobs settle.
-  const outside = refuseOutsideEngine(req);
-  if (outside) return outside;
-  const { user } = await authedClientFromRequest(req);
-  if (!user) return unauthorized();
-  // Admin service switch (lib/server/serviceSwitches): a switched-off tool is refused here, before any charge.
-  const serviceOff = await serviceOffResponse('video');
-  if (serviceOff) return serviceOff;
-
-  const body = await readJson(req);
-  const modelId = typeof body?.modelId === 'string' ? body.modelId : '';
-  if (!body || !modelId) return sagaError('invalid_input', { issues: [{ path: 'modelId', message: 'required' }] });
-  const confirmedGel = typeof body.confirmedGel === 'number' ? body.confirmedGel : null;
-  const promptOriginal = typeof body.promptOriginal === 'string' ? body.promptOriginal : null;
-
-  const rate = await checkProduceRate(user.id, Date.now(), 'studio');
-  if (!rate.ok) return rateLimitedResponse(rate);
-
-  const rt = getStudioRuntime();
-  if (!rt) return sagaError('not_configured');
-
-  const media = await mediaParams(body.params, user.id, signUploadedReference);
-  if (!media.ok) return media.res;
-  const res = await rt.saga.create({ userId: user.id, modelId, params: media.params, confirmedGel, promptOriginal });
-  if (!res.ok) return sagaError(res.code, { price: res.price, issues: res.issues });
-  return NextResponse.json({ job: publicJob(res.job), price: publicPrice(res.price) }, { status: 202 });
+  return refuseOutsideEngine(req);
 }
 
 /** Outputs signed per completed job (a result can carry several images). */

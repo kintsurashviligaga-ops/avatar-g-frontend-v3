@@ -1,84 +1,65 @@
 /** @jest-environment node */
 /**
- * POST /api/replicate/generate — the paid create is RESERVED (it was never charged at all), a failed create or a
- * failed prediction is refunded through the ledger, and only the payer the signed token names collects the refund.
- * Replicate and the ledger are mocked — no network, no spend.
+ * POST /api/replicate/generate — raw Replicate models by name.
+ *
+ * ⚠️ Replicate has no Google engine, so a new prediction AND a poll of an old one are refused with 503 google_only before
+ * the guard, the charge or Replicate, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). Production has answered both
+ * this way since the switch was turned on; no env value re-opens it now. The reserve-and-refund rules it used to pin went
+ * with the code.
+ * Every collaborator the route used to call is mocked so any call is caught — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
-jest.mock('../../../../lib/api/generationGuard', () => ({
-  guardGeneration: jest.fn(async () => ({ ok: true, userId: 'user-1', locale: 'en' })),
-  insufficientCreditsMessage: () => 'Insufficient Credits',
-}));
+jest.mock('../../../../lib/api/generationGuard', () => ({ guardGeneration: jest.fn() }));
 jest.mock('../../../../lib/replicate/client', () => ({ createPrediction: jest.fn(), pollPrediction: jest.fn() }));
-jest.mock('../../../../lib/orchestrator/ledger', () => ({
-  deductCredits: jest.fn(),
-  refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 75 })),
-}));
+jest.mock('../../../../lib/orchestrator/ledger', () => ({ deductCredits: jest.fn(), refundDebitByRef: jest.fn() }));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { guardGeneration } from '../../../../lib/api/generationGuard';
 import { createPrediction, pollPrediction } from '../../../../lib/replicate/client';
 import { deductCredits, refundDebitByRef } from '../../../../lib/orchestrator/ledger';
-import { creditCostFor } from '../../../../lib/credits/pricing';
 
-const ENV = { ...process.env };
-const post = (body: unknown) => POST(new NextRequest('https://myavatar.ge/api/replicate/generate', {
-  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+const post = (body: unknown, locale?: string) => POST(new NextRequest('https://myavatar.ge/api/replicate/generate', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...(locale ? { cookie: `NEXT_LOCALE=${locale}` } : {}) },
+  body: JSON.stringify(body),
 }));
-const VIDEO = { service: 'video', prompt: 'waves crashing on a rocky shore at dusk' };
+const ENV = { ...process.env };
 
+let fetchSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env = { ...ENV, REPLICATE_CHARGE_SECRET: 'test-replicate-charge-secret' };
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
-  (createPrediction as jest.Mock).mockResolvedValue({ id: 'pred-9', status: 'starting', output: null });
+  fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
 });
-afterAll(() => { process.env = ENV; });
-
-test('the service’s price is reserved BEFORE the paid create (it used to render free)', async () => {
-  const res = await post(VIDEO);
-  expect(res.status).toBe(200);
-  expect(deductCredits).toHaveBeenCalledWith('user-1', creditCostFor('video'), expect.stringMatching(/^replicate:gen:video:[0-9a-f-]{36}:user-1$/));
-  expect((deductCredits as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan((createPrediction as jest.Mock).mock.invocationCallOrder[0]!);
-  // The id the client polls carries the charge token.
-  expect((await res.json()).id).toMatch(/^pred-9~rg1\./);
+afterEach(() => {
+  fetchSpy.mockRestore();
+  process.env = { ...ENV };
 });
 
-test.each([
-  ['insufficient', 402],
-  ['error', 503],
-])('a %s debit → %i and NO create', async (reason, status) => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason });
-  expect((await post(VIDEO)).status).toBe(status);
-  expect(createPrediction).not.toHaveBeenCalled();
+describe.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0' },
+  { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' },
+])('env %p', (env) => {
+  beforeEach(() => { Object.assign(process.env, env); });
+
+  test.each([
+    ['a new video', { service: 'video', prompt: 'waves crashing on a rocky shore at dusk' }],
+    ['a poll of an old prediction', { predictionId: 'pred-9~rg1.e30.sig' }],
+  ])('%s → 503 google_only before anything runs', async (_name, body) => {
+    const res = await post(body);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ success: false, url: null, jobId: null, code: 'google_only', error: 'google_only' });
+    expect(guardGeneration).not.toHaveBeenCalled();
+    expect(createPrediction).not.toHaveBeenCalled();
+    expect(pollPrediction).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(refundDebitByRef).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });
 
-test('a create that throws refunds the reservation', async () => {
-  (createPrediction as jest.Mock).mockRejectedValue(new Error('Replicate API 500'));
-  const j = await (await post(VIDEO)).json();
-  const ref = (deductCredits as jest.Mock).mock.calls[0][2];
-  expect(refundDebitByRef).toHaveBeenCalledWith('user-1', ref);
-  expect(j.refunded).toBe(true);
-});
-
-test('a poll of a FAILED paid prediction refunds the payer (once per ref, ledger-capped) and says so', async () => {
-  const { id } = await (await post(VIDEO)).json();
-  const ref = (deductCredits as jest.Mock).mock.calls[0][2];
-  (pollPrediction as jest.Mock).mockResolvedValue({ id: 'pred-9', status: 'failed', output: null, error: 'NSFW' });
-  const j = await (await post({ predictionId: id })).json();
-  expect(pollPrediction).toHaveBeenCalledWith('pred-9'); // the bare prediction, token stripped
-  expect(refundDebitByRef).toHaveBeenCalledWith('user-1', ref);
-  expect(j).toMatchObject({ status: 'failed', refunded: true });
-});
-
-test('a poll by ANOTHER user, a forged token, or a succeeded prediction refunds nothing', async () => {
-  const { id } = await (await post(VIDEO)).json();
-  (pollPrediction as jest.Mock).mockResolvedValue({ id: 'pred-9', status: 'failed', output: null });
-  (guardGeneration as jest.Mock).mockResolvedValueOnce({ ok: true, userId: 'someone-else', locale: 'en' });
-  await post({ predictionId: id });
-  await post({ predictionId: 'pred-9~rg1.e30.forged' });
-  (pollPrediction as jest.Mock).mockResolvedValue({ id: 'pred-9', status: 'succeeded', output: ['https://replicate.delivery/v.mp4'] });
-  await post({ predictionId: id });
-  expect(refundDebitByRef).not.toHaveBeenCalled();
+test('the refusal speaks the caller\'s language', async () => {
+  expect((await (await post({ service: 'video', prompt: 'waves crashing on a rocky shore at dusk' }, 'en')).json()).message).toMatch(/^This tool is paused/);
+  expect((await (await post({ service: 'video', prompt: 'waves crashing on a rocky shore at dusk' }, 'ru')).json()).message).toMatch(/^Этот инструмент/);
 });

@@ -622,7 +622,7 @@ describe('the Gemini call', () => {
   });
 
   test('offers the talking avatar only to whoever the Veo avatar route lets through (the admin until GG opens it)', async () => {
-    // Production: the media switch is on (unset = on), so the old avatar engine is closed for everyone.
+    // The old avatar engine (HeyGen) is closed for everyone: the media switch is gone (MASTER TASK v3.1).
     delete process.env.MEDIA_GOOGLE_ONLY;
     delete process.env.OUTSIDE_ENGINES_APPROVED;
     delete process.env.AVATAR_VEO_PUBLIC;

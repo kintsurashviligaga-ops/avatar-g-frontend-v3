@@ -1,11 +1,12 @@
 /** @jest-environment node */
 /**
- * POST /api/nanobanana/image — NanoBanana is the route's ONLY engine (PROJECT_MASTER R7, "NO SILENT FALLBACK").
+ * POST /api/nanobanana/image — Google's image model is the route's ONE engine, whatever MEDIA_GOOGLE_ONLY says
+ * (MASTER TASK v3.1; PROJECT_MASTER R7, "NO SILENT FALLBACK").
  *
- * ⚠️ A NanoBanana miss used to cascade to Grok (xAI) and then FLUX 1.1 Pro (Replicate) — two forbidden providers, rendering
- * under the model the user picked and billed as that model. Pinned here: a throw, a reply with no image URL, or the breaker
- * open each end on the explicit 502 provider_unavailable with the reserved credit returned, and neither old fallback is ever
- * called. The Grok and FLUX mocks are primed to SUCCEED, so a reinstated fallback would turn every 502 below into a 200.
+ * ⚠️ A NanoBanana miss used to cascade to Grok (xAI) and then FLUX 1.1 Pro (Replicate), and MEDIA_GOOGLE_ONLY=0 put NanoBanana
+ * itself back in front. Pinned here: Google image renders under every env value, a throw or an empty answer ends on the
+ * explicit 502 provider_unavailable with the reserved credit returned, and NanoBanana, Grok and FLUX are never called. Their
+ * mocks are primed to SUCCEED, so a reinstated leg would turn every 502 below into a 200.
  * Every provider, the ledger and the idempotency store are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
@@ -22,7 +23,9 @@ jest.mock('../../../../lib/api/guard', () => ({
 }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
+jest.mock('../../../../lib/nanobanana/client', () => ({
+  generateNanoBananaImage: jest.fn(async () => ({ url: 'https://provider.example/out.jpg', text: 'ok', credits: 12 })),
+}));
 jest.mock('../../../../lib/ai/xaiImage', () => ({
   generateGrokImage: jest.fn(async () => ({ url: 'https://grok.example/out.png', b64: null, model: 'grok-2-image' })),
 }));
@@ -33,8 +36,6 @@ jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedAsset: jest.fn() }));
 jest.mock('../../../../lib/audio/voiceModel', () => ({ DEMO_VOICE_USER_ID: 'demo' }));
 jest.mock('../../../../lib/orchestrator/idempotency', () => ({
-  isProviderTripped: jest.fn(async () => false),
-  recordProviderResult: jest.fn(async () => undefined),
   claimIdempotencyKey: jest.fn(async () => true),
   releaseIdempotencyKey: jest.fn(async () => undefined),
   hashPayload: jest.fn(async () => 'hash'),
@@ -52,7 +53,7 @@ import { generateGrokImage } from '../../../../lib/ai/xaiImage';
 import { generateFluxProImage } from '../../../../lib/ai/fluxImage';
 import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
 import { uploadAndSign } from '../../../../lib/orchestrator/storage-adapter';
-import { isProviderTripped, recordProviderResult, releaseIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
+import { releaseIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
 import { creditCostFor } from '../../../../lib/credits/pricing';
 
@@ -64,11 +65,11 @@ const post = (body: unknown) =>
   });
 
 const BODY = { prompt: 'a lighthouse at dusk', quality: 'standard', aspectRatio: '1:1', jobId: 'tile-1' };
+const ENV = { ...process.env };
 
 let fetchSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
-  (isProviderTripped as jest.Mock).mockResolvedValue(false);
   (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
   (refundCredits as jest.Mock).mockResolvedValue({ ok: true });
   fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
@@ -77,8 +78,15 @@ beforeEach(() => {
 });
 afterEach(() => {
   jest.restoreAllMocks();
-  process.env.MEDIA_GOOGLE_ONLY = '0';
+  process.env = { ...ENV };
 });
+
+/** No engine but Google's was asked. */
+function expectNoOtherEngine() {
+  expect(generateNanoBananaImage).not.toHaveBeenCalled();
+  expect(generateGrokImage).not.toHaveBeenCalled();
+  expect(generateFluxProImage).not.toHaveBeenCalled();
+}
 
 /** The one failure exit: 502 provider_unavailable, the reserved credit returned, nothing re-hosted, no other engine. */
 async function expectExplicitRefundedMiss(res: Response) {
@@ -91,51 +99,28 @@ async function expectExplicitRefundedMiss(res: Response) {
   expect((refundCredits as jest.Mock).mock.calls[0][1]).toBe(creditCostFor('image'));
   expect((refundCredits as jest.Mock).mock.calls[0][2]).toMatch(/^image:nanobanana:tile-1:.*:refund$/);
   expect(releaseIdempotencyKey).toHaveBeenCalled(); // a retry is not locked out
-  expect(generateGrokImage).not.toHaveBeenCalled();
-  expect(generateFluxProImage).not.toHaveBeenCalled();
+  expectNoOtherEngine();
   expect(fetchSpy).not.toHaveBeenCalled(); // nothing to re-host
 }
 
-test('NanoBanana throws → the explicit 502 with the credit returned; Grok and FLUX are never called', async () => {
-  (generateNanoBananaImage as jest.Mock).mockRejectedValue(new Error('NanoBanana 500'));
-  await expectExplicitRefundedMiss(await POST(post(BODY)));
-  expect(generateNanoBananaImage).toHaveBeenCalledTimes(1);
-  expect(recordProviderResult).toHaveBeenCalledWith('nanobanana', false);
-});
+describe.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0' },
+  { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-nanobanana' },
+])('env %o — the one engine is Google image', (env) => {
+  beforeEach(() => {
+    delete process.env.MEDIA_GOOGLE_ONLY;
+    delete process.env.OUTSIDE_ENGINES_APPROVED;
+    Object.assign(process.env, env);
+  });
 
-test('NanoBanana answers without an image URL → the same explicit 502 with the credit returned', async () => {
-  (generateNanoBananaImage as jest.Mock).mockResolvedValue({ url: undefined, text: 'content policy', credits: 0 });
-  await expectExplicitRefundedMiss(await POST(post(BODY)));
-  expect(recordProviderResult).toHaveBeenCalledWith('nanobanana', false);
-});
-
-test('the NanoBanana breaker is OPEN → no provider call at all, the explicit 502 with the credit returned', async () => {
-  (isProviderTripped as jest.Mock).mockImplementation(async (name: string) => name === 'nanobanana');
-  await expectExplicitRefundedMiss(await POST(post(BODY)));
-  expect(generateNanoBananaImage).not.toHaveBeenCalled();
-});
-
-test('a NanoBanana success is delivered under NanoBanana\'s own name — no other engine is consulted', async () => {
-  (generateNanoBananaImage as jest.Mock).mockResolvedValue({ url: 'https://provider.example/out.jpg', text: 'ok', credits: 12 });
-  const res = await POST(post(BODY));
-  expect(res.status).toBe(200);
-  expect(await res.json()).toMatchObject({ success: true, url: 'https://provider.example/out.jpg', model: 'NanoBananaAI V2-1K' });
-  expect(refundCredits).not.toHaveBeenCalled();
-  expect(generateGrokImage).not.toHaveBeenCalled();
-  expect(generateFluxProImage).not.toHaveBeenCalled();
-});
-
-describe('MEDIA_GOOGLE_ONLY on — the one engine is Google image, never NanoBanana', () => {
-  beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; });
-
-  test('Google image answers → hosted once, named as Google, NanoBanana never called', async () => {
+  test('Google image answers → hosted once, named as Google, no other engine', async () => {
     (generateGeminiImage as jest.Mock).mockResolvedValue({ base64: 'aW1n', mimeType: 'image/png', model: 'gemini-3.1-flash-image' });
     (uploadAndSign as jest.Mock).mockResolvedValue('https://x.supabase.co/storage/v1/object/sign/uploads/omni/a.png?token=t');
     const res = await POST(post(BODY));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ success: true, url: expect.stringContaining('supabase.co'), model: 'Google gemini-3.1-flash-image' });
-    expect(generateNanoBananaImage).not.toHaveBeenCalled();
-    expect(isProviderTripped).not.toHaveBeenCalledWith('nanobanana');
+    expectNoOtherEngine();
     expect(fetchSpy).not.toHaveBeenCalled(); // already in our storage: no second copy
     expect(refundCredits).not.toHaveBeenCalled();
   });
@@ -146,9 +131,14 @@ describe('MEDIA_GOOGLE_ONLY on — the one engine is Google image, never NanoBan
     expect(generateGeminiImage).toHaveBeenCalledWith(expect.objectContaining({ requireReferences: true }));
   });
 
-  test('a Google miss is the same explicit, refunded 502, with no other engine', async () => {
+  test('Google image throws → the explicit 502 with the credit returned', async () => {
+    (generateGeminiImage as jest.Mock).mockRejectedValue(new Error('Vertex 500'));
+    await expectExplicitRefundedMiss(await POST(post(BODY)));
+    expect(generateGeminiImage).toHaveBeenCalledTimes(1);
+  });
+
+  test('Google image answers with no image → the same explicit 502 with the credit returned', async () => {
     (generateGeminiImage as jest.Mock).mockResolvedValue(null);
     await expectExplicitRefundedMiss(await POST(post(BODY)));
-    expect(generateNanoBananaImage).not.toHaveBeenCalled();
   });
 });

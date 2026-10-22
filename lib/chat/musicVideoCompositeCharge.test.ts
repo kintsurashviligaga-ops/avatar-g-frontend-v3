@@ -2,6 +2,10 @@
 /**
  * The chat's free-text music video ("make a music video of …") is charged ONCE, up front, at the music-video quote — it used to
  * charge nothing (its three legs debited through `debit_wallet_gel`, which is not on the production database).
+ *
+ * Its song leg was Udio, which has no Google engine (MASTER TASK v3.1): the composite queues the clip alone, whatever
+ * MEDIA_GOOGLE_ONLY says, and the song's half of the charge comes back. The Udio mock is primed to succeed, so a reinstated
+ * leg would show up as a call and a kept charge.
  */
 jest.mock('server-only', () => ({}));
 
@@ -12,7 +16,6 @@ jest.mock('../supabase/server', () => ({
   })),
 }));
 jest.mock('./videoProvider', () => ({ hasVideoProvider: jest.fn(() => true) }));
-jest.mock('./mediaKeys', () => ({ hasUdioApiKey: jest.fn(() => true) }));
 jest.mock('../udio/client', () => ({ startUdioGeneration: jest.fn(async () => ({ workId: 'work-1' })) }));
 jest.mock('../gemini/client', () => ({ generateWithGemini: jest.fn(async () => ({ text: 'la la la' })) }));
 jest.mock('../ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
@@ -31,7 +34,6 @@ jest.mock('../orchestrator/ledger', () => ({
 
 import { handleMusicVideoComposite } from './musicVideoComposite';
 import { startUdioGeneration } from '../udio/client';
-import { hasUdioApiKey } from './mediaKeys';
 import type { OrchestratorInput } from './providerRouter';
 import { filmCredits } from '@/lib/credits/priceBook';
 
@@ -58,14 +60,14 @@ beforeEach(() => {
   mockDeduct.mockResolvedValue({ ok: true, balance: 465 });
   mockRefund.mockResolvedValue({ ok: true });
   mockExecute.mockResolvedValue({ success: true, predictionId: 'clip-1' });
-  (hasUdioApiKey as jest.Mock).mockReturnValue(true);
   (startUdioGeneration as jest.Mock).mockResolvedValue({ workId: 'work-1' });
   delete process.env.GEMINI_TRANSPORT;
   Object.assign(process.env, VERTEX_ENV); // the lyrics leg runs on Vertex AI (MASTER TASK v3.1)
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
-afterEach(() => { jest.restoreAllMocks(); for (const k of Object.keys(VERTEX_ENV)) delete process.env[k]; });
+const ENV = { ...process.env };
+afterEach(() => { jest.restoreAllMocks(); process.env = { ...ENV }; });
 
 test('charged once, up front, at the music-video quote (77) — before any leg runs — and no leg debits on its own', async () => {
   const res = await handleMusicVideoComposite(input());
@@ -76,7 +78,6 @@ test('charged once, up front, at the music-video quote (77) — before any leg r
   expect(mockDeduct.mock.invocationCallOrder[0]).toBeLessThan(mockExecute.mock.invocationCallOrder[0]!);
   expect(mockMeta.length).toBeGreaterThanOrEqual(2);
   for (const m of mockMeta) expect(m.deduct).toBe(false);
-  expect(mockRefund).not.toHaveBeenCalled();
 });
 
 test('short of credits → the localized top-up answer, nothing debited or started', async () => {
@@ -97,13 +98,7 @@ test.each(['insufficient', 'error', 'skipped'] as const)('a refused debit (%s) s
   expect(mockRefund).not.toHaveBeenCalled();
 });
 
-test('both paid legs delivered → no refund', async () => {
-  await handleMusicVideoComposite(input());
-  expect(mockRefund).not.toHaveBeenCalled();
-});
-
-test('neither the song nor the clip came back → the WHOLE charge is returned, once', async () => {
-  (hasUdioApiKey as jest.Mock).mockReturnValue(false);
+test('the clip did not come back either → the WHOLE charge is returned, once', async () => {
   mockExecute.mockResolvedValue({ success: false });
   await handleMusicVideoComposite(input());
   expect(mockRefund).toHaveBeenCalledTimes(1);
@@ -111,9 +106,17 @@ test('neither the song nor the clip came back → the WHOLE charge is returned, 
   expect(String(mockRefund.mock.calls[0]![2])).toMatch(/:charge:refund$/);
 });
 
-test('only one leg delivered → half comes back, rounded DOWN (never more than was taken)', async () => {
-  (hasUdioApiKey as jest.Mock).mockReturnValue(false); // no song
-  await handleMusicVideoComposite(input());            // the clip still queues
+test.each([
+  {},
+  { MEDIA_GOOGLE_ONLY: '0' },
+  { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-udio' },
+])('env %o: the clip queues with no song, Udio is never called, and the song\'s half comes back rounded DOWN', async (env) => {
+  Object.assign(process.env, env);
+  const res = await handleMusicVideoComposite(input());
+  expect(res.success).toBe(true);
+  expect(mockExecute).toHaveBeenCalledTimes(1);
+  expect(startUdioGeneration).not.toHaveBeenCalled();
   expect(mockRefund).toHaveBeenCalledTimes(1);
   expect(mockRefund.mock.calls[0]![1]).toBe(Math.floor(MV_QUOTE / 2));
+  expect(String(mockRefund.mock.calls[0]![2])).toMatch(/:charge:refund$/);
 });

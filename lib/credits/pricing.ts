@@ -61,14 +61,13 @@ export const CREDIT_COSTS = {
   music_90s: PRICE_BOOK.music.from90,
   // The shortest film, 8 s on Fast. The key keeps its old name; a film is priced by its length (filmCredits).
   video_30s: filmCredits(8),
-  // The Veo talking avatar: one 8 s Fast scene with its spoken line (the HeyGen routes that also read it refuse under
-  // MEDIA_GOOGLE_ONLY).
+  // The Veo talking avatar: one 8 s Fast scene with its spoken line (the HeyGen routes that also read it always refuse).
   avatar_30s: sceneCredits('fast'),
   chat_message: 0, // free
   // A charged video touch-up (lib/video/remixCharge remixOpCredits prices each op; this is the voice-over, the dearest).
   remix_video: PRICE_BOOK.remixVoiceover,
-  // No allowed engine renders a 3D model (TRELLIS is Replicate): the route refuses under MEDIA_GOOGLE_ONLY, so the price
-  // book has no rule price for it and this number is never charged while the switch is on.
+  // No allowed engine renders a 3D model (TRELLIS is Replicate): the route always refuses, so the price book has no rule
+  // price for it and this number is never charged.
   model3d: 5,
   // Off until the owner approves THESE numbers (OWNER_APPROVED_PRICING, lib/billing/pricingApproval).
   dubbing_per_minute: PRICE_BOOK.dubbingPerMinute, // per started minute

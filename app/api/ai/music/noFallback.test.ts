@@ -132,7 +132,7 @@ describe('Auto — Lyria, and nothing behind it', () => {
 describe('an explicit pick — that engine alone, the same rule', () => {
 });
 
-describe.each([['MEDIA_GOOGLE_ONLY off (the default)', ''], ['MEDIA_GOOGLE_ONLY on', '1']])('%s — the provider boundary (Music Studio v1): only Lyria composes; everything else is refused before the reserve', (_l, flag) => {
+describe.each([['MEDIA_GOOGLE_ONLY unset', ''], ['MEDIA_GOOGLE_ONLY=0, the old opt-out (no longer read)', '0']])('%s — the provider boundary (Music Studio v1): only Lyria composes; everything else is refused before the reserve', (_l, flag) => {
   beforeEach(() => { if (flag) process.env.MEDIA_GOOGLE_ONLY = flag; else delete process.env.MEDIA_GOOGLE_ONLY; });
 
   test.each([

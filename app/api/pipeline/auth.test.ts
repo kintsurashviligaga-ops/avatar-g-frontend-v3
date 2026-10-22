@@ -96,8 +96,8 @@ test('a signed-in `generate` passes the gate and reaches the text brain', async 
   expect(generateWithGemini).toHaveBeenCalledTimes(1);
 });
 
-test('MEDIA_GOOGLE_ONLY: a signed-in media `generate` is refused before any engine; the text services still run on Gemini', async () => {
-  process.env.MEDIA_GOOGLE_ONLY = '1';
+test.each([{}, { MEDIA_GOOGLE_ONLY: '0' }, { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-heygen' }])('env %p: a signed-in media `generate` is refused before any engine; the text services still run on Gemini', async (env) => {
+  Object.assign(process.env, env);
   mockUser = { id: 'user-1' };
   for (const serviceId of ['avatar', 'image', 'interior', 'music']) {
     const res = await POST(post({ action: 'generate', serviceId, userInput: 'something', locale: 'en' }));

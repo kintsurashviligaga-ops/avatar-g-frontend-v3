@@ -1,22 +1,16 @@
 /**
  * POST /api/ai/edit-audio — the AI Audio Studio.
  *
- * GENERATIVE (Replicate Demucs): 'vocal_isolation' (3cr) · 'splitter' → acapella + instrumental (4cr).
+ * 'vocal_isolation' and 'splitter' (stem separation) ran on Replicate Demucs and have no Google engine: refused before
+ * any charge (lib/music/studio/boundary).
  * DETERMINISTIC (ffmpeg-static): 'process' (pitch / speed / trim / fades) — FREE, auth-only.
  *
- * SECURITY + BILLING: valid Supabase session required (401 anon). For paid ops the exact cost is DEBITED up front
- * (reserve-before-render) — insufficient balance → 402, never reaches the provider — and REFUNDED on any failure.
- * Outputs are RE-HOSTED into our storage (Replicate URLs expire) and written to the user's library.
+ * SECURITY: valid Supabase session required (401 anon). The output is written to the user's library.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { musicUnsupportedResponse } from '@/lib/music/studio/boundary';
-import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
-import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
-import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
-import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { guardGeneration } from '@/lib/api/generationGuard';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
-import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { audioProcess } from '@/lib/audio/audioOps';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
@@ -24,37 +18,12 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
-// Demucs music source-separation (vocals / instrumental). Bare slug → latest version; env-overridable.
-const DEMUCS_MODEL = process.env.REPLICATE_DEMUCS_MODEL || 'ryan5453/demucs';
-const AI_COST = { vocal_isolation: 3, splitter: 4 } as const;
-
 type AudioAction = 'vocal_isolation' | 'splitter' | 'process';
 
 /** Own storage only (SSRF), and only the caller's own object (lib/security/callerMedia). */
 async function resolveMedia(v: unknown, userId: string): Promise<string | null> {
   const r = await resolveCallerMedia(v, userId, 3600);
   return r.ok && r.own ? r.url : null;
-}
-function pick(o: unknown, ...keys: string[]): string | null {
-  const rec = o as Record<string, unknown> | null;
-  for (const k of keys) if (rec && typeof rec[k] === 'string') return rec[k] as string;
-  return null;
-}
-/** Re-host an ephemeral Replicate audio URL into our storage → { url, path } (path = chainable own-storage ref). */
-async function rehost(srcUrl: string, userId: string): Promise<{ url: string; path: string } | null> {
-  try {
-    const res = await fetch(srcUrl, { signal: AbortSignal.timeout(60_000) });
-    if (!res.ok) return null;
-    const ct = res.headers.get('content-type') || 'audio/mpeg';
-    const ext = /wav/.test(ct) ? 'wav' : /mp4|m4a|aac/.test(ct) ? 'm4a' : 'mp3';
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength < 128) return null;
-    // Under the caller's id: the PATH comes back for chaining, and resolveMedia signs a bare path only for its owner.
-    const path = `audio-studio/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const signed = await uploadAndSign(UPLOAD_BUCKET, path, buf.toString('base64'), ct, 604_800);
-    return signed ? { url: signed, path } : null;
-  } catch { return null; }
 }
 // AWAITED at every call site, not fire-and-forget: a serverless function can be frozen the moment it
 // responds, dropping an un-awaited write. The op itself is an ffmpeg render, so one small insert is
@@ -104,55 +73,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── GENERATIVE: Demucs source separation — reserve-before-render + refund. ──────────────────────────────
-  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): Demucs is an outside engine, so the switch refuses the separation ops
-  // here, before the charge; the free ffmpeg `process` op above still runs. Off (the default) → no-op.
-  const outside = refuseOutsideEngine(req);
-  if (outside) return outside;
-  if (!process.env.REPLICATE_API_TOKEN) {
-    return NextResponse.json({ url: null, error: 'audio_studio_unconfigured', message: 'Audio Studio needs REPLICATE_API_TOKEN.' }, { status: 503 });
-  }
-  const cost = AI_COST[action];
-  const ref = `audio:${action}:${guard.userId}:${Date.now()}`;
-  const debit = await deductCredits(guard.userId, cost, ref);
-  if (!debit.ok && debit.reason === 'insufficient') {
-    return NextResponse.json({ url: null, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) }, { status: 402 });
-  }
-  // ⚠️ A LEDGER THAT DEFINITIVELY FAILED NO LONGER RENDERS FOR FREE. Only `insufficient` used to stop the paid call;
-  // an `error` debit (ledger unreachable / write refused) proceeded unbilled. Now: 503 billing_unavailable, nothing
-  // charged, nothing rendered. `skipped` (no ledger RPC at all) still proceeds uncharged — the documented degrade.
-  if (!debit.ok && debit.reason === 'error') {
-    return NextResponse.json({ url: null, ...ledgerUnavailableBody(guard.locale) }, { status: 503 });
-  }
-
-  try {
-    const created = await createPrediction(DEMUCS_MODEL, { audio: src });
-    let out = created;
-    // ⚠️ WAS A SINGLE `pollPrediction` — see the long note in /api/ai/edit. Demucs stem separation on a
-    // full track takes tens of seconds; it was given milliseconds, so vocal isolation and the
-    // vocal/instrumental splitter returned "separation failed" every time on a valid Replicate token.
-    if (created.status !== 'succeeded' && created.status !== 'failed') out = await pollUntilDone(created.id, 120, 2000);
-    if (out.status !== 'succeeded') {
-      if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});
-      return NextResponse.json({ url: null, error: 'separation failed' }, { status: 502 });
-    }
-    const vocalsRaw = pick(out.output, 'vocals');
-    const instRaw = pick(out.output, 'no_vocals', 'other', 'accompaniment', 'instrumental');
-    // Both actions surface vocals as the primary stem; splitter additionally returns the instrumental.
-    const primary = vocalsRaw;
-    const secondary = action === 'splitter' ? instRaw : null;
-    if (!primary) {
-      if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});
-      return NextResponse.json({ url: null, error: 'no stem produced' }, { status: 502 });
-    }
-    const hostedPrimary = await rehost(primary, guard.userId);
-    const hostedSecondary = secondary ? await rehost(secondary, guard.userId) : null;
-    const url = hostedPrimary?.url ?? primary;
-    await saveCreation(guard.userId, url, action);
-    if (hostedSecondary?.url) await saveCreation(guard.userId, hostedSecondary.url, action);
-    return NextResponse.json({ url, path: hostedPrimary?.path, secondaryUrl: hostedSecondary?.url ?? secondary ?? undefined });
-  } catch (e) {
-    if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});
-    return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : `${action} failed` }, { status: 502 });
-  }
+  // Unreachable: every action is handled above. Kept as the same refusal so a new action never reaches a provider.
+  return musicUnsupportedResponse(req);
 }

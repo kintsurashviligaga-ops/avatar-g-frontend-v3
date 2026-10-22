@@ -1,75 +1,15 @@
-import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuthForGeneration } from '@/lib/api/requireAuthForGeneration';
-import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { upscaleImage } from '@/lib/ai/replicate';
-import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { authedClientFromRequest } from '@/lib/supabase/server';
-import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
-import { randomUUID } from 'node:crypto';
-
 /**
- * Upscale a generated image (Real-ESRGAN) → sharper, higher-res. POST { imageUrl,
- * scale? } → { url }. The result is re-hosted to Supabase (CSP) + filed in the Library.
+ * POST /api/ai/upscale — the image upscale (Real-ESRGAN on Replicate). It has no Google engine, so every request is refused with 503 google_only before any charge, upload or
+ * provider call, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1, lib/providers/mediaPolicy). Kept as a route so an
+ * old client gets a clear answer instead of a 404.
  */
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
+import { NextRequest } from 'next/server';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
-  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
-  // before any charge. Off (the default) → no-op.
-  const outside = refuseOutsideEngine(req);
-  if (outside) return outside;
-  // ⚠️ THIS ROUTE HAD NO AUTH GATE AT ALL. It ran a paid upscale for anyone who could reach the URL and
-  // then attributed the result to DEMO_VOICE_USER_ID when no session existed — so guest spend was not
-  // merely unbilled, it was filed under a placeholder account where nothing would ever reconcile it.
-  const { user } = await authedClientFromRequest(req);
-  const gate = requireAuthForGeneration(user?.id ?? null);
-  if (gate.response) return gate.response;
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // per-IP burst guard
-  const body = (await req.json().catch(() => ({}))) as { imageUrl?: unknown; scale?: unknown };
-  const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
-  const scale: 2 | 4 = body.scale === 4 ? 4 : 2;
-  if (!/^https?:\/\//i.test(imageUrl)) {
-    return NextResponse.json({ success: false, error: 'imageUrl is required' }, { status: 400 });
-  }
-  // An upscale bills no credits (gap C3): the per-account daily ceiling bounds one person's spend (the gate above
-  // guarantees a signed-in user).
-  const capped = await checkRateLimitByKey(String(gate.userId), RATE_LIMITS.UPSCALE_USER);
-  if (capped) return capped;
-
-  try {
-    const out = await upscaleImage(imageUrl, scale);
-
-    // Re-host to a CSP-allowed Supabase URL (provider URL is temp + blocked by img-src).
-    let hosted = out;
-    try {
-      const ac = new AbortController();
-      const to = setTimeout(() => ac.abort(), 25_000);
-      const r = await fetch(out, { signal: ac.signal }).finally(() => clearTimeout(to));
-      if (r.ok) {
-        const ct = r.headers.get('content-type') || 'image/png';
-        const ext = /jpe?g/i.test(ct) ? 'jpg' : /webp/i.test(ct) ? 'webp' : 'png';
-        const buf = Buffer.from(await r.arrayBuffer());
-        if (buf.byteLength <= 25 * 1024 * 1024) {
-          const path = `omni-upscale/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-          const signed = await uploadAndSign('uploads', path, buf.toString('base64'), ct, 604800);
-          if (signed) hosted = signed;
-        }
-      }
-    } catch {
-      /* fail-open — keep the provider URL */
-    }
-
-    try {
-      await recordCompletedAsset({ id: randomUUID(), userId: String(gate.userId), serviceType: 'image', url: hosted, prompt: 'upscaled' });
-    } catch {
-      /* fail-open */
-    }
-
-    return NextResponse.json({ success: true, url: hosted });
-  } catch {
-    return NextResponse.json({ success: false, error: 'Upscale failed.' }, { status: 502 });
-  }
+  return refuseOutsideEngine(req);
 }

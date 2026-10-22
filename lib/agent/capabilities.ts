@@ -33,7 +33,7 @@ export interface Capability {
   serviceId: string | null;
   does: string;
   routes: readonly string[];
-  /** What runs it today (service audit §6, with MEDIA_GOOGLE_ONLY off unless said). */
+  /** What runs it today (service audit §6, MASTER TASK v3.1: an entry with no Google engine is refused). */
   engine: string;
   pricing: { key: QuoteTool | null; charge: 'charged' | 'free' | 'not-charged-yet' };
   approval: 'agent-card' | 'storyboard' | 'plan-start' | 'remix-card' | 'panel-button' | 'none';
@@ -59,7 +59,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'video.generate': c({
     id: 'video.generate', serviceId: 'video.generate', does: 'A film from an idea: storyboard, Veo clips, voice, music, assembled',
     routes: ['/api/film/storyboard', '/api/chat/orchestrate', '/api/video/assemble'],
-    engine: 'Veo + Gemini + ElevenLabs; a dialogue scene adds a HeyGen talking head when HeyGen is configured',
+    engine: 'Veo + Gemini + ElevenLabs voice; the HeyGen talking-head pass is refused (no Google engine)',
     pricing: { key: 'video', charge: 'charged' }, approval: 'storyboard', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'one film per storyboard approval; clips refunded one by one', cancel: 'client-abort',
     qc: 'V1–V6 invariants (lib/veo)', artifact: 'video', library: 'filed', label: 'BUILT_NOT_PROVEN',
@@ -67,28 +67,28 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'video.music-video': c({
     id: 'video.music-video', serviceId: 'video.music-video', does: 'A music video for the user\'s song',
     routes: ['/api/film/storyboard', '/api/chat/orchestrate', '/api/video/assemble'],
-    engine: 'as video.generate, plus HeyGen singer close-ups when HeyGen is configured',
+    engine: 'as video.generate; the HeyGen singer close-ups are refused (no Google engine)',
     pricing: { key: 'video', charge: 'charged' }, approval: 'storyboard', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'one film per storyboard approval', cancel: 'client-abort', qc: 'V1–V6 invariants (lib/veo)',
     artifact: 'video', library: 'filed', label: 'BUILT_NOT_PROVEN',
   }),
   'video.product-ad': c({
     id: 'video.product-ad', serviceId: 'video.product-ad', does: 'An ad reel from a product photo',
-    routes: ['/api/video/remix'], engine: 'Veo, then a Ken Burns still; Kling only with VIDEO_GOOGLE_ONLY=0',
+    routes: ['/api/video/remix'], engine: 'Veo, then a Ken Burns still',
     pricing: { key: 'product', charge: 'charged' }, approval: 'panel-button', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'signed intent (op, media, aspect) per charge', cancel: 'client-abort', qc: null, artifact: 'video',
     library: 'filed', label: 'BUILT_NOT_PROVEN',
   }),
   'video.character-swap': c({
     id: 'video.character-swap', serviceId: 'video.character-swap', does: 'Another face or character in a video',
-    routes: ['/api/video/remix'], engine: 'roop on Replicate; MEDIA_GOOGLE_ONLY refuses it',
+    routes: ['/api/video/remix'], engine: 'roop on Replicate: refused (no Google engine)',
     pricing: { key: 'swap', charge: 'charged' }, approval: 'panel-button', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'signed intent per charge', cancel: 'client-abort', qc: null, artifact: 'video', library: 'filed',
     label: 'BLOCKED_OWNER',
   }),
   'video.motion': c({
     id: 'video.motion', serviceId: 'video.motion', does: 'A photo moves the way the user describes',
-    routes: ['/api/motion-control', '/api/motion-control/status'], engine: 'Kling image-to-video on Replicate; MEDIA_GOOGLE_ONLY refuses it',
+    routes: ['/api/motion-control', '/api/motion-control/status'], engine: 'Kling image-to-video on Replicate: refused (no Google engine)',
     pricing: { key: 'motion', charge: 'charged' }, approval: 'panel-button', timeoutSec: 300, retry: 'refund-on-miss',
     idempotency: 'one prediction per press', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
   }),
@@ -102,7 +102,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'video.remix': c({
     id: 'video.remix', serviceId: 'video.remix', does: 'Edit a video the user has: trim, captions, colour, speed, music, voice, style',
     routes: ['/api/video/remix'],
-    engine: 'trim, captions, colour, speed, stabilise, music, voiceover: ffmpeg + ElevenLabs; restyle, background, character, redub: NanoBanana / Kling / roop / sync',
+    engine: 'trim, captions, colour, speed, stabilise, music, voiceover: ffmpeg + ElevenLabs; restyle, background, character, redub: refused (no Google engine)',
     pricing: { key: 'remix', charge: 'charged' }, approval: 'remix-card', timeoutSec: 600, retry: 'refund-on-miss',
     idempotency: 'signed intent per charge; a free op runs once per send', cancel: 'client-abort', qc: null, artifact: 'video',
     library: 'filed', label: 'BLOCKED_OWNER',
@@ -126,13 +126,13 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'image.photoshoot': c({
     id: 'image.photoshoot', serviceId: 'image.photoshoot', does: 'A studio photoshoot from the user\'s photos',
-    routes: ['/api/nanobanana/image'], engine: 'NanoBananaAI', pricing: { key: 'photoshoot', charge: 'charged' },
+    routes: ['/api/nanobanana/image'], engine: 'Google image model', pricing: { key: 'photoshoot', charge: 'charged' },
     approval: 'panel-button', timeoutSec: 300, retry: 'refund-on-miss', idempotency: 'one job per shot', cancel: 'client-abort',
     qc: null, artifact: 'image', library: 'filed', label: 'BLOCKED_OWNER',
   }),
   'image.interior': c({
     id: 'image.interior', serviceId: 'image.interior', does: 'Redesign a room from a photo, with a 3D plan',
-    routes: ['/api/nanobanana/image', '/api/orchestrator/interior/produce'], engine: 'NanoBananaAI renders; the 3D plan is Gemini',
+    routes: ['/api/nanobanana/image', '/api/orchestrator/interior/produce'], engine: 'Google image model renders; the 3D plan is Gemini',
     pricing: { key: 'interior', charge: 'charged' }, approval: 'panel-button', timeoutSec: 300, retry: 'refund-on-miss',
     idempotency: 'plan reserved once, refunded on a miss', cancel: 'client-abort', qc: null, artifact: 'image', library: 'filed',
     label: 'BLOCKED_OWNER',
@@ -146,13 +146,13 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'avatar.talking': c({
     id: 'avatar.talking', serviceId: 'avatar.talking', does: 'A photo speaks the user\'s script or voice',
     routes: ['/api/heygen/presenter', '/api/video/lipsync'],
-    engine: 'ElevenLabs voice + HeyGen, or SadTalker when HeyGen is off; one engine per job',
+    engine: 'HeyGen / SadTalker: refused (no Google engine)',
     pricing: { key: 'avatar', charge: 'charged' }, approval: 'agent-card', timeoutSec: 300, retry: 'refund-on-miss',
     idempotency: 'one job per confirm', cancel: 'client-abort', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
   }),
   'music.generate': c({
     id: 'music.generate', serviceId: 'music.generate', does: 'A track, a song or a soundtrack',
-    routes: ['/api/ai/music'], engine: 'Lyria (Auto); ElevenLabs Music for a Georgian song; cover and trained voice on Replicate',
+    routes: ['/api/ai/music'], engine: 'Lyria; ElevenLabs Music for a Georgian song; a cover or a trained voice is refused',
     pricing: { key: 'music', charge: 'charged' }, approval: 'agent-card', timeoutSec: 300, retry: 'refund-on-miss',
     idempotency: 'one job per confirm (the client queue)', cancel: 'client-abort', qc: null, artifact: 'audio', library: 'filed',
     label: 'BLOCKED_OWNER',
@@ -164,7 +164,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'voice.dubbing': c({
     id: 'voice.dubbing', serviceId: 'voice.dubbing', does: 'The user\'s video in another language',
-    routes: ['/api/v2/dubbing/start'], engine: 'ElevenLabs Scribe + TTS, Gemini translation; Demucs on Replicate for the background',
+    routes: ['/api/v2/dubbing/start'], engine: 'ElevenLabs Scribe + TTS, Gemini translation; the bed is the ducked original',
     // OFF until OWNER_APPROVED_PRICING names its price (proposed 10 cr per started minute, measured on the server).
     pricing: { key: null, charge: 'not-charged-yet' }, approval: 'panel-button', timeoutSec: 600, retry: 'none',
     idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
@@ -184,7 +184,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'design.model3d': c({
     id: 'design.model3d', serviceId: 'design.model3d', does: 'A 3D model from text or a photo',
-    routes: ['/api/v2/model3d/create', '/api/v2/model3d/status'], engine: 'TRELLIS on Replicate; MEDIA_GOOGLE_ONLY refuses it',
+    routes: ['/api/v2/model3d/create', '/api/v2/model3d/status'], engine: 'TRELLIS on Replicate: refused (no Google engine)',
     pricing: { key: 'model3d', charge: 'charged' }, approval: 'panel-button', timeoutSec: 300, retry: 'refund-on-miss',
     idempotency: 'reserved once, refunded on a miss', cancel: 'none', qc: null, artifact: 'model3d', library: 'filed',
     label: 'BLOCKED_OWNER',

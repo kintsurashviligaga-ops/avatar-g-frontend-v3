@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
-import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { generateGeminiImage, geminiFrameModel } from '@/lib/ai/geminiImage';
-import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -13,7 +11,6 @@ import { randomUUID } from 'node:crypto';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { applyApiGuards } from '@/lib/api/guard';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
-import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { debitExistsForRef, deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { billingLocale, ledgerUnavailableBody, replayRefusedBody } from '@/lib/api/billingCopy';
 import { providerErrorBody } from '@/lib/api/providerError';
@@ -222,15 +219,13 @@ export async function POST(req: NextRequest) {
       }
     } catch { idemKey = ''; /* mutex unavailable — proceed without the double-click guard */ }
     // THE PLATFORM'S DAILY AI LIMIT, ASKED BEFORE THE CREDIT IS RESERVED, so a refusal charges and refunds nothing.
-    if (isMediaGoogleOnly()) {
-      const budgetRefusal = await platformBudgetRefusal({ service: 'image', model: 'gemini-image', units: 1 });
-      if (budgetRefusal) {
-        await releaseMutex();
-        return NextResponse.json({
-          success: false, code: 'platform_budget', budgetReason: budgetRefusal,
-          message: budgetRefusalMessage(billingLocale(req), budgetRefusal),
-        }, { status: 503 });
-      }
+    const budgetRefusal = await platformBudgetRefusal({ service: 'image', model: 'gemini-image', units: 1 });
+    if (budgetRefusal) {
+      await releaseMutex();
+      return NextResponse.json({
+        success: false, code: 'platform_budget', budgetReason: budgetRefusal,
+        message: budgetRefusalMessage(billingLocale(req), budgetRefusal),
+      }, { status: 503 });
     }
     // ── THE CHARGE FAILS CLOSED. ──────────────────────────────────────────────────────────────────────────────
     // ⚠️ THIS USED TO SHARE THE MUTEX'S FAIL-OPEN `try`, and only `insufficient` stopped the render: a deduct that
@@ -283,10 +278,10 @@ export async function POST(req: NextRequest) {
     // — no active config (or table not migrated) → generation is exactly as before.
     const activeImageCfg = await getActiveConfig('image').catch(() => null);
     // The assembly (style directive or quality boost → template suffix → exclusion clause → learned directive) is the
-    // pure lib/studio/composeImagePrompt. `knownStyle` is the ONLY value forwarded as the provider's `style` field.
+    // pure lib/studio/composeImagePrompt.
     // A studio request's lead (the task, what stays identical) goes BEFORE the brief; its look / camera ride as the suffix and
     // its "avoid" joins the exclusion clause. An image-tool request has no `shoot`, so every value below is what it was.
-    const { finalPrompt, knownStyle } = composeImagePrompt({
+    const { finalPrompt } = composeImagePrompt({
       promptEn: shoot ? `${shoot.lead} ${promptEn}` : promptEn,
       styleLabel,
       templateSuffix: shoot ? shoot.suffix : (template?.suffix ?? null),
@@ -315,99 +310,58 @@ export async function POST(req: NextRequest) {
       }, { status: 502 });
     }
 
-    // CIRCUIT BREAKER (Task 5.3) — consult the Redis breaker BEFORE dispatching to NanoBanana. If it
-    // has tripped (3 hard failures inside the cooldown) skip it and answer the 502-refund below at once,
-    // instead of burning ~50s on a known-bad provider. Every outcome is recorded so the breaker
-    // opens/closes itself. Fail-open: no Redis → NanoBanana always runs.
+    // ⚠️ ONE ENGINE, NO FALLBACK (PROJECT_MASTER R7, "NO SILENT FALLBACK"). A miss here used to cascade to Grok (xAI)
+    // and then FLUX 1.1 Pro (Replicate). Every miss is now the explicit 502 provider_unavailable below, with the reserved
+    // credit returned through refundReserve.
     //
-    // ⚠️ NANOBANANA IS THIS ROUTE'S ONLY ENGINE — THERE IS NO FALLBACK (PROJECT_MASTER R7, "NO SILENT FALLBACK").
-    // A miss here — a throw, a reply with no image URL, or the breaker open — used to cascade to Grok (xAI) and
-    // then FLUX 1.1 Pro (Replicate): two providers the owner's policy forbids, rendering under the model the user
-    // picked and billed as if it were that model. One request, one provider: every miss is the explicit
-    // 502 provider_unavailable below, with the reserved credit returned through refundReserve.
-    //
-    // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy) swaps the ONE engine, never adds a second: with the switch on the
-    // image comes from Google's own image model (lib/ai/geminiImage, the model NanoBanana resells) at its default size,
-    // the user's photo passed as a reference that must load. Same price, same refund-on-miss path below.
-    const googleOnly = isMediaGoogleOnly();
-    const nbTripped = googleOnly ? false : await isProviderTripped('nanobanana').catch(() => false);
+    // Google's own image model renders it (lib/ai/geminiImage, the model NanoBanana resells), whatever MEDIA_GOOGLE_ONLY
+    // says (MASTER TASK v3.1): one engine, no second. The user's photo is passed as a reference that must load. A miss
+    // takes the refund path below.
     let providerUrl: string | null = null;
     let providerText: string | undefined;
-    let credits: number | undefined;
     let alreadyHosted = false;
-    const model = googleOnly ? `Google ${geminiFrameModel()}` : `NanoBananaAI ${endpoint.toUpperCase()}`;
-    if (googleOnly) {
-      // ⚠️ INSIDE THE PLATFORM BUDGET like every other paid Google call. This route (photo shoot, interior design,
-      // product photos) called Google directly: its renders were never booked against the daily limit and kept
-      // running after the limit had stopped chat, video and storyboards for everyone (2026-10-16). A refusal returns
-      // the reserved credit and says which limit and when it lifts.
-      let img: Awaited<ReturnType<typeof generateGeminiImage>> = null;
-      try {
-        img = await guardedCall(
-          { service: 'image', model: 'gemini-image', units: 1, userId: rUser?.id ?? null, promptSummary: prompt.slice(0, 200), actualCost: (r) => (r ? undefined : 0) },
-          () => generateGeminiImage({
-            prompt: finalPrompt,
-            referenceImages: referenceImageUrl ? [referenceImageUrl] : [],
-            requireReferences: true,
-            aspectRatio: body.aspectRatio ?? '1:1',
-          }).catch(() => null),
-        );
-      } catch (err) {
-        if (!(err instanceof BudgetExceededError)) throw err;
-        const refunded = await refundReserve();
-        console.warn(`[nanobanana/image] refused by the budget guard (${err.reason})`);
-        return NextResponse.json({
-          success: false,
-          code: 'platform_budget',
-          budgetReason: err.reason,
-          refunded,
-          message: budgetRefusalMessage(billingLocale(req), err.reason),
-        }, { status: 503 });
-      }
-      if (img) {
-        const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
-        providerUrl = await uploadAndSign('uploads', `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800).catch(() => null);
-        alreadyHosted = !!providerUrl;
-        if (!providerUrl) providerText = 'google image: storage upload failed';
-      } else {
-        providerText = 'google image: no image';
-      }
-    } else if (!nbTripped) {
-      try {
-        // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
-        // than timing out; 1K finishes far sooner and exits the poll early.
-        const primary = await generateNanoBananaImage({
-          prompt:      finalPrompt,
-          endpoint,
+    const model = `Google ${geminiFrameModel()}`;
+    // ⚠️ INSIDE THE PLATFORM BUDGET like every other paid Google call. This route (photo shoot, interior design,
+    // product photos) called Google directly: its renders were never booked against the daily limit and kept
+    // running after the limit had stopped chat, video and storyboards for everyone (2026-10-16). A refusal returns
+    // the reserved credit and says which limit and when it lifts.
+    let img: Awaited<ReturnType<typeof generateGeminiImage>> = null;
+    try {
+      img = await guardedCall(
+        { service: 'image', model: 'gemini-image', units: 1, userId: rUser?.id ?? null, promptSummary: prompt.slice(0, 200), actualCost: (r) => (r ? undefined : 0) },
+        () => generateGeminiImage({
+          prompt: finalPrompt,
+          referenceImages: referenceImageUrl ? [referenceImageUrl] : [],
+          requireReferences: true,
           aspectRatio: body.aspectRatio ?? '1:1',
-          style:       knownStyle || undefined,
-          ...(referenceImageUrl ? { referenceImageDataUrl: referenceImageUrl } : {}),
-          // Poll budget matched to the engine's REAL latency AND to what this function can afford.
-          // maxDuration is 300s; the re-host copy (25s) and the refund path still have to run AFTER
-          // this returns, so NanoBanana may never own more than ~150s or Vercel 504s the lambda
-          // before the refund at the bottom can fire.
-          pollMaxAttempts: endpoint === 'pro-4k' || endpoint === 'v2-4k' ? 60 : 40, // 150s / 100s
-          pollIntervalMs:  2500,
-        });
-        providerUrl = primary.url ?? null;
-        providerText = primary.text;
-        credits = primary.credits;
-        await recordProviderResult('nanobanana', !!primary.url).catch(() => {});
-      } catch (e) {
-        await recordProviderResult('nanobanana', false).catch(() => {});
-        providerText = e instanceof Error ? e.message : undefined;
-      }
+        }).catch(() => null),
+      );
+    } catch (err) {
+      if (!(err instanceof BudgetExceededError)) throw err;
+      const refunded = await refundReserve();
+      console.warn(`[nanobanana/image] refused by the budget guard (${err.reason})`);
+      return NextResponse.json({
+        success: false,
+        code: 'platform_budget',
+        budgetReason: err.reason,
+        refunded,
+        message: budgetRefusalMessage(billingLocale(req), err.reason),
+      }, { status: 503 });
+    }
+    if (img) {
+      const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
+      providerUrl = await uploadAndSign('uploads', `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800).catch(() => null);
+      alreadyHosted = !!providerUrl;
+      if (!providerUrl) providerText = 'google image: storage upload failed';
     } else {
-      providerText = 'nanobanana circuit breaker open';
-      // eslint-disable-next-line no-console
-      console.warn('[nanobanana/image] breaker OPEN for nanobanana → explicit 502 (no fallback engine, R7)');
+      providerText = 'google image: no image';
     }
 
     if (!providerUrl) {
       // ⚠️ THE MESSAGE USED TO SAY "your credit was returned" WHENEVER A CREDIT HAD BEEN RESERVED — before the refund
       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
-      console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
+      console.error('[nanobanana/image] Google image missed (no fallback engine, R7):', (providerText ?? 'no image URL').slice(0, 300));
       return NextResponse.json({
         success: false,
         code:    'provider_unavailable',
@@ -469,7 +423,6 @@ export async function POST(req: NextRequest) {
       url:       hostedUrl,
       model,
       endpoint,
-      credits,
     });
   } catch (err) {
     const charged = reserved; // captured before refundReserve clears it

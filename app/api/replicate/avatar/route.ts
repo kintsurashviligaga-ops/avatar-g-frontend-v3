@@ -1,83 +1,13 @@
+/**
+ * POST /api/replicate/avatar — raw Replicate avatar models. It has no Google engine, so every request is refused with 503 google_only before any charge, upload or
+ * provider call, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1, lib/providers/mediaPolicy). Kept as a route so an
+ * old client gets a clear answer instead of a 404.
+ */
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
-import { NextRequest, NextResponse } from 'next/server';
-import { guardGeneration } from '@/lib/api/generationGuard';
-import { providerErrorBody } from '@/lib/api/providerError';
-import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
-import { resolveModel } from '@/lib/replicate/models';
-import { createPrediction, pollPrediction, pollUntilDone } from '@/lib/replicate/client';
-import { normalizeOutput } from '@/lib/replicate/normalizer';
+import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
-  // before any charge. Off (the default) → no-op.
-  const outside = refuseOutsideEngine(req);
-  if (outside) return outside;
-  try {
-    const body = await req.json();
-
-    // ── Poll existing prediction ─────────────────────────────────────
-    if (body.predictionId) {
-      // Auth-only — a status poll starts no compute but still requires a signed-in user.
-      const pollGuard = await guardGeneration(req, 'avatar', { gate: false });
-      if (!pollGuard.ok) return pollGuard.response;
-      const result = await pollPrediction(String(body.predictionId));
-      const model = resolveModel('avatar', body.variant);
-      const normalized = normalizeOutput(
-        'avatar', model.label, model.outputType,
-        result.id, result.status, result.output, result.error ?? null, result.metrics,
-      );
-      return NextResponse.json(normalized);
-    }
-
-    // ── Validate ─────────────────────────────────────────────────────
-    const validation = validateInput({
-      service: 'avatar',
-      prompt: body.prompt,
-      quality: body.quality || 'standard',
-      variant: body.variant || body.style,
-      aspectRatio: body.ratio || body.aspectRatio || '1:1',
-      negativePrompt: body.negativePrompt,
-      imageUrl: body.imageUrl,
-      style: body.style,
-    });
-
-    if (!validation.valid || !validation.sanitized) {
-      return NextResponse.json({ success: false, error: validation.error }, { status: 400 });
-    }
-
-    const input = validation.sanitized;
-
-    // ── FINANCIAL SHIELD — auth + balance gate BEFORE the paid Replicate avatar render ──
-    const guard = await guardGeneration(req, 'avatar');
-    if (!guard.ok) return guard.response;
-
-    const model = resolveModel(input.service, input.variant);
-    const modelInput = buildModelInput(input);
-
-    // ── Create prediction ────────────────────────────────────────────
-    const prediction = await createPrediction(model.id, modelInput);
-
-    // ── If sync result, return immediately ────────────────────────────
-    if (prediction.status === 'succeeded' && prediction.output) {
-      return NextResponse.json(
-        normalizeOutput('avatar', model.label, model.outputType, prediction.id, prediction.status, prediction.output, null, prediction.metrics),
-      );
-    }
-
-    // ── Wait for result (up to 60s) ─────────────────────────────────
-    const completed = await pollUntilDone(prediction.id, 30, 2000);
-    return NextResponse.json(
-      normalizeOutput('avatar', model.label, model.outputType, completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics),
-    );
-  } catch (err) {
-    // Never echo a provider body — see lib/api/providerError.
-    const safe = providerErrorBody(err);
-    const message = safe.message;
-    return NextResponse.json(
-      { success: false, service: 'avatar', outputType: 'image', url: null, error: message, metadata: {} },
-      { status: /token|configured/i.test(message) ? 500 : 502 },
-    );
-  }
+  return refuseOutsideEngine(req);
 }
