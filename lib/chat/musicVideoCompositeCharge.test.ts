@@ -43,6 +43,14 @@ const input = (): OrchestratorInput => ({
   sessionId: 's-1', locale: 'en', history: [], metadata: {},
 });
 
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockMeta.length = 0;
@@ -52,11 +60,12 @@ beforeEach(() => {
   mockExecute.mockResolvedValue({ success: true, predictionId: 'clip-1' });
   (hasUdioApiKey as jest.Mock).mockReturnValue(true);
   (startUdioGeneration as jest.Mock).mockResolvedValue({ workId: 'work-1' });
-  process.env.GEMINI_API_KEY = 'test-key-not-real';
+  delete process.env.GEMINI_TRANSPORT;
+  Object.assign(process.env, VERTEX_ENV); // the lyrics leg runs on Vertex AI (MASTER TASK v3.1)
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
-afterEach(() => { jest.restoreAllMocks(); delete process.env.GEMINI_API_KEY; });
+afterEach(() => { jest.restoreAllMocks(); for (const k of Object.keys(VERTEX_ENV)) delete process.env[k]; });
 
 test('charged once, up front, at the music-video quote (77) — before any leg runs — and no leg debits on its own', async () => {
   const res = await handleMusicVideoComposite(input());

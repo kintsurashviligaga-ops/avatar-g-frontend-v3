@@ -59,9 +59,17 @@ const generate = (serviceId: string, userInput = 'Write something useful') => po
 const TEXT_SERVICES = ['game', 'prompt-builder', 'terminal', 'terminal-coding', 'content-writer', 'podcast', 'character', 'event', 'tourism'];
 
 const ENV = { ...process.env };
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  delete process.env.GEMINI_TRANSPORT;
+  Object.assign(process.env, VERTEX_ENV); // text runs on Vertex AI (MASTER TASK v3.1)
   process.env.OPENAI_API_KEY = 'test-openai-key';
   process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
   (generateWithGemini as jest.Mock).mockResolvedValue({ text: 'gemini text', model: 'gemini-2.5-flash' });
@@ -89,10 +97,11 @@ test.each(TEXT_SERVICES)('%s · Gemini fails → the explicit text error; Claude
   expectNoClaudeNoOpenAi();
 });
 
-test.each(TEXT_SERVICES)('%s · no Gemini key → the explicit text error, never another vendor', async (serviceId) => {
-  delete process.env.GEMINI_API_KEY;
+test.each(TEXT_SERVICES)('%s · Vertex AI not configured → the explicit text error, never another vendor (an AI Studio key notwithstanding)', async (serviceId) => {
+  delete process.env.GCP_PROJECT_ID;
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
   const j = await (await POST(generate(serviceId))).json();
-  expect(j).toMatchObject({ status: 'error', error: 'Text generation unavailable: GEMINI_API_KEY is not configured' });
+  expect(j).toMatchObject({ status: 'error', error: 'Text generation unavailable: Vertex AI is not configured' });
   expect(generateWithGemini).not.toHaveBeenCalled();
   expectNoClaudeNoOpenAi();
 });

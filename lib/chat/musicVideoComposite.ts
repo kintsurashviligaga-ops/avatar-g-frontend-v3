@@ -45,6 +45,7 @@ import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { insufficientCreditsResponse, chargeRefusedResponse } from './chatBilling';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 const serviceManager = new ServiceManager();
 
@@ -174,7 +175,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   // ── Leg 1: lyrics from Gemini (synchronous) ────────────────────────────
   // Don't fail the whole pipeline if lyrics fail — caller can iterate.
   try {
-    if (process.env.GEMINI_API_KEY) {
+    if (googleAiConfigured()) {
       const lyricsPrompt = [
         'You are a hip-hop lyricist. Write a tight 30-second verse-chorus-verse',
         'song based on this brief. Output ONLY the lyrics. Keep each line short',

@@ -138,13 +138,12 @@ export interface VisionGateDeps {
 }
 
 /**
- * Default pre-check (avoids extraction cost when no Google call can be made): a Gemini API key, or the selected
- * transport being configured. Vertex with Workload Identity carries no key at all, so the key-only check this
- * replaced skipped every grade with `no_key` on a Vertex project. The transport is server-only, so it is
+ * Default pre-check (avoids extraction cost when no Google call can be made): Vertex AI can serve. An AI Studio key
+ * no longer counts (MASTER TASK v3.1): it used to start the ffmpeg extraction for a model call the transport then
+ * refused. The `no_key` reason name is kept for the callers that read it. The transport is server-only, so it is
  * lazy-imported like the extractor.
  */
 async function defaultKeyPresent(): Promise<boolean> {
-  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_API_KEY) return true;
   try {
     const { googleAiConfigured } = await import('./google/transport');
     return googleAiConfigured();

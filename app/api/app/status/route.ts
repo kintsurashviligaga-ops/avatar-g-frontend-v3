@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { SERVICE_CONFIGS } from '@/lib/service-chat/service-configs';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,7 +10,8 @@ type KeyStatus = 'ready' | 'partial' | 'missing';
 
 const APP_KEYS = [
   { id: 'openai', env: 'OPENAI_API_KEY' },
-  { id: 'gemini', env: 'GEMINI_API_KEY' },
+  // Gemini runs on Vertex AI (MASTER TASK v3.1): configured means Vertex can serve, not that an AI Studio key is set.
+  { id: 'gemini', env: 'GCP_PROJECT_ID' },
   { id: 'anthropic', env: 'ANTHROPIC_API_KEY' },
   { id: 'replicate', env: 'REPLICATE_API_TOKEN' },
   { id: 'nanobanana', env: 'NANOBANANA_API_KEY' },
@@ -103,7 +105,7 @@ function buildServiceStatuses(
 export async function GET(request: NextRequest) {
   const providers = APP_KEYS.map((item) => ({
     id: item.id,
-    configured: hasValue(process.env[item.env]),
+    configured: item.id === 'gemini' ? googleAiConfigured() : hasValue(process.env[item.env]),
   }));
 
   const configured = providers.filter((provider) => provider.configured).length;

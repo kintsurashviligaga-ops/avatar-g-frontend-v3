@@ -3,6 +3,7 @@ import 'server-only';
 import { embed } from '@/lib/memory/embed';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 /**
  * lib/rag/retrieve.ts
@@ -39,11 +40,8 @@ const HEADER: Record<string, string> = {
 };
 
 export function isRagConfigured(): boolean {
-  const hasEmbedKey = !!(
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.OPENAI_API_KEY
-  );
+  // Query embeddings run through lib/memory/embed: Vertex AI first (MASTER TASK v3.1), not an AI Studio key.
+  const hasEmbedKey = googleAiConfigured() || !!process.env.OPENAI_API_KEY;
   const hasDb = !!(
     process.env.SUPABASE_SERVICE_ROLE_KEY &&
     (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)

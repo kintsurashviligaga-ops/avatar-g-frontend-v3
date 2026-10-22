@@ -74,7 +74,14 @@ const SPECIALIST_TURNS = [
   'draft a system design for this service',
 ];
 
-const ENV = ['GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL'];
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
+const ENV = ['GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', ...Object.keys(VERTEX_ENV)];
 const saved: Record<string, string | undefined> = {};
 let fetchSpy: jest.SpyInstance;
 
@@ -98,7 +105,7 @@ afterEach(() => {
 
 describe('chat text path — Gemini only', () => {
   it.each(SPECIALIST_TURNS)('a specialist-looking turn is answered by Gemini: %s', async (message) => {
-    process.env.GEMINI_API_KEY = 'gemini-key-not-real';
+    Object.assign(process.env, VERTEX_ENV);
     (generateWithGemini as jest.Mock).mockResolvedValue({ text: 'gemini answer', model: 'gemini-test' });
     const res = await orchestrate(input({ message }));
     expect(res.success).toBe(true);
@@ -109,7 +116,7 @@ describe('chat text path — Gemini only', () => {
   });
 
   it('a Gemini failure is an explicit unavailable reply, not a Claude answer', async () => {
-    process.env.GEMINI_API_KEY = 'gemini-key-not-real';
+    Object.assign(process.env, VERTEX_ENV);
     (generateWithGemini as jest.Mock).mockRejectedValue(new Error('API key not valid'));
     const res = await orchestrate(input({ message: 'help me refactor this TypeScript module' }));
     expect(res.success).toBe(false);
@@ -119,7 +126,7 @@ describe('chat text path — Gemini only', () => {
   });
 
   it('a transient Gemini error is retried on Gemini, then reported — still no Claude', async () => {
-    process.env.GEMINI_API_KEY = 'gemini-key-not-real';
+    Object.assign(process.env, VERTEX_ENV);
     (generateWithGemini as jest.Mock).mockRejectedValue(new Error('503 UNAVAILABLE: model overloaded'));
     const res = await orchestrate(input());
     expect(generateWithGemini).toHaveBeenCalledTimes(3);
@@ -128,11 +135,12 @@ describe('chat text path — Gemini only', () => {
     expect(Anthropic).not.toHaveBeenCalled();
   });
 
-  it('without a Gemini key the turn says the core is not configured, even with an Anthropic key', async () => {
+  it('without Vertex AI the turn says the core is not configured, even with an AI Studio key and an Anthropic key', async () => {
+    process.env.GEMINI_API_KEY = 'gemini-key-not-real'; // MASTER TASK v3.1: an AI Studio key does not make Gemini available
     const res = await orchestrate(input({ message: 'compute the integral of x^2 dx' }));
     expect(res.success).toBe(false);
     expect(res.message).toBe('Chat is temporarily unavailable. Please try again a little later.');
-    expect(res.metadata).toMatchObject({ provider: 'gemini', error: 'GEMINI_API_KEY not configured' });
+    expect(res.metadata).toMatchObject({ provider: 'gemini', error: 'Vertex AI is not configured' });
     expect(generateWithGemini).not.toHaveBeenCalled();
     expect(Anthropic).not.toHaveBeenCalled();
   });

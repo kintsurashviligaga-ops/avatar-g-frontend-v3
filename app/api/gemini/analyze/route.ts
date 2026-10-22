@@ -3,6 +3,7 @@ import { analyzeRoomImage } from '@/lib/gemini/image-analysis';
 import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -34,8 +35,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
+    if (!googleAiConfigured()) {
+      return NextResponse.json({ error: 'Vertex AI is not configured' }, { status: 503 });
     }
 
     const result = await analyzeRoomImage(imageBase64, mimeType, locale ?? 'ka');

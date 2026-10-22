@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { embed } from '@/lib/memory/embed';
 import { adminKeyHeaderMatches } from '@/lib/security/opsAccess';
 import { isAdmin } from '@/lib/auth/adminGuard';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,7 +31,8 @@ export async function GET(req: NextRequest) {
     latencyMs: Date.now() - t0,
     embedding_length: vec?.length ?? null,
     embedding_first_5: vec?.slice(0, 5) ?? null,
-    gemini_key_present: !!(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY),
+    // Embeddings run on Vertex AI (MASTER TASK v3.1): readiness, not an AI Studio key.
+    vertex_ai_configured: googleAiConfigured(),
     openai_key_present: !!process.env.OPENAI_API_KEY,
   });
 }

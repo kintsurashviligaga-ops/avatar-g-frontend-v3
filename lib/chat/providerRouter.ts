@@ -169,7 +169,8 @@ function dataUrlToInlinePart(dataUrl: string): { mimeType: string; data: string 
 }
 
 async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatResponse | null> {
-  if (!process.env.GEMINI_API_KEY) return null;
+  // Vertex AI, not an AI Studio key (MASTER TASK v3.1): production holds no key, and this read silently turned vision off.
+  if (!googleAiConfigured()) return null;
 
   const metadataAttachments = Array.isArray(input.metadata?.attachments)
     ? input.metadata.attachments as Array<{ type?: string; mimeType?: string; data?: string }>
@@ -943,6 +944,7 @@ export { shouldRedesignInterior } from './interiorRouting';
 import { shouldRedesignInterior } from './interiorRouting';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
 import type { SwitchableTool } from '@/lib/server/serviceSwitches';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 /** Normalize the many shapes a Replicate image output can take into a URL. */
 function extractReplicateImageUrl(output: unknown): string | null {
@@ -1460,8 +1462,10 @@ async function handleTextIntent(
   const ctx = toGeminiServiceContext(input.serviceContext);
   const systemPrompt = withCustomInstructions(getGeminiSystemPrompt(ctx, input.locale || 'ka'), input.customInstructions);
   let geminiError: string | null = null;
+  // Vertex AI readiness, not an AI Studio key: with no key every chat turn here answered "unavailable" (MASTER TASK v3.1).
+  const googleReady = googleAiConfigured();
 
-  if (process.env.GEMINI_API_KEY) {
+  if (googleReady) {
     const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
     // Transient Gemini conditions (model overloaded / rate-limited) are worth a
     // fast retry before giving up — the GA endpoints intermittently
@@ -1522,7 +1526,7 @@ async function handleTextIntent(
     }
   }
 
-  if (process.env.GEMINI_API_KEY) {
+  if (googleReady) {
     return {
       success: false,
       intent: detected.intent,
@@ -1537,7 +1541,7 @@ async function handleTextIntent(
     intent: detected.intent,
     responseType: 'text',
     message: 'Chat is temporarily unavailable. Please try again a little later.',
-    metadata: { provider: 'gemini', error: 'GEMINI_API_KEY not configured' },
+    metadata: { provider: 'gemini', error: 'Vertex AI is not configured' },
   };
 }
 
