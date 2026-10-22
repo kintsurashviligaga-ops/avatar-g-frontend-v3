@@ -1,16 +1,15 @@
 /**
  * lib/models/verify.ts — runtime verification of the ModelCatalog (PROJECT_MASTER.md Section D2, Part 2 objective D2).
  *
- * Asks the selected Google transport (GEMINI_TRANSPORT) which catalog ids exist for this project, for free:
- *   · `gemini_api` — `GET /v1beta/models` (the key's model list, paged).
- *   · `vertex`     — `countTokens` per text / image / music entry (nothing generated or billed). Veo, Imagen and the
- *                    embedding model have no free per-model probe there and are reported `unchecked`.
+ * Asks Vertex AI (the only transport under MASTER TASK v3.1) which catalog ids exist for this project, for free:
+ * `countTokens` per text / image / music entry (nothing generated or billed). Veo, Imagen and the embedding model have
+ * no free per-model probe there and are reported `unchecked`. The Developer API's model list is no longer read.
  * Then, per D2:
  *   · in the catalog, not on the runtime → `missing`: switched off (enabled: false) and logged — a selector never offers it;
  *   · on the runtime, not in the catalog → `reviewQueue`: reported for a person to review, NEVER added automatically.
  *
- * ⚠️ PRESENT IS NOT VERIFIED. A listed or countable id can still refuse to generate (the new project's key listed the
- * Gemini 2.5 text models while generateContent answered 404), so a check only ever REMOVES; `verifiedAt` stays the dated
+ * ⚠️ PRESENT IS NOT VERIFIED. A countable id can still refuse to generate (the old AI Studio key listed the Gemini 2.5
+ * text models while generateContent answered 404), so a check only ever REMOVES; `verifiedAt` stays the dated
  * evidence in lib/models/catalog.ts. A check that fails (network, auth) changes nothing and says so (`ok: false`).
  * Results are cached per transport for CACHE_TTL_MS.
  */
@@ -18,14 +17,10 @@ import 'server-only';
 import type { GeminiTransportKind } from '@/lib/contracts/geminiTransport';
 import type { ModelCatalog, ModelCatalogEntry } from '@/lib/contracts/modelCatalog';
 import { googleModelFetch, googleTransportKind, googleTransportProblems } from '@/lib/ai/google/transport';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { redactSecrets } from '@/lib/veo/vertexAuth';
 import { MODEL_CATALOG } from './catalog';
 
 export const CACHE_TTL_MS = 10 * 60_000;
-const LIST_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-const MAX_PAGES = 5;
-const MAX_REVIEW = 200;
 const PROBE_TIMEOUT_MS = 8_000;
 const PING = JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }] });
 
@@ -33,7 +28,7 @@ export interface CatalogCheck {
   /** The check itself ran (false: nothing was concluded and nothing is switched off). */
   ok: boolean;
   transport: GeminiTransportKind | 'invalid';
-  method: 'models.list' | 'countTokens' | 'none';
+  method: 'countTokens' | 'none';
   checkedAt: string;
   /** Catalog ids the runtime has. */
   present: string[];
@@ -41,7 +36,8 @@ export interface CatalogCheck {
   missing: string[];
   /** Catalog ids this check cannot speak for on this transport. */
   unchecked: string[];
-  /** Runtime ids that are not in the catalog — for a person to review, never auto-added. */
+  /** Runtime ids that are not in the catalog — for a person to review, never auto-added. Vertex has no free model list,
+   *  so this stays empty. */
   reviewQueue: string[];
   errors: Array<{ id?: string; status?: number; detail: string }>;
 }
@@ -56,35 +52,6 @@ function servedBy(e: ModelCatalogEntry, kind: GeminiTransportKind): boolean {
 /** On Vertex only generateContent families have a free probe (countTokens); Live models do not serve REST calls here. */
 function vertexProbeable(e: ModelCatalogEntry): boolean {
   return ['gemini', 'nano_banana', 'lyria'].includes(e.family) && !e.capabilities.includes('live');
-}
-
-async function listGeminiApiModels(): Promise<{ ids: Set<string> } | { error: CatalogCheck['errors'][number] }> {
-  const key = resolveGeminiKey();
-  const ids = new Set<string>();
-  let pageToken = '';
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const url = `${LIST_URL}?pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
-    let res: Response;
-    try {
-      // The key rides in the header, never the URL; no redirect may carry it elsewhere.
-      res = await fetch(url, {
-        headers: { 'x-goog-api-key': key },
-        cache: 'no-store',
-        redirect: 'manual',
-        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-      });
-    } catch (e) {
-      return { error: { detail: `models.list network error: ${e instanceof Error ? e.name : 'unknown'}` } };
-    }
-    if (!res.ok) return { error: { status: res.status, detail: redact(await res.text().catch(() => '')) } };
-    const j = (await res.json().catch(() => null)) as { models?: Array<{ name?: unknown }>; nextPageToken?: unknown } | null;
-    for (const m of j?.models ?? []) {
-      if (typeof m.name === 'string') ids.add(m.name.replace(/^models\//, ''));
-    }
-    pageToken = typeof j?.nextPageToken === 'string' ? j.nextPageToken : '';
-    if (!pageToken) break;
-  }
-  return { ids };
 }
 
 async function probeVertex(id: string): Promise<{ status: number; detail?: string }> {
@@ -109,7 +76,7 @@ export async function checkModelCatalog(catalog: ModelCatalog = MODEL_CATALOG): 
   try {
     kind = googleTransportKind();
   } catch {
-    return { ...base, ok: false, transport: 'invalid', method: 'none', errors: [{ detail: 'GEMINI_TRANSPORT is not gemini_api or vertex' }] };
+    return { ...base, ok: false, transport: 'invalid', method: 'none', errors: [{ detail: 'GEMINI_TRANSPORT is not vertex' }] };
   }
   const notConfigured = googleTransportProblems(kind);
   if (notConfigured.length) {
@@ -120,21 +87,6 @@ export async function checkModelCatalog(catalog: ModelCatalog = MODEL_CATALOG): 
   const missing: string[] = [];
   const unchecked: string[] = [];
   const errors: CatalogCheck['errors'] = [];
-
-  if (kind === 'gemini_api') {
-    const listed = await listGeminiApiModels();
-    if ('error' in listed) return { ...base, ok: false, transport: kind, method: 'models.list', errors: [listed.error] };
-    for (const e of catalog.entries) {
-      // Agents (Deep Research) are not models and are never listed.
-      if (!servedBy(e, kind) || e.family === 'specialty') unchecked.push(e.id);
-      else if (listed.ids.has(e.id)) present.push(e.id);
-      else if (e.enabled) missing.push(e.id);
-      else unchecked.push(e.id);
-    }
-    const known = new Set(catalog.entries.map((e) => e.id));
-    const reviewQueue = [...listed.ids].filter((id) => !known.has(id)).sort().slice(0, MAX_REVIEW);
-    return { ok: true, transport: kind, method: 'models.list', checkedAt, present, missing, unchecked, reviewQueue, errors };
-  }
 
   const probed = catalog.entries.filter((e) => servedBy(e, kind) && vertexProbeable(e));
   const results = await Promise.all(probed.map(async (e) => ({ e, r: await probeVertex(e.id) })));

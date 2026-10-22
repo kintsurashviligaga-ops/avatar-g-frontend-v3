@@ -12,7 +12,15 @@ import { MusicError } from './errors';
 const USER = 'user-a';
 const flush = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 const OTHER = 'user-b';
-const ENV = { MUSIC_STUDIO_ENABLED: '1', GEMINI_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv;
+/** Vertex AI with Workload Identity, the only Google transport (MASTER TASK v3.1). An AI Studio key configures nothing. */
+const ENV = {
+  MUSIC_STUDIO_ENABLED: '1',
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+} as unknown as NodeJS.ProcessEnv;
 
 interface Harness {
   deps: MusicDeps;
@@ -109,7 +117,8 @@ describe('quote', () => {
     h.env.MUSIC_STUDIO_ENABLED = '0';
     await expect(quoted(h)).rejects.toMatchObject({ code: 'not_enabled' });
     h.env.MUSIC_STUDIO_ENABLED = '1';
-    delete h.env.GEMINI_API_KEY;
+    delete h.env.GCP_PROJECT_ID;
+    h.env.GEMINI_API_KEY = 'k';
     await expect(quoted(h)).rejects.toMatchObject({ code: 'not_configured' });
   });
 

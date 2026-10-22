@@ -4,7 +4,7 @@
  *
  * ⚠️ This used to be a chain — DeepSeek direct → DeepSeek via Atlas → Gemini → Anthropic — so a Gemini miss was silently
  * answered by a forbidden vendor. Pinned here: Gemini is the only provider whatever the routing flags say, and a Gemini miss
- * (an error, an empty reply, no key) is null, the "no result" the callers already handle. Every other vendor is mocked to
+ * (an error, an empty reply, Vertex AI not configured) is null, the "no result" the callers already handle. Every other vendor is mocked to
  * SUCCEED (and Anthropic's constructor is a spy), so a reinstated fallback would turn each `null` below into its text.
  * The two callers named in the change (the deck outline, the dubbing translation) are run against the real helper to show
  * they still end on their deterministic fallbacks. No network, no spend.
@@ -13,8 +13,6 @@ jest.mock('server-only', () => ({}));
 
 const mockGemini = jest.fn();
 jest.mock('../gemini/client', () => ({ generateWithGemini: (...a: unknown[]) => mockGemini(...a) }));
-let mockGeminiKey: string | null = 'test-gemini-key';
-jest.mock('../orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => mockGeminiKey }));
 const mockBudgetAllows = jest.fn();
 const mockBook = jest.fn();
 jest.mock('../services/billing/chatBudget', () => ({
@@ -39,9 +37,18 @@ import { fallbackOutline, type DeckRequest } from '../services/presentation/deck
 import { translateSegments } from '../services/dubbing/translateSegments';
 
 const ENV = { ...process.env };
+// Vertex AI is the only transport (v3.1): the real gate reads these; an AI Studio key is neither needed nor enough.
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGeminiKey = 'test-gemini-key';
+  delete process.env.GEMINI_TRANSPORT;
+  Object.assign(process.env, VERTEX_ENV);
   mockBudgetAllows.mockResolvedValue(true);
   mockGemini.mockResolvedValue({ text: 'gemini text', model: 'gemini-2.5-flash' });
   process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
@@ -137,8 +144,17 @@ describe('Gemini misses → null, and no other provider is tried (R7)', () => {
     expectNoOtherVendor();
   });
 
-  test('no Gemini key → null without calling Gemini or anyone else', async () => {
-    mockGeminiKey = null;
+  test('Vertex AI not configured → null without calling Gemini or anyone else, an AI Studio key or not', async () => {
+    delete process.env.GCP_PROJECT_ID;
+    process.env.GEMINI_API_KEY = 'ai-studio-key';
+    expect(await llmText({ user: 'hello' })).toBeNull();
+    expect(mockGemini).not.toHaveBeenCalled();
+    expectNoOtherVendor();
+  });
+
+  test('GEMINI_TRANSPORT=gemini_api → null before any call', async () => {
+    process.env.GEMINI_TRANSPORT = 'gemini_api';
+    process.env.GEMINI_API_KEY = 'ai-studio-key';
     expect(await llmText({ user: 'hello' })).toBeNull();
     expect(mockGemini).not.toHaveBeenCalled();
     expectNoOtherVendor();

@@ -2,7 +2,7 @@ import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { reportError } from '@/lib/observability/report-error';
 import { generateWithGemini } from '@/lib/gemini/client';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { isGoogleOnly } from '@/lib/veo/policy';
 
 /**
@@ -56,7 +56,9 @@ const TRANSLATE_SYSTEM =
  * temperature 0, fail-open to the original text, every miss logged.
  */
 async function viaGemini(raw: string, kind: string): Promise<string> {
-  if (!resolveGeminiKey()) { note(kind, 'no_key', 'no Gemini key on this deployment'); return raw; }
+  // Vertex AI is the transport (MASTER TASK v3.1): an AI Studio key neither enables nor is needed for this call.
+  const blocked = googleTransportBlocker();
+  if (blocked) { note(kind, 'no_key', blocked); return raw; }
   try {
     const r = await generateWithGemini({
       prompt: `Medium: ${kind}.\n\nBrief:\n${raw}`, systemPrompt: TRANSLATE_SYSTEM, tier: 'flash',

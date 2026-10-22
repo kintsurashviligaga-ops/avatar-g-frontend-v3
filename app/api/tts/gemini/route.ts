@@ -6,7 +6,7 @@
  * responseModalities:['AUDIO']) with a built-in Google voice and return the spoken audio. Gemini returns raw
  * 16-bit mono PCM (audio/L16;rate=24000), which <audio> can't play, so we wrap it in a minimal WAV container and
  * return audio/wav. Verified live: 24 kHz PCM, natural Georgian, ~1-2 s/chunk. Rate-limited AND signed-in only:
- * it spends the Gemini balance, and a guest has no assistant reply to read aloud (the studio stops a guest before
+ * it spends the Google Cloud project's balance, and a guest has no assistant reply to read aloud (the studio stops a guest before
  * any turn is sent).
  *
  * Body: { text, locale?: 'ka'|'en'|'ru', gender?: 'male'|'female', voice?: 'Aoede'|'Charon'|'Kore'|'Puck',
@@ -21,7 +21,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
@@ -145,8 +144,9 @@ export async function POST(req: NextRequest) {
     if (capped) return capped;
   }
 
-  // The selected Google transport (GEMINI_TRANSPORT) must be able to serve; the error name predates Vertex.
-  if (googleTransportBlocker(resolveGeminiKey())) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
+  // Vertex AI must be able to serve (v3.1: the only transport; an AI Studio key never makes it possible). The error
+  // name predates Vertex and is kept for the client.
+  if (googleTransportBlocker()) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
 
   const model = ttsModel();
   const profile = resolveAgentProfile({

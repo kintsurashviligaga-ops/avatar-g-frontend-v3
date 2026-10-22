@@ -11,8 +11,6 @@ jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: j
 jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), RATE_LIMITS: { AI: {} } }));
 const mockGemini = jest.fn();
 jest.mock('../../../../lib/gemini/client', () => ({ generateWithGemini: (...a: unknown[]) => mockGemini(...a) }));
-let mockKey = 'test-key';
-jest.mock('../../../../lib/orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => mockKey }));
 const mockAllows = jest.fn(async () => true);
 const mockBook = jest.fn(async () => undefined);
 jest.mock('../../../../lib/services/billing/chatBudget', () => ({
@@ -30,6 +28,14 @@ import { POST } from './route';
 
 const USER = '11111111-2222-4333-8444-555555555555';
 const ENV = { ...process.env };
+// Vertex AI is the only transport (v3.1): the real gate reads these; an AI Studio key is neither needed nor enough.
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/video/remix-intent', {
@@ -43,8 +49,9 @@ const gemReply = (text: string) => ({ text, model: 'gemini-2.5-flash', tier: 'fl
 beforeEach(() => {
   jest.clearAllMocks();
   mockUser = { id: USER };
-  mockKey = 'test-key';
   mockAllows.mockResolvedValue(true);
+  delete process.env.GEMINI_TRANSPORT;
+  Object.assign(process.env, VERTEX_ENV);
   delete process.env.AI_GOOGLE_ONLY;
   delete process.env.FILM_ALLOW_ANONYMOUS;
   process.env.ANTHROPIC_API_KEY = 'test-anthropic';
@@ -108,8 +115,9 @@ test('the budget guard refuses before Gemini → keyword matcher', async () => {
   expect(mockGemini).not.toHaveBeenCalled();
 });
 
-test('no Gemini key → keyword matcher, and still no Claude under Google-only', async () => {
-  mockKey = '';
+test('Vertex not configured → keyword matcher (an AI Studio key does not help), and still no Claude under Google-only', async () => {
+  delete process.env.GCP_PROJECT_ID;
+  process.env.GEMINI_API_KEY = 'ai-studio-key';
   expect(await (await POST(post({ message: 'add text overlay' }))).json()).toEqual({ op: 'add_text_overlay', params: {} });
   expect(mockGemini).not.toHaveBeenCalled();
   expect(mockClaudeCreate).not.toHaveBeenCalled();

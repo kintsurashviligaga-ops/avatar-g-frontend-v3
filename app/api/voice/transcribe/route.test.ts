@@ -5,10 +5,16 @@
  *   · a guest is refused before the upload is parsed or any engine runs; the per-user STT cap applies;
  *   · Google-only (the default) calls Gemini ONLY — never Replicate, OpenAI or Deepgram — with the container fix;
  *   · the legacy cascade still runs under AI_GOOGLE_ONLY=0;
- *   · ?diag=1 is admin-only (the email allowlist), and never carries the key;
- *   · Gemini usage is booked with the user id; a Latin "transcript" of Georgian is still rejected.
+ *   · ?diag=1 is admin-only (the email allowlist), and never carries a credential;
+ *   · Gemini usage is booked with the user id; a Latin "transcript" of Georgian is still rejected;
+ *   · v3.1: Gemini is reached on Vertex AI with a Workload Identity token; an AI Studio key is never read or sent.
  */
 jest.mock('server-only', () => ({}));
+
+jest.mock('../../../../lib/veo/vertexAuth', () => ({
+  ...jest.requireActual('../../../../lib/veo/vertexAuth'),
+  getVertexAccessToken: jest.fn(async () => 'vertex-token'),
+}));
 
 let mockUser: { id: string; email?: string } | null = null;
 jest.mock('../../../../lib/supabase/server', () => ({
@@ -87,6 +93,13 @@ const geminiOk = (text: string) =>
   }), { status: 200 });
 
 const ENV = { ...process.env };
+const VERTEX_ENV = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
 let fetchSpy: jest.SpyInstance;
 
 beforeEach(() => {
@@ -98,11 +111,17 @@ beforeEach(() => {
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   delete process.env.GEMINI_STT_MODEL;
   delete process.env.VOICE_V2V_GEMINI_MODEL;
+  delete process.env.GEMINI_TRANSPORT;
+  delete process.env.GCP_GEMINI_LOCATION;
+  delete process.env.GCP_VEO_LOCATION;
+  Object.assign(process.env, VERTEX_ENV);
+  // A leftover AI Studio key changes nothing: it is never read, sent or echoed.
   process.env.GEMINI_API_KEY = 'test-gemini-key';
   fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => geminiOk('გამარჯობა'));
 });
 
 afterEach(() => {
+  for (const [url] of fetchSpy.mock.calls) expect(String(url)).not.toContain('generativelanguage.googleapis.com');
   fetchSpy.mockRestore();
   process.env = { ...ENV };
 });
@@ -125,15 +144,18 @@ test('the per-user STT cap applies to a signed-in caller, keyed on the user id',
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-test('Google-only (default): WAV → Gemini only, key in the header, usage booked; no other vendor', async () => {
+test('Google-only (default): WAV → Gemini on Vertex AI only (bearer token, no key), usage booked; no other vendor', async () => {
   const res = await POST(upload({ language: 'ka-GE' }));
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
-  expect(url).toContain('/models/gemini-3.8-flash:generateContent');
+  expect(url).toBe(
+    'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.8-flash:generateContent',
+  );
   expect(url).not.toContain('key=');
-  expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('test-gemini-key');
+  expect((init.headers as Record<string, string>).Authorization).toBe('Bearer vertex-token');
+  expect((init.headers as Record<string, string>)['x-goog-api-key']).toBeUndefined();
   const sent = JSON.parse(String(init.body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type: string } }> }> };
   expect(sent.contents[0]!.parts[1]!.inline_data!.mime_type).toBe('audio/wav');
   expect(openaiMock).not.toHaveBeenCalled();
@@ -202,11 +224,20 @@ test('Google-only: a quota outage is an empty transcript with stt_unavailable, n
   expect(replicateMock).not.toHaveBeenCalled();
 });
 
-test('Google-only: no Gemini key → stt_unavailable and no call at all', async () => {
-  delete process.env.GEMINI_API_KEY;
+test('Google-only: Vertex AI unconfigured → stt_unavailable and no call at all, even with an AI Studio key', async () => {
+  for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
   const res = await POST(upload({ language: 'en-US' }));
   expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'stt_unavailable' });
   expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+test('Google-only: GEMINI_TRANSPORT=gemini_api (the Developer API) → stt_unavailable and no call at all', async () => {
+  process.env.GEMINI_TRANSPORT = 'gemini_api';
+  const res = await POST(upload({ language: 'en-US' }));
+  expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'stt_unavailable' });
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(replicateMock).not.toHaveBeenCalled();
+  expect(openaiMock).not.toHaveBeenCalled();
 });
 
 test('AI_GOOGLE_ONLY=0 restores the legacy cascade (Georgian → Replicate first)', async () => {
@@ -230,7 +261,7 @@ test('?diag=1 from a non-admin is ignored (plain answer, no upstream detail)', a
   expect(j).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
 });
 
-test('?diag=1 from an allowlisted admin returns the breadcrumb, without the key', async () => {
+test('?diag=1 from an allowlisted admin returns the breadcrumb, without any credential', async () => {
   mockUser = { id: USER_ID, email: 'Admin@Example.com' };
   fetchSpy.mockImplementationOnce(async () => new Response('Unsupported MIME type', { status: 400 }));
   const res = await POST(upload({ diag: true, bytes: WEBM, type: 'audio/webm', language: 'en-US' }));
@@ -239,6 +270,7 @@ test('?diag=1 from an allowlisted admin returns the breadcrumb, without the key'
   expect(j.diag).toMatchObject({ googleOnly: true, container: 'webm', geminiMime: 'video/webm', geminiNative: false, geminiKeyPresent: true });
   expect(String(j.diag.geminiError)).toContain('400');
   expect(raw).not.toContain('test-gemini-key');
+  expect(raw).not.toContain('vertex-token');
 });
 
 test('empty audio → 400 before any engine', async () => {

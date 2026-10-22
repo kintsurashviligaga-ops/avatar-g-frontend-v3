@@ -8,6 +8,11 @@
  * back the user's own words rather than an empty string or an exception. Those are the two ways a
  * translator inserted before a provider call could turn a working render into a broken one.
  */
+jest.mock('../veo/vertexAuth', () => ({
+  ...jest.requireActual('../veo/vertexAuth'),
+  getVertexAccessToken: jest.fn(async () => 'vertex-token'),
+}));
+
 import { promptToEnglish } from './promptToEnglish';
 
 // No key → the module must short-circuit to the original rather than construct a client.
@@ -58,18 +63,27 @@ describe('degenerate input', () => {
   });
 });
 
-describe('the Google-only pipeline translates with Gemini (docs/VEO_ENGINE.md §3)', () => {
+describe('the Google-only pipeline translates with Gemini on Vertex AI (docs/VEO_ENGINE.md §3)', () => {
+  const WIF = {
+    GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+    GCP_PROJECT_NUMBER: '467145118875',
+    GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+    GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+    GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+  };
+  const ENV = ['GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'VIDEO_GOOGLE_ONLY', ...Object.keys(WIF)];
   const ORIGINAL_FETCH = global.fetch;
-  const ORIGINAL_GEMINI = process.env.GEMINI_API_KEY;
-  const ORIGINAL_FLAG = process.env.VIDEO_GOOGLE_ONLY;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const k of ENV) { saved[k] = process.env[k]; delete process.env[k]; }
+    Object.assign(process.env, WIF);
+  });
   afterEach(() => {
     global.fetch = ORIGINAL_FETCH;
-    if (ORIGINAL_GEMINI === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = ORIGINAL_GEMINI;
-    if (ORIGINAL_FLAG === undefined) delete process.env.VIDEO_GOOGLE_ONLY; else process.env.VIDEO_GOOGLE_ONLY = ORIGINAL_FLAG;
+    for (const k of ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
   });
 
-  it('calls Gemini with the key in a header — never in the URL — and returns the translation', async () => {
-    delete process.env.VIDEO_GOOGLE_ONLY; // default ON
+  it('calls Gemini on Vertex with a bearer token — no API key anywhere — and returns the translation', async () => {
     process.env.GEMINI_API_KEY = 'test-key';
     const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({
       candidates: [{ content: { parts: [{ text: 'a woman walks through rainy Tbilisi at night' }] } }],
@@ -78,13 +92,24 @@ describe('the Google-only pipeline translates with Gemini (docs/VEO_ENGINE.md §
     await expect(promptToEnglish('ქალი ღამის წვიმიან თბილისში მიდის', 'video')).resolves.toBe('a woman walks through rainy Tbilisi at night');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).not.toContain('key=');
-    expect((init?.headers as Record<string, string>)['x-goog-api-key']).toBe('test-key');
+    expect(String(url)).toMatch(/^https:\/\/aiplatform\.googleapis\.com\/v1\/projects\/gen-lang-client-0671348730\/.*:generateContent$/);
+    const headers = init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer vertex-token');
+    expect(headers['x-goog-api-key']).toBeUndefined();
+    expect(JSON.stringify([url, headers])).not.toContain('test-key');
+  });
+
+  it('translates without any Gemini key (Vertex alone is enough), and a key alone is not enough', async () => {
+    const fetchMock = jest.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'rain in Tbilisi' }] } }] }), { status: 200 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await expect(promptToEnglish('წვიმა თბილისში', 'video')).resolves.toBe('rain in Tbilisi');
+    for (const k of Object.keys(WIF)) delete process.env[k];
+    process.env.GEMINI_API_KEY = 'test-key';
+    await expect(promptToEnglish('წვიმა თბილისში', 'video')).resolves.toBe('წვიმა თბილისში');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('a Gemini failure hands back the original words (fail-open), and Anthropic is never tried', async () => {
-    delete process.env.VIDEO_GOOGLE_ONLY;
-    process.env.GEMINI_API_KEY = 'test-key';
     process.env.ANTHROPIC_API_KEY = 'must-not-be-used';
     global.fetch = jest.fn(async () => new Response('{"error":{"code":402}}', { status: 402 })) as unknown as typeof fetch;
     await expect(promptToEnglish('ქართული ტექსტი', 'video')).resolves.toBe('ქართული ტექსტი');

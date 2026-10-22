@@ -88,15 +88,13 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     const hasElevenLabs = present(env.ELEVENLABS_API_KEY);
     const googleOnly = isGoogleOnly();
 
-    // The Google AI transport (GEMINI_TRANSPORT: the API key, or Vertex AI) that the frame model and Lyria call through.
-    // An unknown GEMINI_TRANSPORT value throws there and fails closed — reported here as a missing name, never thrown.
-    let googleKind: 'gemini_api' | 'vertex' | null = null;
+    // Vertex AI, the only Google model transport under v3.1, which the frame model and Lyria call through. A
+    // GEMINI_TRANSPORT other than vertex/unset throws there and fails closed — reported here as a name, never thrown.
     let googleMissing: string[];
     try {
-      googleKind = googleTransportKind();
-      googleMissing = googleTransportProblems(googleKind);
+      googleMissing = googleTransportProblems(googleTransportKind());
     } catch {
-      googleMissing = ['GEMINI_TRANSPORT (not gemini_api or vertex)'];
+      googleMissing = ['GEMINI_TRANSPORT (not vertex)'];
     }
     const hasGoogleAi = googleAiConfigured();
 
@@ -114,7 +112,7 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
         ? (hasReplicate ? 'VIDEO_GOOGLE_ONLY off — legacy Replicate frames (nano-banana → FLUX 1.1 Pro)' : 'VIDEO_GOOGLE_ONLY off and REPLICATE_API_TOKEN missing')
         : !anchorAvail
           ? `${googleMissing.join(', ') || 'Google AI transport'} missing — frames come back empty, Veo animates from text`
-          : `storyboard + anchor frames on ${googleKind === 'vertex' ? 'Vertex AI' : 'the Gemini API'}; a miss is an empty tile — no FLUX fallback`,
+          : 'storyboard + anchor frames on Vertex AI; a miss is an empty tile — no FLUX fallback',
       icon: dot(anchorAvail, anchorTier),
     });
 

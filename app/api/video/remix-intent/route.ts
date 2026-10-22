@@ -22,7 +22,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate } from '@/lib/auth/generationGate';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { generateWithGemini } from '@/lib/gemini/client';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
 
 export const dynamic = 'force-dynamic';
@@ -120,7 +120,7 @@ function keywordIntent(message: string): Intent {
  * same combination llmText's Gemini leg runs in production. Budget-checked before, booked after.
  */
 async function geminiIntent(message: string, userId: string | null): Promise<Intent | null> {
-  if (!resolveGeminiKey()) return null;
+  if (googleTransportBlocker()) return null;
   const prompt = message.slice(0, 500);
   if (!(await chatBudgetAllows(`${CLASSIFIER_SYSTEM} ${prompt}`))) return null;
   try {

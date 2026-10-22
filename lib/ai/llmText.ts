@@ -16,7 +16,6 @@
  */
 import 'server-only';
 import { generateWithGemini } from '@/lib/gemini/client';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { reportReliability } from '@/lib/observability/reliability';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
@@ -54,10 +53,9 @@ export interface LlmTextOpts {
 }
 
 async function viaGemini(o: LlmTextOpts): Promise<GeminiResponse | null> {
-  // resolveGeminiKey() also honours GOOGLE_GENERATIVE_AI_API_KEY and the GEMINI_API_KEYS pool — the bare
-  // GEMINI_API_KEY check here used to skip Gemini on a deployment that only set the pool. On the Vertex transport
-  // (GEMINI_TRANSPORT=vertex) the key is not needed: generateWithGemini goes through lib/ai/google/transport.
-  if (googleTransportBlocker(resolveGeminiKey())) return null;
+  // Vertex AI is the only transport (MASTER TASK v3.1): generateWithGemini goes through lib/ai/google/transport, so an
+  // AI Studio key is neither needed nor enough.
+  if (googleTransportBlocker()) return null;
   try {
     const r = await generateWithGemini({
       prompt: o.user, systemPrompt: o.system, tier: 'flash', maxTokens: o.maxTokens ?? 2000, temperature: o.temperature ?? 0.6,
@@ -112,10 +110,10 @@ export async function llmText(o: LlmTextOpts): Promise<string | null> {
   // WS4 reliability: Gemini missed → the caller drops to its deterministic fallback.
   reportReliability({ surface: 'llm.text', providerServed: null, fallbackDepth: 1, degraded: true });
   // ⚠️ NO SECOND PROVIDER IS TRIED (R7) — this null IS the explicit failure. It is almost always an operational gap
-  // (the Gemini key absent or dead, or a Gemini outage), so log loudly with the transport's state instead of letting the
+  // (Vertex AI not configured, or a Gemini outage), so log loudly with the transport's state instead of letting the
   // caller's generic fallback (deterministic camera beats, the skeleton deck, untranslated lines) hide the cause.
-  console.error('[llmText] Gemini missed — no fallback provider (PROJECT_MASTER R7); the caller keeps its deterministic fallback. Check the Gemini key.', {
-    gemini: googleTransportBlocker(resolveGeminiKey()) ?? 'transport ready',
+  console.error('[llmText] Gemini missed — no fallback provider (PROJECT_MASTER R7); the caller keeps its deterministic fallback. Check the Vertex AI configuration.', {
+    gemini: googleTransportBlocker() ?? 'transport ready',
   });
   return null;
 }

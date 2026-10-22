@@ -2,10 +2,9 @@
 /**
  * lib/models/verify — runtime verification of the ModelCatalog (Section D2).
  *
- * Pinned: on the Gemini API it reads the key's model list (key in the header, never the URL; paged), switches off an
- * enabled id the runtime lacks, puts runtime ids it does not know in the review queue and never adds them; on Vertex it
- * asks countTokens (never generateContent) per text / image / music entry and switches off only on a 404; a failed check
- * changes nothing; presence never stamps verifiedAt; results are cached per transport.
+ * Pinned (MASTER TASK v3.1, Vertex only): it asks Vertex countTokens (never generateContent) per text / image / music
+ * entry and switches off only on a 404; it never reads the Developer API's model list, whatever key is set; a failed
+ * check changes nothing; presence never stamps verifiedAt; results are cached per transport.
  * Only the token mint is mocked; fetch is a spy; nothing reaches the network.
  */
 jest.mock('server-only', () => ({}));
@@ -14,7 +13,6 @@ jest.mock('../veo/vertexAuth', () => ({
   getVertexAccessToken: jest.fn(async () => 'vertex-token'),
 }));
 
-import type { ModelCatalog } from '@/lib/contracts/modelCatalog';
 import { MODEL_CATALOG } from './catalog';
 import { __resetModelCatalogCache, applyCatalogCheck, checkModelCatalog, verifiedModelCatalog } from './verify';
 
@@ -29,9 +27,6 @@ const ENV = ['GEMINI_TRANSPORT', 'GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GE
 const saved: Record<string, string | undefined> = {};
 let fetchSpy: jest.SpyInstance;
 
-const listing = (ids: string[], nextPageToken?: string) =>
-  new Response(JSON.stringify({ models: ids.map((id) => ({ name: `models/${id}` })), ...(nextPageToken ? { nextPageToken } : {}) }), { status: 200 });
-const catalogIds = (pred: (e: ModelCatalog['entries'][number]) => boolean) => MODEL_CATALOG.entries.filter(pred).map((e) => e.id);
 
 beforeEach(() => {
   __resetModelCatalogCache();
@@ -50,62 +45,25 @@ afterEach(() => {
   }
 });
 
-describe('gemini_api (models.list)', () => {
+describe('the Developer API model list is never read', () => {
   beforeEach(() => {
     process.env.GEMINI_API_KEY = 'AIzaTestKey1234567890123456789012345';
   });
 
-  it('pages the list with the key in a header, switches off what is missing, and queues what is unknown', async () => {
-    const everything = catalogIds((e) => e.transport !== 'vertex' && e.family !== 'specialty');
-    const withoutImagen = everything.filter((id) => id !== 'imagen-4.0-generate-001');
-    fetchSpy
-      .mockResolvedValueOnce(listing(withoutImagen.slice(0, 5), 'p2'))
-      .mockResolvedValueOnce(listing([...withoutImagen.slice(5), 'gemini-9.9-flash', 'aqa']));
+  it('a key alone (Vertex unconfigured): ok:false, no request, nothing switched off', async () => {
     const check = await checkModelCatalog();
-
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    const [url1, init1] = fetchSpy.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
-    expect(url1).toBe('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000');
-    expect(url1).not.toContain('AIza');
-    expect(init1.headers['x-goog-api-key']).toBe('AIzaTestKey1234567890123456789012345');
-    expect(init1.redirect).toBe('manual');
-    expect(String(fetchSpy.mock.calls[1]![0])).toContain('pageToken=p2');
-
-    expect(check).toMatchObject({ ok: true, transport: 'gemini_api', method: 'models.list', missing: ['imagen-4.0-generate-001'] });
-    expect(check.reviewQueue).toEqual(['aqa', 'gemini-9.9-flash']);
-    expect(check.unchecked).toEqual(expect.arrayContaining(['veo-3.1-fast-generate-001', 'deep-research-preview-04-2026']));
-
-    const applied = applyCatalogCheck(MODEL_CATALOG, check);
-    expect(applied.entries.find((e) => e.id === 'imagen-4.0-generate-001')?.enabled).toBe(false);
-    expect(applied.entries.some((e) => e.id === 'gemini-9.9-flash')).toBe(false); // never auto-added
-    // Presence does not stamp verifiedAt: Imagen-free listing leaves every other entry exactly as it was.
-    const untouched = applied.entries.filter((e) => e.id !== 'imagen-4.0-generate-001');
-    expect(untouched).toEqual(MODEL_CATALOG.entries.filter((e) => e.id !== 'imagen-4.0-generate-001'));
-    expect(MODEL_CATALOG.entries.find((e) => e.id === 'imagen-4.0-generate-001')?.enabled).toBe(true); // input untouched
-  });
-
-  it('a failed list changes nothing, says ok:false and redacts the key', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('bad key AIzaTestKey1234567890123456789012345', { status: 403 }));
-    const check = await checkModelCatalog();
-    expect(check).toMatchObject({ ok: false, missing: [], method: 'models.list' });
-    expect(JSON.stringify(check)).not.toContain('AIzaTestKey');
+    expect(check).toMatchObject({ ok: false, transport: 'vertex', method: 'none', missing: [] });
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(applyCatalogCheck(MODEL_CATALOG, check)).toBe(MODEL_CATALOG);
   });
 
-  it('caches per transport; a failed check is not cached', async () => {
-    fetchSpy.mockImplementation(async () => listing(catalogIds((e) => e.transport !== 'vertex')));
-    await verifiedModelCatalog();
-    await verifiedModelCatalog();
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    await verifiedModelCatalog({ force: true });
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-
-    __resetModelCatalogCache();
-    fetchSpy.mockReset();
-    fetchSpy.mockImplementation(async () => new Response('down', { status: 503 }));
-    await verifiedModelCatalog();
-    await verifiedModelCatalog();
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  it('GEMINI_TRANSPORT=gemini_api, even with Vertex configured: ok:false, no request', async () => {
+    process.env.GEMINI_TRANSPORT = 'gemini_api';
+    Object.assign(process.env, WIF);
+    const check = await checkModelCatalog();
+    expect(check).toMatchObject({ ok: false, transport: 'invalid', method: 'none', missing: [] });
+    expect(JSON.stringify(check)).not.toContain('AIzaTestKey');
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -134,6 +92,26 @@ describe('vertex (countTokens)', () => {
     expect(check.present).toEqual(expect.arrayContaining(['gemini-3.8-flash', 'gemini-3.1-flash-image', 'lyria-3-clip-preview']));
     expect(check.errors).toEqual([expect.objectContaining({ id: 'gemini-3.6-flash', status: 429 })]);
     expect(check.unchecked).toContain('gemini-3.6-flash');
+  });
+
+  it('caches per transport; a failed check is not cached', async () => {
+    fetchSpy.mockImplementation(async () => new Response('{"totalTokens":1}', { status: 200 }));
+    await verifiedModelCatalog();
+    const perCheck = fetchSpy.mock.calls.length;
+    expect(perCheck).toBeGreaterThan(0);
+    await verifiedModelCatalog();
+    expect(fetchSpy).toHaveBeenCalledTimes(perCheck);
+    await verifiedModelCatalog({ force: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(2 * perCheck);
+
+    __resetModelCatalogCache();
+    fetchSpy.mockClear();
+    const project = process.env.GCP_PROJECT_ID;
+    delete process.env.GCP_PROJECT_ID;
+    expect((await verifiedModelCatalog()).check.ok).toBe(false);
+    process.env.GCP_PROJECT_ID = project;
+    expect((await verifiedModelCatalog()).check.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(perCheck);
   });
 
   it('unconfigured Vertex: ok:false, no request, nothing switched off, the API key is not used instead', async () => {

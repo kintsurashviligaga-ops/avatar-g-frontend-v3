@@ -1,8 +1,27 @@
 /** @jest-environment node */
+jest.mock('server-only', () => ({}));
 jest.mock('./geminiFallbackReport', () => ({ reportGeminiFallback: jest.fn() }));
+jest.mock('../veo/vertexAuth', () => ({
+  ...jest.requireActual('../veo/vertexAuth'),
+  getVertexAccessToken: jest.fn(async () => 'vertex-token'),
+}));
 
 import { mapImagenAspect, geminiImagenModel, hasGeminiImagenProvider, generateImagenImages } from './geminiImagen';
 import { reportGeminiFallback } from './geminiFallbackReport';
+
+/** Vertex AI with Workload Identity (MASTER TASK v3.1: the only transport). Only the token mint is mocked. */
+const WIF = {
+  GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+  GCP_PROJECT_NUMBER: '467145118875',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+};
+const ENV = ['GEMINI_IMAGEN_MODEL', 'GEMINI_IMAGEN_ENABLED', 'GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GENERATIVE_AI_API_KEY',
+  'GEMINI_TRANSPORT', 'GEMINI_IMAGE_TRANSPORT', 'GCP_PREDICT_LOCATION', 'GCP_GEMINI_LOCATION', ...Object.keys(WIF)];
+const saved: Record<string, string | undefined> = {};
+beforeEach(() => { for (const k of ENV) { saved[k] = process.env[k]; delete process.env[k]; } });
+afterEach(() => { for (const k of ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
 
 describe('Imagen 4 — aspect mapping', () => {
   it('passes through the five ratios Imagen actually accepts', () => {
@@ -27,22 +46,14 @@ describe('Imagen 4 — aspect mapping', () => {
 });
 
 describe('Imagen 4 — model + kill switch', () => {
-  const SAVE = { model: process.env.GEMINI_IMAGEN_MODEL, on: process.env.GEMINI_IMAGEN_ENABLED, key: process.env.GEMINI_API_KEY };
-  afterEach(() => {
-    process.env.GEMINI_IMAGEN_MODEL = SAVE.model; process.env.GEMINI_IMAGEN_ENABLED = SAVE.on;
-    if (SAVE.key === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = SAVE.key;
-  });
-
   it('defaults to imagen-4.0-generate-001 and is env-overridable', () => {
-    delete process.env.GEMINI_IMAGEN_MODEL;
     expect(geminiImagenModel()).toBe('imagen-4.0-generate-001');
     process.env.GEMINI_IMAGEN_MODEL = 'imagen-4.0-fast-generate-001';
     expect(geminiImagenModel()).toBe('imagen-4.0-fast-generate-001');
   });
 
-  it('is OPT-IN — a present-but-unfunded key must not be tried ahead of FLUX/NanoBanana on every render', () => {
-    process.env.GEMINI_API_KEY = 'test-key';
-    delete process.env.GEMINI_IMAGEN_ENABLED;
+  it('is OPT-IN — a configured but unfunded project must not be tried ahead of the next engine on every render', () => {
+    Object.assign(process.env, WIF);
     expect(hasGeminiImagenProvider()).toBe(false);
     process.env.GEMINI_IMAGEN_ENABLED = '1';
     expect(hasGeminiImagenProvider()).toBe(true);
@@ -50,25 +61,23 @@ describe('Imagen 4 — model + kill switch', () => {
     expect(hasGeminiImagenProvider()).toBe(false);
   });
 
-  it('is OFF without a key — no key can never mean "try anyway"', () => {
-    delete process.env.GEMINI_API_KEY;
-    delete process.env.GEMINI_API_KEYS;
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    delete process.env.GEMINI_IMAGEN_ENABLED;
+  it('is OFF without Vertex — a Developer API key never means "try anyway"', () => {
+    process.env.GEMINI_IMAGEN_ENABLED = '1';
+    process.env.GEMINI_API_KEY = 'test-key';
+    expect(hasGeminiImagenProvider()).toBe(false);
+    Object.assign(process.env, WIF, { GEMINI_IMAGE_TRANSPORT: 'gemini_api' });
     expect(hasGeminiImagenProvider()).toBe(false);
   });
 });
 
-describe('Imagen 4 — the key travels ONLY in the x-goog-api-key header', () => {
+describe('Imagen 4 — Vertex AI only (bearer token, never an API key)', () => {
   const KEY = 'AQ.test-imagen-key-0123456789abcdef';
-  const KEY_VARS = ['GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GEMINI_IMAGEN_MODEL'] as const;
-  const saved: Record<string, string | undefined> = {};
   const realFetch = global.fetch;
   const fetchMock = jest.fn();
   const reported = reportGeminiFallback as jest.MockedFunction<typeof reportGeminiFallback>;
 
   beforeEach(() => {
-    for (const k of KEY_VARS) { saved[k] = process.env[k]; delete process.env[k]; }
+    Object.assign(process.env, WIF);
     process.env.GEMINI_API_KEY = KEY;
     fetchMock.mockReset();
     reported.mockClear();
@@ -76,42 +85,49 @@ describe('Imagen 4 — the key travels ONLY in the x-goog-api-key header', () =>
   });
   afterEach(() => {
     global.fetch = realFetch;
-    for (const k of KEY_VARS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
   });
 
-  it('POSTs :predict with no key in the URL, the key in the header, and redirect: manual', async () => {
+  it('POSTs the regional Vertex :predict with a bearer token, no key anywhere, and redirect: manual', async () => {
     const png = Buffer.from('fake-png-bytes').toString('base64');
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ predictions: [{ bytesBase64Encoded: png, mimeType: 'image/png' }] }), { status: 200 }));
 
-    const out = await generateImagenImages({ prompt: 'a red kite over a green hill' });
+    const out = await generateImagenImages({ prompt: 'a red kite over a green hill', aspectRatio: '4:5' });
 
     expect(out).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict');
-    expect(url).not.toMatch(/[?&]key=/);
-    expect(url).not.toContain(KEY);
-    expect(init.headers['x-goog-api-key']).toBe(KEY);
-    expect(init.headers['Content-Type']).toBe('application/json');
+    expect(url).toBe(
+      'https://us-central1-aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/us-central1/publishers/google/models/imagen-4.0-generate-001:predict',
+    );
+    expect(init.headers.Authorization).toBe('Bearer vertex-token');
+    expect(init.headers['x-goog-api-key']).toBeUndefined();
+    expect(JSON.stringify([url, init.headers])).not.toContain(KEY);
     expect(init.redirect).toBe('manual');
+    expect(JSON.parse(String(init.body))).toEqual({
+      instances: [{ prompt: 'a red kite over a green hill' }],
+      parameters: { sampleCount: 1, aspectRatio: '3:4', personGeneration: 'allow_all' },
+    });
   });
 
-  it('an error body that echoes the key reaches the fallback report redacted', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(`bad request for ${KEY}`, { status: 400 }));
-
+  it.each([
+    ['Vertex is not configured (only a key)', () => { for (const k of Object.keys(WIF)) delete process.env[k]; }],
+    ['GEMINI_IMAGE_TRANSPORT=gemini_api', () => { process.env.GEMINI_IMAGE_TRANSPORT = 'gemini_api'; }],
+    ['GEMINI_TRANSPORT=gemini_api', () => { process.env.GEMINI_TRANSPORT = 'gemini_api'; }],
+  ])('%s → null and nothing is sent', async (_label, arrange) => {
+    arrange();
     expect(await generateImagenImages({ prompt: 'x' })).toBeNull();
-    const { detail, status } = reported.mock.calls[0][0];
-    expect(status).toBe(400);
-    expect(detail).not.toContain(KEY);
-    expect(detail).toContain('[redacted]');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('a thrown fetch error that echoes the key reaches the fallback report redacted', async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError(`Headers.append: "${KEY}" is an invalid header value.`));
-
+  it('an error status → null, reported with the status', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('bad request', { status: 400 }));
     expect(await generateImagenImages({ prompt: 'x' })).toBeNull();
-    const { detail } = reported.mock.calls[0][0];
-    expect(detail).not.toContain(KEY);
-    expect(detail).toContain('[redacted]');
+    expect(reported.mock.calls[0]![0]).toMatchObject({ leg: 'imagen', status: 400, detail: 'bad request' });
+  });
+
+  it('a thrown fetch → null, reported', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    expect(await generateImagenImages({ prompt: 'x' })).toBeNull();
+    expect(reported.mock.calls[0]![0]).toMatchObject({ leg: 'imagen', detail: 'fetch failed' });
   });
 });
