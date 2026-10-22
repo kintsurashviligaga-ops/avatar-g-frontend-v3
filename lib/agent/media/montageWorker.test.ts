@@ -10,8 +10,6 @@ import { errorText } from './montageChat';
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
 import { GAVE_UP, HOLD_ABANDONED, srcQcTimes, sweepMontageJobs, workMontageJob } from './montageWorker';
 import { FILES, MASTER_URL, TRACK, USER, balance, clip, fake, type Fake, type RenderOpts } from './testing/fakeMontageDeps';
-import { signQuote } from './quoteToken';
-import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 
 const OK = (req: { shots: unknown[]; aspect: string }): MontageOutcome => ({
   ok: true, result: { videoUrl: MASTER_URL, durationSec: 30, shots: req.shots.length, aspect: req.aspect, bridged: 0, hasMusic: true, stepsRun: ['resolve', 'stitch', 'music'] },
@@ -29,10 +27,14 @@ function heldRender() {
 
 /** Quote → (priced?) → queued. Returns the job id. */
 async function queued(f: Fake, credits = 0): Promise<string> {
+  // A priced montage is the executor's price hook: the quote signs it and the run requires it again. Only this
+  // quote and its run are priced; the fake's own price comes back after.
+  const before = f.deps.price;
+  if (credits > 0) f.deps.price = () => credits;
   const q = await quoteMontage(f.deps, { userId: USER, files: FILES });
   if (!q.ok) throw new Error(q.error);
-  const token = credits > 0 ? signQuote({ u: USER, j: q.quote.jobId, f: bodyFingerprint(q.request), c: credits, x: f.clock.now + 60_000 }, 'k')! : q.token;
-  const r = await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token });
+  const r = await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token: q.token });
+  f.deps.price = before;
   if (!r.ok) throw new Error(r.error);
   return q.quote.jobId;
 }
@@ -410,12 +412,12 @@ describe('sweep', () => {
 
   test('a charge whose request died mid-way (billing hold abandoned) is failed and paid back', async () => {
     const f = fake();
+    f.deps.price = () => 7;
     const q = await quoteMontage(f.deps, { userId: USER, files: FILES });
     if (!q.ok) throw new Error(q.error);
-    const token = signQuote({ u: USER, j: q.quote.jobId, f: bodyFingerprint(q.request), c: 7, x: f.clock.now + 60_000 }, 'k')!;
     // The request charged, then died before it could release the row to the workers.
     f.store.beforeCas = () => { f.store.down = true; };
-    await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token });
+    await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token: q.token });
     f.store.beforeCas = undefined;
     f.store.down = false;
     const id = q.quote.jobId;

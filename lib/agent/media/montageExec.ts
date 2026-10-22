@@ -68,7 +68,7 @@ import {
   type AgentMontageRequest,
   type MontageManifestItem,
 } from './montageManifest';
-import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
+import { QUOTE_TTL_MS, quoteBinding, signQuote, verifyQuote } from './quoteToken';
 import { selectSources } from './sourceSelect';
 import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 
@@ -78,6 +78,10 @@ import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/app
  * function's own ffmpeg. A non-zero price turns on the reserve → refund path below, which is tested with one.
  */
 export const MONTAGE_PRICE_CREDITS = 0;
+
+/** What the quote binds a montage to (lib/agent/media/quoteToken v2): this server's ffmpeg, a flat price. */
+export const montageQuoteBinding = () => quoteBinding({ cap: 'media.montage', model: MONTAGE_ENGINE.id, transport: 'local', units: 1 });
+const montagePrice = (deps: Pick<MontageExecDeps, 'price'>) => deps.price?.() ?? MONTAGE_PRICE_CREDITS;
 
 export type FileRef = { ok: true; url: string } | { ok: false; reason: 'not_yours' | 'unreadable' };
 
@@ -136,6 +140,8 @@ export interface MontageExecDeps {
   newId(): string;
   /** Calls `tick` every `ms` until the returned function is called (the worker's heartbeat). */
   every(ms: number, tick: () => Promise<void>): () => void;
+  /** The price in credits, MONTAGE_PRICE_CREDITS when absent. The quote signs it and the run requires it again. */
+  price?(): number;
 }
 
 export type MontageErrorCode =
@@ -561,9 +567,9 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
 
   // ── price + sign ───────────────────────────────────────────────────────────────────────────────────────────────
   const jobId = deps.newId();
-  const credits = MONTAGE_PRICE_CREDITS;
+  const credits = montagePrice(deps);
   const expiresAt = deps.now() + QUOTE_TTL_MS;
-  const token = signQuote({ u: userId, j: jobId, f: bodyFingerprint(request), c: credits, x: expiresAt }, deps.key());
+  const token = signQuote({ u: userId, j: jobId, f: bodyFingerprint(request), c: credits, x: expiresAt }, deps.key(), montageQuoteBinding());
   if (!token) return refuse(err('not_configured', 'Quotes cannot be signed on this server.'));
 
   const quote: MontageQuote = {
@@ -695,11 +701,15 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
   }
   const { request, manifest } = parsed;
 
-  const check = verifyQuote(input.token, deps.key(), { userId, fingerprint: bodyFingerprint(request), now: deps.now() });
+  const check = verifyQuote(input.token, deps.key(), {
+    userId, fingerprint: bodyFingerprint(request), now: deps.now(), credits: montagePrice(deps), binding: montageQuoteBinding(),
+  });
   if (!check.ok) {
-    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'refused', detail: `quote_${check.reason}` });
+    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'refused', detail: `quote_${check.reason}${check.reason === 'changed' ? `:${check.field}` : ''}` });
     if (check.reason === 'expired') return err('quote_expired', 'This quote has expired. Ask again for a fresh one.');
-    if (check.reason === 'changed') return err('quote_changed', 'The edit differs from the one quoted.');
+    if (check.reason === 'changed') {
+      return err('quote_changed', check.field === 'fingerprint' ? 'The edit differs from the one quoted.' : 'The price or the engine changed since the quote. Ask again for a fresh one.');
+    }
     return err('quote_invalid', 'This quote is not valid.');
   }
   const { j: jobId, c: credits } = check.claims;

@@ -1,6 +1,6 @@
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { quoteCredits } from '@/lib/credits/quote';
-import { signQuote, verifyQuote, QUOTE_TTL_MS } from '@/lib/agent/media/quoteToken';
+import { signQuote, verifyQuote, quoteBinding, QUOTE_TTL_MS } from '@/lib/agent/media/quoteToken';
 import {
   enqueue, release, cancel, claim, heartbeat, mustStop, complete, fail, settled, reap, claimable, HEARTBEAT_MS,
   type LeaseRow, type LeaseStore,
@@ -50,6 +50,8 @@ const stateOf = (row: LeaseRow): ImageState => row.params._image as ImageState;
 const reserveOf = (row: LeaseRow) => row.params._reserve as { ref: string; credits: number };
 const fingerprint = (plan: ImagePlan) => bodyFingerprint({ domain: IMAGE_KIND, plan });
 const price = () => quoteCredits({ tool: 'image', count: 1 });
+/** What the quote binds (lib/agent/media/quoteToken v2): the plan's model on the transport that will run it, one image. */
+export const imageQuoteBinding = (model: string, transport: ImageTransport) => quoteBinding({ cap: 'image.studio', model, transport, units: 1 });
 const isImage = (row: LeaseRow | null, userId?: string): row is LeaseRow =>
   !!row && row.exec?.kind === IMAGE_KIND && (!userId || row.userId === userId);
 
@@ -81,7 +83,7 @@ export async function quoteImage(deps: ImageDeps, userId: string, value: unknown
   }
   const plan: ImagePlan = { v: 1, kind: IMAGE_KIND, request, transport: deps.transport, references };
   const jobId = deps.newId(), credits = price(), expiresAt = deps.now() + QUOTE_TTL_MS;
-  const token = signQuote({ u: userId, j: jobId, f: fingerprint(plan), c: credits, x: expiresAt }, deps.key());
+  const token = signQuote({ u: userId, j: jobId, f: fingerprint(plan), c: credits, x: expiresAt }, deps.key(), imageQuoteBinding(request.modelId, deps.transport));
   if (!token) throw new ImageError('not_configured', 'Image quotes are unavailable.', 503);
   await deps.audit({ userId, jobId, phase: 'quote', code: 'prepared', credits });
   return { ok: true as const, jobId, credits, expiresAt, plan, token,
@@ -135,10 +137,16 @@ async function refusePending(deps: ImageDeps, row: LeaseRow, code: string, owe: 
 export async function startImage(deps: ImageDeps, userId: string, value: unknown, token: unknown, confirmed: unknown) {
   if (confirmed !== true) throw new ImageError('confirmation_required', 'Confirm the displayed image quote before starting.', 400);
   const plan = parseImagePlan(value);
-  const signed = verifyQuote(token, deps.key(), { userId, fingerprint: fingerprint(plan), now: deps.now() });
-  if (!signed.ok) throw new ImageError(signed.reason === 'expired' ? 'quote_expired' : signed.reason === 'changed' ? 'quote_changed' : 'quote_invalid', 'The quote is invalid, changed or expired.', 409);
+  // The binding is built from the transport that will run it now, so a changed transport, project or price is refused.
+  const signed = verifyQuote(token, deps.key(), {
+    userId, fingerprint: fingerprint(plan), now: deps.now(), credits: price(), binding: imageQuoteBinding(plan.request.modelId, deps.transport),
+  });
+  if (!signed.ok) {
+    if (signed.reason === 'changed' && signed.field !== 'fingerprint') throw new ImageError('quote_changed', 'The transport or price changed. Request a new quote.', 409);
+    throw new ImageError(signed.reason === 'expired' ? 'quote_expired' : signed.reason === 'changed' ? 'quote_changed' : 'quote_invalid', 'The quote is invalid, changed or expired.', 409);
+  }
   validateCapability(plan.request, deps.transport);
-  if (plan.transport !== deps.transport || signed.claims.c !== price()) throw new ImageError('quote_changed', 'The transport or price changed. Request a new quote.', 409);
+  if (plan.transport !== deps.transport) throw new ImageError('quote_changed', 'The transport or price changed. Request a new quote.', 409);
   const { j: id, c: credits } = signed.claims;
   const existing = await deps.store.read(id);
   if (existing) {

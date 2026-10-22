@@ -32,12 +32,19 @@ describe('quote fingerprint', () => {
 
 describe('quote → confirmation', () => {
   const raw = { topic: 'Tbilisi' };
-  const q = issueServiceQuote({ service: 'presentation', userId: U, raw, credits: 15, jobId: 'job-1', now: 1000 }, KEY)!;
-  const ok = (over: Partial<{ raw: unknown; credits: number; now: number; userId: string; key: string; service: 'dubbing' | 'presentation' }> = {}) =>
-    checkServiceConfirmation({ service: over.service ?? 'presentation', userId: over.userId ?? U, raw: over.raw ?? { ...raw, quoteToken: q.token, confirm: true }, credits: over.credits ?? 15, now: over.now ?? 2000 }, over.key ?? KEY);
+  const q = issueServiceQuote({ service: 'presentation', userId: U, raw, credits: 15, units: 1, jobId: 'job-1', now: 1000 }, KEY)!;
+  const ok = (over: Partial<{ raw: unknown; credits: number; units: number; now: number; userId: string; key: string; service: 'dubbing' | 'presentation' }> = {}) =>
+    checkServiceConfirmation({ service: over.service ?? 'presentation', userId: over.userId ?? U, raw: over.raw ?? { ...raw, quoteToken: q.token, confirm: true }, credits: over.credits ?? 15, units: over.units ?? 1, now: over.now ?? 2000 }, over.key ?? KEY);
+  const ENV = { ...process.env };
+  afterEach(() => { process.env = { ...ENV }; });
 
   it('accepts the exact quote, confirmed, in time, at the same price', () => {
-    expect(ok()).toEqual({ ok: true, claims: expect.objectContaining({ j: 'job-1', c: 15, u: U }) });
+    expect(ok()).toEqual({ ok: true, claims: expect.objectContaining({ j: 'job-1', c: 15, u: U }), version: 2 });
+  });
+  it('binds the units priced and the Google Cloud project billed (quote token v2)', () => {
+    expect(ok({ units: 2 })).toMatchObject({ ok: false, reason: 'price_changed' });
+    process.env.GCP_PROJECT_ID = 'another-project';
+    expect(ok()).toMatchObject({ ok: false, reason: 'changed', field: 'project' });
   });
   it('refuses everything else', () => {
     expect(ok({ raw: { ...raw, quoteToken: q.token } })).toMatchObject({ ok: false, reason: 'not_confirmed' });
@@ -51,7 +58,7 @@ describe('quote → confirmation', () => {
     expect(ok({ key: '' })).toMatchObject({ ok: false, reason: 'invalid' });
   });
   it('no key ⇒ no quote', () => {
-    expect(issueServiceQuote({ service: 'presentation', userId: U, raw, credits: 15, jobId: 'j', now: 1 }, '')).toBeNull();
+    expect(issueServiceQuote({ service: 'presentation', userId: U, raw, credits: 15, units: 1, jobId: 'j', now: 1 }, '')).toBeNull();
   });
   it('tells a quote request from a confirmation', () => {
     expect(wantsToConfirm({ topic: 'x' })).toBe(false);

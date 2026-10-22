@@ -26,13 +26,16 @@ import type { BannerProbe } from '@/lib/video/probeBanner';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { cancel, claimable, enqueue, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
 import { classifySource, mp3NameFor } from './audioSource';
-import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
+import { QUOTE_TTL_MS, quoteBinding, signQuote, verifyQuote } from './quoteToken';
 import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 import type { AuditEvent, FileRef } from './montageExec';
 
 /** generation_jobs rows of Agent G's audio extractions carry this queue kind in params._exec. */
 export const AUDIO_KIND = 'agent-audio-extract';
 export const AUDIO_PRICE_CREDITS = 0;
+
+/** What the quote binds an extraction to (./quoteToken v2): this server's ffmpeg, a flat price. */
+export const audioQuoteBinding = () => quoteBinding({ cap: 'media.audio_extract', model: 'ffmpeg-audio', transport: 'local', units: 1 });
 /** The MP3 Agent G makes: constant bitrate, stereo, 44.1 kHz (every player and editor takes it). */
 export const MP3_BITRATE_KBPS = 192;
 /** The longest source it takes (an hour of sound is ~86 MB of MP3 and well inside one worker's 600 s). */
@@ -251,7 +254,7 @@ export async function quoteAudioExtract(deps: AudioExecDeps, input: AudioQuoteIn
   const jobId = deps.newId();
   const credits = AUDIO_PRICE_CREDITS;
   const expiresAt = deps.now() + QUOTE_TTL_MS;
-  const token = signQuote({ u: userId, j: jobId, f: bodyFingerprint(request), c: credits, x: expiresAt }, deps.key());
+  const token = signQuote({ u: userId, j: jobId, f: bodyFingerprint(request), c: credits, x: expiresAt }, deps.key(), audioQuoteBinding());
   if (!token) return refuse(err('not_configured', 'Quotes cannot be signed on this server.'));
 
   const quote: AudioQuote = {
@@ -305,11 +308,15 @@ export async function enqueueAudioJob(deps: AudioExecDeps, input: AudioRunInput)
   const approval = input.approval ?? TAP;
   const request = validateAudioRequest(input.request);
   if (!request) return err('invalid_request', 'The plan is not valid.');
-  const check = verifyQuote(input.token, deps.key(), { userId, fingerprint: bodyFingerprint(request), now: deps.now() });
+  const check = verifyQuote(input.token, deps.key(), {
+    userId, fingerprint: bodyFingerprint(request), now: deps.now(), credits: AUDIO_PRICE_CREDITS, binding: audioQuoteBinding(),
+  });
   if (!check.ok) {
-    await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: 'refused', detail: `quote_${check.reason}` });
+    await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: 'refused', detail: `quote_${check.reason}${check.reason === 'changed' ? `:${check.field}` : ''}` });
     if (check.reason === 'expired') return err('quote_expired', 'This plan has expired. Ask again for a fresh one.');
-    if (check.reason === 'changed') return err('quote_changed', 'The plan differs from the one quoted.');
+    if (check.reason === 'changed') {
+      return err('quote_changed', check.field === 'fingerprint' ? 'The plan differs from the one quoted.' : 'The price or the engine changed since the plan. Ask again for a fresh one.');
+    }
     return err('quote_invalid', 'This plan is not valid.');
   }
   const jobId = check.claims.j;

@@ -34,11 +34,13 @@ export async function startConfirmedJob(input: {
   userId: string;
   raw: unknown;
   credits: number;
+  /** What the price counts (dubbing: started minutes; presentation: decks), as the quote was issued with. */
+  units: number;
   serviceType: ProduceKind;
   params: Record<string, unknown>;
   now?: number;
 }): Promise<{ ok: true; job: ConfirmedJob } | { ok: false; response: NextResponse }> {
-  const check = checkServiceConfirmation({ service: input.service, userId: input.userId, raw: input.raw, credits: input.credits, now: input.now ?? Date.now() });
+  const check = checkServiceConfirmation({ service: input.service, userId: input.userId, raw: input.raw, credits: input.credits, units: input.units, now: input.now ?? Date.now() });
   if (!check.ok) {
     return {
       ok: false,

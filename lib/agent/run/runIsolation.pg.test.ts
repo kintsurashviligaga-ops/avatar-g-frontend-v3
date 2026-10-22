@@ -17,7 +17,8 @@
  *   H  another user can neither steer the run nor use its files or its results.
  *
  * The montage, the extraction and the edit are free today (0 credits). To exercise the price, the approval and the
- * ledger, F and G raise the cut's quote to 7 credits, signed with the same key. Nothing else changes.
+ * ledger, F and G price the cut at 7 credits through the montage executor's price hook, which its quote signs and its
+ * run requires again. Nothing else changes.
  *
  * Opt-in: runs only when LEASE_PG_REST_URL and LEASE_PG_JWT_SECRET point at this machine (run.sh sets them).
  */
@@ -91,10 +92,9 @@ jest.mock('../../orchestrator/storage-adapter', () => {
 
 import ffmpegStatic from 'ffmpeg-static';
 import { LEASE_MS } from '@/lib/orchestrator/jobLease';
-import { bodyFingerprint, produceRef } from '@/lib/orchestrator/idemRef';
+import { produceRef } from '@/lib/orchestrator/idemRef';
 import { probeMedia } from '@/lib/services/montage/beatAnalysis';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
-import { signQuote } from '@/lib/agent/media/quoteToken';
 import { KICK_AFTER_MS, MONTAGE_KIND, type AuditEvent, type FileRef, type MontageExecDeps } from '@/lib/agent/media/montageExec';
 import { liveMontageDeps } from '@/lib/agent/media/montageLive';
 import { sweepMontageJobs, workMontageJob } from '@/lib/agent/media/montageWorker';
@@ -105,7 +105,7 @@ import { EDIT_KIND, type EditExecDeps } from '@/lib/agent/media/editExec';
 import { liveEditDeps } from '@/lib/agent/media/editLive';
 import { workEditJob } from '@/lib/agent/media/editWorker';
 import { RUN_KIND, isTerminalRun, stepOf } from './runEngine';
-import { approveStep, cancelRun, planRun, readRun, resumeRun, startRun, tickRun, type RunExecDeps, type RunRead, type StepAdapter } from './runExec';
+import { approveStep, cancelRun, planRun, readRun, resumeRun, startRun, tickRun, type RunExecDeps, type RunRead } from './runExec';
 import { audioAdapter, editAdapter, montageAdapter } from './runAdapters';
 import { liveRunDeps } from './runLive';
 
@@ -154,20 +154,6 @@ interface World {
   drain(): Promise<Array<{ ran: boolean; outcome?: string; reason?: string }>>;
 }
 
-/** The cut, priced: the montage's real quote, signed again at `credits` with the same key (the only change). */
-function priced(base: StepAdapter, credits: number): StepAdapter {
-  return {
-    ...base,
-    async quote(userId, step) {
-      const q = await base.quote(userId, step);
-      if (!q.ok) return q;
-      const token = signQuote({ u: userId, j: q.quote.taskId, f: bodyFingerprint(q.quote.request), c: credits, x: q.quote.expiresAt }, KEY);
-      if (!token) return { ok: false, error: 'not_configured' };
-      return { ok: true, quote: { ...q.quote, credits, token } };
-    },
-  };
-}
-
 /** One server process: the live wiring of every executor and of the run, with storage, the audit trail, the key and the clock local. */
 function world(opts: { cutCredits?: number } = {}): World {
   const audits: AuditEvent[] = [];
@@ -180,7 +166,7 @@ function world(opts: { cutCredits?: number } = {}): World {
     newId: () => randomUUID(),
     every: (_ms: number, tick: () => Promise<void>) => { ticks.add(tick); return () => { ticks.delete(tick); }; },
   };
-  const montage: MontageExecDeps = { ...liveMontageDeps(), ...common };
+  const montage: MontageExecDeps = { ...liveMontageDeps(), ...common, ...(opts.cutCredits ? { price: () => opts.cutCredits! } : {}) };
   const audio: AudioExecDeps = { ...liveAudioDeps(), ...common };
   const edit: EditExecDeps = { ...liveEditDeps(), ...common };
   const workers: World['workers'] = [];
@@ -188,7 +174,7 @@ function world(opts: { cutCredits?: number } = {}): World {
   const cut = montageAdapter(() => montage);
   const run: RunExecDeps = {
     ...liveRunDeps(),
-    adapters: { montage: opts.cutCredits ? priced(cut, opts.cutCredits) : cut, audio_extract: audioAdapter(() => audio), edit: editAdapter(() => edit) },
+    adapters: { montage: cut, audio_extract: audioAdapter(() => audio), edit: editAdapter(() => edit) },
     startWorker(kind, taskId) {
       const worker = `w-${(n += 1)}`;
       if (kind === MONTAGE_KIND) workers.push(workMontageJob(montage, { jobId: taskId, worker }));

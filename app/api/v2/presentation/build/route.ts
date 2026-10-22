@@ -55,7 +55,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // No SSRF surface here: every input is text, and the only URLs fetched are ones this server generated.
   const cost = creditCostFor('presentation');
   if (!wantsToConfirm(body)) {
-    const quote = issueServiceQuote({ service: 'presentation', userId: user.id, raw: body, credits: cost, jobId: randomUUID(), now: Date.now() });
+    const quote = issueServiceQuote({ service: 'presentation', userId: user.id, raw: body, credits: cost, units: deckUnits(), jobId: randomUUID(), now: Date.now() });
     if (!quote) return NextResponse.json({ error: 'billing_unavailable' }, { status: 503 });
     return NextResponse.json({ requiresConfirm: true, quote });
   }
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     userId: user.id,
     raw: body,
     credits: cost,
+    units: deckUnits(),
     serviceType: 'image',
     params: { subtype: 'presentation', slides: request.slideCount, language: request.language },
   });

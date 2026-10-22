@@ -283,14 +283,22 @@ describe('cancel', () => {
 });
 
 describe('when an edit has a price (the path a priced service takes)', () => {
-  // The price is a module constant (free, by the owner's choice); a priced quote is signed here the way quote() would.
+  // The price is a module constant (free, by the owner's choice); a priced deployment is the executor's `price` hook,
+  // which the quote signs and the run requires again.
   async function pricedQuote(f: Fake, credits: number) {
-    const q = await quoted(f);
-    const { signQuote } = await import('./quoteToken');
-    const { bodyFingerprint } = await import('@/lib/orchestrator/idemRef');
-    const token = signQuote({ u: USER, j: q.quote.jobId, f: bodyFingerprint(q.request), c: credits, x: f.clock.now + 1000 }, 'k')!;
-    return { ...q, token };
+    f.deps.price = () => credits;
+    return quoted(f);
   }
+
+  test('the quote signs the price; a run after the price changed is refused before any row or charge', async () => {
+    const f = fake();
+    const q = await pricedQuote(f, 7);
+    expect(q.quote.credits).toBe(7);
+    f.deps.price = () => 9;
+    expect(await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token: q.token })).toMatchObject({ ok: false, error: 'quote_changed' });
+    expect(f.store.rows.size).toBe(0);
+    expect(f.reserves).toHaveLength(0);
+  });
 
   test('charged under the job id after the row exists, then released to the workers', async () => {
     const f = fake();
