@@ -4,7 +4,7 @@
  *
  *   · a guest is refused before the upload is parsed or any engine runs; the per-user STT cap applies;
  *   · Google-only (the default) calls Gemini ONLY — never Replicate, OpenAI or Deepgram — with the container fix;
- *   · the legacy cascade still runs under AI_GOOGLE_ONLY=0;
+ *   · no env value restores the legacy cascade (MASTER TASK v3.1, audit F-04);
  *   · ?diag=1 is admin-only (the email allowlist), and never carries a credential;
  *   · Gemini usage is booked with the user id; a Latin "transcript" of Georgian is still rejected;
  *   · v3.1: Gemini is reached on Vertex AI with a Workload Identity token; an AI Studio key is never read or sent.
@@ -46,7 +46,7 @@ jest.mock('../../../../lib/auth/adminGuard', () => ({
   effectiveAdminAllowlist: jest.fn(async () => ['admin@example.com']),
 }));
 
-// The non-Google engines. Any call to these under AI_GOOGLE_ONLY is a failure.
+// The non-Google engines the route used to cascade to. Any call to these is a failure.
 jest.mock('../../../../lib/voice-v2v/providers', () => ({
   transcribeRealtimePcmChunk: jest.fn(async () => ({ text: 'from openai', provider: 'openai' })),
 }));
@@ -240,18 +240,17 @@ test('Google-only: GEMINI_TRANSPORT=gemini_api (the Developer API) → stt_unava
   expect(openaiMock).not.toHaveBeenCalled();
 });
 
-test('AI_GOOGLE_ONLY=0 restores the legacy cascade (Georgian → Replicate first)', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  const res = await POST(upload({ language: 'ka-GE', type: 'audio/webm' }));
-  expect(await res.json()).toEqual({ text: 'გამარჯობა replicate', provider: 'replicate-whisper', language: 'ka-GE' });
-  expect(replicateMock).toHaveBeenCalledTimes(1);
-  expect(fetchSpy).not.toHaveBeenCalled();
-});
-
-test('AI_GOOGLE_ONLY=0, English: the primary engine answers first', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  const res = await POST(upload({ language: 'en-US' }));
-  expect(await res.json()).toEqual({ text: 'from openai', provider: 'openai', language: 'en-US' });
+test.each([
+  ['ka-GE', { AI_GOOGLE_ONLY: '0' }],
+  ['ka-GE', { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' }],
+  ['en-US', { AI_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' }],
+])('%s with %p: the legacy cascade stays gone, Gemini on Vertex AI answers alone', async (language, env) => {
+  Object.assign(process.env, env);
+  const res = await POST(upload({ language }));
+  expect(await res.json()).toMatchObject({ text: 'გამარჯობა', provider: 'gemini' });
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  expect(replicateMock).not.toHaveBeenCalled();
+  expect(openaiMock).not.toHaveBeenCalled();
 });
 
 test('?diag=1 from a non-admin is ignored (plain answer, no upstream detail)', async () => {

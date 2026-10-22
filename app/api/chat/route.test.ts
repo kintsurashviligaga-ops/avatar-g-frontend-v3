@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
  * POST /api/chat — the widgets' JSON chat follows the product chat's rules: sign-in, the per-account daily allowance,
- * Google only by default (the OpenAI-backed chatEngine is not called), no provider wording in the response, and a
- * fallback cache that never serves one account's answer to another. Everything external is mocked.
+ * Google only whatever the env says (the OpenAI-backed chatEngine and Anthropic are never called), no provider wording
+ * in the response, and no account ever served another account's answer. Everything external is mocked.
  */
 jest.mock('server-only', () => ({}));
 
@@ -105,16 +105,21 @@ test('Google-only failure: a generic localized notice, no provider wording, no d
   expect(mockAnthropicCall).not.toHaveBeenCalled();
 });
 
-test('multi-vendor fallback cache is scoped per account — one user never gets another user\'s answer', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  mockExecute.mockRejectedValue(new Error('429 quota exceeded'));
-  mockGemini.mockResolvedValueOnce(reply('Your name is Nino'));
-  const first = JSON.stringify(await data(await POST(post({ message: 'what is my name?' }))));
-  expect(first).toContain('Nino');
+test.each([{ AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-anthropic' }])(
+  'env %p re-opens nothing: Gemini answers each account, chatEngine and Anthropic are never called (MASTER TASK v3.1)',
+  async (env) => {
+    Object.assign(process.env, env);
+    mockExecute.mockResolvedValue({ text: 'from chatEngine', model: 'gpt' });
+    mockGemini.mockResolvedValueOnce(reply('Your name is Nino'));
+    const first = JSON.stringify(await data(await POST(post({ message: 'what is my name?' }))));
+    expect(first).toContain('Nino');
 
-  mockAuth = { userId: OTHER };
-  mockGemini.mockResolvedValueOnce(reply('I do not know your name yet'));
-  const second = JSON.stringify(await data(await POST(post({ message: 'what is my name?' }))));
-  expect(second).not.toContain('Nino');
-  expect(second).toContain('I do not know your name yet');
-});
+    mockAuth = { userId: OTHER };
+    mockGemini.mockResolvedValueOnce(failed);
+    const second = JSON.stringify(await data(await POST(post({ message: 'what is my name?', language: 'en' }))));
+    expect(second).not.toContain('Nino');
+    expect(second).toContain('temporarily unavailable');
+    expect(mockExecute).not.toHaveBeenCalled();
+    expect(mockAnthropicCall).not.toHaveBeenCalled();
+  },
+);

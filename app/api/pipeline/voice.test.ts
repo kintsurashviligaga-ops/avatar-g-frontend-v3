@@ -4,8 +4,8 @@
  *
  * ⚠️ It used to speak the TEXT-MODEL prompt: „Synthesize the following text in ka with a neutral tone:" (the clarifier's
  * wrapper) and, on a second short request in the same session, the previous text plus „Refinement request: …" (the
- * iteration store). Pinned here: ElevenLabs receives exactly what the user typed, every time; and with the Google-only
- * switch on (the default) a failed ElevenLabs call is an error, not a silent OpenAI voice (PROJECT_MASTER §A, R7).
+ * iteration store). Pinned here: ElevenLabs receives exactly what the user typed, every time; and a failed ElevenLabs
+ * call is an error, never a silent OpenAI voice, whatever the env says (PROJECT_MASTER §A, R7; MASTER TASK v3.1).
  */
 jest.mock('server-only', () => ({}));
 
@@ -24,8 +24,8 @@ jest.mock('../../../lib/observability/report-error', () => ({ reportError: jest.
 
 import { NextRequest } from 'next/server';
 
-// The route builds its OpenAI client at load time, so the key must exist before it is required — otherwise the
-// "no silent OpenAI" test would pass only because there was no client to fall back to.
+// The route used to build an OpenAI client at load time; the key is set before it is required, so the "no silent OpenAI"
+// tests would catch a client that came back.
 process.env.OPENAI_API_KEY = 'test-openai-key';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { POST } = require('./route') as typeof import('./route');
@@ -72,18 +72,14 @@ test('a second short voiceover in the same session is not merged with the first'
   expect(spokenTexts()).toEqual(['პირველი ტექსტი.', 'მეორე ტექსტი.']);
 });
 
-test('a failed ElevenLabs call is an error, never a silent OpenAI voice (Google-only switch on)', async () => {
-  fetchSpy.mockImplementation(async () => new Response('nope', { status: 500 }));
-  const res = await POST(voice('Hello there.'));
-  expect(await res.json()).toMatchObject({ status: 'error' });
-  expect(mockSpeech).not.toHaveBeenCalled();
-});
-
-test('the OpenAI voice is reachable only through the kill switch (AI_GOOGLE_ONLY=0)', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  fetchSpy.mockImplementation(async () => new Response('nope', { status: 500 }));
-  mockSpeech.mockResolvedValue({ arrayBuffer: async () => new Uint8Array(8).buffer });
-  const res = await POST(voice('Hello there.'));
-  expect(await res.json()).toMatchObject({ status: 'done', outputKind: 'audio' });
-  expect(mockSpeech).toHaveBeenCalledWith(expect.objectContaining({ input: 'Hello there.' }));
-});
+test.each([{}, { AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' }])(
+  'env %p: a failed ElevenLabs call is an error, never a silent OpenAI voice',
+  async (env) => {
+    Object.assign(process.env, env);
+    fetchSpy.mockImplementation(async () => new Response('nope', { status: 500 }));
+    mockSpeech.mockResolvedValue({ arrayBuffer: async () => new Uint8Array(8).buffer });
+    const res = await POST(voice('Hello there.'));
+    expect(await res.json()).toMatchObject({ status: 'error' });
+    expect(mockSpeech).not.toHaveBeenCalled();
+  },
+);

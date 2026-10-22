@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
- * POST /api/agent-g/calls/transcribe — the telephony STT. Internal-token only, and under AI_GOOGLE_ONLY (on by
- * default) refused outright: its engines are OpenAI and Deepgram, so no audio is read or sent.
+ * POST /api/agent-g/calls/transcribe — the telephony STT. Internal-token only, and refused outright whatever the env
+ * says (MASTER TASK v3.1): its engines were OpenAI and Deepgram, so no audio is read or sent.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../../lib/voice-v2v/providers', () => ({ transcribeRealtimePcmChunk: jest.fn(async () => ({ text: 'hi', provider: 'openai', isFinal: true })) }));
@@ -30,14 +30,11 @@ test('without the internal token: 401', async () => {
   expect(transcribeRealtimePcmChunk).not.toHaveBeenCalled();
 });
 
-test('AI_GOOGLE_ONLY on (the default): 503, the audio is never sent', async () => {
-  expect((await post('tok')).status).toBe(503);
-  expect(transcribeRealtimePcmChunk).not.toHaveBeenCalled();
-});
-
-test('AI_GOOGLE_ONLY off: it transcribes as before', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  const res = await post('tok');
-  expect(res.status).toBe(200);
-  expect(transcribeRealtimePcmChunk).toHaveBeenCalledTimes(1);
-});
+test.each([{}, { AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-deepgram' }])(
+  'env %p: 503, the audio is never sent',
+  async (env) => {
+    Object.assign(process.env, env);
+    expect((await post('tok')).status).toBe(503);
+    expect(transcribeRealtimePcmChunk).not.toHaveBeenCalled();
+  },
+);

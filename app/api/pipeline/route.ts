@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import OpenAI from 'openai';
 import {
   getFlow,
   buildFinalPrompt,
@@ -27,7 +26,6 @@ import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generatio
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isGoogleOnly } from '@/lib/veo/policy';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { googleAiConfigured } from '@/lib/ai/google/transport';
 
@@ -37,7 +35,6 @@ export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LT
 // ⚠️ THE TEXT SERVICES HAVE NO ANTHROPIC OR OPENAI CLIENT (PROJECT_MASTER R7, "NO SILENT FALLBACK"): they run on Gemini
 // only. This OpenAI client serves ONLY the voice leg's TTS behind ElevenLabs, which itself runs only with the Google-only
 // switch turned off (AI_GOOGLE_ONLY=0, the kill switch) — see the `voice` case in handleGenerate.
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 /** Bundled default presenter portrait — same canonical face the presenter route uses.
@@ -634,22 +631,6 @@ async function generateMusic(
   return { resultUrl: normalized.url, outputKind: 'audio' };
 }
 
-async function generateOpenAITtsDataUrl(text: string): Promise<string> {
-  if (!openai) {
-    throw new Error('OPENAI_API_KEY is not configured');
-  }
-
-  const speech = await openai.audio.speech.create({
-    model: 'gpt-4o-mini-tts',
-    voice: 'alloy',
-    input: text.slice(0, 4096),
-    response_format: 'mp3',
-  });
-
-  const audioBuffer = Buffer.from(await speech.arrayBuffer());
-  return `data:audio/mpeg;base64,${audioBuffer.toString('base64')}`;
-}
-
 // ─── Main generate handler ────────────────────────────────────────────────────
 
 /** The wizard services that answer in text on Gemini; every other `generate` reaches a media engine. */
@@ -881,19 +862,9 @@ async function handleGenerate(
           }
         }
 
-        // PROJECT_MASTER §A / R7: ElevenLabs is the voice provider. The OpenAI voice behind it was a silent vendor swap,
-        // so it runs only with the Google-only switch turned off (AI_GOOGLE_ONLY=0, the kill switch).
-        if (isAiGoogleOnly()) {
-          genResult = { outputKind: 'audio', error: 'Voice generation failed' };
-          break;
-        }
-        try {
-          const dataUrl = await generateOpenAITtsDataUrl(speech);
-          genResult = { outputKind: 'audio', resultUrl: dataUrl };
-        } catch (ttsErr) {
-          const ttsMsg = ttsErr instanceof Error ? ttsErr.message : 'Voice generation failed';
-          genResult = { outputKind: 'audio', error: ttsMsg };
-        }
+        // PROJECT_MASTER §A / R7: a failed voice is an error. The OpenAI voice behind it was a silent vendor swap; the
+        // AI_GOOGLE_ONLY=0 switch that re-opened it is gone (MASTER TASK v3.1, audit F-04).
+        genResult = { outputKind: 'audio', error: 'Voice generation failed' };
         break;
       }
       default:

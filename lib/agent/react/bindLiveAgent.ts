@@ -3,8 +3,8 @@ import 'server-only';
 /**
  * Live binding for the ReAct coordinator (STEP 3). Wires the injected seams of ./coordinator
  * to real infrastructure:
- *   - llm      → llmText. Under AI_GOOGLE_ONLY (the default) that is Gemini ONLY (`googleOnly`); with the
- *                kill switch off it is the old multi-vendor chain (DeepSeek → Atlas → Gemini → Anthropic).
+ *   - llm      → llmText, Gemini only (MASTER TASK v3.1: no env value brings back the old DeepSeek / Atlas /
+ *                Anthropic chain).
  *   - tools    → web_search, scrape_webpage, prepare_instagram_post (⛔ prepare-only), quote_montage_to_music and
  *                quote_media_edit when the request carries the user's files and AGENT_G_MEDIA_EXEC is open to them, and
  *                quote_audio_from_link when AGENT_G_MEDIA_EXEC is open to them (all quote only, see MEDIA).
@@ -12,8 +12,8 @@ import 'server-only';
  *                schema before the tool runs, each tool has a per-request call limit and an effect class, and no
  *                effect lets the model start a job or spend credits.
  *
- * web_search is Gemini + Google Search grounding under AI_GOOGLE_ONLY (lib/agent/tools/googleSearch.ts) and
- * Tavily otherwise — the same `{ answer, results[] }` shape either way.
+ * web_search is Gemini + Google Search grounding (lib/agent/tools/googleSearch.ts), in Tavily's old
+ * `{ answer, results[] }` shape. The Tavily leg is gone.
  *
  * MEDIA: ONE TOOL, AND IT ONLY QUOTES. `orchestrate_media` was removed because it called startAdRenderJob, which only
  * INSERTED a `generation_jobs` row: nothing ever processed it, and no credit was reserved or debited. A media tool came
@@ -50,14 +50,12 @@ import { imageQuoteTool, type ImageToolContext } from '@/lib/image/studio/agentT
 import { llmText } from '@/lib/ai/llmText';
 import { newRunMeter, type AgentRunMetrics } from '@/lib/ai/usageMetrics';
 import { structuredLog } from '@/lib/logger';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { runReActLoop, type AgentTool, type ReActResult } from './coordinator';
 import { z } from 'zod';
 import { scrapeWebpage, scrapeWebpageInput } from '@/lib/agent/tools/scrapeWebpage';
 import { prepareInstagramPost, prepareInstagramPostInput } from '@/lib/agent/tools/prepareInstagramPost';
 import { groundedWebSearch } from '@/lib/agent/tools/googleSearch';
 import { bindTools, defineTool, type ToolSpec } from '@/lib/agent/tools/registry';
-import { webSearch } from '@/lib/ai/webSearch';
 import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
@@ -164,9 +162,8 @@ function llmAdapterFor(meter: RunMeter) {
       .filter((m) => m.role !== 'system')
       .map((m) => (m.role === 'assistant' ? `Assistant: ${m.content}` : m.content))
       .join('\n\n');
-    // Read per call (not at module load) so the kill switch applies without a redeploy of this module.
     return llmText({
-      system, user: convo, maxTokens: 900, temperature: 0.4, timeoutMs: 40_000, googleOnly: isAiGoogleOnly(),
+      system, user: convo, maxTokens: 900, temperature: 0.4, timeoutMs: 40_000, googleOnly: true,
       onUsage: (u) => meter.addLlm(u),
     });
   };
@@ -328,12 +325,8 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     input: z.object({ query: z.string().trim().min(1).max(400) }),
     limit: 8,
     run: async ({ query }, ctx) => {
-      if (isAiGoogleOnly()) {
-        const r = await groundedWebSearch(query, { userId: ctx.userId, maxResults: 5 });
-        return r.ok ? { answer: r.answer, results: r.results } : { error: `search unavailable (${r.code})` };
-      }
-      const r = await webSearch(query, { maxResults: 5 });
-      return r ?? { error: 'search unavailable (no key or no results)' };
+      const r = await groundedWebSearch(query, { userId: ctx.userId, maxResults: 5 });
+      return r.ok ? { answer: r.answer, results: r.results } : { error: `search unavailable (${r.code})` };
     },
   }),
   defineTool({

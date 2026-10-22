@@ -1,115 +1,13 @@
-import { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { executeStream } from '@/lib/ai/chatEngine';
-import { applyApiGuards } from '@/lib/api/guard';
-import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { authedClientFromRequest } from '@/lib/supabase/server';
-import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
-
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const requestSchema = z.object({
-  message: z.string().min(1).max(4000),
-  locale: z.enum(['ka', 'en', 'ru']).optional(),
-  sessionId: z.string().min(1).max(128).optional(),
-  history: z.array(z.object({
-    role: z.enum(['user', 'assistant']),
-    content: z.string().max(4000),
-  })).max(20).optional(),
-});
-
-export async function POST(request: NextRequest) {
-  // ⚠️ GOOGLE-ONLY → 404. executeStream is the multi-vendor chatEngine (OpenRouter / OpenAI), and no screen calls this
-  // route, so while AI_GOOGLE_ONLY is on (the default) it does not exist rather than answer from a forbidden vendor
-  // (R7). Before 2026-10-09 any signed-in user could POST here and get an OpenRouter/OpenAI answer with no credit
-  // charged. AI_GOOGLE_ONLY=0 (the kill switch) brings the old stream back.
-  if (isAiGoogleOnly()) {
-    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-  }
-
-  const gate = await applyApiGuards(request, { limit: RATE_LIMITS.AI, label: 'orbit.agent' });
-  if (gate.response) return gate.response;
-
-  // ⚠️ SIGNED-IN ONLY. This streamed an LLM answer on the platform key to anyone, capped only per IP per minute — an
-  // anonymous chat tap no screen uses any more (its last caller, AgentGInterface, is unreachable). Session → per-ACCOUNT
-  // daily chat cap (the same CHAT_USER bucket the product chat draws on), so rotating IPs buys nothing.
-  let userId: string | null = gate.auth?.userId ?? null;
-  if (!userId) {
-    try {
-      userId = (await authedClientFromRequest(request)).user?.id ?? null;
-    } catch {
-      userId = null;
-    }
-  }
-  if (mustSignInToChat(userId)) {
-    return new Response(JSON.stringify(signInToGenerateBody()), { status: 401, headers: { 'Content-Type': 'application/json' } });
-  }
-  if (userId) {
-    const capped = await checkRateLimitByKey(userId, RATE_LIMITS.CHAT_USER);
-    if (capped) return capped;
-  }
-
-  const body = await request.json().catch(() => null);
-  const parsed = requestSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return new Response(JSON.stringify({ error: 'Invalid request' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  const { message, history, sessionId } = parsed.data;
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    start(controller) {
-      void executeStream(
-        {
-          agentId: 'agent-g',
-          userId: userId ?? (sessionId ? `dashboard:${sessionId}` : 'dashboard-anonymous'),
-          sessionId: sessionId || `orbit_agent_${Date.now()}`,
-          channel: 'web',
-          messages: [
-            ...(history ?? []).map((item) => ({
-              role: item.role,
-              content: item.content,
-            })),
-            { role: 'user' as const, content: message },
-          ],
-        },
-        {
-          onToken(token) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
-          },
-          onDone(response) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              done: true,
-              model: response.model,
-              tokensIn: response.tokensIn,
-              tokensOut: response.tokensOut,
-              costEstimate: response.costEstimate,
-            })}\n\n`));
-            controller.close();
-          },
-          onError(error) {
-            // The provider's own message stays in the server log — the stream carries a fixed, non-leaking one.
-            console.error('[orbit/agent] stream failed:', error.message.slice(0, 200));
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'AI service temporarily unavailable' })}\n\n`));
-            controller.close();
-          },
-        },
-      );
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-    },
-  });
+/**
+ * POST /api/orbit/agent — retired (MASTER TASK v3.1, audit F-04).
+ *
+ * It streamed the multi-vendor chatEngine (OpenRouter / OpenAI) and no screen calls it. Since 2026-10-09 it answered 404
+ * unless the AI_GOOGLE_ONLY=0 kill switch brought the old stream back; that switch is gone, so it is a 404 with no
+ * provider code behind it.
+ */
+export async function POST() {
+  return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
 }

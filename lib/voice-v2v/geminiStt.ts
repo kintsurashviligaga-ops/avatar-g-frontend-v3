@@ -3,9 +3,8 @@ import 'server-only';
 /**
  * Gemini speech-to-text: a multimodal generateContent model given a short "transcribe this audio" prompt.
  *
- * Two callers in /api/voice/transcribe:
- *   • AI_GOOGLE_ONLY (the default): this is the ONLY engine. No Replicate, OpenAI or Deepgram leg runs.
- *   • AI_GOOGLE_ONLY=0: the legacy cascade, where this is the zero-extra-key fallback leg.
+ * The ONLY engine of /api/voice/transcribe (MASTER TASK v3.1): no Replicate, OpenAI or Deepgram leg runs, whatever
+ * AI_GOOGLE_ONLY says.
  *
  * ⚠️ THE CONTAINER DECIDES WHETHER THIS WORKS AT ALL. Gemini's documented AUDIO inputs are WAV, MP3, AIFF, AAC,
  * OGG and FLAC. The browser's MediaRecorder produces WebM/Opus (Chrome, Firefox) or MP4/AAC (Safari) — neither is

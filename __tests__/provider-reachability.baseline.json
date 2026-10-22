@@ -23,37 +23,23 @@
     "app/api/ads/tts/route.ts": [
       "elevenlabs"
     ],
-    "app/api/agent-g/calls/transcribe/route.ts": [
-      "cartesia",
-      "deepgram",
-      "elevenlabs",
-      "openai"
-    ],
     "app/api/agent-g/calls/tts/route.ts": [
-      "cartesia",
-      "deepgram",
-      "elevenlabs",
-      "openai"
+      "elevenlabs"
     ],
     "app/api/agent-g/telegram/route.ts": [
       "elevenlabs",
-      "openai",
-      "openrouter"
+      "openai"
     ],
     "app/api/agent-g/telegram/webhook/route.ts": [
       "elevenlabs",
-      "openai",
-      "openrouter"
+      "openai"
     ],
     "app/api/agent-g/webhook/telegram/route.ts": [
       "elevenlabs",
-      "openai",
-      "openrouter"
+      "openai"
     ],
     "app/api/agent-g/webhook/whatsapp/route.ts": [
       "nanobananaapi",
-      "openai",
-      "openrouter",
       "replicate"
     ],
     "app/api/agent/approvals/route.ts": [
@@ -78,8 +64,7 @@
     ],
     "app/api/agent/run/route.ts": [
       "nanobananaapi",
-      "replicate",
-      "tavily"
+      "replicate"
     ],
     "app/api/agent/video-queue/drain/route.ts": [
       "anthropic",
@@ -115,15 +100,11 @@
       "worldlabs"
     ],
     "app/api/app/jobs/[id]/route.ts": [
-      "deepseek",
-      "openai",
-      "openrouter",
       "stability"
     ],
     "app/api/app/worker/tick/route.ts": [
       "elevenlabs",
-      "openai",
-      "openrouter"
+      "openai"
     ],
     "app/api/audio/georgian-song/route.ts": [
       "anthropic",
@@ -144,10 +125,6 @@
       "nanobananaapi",
       "replicate"
     ],
-    "app/api/chat/gemini/route.ts": [
-      "anthropic",
-      "openai"
-    ],
     "app/api/chat/orchestrate/route.ts": [
       "anthropic",
       "elevenlabs",
@@ -156,16 +133,10 @@
       "ltx",
       "luma",
       "nanobananaapi",
-      "openai",
       "replicate",
       "runway",
       "udio",
       "worldlabs"
-    ],
-    "app/api/chat/route.ts": [
-      "anthropic",
-      "openai",
-      "openrouter"
     ],
     "app/api/chat/stream/route.ts": [
       "anthropic",
@@ -280,9 +251,6 @@
       "higgsfield",
       "replicate"
     ],
-    "app/api/health/embed/route.ts": [
-      "openai"
-    ],
     "app/api/health/providers/route.ts": [
       "atlascloud",
       "deepseek",
@@ -341,9 +309,6 @@
     "app/api/ltx-video/route.ts": [
       "ltx"
     ],
-    "app/api/memory/route.ts": [
-      "openai"
-    ],
     "app/api/motion-control/route.ts": [
       "anthropic",
       "replicate"
@@ -376,15 +341,6 @@
     "app/api/orbit/[service]/route.ts": [
       "elevenlabs"
     ],
-    "app/api/orbit/agent/route.ts": [
-      "openai",
-      "openrouter"
-    ],
-    "app/api/orchestrate/route.ts": [
-      "deepseek",
-      "openai",
-      "openrouter"
-    ],
     "app/api/orchestrator/produce/route.ts": [
       "heygen",
       "replicate"
@@ -405,7 +361,6 @@
       "heygen",
       "ltx",
       "nanobananaapi",
-      "openai",
       "replicate",
       "udio",
       "worldlabs"
@@ -491,9 +446,6 @@
       "heygen",
       "replicate"
     ],
-    "app/api/video/remix-intent/route.ts": [
-      "anthropic"
-    ],
     "app/api/video/remix/route.ts": [
       "anthropic",
       "elevenlabs",
@@ -518,34 +470,20 @@
       "gemini_developer_api"
     ],
     "app/api/voice/realtime/session/route.ts": [
-      "cartesia",
-      "deepgram",
-      "elevenlabs",
-      "openai"
+      "elevenlabs"
     ],
     "app/api/voice/train/route.ts": [
       "replicate"
     ],
     "app/api/voice/transcribe/route.ts": [
-      "cartesia",
-      "deepgram",
-      "elevenlabs",
-      "nanobananaapi",
-      "openai",
-      "replicate"
+      "nanobananaapi"
     ],
     "app/api/webhooks/higgsfield/route.ts": [
       "anthropic",
       "higgsfield"
     ],
-    "app/api/webhooks/phone/route.ts": [
-      "openai",
-      "openrouter"
-    ],
     "app/api/webhooks/whatsapp/route.ts": [
       "nanobananaapi",
-      "openai",
-      "openrouter",
       "replicate"
     ]
   }

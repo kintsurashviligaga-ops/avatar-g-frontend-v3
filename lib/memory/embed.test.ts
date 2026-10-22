@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
  * embed() — Gemini first, on Vertex AI `:predict` with a bearer token (v3.1: no AI Studio key, never a credential in
- * the URL), every call time-bounded, and no OpenAI fallback under AI_GOOGLE_ONLY (its vectors live in a different
- * embedding space). fetch, the Vertex token and reportError are mocked — no network.
+ * the URL), every call time-bounded, and no OpenAI fallback whatever AI_GOOGLE_ONLY says (its vectors live in a
+ * different embedding space). fetch, the Vertex token and reportError are mocked — no network.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../veo/vertexAuth', () => ({
@@ -93,15 +93,16 @@ test('GEMINI_TRANSPORT=gemini_api (the Developer API): null and no call at all',
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test('kill switch AI_GOOGLE_ONLY=0: the OpenAI fallback still runs (time-bounded too)', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  fetchMock.mockResolvedValueOnce(fail(500)).mockResolvedValueOnce(ok({ data: [{ embedding: vec() }] }));
-  await expect(embed('hello')).resolves.toHaveLength(1536);
-  expect(fetchMock).toHaveBeenCalledTimes(2);
-  const [url, init] = fetchMock.mock.calls[1];
-  expect(String(url)).toBe('https://api.openai.com/v1/embeddings');
-  expect(init.signal).toBeInstanceOf(AbortSignal);
-});
+test.each([{ AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' }])(
+  'no env value brings back the OpenAI fallback (%o): a Gemini miss is still a miss',
+  async (env) => {
+    Object.assign(process.env, env);
+    fetchMock.mockResolvedValueOnce(fail(500)).mockResolvedValueOnce(ok({ data: [{ embedding: vec() }] }));
+    await expect(embed('hello')).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).not.toContain('https://api.openai.com/v1/embeddings');
+  },
+);
 
 test('a timeout / network error is caught (never throws) and reported', async () => {
   fetchMock.mockRejectedValueOnce(Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }));

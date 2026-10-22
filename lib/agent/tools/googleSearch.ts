@@ -9,7 +9,7 @@ import 'server-only';
  * returned shape is Tavily's (`{ answer, results[] }`, lib/ai/webSearch.ts), so the agent's protocol and the
  * Agent Terminal's rendering do not change with the provider.
  *
- * Why not keep Tavily: under AI_GOOGLE_ONLY every model and search leg must be Google (lib/ai/google/policy.ts),
+ * Why not keep Tavily: every model and search leg must be Google (lib/ai/google/policy.ts, always on under v3.1),
  * and TAVILY_API_KEY was a second vendor whose outage silently turned the tool into "search unavailable".
  *
  * ⚠️ `results[].content` IS ALWAYS ''. Grounding returns source URLs and titles, not page snippets — the facts

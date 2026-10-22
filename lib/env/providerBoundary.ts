@@ -9,6 +9,9 @@
  * `owner-2026-10-20-heygen`, ≥ 8 chars of [A-Za-z0-9._:-]) that whoever flips the switch must name. A falsy switch
  * without it is IGNORED — the boundary stays closed. Rollback is unchanged in shape: set the switch falsy AND the
  * approval; unset either to close again.
+ *
+ * MASTER TASK v3.1 retires the rule switch by switch. AI_GOOGLE_ONLY no longer reads it: chat, voice and agents are
+ * Google-only whatever either variable says (lib/ai/google/policy). VIDEO_GOOGLE_ONLY and MEDIA_GOOGLE_ONLY follow.
  */
 import { isEnabledByDefault } from './flag';
 

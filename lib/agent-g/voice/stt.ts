@@ -1,5 +1,4 @@
 import 'server-only';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 type TelegramFileResponse = {
   ok?: boolean;
@@ -27,9 +26,13 @@ export type SttResult = {
   }>;
 };
 
+/**
+ * Always false: the Telegram voice STT below is OpenAI's, and chat, voice and agents run on Google only (MASTER TASK
+ * v3.1), so AGENT_G_VOICE_ENABLED no longer turns it on. A voice note gets the text reply path's silence until a
+ * Google STT backs this door.
+ */
 export function isAgentGVoiceEnabled(): boolean {
-  // The Telegram voice STT below is OpenAI's, so AI_GOOGLE_ONLY (on by default) keeps it off whatever the flag says.
-  return String(process.env.AGENT_G_VOICE_ENABLED || '').trim().toLowerCase() === 'true' && !isAiGoogleOnly();
+  return false;
 }
 
 function getSttModel(): string {

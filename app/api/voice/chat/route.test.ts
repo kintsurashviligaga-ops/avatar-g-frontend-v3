@@ -2,7 +2,7 @@
 /**
  * POST /api/voice/chat — the REST voice loop's LLM leg, pinned with every provider mocked (no network, no spend).
  *
- *   · signed in only; the text chain is Google-only unless AI_GOOGLE_ONLY=0;
+ *   · signed in only; the text chain is Google-only, and no env value re-opens the old multi-vendor chain;
  *   · the spoken system block is the fuller Live persona + a spoken-length rule (the ≤20-word eleven_v3 cap is gone),
  *     with the agent profile's directive layered on and the "speak, no markdown" rule after it;
  *   · the reply voice/gender is returned for /api/tts/gemini (voice > gender > persona > Aoede, Georgian-verified);
@@ -105,12 +105,14 @@ test('empty text → 400', async () => {
   expect(llmMock).not.toHaveBeenCalled();
 });
 
-test('Google-only by default; AI_GOOGLE_ONLY=0 restores the multi-vendor chain', async () => {
-  await POST(post({ text: 'hello there', locale: 'en' }));
-  expect(lastOpts().googleOnly).toBe(true);
+test('AI_GOOGLE_ONLY=0, even with an owner approval, re-opens nothing: the same grounded Gemini turn (MASTER TASK v3.1)', async () => {
+  await POST(post({ text: "what's the weather in Tbilisi", locale: 'en' }));
+  const before = lastOpts();
   process.env.AI_GOOGLE_ONLY = '0';
-  await POST(post({ text: 'hello there', locale: 'en' }));
-  expect(lastOpts().googleOnly).toBe(false);
+  process.env.OUTSIDE_ENGINES_APPROVED = 'owner-2026-10-20-anthropic';
+  await POST(post({ text: "what's the weather in Tbilisi", locale: 'en' }));
+  expect(lastOpts()).toEqual(before);
+  expect(lastOpts().googleSearch).toBe(true);
 });
 
 test('Google Search grounds the Gemini voice turn by default, and the prompt says so; VOICE_GOOGLE_SEARCH=0 turns it off', async () => {
@@ -121,10 +123,6 @@ test('Google Search grounds the Gemini voice turn by default, and the prompt say
   await POST(post({ text: "what's the weather in Tbilisi", locale: 'en' }));
   expect(lastOpts().googleSearch).toBeUndefined();
   expect(lastOpts().system).not.toMatch(/LIVE FACTS/);
-  delete process.env.VOICE_GOOGLE_SEARCH;
-  process.env.AI_GOOGLE_ONLY = '0'; // the legacy multi-vendor chain has no grounding leg
-  await POST(post({ text: "what's the weather in Tbilisi", locale: 'en' }));
-  expect(lastOpts().googleSearch).toBeUndefined();
 });
 
 test('no persona: the fuller Live persona + the spoken-length rule, no ≤20-word cap, the old temperature', async () => {

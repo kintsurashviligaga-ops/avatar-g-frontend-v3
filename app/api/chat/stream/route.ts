@@ -6,7 +6,7 @@
  * Same rules as the product chat (/api/chat/gemini), because it spends the same key:
  *   • sign-in required (mustSignInToChat → 401; FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo deployment);
  *   • the per-account daily chat allowance (CHAT_USER, keyed on the verified uid — IP rotation buys nothing);
- *   • Google only while AI_GOOGLE_ONLY is on (the default) — the Anthropic leg runs only when it is off;
+ *   • Google only — the Anthropic leg that AI_GOOGLE_ONLY=0 used to restore is gone (MASTER TASK v3.1, audit F-04);
  *   • the text leg streams through lib/ai/google/chatStream (current model chain, typed errors — the old loop read
  *     `textStream`, which in ai@6 swallows error parts, and still rotated through retired gemini-2.0 ids);
  *   • provider wording never reaches the browser — a generic, localized notice does.
@@ -15,8 +15,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { streamText } from 'ai';
-import { createAnthropic } from '@ai-sdk/anthropic';
 import type { ChatMessage } from '@/lib/ai/chatEngine';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
 import { detectIntent } from '@/lib/chat/intentDetector';
@@ -26,7 +24,6 @@ import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { chatModelChain } from '@/lib/ai/google/models';
 import { streamGeminiChat, unbookedAttempts } from '@/lib/ai/google/chatStream';
 import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
@@ -165,7 +162,6 @@ export async function POST(req: NextRequest) {
 
           let lastError: string | undefined;
           let succeeded = false;
-          let streamedAny = false;
 
           // Gemini — the product chain with typed errors (rotation only before the first token).
           const result = await streamGeminiChat({
@@ -175,7 +171,7 @@ export async function POST(req: NextRequest) {
             config: toGeminiChatConfig(profile, systemPrompt),
             abortSignal: req.signal,
             onFrame: (frame) => {
-              if ('text' in frame && frame.text) { streamedAny = true; send({ token: frame.text }); }
+              if ('text' in frame && frame.text) send({ token: frame.text });
             },
           });
           if (result.model && (hasTokens(result.usage) || result.text.length > 0)) {
@@ -207,40 +203,6 @@ export async function POST(req: NextRequest) {
           } else {
             lastError = result.error ? `${result.error.code}: ${result.error.message}` : 'no result';
             console.warn(`[chat/stream] Gemini failed — ${lastError.slice(0, 200)}`);
-          }
-
-          // Anthropic fallback ONLY when Google-only is off, and never after a partial Gemini answer (it would
-          // restart the reply mid-sentence in another voice).
-          if (!succeeded && !streamedAny && !isAiGoogleOnly()) {
-            const anthropicKey = process.env.ANTHROPIC_API_KEY ?? '';
-            if (anthropicKey) {
-              try {
-                const anthropic = createAnthropic({ apiKey: anthropicKey });
-                const result = streamText({
-                  model: anthropic('claude-haiku-4-5-20251001'),
-                  system: agentGSystemPrompt({ locale: loc, googleSearch: false }), // no search tool on this leg
-                  messages: userAssistantMessages,
-                  maxOutputTokens: 2048,
-                  temperature: 0.7,
-                  maxRetries: 0,
-                });
-                for await (const chunk of result.textStream) {
-                  send({ token: chunk });
-                }
-                send({
-                  done: true,
-                  model: 'claude-haiku-4-5',
-                  provider: 'anthropic',
-                  agentId,
-                  sessionId: sessionForStream,
-                  durationMs: Date.now() - startTime,
-                });
-                succeeded = true;
-              } catch (err) {
-                lastError = err instanceof Error ? err.message.slice(0, 200) : String(err);
-                console.error('[chat/stream] Anthropic also failed:', lastError);
-              }
-            }
           }
 
           if (!succeeded) {

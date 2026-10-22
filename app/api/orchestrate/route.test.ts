@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
  * POST /api/orchestrate — the legacy agent text endpoint. Its text factory only knows OpenRouter / OpenAI / DeepSeek,
- * so under AI_GOOGLE_ONLY (on by default) a text-generation task is refused before any of them is chosen or anything
- * is charged. With the switch off it answers as before.
+ * so a text-generation task is refused before any of them is chosen, any balance is read or anything is charged —
+ * whatever the env says (the AI_GOOGLE_ONLY=0 kill switch is gone, MASTER TASK v3.1).
  */
 jest.mock('server-only', () => ({}));
 let mockUser: { id: string } | null = { id: 'user-1' };
@@ -25,7 +25,7 @@ jest.mock('../../../lib/agents/registry', () => ({ getAgent: jest.fn(() => ({ id
 jest.mock('../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
 import { NextRequest } from 'next/server';
-import { deductCredits } from '../../../lib/orchestrator/ledger';
+import { deductCredits, hasSufficientBalance } from '../../../lib/orchestrator/ledger';
 import { textProviderFactory } from '../../../lib/providers/text-factory';
 import { POST } from './route';
 
@@ -43,21 +43,19 @@ beforeEach(() => {
 });
 afterAll(() => { process.env = ENV; });
 
-test('AI_GOOGLE_ONLY on (the default): 503 google_only; no outside model is chosen and nothing is charged', async () => {
-  const res = await post();
-  expect(res.status).toBe(503);
-  expect(await res.json()).toMatchObject({ error: 'google_only' });
-  expect(textProviderFactory.selectProvider).not.toHaveBeenCalled();
-  expect(mockGenerate).not.toHaveBeenCalled();
-  expect(deductCredits).not.toHaveBeenCalled();
-});
-
-test('AI_GOOGLE_ONLY off: it answers as before', async () => {
-  process.env.AI_GOOGLE_ONLY = '0';
-  const res = await post();
-  expect(res.status).toBe(200);
-  expect(mockGenerate).toHaveBeenCalledTimes(1);
-});
+test.each([{}, { AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' }])(
+  'env %p: 503 google_only; no outside model is chosen, no balance read, nothing charged',
+  async (env) => {
+    Object.assign(process.env, env);
+    const res = await post();
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: 'google_only' });
+    expect(textProviderFactory.selectProvider).not.toHaveBeenCalled();
+    expect(mockGenerate).not.toHaveBeenCalled();
+    expect(hasSufficientBalance).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+  },
+);
 
 test('signed out: 401', async () => {
   mockUser = null;

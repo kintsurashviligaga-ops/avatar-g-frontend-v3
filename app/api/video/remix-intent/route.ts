@@ -3,8 +3,8 @@
  * ONE remix operation for /api/video/remix. The user attaches a video and types
  * e.g. "სუბტიტრები დაამატე" or "make it vintage"; this returns { op, params }.
  *
- * The model classifies for a SIGNED-IN caller: Gemini (REST, JSON mode) under AI_GOOGLE_ONLY — the
- * default — or Claude Haiku when the kill switch is off. A deterministic ka/en/ru keyword matcher is
+ * The model classifies for a SIGNED-IN caller: Gemini (REST, JSON mode). The Claude Haiku classifier that
+ * AI_GOOGLE_ONLY=0 used to restore is gone (MASTER TASK v3.1, audit F-04). A deterministic ka/en/ru keyword matcher is
  * the fallback for every miss (no key, budget refusal, timeout, unparseable or unknown op) and the
  * ONLY path for a guest, so intent detection NEVER hard-depends on a model and an anonymous POST
  * spends nothing. The studio never sends a guest here anyway (send() stops guests first).
@@ -20,7 +20,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate } from '@/lib/auth/generationGate';
-import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
@@ -152,37 +151,6 @@ async function geminiIntent(message: string, userId: string | null): Promise<Int
   }
 }
 
-/** The pre-Google-only classifier, kept for AI_GOOGLE_ONLY=0 (the kill switch). */
-async function claudeIntent(message: string, userId: string | null): Promise<Intent | null> {
-  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
-  if (!apiKey) return null;
-  const prompt = message.slice(0, 500);
-  if (!(await chatBudgetAllows(`${CLASSIFIER_SYSTEM} ${prompt}`))) return null;
-  try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey, maxRetries: 0, timeout: 8_000 });
-    const model = process.env.ANTHROPIC_SCRIPT_MODEL ?? 'claude-haiku-4-5-20251001';
-    const msg = await client.messages.create({
-      model,
-      max_tokens: 120,
-      system: CLASSIFIER_SYSTEM,
-      messages: [{ role: 'user', content: prompt }],
-    });
-    const text = msg.content.map((b) => (b.type === 'text' ? (b as { text: string }).text : '')).join('').trim();
-    void bookChatUsage({
-      model,
-      inputTokens: msg.usage?.input_tokens,
-      outputTokens: msg.usage?.output_tokens,
-      inputChars: CLASSIFIER_SYSTEM.length + prompt.length,
-      chars: text.length,
-      userId,
-    });
-    return parseIntent(text);
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.AI);
   if (rl) return rl;
@@ -192,7 +160,7 @@ export async function POST(req: NextRequest) {
   const fallback = keywordIntent(message);
 
   // A guest gets the free deterministic matcher only — a model call is platform spend, and this route
-  // used to answer anonymous POSTs on the Anthropic key.
+  // used to answer anonymous POSTs on a paid model key.
   let userId: string | null = null;
   try {
     userId = (await authedClientFromRequest(req)).user?.id ?? null;
@@ -201,6 +169,6 @@ export async function POST(req: NextRequest) {
   }
   if (mustSignInToGenerate(userId)) return NextResponse.json(fallback);
 
-  const viaModel = isAiGoogleOnly() ? await geminiIntent(message, userId) : await claudeIntent(message, userId);
+  const viaModel = await geminiIntent(message, userId);
   return NextResponse.json(viaModel ?? fallback);
 }
