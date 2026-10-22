@@ -146,6 +146,7 @@ export function displayNameFor(modelId: string | null | undefined): string {
   if (known) return known;
   if (!/^gemini-[a-z0-9.-]{1,60}$/i.test(id)) return id.slice(0, 60);
   return id
+    .replace(/^gemini-/i, '')
     .replace(/-preview$/i, '')
     .split('-')
     .map((part) => (part.toLowerCase() === 'lite' ? 'Lite' : /^\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
