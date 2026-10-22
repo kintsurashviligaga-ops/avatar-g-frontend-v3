@@ -29,6 +29,7 @@
  * and the live Veo engine.
  */
 import { PRICE_BOOK, veoRenderedSeconds, type ClipTier } from '@/lib/credits/priceBook';
+import type { VeoSubmissionEvidence, VeoSubmissionJournal } from '@/lib/veo/submissionJournal';
 import { SHOT_DECISIONS, shotDecisionsFor } from './director';
 import { GoogleVeoProvider, type ShotTicket } from './googleVeoProvider';
 import { draftFromFrozen, isFrozen, shotsInOrder, StoryboardNotFrozenError } from './storyboard';
@@ -52,6 +53,8 @@ export interface ShotRunRecord {
   /** True once a failed attempt's charge has been given back (or there was nothing to give back). */
   refunded: boolean;
   ticket?: ShotTicket;
+  /** Private pre-POST evidence for this exact attempt; absent on historical records. */
+  submission?: VeoSubmissionEvidence;
   clipUrl?: string;
   metadata?: ShotMetadata;
   error?: ShotError;
@@ -300,12 +303,12 @@ async function settleRefunds(ctx: StepContext, run: DirectorRunRecord): Promise<
 }
 
 /** Record a failed attempt, stop the run for the user's decision, then give its charge back. */
-async function failShot(ctx: StepContext, run: DirectorRunRecord, index: number, error: ShotError): Promise<DirectorRunRecord> {
+async function failShot(ctx: StepContext, run: DirectorRunRecord, index: number, error: ShotError, ticket?: ShotTicket): Promise<DirectorRunRecord> {
   const rec = run.shots[index];
   const next = withShot(
     run,
     index,
-    { status: 'failed', error, refunded: !rec || rec.charged <= 0, ticket: undefined },
+    { status: 'failed', error, refunded: !rec || rec.charged <= 0, ticket },
     ctx.now(),
     { state: 'waiting_for_shot_decision', errors: [...run.errors, error] },
   );
@@ -366,15 +369,38 @@ export async function advanceRun(deps: DirectorRunDeps, id: string, userId: stri
       }
       run = charged.run;
 
+      const submissionJournal: VeoSubmissionJournal = async (evidence) => {
+        const current = run.shots[index];
+        if (run.state !== 'running' || run.currentIndex !== index || current?.status !== 'submitting' || current.attempt !== rec.attempt || current.shotId !== shot.id) return false;
+        const previous = current.submission;
+        if (evidence.phase === 'prepared' ? previous !== undefined : !previous || previous.phase !== 'prepared') return false;
+        if (evidence.phase === 'posting') {
+          const { phase: _phase, bodySha256: _body, ...identity } = evidence;
+          const { phase: _oldPhase, bodySha256: _oldBody, ...oldIdentity } = previous!;
+          if (JSON.stringify(identity) !== JSON.stringify(oldIdentity) || !/^[a-f0-9]{64}$/.test(evidence.bodySha256 ?? '')) return false;
+        }
+        const saved = await commit(ctx, run, withShot(run, index, { submission: { ...evidence } }, ctx.now()));
+        // Keep our old version on a lost fence: the failure path must not overwrite a cancellation/newer writer.
+        if (saved.won) run = saved.run;
+        return saved.won;
+      };
+
       // 3. Submit — at most one createClip.
       let submitted: Awaited<ReturnType<GoogleVeoProvider['submitShot']>>;
       try {
-        submitted = await deps.provider.submitShot(input);
+        submitted = await deps.provider.submitShot({ ...input, submissionJournal });
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
         submitted = { ok: false, error: { shotId: shot.id, reason: 'unknown', message: 'The video provider failed unexpectedly on this shot. Its outcome needs review before another attempt.', retryable: false, requiresReconciliation: true, ...(raw ? { veoRawResponse: raw.slice(0, 300) } : {}) } };
       }
-      if (!submitted.ok) return viewOf(await failShot(ctx, run, index, { ...submitted.error, shotId: shot.id }));
+      if (!submitted.ok) {
+        const error: ShotError = { ...submitted.error, shotId: shot.id,
+          ...(submitted.ticket ? { requiresReconciliation: true, retryable: false } : {}),
+        };
+        const failed = await failShot(ctx, run, index, error, submitted.ticket);
+        // A rejected contract can still carry an accepted operation. Preserve it even when a stale/cancel CAS won.
+        return viewOf(submitted.ticket ? await rememberLateTicket(ctx, run, index, submitted.ticket, failed) : failed);
+      }
       const rendering = await commit(ctx, run, withShot(run, index, { status: 'rendering', ticket: submitted.ticket }, ctx.now()));
       return viewOf(rendering.won ? rendering.run : await rememberLateTicket(ctx, run, index, submitted.ticket, rendering.run));
     }
@@ -465,7 +491,7 @@ export async function decideRun(
     const next = withShot(
       run,
       index,
-      { status: 'pending', attempt: (rec?.attempt ?? 1) + 1, charged: 0, refunded: false, ticket: undefined, clipUrl: undefined, metadata: undefined, error: undefined },
+      { status: 'pending', attempt: (rec?.attempt ?? 1) + 1, charged: 0, refunded: false, ticket: undefined, submission: undefined, clipUrl: undefined, metadata: undefined, error: undefined },
       ctx.now(),
       { state: 'running' },
     );

@@ -85,7 +85,7 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
     // the old `hash: 'film'` target could not switch surface without a manual reload, AND landed on the
     // Film Studio rather than anything that edits. The tile advertised a service that did not exist.
     id: 'montage', icon: '✂️', live: true, target: { kind: 'path', path: '/montage' },
-    name: { ka: 'ვიდეოს მონტაჟი', en: 'Video editing', ru: 'Видеомонтаж' },
+    name: { ka: 'მონტაჟი', en: 'Editing', ru: 'Монтаж' },
     tagline: { ka: 'ავტომატური მონტაჟი', en: 'Automatic editing', ru: 'Автомонтаж' },
   },
   {
@@ -100,7 +100,7 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
     // Live: backed by Replicate (TRELLIS), not Meshy — Meshy had no API key on any environment, so it
     // could never run. Text mode goes Imagen 4 → reference image → reconstruction.
     id: 'model3d', icon: '🧊', live: true, target: { kind: 'path', path: '/3d' },
-    name: { ka: '3D მოდელი', en: '3D model', ru: '3D-модель' },
+    name: { ka: '3D', en: '3D', ru: '3D' },
     tagline: { ka: 'ტექსტიდან GLB-მდე', en: 'Text to GLB', ru: 'Из текста в GLB' },
   },
   {

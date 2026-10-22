@@ -47,6 +47,8 @@ function positiveMs(value: number | undefined, fallback: number): number {
 
 export interface SubmitGeminiOptions {
   model: string;
+  /** Internal persistence fence; not a request-JSON option. */
+  beforeSubmit?: (body: string) => Promise<boolean>;
   timeoutMs?: number;
 }
 
@@ -71,6 +73,11 @@ export async function submitGeminiVeo(req: VeoClipRequest, opts: SubmitGeminiOpt
     return { ok: false, reason: 'invalid_request', retryable: false, detail };
   }
 
+  if (opts.beforeSubmit) {
+    try {
+      if ((await opts.beforeSubmit(body)) !== true) return { ok: false, reason: 'invalid_request', retryable: false, detail: 'The submission journal refused the POST' };
+    } catch { return { ok: false, reason: 'invalid_request', retryable: false, detail: 'The submission journal could not persist the POST' }; }
+  }
   let res: Response;
   try {
     res = await fetch(`${GEMINI_API_BASE}/models/${model}:predictLongRunning`, {

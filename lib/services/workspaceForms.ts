@@ -68,8 +68,8 @@ export const SERVICE_STUDIO_TOOL: Readonly<Record<string, ToolId>> = {
   music: 'music',
   avatar: 'avatar',
   interior: 'interior',
-  // „AI ფოტო სტუდია" — studio-quality photos of you: the photographer. NOT `photo` (on-device culling, no generation).
-  photo: 'photoshoot',
+  // The standalone photographer is withdrawn. Photo creation now opens the active Image tool, never the Chat fallback.
+  photo: 'image',
   // One editor for every video edit (docs/DESIGN.md §8 Montage).
   editing: 'montage',
   'agent-g': 'chat',

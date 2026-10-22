@@ -238,6 +238,8 @@ function positiveMs(value: number | undefined, fallback: number): number {
 
 export interface SubmitVertexOptions {
   model: string;
+  /** Internal persistence fence after auth/body preparation, before the single provider fetch. */
+  beforeSubmit?: (body: string) => Promise<boolean>;
   /** `gs://bucket/prefix/` — Vertex writes `…/sample_0.mp4` there (gcs.veoOutputPrefix). Without it bytes come back inline. */
   storageUri?: string;
   timeoutMs?: number;
@@ -300,6 +302,10 @@ export async function submitVertexVeo(req: VeoClipRequest, cfg: VertexConfig, op
     return tokenFailure(err);
   }
 
+  if (opts.beforeSubmit) {
+    try { if ((await opts.beforeSubmit(body)) !== true) return failure('invalid_request', false, 'The submission journal refused the POST'); }
+    catch { return failure('invalid_request', false, 'The submission journal could not persist the POST'); }
+  }
   let res: Response;
   try {
     res = await fetch(vertexModelUrl(cfg.projectId, cfg.location, model, 'predictLongRunning'), {

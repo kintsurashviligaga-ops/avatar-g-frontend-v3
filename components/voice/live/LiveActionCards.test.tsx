@@ -151,17 +151,21 @@ describe('LiveActionCards', () => {
 });
 
 describe('LiveModeOverlay — the action strip', () => {
-  it('renders above the controls with onOpenAction; the content moves up only while it holds cards', () => {
+  it('renders in the scrollable content above controls with onOpenAction', () => {
     const onOpenAction = jest.fn();
     const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} actions={[]} onOpenAction={onOpenAction} />);
     const dialog = screen.getByRole('dialog');
     expect(screen.getByRole('status')).toBeTruthy(); // the strip's live region is mounted for the whole call
     expect(screen.queryAllByTestId('live-action-card')).toHaveLength(0);
-    expect(dialog.style.paddingBottom).toContain('124px');
+    const content = screen.getByTestId('live-content');
+    const controls = screen.getByTestId('live-controls');
+    expect(dialog.contains(content)).toBe(true);
+    expect(content.className).toContain('overflow-y-auto');
+    expect(content.compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     rerender(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} actions={[video]} onOpenAction={onOpenAction} />);
     expect(screen.getAllByTestId('live-action-card')).toHaveLength(1);
-    expect(dialog.style.paddingBottom).toContain('204px');
+    expect(content.contains(screen.getByTestId('live-action-card'))).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: LIVE_ACTION_STRINGS.en.openStudioLabel }));
     expect(onOpenAction).toHaveBeenCalledWith(video);
   });
@@ -171,6 +175,6 @@ describe('LiveModeOverlay — the action strip', () => {
     expect(screen.queryByTestId('live-action-card')).toBeNull();
     rerender(<LiveModeOverlay locale="en" status="error" error="connection_lost" captions={[]} muted={false} cameraOn={false} {...handlers()} actions={[video]} onOpenAction={jest.fn()} />);
     expect(screen.queryByTestId('live-action-card')).toBeNull();
-    expect(screen.getByRole('dialog').style.paddingBottom).toContain('124px');
+    expect(screen.getByRole('dialog').contains(screen.getByTestId('live-controls'))).toBe(true);
   });
 });

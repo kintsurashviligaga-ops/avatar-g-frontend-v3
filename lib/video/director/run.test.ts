@@ -102,6 +102,16 @@ function setup(engineOpts: FakeVeoEngineOptions = {}, billingOpts: Parameters<ty
   return { engine, provider, store, deps, tick, ...ledger };
 }
 
+function changeAfterSubmit(s: ReturnType<typeof setup>, mode: 'adjustment' | 'prompt' = 'prompt') {
+  const create = s.engine.createClip.bind(s.engine);
+  jest.spyOn(s.engine, 'createClip').mockImplementation(async (...args) => {
+    const result = await create(...args);
+    return mode === 'prompt'
+      ? { ...result, request: { ...result.request, prompt: 'changed after preflight' } }
+      : { ...result, adjustments: [{ field: 'durationSec' as const, from: 8, to: 6, reason: 'snapped after preflight' }] };
+  });
+}
+
 function board(): FrozenStoryboard {
   const shots = [
     makeShot({ id: 'c', order: 3, prompt: 'Shot three.' }),
@@ -365,6 +375,51 @@ describe('decideRun', () => {
 });
 
 describe('unresolved provider submissions', () => {
+  it('keeps the accepted operation while its user refund remains due', async () => {
+    const s = setup({}, { refundOk: () => false });
+    changeAfterSubmit(s);
+    await started(s);
+    await advanceRun(s.deps, 'run-1', USER);
+    await advanceRun(s.deps, 'run-1', USER);
+    expect(s.store.get('run-1').shots[0]).toMatchObject({ refunded: false, error: { requiresReconciliation: true }, ticket: { operationName: expect.stringContaining('/operations/') } });
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    expect(s.engine.calls).toHaveLength(1);
+    expect(s.refunds).toHaveLength(0);
+  });
+
+  it('an accepted ticket cannot become retryable because a provider omitted its uncertainty flag', async () => {
+    const s = setup();
+    changeAfterSubmit(s);
+    const submit = s.provider.submitShot.bind(s.provider);
+    jest.spyOn(s.provider, 'submitShot').mockImplementation(async (...args) => {
+      const result = await submit(...args);
+      if (result.ok) throw new Error('expected a refused contract');
+      const error = { ...result.error, retryable: true };
+      delete error.requiresReconciliation;
+      return { ...result, error };
+    });
+    await started(s);
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(view.pendingDecision?.error).toMatchObject({ requiresReconciliation: true, retryable: false });
+    expect(view.pendingDecision?.options).toEqual(['cancel']);
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    expect(s.engine.calls).toHaveLength(1);
+  });
+
+  it.each(['adjustment', 'prompt'] as const)('stores the operation and blocks another attempt after a post-submit %s mismatch', async (mode) => {
+    const s = setup();
+    changeAfterSubmit(s, mode);
+    await started(s);
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(view.pendingDecision?.options).toEqual(['cancel']);
+    expect(s.store.get('run-1').shots[0]).toMatchObject({ status: 'failed', refunded: true, error: { requiresReconciliation: true }, ticket: { operationName: expect.stringContaining('/operations/') } });
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+    expect(JSON.stringify(view)).not.toContain('/operations/');
+    expect(s.engine.calls).toHaveLength(1);
+    expect(s.engine.delivered).toHaveLength(0);
+    expect(s.refunds).toHaveLength(1);
+  });
+
   it.each(['ambiguous', 'throw'] as const)('%s cannot authorize another paid attempt', async (mode) => {
     const s = setup(mode === 'throw'
       ? { createThrows: () => new Error('lost submit response') }
@@ -399,8 +454,9 @@ describe('unresolved provider submissions', () => {
     expect(s.store.get('run-1').shots[0]?.error).toMatchObject({ requiresReconciliation: true });
   });
 
-  it.each([false, true])('retains a late operation for reconciliation without reviving delivery (cancel=%s)', async (cancel) => {
+  it.each([[false, false], [true, false], [false, true], [true, true]])('retains a late operation for reconciliation without reviving delivery (cancel=%s, mismatch=%s)', async (cancel, mismatch) => {
     const s = setup();
+    if (mismatch) changeAfterSubmit(s);
     await started(s);
     let release!: () => void;
     let entered!: () => void;
@@ -430,5 +486,87 @@ describe('unresolved provider submissions', () => {
     expect(s.engine.polled).toHaveLength(0);
     expect(s.engine.delivered).toHaveLength(0);
     expect(s.refunds).toHaveLength(1);
+  });
+});
+
+describe('durable attempt journal', () => {
+  it('stores private Vertex evidence before the simulated provider submit and retains it with the ticket', async () => {
+    const s = setup({ transport: 'vertex', script: () => {
+      expect(s.store.get('run-1').shots[0]?.submission).toMatchObject({ phase: 'posting', outputPrefix: expect.stringMatching(/^gs:\/\/fake-output\//), bodySha256: 'b'.repeat(64) });
+      return {};
+    } });
+    await started(s);
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(s.store.get('run-1').shots[0]).toMatchObject({ status: 'rendering', submission: { phase: 'posting', schema: 1 }, ticket: { operationName: expect.any(String) } });
+    expect(s.engine.submitted).toHaveLength(1);
+    expect(JSON.stringify(view)).not.toMatch(/bodySha256|requestSha256|fake-output|submission/);
+  });
+
+  it.each(['prepared', 'posting'] as const)('losing the %s fence to cancellation prevents POST and cannot revive the run', async (phase) => {
+    const s = setup({ transport: 'vertex' });
+    await started(s);
+    const replace = s.store.replace.bind(s.store);
+    let intercepted = false;
+    jest.spyOn(s.store, 'replace').mockImplementation(async (next, version) => {
+      if (!intercepted && next.shots[0]?.submission?.phase === phase) {
+        intercepted = true;
+        const old = s.store.get('run-1');
+        await replace({ ...old, state: 'cancelled', version: old.version + 1 }, version);
+        return false;
+      }
+      return replace(next, version);
+    });
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(intercepted).toBe(true);
+    expect(view.state).toBe('cancelled');
+    expect(s.store.get('run-1').state).toBe('cancelled');
+    expect(s.engine.submitted).toHaveLength(0);
+    expect(s.engine.polled).toHaveLength(0);
+  });
+
+  it.each(['prepared', 'posting'] as const)('a %s storage outage never authorizes the simulated POST', async (phase) => {
+    const s = setup({ transport: 'vertex' });
+    await started(s);
+    const replace = s.store.replace.bind(s.store);
+    jest.spyOn(s.store, 'replace').mockImplementation(async (next, version) => {
+      if (next.shots[0]?.submission?.phase === phase && next.shots[0]?.status === 'submitting') throw new Error('storage offline');
+      return replace(next, version);
+    });
+    await advanceRun(s.deps, 'run-1', USER);
+    expect(s.engine.submitted).toHaveLength(0);
+    expect(s.refunds).toHaveLength(1);
+  });
+
+  it.each(['prepared', 'posting'] as const)('an interrupted %s attempt retains evidence and refuses another POST', async (phase) => {
+    const s = setup({ transport: 'vertex' });
+    await started(s);
+    const submit = s.provider.submitShot.bind(s.provider);
+    jest.spyOn(s.provider, 'submitShot').mockImplementation(async (input) => submit({ ...input,
+      submissionJournal: async (evidence) => {
+        const won = await input.submissionJournal!(evidence);
+        if (evidence.phase === phase) {
+          s.tick(4 * 60_000);
+          await advanceRun(s.deps, 'run-1', USER);
+          return false;
+        }
+        return won;
+      },
+    }));
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(view.pendingDecision?.options).toEqual(['cancel']);
+    expect(s.store.get('run-1').shots[0]?.submission?.phase).toBe(phase);
+    expect(s.engine.submitted).toHaveLength(0);
+    await expect(decideRun(s.deps, 'run-1', USER, 'retry')).rejects.toBeInstanceOf(DirectorRunDecisionError);
+  });
+
+  it('keeps the POST journal when Google acceptance is ambiguous and forbids another attempt', async () => {
+    const s = setup({ transport: 'vertex', script: () => ({ submit: { ok: false, reason: 'ambiguous', retryable: false, detail: 'answer lost' } }) });
+    await started(s);
+    const view = await advanceRun(s.deps, 'run-1', USER);
+    expect(view.pendingDecision?.options).toEqual(['cancel']);
+    expect(s.store.get('run-1').shots[0]?.submission).toMatchObject({ phase: 'posting', outputPrefix: expect.any(String), bodySha256: 'b'.repeat(64) });
+    await advanceRun(s.deps, 'run-1', USER);
+    expect(s.engine.submitted).toHaveLength(1);
+    expect(s.charges).toHaveLength(1);
   });
 });

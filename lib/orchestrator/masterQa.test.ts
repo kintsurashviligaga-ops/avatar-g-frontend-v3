@@ -47,6 +47,18 @@ describe('validateMaster', () => {
     expect(qa.issues.map((i) => i.code)).not.toContain('silent_master');
   });
 
+  test('contracted sound must be verified even when all decoded picture frames are present', () => {
+    const contracted = { ...HEALTHY, expectedFrames: 780, actualFrames: 780 };
+    const unknown = validateMaster({ ...contracted, audioPresent: null });
+    expect(unknown.pass).toBe(false);
+    expect(unknown.issues).toContainEqual(expect.objectContaining({ code: 'audio_stream_unverified', severity: 'critical' }));
+    expect(validateMaster({ ...contracted, audioPresent: true }).pass).toBe(true);
+    expect(validateMaster({ ...contracted, audioPresent: false }).issues).toContainEqual(expect.objectContaining({ code: 'silent_master' }));
+    // Silence approved by design needs no audio stream; historical uncontracted QA keeps its compatibility policy.
+    expect(validateMaster({ ...contracted, audioExpected: false, audioPresent: null }).pass).toBe(true);
+    expect(validateMaster({ ...HEALTHY, audioPresent: null }).pass).toBe(true);
+  });
+
   test('duration drift beyond ±15% → warn (a dropped clip)', () => {
     const qa = validateMaster({ ...HEALTHY, actualDurSec: 20 }); // 23% short
     expect(qa.pass).toBe(true); // a warn, not a hard fail

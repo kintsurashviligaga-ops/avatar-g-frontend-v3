@@ -1,3 +1,4 @@
+import { say as sayWithVideoCoreHelper } from './video-core-live/_live';
 import { test, expect, type Page } from '@playwright/test';
 
 /**
@@ -70,6 +71,10 @@ test('a guest chat turn streams an assistant reply (keep-alive comments are invi
   const box = page.getByPlaceholder(COMPOSER);
   await box.fill('გამარჯობა');
   await box.press('Enter');
+  await expect(box).toHaveValue('გამარჯობა\n');
+  expect(posts).toEqual([]);
+  await sayWithVideoCoreHelper(page, 'გამარჯობა');
+  await expect(box).toHaveValue('');
   await expect(page.getByText('გამარჯობა! რით დაგეხმარო?')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(': keep-alive')).toHaveCount(0);
   expect(posts).toEqual(['/api/chat/gemini']);
@@ -86,7 +91,7 @@ test('a guest asking for a paid tool gets sign-in, and nothing is sent', async (
   await openHome(page);
   const box = page.getByPlaceholder(COMPOSER);
   await box.fill('გამიკეთე ვიდეო ზღვაზე');
-  await box.press('Enter');
+  await box.press('Control+Enter');
   await expect(page.locator('input[type="email"]')).toBeVisible();
   await page.waitForTimeout(500);
   expect(posts).toEqual([]);
@@ -103,11 +108,10 @@ test('a generated image lands in the feed, in the same window (no new tab)', asy
   await page.goto(`${HOME}/dashboard?tool=image`);
   const box = page.getByPlaceholder('აღწერე სურათი, რომ დაგიხატო…');
   await expect(box).toBeAttached({ timeout: 45_000 });
-  // On a desktop the Image panel opens with its tool and holds the description, so the chat box steps aside (GG's card,
-  // 2026-10-18). This test follows the chat's own path: put the panel away, as a person does, to write to Agent G.
+  // Follow the composer's own path, closing settings if this viewport already has them open.
   const chip = page.getByTestId('options-toggle');
-  await expect(chip).toHaveAttribute('aria-expanded', 'true');
-  await chip.click();
+  await expect(chip).toHaveAttribute('aria-expanded', /^(true|false)$/);
+  if (await chip.getAttribute('aria-expanded') === 'true') await chip.click();
   await expect(chip).toHaveAttribute('aria-expanded', 'false');
   await expect(box).toBeVisible();
   // The sign-in wall is not what is under test: lift it in this browser only, AFTER the shell has published its own

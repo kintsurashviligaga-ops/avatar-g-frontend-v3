@@ -195,6 +195,8 @@ export type Clip = {
 
 /** What the director hands the provider for one shot. Both objects are the frozen storyboard's own. */
 export type ShotGenerationInput = {
+  /** Server-owned durable attempt hook; never copied from params or client JSON. */
+  submissionJournal?: import('@/lib/veo/submissionJournal').VeoSubmissionJournal;
   storyboardId: string;
   shot: Shot;
   consistencyLock: ConsistencyLock;

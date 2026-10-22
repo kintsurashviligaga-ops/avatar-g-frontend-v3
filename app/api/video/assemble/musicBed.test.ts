@@ -91,7 +91,7 @@ const post = (body: unknown) =>
   });
 
 const CLIP = 'https://storage.example/clip-0.mp4';
-const FILM = { segments: [{ url: CLIP, durationSec: 8 }], scorePrompt: 'a quiet morning in old Tbilisi' };
+const FILM = { segments: [{ url: CLIP, durationSec: 8 }], scorePrompt: 'instrumental music for a quiet morning in old Tbilisi' };
 const ENV = { ...process.env };
 
 beforeEach(() => {
@@ -112,13 +112,22 @@ afterEach(() => {
   process.env = { ...ENV };
 });
 
-test('ElevenLabs Music scores the film (the baseline): scoreFallback "elevenlabs-music"', async () => {
+test('an explicitly requested score uses ElevenLabs Music: scoreFallback "elevenlabs-music"', async () => {
   const res = await POST(post(FILM));
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({
     url: 'https://storage.example/scored-master.mp4', scoreFallback: 'elevenlabs-music', musicUrl: 'https://storage.example/el-score.mp3', single: true,
   });
   expect(generateMusic).not.toHaveBeenCalled();
+});
+
+test('a speech film without a music request keeps its native audio and never orders a score', async () => {
+  const res = await POST(post({ ...FILM, scorePrompt: 'a quiet morning in old Tbilisi' }));
+  expect(res.status).toBe(200);
+  expect(await res.json()).toMatchObject({ url: CLIP, scoreFallback: null, musicUrl: null, single: true });
+  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(generateMusic).not.toHaveBeenCalled();
+  expect(muxAudioOntoVideo).not.toHaveBeenCalled();
 });
 
 test('an ElevenLabs Music FAILURE leaves the film without music and says so — MusicGen is never asked', async () => {

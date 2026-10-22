@@ -89,7 +89,8 @@ describe('the brand tokens the wordmark relies on', () => {
 
   test('display = Montserrat, text = Inter; no stack names a family next/font renamed', () => {
     const layout = readFileSync(join(process.cwd(), 'app/layout.tsx'), 'utf8');
-    expect(layout).toMatch(/Montserrat\(\{[^}]*variable: "--font-display"/s);
+    expect(layout).toMatch(/const montserrat = localFont\(\{[^}]*src: "\.\/fonts\/Montserrat-roman\.var\.woff2"[^}]*variable: "--font-display"/s);
+    expect(layout).toMatch(/const inter = localFont\(\{[^}]*src: "\.\/fonts\/Inter-roman\.var\.woff2"[^}]*variable: "--font-ui"/s);
     expect(layout).not.toMatch(/\bSyne\(|DM_Sans\(/);
     expect(css).not.toMatch(/font-family:\s*'Inter'/);
   });

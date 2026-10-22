@@ -61,8 +61,12 @@ describe('the history a user can actually reach', () => {
   });
 
   it('the sidebar delete stays tappable without hover', () => {
-    // opacity-100 by default, hidden only from md up — the inverse of the trap in the hidden panel.
-    expect(chrome()).toMatch(/opacity-100[^"]*md:opacity-0/);
+    // Its own 44 px target beside the title, visible on every viewport: no hover-reveal at any width, so nothing
+    // hides it from a touch screen (GG 2026-10-22; tests/chat-history-delete-layout.spec.ts checks the layout).
+    const del = chrome().match(/onClick=\{\(e\) => handleDeleteConversation\(c\.id, e\)\}[^>]*?className="([^"]*)"/);
+    expect(del).not.toBeNull();
+    expect(del![1]).toContain('h-11 w-11');
+    expect(del![1]).not.toMatch(/opacity-0/);
   });
 });
 

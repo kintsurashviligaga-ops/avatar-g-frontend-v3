@@ -35,7 +35,7 @@ import type { OutputFormat } from '@/lib/veo/types';
 import type { VeoEngineInfo } from '../video/VeoParametersPanel';
 import { VideoDurationSheet, VideoFormatSheet, VideoModeChoice } from './VideoPickers';
 import {
-  CARD, VideoCreateHeader, VideoGenerateBar, VideoQualitySelect, VideoRefsRow, VideoSelect, VideoSettingRow, VideoSwitch, VideoTiles,
+  CARD, VideoCreateHeader, VideoGenerateBar, VideoQualitySelect, VideoRefsRow, VideoSettingRow, VideoSwitch, VideoTiles,
 } from './videoCreateParts';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
 
@@ -165,7 +165,6 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
   const hfHints = useMemo(() => ({ aspect: format, seconds, sound: soundOn }), [format, seconds, soundOn]);
   const croppedNotes = planNotices({ ...plan, format }, { audioToggle }).filter((n) => n.id === 'cropped').map((n) => n[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka']);
   const film = mode !== 'musicvideo';
-  const narrator: 'off' | 'female' | 'male' = audio.narration ? audio.narratorGender : 'off';
   const lipsyncPrice = creditsLabel(quoteCredits({ tool: 'avatar' }), locale);
 
   return (

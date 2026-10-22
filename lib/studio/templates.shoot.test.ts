@@ -14,7 +14,7 @@ import {
 } from './templates.photoshoot';
 import { ANGLE_IDS, DOF_IDS, LENS_IDS, LIGHT_IDS, ROOM_IDS } from './shootWire';
 import { SHOOT_ASPECTS } from './shootQuote';
-import { ALL_TOOLS } from './tools';
+import { TOOL_META } from './tools';
 
 const LANGS = ['ka', 'en', 'ru'] as const;
 const GALLERIES = [
@@ -142,7 +142,9 @@ describe('photographer', () => {
     expect(photoshootTemplate('__proto__')).toBeNull();
   });
   test('is NOT the on-device culling tool: the photographer\'s id is `photoshoot`', () => {
-    expect(ALL_TOOLS).toContain('photoshoot');
-    expect(ALL_TOOLS).toContain('photo');
+    // Both left the menus in GG's 2026-10-21 clean-up (lib/studio/tools.ts); the ids stay distinct.
+    expect(TOOL_META.photoshoot).toBeDefined();
+    expect(TOOL_META.photo).toBeDefined();
+    expect(TOOL_META.photoshoot).not.toBe(TOOL_META.photo);
   });
 });

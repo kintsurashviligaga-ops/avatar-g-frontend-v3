@@ -16,8 +16,6 @@ import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, us
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
-import { HomeQuickStart } from './HomeQuickStart';
-import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
@@ -107,7 +105,7 @@ import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { avatarRetakeText, filmRefineNote, improvedBrief, refineChange } from '@/lib/chat/refineRequest';
 import { quoteSceneRedo, runSceneRedo, sceneRedoAsk, sceneRedoOfferText, sceneRedoProgressText, sceneRedoResultText, weakScenesText } from '@/lib/chat/filmSceneRedoClient';
-import { type AvatarFace, avatarAskLineText, avatarGenderFromText, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
+import { type AvatarFace, avatarAskLineText, avatarVoiceGender, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
 import { GENJUTSU_HARD_CAP_MS } from '@/lib/genjutsu/limits';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
@@ -150,7 +148,7 @@ const COMPLETED_SERVICE: Readonly<Record<'image' | 'music' | 'video' | 'avatar' 
   remix: 'video.remix',
 };
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
-import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
+import { ResearchCard, researchStartedNote } from './research';
 import { MusicStudioCard, type MusicDraft } from './music/MusicStudioCard';
 import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './music/musicDraft';
 import { handleMusicVoice } from './music/musicVoiceBridge';
@@ -2612,13 +2610,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [lipMyVoice, setLipMyVoice] = useState(false);
   // Avatar mode: cloned-voice gender + output format (the panel's selectable options).
   const [lipGender, setLipGender] = useState<'auto' | 'female' | 'male'>('auto');
-  const resolveLipGender = (hintText?: string): 'female' | 'male' => {
-    if (hintText) {
-      const fromText = avatarGenderFromText(hintText);
-      if (fromText) return fromText;
-    }
-    return lipGender === 'auto' ? 'male' : lipGender;
-  };
+  const resolveLipGender = (hintText?: string): 'female' | 'male' => avatarVoiceGender(lipGender, hintText);
   const [lipFormat, setLipFormat] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   // P8 — selected built-in avatar preset (a /public path used as the talking face).
   // Mutually exclusive with an uploaded face: picking one clears the other.
@@ -3337,12 +3329,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [busy, storyboardBusy, queueActiveNow]);
 
   // Auto-grow the composer textarea with its content (capped), like a modern chat.
-  //
-  // `composerWrapped` drives the chat composer's two shapes (Gemini): ONE row — „+“ · the text · mic · Send — while
-  // the text fits a line, and the text on its own full-width line with the controls below once it wraps. LATCHED
-  // until the box is emptied: in the one-row shape the text box is narrower, so wrapped text would fit again on the
-  // wider line and the composer would flip back and forth on every keystroke.
-  const [composerWrapped, setComposerWrapped] = useState(false);
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
@@ -3354,9 +3340,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // ⚠️ An EMPTY box keeps its one-line CSS height: Chrome counts a WRAPPED placeholder in scrollHeight, so sizing an
     // empty box from it grew the phone composer to two lines around nothing (83 px pill, placeholder off the controls).
     el.style.height = input ? `${Math.min(el.scrollHeight, 160)}px` : '';
-    if (!input) setComposerWrapped(false);
-    // One line is 44 px (24 px line + 20 px padding); anything taller has wrapped.
-    else if (input.includes('\n') || el.scrollHeight > 48) setComposerWrapped(true);
   }, [input, mode]);
 
   // ── THE ACTIVE TOOL (docs/DESIGN.md §8) ─────────────────────────────────────────────────────────────────
@@ -3513,8 +3496,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // same sheet opened from the settings' service card — the tools alone, no attachment tiles.
   const [toolSheetOpen, setToolSheetOpen] = useState(false);
   const [toolPickOnly, setToolPickOnly] = useState(false);
-  // The Deep Research and Connectors rows of the plus sheet - an empty list until the server says the feature exists here.
-  const researchExtras = useResearchToolExtras(locale, () => input);
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -3523,17 +3504,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const remixVideoRef = useRef<HTMLInputElement | null>(null);
   // A guest sees „შესვლა" in the desktop title bar. ChatChrome publishes the session on <html data-authed>.
   const [guest, setGuest] = useState(false);
-  // …and the signed-in user's first name (<html data-first-name>, ChatChrome), for the chat's personal greeting line.
-  const [firstName, setFirstName] = useState('');
   useEffect(() => {
     const el = document.documentElement;
     const read = () => {
       setGuest(el.dataset.authed === '0');
-      setFirstName((el.dataset.firstName ?? '').trim());
     };
     read();
     const mo = new MutationObserver(read);
-    mo.observe(el, { attributes: true, attributeFilter: ['data-authed', 'data-first-name'] });
+    mo.observe(el, { attributes: true, attributeFilter: ['data-authed'] });
     return () => mo.disconnect();
   }, []);
   // Asked again on every sign-in (an in-page email code does not reload the page); a guest never has it.
@@ -7090,10 +7068,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const targetScenes = detectedScenes >= 1 ? Math.min(6, detectedScenes) : 2;
       const targetSec = targetScenes * 8;
       const photoRefs = attachments
-        .filter((a) => (a as any).mimeType?.startsWith("image/") || isImage((a as any).mimeType) || /\.(jpe?g|png|webp)$/i.test((a as any).name || ""))
-        .map((a: any) => a.url || a.dataUrl || "")
+        .filter((a) => isImage(a.mimeType) || /\.(jpe?g|png|webp)$/i.test(a.name || ""))
+        .map((a) => a.dataUrl)
         .filter(Boolean);
-      const attachedAudio = attachments.find((a) => (a as any).mimeType?.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg)$/i.test((a as any).name || ""));
+      const attachedAudio = attachments.find((a) => isAudio(a.mimeType) || /\.(mp3|wav|m4a|aac|ogg)$/i.test(a.name || ""));
       const isMusicVideoPrompt = /(?:მუსიკალურ\s*(?:კლიპ|ვიდეო)|სიმღერ[აი]|music\s*video|\bsong\b)/iu.test(text) || !!attachedAudio;
       const ratio = aspectFromText(text, { ratioOnly: true });
       const sbOrientation = (ratio ?? lipFormat) === "16:9" ? "landscape" : "vertical";
@@ -7598,9 +7576,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
       // Only the words go to the voice. "The avatar, emotionally, says: …" was read out whole (Production 2026-10-16):
       // the direction part ("emotionally, with gestures") is how it behaves, not what it says (lib/avatar/scriptSplit).
-      const parsedScript = splitAvatarScript(text); const spoken = parsedScript.speech || text;
-      // The voice the order names („ქალი ავატარი…"), else the panel's; the frame the words or the card named, else the panel's.
-      const detected = text ? avatarGenderFromText(text) : null; const voiceGender = lipGender === 'auto' ? (detected ?? 'male') : lipGender;
+      const spoken = splitAvatarScript(text).speech || text;
+      // The same voice shown on the approval card, resolved to a supported server value even in Auto mode.
+      const voiceGender = resolveLipGender(text);
       const namedRatio = opts?.aspect ?? (text ? aspectFromText(text, { ratioOnly: true }) : null);
       const veoAspect: '9:16' | '16:9' = (namedRatio ?? lipFormat) === '16:9' ? '16:9' : '9:16';
       // ⚠️ NO PHOTO AND NO PRESET WENT TO THE HEYGEN PRESENTER, which the Google-only boundary refuses (GG, 2026-10-17
@@ -7621,7 +7599,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             // Honour the panel's Voice (Female/Male) + Format selections.
-            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: resolveLipGender() }),
+            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: voiceGender }),
           });
           const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string; error?: string; code?: string };
           let sj: { success?: boolean; videoId?: string; error?: string; code?: string } = {};
@@ -7747,7 +7725,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           videoUrl,
           ...(audioUrl ? { audioUrl } : {}),
           ...(spoken ? { text: spoken } : {}),
-          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: lipGender }),
+          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: voiceGender }),
           orientation: lipOrientation, // honour the Format selector (9:16 / 16:9 / 1:1) in the HeyGen render
         });
         // START the job (returns fast) → poll in SHORT requests (mobile-safe). The
@@ -10790,7 +10768,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
                 {m.role === 'assistant' && m.text && !m.researchId && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
                   const isLast = i === messages.length - 1;
-                  const act = 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/60 transition-all duration-150 hover:bg-white/[0.08] hover:text-white active:scale-95 touch-manipulation';
+                  const act = 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/60 transition-all duration-150 hover:bg-white/[0.08] hover:text-white touch-manipulation';
                   const answeredBy = displayNameFor(m.chatModelId ?? m.chatModel);
                   // „Thinking“ is Flash with deep reasoning — name it as the menu does, so the label matches the choice.
                   const modelLabel = answeredBy && m.chatMode === 'thinking' && /flash/i.test(m.chatModelId ?? '') && !/lite/i.test(m.chatModelId ?? '')
@@ -10830,7 +10808,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         title={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : readWord}
                         className={
                           speakingIdx === i
-                            ? 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-blue-500/15 px-3 text-[12px] font-medium text-blue-400 ring-1 ring-blue-400/30 transition-all duration-150 hover:bg-blue-500/25 active:scale-95'
+                            ? 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-blue-500/15 px-3 text-[12px] font-medium text-blue-400 ring-1 ring-blue-400/30 transition-all duration-150 hover:bg-blue-500/25'
                             : act
                         }
                       >
@@ -11857,12 +11835,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
   // ONE DESCRIPTION BOX (GG's card, 2026-10-18 05:14Z: „დამალე"). Image and Music keep their description on the Create
-  // screen (it and the composer share `input`), so the composer's text box steps aside while that screen is on: below `lg`
-  // always (the sheet IS the prompt card), on a desktop while the panel is open — closing it brings the box back as Agent
+  // screen (it and the composer share `input`), so the composer's text box steps aside while that sheet or panel is open.
+  // Closing settings brings the box back as Agent
   // G's line. Mic, Live voice and Send stay in the pill. VIDEO is the other way round (GG 2026-10-18, „პრომპტი ჩატის ველში"):
   // its panel has no prompt, so this box and its priced Send stay beside the open panel.
   const composerTextHidden = (imageCreate || mode === 'music')
-    && (isDesktop ? panelOpen : true);
+    && (isDesktop ? panelOpen : optionsOpen);
   // …and on a desktop the box's own Send and enhance go with it: the panel beside it has the priced Create.
   const composerRunAside = composerTextHidden && isDesktop;
   // Music on a desktop: the latest track and the engines-and-prices list (ref6) lead the centre column; the feed — progress
@@ -11887,11 +11865,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const chatSingleRow = false;
   // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
   const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
-  // „გამარჯობა, {name}" — Gemini's personal line above the greeting, for a signed-in user in the chat. Cyan fading
-  // into the text colour: one hue, no second accent (docs/DESIGN.md §6–§7).
-  const personalGreeting = chatOnly && firstName
-    ? (locale === 'en' ? `Hi, ${firstName}` : locale === 'ru' ? `Здравствуйте, ${firstName}` : `გამარჯობა, ${firstName}`)
-    : '';
   // ── The desktop's centre for the video tool (ref6): the RESULT pane — the latest video of this tool in the thread, or its
   // progress while one renders — and "Models & prices" (the Veo tiers priced per length, which also pick the model). Phones
   // have the create sheet only; the thread below the stage is unchanged.
@@ -12108,7 +12081,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {imageWorkspace && imageStudioAccess && (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
           <ImageWorkspace key={imageStudioAccess.userId} access={imageStudioAccess} locale={locale} initialPrompt={input}
-            onClose={() => { setImageWorkspaceOpen(false); if (!isDesktop) setOptionsOpen(true); }} />
+            onClose={() => { setImageWorkspaceOpen(false); setOptionsOpen(true); }} />
         </div>
       )}
       {imageDesk && imageDeskActions && (
@@ -12513,8 +12486,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 runTool();
-                setInput('');
-                if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
+                // The accepted send path clears the composer; failed/auth-gated sends keep the draft.
               }
             }}
             onFocus={() => setTimeout(() => taRef.current?.scrollIntoView({ block: 'nearest' }), 120)}
@@ -12557,7 +12529,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
                 chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
             {!chatOnly && (
-              <div className="inline-flex h-10 min-w-0 items-center gap-0.5 rounded-full bg-app-accent/15 p-1 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
+              <div className="inline-flex h-10 min-w-0 max-w-full items-center gap-0.5 rounded-full bg-app-accent/15 p-1 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
                 {/* 1. სერვისის სწრაფი შეცვლა (ხსნის სერვისების სიას) */}
                 <button
                   type="button"
@@ -12566,7 +12538,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-app-accent transition-colors hover:bg-app-accent/20"
                 >
                   <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
-                  <span className="max-w-[110px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
+                  <span className="max-w-[88px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
                   <ChevronDown size={13} aria-hidden="true" className="shrink-0 opacity-80" />
                 </button>
 
@@ -12575,10 +12547,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   type="button"
                   onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}
                   data-testid="options-toggle"
+                  aria-expanded={isDesktop ? panelOpen : optionsOpen}
+                  aria-label={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
                   title={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
-                  className="inline-flex h-8 items-center gap-1 rounded-full bg-white/[0.06] px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
+                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-white/[0.06] px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
                 >
-                  <span className="truncate whitespace-nowrap">
+                  <SlidersHorizontal size={14} aria-hidden="true" className="shrink-0" />
+                  <span className="hidden max-w-[160px] truncate whitespace-nowrap sm:inline">
                     {toolSummary || (locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები')}
                   </span>
                 </button>
@@ -12598,7 +12573,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-rose-500/15 px-2.5 text-rose-300 transition-colors hover:bg-rose-500/25"
                 >
                   <X size={14} aria-hidden="true" />
-                  <span className="ml-0.5 text-[11px] font-medium">{locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი'}</span>
+                  <span className="ml-0.5 hidden text-[11px] font-medium sm:inline">{locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი'}</span>
                 </button>
               </div>
             )}
@@ -12648,11 +12623,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* A product ad and a swap render through the Cap-3 queue, not `busy`: their Run stays on screen beside Stop
                 while another render runs (their panel buttons never had a busy gate; Stop must not be the only choice). */}
             {busy && !recording && !transcribing && canRun && (activeTool === 'product' || activeTool === 'swap') && (
-              <button type="button" onClick={() => {
-                        runTool();
-                        setInput('');
-                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
-                      }} aria-label={runLabel} title={runLabel}
+              <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
                 <Send size={17} aria-hidden="true" />
               </button>
@@ -12743,20 +12714,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {canRun && !composerRunAside && (
                   chatOnly ? (
                     // Gemini's send: a filled circle with an up-arrow — the one accent-filled control in the chat.
-                    <button type="button" onClick={() => {
-                        runTool();
-                        setInput('');
-                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
-                      }} aria-label={runLabel} title={runLabel}
+                    <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
                       className={`${chatRound} ml-0.5 bg-app-accent text-app-bg hover:opacity-90`}>
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={() => {
-                        runComposer();
-                        setInput('');
-                        if (taRef.current) { taRef.current.value = ''; taRef.current.style.height = 'auto'; }
-                      }} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
+                    <button type="button" onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
                       className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
                       {composerQuote ? (
                         <>

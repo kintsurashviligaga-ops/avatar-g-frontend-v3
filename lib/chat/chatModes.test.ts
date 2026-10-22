@@ -51,7 +51,7 @@ describe('the catalogue', () => {
 
   it('writes every row in all three locales, with a label and a model name', () => {
     for (const m of CHAT_MODES) {
-      expect([m.id, m.label.trim().length > 0, m.displayModel.startsWith('Gemini ')]).toEqual([m.id, true, true]);
+      expect([m.id, m.label.trim().length > 0, /^(?:\d+\.\d+ (?:Flash|Pro)|Flash|Pro)/.test(m.displayModel)]).toEqual([m.id, true, true]);
       for (const loc of ['ka', 'en', 'ru'] as const) {
         expect([m.id, loc, m.description[loc].trim().length > 0]).toEqual([m.id, loc, true]);
       }
@@ -93,7 +93,7 @@ describe('isChatModeId / chatModeOption / enabledChatModes', () => {
   });
 
   it('chatModeOption returns the row, and the first row for an id that slipped past the type', () => {
-    expect(chatModeOption('pro').displayModel).toBe('Gemini 3.1 Pro');
+    expect(chatModeOption('pro').displayModel).toBe('3.1 Pro');
     expect(chatModeOption('ultra' as ChatModeId)).toBe(CHAT_MODES[0]);
   });
 
@@ -149,14 +149,14 @@ describe('resolveChatMode — the only door from a request body to a mode', () =
 
 describe('displayNameFor — the "answered by" badge', () => {
   it.each([
-    ['gemini-3.8-flash', 'Gemini 3.8 Flash'],
-    ['gemini-3.6-flash', 'Gemini 3.6 Flash'],
-    ['gemini-3.1-pro-preview', 'Gemini 3.1 Pro'],
-    ['gemini-2.5-pro', 'Gemini 2.5 Pro'],
-    ['gemini-3.1-flash-lite', 'Gemini 3.1 Flash-Lite'],
-    ['gemini-2.5-flash-lite', 'Gemini 2.5 Flash-Lite'],
-    ['models/gemini-2.5-flash', 'Gemini 2.5 Flash'],
-    ['  Gemini-3.8-Flash  ', 'Gemini 3.8 Flash'],
+    ['gemini-3.8-flash', '3.8 Flash'],
+    ['gemini-3.6-flash', '3.6 Flash'],
+    ['gemini-3.1-pro-preview', '3.1 Pro'],
+    ['gemini-2.5-pro', '2.5 Pro'],
+    ['gemini-3.1-flash-lite', '3.1 Flash-Lite'],
+    ['gemini-2.5-flash-lite', '2.5 Flash-Lite'],
+    ['models/gemini-2.5-flash', '2.5 Flash'],
+    ['  Gemini-3.8-Flash  ', '3.8 Flash'],
   ])('%p → %p', (id, name) => {
     expect(displayNameFor(id)).toBe(name);
   });
@@ -168,9 +168,9 @@ describe('displayNameFor — the "answered by" badge', () => {
   });
 
   it('prettifies an unknown Gemini id instead of showing it raw', () => {
-    expect(displayNameFor('gemini-4.0-flash')).toBe('Gemini 4.0 Flash');
-    expect(displayNameFor('gemini-4.0-pro-preview')).toBe('Gemini 4.0 Pro');
-    expect(displayNameFor('gemini-4.0-flash-lite')).toBe('Gemini 4.0 Flash-Lite');
+    expect(displayNameFor('gemini-4.0-flash')).toBe('4.0 Flash');
+    expect(displayNameFor('gemini-4.0-pro-preview')).toBe('4.0 Pro');
+    expect(displayNameFor('gemini-4.0-flash-lite')).toBe('4.0 Flash-Lite');
   });
 
   it('returns other labels as they are, bounded, and nothing for nothing', () => {

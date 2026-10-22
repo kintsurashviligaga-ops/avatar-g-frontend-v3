@@ -11,6 +11,7 @@
 import { normalizeClipRequest, resolveModel } from '@/lib/veo/capabilities';
 import type { CreateVeoClipInput, CreateVeoClipResult } from '@/lib/veo/engine';
 import type { VeoClipRequest, VeoCreateOutcome, VeoPollOutcome, VeoTransport, VeoVideo } from '@/lib/veo/types';
+import type { VeoSubmissionEvidence } from '@/lib/veo/submissionJournal';
 import { veoWireFields, type VeoDeliveryContext, type VeoEnginePort, type VeoWireFields } from '../googleVeoProvider';
 
 /** How one createClip call (0-based, across the whole test) plays out. Every field defaults to success. */
@@ -37,6 +38,8 @@ export interface FakeVeoEngineOptions {
 export interface FakeVeoEngine extends VeoEnginePort {
   /** Every CreateVeoClipInput that reached the engine, in call order. */
   readonly calls: CreateVeoClipInput[];
+  /** Simulated provider POSTs after all persistence fences. */
+  readonly submitted: string[];
   readonly userIds: Array<string | null | undefined>;
   readonly polled: string[];
   readonly delivered: VeoDeliveryContext[];
@@ -58,6 +61,7 @@ export function passthroughWire(request: VeoClipRequest): VeoWireFields {
 export function createFakeVeoEngine(opts: FakeVeoEngineOptions = {}): FakeVeoEngine {
   const transport: VeoTransport | null = opts.transport === undefined ? 'gemini' : opts.transport;
   const calls: CreateVeoClipInput[] = [];
+  const submitted: string[] = [];
   const userIds: Array<string | null | undefined> = [];
   const polled: string[] = [];
   const delivered: VeoDeliveryContext[] = [];
@@ -67,6 +71,7 @@ export function createFakeVeoEngine(opts: FakeVeoEngineOptions = {}): FakeVeoEng
 
   return {
     calls,
+    submitted,
     userIds,
     polled,
     delivered,
@@ -82,8 +87,21 @@ export function createFakeVeoEngine(opts: FakeVeoEngineOptions = {}): FakeVeoEng
       const t = transport ?? 'gemini';
       const model = resolveModel(t, input.tier ?? 'standard');
       const { request, adjustments } = normalizeClipRequest(input.request, model, t);
+      if (input.submissionJournal) {
+        const evidence: VeoSubmissionEvidence = { schema: 1, phase: 'prepared', transport: t, model,
+          requestSha256: 'a'.repeat(64), estimatedUsd: 1,
+          ...(t === 'vertex' ? { projectId: 'p', location: 'us-central1', outputPrefix: `gs://fake-output/${input.sessionId}/${input.ordinal}-${index}/` } : {}),
+        };
+        let allowed = false;
+        try {
+          allowed = await input.submissionJournal(evidence) && await input.submissionJournal({ ...evidence, phase: 'posting', bodySha256: 'b'.repeat(64) });
+        } catch { /* a failed persistence fence prevents the scripted provider submit */ }
+        if (!allowed) return { request, adjustments, model, transport: t,
+          outcome: { ok: false, reason: 'invalid_request', retryable: false, detail: 'The submission journal refused the POST' } };
+      }
       const script = opts.script?.(index, input) ?? {};
       const name = t === 'vertex' ? `projects/p/locations/us-central1/publishers/google/models/${model}/operations/op-${index}` : `models/${model}/operations/op-${index}`;
+      submitted.push(name);
       const outcome: VeoCreateOutcome = script.submit ?? { ok: true, operation: { transport: t, name, model } };
       pollQueues.set(name, [...(script.polls ?? [{ state: 'succeeded', videos: [VIDEO] }])]);
       deliverBy.set(name, script.deliver === undefined ? `https://storage.example.com/renders/clip-${index}.mp4` : script.deliver);

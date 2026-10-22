@@ -173,7 +173,9 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
 
   it.each(LOCALES)('with the switch off, the same tools are listed and priced again (%s)', (locale) => {
     const p = buildPlatformPrompt({ locale, now: NOW, mediaGoogleOnly: false });
-    for (const id of OUTSIDE_ENGINE_TOOLS) expect({ id, listed: toolLine(p, id, locale) }).toEqual({ id, listed: true });
+    // …the ones the side menu still has: GG's 2026-10-21 clean-up took swap and motion out of every menu (lib/catalog/nav HIDE).
+    const inMenu = new Set(toolGroups().flatMap((g) => g.tools));
+    for (const id of OUTSIDE_ENGINE_TOOLS.filter((t) => inMenu.has(t))) expect({ id, listed: toolLine(p, id, locale) }).toEqual({ id, listed: true });
     expect(p).toContain(`talking avatar ${cr(CREDIT_COSTS.avatar_30s)}`);
     expect(p).toContain(`3D model ${cr(CREDIT_COSTS.model3d)}`);
     expect(p).toContain(`- ${TOOL_META.remix.name[locale]} — ${TOOL_META.remix.sub[locale]} (attach a video here)`);
@@ -195,7 +197,7 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     expect(VEO_AVATAR_PROMPT_CREDITS).toBe(veoAvatarCredits());
   });
 
-  it('lists dubbing and decks as tools only once the owner approved their price', () => {
+  it('names dubbing and decks as not-yet until the owner approves their price, and never lists them (no menu row since 2026-10-21)', () => {
     const saved = process.env.OWNER_APPROVED_PRICING;
     delete process.env.OWNER_APPROVED_PRICING;
     const off = build('en');
@@ -203,8 +205,9 @@ describe('buildPlatformPrompt — a closed tool is named, never offered (sweep 2
     expect(toolLine(off, 'dubbing', 'en')).toBe(false);
     process.env.OWNER_APPROVED_PRICING = `dubbing:${CREDIT_COSTS.dubbing_per_minute},presentation:${CREDIT_COSTS.presentation_deck}`;
     const on = build('en');
-    expect(toolLine(on, 'dubbing', 'en')).toBe(true);
-    expect(toolLine(on, 'presentation', 'en')).toBe(true);
+    // GG's menu clean-up took both out of the side menu (lib/catalog/nav HIDE), so an approved price no longer lists them.
+    expect(toolLine(on, 'dubbing', 'en')).toBe(false);
+    expect(toolLine(on, 'presentation', 'en')).toBe(false);
     expect(notYetNames(on)).not.toContain(TOOL_META.dubbing.name.en);
     if (saved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = saved;
   });

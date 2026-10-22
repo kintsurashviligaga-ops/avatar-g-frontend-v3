@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { FFMPEG, logExpensive, paced, rows } from '../video-core-live/_live';
 import { PRICE_BOOK } from '../../lib/credits/priceBook';
+import { openMusicSettings } from './_panel';
 
 const run = promisify(execFile);
 
@@ -48,6 +49,7 @@ export async function openStudio(page: Page, locale: 'en' | 'ka' | 'ru' = 'en', 
   });
   await page.goto(`/${locale}/dashboard?tool=${tool}`);
   await studioReady(page);
+  if (tool === 'music') await openMusicSettings(page);
 }
 
 /**

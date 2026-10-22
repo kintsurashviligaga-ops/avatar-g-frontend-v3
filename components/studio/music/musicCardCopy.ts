@@ -6,6 +6,7 @@ const pick = (l: string): L => (l === 'en' || l === 'ru' ? l : 'ka');
 
 const COPY = {
   ka: {
+    cancelFailed: 'გაუქმება ვერ დადასტურდა. დავალების სტატუსს ვამოწმებთ; შეგიძლია ხელახლა სცადო.',
     planTitle: 'მუსიკის გეგმა', song: 'სიმღერა', instrumental: 'ინსტრუმენტული', pricing: 'ფასს ვითვლი…',
     tempo: { slow: 'ნელი', medium: 'საშუალო', fast: 'სწრაფი' },
     approxLength: (s: number) => `≈ ${s} წმ`,
@@ -25,6 +26,7 @@ const COPY = {
     joinNeedsTwo: 'გასაერთიანებლად ეკრანზე ორი მზა ტრეკი უნდა იყოს.',
   },
   en: {
+    cancelFailed: 'Cancellation could not be confirmed. We are checking the job status; you can try again.',
     planTitle: 'Music plan', song: 'Song', instrumental: 'Instrumental', pricing: 'Getting the price…',
     tempo: { slow: 'slow', medium: 'medium', fast: 'fast' },
     approxLength: (s: number) => `≈ ${s} s`,
@@ -44,6 +46,7 @@ const COPY = {
     joinNeedsTwo: 'Joining needs two finished tracks on screen.',
   },
   ru: {
+    cancelFailed: 'Отмена не подтверждена. Проверяем статус задания; можно попробовать ещё раз.',
     planTitle: 'План трека', song: 'Песня', instrumental: 'Инструментал', pricing: 'Считаю цену…',
     tempo: { slow: 'медленно', medium: 'средне', fast: 'быстро' },
     approxLength: (s: number) => `≈ ${s} с`,

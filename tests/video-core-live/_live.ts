@@ -339,7 +339,8 @@ export async function say(page: Page, text: string): Promise<void> {
     await expect(box).toBeVisible();
   }
   await box.fill(text);
-  await box.press('Enter');
+  // Plain Enter inserts a newline; match the current composer's explicit send shortcut.
+  await box.press('Control+Enter');
 }
 
 /** The paperclip → the OS file chooser → these synthetic files, then every chip Ready (real sign → PUT → verify). */
