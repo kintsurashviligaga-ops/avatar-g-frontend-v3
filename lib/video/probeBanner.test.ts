@@ -28,6 +28,15 @@ test('a phone clip: length, both streams, coded size, rotation, codecs; it displ
   expect(displaysPortrait(p)).toBe(true);
 });
 
+test.each([[-90, true], [90, true], [180, false], [0, false]] as const)(
+  'the newer Display Matrix banner keeps rotation %d and the displayed orientation', (angle, portrait) => {
+    const banner = PHONE_PORTRAIT.replace('displaymatrix: rotation of 90.00 degrees', `Display Matrix: rotation of ${angle}.00 degrees`);
+    const p = parseProbeBanner(banner);
+    expect(p).toMatchObject({ width: 1280, height: 720, rotation: angle });
+    expect(displaysPortrait(p)).toBe(portrait);
+  },
+);
+
 test('an mp3 with cover art is a track: its picture is not a video stream', () => {
   const p = parseProbeBanner(MP3_WITH_COVER);
   expect(p.hasVideo).toBe(false);
