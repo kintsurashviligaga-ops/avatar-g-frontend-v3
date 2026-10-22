@@ -1,21 +1,18 @@
 /** @jest-environment node */
 /**
  * POST /api/v2/dubbing/start — refused (MASTER TASK v3.1 PR 5e). The dub ran on ElevenLabs Scribe and ElevenLabs' timed
- * TTS; neither has a Google engine here. Every request answers 503 google_only before the session, the quote, ffmpeg,
- * the ledger or the pipeline, whatever the owner's price approval says. All of them are mocked so any call is caught.
+ * TTS; neither has a Google engine here. Every request answers 503 google_only before the session, the quote, the ledger
+ * or any fetch, whatever the owner's price approval says. The dubbing pipeline and its ffmpeg legs are gone (PR 5f), so
+ * the network spy is what would catch a call to the old vendors.
  */
 jest.mock('server-only', () => ({}));
 
 const getUser = jest.fn(async () => ({ data: { user: { id: '11111111-1111-4111-8111-111111111111' } } }));
 jest.mock('../../../../../lib/supabase/server', () => ({ createSupabaseServerClient: () => ({ auth: { getUser } }) }));
-jest.mock('../../../../../lib/services/dubbing/dubbingPipeline', () => ({ runDubbing: jest.fn() }));
-jest.mock('../../../../../lib/services/dubbing/dubbingFfmpeg', () => ({ extractAudioTrack: jest.fn() }));
 jest.mock('../../../../../lib/orchestrator/confirmedJob', () => ({ startConfirmedJob: jest.fn(), persistCompletion: jest.fn() }));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { runDubbing } from '../../../../../lib/services/dubbing/dubbingPipeline';
-import { extractAudioTrack } from '../../../../../lib/services/dubbing/dubbingFfmpeg';
 import { startConfirmedJob } from '../../../../../lib/orchestrator/confirmedJob';
 
 const post = (body: unknown, locale?: string) =>
@@ -51,9 +48,7 @@ describe.each([
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ success: false, url: null, jobId: null, code: 'google_only', error: 'google_only' });
     expect(getUser).not.toHaveBeenCalled();
-    expect(extractAudioTrack).not.toHaveBeenCalled();
     expect(startConfirmedJob).not.toHaveBeenCalled();
-    expect(runDubbing).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

@@ -12,12 +12,8 @@
       "app/api/health/public/route.ts",
       "app/api/health/services/route.ts",
       "app/api/voice/clone/route.ts",
-      "lib/config.ts",
-      "lib/elevenlabs/audioIsolation.ts",
       "lib/elevenlabs/music.ts",
-      "lib/elevenlabs/ttsTimestamps.ts",
-      "lib/security/csp.js",
-      "lib/services/dubbing/elevenScribe.ts"
+      "lib/security/csp.js"
     ],
     "replicate": [
       "app/api/admin/provider-probe/route.ts",
@@ -28,11 +24,7 @@
       "lib/ai/lipsync.ts",
       "lib/ai/replicate.ts",
       "lib/audio/rvc.ts",
-      "lib/config.ts",
       "lib/orchestrator/unpolledSettleRuntime.ts",
-      "lib/pipeline/anchorFrame.ts",
-      "lib/pipeline/lipsync/lipsyncNode.ts",
-      "lib/providers/replicate.ts",
       "lib/replicate/client.ts",
       "lib/security/csp.js",
       "lib/services/model3d/replicate3dClient.ts",
@@ -44,23 +36,16 @@
       "app/api/health/services/route.ts",
       "lib/agent-g/voice/stt.ts",
       "lib/ai/chatEngine.ts",
-      "lib/ai/openai.ts",
-      "lib/config.ts",
-      "lib/openai.ts",
-      "lib/providers/openai.ts",
       "lib/security/csp.js",
       "lib/system/provider-health.ts",
       "services/voice-v2v-node/server.mjs"
     ],
     "openrouter": [
-      "lib/ai/chatEngine.ts",
-      "lib/providers/openrouter.ts"
+      "lib/ai/chatEngine.ts"
     ],
     "anthropic": [
       "app/api/admin/provider-probe/route.ts",
       "app/api/health/services/route.ts",
-      "lib/pipeline/agents/claude-director.ts",
-      "lib/pipeline/quality/vision-gate.ts",
       "lib/system/provider-health.ts"
     ],
     "heygen": [
@@ -71,13 +56,11 @@
       "app/api/heygen/presenter/route.ts",
       "lib/ai/lipsync.ts",
       "lib/chat/ServiceManager.ts",
-      "lib/pipeline/lipsync/lipsyncNode.ts",
       "lib/security/csp.js",
       "lib/system/provider-health.ts"
     ],
     "runway": [
-      "lib/ai/runway.ts",
-      "lib/config.ts"
+      "lib/ai/runway.ts"
     ],
     "kling": [
       "lib/video/videoProviderCascade.ts"
@@ -99,10 +82,7 @@
     "luma": [
       "lib/video/videoProviderCascade.ts"
     ],
-    "stability": [
-      "lib/config.ts",
-      "lib/providers/stability.ts"
-    ],
+    "stability": [],
     "worldlabs": [
       "lib/system/provider-health.ts",
       "lib/worldlabs/client.ts"
@@ -111,8 +91,7 @@
       "lib/ai/xaiImage.ts"
     ],
     "deepseek": [
-      "lib/ai/deepseekClient.ts",
-      "lib/providers/deepseek.ts"
+      "lib/ai/deepseekClient.ts"
     ],
     "atlascloud": [
       "lib/ai/atlasClient.ts"

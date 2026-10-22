@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
  * POST /api/audio/isolate — refused (MASTER TASK v3.1 PR 5e). It ran the ElevenLabs Voice Isolator for the HeyGen singer
- * pass; neither has a Google engine. Every request answers 503 google_only before the session, the limit, the fetch of
- * the song or the isolator. All of them are mocked so any call is caught — no network, no spend.
+ * pass; neither has a Google engine. Every request answers 503 google_only before the session, the limit or any fetch.
+ * The isolator module itself is gone (PR 5f), so the network spy is what would catch a call to it — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../lib/supabase/auth', () => ({ requireAuthenticatedUser: jest.fn(async () => ({ id: 'user-1' })) }));
@@ -11,12 +11,10 @@ jest.mock('../../../../lib/api/rate-limit', () => ({
   checkRateLimitByKey: jest.fn(async () => null),
   RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 }, AUDIO_GEN_USER: { maxRequests: 60, windowMs: 86_400_000 } },
 }));
-jest.mock('../../../../lib/elevenlabs/audioIsolation', () => ({ isolateVocal: jest.fn(async () => 'https://x.supabase.co/vocal.mp3') }));
 
 import { NextRequest } from 'next/server';
 import { requireAuthenticatedUser } from '../../../../lib/supabase/auth';
 import { checkRateLimit, checkRateLimitByKey } from '../../../../lib/api/rate-limit';
-import { isolateVocal } from '../../../../lib/elevenlabs/audioIsolation';
 import { POST } from './route';
 
 const OURS = 'https://x.supabase.co/storage/v1/object/sign/music/song.mp3?token=t';
@@ -44,7 +42,6 @@ test.each([
   expect(requireAuthenticatedUser).not.toHaveBeenCalled();
   expect(checkRateLimit).not.toHaveBeenCalled();
   expect(checkRateLimitByKey).not.toHaveBeenCalled();
-  expect(isolateVocal).not.toHaveBeenCalled();
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
