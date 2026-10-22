@@ -21,6 +21,8 @@ const mockAuth = jest.fn();
 jest.mock('../../../../lib/veo/authCheck', () => ({ checkVertexAuth: () => mockAuth() }));
 const mockReadiness = jest.fn();
 jest.mock('../../../../lib/ai/google/readiness', () => ({ checkGoogleAiReadiness: (o: unknown) => mockReadiness(o) }));
+const mockCloudTts = jest.fn();
+jest.mock('../../../../lib/audio/google-tts', () => ({ checkCloudTts: () => mockCloudTts() }));
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
@@ -42,6 +44,7 @@ beforeEach(() => {
   mockTransport.mockReturnValue('vertex');
   mockProblems.mockReturnValue([]);
   mockReadiness.mockResolvedValue({ configured: true, ok: true, detail: 'vertex · location:global · mode:wif · token:ok' });
+  mockCloudTts.mockResolvedValue({ state: 'ok', detail: '4 ka-GE voices · best ka-GE-Chirp3-HD-Aoede' });
   warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -128,22 +131,22 @@ it('logs the missing variable names and skips the auth check when Vertex is not 
   expect(warn).toHaveBeenCalledWith('[provider-probe] veo ok=false transport:none · google-only:true · vertex:missing GCP_VEO_BUCKET');
 });
 
-// 2026-10-17 09:31Z: ElevenLabs refused the approved avatar's Georgian line (`401 subscription_required /
-// ivc_not_permitted`) while this probe read "N characters left" as ok. It reports the plan and its cloning now.
-it('fails ElevenLabs on a plan that does not allow the cloned Georgian voices, and names the plan', async () => {
+// Speech runs on Cloud TTS since PR 5d: the probe asks its free voices list, and ElevenLabs is never asked, even with a key.
+it('reports the voice as Cloud TTS, and never calls ElevenLabs', async () => {
   process.env.ELEVENLABS_API_KEY = 'el-test-key';
   mockAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok', 'bucket:ok', 'sign:ok'] });
-  const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
-    subscription: { tier: 'free', character_count: 120, character_limit: 10000, can_use_instant_voice_cloning: false },
-  }), { status: 200 }));
+  const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
   try {
-    const res = await GET(req());
-    const body = (await res.json()) as { results: Array<{ provider: string; ok: boolean; detail: string }> };
-    const el = body.results.find((r) => r.provider === 'elevenlabs');
-    expect(el?.ok).toBe(false);
-    expect(el?.detail).toMatch(/plan free/);
-    expect(el?.detail).toMatch(/cloned voices: NOT allowed/);
-    expect(el?.detail).toContain('9880 characters left');
+    let body = (await (await GET(req())).json()) as { results: Array<{ provider: string; configured: boolean; ok: boolean; detail: string }> };
+    expect(body.results.find((r) => r.provider === 'cloud-tts')).toEqual({
+      provider: 'cloud-tts', configured: true, ok: true, detail: '4 ka-GE voices · best ka-GE-Chirp3-HD-Aoede',
+    });
+    expect(body.results.some((r) => r.provider === 'elevenlabs')).toBe(false);
+    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('elevenlabs.io'))).toBe(false);
+
+    mockCloudTts.mockResolvedValue({ state: 'down', detail: 'voices list HTTP 403 (the Cloud Text-to-Speech API is off on the project, or the service account is not allowed)' });
+    body = (await (await GET(req())).json()) as typeof body;
+    expect(body.results.find((r) => r.provider === 'cloud-tts')).toMatchObject({ configured: true, ok: false, detail: expect.stringMatching(/HTTP 403/) });
     expect(JSON.stringify(body)).not.toContain('el-test-key');
   } finally {
     fetchSpy.mockRestore();

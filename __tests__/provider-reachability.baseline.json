@@ -2,7 +2,6 @@
   "note": "Frozen 2026-10-22 from the tree (MASTER TASK v3.1 Phase 1, PR 1): every app/api route whose value-import closure reaches a forbidden AI vendor, with the vendors it reaches. Only delete entries; __tests__/provider-boundary.test.ts fails on a new reach and on a stale one.",
   "routes": {
     "app/api/admin/avatar-providers/route.ts": [
-      "elevenlabs",
       "heygen",
       "liveavatar"
     ],
@@ -11,7 +10,6 @@
     ],
     "app/api/admin/provider-probe/route.ts": [
       "anthropic",
-      "elevenlabs",
       "heygen",
       "replicate"
     ],
@@ -169,12 +167,8 @@
       "deepseek",
       "runway"
     ],
-    "app/api/health/public/route.ts": [
-      "elevenlabs"
-    ],
     "app/api/health/services/route.ts": [
       "anthropic",
-      "elevenlabs",
       "heygen",
       "ltx",
       "nanobananaapi",

@@ -132,6 +132,45 @@ export async function pickBestGoogleVoice(
   }
 }
 
+export interface CloudTtsCheck {
+  /** unconfigured: no Vertex config · down: no token, a refusal or no answer · degraded: no Georgian voice listed. */
+  state: 'ok' | 'degraded' | 'down' | 'unconfigured';
+  detail: string;
+}
+
+/**
+ * The voice health check, for the health routes and the admin probe: one voices-list call for ka-GE (free, nothing is
+ * synthesised or billed), never cached and asked even after a refusal, so it shows the project as it is now. Every
+ * Georgian line in the product is read with one of these voices, so a list without one is a voice that cannot speak.
+ */
+export async function checkCloudTts(): Promise<CloudTtsCheck> {
+  if (!vertexAiConfig()) return { state: 'unconfigured', detail: 'Vertex AI config missing (Cloud TTS runs on its identity)' };
+  let token: string;
+  try {
+    token = await getVertexAccessToken(false);
+  } catch {
+    return { state: 'down', detail: 'no Vertex access token' };
+  }
+  try {
+    const res = await fetch(`${TTS_BASE}/voices?languageCode=ka-GE`, {
+      headers: { Authorization: `Bearer ${token}` },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) {
+      const why = res.status === 401 || res.status === 403 ? ' (the Cloud Text-to-Speech API is off on the project, or the service account is not allowed)' : '';
+      return { state: 'down', detail: `voices list HTTP ${res.status}${why}` };
+    }
+    const data = (await res.json().catch(() => null)) as { voices?: GoogleVoice[] } | null;
+    const ka = (data?.voices ?? []).filter((v) => (v.languageCodes ?? []).some((c) => c.toLowerCase().startsWith('ka')));
+    if (!ka.length) return { state: 'degraded', detail: 'no ka-GE voice listed — Georgian lines cannot be read' };
+    const best = ka.map((v) => v.name).sort((a, b) => voiceTierRank(b) - voiceTierRank(a) || a.localeCompare(b))[0]!;
+    return { state: 'ok', detail: `${ka.length} ka-GE voices · best ${best}` };
+  } catch {
+    return { state: 'down', detail: 'voices list did not answer' };
+  }
+}
+
 /** The Cloud TTS language for a text: the declared locale's, else detected from the script. */
 export function ttsLanguageCode(text: string, locale?: string | null): string {
   if (locale === 'ka') return 'ka-GE';

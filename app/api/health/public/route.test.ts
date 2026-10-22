@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
- * GET /api/health/public asks the engines that serve each category, and the voice's PLAN. 2026-10-17 09:31Z: the
- * approved avatar test was refused by ElevenLabs (`401 subscription_required / ivc_not_permitted`) while this route said
- * "6/6 ok" — it pinged Replicate for image / video / music, HeyGen for avatar, and only the ElevenLabs key for voice.
+ * GET /api/health/public asks the engines that serve each category. 2026-10-17 09:31Z: the approved avatar test was
+ * refused while this route said "6/6 ok" — it pinged Replicate for image / video / music and HeyGen for avatar. The
+ * voice is Google Cloud TTS since PR 5d, so voice asks its free ka-GE voices list; ElevenLabs is never asked (PR 6b).
  */
 jest.mock('server-only', () => ({}));
 // The route keeps a 60 s cache per instance, so each test imports it afresh; the mocks read these, which survive that.
@@ -14,8 +14,8 @@ jest.mock('../../../../lib/veo/authCheck', () => ({ checkVertexAuth: (...a: unkn
 const ENV = { ...process.env };
 let fetchSpy: jest.SpyInstance;
 
-const USER_OK = { subscription: { tier: 'starter', character_count: 100, character_limit: 30000, can_use_instant_voice_cloning: true } };
-const USER_NO_CLONING = { subscription: { tier: 'free', character_count: 0, character_limit: 10000, can_use_instant_voice_cloning: false } };
+const mockCheckCloudTts = jest.fn();
+jest.mock('../../../../lib/audio/google-tts', () => ({ checkCloudTts: (...a: unknown[]) => mockCheckCloudTts(...a) }));
 
 async function snapshot() {
   jest.resetModules();
@@ -25,24 +25,26 @@ async function snapshot() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // An ElevenLabs key is set and must never be used.
   process.env = { ...ENV, ELEVENLABS_API_KEY: 'el-test-key' };
+  mockCheckCloudTts.mockResolvedValue({ state: 'ok', detail: '4 ka-GE voices · best ka-GE-Chirp3-HD-Aoede' });
   mockCheckGoogleTransport.mockResolvedValue({ transport: 'vertex', configured: true, ok: true, steps: [{ model: 'chat', ok: true }, { model: 'image', ok: true }] });
   mockCheckVertexAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok', 'bucket:ok', 'sign:ok'] });
-  fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify(USER_OK), { status: 200 }));
+  fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
 });
 afterEach(() => { fetchSpy.mockRestore(); process.env = { ...ENV }; });
 
-test('all six ok when Google answers and the voice plan can speak the cloned Georgian voices', async () => {
+test('all six ok when Google answers and Cloud TTS lists a Georgian voice', async () => {
   const s = await snapshot();
   expect(s.categories).toEqual({ chat: 'ok', image: 'ok', video: 'ok', music: 'ok', voice: 'ok', avatar: 'ok' });
   expect(s.online).toBe(true);
-  // Only ElevenLabs is fetched here; Replicate and HeyGen are never asked.
-  const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
-  expect(urls).toEqual(['https://api.elevenlabs.io/v1/user']);
+  expect(mockCheckCloudTts).toHaveBeenCalledTimes(1);
+  // Nothing outside the Google checks is fetched: ElevenLabs, Replicate and HeyGen are never asked.
+  expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-test('a plan without cloned voices is a degraded voice and a degraded avatar — not "ok" (Production, 2026-10-17)', async () => {
-  fetchSpy.mockImplementation(async () => new Response(JSON.stringify(USER_NO_CLONING), { status: 200 }));
+test('no Georgian voice is a degraded voice and a degraded avatar — not "ok"', async () => {
+  mockCheckCloudTts.mockResolvedValue({ state: 'degraded', detail: 'no ka-GE voice listed' });
   const s = await snapshot();
   expect(s.categories.voice).toBe('degraded');
   expect(s.categories.avatar).toBe('degraded');
@@ -50,8 +52,8 @@ test('a plan without cloned voices is a degraded voice and a degraded avatar —
   expect(s.online).toBe(true); // the rest of the studio still works
 });
 
-test('a key ElevenLabs refuses is a voice that is down', async () => {
-  fetchSpy.mockImplementation(async () => new Response('{}', { status: 401 }));
+test('Cloud TTS refused (the API off, or the account not allowed) is a voice that is down', async () => {
+  mockCheckCloudTts.mockResolvedValue({ state: 'down', detail: 'voices list HTTP 403' });
   const s = await snapshot();
   expect(s.categories.voice).toBe('down');
   expect(s.categories.avatar).toBe('degraded');
@@ -71,15 +73,15 @@ test('the Google transport failing the image model is image down; a missing setu
   expect(s.categories).toMatchObject({ chat: 'ok', image: 'down', music: 'down' });
   mockCheckGoogleTransport.mockResolvedValue({ transport: 'vertex', configured: false, ok: false, missing: ['GOOGLE_CLOUD_PROJECT'], steps: [] });
   mockCheckVertexAuth.mockResolvedValue({ ok: false, steps: ['config:missing'] });
-  delete process.env.ELEVENLABS_API_KEY;
+  mockCheckCloudTts.mockResolvedValue({ state: 'unconfigured', detail: 'Vertex AI config missing' });
   s = await snapshot();
   expect(s.categories).toEqual({ chat: 'unconfigured', image: 'unconfigured', video: 'unconfigured', music: 'unconfigured', voice: 'unconfigured', avatar: 'unconfigured' });
 });
 
 test('names no provider, key or error text', async () => {
-  fetchSpy.mockImplementation(async () => new Response(JSON.stringify(USER_NO_CLONING), { status: 200 }));
+  mockCheckCloudTts.mockResolvedValue({ state: 'degraded', detail: 'no ka-GE voice listed · Chirp3' });
   const body = JSON.stringify(await snapshot());
-  expect(body).not.toMatch(/elevenlabs|google|vertex|veo|el-test-key|free|cloning/i);
+  expect(body).not.toMatch(/elevenlabs|google|vertex|veo|el-test-key|ka-GE|chirp|tts/i);
 });
 
 test('a check that never answers reads down, and the snapshot still comes back in time', async () => {

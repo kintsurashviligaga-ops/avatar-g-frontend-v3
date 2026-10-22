@@ -87,7 +87,8 @@ const ALLOWLIST: Record<string, string> = {
   'app/api/voice/realtime/session/route.ts': 'Realtime voice session-token minter — 401 without a session (getAuthenticatedUser, pinned below), VOICE_TOKEN + VOICE_TOKEN_USER caps, inert without VOICE_V2V_WS_URL',
   // ── Health / status / diagnostic monitoring: reference or PING provider endpoints (env presence,
   //    /v1/user, /v2/voices) — no media generation, no drain. Should ideally be admin-gated; low risk.
-  'app/api/health/public/route.ts': 'Public health — free status calls (Google countTokens, the Vertex auth chain, ElevenLabs /v1/user), no generation',
+  // (health/public LEFT this list in PR 6b: its voice check moved to lib/audio/google-tts, and the route no longer
+  //  names a provider host itself.)
   // (system/film-readiness + system/film-selftest LEFT this list 2026-10-02: operators only via lib/security/opsAccess.)
 };
 

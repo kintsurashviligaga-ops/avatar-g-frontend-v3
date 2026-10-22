@@ -11,11 +11,11 @@
  *   chat, image — the selected Google transport answers countTokens for the chat and the image model
  *                 (lib/ai/google/transportCheck); music rides the same transport (Lyria);
  *   video       — the keyless Vertex chain Veo uses: token, bucket, signing (lib/veo/authCheck);
- *   voice       — ElevenLabs, and its plan: every Georgian voice is a cloned one (lib/elevenlabs/account);
+ *   voice       — Google Cloud TTS on the same Vertex identity: its free voices list must hold a Georgian voice
+ *                 (lib/audio/google-tts checkCloudTts; MASTER TASK v3.1 PR 5d moved every spoken line there);
  *   avatar      — Veo for the picture AND the voice for its Georgian line.
  * Until 2026-10-17 image / video / music asked Replicate and avatar asked HeyGen — engines the product no longer uses —
- * and voice only asked whether the ElevenLabs key opened /v1/user: it read "6/6 ok" while ElevenLabs refused every
- * Georgian line (`401 subscription_required / ivc_not_permitted`, the approved avatar test at 09:31Z).
+ * and until PR 6b voice asked ElevenLabs, which no longer reads any line.
  *
  * Cached for 60 s in-memory per server instance to avoid hammering the
  * upstream providers from a chat drawer that may open frequently.
@@ -24,7 +24,7 @@
 import { NextResponse } from 'next/server';
 import { checkGoogleTransport, type TransportCheck } from '@/lib/ai/google/transportCheck';
 import { checkVertexAuth, type VertexAuthCheck } from '@/lib/veo/authCheck';
-import { elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
+import { checkCloudTts } from '@/lib/audio/google-tts';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -52,16 +52,7 @@ function inTime<T>(p: Promise<T>, late: T): Promise<T> {
 }
 
 async function voiceBucket(): Promise<Bucket> {
-  const key = process.env.ELEVENLABS_API_KEY?.trim();
-  if (!key) return 'unconfigured';
-  try {
-    const r = await fetch('https://api.elevenlabs.io/v1/user', { headers: { 'xi-api-key': key }, cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (!r.ok) return 'down';
-    // The key opens the account; can its plan speak the cloned Georgian voices, and has it characters left?
-    return elevenLabsVoiceState(readElevenLabsAccount(await r.json().catch(() => null))) === 'ok' ? 'ok' : 'degraded';
-  } catch {
-    return 'down';
-  }
+  return (await checkCloudTts()).state;
 }
 
 function transportBucket(t: TransportCheck, index: number): Bucket {
@@ -74,7 +65,7 @@ function vertexBucket(v: VertexAuthCheck): Bucket {
   return v.steps[0] === 'config:missing' ? 'unconfigured' : 'down';
 }
 
-/** The avatar is Veo's picture with ElevenLabs' Georgian line: no Veo, no avatar; no voice, a Georgian line cannot be made. */
+/** The avatar is Veo's picture with a Cloud TTS Georgian line: no Veo, no avatar; no voice, a Georgian line cannot be made. */
 function avatarBucket(video: Bucket, voice: Bucket): Bucket {
   if (video !== 'ok') return video;
   return voice === 'ok' ? 'ok' : 'degraded';

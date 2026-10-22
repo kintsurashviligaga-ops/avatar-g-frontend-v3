@@ -39,6 +39,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import { googleAiConfigured, googleTransportKind, googleTransportProblems } from '@/lib/ai/google/transport';
 import { geminiFrameModel } from '@/lib/ai/geminiImage';
 import { hasLyriaProvider, lyriaModel } from '@/lib/ai/lyriaMusic';
+import { cloudTtsConfigured } from '@/lib/audio/google-tts';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import { lyriaProMaxSec } from '@/lib/music/studio/capabilities';
@@ -83,7 +84,6 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     const warnings: string[] = [];
 
     const hasReplicate = present(env.REPLICATE_API_TOKEN);
-    const hasElevenLabs = present(env.ELEVENLABS_API_KEY);
 
     // Vertex AI, the only Google model transport under v3.1, which the frame model and Lyria call through. A
     // GEMINI_TRANSPORT other than vertex/unset throws there and fails closed — reported here as a name, never thrown.
@@ -148,17 +148,19 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       icon: dot(lipsyncAvail, lipsyncTier),
     });
 
-    // 4 · TTS VOICE — ElevenLabs only: eleven_v3 for Georgian (retried on multilingual_v2 — same provider), turbo v2.5
-    //     otherwise. The cloned ka female/male voices are code defaults, so the env voice ids are OVERRIDES, not needs.
+    // 4 · TTS VOICE — Google Cloud TTS only (lib/audio/google-tts, MASTER TASK v3.1 PR 5d), on the Vertex Workload
+    //     Identity token: every spoken line, the best ka-GE voice picked from the free voices list. No API key is read
+    //     and no other engine stands behind it (R7). Config only here; /api/health/services asks the voices list.
+    const ttsOn = cloudTtsConfigured();
     services.push({
       service: 'ხმა (TTS)',
-      provider: 'ElevenLabs eleven_v3',
-      available: hasElevenLabs,
-      tier: hasElevenLabs ? 'high' : 'unavailable',
-      note: !hasElevenLabs
-        ? 'ELEVENLABS_API_KEY missing — no voice-over (no other TTS provider, R7)'
-        : `ka: eleven_v3 → multilingual_v2 retry · other: turbo v2.5 · cloned ka voices in code; overrides female=${mark(present(env.ELEVENLABS_VOICE_ID_FEMALE))} male=${mark(present(env.ELEVENLABS_VOICE_ID_MALE))} ka=${mark(present(env.ELEVENLABS_GEORGIAN_VOICE_ID))}`,
-      icon: dot(hasElevenLabs, hasElevenLabs ? 'high' : 'unavailable'),
+      provider: 'Google Cloud TTS (Vertex)',
+      available: ttsOn,
+      tier: ttsOn ? 'high' : 'unavailable',
+      note: ttsOn
+        ? 'every spoken line · best ka-GE voice (Chirp3-HD first) · no fallback (R7) · needs the Cloud Text-to-Speech API on the project'
+        : 'Vertex AI config missing — no voice-over (no other TTS provider, R7)',
+      icon: dot(ttsOn, ttsOn ? 'high' : 'unavailable'),
     });
 
     // 5 · MUSIC — /api/ai/music Auto = Google Lyria 3 alone (hasLyriaProvider: the Google AI transport, LYRIA_ENABLED

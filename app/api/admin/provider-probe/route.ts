@@ -3,7 +3,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
 import { veoTransport } from '@/lib/veo/engine';
 import { checkVertexAuth } from '@/lib/veo/authCheck';
-import { describeElevenLabsAccount, elevenLabsVoiceState, readElevenLabsAccount } from '@/lib/elevenlabs/account';
+import { checkCloudTts } from '@/lib/audio/google-tts';
 import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
 import { checkGoogleAiReadiness } from '@/lib/ai/google/readiness';
 
@@ -104,15 +104,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return { provider: 'replicate', configured: true, ok: r.ok, detail: r.ok ? `account ${j.username ?? 'ok'}` : `HTTP ${r.status}` };
     }),
 
-    // ELEVENLABS — every text-to-speech leg in the product. Reports the plan, whether it allows the cloned Georgian
-    // voices, and the characters left: an account whose plan has no cloning, or no characters, is valid-but-useless and
-    // looks like a working key everywhere else (2026-10-17 09:31Z: `401 subscription_required / ivc_not_permitted`).
-    probe('elevenlabs', process.env.ELEVENLABS_API_KEY, async (k) => {
-      const r = await get('https://api.elevenlabs.io/v1/user', { headers: { 'xi-api-key': k } });
-      if (!r.ok) return { provider: 'elevenlabs', configured: true, ok: false, detail: `HTTP ${r.status}` };
-      const account = readElevenLabsAccount(await r.json().catch(() => null));
-      return { provider: 'elevenlabs', configured: true, ok: elevenLabsVoiceState(account) === 'ok', detail: describeElevenLabsAccount(account) };
-    }),
+    // CLOUD TTS — every spoken line in the product since PR 5d, on the Vertex identity. The free ka-GE voices list must
+    // answer and hold a Georgian voice; nothing is synthesised. (ElevenLabs reads no line any more and is not probed.)
+    checkCloudTts().then(
+      (r): ProbeResult => ({ provider: 'cloud-tts', configured: r.state !== 'unconfigured', ok: r.state === 'ok', detail: r.detail }),
+    ),
 
     probe('heygen', process.env.HEYGEN_API_KEY, async (k) => {
       const r = await get('https://api.heygen.com/v1/user/remaining_quota', { headers: { 'X-Api-Key': k } });
