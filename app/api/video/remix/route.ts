@@ -26,7 +26,6 @@ import { muxAudioOntoVideo, kenBurnsClip, colorGrade, changeSpeed, changeSpeedRa
 import { renderVeoClipSync } from '@/lib/ai/veoClipSync';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
-import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
@@ -537,7 +536,7 @@ export async function POST(req: NextRequest) {
 
       case 'voiceover': {
         if (!text) return failRefund('Add the narration text.', 'no-text');
-        const vo = await textToHostedSpeech(text, georgianVoiceId(gender));
+        const vo = await textToHostedSpeech(text, gender);
         if (!vo) return failRefund('Voice synthesis is unavailable.');
         const url = await muxAudioOntoVideo(videoUrl, vo, 'mix', 12);
         return url ? await finishOk(url) : failRefund('Mixing the voice-over failed.');

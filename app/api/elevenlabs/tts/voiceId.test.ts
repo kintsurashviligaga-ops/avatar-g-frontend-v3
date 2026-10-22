@@ -1,10 +1,11 @@
 /** @jest-environment node */
 /**
- * POST /api/elevenlabs/tts — the caller's voice id goes into the ElevenLabs URL path with the platform key.
+ * POST /api/elevenlabs/tts — a named voice (MASTER TASK v3.1 PR 5d).
  *
- * ⚠️ Unchecked, `../` or `?` in `voiceId` moved the POST to another ElevenLabs endpoint (fetch resolves the dot
- * segments) and the route streamed the answer back. Pinned here: only a 1–64 character alphanumeric id is sent; anything
- * else is a 400 before any provider call; a blank one means "no voice named" (the default voice). Provider mocked.
+ * A voice id named an ElevenLabs voice (a catalogue or cloned one; the onboarding preview sends them). Cloud TTS cannot
+ * speak in it, and answering in another voice than the one chosen is the silent swap R7 forbids, so a well-formed id is
+ * refused with the studio's google_only body before any engine is called. A malformed id stays the 400 it was (it once
+ * moved the POST to another ElevenLabs endpoint), and a blank one still means "no voice named". Engines mocked.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../lib/supabase/server', () => ({
@@ -14,15 +15,20 @@ jest.mock('../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
   RATE_LIMITS: { WRITE: { maxRequests: 20, windowMs: 60_000 } },
 }));
+jest.mock('../../../../lib/audio/google-tts', () => ({
+  ...jest.requireActual('../../../../lib/audio/google-tts'),
+  synthesizeGoogleTts: jest.fn(async () => new ArrayBuffer(2048)),
+}));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { KA_VOICE_FEMALE } from '../../../../lib/audio/georgian-voice';
+import { synthesizeGoogleTts } from '../../../../lib/audio/google-tts';
 
-const post = (body: unknown) =>
+const google = synthesizeGoogleTts as jest.MockedFunction<typeof synthesizeGoogleTts>;
+const post = (body: unknown, headers: Record<string, string> = {}) =>
   new NextRequest('https://myavatar.ge/api/elevenlabs/tts', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
 
@@ -30,8 +36,8 @@ const ENV = { ...process.env };
 let fetchSpy: jest.SpyInstance;
 
 beforeEach(() => {
+  jest.clearAllMocks();
   process.env = { ...ENV, ELEVENLABS_API_KEY: 'el-test-key' };
-  delete process.env.ELEVENLABS_GEORGIAN_VOICE_ID;
   fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(new Uint8Array(4096), { status: 200 }));
 });
 afterEach(() => {
@@ -45,35 +51,28 @@ test.each([
   ['voice_id', 'abc/../../user'],
   ['voiceId', 12345],
   ['voice_id', { id: 'abc' }],
-])('%s %p → 400, and ElevenLabs is never called', async (key, value) => {
+])('%s %p → 400, and no engine is called', async (key, value) => {
   const res = await POST(post({ text: 'hello there', locale: 'en', [key]: value }));
   expect(res.status).toBe(400);
   expect(await res.json()).toEqual({ error: 'voiceId is not a valid voice id' });
   expect(fetchSpy).not.toHaveBeenCalled();
+  expect(google).not.toHaveBeenCalled();
 });
 
-test('a well-formed id is the one in the provider URL', async () => {
-  const res = await POST(post({ text: 'hello there', locale: 'en', voiceId: '21m00Tcm4TlvDq8ikWAM' }));
-  expect(res.status).toBe(200);
-  expect(String(fetchSpy.mock.calls[0][0])).toMatch(
-    /^https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech\/21m00Tcm4TlvDq8ikWAM\/stream\?/,
-  );
+test.each([
+  ['voiceId', '21m00Tcm4TlvDq8ikWAM'],
+  ['voice_id', 'EXAVITQu4vr4xnSDxMaL'], // the onboarding preview's field
+])('a named voice (%s) is refused with google_only — never read in a different voice', async (key, value) => {
+  const res = await POST(post({ text: 'hello there', locale: 'en', [key]: value }, { cookie: 'NEXT_LOCALE=en' }));
+  expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ success: false, code: 'google_only', error: 'google_only', url: null });
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(google).not.toHaveBeenCalled();
 });
 
-test('voice_id is honoured the same way (the onboarding preview sends it)', async () => {
-  await POST(post({ text: 'hello there', locale: 'en', voice_id: 'EXAVITQu4vr4xnSDxMaL' }));
-  expect(String(fetchSpy.mock.calls[0][0])).toContain('/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL/');
-});
-
-test('a blank id means no voice named: Georgian text gets the native Georgian voice', async () => {
+test('a blank id means no voice named: Georgian text is read by Cloud TTS in Georgian', async () => {
   const res = await POST(post({ text: 'გამარჯობა', locale: 'ka', voiceId: '  ' }));
   expect(res.status).toBe(200);
-  expect(String(fetchSpy.mock.calls[0][0])).toBe(`https://api.elevenlabs.io/v1/text-to-speech/${KA_VOICE_FEMALE}`);
-});
-
-test('the configured English voice still works when its env value ends in a newline', async () => {
-  process.env.ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM\n';
-  const res = await POST(post({ text: 'hello there', locale: 'en' }));
-  expect(res.status).toBe(200);
-  expect(String(fetchSpy.mock.calls[0][0])).toContain('/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/stream?');
+  expect(google).toHaveBeenCalledWith('გამარჯობა', { languageCode: 'ka-GE', gender: 'FEMALE' });
+  expect(fetchSpy).not.toHaveBeenCalled();
 });

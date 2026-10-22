@@ -1,16 +1,16 @@
+/**
+ * POST /api/elevenlabs/tts — text → MP3, signed in only. The path keeps its old name so its callers stay as they are;
+ * the voice is Google Cloud TTS (lib/audio/google-tts, on the Vertex Workload Identity token) since MASTER TASK v3.1
+ * PR 5d. ElevenLabs is not called from here any more, and there is no other engine behind Cloud TTS.
+ */
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  selectTtsModel,
-  voiceSettingsForModel,
-  type ElevenLabsModelId,
-} from '@/lib/audio/tts-model';
-import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
-import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { numbersToGeorgianWords } from '@/lib/chat/georgianNumbers';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { isElevenLabsVoiceId, requestedVoiceId } from '@/lib/audio/voiceId';
+import { requestedVoiceId } from '@/lib/audio/voiceId';
+import { synthesizeGoogleTts, ttsLanguageCode } from '@/lib/audio/google-tts';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,136 +21,10 @@ interface TtsRequest {
   voiceId?: string;
   voice_id?: string;
   locale?: string;
-  /** PHASE 52 TASK 5 — optional delivery directive ("calm measured narration",
-   *  "excited fast hype"). When present, the asked delivery is mirrored into the
-   *  ElevenLabs voice_settings so the read MATCHES the requested tone. Omitting
-   *  it preserves the existing per-model defaults (backward compatible). */
+  /** Accepted for old callers; Cloud TTS has no counterpart to ElevenLabs' stability/style, so it changes nothing. */
   voiceStyle?: string;
-  /** Optional gender hint for Georgian — picks the gender-matched cloned ElevenLabs voice. */
+  /** Picks a male or female voice for the text's language. Female when unset. */
   gender?: 'male' | 'female';
-}
-
-/**
- * PHASE 52 TASK 5 — fold an explicit delivery directive into the model's
- * baseline voice_settings. The directive's stability/style win (they are the
- * mirrored user intent); similarity_boost / speaker_boost / speed stay on the
- * language-tuned baseline so Georgian phonemes remain stable.
- */
-function enforceVoiceSettings(
-  base: ReturnType<typeof voiceSettingsForModel>,
-  voiceStyle?: string,
-): ReturnType<typeof voiceSettingsForModel> {
-  if (!voiceStyle || !voiceStyle.trim()) return base;
-  const d = extractVoiceDirectives(voiceStyle);
-  if (!d.emotion && !d.cadence) return base;
-  return {
-    ...base,
-    stability: d.voiceSettings.stability,
-    style: d.voiceSettings.style,
-  };
-}
-
-// Progressive: hit the ElevenLabs /stream endpoint with low-latency optimization
-// and PIPE the chunked body straight through — first audio bytes reach the client
-// far sooner than buffering the whole file. Consumers that need a blob/arrayBuffer
-// (blob playback, MCP) still work; consumers that support MSE play progressively.
-async function streamElevenLabs(
-  text: string,
-  voiceId: string,
-  apiKey: string,
-  modelId: ElevenLabsModelId,
-  voiceStyle?: string,
-): Promise<NextResponse | null> {
-  // A network THROW here must NOT propagate — it would skip the buffered retry below and 500 instead of the route's
-  // explicit 502. (No whole-request timeout on the streaming fetch: it would abort a valid long TTS stream mid-flight,
-  // after the caller has already returned this response.)
-  let res: Response;
-  try {
-    res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
-      },
-      body: JSON.stringify({
-        text: text.slice(0, 5000),
-        // v329 — model is chosen per-language by selectTtsModel. Georgian → eleven_v3
-        // (the only model supporting `ka`); turbo is English-first. Settings are tuned
-        // per model. PHASE 52 §5 — an explicit delivery directive mirrors the tone.
-        model_id: modelId,
-        voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
-        apply_text_normalization: 'auto',
-      }),
-    });
-  } catch (e) {
-    console.error('[elevenlabs/tts] stream fetch failed', e instanceof Error ? e.message : String(e));
-    return null;
-  }
-
-  if (!res.ok || !res.body) {
-    const errBody = await res.text().catch(() => '');
-    console.error('[elevenlabs/tts] ElevenLabs error', res.status, errBody.slice(0, 200));
-    return null;
-  }
-
-  return new NextResponse(res.body, {
-    status: 200,
-    headers: {
-      'Content-Type': 'audio/mpeg',
-      'X-Voice-Provider': 'elevenlabs',
-      'X-Voice-Model': modelId,
-      'Cache-Control': 'no-store',
-      'X-Accel-Buffering': 'no',
-    },
-  });
-}
-
-// Non-streaming ElevenLabs — buffered fetch on the plain TTS endpoint. Used as a
-// fallback because `eleven_v3` (the Georgian model) is NOT reliably served by the
-// low-latency /stream endpoint; the buffered endpoint handles it. Returns the whole
-// MP3 as one response (no progressive playback, but correct audio).
-async function bufferElevenLabs(
-  text: string,
-  voiceId: string,
-  apiKey: string,
-  modelId: ElevenLabsModelId,
-  voiceStyle?: string,
-): Promise<NextResponse | null> {
-  // Try/catch + a bounded timeout: a throw or a stall must return null so the route answers its explicit 502,
-  // not propagate a 500 or hang the function. Buffered (non-streaming) → timeout is safe here.
-  let res: Response;
-  try {
-    res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-      body: JSON.stringify({
-        text: text.slice(0, 5000),
-        model_id: modelId,
-        voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch (e) {
-    console.error('[elevenlabs/tts] buffered fetch failed', e instanceof Error ? e.message : String(e));
-    return null;
-  }
-  if (!res.ok) {
-    console.error('[elevenlabs/tts] buffered error', res.status, (await res.text().catch(() => '')).slice(0, 200));
-    return null;
-  }
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength < 1024) return null;
-  return new NextResponse(buf, {
-    status: 200,
-    headers: {
-      'Content-Type': 'audio/mpeg',
-      'Content-Length': String(buf.byteLength),
-      'X-Voice-Provider': 'elevenlabs',
-      'X-Voice-Model': modelId,
-      'Cache-Control': 'no-store',
-    },
-  });
 }
 
 export async function POST(req: NextRequest) {
@@ -164,64 +38,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'text is required' }, { status: 400 });
   }
 
-  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was left open on the belief that it powered the guest
-  // "read aloud" — it no longer does: read-aloud moved to /api/tts/gemini, and the two browser callers left
-  // (OnboardingWizard, useSimpleVoice) parse a JSON `{ audio }` this route has not returned in a long time. What an
-  // anonymous POST still bought was up to 5,000 characters on ElevenLabs, then Azure, then GOOGLE CLOUD TTS — which
-  // lib/audio/google-tts runs on GEMINI_API_KEY whenever GOOGLE_TTS_API_KEY / GOOGLE_API_KEY are unset — all on the
-  // platform's accounts, with no account of the caller's behind it.
+  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). Read-aloud moved to /api/tts/gemini; what an anonymous POST used to buy
+  // here was up to 5,000 characters of speech on the platform's accounts, with no account of the caller's behind it.
   //
   // ⚠️ SERVER-SIDE SELF-CALLERS MUST FORWARD THE SESSION. /api/orchestrator/produce (genVoice) and
-  // /api/orchestrator/voice/produce fetch this route from the server with only a Content-Type header; they must
-  // pass the caller's `cookie` / `authorization` through (or call the synthesis directly), or their voice step
-  // now gets this 401 — voice/produce refunds and fails, film produce ships without the voiceover.
+  // /api/orchestrator/voice/produce fetch this route from the server; they pass the caller's `cookie` /
+  // `authorization` through (lib/api/forwardSession), or their voice step gets this 401.
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id)) {
     return NextResponse.json(signInToGenerateBody(body.locale), { status: 401 });
   }
 
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  // Georgian text/locale → the dedicated premium Georgian voice (trained on
-  // ElevenLabs) when configured; otherwise the default voice. An explicit
-  // body.voiceId always wins — when it is a voice id at all (lib/audio/voiceId: it goes into the provider URL path).
-  const isGeorgian = body.locale === 'ka' || /[ა-ჿ]/.test(text);
-
-  // NUMERIC NORMALIZATION (V2) — spell Arabic digits as Georgian cardinal words BEFORE synthesis so
-  // the engine reads "190" as "ას ოთხმოცდაათი", never digit-by-digit ("ერთი ცხრა ნული"). Georgian
-  // text ONLY — en/ru keep the provider's own normalization. Covers EVERY Georgian TTS caller
-  // (real-time voice, read-aloud, film voice-over) since they all POST through this route.
-  if (isGeorgian) text = numbersToGeorgianWords(text);
-
-  // v329 — Georgian → the CLONED native voices (shared resolver), gender-matched,
-  // read on eleven_v3. Picked BEFORE the English ELEVENLABS_VOICE_ID so Georgian
-  // never gets an English voice. An explicit body.voiceId still wins.
-  const kaVoice = georgianVoiceId(body.gender === 'male' ? 'male' : 'female');
+  // A named voice was an ElevenLabs voice (a catalogue or cloned id). Cloud TTS cannot speak in it, and answering in a
+  // different voice than the one chosen is the silent swap PROJECT_MASTER R7 forbids, so a named voice is refused —
+  // before any provider call — with the studio's google_only body. A malformed id stays the 400 it was.
   const asked = requestedVoiceId(body.voiceId ?? body.voice_id);
   if (asked === null) {
     return NextResponse.json({ error: 'voiceId is not a valid voice id' }, { status: 400 });
   }
-  const voiceId = asked ?? (isGeorgian ? kaVoice : (process.env.ELEVENLABS_VOICE_ID?.trim() || kaVoice));
+  if (asked) return refuseOutsideEngine(req);
 
-  // v329 — Georgian routes to eleven_v3 (the only model that supports `ka`);
-  // everything else keeps the low-latency turbo default.
-  const modelId = selectTtsModel(text, body.locale);
+  const languageCode = ttsLanguageCode(text, body.locale);
+  // NUMERIC NORMALIZATION (V2) — spell Arabic digits as Georgian cardinal words BEFORE synthesis so the engine reads
+  // "190" as "ას ოთხმოცდაათი", never digit-by-digit. Georgian text ONLY — en/ru keep the engine's own normalization.
+  if (languageCode === 'ka-GE') text = numbersToGeorgianWords(text);
 
-  // Primary: ElevenLabs (cloned Georgian voice on eleven_v3). eleven_v3 is NOT
-  // reliably served by the low-latency /stream endpoint, so for v3 use the buffered
-  // endpoint directly; other models stream first then fall back to buffered.
-  if (apiKey && isElevenLabsVoiceId(voiceId)) {
-    if (modelId !== 'eleven_v3') {
-      const streamed = await streamElevenLabs(text, voiceId, apiKey, modelId, body.voiceStyle);
-      if (streamed) return streamed;
-    }
-    const buffered = await bufferElevenLabs(text, voiceId, apiKey, modelId, body.voiceStyle);
-    if (buffered) return buffered;
+  const audio = await synthesizeGoogleTts(text, { languageCode, gender: body.gender === 'male' ? 'MALE' : 'FEMALE' });
+  if (!audio || audio.byteLength < 1024) {
+    // One engine, no fallback: a Cloud TTS miss is this route's explicit error.
+    return NextResponse.json({ error: 'No TTS provider available' }, { status: 502 });
   }
-
-  // ⚠️ NO FALLBACK PROVIDER (PROJECT_MASTER R7 — no silent fallback). An ElevenLabs miss (or no key) used to fall to
-  // Azure's native ka voices (Eka/Giorgi) for Georgian, then to Google Cloud TTS for any language — so a user who chose a
-  // cloned Georgian voice could be answered, with no sign but a response header, by a different provider's different
-  // voice, and Azure is not an allowed provider at all. A request uses ONE provider: ElevenLabs (the /stream →
-  // buffered retry above stays on it). When it fails, this route answers its explicit error.
-  return NextResponse.json({ error: 'No TTS provider available' }, { status: 502 });
+  return new NextResponse(audio, {
+    status: 200,
+    headers: {
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': String(audio.byteLength),
+      'X-Voice-Provider': 'google-cloud-tts',
+      'Cache-Control': 'no-store',
+    },
+  });
 }

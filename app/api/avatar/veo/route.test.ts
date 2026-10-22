@@ -98,13 +98,14 @@ test('a landscape avatar keeps Veo\'s padding; only 9:16 crops the face to fill 
   expect(sub.resizeMode).toBeUndefined();
 });
 
-// GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა": a Georgian line is heard in ElevenLabs' voice. Tap 10:22Z „Veo ლაპარაკობს":
+// GG's tap 2026-10-17 07:54Z „ElevenLabs ხმა": a Georgian line is heard in a separate voice, Cloud TTS since MASTER TASK v3.1
+// PR 5d. Tap 10:22Z „Veo ლაპარაკობს":
 // Veo says the same line in Latin letters, with its sound on, so its mouth makes the syllables the voice replaces.
-test('Georgian words: the ElevenLabs line is made BEFORE the charge, Veo says it in Latin letters with sound, the job id says voiced', async () => {
+test('Georgian words: the Cloud TTS line is made BEFORE the charge, Veo says it in Latin letters with sound, the job id says voiced', async () => {
   const res = await POST(post({ ...BODY, voiceGender: 'male' }));
   expect(res.status).toBe(202);
   const j = await res.json();
-  expect(j.voice).toBe('ElevenLabs');
+  expect(j.voice).toBe('Google Cloud TTS');
   const line = (speakAvatarLine as jest.Mock).mock.calls[0][0];
   expect(line.text).toBe('გამარჯობა, მე ვარ შენი ავატარი');
   expect(line.gender).toBe('male');
@@ -129,7 +130,7 @@ test('Georgian words with no voice, or a line longer than the clip: refused, not
   const none = await POST(post(BODY));
   expect(none.status).toBe(503);
   expect(await none.json()).toMatchObject({ error: 'voice_unavailable', refunded: false });
-  // Production 2026-10-17 09:31Z: ElevenLabs' plan refused the cloned voice for good — a code of its own, not "retry".
+  // A voice refused for good (Production 2026-10-17 09:31Z, then ElevenLabs' plan) has a code of its own, not "retry".
   (speakAvatarLine as jest.Mock).mockResolvedValue({ off: true });
   const off = await POST(post(BODY));
   expect(off.status).toBe(503);

@@ -10,11 +10,9 @@
       "app/api/admin/avatar-providers/route.ts",
       "app/api/admin/provider-probe/route.ts",
       "app/api/elevenlabs/sound/route.ts",
-      "app/api/elevenlabs/tts/route.ts",
       "app/api/health/public/route.ts",
       "app/api/health/services/route.ts",
       "app/api/voice/clone/route.ts",
-      "lib/agent-g/voice/tts.ts",
       "lib/ai/elevenlabs.ts",
       "lib/chat/filmVoiceover.ts",
       "lib/config.ts",
@@ -22,8 +20,7 @@
       "lib/elevenlabs/music.ts",
       "lib/elevenlabs/ttsTimestamps.ts",
       "lib/security/csp.js",
-      "lib/services/dubbing/elevenScribe.ts",
-      "lib/voice-v2v/providers.ts"
+      "lib/services/dubbing/elevenScribe.ts"
     ],
     "replicate": [
       "app/api/admin/provider-probe/route.ts",

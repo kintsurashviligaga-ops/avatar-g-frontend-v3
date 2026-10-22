@@ -23,19 +23,13 @@
     "app/api/ads/tts/route.ts": [
       "elevenlabs"
     ],
-    "app/api/agent-g/calls/tts/route.ts": [
-      "elevenlabs"
-    ],
     "app/api/agent-g/telegram/route.ts": [
-      "elevenlabs",
       "openai"
     ],
     "app/api/agent-g/telegram/webhook/route.ts": [
-      "elevenlabs",
       "openai"
     ],
     "app/api/agent-g/webhook/telegram/route.ts": [
-      "elevenlabs",
       "openai"
     ],
     "app/api/agent-g/webhook/whatsapp/route.ts": [
@@ -81,7 +75,6 @@
       "worldlabs"
     ],
     "app/api/app/worker/tick/route.ts": [
-      "elevenlabs",
       "openai"
     ],
     "app/api/audio/georgian-song/route.ts": [
@@ -139,9 +132,6 @@
       "replicate"
     ],
     "app/api/elevenlabs/sound/route.ts": [
-      "elevenlabs"
-    ],
-    "app/api/elevenlabs/tts/route.ts": [
       "elevenlabs"
     ],
     "app/api/estimate/route.ts": [
@@ -350,9 +340,6 @@
     ],
     "app/api/voice/live/route.ts": [
       "gemini_developer_api"
-    ],
-    "app/api/voice/realtime/session/route.ts": [
-      "elevenlabs"
     ],
     "app/api/voice/train/route.ts": [
       "replicate"
