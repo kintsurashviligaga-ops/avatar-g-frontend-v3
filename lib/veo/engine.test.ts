@@ -2,9 +2,10 @@
 /**
  * engine.ts with vertexAuth and gcs mocked (config, token, uploads, output prefix, signing) and a scripted global
  * fetch standing in for Google and for image hosts — no network. Rules under test (docs/VEO_ENGINE.md §3, §5):
- * the transport selection matrix, transportOf, the Google-only switch, createVeoClip end to end on both transports
- * (normalisation, the cameraControl opt-in, url/bytes → GCS for Vertex, url → bytes for Gemini with the SSRF guard,
- * 15 s and 20 MB), outcome mapping of input failures, exactly one submit, the log line, poll dispatch, deliverableUrl.
+ * the transport selection matrix (Vertex AI only under MASTER TASK v3.1: no key, flag, pin or unset variable selects
+ * the Developer API), transportOf, the Google-only switch, createVeoClip end to end on Vertex (normalisation, the
+ * cameraControl opt-in, url/bytes → GCS), outcome mapping of input failures, exactly one submit, the log line, poll
+ * dispatch (a historical Developer API operation is answered without a call), deliverableUrl.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('@vercel/oidc', () => ({ getVercelOidcToken: jest.fn() }));
@@ -26,7 +27,10 @@ jest.mock('./gcs', () => ({
 import { setVeoCapDepsForTests, type VeoSpendStore } from './dailyCap';
 import { createHash } from 'node:crypto';
 import type { VeoSubmissionEvidence } from './submissionJournal';
-import { createVeoClip, deliverableUrl, isGoogleOnly, pollVeoClip, transportOf, veoTransport, type CreateVeoClipInput } from './engine';
+import {
+  createVeoClip, deliverableUrl, isGoogleOnly, pollVeoClip, transportOf, VEO_DEVELOPER_API_OPERATION, VEO_DEVELOPER_API_REFUSED,
+  veoTransport, type CreateVeoClipInput,
+} from './engine';
 import { signedReadUrl, uploadVeoInput, veoOutputPrefix, VeoGcsError } from './gcs';
 import { getVertexAccessToken, vertexConfig, vertexConfigProblems } from './vertexAuth';
 import type { VeoCreateOutcome, VeoMedia, VertexConfig } from './types';
@@ -50,12 +54,11 @@ const PREFIX = 'gs://my-bucket/veo/veo/sess-1/2-abcd1234/';
 const VERTEX_MODEL = 'veo-3.1-generate-001';
 const VERTEX_OP = `projects/my-proj/locations/us-central1/publishers/google/models/${VERTEX_MODEL}/operations/op-123`;
 const VERTEX_SUBMIT = `https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/${VERTEX_MODEL}:predictLongRunning`;
-const GEMINI_MODEL = 'veo-3.1-generate-preview';
-const GEMINI_OP = `models/${GEMINI_MODEL}/operations/g-456`;
-const GEMINI_SUBMIT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:predictLongRunning`;
+/** An operation the Gemini Developer API made before v3.1: kept as it is, never polled again. */
+const GEMINI_OP = 'models/veo-3.1-generate-preview/operations/g-456';
+const DEVELOPER_API = 'https://generativelanguage.googleapis.com/';
 
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(24, 7)]);
-const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(24, 9)]);
 const IMG_URL = 'https://cdn.example.com/frames/scene-1.png?X-Amz-Signature=SIGNED-SECRET';
 
 const ENV_NAMES = [
@@ -84,13 +87,10 @@ const bodyOf = (url: string): { instances: Array<Record<string, unknown>>; param
 };
 
 /** Route fetch by URL: Google endpoints answer as scripted, image hosts from `images`. */
-function routeFetch(opts: { vertex?: () => Promise<Response>; gemini?: () => Promise<Response>; images?: Record<string, () => Promise<Response>> } = {}) {
+function routeFetch(opts: { vertex?: () => Promise<Response>; images?: Record<string, () => Promise<Response>> } = {}) {
   fetchMock.mockImplementation((url: string) => {
     if (url.includes('-aiplatform.googleapis.com/') && url.endsWith(':predictLongRunning')) {
       return opts.vertex ? opts.vertex() : Promise.resolve(json(200, { name: VERTEX_OP }));
-    }
-    if (url.startsWith('https://generativelanguage.googleapis.com/') && url.endsWith(':predictLongRunning')) {
-      return opts.gemini ? opts.gemini() : Promise.resolve(json(200, { name: GEMINI_OP }));
     }
     const img = opts.images?.[url];
     if (img) return img();
@@ -151,28 +151,30 @@ afterEach(() => {
 });
 
 const useVertex = () => vertexConfigMock.mockReturnValue(CFG);
-const useGemini = () => {
+/** An AI Studio key and no Vertex: what used to render on the Developer API. */
+const useKeyOnly = () => {
   vertexConfigMock.mockReturnValue(null);
   process.env.GEMINI_API_KEY = KEY;
 };
+const developerApiCalls = () => calls().filter(([url]) => url.startsWith(DEVELOPER_API));
 
 // ── transport selection ─────────────────────────────────────────────────────────────────────────────────────────
 
 describe('veoTransport', () => {
-  it.each<[string, string | undefined, boolean, boolean, string | undefined, 'vertex' | 'gemini' | null]>([
+  it.each<[string, string | undefined, boolean, boolean, string | undefined, 'vertex' | null]>([
     ['auto: Vertex configured wins', undefined, true, true, undefined, 'vertex'],
     ['auto: Vertex without a Gemini key', undefined, true, false, undefined, 'vertex'],
     ['auto: Vertex even when GEMINI_VEO_ENABLED is off', undefined, true, true, '0', 'vertex'],
-    ['auto: no Vertex → Gemini', undefined, false, true, undefined, 'gemini'],
+    ['auto: no Vertex → null, an AI Studio key is not a Veo route', undefined, false, true, undefined, null],
     ['auto: no Vertex, Gemini killed', undefined, false, true, 'off', null],
     ['auto: nothing', undefined, false, false, undefined, null],
-    ['pinned gemini skips a configured Vertex', 'gemini', true, true, undefined, 'gemini'],
+    ['pinned gemini is refused, even with Vertex configured and a key', 'gemini', true, true, undefined, null],
     ['pinned gemini without a key', 'gemini', true, false, undefined, null],
     ['pinned gemini but killed', 'gemini', true, true, 'false', null],
     ['pinned vertex', 'vertex', true, false, undefined, 'vertex'],
     ['pinned vertex, not configured → null, never a quiet Gemini render', 'vertex', false, true, undefined, null],
     ['pin is trimmed and case-insensitive', ' VERTEX ', true, true, undefined, 'vertex'],
-    ['explicit auto mode', 'auto', false, true, undefined, 'gemini'],
+    ['explicit auto mode without Vertex → null, key or not', 'auto', false, true, undefined, null],
     ['explicit auto is trimmed and case-insensitive', ' AUTO ', true, true, undefined, 'vertex'],
     ['unknown pin with both transports available', 'vertx', true, true, undefined, null],
     ['unknown pin with only a Gemini key', 'gemini_api', false, true, undefined, null],
@@ -458,176 +460,51 @@ describe('createVeoClip — native cameraControl is opt-in', () => {
     expect(cameraAdjustments(res.adjustments)).toEqual([expect.objectContaining({ from: 'pan_left', reason: expect.stringMatching(/first frame/) })]);
   });
 
-  it('opted in on the Gemini API → never sent (Vertex-only field)', async () => {
-    useGemini();
+  it('opted in with only an AI Studio key → not configured, nothing sent anywhere', async () => {
+    useKeyOnly();
     process.env.VEO_NATIVE_CAMERA_CONTROL = '1';
     routeFetch();
     const res = await createVeoClip(
       input({ ...withFrame, startImage: { kind: 'bytes', base64: PNG.toString('base64'), mimeType: 'image/png' } }),
     );
-    expect(bodyOf(GEMINI_SUBMIT).instances[0]).not.toHaveProperty('cameraControl');
-    expect(cameraAdjustments(res.adjustments)).toHaveLength(1);
+    expect(failed(res.outcome)).toMatchObject({ reason: 'not_configured', retryable: false });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
-// ── createVeoClip on the Gemini API ─────────────────────────────────────────────────────────────────────────────
+// ── the Gemini Developer API is not a Veo transport (v3.1) ──────────────────────────────────────────────────────
 
-describe('createVeoClip — Gemini API', () => {
-  beforeEach(useGemini);
-
-  it('text-to-video: header-keyed submit to the Gemini model, no GCS', async () => {
-    routeFetch();
-    const res = await createVeoClip(input({ prompt: 'A red kite', aspect: '9:16' }));
-    expect(res).toMatchObject({ transport: 'gemini', model: GEMINI_MODEL });
-    expect(res.outcome).toStrictEqual({ ok: true, operation: { transport: 'gemini', name: GEMINI_OP, model: GEMINI_MODEL } });
-    expect(calls()).toHaveLength(1);
-    expect(calls()[0]?.[0]).toBe(GEMINI_SUBMIT);
-    expect(calls()[0]?.[1].headers?.['x-goog-api-key']).toBe(KEY);
-    expect(prefixMock).not.toHaveBeenCalled();
-    expect(uploadMock).not.toHaveBeenCalled();
-  });
-
-  it('a url first frame is downloaded (manual redirects, 15 s) and inlined as bytes', async () => {
-    const spy = jest.spyOn(AbortSignal, 'timeout');
-    routeFetch({ images: { [IMG_URL]: () => Promise.resolve(image(PNG, 'application/octet-stream')) } });
-    const res = await createVeoClip(input({ prompt: 'x', aspect: '9:16', startImage: { kind: 'url', url: IMG_URL } }));
-    expect(res.outcome.ok).toBe(true);
-    const imageCall = callsTo('https://cdn.example.com/');
-    expect(imageCall).toHaveLength(1);
-    expect(imageCall[0]?.[1].redirect).toBe('manual');
-    expect(spy).toHaveBeenCalledWith(15_000);
-    expect(bodyOf(GEMINI_SUBMIT).instances[0]?.image).toEqual({ bytesBase64Encoded: PNG.toString('base64'), mimeType: 'image/png' });
-    // The result keeps the caller's reference, not the downloaded bytes.
-    expect(res.request.startImage).toEqual({ kind: 'url', url: IMG_URL });
-  });
-
-  it('JPEG is recognised by its bytes; an unsniffable image keeps its declared image/* type', async () => {
-    const JPG_URL = 'https://cdn.example.com/a.jpg';
-    const WEBP_URL = 'https://cdn.example.com/b.webp';
-    routeFetch({
-      images: {
-        [JPG_URL]: () => Promise.resolve(image(JPEG, 'image/png')),
-        [WEBP_URL]: () => Promise.resolve(image(Buffer.from('RIFF....WEBPVP8 '), 'image/webp; charset=binary')),
-      },
-    });
-    await createVeoClip(input({ prompt: 'x', aspect: '16:9', durationSec: 8, startImage: { kind: 'url', url: JPG_URL }, lastFrame: { kind: 'url', url: WEBP_URL } }));
-    const inst = bodyOf(GEMINI_SUBMIT).instances[0];
-    expect(inst?.image).toMatchObject({ mimeType: 'image/jpeg' });
-    expect(inst?.lastFrame).toMatchObject({ mimeType: 'image/webp' });
-  });
-
-  it.each([
-    ['an HTML page', Buffer.from('<html></html>'), 'text/html'],
-    ['an SVG', Buffer.from('<svg/>'), 'image/svg+xml'],
-    ['bytes with no type', Buffer.from('plain'), null],
-  ])('%s is not an image → invalid_request, Veo never called', async (_label, bytes, type) => {
-    routeFetch({ images: { [IMG_URL]: () => Promise.resolve(image(bytes, type)) } });
-    const out = failed((await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }))).outcome);
-    expect(out.reason).toBe('invalid_request');
-    expect(callsTo(GEMINI_SUBMIT)).toHaveLength(0);
-  });
-
-  it('a data: URL in a url input is decoded locally (no fetch)', async () => {
-    routeFetch();
-    await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url: `data:image/png;base64,${PNG.toString('base64')}` } }));
-    expect(calls()).toHaveLength(1);
-    expect(bodyOf(GEMINI_SUBMIT).instances[0]?.image).toEqual({ bytesBase64Encoded: PNG.toString('base64'), mimeType: 'image/png' });
-  });
-
-  it('a non-base64 or empty data: URL → invalid_request', async () => {
-    routeFetch();
-    for (const url of ['data:image/png,%89PNG', 'data:image/png;base64,']) {
-      const out = failed((await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url } }))).outcome);
-      expect(out.reason).toBe('invalid_request');
-    }
+describe('createVeoClip — the Developer API is refused', () => {
+  it('an AI Studio key without Vertex → not_configured naming Vertex; no image fetched, no Developer API call', async () => {
+    useKeyOnly();
+    routeFetch({ images: { [IMG_URL]: () => Promise.resolve(image(PNG)) } });
+    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }));
+    expect(res.transport).toBeNull();
+    expect(failed(res.outcome)).toMatchObject({ reason: 'not_configured', retryable: false });
+    expect(failed(res.outcome).detail).toBe('Vertex AI is not configured for Veo: GCP_PROJECT_ID, GCP_VEO_BUCKET');
     expect(fetchMock).not.toHaveBeenCalled();
+    for (const fn of [uploadMock, prefixMock, tokenMock]) expect(fn).not.toHaveBeenCalled();
   });
 
-  it('a data: URL over 20 MB → invalid_request, refused before decoding', async () => {
+  it('VEO_TRANSPORT=gemini with Vertex ready and a key → the policy refusal, before any media or provider I/O', async () => {
+    useVertex();
+    process.env.GEMINI_API_KEY = KEY;
+    process.env.VEO_TRANSPORT = 'gemini';
     routeFetch();
-    const fromSpy = jest.spyOn(Buffer, 'from');
-    const url = `data:image/png;base64,${'A'.repeat(Math.ceil((25 * 1024 * 1024) / 3) * 4)}`;
-    const out = failed((await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url } }))).outcome);
-    expect(out).toMatchObject({ reason: 'invalid_request', detail: 'startImage: the image exceeds 20 MB' });
-    expect(fromSpy.mock.calls.some((c) => c[1] === 'base64')).toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
+    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }));
+    expect(res.transport).toBeNull();
+    expect(failed(res.outcome)).toMatchObject({ reason: 'not_configured', retryable: false, detail: VEO_DEVELOPER_API_REFUSED });
+    for (const fn of [fetchMock, uploadMock, prefixMock, tokenMock]) expect(fn).not.toHaveBeenCalled();
   });
 
-  it('bytes inputs are sent as they are', async () => {
+  it('GEMINI_VEO_ENABLED no longer matters: a complete Vertex renders with it off', async () => {
+    useVertex();
+    process.env.GEMINI_VEO_ENABLED = '0';
     routeFetch();
-    const base64 = JPEG.toString('base64');
-    await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'bytes', base64, mimeType: 'image/jpeg' } }));
-    expect(bodyOf(GEMINI_SUBMIT).instances[0]?.image).toEqual({ bytesBase64Encoded: base64, mimeType: 'image/jpeg' });
-  });
-
-  it('a gs:// input → invalid_request: the Gemini API cannot read our bucket', async () => {
-    routeFetch();
-    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'gcs', uri: 'gs://my-bucket/a.png', mimeType: 'image/png' } }));
-    expect(failed(res.outcome)).toMatchObject({ reason: 'invalid_request', retryable: false, detail: expect.stringMatching(/^startImage: .*gs:\/\//) });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    'http://cdn.example.com/a.png',
-    'https://169.254.169.254/latest/meta-data',
-    'https://localhost/a.png',
-    'https://10.0.0.5/a.png',
-    'ftp://cdn.example.com/a.png',
-  ])('%s is refused before it is fetched', async (url) => {
-    routeFetch();
-    const out = failed((await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url } }))).outcome);
-    expect(out.reason).toBe('invalid_request');
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('every redirect hop is re-vetted: public → private is refused after one fetch', async () => {
-    routeFetch({ images: { [IMG_URL]: () => Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://192.168.1.10/x.png' } })) } });
-    const out = failed((await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }))).outcome);
-    expect(out.reason).toBe('invalid_request');
-    expect(calls()).toHaveLength(1);
-  });
-
-  it('a public redirect is followed', async () => {
-    const NEXT = 'https://cdn2.example.com/final.png';
-    routeFetch({
-      images: {
-        [IMG_URL]: () => Promise.resolve(new Response(null, { status: 301, headers: { location: NEXT } })),
-        [NEXT]: () => Promise.resolve(image(PNG)),
-      },
-    });
-    expect((await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }))).outcome.ok).toBe(true);
-  });
-
-  it.each<[string, string, boolean, () => Promise<Response>]>([
-    ['HTTP 404', 'invalid_request', false, () => Promise.resolve(new Response('gone', { status: 404 }))],
-    ['HTTP 403', 'invalid_request', false, () => Promise.resolve(new Response('no', { status: 403 }))],
-    ['HTTP 503', 'unavailable', true, () => Promise.resolve(new Response('busy', { status: 503 }))],
-    ['HTTP 429', 'unavailable', true, () => Promise.resolve(new Response('slow down', { status: 429 }))],
-    ['a network error', 'unavailable', true, () => Promise.reject(new TypeError('fetch failed'))],
-    ['a timeout', 'unavailable', true, () => Promise.reject(new DOMException('timeout', 'TimeoutError'))],
-    ['over 20 MB (Content-Length)', 'invalid_request', false, () => Promise.resolve(image(PNG, 'image/png', { 'content-length': String(21 * 1024 * 1024) }))],
-  ])('image host answers %s → %s (retryable=%s)', async (_label, reason, retryable, respond) => {
-    routeFetch({ images: { [IMG_URL]: respond } });
-    const out = failed((await createVeoClip(input({ prompt: 'x', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }))).outcome);
-    expect(out).toMatchObject({ reason, retryable });
-    expect(out.detail).toMatch(/^startImage: /);
-    expect(out.detail).not.toContain('SIGNED-SECRET');
-    expect(out.detail).not.toContain('cdn.example.com');
-    expect(callsTo(GEMINI_SUBMIT)).toHaveLength(0);
-  });
-
-  it('NO RE-POST: a timed-out Gemini submit is ambiguous and was POSTed exactly once', async () => {
-    routeFetch({ gemini: () => Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError')) });
     const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
-    expect(res.outcome).toMatchObject({ ok: false, reason: 'ambiguous', retryable: false });
-    expect(callsTo(GEMINI_SUBMIT)).toHaveLength(1);
-  });
-
-  it('video-only is not on the Gemini API: generateAudio false is adjusted back to true', async () => {
-    routeFetch();
-    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9', generateAudio: false }));
-    expect(res.request.generateAudio).toBe(true);
-    expect(res.adjustments.map((a) => a.field)).toContain('generateAudio');
+    expect(res.outcome.ok).toBe(true);
+    expect(callsTo(VERTEX_SUBMIT)).toHaveLength(1);
+    expect(developerApiCalls()).toHaveLength(0);
   });
 });
 
@@ -654,7 +531,7 @@ describe('createVeoClip — no transport', () => {
     expect(res.request.aspect).toBe('9:16');
     expect(failed(res.outcome)).toMatchObject({ reason: 'not_configured', retryable: false });
     expect(failed(res.outcome).detail).toContain('GCP_PROJECT_ID');
-    expect(failed(res.outcome).detail).toContain('no Gemini API key');
+    expect(failed(res.outcome).detail).not.toMatch(/Gemini API key/);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
@@ -663,15 +540,8 @@ describe('createVeoClip — no transport', () => {
     process.env.GEMINI_API_KEY = KEY;
     process.env.VEO_TRANSPORT = 'vertex';
     const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
-    expect(failed(res.outcome).detail).toBe('VEO_TRANSPORT=vertex but Vertex AI is not configured: GCP_PROJECT_ID, GCP_VEO_BUCKET');
+    expect(failed(res.outcome).detail).toBe('Vertex AI is not configured for Veo: GCP_PROJECT_ID, GCP_VEO_BUCKET');
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('Gemini killed by GEMINI_VEO_ENABLED=0 says so', async () => {
-    process.env.GEMINI_API_KEY = KEY;
-    process.env.GEMINI_VEO_ENABLED = '0';
-    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
-    expect(failed(res.outcome).detail).toContain('GEMINI_VEO_ENABLED is off');
   });
 });
 
@@ -691,16 +561,17 @@ describe('createVeoClip — one concise log line', () => {
   });
 
   it('a failure names the reason, status and retryability', async () => {
-    useGemini();
-    routeFetch({ gemini: () => Promise.resolve(json(429, { error: { code: 429, message: 'quota', status: 'RESOURCE_EXHAUSTED' } })) });
+    useVertex();
+    routeFetch({ vertex: () => Promise.resolve(json(429, { error: { code: 429, message: 'quota', status: 'RESOURCE_EXHAUSTED' } })) });
     await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(String(warnSpy.mock.calls[0]?.[0])).toContain(`transport=gemini model=${GEMINI_MODEL} `);
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain(`transport=vertex model=${VERTEX_MODEL} `);
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain('→ rate_limited http=429 retryable=true');
   });
 
   it('never carries the full prompt, URLs, base64, the token or the key', async () => {
-    useGemini();
+    useVertex();
+    process.env.GEMINI_API_KEY = KEY;
     routeFetch({ images: { [IMG_URL]: () => Promise.resolve(image(PNG)) } });
     const prompt = `Look https://cdn.example.com/look.png?sig=PROMPT-SECRET then ${'the camera drifts over the harbour at dawn, '.repeat(12)} end`;
     await createVeoClip(input({ prompt, aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } }));
@@ -731,7 +602,7 @@ describe('createVeoClip — one concise log line', () => {
 
 describe('pollVeoClip', () => {
   it.each(['gemini', 'invalid-pin'])('a Vertex operation keeps polling Vertex with current pin %s', async (pin) => {
-    useGemini();
+    useKeyOnly();
     process.env.VEO_TRANSPORT = pin;
     fetchMock.mockResolvedValueOnce(json(200, { done: false }));
     expect(await pollVeoClip(` ${VERTEX_OP} `)).toStrictEqual({ state: 'processing' });
@@ -739,18 +610,13 @@ describe('pollVeoClip', () => {
     expect(JSON.parse(String(calls()[0]?.[1].body))).toStrictEqual({ operationName: VERTEX_OP });
   });
 
-  it.each(['vertex', 'invalid-pin'])('a Gemini operation keeps polling its own API with current pin %s', async (pin) => {
+  it.each(['vertex', 'gemini', 'invalid-pin'])('a historical Developer API operation is failed without a call (pin %s), name untouched', async (pin) => {
     useVertex();
     process.env.VEO_TRANSPORT = pin;
     process.env.GEMINI_API_KEY = KEY;
-    fetchMock.mockResolvedValueOnce(
-      json(200, { done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: 'https://generativelanguage.googleapis.com/v1beta/files/f:download?alt=media' } }] } } }),
-    );
-    expect(await pollVeoClip(GEMINI_OP)).toStrictEqual({
-      state: 'succeeded',
-      videos: [{ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1beta/files/f:download?alt=media', mimeType: 'video/mp4' }],
-    });
-    expect(calls()[0]?.[0]).toBe(`https://generativelanguage.googleapis.com/v1beta/${GEMINI_OP}`);
+    expect(await pollVeoClip(GEMINI_OP)).toStrictEqual({ state: 'failed', reason: VEO_DEVELOPER_API_OPERATION });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(transportOf(GEMINI_OP)).toBe('gemini');
   });
 
   it('an unknown name → failed, nothing sent', async () => {
@@ -838,14 +704,12 @@ describe('durable submission fence — no real network', () => {
     expect(bodyOf(VERTEX_SUBMIT).instances[0].image).toMatchObject({ gcsUri: 'gs://owned-bucket/original.png' });
   });
 
-  it('also fences the historical Gemini transport without calling its API', async () => {
-    useGemini(); routeFetch();
-    const phases: string[] = [];
-    const result = await createVeoClip(input({ prompt: 'scene', aspect: '16:9' }, {
-      submissionJournal: async (evidence) => { phases.push(evidence.phase); return evidence.phase === 'prepared'; },
-    }));
-    expect(phases).toEqual(['prepared', 'posting']);
-    expect(failed(result.outcome)).toMatchObject({ reason: 'invalid_request', retryable: false });
+  it('an AI Studio key alone never reaches the journal: refused as not configured before evidence is written', async () => {
+    useKeyOnly(); routeFetch();
+    const journal = jest.fn(async () => true);
+    const result = await createVeoClip(input({ prompt: 'scene', aspect: '16:9' }, { submissionJournal: journal }));
+    expect(failed(result.outcome)).toMatchObject({ reason: 'not_configured', retryable: false });
+    expect(journal).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -76,11 +76,12 @@ test('a bare operation name, a forged token, another payer\'s token and a malfor
 
 // ─── a Veo scene ────────────────────────────────────────────────────────────────────────────────────────────────
 
-test('still rendering → done:false, the operation polled on the NATIVE aspect it was created with', async () => {
+test('still rendering → done:false; a job id that still carries its native aspect polls the same operation', async () => {
   (pollScene as jest.Mock).mockResolvedValue({ state: 'processing' });
   const res = await get(polledId(UID, 60_000, '9:16').id);
   expect(await res.json()).toEqual({ success: true, done: false, state: 'processing' });
-  expect(pollScene).toHaveBeenCalledWith(OP, '9:16', UID);
+  // The id format is unchanged (historical ids keep working); Vertex stamps no mark, so nothing is cropped at that size.
+  expect(pollScene).toHaveBeenCalledWith(OP, UID);
 });
 
 test('a finished clip that could not be delivered YET stays "delivering" and is retried by the next poll', async () => {

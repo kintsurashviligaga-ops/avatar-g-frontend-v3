@@ -6,7 +6,7 @@
  * component or a test without any of that; the route that will run the pipeline imports this file.
  *
  *   liveVeoEngine           VeoEnginePort over lib/veo/engine — the same primitives every other Veo caller uses
- *                           (createVeoClip · pollVeoClip · hostGcsVideo · downloadGeminiVideo), no second engine.
+ *                           (createVeoClip · pollVeoClip · hostGcsVideo), no second engine; Vertex AI only (v3.1).
  *   geminiStoryboardPlanner the planner over lib/ai/llmText with googleOnly: Gemini drafts, never another vendor (V1).
  *   createGoogleVideoDirector the two wired into createVideoDirector.
  *
@@ -14,8 +14,8 @@
  * the exact tier × resolution × audio rate, like every other Veo call site. A budget refusal is a `quota` outcome
  * (→ ShotError rate_limit, not retryable): never a cheaper model, never another vendor.
  *
- * ⚠️ DELIVERY KEEPS THE PICTURE AS RENDERED. Other Gemini-API callers crop Google's visible bottom mark in post; here
- * a clip is hosted exactly as Veo returned it — cropping changes the approved frame, and that is a decision for the
+ * ⚠️ DELIVERY KEEPS THE PICTURE AS RENDERED. A clip is hosted exactly as Veo returned it (Vertex stamps no visible
+ * mark) — cropping changes the approved frame, and that is a decision for the
  * assembly step, not the executor.
  */
 import 'server-only';
@@ -26,7 +26,6 @@ import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guarded
 import { costPerSecondUsd, DEFAULT_TIER, normalizeClipRequest, resolveModel } from '@/lib/veo/capabilities';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipInput, type CreateVeoClipResult } from '@/lib/veo/engine';
-import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import type { VeoVideo } from '@/lib/veo/types';
 import { createVideoDirector, type GoogleVideoDirector } from './director';
 import { GoogleVeoProvider, veoWireFields, type VeoDeliveryContext, type VeoEnginePort } from './googleVeoProvider';
@@ -87,15 +86,16 @@ function deliveryPath(ctx: VeoDeliveryContext): string {
 /**
  * A playable 7-day URL in our storage, or null. Never throws.
  *   · gcs (Vertex)    → copied once into Supabase (hostGcsVideo), so the Library can keep re-signing it.
- *   · gemini-file     → downloaded server-side (the key never leaves) and hosted once.
  *   · bytes           → hosted as returned.
+ *   · gemini-file     → null: a Developer API file would need the AI Studio key, which v3.1 never uses.
  */
 async function deliverClip(video: VeoVideo, ctx: VeoDeliveryContext): Promise<string | null> {
   const path = deliveryPath(ctx);
   try {
     if (video.kind === 'gcs') return await hostGcsVideo(video, path);
-    const buf = video.kind === 'bytes' ? Buffer.from(video.base64, 'base64') : await downloadGeminiVideo(video.uri);
-    if (!buf || buf.byteLength < MIN_CLIP_BYTES) return null;
+    if (video.kind !== 'bytes') return null;
+    const buf = Buffer.from(video.base64, 'base64');
+    if (buf.byteLength < MIN_CLIP_BYTES) return null;
     return await uploadBufferAndSign('renders', path, buf, video.mimeType || 'video/mp4', DELIVERY_TTL_SEC);
   } catch {
     return null;

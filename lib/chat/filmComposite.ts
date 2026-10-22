@@ -799,12 +799,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     preview: input.metadata?.quality === 'preview',
   });
   // Google-only renders every clip on Veo whatever the panel's engine pick. Veo speaks only when it renders audio:
-  // the plan's "native audio" switch is honoured on Vertex AI (a video-only clip is cheaper), while the Gemini API
-  // always renders it — so a Vertex film with native audio OFF keeps its ElevenLabs dialogue leg.
+  // the plan's "native audio" switch is honoured on Vertex AI (a video-only clip is cheaper) — so a film with native
+  // audio OFF keeps its ElevenLabs dialogue leg.
   const clipTransport = veoTransport();
   const nativeSpeech = clipTransport !== null
     && (googleOnly || (effectiveVideoModel !== 'kling' && effectiveVideoModel !== 'hailuo'))
-    && (veoPlan?.film.generateAudio !== false || clipTransport === 'gemini');
+    && veoPlan?.film.generateAudio !== false;
 
   // Per-scene spoken lines, index-aligned with the scenes. Sources, best first: the line written inside
   // each scene's own sheet → the Master Script's timecoded dialogue turns → the dialogue textarea → a

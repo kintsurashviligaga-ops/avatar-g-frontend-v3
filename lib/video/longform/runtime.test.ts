@@ -23,7 +23,6 @@ jest.mock('../../services/billing/guardedCall', () => {
 });
 jest.mock('../../veo/engine', () => ({ createVeoClip: jest.fn(), pollVeoClip: jest.fn(), veoTransport: jest.fn() }));
 jest.mock('../../veo/deliver', () => ({ hostGcsVideo: jest.fn() }));
-jest.mock('../../veo/geminiTransport', () => ({ downloadGeminiVideo: jest.fn() }));
 jest.mock('../../ai/llmText', () => ({ llmText: jest.fn() }));
 jest.mock('../../orchestrator/jobs', () => ({ recordCompletedFilm: jest.fn() }));
 
@@ -32,7 +31,6 @@ import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/st
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
 import { pollVeoClip, veoTransport } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
-import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import type { CreateVeoClipInput } from '@/lib/veo/engine';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { llmText } from '@/lib/ai/llmText';
@@ -181,15 +179,16 @@ describe('engine adapter', () => {
   const ctx = { userId: 'u1', jobId: 'j1', ordinal: 0 };
 
   test('submit runs inside the budget guard at the capabilities price (8 s × Fast 1080p $0.12)', async () => {
-    m(veoTransport).mockReturnValue('gemini');
-    m(guardedCall).mockResolvedValue({ outcome: { ok: true, operation: { transport: 'gemini', name: 'models/x/operations/1', model: 'm' } }, transport: 'gemini', model: 'veo-3.1-fast-generate-preview' });
+    m(veoTransport).mockReturnValue('vertex');
+    const op = { transport: 'vertex', name: 'projects/p/locations/us-central1/operations/1', model: 'm' };
+    m(guardedCall).mockResolvedValue({ outcome: { ok: true, operation: op }, transport: 'vertex', model: 'veo-3.1-fast-generate-001' });
     const r = await createVeoLongformEngine().submit(input, ctx);
-    expect(r).toEqual({ report: { kind: 'outcome', outcome: { ok: true, operation: { transport: 'gemini', name: 'models/x/operations/1', model: 'm' } } }, transport: 'gemini', model: 'veo-3.1-fast-generate-preview' });
-    expect(m(guardedCall).mock.calls[0]?.[0]).toMatchObject({ service: 'video', model: 'veo-3.1-fast-generate-preview', units: 8, unitCostUsd: 0.12, userId: 'u1' });
+    expect(r).toEqual({ report: { kind: 'outcome', outcome: { ok: true, operation: op } }, transport: 'vertex', model: 'veo-3.1-fast-generate-001' });
+    expect(m(guardedCall).mock.calls[0]?.[0]).toMatchObject({ service: 'video', model: 'veo-3.1-fast-generate-001', units: 8, unitCostUsd: 0.12, userId: 'u1' });
   });
 
   test('a budget refusal becomes budget_refused; any other throw propagates (→ ambiguous in the tick)', async () => {
-    m(veoTransport).mockReturnValue('gemini');
+    m(veoTransport).mockReturnValue('vertex');
     m(guardedCall).mockRejectedValueOnce(new (BudgetExceededError as unknown as new (r: string) => Error)('daily_limit'));
     expect(await createVeoLongformEngine().submit(input, ctx)).toEqual({ report: { kind: 'budget_refused', reason: 'daily_limit' } });
     m(guardedCall).mockRejectedValueOnce(new Error('socket'));
@@ -220,21 +219,24 @@ describe('engine adapter', () => {
     expect(await createVeoLongformEngine().poll('projects/p/operations/1', ctx)).toEqual({ state: 'undeliverable' });
   });
 
-  test('a Gemini file: an already-hosted copy is re-signed (no download); otherwise downloaded and hosted with its size', async () => {
-    m(pollVeoClip).mockResolvedValue({ state: 'succeeded', videos: [{ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1/files/x', mimeType: 'video/mp4' }] });
+  test('inline Vertex bytes: an already-hosted copy is re-signed; otherwise hosted with its size', async () => {
+    const bytes = { kind: 'bytes', base64: Buffer.alloc(5_000).toString('base64'), mimeType: 'video/mp4' };
+    m(pollVeoClip).mockResolvedValue({ state: 'succeeded', videos: [bytes] });
     m(createSignedAssetUrl).mockResolvedValueOnce('https://sb/existing.mp4');
-    expect(await createVeoLongformEngine().poll('models/m/operations/1', ctx)).toMatchObject({ state: 'delivered', url: 'https://sb/existing.mp4' });
-    expect(downloadGeminiVideo).not.toHaveBeenCalled();
+    expect(await createVeoLongformEngine().poll('projects/p/operations/1', ctx)).toMatchObject({ state: 'delivered', url: 'https://sb/existing.mp4' });
+    expect(uploadBufferAndSign).not.toHaveBeenCalled();
 
     m(createSignedAssetUrl).mockResolvedValueOnce(null);
-    m(downloadGeminiVideo).mockResolvedValueOnce(Buffer.alloc(5_000));
     m(uploadBufferAndSign).mockResolvedValueOnce('https://sb/new.mp4');
-    expect(await createVeoLongformEngine().poll('models/m/operations/1', ctx)).toMatchObject({ state: 'delivered', url: 'https://sb/new.mp4', bytes: 5_000 });
+    expect(await createVeoLongformEngine().poll('projects/p/operations/1', ctx)).toMatchObject({ state: 'delivered', url: 'https://sb/new.mp4', bytes: 5_000 });
     expect(m(uploadBufferAndSign).mock.calls[0]?.slice(0, 1)).toEqual(['renders']);
+  });
 
-    m(createSignedAssetUrl).mockResolvedValueOnce(null);
-    m(downloadGeminiVideo).mockResolvedValueOnce(null);
+  test('a Developer API file is never fetched (v3.1): undeliverable, nothing hosted or re-signed', async () => {
+    m(pollVeoClip).mockResolvedValue({ state: 'succeeded', videos: [{ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1/files/x', mimeType: 'video/mp4' }] });
     expect(await createVeoLongformEngine().poll('models/m/operations/1', ctx)).toEqual({ state: 'undeliverable' });
+    expect(createSignedAssetUrl).not.toHaveBeenCalled();
+    expect(uploadBufferAndSign).not.toHaveBeenCalled();
   });
 
   test('extractLastFrame refuses a non-public or non-https clip without running anything', async () => {

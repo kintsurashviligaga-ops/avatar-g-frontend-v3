@@ -31,7 +31,6 @@ const veoTransport = jest.fn();
 const createVeoClip = jest.fn();
 const pollVeoClip = jest.fn();
 const deliverableUrl = jest.fn();
-const downloadGeminiVideo = jest.fn();
 const uploadBufferAndSign = jest.fn();
 const guardedCall = jest.fn();
 const hostGcsVideo = jest.fn();
@@ -47,7 +46,6 @@ jest.mock('../veo/engine', () => ({
   pollVeoClip: (...a: unknown[]) => pollVeoClip(...a),
   deliverableUrl: (...a: unknown[]) => deliverableUrl(...a),
 }));
-jest.mock('../veo/geminiTransport', () => ({ downloadGeminiVideo: (...a: unknown[]) => downloadGeminiVideo(...a) }));
 jest.mock('../veo/deliver', () => ({ hostGcsVideo: (...a: unknown[]) => hostGcsVideo(...a) }));
 jest.mock('../services/billing/guardedCall', () => {
   class BudgetExceededError extends Error {
@@ -105,19 +103,20 @@ const queued = (over: Row = {}): Row => ({
   error: null, credits: 0, attempts: 0, created_at: '2026-08-06T00:00:00Z', ...over,
 });
 
+/** A row submitted on the Gemini Developer API before v3.1: its operation id is kept, never polled on that API again. */
 const GEMINI_OP = 'models/veo-3.1-generate-preview/operations/op1';
 const VERTEX_OP = 'projects/p/locations/us-central1/publishers/google/models/veo-3.1-generate-001/operations/op1';
 /** Big enough to clear the 1 KiB "not a playable clip" floor. */
 const MP4 = Buffer.alloc(4_096, 7);
 
 /** What createVeoClip returns — the outcome is all the queue reads. */
-const accepted = (name = GEMINI_OP) => ({
-  outcome: { ok: true, operation: { name, model: 'veo-3.1-generate-preview' } },
-  request: { aspect: '9:16' }, adjustments: [], model: 'veo-3.1-generate-preview', transport: 'gemini',
+const accepted = (name = VERTEX_OP) => ({
+  outcome: { ok: true, operation: { name, model: 'veo-3.1-fast-generate-001' } },
+  request: { aspect: '9:16' }, adjustments: [], model: 'veo-3.1-fast-generate-001', transport: 'vertex',
 });
 const refused = (reason: string, retryable = false, status?: number) => ({
   outcome: { ok: false, reason, retryable, ...(status ? { status } : {}) },
-  request: { aspect: '9:16' }, adjustments: [], model: 'veo-3.1-generate-preview', transport: 'gemini',
+  request: { aspect: '9:16' }, adjustments: [], model: 'veo-3.1-fast-generate-001', transport: 'vertex',
 });
 
 type GuardOpts = { service: string; model: string; units: number; unitCostUsd: number; userId: string; actualCost: (r: unknown) => number | undefined };
@@ -127,9 +126,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   deductCredits.mockResolvedValue({ ok: true });
   refundCredits.mockResolvedValue({ ok: true });
-  veoTransport.mockReturnValue('gemini');
+  veoTransport.mockReturnValue('vertex');
   guardedCall.mockImplementation(async (_opts: unknown, fn: () => Promise<unknown>) => fn());
-  downloadGeminiVideo.mockResolvedValue(MP4);
   uploadBufferAndSign.mockResolvedValue('https://x/clip.mp4');
   deliverableUrl.mockResolvedValue('https://storage.googleapis.com/bucket/veo/clip.mp4?X-Goog-Signature=abc');
 });
@@ -233,24 +231,24 @@ describe('a clip that fails while in flight', () => {
 });
 
 describe('a clip that succeeds', () => {
-  it('keeps the charge and stores the finished video', async () => {
+  it('keeps the charge and stores the finished video (inline Vertex bytes)', async () => {
     pollVeoClip.mockResolvedValue({
       state: 'succeeded',
-      videos: [{ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1beta/files/x:download', mimeType: 'video/mp4' }],
+      videos: [{ kind: 'bytes', base64: MP4.toString('base64'), mimeType: 'video/mp4' }],
     });
-    const db = fakeDb([queued({ status: 'submitted', operation: GEMINI_OP, credits: 25 })]);
+    const db = fakeDb([queued({ status: 'submitted', operation: VERTEX_OP, credits: 25 })]);
 
     const res = await drainOnce(db as never, UID);
 
     expect(res.action).toBe('done');
     expect(refundCredits).not.toHaveBeenCalled();
-    expect(pollVeoClip).toHaveBeenCalledWith(GEMINI_OP);
+    expect(pollVeoClip).toHaveBeenCalledWith(VERTEX_OP);
     expect(uploadBufferAndSign).toHaveBeenCalledWith('uploads', 'agentq/item-1.mp4', MP4, 'video/mp4', 604_800);
     expect(db.rows[0].video_url).toBe('https://x/clip.mp4');
     expect(db.rows[0].credits).toBe(25);
   });
 
-  it('delivers a Vertex AI clip copied once into Supabase (the Library re-signs only Supabase) — nothing downloaded from Gemini', async () => {
+  it('delivers a Vertex AI clip copied once into Supabase (the Library re-signs only Supabase)', async () => {
     hostGcsVideo.mockResolvedValue('https://x.supabase.co/storage/v1/object/sign/renders/agentq/item-1.mp4?token=t');
     pollVeoClip.mockResolvedValue({
       state: 'succeeded',
@@ -262,7 +260,6 @@ describe('a clip that succeeds', () => {
 
     expect(res.action).toBe('done');
     expect(hostGcsVideo).toHaveBeenCalledWith(expect.objectContaining({ kind: 'gcs' }), 'agentq/item-1.mp4');
-    expect(downloadGeminiVideo).not.toHaveBeenCalled();
     expect(uploadBufferAndSign).not.toHaveBeenCalled();
     expect(db.rows[0].video_url).toMatch(/supabase\.co/);
     expect(refundCredits).not.toHaveBeenCalled();
@@ -271,15 +268,31 @@ describe('a clip that succeeds', () => {
   it('refunds a finished clip that cannot be delivered', async () => {
     pollVeoClip.mockResolvedValue({
       state: 'succeeded',
-      videos: [{ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1beta/files/x:download', mimeType: 'video/mp4' }],
+      videos: [{ kind: 'bytes', base64: MP4.toString('base64'), mimeType: 'video/mp4' }],
     });
-    downloadGeminiVideo.mockResolvedValue(null);
-    const db = fakeDb([queued({ status: 'submitted', operation: GEMINI_OP, credits: 25 })]);
+    uploadBufferAndSign.mockResolvedValue(null);
+    const db = fakeDb([queued({ status: 'submitted', operation: VERTEX_OP, credits: 25 })]);
 
     const res = await drainOnce(db as never, UID);
 
     expect(res.action).toBe('failed');
     expect(refundCredits).toHaveBeenCalledWith(UID, 25, 'agentq:item-1');
+  });
+
+  it('a Developer API file is never fetched (v3.1): refunded as undeliverable, nothing hosted', async () => {
+    pollVeoClip.mockResolvedValue({
+      state: 'succeeded',
+      videos: [{ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1beta/files/x:download', mimeType: 'video/mp4' }],
+    });
+    const db = fakeDb([queued({ status: 'submitted', operation: GEMINI_OP, credits: 25 })]);
+
+    const res = await drainOnce(db as never, UID);
+
+    expect(res.action).toBe('failed');
+    expect(uploadBufferAndSign).not.toHaveBeenCalled();
+    expect(hostGcsVideo).not.toHaveBeenCalled();
+    expect(refundCredits).toHaveBeenCalledWith(UID, 25, 'agentq:item-1');
+    expect(db.rows[0].operation).toBe(GEMINI_OP);
   });
 });
 
@@ -328,7 +341,7 @@ describe('a clip that is accepted', () => {
 
 describe('two drains at once', () => {
   it('only one drain claims a queued row — the other neither charges nor submits', async () => {
-    veoTransport.mockReturnValue('gemini');
+    veoTransport.mockReturnValue('vertex');
     deductCredits.mockResolvedValue({ ok: true });
     guardedCall.mockImplementation(async (_o: unknown, fn: () => Promise<unknown>) => fn());
     let release!: () => void;
@@ -346,7 +359,7 @@ describe('two drains at once', () => {
     expect(second.action).toBe('pending'); // it saw a claimed row with no operation yet — in progress, not failed
     expect(createVeoClip).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(db.rows[0]).toMatchObject({ status: 'submitted', operation: GEMINI_OP });
+    expect(db.rows[0]).toMatchObject({ status: 'submitted', operation: VERTEX_OP });
   });
 
   it('a claim abandoned by a dead drain is failed and refunded once it is stale', async () => {

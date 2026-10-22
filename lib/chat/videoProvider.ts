@@ -35,23 +35,29 @@ export function hasReplicateToken(env: NodeJS.ProcessEnv = process.env): boolean
   return false;
 }
 
-/** Gemini keys, in the order the rest of the app resolves them. */
-export const GEMINI_API_KEY_ALIASES = ['GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'] as const;
+/** What Veo on Vertex AI needs besides the project and bucket: Workload Identity (all four) or a service-account key. */
+const VEO_VERTEX_WIF_VARS = [
+  'GCP_PROJECT_NUMBER',
+  'GCP_SERVICE_ACCOUNT_EMAIL',
+  'GCP_WORKLOAD_IDENTITY_POOL_ID',
+  'GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID',
+] as const;
 
 /**
- * True iff Veo can render — a Gemini key is present and Veo is not explicitly killed.
+ * True iff the Veo route is set up — Vertex AI only (MASTER TASK v3.1): GCP_PROJECT_ID, GCP_VEO_BUCKET and one auth
+ * mode present, and VEO_TRANSPORT unset / `auto` / `vertex`. An AI Studio key (GEMINI_API_KEY) does not count and
+ * GEMINI_VEO_ENABLED no longer applies: the Developer API is not a Veo transport.
  *
- * Mirrors `hasGeminiVeoProvider()` in lib/ai/geminiVeo.ts, re-implemented here against an injectable
- * `env` because this module's whole contract is that every predicate is testable with a fake
- * environment. The kill-switch rule is the shared one: anything but 0/false/no/off means enabled.
+ * Mirrors lib/veo/engine veoTransport() by variable PRESENCE, against an injectable `env`, because this module's whole
+ * contract is that every predicate is testable with a fake environment and free of server-only imports. The engine
+ * still validates the values (and refuses before any provider I/O) when a clip is actually created.
  */
-export function hasGeminiVeoKey(env: NodeJS.ProcessEnv = process.env): boolean {
-  const flag = (env.GEMINI_VEO_ENABLED ?? '').trim().toLowerCase();
-  if (flag === '0' || flag === 'false' || flag === 'no' || flag === 'off') return false;
-  for (const name of GEMINI_API_KEY_ALIASES) {
-    if ((env[name] ?? '').trim()) return true;
-  }
-  return false;
+export function hasVeoVertexEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  const set = (name: string): boolean => Boolean((env[name] ?? '').trim());
+  const pin = (env.VEO_TRANSPORT ?? '').trim().toLowerCase();
+  if (pin && pin !== 'auto' && pin !== 'vertex') return false;
+  if (!set('GCP_PROJECT_ID') || !set('GCP_VEO_BUCKET')) return false;
+  return VEO_VERTEX_WIF_VARS.every(set) || set('GCP_SERVICE_ACCOUNT_KEY');
 }
 
 /**
@@ -59,8 +65,8 @@ export function hasGeminiVeoKey(env: NodeJS.ProcessEnv = process.env): boolean {
  *
  * ⚠️ THIS DID NOT COUNT VEO, AND THAT IS A TRAP FOR ANYONE MOVING TO A GEMINI-ONLY SETUP. The predicate
  * was `hasLtxApiKey(env) || hasReplicateToken(env)`, while Veo has been the PRIMARY clip engine for some
- * time (ServiceManager tries it before Runway/Kling/LTX, live-by-default on a Gemini key alone). So on a
- * config with a Gemini key and no Replicate/LTX token — exactly what "remove the legacy engines"
+ * time (ServiceManager tries it before Runway/Kling/LTX). So on a config with a Veo route and no
+ * Replicate/LTX token — exactly what "remove the legacy engines"
  * produces — filmComposite's guard fires first:
  *
  *   if (!hasVideoProvider()) return { …, status: 'skipped', … }
@@ -71,7 +77,7 @@ export function hasGeminiVeoKey(env: NodeJS.ProcessEnv = process.env): boolean {
  * silent-skip-after-spend trap") — Veo was simply never added when it became primary.
  */
 export function hasVideoProvider(env: NodeJS.ProcessEnv = process.env): boolean {
-  return hasGeminiVeoKey(env) || hasLtxApiKey(env) || hasReplicateToken(env);
+  return hasVeoVertexEnv(env) || hasLtxApiKey(env) || hasReplicateToken(env);
 }
 
 /** Names-only presence snapshot for diagnostics / the client status dot. */
