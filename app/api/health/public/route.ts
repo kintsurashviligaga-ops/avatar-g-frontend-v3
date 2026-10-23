@@ -11,8 +11,8 @@
  *   chat, image — the selected Google transport answers countTokens for the chat and the image model
  *                 (lib/ai/google/transportCheck); music rides the same transport (Lyria);
  *   video       — the keyless Vertex chain Veo uses: token, bucket, signing (lib/veo/authCheck);
- *   voice       — Google Cloud TTS on the same Vertex identity: its free voices list must hold a Georgian voice
- *                 (lib/audio/google-tts checkCloudTts; MASTER TASK v3.1 PR 5d moved every spoken line there);
+ *   voice       — Google Cloud TTS on the same Vertex identity: its free voices list must answer (lib/audio/google-tts
+ *                 checkCloudTts; MASTER TASK v3.1 PR 5d moved every spoken line there, and Georgian reads on Gemini-TTS);
  *   avatar      — Veo for the picture AND the voice for its Georgian line.
  * Until 2026-10-17 image / video / music asked Replicate and avatar asked HeyGen — engines the product no longer uses —
  * and until PR 6b voice asked ElevenLabs, which no longer reads any line.

@@ -104,8 +104,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return { provider: 'replicate', configured: true, ok: r.ok, detail: r.ok ? `account ${j.username ?? 'ok'}` : `HTTP ${r.status}` };
     }),
 
-    // CLOUD TTS — every spoken line in the product since PR 5d, on the Vertex identity. The free ka-GE voices list must
-    // answer and hold a Georgian voice; nothing is synthesised. (ElevenLabs reads no line any more and is not probed.)
+    // CLOUD TTS — every spoken line in the product since PR 5d, on the Vertex identity (Georgian on Gemini-TTS). The free
+    // voices list must answer; nothing is synthesised. (ElevenLabs reads no line any more and is not probed.)
     checkCloudTts().then(
       (r): ProbeResult => ({ provider: 'cloud-tts', configured: r.state !== 'unconfigured', ok: r.state === 'ok', detail: r.detail }),
     ),

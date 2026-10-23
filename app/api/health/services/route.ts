@@ -92,7 +92,7 @@ async function googleGeminiProbe(): Promise<ProbeResult> {
   return { ...base, status: readiness.ok ? 'CONNECTED' : 'ERROR', latencyMs: Date.now() - t0, message: readiness.detail };
 }
 
-/** Every spoken line runs on Google Cloud TTS with the Vertex identity (PR 5d): its free ka-GE voices list, nothing synthesised. */
+/** Every spoken line runs on Google Cloud TTS with the Vertex identity (PR 5d): its free voices list, nothing synthesised. */
 async function cloudTtsProbe(): Promise<ProbeResult> {
   const base = { service: 'Google Cloud TTS (voice)', category: 'voice', envVar: 'GCP_PROJECT_ID' } as const;
   const t0 = Date.now();

@@ -155,8 +155,9 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     });
 
     // 4 · TTS VOICE — Google Cloud TTS only (lib/audio/google-tts, MASTER TASK v3.1 PR 5d), on the Vertex Workload
-    //     Identity token: every spoken line, the best ka-GE voice picked from the free voices list. No API key is read
-    //     and no other engine stands behind it (R7). Config only here; /api/health/services asks the voices list.
+    //     Identity token: every spoken line. Georgian reads on Gemini-TTS (Cloud TTS lists no ka-GE voice), English and
+    //     Russian with the best listed voice. No API key is read and no other engine stands behind it (R7). Config only
+    //     here; /api/health/services asks the voices list.
     const ttsOn = cloudTtsConfigured();
     services.push({
       service: 'ხმა (TTS)',
@@ -164,7 +165,7 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       available: ttsOn,
       tier: ttsOn ? 'high' : 'unavailable',
       note: ttsOn
-        ? 'every spoken line · best ka-GE voice (Chirp3-HD first) · no fallback (R7) · needs the Cloud Text-to-Speech API on the project'
+        ? 'every spoken line · Georgian on Gemini-TTS, en/ru the best listed voice · no fallback (R7) · needs the Cloud Text-to-Speech API on the project'
         : 'Vertex AI config missing — no voice-over (no other TTS provider, R7)',
       icon: dot(ttsOn, ttsOn ? 'high' : 'unavailable'),
     });

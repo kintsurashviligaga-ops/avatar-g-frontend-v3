@@ -36,7 +36,8 @@ The PRs are stacked: each one contains every PR above it in this table, so they 
 | 16 | #131 | `claude/p1-07-veo-variants` | Only a verified Vertex Veo row renders, in a region it lists |
 | 17 | #132 | `claude/p1-08-image-lifecycle` | Imagen 3 ids answer `lifecycle_blocked`; Vertex image contract test |
 | 18 | #133 | `claude/p1-09-curated-avatars` | Built-in avatars only; custom avatars answer `capability_unavailable` |
-| 19 | this PR | `claude/p1-10-migration-rollback` | These notes (docs only) |
+| 19 | #134 | `claude/p1-10-migration-rollback` | These notes (docs only) |
+| 20 | this PR | `claude/p1-11-georgian-gemini-tts` | Georgian lines read by Gemini-TTS: Cloud TTS lists no ka-GE voice |
 
 Merging only the top PR carries the whole stack in one deploy. Merging them one at a time gives smaller steps to roll back.
 
@@ -62,8 +63,8 @@ GG checks these in the Vercel and Google Cloud consoles. Only names are listed h
 
 Each check is free: no model generates anything and nothing is charged. Do not repeat billed calls to find out whether something works.
 
-1. **Public health** (`/api/health/public`): the voice bucket is `ok`. It reads the free Cloud TTS voices list for ka-GE.
-2. **Admin provider probe**: the `cloud-tts` row is `ok`, with a Georgian voice listed, and the Gemini row reports Vertex AI as ready (a Workload Identity token was minted; no model call). A `down` row with 401 or 403 means the Cloud Text-to-Speech API or the service account's permission is missing.
+1. **Public health** (`/api/health/public`): the voice bucket is `ok`. It reads the free Cloud TTS voices list (en-US), which shows the API is on and the service account may call it. Georgian is read by Gemini-TTS, whose voices that list does not hold, so only a billed line proves the Georgian read itself.
+2. **Admin provider probe**: the `cloud-tts` row is `ok` ("Cloud TTS answers … Georgian on gemini-2.5-flash-tts"), and the Gemini row reports Vertex AI as ready (a Workload Identity token was minted; no model call). A `down` row with 401 or 403 means the Cloud Text-to-Speech API or the service account's permission is missing.
 3. **Video engine** (`/api/video/engine`): each tier reads `available: true`. A tier that reads false has an unverified model id or a region its row does not list; the admin reliability page names a refused default model.
 4. **Admin Pipeline card**: the film-score row names Lyria 3 on Vertex, a bed of about 30 s, and sung songs off.
 5. **Image Studio**: a quote for a photo succeeds (no confirm, so nothing is reserved). A quote that names an Imagen 3 id answers 410 `lifecycle_blocked`.
@@ -74,7 +75,7 @@ Each check is free: no model generates anything and nothing is charged. Do not r
 
 Most of the stack removes paths production already had switched off. These changes are visible:
 
-- **Voice** sounds different: every spoken line (film narration, the avatar's Georgian line, the Georgian song vocal, read-aloud, Agent G's voice replies) is Google Cloud TTS instead of ElevenLabs.
+- **Voice** sounds different: every spoken line (film narration, the avatar's Georgian line, the Georgian song vocal, read-aloud, Agent G's voice replies) is Google Cloud TTS instead of ElevenLabs. Georgian lines use a Gemini-TTS prebuilt voice (`gemini-2.5-flash-tts`; ka-GE is a Preview language there), because Cloud TTS has no Georgian voice of its own. Between #126 and this PR, Georgian lines failed closed (no audio, nothing charged): the production voices list for ka-GE came back empty on 2026-10-22, which #130's health check showed as voice and avatar `degraded`.
 - **Film music** is a Lyria bed of about 30 s. A film longer than that plays its last part without music. A music video with a sung song gets no music. Both last until GG's budgeted Lyria Pro and vocals verification.
 - **Film subtitles** are paused: the narration check runs on Gemini on Vertex, which gives no word timings (GG, 2026-10-22).
 - **Live voice and WhatsApp live calls** answer `live_transport_unavailable`, and the browser falls back to the normal voice loop. **Deep Research** is unavailable (it exists only on the Developer API).
@@ -129,7 +130,7 @@ These are still read by routes the stack keeps, so they stay until jobs from bef
 
 ## Open items GG decides
 
-- **One budgeted contract call per model** to turn "unverified" rows into verified fixtures: `gemini-3.1-flash-image`, Lyria 3 clip and Pro (and vocals), the Veo 3.1 tiers, Cloud TTS synthesis. The spec forbids repeated billed probes, so this is one listed batch for GG's approval.
+- **One budgeted contract call per model** to turn "unverified" rows into verified fixtures: `gemini-3.1-flash-image`, Lyria 3 clip and Pro (and vocals), the Veo 3.1 tiers, Cloud TTS synthesis, and one short Georgian line on Gemini-TTS. The spec forbids repeated billed probes, so this is one listed batch for GG's approval.
 - **A durable outbox table** for refused bookings, so a kept booking survives an instance. It is a shared database change (#121).
 - **Timed speech-to-text** (Cloud Speech-to-Text, Chirp) to bring film subtitles back, only if GG asks.
 - **The Imagen 4 leg** (`GEMINI_IMAGEN_ENABLED`, opt-in): left in place by #132; it can be removed if GG wants it gone.
