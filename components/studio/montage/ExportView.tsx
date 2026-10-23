@@ -9,7 +9,7 @@
  */
 import { AlertCircle, ArrowLeft, MessageSquare } from 'lucide-react';
 import type { MontageAspect } from '@/lib/services/montage/montagePlan';
-import { ProgressBar } from '../ui/controls';
+import { ProgressLine } from '../ui/controls';
 import { LoadingLoop } from '../ui/LoadingLoop';
 import { ResultActions } from '../ui/ResultActions';
 import { STAGE_LABEL, aspectRatio, langOf, type Copy } from './copy';
@@ -47,7 +47,7 @@ export function ExportView(p: {
             </div>
             <div className="mt-5 w-full" role="status" aria-live="polite">
               <p className="mb-2 text-center text-[15px] font-semibold text-app-text">{t.exporting}</p>
-              <ProgressBar
+              <ProgressLine
                 pct={state.pct}
                 label={state.stage && STAGE_LABEL[state.stage] ? STAGE_LABEL[state.stage]![l] : undefined}
               />

@@ -26,13 +26,15 @@ describe('resultPct — honest progress', () => {
 });
 
 describe('ResultCard', () => {
-  it('renders a rendering video as a 9:16 tile with «ვიდეო · 9:16 · 12%», a bar and a 44 px cancel', () => {
+  it('renders a rendering video as a 9:16 tile with «ვიდეო · 9:16 · 12%» and a 44 px cancel, and no drawn bar', () => {
     const onCancel = jest.fn();
     const { container } = render(<ResultCard kind="video" aspect="9:16" state="rendering" locale="ka" pct={12} onCancel={onCancel} />);
     expect(screen.getByText('ვიდეო · 9:16 · 12%')).toBeTruthy();
     const tile = container.querySelector('[data-testid="result-card"] > div') as HTMLElement;
     expect(tile.style.aspectRatio).toBe('9 / 16');
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('12');
+    // The caption is the progressbar: no width-animated bar under it (MASTER TASK v3.1 §3.3, Phase 2 PR 4).
+    expect(container.querySelector('[class*="transition-[width]"], [style*="width"]')).toBeNull();
     expect(container.querySelector('[data-testid="loading-loop-poster"]')).not.toBeNull(); // the loading loop, not a spinner
     const cancel = screen.getByRole('button', { name: 'გაუქმება' });
     expect(cancel.className).toContain('h-11');
@@ -75,10 +77,25 @@ describe('ResultCard', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it('says «რიგში» when queued, with the bar at zero', () => {
+  it('says «რიგში» when queued, with no number', () => {
     render(<ResultCard kind="video" aspect="16:9" state="queued" locale="ka" pct={50} />);
     expect(screen.getByText('ვიდეო · 16:9 · რიგში')).toBeTruthy();
-    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+    // A job that has not started has no percent to report: the progressbar is indeterminate, like the loading card's.
+    expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false);
+  });
+
+  it('never reads 100 while rendering, and its number never goes back', () => {
+    const { rerender } = render(<ResultCard kind="video" aspect="9:16" state="rendering" locale="en" pct={100} />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Video · 9:16 · 99%');
+    rerender(<ResultCard kind="video" aspect="9:16" state="rendering" locale="en" pct={40} />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Video · 9:16 · 99%');
+  });
+
+  it('holds a server percent that arrives below the time estimate already shown', () => {
+    const { rerender } = render(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" elapsedSec={30} capSec={60} />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 50%');
+    rerender(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" elapsedSec={31} capSec={60} pct={20} />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 50%');
   });
 
   it('announces state changes politely, not every percent', () => {

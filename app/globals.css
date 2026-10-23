@@ -1036,7 +1036,7 @@ a {
   to { opacity: 1; }
 }
 
-/* Global loading bar (ChatChrome) — an indeterminate sliding sweep across the top. */
+/* An indeterminate sliding sweep: the live voice feed's job row (components/voice/live/LiveActivityFeed). */
 @keyframes mya-loadbar {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
@@ -4259,20 +4259,6 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
   min-height: 44px;
   width: 100%;
   height: 100%;
-}
-
-/* An indeterminate progress bar. A determinate bar frozen at 0% reads as "nothing is happening" — which
-   is exactly what a long render looks like before its first stage lands — so with no percentage yet the
-   bar sweeps instead of sitting still. */
-@keyframes mya-progress-indeterminate {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(350%); }
-}
-.animate-progress-indeterminate {
-  animation: mya-progress-indeterminate 1.4s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .animate-progress-indeterminate { animation: none; }
 }
 
 /* ⚠️ A HOVER-REVEALED CONTROL DOES NOT EXIST ON A TOUCH DEVICE.

@@ -3,16 +3,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Download, Film, Image as ImageIcon, ImagePlus, Maximize2, Music2, RotateCcw, ScanFace, X } from 'lucide-react';
 import { LoadingLoop } from './LoadingLoop';
+import { useRisingPct } from './GenerationProgress';
 
 /**
  * ResultCard — one tile for a generation from the moment it is asked for to the moment it is on screen:
  * queued → rendering → finalizing → ready (or error). The tile has the RESULT's shape from the start (a 9:16
  * video is a 9:16 tile while it renders), so the feed does not jump when the media arrives, and what the user
  * watches while waiting is the loading loop (./LoadingLoop: the owner's blue wave clip,
- * 2026-10-17) under a thin accent bar — not a spinner (docs/DESIGN.md §5, §8).
+ * 2026-10-17) with the percent and a short label over it — not a spinner (docs/DESIGN.md §5, §8), and since
+ * Phase 2 no bar either (MASTER TASK v3.1 §3.3).
  *
  * Honest progress, same rules as GenerationProgress: a server-reported percent wins; otherwise elapsed / cap,
- * held at 92 % until the job is actually ready. The bar never claims "done" on a guess.
+ * held at 92 % until the job is actually ready. The number never claims "done" on a guess, and never goes back
+ * while the job runs (useRisingPct).
  *
  * Presentation only: it owns no job and polls nothing. The caller passes the state it already has (the
  * message, the batch tile) and the handlers that already exist (stop, retry, lightbox, the video bridge).
@@ -33,7 +36,7 @@ const COPY: Record<Lang, { queued: string; rendering: string; finalizing: string
   ru: { queued: 'В очереди', rendering: 'Готовится', finalizing: 'Завершаю…', ready: 'Готово', failed: 'Не удалось', cancel: 'Отмена', retry: 'Повторить', dismiss: 'Скрыть', open: 'Открыть', download: 'Скачать', useAsRef: 'Как референс', details: 'Подробности' },
 };
 
-/** The ceiling a time-based estimate may reach; only the real result takes the bar past it. */
+/** The ceiling a time-based estimate may reach; only the real result takes the number past it. */
 export const RESULT_HOLD_PCT = 92;
 
 /**
@@ -106,8 +109,11 @@ export function ResultCard({
 }: ResultCardProps) {
   const lang: Lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const c = COPY[lang];
-  const shown = resultPct({ state, pct, elapsedSec, capSec });
   const working = state === 'queued' || state === 'rendering' || state === 'finalizing';
+  const running = state === 'rendering' || state === 'finalizing';
+  // The number on the tile only rises while it renders; queued and finished tiles let go of it (useRisingPct).
+  const risen = useRisingPct(resultPct({ state, pct, elapsedSec, capSec }), running);
+  const shown = state === 'ready' ? 100 : risen;
   const kindLabel = KIND[lang][kind];
   // «ვიდეო · 9:16 · 12%» — music has no frame, so no ratio in its caption.
   const parts = [kindLabel, kind === 'music' ? null : aspect, state === 'queued' ? c.queued : working ? `${shown}%` : null].filter(Boolean);
@@ -173,7 +179,7 @@ export function ResultCard({
           </div>
         )}
 
-        {/* Working: cancel (44 px), caption, thin accent bar. */}
+        {/* Working: cancel (44 px), and the caption with the percent, which is the progressbar (no drawn bar). */}
         {working && (
           <>
             {onCancel && (
@@ -181,12 +187,13 @@ export function ResultCard({
                 <X size={16} />
               </button>
             )}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pb-3 pt-8">
-              <p className="truncate text-[12.5px] font-medium tabular-nums text-white/90">{caption}</p>
+            <div
+              className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pb-3 pt-8"
+              role="progressbar" aria-label={caption} aria-valuemin={0} aria-valuemax={100}
+              {...(running ? { 'aria-valuenow': shown, 'aria-valuetext': secondLine ? `${caption} · ${secondLine}` : caption } : {})}
+            >
+              <p className="truncate text-[12.5px] font-medium tabular-nums text-white/90" data-testid="result-card-caption">{caption}</p>
               {secondLine && size !== 'tile' && <p className="mt-0.5 truncate text-[11px] text-white/55">{secondLine}</p>}
-            </div>
-            <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/10" role="progressbar" aria-label={caption} aria-valuemin={0} aria-valuemax={100} aria-valuenow={shown}>
-              <div className="h-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(state === 'queued' ? 0 : 3, shown)}%` }} />
             </div>
           </>
         )}
