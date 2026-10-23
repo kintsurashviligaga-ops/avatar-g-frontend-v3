@@ -208,8 +208,7 @@ import { MusicCentrePane } from './create/MusicCentrePane';
 import type { MusicTrack } from './create/MusicResult';
 import { musicEngineField } from '@/lib/studio/musicEnginePref';
 // The image model the panel's ModelPicker stored — read at request time like the music engine, so a re-roll uses the pick.
-import { higgsfieldPicked, imageModelField, useModelPick } from '@/lib/studio/modelPick';
-import { catalogueEntry } from '@/lib/providers/catalogue';
+import { imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
@@ -1315,13 +1314,6 @@ function deleteServerSession(sid: string): void {
     body: JSON.stringify({ action: 'delete', id: sid }),
   }).catch(() => { /* tombstoned locally regardless */ });
 }
-
-/** Agent G, when the model picked in the Image / Video panel is one that runs from the panel (lib/studio/modelPick). */
-const HF_PANEL_NOTE: Record<'ka' | 'en' | 'ru', string> = {
-  ka: 'შენ მიერ არჩეული მოდელი პანელიდან ეშვება — მოთხოვნა პანელის ველშია, ფასი კი „შექმნის“ ღილაკზე.',
-  en: 'The model you picked runs from the panel — your request is in its prompt box, and the price is on its Create button.',
-  ru: 'Выбранная модель запускается из панели — запрос уже в её поле, а цена на кнопке «Создать».',
-};
 
 /**
  * Hand files to another hidden file input as if the user had picked them there: its own onChange (validation, size
@@ -6844,19 +6836,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
       if (verdict.kind === 'clarify' || verdict.kind === 'confirm') {
-        // ⚠️ A HIGGSFIELD MODEL PICKED IN THE PANEL RUNS FROM THE PANEL. Its Generate carries that model's own price and runs
-        // it through the Studio β saga; this card's Create goes through send(), which would render the GOOGLE model in its
-        // place (a film) or be refused by the image route (a picture). So Agent G points there instead — the words stay in
-        // the box, which the panel's prompt shares.
-        if ((gateMode === 'image' || gateMode === 'video') && higgsfieldPicked(gateMode)) {
-          gatePendingRef.current = null;
-          setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: HF_PANEL_NOTE[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'], notice: true }]);
-          setGateFrom(messages.length);
-          if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
-          if (promptText !== text) setInput(promptText);
-          stopDictationEcho();
-          return;
-        }
         // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
         // An avatar is Veo's price where its door is open (2026-10-17: the card said 20, Veo charges 25).
         const door = gateMode === 'avatar' ? await readVeoAvatarDoor() : null;
@@ -8269,9 +8248,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return;
     }
     if (activeTool === 'motion' || activeTool === 'vfx' || shootActive) { openSettings(); return; }
-    // A Higgsfield model picked in the Image / Video panel runs from that panel's Generate (the saga's price, confirmed by the
-    // tap): the composer opens the panel, as for motion — it never renders the Google model in its place.
-    if ((activeTool === 'image' || activeTool === 'video') && higgsfieldPicked(activeTool)) { openSettings(); return; }
     // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
     // §50: an explicit press is the confirmation; a plain send may still stop at Agent G's card (confirmGate reports that one).
     if (explicitFlag === true) trackGenerationConfirmed(serviceForTool(activeTool, { videoMode }), surface);
@@ -8838,14 +8814,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // VFX print theirs on the panel's button). One quote function for both (lib/credits/quote = what the route charges).
   // The avatar's is Veo's where its door is open (avatarCredits): the price on the button is the one charged.
   // VIDEO (GG 2026-10-18): the prompt lives only in this box, so its Send is the film's one button and carries the film's
-  // quote — videoQuote for the length, tier and mode on the panel, the number its Generate used to show. A Higgsfield pick
-  // runs from the panel's own saga button (its server's price), so the box shows no Veo number then.
-  const [videoModelPick] = useModelPick('video');
-  const videoHfPicked = !!videoModelPick && catalogueEntry(videoModelPick)?.wire.runner === 'studio';
+  // quote — videoQuote for the length, tier and mode on the panel, the number its Generate used to show.
   const composerQuote = activeTool === 'avatar' ? avatarCredits || null
     : activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix'
       ? quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool }) || null
-      : activeTool === 'video' && mode === 'video' && videoTab === 'cinema' && !videoHfPicked
+      : activeTool === 'video' && mode === 'video' && videoTab === 'cinema'
         ? videoQuote({ seconds: videoDuration, tier: veoPlan.tier, mode: videoMode }) || null
         : null;
   // The box's Send for a film is the explicit press the panel's Generate was (its price is on it): same runTool path,
@@ -10995,7 +10968,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             activeTemplate={activeImagePreset}
             onPickTemplate={applyImagePreset}
             aspect={imgAspect} onAspect={setImgAspect}
-            quality={imgQuality}
             count={imgCount} onCount={setImgCount}
             style={imgStyle} onStyle={setImgStyle} styleLabel={(s) => styleLabel(s, locale)}
             negative={imgNegative} onNegative={setImgNegative}
@@ -11217,7 +11189,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               onSeconds={(s) => { setVideoDuration(s); setVideoRequestedSec(null); }}
               format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
               onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
-              prompt={input}
               refs={{
                 images: videoCharacterRefs,
                 max: sceneFrameCount,
@@ -11228,12 +11199,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 onAddAudio: () => audioFileRef.current?.click(),
                 onRemoveAudio: () => setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }),
               }}
-              generate={{
-                balanceCredits: videoBalanceCredits,
-                onTopUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
-                lipsyncCredits: filmLipsyncCredits,
-                onNeedPrompt: () => taRef.current?.focus(),
-              }}
+              generate={{ lipsyncCredits: filmLipsyncCredits }}
               audio={{
                 narration: videoNarration,
                 // The removed „my voice" / „both" choices fall back to one narrator when the narrator is set here.

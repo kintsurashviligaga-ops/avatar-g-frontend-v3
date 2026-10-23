@@ -1,28 +1,31 @@
 /** @jest-environment node */
 /**
  * generateChannelReply — the channel doors answer from the SAME engine as the website: the product Gemini chain, always
- * (MASTER TASK v3.1). The old OpenAI chatEngine leg is gone; chatEngine stays mocked so any call to it is caught.
+ * (MASTER TASK v3.1). The old OpenAI chatEngine leg and the module itself are gone (PR 26); a reinstated leg would have to
+ * reach the network, where the spy below catches it.
  * Pinned too: the budget gate, `answered` on a miss, the channel style note, and that a non-account id (a Telegram chat,
  * a phone number) is never booked as a user id.
  */
-jest.mock('./chatEngine', () => ({ execute: jest.fn() }));
 jest.mock('../services/billing/chatBudget', () => ({ chatBudgetAllows: jest.fn(async () => true) }));
 jest.mock('./google/reply', () => ({ geminiReply: jest.fn() }));
 
 import { generateChannelReply } from './channelBridge';
-import { execute } from './chatEngine';
 import { chatBudgetAllows } from '../services/billing/chatBudget';
 import { geminiReply } from './google/reply';
 
 const gemini = geminiReply as jest.MockedFunction<typeof geminiReply>;
 const UID = '11111111-1111-4111-8111-111111111111';
 const ENV = { ...process.env };
+let fetchSpy: jest.SpyInstance;
+/** Requests that went to OpenAI or OpenRouter: the chat engine that called them is gone, so the network is the only way left. */
+const vendorCalls = () => fetchSpy.mock.calls.filter(([u]) => /\bapi\.openai\.com\b|\bopenrouter\.ai\b/.test(String(u instanceof Request ? u.url : u)));
 
 beforeEach(() => {
   jest.clearAllMocks();
   delete process.env.AI_GOOGLE_ONLY;
   gemini.mockResolvedValue({ text: 'გამარჯობა!', model: 'gemini-x' });
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => { throw new Error('no network in this test'); });
 });
 afterEach(() => { process.env = { ...ENV }; jest.restoreAllMocks(); });
 
@@ -32,7 +35,7 @@ test('Google-only (the default): Gemini answers with the history, the style note
     history: [{ role: 'assistant', content: 'prev' }], systemNote: 'WA STYLE',
   });
   expect(gemini).toHaveBeenCalledWith([{ role: 'assistant', content: 'prev' }, { role: 'user', content: 'აქ ხარ?' }], UID, expect.any(AbortSignal), { systemNote: 'WA STYLE', locale: 'ka' });
-  expect(execute).not.toHaveBeenCalled();
+  expect(vendorCalls()).toEqual([]);
   expect(out).toMatchObject({ reply: 'გამარჯობა!', model: 'gemini-x', answered: true });
 });
 
@@ -63,10 +66,10 @@ test('the budget gate refuses before any model is called', async () => {
 test.each([
   { AI_GOOGLE_ONLY: '0' },
   { AI_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-openai' },
-])('no env value re-opens the multi-vendor chatEngine (%o): Gemini answers', async (env) => {
+])('no env value re-opens an OpenAI or OpenRouter leg (%o): Gemini answers', async (env) => {
   Object.assign(process.env, env);
   const out = await generateChannelReply({ channel: 'whatsapp', userId: UID, externalId: '1', text: 'hi', systemNote: 'WA STYLE' });
-  expect(execute).not.toHaveBeenCalled();
+  expect(vendorCalls()).toEqual([]);
   expect(gemini).toHaveBeenCalledTimes(1);
   expect(out).toMatchObject({ reply: 'გამარჯობა!', model: 'gemini-x', answered: true });
 });

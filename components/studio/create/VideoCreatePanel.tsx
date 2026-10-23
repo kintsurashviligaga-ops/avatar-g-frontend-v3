@@ -7,26 +7,24 @@
  * COMPOSER, and the composer's Send (its price on it — the same videoQuote) starts the film through the same runTool/send
  * path the panel's Generate used. The panel keeps only what changes the film, as short rows of dropdowns and switches:
  * header → Film | Music video → [length] [format] → Quality (priced select) · Sound · Narrator · Music · Subtitles (film) /
- * Lip-sync (music video, priced) → the optional photos (and a song). No disclosures, no second prompt box, no Generate —
- * except where a Higgsfield model is picked (its saga's own priced button, reading the composer's text).
+ * Lip-sync (music video, priced) → the optional photos (and a song). No disclosures, no second prompt box, no Generate.
  *
  * Script, dialogue, lyrics, per-scene action, effect and camera are no longer panel controls: the user types them in the
  * prompt, or attaches a .txt / .pdf / .docx in the composer (extractScriptText). Their state keeps its defaults.
  *
  * THE MODEL: the Quality select names the three Veo 3.1 tiers (the tier IS the model; Fast is the default) with their
- * prices; „Other models…" opens the studio's one ModelPicker (the Higgsfield video models, open where this deployment runs
- * them). The pick is remembered in this browser (lib/studio/modelPick) and re-applied when the panel mounts.
+ * prices; „Other models…" opens the studio's one ModelPicker, where the Higgsfield video models are listed dimmed and are
+ * never a pick (lib/studio/modelPick pickerRows). The pick is remembered in this browser and re-applied when the panel mounts.
  *
  * ⚠️ EVERY PRICE HERE IS THE QUOTE (lib/video/createPanel.videoQuote → quoteCredits) for the seconds, tier and mode on
  * screen; the server charges the film through the same function. No request carries a price.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ModelPicker } from '@/components/studio/ui/ModelPicker';
-import { catalogueEntry, catalogueLang, tierForVideoModel, videoModelForTier, type ModelRunner } from '@/lib/providers/catalogue';
-import { pickerRows, useModelPick } from '@/lib/studio/modelPick';
+import { catalogueEntry, tierForVideoModel, videoModelForTier, type ModelRunner } from '@/lib/providers/catalogue';
+import { useModelPick } from '@/lib/studio/modelPick';
 import { useCatalogueStatus } from '@/components/studio/ui/useCatalogueStatus';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
-import { HiggsfieldGenerate } from './HiggsfieldGenerate';
 import { lipsyncAddOnNote, openDuration, type VideoCapabilities } from '@/lib/video/createPanel';
 import { activePlan, describeDurationPlan } from '@/lib/video/durationContract';
 import { planNotices, type VeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
@@ -35,7 +33,7 @@ import type { OutputFormat } from '@/lib/veo/types';
 import type { VeoEngineInfo } from '../video/VeoParametersPanel';
 import { VideoDurationSheet, VideoFormatSheet, VideoModeChoice } from './VideoPickers';
 import {
-  CARD, VideoCreateHeader, VideoGenerateBar, VideoQualitySelect, VideoRefsRow, VideoSettingRow, VideoSwitch, VideoTiles,
+  CARD, VideoCreateHeader, VideoQualitySelect, VideoRefsRow, VideoSettingRow, VideoSwitch, VideoTiles,
 } from './videoCreateParts';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
 
@@ -55,15 +53,9 @@ export interface VideoCreateRefs {
 
 /** What the panel still needs to say about money (the Veo film itself starts from the composer's priced Send). */
 export interface VideoCreateGenerate {
-  /** Whole credits, or null when unknown (a guest, or not read yet). Display-only — a Higgsfield pick's button reads it. */
-  balanceCredits: number | null;
-  /** Open the shell's top-up. */
-  onTopUp: () => void;
   /** The lip-sync pass this film would run, in credits (lib/video/createPanel.lipsyncAddOnCredits): its own charge,
    *  named under the switches. 0 or absent → this film runs none. */
   lipsyncCredits?: number;
-  /** Put the cursor in the chat box (a Higgsfield tap with nothing typed). */
-  onNeedPrompt?: () => void;
 }
 
 /** The film's sound switches — each bound to the studio's own state, so the request reads them unchanged. */
@@ -96,8 +88,6 @@ export interface VideoCreatePanelProps {
   onSeconds: (s: number) => void;
   format: OutputFormat;
   onFormat: (f: OutputFormat) => void;
-  /** The chat box's text (read-only here): a Higgsfield pick's button sends it. */
-  prompt: string;
   refs: VideoCreateRefs;
   generate: VideoCreateGenerate;
   audio: VideoCreateAudio;
@@ -112,11 +102,11 @@ export interface VideoCreatePanelProps {
 
 type Sheet = 'duration' | 'format' | 'model' | null;
 
-/** What this panel can run: the Veo film (/api/chat/orchestrate, `veo.tier`), and the studio saga where the deployment has it. */
+/** What this panel can run: the Veo film (/api/chat/orchestrate, `veo.tier`). The studio saga's Higgsfield rows are listed, never picked. */
 const FILM_RUNNERS: readonly ModelRunner[] = ['film', 'studio'];
 
 export function VideoCreatePanel(p: VideoCreatePanelProps) {
-  const { locale, plan, dispatch, mode, seconds, format, prompt, refs, generate, caps, audio } = p;
+  const { locale, plan, dispatch, mode, seconds, format, refs, generate, caps, audio } = p;
   const [sheet, setSheet] = useState<Sheet>(null);
 
   // A stored, typed or templated length that is off the grid — or locked — never stays selected.
@@ -150,20 +140,16 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
     setStoredModel(videoModelForTier(plan.tier).id);
   }, [plan.tier, setStoredModel]);
 
-  // A Higgsfield pick: open only where the server says this deployment runs it; otherwise the film's Veo model stands.
+  // A Higgsfield row is never a pick (pickerRows marks every studio-saga row google_only), so the film's Veo model stands.
   const storedIsStudio = catalogueEntry(storedModel)?.wire.runner === 'studio';
   const status = useCatalogueStatus('video', sheet === 'model' || storedIsStudio);
-  const rows = useMemo(() => pickerRows('video', { runners: FILM_RUNNERS, status }), [status]);
-  const hf = storedIsStudio && rows.some((r) => r.entry.id === storedModel && r.selectable) ? catalogueEntry(storedModel) : null;
   useEffect(() => {
-    // A remembered Higgsfield pick this deployment can no longer run goes back to the film's Veo model (said by the server).
-    if (status && storedIsStudio && !hf) setStoredModel(videoModelForTier(plan.tier).id);
-  }, [status, storedIsStudio, hf, plan.tier, setStoredModel]);
-  const hfName = hf ? hf.label[catalogueLang(locale)] : undefined;
+    // A Higgsfield pick remembered from before goes back to the film's Veo model once the server has answered.
+    if (status && storedIsStudio) setStoredModel(videoModelForTier(plan.tier).id);
+  }, [status, storedIsStudio, plan.tier, setStoredModel]);
   // The tier's own Vertex row (GET /api/video/engine `tiers`); an older server only says it per transport.
   const audioToggle = p.engine?.tiers?.[tier]?.audioToggle ?? p.engine?.audioToggle ?? false;
   const soundOn = plan.nativeAudio || !audioToggle;
-  const hfHints = useMemo(() => ({ aspect: format, seconds, sound: soundOn }), [format, seconds, soundOn]);
   const croppedNotes = planNotices({ ...plan, format }, { audioToggle }).filter((n) => n.id === 'cropped').map((n) => n[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka']);
   const film = mode !== 'musicvideo';
   const lipsyncPrice = creditsLabel(quoteCredits({ tool: 'avatar' }), locale);
@@ -182,8 +168,8 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
 
       <div data-testid="video-settings" className={`${CARD} divide-y divide-app-border/10 py-1`}>
         <VideoSettingRow label={vc(VIDEO_COPY.quality, locale)}>
-          <VideoQualitySelect locale={locale} tier={tier} mode={mode} seconds={seconds} otherName={hfName} tiers={p.engine?.tiers}
-            onTier={(t) => { if (hf) setStoredModel(videoModelForTier(t).id); dispatch({ type: 'tier', tier: t }); }}
+          <VideoQualitySelect locale={locale} tier={tier} mode={mode} seconds={seconds} tiers={p.engine?.tiers}
+            onTier={(t) => dispatch({ type: 'tier', tier: t })}
             onOtherModels={() => setSheet('model')} />
         </VideoSettingRow>
         <VideoSettingRow label={vc(VIDEO_COPY.sound, locale)} sub={vc(soundOn ? VIDEO_COPY.on : VIDEO_COPY.off, locale)}>
@@ -211,24 +197,14 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
           audio={refs.audio} audioBusy={refs.audioBusy} onAddAudio={refs.onAddAudio} onRemoveAudio={refs.onRemoveAudio} />
       </div>
 
-      {!hf && (generate.lipsyncCredits ?? 0) > 0 && (
+      {(generate.lipsyncCredits ?? 0) > 0 && (
         <p data-testid="video-lipsync-addon" data-credits={generate.lipsyncCredits} className="px-1 text-[11.5px] leading-snug text-app-muted">
           {lipsyncAddOnNote(generate.lipsyncCredits ?? 0, locale)}
         </p>
       )}
 
-      {hf ? (
-        // A Higgsfield model renders through the studio saga: its server's price on its own button, the tap confirms it.
-        // It sends the chat box's text — there is no second prompt box.
-        <VideoGenerateBar surface={p.surface}>
-          <HiggsfieldGenerate locale={locale} modelId={hf.id} service="video" label={vc(VIDEO_COPY.generate, locale)} prompt={prompt}
-            hints={hfHints} images={refs.images} balanceCredits={generate.balanceCredits} onTopUp={generate.onTopUp}
-            onNeedPrompt={() => generate.onNeedPrompt?.()} buttonTestId="video-generate" />
-        </VideoGenerateBar>
-      ) : (
-        <p data-testid="video-prompt-hint" className="px-1 text-[12.5px] leading-snug text-app-muted">{vc(VIDEO_COPY.promptInChat, locale)}</p>
-      )}
-      {p.surface === 'sheet' && !hf && (
+      <p data-testid="video-prompt-hint" className="px-1 text-[12.5px] leading-snug text-app-muted">{vc(VIDEO_COPY.promptInChat, locale)}</p>
+      {p.surface === 'sheet' && (
         // The phone's sheet covers the chat box: „Done" closes it, back to the box and its priced Send.
         <button type="button" onClick={p.onClose} data-testid="video-settings-done"
           className="flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-app-elevated px-5 text-[15px] font-semibold text-app-text ring-1 ring-app-border/15 transition-colors hover:bg-app-elevated/70">
@@ -241,7 +217,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
       <ModelPicker
         service="video"
         locale={locale}
-        value={hf ? hf.id : videoModelForTier(tier).id}
+        value={videoModelForTier(tier).id}
         onChange={(id) => { setStoredModel(id); const t = tierForVideoModel(id); if (t && t !== tier) dispatch({ type: 'tier', tier: t }); }}
         runners={FILM_RUNNERS}
         status={status}
