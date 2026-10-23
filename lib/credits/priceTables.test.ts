@@ -4,10 +4,11 @@
  *
  * What a user is shown and charged comes from lib/credits/pricing (creditCostFor), lib/credits/videoPricing (films),
  * lib/credits/quote (the Generate buttons) and lib/billing (plans, the BOG / card top-ups). Older tables still sit in
- * the repo with prices that disagree with those (a 15-credit video, $9.99 / $29.99 plans, 25 / 75 / 149 ₾ and
- * $3.99 – $39.99 packs). None of them reaches a screen today: the modules below have no importer outside themselves.
- * Deleting them, and choosing which pack list is the product's, is the owner's call (owner action 7); until then this
- * ratchet keeps any page, route or prompt from picking one up again.
+ * the repo with prices that disagree with those (a 15-credit video, $9.99 / $29.99 plans, 25 / 75 / 149 ₾ packs).
+ * None of them reaches a screen today: the modules below have no importer outside themselves. Deleting them, and
+ * choosing which pack list is the product's, is the owner's call (owner action 7); until then this ratchet keeps any
+ * page, route or prompt from picking one up again. MainDashboard's side panel ($19 / $49 plans, $3.99 – $39.99 packs)
+ * left with the dead omni dashboard in Phase 2 (GG's plan, 2026-10-23).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,7 +21,6 @@ const DEAD_PRICES = [
   'lib/monetization/credits', // CREDIT_COSTS 10/5/15/8/20, SUBSCRIPTION_TIERS $9.99/$29.99
   'hooks/useCredits', // the client "deduct" over it
   'hooks/useSubscription', // the plan hook over it
-  'components/dashboard/omni', // MainDashboard's side panel: $19 / $49 plans, $3.99 – $39.99 packs
 ];
 
 const SOURCE = /\.(ts|tsx)$/;
