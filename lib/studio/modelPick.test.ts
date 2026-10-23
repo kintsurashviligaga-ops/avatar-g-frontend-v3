@@ -19,8 +19,8 @@ describe('the stored pick', () => {
     expect(window.localStorage.getItem('myavatar:model:image')).toBe('nb/pro');
     expect(getModelPick('image')).toBe('nb/pro');
     expect(getModelPick('image', 'studio')).toBeNull(); // Studio β remembers its own
-    setModelPick('image', 'hf/soul-2', 'studio');
-    expect(window.localStorage.getItem(modelPickKey('image', 'studio'))).toBe('hf/soul-2');
+    setModelPick('image', 'nb/v2', 'studio');
+    expect(window.localStorage.getItem(modelPickKey('image', 'studio'))).toBe('nb/v2');
     expect(getModelPick('image')).toBe('nb/pro');
 
     setModelPick('image', 'nb/auto');
@@ -64,40 +64,61 @@ describe('the image request always names the picked model', () => {
     expect(higgsfieldPicked('image')).toBe(false);
   });
 
-  test('⚠️ a Higgsfield pick is sent AS IS — the image route refuses it (nothing charged) instead of rendering Google behind the user\'s back', () => {
+  test('⚠️ a Higgsfield model is never a pick (a denied vendor, MASTER TASK v3.1): one stored before reads as Auto', () => {
     setModelPick('image', 'hf/soul-2');
-    expect(imageModelField()).toEqual({ model: 'hf/soul-2' });
-    expect(higgsfieldPicked('image')).toBe(true); // the composer opens the panel, whose own Generate runs it
+    expect(window.localStorage.getItem('myavatar:model:image')).toBeNull();
+    for (const scope of ['create', 'studio'] as const) {
+      window.localStorage.setItem(modelPickKey('image', scope), 'hf/soul-2'); // remembered from before the refusal
+      window.localStorage.setItem(modelPickKey('video', scope), 'hf/kling-3-std-t2v');
+      expect(getModelPick('image', scope)).toBeNull();
+      expect(getModelPick('video', scope)).toBeNull();
+    }
+    expect(imageModelField()).toEqual({ model: 'nb/auto' });
+    expect(higgsfieldPicked('image')).toBe(false); // the composer runs the Google model; it no longer opens a Higgsfield panel
+    expect(higgsfieldPicked('video')).toBe(false);
     window.localStorage.setItem('myavatar:model:image', 'google/veo-3.1'); // a hand-edited foreign id is no pick at all
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
+  });
+
+  test('storage that refuses writes cannot hold a Higgsfield pick for the page either', () => {
+    const set = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError'); });
+    try {
+      setModelPick('video', 'hf/kling-3-std-t2v');
+      const { result } = renderHook(() => useModelPick('video'));
+      expect(result.current[0]).toBeNull();
+    } finally {
+      set.mockRestore();
+    }
   });
 });
 
 describe('the rows a picker offers', () => {
   const ids = (rows: ReturnType<typeof pickerRows>) => rows.map((r) => [r.entry.id, r.selectable, r.block]);
 
-  test('the Video panel: its three Veo models open; the Studio β models dimmed — "not enabled" until the server says otherwise', () => {
+  test('the Video panel: its three Veo models open; the Higgsfield models dimmed as google_only before the server answers', () => {
     const rows = pickerRows('video', { runners: ['film'], status: null });
     expect(ids(rows).slice(0, 3)).toEqual([
       ['google/veo-3.1-lite', true, null], ['google/veo-3.1-fast', true, null], ['google/veo-3.1', true, null],
     ]);
-    for (const r of rows.slice(3)) expect([r.entry.wire.runner, r.selectable, r.block]).toEqual(['studio', false, 'not_enabled']);
+    expect(rows.length).toBeGreaterThan(3);
+    for (const r of rows.slice(3)) expect([r.entry.wire.runner, r.selectable, r.block]).toEqual(['studio', false, 'google_only']);
   });
 
-  test('with the server\'s answer: a model enabled for Studio β says WHERE it runs; one that is not says why', () => {
+  test('⚠️ a Higgsfield row stays google_only whatever the server answers — an older server\'s "available" never opens it', () => {
     const status: CatalogueStatus = {
       'google/veo-3.1-lite': { available: true, reason: null },
       'google/veo-3.1-fast': { available: true, reason: null },
       'google/veo-3.1': { available: true, reason: null },
       'hf/kling-3-std-t2v': { available: true, reason: null },
       'hf/kling-3-pro-t2v': { available: false, reason: 'not_enabled' },
-      'hf/seedance-2.5-t2v': { available: false, reason: 'studio_off' },
     };
-    const rows = pickerRows('video', { runners: ['film'], status });
-    const by = (id: string) => rows.find((r) => r.entry.id === id)!;
-    expect(by('hf/kling-3-std-t2v')).toMatchObject({ selectable: false, block: 'elsewhere' });
-    expect(by('hf/kling-3-pro-t2v')).toMatchObject({ selectable: false, block: 'not_enabled' });
-    expect(by('hf/seedance-2.5-t2v')).toMatchObject({ selectable: false, block: 'studio_off' });
+    for (const runners of [['film'], ['studio'], ['film', 'studio']] as const) {
+      const rows = pickerRows('video', { runners, status });
+      const by = (id: string) => rows.find((r) => r.entry.id === id)!;
+      expect(by('hf/kling-3-std-t2v')).toMatchObject({ selectable: false, block: 'google_only' });
+      expect(by('hf/kling-3-pro-t2v')).toMatchObject({ selectable: false, block: 'google_only' });
+      expect(effectivePick('video', 'hf/kling-3-std-t2v', rows)).toBe('google/veo-3.1-fast');
+    }
   });
 
   test('a film route without a renderer: its own rows close too, and the pick falls back to the first open one or the default', () => {
@@ -111,13 +132,10 @@ describe('the rows a picker offers', () => {
     expect(effectivePick('video', 'google/veo-3.1', rows)).toBe('google/veo-3.1-fast');
   });
 
-  test('Studio β lists only its own models; a Higgsfield row is never open while the server has not answered', () => {
-    const unknown = pickerRows('video', { runners: ['studio'], status: null, include: 'runnable' });
-    expect(unknown.every((r) => r.entry.wire.runner === 'studio' && !r.selectable && r.block === 'checking')).toBe(true);
-    const known = pickerRows('video', { runners: ['studio'], status: { 'hf/kling-3-std-t2v': { available: true, reason: null } }, include: 'runnable' });
-    expect(known[0]).toMatchObject({ selectable: true, block: null });
-    expect(known[0]!.entry.id).toBe('hf/kling-3-std-t2v');
-    expect(known.slice(1).every((r) => r.block === 'not_enabled')).toBe(true);
+  test('Studio β lists only its own models, every one of them google_only', () => {
+    const rows = pickerRows('video', { runners: ['studio'], status: null, include: 'runnable' });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.entry.wire.runner === 'studio' && !r.selectable && r.block === 'google_only')).toBe(true);
   });
 
   test('the effective pick: the stored one if a tap could choose it now, else the default', () => {

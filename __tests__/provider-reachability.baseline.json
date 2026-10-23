@@ -234,9 +234,6 @@
     "app/api/research/start/route.ts": [
       "gemini_developer_api"
     ],
-    "app/api/studio/catalogue/route.ts": [
-      "higgsfield"
-    ],
     "app/api/system/film-selftest/route.ts": [
       "udio"
     ],

@@ -12,7 +12,7 @@ import type { Availability, CatalogueService, UnavailableReason } from '@/lib/pr
 import type { CatalogueStatus } from '@/lib/studio/modelPick';
 
 const TTL_MS = 30_000;
-const REASONS: ReadonlySet<string> = new Set<UnavailableReason>(['unverified', 'not_enabled', 'studio_off', 'not_configured', 'busy']);
+const REASONS: ReadonlySet<string> = new Set<UnavailableReason>(['google_only', 'not_enabled', 'not_configured', 'busy']);
 
 const cache = new Map<CatalogueService, { at: number; value: CatalogueStatus | null }>();
 const inflight = new Map<CatalogueService, Promise<CatalogueStatus | null>>();

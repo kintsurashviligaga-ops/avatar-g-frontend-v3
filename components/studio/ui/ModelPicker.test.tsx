@@ -50,7 +50,7 @@ describe('the chip', () => {
     fireEvent.click(screen.getByTestId('model-picker-chip'));
     const sheet = screen.getByRole('dialog', { name: 'მოდელი' });
     expect(sheet.textContent).toContain('ყოველდღიური Reels და რეკლამა');
-    expect(sheet.textContent).toContain('ჯერ არ არის ჩართული');
+    expect(sheet.textContent).toContain('შეჩერებულია, სანამ Google-ის ძრავაზე გადავა');
     expect(sheet.textContent).toContain('სხვა მოდელები');
   });
 });
@@ -78,8 +78,8 @@ describe('the rows', () => {
     fireEvent.click(screen.getByTestId('model-picker-chip'));
     const kling = radio('hf/kling-3-std-t2v');
     expect(kling.getAttribute('aria-disabled')).toBe('true');
-    expect(kling.getAttribute('data-blocked')).toBe('not_enabled');
-    expect(within(kling).getByTestId('model-block').textContent).toBe('Not enabled yet');
+    expect(kling.getAttribute('data-blocked')).toBe('google_only');
+    expect(within(kling).getByTestId('model-block').textContent).toBe('Paused while it moves to Google’s engines');
     fireEvent.click(kling);
     expect(onPick).not.toHaveBeenCalled();
     expect(dialog()).toBeTruthy();
@@ -120,12 +120,13 @@ describe('the rows', () => {
 });
 
 describe('what the server says', () => {
-  test('asked only once the sheet opens; its answer opens a row that is enabled elsewhere as "In Studio β"', async () => {
+  test('asked only once the sheet opens; its answer closes a Google row — and never opens a Higgsfield one', async () => {
     fetchMock.mockImplementation(async () => ({
       ok: true,
       json: async () => ({ models: [
         { id: 'google/veo-3.1-fast', available: true, reason: null },
-        { id: 'hf/kling-3-std-t2v', available: true, reason: null },
+        { id: 'google/veo-3.1', available: false, reason: 'not_configured' },
+        { id: 'hf/kling-3-std-t2v', available: true, reason: null }, // an older server's answer
         { id: 'hf/kling-3-pro-t2v', available: false, reason: 'studio_off' },
       ] }),
     }));
@@ -133,19 +134,20 @@ describe('what the server says', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('model-picker-chip'));
     expect(fetchMock).toHaveBeenCalledWith('/api/studio/catalogue?service=video', expect.anything());
-    await waitFor(() => expect(within(radio('hf/kling-3-std-t2v')).getByTestId('model-block').textContent).toBe('In Studio β'));
-    expect(radio('hf/kling-3-std-t2v').getAttribute('aria-disabled')).toBe('true'); // still not runnable HERE
-    expect(within(radio('hf/kling-3-pro-t2v')).getByTestId('model-block').textContent).toBe('Not enabled yet');
+    await waitFor(() => expect(within(radio('google/veo-3.1')).getByTestId('model-block').textContent).toBe('Unavailable right now'));
+    for (const id of ['hf/kling-3-std-t2v', 'hf/kling-3-pro-t2v']) {
+      expect(radio(id).getAttribute('aria-disabled')).toBe('true');
+      expect(within(radio(id)).getByTestId('model-block').textContent).toBe('Paused while it moves to Google’s engines');
+    }
   });
 
-  test('a surface that knows its own availability (Studio β) passes it and asks nothing; it lists only its own rows', () => {
+  test('a surface that passes its own availability (Studio β) asks nothing; it lists only its own rows, every one paused', () => {
     render(<Harness runners={['studio']} include="runnable" initial="hf/kling-3-std-t2v"
       status={{ 'hf/kling-3-std-t2v': { available: true, reason: null }, 'hf/seedance-2.5-t2v': { available: true, reason: null } }} />);
     fireEvent.click(screen.getByTestId('model-picker-chip'));
     expect(fetchMock).not.toHaveBeenCalled();
     expect(radios().every((r) => r.getAttribute('data-model')!.startsWith('hf/'))).toBe(true);
-    expect(radios().filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model')))
-      .toEqual(['hf/kling-3-std-t2v', 'hf/seedance-2.5-t2v']);
+    expect(radios().every((r) => r.getAttribute('aria-disabled') === 'true' && r.getAttribute('data-blocked') === 'google_only')).toBe(true);
   });
 
   test('controlled by the surface\'s own trigger: no chip, open / onOpenChange, and a header slot above the list', () => {
@@ -162,10 +164,13 @@ describe('what the server says', () => {
     expect(parseCatalogueStatus({ models: 'x' })).toBeNull();
     expect(parseCatalogueStatus({ models: [{ id: 1 }, { id: 'a', available: 'yes', reason: 'pwned' }, { id: 'b', available: true, reason: 'busy' }] }))
       .toEqual({ a: { available: false, reason: 'not_enabled' }, b: { available: true, reason: null } });
+    // A retired word from an older server reads as "not enabled"; google_only is kept.
+    expect(parseCatalogueStatus({ models: [{ id: 'c', available: false, reason: 'studio_off' }, { id: 'd', available: false, reason: 'google_only' }] }))
+      .toEqual({ c: { available: false, reason: 'not_enabled' }, d: { available: false, reason: 'google_only' } });
   });
 
   test('every reason has words in every language', () => {
-    for (const block of ['unverified', 'not_enabled', 'studio_off', 'not_configured', 'busy', 'checking'] as const) {
+    for (const block of ['google_only', 'not_enabled', 'not_configured', 'busy'] as const) {
       const row = { ...pickerRows('video', { runners: ['film'], status: null })[0]!, selectable: false, block };
       for (const locale of ['ka', 'en', 'ru']) expect(blockLabel(row, locale)!.length).toBeGreaterThan(2);
     }
