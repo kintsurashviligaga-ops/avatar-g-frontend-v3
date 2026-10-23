@@ -68,6 +68,16 @@ describe('Imagen 4 — model + kill switch', () => {
     Object.assign(process.env, WIF, { GEMINI_IMAGE_TRANSPORT: 'gemini_api' });
     expect(hasGeminiImagenProvider()).toBe(false);
   });
+
+  it('is OFF when GEMINI_IMAGEN_MODEL names Imagen 3, which Google discontinued on Vertex AI (MASTER TASK v3.1, PR 8)', () => {
+    Object.assign(process.env, WIF, { GEMINI_IMAGEN_ENABLED: '1' });
+    for (const id of ['imagen-3.0-generate-002', 'imagen-3.0-fast-generate-001']) {
+      process.env.GEMINI_IMAGEN_MODEL = id;
+      expect(hasGeminiImagenProvider()).toBe(false);
+    }
+    process.env.GEMINI_IMAGEN_MODEL = 'imagen-4.0-fast-generate-001';
+    expect(hasGeminiImagenProvider()).toBe(true);
+  });
 });
 
 describe('Imagen 4 — Vertex AI only (bearer token, never an API key)', () => {
@@ -117,6 +127,13 @@ describe('Imagen 4 — Vertex AI only (bearer token, never an API key)', () => {
     arrange();
     expect(await generateImagenImages({ prompt: 'x' })).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('an Imagen 3 GEMINI_IMAGEN_MODEL → null before any token or POST, and nothing to report', async () => {
+    process.env.GEMINI_IMAGEN_MODEL = 'imagen-3.0-generate-002';
+    expect(await generateImagenImages({ prompt: 'x' })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(reported).not.toHaveBeenCalled();
   });
 
   it('an error status → null, reported with the status', async () => {

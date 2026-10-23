@@ -257,3 +257,39 @@ test('an ambiguous reservation that never debited is settled as nothing after a 
   expect(f.net()).toBe(0);
   expect(f.deps.audit).toHaveBeenCalledWith(expect.objectContaining({ jobId: q.jobId, phase: 'settlement', code: 'nothing' }));
 });
+
+describe('Imagen 3 is lifecycle-blocked: refused by name before any reference, reserve or call (MASTER TASK v3.1, PR 8)', () => {
+  const imagen3 = () => ({ ...imageRequest(), modelId: 'imagen-3.0-generate-002' });
+
+  test('the quote answers lifecycle_blocked (410) with the replacement; nothing is prepared, reserved or sent', async () => {
+    const f = await fakeImage();
+    const err = await quoteImage(f.deps, USER, { ...imagen3(), references: [{ id: 'ref1', role: 'subject', asset: { kind: 'upload', path: 'user-a/ref.png' } }] })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ImageError);
+    expect(err).toMatchObject({ code: 'lifecycle_blocked', status: 410 });
+    expect((err as ImageError).message).toContain('gemini-3.1-flash-image');
+    expect(f.deps.prepare).not.toHaveBeenCalled();
+    expect(f.deps.reserve).not.toHaveBeenCalled();
+    expect(f.deps.generate).not.toHaveBeenCalled();
+    expect(f.store.rows.size).toBe(0);
+  });
+
+  test('a queued job whose plan names Imagen 3 fails in the worker before admission or the call, and is refunded', async () => {
+    const f = await queued();
+    const row = f.store.rows.get(f.q.jobId)!;
+    const job = row.params._job as { request: { modelId: string } };
+    job.request.modelId = 'imagen-3.0-generate-002';
+    const admitted = (f.deps.admit as jest.Mock).mock.calls.length;
+    const r = await workImage(f.deps, f.q.jobId, 'w');
+    expect(r).toMatchObject({ ran: true, outcome: 'failed', error: 'lifecycle_blocked' });
+    expect(f.deps.admit).toHaveBeenCalledTimes(admitted);
+    expect(f.deps.prepare).not.toHaveBeenCalled();
+    expect(f.deps.generate).not.toHaveBeenCalled();
+    expect(f.net()).toBe(0);
+  });
+
+  test('gemini-3.1-flash-image is untouched', async () => {
+    const f = await fakeImage();
+    await expect(quoteImage(f.deps, USER, imageRequest())).resolves.toMatchObject({ plan: { request: { modelId: 'gemini-3.1-flash-image' } } });
+  });
+});

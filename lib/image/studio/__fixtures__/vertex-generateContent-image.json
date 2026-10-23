@@ -1,0 +1,28 @@
+{
+  "_synthetic": "Written from the Vertex AI GenerateContentResponse reference for gemini-3.1-flash-image with responseModalities TEXT and IMAGE (a thought summary, a thought image, the answer text, the final image). Not a recorded call: no live request was made (MASTER TASK v3.1 forbids billed probes). The test fills the two image data fields with decodable PNGs.",
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          { "text": "Composing a night view of Tbilisi.", "thought": true },
+          { "inlineData": { "mimeType": "image/png", "data": "__THOUGHT_PNG__" }, "thought": true },
+          { "text": "Tbilisi at night." },
+          { "inlineData": { "mimeType": "image/png", "data": "__FINAL_PNG__" } }
+        ]
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 14,
+    "candidatesTokenCount": 1290,
+    "thoughtsTokenCount": 96,
+    "totalTokenCount": 1400,
+    "trafficType": "ON_DEMAND"
+  },
+  "modelVersion": "gemini-3.1-flash-image",
+  "createTime": "2026-10-22T12:00:00.000000Z",
+  "responseId": "synthetic-vertex-response-0001"
+}

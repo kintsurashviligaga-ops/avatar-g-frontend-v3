@@ -17,6 +17,7 @@
 import { googleImageModelFetch, googleImageTransportBlocker } from '@/lib/ai/google/transport';
 import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
 import { isTruthyFlag } from '@/lib/env/flag';
+import { imageLifecycleRefusal } from '@/lib/image/lifecycle';
 
 const TIMEOUT_MS = 20_000;
 /** Short-lived memo of a hard billing/quota wall (402/403/429). An unfunded project must not cost a
@@ -29,12 +30,13 @@ export function geminiImagenModel(): string {
   return (process.env.GEMINI_IMAGEN_MODEL || 'imagen-4.0-generate-001').trim();
 }
 
-/** True iff GEMINI_IMAGEN_ENABLED is on AND Vertex AI can serve image calls. */
+/** True iff GEMINI_IMAGEN_ENABLED is on, Vertex AI can serve image calls and GEMINI_IMAGEN_MODEL is not a retired model. */
 export function hasGeminiImagenProvider(): boolean {
   // OPT-IN, not opt-out. A configured transport is not evidence that it is FUNDED: with the balance empty this
   // leg 429s on every single generation, and because ServiceManager.runTextToImage tries it FIRST, every user
   // waited out that round-trip before the next engine even started. GEMINI_IMAGEN_ENABLED=1 turns it on.
-  return isTruthyFlag(process.env.GEMINI_IMAGEN_ENABLED) && !googleImageTransportBlocker();
+  // An Imagen 3 id (lib/image/lifecycle) is discontinued on Vertex AI: the leg stays off rather than fail every call.
+  return isTruthyFlag(process.env.GEMINI_IMAGEN_ENABLED) && !googleImageTransportBlocker() && !imageLifecycleRefusal(geminiImagenModel());
 }
 
 /** Imagen accepts these five ratios; anything else (4:5, 2:3, …) is snapped to the nearest supported one. */
@@ -73,6 +75,7 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
   if (Date.now() < quotaWallUntil) return null;
 
   const model = geminiImagenModel();
+  if (imageLifecycleRefusal(model)) return null;
   // The ultra tier returns exactly one sample; asking for more is a 400.
   const maxSamples = /ultra/i.test(model) ? 1 : 4;
   const sampleCount = Math.min(maxSamples, Math.max(1, Math.round(Number(args.numberOfImages) || 1)));

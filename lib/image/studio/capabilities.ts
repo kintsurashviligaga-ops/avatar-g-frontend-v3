@@ -2,6 +2,7 @@ import { MODEL_CATALOG } from '@/lib/models/catalog';
 import { resolveModelPreference, type ModelCatalog } from '@/lib/contracts/modelCatalog';
 import { ASPECTS, RESOLUTIONS, type ImageRequest, type ImageTransport } from './contracts';
 import { ImageError } from './errors';
+import { imageLifecycleRefusal } from '../lifecycle';
 
 // Operation detail for an EXISTING catalog ID; it cannot enable a model or verify a deployment.
 // Source: Google's image-generation docs, reviewed 2026-10-12. Live operation evidence remains null.
@@ -27,6 +28,10 @@ export function imageModels(transport: ImageTransport, catalog: ModelCatalog = M
   });
 }
 export function validateCapability(request: ImageRequest, transport: ImageTransport, catalog: ModelCatalog = MODEL_CATALOG) {
+  // A model Google has retired (Imagen 3) says so by name: at the quote, at the confirm and in the worker, before any
+  // reference is loaded, any credit is reserved or any call is made.
+  const retired = imageLifecycleRefusal(request.modelId);
+  if (retired) throw new ImageError('lifecycle_blocked', retired, 410);
   const model = imageModels(transport, catalog).find(m => m.id === request.modelId);
   if (!model) throw new ImageError('unsupported_capability', 'The selected image model is unavailable on this transport.');
   if (!(model.operations as readonly string[]).includes(request.operation)) throw new ImageError('unsupported_capability', 'This operation has no verified adapter.');
