@@ -4,7 +4,7 @@
  * Pure, env-driven readiness analysis for the FINAL leg of the 30-second film
  * pipeline — the editor / assembler — so the structural report at
  * GET /api/system/film-readiness covers the WHOLE chain, not just the four
- * generation agents (storyboard / LTX / Udio / ElevenLabs).
+ * generation legs (Gemini storyboard / Veo / Lyria / Cloud TTS, lib/chat/filmEngines).
  *
  * Why this exists: the generation report can read "READY — full autonomous
  * chain can fire" while the stitch + delivery leg is silently un-provisioned.
