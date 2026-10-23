@@ -95,6 +95,7 @@ const MotionControlPanel = dynamic(() => import('./MotionControlPanel').then((m)
 // VFX (Genjutsu): three.js-free, loaded only when the VFX tool opens; the skeleton is the panel's first-paint height.
 const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
+import { waitForTtsPlayback } from '@/lib/audio/ttsPlayback';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
@@ -274,7 +275,8 @@ async function synthTtsUrl(chunk: string, locale: Lang): Promise<string | null> 
       signal: AbortSignal.timeout(25_000),
     });
     if (!res.ok) return null;
-    return URL.createObjectURL(await res.blob());
+    const blob = await res.blob();
+    return blob.size ? URL.createObjectURL(blob) : null;
   } catch { return null; }
 }
 
@@ -8031,12 +8033,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setSpeakingIdx(i);
     setSpeakPhase('loading'); // spinner while Gemini synthesises the native voice
 
-    // CHUNKED read-aloud: split into sentence-sized chunks and synthesise + play them back-to-back so
-    // the WHOLE message is read and the FIRST sentence starts fast (the next chunk is pre-fetched while
-    // the current one plays). Now on Gemini NATIVE audio (/api/tts/gemini) — no ElevenLabs, no lag, and
-    // it no longer stops after one word.
-    // The first chunk is the first SENTENCE alone (when short): its audio comes back in a fraction of a 600-char
-    // request, and the rest is synthesised while it plays.
+    // Read chunks in order using one gesture-primed element. A missing or failed chunk stops the read
+    // with an explicit message; later chunks must never hide a gap in the spoken answer.
+    // The existing bounded lookahead remains; changing paid-request approval/prefetch is separate work.
     const chunks = chunkForTts(text, 180, { leadSentence: true });
     const pre = ttsPrefetchRef.current;
     ttsPrefetchRef.current = null;
@@ -8061,58 +8060,25 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (idx + 3 < chunks.length && !queue[idx + 3]) queue[idx + 3] = synth(chunks[idx + 3]!);
         const url = await queue[idx]!;
         if (!live()) { if (url) URL.revokeObjectURL(url); drainRemaining(idx + 1); return; }
-        if (!url) continue;
+        if (!url) { drainRemaining(idx + 1); throw new Error('tts_synthesis_failed'); }
         const el = ttsAudioRef.current;
-        if (!el) { URL.revokeObjectURL(url); drainRemaining(idx + 1); return; }
+        if (!el) { URL.revokeObjectURL(url); drainRemaining(idx + 1); throw new Error('tts_player_unavailable'); }
         el.src = url; // reuse the SAME (already user-activated) element so play() is never blocked
         try { el.load(); } catch { /* noop */ } // iOS: force the element to (re)load the new WAV fully — without
         // this a reused element can play only the first moments of a swapped src, the "cuts off after a few words".
         if (live()) setSpeakPhase('playing');
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          // ⚠️ THE WATCHDOG IS PART OF THE FIX, NOT A PRECAUTION. Ignoring a stale error means that if a
-          // load genuinely dies without ever firing `ended`, nothing would resolve this promise and the
-          // read would hang forever with the spinner up — trading a truncation for a freeze, which is
-          // worse. A sentence of TTS is a few seconds, so this ceiling can never cut real audio short;
-          // it only guarantees the loop always moves on.
-          let guard = 0;
-          const done = () => {
-            if (settled) return;
-            settled = true;
-            if (guard) window.clearTimeout(guard);
-            ttsResolveRef.current = null;
-            el.onended = null;
-            el.onerror = null;
-            URL.revokeObjectURL(url);
-            resolve();
-          };
-          guard = window.setTimeout(done, 90_000);
-          // Register with the ref so a stop / message-switch can force this to resolve (pause fires neither event).
-          ttsResolveRef.current = done;
-
-          // ⚠️ A STALE `error` FROM THE PREVIOUS CHUNK ENDED THIS ONE BEFORE IT PLAYED — the read cut off
-          // after two or three words. One <audio> element is deliberately reused across chunks (that is
-          // what keeps playback user-activated), and `el.load()` on a src swap ABORTS the pending load,
-          // which fires `error`. That event is asynchronous, so it can land AFTER the next chunk has
-          // already assigned its own handlers — and the old handler ran `done`, which revoked this
-          // chunk's blob URL and advanced the loop before a single sample was played. Every later chunk
-          // met the same fate, so the message stopped almost immediately while the UI showed success.
-          //
-          // The guard: only accept an error that actually belongs to THIS chunk. `currentSrc` is the URL
-          // the element is really working on, so an event from a superseded load no longer counts. A
-          // genuine failure still ends the chunk — `el.error` is set for those, and the loop's `continue`
-          // skips it and keeps reading the rest.
-          const isForThisChunk = () => !el.currentSrc || el.currentSrc === url;
-          el.onended = () => { if (isForThisChunk()) done(); };
-          el.onerror = () => { if (isForThisChunk() && el.error) done(); };
-          // play() rejecting IS about the call we just made, so it is always ours to handle.
-          el.play().catch(done);
-        });
+        const result = await waitForTtsPlayback(el, url, (cancel) => { ttsResolveRef.current = cancel; });
         if (!live()) { drainRemaining(idx + 1); return; } // stopped mid-read → don't leak the prefetched chunk
+        if (result !== 'ended') { drainRemaining(idx + 1); throw new Error('tts_playback_failed'); }
       }
       if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
     } catch {
-      if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
+      if (live()) {
+        setSpeakingIdx(null); setSpeakPhase(null);
+        toast.error(locale === 'en' ? 'Read aloud stopped before the end. Please try again.'
+          : locale === 'ru' ? 'Озвучивание остановилось до конца текста. Попробуйте ещё раз.'
+            : 'წაკითხვა ტექსტის დასრულებამდე შეწყდა. სცადე ხელახლა.');
+      }
     }
   }, [speakingIdx, locale]);
 
