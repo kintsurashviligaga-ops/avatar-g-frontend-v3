@@ -40,3 +40,37 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Agent G's door in front of every paid tool (tests/agent-g-gate.spec.ts): talk is answered, a thin prompt is asked
+  # about, a real one waits for a priced card. Its own job so preview-e2e keeps its 15-minute budget.
+  agent-g-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-e2e
+      SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key-for-e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Agent G gate E2E (mocked, no provider calls)
+        run: npm run test:e2e:agent-g
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-agent-g
+          path: playwright-report/
+          retention-days: 7
