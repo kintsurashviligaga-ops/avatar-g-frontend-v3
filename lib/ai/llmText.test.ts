@@ -4,8 +4,10 @@
  *
  * ⚠️ This used to be a chain — DeepSeek direct → DeepSeek via Atlas → Gemini → Anthropic — so a Gemini miss was silently
  * answered by a forbidden vendor. Pinned here: Gemini is the only provider whatever the routing flags say, and a Gemini miss
- * (an error, an empty reply, Vertex AI not configured) is null, the "no result" the callers already handle. Every other vendor is mocked to
- * SUCCEED (and Anthropic's constructor is a spy), so a reinstated fallback would turn each `null` below into its text.
+ * (an error, an empty reply, Vertex AI not configured) is null, the "no result" the callers already handle. The DeepSeek and Atlas
+ * clients are gone (PR 26), so a reinstated leg would have to reach the network, and the network spy refuses and records every
+ * request; Anthropic's SDK is mocked to SUCCEED (its constructor is a spy), so a reinstated Claude leg would turn each `null`
+ * below into its text.
  * The deck outline, a caller named in the change, is run against the real helper to show it still ends on its
  * deterministic fallback (the other one, the dubbing translation, left with the dubbing pipeline in PR 5f). No network,
  * no spend.
@@ -24,10 +26,6 @@ const mockReliability = jest.fn();
 jest.mock('../observability/reliability', () => ({ reportReliability: (...a: unknown[]) => mockReliability(...a) }));
 
 // The forbidden vendors — configured and answering, so only their absence from the code keeps them out.
-const mockDeepseek = jest.fn(async () => 'deepseek text');
-jest.mock('./deepseekClient', () => ({ deepseekConfigured: () => true, deepseekChat: () => mockDeepseek() }));
-const mockAtlas = jest.fn(async () => 'atlas text');
-jest.mock('./atlasClient', () => ({ atlasConfigured: () => true, atlasChat: () => mockAtlas() }));
 const mockClaudeCreate = jest.fn(async () => ({ content: [{ type: 'text', text: 'claude text' }] }));
 const mockAnthropicCtor = jest.fn(() => ({ messages: { create: mockClaudeCreate } }));
 jest.mock('@anthropic-ai/sdk', () => ({ __esModule: true, default: function Anthropic() { return mockAnthropicCtor(); } }));
@@ -37,6 +35,7 @@ import { generateOutline } from '../services/presentation/deckOutline';
 import { fallbackOutline, type DeckRequest } from '../services/presentation/deckPlan';
 
 const ENV = { ...process.env };
+let fetchSpy: jest.SpyInstance;
 // Vertex AI is the only transport (v3.1): the real gate reads these; an AI Studio key is neither needed nor enough.
 const VERTEX_ENV = {
   GCP_PROJECT_ID: 'gen-lang-client-0671348730',
@@ -56,15 +55,16 @@ beforeEach(() => {
   process.env.ATLAS_API_KEY = 'test-atlas-key';
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => { throw new Error('no network in this test'); });
 });
 afterEach(() => {
   jest.restoreAllMocks();
   process.env = { ...ENV };
 });
 
+/** Gemini is mocked, so any request at all would be a vendor leg: DeepSeek and Atlas could only be reached over the network now. */
 function expectNoOtherVendor() {
-  expect(mockDeepseek).not.toHaveBeenCalled();
-  expect(mockAtlas).not.toHaveBeenCalled();
+  expect(fetchSpy).not.toHaveBeenCalled();
   expect(mockAnthropicCtor).not.toHaveBeenCalled();
   expect(mockClaudeCreate).not.toHaveBeenCalled();
 }

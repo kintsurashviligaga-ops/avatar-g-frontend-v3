@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
  * The live agent binding: Gemini-only brain + Google-grounded web_search whatever AI_GOOGLE_ONLY says (MASTER TASK
- * v3.1; Tavily stays mocked so any call to it is caught), and no render tool (orchestrate_media queued orphaned, unbilled
+ * v3.1; the Tavily client is gone, so a reinstated leg would have to reach the network, where the spy below catches it), and no render tool (orchestrate_media queued orphaned, unbilled
  * generation_jobs rows). The one media tool, quote_montage_to_music, exists only for a request with files when media
  * execution is open to the user, and it only quotes. Every provider is mocked — no network, no spend.
  */
@@ -11,8 +11,6 @@ const mockLlm = jest.fn();
 jest.mock('../../ai/llmText', () => ({ llmText: (...a: unknown[]) => mockLlm(...a) }));
 const mockGrounded = jest.fn();
 jest.mock('../tools/googleSearch', () => ({ groundedWebSearch: (...a: unknown[]) => mockGrounded(...a) }));
-const mockTavily = jest.fn();
-jest.mock('../../ai/webSearch', () => ({ webSearch: (...a: unknown[]) => mockTavily(...a) }));
 jest.mock('../tools/scrapeWebpage', () => ({ scrapeWebpage: jest.fn(async () => ({ text: 'page' })) }));
 const mockStartJob = jest.fn(async () => 'job-1');
 jest.mock('../../ads/adRenderJob', () => ({ startAdRenderJob: (...a: unknown[]) => (mockStartJob as (...x: unknown[]) => Promise<string>)(...a) }));
@@ -42,11 +40,17 @@ import { buildLiveToolRegistry, runLiveAgent, AGENT_ANALYZE_NOTE, AGENT_AUDIO_NO
 const CTX = { userId: '11111111-2222-4333-8444-555555555555' };
 const ENV = { ...process.env };
 
+let fetchSpy: jest.SpyInstance;
+/** Requests that went to Tavily's API: the only way left to reach it is the network. */
+const tavilyCalls = () => fetchSpy.mock.calls.filter(([u]) => /\btavily\.com\b/.test(String(u instanceof Request ? u.url : u)));
+
 beforeEach(() => {
   jest.clearAllMocks();
   delete process.env.AI_GOOGLE_ONLY;
+  fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => { throw new Error('no network in this test'); });
 });
 afterEach(() => {
+  fetchSpy.mockRestore();
   process.env = { ...ENV };
 });
 
@@ -212,7 +216,7 @@ test('Google-only web_search is Gemini grounding, attributed to the user; Tavily
     results: [{ title: 't', url: 'https://x.test/', content: '' }],
   });
   expect(mockGrounded).toHaveBeenCalledWith('latest news', { userId: CTX.userId, maxResults: 5 });
-  expect(mockTavily).not.toHaveBeenCalled();
+  expect(tavilyCalls()).toEqual([]);
 });
 
 test('a grounding failure becomes an error observation that names the cause', async () => {
@@ -224,14 +228,14 @@ test('AI_GOOGLE_ONLY=off with an owner approval: web_search is still Gemini grou
   Object.assign(process.env, { AI_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-tavily' });
   mockGrounded.mockResolvedValueOnce({ ok: true, answer: 'G', results: [], model: 'gemini-3.8-flash' });
   await expect(tool('web_search').run({ query: 'q' })).resolves.toEqual({ answer: 'G', results: [] });
-  expect(mockTavily).not.toHaveBeenCalled();
+  expect(tavilyCalls()).toEqual([]);
 });
 
 test('an empty query never reaches a provider', async () => {
   await expect(tool('web_search').run({})).resolves.toMatchObject({ error: 'invalid_input' });
   await expect(tool('web_search').run({ query: '   ' })).resolves.toMatchObject({ error: 'invalid_input' });
   expect(mockGrounded).not.toHaveBeenCalled();
-  expect(mockTavily).not.toHaveBeenCalled();
+  expect(tavilyCalls()).toEqual([]);
 });
 
 test('a model that still asks for orchestrate_media gets an unknown-tool observation, and no job is queued', async () => {
