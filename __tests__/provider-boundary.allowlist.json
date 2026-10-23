@@ -3,7 +3,6 @@
   "files": {
     "gemini_developer_api": [
       "lib/research/interactionsClient.ts",
-      "lib/security/csp.js",
       "lib/voice/geminiLive.ts"
     ],
     "elevenlabs": [
@@ -22,7 +21,6 @@
     ],
     "openai": [
       "lib/agent-g/voice/stt.ts",
-      "lib/security/csp.js",
       "lib/system/provider-health.ts",
       "services/voice-v2v-node/server.mjs"
     ],
@@ -47,9 +45,7 @@
     "higgsfield": [
       "lib/providers/higgsfield/client.ts"
     ],
-    "liveavatar": [
-      "lib/security/csp.js"
-    ],
+    "liveavatar": [],
     "ltx": [
       "lib/chat/ServiceManager.ts",
       "lib/security/csp.js",
