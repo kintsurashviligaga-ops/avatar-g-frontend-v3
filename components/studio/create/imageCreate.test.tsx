@@ -6,9 +6,7 @@ import { IMAGE_TEMPLATES, templateAddsLine, templateLang } from '@/lib/studio/te
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { IMG_ASPECTS, IMG_STYLES } from '@/lib/studio/imageCreate';
 import { catalogueFor } from '@/lib/providers/catalogue';
-import { MODELS, publicModel } from '@/lib/providers/registry';
 import { __resetCatalogueStatusCache } from '../ui/useCatalogueStatus';
-import { __resetStudioModelsCache } from './useStudioModels';
 
 /**
  * The Image tool's Create screen (ref3), as a view: rows in the reference's order, pickers that open, values that follow props,
@@ -29,7 +27,7 @@ function props(over: Partial<ImageCreatePanelProps> = {}): ImageCreatePanelProps
     references: [], onAddReference: jest.fn(), onRemoveReference: jest.fn(), foreignFileCount: 0, onClearForeignFiles: jest.fn(),
     prompt: '', onPrompt: jest.fn(),
     templates: templateItems(locale), activeTemplate: null, onPickTemplate: jest.fn(),
-    aspect: '1:1', onAspect: jest.fn(), quality: 'high', count: 1, onCount: jest.fn(),
+    aspect: '1:1', onAspect: jest.fn(), count: 1, onCount: jest.fn(),
     style: 'Auto', onStyle: jest.fn(), styleLabel: (s: string) => s, negative: '', onNegative: jest.fn(),
     balance: 100, onGenerate: jest.fn(), onTopUp: jest.fn(),
     ...over,
@@ -134,10 +132,10 @@ describe('the price is ON the button, and it is the quote', () => {
     expect(generate().getAttribute('data-price')).toBe(String(quoteCredits({ tool: 'image', count: 4 })));
   });
 
-  test('the quality a template sets does not change the price — the route bills one image', () => {
-    const { rerenderWith } = show({ quality: 'standard' });
+  test('what a template sets does not change the price — the route bills one image', () => {
+    const { rerenderWith } = show({ aspect: '1:1', style: 'Auto' });
     const a = generate().getAttribute('data-price');
-    rerenderWith({ quality: 'ultra' });
+    rerenderWith({ aspect: '16:9', style: 'Cinematic' });
     expect(generate().getAttribute('data-price')).toBe(a);
   });
 
@@ -203,19 +201,19 @@ describe('Generate never silently does nothing', () => {
 
 describe('the chips show the live values and open large pickers', () => {
   test('aspect · count read from the props, in that order, beside Generate', () => {
-    const { container, rerenderWith } = show({ aspect: '9:16', quality: 'ultra', count: 4 });
+    const { container, rerenderWith } = show({ aspect: '9:16', count: 4 });
     const chips = ['chip-aspect', 'chip-count'].map((id) => screen.getByTestId(id));
     expect(chips.map((c) => c.textContent)).toEqual(['9:16', '4']);
     const row = container.querySelector('[data-create-row="options"]')!;
     expect(chips.every((c) => row.contains(c))).toBe(true);
     expect(chips[0]!.compareDocumentPosition(chips[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    rerenderWith({ aspect: '21:9', quality: 'standard', count: 2 });
+    rerenderWith({ aspect: '21:9', count: 2 });
     expect(chips.map((c) => c.textContent)).toEqual(['21:9', '2']);
     expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['Aspect ratio: 21:9', 'Count: 2']);
   });
 
   test('⚠️ no size chip anywhere (GG 2026-10-23, "Hide"): the render takes no size, so 1K / 2K / 4K are not offered', () => {
-    const { container } = show({ quality: 'ultra' });
+    const { container } = show();
     openAdvanced();
     expect(screen.queryByTestId('chip-quality')).toBeNull();
     expect(screen.queryByTestId('picker-quality')).toBeNull();
@@ -290,7 +288,6 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   /** GET /api/studio/catalogue as this deployment would answer: the listed Higgsfield models run, the rest are not enabled. */
   const deployment = (runs: string[]) => {
     __resetCatalogueStatusCache();
-    __resetStudioModelsCache();
     global.fetch = jest.fn(async (url: string) => {
       const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
       if (url.startsWith('/api/studio/catalogue')) {
@@ -298,7 +295,6 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
           ? { id: e.id, available: runs.includes(e.id), reason: runs.includes(e.id) ? null : 'not_enabled' }
           : { id: e.id, available: true, reason: null })) });
       }
-      if (url.startsWith('/api/studio/models')) return ok({ models: MODELS.map(publicModel).filter((m) => runs.includes(m.id)) });
       return ({ ok: false, status: 404, json: async () => ({}) }) as unknown as Response;
     }) as unknown as typeof fetch;
   };
@@ -367,7 +363,7 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   test('⚠️ a Nano Banana V2 / Pro pick from before (GG 2026-10-23, "Hide") reads as the Google row, stored or controlled', () => {
     for (const id of ['nb/v2', 'nb/pro']) {
       window.localStorage.setItem('myavatar:model:image', id);
-      const stored = show({ quality: 'standard' });
+      const stored = show();
       expect(screen.getByTestId('advanced-toggle').textContent).toContain('Google Gemini');
       expect(screen.getByTestId('advanced-toggle').textContent).not.toMatch(/Nano Banana|V2|Pro\b/);
       stored.unmount();

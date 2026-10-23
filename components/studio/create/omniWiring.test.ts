@@ -49,8 +49,6 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
   test('every control is bound to the studio\'s EXISTING state — nothing new to generate with', () => {
     for (const bound of [
       'aspect={imgAspect} onAspect={setImgAspect}',
-      // The quality rides along (a template sets it); nothing on the screen offers it (GG 2026-10-23, "Hide").
-      'quality={imgQuality}',
       'count={imgCount} onCount={setImgCount}',
       'style={imgStyle} onStyle={setImgStyle}',
       'negative={imgNegative} onNegative={setImgNegative}',
@@ -58,7 +56,8 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
       'activeTemplate={activeImagePreset}',
       'onPickTemplate={applyImagePreset}',
     ]) expect(mounted).toContain(bound);
-    expect(mounted).not.toContain('onQuality=');
+    // The quality a template sets rides in the request (imgQuality); the screen neither shows nor takes it (GG 2026-10-23, "Hide").
+    expect(mounted).not.toMatch(/\bquality=|onQuality=/);
   });
 
   test('the prompt card IS the composer\'s prompt: typing marks dictation like the composer does', () => {
@@ -122,14 +121,13 @@ describe('the phone: settings open on demand and the composer remains available 
     expect(src).toMatch(/\? videoQuote\(\{ seconds: videoDuration, tier: veoPlan\.tier, mode: videoMode \}\) \|\| null/);
     expect(src).toContain('onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}');
     // A balance known to be short opens the top-up (never the film); the trial slot (one clip ≤ 8 s) is never blocked;
-    // a guest (balance unknown) goes on to runTool's own sign-in gate. A Higgsfield pick shows no Veo number.
+    // a guest (balance unknown) goes on to runTool's own sign-in gate.
     expect(src).toContain("const short = !freeSlotApplies(videoFreeFilms, videoDuration) && videoBalanceCredits !== null && videoBalanceCredits < composerQuote;");
     expect(src).toContain("if (short) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }");
-    expect(src).toMatch(/activeTool === 'video' && mode === 'video' && videoTab === 'cinema' && !videoHfPicked\s*\? videoQuote/);
+    expect(src).toMatch(/activeTool === 'video' && mode === 'video' && videoTab === 'cinema'\s*\? videoQuote/);
     // The panel carries no prompt box and no Generate of its own; script, voice details and camera are gone from it.
     const panel = /<VideoCreatePanel([\s\S]*?)\n {12}\/>/.exec(src)?.[1] ?? '';
-    expect(panel).toContain('prompt={input}');
-    expect(panel).not.toMatch(/onPrompt=|onGenerate|story=\{|voice=\{|advanced=\{|VeoParametersPanel|master-script-input|video-templates/);
+    expect(panel).not.toMatch(/\bprompt=|onPrompt=|onGenerate|story=\{|voice=\{|advanced=\{|VeoParametersPanel|master-script-input|video-templates/);
   });
 
   test('a hidden box is not measured (0 px would stick as its inline height in the next tool)', () => {

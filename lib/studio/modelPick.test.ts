@@ -6,7 +6,7 @@
  */
 import { act, renderHook } from '@testing-library/react';
 import {
-  __resetModelPickMemory, effectivePick, getModelPick, higgsfieldPicked, imageModelField, modelPickKey, pickerRows, setModelPick, useModelPick,
+  __resetModelPickMemory, effectivePick, getModelPick, imageModelField, modelPickKey, pickerRows, setModelPick, useModelPick,
   type CatalogueStatus,
 } from './modelPick';
 
@@ -73,7 +73,6 @@ describe('the image request always names the picked model', () => {
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
     setModelPick('image', 'nb/auto');
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
-    expect(higgsfieldPicked('image')).toBe(false);
   });
 
   test('⚠️ a Higgsfield model is never a pick (a denied vendor, MASTER TASK v3.1): one stored before reads as Auto', () => {
@@ -86,8 +85,6 @@ describe('the image request always names the picked model', () => {
       expect(getModelPick('video', scope)).toBeNull();
     }
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
-    expect(higgsfieldPicked('image')).toBe(false); // the composer runs the Google model; it no longer opens a Higgsfield panel
-    expect(higgsfieldPicked('video')).toBe(false);
     window.localStorage.setItem('myavatar:model:image', 'google/veo-3.1'); // a hand-edited foreign id is no pick at all
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
   });
