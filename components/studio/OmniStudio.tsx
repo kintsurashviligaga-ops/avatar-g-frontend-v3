@@ -186,7 +186,7 @@ import { analyzeAnswerText, analyzeAsk, analyzeErrorText, analyzeReadingText, an
 import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
-import { planChatTurn, wordsAreForChat, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
+import { planChatTurn, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, resumeAgentAudio, runAgentAudio, type AudioClientRun } from '@/lib/agent/media/audioClient';
@@ -7069,7 +7069,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ? parseInt(explicitSceneNumMatch[1] || "1", 10)
         : wordSceneCount;
 
-    const isMultiScene = detectedScenes >= 2 || /(?:სთორიბორდ|storyboard|მრავალსცენ)/iu.test(text);
+    // A script that names its scenes („სცენა 1 … სცენა 2 …") is always a brief. „Storyboard" or „3 scenes" in words that only
+    // ask about them („tell me what a storyboard is", „how do I make a 3-scene video?") is not: those go on to the chat.
+    const isMultiScene = sceneHeadersCount >= 2
+      || ((detectedScenes >= 2 || /(?:სთორიბორდ|storyboard|მრავალსცენ)/iu.test(text)) && !wordsAskToBeTold(text, mode, locale));
     if (isMultiScene) {
       const targetScenes = detectedScenes >= 1 ? Math.min(6, detectedScenes) : 2;
       const targetSec = targetScenes * 8;
