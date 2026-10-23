@@ -10,16 +10,16 @@
  * the contract is pinned here instead: the tray and the bubble must render the SAME component, and that
  * component must handle every state a job can reach.
  */
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { GenerationProgress } from './GenerationProgress';
 
 describe('the card owns every job state, not just "running"', () => {
   // MASTER TASK v3.1 §3.3 (Phase 2 PR 3): the number and a short label, and nothing else that reads the same guess.
-  it('shows a live percentage and a short stage label while running, with no bar, checklist or clock', () => {
-    const { container } = render(<GenerationProgress kind="image" locale="en" elapsed={10} />);
-    // 10 s of a 65 s image is 31% on the eased curve, the second of its four stages.
+  it('shows the server\'s percentage and its stage while running, with no bar, checklist or clock', () => {
+    const { container } = render(<GenerationProgress locale="en" pct={31} status="Painting the frame…" />);
     expect(screen.getByTestId('generation-progress-pct').textContent).toBe('31%');
     expect(screen.getByTestId('generation-progress-label').textContent).toBe('Painting the frame…');
+    expect(container.querySelector('[data-progress="measured"]')).not.toBeNull();
     expect(container.querySelector('ul, li')).toBeNull();
     // Nothing on the card animates on its own; the loop is the only motion, and it holds still under reduced motion.
     expect(container.querySelector('[class*="animate-"]')).toBeNull();
@@ -32,7 +32,7 @@ describe('the card owns every job state, not just "running"', () => {
   });
 
   it('shows the queue position instead of a fake percentage when queued', () => {
-    render(<GenerationProgress kind="image" locale="en" elapsed={0} state="queued" queuePosition={3} />);
+    render(<GenerationProgress locale="en" state="queued" queuePosition={3} />);
     expect(screen.getByText('In queue: #3')).toBeTruthy();
     // ⚠️ A queued job has not started, so it must NOT print a number — that estimate would be climbing
     // against work that is not happening yet.
@@ -41,25 +41,25 @@ describe('the card owns every job state, not just "running"', () => {
   });
 
   it('reaches 100 only when the work is actually over', () => {
-    const { container } = render(<GenerationProgress kind="image" locale="en" elapsed={5} state="done" />);
+    const { container } = render(<GenerationProgress locale="en" state="done" />);
     expect(container.textContent).toContain('100');
     expect(screen.getByText('Ready')).toBeTruthy();
   });
 
   it('surfaces the real failure reason rather than a generic word', () => {
-    render(<GenerationProgress kind="image" locale="en" elapsed={9} state="failed" error="provider returned 500" />);
+    render(<GenerationProgress locale="en" state="failed" error="provider returned 500" />);
     expect(screen.getByText('provider returned 500')).toBeTruthy();
     // A job that did not finish prints no percentage: no number is honest about work that stopped.
     expect(screen.queryByTestId('generation-progress-pct')).toBeNull();
   });
 
   it('falls back to a plain label when a failure carries no reason', () => {
-    render(<GenerationProgress kind="image" locale="en" elapsed={9} state="failed" />);
+    render(<GenerationProgress locale="en" state="failed" />);
     expect(screen.getByText('Failed')).toBeTruthy();
   });
 
   it('says stopped — not failed — for a cancel, because a cancel is not an error', () => {
-    render(<GenerationProgress kind="image" locale="en" elapsed={4} state="canceled" />);
+    render(<GenerationProgress locale="en" state="canceled" />);
     expect(screen.getByText('Stopped')).toBeTruthy();
     expect(screen.queryByTestId('generation-progress-pct')).toBeNull();
   });
@@ -69,59 +69,58 @@ describe('the number is honest', () => {
   const pct = () => screen.getByTestId('generation-progress-pct').textContent;
 
   it('never reads 100 while the job runs, even when the server says 100', () => {
-    render(<GenerationProgress kind="video" locale="en" elapsed={30} pct={100} />);
+    render(<GenerationProgress locale="en" pct={100} />);
     expect(pct()).toBe('99%');
   });
 
   it('never goes back: a lower server percent holds the number where it was', () => {
-    const { rerender } = render(<GenerationProgress kind="video" locale="en" elapsed={30} pct={64} />);
+    const { rerender } = render(<GenerationProgress locale="en" pct={64} />);
     expect(pct()).toBe('64%');
-    rerender(<GenerationProgress kind="video" locale="en" elapsed={35} pct={40} />);
+    rerender(<GenerationProgress locale="en" pct={40} />);
     expect(pct()).toBe('64%');
-    rerender(<GenerationProgress kind="video" locale="en" elapsed={40} pct={70} />);
+    rerender(<GenerationProgress locale="en" pct={70} />);
     expect(pct()).toBe('70%');
   });
 
-  it('never goes back when a server percent arrives below the estimate already shown', () => {
-    // 120 s of a 65 s image is 95% on the curve; the server's first report of 50 must not pull it down.
-    const { rerender } = render(<GenerationProgress kind="image" locale="en" elapsed={120} />);
-    expect(pct()).toBe('95%');
-    rerender(<GenerationProgress kind="image" locale="en" elapsed={121} pct={50} />);
-    expect(pct()).toBe('95%');
+  it('keeps the last real value when the server stops reporting', () => {
+    const { rerender } = render(<GenerationProgress locale="en" pct={50} />);
+    expect(pct()).toBe('50%');
+    rerender(<GenerationProgress locale="en" />);
+    expect(pct()).toBe('50%');
   });
 
   it('a new run on the same card starts from 0, not from the last job\'s number', () => {
-    const { rerender } = render(<GenerationProgress kind="video" locale="en" elapsed={30} pct={80} />);
+    const { rerender } = render(<GenerationProgress locale="en" pct={80} />);
     expect(pct()).toBe('80%');
-    rerender(<GenerationProgress kind="video" locale="en" elapsed={31} state="done" />);
+    rerender(<GenerationProgress locale="en" state="done" />);
     expect(pct()).toBe('100%');
-    rerender(<GenerationProgress kind="video" locale="en" elapsed={2} pct={10} />);
+    rerender(<GenerationProgress locale="en" pct={10} />);
     expect(pct()).toBe('10%');
   });
 
   it('pins the running card\'s markup', () => {
-    const { container } = render(<GenerationProgress kind="music" locale="ka" elapsed={45} title="ჯაზი" />);
+    const { container } = render(<GenerationProgress locale="ka" title="ჯაზი" />);
     expect(container.firstElementChild).toMatchSnapshot();
   });
 });
 
 describe('what the tray needs from it', () => {
   it('renders the job label, so a tray row still says WHAT is rendering', () => {
-    render(<GenerationProgress kind="video" locale="en" elapsed={3} title="Jungle scene" compact />);
+    render(<GenerationProgress locale="en" title="Jungle scene" compact />);
     expect(screen.getByText('Jungle scene')).toBeTruthy();
   });
 
   it('offers cancel while running or queued', () => {
     const { rerender } = render(
-      <GenerationProgress kind="image" locale="en" elapsed={3} onCancel={() => {}} />,
+      <GenerationProgress locale="en" onCancel={() => {}} />,
     );
     expect(screen.getByLabelText('Cancel')).toBeTruthy();
-    rerender(<GenerationProgress kind="image" locale="en" elapsed={0} state="queued" onCancel={() => {}} />);
+    rerender(<GenerationProgress locale="en" state="queued" onCancel={() => {}} />);
     expect(screen.getByLabelText('Cancel')).toBeTruthy();
   });
 
   it('withdraws cancel once the job is terminal — there is nothing left to stop', () => {
-    render(<GenerationProgress kind="image" locale="en" elapsed={3} state="done" onCancel={() => {}} />);
+    render(<GenerationProgress locale="en" state="done" onCancel={() => {}} />);
     expect(screen.queryByLabelText('Cancel')).toBeNull();
   });
 
@@ -129,16 +128,16 @@ describe('what the tray needs from it', () => {
   // That is the ONLY size-dependent behaviour in the card — everything else is identical everywhere,
   // which is the entire point of the unification.
   it('fills its container when compact and is clamped otherwise', () => {
-    const { container: tray } = render(<GenerationProgress kind="image" locale="en" elapsed={1} compact />);
+    const { container: tray } = render(<GenerationProgress locale="en" compact />);
     expect(tray.firstElementChild?.className).toContain('w-full');
     expect(tray.firstElementChild?.className).not.toContain('max-w-[min(86vw,440px)]');
 
-    const { container: bubble } = render(<GenerationProgress kind="image" locale="en" elapsed={1} />);
+    const { container: bubble } = render(<GenerationProgress locale="en" />);
     expect(bubble.firstElementChild?.className).toContain('max-w-[min(86vw,440px)]');
   });
 
   it('keeps the number, the label and a small loop tile in compact form', () => {
-    render(<GenerationProgress kind="image" locale="en" elapsed={12} compact />);
+    render(<GenerationProgress locale="en" compact />);
     expect(screen.getByTestId('generation-progress-pct')).toBeTruthy();
     expect(screen.getByTestId('generation-progress-label')).toBeTruthy();
     expect(screen.getByTestId('generation-progress-loop').className).toContain('w-[30px]');
@@ -151,35 +150,35 @@ describe('localisation', () => {
     ['ru' as const, 'Готово'],
     ['en' as const, 'Ready'],
   ])('speaks %s', (locale, expected) => {
-    render(<GenerationProgress kind="image" locale={locale} elapsed={2} state="done" />);
+    render(<GenerationProgress locale={locale} state="done" />);
     expect(screen.getByText(expected)).toBeTruthy();
   });
 });
 
-describe('measured only (the tray\'s server-observed jobs, Video Core round 3)', () => {
-  it('with no server percent it prints no number, and the progressbar is indeterminate', () => {
-    const { container } = render(<GenerationProgress kind="video" locale="en" elapsed={40} measuredOnly />);
-    expect(screen.queryByText('%')).toBeNull();
-    expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false);
-    expect(screen.getByText('In progress')).toBeTruthy();
-    expect(container.querySelector('[data-progress="indeterminate"]')).not.toBeNull();
+describe('no server percent yet (MASTER TASK v3.1 §3.3: no time-driven precision)', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('reads 0% under a short waiting label, and the progressbar says so', () => {
+    const { container } = render(<GenerationProgress locale="en" />);
+    expect(screen.getByTestId('generation-progress-pct').textContent).toBe('0%');
+    expect(screen.getByTestId('generation-progress-label').textContent).toBe('In progress');
+    const bar = screen.getByRole('progressbar');
+    expect(bar.getAttribute('aria-valuenow')).toBe('0');
+    expect(bar.getAttribute('aria-valuetext')).toBe('0% · In progress');
+    expect(container.querySelector('[data-progress="waiting"]')).not.toBeNull();
   });
+
   it('the server\'s stage still heads the card', () => {
-    render(<GenerationProgress kind="video" locale="ka" elapsed={40} measuredOnly status="კადრების შეერთება" />);
+    render(<GenerationProgress locale="ka" status="კადრების შეერთება" />);
     expect(screen.getByText('კადრების შეერთება')).toBeTruthy();
-    expect(screen.queryByText('%')).toBeNull();
+    expect(screen.getByTestId('generation-progress-pct').textContent).toBe('0%');
   });
-  it('a real server percent is printed as before', () => {
-    render(<GenerationProgress kind="video" locale="en" elapsed={40} measuredOnly pct={42} />);
-    expect(screen.getByText('42')).toBeTruthy();
-    expect(screen.getByText('%')).toBeTruthy();
-  });
-  it('terminal states are unchanged', () => {
-    render(<GenerationProgress kind="video" locale="en" elapsed={40} measuredOnly state="done" />);
-    expect(screen.getByText('100')).toBeTruthy();
-  });
-  it('without the flag the eased estimate stays (every other studio)', () => {
-    render(<GenerationProgress kind="video" locale="en" elapsed={40} />);
-    expect(screen.getByText('%')).toBeTruthy();
+
+  it('the clock moves nothing: ten minutes later it still reads 0%', () => {
+    jest.useFakeTimers();
+    const { rerender } = render(<GenerationProgress locale="en" />);
+    act(() => { jest.advanceTimersByTime(600_000); });
+    rerender(<GenerationProgress locale="en" />);
+    expect(screen.getByTestId('generation-progress-pct').textContent).toBe('0%');
   });
 });

@@ -78,22 +78,33 @@ test('the store refuses to stop what the server cannot stop, and sends nothing',
   expect(cancels()).toHaveLength(0);
 });
 
-test('a server job with no percent prints no "%" in the tray — no time-eased estimate dressed as a measurement (Video Core round 3)', () => {
-  const unmeasured = mapTaskToTrayJob(task({ id: 'job-n', pct: null }), 'en');
-  act(() => { useJobQueue.setState({ durableJobs: [unmeasured], inlineJobIds: [] }); });
-  const { container } = render(<JobTray locale="en" />);
-  expect(screen.getByText('Agent G · montage')).toBeTruthy();
-  expect(screen.getByText('Joining the shots')).toBeTruthy();
-  expect(container.textContent ?? '').not.toMatch(/\d+\s*%/);
-  expect(container.textContent ?? '').not.toMatch(/remaining/i);
-  expect(container.querySelector('[data-progress="indeterminate"]')).not.toBeNull();
+test('a server job with no percent reads 0% with a waiting label and stays there: no time-eased estimate dressed as a measurement (Video Core round 3; MASTER TASK v3.1 §3.3)', () => {
+  jest.useFakeTimers();
+  try {
+    const unmeasured = mapTaskToTrayJob(task({ id: 'job-n', pct: null }), 'en');
+    act(() => { useJobQueue.setState({ durableJobs: [unmeasured], inlineJobIds: [] }); });
+    const { container } = render(<JobTray locale="en" />);
+    expect(screen.getByText('Agent G · montage')).toBeTruthy();
+    expect(screen.getByText('Joining the shots')).toBeTruthy();
+    const read = () => container.textContent ?? '';
+    expect(read()).toMatch(/(^|\D)0%/);
+    expect(read()).not.toMatch(/[1-9]\d*\s*%/);
+    expect(read()).not.toMatch(/remaining/i);
+    expect(container.querySelector('[data-progress="waiting"]')).not.toBeNull();
+    // Ten minutes on, the number has not moved: nothing paces it to the clock.
+    act(() => { jest.advanceTimersByTime(600_000); });
+    expect(read()).not.toMatch(/[1-9]\d*\s*%/);
+    expect(container.querySelector('[data-progress="waiting"]')).not.toBeNull();
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 test('a server job that does report a percent still shows that percent', () => {
   act(() => { useJobQueue.setState({ durableJobs: [montage], inlineJobIds: [] }); });
   const { container } = render(<JobTray locale="en" />);
   expect(container.textContent ?? '').toMatch(/55\s*%/);
-  expect(container.querySelector('[data-progress="indeterminate"]')).toBeNull();
+  expect(container.querySelector('[data-progress="measured"]')).not.toBeNull();
 });
 
 test('the ✕ hides a stuck render with no stop of its own, and it stays hidden after a reload (Production 2026-10-16)', () => {

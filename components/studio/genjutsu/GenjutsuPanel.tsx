@@ -272,14 +272,8 @@ export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
     }
   }, [canRun, insufficient, refs, selection, locale, op, quote, quoteSig, presetId, userText, aspect, q, keepSound, video, price, overrideKey, begin, refreshBalance, c]);
 
-  // ── the job card: elapsed time drives its (honest, capped) progress ──
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [running]);
-
+  // ── the job card. The VFX route reports no percent, so the card reads 0% until the video is in (MASTER TASK v3.1
+  // §3.3: no number paced to the clock); the line under it says the work is running. ──
   const jobState: ResultState | null = job.phase === 'running' ? (job.state === 'queued' ? 'queued' : job.state === 'delivering' ? 'finalizing' : 'rendering')
     : job.phase === 'ready' ? 'ready' : job.phase === 'failed' || job.phase === 'stalled' ? 'error' : null;
   const jobAspect = job.phase === 'running' || job.phase === 'ready' ? job.aspect : '16:9';
@@ -320,8 +314,6 @@ export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
               state={jobState}
               locale={lang}
               size="tile"
-              elapsedSec={job.phase === 'running' ? Math.max(0, Math.round((now - job.startedAt) / 1000)) : 0}
-              capSec={job.phase === 'running' && job.op === 'scene' ? 150 : 420}
               {...(job.phase === 'ready' ? { media: { type: 'video' as const, url: job.videoUrl } } : {})}
               {...(job.phase === 'failed' ? { error: job.message || c.failed } : job.phase === 'stalled' ? { error: c.stillWorking } : {})}
               onDismiss={job.phase === 'failed' || job.phase === 'stalled' ? reset : undefined}
