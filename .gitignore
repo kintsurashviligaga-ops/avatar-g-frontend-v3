@@ -69,3 +69,6 @@ vercel-project-inspect.txt
 
 # BOG sandbox E2E screenshots (scripts/bog-sandbox-e2e.sh)
 /bog-sandbox-shots/
+
+# Editor and hand-made backups: git history is the backup. (_graveyard/ keeps its one tracked .bak on purpose.)
+*.bak
