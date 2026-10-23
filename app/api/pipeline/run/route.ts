@@ -8,7 +8,8 @@
  * Event format (each line):
  *   data: {"type":"wave_start","waveIndex":0,"nodeIds":["a","b"],...}\n\n
  *
- * Use the `usePipelineStream` client hook to consume this endpoint.
+ * No screen reads it today: its client hook (usePipelineStream) and progress view were deleted with nothing
+ * importing them.
  */
 
 import { NextRequest } from 'next/server';

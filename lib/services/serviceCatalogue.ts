@@ -4,7 +4,7 @@
  * THE canonical list of the ten official services.
  *
  * WHY THIS EXISTS: the repo already had FIVE service registries — lib/service-registry.ts (22 entries),
- * lib/registry.ts (14), lib/services/registry.ts (19), components/dashboard/omni/i18n.ts (8) and the
+ * lib/registry.ts (14), lib/services/registry.ts (19), components/dashboard/omni/i18n.ts (8, deleted with that dead dashboard) and the
  * ServiceHub card array (2) — none of which is the ten-service product. They disagree on ids, on names and
  * on which services exist, so any UI built on one of them shows a different platform from the next.
  *
