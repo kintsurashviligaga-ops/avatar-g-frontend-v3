@@ -18,9 +18,9 @@
  *    lib/ai/geminiImage); a miss is an empty tile and Veo animates the scene from text. FLUX, the per-scene
  *    stylised frames and Auto-Anchor (AUTO_ANCHOR_FRAME) are all skipped under Google-only, so Auto-Anchor is
  *    no longer a row — it only comes back with the legacy paths (see the VIDEO_GOOGLE_ONLY warning).
- *  - The studio base image (app/api/nanobanana/image) is the NanoBanana RESELLER (lib/nanobanana/client →
- *    nanobananaapi.ai) and nothing else: a miss is a refunded 502, the Grok → FLUX fallbacks are gone (R7).
- *    It is a legacy vendor reselling Google's image model, NOT a direct Google call.
+ *  - The studio base image (app/api/nanobanana/image) is Google's image model on Vertex AI (lib/ai/geminiImage, the
+ *    same GEMINI_FRAME_MODEL as the frames) and nothing else: a miss is a refunded 502. The NanoBanana reseller, Grok
+ *    and FLUX legs are gone (R7, MASTER TASK v3.1), so NANOBANANA_API_KEY decides nothing.
  *  - TTS is Google Cloud TTS only (lib/audio/google-tts, on the Vertex Workload Identity token; used by
  *    lib/chat/filmVoiceover and /api/elevenlabs/tts): the best voice for the language and gender. No ElevenLabs or
  *    Azure fallback (R7). Chat read-aloud (/api/tts/gemini) is separate.
@@ -202,18 +202,18 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       icon: dot(lyriaOn, lyriaOn ? 'high' : 'unavailable'),
     });
 
-    // 7 · BASE IMAGE — app/api/nanobanana/image: the NanoBanana reseller is the route's ONLY engine (miss / open breaker
-    //     → refunded 502). Named as what it is: a legacy reseller, not a direct Google call.
-    const hasNanoBanana = present(env.NANOBANANA_API_KEY);
+    // 7 · BASE IMAGE — app/api/nanobanana/image renders on Google's image model through Vertex AI, the same model and
+    //     transport as the frames (row 1); a miss is a refunded 502, no second engine. The route's name is historical:
+    //     the NanoBanana reseller client is deleted, and its key is not read.
     services.push({
       service: 'სურათი (Base)',
-      provider: 'NanoBanana (reseller)',
-      available: hasNanoBanana,
-      tier: hasNanoBanana ? 'high' : 'unavailable',
-      note: hasNanoBanana
-        ? 'nanobananaapi.ai reseller — only engine, no fallback (R7); legacy vendor, not Google direct'
-        : 'NANOBANANA_API_KEY missing — studio images fail (no fallback engine)',
-      icon: dot(hasNanoBanana, hasNanoBanana ? 'high' : 'unavailable'),
+      provider: `Gemini ${geminiFrameModel()}`,
+      available: hasGoogleAi,
+      tier: hasGoogleAi ? 'high' : 'unavailable',
+      note: hasGoogleAi
+        ? 'studio images on Vertex AI — only engine, a miss is refunded, no fallback (R7)'
+        : `${googleMissing.join(', ') || 'Google AI transport'} missing — studio images fail, the credit is returned (no fallback engine)`,
+      icon: dot(hasGoogleAi, hasGoogleAi ? 'high' : 'unavailable'),
     });
 
     // 8 · SUBTITLES — ffmpeg-static + SVG→PNG (resvg). NO libass on Vercel; FiraGO Georgian font bundled.

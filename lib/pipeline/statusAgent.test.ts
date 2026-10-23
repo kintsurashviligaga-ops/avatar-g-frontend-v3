@@ -1,9 +1,9 @@
 /** @jest-environment node */
 /**
  * Pins the admin "Pipeline" card to the engines the code really runs (lib/pipeline/statusAgent):
- * Veo for film clips, Gemini image for the anchor frames, Lyria 3 alone for music Auto, the NanoBanana
- * reseller for the base image — and never a claim of Udio-as-primary, a FLUX anchor/base or Kling clips
- * under the default Google-only policy. Real gate functions run against a fake env (no network call).
+ * Veo for film clips, Gemini image on Vertex for the anchor frames and the base image, Lyria 3 alone for music
+ * Auto — and never a claim of Udio-as-primary, a NanoBanana or FLUX anchor/base or Kling clips under the default
+ * Google-only policy. Real gate functions run against a fake env (no network call).
  */
 jest.mock('server-only', () => ({}));
 jest.mock('ffmpeg-static', () => '/fake/bin/ffmpeg');
@@ -72,7 +72,8 @@ describe('checkPipelineHealth — with no env at all', () => {
     expect(row(h, 'ვიდეო (Clips)').note).toMatch(/GCP_PROJECT_ID/);
     expect(row(h, 'ვიდეო (Clips)').note).toMatch(/^no Veo route — Vertex AI is not configured for Veo: GCP_PROJECT_ID/);
     expect(row(h, 'ვიდეო (Clips)').note).not.toMatch(/GEMINI_API_KEY/);
-    expect(row(h, 'სურათი (Base)').note).toMatch(/NANOBANANA_API_KEY/);
+    expect(row(h, 'სურათი (Base)').note).toMatch(/^GCP_PROJECT_ID/);
+    expect(row(h, 'სურათი (Base)').note).not.toMatch(/NANOBANANA/);
   });
 
   it('stays fail-open when something inside throws', async () => {
@@ -162,7 +163,7 @@ describe('the video row names the engine that renders film clips', () => {
 });
 
 describe('no row repeats the stale provider claims', () => {
-  it('fully configured, Google-only: Lyria (not Udio), Gemini anchor, NanoBanana base — no FLUX, no Kling', async () => {
+  it('fully configured, Google-only: Lyria (not Udio), Gemini anchor and base — no NanoBanana, no FLUX, no Kling', async () => {
     setEnv({ ...SECRETS, ...VERTEX_ENV });
     const h = await checkPipelineHealth();
     for (const s of h.services) expect(text(s)).not.toMatch(/udio \(primary\)/i);
@@ -174,9 +175,11 @@ describe('no row repeats the stale provider claims', () => {
     expect(anchor.provider).not.toMatch(/flux/i);
 
     const base = row(h, 'სურათი (Base)');
-    expect(base.provider).toBe('NanoBanana (reseller)');
-    expect(base.provider).not.toMatch(/flux|google|gemini/i);
+    expect(base.provider).toBe('Gemini gemini-3.1-flash-image');
+    expect(base.available).toBe(true);
+    expect(base.note).toMatch(/on Vertex AI/);
     expect(base.note).toMatch(/no fallback/);
+    expect(text(base)).not.toMatch(/nanobanana|reseller|flux|grok/i);
 
     const music = row(h, 'მუსიკა');
     expect(music.provider).toBe('Lyria 3 (lyria-3-clip-preview)');
@@ -227,12 +230,15 @@ describe('no row repeats the stale provider claims', () => {
     expect(row(h, 'სურათი (Anchor)').available).toBe(false);
     expect(row(h, 'მუსიკა').available).toBe(false);
     expect(row(h, 'სურათი (Anchor)').note).toMatch(/GEMINI_TRANSPORT \(not vertex\)/);
+    expect(row(h, 'სურათი (Base)').available).toBe(false);
+    expect(row(h, 'სურათი (Base)').note).toMatch(/GEMINI_TRANSPORT \(not vertex\)/);
   });
 
-  it('an AI Studio key alone serves no frame and no Lyria track (v3.1: Vertex AI only)', async () => {
+  it('an AI Studio key alone serves no frame, no studio image and no Lyria track (v3.1: Vertex AI only)', async () => {
     setEnv({ GEMINI_API_KEY: SECRETS.GEMINI_API_KEY });
     const h = await checkPipelineHealth();
     expect(row(h, 'სურათი (Anchor)').available).toBe(false);
+    expect(row(h, 'სურათი (Base)').available).toBe(false);
     expect(row(h, 'სურათი (Anchor)').note).toMatch(/GCP_PROJECT_ID/);
     expect(row(h, 'მუსიკა').available).toBe(false);
   });
@@ -248,10 +254,8 @@ describe('no row repeats the stale provider claims', () => {
 });
 
 describe('overall follows the CRITICAL rows (Base, Clips, TTS, Music)', () => {
-  const CORE = { ...VERTEX_ENV, NANOBANANA_API_KEY: SECRETS.NANOBANANA_API_KEY };
-
-  it('healthy on Google + the base-image reseller alone (no ElevenLabs, no Replicate needed)', async () => {
-    setEnv(CORE);
+  it('healthy on Google alone (no NanoBanana, ElevenLabs or Replicate key needed)', async () => {
+    setEnv({ ...VERTEX_ENV });
     const h = await checkPipelineHealth();
     expect(h.overall).toBe('healthy');
     expect(row(h, 'ხმა (TTS)').available).toBe(true); // Cloud TTS on the Vertex identity
@@ -259,11 +263,12 @@ describe('overall follows the CRITICAL rows (Base, Clips, TTS, Music)', () => {
   });
 
   it('degraded with one critical row down, critical with two', async () => {
-    setEnv({ ...VERTEX_ENV });
-    expect((await checkPipelineHealth()).overall).toBe('degraded'); // the base image only
-    setEnv({ NANOBANANA_API_KEY: CORE.NANOBANANA_API_KEY, ELEVENLABS_API_KEY: SECRETS.ELEVENLABS_API_KEY });
-    const h = await checkPipelineHealth(); // no Vertex: clips, voice and music are down, whatever ElevenLabs key is set
+    setEnv({ ...VERTEX_ENV, LYRIA_ENABLED: '0' });
+    expect((await checkPipelineHealth()).overall).toBe('degraded'); // music only
+    setEnv({ NANOBANANA_API_KEY: SECRETS.NANOBANANA_API_KEY, ELEVENLABS_API_KEY: SECRETS.ELEVENLABS_API_KEY });
+    const h = await checkPipelineHealth(); // no Vertex: images, clips, voice and music are down, whatever vendor key is set
     expect(h.overall).toBe('critical');
+    expect(row(h, 'სურათი (Base)').available).toBe(false);
     expect(row(h, 'ხმა (TTS)')).toMatchObject({ available: false, note: expect.stringMatching(/^Vertex AI config missing — no voice-over/) });
   });
 });
