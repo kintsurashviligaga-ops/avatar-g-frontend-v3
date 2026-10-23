@@ -155,7 +155,7 @@ test('a delivered clip past the cap is still delivered, not refunded (the cap on
   expect(refundDebitByRef).not.toHaveBeenCalled();
 });
 
-// ─── a talking avatar voiced by ElevenLabs (GG 2026-10-17 07:54Z) ─────────────────────────────────────────────────
+// ─── a talking avatar with its line (GG 2026-10-17 07:54Z), read by Google Cloud TTS since v3.1 withdrew ElevenLabs ──
 
 test('voiced avatar: the clip is shown WITH its line — the voiced file, filed in the Library as an avatar', async () => {
   (pollScene as jest.Mock).mockResolvedValue({ state: 'ready', url: 'https://signed.example/silent.mp4' });
@@ -164,6 +164,8 @@ test('voiced avatar: the clip is shown WITH its line — the voiced file, filed 
   expect(j).toEqual({ success: true, done: true, state: 'ready', videoUrl: 'https://signed.example/voiced.mp4' });
   expect(deliverVoicedAvatar).toHaveBeenCalledWith('https://signed.example/silent.mp4', UUID);
   expect((recordCompletedFilm as jest.Mock).mock.calls[0]![0]).toMatchObject({ id: genjutsuJobId(UUID), url: 'https://signed.example/voiced.mp4', subtype: 'avatar', prompt: 'Avatar', orientation: 'vertical' });
+  // The stored result names the voice that read the line: Google Cloud TTS, never a withdrawn vendor.
+  expect((recordCompletedFilm as jest.Mock).mock.calls[0]![0].result).toMatchObject({ op: 'avatar', voice: 'google-cloud-tts' });
 });
 
 test('voiced avatar: a clip whose line is not on it yet is never shown silent — "delivering", then refunded at the cap', async () => {
