@@ -24,6 +24,10 @@ jest.mock('../../../lib/supabase/server', () => ({
   },
 }));
 
+// Vertex readiness is the transport's own check (lib/ai/google/transport), the one every route runs before a call.
+let mockVertex = true;
+jest.mock('../../../lib/ai/google/transport', () => ({ googleAiConfigured: () => mockVertex }));
+
 let mockRedisFails = false;
 jest.mock('@upstash/redis', () => ({
   Redis: class {
@@ -51,6 +55,7 @@ beforeEach(() => {
   mockDbError = null;
   mockDbThrows = false;
   mockRedisFails = false;
+  mockVertex = true;
   mockDbCalls.length = 0;
 });
 afterEach(() => { process.env = { ...ENV }; });
@@ -110,9 +115,32 @@ describe('GET /api/health', () => {
   });
 
   it('a missing provider key is listed but does not degrade the deployment', async () => {
-    delete process.env.ELEVENLABS_API_KEY;
+    delete process.env.RESEND_API_KEY;
     const { body } = await health();
     expect(body.ok).toBe(true);
-    expect(body.providers_missing).toEqual(expect.arrayContaining(['elevenlabs']));
+    expect(body.providers_missing).toEqual(expect.arrayContaining(['resend']));
+  });
+
+  it('reports Vertex readiness, never whether an AI Studio key is set (v3.1: Vertex is the only transport)', async () => {
+    process.env.GEMINI_API_KEY = 'aistudio-key';
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'aistudio-key-2';
+    mockVertex = false;
+    const off = (await health()).body;
+    expect(off.providers).toMatchObject({ vertex: false });
+    expect(off.providers).not.toHaveProperty('gemini');
+    expect(off.providers_missing).toEqual(expect.arrayContaining(['vertex']));
+    expect(off.ok).toBe(true); // one absent provider degrades its services, not the deployment
+    mockVertex = true;
+    expect((await health()).body.providers).toMatchObject({ vertex: true });
+  });
+
+  it('does not report outside vendors: no generation path may use them, so their absence is not "missing"', async () => {
+    Object.assign(process.env, {
+      ANTHROPIC_API_KEY: 'a', REPLICATE_API_TOKEN: 'r', NANOBANANA_API_KEY: 'n', ELEVENLABS_API_KEY: 'e', HEYGEN_API_KEY: 'h', XAI_API_KEY: 'x',
+    });
+    const { body } = await health();
+    expect(Object.keys(body.providers as object).sort()).toEqual(['resend', 'sentry', 'stripe', 'vertex']);
+    for (const k of ['ANTHROPIC_API_KEY', 'ELEVENLABS_API_KEY']) delete process.env[k];
+    expect((await health()).body.providers_missing).not.toEqual(expect.arrayContaining(['anthropic']));
   });
 });

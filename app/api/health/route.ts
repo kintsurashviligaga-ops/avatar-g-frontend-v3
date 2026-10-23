@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUpstashRedis } from '@/lib/platform/upstash';
 import { upstashRestEnv } from '@/lib/platform/upstashEnv';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import { opsCallerAllowed } from '@/lib/security/opsAccess';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 
@@ -31,7 +32,7 @@ interface HealthResponse {
   database?: 'connected' | 'unconfigured' | 'error';
   database_error?: string;
   missing: string[];
-  /** Per-provider "is a key set" map. Booleans only — see providerReadiness for why this exists. */
+  /** Per-provider "is it configured" map. Booleans only — see providerReadiness for why this exists. */
   providers?: Record<string, boolean>;
   providers_missing?: string[];
   providers_note?: string;
@@ -175,21 +176,21 @@ async function verifyDatabase(): Promise<Pick<HealthResponse, 'database' | 'data
  * (video), Imagen (images) and Lyria (music) are all silently running on their backups. Health said
  * "healthy" throughout, and nothing anywhere said otherwise.
  *
- * THIS CANNOT PROVE A KEY IS VALID OR FUNDED — only that something is set. Said in the payload rather
+ * THIS CANNOT PROVE A CREDENTIAL IS VALID OR FUNDED — only that it is configured. Said in the payload rather
  * than implied, because `gemini: true` next to a chat that answers from Anthropic is exactly the kind
  * of half-truth that cost the time above.
+ *
+ * MASTER TASK v3.1: every model call goes to Vertex AI, and no fallback to another vendor is allowed. So the row is
+ * `vertex` (the same check the routes run before any call, lib/ai/google/transport), never whether an AI Studio key is
+ * set: a Developer API key is not a transport here and holding one makes nothing work. The outside vendors' keys
+ * (Anthropic, Replicate, NanoBanana, ElevenLabs, HeyGen, xAI) are not reported either: no generation path may use them,
+ * so an absent one is the expected state, not a missing provider.
  */
 function providerReadiness(): Record<string, boolean> {
   const set = (n: string) => Boolean(process.env[n] && String(process.env[n]).trim().length > 0);
   return {
-    // One key, four headline features: chat, Imagen, Lyria AND Veo.
-    gemini: set('GEMINI_API_KEY') || set('GOOGLE_GENERATIVE_AI_API_KEY'),
-    anthropic: set('ANTHROPIC_API_KEY'),
-    replicate: set('REPLICATE_API_TOKEN'),   // FLUX · Kling · SadTalker · TRELLIS · MusicGen · Demucs
-    nanobanana: set('NANOBANANA_API_KEY'),   // default image engine
-    elevenlabs: set('ELEVENLABS_API_KEY'),   // EVERY text-to-speech leg: narration, dubbing, voiceover
-    heygen: set('HEYGEN_API_KEY'),           // primary avatar engine
-    xai: set('XAI_API_KEY'),                 // image fallback leg
+    // Chat, images (gemini-3.1-flash-image), Lyria, Veo and Gemini-TTS: one Vertex identity.
+    vertex: googleAiConfigured(),
     stripe: set('STRIPE_SECRET_KEY'),
     resend: set('RESEND_API_KEY'),           // sign-up OTP email
     sentry: set('SENTRY_DSN') || set('NEXT_PUBLIC_SENTRY_DSN'),

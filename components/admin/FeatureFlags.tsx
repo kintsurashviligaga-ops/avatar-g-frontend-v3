@@ -108,7 +108,7 @@ export default function FeatureFlags({ ka }: { ka: boolean }) {
             <div key={p.key} className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.02] px-3 py-2">
               <span className="truncate text-[12px] text-gray-300">{p.label}</span>
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${p.ready ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'}`}>
-                {p.ready ? (ka ? 'გასაღები ✓' : 'key ✓') : (ka ? 'გასაღები არ არის' : 'no key')}
+                {p.ready ? (ka ? 'მზადაა ✓' : 'ready ✓') : (ka ? 'არ არის კონფიგურირებული' : 'not configured')}
               </span>
             </div>
           ))}

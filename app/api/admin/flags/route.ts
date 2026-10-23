@@ -7,6 +7,8 @@
  * the actor is stamped for audit.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
+import { hasLyriaProvider } from '@/lib/ai/lyriaMusic';
 import { isAdmin } from '@/lib/auth/adminGuard';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { resolveAllFlags, setFeatureFlag, isKnownFlag } from '@/lib/server/feature-flags';
@@ -14,16 +16,20 @@ import { resolveAllFlags, setFeatureFlag, isKnownFlag } from '@/lib/server/featu
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-/** Read-only readiness of the 6 core agents (KEY PRESENCE only — not a guarantee the provider works). */
+/**
+ * Read-only readiness of the 6 core agents: whether Vertex AI is configured (CONFIGURATION only — not a guarantee the
+ * provider answers). MASTER TASK v3.1: every model call is on Vertex, so an AI Studio key or an outside vendor's key
+ * (NanoBanana) never makes a row ready; the check is the one the routes run before any call (lib/ai/google/transport).
+ */
 function providerReadiness() {
-  const has = (...names: string[]) => names.some((n) => Boolean(process.env[n]?.trim()));
-  const hasVertex = has('GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_VERTEX_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY');
+  const vertex = googleAiConfigured();
   return [
-    { key: 'video', label: 'Video (Google Vertex AI · Veo)', ready: hasVertex },
-    { key: 'gemini', label: 'Chat & Vision (Google Gemini)', ready: has('GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY') || hasVertex },
-    { key: 'music', label: 'Music (Google Lyria 3)', ready: hasVertex },
-    { key: 'image', label: 'Image (Google Gemini / Imagen)', ready: has('GEMINI_API_KEY', 'NANOBANANA_API_KEY') || hasVertex },
-    { key: 'audio', label: 'Voice / Live Audio (Gemini Native)', ready: has('GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY') || hasVertex },
+    { key: 'video', label: 'Video (Google Vertex AI · Veo)', ready: vertex },
+    { key: 'gemini', label: 'Chat & Vision (Google Gemini)', ready: vertex },
+    // Lyria is Vertex AND not switched off (LYRIA_ENABLED): the same gate /api/ai/music runs.
+    { key: 'music', label: 'Music (Google Lyria 3)', ready: hasLyriaProvider() },
+    { key: 'image', label: 'Image (Google Gemini / Imagen)', ready: vertex },
+    { key: 'audio', label: 'Voice / Live Audio (Gemini Native)', ready: vertex },
     { key: 'audiomix', label: 'Audio-mix & Mastering (FFmpeg)', ready: true },
   ];
 }

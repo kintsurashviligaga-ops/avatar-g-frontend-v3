@@ -96,7 +96,8 @@ async function veoScene(id: string, userId: string): Promise<NextResponse> {
         await recordCompletedFilm(job.voiced
           ? {
             id: rowId, userId, url, prompt: 'Avatar', orientation: job.aspect === '9:16' ? 'vertical' : 'landscape',
-            result: { url, kind: 'video', op: 'avatar', voice: 'elevenlabs' }, subtype: 'avatar',
+            // The line is Google Cloud TTS (Gemini-TTS for Georgian, #135) — the voice /api/avatar/veo names.
+            result: { url, kind: 'video', op: 'avatar', voice: 'google-cloud-tts' }, subtype: 'avatar',
           }
           : {
             id: rowId, userId, url, prompt: 'VFX scene', orientation: job.aspect === '9:16' ? 'vertical' : 'landscape',
