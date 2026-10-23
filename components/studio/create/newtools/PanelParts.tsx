@@ -10,7 +10,7 @@
  * scrolls inside itself (nothing pushes the page sideways at 375 px), every colour is a design token.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { BrainCircuit, Check, ChevronDown, Gem, ImagePlus, Layers, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
+import { BrainCircuit, Check, ChevronDown, ImagePlus, Layers, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
 import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import { CHIP_BASE, CHIP_OFF, CHIP_ON, NOTE_BASE, NOTE_TONE } from '@/components/studio/ui/tokens';
 import { SHOOT_BRIEF_MAX } from '@/lib/studio/shootQuote';
@@ -133,9 +133,10 @@ export function PromptCard({ value, onChange, placeholder, testId }: {
 /**
  * „პროფესიონალური პარამეტრები" (GG 2026-10-18, progressive disclosure): the technical choices, shut until tapped. Shut,
  * the summary says what is set, so nothing is chosen behind a closed door unseen. Its content mounts only while open.
- * The first row names the model (the route picks it: Auto).
+ * The first row names the model (the one Google image model the route renders with). No size row: the render takes none
+ * (GG 2026-10-23, "Hide").
  */
-export function ProSettings({ copy, summary, testId, children }: { copy: ShootCopy; summary: string; testId: string; children: ReactNode }) {
+export function ProSettings({ copy, summary, testId, children }: { copy: ShootCopy; summary: string; testId: string; children?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
@@ -160,7 +161,7 @@ export function ProSettings({ copy, summary, testId, children }: { copy: ShootCo
   );
 }
 
-// ─── The chip row: aspect · quality · count ──────────────────────────────────────────────────────────────────────
+// ─── The chip row: aspect · count ──────────────────────────────────────────────────────────────────────
 // Each pill opens a bottom sheet with its options (the grammar of the owner's reference: a chip is a summary, the sheet is the
 // choice) — a grid for shapes, a list for tiers and counts, the price on every row that has one.
 
@@ -195,7 +196,6 @@ export function AspectGlyph({ ratio, box = 16 }: { ratio: string; box?: number }
   return <span aria-hidden="true" className="inline-block shrink-0 rounded-[3px] border-[1.5px] border-current" style={{ width: Math.max(8, Math.round(w * k)), height: Math.max(8, Math.round(h * k)) }} />;
 }
 
-export const QualityGlyph = () => <Gem size={16} aria-hidden="true" />;
 export const CountGlyph = () => <Layers size={16} aria-hidden="true" />;
 
 const OPTION_ON = 'bg-app-accent/15 text-app-accent ring-app-accent/50';
