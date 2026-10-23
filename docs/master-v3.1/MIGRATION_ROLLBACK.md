@@ -37,7 +37,8 @@ The PRs are stacked: each one contains every PR above it in this table, so they 
 | 17 | #132 | `claude/p1-08-image-lifecycle` | Imagen 3 ids answer `lifecycle_blocked`; Vertex image contract test |
 | 18 | #133 | `claude/p1-09-curated-avatars` | Built-in avatars only; custom avatars answer `capability_unavailable` |
 | 19 | #134 | `claude/p1-10-migration-rollback` | These notes (docs only) |
-| 20 | this PR | `claude/p1-11-georgian-gemini-tts` | Georgian lines read by Gemini-TTS: Cloud TTS lists no ka-GE voice |
+| 20 | #135 | `claude/p1-11-georgian-gemini-tts` | Georgian lines read by Gemini-TTS: Cloud TTS lists no ka-GE voice |
+| 21 | this PR | `claude/p1-12-agent-g-delegate-r7` | Agent G sub-tasks: voice on Gemini only, image/music/video refuse as `google_only` |
 
 Merging only the top PR carries the whole stack in one deploy. Merging them one at a time gives smaller steps to roll back.
 
@@ -140,7 +141,7 @@ These are still read by routes the stack keeps, so they stay until jobs from bef
 - `/api/health` and `/api/admin/flags` still print whether an AI Studio key is set; they should report Vertex readiness only.
 - Admin probes for outside vendors (Anthropic, OpenAI, Replicate, LTX, Udio, HeyGen) still exist; they should be removed.
 - `/api/ai/music` sends a sung request to Lyria without the vocals gate that `lyriaBed` applies.
-- ~~Agent G's delegate route still has vendor branches to sweep~~ Done in `claude/p1-12-agent-g-delegate-r7`: a voice sub-task reads with `/api/tts/gemini` only (no Voice Lab fallback, no vendor name in the error), and image, music and video sub-tasks refuse as `google_only` before any call.
+- ~~Agent G's delegate route still has vendor branches to sweep~~ Done in row 21: a voice sub-task reads with `/api/tts/gemini` only (no Voice Lab fallback, no vendor name in the error), and image, music and video sub-tasks refuse as `google_only` before any call.
 - The talking avatar's stored job result still labels its voice `elevenlabs` (`/api/genjutsu/status`); nothing reads the field, but it should say Cloud TTS.
 - `tests/agent-g-refine-avatar.spec.ts` (not in CI) fails before it reaches the avatar, on the base as well; it needs repair.
 - Dead vendor modules that route tests still mock as "never called" witnesses (Replicate, Flux, xAI, NanoBanana, World Labs, Replicate STT) wait for those tests to move onto the fetch spy.
