@@ -2,22 +2,23 @@
  * @jest-environment jsdom
  *
  * ResultCard — one tile from "asked for" to "on screen". What is pinned here is the contract a screenshot
- * cannot hold: the tile keeps the result's shape in every state, the percentage is honest (a real percent
- * wins, a guess stops at 92), cancel / retry / dismiss call back, and state changes — not percent ticks —
- * are announced.
+ * cannot hold: the tile keeps the result's shape in every state, the percentage is honest (the server's percent,
+ * or 0% and the last real value; never a guess paced to the clock, §3.3), cancel / retry / dismiss call back, and
+ * state changes — not percent ticks — are announced.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { ResultCard, resultPct, RESULT_HOLD_PCT } from './ResultCard';
+import { ResultCard, resultPct } from './ResultCard';
 
 describe('resultPct — honest progress', () => {
-  it('uses a real server percent when there is one', () => {
-    expect(resultPct({ state: 'rendering', pct: 12, elapsedSec: 500, capSec: 60 })).toBe(12);
+  it('uses the server percent, under 100', () => {
+    expect(resultPct({ state: 'rendering', pct: 12 })).toBe(12);
     expect(resultPct({ state: 'rendering', pct: 100 })).toBe(99); // 100 only when the media is here
   });
-  it('otherwise paces elapsed / cap and holds at 92 until the job is ready', () => {
-    expect(resultPct({ state: 'rendering', elapsedSec: 30, capSec: 100 })).toBe(30);
-    expect(resultPct({ state: 'rendering', elapsedSec: 999, capSec: 100 })).toBe(RESULT_HOLD_PCT);
-    expect(resultPct({ state: 'finalizing', elapsedSec: 10, capSec: 100 })).toBe(RESULT_HOLD_PCT);
+  it('with no percent it reads 0, rendering or finalizing (§3.3: no number paced to the clock)', () => {
+    expect(resultPct({ state: 'rendering' })).toBe(0);
+    expect(resultPct({ state: 'rendering', pct: null })).toBe(0);
+    expect(resultPct({ state: 'finalizing' })).toBe(0);
+    expect(resultPct({ state: 'rendering', pct: Number.NaN })).toBe(0);
   });
   it('queued is 0 and ready is 100', () => {
     expect(resultPct({ state: 'queued', pct: 40 })).toBe(0);
@@ -46,7 +47,7 @@ describe('ResultCard', () => {
   it('keeps the same shape when the media arrives, and offers open / download / use as reference', () => {
     const onOpen = jest.fn();
     const onUseAsRef = jest.fn();
-    const { container, rerender } = render(<ResultCard kind="image" aspect="4:5" state="rendering" locale="en" elapsedSec={5} capSec={50} />);
+    const { container, rerender } = render(<ResultCard kind="image" aspect="4:5" state="rendering" locale="en" />);
     const shapeBefore = (container.querySelector('[data-testid="result-card"] > div') as HTMLElement).style.aspectRatio;
     rerender(<ResultCard kind="image" aspect="4:5" state="ready" locale="en" media={{ type: 'image', url: 'https://x.test/a.png' }} onOpen={onOpen} onUseAsRef={onUseAsRef} />);
     const shapeAfter = (container.querySelector('[data-testid="result-card"] > div') as HTMLElement).style.aspectRatio;
@@ -91,11 +92,13 @@ describe('ResultCard', () => {
     expect(screen.getByTestId('result-card-caption').textContent).toBe('Video · 9:16 · 99%');
   });
 
-  it('holds a server percent that arrives below the time estimate already shown', () => {
-    const { rerender } = render(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" elapsedSec={30} capSec={60} />);
-    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 50%');
-    rerender(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" elapsedSec={31} capSec={60} pct={20} />);
-    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 50%');
+  it('reads 0% until the server reports, then keeps the last real value when the reports stop', () => {
+    const { rerender } = render(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 0%');
+    rerender(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" pct={20} />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 20%');
+    rerender(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 20%');
   });
 
   it('announces state changes politely, not every percent', () => {

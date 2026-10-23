@@ -142,13 +142,6 @@ const COPY = {
  * Showing those raw would be worse than showing nothing, so each is given a human sentence. An unknown
  * stage falls through to the raw name rather than to silence — a new leg should still be visible.
  */
-/** Each panel service's progress vocabulary and wall-clock pacing. */
-const PROGRESS_KIND = {
-  dubbing: 'dubbing',
-  presentation: 'presentation',
-  model3d: 'model3d',
-} as const;
-
 const STAGE_LABELS: Record<Lang, Record<string, string>> = {
   ka: {
     queued: 'რიგში…',
@@ -296,11 +289,6 @@ export function ServiceParamsPanel({
   // was already finished, and every one of those stages went to a row nobody was watching. The client
   // now NAMES the job up front and polls it, turning "Working…" into the leg actually running.
   const [stage, setStage] = useState<{ label: string; pct: number } | null>(null);
-  /**
-   * Seconds since Run was pressed. The progress card needs a real clock to pace its estimate against —
-   * these panels never tracked one, so they could not show a number at all.
-   */
-  const [elapsed, setElapsed] = useState(0);
   /** Short confirmation from a result action ("Saved", "Link copied"), cleared on the next run. */
   const [note, setNote] = useState<string | null>(null);
   // THE 3D SCENE (components/studio/scene). "Add to scene" is offered only while a scene is mounted to take it — the
@@ -313,11 +301,6 @@ export function ServiceParamsPanel({
   // current handler without taking it as a dependency.
   const onDeliveredRef = useRef(onDelivered);
   useEffect(() => { onDeliveredRef.current = onDelivered; }, [onDelivered]);
-  useEffect(() => {
-    if (!busy) { setElapsed(0); return; }
-    const id = window.setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [busy]);
 
   // Dubbing
   const [sourceVideoUrl, setSourceVideoUrl] = useState('');
@@ -816,11 +799,9 @@ export function ServiceParamsPanel({
               montage and dubbing "felt broken". `compact` fits the card inside the chat box with
               the loop as a small tile; the live percentage and the running stage are the whole
               point and stay (since Phase 2 they are all the card prints).
-              A server-reported pct/stage overrides the time estimate whenever the pipeline sends one. */}
+              The number and the stage are the pipeline's own; before its first percent the card reads 0 (§3.3). */}
           <GenerationProgress
-            kind={PROGRESS_KIND[service]}
             locale={lang}
-            elapsed={elapsed}
             compact
             {...(stage?.pct ? { pct: stage.pct } : {})}
             {...(stage ? { status: STAGE_LABELS[lang][stage.label] ?? stage.label } : {})}

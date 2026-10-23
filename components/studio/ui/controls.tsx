@@ -346,26 +346,26 @@ export function Note({ tone = 'info', children }: { tone?: NoteTone; children: R
  *
  *  · Never 100 while it runs (99 at most) and never back while it is on screen (useRisingPct). It is mounted only
  *    while the work runs, so the next run starts from 0.
- *  · Before the first percent (`pct` missing or 0) it prints the label alone, as an indeterminate progressbar. The
- *    loading loop beside it is what moves; this line does not animate.
+ *  · Before the first percent (`pct` missing or 0) it reads 0% with its label: §3.3 keeps the last real value or 0%
+ *    and a short waiting state, never a number paced to the clock. The loading loop beside it is what moves; this
+ *    line does not animate.
  */
 export function ProgressLine({ pct, label, ariaLabel, className }: { pct?: number | null; label?: ReactNode; ariaLabel?: string; className?: string }) {
   const shown = useRisingPct(typeof pct === 'number' ? pct : 0);
-  const known = shown > 0;
   const text = typeof label === 'string' ? label : undefined;
   return (
     <div
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}
-      {...(known ? { 'aria-valuenow': shown } : {})}
-      {...(text ? { 'aria-valuetext': known ? `${shown}% · ${text}` : text } : known ? { 'aria-valuetext': `${shown}%` } : {})}
+      aria-valuenow={shown}
+      aria-valuetext={text ? `${shown}% · ${text}` : `${shown}%`}
       {...(ariaLabel ? { 'aria-label': ariaLabel } : {})}
       data-testid="progress-line"
       className={cx('flex min-w-0 items-baseline justify-center gap-1.5 text-[12.5px] text-app-muted', className)}
     >
-      {known && <span className="shrink-0 text-[15px] font-semibold tabular-nums text-app-text" data-testid="progress-line-pct">{shown}%</span>}
-      {label != null && <span className="min-w-0 truncate">{known ? <>· {label}</> : label}</span>}
+      <span className="shrink-0 text-[15px] font-semibold tabular-nums text-app-text" data-testid="progress-line-pct">{shown}%</span>
+      {label != null && <span className="min-w-0 truncate">· {label}</span>}
     </div>
   );
 }

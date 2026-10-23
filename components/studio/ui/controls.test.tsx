@@ -97,11 +97,11 @@ describe('Create-screen options: tick marks and an accent thumb', () => {
 describe('ProgressLine: a number and a label, no bar (MASTER TASK v3.1 §3.3)', () => {
   const bar = () => screen.getByRole('progressbar');
 
-  it('before the first percent it is the label alone, an indeterminate progressbar', () => {
+  it('before the first percent it reads 0% with its label (§3.3: the last real value or 0%, never a clock)', () => {
     render(<ProgressLine label="Uploading…" />);
-    expect(bar().textContent).toBe('Uploading…');
-    expect(bar().hasAttribute('aria-valuenow')).toBe(false);
-    expect(bar().getAttribute('aria-valuetext')).toBe('Uploading…');
+    expect(bar().textContent).toBe('0%· Uploading…');
+    expect(bar().getAttribute('aria-valuenow')).toBe('0');
+    expect(bar().getAttribute('aria-valuetext')).toBe('0% · Uploading…');
   });
 
   it('prints «NN% · label» and reads it out the same way', () => {

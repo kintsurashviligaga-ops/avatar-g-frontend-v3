@@ -24,14 +24,13 @@ import { useJobQueue } from '@/store/useJobQueue';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { trackJobComplete, trackJobFail, trackJobUpdate } from '@/lib/jobs/trackJob';
 import { gelToCredits } from '@/lib/credits/pricing';
-import { easedPct } from '@/components/studio/ui/GenerationProgress';
 import { describeGenerationFailure } from '@/components/studio/ui/serviceError';
 import { INTERIOR_PANEL_DEFAULTS, interiorTemplate, roomOption } from '@/lib/studio/templates.interior';
 import { PHOTOSHOOT_PANEL_DEFAULTS, photoshootTemplate } from '@/lib/studio/templates.photoshoot';
 import { TOOL_META } from '@/lib/studio/tools';
 import type { AngleId, DofId, LensId, LightId, RoomId, ShootKind, StudioWire } from '@/lib/studio/shootWire';
 import {
-  PLAN_3D_CREDITS, SHOOT_BRIEF_MAX, SHOOT_MAX_PHOTOS, nearestAspect, shootCredits, shootTargetSec, shootTiles, walkthroughCredits,
+  PLAN_3D_CREDITS, SHOOT_BRIEF_MAX, SHOOT_MAX_PHOTOS, nearestAspect, shootCredits, shootTiles, walkthroughCredits,
   type ShootAspect, type ShootCount, type ShootQuality,
 } from '@/lib/studio/shootQuote';
 import { SHOOT_COPY, shootLang } from './copy';
@@ -219,13 +218,10 @@ export function useShootStudio(deps: ShootDeps) {
       run: async ({ signal, onProgress, jobId: id }) => {
         const startedAt = Date.now();
         patch({ status: 'rendering', jobId: id, startedAt });
-        trackJobUpdate(id, 'Rendering', 8);
-        onProgress({ pct: 8 });
-        const hb = window.setInterval(() => {
-          const p = easedPct(Math.round((Date.now() - startedAt) / 1000), shootTargetSec(run.quality));
-          onProgress({ pct: p });
-          trackJobUpdate(id, 'Rendering', p);
-        }, 6000);
+        // The image route reports no progress, so the tile holds 0% with its waiting label until the answer (§3.3: no
+        // clock-paced number).
+        trackJobUpdate(id, 'Rendering', 0);
+        onProgress({ pct: 0 });
         try {
           const res = await fetch('/api/nanobanana/image', {
             method: 'POST',
@@ -259,8 +255,6 @@ export function useShootStudio(deps: ShootDeps) {
           const aborted = signal.aborted || (e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message)));
           if (!aborted) fail(c.failed); // a dropped connection: the reason lands on the tile before the rejection escapes (a no-op if one is there)
           throw e;
-        } finally {
-          window.clearInterval(hb);
         }
       },
     });
@@ -351,7 +345,7 @@ export function useShootStudio(deps: ShootDeps) {
     const L = depsRef.current.locale;
     const c = SHOOT_COPY[shootLang(L)];
     const setPlan = (plan: ShootTile['plan']) => dispatch({ type: 'tile', runId, tileId, patch: { plan } });
-    setPlan({ status: 'running', pct: 5 });
+    setPlan({ status: 'running', pct: 0 });
     const wire = run.wire as { template?: string; room?: RoomId };
     const style = interiorTemplate(wire.template ?? null)?.label.en;
     const brief = [style ? `${style} style` : '', wire.room && wire.room !== 'auto' ? roomOption(wire.room)?.label.en : '', run.brief].filter(Boolean).join(', ');

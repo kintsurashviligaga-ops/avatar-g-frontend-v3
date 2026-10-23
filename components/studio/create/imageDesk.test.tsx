@@ -31,7 +31,7 @@ const ready = (id: string, url: string, prompt = 'a red fox'): ImageMsgLike[] =>
 function pane(over: Partial<React.ComponentProps<typeof ImageResultPane>> = {}) {
   const a = over.actions ?? actions();
   const view = render(
-    <ImageResultPane locale="en" results={[]} notice={null} aspect="1:1" elapsedSec={5} capSecFor={() => 75} actions={a} busy={false} upscaling={false} {...over} />,
+    <ImageResultPane locale="en" results={[]} notice={null} aspect="1:1" actions={a} busy={false} upscaling={false} {...over} />,
   );
   return { a, ...view };
 }
@@ -162,7 +162,7 @@ describe('ImageResultPane', () => {
     expect((screen.getByTestId('result-image') as HTMLImageElement).src).toBe('https://x/8.png');
     expect(screen.getByTestId('image-result-pane').textContent).toContain('prompt 8');
     // a new picture arrives → the latest is shown again
-    rerender(<ImageResultPane locale="en" results={results([...msgs, ...ready('r11', 'https://x/11.png', 'prompt 11')])} notice={null} aspect="1:1" elapsedSec={0} capSecFor={() => 75} actions={a} busy={false} upscaling={false} />);
+    rerender(<ImageResultPane locale="en" results={results([...msgs, ...ready('r11', 'https://x/11.png', 'prompt 11')])} notice={null} aspect="1:1" actions={a} busy={false} upscaling={false} />);
     expect((screen.getByTestId('result-image') as HTMLImageElement).src).toBe('https://x/11.png');
   });
 
@@ -216,7 +216,7 @@ describe('ImageModelsTable — Models & prices: the one Google row and its price
 
 describe('ImageDesk — the centre column', () => {
   const props = (over: Partial<React.ComponentProps<typeof ImageDesk>> = {}): React.ComponentProps<typeof ImageDesk> => ({
-    locale: 'en', results: [], notice: null, aspect: '1:1', elapsedSec: 0, capSecFor: () => 75,
+    locale: 'en', results: [], notice: null, aspect: '1:1',
     actions: actions(), busy: false, upscaling: false, conversation: <p data-testid="thread">the thread</p>, messageCount: 0, ...over,
   });
 

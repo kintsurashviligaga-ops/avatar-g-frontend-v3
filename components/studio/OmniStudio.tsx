@@ -17,7 +17,7 @@ import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
-import { PROGRESS_TARGET, fmtClock, easedPct, useRisingPct } from '@/components/studio/ui/GenerationProgress';
+import { fmtClock, useRisingPct } from '@/components/studio/ui/GenerationProgress';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
 import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
@@ -67,7 +67,7 @@ import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/type
 import { VideoCreatePanel } from './create/VideoCreatePanel';
 import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
-import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, narrationCueApplies, veoSpeaksTypedLine, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
+import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, narrationCueApplies, veoSpeaksTypedLine, videoQuote } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
 import { VIDEO_FPS, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, panelSecondsAfterBlock, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
 import { approvalForRender, inferOrigin, renderScriptsFor, snapshotRevision, type RenderApprovalWire, type StoryboardRevision } from '@/lib/video/storyboard/revision';
@@ -1163,19 +1163,6 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   /** A 3D result's model (our Storage, .glb) — kept as data, not only as the link in the text, so it survives a reload
    *  (leanMessages) and the chat model is told what was made (lib/chat/historySerializer). */
   glbUrl?: string }
-
-/**
- * Seconds a render of this tier is EXPECTED to take — the curve both the inline card and the durable
- * heartbeat are drawn against.
- *
- * ⚠️ THESE WERE MEASURED, NOT GUESSED, AND THE OLD 40s WAS WRONG. NanoBanana was observed still working
- * at 48 seconds, so a 40-second target pinned the bar at its 95% ceiling before the median image even
- * landed — which is exactly the "stuck at 93%" the user photographed. A target that is too SHORT does
- * not make the app feel fast, it makes the bar finish and then lie.
- */
-export function imgTargetFor(quality: string): number {
-  return quality === 'standard' ? 55 : quality === 'high' ? 75 : 215;
-}
 
 /** The jobs an Agent G card narrates itself (its run's own and each run step's): the tray leaves them to the card. */
 function cardJobsOf(m: Msg): string[] {
@@ -2505,8 +2492,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
   // render can be retried in one click without the user re-typing or re-uploading.
   const lastVideoReqRef = useRef<{ filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' } | null>(null);
-  // Live elapsed seconds during a generation — drives the progress clock + bar.
-  const [elapsed, setElapsed] = useState(0);
+  // When the current generation started: a foreground film stamps its log lines against it.
   const genStartRef = useRef(0);
   // FIX 4 — per-result video duration (read from the player) for the result-card badge.
   const [videoResultDur, setVideoResultDur] = useState<Record<number, number>>({});
@@ -3291,7 +3277,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
   // A generation is in flight via the Cap-3 QUEUE (image/music/product) when any job is rendering/queued.
   // The queue path never sets `busy`, so without this the inline loading card's clock/bar sat frozen and
-  // progress only showed in the floating corner tray. Reactive subscription → drives the elapsed clock.
+  // progress only showed in the floating corner tray. Reactive subscription: it marks the studio as working.
   const queueActiveNow = useJobQueue((s) => s.jobs.some((j) => j.status === 'rendering' || j.status === 'queued'));
 
   // <html data-studio-work> while anything here is in flight or a board is open: a new deploy's service worker then
@@ -3304,14 +3290,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return () => { delete root.dataset.studioWork; };
   }, [studioWorking]);
 
-  // Tick the elapsed clock while a generation OR the storyboard build is in flight
-  // (so the storyboard overlay can show a live % too, not just a spinner).
   useEffect(() => {
-    if (!busy && !storyboardBusy && !queueActiveNow) { setElapsed(0); return; }
-    genStartRef.current = Date.now();
-    setElapsed(0);
-    const id = setInterval(() => setElapsed(Math.max(0, Math.round((Date.now() - genStartRef.current) / 1000))), 500);
-    return () => clearInterval(id);
+    if (busy || storyboardBusy || queueActiveNow) genStartRef.current = Date.now();
   }, [busy, storyboardBusy, queueActiveNow]);
 
   // Auto-grow the composer textarea with its content (capped), like a modern chat.
@@ -5180,19 +5160,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // job was still QUEUED and run() never ran) replaces this bubble's spinner. See trackJobSettle.
       onSettle: (job) => trackJobSettle(job, bubbleId),
       run: async ({ signal, onProgress, jobId }) => {
-        // ⚠️ THE DURABLE ROW WAS WRITTEN ONCE AND NEVER AGAIN, so another device's tray read "queued 0%"
-        // for the entire render while this device's card climbed to 93%. One job, two surfaces, two
-        // different stories. The heartbeat below publishes the SAME eased number the inline card draws,
-        // so every device — and a reload — sees one value.
-        const startedAt = Date.now();
-        const tickPct = () => easedPct(Math.round((Date.now() - startedAt) / 1000), imgTargetFor(spec.quality));
-        trackJobUpdate(jobId, 'Rendering', 8);
-        onProgress({ pct: 8 });
-        const hb = window.setInterval(() => {
-          const p = tickPct();
-          onProgress({ pct: p });
-          trackJobUpdate(jobId, 'Rendering', p);
-        }, 6000);
+        // One value on every device: the durable row says Rendering at 0, as this card does. The image route
+        // reports no percent, so neither surface invents one (§3.3); the old heartbeat published a clock-paced
+        // guess every 6 s.
+        trackJobUpdate(jobId, 'Rendering', 0);
+        onProgress({ pct: 0 });
         // ⚠️ AND THE FETCH HAD NO DEADLINE AT ALL. The only signal was the queue's AbortController, which
         // nothing but a user cancel ever fires — so a wedged socket (a phone changing network, iOS
         // backgrounding the tab) left the promise pending forever, the job never settled, and the card
@@ -5214,7 +5186,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const aborted = signal.aborted || (e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message)));
           if (!aborted) updateBubble(bubbleId, { text: `⚠️ ${t.imageFailed}` });
           throw e;
-        }).finally(() => { window.clearInterval(hb); });
+        });
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
@@ -5282,8 +5254,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (job.status !== 'done') updateTile(tileIdx, { status: 'failed', jobId: job.id, error: job.status === 'canceled' ? undefined : (job.error ?? undefined) });
         },
         run: async ({ signal, onProgress, jobId }) => {
-          trackJobUpdate(jobId, 'Rendering', 8);
-          onProgress({ pct: 8 });
+          trackJobUpdate(jobId, 'Rendering', 0);
+          onProgress({ pct: 0 });
           // Stamp the tile with its durable jobId so a mid-render reload can reconcile it against
           // the DB (restore a completed tile from signed_url, or clear the phantom spinner).
           updateTile(tileIdx, { status: 'pending', jobId });
@@ -5437,8 +5409,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // updateBubble, and a queued-then-canceled job never runs at all. Settle patches the bubble.
       onSettle: (job) => trackJobSettle(job, bubbleId),
       run: async ({ signal, onProgress, jobId }) => {
-        trackJobUpdate(jobId, 'Composing', 10);
-        onProgress({ pct: 10 });
+        trackJobUpdate(jobId, 'Composing', 0);
+        onProgress({ pct: 0 });
         // Cover / voice: host the attached track first so the request body stays tiny.
         const uploadedAudioUrl = m.audioRef ? await uploadBigFile(m.audioRef, m.audioMime || 'audio/mpeg') : undefined;
         const isVoiceClone = !!uploadedAudioUrl && m.audioMode === 'voice' && !m.useTrained;
@@ -9934,8 +9906,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           aspect={m.batch!.spec.aspect}
                           locale={locale}
                           state={tile.status === 'done' && tile.url ? 'ready' : tile.status === 'failed' ? 'error' : 'rendering'}
-                          elapsedSec={elapsed}
-                          capSec={m.batch!.spec.quality === 'standard' ? 55 : m.batch!.spec.quality === 'high' ? 75 : 215}
                           media={tile.status === 'done' && tile.url ? { type: 'image', url: tile.url } : undefined}
                           error={tile.error}
                           onOpen={tile.url ? () => setLightbox(tile.url!) : undefined}
@@ -10180,8 +10150,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         aspect={ORIENT_ASPECT[m.orientation ?? videoOrientation]}
                         state="rendering"
                         locale={locale}
-                        elapsedSec={elapsed}
-                        capSec={PROGRESS_TARGET.video}
                         stage={m.text}
                         onCancel={() => cancelBubbleJob(m)}
                       />
@@ -10192,16 +10160,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   // isInflightVideo also opens the second (mode/storyboard) gate so a queued film
                   // bubble in chat mode without a storyboard still shows the console.
                   if ((pending || isInflightVideo || isInflightGen) && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0 || isInflightVideo || isInflightGen)) {
-                    // Pace the image's number to the chosen resolution (1K ≈ 40s · 2K ≈
-                    // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
-                    //
-                    // ⚠️ THE 2K FIGURE WAS FIVE TIMES TOO LONG. 170s came from the original per-tier
-                    // measurement, but 'high' later became the DEFAULT tier and the newer live timing
-                    // recorded in this same file is ~33s. At target=170 a 2K image that lands in 33s
-                    // showed "37% · remaining ~2:17" and then simply appeared — the estimate was
-                    // decoration, and a number that is wrong by 5x on the default path is worse than no
-                    // number at all, because it is what teaches users to ignore every figure we show.
-                    const imgTarget = imgQuality === 'standard' ? 55 : imgQuality === 'high' ? 75 : 215;
                     // Prefer the kind stamped on the message at render-start (intrinsic),
                     // so a mid-render mode switch can't swap the wrong progress UI in.
                     const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
@@ -10213,10 +10171,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     const cardAspect = kind === 'video' ? ORIENT_ASPECT[m.orientation ?? videoOrientation]
                       : kind === 'image' ? (m.regen?.kind === 'image' ? m.regen.aspect : imgAspect)
                       : kind === 'lipsync' ? lipFormat : '1:1';
-                    // A real percent when the pipeline reports one (the film poll's videoProgress); otherwise the
-                    // card paces elapsed against the same measured caps the old card used, and holds at 92.
-                    const cardCap = kind === 'video' ? videoWaitSecs(videoDuration)
-                      : kind === 'image' ? imgTarget : PROGRESS_TARGET[kind];
+                    // The film poll's own percent (videoProgress). Image, music and avatar report none, so their card
+                    // reads 0 until the result (§3.3: no number paced to the clock; it was 5x off on the default image tier).
                     const cardPct = kind === 'video' && typeof m.videoProgress === 'number' ? m.videoProgress : undefined;
                     return (
                       // Explicit vertical stack — the storyboard grid sits ABOVE the
@@ -10240,8 +10196,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           state={typeof cardPct === 'number' && cardPct >= 96 ? 'finalizing' : 'rendering'}
                           locale={locale}
                           pct={cardPct}
-                          elapsedSec={elapsed}
-                          capSec={cardCap}
                           stage={m.text}
                           poster={m.storyboard?.find((s) => s.frameUrl)?.frameUrl ?? null}
                           // This bubble's own job — its queue job when it has one, else the foreground render.
@@ -10718,7 +10672,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to
@@ -11696,7 +11650,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       <VideoStage
         locale={locale}
         latest={doneMsg?.videoUrl ? { url: doneMsg.videoUrl, aspect: ORIENT_ASPECT[doneMsg.orientation ?? videoOrientation] as string, ...(asked ? { prompt: asked } : {}) } : null}
-        progress={doingMsg ? { aspect: ORIENT_ASPECT[doingMsg.orientation ?? videoOrientation] as string, ...(typeof doingMsg.videoProgress === 'number' ? { pct: doingMsg.videoProgress } : {}), stage: doingMsg.text, elapsedSec: elapsed, capSec: videoWaitSecs(videoDuration) } : null}
+        progress={doingMsg ? { aspect: ORIENT_ASPECT[doingMsg.orientation ?? videoOrientation] as string, ...(typeof doingMsg.videoProgress === 'number' ? { pct: doingMsg.videoProgress } : {}), stage: doingMsg.text } : null}
         tier={veoPlan.tier}
         mode={videoMode}
         seconds={videoDuration}
@@ -11904,8 +11858,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             results={imageDeskResults}
             notice={latestNotice(messages, imageDeskResults)}
             aspect={imgAspect}
-            elapsedSec={elapsed}
-            capSecFor={imgTargetFor}
             actions={imageDeskActions}
             busy={busy}
             upscaling={upscaling}
@@ -12668,10 +12620,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <div className="flex items-center justify-between gap-2 px-4 py-3">
               <div className="min-w-0">
                 <h2 className="text-[15px] font-semibold tracking-tight text-app-text">🎬 {t.sbTitle}</h2>
-                {/* A percent and a short label (§3.3), paced to the real ~150 s storyboard build and held under 100. */}
+                {/* A percent and a short label (§3.3). The build reports no progress until its frames arrive (the board
+                    counts those), so this reads 0 rather than a number paced to the clock. */}
                 <p className="flex items-center gap-1.5 text-[12px] text-app-accent" data-testid="storyboard-building-progress"
-                  role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={easedPct(elapsed, 150)} aria-valuetext={`${easedPct(elapsed, 150)}% · ${t.sbCreating}`}>
-                  <span className="font-semibold tabular-nums text-app-text">{easedPct(elapsed, 150)}%</span>
+                  role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0} aria-valuetext={`0% · ${t.sbCreating}`}>
+                  <span className="font-semibold tabular-nums text-app-text">0%</span>
                   <span>· {t.sbCreating}</span>
                 </p>
               </div>
