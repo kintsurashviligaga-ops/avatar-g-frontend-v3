@@ -90,11 +90,10 @@ export async function POST(req: NextRequest) {
 
   // ⚠️ THERE IS DELIBERATELY NO EARLY RETURN ON A MISSING NANOBANANA KEY.
   //
-  // Nothing here reads the key. lib/nanobanana/client.ts re-reads NANOBANANA_API_KEY and throws; that throw is
-  // caught below like any other NanoBanana miss and answered by the 502 provider_unavailable path, with the
-  // reserved credit returned. (The early return was first removed so the Grok → FLUX fallback legs could run on a
-  // dead key; those legs are gone under PROJECT_MASTER R7 — see the breaker below — so a missing or rotated key is
-  // now simply an explicit, refunded failure.)
+  // Nothing here reads the key: the render is Google's image model on Vertex (lib/ai/geminiImage, below), and the
+  // NanoBanana reseller client is deleted (PR 20). A Vertex miss is answered by the 502 provider_unavailable path,
+  // with the reserved credit returned. (The early return was first removed so the Grok → FLUX fallback legs could
+  // run on a dead key; those legs are gone under PROJECT_MASTER R7 too.)
 
   // ── PRE-RENDER RESERVE STATE (TOCTOU fix) ────────────────────────────────────
   // The credit is now DEBITED before the provider call (inside the try, once the tray jobId

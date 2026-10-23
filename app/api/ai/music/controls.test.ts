@@ -4,8 +4,8 @@
  * Male / Duet) and the Weirdness / Style influence sliders.
  *
  * Pinned at what each engine receives and at the response: the styles become one line, the sliders become sentences in
- * the brief AFTER the translation (approximate on Lyria — `controls.mode` 'prompt'), real sampling parameters on
- * MusicGen ('native'), and Udio's native fields only behind MUSIC_SUNO_PARAMS; `controls.applied` is true only when a
+ * the brief AFTER the translation (approximate on Lyria — `controls.mode` 'prompt'), and Udio's native fields only behind
+ * MUSIC_SUNO_PARAMS (MusicGen's Replicate client is gone, PR 20); `controls.applied` is true only when a
  * slider actually reached the engine; an untouched panel composes exactly the brief it always did; the in-flight mutex
  * keys on the controls. Every provider, the ledger, storage and the idempotency store are mocked, and the failover mock
  * runs whatever it is handed in order (the route now hands it ONE engine — R7) — no network, no spend.
@@ -22,7 +22,6 @@ jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: j
 jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ response: null, auth: null, budgetRemaining: null })) }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/ai/replicate', () => ({ generateMusicCover: jest.fn(), generateVoiceSong: jest.fn(), generateMusic: jest.fn() }));
 jest.mock('../../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
 jest.mock('../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(), generateLyriaTrack: jest.fn() }));
 jest.mock('../../../../lib/chat/mediaKeys', () => ({ hasUdioApiKey: jest.fn() }));
@@ -62,7 +61,6 @@ jest.mock('../../../../lib/audio/trackDuration', () => ({ probeTrackDurationSec:
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { generateLyriaTrack, hasLyriaProvider } from '../../../../lib/ai/lyriaMusic';
-import { generateMusic } from '../../../../lib/ai/replicate';
 import { generateUdioTrack } from '../../../../lib/udio/client';
 import { hasUdioApiKey } from '../../../../lib/chat/mediaKeys';
 import { hashPayload } from '../../../../lib/orchestrator/idempotency';
@@ -220,12 +218,12 @@ describe('native engines — reached only by an explicit pick now (Auto is Lyria
     (hasUdioApiKey as jest.Mock).mockReturnValue(true);
     (generateLyriaTrack as jest.Mock).mockResolvedValue(null); // Lyria answered with no audio
     (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
-    (generateMusic as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/track.mp3' });
     const res = await POST(post({ ...PANEL, instrumental: true }));
     expect(res.status).toBe(502);
     expect(await res.json()).toMatchObject({ success: false, refunded: true });
     expect(generateLyriaTrack).toHaveBeenCalledTimes(1);
     expect(generateUdioTrack).not.toHaveBeenCalled();
-    expect(generateMusic).not.toHaveBeenCalled();
+    // MusicGen's client is gone (PR 20): the network spy is what would catch a call to Replicate.
+    expect(jest.mocked(fetch).mock.calls.filter(([u]) => /replicate\.com/.test(String(u)))).toEqual([]);
   });
 });

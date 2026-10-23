@@ -152,7 +152,7 @@ const IMAGE: CatalogueEntry[] = [
     caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
     // ⚠️ EXACTLY THE ROUTE'S OLD QUALITY_ENDPOINT — a request without `model` must render what it always rendered.
     wire: { runner: 'image', endpoints: { standard: 'v2-1k', high: 'v2-2k', ultra: 'pro-4k' } },
-    verified: 'code', source: 'app/api/nanobanana/image (QUALITY_ENDPOINT) · lib/nanobanana/client.ts',
+    verified: 'code', source: 'app/api/nanobanana/image (QUALITY_ENDPOINT) · lib/ai/geminiImage',
   },
   {
     id: 'nb/v2', service: 'image', provider: 'nanobanana', vendor: 'Google',
@@ -161,7 +161,7 @@ const IMAGE: CatalogueEntry[] = [
     tier: 'fast',
     caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
     wire: { runner: 'image', endpoints: { standard: 'v2-1k', high: 'v2-2k', ultra: 'v2-4k' } },
-    verified: 'code', source: 'lib/nanobanana/client.ts (generate-2 · 1K / 2K / 4K)',
+    verified: 'code', source: 'lib/nanobanana/endpoints (v2-1k / v2-2k / v2-4k) · lib/ai/geminiImage',
   },
   {
     id: 'nb/pro', service: 'image', provider: 'nanobanana', vendor: 'Google',
@@ -169,9 +169,9 @@ const IMAGE: CatalogueEntry[] = [
     bestFor: t('მაქსიმალური დეტალი, 2K და 4K. უფრო ნელი.', 'Maximum detail at 2K and 4K. Slower.', 'Максимум деталей в 2K и 4K. Медленнее.'),
     tier: 'pro',
     caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
-    // No 1K: the Pro endpoint's smallest size renders 2K (lib/nanobanana/client extractResolution: pro-1k2k → '2K').
+    // No 1K: the Pro endpoint's smallest size rendered 2K on the reseller (pro-1k2k → '2K'; its client is gone, PR 20).
     wire: { runner: 'image', endpoints: { high: 'pro-1k2k', ultra: 'pro-4k' } },
-    verified: 'code', source: 'lib/nanobanana/client.ts (generate-pro · 2K / 4K)',
+    verified: 'code', source: 'lib/nanobanana/endpoints (pro-1k2k / pro-4k) · lib/ai/geminiImage',
   },
   {
     id: 'hf/soul-2', service: 'image', provider: 'higgsfield', vendor: 'Higgsfield',

@@ -30,9 +30,7 @@ jest.mock('openai', () => ({
   default: function OpenAI() { return { chat: { completions: { create: mockOpenAiChat } }, audio: { speech: { create: mockOpenAiSpeech } } }; },
 }));
 jest.mock('../../../lib/gemini/client', () => ({ generateWithGemini: jest.fn() }));
-jest.mock('../../../lib/nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
-jest.mock('../../../lib/worldlabs/client', () => ({ generateWorldLabsInterior: jest.fn() }));
 jest.mock('../../../lib/chat/filmVoiceover', () => ({ textToHostedSpeech: jest.fn() }));
 jest.mock('../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
 jest.mock('../../../lib/ai/lipsync', () => ({ lipsyncCreate: jest.fn(), lipsyncFetch: jest.fn() }));

@@ -11,7 +11,8 @@
  *   · an attached photo does not smuggle a generation past the gate via the multimodal (Gemini vision) branch;
  *   · a signed-in user is not refused, and FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo deployment;
  *   · plain text chat is not a generation and is not gated.
- * Every provider module is mocked; nothing here can reach the network.
+ * Every provider module is mocked; nothing here can reach the network. The World Labs and NanoBanana clients are gone
+ * (PR 20), so the network spy is what would catch a call to them.
  */
 jest.mock('server-only', () => ({}));
 
@@ -37,8 +38,6 @@ jest.mock('../orchestrator/ledger', () => ({
 jest.mock('../gemini/client', () => ({ generateWithGemini: jest.fn(async () => ({ text: 'hi there', model: 'gemini-test' })) }));
 jest.mock('@anthropic-ai/sdk', () => jest.fn().mockImplementation(() => ({ messages: { create: jest.fn() } })));
 jest.mock('../udio/client', () => ({ startUdioGeneration: jest.fn(), getUdioGenerationStatus: jest.fn() }));
-jest.mock('../worldlabs/client', () => ({ generateWorldLabsInterior: jest.fn() }));
-jest.mock('../nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../replicate/client', () => ({ createPrediction: jest.fn(), pollUntilDone: jest.fn(), pollPrediction: jest.fn() }));
 jest.mock('../monetization/audit-engine', () => ({
   isFounderAuditCommand: jest.fn(() => false),
@@ -58,7 +57,6 @@ import { hasSufficientBalance } from '../orchestrator/ledger';
 import { generateWithGemini } from '../gemini/client';
 import { startUdioGeneration } from '../udio/client';
 import { createPrediction } from '../replicate/client';
-import { generateWorldLabsInterior } from '../worldlabs/client';
 import { signInToGenerateMessage } from '../auth/generationGate';
 
 const { __sm: sm } = jest.requireMock('./ServiceManager') as { __sm: { execute: jest.Mock; poll: jest.Mock } };
@@ -121,7 +119,6 @@ function expectNoProviderReached(): void {
   expect(handleMusicVideoComposite).not.toHaveBeenCalled();
   expect(startUdioGeneration).not.toHaveBeenCalled();
   expect(createPrediction).not.toHaveBeenCalled();
-  expect(generateWorldLabsInterior).not.toHaveBeenCalled();
   expect(hasSufficientBalance).not.toHaveBeenCalled();
   expect(fetchSpy).not.toHaveBeenCalled();
 }

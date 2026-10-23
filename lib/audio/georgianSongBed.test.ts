@@ -3,7 +3,8 @@
  * The Georgian song's instrumental bed runs ONE engine (the owner, 2026-10-09: no silent fallback to another outside
  * provider): Lyria on Vertex when it is configured (ElevenLabs Music left in PR 6), and its miss is a miss, never a
  * MusicGen (Replicate) render. Without Lyria there is no bed at all: MusicGen has no Google engine (MASTER TASK v3.1),
- * whatever MEDIA_GOOGLE_ONLY says.
+ * whatever MEDIA_GOOGLE_ONLY says. MusicGen's Replicate client is gone (PR 20), so the network spy is what would catch a
+ * call to it.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('ffmpeg-static', () => null);
@@ -15,8 +16,6 @@ jest.mock('../ai/lyriaMusic', () => ({
   generateLyriaTrack: (...a: unknown[]) => generateLyriaTrack(...a),
   hasLyriaProvider: () => hasLyriaProvider(),
 }));
-const generateMusic = jest.fn();
-jest.mock('../ai/replicate', () => ({ generateMusic: (...a: unknown[]) => generateMusic(...a) }));
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => 'https://x.supabase.co/bed.mp3') }));
 const generateWithGemini = jest.fn();
 jest.mock('../gemini/client', () => ({ generateWithGemini: (...a: unknown[]) => generateWithGemini(...a) }));
@@ -24,13 +23,20 @@ jest.mock('../ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: s
 
 import { instrumentalBed, instrumentalPrompt, writeGeorgianLyrics, cleanGeorgianLyrics } from './georgianSong';
 
-beforeEach(() => jest.clearAllMocks());
+let fetchSpy: jest.SpyInstance;
+/** Any request that reached Replicate (MusicGen) — the spy refuses it, so a call shows up here. */
+const replicateCalls = () => fetchSpy.mock.calls.filter(([u]) => /replicate\.com/.test(String(u)));
+beforeEach(() => {
+  jest.clearAllMocks();
+  fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
+});
+afterEach(() => fetchSpy.mockRestore());
 
 it('Lyria configured and it misses → null, and MusicGen is never called', async () => {
   hasLyriaProvider.mockReturnValue(true);
   generateLyriaTrack.mockResolvedValue(null);
   await expect(instrumentalBed('funk', 30)).resolves.toBeNull();
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
 });
 
 it('Lyria configured and it lands → its hosted bed: an instrumental on the clip model', async () => {
@@ -38,7 +44,7 @@ it('Lyria configured and it lands → its hosted bed: an instrumental on the cli
   generateLyriaTrack.mockResolvedValue({ base64: 'AQ==', mime: 'audio/mpeg' });
   await expect(instrumentalBed('funk', 30)).resolves.toBe('https://x.supabase.co/bed.mp3');
   expect(generateLyriaTrack).toHaveBeenCalledWith(expect.objectContaining({ instrumental: true, model: 'lyria-3-clip-preview' }));
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
 });
 
 it.each([{}, { MEDIA_GOOGLE_ONLY: '0' }, { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' }])(
@@ -48,9 +54,8 @@ it.each([{}, { MEDIA_GOOGLE_ONLY: '0' }, { MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_E
     Object.assign(process.env, env);
     try {
       hasLyriaProvider.mockReturnValue(false);
-      generateMusic.mockResolvedValue({ audioUrl: 'https://replicate.delivery/x.mp3' });
       await expect(instrumentalBed('funk', 30)).resolves.toBeNull();
-      expect(generateMusic).not.toHaveBeenCalled();
+      expect(replicateCalls()).toEqual([]);
     } finally {
       process.env = saved;
     }

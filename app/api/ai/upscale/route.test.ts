@@ -5,12 +5,12 @@
  * ⚠️ It has no Google engine, so every request is refused with 503 google_only before the session, the limits, Replicate
  * or storage, whatever MEDIA_GOOGLE_ONLY says (MASTER TASK v3.1). The sign-in gate and the per-account ceiling it used
  * to pin went with the code.
- * Every collaborator the route used to call is mocked so any call is caught — no network, no spend.
+ * Every collaborator the route used to call is mocked so any call is caught — no network, no spend. The Replicate client
+ * itself is gone (PR 20), so the network spy is what would catch a call to it.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn() }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(), checkRateLimitByKey: jest.fn() }));
-jest.mock('../../../../lib/ai/replicate', () => ({ upscaleImage: jest.fn() }));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedAsset: jest.fn() }));
 
@@ -18,7 +18,6 @@ import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey } from '../../../../lib/api/rate-limit';
-import { upscaleImage } from '../../../../lib/ai/replicate';
 import { uploadAndSign } from '../../../../lib/orchestrator/storage-adapter';
 import { recordCompletedAsset } from '../../../../lib/orchestrator/jobs';
 
@@ -56,7 +55,6 @@ describe.each([
     expect(authedClientFromRequest).not.toHaveBeenCalled();
     expect(checkRateLimit).not.toHaveBeenCalled();
     expect(checkRateLimitByKey).not.toHaveBeenCalled();
-    expect(upscaleImage).not.toHaveBeenCalled();
     expect(uploadAndSign).not.toHaveBeenCalled();
     expect(recordCompletedAsset).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();

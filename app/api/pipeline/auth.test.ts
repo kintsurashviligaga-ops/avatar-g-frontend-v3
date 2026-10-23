@@ -20,9 +20,7 @@ jest.mock('@anthropic-ai/sdk', () => {
 });
 jest.mock('openai', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('../../../lib/gemini/client', () => ({ generateWithGemini: jest.fn(async () => ({ text: 'gemini text', model: 'gemini-2.5-pro' })) }));
-jest.mock('../../../lib/nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
-jest.mock('../../../lib/worldlabs/client', () => ({ generateWorldLabsInterior: jest.fn() }));
 jest.mock('../../../lib/chat/filmVoiceover', () => ({ textToHostedSpeech: jest.fn() }));
 jest.mock('../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
 jest.mock('../../../lib/ai/lipsync', () => ({ lipsyncCreate: jest.fn(), lipsyncFetch: jest.fn() }));

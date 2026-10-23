@@ -3,7 +3,8 @@
  * ServiceManager's image legs: GOOGLE ONLY (MASTER TASK v3.1, audit F-04). The cascade was Imagen → FLUX → NanoBanana →
  * FLUX → Grok; a chat image now runs on Imagen (prompt-only, when enabled) or Google's own image model
  * (lib/ai/geminiImage), whatever was configured or picked and whatever MEDIA_GOOGLE_ONLY says. Every engine is mocked —
- * no network, no spend — so a regression shows up as a call to an engine that must not run.
+ * no network, no spend — so a regression shows up as a call to an engine that must not run. The NanoBanana and Grok
+ * clients are gone (PR 20): a call to either would have to reach the network, which the spy below refuses and records.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../ai/geminiImagen', () => ({
@@ -13,8 +14,6 @@ jest.mock('../ai/geminiImagen', () => ({
 }));
 jest.mock('../ai/geminiImage', () => ({ generateGeminiImage: jest.fn() }));
 jest.mock('../ai/google/transport', () => ({ ...jest.requireActual('../ai/google/transport'), googleTransportBlocker: jest.fn(() => null) }));
-jest.mock('../nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
-jest.mock('../ai/xaiImage', () => ({ generateGrokImage: jest.fn(), hasXaiApiKey: jest.fn(() => true) }));
 jest.mock('../replicate/client', () => ({ createPrediction: jest.fn(), pollPrediction: jest.fn() }));
 jest.mock('../orchestrator/storage-adapter', () => ({
   uploadAndSign: jest.fn(async () => 'https://x.supabase.co/storage/v1/object/sign/renders/gemini.png?token=t'),
@@ -33,16 +32,12 @@ import { ServiceManager, type ServiceManagerRequest } from './ServiceManager';
 import { generateImagenImages, hasGeminiImagenProvider } from '../ai/geminiImagen';
 import { generateGeminiImage } from '../ai/geminiImage';
 import { googleTransportBlocker } from '../ai/google/transport';
-import { generateNanoBananaImage } from '../nanobanana/client';
-import { generateGrokImage } from '../ai/xaiImage';
 import { createPrediction } from '../replicate/client';
 
 const imagenOn = hasGeminiImagenProvider as jest.Mock;
 const imagen = generateImagenImages as jest.Mock;
 const gemini = generateGeminiImage as jest.Mock;
 const blocker = googleTransportBlocker as jest.Mock;
-const nano = generateNanoBananaImage as jest.Mock;
-const grok = generateGrokImage as jest.Mock;
 const flux = createPrediction as jest.Mock;
 
 const req = (over: Partial<ServiceManagerRequest> = {}): ServiceManagerRequest => ({
@@ -59,9 +54,12 @@ const req = (over: Partial<ServiceManagerRequest> = {}): ServiceManagerRequest =
 const GEMINI_OK = { base64: 'aW1n', mimeType: 'image/png', model: 'gemini-3.1-flash-image' };
 
 const ENV = { ...process.env };
+/** Any request that reached NanoBanana or xAI (Grok) — the spy refuses it, so a call shows up here. */
+const resellerCalls = () => jest.mocked(fetch).mock.calls.filter(([u]) => /nanobananaapi\.ai|api\.x\.ai/.test(String(u)));
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
   delete process.env.IMAGE_PRIMARY_PROVIDER;
   delete process.env.MEDIA_GOOGLE_ONLY;
   delete process.env.OUTSIDE_ENGINES_APPROVED;
@@ -69,12 +67,14 @@ beforeEach(() => {
   blocker.mockReturnValue(null);
   gemini.mockResolvedValue(GEMINI_OK);
 });
-afterEach(() => { process.env = { ...ENV }; });
+afterEach(() => {
+  jest.restoreAllMocks();
+  process.env = { ...ENV };
+});
 
 function expectNoOutsideEngine(): void {
   expect(flux).not.toHaveBeenCalled();
-  expect(nano).not.toHaveBeenCalled();
-  expect(grok).not.toHaveBeenCalled();
+  expect(resellerCalls()).toEqual([]);
 }
 
 describe('no outside engine runs, whatever is configured, picked or set', () => {

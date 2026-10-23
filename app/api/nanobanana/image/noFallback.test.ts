@@ -6,7 +6,8 @@
  * ⚠️ A NanoBanana miss used to cascade to Grok (xAI) and then FLUX 1.1 Pro (Replicate), and MEDIA_GOOGLE_ONLY=0 put NanoBanana
  * itself back in front. Pinned here: Google image renders under every env value, a throw or an empty answer ends on the
  * explicit 502 provider_unavailable with the reserved credit returned, and NanoBanana, Grok and FLUX are never called. Their
- * mocks are primed to SUCCEED, so a reinstated leg would turn every 502 below into a 200.
+ * clients are gone (PR 20), so a reinstated leg would have to reach the network, and the network spy refuses and records
+ * every request.
  * Every provider, the ledger and the idempotency store are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
@@ -23,14 +24,7 @@ jest.mock('../../../../lib/api/guard', () => ({
 }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/nanobanana/client', () => ({
-  generateNanoBananaImage: jest.fn(async () => ({ url: 'https://provider.example/out.jpg', text: 'ok', credits: 12 })),
-}));
-jest.mock('../../../../lib/ai/xaiImage', () => ({
-  generateGrokImage: jest.fn(async () => ({ url: 'https://grok.example/out.png', b64: null, model: 'grok-2-image' })),
-}));
 jest.mock('../../../../lib/ai/geminiImage', () => ({ generateGeminiImage: jest.fn(), geminiFrameModel: jest.fn(() => 'gemini-3.1-flash-image') }));
-jest.mock('../../../../lib/ai/fluxImage', () => ({ generateFluxProImage: jest.fn(async () => 'https://flux.example/out.png') }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedAsset: jest.fn() }));
@@ -48,9 +42,6 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { generateNanoBananaImage } from '../../../../lib/nanobanana/client';
-import { generateGrokImage } from '../../../../lib/ai/xaiImage';
-import { generateFluxProImage } from '../../../../lib/ai/fluxImage';
 import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
 import { uploadAndSign } from '../../../../lib/orchestrator/storage-adapter';
 import { releaseIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
@@ -81,11 +72,9 @@ afterEach(() => {
   process.env = { ...ENV };
 });
 
-/** No engine but Google's was asked. */
+/** No engine but Google's was asked: NanoBanana, Grok and FLUX could only be reached over the network now. */
 function expectNoOtherEngine() {
-  expect(generateNanoBananaImage).not.toHaveBeenCalled();
-  expect(generateGrokImage).not.toHaveBeenCalled();
-  expect(generateFluxProImage).not.toHaveBeenCalled();
+  expect(fetchSpy).not.toHaveBeenCalled();
 }
 
 /** The one failure exit: 502 provider_unavailable, the reserved credit returned, nothing re-hosted, no other engine. */

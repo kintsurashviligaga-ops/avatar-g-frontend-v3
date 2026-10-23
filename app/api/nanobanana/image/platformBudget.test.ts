@@ -16,12 +16,7 @@ jest.mock('../../../../lib/api/guard', () => ({
 }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
-jest.mock('../../../../lib/ai/xaiImage', () => ({
-  generateGrokImage: jest.fn(async () => ({ url: 'https://grok.example/out.png', b64: null, model: 'grok-2-image' })),
-}));
 jest.mock('../../../../lib/ai/geminiImage', () => ({ generateGeminiImage: jest.fn(), geminiFrameModel: jest.fn(() => 'gemini-3.1-flash-image') }));
-jest.mock('../../../../lib/ai/fluxImage', () => ({ generateFluxProImage: jest.fn(async () => 'https://flux.example/out.png') }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedAsset: jest.fn() }));
