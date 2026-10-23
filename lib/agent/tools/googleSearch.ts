@@ -6,8 +6,8 @@ import 'server-only';
  *
  * One grounded Gemini turn per query: the model runs Google Search itself (the `google_search` tool, the same
  * one product chat uses) and writes a short factual answer; the grounding chunks become the result list. The
- * returned shape is Tavily's (`{ answer, results[] }`, lib/ai/webSearch.ts), so the agent's protocol and the
- * Agent Terminal's rendering do not change with the provider.
+ * returned shape is the one Tavily's used to be (`{ answer, results[] }`; the Tavily client is gone, PR 26), so the
+ * agent's protocol and the Agent Terminal's rendering did not change with the provider.
  *
  * Why not keep Tavily: every model and search leg must be Google (lib/ai/google/policy.ts, always on under v3.1),
  * and TAVILY_API_KEY was a second vendor whose outage silently turned the tool into "search unavailable".
@@ -26,7 +26,9 @@ import { safetySettingsFor } from '@/lib/agents/profile';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
 import type { ChatErrorCode } from '@/lib/chat/sse';
-import type { WebSearchResult } from '@/lib/ai/webSearch';
+
+/** One web_search result, in the shape the agent protocol and the Agent Terminal read. */
+export type WebSearchResult = { title: string; url: string; content: string };
 
 /** Well inside the coordinator's 45 s per-tool ceiling, so a hung search is a clean error observation. */
 export const GROUNDED_SEARCH_TIMEOUT_MS = 25_000;

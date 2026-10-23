@@ -7,7 +7,6 @@
 jest.mock('server-only', () => ({}));
 jest.mock('../../ai/llmText', () => ({ llmText: jest.fn() }));
 jest.mock('./googleSearch', () => ({ groundedWebSearch: jest.fn() }));
-jest.mock('../../ai/webSearch', () => ({ webSearch: jest.fn() }));
 
 import { z } from 'zod';
 import { LIVE_TOOL_SPECS } from '../react/bindLiveAgent';

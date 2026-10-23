@@ -326,7 +326,7 @@ export async function POST(req: NextRequest) {
         const v = validateAdImageMeta({ contentType: mt?.[1] ?? '', sizeBytes: base64ByteLength(b64) });
         if (!v.ok) { await refundCharge('bad-image'); return NextResponse.json({ url: null, error: v.error }, { status: /too large/i.test(v.error) ? 413 : 415 }); }
       }
-      // klingI2v/Replicate accepts a data:image URL directly; an https path is re-signed.
+      // Veo accepts a data:image URL directly; an https path is re-signed.
       const startImgRaw = /^data:image\//i.test(img) ? img : await resolveMedia(img, remixUid);
       // STEP 2.6 — pre-fit a product image to the target aspect so Kling i2v (output ratio =
       // start-image ratio) renders NATIVE 9:16, not a square that later needs letterboxing.
@@ -367,12 +367,12 @@ export async function POST(req: NextRequest) {
         if (!budget.ok) { await refundCharge('over-budget'); return NextResponse.json({ url: null, error: budget.message, topUpNeeded: true }, { status: 402 }); }
       }
       const motion = sceneIdx >= 0 ? `${scenes[sceneIdx % scenes.length]}, ${style}` : `the product as the hero, ${style}`;
-      // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
+      // Veo i2v first; the free local Ken-Burns pan when Veo misses.
       const adPrompt = `${motion}, the product stays sharp and centered, photorealistic, 4k`;
       // ⚠️ VEO IS NOW THE PRIMARY ENGINE ON THIS SURFACE. It was never a capability gap — Veo does i2v
       // at 4–8s, which covers an ad clip — it was a WIRING gap: Veo was reachable only from
       // ServiceManager, which this route never touches. lib/ai/veoClipSync closes that, with the same
-      // image+prompt+aspect → URL|null contract as klingI2v so it drops straight into the chain.
+      // image+prompt+aspect → URL|null contract the removed Kling leg had, so it drops straight into the chain.
       //
       // A Veo miss is a Veo miss (MASTER TASK v3.1: the Kling leg that used to sit below it is gone, whatever
       // VIDEO_GOOGLE_ONLY says): no Replicate/Kling call, and the chain falls straight to the LOCAL ffmpeg Ken Burns

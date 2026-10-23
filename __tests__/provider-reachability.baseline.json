@@ -14,38 +14,16 @@
       "openai"
     ],
     "app/api/agent-g/webhook/whatsapp/route.ts": [
-      "nanobananaapi",
-      "replicate"
-    ],
-    "app/api/agent/approvals/route.ts": [
-      "replicate"
+      "nanobananaapi"
     ],
     "app/api/agent/media/analyze/route.ts": [
-      "nanobananaapi",
-      "replicate"
-    ],
-    "app/api/agent/media/audio/route.ts": [
-      "replicate"
-    ],
-    "app/api/agent/media/edit/route.ts": [
-      "replicate"
-    ],
-    "app/api/agent/media/montage/route.ts": [
-      "replicate"
+      "nanobananaapi"
     ],
     "app/api/agent/media/sweep/route.ts": [
-      "nanobananaapi",
-      "replicate"
+      "nanobananaapi"
     ],
     "app/api/agent/run/route.ts": [
-      "nanobananaapi",
-      "replicate"
-    ],
-    "app/api/agent/video-queue/drain/route.ts": [
-      "replicate"
-    ],
-    "app/api/agent/video-queue/route.ts": [
-      "replicate"
+      "nanobananaapi"
     ],
     "app/api/app/health/route.ts": [
       "anthropic",
@@ -60,8 +38,7 @@
     ],
     "app/api/calls/bridge/[op]/route.ts": [
       "gemini_developer_api",
-      "nanobananaapi",
-      "replicate"
+      "nanobananaapi"
     ],
     "app/api/chat/orchestrate/route.ts": [
       "heygen",
@@ -145,8 +122,7 @@
       "higgsfield"
     ],
     "app/api/genjutsu/status/route.ts": [
-      "higgsfield",
-      "replicate"
+      "higgsfield"
     ],
     "app/api/heygen/avatar/route.ts": [
       "heygen"
@@ -187,24 +163,6 @@
     "app/api/motion-control/status/route.ts": [
       "replicate"
     ],
-    "app/api/music/studio/edit/route.ts": [
-      "replicate"
-    ],
-    "app/api/music/studio/jobs/[id]/cancel/route.ts": [
-      "replicate"
-    ],
-    "app/api/music/studio/jobs/[id]/route.ts": [
-      "replicate"
-    ],
-    "app/api/music/studio/jobs/route.ts": [
-      "replicate"
-    ],
-    "app/api/music/studio/quote/route.ts": [
-      "replicate"
-    ],
-    "app/api/music/studio/sweep/route.ts": [
-      "replicate"
-    ],
     "app/api/pipeline/remix/route.ts": [
       "heygen",
       "kling",
@@ -235,13 +193,9 @@
       "gemini_developer_api"
     ],
     "app/api/tasks/route.ts": [
-      "nanobananaapi",
-      "replicate"
+      "nanobananaapi"
     ],
     "app/api/v2/model3d/status/route.ts": [
-      "replicate"
-    ],
-    "app/api/v2/montage/render/route.ts": [
       "replicate"
     ],
     "app/api/video/assemble/route.ts": [
@@ -277,8 +231,7 @@
       "higgsfield"
     ],
     "app/api/webhooks/whatsapp/route.ts": [
-      "nanobananaapi",
-      "replicate"
+      "nanobananaapi"
     ]
   }
 }

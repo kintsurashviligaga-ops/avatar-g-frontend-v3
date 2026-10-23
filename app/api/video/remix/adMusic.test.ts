@@ -20,8 +20,8 @@ jest.mock('../../../../lib/api/rate-limit', () => ({
 jest.mock('../../../../lib/video/trimClip', () => ({ trimClip: jest.fn() }));
 jest.mock('../../../../lib/video/remixOps', () => ({
   muxAudioOntoVideo: jest.fn(async () => 'https://storage.example/scored.mp4'),
-  extractFrame: jest.fn(), kenBurnsClip: jest.fn(), klingI2v: jest.fn(), colorGrade: jest.fn(), changeSpeed: jest.fn(),
-  changeSpeedRamp: jest.fn(), stabilizeClip: jest.fn(), addWatermark: jest.fn(), roopFaceSwapVideo: jest.fn(),
+  extractFrame: jest.fn(), kenBurnsClip: jest.fn(), colorGrade: jest.fn(), changeSpeed: jest.fn(),
+  changeSpeedRamp: jest.fn(), stabilizeClip: jest.fn(), addWatermark: jest.fn(),
   fitImageToAspect: jest.fn(async (i: string) => i), fitAspect: jest.fn(),
 }));
 jest.mock('../../../../lib/ai/veoClipSync', () => ({
