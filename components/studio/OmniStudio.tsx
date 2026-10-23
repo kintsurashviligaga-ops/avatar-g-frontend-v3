@@ -91,7 +91,6 @@ import { serializeHistory } from '@/lib/chat/historySerializer';
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
-const MotionControlPanel = dynamic(() => import('./MotionControlPanel').then((m) => m.MotionControlPanel), { ssr: false, loading: () => <div className="h-24" /> });
 // VFX (Genjutsu): three.js-free, loaded only when the VFX tool opens; the skeleton is the panel's first-paint height.
 const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
@@ -2216,7 +2215,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // OLD photo instead of animating the frame just sent. Entering a mode lands on its main tool; selectTool sets the
     // sub-tool AFTER this in the same batch, so the product / swap / motion choices still win.
     if (m === 'video') setVideoTab('cinema');
-    if (m === 'lipsync') setLipTab('avatar');
   }, []);
   const setPanelService = useCallback((svc: PanelService | null) => {
     setPanelServiceRaw(svc);
@@ -2615,8 +2613,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   useEffect(() => { if (mode === 'chat' || mode === 'lipsync') void readVeoAvatarDoor(); }, [mode, readVeoAvatarDoor]);
   /** What one avatar costs on screen: Veo's price where its door is open, else the avatar tool's own. */
   const avatarCredits = veoAvatarDoor?.open ? veoAvatarDoor.credits : quoteCredits({ tool: 'avatar' });
-  // Lip-sync mode sub-tab: 'avatar' (talking photo) vs 'motion' (Kling Motion Control).
-  const [lipTab, setLipTab] = useState<'avatar' | 'motion'>('avatar');
   // The whole film's join in the stitch (mirrors the Veo panel's "between scenes" choice; per-scene joins ride in the
   // Veo plan). A hard cut by default: every soft join overlaps the clips by ~1 s, so a crossfaded 24 s film came
   // back 22 s long.
@@ -3311,12 +3307,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
   // ── THE ACTIVE TOOL (docs/DESIGN.md §8) ─────────────────────────────────────────────────────────────────
   // Not new state: derived from what the studio already has — the mode, the video tab (cinema · product ·
-  // swap), the avatar tab (avatar · motion), the studio panel, the editor. One id for every surface that names
+  // swap), the studio panel, the editor. One id for every surface that names
   // it: the sidebar's „სერვისები", the composer's „+" sheet and chip, and the settings' service card.
   const activeTool: ToolId = mode === 'surgical' ? 'montage'
     : panelService ? panelService
       : mode === 'video' ? (videoTab === 'product' ? 'product' : videoTab === 'videoswap' ? 'swap' : videoTab === 'vfx' ? 'vfx' : 'video')
-        : mode === 'lipsync' ? (lipTab === 'motion' ? 'motion' : 'avatar')
+        : mode === 'lipsync' ? 'avatar'
           : mode;
   /**
    * PURE CHAT (Gemini): no settings column, no settings toggle, the model switcher in the header, the chat composer.
@@ -3372,8 +3368,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'product': setMode('video'); setVideoTab('product'); break;
       case 'swap': setMode('video'); setVideoTab('videoswap'); break;
       case 'vfx': setMode('video'); setVideoTab('vfx'); break;
-      case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
-      case 'motion': setMode('lipsync'); setLipTab('motion'); break;
+      case 'avatar': setMode('lipsync'); break;
+      // MOTION TRANSFER IS HIDDEN (Phase 2 PR 7, GG's plan of 2026-10-23): its panel ran Kling through Replicate, which
+      // MASTER TASK v3.1 withdraws, so it only ever showed a form the server refused. No menu, link or Agent G route names
+      // it any more (lib/catalog/services `video.motion` is hidden); a stray call opens nothing.
+      case 'motion': break;
       case 'montage': setPanelService(null); setEditorAsset(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setEditorMode('video'); setMode('surgical'); break;
       case 'dubbing': case 'model3d': case 'presentation': case 'interior': case 'photoshoot': setStudioPrefill(undefined); setPanelService(id); break;
       // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
@@ -7195,7 +7194,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (agentRoute.kind === 'open') {
         applyToolRef.current?.(agentRoute.tool);
         trackServiceOpened(agentRoute.service.id, 'agent-g', agentRoute.tool);
-        keepWords = agentRoute.tool === 'product' || agentRoute.tool === 'swap' || agentRoute.tool === 'vfx' || agentRoute.tool === 'remix' || agentRoute.tool === 'motion';
+        keepWords = agentRoute.tool === 'product' || agentRoute.tool === 'swap' || agentRoute.tool === 'vfx' || agentRoute.tool === 'remix';
         const head = en ? `Opened **${label}**.` : ru ? `Открыл **${label}**.` : `გავხსენი **${label}**.`;
         const files = attachments.length
           ? (en ? ' Your attached file is still in the composer — pick it in the panel to use it.'
@@ -8183,14 +8182,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /**
    * ONE Run for every tool (AI Studio's grammar: the composer runs, the panel configures). Product ad, character
    * swap and remix used to be reachable ONLY through a Generate button at the foot of their panel — composer Send
-   * silently built a cinema storyboard on the product tab, and in remix mode it went to plain chat. Motion keeps its
-   * own button inside MotionControlPanel (its state is private to that component); the composer opens it instead.
+   * silently built a cinema storyboard on the product tab, and in remix mode it went to plain chat.
    */
   const remixNeedsText = (['captions', 'voiceover', 'restyle', 'character'] as string[]).includes(remixOp) || (remixOp === 'redub' && !remixTrack);
   const canRun = activeTool === 'product' ? !!productImage
     : activeTool === 'swap' ? !!swapSourceVideo && !!videoCharacterRef
       : activeTool === 'remix' ? !!remixVideo && !remixBusy && !busy && (!remixNeedsText || !!input.trim()) && !(remixOp === 'music' && !remixTrack)
-        : activeTool === 'motion' || activeTool === 'vfx' || shootActive || mode === 'surgical' ? false
+        : activeTool === 'vfx' || shootActive || mode === 'surgical' ? false
           : canSend;
   const runTool = (explicitFlag?: boolean, surface: ServiceSurface = 'composer') => {
     if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
@@ -8216,7 +8214,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       stopDictationEcho();
       return;
     }
-    if (activeTool === 'motion' || activeTool === 'vfx' || shootActive) { openSettings(); return; }
+    if (activeTool === 'vfx' || shootActive) { openSettings(); return; }
     // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
     // §50: an explicit press is the confirmation; a plain send may still stop at Agent G's card (confirmGate reports that one).
     if (explicitFlag === true) trackGenerationConfirmed(serviceForTool(activeTool, { videoMode }), surface);
@@ -8809,7 +8807,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     : activeTool === 'product' ? (locale === 'en' ? 'A tagline (optional) — the product photo goes in with „+“' : locale === 'ru' ? 'Слоган (необязательно) — фото товара через „+“' : 'სლოგანი (არასავალდებულო) — პროდუქტის ფოტო „+“-ით')
       : activeTool === 'swap' ? (locale === 'en' ? 'Add the video and the new face with „+“' : locale === 'ru' ? 'Добавьте видео и новое лицо через „+“' : 'დაამატე ვიდეო და ახალი სახე „+“-ით')
         : activeTool === 'vfx' ? (locale === 'en' ? 'VFX runs from its settings — pick an effect there' : locale === 'ru' ? 'VFX запускается в настройках — выберите эффект там' : 'VFX პარამეტრებიდან იწყება — ეფექტი იქ აირჩიე')
-        : activeTool === 'motion' ? (locale === 'en' ? 'Motion runs from its settings' : locale === 'ru' ? 'Движение запускается в настройках' : 'მოძრაობა პარამეტრებიდან იწყება')
           : shootActive ? (locale === 'en' ? 'It runs from the settings panel' : locale === 'ru' ? 'Запускается из панели настроек' : 'იწყება პარამეტრების პანელიდან')
           : activeTool === 'remix' ? (
             remixOp === 'restyle' ? (locale === 'en' ? 'New look (e.g. cinematic, anime, vintage)…' : locale === 'ru' ? 'Новый стиль (кино, аниме, винтаж)…' : 'ახალი სტილი (კინო, ანიმე, ვინტაჟი)…')
@@ -10792,7 +10789,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // An image request needs every attachment to be an image; a PDF or audio would turn it into chat.
             : activeTool === 'image' ? { onAttach: () => photoRef.current?.click(), attachHint: hint('ფოტოები ან კამერა', 'Photos or the camera', 'Фото или камера') }
           : activeTool === 'remix' ? { onAttach: () => remixVideoRef.current?.click(), attachHint: hint('ვიდეო', 'A video', 'Видео') }
-            : activeTool === 'motion' || activeTool === 'vfx' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
+            : activeTool === 'vfx' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
               // The Interior designer / Photographer read their OWN photos (the panel's upload card), not the composer's attachments.
               : shootActive ? { onAttach: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'photos' })), attachHint: hint('ფოტოები ან კამერა', 'Photos or the camera', 'Фото или камера') }
               : { onAttach: () => fileRef.current?.click() };
@@ -11004,9 +11001,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* LIPSYNC — dedicated card panel: character photo (+ hint) · voice */}
         {mode === 'lipsync' && (
           <div className="mb-2 space-y-2">
-            {lipTab === 'motion' ? (
-              <MotionControlPanel locale={locale} onVideoGenerated={(url) => setMessages((prev) => [...prev, { role: 'assistant', text: '', videoUrl: url, orientation: 'vertical' }])} />
-            ) : (<>
+            <>
             {(() => {
               const face = attachments.find((a) => isImage(a.mimeType) || isVideo(a.mimeType));
               const presetSrc = !face ? lipPreset : null; // a chosen preset stands in as the face
@@ -11114,7 +11109,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
               );
             })()}
-            </>)}
+            </>
           </div>
         )}
 
@@ -12487,12 +12482,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {canRun && !composerRunAside && (
                   chatOnly ? (
                     // Gemini's send: a filled circle with an up-arrow — the one accent-filled control in the chat.
-                    <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
+                    <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel} data-primary="send"
                       className={`${chatRound} ml-0.5 bg-app-accent text-app-bg hover:opacity-90`}>
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
+                    <button type="button" onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend" data-primary="send"
                       className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
                       {composerQuote ? (
                         <>

@@ -15,7 +15,6 @@ describe('routeAgentIntent — chat requests for a panel tool open that tool', (
     ['redesign my living room in scandinavian style', 'image.interior', 'interior'],
     ['ჩემი ოთახის ინტერიერი გადააკეთე', 'image.interior', 'interior'],
     ['сделай фотосессию из моих фото', 'image.photoshoot', 'photoshoot'],
-    ['use motion transfer on my photo', 'video.motion', 'motion'],
   ])('%s → %s', (text, id, tool) => {
     expect(open(text)).toEqual([id, tool]);
   });
@@ -26,6 +25,13 @@ describe('routeAgentIntent — a service that is not there yet is said, never su
     for (const t of ['remix this video with captions', 'ეს ვიდეო დამირემიქსე', 'сделай ремикс видео']) {
       const r = routeAgentIntent(t);
       expect(r?.kind === 'open' ? r.tool : null).not.toBe('remix');
+    }
+  });
+  it('a motion-transfer request opens no panel: Motion is hidden (Phase 2 PR 7)', () => {
+    for (const t of ['use motion transfer on my photo', 'მოძრაობის გადატანა გამიკეთე', 'сделай перенос движения']) {
+      const r = routeAgentIntent(t);
+      expect(r?.kind === 'open' ? r.tool : null).not.toBe('motion');
+      expect(r?.service.id).not.toBe('video.motion');
     }
   });
   it('„მუსიკა დამირემიქსე" is an AUDIO remix: unavailable, offers music generation, never the video remix', () => {
