@@ -29,7 +29,7 @@ import { createHash } from 'node:crypto';
 import type { VeoSubmissionEvidence } from './submissionJournal';
 import {
   createVeoClip, deliverableUrl, isGoogleOnly, pollVeoClip, transportOf, VEO_DEVELOPER_API_OPERATION, VEO_DEVELOPER_API_REFUSED,
-  veoTransport, type CreateVeoClipInput,
+  veoModelProblem, veoTransport, type CreateVeoClipInput,
 } from './engine';
 import { signedReadUrl, uploadVeoInput, veoOutputPrefix, VeoGcsError } from './gcs';
 import { getVertexAccessToken, vertexConfig, vertexConfigProblems } from './vertexAuth';
@@ -269,16 +269,18 @@ describe('createVeoClip — Vertex', () => {
     expect(refs.every((r) => r.referenceType === 'asset')).toBe(true);
   });
 
-  it('the tier picks the model, and env overrides apply', async () => {
+  it('the tier picks the model, and an override naming another verified Vertex row applies', async () => {
     routeFetch({ vertex: () => Promise.resolve(json(200, { name: VERTEX_OP.replace(VERTEX_MODEL, 'veo-3.1-fast-generate-001') })) });
     const fast = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }, { tier: 'fast' }));
     expect(fast.model).toBe('veo-3.1-fast-generate-001');
     expect(calls()[0]?.[0]).toContain('/models/veo-3.1-fast-generate-001:predictLongRunning');
 
     fetchMock.mockClear();
-    process.env.VEO_MODEL_STANDARD = 'veo-3.2-generate-001';
-    routeFetch({ vertex: () => Promise.resolve(json(200, { name: VERTEX_OP.replace(VERTEX_MODEL, 'veo-3.2-generate-001') })) });
-    expect((await createVeoClip(input({ prompt: 'x', aspect: '16:9' }))).model).toBe('veo-3.2-generate-001');
+    process.env.VEO_MODEL_STANDARD = 'veo-3.1-fast-generate-001';
+    const pinned = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
+    expect(pinned.outcome.ok).toBe(true);
+    expect(pinned.model).toBe('veo-3.1-fast-generate-001');
+    expect(pinned.request.tier).toBe('fast'); // the id decides what renders
   });
 
   it('request.tier is used when no tier is given', async () => {
@@ -355,6 +357,79 @@ describe('createVeoClip — Vertex', () => {
     const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
     expect(res.outcome).toMatchObject({ ok: false, reason: 'unavailable', retryable: true, status: 503 });
     expect(callsTo(VERTEX_SUBMIT)).toHaveLength(1);
+  });
+});
+
+// ── only a verified Vertex row renders (MASTER TASK v3.1) ───────────────────────────────────────────────────────
+
+describe('createVeoClip — a model without a verified Vertex row, or another region, is refused before any I/O', () => {
+  const reserve = jest.fn();
+  const journal = jest.fn(async () => true);
+  beforeEach(() => {
+    useVertex();
+    routeFetch();
+    process.env.VEO_DAILY_LIMIT_USD = '50';
+    reserve.mockReset();
+    journal.mockClear();
+    const store: VeoSpendStore = { exists: async () => false, seed: async () => false, reserve, release: async () => 0, read: async () => 0 };
+    setVeoCapDepsForTests({ store, ledger: async () => 0, now: () => new Date('2026-10-15T12:00:00Z') });
+  });
+  afterEach(() => setVeoCapDepsForTests());
+
+  const expectNothingHappened = () => {
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(tokenMock).not.toHaveBeenCalled();
+    expect(uploadMock).not.toHaveBeenCalled();
+    expect(prefixMock).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(journal).not.toHaveBeenCalled();
+  };
+
+  it.each([
+    ['an unverified veo-3.2 id', 'veo-3.2-generate-001', /^veo-3\.2-generate-001 is not a verified Vertex Veo model \(verified: veo-3\.1-generate-001, /],
+    ['an unverified veo-9 id', 'veo-9-generate-001', /^veo-9-generate-001 is not a verified Vertex Veo model/],
+    ['a Gemini Developer API -preview id', 'veo-3.1-generate-preview', /^veo-3\.1-generate-preview is a Gemini Developer API model id; new clips render on Vertex AI only$/],
+  ])('%s set by VEO_MODEL_STANDARD → not_configured, nothing reserved, uploaded, journalled or sent', async (_label, id, detail) => {
+    process.env.VEO_MODEL_STANDARD = id;
+    const res = await createVeoClip(input(
+      { prompt: 'Hero walks through the market', aspect: '16:9', startImage: { kind: 'url', url: IMG_URL } },
+      { submissionJournal: journal },
+    ));
+    const o = failed(res.outcome);
+    expect(o).toMatchObject({ reason: 'not_configured', retryable: false });
+    expect(o.detail).toMatch(detail);
+    expect(res.model).toBe(id);
+    expect(res.transport).toBe('vertex');
+    expectNothingHappened();
+    expect(warnSpy.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(new RegExp(`model=${id.replace(/\./g, '\\.')} .*→ not_configured retryable=false`));
+  });
+
+  it('a refused lite override does not touch the other tiers', async () => {
+    process.env.VEO_MODEL_LITE = 'veo-3.2-lite-generate-001';
+    expect(failed((await createVeoClip(input({ prompt: 'x', aspect: '16:9' }, { tier: 'lite' }))).outcome).reason).toBe('not_configured');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await createVeoClip(input({ prompt: 'x', aspect: '16:9' }, { tier: 'fast' }))).outcome.ok).toBe(true);
+    expect(callsTo('https://us-central1-aiplatform.googleapis.com/')).toHaveLength(1);
+  });
+
+  it('a GCP_VEO_LOCATION the row does not list is refused the same way', async () => {
+    vertexConfigMock.mockReturnValue({ ...CFG, location: 'europe-west4' });
+    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }, { submissionJournal: journal }));
+    expect(failed(res.outcome)).toMatchObject({
+      reason: 'not_configured', retryable: false, detail: 'veo-3.1-generate-001 is not served from europe-west4 (only us-central1)',
+    });
+    expectNothingHappened();
+  });
+
+  it('veoModelProblem answers per tier from the resolved model and the configured location', () => {
+    expect(veoModelProblem('standard')).toBeNull();
+    expect(veoModelProblem('lite')).toBeNull();
+    process.env.VEO_MODEL_FAST = 'veo-3.1-fast-generate-preview';
+    expect(veoModelProblem('fast')).toMatch(/Gemini Developer API model id/);
+    vertexConfigMock.mockReturnValue({ ...CFG, location: 'asia-east1' });
+    expect(veoModelProblem('standard')).toBe('veo-3.1-generate-001 is not served from asia-east1 (only us-central1)');
+    vertexConfigMock.mockReturnValue(null);
+    expect(veoModelProblem('standard')).toBeNull(); // no config: veoTransport() is the one that says so
   });
 });
 

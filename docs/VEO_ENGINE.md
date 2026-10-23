@@ -87,8 +87,9 @@ Veo failure — surfaced honestly and refunded by the existing per-leg rollback 
 | `GEMINI_TRANSPORT` | the non-Veo Google model calls (`lib/ai/google/transport`): unset / `gemini_api` = the API key (today), `vertex` = the same project + Workload Identity as above, no bucket; anything else fails closed. Not covered: Deep Research (Interactions API, Gemini API only), Live, Imagen, health probes |
 | `GCP_GEMINI_LOCATION` | Gemini on Vertex, default `global` (Gemini 3.x, `gemini-3.1-flash-image`, Lyria 3 answered there in the Part 0 T2 test) |
 | `GCP_PREDICT_LOCATION` | Vertex `:predict` models (memory embeddings `gemini-embedding-001`), default `us-central1` |
-| `VEO_MODEL_STANDARD` / `VEO_MODEL_FAST` / `VEO_MODEL_LITE` | override model ids (the -001 ids list retirement "November 17, 2026 or later") |
-| `GEMINI_VEO_MODEL`, `GEMINI_VEO_RESOLUTION`, `GEMINI_VEO_ENABLED` | Gemini-API transport (unchanged) |
+| `VEO_MODEL_STANDARD` / `VEO_MODEL_FAST` / `VEO_MODEL_LITE` | override model ids (the -001 ids list retirement "November 17, 2026 or later"). MASTER TASK v3.1: only an id with a verified Vertex row in `lib/veo/capabilities` renders; a `-preview` id or an id with no row (veo-3.2, veo-9) is refused before any call, so a successor needs its row first |
+| `GCP_VEO_LOCATION` | default `us-central1`; a location the model's Vertex row does not list is refused before any call |
+| `GEMINI_VEO_MODEL`, `GEMINI_VEO_RESOLUTION`, `GEMINI_VEO_ENABLED` | the Gemini-API transport, which no longer submits (v3.1); historical operations only |
 | `VEO_NATIVE_CAMERA_CONTROL` | `1` sends Vertex `cameraControl` with a first frame |
 | `VEO_VERTEX_PERSON_GENERATION` | default `allow_adult` |
 | `VIDEO_GOOGLE_ONLY` | default on |
@@ -125,6 +126,10 @@ All modules import types from `lib/veo/types.ts`. Server-only modules never log 
   transport and tier `standard`, `GEMINI_VEO_MODEL` keeps working; defaults per §1. Unknown ids resolve to the
   capability profile of their tier.
 - `capsFor(modelId)`.
+- `veoModelRefusal(modelId, location?)` — null only for a catalogued Vertex row (and a location its row lists); otherwise
+  the reason. `createVeoClip` and `submitVertexVeo` both refuse on it before any reserve, upload, token or POST (v3.1).
+- `vertexVariant(tier)` — the Vertex row a tier renders from, which the studio's controls and `GET /api/video/engine`
+  `tiers` are built from (references, last frame, audio toggle, resolutions, lengths).
 - `nativeAspectFor(format: OutputFormat): VeoAspect` — 9:16→9:16, 16:9→16:9, 4:5→9:16, 1:1→16:9.
 - `framingHintFor(format: OutputFormat): string | null` — for 1:1 / 4:5 an English clause asking to keep the subject
   centred with safe margins for a square / 4:5 crop; null for native formats.

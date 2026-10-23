@@ -78,6 +78,14 @@ test('Veo ids match lib/veo/capabilities per transport, and none is verified bef
   }
 });
 
+test('the Gemini Developer API Veo ids are disabled: no new clip renders on them (MASTER TASK v3.1)', () => {
+  for (const id of Object.values(DEFAULT_MODEL_IDS.gemini)) {
+    expect(catalogEntry(id)?.enabled).toBe(false);
+    expect(resolveModelPreference(MODEL_CATALOG, id)).toEqual({ ok: false, reason: 'disabled' });
+  }
+  for (const id of Object.values(DEFAULT_MODEL_IDS.vertex)) expect(catalogEntry(id)?.enabled).toBe(true);
+});
+
 test('verifiedAt is dated evidence: not after updatedAt, and the notes say where it was recorded', () => {
   for (const e of MODEL_CATALOG.entries.filter((x) => x.verifiedAt)) {
     expect(Date.parse(e.verifiedAt!)).toBeLessThanOrEqual(Date.parse(MODEL_CATALOG.updatedAt));

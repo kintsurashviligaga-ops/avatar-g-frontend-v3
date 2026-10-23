@@ -18,7 +18,7 @@
  */
 import { useEffect, useState } from 'react';
 import { CAMERA_ANGLES, CAMERA_MOVES, LENS_LOOKS, SHOT_SIZES, type CinematographyOption } from '@/lib/veo/cinematography';
-import type { CameraSpec, Transition } from '@/lib/veo/types';
+import type { CameraSpec, Transition, VeoTier } from '@/lib/veo/types';
 import { hasCustomCamera, planNotices, type VeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
 import { clipSecForSeconds } from '@/lib/video/duration';
 import { Chip, Disclosure, Hint, Note, Select, TextArea, ToggleRow } from '../ui/controls';
@@ -32,6 +32,8 @@ export interface VeoEngineInfo {
   audioToggle: boolean;
   enhancePrompt: boolean;
   nativeCameraControl: boolean;
+  /** Per tier, from the Vertex row it renders on. Absent from an older server: every tier then reads as available. */
+  tiers?: Partial<Record<VeoTier, { available: boolean; referenceImages: number; audioToggle: boolean }>>;
 }
 
 /** Read once per mount; null until it answers (the panel then assumes the Gemini API — the stricter contract). */

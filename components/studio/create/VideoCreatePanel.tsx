@@ -160,7 +160,8 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
     if (status && storedIsStudio && !hf) setStoredModel(videoModelForTier(plan.tier).id);
   }, [status, storedIsStudio, hf, plan.tier, setStoredModel]);
   const hfName = hf ? hf.label[catalogueLang(locale)] : undefined;
-  const audioToggle = p.engine?.audioToggle ?? false;
+  // The tier's own Vertex row (GET /api/video/engine `tiers`); an older server only says it per transport.
+  const audioToggle = p.engine?.tiers?.[tier]?.audioToggle ?? p.engine?.audioToggle ?? false;
   const soundOn = plan.nativeAudio || !audioToggle;
   const hfHints = useMemo(() => ({ aspect: format, seconds, sound: soundOn }), [format, seconds, soundOn]);
   const croppedNotes = planNotices({ ...plan, format }, { audioToggle }).filter((n) => n.id === 'cropped').map((n) => n[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka']);
@@ -181,7 +182,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
 
       <div data-testid="video-settings" className={`${CARD} divide-y divide-app-border/10 py-1`}>
         <VideoSettingRow label={vc(VIDEO_COPY.quality, locale)}>
-          <VideoQualitySelect locale={locale} tier={tier} mode={mode} seconds={seconds} otherName={hfName}
+          <VideoQualitySelect locale={locale} tier={tier} mode={mode} seconds={seconds} otherName={hfName} tiers={p.engine?.tiers}
             onTier={(t) => { if (hf) setStoredModel(videoModelForTier(t).id); dispatch({ type: 'tier', tier: t }); }}
             onOtherModels={() => setSheet('model')} />
         </VideoSettingRow>

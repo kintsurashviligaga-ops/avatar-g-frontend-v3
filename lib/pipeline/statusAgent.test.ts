@@ -111,7 +111,29 @@ describe('the video row names the engine that renders film clips', () => {
     setEnv({ ...SECRETS, ...VERTEX_ENV });
     const video = row(await checkPipelineHealth(), 'ვიდეო (Clips)');
     expect(video.provider).toBe('Veo 3.1 (Vertex AI)');
+    expect(video.available).toBe(true);
     expect(video.note).toMatch(/veo-3\.1-fast-generate-001/);
+    expect(video.note).not.toMatch(/refused/);
+  });
+
+  it('a default-tier model with no verified Vertex row is unavailable, and the row says why (v3.1)', async () => {
+    setEnv({ ...SECRETS, ...VERTEX_ENV, VEO_MODEL_FAST: 'veo-3.2-fast-generate-001' });
+    const video = row(await checkPipelineHealth(), 'ვიდეო (Clips)');
+    expect(video.available).toBe(false);
+    expect(video.tier).toBe('unavailable');
+    expect(video.note).toMatch(/^veo-3\.2-fast-generate-001 is not a verified Vertex Veo model .* refused before any call: fast$/);
+  });
+
+  it('another tier refused (a -preview id, or GCP_VEO_LOCATION) is named while the default still renders', async () => {
+    setEnv({ ...SECRETS, ...VERTEX_ENV, VEO_MODEL_LITE: 'veo-3.1-lite-generate-preview' });
+    const video = row(await checkPipelineHealth(), 'ვიდეო (Clips)');
+    expect(video.available).toBe(true);
+    expect(video.note).toMatch(/veo-3\.1-fast-generate-001 .* · refused before any call: lite$/);
+
+    setEnv({ ...SECRETS, ...VERTEX_ENV, GCP_VEO_LOCATION: 'europe-west4' });
+    const moved = row(await checkPipelineHealth(), 'ვიდეო (Clips)');
+    expect(moved.available).toBe(false);
+    expect(moved.note).toMatch(/not served from europe-west4 \(only us-central1\).* refused before any call: lite, fast, standard$/);
   });
 
   it('Replicate / LTX keys are no route under Google-only: no Veo transport = clips unavailable', async () => {

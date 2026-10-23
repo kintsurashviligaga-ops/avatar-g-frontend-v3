@@ -197,6 +197,36 @@ describe('the sound switches are the studio\'s own state', () => {
     fireEvent.click(sw);
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'nativeAudio', on: false });
   });
+
+  test('sound: the selected tier\'s own row decides, over the transport-wide flag', () => {
+    const row = (audioToggle: boolean) => ({ available: true, referenceImages: 3, audioToggle });
+    setup({ engine: { transport: 'vertex', googleOnly: true, audioToggle: true, enhancePrompt: false, nativeCameraControl: false,
+      tiers: { lite: row(true), fast: row(false), standard: row(true) } } });
+    expect((screen.getByTestId('video-sound') as HTMLButtonElement).disabled).toBe(true); // the plan is on Fast
+  });
+});
+
+describe('the Quality select reads each tier\'s Vertex row from GET /api/video/engine (MASTER TASK v3.1)', () => {
+  const engine = (open: Record<'lite' | 'fast' | 'standard', boolean>) => ({
+    transport: 'vertex' as const, googleOnly: true, audioToggle: true, enhancePrompt: false, nativeCameraControl: false,
+    tiers: Object.fromEntries(Object.entries(open).map(([t, available]) => [t, { available, referenceImages: t === 'lite' ? 0 : 3, audioToggle: true }])),
+  });
+
+  test('a tier whose model the server refuses is offered disabled, says so, and shows no price', () => {
+    setup({ engine: engine({ lite: false, fast: true, standard: true }) });
+    const lite = Array.from(quality().options).find((o) => o.value === 'lite')!;
+    expect(lite.disabled).toBe(true);
+    expect(lite.textContent).toBe('Economy · unavailable');
+    for (const t of ['fast', 'standard']) {
+      expect(Array.from(quality().options).find((o) => o.value === t)!.disabled).toBe(false);
+      expect(optionText(quality(), t)).toMatch(/✦ \d/);
+    }
+  });
+
+  test('an older server without per-tier rows leaves every tier open', () => {
+    setup({ engine: { transport: 'vertex', googleOnly: true, audioToggle: true, enhancePrompt: false, nativeCameraControl: false } });
+    expect(Array.from(quality().options).filter((o) => ['lite', 'fast', 'standard'].includes(o.value)).every((o) => !o.disabled)).toBe(true);
+  });
 });
 
 describe('the lip-sync pass is named beside the price, never folded into it (gap C2)', () => {

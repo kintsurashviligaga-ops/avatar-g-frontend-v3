@@ -14,16 +14,23 @@ import { computeReliability, tierDistribution, type RelJobRow } from '@/lib/admi
 import { computeFinancials } from '@/lib/financials/adminMetrics';
 import { BANK_FEE_RATE } from '@/lib/financials/constants';
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
-import { atlasConfigured } from '@/lib/ai/atlasClient';
-import { deepseekConfigured } from '@/lib/ai/deepseekClient';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { vertexConfig } from '@/lib/veo/vertexAuth';
+import { resolveModel, veoModelRefusal } from '@/lib/veo/capabilities';
+import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { runwayModel } from '@/lib/ai/runway';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const MAX_ROWS = 5000;
+
+/** The default tier's model as the engine resolves it (VEO_MODEL was never read by the engine), and whether it is refused. */
+function videoModelLabel(): string {
+  const model = resolveModel('vertex', STUDIO_DEFAULT_VEO_TIER);
+  const refusal = veoModelRefusal(model, vertexConfig()?.location);
+  return refusal ? `${model} (Vertex AI) — refused: ${refusal}` : `${model} (Vertex AI)`;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -104,7 +111,7 @@ export async function GET(request: NextRequest) {
       generatedAt: new Date().toISOString(),
       scenePlanningLive,
       providers,
-      videoModel: (process.env.VEO_MODEL || 'veo-3.1-generate-preview (Vertex AI)').trim(),
+      videoModel: videoModelLabel(),
       runwayModel: runwayModel(),
       reliability,
       financials,

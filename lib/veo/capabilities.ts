@@ -52,6 +52,11 @@ export interface VeoModelCaps {
   supportsCameraControl: boolean;
   /** Vertex only — `parameters.resizeMode` for a first frame (the Gemini API has no such field). */
   supportsResizeMode: boolean;
+  /**
+   * Vertex only — the regions Google serves the model from (its Vertex locations table). A new clip is refused before
+   * any call when GCP_VEO_LOCATION is not one of them (veoModelRefusal). Empty on the Gemini API, which has no region.
+   */
+  locations: readonly string[];
   pricePerSecondUsd: {
     audio: VeoPriceRow;
     /** Vertex only: the cheaper rate when `generateAudio: false`. */
@@ -87,7 +92,11 @@ export interface NormalizedClip {
 
 export const DEFAULT_TIER: VeoTier = 'standard';
 
-/** §1 ids. The Vertex -001 ids list retirement "November 17, 2026 or later" — override via VEO_MODEL_* then. */
+/**
+ * §1 ids. The Vertex -001 ids list retirement "November 17, 2026 or later": a successor gets its own verified row in this
+ * table first, and only then can VEO_MODEL_* name it (veoModelRefusal refuses an id with no Vertex row). The Gemini ids
+ * describe operations made before MASTER TASK v3.1; no new clip renders on them.
+ */
 export const DEFAULT_MODEL_IDS: Readonly<Record<VeoTransport, Readonly<Record<VeoTier, string>>>> = {
   vertex: {
     standard: 'veo-3.1-generate-001',
@@ -106,6 +115,8 @@ const EIGHT_ONLY: readonly VeoDuration[] = [8];
 const NATIVE_ASPECTS: readonly VeoAspect[] = ['16:9', '9:16'];
 /** High → low: the fallback order when a resolution is unavailable. */
 const RESOLUTION_ORDER: readonly VeoResolution[] = ['4k', '1080p', '720p'];
+/** Veo 3.1 on Vertex is served from us-central1 only (Veo 3.1 model page, 2026-10-21; vertexAuth VEO_DEFAULT_LOCATION). */
+const VERTEX_LOCATIONS: readonly string[] = ['us-central1'];
 
 /** Published $/s WITH native audio (the Gemini API rate, and Vertex with generateAudio on). */
 const PRICE_WITH_AUDIO: Readonly<Record<VeoTier, VeoPriceRow>> = {
@@ -148,6 +159,7 @@ function tierProfile(transport: VeoTransport, tier: VeoTier): VeoModelCaps {
     supportsAudioToggle: vertex,
     supportsCameraControl: vertex,
     supportsResizeMode: vertex,
+    locations: vertex ? VERTEX_LOCATIONS : [],
     pricePerSecondUsd: vertex
       ? { audio: PRICE_WITH_AUDIO[tier], videoOnly: PRICE_VIDEO_ONLY_VERTEX[tier] }
       : { audio: PRICE_WITH_AUDIO[tier] },
@@ -226,12 +238,47 @@ function isTier(value: unknown): value is VeoTier {
  * The model id for a transport + tier. Env overrides beat the §1 defaults. For the Gemini transport's standard tier
  * the transport-specific GEMINI_VEO_MODEL is consulted before the generic VEO_MODEL_STANDARD, so it "keeps working"
  * exactly as lib/ai/geminiVeo.ts reads it even when a Vertex-oriented VEO_MODEL_STANDARD (e.g. a -001 successor) is
- * set. An override that is not a plausible model id is ignored rather than spliced into a request URL.
+ * set. An override that is not a plausible model id is ignored rather than spliced into a request URL. A plausible one
+ * with no Vertex row is returned as set, not swapped for a default: the engine then refuses it by name (veoModelRefusal)
+ * instead of quietly rendering a model nobody configured.
  */
 export function resolveModel(transport: VeoTransport, tier: VeoTier = DEFAULT_TIER): string {
   const t = isTier(tier) ? tier : DEFAULT_TIER;
   const specific = transport === 'gemini' && t === 'standard' ? envModelId('GEMINI_VEO_MODEL') : undefined;
   return specific ?? envModelId(TIER_ENV[t]) ?? DEFAULT_MODEL_IDS[transport][t];
+}
+
+/** The ids a new clip may render on: the catalogued Vertex rows, and nothing inferred. */
+export const VERTEX_VEO_MODEL_IDS: readonly string[] = Object.freeze(TIERS.map((tier) => DEFAULT_MODEL_IDS.vertex[tier]));
+
+/**
+ * Why `modelId` may not render a new clip, or null when it may. MASTER TASK v3.1: a model without a verified capability
+ * row, or a region the row does not list, fails before any provider I/O. Only a catalogued Vertex row renders: a
+ * `-preview` id is the Gemini Developer API's naming, and any other id (a veo-3.2 or veo-9 id set by env, a typo) has no
+ * row, so capsFor would only be guessing at what it accepts and what it costs. `location` is checked when given.
+ * Polling is not gated: a historical operation stays readable whatever model made it.
+ */
+export function veoModelRefusal(modelId: string, location?: string): string | null {
+  const id = String(modelId ?? '').trim();
+  const row = catalogued(id);
+  if (!row || row.transport !== 'vertex') {
+    if (row || /-preview$/i.test(id)) return `${id} is a Gemini Developer API model id; new clips render on Vertex AI only`;
+    return `${id || 'An empty model id'} is not a verified Vertex Veo model (verified: ${VERTEX_VEO_MODEL_IDS.join(', ')})`;
+  }
+  if (location !== undefined && !row.locations.includes(location)) {
+    return `${id} is not served from ${location || 'an empty location'} (only ${row.locations.join(', ')})`;
+  }
+  return null;
+}
+
+/**
+ * The Vertex row a tier renders from, or null when the tier's model is refused (veoModelRefusal, model only). This is
+ * what the studio's Veo controls are built from: references, last frame, audio toggle, resolutions and lengths. In a
+ * client bundle the VEO_MODEL_* overrides are unset, so it is the catalogue's default row for the tier.
+ */
+export function vertexVariant(tier: VeoTier): VeoModelCaps | null {
+  const id = resolveModel('vertex', tier);
+  return veoModelRefusal(id) ? null : capsFor(id, 'vertex');
 }
 
 /** Veo renders only 16:9 and 9:16; 1:1 is cropped from a 16:9 frame and 4:5 from a 9:16 frame. */

@@ -77,6 +77,7 @@ export const VIDEO_COPY = {
   ),
   settings: T('პარამეტრები', 'Settings', 'Параметры'),
   otherModels: T('სხვა მოდელები…', 'Other models…', 'Другие модели…'),
+  tierUnavailable: T('მიუწვდომელია', 'unavailable', 'недоступно'),
   narrator: T('დიქტორი', 'Narrator', 'Диктор'),
   narratorAuto: T('ავტო', 'Auto', 'Авто'),
   narratorOff: T('გამორთული', 'Off', 'Выкл'),

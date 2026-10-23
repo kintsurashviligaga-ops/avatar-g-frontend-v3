@@ -138,7 +138,7 @@ export const MODEL_CATALOG: ModelCatalog = {
       notes: 'lib/ai/geminiImagen (opt-in GEMINI_IMAGEN_ENABLED). 404 on Vertex AI for this project (Part 0, 2026-10-08), so API key only. No runtime record here.',
     },
 
-    // ── Video (Veo; VEO_TRANSPORT picks the id set, lib/veo/capabilities DEFAULT_MODEL_IDS) ───────────────────────
+    // ── Video (Veo on Vertex AI, lib/veo/capabilities DEFAULT_MODEL_IDS; the Gemini API ids are history, v3.1) ─────
     ...(
       [
         ['veo-3.1-generate-001', 'Veo 3.1', 'vertex'],
@@ -156,11 +156,12 @@ export const MODEL_CATALOG: ModelCatalog = {
       capabilities: ['video'],
       focusModes: ['video_storyboard', 'media'],
       transport,
-      enabled: true,
+      // MASTER TASK v3.1: no new clip renders on a Gemini Developer API id (lib/veo/capabilities veoModelRefusal).
+      enabled: transport === 'vertex',
       notes:
         transport === 'vertex'
           ? 'Vertex id (retirement listed "November 17, 2026 or later"). Not verified until Part 0 T1 returns a clip; the 2026-10-08 14:45Z submit was accepted, the operation failed on our payload (enhancePrompt).'
-          : 'Gemini API id (VEO_TRANSPORT unset). Facts from Google docs 2026-09-29 (docs/VEO_ENGINE.md §1); no runtime record here.',
+          : 'Gemini Developer API id: operations made before v3.1 only. Disabled, and refused before any call (veoModelRefusal); listed so a stored choice gets an explicit answer.',
     })),
 
     // ── Music ───────────────────────────────────────────────────────────────────────────────────────────────────

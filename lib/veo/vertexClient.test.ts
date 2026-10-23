@@ -106,10 +106,10 @@ describe('submitVertexVeo — the request', () => {
   });
 
   it('builds the host and path from the config location and project', async () => {
-    fetchMock.mockResolvedValueOnce(json(200, { name: OP.replace(/us-central1/g, 'europe-west4') }));
-    await submitVertexVeo(REQ, { ...CFG, location: 'europe-west4', projectId: 'other-proj' }, { model: MODEL });
+    fetchMock.mockResolvedValueOnce(json(200, { name: OP.replace('my-proj', 'other-proj') }));
+    await submitVertexVeo(REQ, { ...CFG, projectId: 'other-proj' }, { model: MODEL });
     expect(call().url).toBe(
-      `https://europe-west4-aiplatform.googleapis.com/v1/projects/other-proj/locations/europe-west4/publishers/google/models/${MODEL}:predictLongRunning`,
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/other-proj/locations/us-central1/publishers/google/models/${MODEL}:predictLongRunning`,
     );
   });
 
@@ -259,6 +259,25 @@ describe('submitVertexVeo — refused locally, before any token or POST', () => 
     const out = failed(await submitVertexVeo(REQ, CFG, { model }));
     expect(out.reason).toBe('invalid_request');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // MASTER TASK v3.1: the one POST holds the line the engine draws — no verified Vertex row, or another region, no call.
+  it.each([
+    ['an unverified veo-3.2 id', 'veo-3.2-generate-001', CFG.location, /is not a verified Vertex Veo model/],
+    ['a Gemini Developer API id', 'veo-3.1-fast-generate-preview', CFG.location, /is a Gemini Developer API model id/],
+    ['a region the row does not list', MODEL, 'europe-west4', /^veo-3\.1-generate-001 is not served from europe-west4 \(only us-central1\)$/],
+  ])('%s → not_configured before the token or the POST', async (_label, model, location, detail) => {
+    const out = failed(await submitVertexVeo(REQ, { ...CFG, location }, { model }));
+    expect(out).toMatchObject({ reason: 'not_configured', retryable: false });
+    expect(out.detail).toMatch(detail);
+    expect(tokenMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a refused model never reaches the submission journal', async () => {
+    const beforeSubmit = jest.fn(async () => true);
+    failed(await submitVertexVeo(REQ, CFG, { model: 'veo-9-generate-001', beforeSubmit }));
+    expect(beforeSubmit).not.toHaveBeenCalled();
   });
 
   it.each([
