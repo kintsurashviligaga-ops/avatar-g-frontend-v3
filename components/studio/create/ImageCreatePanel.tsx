@@ -38,12 +38,11 @@ import { CHIP_BASE, CHIP_OFF, CHIP_ON } from '@/components/studio/ui/tokens';
 import { creditsLabel } from '@/lib/credits/quote';
 import {
   IMAGE_MAX_REFERENCES, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageStyleSwatch,
-  type ImgAspect, type ImgCount, type ImgQuality,
+  type ImgAspect, type ImgCount,
 } from '@/lib/studio/imageCreate';
 import { DEFAULT_MODEL, catalogueEntry, type ModelRunner } from '@/lib/providers/catalogue';
 import { effectivePick, pickerRows, useModelPick } from '@/lib/studio/modelPick';
 import { useCatalogueStatus } from '@/components/studio/ui/useCatalogueStatus';
-import { HiggsfieldGenerate } from './HiggsfieldGenerate';
 import { AspectGlyph } from './AspectGlyph';
 import { imageCreateCopy } from './imageCreateCopy';
 import { OptionChip, OptionChipRow } from './OptionChips';
@@ -53,7 +52,7 @@ import { ReferenceUploadCard } from './ReferenceUploadCard';
 
 type PickerId = 'model' | 'aspect' | 'count';
 
-/** What this panel can run: /api/nanobanana/image (Google), and the studio saga (Higgsfield) where the deployment has it. */
+/** What this panel can run: /api/nanobanana/image (Google). The studio saga's Higgsfield rows are listed, never picked. */
 const IMAGE_RUNNERS: readonly ModelRunner[] = ['image', 'studio'];
 
 export interface ImageCreatePanelProps {
@@ -86,8 +85,6 @@ export interface ImageCreatePanelProps {
   // ── options
   aspect: ImgAspect;
   onAspect: (v: ImgAspect) => void;
-  /** The studio's quality (a template sets it). Nothing here offers it: it only rides along with a Higgsfield pick's hints. */
-  quality: ImgQuality;
   count: ImgCount;
   onCount: (v: ImgCount) => void;
   style: string;
@@ -168,12 +165,11 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   const [storedModel, setStoredModel] = useModelPick('image');
   const picked = p.model ?? storedModel;
   const pickedIsStudio = catalogueEntry(picked)?.wire.runner === 'studio';
-  // The server's word on what runs here — asked when the sheet opens, or at once when a Higgsfield pick must be confirmed.
+  // The server's word on what runs here — asked when the sheet opens, or at once when a remembered Higgsfield pick must go.
   const status = useCatalogueStatus('image', picker === 'model' || pickedIsStudio);
   const rows = useMemo(() => pickerRows('image', { runners: IMAGE_RUNNERS, status }), [status]);
   const modelId = effectivePick('image', picked, rows);
-  const hf = catalogueEntry(modelId)?.wire.runner === 'studio' ? catalogueEntry(modelId)! : null;
-  const model = hf ?? imageModelFor(modelId);
+  const model = imageModelFor(modelId);
   const pickModel = p.onModel ?? setStoredModel;
   // A remembered Higgsfield pick this deployment can no longer run falls back to Google — said once by the server, not guessed.
   useEffect(() => {
@@ -211,11 +207,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   const countBtn = useRef<HTMLButtonElement | null>(null);
   const closePicker = useCallback(() => setPicker(null), []);
 
-  const needThePrompt = () => { setNeedPrompt(true); promptEl.current?.focus(); };
-  const hfHints = useMemo(() => ({ aspect: p.aspect, quality: p.quality }), [p.aspect, p.quality]);
-  const referenceSrcs = useMemo(() => p.references.map((r) => r.src), [p.references]);
   const generate = () => {
-    if (hf) return; // a Higgsfield pick runs from its own button, at the price the server put on it
     if (insufficient) { p.onTopUp(); return; }
     if (p.foreignFileCount > 0) return; // the note above the prompt already says why
     if (!p.prompt.trim()) { setNeedPrompt(true); promptEl.current?.focus(); return; }
@@ -371,37 +363,21 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         style={{ paddingBottom: p.insetBottom ? 'calc(env(safe-area-inset-bottom, 0px) + 8px)' : 8 }}
       >
         <div data-create-row="options">
-          <OptionChipRow label={hf ? c.aspect : `${c.aspect} · ${c.count}`}>
+          <OptionChipRow label={`${c.aspect} · ${c.count}`}>
             <OptionChip ref={aspectBtn} icon={<AspectGlyph ratio={p.aspect} size={18} />} label={`${c.aspect}: ${p.aspect}`} expanded={picker === 'aspect'} onClick={() => setPicker((cur) => (cur === 'aspect' ? null : 'aspect'))} testId="chip-aspect">{p.aspect}</OptionChip>
-            {/* One Higgsfield job is one request; the ×2 / ×4 batch is the Google route's. */}
-            {!hf && <OptionChip ref={countBtn} icon={<Layers size={18} />} label={`${c.count}: ${p.count}`} expanded={picker === 'count'} onClick={() => setPicker((cur) => (cur === 'count' ? null : 'count'))} testId="chip-count">{p.count}</OptionChip>}
+            <OptionChip ref={countBtn} icon={<Layers size={18} />} label={`${c.count}: ${p.count}`} expanded={picker === 'count'} onClick={() => setPicker((cur) => (cur === 'count' ? null : 'count'))} testId="chip-count">{p.count}</OptionChip>
           </OptionChipRow>
         </div>
         <div data-create-row="generate">
-          {hf ? (
-            <HiggsfieldGenerate
-              locale={p.locale}
-              modelId={hf.id}
-              service="image"
-              label={c.generate}
-              prompt={p.prompt}
-              hints={hfHints}
-              images={referenceSrcs}
-              balanceCredits={p.balance}
-              onTopUp={p.onTopUp}
-              onNeedPrompt={needThePrompt}
-            />
-          ) : (
-            <GenerateButton
-              service="image.generate"
-              label={c.generate}
-              credits={credits}
-              insufficient={insufficient}
-              locale={p.locale}
-              onClick={generate}
-              testId="create-generate"
-            />
-          )}
+          <GenerateButton
+            service="image.generate"
+            label={c.generate}
+            credits={credits}
+            insufficient={insufficient}
+            locale={p.locale}
+            onClick={generate}
+            testId="create-generate"
+          />
         </div>
       </div>
 
