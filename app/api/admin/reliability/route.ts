@@ -3,6 +3,7 @@
  *
  * ONE call → the truth: which provider keys are live in THIS deployment, per-service success rates,
  * real render timings, and the most recent failures — over a rolling window (?days=1..90, default 7).
+ * Google only (MASTER TASK v3.1): the Runway model it also named belongs to no engine and is not reported.
  * This is the "measure first" panel so product decisions rest on facts, not feelings. Purely a READ +
  * a pure aggregation; strictly fail-open (an unmigrated generation_jobs table degrades to zeros, never
  * a 500) and admin-gated so no operational data leaks. No secret values are ever returned.
@@ -18,7 +19,6 @@ import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { vertexConfig } from '@/lib/veo/vertexAuth';
 import { resolveModel, veoModelRefusal } from '@/lib/veo/capabilities';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
-import { runwayModel } from '@/lib/ai/runway';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -98,7 +98,6 @@ export async function GET(request: NextRequest) {
 
     const warnings: string[] = [];
     if (!scenePlanningLive) warnings.push('Vertex AI is not configured — scene planning falls back to deterministic beats (llmText has no other provider).');
-    // TRACK 4 — HeyGen integration gate: the avatar/talking-photo path silently drops without this key.
     if (!providers.vertex_veo) warnings.push('Vertex AI / Veo credentials not bound — video generation requires Google Cloud / Vertex AI.');
     for (const s of reliability.perService) {
       if (s.successRate !== null && s.successRate < 0.7 && s.completed + s.failed >= 5) {
@@ -112,7 +111,6 @@ export async function GET(request: NextRequest) {
       scenePlanningLive,
       providers,
       videoModel: videoModelLabel(),
-      runwayModel: runwayModel(),
       reliability,
       financials,
       warnings,
