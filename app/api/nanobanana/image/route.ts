@@ -46,7 +46,7 @@ export const maxDuration = 300;
 const IMAGE_ENDPOINTS: ReadonlySet<string> = new Set(
   catalogueFor('image').flatMap((e) => (e.wire.runner === 'image' ? Object.values(e.wire.endpoints) : [])),
 );
-const NO_DEPLOYMENT_GATE: DeploymentProbe = { higgsfield: false, studioV2: false, hfEnabled: () => false, film: false, music: null };
+const NO_DEPLOYMENT_GATE: DeploymentProbe = { film: false, music: null };
 
 type ImageModelPick = { ok: true; modelId: string; endpoint: NanoBananaEndpoint } | { ok: false };
 

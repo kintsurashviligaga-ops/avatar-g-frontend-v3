@@ -1,9 +1,9 @@
 /** @jest-environment node */
 /**
  * GET /api/studio/catalogue — which catalogue models this deployment can run, for every picker. Pinned: ids, a boolean and a
- * reason word per row (never a key, an env value, an endpoint or a price); the Higgsfield gate is the registry's own
- * (HF_ENABLED_MODELS → STUDIO_V2 → keys); the film rows follow the Veo transport; music follows the engines' status; and the
- * route answers with STUDIO_V2 off (the Image and Video panels exist without it).
+ * reason word per row (never a key, an env value, an endpoint or a price); every Higgsfield row is google_only (a denied
+ * vendor, MASTER TASK v3.1) whatever HF_ENABLED_MODELS, STUDIO_V2 or the keys say; the film rows follow the Veo transport;
+ * music follows the engines' status; and the route answers with STUDIO_V2 off (the Image and Video panels exist without it).
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), RATE_LIMITS: { READ: {} } }));
@@ -40,27 +40,28 @@ async function rows(service?: string): Promise<Record<string, Row>> {
   return Object.fromEntries(body.models.map((r) => [r.id, r]));
 }
 
-test('STUDIO_V2 off: the route still answers; the Higgsfield rows say studio_off, the panel\'s own rows are open', async () => {
-  process.env.HF_API_KEY_ID = 'id';
-  process.env.HF_API_KEY_SECRET = SECRET;
-  const r = await rows('video');
-  expect(r['google/veo-3.1-fast']).toEqual({ id: 'google/veo-3.1-fast', available: true, reason: null });
-  expect(r['hf/kling-3-std-t2v']).toMatchObject({ available: false, reason: 'studio_off' });
-  expect(Object.keys(r).every((id) => id.startsWith('google/') || id.startsWith('hf/'))).toBe(true);
-  expect(musicEnginesStatus).not.toHaveBeenCalled(); // no music row asked → no breaker reads
-});
-
-test('HF_ENABLED_MODELS decides first; then the keys', async () => {
-  process.env.STUDIO_V2 = '1';
-  process.env.HF_ENABLED_MODELS = 'hf/soul-2';
-  let r = await rows('image');
-  expect(r['hf/soul-2']).toMatchObject({ available: false, reason: 'not_configured' }); // enabled, but no keys
-  process.env.HF_CREDENTIALS = `id:${SECRET}`;
-  r = await rows('image');
-  expect(r['hf/soul-2']).toMatchObject({ available: true, reason: null });
-  const v = await rows('video');
-  expect(v['hf/kling-3-std-t2v']).toMatchObject({ available: false, reason: 'not_enabled' });
-  expect(r['nb/pro']).toMatchObject({ available: true });
+test.each([
+  {},
+  { STUDIO_V2: '1', HF_ENABLED_MODELS: 'hf/soul-2,hf/kling-3-std-t2v', HF_CREDENTIALS: `id:${SECRET}` },
+  { STUDIO_V2: '1', HF_ENABLED_MODELS: 'hf/soul-2', HF_API_KEY_ID: 'id', HF_API_KEY_SECRET: SECRET, OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-replicate' },
+])('every Higgsfield row answers google_only, and no key, flag or enabled list re-opens one (%o)', async (env) => {
+  const approval = process.env.OUTSIDE_ENGINES_APPROVED;
+  Object.assign(process.env, env);
+  try {
+    for (const service of ['image', 'video', 'motion']) {
+      const r = await rows(service);
+      const hf = Object.values(r).filter((row) => row.id.startsWith('hf/'));
+      expect(hf.length).toBeGreaterThan(0);
+      for (const row of hf) expect(row).toEqual({ id: row.id, available: false, reason: 'google_only' });
+    }
+    const v = await rows('video');
+    expect(v['google/veo-3.1-fast']).toEqual({ id: 'google/veo-3.1-fast', available: true, reason: null });
+    expect((await rows('image'))['nb/pro']).toMatchObject({ available: true });
+    expect(musicEnginesStatus).not.toHaveBeenCalled(); // no music row asked → no breaker reads
+  } finally {
+    if (approval === undefined) delete process.env.OUTSIDE_ENGINES_APPROVED;
+    else process.env.OUTSIDE_ENGINES_APPROVED = approval;
+  }
 });
 
 test.each([

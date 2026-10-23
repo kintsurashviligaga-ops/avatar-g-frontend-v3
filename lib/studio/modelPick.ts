@@ -32,18 +32,27 @@ function storage(): Storage | null {
   try { return typeof window !== 'undefined' ? window.localStorage : null; } catch { return null; }
 }
 
-/** The stored pick if it is still a model of that service; null otherwise (unread, unknown, another service's id). */
+/**
+ * A model a pick may name: one of that service's rows, and not a Higgsfield one — its vendor is refused (MASTER TASK v3.1),
+ * so a pick stored before that reads as no pick (the service's default), like a retired music engine reads as Auto.
+ */
+const pickable = (service: CatalogueService, id: unknown): boolean => {
+  const e = catalogueEntry(id);
+  return e?.service === service && e.wire.runner !== 'studio';
+};
+
+/** The stored pick if it is still a model of that service that can be picked; null otherwise (unread, unknown, refused). */
 export function getModelPick(service: CatalogueService, scope: PickScope = 'create'): string | null {
   try {
     const raw = storage()?.getItem(modelPickKey(service, scope));
-    return catalogueEntry(raw)?.service === service ? raw! : null;
+    return pickable(service, raw) ? raw! : null;
   } catch {
     return null;
   }
 }
 
 export function setModelPick(service: CatalogueService, id: string, scope: PickScope = 'create'): void {
-  if (catalogueEntry(id)?.service !== service) return;
+  if (!pickable(service, id)) return;
   const key = modelPickKey(service, scope);
   try {
     const s = storage();
@@ -96,9 +105,7 @@ export function __resetModelPickMemory(): void {
  */
 export function imageModelField(): { model: string } {
   const e = catalogueEntry(read('image', 'create'));
-  // ⚠️ A Higgsfield pick is sent AS IS: the image route refuses it (400, nothing charged) rather than quietly rendering a
-  // Google image the user did not choose. The composer opens the panel for it instead (higgsfieldPicked).
-  return { model: e && (e.wire.runner === 'image' || e.wire.runner === 'studio') ? e.id : DEFAULT_MODEL.image };
+  return { model: e && e.wire.runner === 'image' ? e.id : DEFAULT_MODEL.image };
 }
 
 /**
@@ -112,8 +119,8 @@ export function higgsfieldPicked(service: CatalogueService, scope: PickScope = '
 
 // ── what a picker may offer ─────────────────────────────────────────────────────────────────────────────────────────
 
-/** Why a row cannot be picked HERE: the server's reason, or that it runs on another surface, or not known yet. */
-export type PickBlock = UnavailableReason | 'elsewhere' | 'checking';
+/** Why a row cannot be picked HERE: the server's reason (or google_only, known without it), or that it runs on another surface. */
+export type PickBlock = UnavailableReason | 'elsewhere';
 
 export interface PickerRow {
   entry: CatalogueEntry;
@@ -127,7 +134,8 @@ export type CatalogueStatus = Readonly<Record<string, Availability>>;
 /**
  * The rows of a picker on a surface that runs `runners`: the ones a tap may choose first (catalogue order), then the rest,
  * each with why not. ⚠️ WHILE THE STATUS IS UNKNOWN, a row of the surface's own route stays selectable (that route always
- * took any of them, and refuses for itself) — but a Higgsfield row does not: it is gated by flags this browser cannot see.
+ * took any of them, and refuses for itself). A Higgsfield row never is, whatever the status says: its vendor is refused
+ * (google_only), which this browser knows without asking.
  */
 export function pickerRows(
   service: CatalogueService,
@@ -137,10 +145,13 @@ export function pickerRows(
   for (const entry of catalogueFor(service)) {
     const here = o.runners.includes(entry.wire.runner);
     if (!here && o.include === 'runnable') continue;
+    if (entry.wire.runner === 'studio') {
+      rows.push({ entry, selectable: false, block: 'google_only' });
+      continue;
+    }
     const st = o.status?.[entry.id];
     if (here) {
       if (st) rows.push({ entry, selectable: st.available, block: st.available ? null : st.reason ?? 'not_enabled' });
-      else if (entry.wire.runner === 'studio') rows.push({ entry, selectable: false, block: o.status ? 'not_enabled' : 'checking' });
       else rows.push({ entry, selectable: true, block: null });
     } else {
       // Runs somewhere else: say where only when that place can run it; otherwise why it cannot run at all.

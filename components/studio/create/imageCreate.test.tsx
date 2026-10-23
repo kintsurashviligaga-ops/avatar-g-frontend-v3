@@ -291,7 +291,7 @@ describe('the chips show the live values and open large pickers', () => {
   });
 });
 
-describe('the model row: the studio\'s ModelPicker — Google first and the default, Higgsfield opt-in, no price', () => {
+describe('the model row: the studio\'s ModelPicker — Google first and the default, Higgsfield paused, no price', () => {
   const rows = () => within(screen.getByRole('dialog', { name: 'Model' })).getAllByRole('radio');
   const row = (id: string) => rows().find((r) => r.getAttribute('data-model') === id)!;
   const realFetch = global.fetch;
@@ -312,14 +312,14 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   };
   afterEach(() => { global.fetch = realFetch; });
 
-  test('Google\'s Nano Banana first (Auto checked); every Higgsfield image model listed, dimmed where this deployment cannot run it', async () => {
+  test('Google\'s Nano Banana first (Auto checked); every Higgsfield image model listed and dimmed (a denied vendor)', async () => {
     deployment([]);
     show();
     openAdvanced();
     fireEvent.click(screen.getByTestId('model-row'));
     const hf = catalogueFor('image').filter((e) => e.provider === 'higgsfield').map((e) => e.id);
     expect(rows().map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro', ...hf]);
-    await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Not enabled yet'));
+    await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Paused while it moves to Google’s engines'));
     expect(rows().filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro']);
     expect(row('nb/auto').getAttribute('aria-checked')).toBe('true');
     expect(row('nb/auto').textContent).toContain('V2 at 1K and 2K, Pro at 4K');
@@ -336,7 +336,7 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
     show();
     openAdvanced();
     fireEvent.click(screen.getByTestId('model-row'));
-    await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Not enabled yet'));
+    await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Paused while it moves to Google’s engines'));
     fireEvent.click(row('hf/soul-2'));
     expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy(); // still open: nothing happened
     fireEvent.click(row('nb/v2'));
@@ -345,32 +345,30 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
     expect(window.localStorage.getItem('myavatar:model:image')).toBe('nb/v2');
   });
 
-  test('a Higgsfield model this deployment runs is a real choice: Generate becomes the saga\'s (its own price), the ×N chip steps aside', async () => {
+  test('⚠️ a Higgsfield model is never a choice, even when an older server says it runs: a tap does nothing, Generate stays Google\'s', async () => {
     deployment(['hf/soul-2']);
-    const { p } = show({ prompt: '' }); // no prompt: nothing to price, so the test ends with no request in flight
+    show({ prompt: '' });
     openAdvanced();
     fireEvent.click(screen.getByTestId('model-row'));
-    await waitFor(() => expect(row('hf/soul-2').getAttribute('aria-disabled')).toBeNull());
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/studio/catalogue'), expect.anything()));
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); // the server's answer is in
+    expect(row('hf/soul-2').getAttribute('aria-disabled')).toBe('true');
+    expect(row('hf/soul-2').textContent).toContain('Paused while it moves to Google’s engines');
     fireEvent.click(row('hf/soul-2'));
-    expect(window.localStorage.getItem('myavatar:model:image')).toBe('hf/soul-2');
-    expect(screen.getByTestId('model-row').textContent).toContain('Soul 2');
-    expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/soul-2');
-    expect(screen.queryByTestId('chip-count')).toBeNull();
-    // The panel's own Generate is not reachable for it: Cmd/Ctrl+Enter does not run the Google route.
-    fireEvent.keyDown(screen.getByTestId('create-prompt'), { key: 'Enter', ctrlKey: true });
-    expect(p.onGenerate).not.toHaveBeenCalled();
-    // It reads the model's own parameters (Studio β's description) and says what it will render.
-    await waitFor(() => expect(screen.getByTestId('hf-summary').textContent).toBe('Soul 2 — photoreal image · 1:1 · 1080p'));
+    expect(window.localStorage.getItem('myavatar:model:image')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy(); // still open: nothing happened
+    expect(screen.queryByTestId('hf-generate')).toBeNull();
+    expect(screen.getByTestId('chip-count')).toBeTruthy();
   });
 
-  test('a remembered Higgsfield pick the deployment no longer runs falls back to Google — once the server has said so', async () => {
+  test('a Higgsfield pick remembered from before reads as Auto at once — no server answer needed, so none is asked', () => {
     window.localStorage.setItem('myavatar:model:image', 'hf/soul-2');
     deployment([]);
     show();
-    await waitFor(() => expect(window.localStorage.getItem('myavatar:model:image')).toBeNull());
     openAdvanced();
     expect(screen.getByTestId('model-row').textContent).toContain('Auto');
     expect(screen.queryByTestId('hf-generate')).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/api/studio/catalogue'), expect.anything());
   });
 
   test('a model without the size on screen moves the size chip to one it has (Nano Banana Pro starts at 2K) and names the gap', () => {

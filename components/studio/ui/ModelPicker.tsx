@@ -36,12 +36,10 @@ export const MODEL_PICKER_COPY = {
     pro: { ka: 'მაქს. ხარისხი', en: 'Max quality', ru: 'Макс. качество' },
   } satisfies Record<ModelTier, L3>,
   block: {
-    unverified: { ka: 'მალე', en: 'Coming soon', ru: 'Скоро' },
+    google_only: { ka: 'შეჩერებულია, სანამ Google-ის ძრავაზე გადავა', en: 'Paused while it moves to Google’s engines', ru: 'Приостановлена на время перехода на движки Google' },
     not_enabled: { ka: 'ჯერ არ არის ჩართული', en: 'Not enabled yet', ru: 'Пока не включена' },
-    studio_off: { ka: 'ჯერ არ არის ჩართული', en: 'Not enabled yet', ru: 'Пока не включена' },
     not_configured: { ka: 'ამ წუთას მიუწვდომელია', en: 'Unavailable right now', ru: 'Сейчас недоступна' },
     busy: { ka: 'დაკავებულია — სცადე მოგვიანებით', en: 'Busy — try again shortly', ru: 'Занята — попробуйте позже' },
-    checking: { ka: 'მოწმდება…', en: 'Checking…', ru: 'Проверяем…' },
   } satisfies Record<Exclude<PickBlock, 'elsewhere'>, L3>,
   /** Where a row of another runner can be used. */
   elsewhere: {

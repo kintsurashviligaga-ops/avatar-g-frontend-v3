@@ -2,7 +2,7 @@
  * Which catalogue models THIS deployment can run right now — the server half of the model picker (lib/providers/catalogue).
  *
  * Every answer is derived from the same gate the runner itself applies, never restated:
- *   studio → registry.isModelEnabled (HF_ENABLED_MODELS) · studioV2Enabled (STUDIO_V2) · hfAuthHeaderFromEnv (HF keys)
+ *   studio → refused (google_only): Higgsfield is a denied vendor, so no key, flag or HF_ENABLED_MODELS is read
  *   film   → a Veo transport (lib/veo/engine); Veo is the only film engine, whatever VIDEO_GOOGLE_ONLY says
  *   music  → lib/ai/musicEnginesStatus (keys + each engine's circuit breaker)
  *   image  → always: the route's own cascade refunds a miss
@@ -11,8 +11,6 @@
  */
 import 'server-only';
 import { musicEnginesStatus } from '@/lib/ai/musicEnginesStatus';
-import { hfAuthHeaderFromEnv } from '@/lib/providers/higgsfield/client';
-import { isModelEnabled } from '@/lib/providers/registry';
 import {
   CATALOGUE,
   availabilityOf,
@@ -21,7 +19,6 @@ import {
   type DeploymentProbe,
 } from '@/lib/providers/catalogue';
 import type { MusicEnginesStatus } from '@/lib/studio/musicEngines';
-import { studioV2Enabled } from '@/lib/studio/flags';
 import { veoTransport } from '@/lib/veo/engine';
 
 export interface CatalogueStatusRow extends Availability {
@@ -45,9 +42,6 @@ export async function catalogueStatus(
   const wantsMusic = rows.some((e) => e.wire.runner === 'music');
   const music = wantsMusic ? await (deps.music ?? (() => musicEnginesStatus(env)))().catch(() => null) : null;
   const probe: DeploymentProbe = {
-    higgsfield: hfAuthHeaderFromEnv(env) !== null,
-    studioV2: studioV2Enabled(env),
-    hfEnabled: (id) => isModelEnabled(id, env),
     film: rows.some((e) => e.wire.runner === 'film') ? (deps.film ?? filmReady)() : false,
     music: music ? music.engines : null,
   };

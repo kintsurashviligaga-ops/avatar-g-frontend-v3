@@ -453,10 +453,10 @@ export const isCatalogueService = (v: unknown): v is CatalogueService =>
 // ── what the server decides: can THIS deployment run it ─────────────────────────────────────────────────────────────
 
 /**
- * Why a model cannot run here. Granular for the owner (the route answers it); the picker words most of them as "not
- * enabled", because to a user they are the same thing.
+ * Why a model cannot run here. `google_only`: its vendor is refused under MASTER TASK v3.1 (the Higgsfield rows — their
+ * route answers 503 google_only whatever the env says). `not_enabled` is the picker's word for a reason it cannot read.
  */
-export type UnavailableReason = 'unverified' | 'not_enabled' | 'studio_off' | 'not_configured' | 'busy';
+export type UnavailableReason = 'google_only' | 'not_enabled' | 'not_configured' | 'busy';
 
 export interface Availability {
   available: boolean;
@@ -465,13 +465,7 @@ export interface Availability {
 
 /** What the server knows about this deployment, read once per request (lib/providers/catalogueStatus). */
 export interface DeploymentProbe {
-  /** HF credentials are set. */
-  higgsfield: boolean;
-  /** STUDIO_V2 is on — /api/generate exists. */
-  studioV2: boolean;
-  /** registry.isModelEnabled — HF_ENABLED_MODELS, with unverified models only when listed by name. */
-  hfEnabled: (id: string) => boolean;
-  /** The film route has a renderer (a Veo transport, or the non-Google fallbacks). */
+  /** The film route has a renderer (a Veo transport). */
   film: boolean;
   /** Per music engine: configured / breaker open. Null when not read. */
   music: Partial<Record<MusicEngineId, { configured: boolean; busy: boolean }>> | null;
@@ -481,9 +475,9 @@ const OK: Availability = { available: true, reason: null };
 const no = (reason: UnavailableReason): Availability => ({ available: false, reason });
 
 /**
- * ⚠️ THE ORDER IS THE MOST HONEST FIRST: an unverified schema is "coming soon" whatever the env says; a model the owner did
- * not enable is "not enabled" even where the keys exist; only then does a missing key or a switched-off studio matter.
- * The image route is never blocked here — its own cascade (NanoBanana → Grok → FLUX) refunds a miss.
+ * A Higgsfield row is refused outright: Higgsfield is a denied vendor (MASTER TASK v3.1), and /api/generate and
+ * /api/genjutsu/generate answer 503 google_only before any key, flag or HF_ENABLED_MODELS is read — so no env makes it
+ * runnable here either. The image route is never blocked here — its own route refuses for itself.
  */
 export function availabilityOf(entry: CatalogueEntry, probe: DeploymentProbe): Availability {
   switch (entry.wire.runner) {
@@ -499,11 +493,7 @@ export function availabilityOf(entry: CatalogueEntry, probe: DeploymentProbe): A
       return m.busy ? no('busy') : OK;
     }
     case 'studio':
-      if (entry.verified === 'unverified' && !probe.hfEnabled(entry.id)) return no('unverified');
-      if (!probe.hfEnabled(entry.id)) return no('not_enabled');
-      if (!probe.studioV2) return no('studio_off');
-      if (!probe.higgsfield) return no('not_configured');
-      return OK;
+      return no('google_only');
   }
 }
 
