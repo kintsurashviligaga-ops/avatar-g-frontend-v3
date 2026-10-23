@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { quoteCredits } from '@/lib/credits/quote';
 import { VIDEO_DURATION_STOPS } from '@/lib/video/duration';
 import { CLOSED_CAPABILITIES, type VideoCapabilities } from '@/lib/video/createPanel';
@@ -362,8 +362,8 @@ describe('format and model pickers', () => {
     const { calls } = setup({ seconds: 24 });
     fireEvent.change(quality(), { target: { value: '__other' } });
     const sheet = screen.getByTestId('video-model-sheet');
-    await waitFor(() => expect(within(sheet).getByText('Kling 3 — text to video').closest('[role="radio"]')!.textContent).toContain('Not enabled yet'));
-    // The film route's three Veo models are the rows a tap may choose; the Studio β models are listed, dimmed, saying why.
+    await waitFor(() => expect(within(sheet).getByText('Kling 3 — text to video').closest('[role="radio"]')!.textContent).toContain('Paused while it moves to Google’s engines'));
+    // The film route's three Veo models are the rows a tap may choose; the Higgsfield models are listed, dimmed, saying why.
     const radios = within(sheet).getAllByRole('radio').filter((r) => r.hasAttribute('data-model'));
     const open = radios.filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'));
     expect(open).toEqual(['google/veo-3.1-lite', 'google/veo-3.1-fast', 'google/veo-3.1']);
@@ -376,26 +376,25 @@ describe('format and model pickers', () => {
     expect(screen.queryByTestId('video-model-sheet')).toBeNull();
   });
 
-  test('a Higgsfield model this deployment runs: the select names it, and its saga\'s own priced button sends the chat box\'s text', async () => {
+  test('⚠️ a Higgsfield model is never a pick here, even when an older server says it runs; one remembered from before reads as Veo', async () => {
+    window.localStorage.setItem('myavatar:model:video', 'hf/kling-3-std-t2v'); // remembered from before the refusal
     deployment(['hf/kling-3-std-t2v']);
     const { calls } = setup({ seconds: 24, prompt: 'a rider at dawn' });
+    // The film renders from the chat box's priced Send, as for any Veo pick: no Higgsfield button.
+    expect(screen.queryByTestId('hf-generate')).toBeNull();
+    expect(screen.getByTestId('video-prompt-hint')).toBeTruthy();
+    expect(qualityText()).not.toBe('Kling 3 — text to video');
     fireEvent.change(quality(), { target: { value: '__other' } });
     const sheet = screen.getByTestId('video-model-sheet');
-    const kling = () => within(sheet).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
-    await waitFor(() => expect(kling().getAttribute('aria-disabled')).toBeNull());
-    fireEvent.click(kling());
-    expect(window.localStorage.getItem('myavatar:model:video')).toBe('hf/kling-3-std-t2v');
-    expect(calls.dispatch).not.toHaveBeenCalled(); // the film's Veo tier is left as it was
-    expect(qualityText()).toBe('Kling 3 — text to video');
-    expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/kling-3-std-t2v');
-    expect(screen.getByTestId('video-generate')).toBeTruthy();
-    expect(screen.queryByTestId('video-prompt-hint')).toBeNull();
-    // 24 s is not a length Kling renders: the line above the button says the 15 s it will.
-    await waitFor(() => expect(screen.getByTestId('hf-summary').textContent).toBe('Kling 3 — text to video · 15 s · 9:16 · sound on'));
-    // Back to Google in one pick: a Veo tier is the film again.
-    fireEvent.change(quality(), { target: { value: 'standard' } });
-    expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
-    expect(window.localStorage.getItem('myavatar:model:video')).toBe('google/veo-3.1');
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/studio/catalogue'), expect.anything()));
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); // the server's answer is in
+    const kling = within(sheet).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
+    expect(kling.getAttribute('aria-disabled')).toBe('true');
+    expect(kling.textContent).toContain('Paused while it moves to Google’s engines');
+    fireEvent.click(kling);
+    expect(calls.dispatch).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('hf-generate')).toBeNull();
+    expect(screen.getByTestId('video-prompt-hint')).toBeTruthy();
   });
 
   test('the pick is remembered in this browser: a stored Veo model is applied on mount', () => {

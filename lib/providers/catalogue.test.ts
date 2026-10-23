@@ -125,28 +125,25 @@ describe('the image route\'s wire', () => {
   });
 });
 
-describe('availability: an unverified or unenabled model never runs', () => {
-  const probe = (over: Partial<DeploymentProbe> = {}): DeploymentProbe => ({
-    higgsfield: true, studioV2: true, hfEnabled: () => true, film: true, music: null, ...over,
-  });
-  const kling = catalogueEntry('hf/kling-3-std-t2v')!;
+describe('availability: a refused vendor never runs, whatever the deployment says', () => {
+  const probe = (over: Partial<DeploymentProbe> = {}): DeploymentProbe => ({ film: true, music: null, ...over });
 
-  test('a Higgsfield row: enabled list first, then the studio flag, then the keys', () => {
-    expect(availabilityOf(kling, probe())).toEqual({ available: true, reason: null });
-    expect(availabilityOf(kling, probe({ hfEnabled: () => false, studioV2: false, higgsfield: false }))).toEqual({ available: false, reason: 'not_enabled' });
-    expect(availabilityOf(kling, probe({ studioV2: false, higgsfield: false }))).toEqual({ available: false, reason: 'studio_off' });
-    expect(availabilityOf(kling, probe({ higgsfield: false }))).toEqual({ available: false, reason: 'not_configured' });
+  test('every Higgsfield row answers google_only — Higgsfield is a denied vendor (MASTER TASK v3.1), and its routes refuse first', () => {
+    const studio = CATALOGUE.filter((e) => e.wire.runner === 'studio');
+    expect(studio.length).toBeGreaterThan(0);
+    for (const e of studio) expect(availabilityOf(e, probe())).toEqual({ available: false, reason: 'google_only' });
+    // An unread schema is refused the same way: no env, flag or HF_ENABLED_MODELS opens it.
+    const unread: CatalogueEntry = { ...studio[0], id: 'hf/unread-model', verified: 'unverified' };
+    expect(availabilityOf(unread, probe())).toEqual({ available: false, reason: 'google_only' });
   });
 
-  test('an unverified schema is "coming soon" unless the owner named it — whatever else is set', () => {
-    const unread: CatalogueEntry = { ...kling, id: 'hf/unread-model', verified: 'unverified' };
-    expect(availabilityOf(unread, probe({ hfEnabled: () => false }))).toEqual({ available: false, reason: 'unverified' });
-    expect(availabilityOf(unread, probe({ hfEnabled: (id) => id === 'hf/unread-model' }))).toEqual({ available: true, reason: null });
+  test('the probe carries no Higgsfield key, flag or enabled list any more', () => {
+    expect(Object.keys(probe()).sort()).toEqual(['film', 'music']);
   });
 
   test('the film route: a renderer or nothing; the image route: always (its cascade refunds a miss)', () => {
     expect(availabilityOf(videoModelForTier('fast'), probe({ film: false }))).toEqual({ available: false, reason: 'not_configured' });
-    expect(availabilityOf(catalogueEntry('nb/pro')!, probe({ higgsfield: false, studioV2: false, film: false }))).toEqual({ available: true, reason: null });
+    expect(availabilityOf(catalogueEntry('nb/pro')!, probe({ film: false }))).toEqual({ available: true, reason: null });
   });
 
   test('music: an engine without a key is unavailable, a tripped breaker is busy; Auto and an unread status try', () => {

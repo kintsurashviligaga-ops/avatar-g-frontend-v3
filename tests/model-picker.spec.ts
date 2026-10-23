@@ -5,11 +5,11 @@ import { MODELS, publicModel } from '@/lib/providers/registry';
  * The studio's ModelPicker in a real browser (components/studio/ui/ModelPicker), on a 390 × 844 phone and a 1280 × 800 desktop:
  *
  *   image   the prompt card's "Model … ▾" opens the sheet; Google first (Auto · Nano Banana V2 · Pro, Auto the default), then
- *           the Higgsfield image models — Soul 2 open (this mocked deployment runs it), the rest dimmed "not enabled"; no price
- *           in the list; a Google pick changes the row, survives a reload, and the Generate request CARRIES THE MODEL ID
- *           (`model`) — the id the server validates and quotes.
- *   higgs   a Higgsfield pick swaps Generate for the saga's: the server's estimate on the button, and the tap sends
- *           POST /api/generate { modelId, params, confirmedGel } — the model id and the price the user saw.
+ *           the Higgsfield image models, every one dimmed "paused while it moves to Google's engines" (a denied vendor,
+ *           MASTER TASK v3.1) — Soul 2 too, though this mocked older server says it runs; no price in the list; a Google pick
+ *           changes the row, survives a reload, and the Generate request CARRIES THE MODEL ID (`model`) — the id the server
+ *           validates and quotes.
+ *   higgs   a tap on a Higgsfield row does nothing: Generate stays Google's, and nothing is sent to POST /api/generate.
  *   video   the Model row opens the same sheet with the mode switch on top; a Veo pick changes the film's model (the hero)
  *           and survives a reload.
  *
@@ -43,7 +43,7 @@ async function seed(page: Page): Promise<void> {
   });
 }
 
-/** What this deployment can run, as GET /api/studio/catalogue would answer with STUDIO_V2 on and only Soul 2 enabled. */
+/** An OLDER server's GET /api/studio/catalogue (STUDIO_V2 on, Soul 2 enabled): the picker must not open a Higgsfield row on it. */
 async function mockCatalogue(page: Page): Promise<string[]> {
   const asked: string[] = [];
   await page.route('**/api/studio/catalogue**', async (route: Route) => {
@@ -109,7 +109,12 @@ async function openTool(page: Page, tool: 'image' | 'video', panelTestId: string
   await page.goto('/en/dashboard', { waitUntil: 'load' });
   await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
   await page.evaluate((t) => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: t })), tool);
-  await expect(page.getByTestId(panelTestId).first()).toBeVisible({ timeout: 15_000 });
+  // Choosing a tool does not open its settings by itself: follow the visible toggle (as tests/music-studio-live/_panel does).
+  const toggle = page.getByTestId('options-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', /^(true|false)$/);
+  if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId(panelTestId).filter({ visible: true }).first()).toBeVisible({ timeout: 15_000 });
 }
 
 async function pretendSignedIn(page: Page): Promise<void> {
@@ -145,9 +150,10 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       const rows = sheet.getByRole('radio');
       await expect(rows.first()).toHaveAttribute('data-model', 'nb/auto'); // Google first, and the default
       await expect(sheet.locator('[data-model="nb/auto"]')).toHaveAttribute('aria-checked', 'true');
-      await expect(sheet.locator('[data-model="hf/soul-2"]')).not.toHaveAttribute('aria-disabled', 'true');
-      await expect(sheet.locator('[data-model="hf/soul"]')).toHaveAttribute('aria-disabled', 'true');
-      await expect(sheet.locator('[data-model="hf/soul"]')).toContainText('Not enabled yet');
+      for (const id of ['hf/soul-2', 'hf/soul']) {
+        await expect(sheet.locator(`[data-model="${id}"]`)).toHaveAttribute('aria-disabled', 'true');
+        await expect(sheet.locator(`[data-model="${id}"]`)).toContainText('Paused while it moves to Google’s engines');
+      }
       await expect(sheet).not.toContainText(/credit/i);
       for (const box of await rows.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))) expect(box).toBeGreaterThanOrEqual(44);
       expect(await noSideways(page)).toBe(0);
@@ -179,7 +185,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       expect(calls[1]).toMatchObject({ quality: 'ultra', model: 'nb/v2' });
     });
 
-    test('Higgsfield: a pick swaps Generate for the saga\'s — the server\'s price on the button, and the tap sends the model id and that price', async ({ page }) => {
+    test('Higgsfield: a tap on its row does nothing — Generate stays Google\'s, and nothing is sent to /api/generate', async ({ page }) => {
       await mockCatalogue(page);
       const starts = await mockStudioSaga(page);
       await openTool(page, 'image', 'image-create-panel');
@@ -187,24 +193,18 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       const panel = page.getByTestId('image-create-panel').filter({ visible: true }).first();
       await openAdvanced(panel);
       await panel.getByTestId('model-row').click();
-      await page.getByRole('dialog', { name: 'Model' }).locator('[data-model="hf/soul-2"]').click();
-      await expect(panel.getByTestId('model-row')).toContainText('Soul 2');
-      await expect(panel.getByTestId('hf-generate')).toHaveAttribute('data-model', 'hf/soul-2');
-      await panel.getByTestId('create-prompt').fill('An editorial portrait in soft daylight');
-      const go = panel.getByTestId('create-generate');
-      await expect(go).toHaveAttribute('data-price', '13', { timeout: 15_000 }); // the server's estimate, not a client number
-      await expect(panel.getByTestId('hf-summary')).toContainText('Soul 2');
+      const sheet = page.getByRole('dialog', { name: 'Model' });
+      const soul2 = sheet.locator('[data-model="hf/soul-2"]');
+      await expect(soul2).toContainText('Paused while it moves to Google’s engines');
+      await soul2.click({ force: true }); // a dimmed row: the tap must change nothing
+      await expect(sheet).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(panel.getByTestId('model-row')).toContainText('Auto');
+      await expect(panel.getByTestId('hf-generate')).toHaveCount(0);
+      expect(await page.evaluate(() => localStorage.getItem('myavatar:model:image'))).toBeNull();
       expect(await noSideways(page)).toBe(0);
-      await shot(page, `${phone ? 'phone' : 'desktop'}-higgsfield-priced`);
-      await go.click();
-      await expect.poll(() => starts.length).toBe(1);
-      expect(starts[0]).toMatchObject({
-        modelId: 'hf/soul-2',
-        params: { prompt: 'An editorial portrait in soft daylight', aspect_ratio: '1:1', resolution: '1080p' },
-        confirmedGel: 1.3,
-      });
-      await expect(panel.getByTestId('hf-job')).toHaveAttribute('data-status', 'completed', { timeout: 20_000 });
-      await shot(page, `${phone ? 'phone' : 'desktop'}-higgsfield-done`);
+      await shot(page, `${phone ? 'phone' : 'desktop'}-higgsfield-paused`);
+      expect(starts).toHaveLength(0);
     });
 
     test('video: „Other models…" in the Quality select opens the model picker (the film / music-video switch stays on the panel); a Veo pick changes the film\'s model and survives a reload', async ({ page }) => {
@@ -220,7 +220,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await expect(sheet.getByTestId('video-mode-choice')).toHaveCount(0);
       await expect(panel.getByTestId('video-mode-choice')).toBeVisible();
       await expect(sheet.locator('[data-model="google/veo-3.1-fast"]')).toHaveAttribute('aria-checked', 'true');
-      await expect(sheet.locator('[data-model="hf/kling-3-std-t2v"]')).toContainText('Not enabled yet');
+      await expect(sheet.locator('[data-model="hf/kling-3-std-t2v"]')).toContainText('Paused while it moves to Google’s engines');
       await expect(sheet).not.toContainText(/credit|✦/i);
       expect(await noSideways(page)).toBe(0);
       await shot(page, `${phone ? 'phone' : 'desktop'}-video-models`);
