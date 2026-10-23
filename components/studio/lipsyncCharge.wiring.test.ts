@@ -21,7 +21,7 @@ describe('the lip-sync charge is shown where the film is confirmed', () => {
   });
 
   test('the create screen\'s Generate and the storyboard\'s Generate both carry it; a director run (no pass) carries none', () => {
-    expect(code).toMatch(/onTopUp: \(\) => window\.dispatchEvent\(new CustomEvent\('myavatar:open-credits'\)\),\s*lipsyncCredits: filmLipsyncCredits,/);
+    expect(code).toContain('generate={{ lipsyncCredits: filmLipsyncCredits }}');
     expect(code).toContain('lipsyncCredits={directorRunsOn ? 0 : filmLipsyncCredits}');
     expect(code).toContain('data-testid="storyboard-lipsync-addon"');
   });

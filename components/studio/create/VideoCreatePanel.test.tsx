@@ -5,9 +5,7 @@ import { CLOSED_CAPABILITIES, type VideoCapabilities } from '@/lib/video/createP
 import { initialVeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
 import { VideoCreatePanel, type VideoCreatePanelProps } from './VideoCreatePanel';
 import { catalogueFor } from '@/lib/providers/catalogue';
-import { MODELS, publicModel } from '@/lib/providers/registry';
 import { __resetCatalogueStatusCache } from '../ui/useCatalogueStatus';
-import { __resetStudioModelsCache } from './useStudioModels';
 
 const OPEN: VideoCapabilities = { longform: true, maxSeconds: 240 };
 
@@ -15,10 +13,9 @@ const OPEN: VideoCapabilities = { longform: true, maxSeconds: 240 };
 beforeEach(() => { try { window.localStorage.clear(); } catch { /* jsdom always has it */ } });
 
 const realFetch = global.fetch;
-/** GET /api/studio/catalogue (and Studio β's model list) as this deployment would answer: the listed Higgsfield models run. */
+/** GET /api/studio/catalogue as this deployment would answer: the listed Higgsfield models run. */
 function deployment(runs: string[]) {
   __resetCatalogueStatusCache();
-  __resetStudioModelsCache();
   global.fetch = jest.fn(async (url: string) => {
     const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
     if (url.startsWith('/api/studio/catalogue')) {
@@ -26,7 +23,6 @@ function deployment(runs: string[]) {
         ? { id: e.id, available: runs.includes(e.id), reason: runs.includes(e.id) ? null : 'not_enabled' }
         : { id: e.id, available: true, reason: null })) });
     }
-    if (url.startsWith('/api/studio/models')) return ok({ models: MODELS.map(publicModel).filter((m) => runs.includes(m.id)) });
     return ({ ok: false, status: 404, json: async () => ({}) }) as unknown as Response;
   }) as unknown as typeof fetch;
 }
@@ -35,7 +31,7 @@ afterEach(() => { global.fetch = realFetch; });
 function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCreatePanelProps['generate']> = {}, refs: Partial<VideoCreatePanelProps['refs']> = {}, audio: Partial<VideoCreatePanelProps['audio']> = {}) {
   const calls = {
     onSeconds: jest.fn(), onMode: jest.fn(), onFormat: jest.fn(), dispatch: jest.fn<void, [VeoPlanAction]>(),
-    onTopUp: jest.fn(), onNeedPrompt: jest.fn(), onSwitchTool: jest.fn(), onClose: jest.fn(), onAddImage: jest.fn(), onRemoveImage: jest.fn(),
+    onSwitchTool: jest.fn(), onClose: jest.fn(), onAddImage: jest.fn(), onRemoveImage: jest.fn(),
     onAddAudio: jest.fn(), onRemoveAudio: jest.fn(),
     onNarration: jest.fn(), onNarratorGender: jest.fn(), onMusic: jest.fn(), onSubtitles: jest.fn(), onLipsync: jest.fn(),
   };
@@ -43,9 +39,8 @@ function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCrea
     locale: 'en', surface: 'sheet', toolName: 'Video', onSwitchTool: calls.onSwitchTool, onClose: calls.onClose,
     plan: initialVeoPlan({ tier: 'fast', lengthSec: 24 }), dispatch: calls.dispatch, engine: null,
     mode: 'documentary', onMode: calls.onMode, seconds: 24, onSeconds: calls.onSeconds, format: '9:16', onFormat: calls.onFormat,
-    prompt: '',
     refs: { images: [], max: 3, onAddImage: calls.onAddImage, onRemoveImage: calls.onRemoveImage, audio: null, audioBusy: false, onAddAudio: calls.onAddAudio, onRemoveAudio: calls.onRemoveAudio, ...refs },
-    generate: { balanceCredits: null, onTopUp: calls.onTopUp, onNeedPrompt: calls.onNeedPrompt, ...gen },
+    generate: { ...gen },
     audio: {
       narration: true, onNarration: calls.onNarration, narratorGender: 'female', onNarratorGender: calls.onNarratorGender,
       music: true, onMusic: calls.onMusic, subtitles: false, onSubtitles: calls.onSubtitles, lipsync: true, onLipsync: calls.onLipsync, ...audio,
@@ -379,7 +374,7 @@ describe('format and model pickers', () => {
   test('⚠️ a Higgsfield model is never a pick here, even when an older server says it runs; one remembered from before reads as Veo', async () => {
     window.localStorage.setItem('myavatar:model:video', 'hf/kling-3-std-t2v'); // remembered from before the refusal
     deployment(['hf/kling-3-std-t2v']);
-    const { calls } = setup({ seconds: 24, prompt: 'a rider at dawn' });
+    const { calls } = setup({ seconds: 24 });
     // The film renders from the chat box's priced Send, as for any Veo pick: no Higgsfield button.
     expect(screen.queryByTestId('hf-generate')).toBeNull();
     expect(screen.getByTestId('video-prompt-hint')).toBeTruthy();
