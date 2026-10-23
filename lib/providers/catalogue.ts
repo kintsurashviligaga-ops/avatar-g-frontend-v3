@@ -14,7 +14,7 @@
  * cited to the page they were read from (`source`), and a model whose schema was not read is `verified: 'unverified'` and stays
  * off unless the owner lists it by name in HF_ENABLED_MODELS (registry.isModelEnabled). Not here, on purpose:
  *   · Higgsfield's Nano Banana / Seedream / GPT Image — not in its public catalogue (16 image entries, 2026-09-22). Our
- *     "Nano Banana" rows below are a different provider (api.nanobananaapi.ai), behind /api/nanobanana/image.
+ *     Google image row below is Google's own model on Vertex AI (lib/ai/geminiImage), behind /api/nanobanana/image.
  *   · Soul ID — documented (docs.higgsfield.ai/docs/models/soul-id/create-character, read 2026-10-02) but it TRAINS a
  *     character (POST /v1/custom-references → an id, no media), so it is not a generation a picker can offer. It needs its
  *     own flow; Soul 2 would then take its id as `custom_reference_id`.
@@ -51,7 +51,7 @@ export const catalogueLang = (locale: string | null | undefined): CatalogueLang 
 export type ModelRunner = 'image' | 'film' | 'music' | 'studio';
 
 /** The API a request goes to — not always the model's maker (Kling runs on Higgsfield). */
-export type ModelProvider = 'higgsfield' | 'google' | 'nanobanana' | 'udio' | 'elevenlabs' | 'replicate';
+export type ModelProvider = 'higgsfield' | 'google' | 'udio' | 'elevenlabs' | 'replicate';
 
 /**
  * Where an entry's facts come from.
@@ -145,33 +145,22 @@ function veoCaps(tier: VeoTier): ModelCapabilities {
 
 const IMAGE: CatalogueEntry[] = [
   {
-    id: 'nb/auto', service: 'image', provider: 'nanobanana', vendor: 'Google', auto: true,
-    label: t('ავტო', 'Auto', 'Авто'),
-    bestFor: t('სისტემა ირჩევს: V2 — 1K და 2K, Pro — 4K.', 'Chosen for you: V2 at 1K and 2K, Pro at 4K.', 'Выбор системы: V2 для 1K и 2K, Pro для 4K.'),
+    // ⚠️ THE ONE GOOGLE IMAGE ROW (GG 2026-10-23, "Hide"). Nano Banana V2 and Pro rendered on this same Gemini model at this same
+    // price, as did every size, so their rows and the 1K / 2K / 4K chip are gone until a size is verified to reach the render
+    // (RETIRED_IMAGE_MODEL_IDS). The id stays: browsers store it and requests carry it.
+    id: 'nb/auto', service: 'image', provider: 'google', vendor: 'Google',
+    label: same('Google Gemini'),
+    bestFor: t(
+      'Google-ის სურათის მოდელი Vertex AI-ზე: ტექსტიდან ან ერთი ფოტოდან, ერთ ფასად.',
+      'Google’s image model on Vertex AI: from text or one photo, at one price.',
+      'Модель изображений Google на Vertex AI: из текста или одного фото, по одной цене.',
+    ),
     tier: 'standard',
     caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
-    // ⚠️ EXACTLY THE ROUTE'S OLD QUALITY_ENDPOINT — a request without `model` must render what it always rendered.
+    // ⚠️ EXACTLY THE ROUTE'S OLD QUALITY_ENDPOINT. The render takes no size; the endpoint is what the route files a request
+    // under (its double-click key, the reply's `endpoint`), and an image template still matches on the quality it set.
     wire: { runner: 'image', endpoints: { standard: 'v2-1k', high: 'v2-2k', ultra: 'pro-4k' } },
     verified: 'code', source: 'app/api/nanobanana/image (QUALITY_ENDPOINT) · lib/ai/geminiImage',
-  },
-  {
-    id: 'nb/v2', service: 'image', provider: 'nanobanana', vendor: 'Google',
-    label: same('Nano Banana V2'),
-    bestFor: t('სწრაფი ყოველდღიური სურათი და რედაქტირება, 4K-მდე.', 'Fast everyday images and edits, up to 4K.', 'Быстрые повседневные изображения и правки, до 4K.'),
-    tier: 'fast',
-    caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
-    wire: { runner: 'image', endpoints: { standard: 'v2-1k', high: 'v2-2k', ultra: 'v2-4k' } },
-    verified: 'code', source: 'lib/nanobanana/endpoints (v2-1k / v2-2k / v2-4k) · lib/ai/geminiImage',
-  },
-  {
-    id: 'nb/pro', service: 'image', provider: 'nanobanana', vendor: 'Google',
-    label: same('Nano Banana Pro'),
-    bestFor: t('მაქსიმალური დეტალი, 2K და 4K. უფრო ნელი.', 'Maximum detail at 2K and 4K. Slower.', 'Максимум деталей в 2K и 4K. Медленнее.'),
-    tier: 'pro',
-    caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
-    // No 1K: the Pro endpoint's smallest size rendered 2K on the reseller (pro-1k2k → '2K'; its client is gone, PR 20).
-    wire: { runner: 'image', endpoints: { high: 'pro-1k2k', ultra: 'pro-4k' } },
-    verified: 'code', source: 'lib/nanobanana/endpoints (pro-1k2k / pro-4k) · lib/ai/geminiImage',
   },
   {
     id: 'hf/soul-2', service: 'image', provider: 'higgsfield', vendor: 'Higgsfield',
@@ -437,6 +426,13 @@ export const DEFAULT_MODEL: Readonly<Record<CatalogueService, string>> = Object.
   music: 'music/auto',
 });
 
+/**
+ * Image rows that are gone (GG 2026-10-23, "Hide"): Nano Banana V2 and Pro rendered on the same Google model, at the same price,
+ * as the one row left. A browser's stored pick of one reads as no pick (the default); a request still naming one renders as the
+ * default (app/api/nanobanana/image), so a tab open on the old picker keeps working.
+ */
+export const RETIRED_IMAGE_MODEL_IDS: readonly string[] = ['nb/v2', 'nb/pro'];
+
 const BY_ID = new Map(CATALOGUE.map((e) => [e.id, e]));
 
 export function catalogueEntry(id: unknown): CatalogueEntry | null {
@@ -505,12 +501,6 @@ export function imageEndpointFor(entry: CatalogueEntry, quality: string): NanoBa
   const e = entry.wire.endpoints;
   const q = (quality === 'standard' || quality === 'high' || quality === 'ultra' ? quality : 'high') as ImageQuality;
   return e[q] ?? (q === 'standard' ? e.high : undefined) ?? e.ultra ?? e.high ?? null;
-}
-
-/** The sizes an image model renders natively — the quality chip disables the rest. */
-export function imageQualitiesOf(entry: CatalogueEntry): ImageQuality[] {
-  const w = entry.wire;
-  return w.runner === 'image' ? (['standard', 'high', 'ultra'] as const).filter((q) => !!w.endpoints[q]) : [];
 }
 
 // ── the film route's wire ───────────────────────────────────────────────────────────────────────────────────────────

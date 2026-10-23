@@ -22,7 +22,7 @@ const DESKTOP = { width: 1280, height: 800 };
 const SHOTS = process.env.UI_IMAGE_SHOTS_DIR;
 
 
-/** Advanced settings (GG 2026-10-18) holds the model row and the resolution chip: opened only if it is shut. */
+/** Advanced settings (GG 2026-10-18) holds the model row (no size chip since GG 2026-10-23, "Hide"): opened only if it is shut. */
 async function openAdvanced(scope: Page | Locator): Promise<void> {
   const toggle = scope.getByTestId('advanced-toggle').first();
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
@@ -51,7 +51,12 @@ async function openImage(page: Page, locale = 'en'): Promise<void> {
   await page.goto(`/${locale}/dashboard`, { waitUntil: 'load' });
   await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
-  await expect(page.getByTestId('image-create-panel')).toBeVisible({ timeout: 15_000 });
+  // Picking a tool can leave its settings shut (the current composer): the tool chip opens them, as a user would
+  // (the same step as tests/video-core/_shared openVideoTool).
+  const toggle = page.getByTestId('options-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', /^(true|false)$/);
+  if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+  await expect(page.getByTestId('image-create-panel').filter({ visible: true }).first()).toBeVisible({ timeout: 15_000 });
 }
 
 /** The studio reads a published flag to stop guests before any request; pin it after mount (ChatChrome publishes '0'). */
@@ -89,7 +94,7 @@ test.describe('phone 375×812 — ref3', () => {
 
   test.beforeEach(async ({ page }) => { await seed(page); });
 
-  test('the rows, in order: header ▾ ✕ · prompt · upload · Advanced settings (Model … Auto ▾, 2K) · chips · Generate ✦ N', async ({ page }) => {
+  test('the rows, in order: header ▾ ✕ · prompt · upload · Advanced settings (Model … Google Gemini ▾) · chips · Generate ✦ N', async ({ page }) => {
     await openImage(page);
     const panel = page.getByTestId('image-create-panel');
     const rows = await panel.evaluate((el) => [...el.querySelectorAll('[data-create-row]')].map((n) => n.getAttribute('data-create-row')).filter((r) => r !== 'footer'));
@@ -105,12 +110,13 @@ test.describe('phone 375×812 — ref3', () => {
     await expect(panel.locator('[data-create-row="upload"]')).toContainText('(max 1)');
     await expect(page.getByTestId('create-prompt')).toHaveAttribute('placeholder', 'Describe your concept, scene, or idea');
     await expect(page.getByTestId('model-row')).toHaveCount(0);
-    await expect(page.getByTestId('advanced-toggle')).toContainText('Auto · 2K');
+    await expect(page.getByTestId('advanced-toggle')).toContainText('Google Gemini');
+    await expect(page.getByTestId('advanced-toggle')).not.toContainText(/\b[124]K\b/);
     await openAdvanced(page);
     await expect(page.getByTestId('model-row')).toContainText('Model');
-    await expect(page.getByTestId('model-row')).toContainText('Auto');
+    await expect(page.getByTestId('model-row')).toContainText('Google Gemini');
     await expect(page.getByTestId('chip-aspect')).toHaveText('1:1');
-    await expect(page.getByTestId('chip-quality')).toHaveText('2K');
+    await expect(page.getByTestId('chip-quality')).toHaveCount(0); // the render takes no size (GG 2026-10-23, "Hide")
     await expect(page.getByTestId('chip-count')).toHaveText('1');
     await shot(page, 'phone-create');
   });
@@ -133,17 +139,11 @@ test.describe('phone 375×812 — ref3', () => {
     await expect(page.getByTestId('image-create-panel')).toHaveCount(0);
   });
 
-  test('the price is ON the button and it is the quote — it follows the count, not the size', async ({ page }) => {
+  test('the price is ON the button and it is the quote — it follows the count', async ({ page }) => {
     await openImage(page);
     const go = page.getByTestId('create-generate');
     await expect(go).toContainText('Generate');
     await expect(go).toHaveAttribute('data-price', String(quoteCredits({ tool: 'image', count: 1 })));
-
-    await openAdvanced(page);
-    await page.getByTestId('chip-quality').click();
-    await page.getByRole('dialog', { name: 'Quality' }).getByRole('radio', { name: /4K/ }).click();
-    await expect(page.getByTestId('chip-quality')).toHaveText('4K');
-    await expect(go).toHaveAttribute('data-price', String(quoteCredits({ tool: 'image', count: 1 }))); // every size costs the same
 
     await page.getByTestId('chip-count').click();
     await page.getByRole('dialog', { name: 'How many images' }).getByRole('radio', { name: /4 images/ }).click();
@@ -174,7 +174,7 @@ test.describe('phone 375×812 — ref3', () => {
     await expect(page.getByTestId('image-create-panel')).toBeVisible();
   });
 
-  test('the pickers are sheets with large options: ten ratios drawn as shapes, three sizes naming their model, three counts with prices', async ({ page }) => {
+  test('the pickers are sheets with large options: ten ratios drawn as shapes and one Google model to pick', async ({ page }) => {
     await openImage(page);
     await page.getByTestId('chip-aspect').click();
     const aspect = page.getByRole('dialog', { name: 'Aspect ratio' });
@@ -188,20 +188,16 @@ test.describe('phone 375×812 — ref3', () => {
     await tiles.filter({ hasText: '9:16' }).click();
     await expect(page.getByTestId('chip-aspect')).toHaveText('9:16');
 
+    // The model row: the studio's ModelPicker — the one Google row checked and open, the rest dimmed, no price (the request
+    // names the model and the server quotes it; tests/model-picker.spec.ts follows a pick into the request). Nano Banana V2
+    // and Pro rendered on the same model at the same price, so their rows are gone (GG 2026-10-23, "Hide").
     await openAdvanced(page);
-    await page.getByTestId('chip-quality').click();
-    const quality = page.getByRole('dialog', { name: 'Quality' }).getByRole('radio');
-    await expect(quality).toHaveCount(3);
-    await expect(quality.nth(0)).toContainText('Nano Banana V2');
-    await expect(quality.nth(2)).toContainText('Nano Banana Pro');
-    await page.keyboard.press('Escape');
-
-    // The model row: the studio's ModelPicker — Auto checked, the route's own three models open, the rest dimmed, no price
-    // (the request names the model and the server quotes it; tests/model-picker.spec.ts follows a pick into the request).
     await page.getByTestId('model-row').click();
     const model = page.getByRole('dialog', { name: 'Model' });
     await expect(model.locator('[data-model="nb/auto"]')).toHaveAttribute('aria-checked', 'true');
-    await expect(model.locator('[role="radio"]:not([aria-disabled="true"])')).toHaveCount(3);
+    await expect(model.locator('[role="radio"]:not([aria-disabled="true"])')).toHaveCount(1);
+    await expect(model.locator('[data-model="nb/v2"], [data-model="nb/pro"]')).toHaveCount(0);
+    await expect(model).not.toContainText('Nano Banana');
     await expect(model).not.toContainText('credits');
     await shot(page, 'phone-picker-model');
   });
@@ -249,8 +245,6 @@ test.describe('phone 375×812 — ref3', () => {
     await page.getByTestId('chip-aspect').click();
     await page.getByRole('dialog', { name: 'Aspect ratio' }).getByRole('radio').filter({ hasText: '9:16' }).click();
     await openAdvanced(page);
-    await page.getByTestId('chip-quality').click();
-    await page.getByRole('dialog', { name: 'Quality' }).getByRole('radio', { name: /4K/ }).click();
     await page.getByRole('group', { name: 'Style' }).getByRole('button', { name: 'Anime' }).click();
     await page.getByTestId('create-negative').fill('blurry, watermark');
     await page.getByTestId('create-prompt').fill('A lighthouse on a cliff at sunset');
@@ -258,7 +252,7 @@ test.describe('phone 375×812 — ref3', () => {
 
     await expect(page.getByTestId('image-create-panel')).toBeHidden(); // the studio closes the sheet on a send
     await expect.poll(() => calls.length).toBe(1);
-    expect(calls[0]).toMatchObject({ prompt: 'A lighthouse on a cliff at sunset', aspectRatio: '9:16', quality: 'ultra', style: 'Anime', negativePrompt: 'blurry, watermark' });
+    expect(calls[0]).toMatchObject({ prompt: 'A lighthouse on a cliff at sunset', aspectRatio: '9:16', quality: 'high', style: 'Anime', negativePrompt: 'blurry, watermark' });
     expect(calls[0]!.referenceImage).toBeUndefined();
     await expect(page.locator('img[alt="Generated image"]').first()).toBeVisible({ timeout: 20_000 });
     await shot(page, 'phone-result');
@@ -384,20 +378,20 @@ test.describe('desktop 1280×800 — ref6', () => {
     await expect(panel.getByTestId('create-generate')).toBeVisible();
   });
 
-  test('Models & prices doubles as the picker: three rows priced by the quote; a row sets the size in the right column', async ({ page }) => {
+  test('Models & prices: one Google row priced by the quote, no size and nothing to pick there', async ({ page }) => {
     await openImage(page);
     const table = page.getByTestId('models-prices');
     await table.scrollIntoViewIfNeeded();
-    const rows = table.getByRole('radio');
-    await expect(rows).toHaveCount(3);
-    await expect(rows.nth(0)).toContainText('Auto · 1K');
-    await expect(rows.nth(2)).toContainText('Nano Banana Pro');
-    for (let i = 0; i < 3; i++) await expect(rows.nth(i)).toContainText(`${quoteCredits({ tool: 'image', count: 1 })} credits / image`);
-    await expect(rows.nth(1)).toHaveAttribute('aria-checked', 'true'); // 2K, the default
-    await rows.nth(2).click();
-    await expect(rows.nth(2)).toHaveAttribute('aria-checked', 'true');
+    await expect(table.getByRole('radio')).toHaveCount(0); // the model is picked in one place: the panel's model row
+    const row = table.locator('[data-model]');
+    await expect(row).toHaveCount(1);
+    await expect(row).toHaveAttribute('data-model', 'nb/auto');
+    await expect(row).toContainText('Google Gemini');
+    await expect(row).toContainText(`${quoteCredits({ tool: 'image', count: 1 })} credits / image`);
+    await expect(table).not.toContainText('Nano Banana');
+    await expect(table).not.toContainText(/\b[124]K\b/);
     await openAdvanced(page.getByTestId('settings-panel'));
-    await expect(page.getByTestId('settings-panel').getByTestId('chip-quality')).toHaveText('4K');
+    await expect(page.getByTestId('settings-panel').getByTestId('chip-quality')).toHaveCount(0);
     await shot(page, 'desktop-models');
   });
 

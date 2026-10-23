@@ -49,7 +49,8 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
   test('every control is bound to the studio\'s EXISTING state — nothing new to generate with', () => {
     for (const bound of [
       'aspect={imgAspect} onAspect={setImgAspect}',
-      'quality={imgQuality} onQuality={setImgQuality}',
+      // The quality rides along (a template sets it); nothing on the screen offers it (GG 2026-10-23, "Hide").
+      'quality={imgQuality}',
       'count={imgCount} onCount={setImgCount}',
       'style={imgStyle} onStyle={setImgStyle}',
       'negative={imgNegative} onNegative={setImgNegative}',
@@ -57,6 +58,7 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
       'activeTemplate={activeImagePreset}',
       'onPickTemplate={applyImagePreset}',
     ]) expect(mounted).toContain(bound);
+    expect(mounted).not.toContain('onQuality=');
   });
 
   test('the prompt card IS the composer\'s prompt: typing marks dictation like the composer does', () => {

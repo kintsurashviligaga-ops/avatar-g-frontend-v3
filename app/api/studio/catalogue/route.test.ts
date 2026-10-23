@@ -56,7 +56,9 @@ test.each([
     }
     const v = await rows('video');
     expect(v['google/veo-3.1-fast']).toEqual({ id: 'google/veo-3.1-fast', available: true, reason: null });
-    expect((await rows('image'))['nb/pro']).toMatchObject({ available: true });
+    const image = await rows('image');
+    expect(image['nb/auto']).toMatchObject({ available: true });
+    expect(Object.keys(image).filter((id) => !id.startsWith('hf/'))).toEqual(['nb/auto']); // V2 / Pro retired (GG 2026-10-23)
     expect(musicEnginesStatus).not.toHaveBeenCalled(); // no music row asked → no breaker reads
   } finally {
     if (approval === undefined) delete process.env.OUTSIDE_ENGINES_APPROVED;

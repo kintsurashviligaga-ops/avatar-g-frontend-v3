@@ -23,7 +23,7 @@ import { sanitizeStyle } from '@/lib/studio/style';
 import { composeImagePrompt } from '@/lib/studio/composeImagePrompt';
 import { resolveTemplateContext } from '@/lib/studio/templateContext';
 import { resolveShootDirective } from '@/lib/studio/shootContext';
-import { DEFAULT_MODEL, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor, type DeploymentProbe } from '@/lib/providers/catalogue';
+import { DEFAULT_MODEL, RETIRED_IMAGE_MODEL_IDS, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor, type DeploymentProbe } from '@/lib/providers/catalogue';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 export const dynamic = 'force-dynamic';
@@ -33,25 +33,30 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 /**
- * The MODEL → NanoBanana endpoint map is the catalogue's (lib/providers/catalogue: `nb/auto` · `nb/v2` · `nb/pro`, each with
- * its endpoint per size). Auto is exactly the old quality map — standard → v2-1k, high → v2-2k, ultra → pro-4k — so a request
- * without `model` renders what it always rendered.
+ * The MODEL → NanoBanana endpoint map is the catalogue's (lib/providers/catalogue: `nb/auto`, the one Google row, with its endpoint
+ * per size). It is exactly the old quality map — standard → v2-1k, high → v2-2k, ultra → pro-4k — so a request without `model`
+ * is filed as it always was. The render takes no size: the endpoint names the request (its double-click key, the reply).
  *
  * ⚠️ THE CLIENT NAMES A MODEL, NEVER AN ENDPOINT. `model` must be an image entry of the catalogue that this deployment can run
- * (availabilityOf); anything else is refused 400 BEFORE the mutex, the charge or a provider call. The legacy `endpoint` field
- * was cast straight into the provider call (`'task-details'` included); it is now honoured only when it is one of the
- * catalogue's own image endpoints. Every endpoint is one image's price here — the dearest (pro-4k) is what `ultra` always
- * cost — so no pick can cost us more than a 4K Auto render already did.
+ * (availabilityOf), or a retired row (RETIRED_IMAGE_MODEL_IDS: Nano Banana V2 / Pro, hidden on GG's word 2026-10-23), which is
+ * taken as the default (both always rendered on the same model); anything else is refused 400 BEFORE the mutex, the charge or
+ * a provider call.
+ * The legacy `endpoint` field was cast straight into the provider call (`'task-details'` included); it is now honoured only
+ * when it is one of the catalogue's own image endpoints or one the retired rows named. Every endpoint is one image's price.
  */
-const IMAGE_ENDPOINTS: ReadonlySet<string> = new Set(
-  catalogueFor('image').flatMap((e) => (e.wire.runner === 'image' ? Object.values(e.wire.endpoints) : [])),
-);
+const IMAGE_ENDPOINTS: ReadonlySet<string> = new Set([
+  ...catalogueFor('image').flatMap((e) => (e.wire.runner === 'image' ? Object.values(e.wire.endpoints) : [])),
+  // What Nano Banana V2 at 4K and Pro at 1K / 2K were filed under before their rows were retired.
+  'v2-4k', 'pro-1k2k',
+]);
 const NO_DEPLOYMENT_GATE: DeploymentProbe = { film: false, music: null };
 
 type ImageModelPick = { ok: true; modelId: string; endpoint: NanoBananaEndpoint } | { ok: false };
 
 function resolveImageModel(rawModel: unknown, rawEndpoint: unknown, quality: string): ImageModelPick {
-  const entry = catalogueEntry(rawModel === undefined || rawModel === null || rawModel === '' ? DEFAULT_MODEL.image : rawModel);
+  const unnamed = rawModel === undefined || rawModel === null || rawModel === '';
+  const retired = typeof rawModel === 'string' && RETIRED_IMAGE_MODEL_IDS.includes(rawModel);
+  const entry = catalogueEntry(unnamed || retired ? DEFAULT_MODEL.image : rawModel);
   if (!entry || entry.service !== 'image' || entry.wire.runner !== 'image' || !availabilityOf(entry, NO_DEPLOYMENT_GATE).available) return { ok: false };
   if (rawEndpoint !== undefined && rawEndpoint !== null && rawEndpoint !== '') {
     return typeof rawEndpoint === 'string' && IMAGE_ENDPOINTS.has(rawEndpoint)

@@ -191,7 +191,7 @@ describe('the registry and the catalogue are one list (lib/providers/catalogue â
     // No such model ships today; the gate is the one isModelEnabled applies, pinned through the catalogue's own rule.
     expect(MODELS.filter((m) => m.schema === 'unverified')).toEqual([]);
     expect(isModelEnabled('hf/nope', {} as NodeJS.ProcessEnv)).toBe(false);
-    expect(isModelEnabled('nb/pro', {} as NodeJS.ProcessEnv)).toBe(false); // a catalogue id that is not a Higgsfield model
+    expect(isModelEnabled('nb/auto', {} as NodeJS.ProcessEnv)).toBe(false); // a catalogue id that is not a Higgsfield model
     expect(isModelEnabled('google/veo-3.1', {} as NodeJS.ProcessEnv)).toBe(false);
   });
 });

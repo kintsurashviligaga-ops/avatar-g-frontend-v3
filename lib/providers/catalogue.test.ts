@@ -9,7 +9,7 @@ import { capsFor, DEFAULT_MODEL_IDS } from '@/lib/veo/capabilities';
 import { IMG_ASPECTS, IMAGE_MAX_REFERENCES } from '@/lib/studio/imageCreate';
 import { MUSIC_ENGINE_CHAIN } from '@/lib/studio/musicEngines';
 import {
-  CATALOGUE, CATALOGUE_SERVICES, DEFAULT_MODEL, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor, imageQualitiesOf,
+  CATALOGUE, CATALOGUE_SERVICES, DEFAULT_MODEL, RETIRED_IMAGE_MODEL_IDS, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor,
   isCatalogueService, tierForVideoModel, videoModelForTier, type CatalogueEntry, type DeploymentProbe,
 } from './catalogue';
 
@@ -113,15 +113,16 @@ describe('the image route\'s wire', () => {
     expect(['standard', 'high', 'ultra'].map((q) => imageEndpointFor(e('nb/auto'), q))).toEqual(['v2-1k', 'v2-2k', 'pro-4k']);
     expect(imageEndpointFor(e('nb/auto'), 'bogus')).toBe('v2-2k'); // the route's old fallback for an unknown quality
   });
-  test('V2 pins the V2 family, Pro the Pro family; Pro has no 1K and renders a 1K request at its 2K', () => {
-    expect(imageQualitiesOf(e('nb/v2'))).toEqual(['standard', 'high', 'ultra']);
-    expect(imageQualitiesOf(e('nb/pro'))).toEqual(['high', 'ultra']);
-    expect(imageEndpointFor(e('nb/pro'), 'standard')).toBe('pro-1k2k');
-    expect(imageEndpointFor(e('nb/v2'), 'ultra')).toBe('v2-4k');
+  test('⚠️ one Google image row (GG 2026-10-23, "Hide"): Nano Banana V2 and Pro are retired ids the catalogue no longer lists', () => {
+    expect(catalogueFor('image').filter((x) => x.wire.runner === 'image').map((x) => x.id)).toEqual(['nb/auto']);
+    expect(e('nb/auto')).toMatchObject({ provider: 'google', vendor: 'Google', label: { en: 'Google Gemini' } });
+    expect(e('nb/auto').bestFor.en).not.toMatch(/\b[124]K\b|V2|Pro\b/);
+    expect([...RETIRED_IMAGE_MODEL_IDS]).toEqual(['nb/v2', 'nb/pro']);
+    for (const id of RETIRED_IMAGE_MODEL_IDS) expect(catalogueEntry(id)).toBeNull();
   });
   test('a model of another runner has no image endpoint', () => {
     expect(imageEndpointFor(e('hf/soul-2'), 'high')).toBeNull();
-    expect(imageQualitiesOf(e('google/veo-3.1'))).toEqual([]);
+    expect(imageEndpointFor(e('google/veo-3.1'), 'high')).toBeNull();
   });
 });
 
@@ -143,7 +144,7 @@ describe('availability: a refused vendor never runs, whatever the deployment say
 
   test('the film route: a renderer or nothing; the image route: always (its cascade refunds a miss)', () => {
     expect(availabilityOf(videoModelForTier('fast'), probe({ film: false }))).toEqual({ available: false, reason: 'not_configured' });
-    expect(availabilityOf(catalogueEntry('nb/pro')!, probe({ film: false }))).toEqual({ available: true, reason: null });
+    expect(availabilityOf(catalogueEntry('nb/auto')!, probe({ film: false }))).toEqual({ available: true, reason: null });
   });
 
   test('music: an engine without a key is unavailable, a tripped breaker is busy; Auto and an unread status try', () => {

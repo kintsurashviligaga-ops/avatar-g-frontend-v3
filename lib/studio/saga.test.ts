@@ -203,7 +203,7 @@ describe('no money moves without a confirmed price', () => {
     const { saga, calls } = setup();
     expect(await saga.create({ userId: USER, modelId: 'hf/nope', params: {}, confirmedGel: 1 })).toMatchObject({ ok: false, code: 'model_unavailable' });
     // A Nano Banana / Veo pick is a catalogue model but never a Higgsfield one: the saga cannot be talked into running it.
-    expect(await saga.create({ userId: USER, modelId: 'nb/pro', params: { prompt: 'x' }, confirmedGel: 1 })).toMatchObject({ ok: false, code: 'model_unavailable' });
+    expect(await saga.create({ userId: USER, modelId: 'nb/auto', params: { prompt: 'x' }, confirmedGel: 1 })).toMatchObject({ ok: false, code: 'model_unavailable' });
     expect(calls.estimate).toBe(0);
   });
 
