@@ -62,13 +62,9 @@ describe('components/ui primitives are actually used', () => {
    *
    * Adding a twenty-second is what this stops.
    */
-  const QUARANTINE = [
-    // Skeleton.tsx itself IS used — three files import it — so the module stays and only these two
-    // named exports are unrendered. Deleting a live file to remove two exports is the wrong trade; they
-    // are cheap, they belong to a component that is real, and a loading skeleton for a page not yet
-    // written is the one case where "not used yet" is a plausible answer rather than an excuse.
-    'Skeleton.tsx:CardSkeleton',
-    'Skeleton.tsx:DashboardSkeleton',
+  const QUARANTINE: string[] = [
+    // Empty since Phase 2 (rollback row 41). It held Skeleton.tsx's CardSkeleton and DashboardSkeleton
+    // while three files imported Skeleton; those three were dead screens, and Skeleton left with them.
   ];
 
   const dead = () => primitives
