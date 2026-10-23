@@ -278,7 +278,7 @@ describe('never a secret value', () => {
     expect(out).not.toContain('sk-should-not-leak');
     for (const value of Object.values(SECRETS)) expect(out).not.toContain(value);
     // Presence is still reported — as booleans/marks, not values. (The TTS row no longer lists the ElevenLabs voice-id
-    // overrides: Cloud TTS picks its own ka-GE voice and never reads them, PR 6b.)
+    // overrides: Cloud TTS picks its own voice and never reads them, PR 6b.)
     expect(row(h, 'ლიპ-სინქი').note).toMatch(/sync\/lipsync-2✅/);
     expect(row(h, 'ხმა (TTS)').note).not.toMatch(/female=|male=/);
   });

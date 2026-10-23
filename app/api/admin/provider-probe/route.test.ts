@@ -44,7 +44,7 @@ beforeEach(() => {
   mockTransport.mockReturnValue('vertex');
   mockProblems.mockReturnValue([]);
   mockReadiness.mockResolvedValue({ configured: true, ok: true, detail: 'vertex · location:global · mode:wif · token:ok' });
-  mockCloudTts.mockResolvedValue({ state: 'ok', detail: '4 ka-GE voices · best ka-GE-Chirp3-HD-Aoede' });
+  mockCloudTts.mockResolvedValue({ state: 'ok', detail: 'Cloud TTS answers (4 en-US voices) · Georgian on gemini-2.5-flash-tts' });
   warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -139,7 +139,7 @@ it('reports the voice as Cloud TTS, and never calls ElevenLabs', async () => {
   try {
     let body = (await (await GET(req())).json()) as { results: Array<{ provider: string; configured: boolean; ok: boolean; detail: string }> };
     expect(body.results.find((r) => r.provider === 'cloud-tts')).toEqual({
-      provider: 'cloud-tts', configured: true, ok: true, detail: '4 ka-GE voices · best ka-GE-Chirp3-HD-Aoede',
+      provider: 'cloud-tts', configured: true, ok: true, detail: 'Cloud TTS answers (4 en-US voices) · Georgian on gemini-2.5-flash-tts',
     });
     expect(body.results.some((r) => r.provider === 'elevenlabs')).toBe(false);
     expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('elevenlabs.io'))).toBe(false);

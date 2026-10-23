@@ -101,19 +101,19 @@ test('a token the chain cannot mint is an ERROR', async () => {
   expect(gemini?.message).toContain('token:failed');
 });
 
-test('voice is Cloud TTS on the same token (its free ka-GE voices list); ElevenLabs is never asked, whatever key is set', async () => {
+test('voice is Cloud TTS on the same token (its free voices list); ElevenLabs is never asked, whatever key is set', async () => {
   process.env.ELEVENLABS_API_KEY = 'el-should-not-be-sent';
   fetchMock.mockImplementation(async (url: string) =>
     url.startsWith('https://texttospeech.googleapis.com/')
-      ? new Response(JSON.stringify({ voices: [{ name: 'ka-GE-Chirp3-HD-Aoede', languageCodes: ['ka-GE'] }] }), { status: 200 })
+      ? new Response(JSON.stringify({ voices: [{ name: 'en-US-Chirp3-HD-Aoede', languageCodes: ['en-US'] }] }), { status: 200 })
       : new Response('{}', { status: 200 }));
   const results = await run();
   expect(results.find((r) => r.service === 'Google Cloud TTS (voice)')).toMatchObject({
-    status: 'CONNECTED', envVar: 'GCP_PROJECT_ID', message: '1 ka-GE voices · best ka-GE-Chirp3-HD-Aoede',
+    status: 'CONNECTED', envVar: 'GCP_PROJECT_ID', message: 'Cloud TTS answers (1 en-US voices) · Georgian on gemini-2.5-flash-tts',
   });
   expect(results.some((r) => /elevenlabs/i.test(r.service))).toBe(false);
   const urls = (fetchMock.mock.calls as [string][]).map(([u]) => u);
-  expect(urls).toContain('https://texttospeech.googleapis.com/v1/voices?languageCode=ka-GE');
+  expect(urls).toContain('https://texttospeech.googleapis.com/v1/voices?languageCode=en-US');
   expect(urls.some((u) => u.includes('elevenlabs.io'))).toBe(false);
   expect(urls.some((u) => u.includes('text:synthesize'))).toBe(false);
 });
