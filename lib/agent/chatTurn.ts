@@ -405,3 +405,16 @@ export function wordsAreForChat(text: string, mode: string, locale: string): boo
   const k = classifyAgentIntent({ text: t, mode, locale }).kind;
   return k === 'control' || k === 'talk' || k === 'question' || k === 'feedback';
 }
+
+/** „tell me …", „explain …" anywhere in the message: the classifier reads these as plain chat, never as a request. */
+const TELL_ME = /(?<![\p{L}\p{N}])(?:tell\s+me|explain|მითხარი|მიამბე|ამიხსენი|ახსენი|განმიმარტე|расскажи|объясни|поясни)(?![\p{L}\p{N}])/iu;
+
+/**
+ * Words that only talk ABOUT something — a question, talk, feedback, a control word, or „tell me / explain …" — and order
+ * nothing. The send path's multi-scene shortcut (OmniStudio) reads „storyboard" or „3 scenes" as a film brief; with these
+ * words around it the storyboard is the topic: „open the settings and tell me what a storyboard is" planned a two-scene
+ * film (tests/agent-g-panels.spec.ts) instead of going to the chat.
+ */
+export function wordsAskToBeTold(text: string, mode: string, locale: string): boolean {
+  return wordsAreForChat(text, mode, locale) || TELL_ME.test(text);
+}
