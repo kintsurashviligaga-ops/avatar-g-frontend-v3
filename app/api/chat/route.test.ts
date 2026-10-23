@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
  * POST /api/chat — the widgets' JSON chat follows the product chat's rules: sign-in, the per-account daily allowance,
- * Google only whatever the env says (the OpenAI-backed chatEngine and Anthropic are never called), no provider wording
+ * Google only whatever the env says (no request reaches OpenAI or OpenRouter, and Anthropic is never called), no provider wording
  * in the response, and no account ever served another account's answer. Everything external is mocked.
  */
 jest.mock('server-only', () => ({}));
@@ -30,8 +30,6 @@ jest.mock('../../../lib/ai/google/chatStream', () => ({
   unbookedAttempts: jest.requireActual('../../../lib/ai/google/chatStream').unbookedAttempts,
 }));
 jest.mock('../../../lib/orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => 'test-key' }));
-const mockExecute = jest.fn();
-jest.mock('../../../lib/ai/chatEngine', () => ({ execute: (...a: unknown[]) => mockExecute(...a) }));
 jest.mock('../../../lib/agents/agentRegistry', () => ({ getAllAgents: () => [] }));
 jest.mock('../../../lib/agent-g-orchestrator', () => ({ agentGSystemPrompt: () => 'SYSTEM' }));
 const mockAnthropicCall = jest.fn();
@@ -58,6 +56,10 @@ const failed = {
 };
 const data = async (res: Response) => ((await res.json()) as { data?: Record<string, unknown> } & Record<string, unknown>);
 
+let fetchSpy: jest.SpyInstance;
+/** Requests that went to OpenAI or OpenRouter: the chat engine that called them is gone, so the network is the only way left. */
+const vendorCalls = () => fetchSpy.mock.calls.filter(([u]) => /\bapi\.openai\.com\b|\bopenrouter\.ai\b/.test(String(u instanceof Request ? u.url : u)));
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockAuth = { userId: USER };
@@ -66,6 +68,7 @@ beforeEach(() => {
   process.env.ANTHROPIC_API_KEY = 'anthropic-test';
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => { throw new Error('no network in this test'); });
 });
 afterEach(() => {
   process.env = { ...ENV };
@@ -78,7 +81,7 @@ test('a guest is refused with the canonical 401 body before any provider is call
   expect(res.status).toBe(401);
   expect(await res.json()).toMatchObject({ authRequired: true, error: 'auth_required' });
   expect(mockGemini).not.toHaveBeenCalled();
-  expect(mockExecute).not.toHaveBeenCalled();
+  expect(vendorCalls()).toEqual([]);
 });
 
 test('the per-account daily allowance refuses before any provider is called', async () => {
@@ -89,12 +92,12 @@ test('the per-account daily allowance refuses before any provider is called', as
   expect(mockGemini).not.toHaveBeenCalled();
 });
 
-test('Google-only (the default): the Gemini chain answers and the OpenAI-backed chatEngine is never called', async () => {
+test('Google-only (the default): the Gemini chain answers and no request reaches OpenAI or OpenRouter', async () => {
   mockGemini.mockResolvedValueOnce(reply('Tbilisi'));
   const body = await data(await POST(post({ message: 'capital of Georgia?' })));
   expect(JSON.stringify(body)).toContain('Tbilisi');
   expect(JSON.stringify(body)).toContain('gemini-3.8-flash');
-  expect(mockExecute).not.toHaveBeenCalled();
+  expect(vendorCalls()).toEqual([]);
 });
 
 test('Google-only failure: a generic localized notice, no provider wording, no diagnostics, no Anthropic', async () => {
@@ -106,10 +109,9 @@ test('Google-only failure: a generic localized notice, no provider wording, no d
 });
 
 test.each([{ AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-anthropic' }])(
-  'env %p re-opens nothing: Gemini answers each account, chatEngine and Anthropic are never called (MASTER TASK v3.1)',
+  'env %p re-opens nothing: Gemini answers each account, OpenAI, OpenRouter and Anthropic are never called (MASTER TASK v3.1)',
   async (env) => {
     Object.assign(process.env, env);
-    mockExecute.mockResolvedValue({ text: 'from chatEngine', model: 'gpt' });
     mockGemini.mockResolvedValueOnce(reply('Your name is Nino'));
     const first = JSON.stringify(await data(await POST(post({ message: 'what is my name?' }))));
     expect(first).toContain('Nino');
@@ -119,7 +121,7 @@ test.each([{ AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPRO
     const second = JSON.stringify(await data(await POST(post({ message: 'what is my name?', language: 'en' }))));
     expect(second).not.toContain('Nino');
     expect(second).toContain('temporarily unavailable');
-    expect(mockExecute).not.toHaveBeenCalled();
+    expect(vendorCalls()).toEqual([]);
     expect(mockAnthropicCall).not.toHaveBeenCalled();
   },
 );

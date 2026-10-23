@@ -15,7 +15,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import type { ChatMessage } from '@/lib/ai/chatEngine';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { orchestrate, pollOrchestrationTask } from '@/lib/chat/providerRouter';
@@ -28,6 +27,9 @@ import { chatModelChain } from '@/lib/ai/google/models';
 import { streamGeminiChat, unbookedAttempts } from '@/lib/ai/google/chatStream';
 import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+
+/** One turn of the conversation as this route hands it on. */
+type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
 type Loc = 'ka' | 'en' | 'ru';
 const locOf = (req: NextRequest, hint?: string): Loc => {

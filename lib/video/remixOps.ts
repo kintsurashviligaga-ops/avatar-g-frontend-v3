@@ -7,13 +7,11 @@
  * returns `null` on any miss (no ffmpeg, fetch/exec error, empty output) so the
  * route can degrade gracefully and the user is never left with a broken render.
  *
- * The generative leg (klingI2v) animates a single restyled/character-swapped
- * keyframe back into a clip via Replicate; kenBurnsClip is the pure-ffmpeg
- * fallback so restyle/character ALWAYS return a moving result even with no token.
+ * Nothing here calls a generative provider (MASTER TASK v3.1): the Replicate legs — the roop face swap
+ * and the Kling i2v that animated a restyled keyframe — had no caller left and are gone. kenBurnsClip is
+ * the pure-ffmpeg pan the product ad falls back to when Veo misses (lib/ai/veoClipSync).
  */
 import 'server-only';
-import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
-import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { ASPECT_DIMS as SHARED_ASPECT_DIMS, GRADE_VF, atempoChain, type GradeStyle } from '@/lib/video/editFilters';
 import { soundMixGraph } from '@/lib/services/montage/montageSound';
@@ -21,31 +19,11 @@ import { describeDub, dubFilter, frameLevelsDb, levelProfile, planDub, speechSpa
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { withRetry } from '@/lib/utils/withRetry';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 // The pipeline's SVG→PNG overlay compositor — the one text path that renders on Vercel (no system
 // fonts, and ffmpeg-static is built without libfreetype, so `drawtext` does not exist there).
 import { applyMarketingOverlays } from '@/lib/pipeline/compositing/ffmpeg-overlay';
-import { StallDetector } from '@/lib/jobs/stallDetector';
-import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
-
-// TASK 5 — fault-tolerance for the async i2v/faceswap poll loops. Budgets are env-DECOUPLED so
-// each provider can be tuned independently; a StallDetector surfaces a "provider hung in queue"
-// bottleneck in the logs (once per stall episode, no re-submit → no double-charge); the Redis
-// circuit breaker lets a caller fail-FAST to the ffmpeg fallback while a provider is melting down.
-const KLING_BUDGET_MS = Number(process.env.REMIX_KLING_BUDGET_MS) || 240_000;
-const ROOP_BUDGET_MS = Number(process.env.REMIX_ROOP_BUDGET_MS) || 540_000;
-const REMIX_STALL_MS = Number(process.env.REMIX_STALL_MS) || 90_000;
-
-/** Monotonic progress proxy for a Replicate prediction poll: status ordinal (starting→processing
- *  →succeeded) scaled above the growing `logs` length, so ANY real forward movement resets the
- *  stall clock and a truly hung job (same status, no new logs) trips it. */
-function predictionProgress(status?: string, logs?: unknown): number {
-  const ord = status === 'succeeded' ? 3 : status === 'processing' ? 2 : status === 'starting' ? 1 : 0;
-  const logLen = typeof logs === 'string' ? logs.length : 0;
-  return ord * 1_000_000 + logLen;
-}
 
 /** ffmpeg never fetches a URL itself: http(s) inputs are downloaded through the public-fetch guard first. */
 const exec = ffmpegExec;
@@ -608,172 +586,6 @@ export async function stabilizeClip(videoUrl: string): Promise<string | null> {
     return null;
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
-// REAL video face-swap (roop): swap_image (new face) + target_video → the SAME video with
-// the face replaced THROUGHOUT, preserving the original motion. This is the closer-to-source
-// path the keyframe-regenerate `character` op can't give. Community model → pinned version
-// via /v1/predictions (env-overridable). Bounded create+poll; result re-hosted to Supabase.
-// Returns null on no-token / restriction / timeout so the caller falls back. ~9 min poll cap.
-const FACESWAP_MODEL_VERSION = (process.env.REPLICATE_FACESWAP_VERSION || '11b6bf0f4e14d808f655e87e5448233cceff10a45f659d71539cafb7163b2e84').trim();
-export async function roopFaceSwapVideo(targetVideoUrl: string, swapImageUrl: string): Promise<string | null> {
-  const token = (process.env.REPLICATE_API_TOKEN || '').trim();
-  if (!token || !targetVideoUrl || !swapImageUrl) return null;
-  if (!/^https?:\/\//i.test(targetVideoUrl) || !/^https?:\/\//i.test(swapImageUrl)) return null; // replicate fetches by URL
-  // CIRCUIT BREAKER (Task 5.3): if roop has tripped (3 hard fails in the cooldown), fail-FAST so
-  // the caller drops to its fallback instead of burning ~9 min on a known-bad provider. Fail-open.
-  if (await isProviderTripped('replicate-roop').catch(() => false)) {
-    // eslint-disable-next-line no-console
-    console.warn('[remix.faceswap] breaker OPEN for replicate-roop → skipping (fail-fast to fallback)');
-    return null;
-  }
-  // Track whether we've already fed the breaker one outcome for this call, so the catch below can
-  // record a failure ONLY when a create/poll THROW bypassed the inline records (exactly one record
-  // per call → the breaker counts create-timeouts/5xx/DNS, its primary target, without double-count).
-  let recorded = false;
-  try {
-    const create = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({ version: FACESWAP_MODEL_VERSION, input: { swap_image: swapImageUrl, target_video: targetVideoUrl } }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!create.ok) { recorded = true; await recordProviderResult('replicate-roop', false).catch(() => {}); return null; }
-    const pred = (await create.json().catch(() => ({}))) as { status?: string; output?: unknown; urls?: { get?: string } };
-    const pollUrl = pred.urls?.get;
-    const pick = (o: unknown): string | null => typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pick(o[o.length - 1]) : null;
-    let output = pred.output;
-    let status = pred.status;
-    const stall = new StallDetector({ stallMs: REMIX_STALL_MS, startPct: predictionProgress(status) });
-    const deadline = Date.now() + ROOP_BUDGET_MS;
-    while (pollUrl && status !== 'succeeded' && status !== 'failed' && status !== 'canceled' && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 4_000));
-      const poll = await fetch(pollUrl, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) }).catch(() => null);
-      if (!poll || !poll.ok) continue;
-      const j = (await poll.json().catch(() => ({}))) as { status?: string; output?: unknown; logs?: unknown };
-      status = j.status; output = j.output;
-      stall.tick(predictionProgress(status, j.logs));
-      if (stall.shouldFlag()) {
-        // eslint-disable-next-line no-console
-        console.warn(`[remix.faceswap] replicate-roop stalled — no forward progress for ${Math.round(stall.check().msSinceProgress / 1000)}s (still polling, no re-submit)`);
-      }
-    }
-    const outUrl = status === 'succeeded' ? pick(output) : null;
-    // Record the provider outcome so the breaker opens after repeated hard failures / timeouts.
-    recorded = true;
-    await recordProviderResult('replicate-roop', !!outUrl).catch(() => {});
-    if (!outUrl) return null;
-    // Re-host to Supabase (the replicate.delivery URL is short-lived + CSP-blocked in-app).
-    const r = await fetch(outUrl, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
-    if (!r || !r.ok) return outUrl; // fail-open: return the provider URL if re-host fetch misses
-    const buf = Buffer.from(await r.arrayBuffer());
-    return (await hostMp4(buf, 'faceswap')) ?? outUrl;
-  } catch (err) {
-    // A create-fetch throw (30s timeout / 5xx / DNS) or a poll-loop throw lands here WITHOUT having
-    // hit an inline record — count it so the breaker actually opens on the hung-provider case.
-    if (!recorded) await recordProviderResult('replicate-roop', false).catch(() => {});
-    // eslint-disable-next-line no-console
-    console.warn('[remix.faceswap] failed:', err instanceof Error ? err.message : err);
-    return null;
-  }
-}
-
-const I2V_MODEL = VIDEO_PRIMARY; // hard-locked Kling v2.1 default (env-overridable) — see lib/video/modelLock
-const I2V_NEGATIVE = 'blurry, distorted, watermark, text, low quality, deformed';
-
-/**
- * Animate a restyled / character-swapped keyframe back into a ~5s clip via the
- * configured Replicate i2v model (Kling by default), re-hosted to Supabase.
- * Returns null on no token / create / poll failure so the caller falls back to
- * kenBurnsClip. Self-contained create+poll (bounded to ~4 min).
- */
-export async function klingI2v(startImage: string, prompt: string, aspect: '9:16' | '16:9' | '1:1' = '9:16', referenceImages?: string[]): Promise<string | null> {
-  const token = (process.env.REPLICATE_API_TOKEN || '').trim();
-  if (!token || !startImage) return null;
-  // CIRCUIT BREAKER (Task 5.3): Kling melting down (3 hard fails in cooldown) → fail-FAST so the
-  // caller drops to kenBurnsClip immediately instead of burning ~4 min on a known-bad provider.
-  if (await isProviderTripped('replicate-kling').catch(() => false)) {
-    // eslint-disable-next-line no-console
-    console.warn('[remix.i2v] breaker OPEN for replicate-kling → skipping (fail-fast to kenBurns fallback)');
-    return null;
-  }
-  // See roopFaceSwapVideo — exactly one breaker record per call, incl. the create/poll THROW path.
-  let recorded = false;
-  try {
-    // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'video' config, apply its learned
-    // prompt directive as a suffix so the loop's improvement reaches every clip. Fail-soft.
-    const activeVideoCfg = await getActiveConfig('video').catch(() => null);
-    const base4k = `${prompt}, photorealistic, cinematic, natural lighting, sharp focus, 4k`;
-    const input: Record<string, unknown> = {
-      start_image: startImage,
-      prompt: activeVideoCfg?.prompt ? `${base4k} ${activeVideoCfg.prompt}` : base4k,
-      negative_prompt: I2V_NEGATIVE,
-      duration: 5,
-    };
-    // Character-swap: kling-v1.6-pro is the ONLY Kling model that accepts reference_images as an IDENTITY
-    // anchor. Sending reference_images to the v2.1-master default (I2V_MODEL) 422s — it's not in that
-    // schema — so the create failed and the swap SILENTLY dropped to a Ken Burns still (no swap ever
-    // happened). So switch to v1.6-pro whenever a swap reference is present; keep the v2.1 default (best
-    // quality) for plain i2v with no reference.
-    const refs = (referenceImages ?? []).filter((u) => typeof u === 'string' && /^https?:\/\//.test(u));
-    const model = refs.length ? 'kwaivgi/kling-v1.6-pro' : I2V_MODEL;
-    if (refs.length) input.reference_images = refs;
-    if (/v1\.6|v1-6|kling-v1/.test(model.toLowerCase())) { input.aspect_ratio = aspect; input.cfg_scale = 0.5; }
-    // One quick retry on a transient 5xx/network blip; a real timeout bails fast.
-    const create = await withRetry(
-      async () => {
-        const r = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          body: JSON.stringify({ input }),
-          signal: AbortSignal.timeout(30_000),
-        });
-        if (!r.ok && r.status >= 500) throw new Error(`kling create ${r.status}`);
-        return r;
-      },
-      { maxAttempts: 2, baseDelayMs: 800, label: 'remix-kling-i2v' },
-    );
-    if (!create.ok) { recorded = true; await recordProviderResult('replicate-kling', false).catch(() => {}); return null; }
-    const pred = (await create.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown; urls?: { get?: string } };
-    const pollUrl = pred.urls?.get;
-    const pickUrl = (o: unknown): string | null =>
-      typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pickUrl(o[o.length - 1]) : null;
-    let output = pred.output;
-    let status = pred.status;
-    const stall = new StallDetector({ stallMs: REMIX_STALL_MS, startPct: predictionProgress(status) });
-    const deadline = Date.now() + KLING_BUDGET_MS;
-    while (pollUrl && status !== 'succeeded' && status !== 'failed' && status !== 'canceled' && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 3_000));
-      const poll = await fetch(pollUrl, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) }).catch(() => null);
-      if (!poll || !poll.ok) continue;
-      const j = (await poll.json().catch(() => ({}))) as { status?: string; output?: unknown; logs?: unknown };
-      status = j.status; output = j.output;
-      stall.tick(predictionProgress(status, j.logs));
-      if (stall.shouldFlag()) {
-        // eslint-disable-next-line no-console
-        console.warn(`[remix.i2v] replicate-kling stalled — no forward progress for ${Math.round(stall.check().msSinceProgress / 1000)}s (still polling, no re-submit)`);
-      }
-    }
-    const providerUrl = status === 'succeeded' ? pickUrl(output) : null;
-    // Record the outcome so the breaker opens after repeated hard failures / timeouts.
-    recorded = true;
-    await recordProviderResult('replicate-kling', !!providerUrl).catch(() => {});
-    if (!providerUrl) return null;
-    // Re-host to a CSP-allowed Supabase URL so the <video> plays + the clip persists.
-    const r = await fetch(providerUrl, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
-    if (!r || !r.ok) return providerUrl;
-    const buf = Buffer.from(await r.arrayBuffer());
-    return (await hostMp4(buf, 'i2v')) ?? providerUrl;
-  } catch (err) {
-    // A create-fetch throw (30s timeout / 5xx after retries / DNS) or a poll-loop throw lands here
-    // WITHOUT an inline record — count it so the breaker actually opens on the hung-provider case.
-    if (!recorded) await recordProviderResult('replicate-kling', false).catch(() => {});
-    // eslint-disable-next-line no-console
-    console.warn('[remix.i2v] failed:', err instanceof Error ? err.message : err);
-    return null;
   }
 }
 
