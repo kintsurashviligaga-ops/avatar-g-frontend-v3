@@ -42,7 +42,8 @@ The PRs are stacked: each one contains every PR above it in this table, so they 
 | 22 | #137 | `claude/p1-13-music-vocals-gate` | Sung songs refused before any charge until Lyria vocals are verified; the Music panel locks Instrumental on |
 | 23 | #138 | `claude/p1-14-health-vertex-only` | Operator health and the admin readiness panel report Vertex, not AI Studio or vendor keys; the avatar's stored voice says Cloud TTS |
 | 24 | #139 | `claude/p1-15-no-vendor-probes` | Admin and health probes no longer call outside vendors; the HeyGen admin diagnostic is removed |
-| 25 | this PR | `claude/p1-16-admin-diagnostics-google` | The admin engine diagnostics (`/api/health/providers`, `/api/admin/reliability`) name Google engines only |
+| 25 | #140 | `claude/p1-16-admin-diagnostics-google` | The admin engine diagnostics (`/api/health/providers`, `/api/admin/reliability`) name Google engines only |
+| 26 | this PR | `claude/p1-17-music-engines-lyria-only` | The music engine list, model picker and catalogue show Lyria only; a request naming Udio, ElevenLabs Music or MusicGen is still refused before any charge |
 
 Merging only the top PR carries the whole stack in one deploy. Merging them one at a time gives smaller steps to roll back.
 
@@ -148,5 +149,6 @@ These are still read by routes the stack keeps, so they stay until jobs from bef
 - ~~Agent G's delegate route still has vendor branches to sweep~~ Done in row 21: a voice sub-task reads with `/api/tts/gemini` only (no Voice Lab fallback, no vendor name in the error), and image, music and video sub-tasks refuse as `google_only` before any call.
 - ~~The talking avatar's stored job result still labels its voice `elevenlabs`~~ Done in row 23: `/api/genjutsu/status` stores `voice: 'google-cloud-tts'`. Rows already stored keep their old label; nothing reads the field.
 - ~~`/api/health/providers` still names FLUX 1.1 Pro (or NanoBanana) as the chat image engine and lists outside vendors' keys~~ Done in row 25: its chat image line names what `ServiceManager` runs (Imagen first only when `GEMINI_IMAGEN_ENABLED` is on, then `gemini-3.1-flash-image`), and the DeepSeek, Atlas, Anthropic, Replicate, Runway, ElevenLabs, LTX and Udio rows are gone. `/api/admin/reliability` no longer names a Runway model. The reachability baseline loses both files.
+- ~~`/api/ai/music/engines` and the Music panel still list Udio, ElevenLabs Music and MusicGen as rows that are always off~~ Done in row 26: the status, the picker, the "Engines & prices" table and `/api/studio/catalogue` list Lyria alone. The three retired ids stay refused by name (`RETIRED_MUSIC_ENGINE_IDS`, 400 `unsupported`, nothing charged); a phone's old stored pick of one now reads as Auto. The cover and voice reference copy still names MusicGen and MiniMax; both paths stay off (`references` is always false).
 - `tests/agent-g-refine-avatar.spec.ts` (not in CI) fails before it reaches the avatar, on the base as well; it needs repair.
 - Dead vendor modules that route tests still mock as "never called" witnesses (Replicate, Flux, xAI, NanoBanana, World Labs, Replicate STT) wait for those tests to move onto the fetch spy.

@@ -1,13 +1,15 @@
 /** @jest-environment jsdom */
 /**
- * The engine catalogue: the list is exactly the route's engines (one runs per request — no chain); a pick the server would refuse (no key, breaker open,
- * MusicGen for a song, status not loaded) cannot be offered; copy exists in ka / en / ru for every row.
+ * The engine catalogue: the list is exactly the route's engines — Google Lyria alone, one per request, no chain; a pick
+ * the server would refuse (Lyria not configured, breaker open, status not loaded) cannot be offered; a retired engine's
+ * id (Udio, ElevenLabs Music, MusicGen) is known as retired but never offered; copy exists in ka / en / ru for every row.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   ENGINE_COPY, MUSIC_ENGINE_CHAIN, chainNames, effectiveEnginePref, engineAvailability, engineChoices, enginePillLabel,
-  isMusicEngineId, isMusicEnginePref, parseMusicEnginesStatus, type MusicEnginesStatus,
+  isMusicEngineId, isMusicEnginePref, isRetiredMusicEngineId, parseMusicEnginesStatus, RETIRED_MUSIC_ENGINE_IDS,
+  type MusicEnginesStatus,
   LYRIA_CLIP_MODEL, LYRIA_PRO_MODEL, lyriaModelForSec, musicLengthDirection, musicTargetSec, offeredMusicLengths,
 } from './musicEngines';
 import { musicDraftFromPanel } from '@/components/studio/music/musicDraft';
@@ -17,27 +19,25 @@ import { musicQuote } from './musicQuote';
 import { MUSIC_ENGINE_KEY, getMusicEnginePref, musicEngineField, setMusicEnginePref } from './musicEnginePref';
 
 const STATUS: MusicEnginesStatus = {
-  engines: {
-    lyria: { configured: true, busy: false, controls: 'prompt' },
-    udio: { configured: false, busy: false, controls: 'prompt' },
-    'elevenlabs-music': { configured: true, busy: true, controls: 'prompt' },
-    musicgen: { configured: true, busy: false, controls: 'native' },
-  },
+  engines: { lyria: { configured: true, busy: false, controls: 'prompt' } },
   references: { cover: true, voice: true },
-  chain: ['lyria'], // Auto is Lyria alone (R7) — MusicGen is ready, but only as an explicit pick
+  chain: ['lyria'], // Auto is Lyria alone (R7)
   lengths: [30],
   vocals: true,
 };
+const BUSY: MusicEnginesStatus = { ...STATUS, engines: { lyria: { configured: true, busy: true, controls: 'prompt' } }, chain: [] };
+const OFF: MusicEnginesStatus = { ...STATUS, engines: { lyria: { configured: false, busy: false, controls: 'prompt' } }, chain: [] };
 
-test('the picker lists the known engines, but the route can run exactly ONE: Google Lyria (Music Studio v1 boundary)', () => {
-  expect(MUSIC_ENGINE_CHAIN).toEqual(['lyria', 'udio', 'elevenlabs-music', 'musicgen']);
+test('the picker lists exactly ONE engine, the one the route can run: Google Lyria (MASTER TASK v3.1)', () => {
+  expect(MUSIC_ENGINE_CHAIN).toEqual(['lyria']);
   const route = readFileSync(join(process.cwd(), 'app/api/ai/music/route.ts'), 'utf8');
   // The only attempt the route can build is Lyria's (Clip, or Pro over 30 s — one of them); no other engine's client is
   // even imported.
   expect([...route.matchAll(/name: ([^,]+),/g)].map((m) => m[1])).toEqual(["pro ? 'lyria-pro' : 'lyria'"]);
   expect(route).not.toMatch(/lib\/udio\/client|lib\/elevenlabs\/music|lib\/ai\/replicate|lib\/audio\/rvc|pollinations\.ai/);
-  // Any other pick is refused before the reserve.
-  expect(route).toContain("(preferredEngine !== null && preferredEngine !== 'lyria')");
+  // A retired engine's id is refused before the reserve, by name.
+  expect(route).toContain('else if (isRetiredMusicEngineId(body.engine)) retiredEngine = true;');
+  expect(route).toContain('if (audioReference || voiceReference || useMyVoice || retiredEngine) {');
 });
 
 test('…and there is no chain: ONE attempt reaches the failover helper, with no failover (R7)', () => {
@@ -46,35 +46,36 @@ test('…and there is no chain: ONE attempt reaches the failover helper, with no
   expect(route).not.toMatch(/providers\.(unshift|splice)\(/);
 });
 
-test('ids and picks validate: a made-up engine is neither', () => {
+test('ids and picks validate: a made-up engine is neither, and a retired one is neither but is known as retired', () => {
   expect(isMusicEngineId('lyria')).toBe(true);
   expect(isMusicEngineId('suno')).toBe(false);
   expect(isMusicEnginePref('auto')).toBe(true);
   expect(isMusicEnginePref('suno')).toBe(false);
   expect(isMusicEnginePref(undefined)).toBe(false);
+  for (const id of ['udio', 'elevenlabs-music', 'musicgen']) {
+    expect(isMusicEngineId(id)).toBe(false);
+    expect(isMusicEnginePref(id)).toBe(false);
+    expect(isRetiredMusicEngineId(id)).toBe(true);
+  }
+  for (const v of ['lyria', 'auto', 'suno', '', 7, null, undefined, {}]) expect(isRetiredMusicEngineId(v)).toBe(false);
+  expect(RETIRED_MUSIC_ENGINE_IDS).toEqual(['udio', 'elevenlabs-music', 'musicgen']);
 });
 
-test('availability: off (no key) · busy (breaker open) · ready — and unknown while the status has not loaded', () => {
+test('availability: off (not configured) · busy (breaker open) · ready — and unknown while the status has not loaded', () => {
   expect(engineAvailability(STATUS, 'lyria')).toBe('ready');
-  expect(engineAvailability(STATUS, 'udio')).toBe('off');
-  expect(engineAvailability(STATUS, 'elevenlabs-music')).toBe('busy');
+  expect(engineAvailability(OFF, 'lyria')).toBe('off');
+  expect(engineAvailability(BUSY, 'lyria')).toBe('busy');
   expect(engineAvailability(null, 'lyria')).toBe('unknown');
 });
 
-test('only a ready engine is selectable; Udio (off) and ElevenLabs (busy) are shown but inert', () => {
-  const rows = engineChoices(STATUS, { instrumental: true });
-  expect(rows.map((r) => r.id)).toEqual(['auto', 'lyria', 'udio', 'elevenlabs-music', 'musicgen']);
-  const by = Object.fromEntries(rows.map((r) => [r.id, r]));
-  expect(by.auto).toMatchObject({ selectable: true, blocked: null });
-  expect(by.lyria).toMatchObject({ selectable: true, blocked: null });
-  expect(by.udio).toMatchObject({ selectable: false, blocked: 'off' });
-  expect(by['elevenlabs-music']).toMatchObject({ selectable: false, blocked: 'busy' });
-  expect(by.musicgen).toMatchObject({ selectable: true, blocked: null });
-});
-
-test('MusicGen makes no vocals, so it cannot be picked for a song', () => {
-  const by = Object.fromEntries(engineChoices(STATUS, { instrumental: false }).map((r) => [r.id, r]));
-  expect(by.musicgen).toMatchObject({ selectable: false, blocked: 'instrumental-only' });
+test('the rows are Auto and Lyria only; Lyria is selectable when ready, shown but inert when off or busy — song or not', () => {
+  for (const instrumental of [true, false]) {
+    const rows = engineChoices(STATUS, { instrumental });
+    expect(rows.map((r) => r.id)).toEqual(['auto', 'lyria']);
+    expect(rows).toEqual([{ id: 'auto', selectable: true, blocked: null }, { id: 'lyria', selectable: true, blocked: null }]);
+  }
+  expect(engineChoices(OFF, { instrumental: true })[1]).toEqual({ id: 'lyria', selectable: false, blocked: 'off' });
+  expect(engineChoices(BUSY, { instrumental: true })[1]).toEqual({ id: 'lyria', selectable: false, blocked: 'busy' });
 });
 
 test('before the status loads only Auto is offered', () => {
@@ -85,16 +86,19 @@ test('before the status loads only Auto is offered', () => {
 
 test('a stored pick the server would refuse right now is Auto', () => {
   expect(effectiveEnginePref('lyria', STATUS, { instrumental: false })).toBe('lyria');
-  expect(effectiveEnginePref('udio', STATUS, { instrumental: false })).toBe('auto');
-  expect(effectiveEnginePref('musicgen', STATUS, { instrumental: false })).toBe('auto'); // a song
-  expect(effectiveEnginePref('musicgen', STATUS, { instrumental: true })).toBe('musicgen');
+  expect(effectiveEnginePref('lyria', BUSY, { instrumental: false })).toBe('auto');
+  expect(effectiveEnginePref('lyria', OFF, { instrumental: true })).toBe('auto');
   expect(effectiveEnginePref('lyria', null, { instrumental: false })).toBe('auto');
 });
 
 test('the status parser accepts the route\'s shape, normalises it, and refuses junk', () => {
   expect(parseMusicEnginesStatus(STATUS)).toEqual(STATUS);
   expect(parseMusicEnginesStatus(null)).toBeNull();
-  expect(parseMusicEnginesStatus({ engines: { lyria: {} } })).toBeNull(); // a missing engine = not our shape
+  expect(parseMusicEnginesStatus({ engines: {} })).toBeNull(); // a missing engine = not our shape
+  expect(parseMusicEnginesStatus({ engines: { lyria: {} } })?.engines).toEqual({ lyria: { configured: false, busy: false, controls: 'prompt' } });
+  // An older server still sends the retired rows: they are dropped, never offered.
+  const older = parseMusicEnginesStatus({ ...STATUS, engines: { ...STATUS.engines, udio: { configured: true, busy: false, controls: 'native' } } });
+  expect(older?.engines).toEqual(STATUS.engines);
   const loose = parseMusicEnginesStatus({ ...STATUS, chain: ['lyria', 'nope', 7] });
   expect(loose?.chain).toEqual(['lyria']);
   // `lengths`: only the panel's own values; an older server that sends none offers the clip's 30 s alone.
@@ -161,7 +165,9 @@ test('every engine, reason and note has ka / en / ru copy, and no copy is empty'
       expect(c.engines[id].name.length).toBeGreaterThan(0);
       expect(c.engines[id].role.length).toBeGreaterThan(0);
     }
-    for (const k of ['off', 'busy', 'unknown', 'instrumental-only'] as const) expect(c.blocked[k].length).toBeGreaterThan(0);
+    expect(Object.keys(c.engines)).toEqual(['lyria']);
+    expect(Object.keys(c.blocked).sort()).toEqual(['busy', 'off', 'unknown']);
+    for (const k of ['off', 'busy', 'unknown'] as const) expect(c.blocked[k].length).toBeGreaterThan(0);
     expect(c.priceNote.length).toBeGreaterThan(0);
     expect(c.settleNote.length).toBeGreaterThan(0);
   }
@@ -184,12 +190,16 @@ describe('the stored preference', () => {
   });
 
   test('a pick is stored, read back and sent as `engine`; Auto clears it', () => {
-    setMusicEnginePref('elevenlabs-music');
-    expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBe('elevenlabs-music');
-    expect(getMusicEnginePref()).toBe('elevenlabs-music');
-    // Production 2026-10-16: the route refuses every engine but Lyria, so a stored outside pick is sent as Auto.
-    expect(musicEngineField()).toEqual({});
+    // Production 2026-10-16: a phone kept an old „Udio" pick. A retired engine's stored id reads back as Auto and sends
+    // nothing, so the track is composed on Lyria instead of refused.
+    for (const old of ['udio', 'elevenlabs-music', 'musicgen']) {
+      window.localStorage.setItem(MUSIC_ENGINE_KEY, old);
+      expect(getMusicEnginePref()).toBe('auto');
+      expect(musicEngineField()).toEqual({});
+    }
     setMusicEnginePref('lyria');
+    expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBe('lyria');
+    expect(getMusicEnginePref()).toBe('lyria');
     expect(musicEngineField()).toEqual({ engine: 'lyria' });
     setMusicEnginePref('auto');
     expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBeNull();

@@ -16,14 +16,9 @@ import { MusicCreatePanel, type MusicCreatePanelProps } from './MusicCreatePanel
 import { resetMusicEnginesCache } from './useMusicEngines';
 
 const STATUS = {
-  engines: {
-    lyria: { configured: true, busy: false, controls: 'prompt' },
-    udio: { configured: false, busy: false, controls: 'prompt' },
-    'elevenlabs-music': { configured: true, busy: false, controls: 'prompt' },
-    musicgen: { configured: true, busy: false, controls: 'native' },
-  },
+  engines: { lyria: { configured: true, busy: false, controls: 'prompt' } },
   references: { cover: true, voice: true },
-  chain: ['lyria', 'elevenlabs-music', 'musicgen'],
+  chain: ['lyria'],
   lengths: [30, 60, 90, 0], // Lyria 3 Pro verified: every panel length is made
   vocals: true, // Lyria vocals verified: a sung song is offered (the vocals-off case has its own tests)
 };
@@ -123,10 +118,16 @@ test('a first visit opens in Simple: one description card + Create, the genres o
 
 test('an engine someone picked stays named in Simple, so nothing runs behind a hidden choice', async () => {
   window.localStorage.clear();
+  window.localStorage.setItem(MUSIC_ENGINE_KEY, 'lyria');
+  const { unmount } = render(<Host />);
+  expect(screen.getByTestId('music-simple')).toBeTruthy();
+  await waitFor(() => expect(screen.getByTestId('music-engine-pill').textContent).toContain('Lyria 3'));
+  unmount();
+  // A retired engine's old stored pick is Auto: nothing to name, and the pill does not appear in Simple.
   window.localStorage.setItem(MUSIC_ENGINE_KEY, 'elevenlabs-music');
   render(<Host />);
   expect(screen.getByTestId('music-simple')).toBeTruthy();
-  await waitFor(() => expect(screen.getByTestId('music-engine-pill').textContent).toContain('ElevenLabs Music'));
+  expect(screen.queryByTestId('music-engine-pill')).toBeNull();
 });
 
 test('Simple is one prompt card + Create; Advanced is the whole screen; the choice is remembered', () => {
@@ -270,18 +271,17 @@ describe('controls that would do nothing are not drawn', () => {
     expect(screen.getByTestId('music-add-voice')).toBeTruthy();
   });
 
-  test('an unconfigured engine (Udio) and MusicGen-for-a-song are listed but cannot be picked', async () => {
+  test('the picker lists Auto and Lyria only — no retired engine is drawn — and a Lyria pick is stored and named', async () => {
     render(<Host />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('music-engine-pill'));
     await waitFor(() => expect(screen.getByTestId('engine-lyria').getAttribute('aria-disabled')).toBeNull());
-    expect(screen.getByTestId('engine-udio').getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByTestId('engine-musicgen').getAttribute('data-blocked')).toBe('instrumental-only');
-    fireEvent.click(screen.getByTestId('engine-udio'));
-    expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBeNull();
-    fireEvent.click(screen.getByTestId('engine-elevenlabs-music'));
-    expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBe('elevenlabs-music');
-    expect(screen.getByTestId('music-engine-pill').textContent).toContain('ElevenLabs Music');
+    const engineRows = screen.getAllByRole('radio').map((r) => r.getAttribute('data-testid')).filter((id) => id?.startsWith('engine-'));
+    expect(engineRows).toEqual(['engine-auto', 'engine-lyria']);
+    for (const gone of ['engine-udio', 'engine-elevenlabs-music', 'engine-musicgen']) expect(screen.queryByTestId(gone)).toBeNull();
+    fireEvent.click(screen.getByTestId('engine-lyria'));
+    expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBe('lyria');
+    expect(screen.getByTestId('music-engine-pill').textContent).toContain('Lyria 3');
   });
 });
 

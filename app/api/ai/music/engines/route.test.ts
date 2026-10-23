@@ -1,9 +1,9 @@
 /** @jest-environment node */
 /**
- * GET /api/ai/music/engines — the picker's source of truth. Each engine's `configured` follows the SAME gate the music
- * route checks a pick against (a key; MUSIC_PROVIDER=elevenlabs drops Udio; LYRIA_ENABLED off drops Lyria), `busy` is
- * its circuit breaker, `chain` is what Auto would try — Lyria ALONE, the route no longer fails over (R7) — and nothing
- * secret is ever in the body.
+ * GET /api/ai/music/engines — the picker's source of truth. Lyria is the only engine reported (MASTER TASK v3.1): its
+ * `configured` follows the SAME gate the music route runs on (LYRIA_ENABLED off drops it), `busy` is its circuit breaker,
+ * `chain` is what Auto would try — Lyria ALONE, the route no longer fails over (R7) — and nothing secret is ever in the
+ * body. Udio, ElevenLabs Music and MusicGen used to be listed as rows that were always off; they are not listed at all.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn() }));
@@ -33,42 +33,37 @@ beforeEach(() => {
   for (const k of Object.keys(process.env)) if (/^(UDIO|ELEVEN|REPLICATE|MUSIC_)/.test(k)) delete process.env[k];
 });
 
-test('no keys at all: Lyria (a Gemini key is its gate) is the only engine, and no reference path is open', async () => {
+test('no keys at all: Lyria (Vertex is its gate) is the only engine, and no reference path is open', async () => {
   const s = await musicEnginesStatus(ENV);
+  expect(Object.keys(s.engines)).toEqual(['lyria']);
   expect(s.engines.lyria.configured).toBe(true);
-  expect(s.engines.udio.configured).toBe(false);
-  expect(s.engines['elevenlabs-music'].configured).toBe(false);
-  expect(s.engines.musicgen.configured).toBe(false);
   expect(s.references).toEqual({ cover: false, voice: false });
   expect(s.chain).toEqual(['lyria']);
 });
 
-test('every key present: still ONLY Lyria is pickable — Udio, ElevenLabs Music and MusicGen stay off (Music Studio v1 boundary)', async () => {
-  const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.engines.lyria).toMatchObject({ configured: true, busy: false });
-  for (const id of ['udio', 'elevenlabs-music', 'musicgen'] as const) expect(s.engines[id]).toMatchObject({ configured: false, busy: false });
-  expect(s.chain).toEqual(['lyria']);
-  expect(s.references).toEqual({ cover: false, voice: false });
-});
-
-test('MUSIC_PROVIDER=elevenlabs drops Udio from the chain, exactly as the route does', async () => {
-  const s = await musicEnginesStatus({ ...KEYS, MUSIC_PROVIDER: 'elevenlabs' });
-  expect(s.engines.udio.configured).toBe(false);
-  expect(s.chain).not.toContain('udio');
+test('every outside key present: still ONLY Lyria is listed — Udio, ElevenLabs Music and MusicGen are not even rows', async () => {
+  for (const env of [{ ...KEYS }, { ...KEYS, MUSIC_PROVIDER: 'elevenlabs' }, { ...KEYS, MUSIC_SUNO_PARAMS: '1' }]) {
+    const s = await musicEnginesStatus(env);
+    expect(Object.keys(s.engines)).toEqual(['lyria']);
+    expect(s.engines.lyria).toMatchObject({ configured: true, busy: false });
+    expect(s.chain).toEqual(['lyria']);
+    expect(s.references).toEqual({ cover: false, voice: false });
+    expect(JSON.stringify(s)).not.toMatch(/udio|elevenlabs|musicgen|replicate/i);
+  }
 });
 
 test('Lyria switched off (no key / LYRIA_ENABLED=0): Auto has NOTHING to run — the others are not promoted into it', async () => {
   (hasLyriaProvider as jest.Mock).mockReturnValue(false);
   const s = await musicEnginesStatus({ ...KEYS });
   expect(s.engines.lyria.configured).toBe(false);
-  expect(s.engines.udio.configured).toBe(false); // never promoted, never pickable
+  expect(Object.keys(s.engines)).toEqual(['lyria']); // nothing else is promoted into the list
   expect(s.chain).toEqual([]);
 });
 
 test('an engine whose breaker is open is busy — present, but not pickable; Lyria busy leaves Auto empty, not rerouted', async () => {
   (isProviderTripped as jest.Mock).mockImplementation(async (p: string) => p === 'udio');
   const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.engines.udio).toMatchObject({ configured: false, busy: false }); // off: its breaker is not even read
+  expect(isProviderTripped).not.toHaveBeenCalledWith('udio'); // a retired engine's breaker is not even read
   expect(s.chain).toEqual(['lyria']);
   (isProviderTripped as jest.Mock).mockImplementation(async (p: string) => p === 'lyria');
   const t = await musicEnginesStatus({ ...KEYS });
@@ -92,13 +87,9 @@ test('vocals: a sung song is offered only once MUSIC_LYRIA_VOCALS_VERIFIED is se
   expect((await musicEnginesStatus({ ...ENV, MUSIC_LYRIA_VOCALS_VERIFIED: '1' })).vocals).toBe(true);
 });
 
-test('controls: MusicGen takes the sliders natively; the text-brief engines only approximate', async () => {
-  const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.engines.musicgen.controls).toBe('native');
-  expect(s.engines.lyria.controls).toBe('prompt');
-  expect(s.engines['elevenlabs-music'].controls).toBe('prompt');
-  expect(s.engines.udio.controls).toBe('prompt'); // native only behind MUSIC_SUNO_PARAMS
-  expect((await musicEnginesStatus({ ...KEYS, MUSIC_SUNO_PARAMS: '1' })).engines.udio.controls).toBe('native');
+test('controls: Lyria takes one text brief, so the sliders only approximate — whatever MUSIC_SUNO_PARAMS says', async () => {
+  expect((await musicEnginesStatus({ ...KEYS })).engines.lyria.controls).toBe('prompt');
+  expect((await musicEnginesStatus({ ...KEYS, MUSIC_SUNO_PARAMS: '1' })).engines.lyria.controls).toBe('prompt');
 });
 
 test('the route answers 200 with a body the client parser accepts — and no key, token or secret in it', async () => {

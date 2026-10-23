@@ -10,14 +10,9 @@ jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(asy
 jest.mock('../../../../lib/veo/engine', () => ({ veoTransport: jest.fn(() => 'vertex') }));
 jest.mock('../../../../lib/ai/musicEnginesStatus', () => ({
   musicEnginesStatus: jest.fn(async () => ({
-    engines: {
-      lyria: { configured: true, busy: false, controls: 'prompt' },
-      udio: { configured: false, busy: false, controls: 'prompt' },
-      'elevenlabs-music': { configured: true, busy: true, controls: 'prompt' },
-      musicgen: { configured: true, busy: false, controls: 'native' },
-    },
-    references: { cover: true, voice: true },
-    chain: ['lyria', 'musicgen'],
+    engines: { lyria: { configured: true, busy: false, controls: 'prompt' } },
+    references: { cover: false, voice: false },
+    chain: ['lyria'],
   })),
 }));
 
@@ -84,12 +79,18 @@ test.each([
   }
 });
 
-test('music follows the engines\' own status: no key → not_configured, breaker open → busy', async () => {
+test('music follows Lyria\'s own status: not configured → not_configured, breaker open → busy; no retired engine row', async () => {
   const r = await rows('music');
+  expect(Object.keys(r).sort()).toEqual(['music/auto', 'music/lyria']);
   expect(r['music/auto']).toMatchObject({ available: true });
   expect(r['music/lyria']).toMatchObject({ available: true });
-  expect(r['music/udio']).toMatchObject({ available: false, reason: 'not_configured' });
-  expect(r['music/elevenlabs-music']).toMatchObject({ available: false, reason: 'busy' });
+  const status = (lyria: { configured: boolean; busy: boolean }) => ({
+    engines: { lyria: { ...lyria, controls: 'prompt' } }, references: { cover: false, voice: false }, chain: [],
+  });
+  (musicEnginesStatus as jest.Mock).mockResolvedValueOnce(status({ configured: false, busy: false }));
+  expect((await rows('music'))['music/lyria']).toMatchObject({ available: false, reason: 'not_configured' });
+  (musicEnginesStatus as jest.Mock).mockResolvedValueOnce(status({ configured: true, busy: true }));
+  expect((await rows('music'))['music/lyria']).toMatchObject({ available: false, reason: 'busy' });
 });
 
 test('⚠️ nothing but ids and reasons leaves: no env value, no endpoint, no price', async () => {

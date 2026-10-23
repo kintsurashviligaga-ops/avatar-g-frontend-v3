@@ -417,9 +417,8 @@ const MUSIC: CatalogueEntry[] = [
     verified: 'code', source: 'lib/studio/musicEngines.ts (MUSIC_ENGINE_CHAIN)',
   },
   ...MUSIC_ENGINE_CHAIN.map((engine): CatalogueEntry => ({
-    id: `music/${engine}`, service: 'music',
-    provider: engine === 'lyria' ? 'google' : engine === 'udio' ? 'udio' : engine === 'elevenlabs-music' ? 'elevenlabs' : 'replicate',
-    vendor: engine === 'lyria' ? 'Google' : engine === 'udio' ? 'Udio' : engine === 'elevenlabs-music' ? 'ElevenLabs' : 'Meta',
+    // Lyria is the only engine in the chain (MASTER TASK v3.1), so every music row is Google's.
+    id: `music/${engine}`, service: 'music', provider: 'google', vendor: 'Google',
     label: t(ENGINE_COPY.ka.engines[engine].name, ENGINE_COPY.en.engines[engine].name, ENGINE_COPY.ru.engines[engine].name),
     bestFor: t(ENGINE_COPY.ka.engines[engine].role, ENGINE_COPY.en.engines[engine].role, ENGINE_COPY.ru.engines[engine].role),
     caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: [] },

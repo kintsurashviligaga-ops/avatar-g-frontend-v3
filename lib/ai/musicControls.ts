@@ -5,13 +5,13 @@
  * owner decision 2026-10-01 A-e) and two sliders, Weirdness and Style influence (0–100, 50 = neutral). There is NO
  * Variety slider: decision A-d merged it into Weirdness, so "more varied" and "more unusual" are one dial.
  *
- * ⚠️ ON LYRIA AND ELEVENLABS THE SLIDERS ARE APPROXIMATE, BY DESIGN. Neither engine has a knob for either quantity —
- * each takes one text brief — so a slider can only add a sentence to that brief (`promptDirectives`). The panel labels
- * them „approximate" in ka/en/ru, and the route returns `controls.mode` ('prompt' | 'native') so the result card can
- * say which it was, and `controls.applied` so it says nothing when no slider reached the engine (`musicControlsReport`).
- * Two engines take them natively: MusicGen (sampling temperature + classifier-free guidance, `musicgenParams`) and the
- * Udio gateway's Suno-style fields (`udioParams`) — the latter ONLY with MUSIC_SUNO_PARAMS on, which is off by default
- * until one live probe confirms the gateway's field names and scales.
+ * ⚠️ ON LYRIA THE SLIDERS ARE APPROXIMATE, BY DESIGN. It has no knob for either quantity — it takes one text brief — so
+ * a slider can only add a sentence to that brief (`promptDirectives`). The panel labels them „approximate" in ka/en/ru,
+ * and the route returns `controls.mode` ('prompt' | 'native') so the result card can say which it was, and
+ * `controls.applied` so it says nothing when no slider reached the engine (`musicControlsReport`).
+ * Lyria is the only engine the music route runs (MASTER TASK v3.1), so `controls.mode` is always 'prompt'. MusicGen's and
+ * the Udio gateway's native fields (`musicgenParams`, `udioParams`) stay only for their retired clients until those
+ * modules are deleted; no route reaches them.
  *
  * ⚠️ THE MIDDLE BAND ADDS NOTHING. A slider nobody touched (50), or one nudged a little, must leave the brief exactly as
  * it was — otherwise every track would carry steering text nobody asked for, and every "neutral" track would change the
@@ -171,7 +171,7 @@ const STYLE_INFLUENCE: Readonly<Record<Exclude<Band, 'neutral'>, string>> = {
 
 /**
  * The sentences the sliders add to a TEXT brief — Weirdness first, then Style influence; [] while both sit in the
- * neutral band. This is the whole of the control on Lyria and ElevenLabs Music, hence „approximate".
+ * neutral band. This is the whole of the control on Lyria, hence „approximate".
  */
 export function promptDirectives(c: Pick<MusicControls, 'weirdness' | 'styleInfluence'>): string[] {
   const out: string[] = [];
@@ -256,15 +256,17 @@ export function musicSunoParamsEnabled(env: NodeJS.ProcessEnv = process.env): bo
   return /^(1|true|on)$/i.test((env.MUSIC_SUNO_PARAMS ?? '').trim());
 }
 
-/** The provider ids of the route's failover chain. */
-export type MusicEngineId = 'lyria' | 'udio' | 'elevenlabs-music' | 'musicgen';
+/**
+ * The engine ids /api/ai/music runs: Google Lyria alone (MASTER TASK v3.1, Lyria is the authorized music path). Udio,
+ * ElevenLabs Music and MusicGen are retired ids the route refuses (lib/studio/musicEngines RETIRED_MUSIC_ENGINE_IDS).
+ */
+export type MusicEngineId = 'lyria';
 /** 'native' — the engine received the controls as parameters; 'prompt' — only as sentences in its brief. */
 export type MusicControlMode = 'native' | 'prompt';
 
-/** How the controls reached `engine` — what the response's `controls.mode` reports for the result card. */
-export function controlModeFor(engine: MusicEngineId, env: NodeJS.ProcessEnv = process.env): MusicControlMode {
-  if (engine === 'musicgen') return 'native';
-  if (engine === 'udio') return musicSunoParamsEnabled(env) ? 'native' : 'prompt';
+/** How the controls reached `engine` — what the response's `controls.mode` reports. Lyria takes one text brief: 'prompt'. */
+export function controlModeFor(engine: MusicEngineId): MusicControlMode {
+  void engine;
   return 'prompt';
 }
 
@@ -280,25 +282,13 @@ export interface MusicControlsReport {
  * The report for the track `engine` composed. `sent` is the EXACT text that engine was given, so `applied` asks
  * whether a slider survived into the request rather than whether one was moved.
  *
- * ⚠️ A MOVED SLIDER OFTEN CHANGES NOTHING. A slider inside the neutral band writes no sentence, which on Lyria and
- * ElevenLabs is the whole of the control, and buildMusicBrief drops the sentences whole when the user's own words leave
- * no room. The result card used to say "≈ sliders approximate" over a brief byte-identical to an untouched panel's. It
+ * ⚠️ A MOVED SLIDER OFTEN CHANGES NOTHING. A slider inside the neutral band writes no sentence, which on Lyria is the
+ * whole of the control, and buildMusicBrief drops the sentences whole when the user's own words leave no room. The
+ * result card used to say "≈ sliders approximate" over a brief byte-identical to an untouched panel's. It
  * claims nothing now unless `applied` is true.
  */
-export function musicControlsReport(
-  engine: MusicEngineId,
-  c: MusicControls | undefined,
-  sent: string,
-  env: NodeJS.ProcessEnv = process.env,
-): MusicControlsReport {
-  const mode = controlModeFor(engine, env);
+export function musicControlsReport(engine: MusicEngineId, c: MusicControls | undefined, sent: string): MusicControlsReport {
+  const mode = controlModeFor(engine);
   if (!c) return { engine, mode, applied: false };
-  let native = false;
-  if (engine === 'musicgen') native = Object.keys(musicgenParams(c)).length > 0;
-  if (engine === 'udio' && mode === 'native') {
-    // Only the sliders count here: `instrumental: true` leaves the singer out of the native fields.
-    const p = udioParams(c, { instrumental: true });
-    native = p.styleWeight !== undefined || p.weirdnessConstraint !== undefined;
-  }
-  return { engine, mode, applied: native || promptDirectives(c).some((d) => sent.includes(d)) };
+  return { engine, mode, applied: promptDirectives(c).some((d) => sent.includes(d)) };
 }

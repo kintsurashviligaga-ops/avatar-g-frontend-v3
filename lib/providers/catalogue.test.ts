@@ -99,8 +99,11 @@ describe('capabilities are the wrapped modules\' own facts', () => {
     expect(tierForVideoModel('nope')).toBeNull();
   });
 
-  test('music: exactly the route\'s chain, behind Auto', () => {
+  test('music: exactly the route\'s chain, behind Auto — Google Lyria alone, no retired engine row (MASTER TASK v3.1)', () => {
     expect(catalogueFor('music').map((e) => e.id)).toEqual(['music/auto', ...MUSIC_ENGINE_CHAIN.map((id) => `music/${id}`)]);
+    expect(catalogueFor('music').map((e) => e.id)).toEqual(['music/auto', 'music/lyria']);
+    for (const e of catalogueFor('music')) expect(e).toMatchObject({ provider: 'google', vendor: 'Google' });
+    for (const id of ['music/udio', 'music/elevenlabs-music', 'music/musicgen']) expect(catalogueEntry(id)).toBeNull();
   });
 });
 

@@ -4,10 +4,13 @@
  * "Engines & prices" list and the route all import it): no React, no env, no I/O.
  *
  * ⚠️ THESE ARE THE ENGINES THE ROUTE CAN RUN, NOT A WISH LIST — AND IT RUNS ONE PER REQUEST (PROJECT_MASTER R7, no silent
- * fallback). "Auto" is Lyria 3 alone; a specific pick runs that engine alone. A miss is an explicit, refunded failure,
- * never another engine's track (`composeTrackUrl`). The order below is only the order the picker lists them in. An engine the
- * server would refuse — no key, or its circuit breaker open after repeated failures — is shown but cannot be picked, and
- * MusicGen (instrumental-only) cannot be picked for a song. Nothing here changes a price: every engine bills by length.
+ * fallback). Google Lyria 3 is the only one (MASTER TASK v3.1: Lyria is the authorized music path), so "Auto" and the
+ * Lyria row are the same engine. A miss is an explicit, refunded failure, never another engine's track
+ * (`composeTrackUrl`). When the server would refuse Lyria — not configured, or its circuit breaker open after repeated
+ * failures — the row is shown but cannot be picked. Nothing here changes a price: the track bills by length.
+ *
+ * Udio, ElevenLabs Music and MusicGen used to be listed here as rows that were always off. They are gone from the list;
+ * their ids are RETIRED_MUSIC_ENGINE_IDS, which the route keeps refusing by name.
  */
 import type { MusicControlMode, MusicEngineId } from '@/lib/ai/musicControls';
 import { MUSIC_DURATIONS, type MusicDuration } from '@/lib/studio/musicQuote';
@@ -18,10 +21,20 @@ export type { MusicEngineId };
 export type MusicEnginePref = 'auto' | MusicEngineId;
 
 /** Every engine the route can run, in the order the picker lists them. Not a failover order: one engine runs per request (R7). */
-export const MUSIC_ENGINE_CHAIN: readonly MusicEngineId[] = ['lyria', 'udio', 'elevenlabs-music', 'musicgen'];
+export const MUSIC_ENGINE_CHAIN: readonly MusicEngineId[] = ['lyria'];
 
 export function isMusicEngineId(v: unknown): v is MusicEngineId {
   return typeof v === 'string' && (MUSIC_ENGINE_CHAIN as readonly string[]).includes(v);
+}
+
+/**
+ * Engine ids the route ran before the Google-only boundary. A request that still names one is refused before any charge
+ * (`unsupported`), never quietly composed on Lyria: the caller asked for a different engine. Any other unknown id is Auto.
+ */
+export const RETIRED_MUSIC_ENGINE_IDS: readonly string[] = ['udio', 'elevenlabs-music', 'musicgen'];
+
+export function isRetiredMusicEngineId(v: unknown): boolean {
+  return typeof v === 'string' && RETIRED_MUSIC_ENGINE_IDS.includes(v);
 }
 
 export function isMusicEnginePref(v: unknown): v is MusicEnginePref {
@@ -129,7 +142,7 @@ export function engineAvailability(status: MusicEnginesStatus | null, id: MusicE
   return e.busy ? 'busy' : 'ready';
 }
 
-export type EngineBlock = 'off' | 'busy' | 'unknown' | 'instrumental-only';
+export type EngineBlock = 'off' | 'busy' | 'unknown';
 
 export interface EngineChoice {
   id: MusicEnginePref;
@@ -140,11 +153,12 @@ export interface EngineChoice {
 
 /** Auto, then each engine in chain order, with whether the server would take the pick. */
 export function engineChoices(status: MusicEnginesStatus | null, o: { instrumental: boolean }): EngineChoice[] {
+  // `instrumental` mattered only for MusicGen (no vocals); Lyria makes both. Kept so callers need not change.
+  void o;
   const rows: EngineChoice[] = [{ id: 'auto', selectable: true, blocked: null }];
   for (const id of MUSIC_ENGINE_CHAIN) {
     const a = engineAvailability(status, id);
-    // MusicGen makes no vocals: for a song it would silently hand back an instrumental.
-    const blocked: EngineBlock | null = a !== 'ready' ? a : id === 'musicgen' && !o.instrumental ? 'instrumental-only' : null;
+    const blocked: EngineBlock | null = a !== 'ready' ? a : null;
     rows.push({ id, selectable: blocked === null, blocked });
   }
   return rows;
@@ -182,15 +196,11 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
     },
     engines: {
       lyria: { name: 'Lyria 3', role: 'Google · სიმღერები ვოკალით ან ინსტრუმენტული' },
-      udio: { name: 'Udio', role: 'სრული სიმღერები, შენს სიგრძეზე მოჭრილი' },
-      'elevenlabs-music': { name: 'ElevenLabs Music', role: 'სიმღერები ვოკალით · ზუსტი ხანგრძლივობა' },
-      musicgen: { name: 'MusicGen', role: 'მხოლოდ ინსტრუმენტული' },
     },
     blocked: {
       off: 'ჩართული არ არის',
       busy: 'დროებით დაკავებულია — სცადე მოგვიანებით',
       unknown: 'სტატუსი იტვირთება…',
-      'instrumental-only': 'მხოლოდ ინსტრუმენტული',
     },
     priceNote: 'ფასი ყველა ძრავზე ერთნაირია — მას მხოლოდ ხანგრძლივობა განსაზღვრავს.',
     settleNote: 'თუ ძრავა შენს არჩეულზე მოკლე ტრეკს დააბრუნებს, სხვაობა ავტომატურად გიბრუნდება.',
@@ -204,15 +214,11 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
     },
     engines: {
       lyria: { name: 'Lyria 3', role: 'Google · songs with vocals, or instrumentals' },
-      udio: { name: 'Udio', role: 'Full songs, trimmed to your length' },
-      'elevenlabs-music': { name: 'ElevenLabs Music', role: 'Songs with vocals · exact length' },
-      musicgen: { name: 'MusicGen', role: 'Instrumental only' },
     },
     blocked: {
       off: 'Not switched on',
       busy: 'Busy right now — try again shortly',
       unknown: 'Checking status…',
-      'instrumental-only': 'Instrumental only',
     },
     priceNote: 'The price is the same on every engine — only the length sets it.',
     settleNote: 'If an engine returns a shorter track than you picked, the difference is refunded automatically.',
@@ -226,15 +232,11 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
     },
     engines: {
       lyria: { name: 'Lyria 3', role: 'Google · песни с вокалом или инструментал' },
-      udio: { name: 'Udio', role: 'Полные песни, обрезаются до вашей длины' },
-      'elevenlabs-music': { name: 'ElevenLabs Music', role: 'Песни с вокалом · точная длина' },
-      musicgen: { name: 'MusicGen', role: 'Только инструментал' },
     },
     blocked: {
       off: 'Не включён',
       busy: 'Сейчас занят — попробуйте чуть позже',
       unknown: 'Проверяем статус…',
-      'instrumental-only': 'Только инструментал',
     },
     priceNote: 'Цена одинакова для всех движков — её задаёт только длина.',
     settleNote: 'Если движок вернул трек короче выбранного, разница возвращается автоматически.',
