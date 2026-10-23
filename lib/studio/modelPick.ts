@@ -108,15 +108,6 @@ export function imageModelField(): { model: string } {
   return { model: e && e.wire.runner === 'image' ? e.id : DEFAULT_MODEL.image };
 }
 
-/**
- * A Higgsfield model is this surface's pick: its run belongs to the panel's own Generate (components/studio/create/
- * HiggsfieldGenerate — the saga's price, confirmed by the tap). The composer's Run asks this so it opens the panel instead of
- * rendering the Google model behind the user's back.
- */
-export function higgsfieldPicked(service: CatalogueService, scope: PickScope = 'create'): boolean {
-  return catalogueEntry(read(service, scope))?.wire.runner === 'studio';
-}
-
 // ── what a picker may offer ─────────────────────────────────────────────────────────────────────────────────────────
 
 /** Why a row cannot be picked HERE: the server's reason (or google_only, known without it), or that it runs on another surface. */

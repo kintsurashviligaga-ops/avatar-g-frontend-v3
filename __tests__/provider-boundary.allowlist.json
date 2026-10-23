@@ -3,7 +3,6 @@
   "files": {
     "gemini_developer_api": [
       "lib/research/interactionsClient.ts",
-      "lib/security/csp.js",
       "lib/voice/geminiLive.ts"
     ],
     "elevenlabs": [
@@ -18,19 +17,14 @@
       "lib/replicate/client.ts",
       "lib/security/csp.js",
       "lib/services/model3d/replicate3dClient.ts",
-      "lib/video/remixOps.ts",
       "lib/video/videoProviderCascade.ts"
     ],
     "openai": [
       "lib/agent-g/voice/stt.ts",
-      "lib/ai/chatEngine.ts",
-      "lib/security/csp.js",
       "lib/system/provider-health.ts",
       "services/voice-v2v-node/server.mjs"
     ],
-    "openrouter": [
-      "lib/ai/chatEngine.ts"
-    ],
+    "openrouter": [],
     "anthropic": [
       "lib/system/provider-health.ts"
     ],
@@ -51,9 +45,7 @@
     "higgsfield": [
       "lib/providers/higgsfield/client.ts"
     ],
-    "liveavatar": [
-      "lib/security/csp.js"
-    ],
+    "liveavatar": [],
     "ltx": [
       "lib/chat/ServiceManager.ts",
       "lib/security/csp.js",
@@ -68,12 +60,8 @@
       "lib/system/provider-health.ts"
     ],
     "xai": [],
-    "deepseek": [
-      "lib/ai/deepseekClient.ts"
-    ],
-    "atlascloud": [
-      "lib/ai/atlasClient.ts"
-    ],
+    "deepseek": [],
+    "atlascloud": [],
     "nanobananaapi": [
       "lib/models/catalog.ts"
     ],
@@ -82,8 +70,6 @@
       "lib/udio/client.ts"
     ],
     "pollinations": [],
-    "tavily": [
-      "lib/ai/webSearch.ts"
-    ]
+    "tavily": []
   }
 }

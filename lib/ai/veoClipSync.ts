@@ -17,8 +17,8 @@ import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
  * was never a capability gap; it was a wiring gap.
  *
  * So this collapses the same steps into one blocking call: create → poll → deliver. The signature
- * deliberately mirrors `klingI2v` — image + prompt + aspect in, hosted URL or null out — so it drops into
- * an existing `veo || kling || kenBurns` chain without restructuring the caller.
+ * deliberately mirrors the Kling i2v leg it replaced — image + prompt + aspect in, hosted URL or null out — so
+ * it dropped into the product ad's chain (now `veo || kenBurns`) without restructuring the caller.
  *
  * ⚠️ IT GOES THROUGH lib/veo/engine, NOT A PRIVATE CLIENT. This file used to call lib/ai/geminiVeo
  * directly, which (a) could only ever render on the Gemini API — adding GCP credentials moved the film
