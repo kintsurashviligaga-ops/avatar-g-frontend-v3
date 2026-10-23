@@ -3,15 +3,20 @@
 /**
  * "+ Audio | + Voice" — the two-part pill under the title row (ref2), and what hangs off it.
  *
- * Both halves feed ONE slot: the attached audio the music route can use, in one of two ways it really does:
- *   · "+ Audio" → a COVER: MusicGen's melody model re-imagines the track as an instrumental (`audioReference`, flat 30 s).
- *   · "+ Voice" → a SAMPLE of the user's voice that MiniMax sings the lyrics in (`voiceReference`) — or, when a voice
- *     model was trained, that trained voice (`useMyVoice`, the RVC path). A sheet offers record · upload · trained.
+ * Both halves feed ONE slot: the attached audio, in one of two ways:
+ *   · "+ Audio" → a COVER: a melody model re-imagines the track as an instrumental (`audioReference`, flat 30 s).
+ *   · "+ Voice" → a SAMPLE of the user's voice the lyrics are sung in (`voiceReference`) — or, when a voice model was
+ *     trained, that trained voice (`useMyVoice`). A sheet offers record · upload · trained.
  * Which one an attached file is, is the `audioMode` switch on its chip. The file itself rides OmniStudio's attachments (the
  * runMusicJob path that re-hosts it and sends the path), so nothing here uploads anything.
  *
  * LOCKED means locked: when this deployment has no provider for a path (the status route's `references`), its half is
- * `aria-disabled`, says "not available right now" and has no handler. A button never promises what the server will refuse.
+ * not drawn. A button never promises what the server will refuse.
+ *
+ * ⚠️ TODAY EVERY PATH IS LOCKED. The three ran on Replicate (MusicGen-melody, MiniMax, RVC), outside the provider boundary
+ * (MASTER TASK v3.1): /api/ai/music refuses each before any charge and the status route reports `references: { cover:
+ * false, voice: false }`. A trained voice is the voice path too, so it no longer keeps "+ Voice" open. A file attached
+ * another way (the composer's paperclip) still shows its chip, with a note that it cannot be used.
  */
 import { useEffect, useRef } from 'react';
 import { Mic, Music2, Square, Upload, X } from 'lucide-react';
@@ -44,8 +49,8 @@ export interface MusicRefsProps {
 export function MusicRefs(p: MusicRefsProps) {
   const cc = musicCreateCopy(p.locale);
   const coverLocked = p.available.cover === false;
-  // A trained voice is its own path (RVC), so "+ Voice" stays open for it even when the sample path is off.
-  const voiceLocked = p.available.voice === false && !p.trained.available;
+  // A trained voice is refused with the sample (the route turns both away), so it does not keep "+ Voice" open.
+  const voiceLocked = p.available.voice === false;
 
   // A sample that arrives (recorded or uploaded) ends the sheet's job.
   const { audio, voiceSheetOpen, onVoiceSheet } = p;
@@ -81,8 +86,9 @@ export function MusicRefs(p: MusicRefsProps) {
     </button>
   );
 
-  const note = p.audio ? (p.audioMode === 'cover' ? cc.refCoverNote : cc.refVoiceNote) : null;
-  const trainedOn = p.trained.available && p.trained.on && !p.instrumental;
+  const refOff = p.audioMode === 'cover' ? coverLocked : voiceLocked;
+  const note = p.audio ? (refOff ? cc.refOffNote : p.audioMode === 'cover' ? cc.refCoverNote : cc.refVoiceNote) : null;
+  const trainedOn = !voiceLocked && p.trained.available && p.trained.on && !p.instrumental;
 
   return (
     <div data-testid="music-refs" className="space-y-2">
@@ -136,7 +142,7 @@ export function MusicRefs(p: MusicRefsProps) {
               );
             })}
           </div>
-          {note && <p data-testid="music-ref-note" className="text-[11.5px] leading-snug text-app-muted">{note}</p>}
+          {note && <p data-testid="music-ref-note" data-off={refOff ? 'true' : undefined} className={cx('text-[11.5px] leading-snug', refOff ? 'text-app-warning' : 'text-app-muted')}>{note}</p>}
         </div>
       )}
 
@@ -194,7 +200,7 @@ export function MusicRefs(p: MusicRefsProps) {
               </button>
             </>
           )}
-          {p.trained.available && (
+          {p.trained.available && !voiceLocked && (
             <button
               type="button"
               role="switch"
@@ -217,7 +223,7 @@ export function MusicRefs(p: MusicRefsProps) {
               </span>
             </button>
           )}
-          {p.available.voice === false && !p.trained.available && (
+          {voiceLocked && (
             <p className="rounded-xl bg-app-warning/10 px-3 py-2 text-[12.5px] text-app-warning">{cc.unavailable}</p>
           )}
         </div>

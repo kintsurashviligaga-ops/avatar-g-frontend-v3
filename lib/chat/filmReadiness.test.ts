@@ -81,15 +81,20 @@ describe('computeEditorReadiness — master hosting (the make-or-break gate)', (
   });
 });
 
-describe('computeEditorReadiness — failover + score rescue', () => {
-  it('arms failover when REPLICATE_API_TOKEN is present', () => {
-    const r = computeEditorReadiness({ REPLICATE_API_TOKEN: 'r8_xxx', ...SUPABASE_OK });
-    expect(r.failoverAndScoreFallback).toBe(true);
+describe('computeEditorReadiness — no failover leg (v3.1: no cross-provider fallback)', () => {
+  it('a Replicate token changes nothing: the report neither reads it nor names it', () => {
+    const withToken = computeEditorReadiness({ REPLICATE_API_TOKEN: 'r8_xxx', ...SUPABASE_OK });
+    expect(withToken).toEqual(computeEditorReadiness(SUPABASE_OK));
+    expect(withToken).not.toHaveProperty('failoverAndScoreFallback');
+    expect(JSON.stringify(withToken)).not.toMatch(/REPLICATE/);
   });
 
-  it('reports no failover when the token is absent', () => {
-    const r = computeEditorReadiness(SUPABASE_OK);
-    expect(r.failoverAndScoreFallback).toBe(false);
+  it('no verdict or instruction offers a failover, a rescue or a Replicate token', () => {
+    for (const env of [{}, SUPABASE_OK, { RUNPOD_RENDER_WEBHOOK_URL: 'https://pod/render', RUNPOD_API_TOKEN: 'tok', ...SUPABASE_OK }]) {
+      const r = computeEditorReadiness(env);
+      const text = [editorVerdict(r), ...editorSyncInstructions(r).map((i) => `${i.leg} ${i.action}`)].join(' ');
+      expect(text).not.toMatch(/failover|rescue|replicate|musicgen|udio/i);
+    }
   });
 });
 
@@ -110,13 +115,10 @@ describe('editorVerdict', () => {
       computeEditorReadiness({
         RUNPOD_RENDER_WEBHOOK_URL: 'https://pod/render',
         RUNPOD_API_TOKEN: 'tok',
-        REPLICATE_API_TOKEN: 'r8',
         ...SUPABASE_OK,
       }),
     );
-    expect(v).toMatch(/^READY/);
-    expect(v).toMatch(/GPU RunPod/);
-    expect(v).toMatch(/rescue armed/);
+    expect(v).toBe('READY — master delivers via GPU RunPod (60fps interpolation)');
   });
 });
 
@@ -125,7 +127,6 @@ describe('editorSyncInstructions', () => {
     const r = computeEditorReadiness({
       RUNPOD_RENDER_WEBHOOK_URL: 'https://pod/render',
       RUNPOD_API_TOKEN: 'tok',
-      REPLICATE_API_TOKEN: 'r8',
       ...SUPABASE_OK,
     });
     expect(editorSyncInstructions(r)).toEqual([]);
@@ -135,8 +136,6 @@ describe('editorSyncInstructions', () => {
     const instructions = editorSyncInstructions(computeEditorReadiness({}));
     expect(instructions[0]?.leg).toBe('master-hosting');
     // GPU is only ever an optional upgrade, never a hard blocker.
-    expect(instructions.map((i) => i.leg)).toEqual(
-      expect.arrayContaining(['master-hosting', 'failover-and-score', 'gpu-stitch']),
-    );
+    expect(instructions.map((i) => i.leg)).toEqual(['master-hosting', 'gpu-stitch']);
   });
 });

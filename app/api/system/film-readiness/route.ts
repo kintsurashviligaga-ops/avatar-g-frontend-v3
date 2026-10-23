@@ -147,7 +147,7 @@ export async function GET(req: Request) {
       ...editor,
       verdict: editorVerdict(editor),
       note:
-        'The assemble route picks the GPU RunPod worker when configured, else stitches on-node with the bundled CPU FFmpeg binary (always available). A playable master REQUIRES Supabase Storage (master hosting); REPLICATE_API_TOKEN arms clip failover + the silent-film score rescue.',
+        'The assemble route picks the GPU RunPod worker when configured, else stitches on-node with the bundled CPU FFmpeg binary (always available). A playable master REQUIRES Supabase Storage (master hosting). There is no clip failover or score rescue: a missed clip or score is that leg\'s own outcome, never a second provider.',
     },
     syncInstructions,
     note: 'Names-only report. Presence reflects whether a non-empty value exists under an accepted alias; secret values are never read into the response. A present key can still be rejected by the provider at call time (e.g. 401) — this report confirms wiring, not validity.',

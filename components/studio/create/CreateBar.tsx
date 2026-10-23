@@ -84,7 +84,7 @@ function Tile<T extends string | number>({
 }
 
 export function CreateBar({
-  locale, price, insufficient, onCreate, duration, onDuration, cover, tempo, onTempo, lengths,
+  locale, price, insufficient, onCreate, blocked = false, duration, onDuration, cover, tempo, onTempo, lengths,
 }: {
   locale: string;
   /** The exact credits for this press (lib/studio/musicQuote). */
@@ -92,6 +92,8 @@ export function CreateBar({
   /** The balance is known and below `price`: the tap opens the top-up instead of creating. */
   insufficient: boolean;
   onCreate: () => void;
+  /** The attached file's path is refused by the route (its note says why): Create is disabled, not pressed to fail. */
+  blocked?: boolean;
   duration: MusicDuration;
   onDuration: (d: MusicDuration) => void;
   /** A melody reference is attached: the route bills a flat 30 s, so the length cannot be chosen. */
@@ -137,6 +139,7 @@ export function CreateBar({
         label={cc.create}
         credits={price}
         insufficient={insufficient}
+        disabled={blocked}
         locale={locale}
         onClick={onCreate}
         stickyBottom

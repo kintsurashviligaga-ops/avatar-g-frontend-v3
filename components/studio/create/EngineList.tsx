@@ -6,7 +6,8 @@
  * "more models" table that doubles as the picker).
  *
  * What it will and will not do is lib/studio/musicEngines' call, not this component's: a row the server would refuse (Lyria
- * not configured · breaker open · status not loaded) is `aria-disabled` with its reason in words and carries no handler; a reference track fixes the engine (MusicGen's melody model / MiniMax), which locks every row. Prices are the
+ * not configured · breaker open · status not loaded) is `aria-disabled` with its reason in words and carries no handler; a reference track sets its own path (a cover, your voice), which locks every row — and when the server refuses that path
+ * (today both: they ran on Replicate) the note above the rows says the file cannot be used instead of naming the path. Prices are the
  * shared quote at each length — the same on every engine, because every engine bills by length only.
  */
 import { Check } from 'lucide-react';
@@ -35,6 +36,8 @@ export function EngineList({
   const cc = musicCreateCopy(locale);
   const rows = engineChoices(status, { instrumental });
   const fixed = reference ? (reference === 'cover' ? ec.cover.name : ec.voice.name) : null;
+  // The server refuses that path (today every cover and voice: they ran on Replicate) — say so instead of naming it.
+  const refOff = !!reference && status?.references[reference] === false;
 
   const nameOf = (id: MusicEnginePref) => (id === 'auto' ? ec.auto.name : ec.engines[id].name);
   const roleOf = (id: MusicEnginePref) => (id === 'auto' ? ec.auto.role(chainNames(status, locale)) : ec.engines[id].role);
@@ -84,8 +87,9 @@ export function EngineList({
   return (
     <div data-testid={testId} className="min-w-0">
       {fixed && (
-        <p role="note" className="mb-1.5 rounded-xl bg-app-accent/10 px-3 py-2 text-[12.5px] leading-snug text-app-accent ring-1 ring-app-accent/20">
-          {cc.engineFixed(fixed)}
+        <p role="note" data-testid="engine-fixed-note" data-off={refOff ? 'true' : undefined}
+          className={cx('mb-1.5 rounded-xl px-3 py-2 text-[12.5px] leading-snug ring-1', refOff ? 'bg-app-warning/10 text-app-warning ring-app-warning/20' : 'bg-app-accent/10 text-app-accent ring-app-accent/20')}>
+          {refOff ? cc.refOffNote : cc.engineFixed(fixed)}
         </p>
       )}
       {variant === 'table' && (

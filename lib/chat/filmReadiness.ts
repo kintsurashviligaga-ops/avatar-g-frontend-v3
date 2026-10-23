@@ -21,9 +21,14 @@
  *   - GPU stitch (quality path): readRunPodConfig →
  *       RUNPOD_RENDER_WEBHOOK_URL + (RUNPOD_RENDER_WEBHOOK_TOKEN | RUNPOD_API_TOKEN)
  *   - CPU stitch (always-available fallback): bundled `ffmpeg-static` binary
- *   - Clip failover + silent-film score rescue: REPLICATE_API_TOKEN
  *   - Master hosting (HARD requirement to deliver a playable URL):
  *       (NEXT_PUBLIC_SUPABASE_URL | SUPABASE_URL) + SUPABASE_SERVICE_ROLE_KEY
+ *
+ * ⚠️ NO FAILOVER LEG (MASTER TASK v3.1, 2026-10-23). This report used to read REPLICATE_API_TOKEN as "LTX clip failover
+ * + the MusicGen silent-film score rescue armed" and told operators to set it. The assemble route has had neither since
+ * PROJECT_MASTER R7 (a Lyria miss is the film's own "no music" outcome, never a second provider), and v3.1 denies every
+ * cross-provider fallback — so the field, its verdict clause and its sync instruction are gone rather than advising a
+ * token nothing reads.
  */
 
 export type StitchPath = 'gpu-runpod' | 'cpu-ffmpeg';
@@ -36,9 +41,6 @@ export interface EditorReadiness {
   cpuFallbackAvailable: boolean;
   /** Which encoder the assemble route will actually choose right now. */
   stitchPath: StitchPath;
-  /** REPLICATE_API_TOKEN present → LTX clip failover AND the MusicGen
-   *  silent-film score rescue are both armed. */
-  failoverAndScoreFallback: boolean;
   /** Supabase Storage wired → the stitched master can be uploaded + signed and
    *  returned as a playable URL. Without it the stitch runs then fails on
    *  upload. This is the make-or-break gate for "can the user get a film". */
@@ -48,13 +50,11 @@ export interface EditorReadiness {
   /** Env-var NAMES consulted (never values) for transparency in the report. */
   checkedEnv: {
     gpu: readonly string[];
-    failover: readonly string[];
     masterHosting: readonly string[];
   };
 }
 
 const GPU_ENV = ['RUNPOD_RENDER_WEBHOOK_URL', 'RUNPOD_RENDER_WEBHOOK_TOKEN', 'RUNPOD_API_TOKEN'] as const;
-const FAILOVER_ENV = ['REPLICATE_API_TOKEN'] as const;
 const MASTER_HOSTING_ENV = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const;
 
 function present(env: Record<string, string | undefined>, name: string): boolean {
@@ -85,8 +85,6 @@ export function computeEditorReadiness(
   const stitchPath: StitchPath = gpuConfigured ? 'gpu-runpod' : 'cpu-ffmpeg';
   const canStitch = gpuConfigured || cpuFallbackAvailable;
 
-  const failoverAndScoreFallback = present(env, 'REPLICATE_API_TOKEN');
-
   const masterHostingConfigured =
     (present(env, 'NEXT_PUBLIC_SUPABASE_URL') || present(env, 'SUPABASE_URL')) &&
     present(env, 'SUPABASE_SERVICE_ROLE_KEY');
@@ -97,12 +95,10 @@ export function computeEditorReadiness(
     gpuConfigured,
     cpuFallbackAvailable,
     stitchPath,
-    failoverAndScoreFallback,
     masterHostingConfigured,
     canDeliverMaster,
     checkedEnv: {
       gpu: GPU_ENV,
-      failover: FAILOVER_ENV,
       masterHosting: MASTER_HOSTING_ENV,
     },
   };
@@ -117,10 +113,7 @@ export function editorVerdict(r: EditorReadiness): string {
     return 'BLOCKED — stitch can run but the finished master cannot be hosted (Supabase Storage unset)';
   }
   const lane = r.stitchPath === 'gpu-runpod' ? 'GPU RunPod (60fps interpolation)' : 'CPU FFmpeg (bundled, no extra infra)';
-  const failover = r.failoverAndScoreFallback
-    ? 'clip failover + silent-film score rescue armed'
-    : 'no Replicate failover (a dead clip or missing score has no rescue)';
-  return `READY — master delivers via ${lane}; ${failover}`;
+  return `READY — master delivers via ${lane}`;
 }
 
 /**
@@ -135,13 +128,6 @@ export function editorSyncInstructions(r: EditorReadiness): Array<{ leg: string;
       leg: 'master-hosting',
       action:
         'Set SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL) in Vercel — without them the stitched master cannot be uploaded/signed and the assemble route fails on upload.',
-    });
-  }
-  if (!r.failoverAndScoreFallback) {
-    out.push({
-      leg: 'failover-and-score',
-      action:
-        'Set REPLICATE_API_TOKEN in Vercel to arm LTX clip failover and the MusicGen silent-film score rescue (optional but recommended — without it a dead clip or missing Udio score has no automatic recovery).',
     });
   }
   if (!r.gpuConfigured) {

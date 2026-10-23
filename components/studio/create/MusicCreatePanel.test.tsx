@@ -271,6 +271,54 @@ describe('controls that would do nothing are not drawn', () => {
     expect(screen.getByTestId('music-add-voice')).toBeTruthy();
   });
 
+  // Today's status (lib/ai/musicEnginesStatus): cover, sample and trained voice ran on Replicate, so the route refuses each.
+  const LOCKED = { ...STATUS, references: { cover: false, voice: false } };
+
+  test.each(['cover', 'voice'] as const)('a %s file attached the other way (paperclip) says it cannot be used and Create is off', async (mode) => {
+    fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond(LOCKED) : respond({})));
+    const onCreate = jest.fn();
+    render(<Host over={{ duration: 60, audio: { name: 'song.wav' }, audioMode: mode }} spy={{ onCreate }} />);
+    await waitFor(() => expect(screen.getByTestId('music-ref-note').getAttribute('data-off')).toBe('true'));
+    const note = screen.getByTestId('music-ref-note').textContent ?? '';
+    expect(note).toBe('This file can’t be used: only Google Lyria composes music here, from your words. Remove it to create.');
+    expect(note).not.toMatch(/MusicGen|MiniMax|RVC|Replicate/);
+    const create = screen.getByTestId('music-create') as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+    fireEvent.click(create);
+    expect(onCreate).not.toHaveBeenCalled();
+    // A refused cover is not quoted as a flat 30 s cover, nor does it lock the length.
+    expect(price()).toBe(quoteCredits({ tool: 'music', seconds: 60 }));
+    expect(screen.getByTestId('music-tile-length').getAttribute('aria-disabled')).toBeNull();
+    // The engine sheet says the same, not "runs on its own engine".
+    fireEvent.click(screen.getByTestId('music-engine-pill'));
+    const fixed = await screen.findByTestId('engine-fixed-note');
+    expect(fixed.getAttribute('data-off')).toBe('true');
+    expect(fixed.textContent).toContain('only Google Lyria');
+  });
+
+  test('a trained voice is refused with the sample: no switch, no chip, and it never counts as on', async () => {
+    fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond(LOCKED) : respond({})));
+    const onCreate = jest.fn();
+    render(<Host over={{ trainedVoice: { available: true, on: true, onChange: jest.fn() } }} spy={{ onCreate }} />);
+    await waitFor(() => expect(screen.queryByTestId('music-add-voice')).toBeNull());
+    expect(screen.queryByTestId('music-trained-chip')).toBeNull();
+    expect(screen.queryByTestId('music-voice-trained')).toBeNull();
+    // With no file attached nothing blocks Create: it makes a Lyria track from the words.
+    const create = screen.getByTestId('music-create') as HTMLButtonElement;
+    expect(create.disabled).toBe(false);
+    fireEvent.click(create);
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  test('while the paths were open the notes named no withdrawn engine either', async () => {
+    render(<Host over={{ audio: { name: 'song.wav' }, audioMode: 'cover' }} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.getByTestId('music-ref-note').getAttribute('data-off')).toBeNull();
+    expect(screen.getByTestId('music-ref-note').textContent).toBe('This melody is re-imagined as an instrumental — 30 s, flat price. Lyrics are not used.');
+    expect((screen.getByTestId('music-create') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId('music-engine-pill').textContent).not.toMatch(/MusicGen|MiniMax/);
+  });
+
   test('the picker lists Auto and Lyria only — no retired engine is drawn — and a Lyria pick is stored and named', async () => {
     render(<Host />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
