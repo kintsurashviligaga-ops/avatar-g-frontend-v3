@@ -29,7 +29,7 @@ import {
   musicControlsReport, musicStyleLine, parseMusicControls, promptDirectives,
   type MusicControls, type MusicControlsReport, type MusicEngineId,
 } from '@/lib/ai/musicControls';
-import { isMusicEngineId, LYRIA_CLIP_MAX_SEC, LYRIA_PRO_MODEL, lyriaModelForSec, musicLengthDirection, musicTargetSec, offeredMusicLengths } from '@/lib/studio/musicEngines';
+import { isMusicEngineId, isRetiredMusicEngineId, LYRIA_CLIP_MAX_SEC, LYRIA_PRO_MODEL, lyriaModelForSec, musicLengthDirection, musicTargetSec, offeredMusicLengths } from '@/lib/studio/musicEngines';
 import { lyriaProMaxSec, lyriaVocalsVerified } from '@/lib/music/studio/capabilities';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
@@ -48,16 +48,14 @@ import { serviceOffResponse } from '@/lib/server/serviceSwitches';
  *   MUSIC_LYRIA_PRO_SECONDS); until then a longer length is refused before any charge.
  *   No failover (PROJECT_MASTER R7): a Lyria error, timeout or open
  *   breaker is this request's explicit failure — 502, the reserved credit refunded — never another engine's track.
- * Lyria is live-by-default when a Gemini key is present (kill-switch LYRIA_ENABLED=0). The Create screen's explicit
- * engine pick runs that one engine instead, under the same rule. MUSIC_PROVIDER=elevenlabs makes Udio unpickable.
- * Singer gender is prompt-engineered (the EL Music + Udio APIs take no voice_id; cloned voice IDs apply to
- * TTS/narration, not music generation).
+ * Lyria is live-by-default when Vertex is configured (kill-switch LYRIA_ENABLED=0). The Create screen's only engine pick
+ * is Lyria itself; a request naming a retired engine (Udio, ElevenLabs Music, MusicGen) is refused before any charge.
+ * Singer gender is prompt-engineered (Lyria takes no voice_id; cloned voice IDs apply to TTS/narration, not music).
  *
  * Granular controls (lib/ai/musicControls): up to three `styles`, `vocalGender` (auto/female/male/duet), and the
- * Weirdness / Style influence sliders. On Lyria and ElevenLabs the sliders are sentences in the brief — approximate by
- * design; MusicGen takes them as sampling parameters, Udio only behind MUSIC_SUNO_PARAMS. The response's
- * `controls: { engine, mode, applied }` says which happened, and whether a slider reached the engine at all, so the
- * result card can be honest about it.
+ * Weirdness / Style influence sliders. On Lyria the sliders are sentences in the brief — approximate by design. The
+ * response's `controls: { engine, mode, applied }` says which happened, and whether a slider reached the engine at all,
+ * so the result card can be honest about it.
  *
  * Synchronous start+poll, bounded WELL under the 300s function ceiling. Fail-closed
  * with a clean reason on a real miss; fail-open on the re-host (keeps the provider URL).
@@ -69,9 +67,8 @@ export const maxDuration = 300;
 
 // Standalone music composition: Google Lyria 3 (live by default whenever a Gemini key is set, kill-switch
 // LYRIA_ENABLED=0), or the ONE engine the user explicitly picked — never a chain (see the R7 note below).
-// Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
-// `controls` reaches the engines that take them natively (MusicGen always, Udio behind MUSIC_SUNO_PARAMS); for the
-// others the sliders are already sentences inside `brief`. Each attempt reports which, for the response.
+// Lyria returns audio BYTES, hosted to Supabase first; the result is always a URL. The sliders are already sentences
+// inside `brief`; the attempt reports whether one reached Lyria, for the response.
 // `targetSec` picks the Lyria model: the clip up to 30 s, Pro above (lib/studio/musicEngines). Neither takes a length,
 // so Pro is steered to it by a direction ahead of the brief, and the charge is settled against the delivered track
 // below. `preferred` is kept in the signature for the callers; only 'lyria' can be preferred — anything else is
@@ -172,10 +169,13 @@ export async function POST(req: NextRequest) {
   let rawTemplateId: unknown;
   // The engine the user asked to try first (lib/studio/musicEngines) — null = Auto, the chain as it stands.
   let preferredEngine: MusicEngineId | null = null;
+  // The request named a retired engine (Udio / ElevenLabs Music / MusicGen): refused below, before any charge.
+  let retiredEngine = false;
   try {
     const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; styles?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; vocalGender?: unknown; weirdness?: unknown; styleInfluence?: unknown; jobId?: unknown; templateId?: unknown; engine?: unknown };
     rawTemplateId = body.templateId;
     if (isMusicEngineId(body.engine)) preferredEngine = body.engine;
+    else if (isRetiredMusicEngineId(body.engine)) retiredEngine = true;
     if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
     bodyFp = bodyFingerprint(body);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
   // (Replicate MusicGen-melody), a sampled voice (Replicate MiniMax), a trained voice (Replicate RVC) and an explicit
   // Udio / ElevenLabs Music / MusicGen pick used to run whenever MEDIA_GOOGLE_ONLY was off (the default). None is a
   // compliant engine for music, so the request is refused as unsupported — nothing reserved, nothing rendered.
-  if (audioReference || voiceReference || useMyVoice || (preferredEngine !== null && preferredEngine !== 'lyria')) {
+  if (audioReference || voiceReference || useMyVoice || retiredEngine) {
     const l = billingLocale(req);
     const message = l === 'en'
       ? 'This music option is not available: only Google Lyria composes music here. You were not charged.'

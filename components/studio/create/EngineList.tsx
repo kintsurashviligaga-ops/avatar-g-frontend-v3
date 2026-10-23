@@ -5,9 +5,8 @@
  * (the model pill's dropdown) and a `table` with the price per length (the desktop "Engines & prices" pane — ref6's
  * "more models" table that doubles as the picker).
  *
- * What it will and will not do is lib/studio/musicEngines' call, not this component's: a row the server would refuse (no
- * key · breaker open · MusicGen for a song · status not loaded) is `aria-disabled` with its reason in words and carries no
- * handler; a reference track fixes the engine (MusicGen's melody model / MiniMax), which locks every row. Prices are the
+ * What it will and will not do is lib/studio/musicEngines' call, not this component's: a row the server would refuse (Lyria
+ * not configured · breaker open · status not loaded) is `aria-disabled` with its reason in words and carries no handler; a reference track fixes the engine (MusicGen's melody model / MiniMax), which locks every row. Prices are the
  * shared quote at each length — the same on every engine, because every engine bills by length only.
  */
 import { Check } from 'lucide-react';

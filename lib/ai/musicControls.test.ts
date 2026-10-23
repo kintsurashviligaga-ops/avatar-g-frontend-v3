@@ -176,46 +176,40 @@ describe('musicgenParams — native on MusicGen, centred on the model\'s own def
 });
 
 describe('musicControlsReport — `applied` says whether a slider REACHED the engine, not whether one moved', () => {
-  const off = {} as NodeJS.ProcessEnv;
-  const on = { MUSIC_SUNO_PARAMS: '1' } as NodeJS.ProcessEnv;
   const BRIEF = 'a summer night by the sea. Style: jazz.';
   const sentWith = (c: MusicControls) => [BRIEF, ...promptDirectives(c)].join(' ');
 
   test('Lyria: a slider sentence in the text it was sent → applied, approximately', () => {
     const c = ctl({ weirdness: 92 });
-    expect(musicControlsReport('lyria', c, sentWith(c), off)).toEqual({ engine: 'lyria', mode: 'prompt', applied: true });
+    expect(musicControlsReport('lyria', c, sentWith(c))).toEqual({ engine: 'lyria', mode: 'prompt', applied: true });
   });
 
   test('a slider moved only within the neutral band writes nothing, so nothing was applied', () => {
     const c = ctl({ weirdness: 60, styleInfluence: 40 });
     expect(promptDirectives(c)).toEqual([]);
-    for (const engine of ['lyria', 'elevenlabs-music', 'udio'] as const) {
-      expect(musicControlsReport(engine, c, sentWith(c), off).applied).toBe(false);
-    }
+    expect(musicControlsReport('lyria', c, sentWith(c)).applied).toBe(false);
   });
 
   test('a sentence the brief had no room for was not applied: the text sent is what counts', () => {
     const c = ctl({ weirdness: 92, styleInfluence: 10 });
-    expect(musicControlsReport('lyria', c, BRIEF, off).applied).toBe(false);
+    expect(musicControlsReport('lyria', c, BRIEF).applied).toBe(false);
     const [weird] = promptDirectives(c);
-    expect(musicControlsReport('lyria', c, `${BRIEF} ${weird}`, off).applied).toBe(true); // one of the two is enough
+    expect(musicControlsReport('lyria', c, `${BRIEF} ${weird}`).applied).toBe(true); // one of the two is enough
   });
 
-  test('MusicGen: a native parameter counts (temperature moves inside the band too); in-band guidance sends nothing', () => {
-    expect(musicControlsReport('musicgen', ctl({ weirdness: 60 }), BRIEF, off)).toEqual({ engine: 'musicgen', mode: 'native', applied: true });
-    expect(musicControlsReport('musicgen', ctl({ styleInfluence: 40 }), BRIEF, off).applied).toBe(false);
-    expect(musicControlsReport('musicgen', ctl(), BRIEF, off).applied).toBe(false);
-  });
-
-  test('Udio: its native fields count only with MUSIC_SUNO_PARAMS on, and the singer is not a slider', () => {
+  test('MUSIC_SUNO_PARAMS no longer changes the report: Lyria is prompt-steered, and a moved slider counts only as text', () => {
     const c = ctl({ weirdness: 55 });
-    expect(musicControlsReport('udio', c, BRIEF, off)).toEqual({ engine: 'udio', mode: 'prompt', applied: false });
-    expect(musicControlsReport('udio', c, BRIEF, on)).toEqual({ engine: 'udio', mode: 'native', applied: true });
-    expect(musicControlsReport('udio', ctl({ vocalGender: 'female' }), BRIEF, on).applied).toBe(false);
+    const saved = process.env.MUSIC_SUNO_PARAMS;
+    process.env.MUSIC_SUNO_PARAMS = '1';
+    try {
+      expect(musicControlsReport('lyria', c, BRIEF)).toEqual({ engine: 'lyria', mode: 'prompt', applied: false });
+    } finally {
+      if (saved === undefined) delete process.env.MUSIC_SUNO_PARAMS; else process.env.MUSIC_SUNO_PARAMS = saved;
+    }
   });
 
   test('no controls → nothing applied', () => {
-    expect(musicControlsReport('lyria', undefined, sentWith(ctl({ weirdness: 100 })), off))
+    expect(musicControlsReport('lyria', undefined, sentWith(ctl({ weirdness: 100 }))))
       .toEqual({ engine: 'lyria', mode: 'prompt', applied: false });
   });
 });
@@ -226,13 +220,7 @@ describe('the flag, and what the result card is told', () => {
     for (const v of ['1', 'true', 'ON', ' on ']) expect(musicSunoParamsEnabled({ MUSIC_SUNO_PARAMS: v } as NodeJS.ProcessEnv)).toBe(true);
   });
 
-  test('Lyria and ElevenLabs are prompt-steered; MusicGen is native; Udio is native only with the flag', () => {
-    const off = {} as NodeJS.ProcessEnv;
-    const on = { MUSIC_SUNO_PARAMS: '1' } as NodeJS.ProcessEnv;
-    expect(controlModeFor('lyria', on)).toBe('prompt');
-    expect(controlModeFor('elevenlabs-music', on)).toBe('prompt');
-    expect(controlModeFor('musicgen', off)).toBe('native');
-    expect(controlModeFor('udio', off)).toBe('prompt');
-    expect(controlModeFor('udio', on)).toBe('native');
+  test('Lyria, the only engine the route runs, is prompt-steered', () => {
+    expect(controlModeFor('lyria')).toBe('prompt');
   });
 });

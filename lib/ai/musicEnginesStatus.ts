@@ -3,9 +3,10 @@
  * screen's model picker and its "Engines & prices" list.
  *
  * The answer is derived from the SAME gate the route runs on, never restated: Lyria 3 — `hasLyriaProvider()` (Vertex
- * configured, and LYRIA_ENABLED not switched off). Udio, ElevenLabs Music and MusicGen are always off (engineConfigured),
- * and the ElevenLabs Music client itself is gone (PR 6). Plus each engine's Redis circuit breaker (`isProviderTripped`): three consecutive failures open it for ~30 s, and the
- * route will not run a tripped engine — so an engine that is out of funds shows as busy instead of being offered.
+ * configured, and LYRIA_ENABLED not switched off) — the only engine listed (MASTER TASK v3.1). Udio, ElevenLabs Music and
+ * MusicGen are not reported at all any more: they were rows that were always off. Plus the engine's Redis circuit
+ * breaker (`isProviderTripped`): three consecutive failures open it for ~30 s, and the route will not run a tripped
+ * engine — so an engine that is out of funds shows as busy instead of being offered.
  * "+ Audio" (MusicGen's melody model) and "+ Voice" (MiniMax) both run on Replicate, hence `references`.
  *
  * Booleans only — never a key, a model id or a URL. Fail-open on the breaker read (a Redis blip shows engines as ready,
@@ -21,12 +22,11 @@ export function replicateConfigured(env: NodeJS.ProcessEnv = process.env): boole
   return (env.REPLICATE_API_TOKEN ?? '').trim().length > 0;
 }
 
-/** True when the engine would be in the route's chain at all (a key / token / switch). */
+/** True when the engine would run at all: Lyria configured on Vertex, and LYRIA_ENABLED not switched off. */
 export function engineConfigured(id: MusicEngineId, env: NodeJS.ProcessEnv = process.env): boolean {
+  void id;
   void env;
-  // ⚠️ GOOGLE LYRIA ONLY (Music Studio v1, Phase 2). /api/ai/music refuses every other engine before the reserve, so the
-  // picker shows Udio, ElevenLabs Music and MusicGen as off whatever keys the deployment holds.
-  return id === 'lyria' ? hasLyriaProvider() : false;
+  return hasLyriaProvider();
 }
 
 export async function musicEnginesStatus(
@@ -37,7 +37,7 @@ export async function musicEnginesStatus(
     const configured = engineConfigured(id, env);
     // A breaker only matters for an engine that is in the chain; skip the read for one that is not.
     const busy = configured ? await tripped(id).catch(() => false) : false;
-    return [id, { configured, busy, controls: controlModeFor(id, env) }] as const;
+    return [id, { configured, busy, controls: controlModeFor(id) }] as const;
   }));
   const engines = Object.fromEntries(rows) as MusicEnginesStatus['engines'];
   // A cover (MusicGen-melody) and a sampled voice (MiniMax) are Replicate engines, outside the provider boundary: off.
