@@ -26,6 +26,7 @@ const STATUS: MusicEnginesStatus = {
   references: { cover: true, voice: true },
   chain: ['lyria'], // Auto is Lyria alone (R7) — MusicGen is ready, but only as an explicit pick
   lengths: [30],
+  vocals: true,
 };
 
 test('the picker lists the known engines, but the route can run exactly ONE: Google Lyria (Music Studio v1 boundary)', () => {
@@ -100,6 +101,10 @@ test('the status parser accepts the route\'s shape, normalises it, and refuses j
   expect(parseMusicEnginesStatus({ ...STATUS, lengths: [0, 90, 45, '60', 60, 30] })?.lengths).toEqual([30, 60, 90, 0]);
   const { lengths: _omit, ...old } = STATUS;
   expect(parseMusicEnginesStatus(old)?.lengths).toEqual([30]);
+  // `vocals`: true only when the server says so; an older server that sends none offers no sung song.
+  const { vocals: _v, ...noVocals } = STATUS;
+  expect(parseMusicEnginesStatus(noVocals)?.vocals).toBe(false);
+  expect(parseMusicEnginesStatus({ ...STATUS, vocals: 'true' })?.vocals).toBe(false);
 });
 
 describe('track length → Lyria model (owner, GG 2026-10-18): Clip up to 30 s, Pro above', () => {

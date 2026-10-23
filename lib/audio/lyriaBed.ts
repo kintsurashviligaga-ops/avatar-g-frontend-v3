@@ -11,8 +11,7 @@
  */
 import 'server-only';
 import { generateLyriaTrack, hasLyriaProvider } from '@/lib/ai/lyriaMusic';
-import { isTruthyFlag } from '@/lib/env/flag';
-import { lyriaProMaxSec } from '@/lib/music/studio/capabilities';
+import { lyriaProMaxSec, lyriaVocalsVerified } from '@/lib/music/studio/capabilities';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { LYRIA_CLIP_MAX_SEC, LYRIA_CLIP_MODEL, LYRIA_PRO_MODEL, musicLengthDirection } from '@/lib/studio/musicEngines';
 
@@ -25,7 +24,7 @@ export function lyriaBedReady(): boolean {
 
 /** The model and length a bed of `wantSec` is made at, or null when it cannot be made (a song before vocals are verified). */
 export function lyriaBedPlan(wantSec: number, instrumental: boolean, env: Env = process.env): { model: string; sec: number } | null {
-  if (!instrumental && !isTruthyFlag(env.MUSIC_LYRIA_VOCALS_VERIFIED)) return null;
+  if (!instrumental && !lyriaVocalsVerified(env)) return null;
   const want = Math.max(1, Math.round(Number.isFinite(wantSec) ? wantSec : LYRIA_CLIP_MAX_SEC));
   const proSec = lyriaProMaxSec(env);
   if (want > LYRIA_CLIP_MAX_SEC && proSec > LYRIA_CLIP_MAX_SEC) return { model: LYRIA_PRO_MODEL, sec: Math.min(want, proSec) };

@@ -85,6 +85,8 @@ const BED = { ...SONG, instrumental: true };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // These cases sing: a sung track is offered once Lyria vocals are verified (capabilities lyriaVocalsVerified).
+  process.env.MUSIC_LYRIA_VOCALS_VERIFIED = '1';
   (hasLyriaProvider as jest.Mock).mockReturnValue(true);
   (hasUdioApiKey as jest.Mock).mockReturnValue(true);
   (generateLyriaTrack as jest.Mock).mockResolvedValue({ base64: 'AAAA', mime: 'audio/mpeg' });

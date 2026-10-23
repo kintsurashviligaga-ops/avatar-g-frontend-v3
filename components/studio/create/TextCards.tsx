@@ -61,13 +61,16 @@ export function CardTextarea({
   );
 }
 
-export function InstrumentalPill({ locale, on, onToggle }: { locale: string; on: boolean; onToggle: () => void }) {
+/** `locked`: sung songs are not offered yet, so the pill stays on and inert (shown, `aria-disabled`, with the reason). */
+export function InstrumentalPill({ locale, on, onToggle, locked }: { locale: string; on: boolean; onToggle: () => void; locked?: boolean }) {
   const cc = musicCreateCopy(locale);
   return (
     <PillButton
       testId="music-instrumental"
       pressed={on}
       onClick={onToggle}
+      locked={locked}
+      lockedNote={cc.vocalsSoon}
       icon={
         <span aria-hidden="true" className={cx('flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors', on ? 'bg-app-accent text-app-bg' : 'bg-app-border/20 text-transparent')}>
           <Check size={12} strokeWidth={3} />
@@ -134,6 +137,8 @@ export interface LyricsCardProps {
   onInstrumental: () => void;
   /** A melody reference is attached: the track will be an instrumental, so these words are not used. */
   coverMode: boolean;
+  /** Sung songs are not offered yet: Instrumental is locked on and the card says why. */
+  vocalsLocked?: boolean;
   wandBusy: boolean;
   onWand: () => void;
   onLibrary: () => void;
@@ -166,12 +171,13 @@ export function LyricsCard(p: LyricsCardProps) {
         placeholder={p.instrumental ? cc.lyricsPlaceholderInstrumental : cc.lyricsPlaceholder}
       />
       {p.coverMode && <p data-testid="music-lyrics-cover-note" className="text-[11.5px] leading-snug text-app-muted">{cc.lyricsCoverNote}</p>}
+      {p.vocalsLocked && !p.coverMode && <p data-testid="music-vocals-note" className="text-[11.5px] leading-snug text-app-muted">{cc.vocalsSoon}</p>}
       <NoteLine note={p.note} testId="music-lyrics-note" />
       {/* One row on a phone (ref2). In the 300–340 px settings column of a desktop the four do not fit, so the row WRAPS and
           the expand button — `ml-auto`, wherever it lands — stays at the right edge, instead of being clipped by it. */}
       <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
         <RoundButton testId="music-lyrics-library" icon={<Library size={18} aria-hidden="true" />} label={cc.lyricsLibrary} onClick={p.onLibrary} haspopup="dialog" />
-        <InstrumentalPill locale={p.locale} on={p.instrumental} onToggle={p.onInstrumental} />
+        <InstrumentalPill locale={p.locale} on={p.instrumental} onToggle={p.onInstrumental} locked={p.vocalsLocked} />
         <RoundButton className="ml-auto" testId="music-lyrics-expand" icon={<Maximize2 size={17} aria-hidden="true" />} label={cc.expand} onClick={p.onExpand} haspopup="dialog" />
       </div>
     </PanelCard>
@@ -234,6 +240,8 @@ export function SimpleCard(p: {
   onChange: (v: string) => void;
   instrumental: boolean;
   onInstrumental: () => void;
+  /** Sung songs are not offered yet: Instrumental is locked on and the card says why. */
+  vocalsLocked?: boolean;
   wandBusy: boolean;
   onWand: () => void;
   note: CardNote;
@@ -250,8 +258,9 @@ export function SimpleCard(p: {
       <CardTextarea testId="music-simple-input" label={cc.simpleCard} value={p.value} onChange={p.onChange} maxLength={600} rows={4} placeholder={cc.simplePlaceholder} />
       <NoteLine note={p.note} testId="music-simple-note" />
       <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-        <InstrumentalPill locale={p.locale} on={p.instrumental} onToggle={p.onInstrumental} />
+        <InstrumentalPill locale={p.locale} on={p.instrumental} onToggle={p.onInstrumental} locked={p.vocalsLocked} />
       </div>
+      {p.vocalsLocked && <p data-testid="music-vocals-note" className="mt-2 text-[11.5px] leading-snug text-app-muted">{cc.vocalsSoon}</p>}
       {p.keptLyrics > 0 && !p.instrumental && (
         <p data-testid="music-simple-lyrics-note" className="mt-2 text-[11.5px] leading-snug text-app-muted">{cc.lyricsKept(p.keptLyrics)}</p>
       )}

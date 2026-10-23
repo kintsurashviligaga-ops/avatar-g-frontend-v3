@@ -72,6 +72,8 @@ beforeEach(() => {
   // 60 s / 90 s / Full song are Lyria 3 Pro's, offered once verified (lib/music/studio/capabilities lyriaProMaxSec).
   process.env.MUSIC_LYRIA_PRO_VERIFIED = '1';
   process.env.MUSIC_LYRIA_PRO_SECONDS = '180';
+  // These cases sing: a sung track is offered once Lyria vocals are verified (capabilities lyriaVocalsVerified).
+  process.env.MUSIC_LYRIA_VOCALS_VERIFIED = '1';
   // Cover art goes to Pollinations through fetch — answer it locally so nothing leaves the process.
   jest.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 500 }));
   jest.spyOn(console, 'error').mockImplementation(() => undefined);

@@ -47,6 +47,8 @@ export interface MusicEnginesStatus {
   chain: MusicEngineId[];
   /** The panel lengths (lib/studio/musicQuote MUSIC_DURATIONS, 0 = Full song) the server makes right now: see offeredMusicLengths. */
   lengths: MusicDuration[];
+  /** A sung song can be made right now: Lyria vocals verified (MUSIC_LYRIA_VOCALS_VERIFIED, the gate the route refuses by). */
+  vocals: boolean;
 }
 
 const bool = (v: unknown): boolean => v === true;
@@ -69,7 +71,9 @@ export function parseMusicEnginesStatus(raw: unknown): MusicEnginesStatus | null
   // An older server sent no `lengths`: only the clip's 30 s is certain then.
   const lens = (raw as { lengths?: unknown }).lengths;
   const lengths = Array.isArray(lens) ? MUSIC_DURATIONS.filter((d) => lens.includes(d)) : [];
-  return { engines, references: { cover: bool(refs.cover), voice: bool(refs.voice) }, chain, lengths: lengths.length ? lengths : [30] };
+  // An older server sent no `vocals`: a sung song is then not certain either (it refuses one with a message).
+  const vocals = bool((raw as { vocals?: unknown }).vocals);
+  return { engines, references: { cover: bool(refs.cover), voice: bool(refs.voice) }, chain, lengths: lengths.length ? lengths : [30], vocals };
 }
 
 // ── Track length → Lyria model (owner decision, GG 2026-10-18) ─────────────────────────────────────────────────────

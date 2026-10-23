@@ -74,6 +74,15 @@ export function lyriaProMaxSec(env: Env = process.env): number {
   return isTruthyFlag(env.MUSIC_LYRIA_PRO_VERIFIED) && Number.isFinite(proSec) && proSec >= 30 && proSec <= 600 ? proSec : 0;
 }
 
+/**
+ * True once Lyria's sung vocals are verified on this project (MUSIC_LYRIA_VOCALS_VERIFIED). The one gate /api/ai/music,
+ * the film and ad beds (lib/audio/lyriaBed) and this matrix all read: until it is set, a sung song is refused before
+ * any charge, and no instrumental is made in its place.
+ */
+export function lyriaVocalsVerified(env: Env = process.env): boolean {
+  return isTruthyFlag(env.MUSIC_LYRIA_VOCALS_VERIFIED);
+}
+
 function transportOf(env: Env): Transport | null {
   try {
     const kind = googleTransportKind(env);
@@ -86,7 +95,7 @@ function transportOf(env: Env): Transport | null {
 export function musicCapabilities(env: Env = process.env): MusicCapabilities {
   const transport = transportOf(env);
   const lyriaOn = isEnabledByDefault(env.LYRIA_ENABLED);
-  const vocals = isTruthyFlag(env.MUSIC_LYRIA_VOCALS_VERIFIED);
+  const vocals = lyriaVocalsVerified(env);
   const models: MusicModelCapability[] = [{
     id: CLIP_MODEL,
     label: 'Lyria 3 Clip',

@@ -86,6 +86,12 @@ test('the breaker is never read for an engine that is not configured, and a fail
   expect(isProviderTripped).toHaveBeenCalledWith('lyria');
 });
 
+test('vocals: a sung song is offered only once MUSIC_LYRIA_VOCALS_VERIFIED is set — the gate the route refuses by', async () => {
+  expect((await musicEnginesStatus(ENV)).vocals).toBe(false);
+  expect((await musicEnginesStatus({ ...ENV, MUSIC_LYRIA_VOCALS_VERIFIED: '0' })).vocals).toBe(false);
+  expect((await musicEnginesStatus({ ...ENV, MUSIC_LYRIA_VOCALS_VERIFIED: '1' })).vocals).toBe(true);
+});
+
 test('controls: MusicGen takes the sliders natively; the text-brief engines only approximate', async () => {
   const s = await musicEnginesStatus({ ...KEYS });
   expect(s.engines.musicgen.controls).toBe('native');
