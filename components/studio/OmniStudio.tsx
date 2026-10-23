@@ -17,7 +17,7 @@ import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
-import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
+import { PROGRESS_TARGET, fmtClock, easedPct, useRisingPct } from '@/components/studio/ui/GenerationProgress';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
 import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
@@ -1931,6 +1931,9 @@ export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCre
   const [overOrd, setOverOrd] = useState<number | null>(null);
   const dragEnabled = !streaming && !busy && regenningOrdinal === null;
   const prog = total > 0 ? loaded / total : 0;
+  // The board's number (§3.3: a percent and a short label, no bar). Frames are counted, not guessed, and the number
+  // still holds under 100 while any frame is drawing and never goes back within one compile.
+  const boardPct = useRisingPct(prog * 100, streaming);
   // V2 — the Cinematic Compiling Core's hue tracks REAL frame progress (not a fabricated state
   // machine): early → Deep Azure (planning/optimizing), mid → Emerald (identity-locked frames
   // landing), near-done → Amber (ready to compile the video). Honest signal → honest colour.
@@ -1952,11 +1955,11 @@ export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCre
             </div>
             {streaming ? (
               // V2 — the compiling line: a still dot whose hue tracks real progress (the frames' own tiles show the loop).
-              <div className="mt-1 flex items-center gap-2">
+              <div className="mt-1 flex items-center gap-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={boardPct} aria-valuetext={`${boardPct}% · ${t.sbCompiling} · ${loaded}/${total} ${t.sbFrames}`} data-testid="storyboard-progress">
                 <span className="relative flex h-5 w-5 items-center justify-center">
                   <span className="relative h-2 w-2 rounded-full" style={{ background: coreColor, boxShadow: `0 0 8px ${coreColor}` }} />
                 </span>
-                <span className="text-[12px] font-medium" style={{ color: coreColor }}>{t.sbCompiling} · <span className="tabular-nums">{loaded}/{total}</span> {t.sbFrames}</span>
+                <span className="text-[12px] font-medium" style={{ color: coreColor }}><span className="tabular-nums">{boardPct}%</span> · {t.sbCompiling} · <span className="tabular-nums">{loaded}/{total}</span> {t.sbFrames}</span>
               </div>
             ) : (
               <p className="truncate text-[12px] text-app-muted">{t.sbReview}</p>
@@ -1975,13 +1978,6 @@ export function StoryboardOverlay({ sb, t, locale, busy, price, free, lipsyncCre
           <span aria-hidden className={`h-px flex-1 ${streaming ? 'bg-app-border/20' : 'bg-gradient-to-r from-app-accent/40 to-app-accent/60'}`} />
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${streaming ? 'bg-app-elevated text-app-muted/60 ring-app-border/15' : 'bg-app-accent/15 text-app-accent ring-app-accent/40'}`}><Film size={10} /> {t.sbPipeRender}</span>
         </div>
-        {/* Live frame-load progress — a hue-shifting bar (azure → compiling-core hue) fills as
-            each scene's frame streams in. */}
-        {streaming && (
-          <div className="mx-4 mb-2 h-1.5 overflow-hidden rounded-full bg-app-border/15">
-            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.round(prog * 100))}%`, background: `linear-gradient(90deg, #2563eb, ${coreColor})` }} />
-          </div>
-        )}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sb.scenes.map((s, i) => (
@@ -10327,10 +10323,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   return (
                     <>
                       {m.chatNotice && <ModeNoticeLine reason={m.chatNotice} lang={locale} />}
-                      {typeof m.videoProgress === 'number' && !m.videoUrl && (
-                        <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
-                          <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
-                        </div>
+                      {/* A film bubble's own percent, over the status text that is its label (§3.3: a number and a short
+                          label, no bar). Under 100 until the video is in; a failed bubble prints none. */}
+                      {typeof m.videoProgress === 'number' && !m.videoUrl && !m.text?.startsWith('⚠️') && (
+                        <p className="mb-1 text-[20px] font-bold leading-none tabular-nums text-app-text" data-testid="video-progress-pct"
+                          role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(99, Math.max(0, Math.round(m.videoProgress)))}>
+                          {Math.min(99, Math.max(0, Math.round(m.videoProgress)))}<span className="text-[13px] font-semibold text-app-muted">%</span>
+                        </p>
                       )}
                       {displayText && <Markdown locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'}>{displayText}</Markdown>}
                       {/* Google Search grounding: the pages the answer was built from, as compact chips. */}
@@ -12670,18 +12669,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <div className="flex items-center justify-between gap-2 px-4 py-3">
               <div className="min-w-0">
                 <h2 className="text-[15px] font-semibold tracking-tight text-app-text">🎬 {t.sbTitle}</h2>
-                <p className="flex items-center gap-1.5 text-[12px] text-app-accent">
-                  {t.sbCreating}
-                  <span className="tabular-nums text-app-muted">· {Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100))}% · {fmtClock(elapsed)}</span>
+                {/* A percent and a short label (§3.3), paced to the real ~150 s storyboard build and held under 100. */}
+                <p className="flex items-center gap-1.5 text-[12px] text-app-accent" data-testid="storyboard-building-progress"
+                  role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={easedPct(elapsed, 150)} aria-valuetext={`${easedPct(elapsed, 150)}% · ${t.sbCreating}`}>
+                  <span className="font-semibold tabular-nums text-app-text">{easedPct(elapsed, 150)}%</span>
+                  <span>· {t.sbCreating}</span>
                 </p>
               </div>
               <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
                 <X size={18} />
               </button>
-            </div>
-            {/* Live progress bar — pace ~150s (the real storyboard build) toward 95%. */}
-            <div className="mx-4 mb-1 h-1 overflow-hidden rounded-full bg-app-border/15">
-              <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100)))}%` }} />
             </div>
             {/* The storyboard being built: the loading loop in the film's own shape, the one picture of every
                 generation's wait (the owner's rule, 2026-10-17). It replaced six pulsing skeleton tiles. */}
