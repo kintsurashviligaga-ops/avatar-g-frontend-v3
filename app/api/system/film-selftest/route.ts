@@ -18,29 +18,25 @@
  *                       reject a <2-segment body with "at least 2 …", NOT 401
  *                       (the dead-end that lost the final cut) or 500.
  *
- * It also maps ALL NINE ecosystem providers to env presence (names only, never
- * values) and returns a 0–100 health score + ranked recommendations — the
- * structured signal the scheduled monitor consumes to decide what to improve.
+ * It also maps the film's engines to env presence (names only, never values) and
+ * returns a 0–100 health score + ranked recommendations — the structured signal
+ * the scheduled monitor consumes to decide what to improve.
+ *
+ * ⚠️ GOOGLE'S ENGINES ONLY (MASTER TASK v3.1). Until 2026-10-23 the map held nine providers, with Replicate ("global render
+ * fallback") and LTX critical, RunPod as "InsightFace identity + MusicGen fallback", and Nano Banana, Udio, ElevenLabs,
+ * HeyGen and Anthropic beside them; `?udio=1` read Udio's credit balance. The film uses none of them, so a Google-only
+ * deploy scored DEGRADED and was told to provision them. The map is now the four legs of lib/chat/filmEngines (Gemini
+ * storyboard and director, Veo clips critical; Lyria score, Cloud TTS voice optional) plus RunPod as the optional GPU
+ * stitch, and nothing here calls an outside vendor.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { LTX_API_KEY_ALIASES } from '@/lib/chat/ltxKey';
-import {
-  resolveAliasName,
-  UDIO_API_KEY_ALIASES,
-  ELEVENLABS_API_KEY_ALIASES,
-  NANOBANANA_API_KEY_ALIASES,
-} from '@/lib/chat/mediaKeys';
+import { filmEnginesByLeg } from '@/lib/chat/filmEngines';
 import { computeEditorReadiness } from '@/lib/chat/filmReadiness';
-import { getUdioCredits } from '@/lib/udio/client';
 import { opsCallerAllowed, opsNotFound } from '@/lib/security/opsAccess';
-import { googleAiConfigured } from '@/lib/ai/google/transport';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const envPresent = (...names: string[]): boolean =>
-  names.some((n) => typeof process.env[n] === 'string' && process.env[n]!.trim().length > 0);
 
 type Provider = { key: string; role: string; present: boolean; critical: boolean };
 type Probe = { name: string; ok: boolean; detail: string };
@@ -71,22 +67,20 @@ async function probe(
 
 export async function GET(req: NextRequest) {
   // ⚠️ OPERATORS ONLY (lib/security/opsAccess). Each anonymous hit made the server POST to two of its own routes, and
-  // ?udio=1 answered with our Udio credit balance and the provider's raw failure text. A scheduled monitor passes
-  // CRON_SECRET; everyone else gets a 404 in production.
+  // ?udio=1 (removed 2026-10-23) answered with our Udio credit balance and the provider's raw failure text. A scheduled
+  // monitor passes CRON_SECRET; everyone else gets a 404 in production.
   if (!(await opsCallerAllowed(req))) return opsNotFound();
   const origin = new URL(req.url).origin;
 
-  // ── 1. Nine-provider ecosystem map (env presence, names only) ──────────────
+  // ── 1. The film's engines (env presence, names only) and the editor (stitch + host), whose GPU stitch is a row ──
+  const editor = computeEditorReadiness();
+  const legs = filmEnginesByLeg();
   const providers: Provider[] = [
-    { key: 'gemini', role: 'Director / storyboard orchestrator', present: googleAiConfigured(), critical: true },
-    { key: 'ltx2', role: 'Cinematic clip render engine', present: resolveAliasName(LTX_API_KEY_ALIASES) !== null, critical: true },
-    { key: 'nanobanana', role: 'Stylized identity frame synthesis', present: resolveAliasName(NANOBANANA_API_KEY_ALIASES) !== null, critical: false },
-    { key: 'udio', role: 'Original score composition', present: resolveAliasName(UDIO_API_KEY_ALIASES) !== null, critical: false },
-    { key: 'replicate', role: 'Spatial engine + global render fallback', present: envPresent('REPLICATE_API_TOKEN'), critical: true },
-    { key: 'runpod', role: 'GPU: InsightFace identity + MusicGen fallback', present: envPresent('RUNPOD_API_TOKEN', 'RUNPOD_API_KEY'), critical: false },
-    { key: 'elevenlabs', role: 'Georgian (ka-GE) voice synthesis', present: resolveAliasName(ELEVENLABS_API_KEY_ALIASES) !== null, critical: false },
-    { key: 'heygen', role: 'Talking-avatar lip-sync pipeline', present: envPresent('HEYGEN_API_KEY'), critical: false },
-    { key: 'anthropic', role: 'Background engineering agent', present: envPresent('ANTHROPIC_API_KEY'), critical: false },
+    { key: 'gemini', role: `Director + storyboard frames (${legs.storyboard.engine})`, present: legs.storyboard.present, critical: true },
+    { key: 'veo', role: `Clip render (${legs.director.engine})`, present: legs.director.present, critical: true },
+    { key: 'lyria', role: `Score (${legs.score.engine}; a miss is no music, never another engine)`, present: legs.score.present, critical: false },
+    { key: 'cloud-tts', role: `Voice (${legs.voice.engine})`, present: legs.voice.present, critical: false },
+    { key: 'runpod', role: 'GPU stitch + 60fps interpolation (the bundled CPU FFmpeg delivers without it)', present: editor.gpuConfigured, critical: false },
   ];
 
   // ── 2. Live, FREE contract probes (catch the regressions that broke before) ─
@@ -117,26 +111,6 @@ export async function GET(req: NextRequest) {
     ),
   ]);
 
-  // ── 2b. Optional LIVE Udio connectivity probe (read-only credits call — costs
-  // NOTHING, runs no generation). Gated behind ?udio=1 so the daily guardian stays
-  // fast and immune to Udio latency. Surfaces the EXACT reason the score leg fails
-  // on production (auth / wrong endpoint / balance) without firing a paid film.
-  let udioLive: { ok: boolean; credits?: number; detail: string } | undefined;
-  if (new URL(req.url).searchParams.get('udio') === '1') {
-    try {
-      const credits = await Promise.race([
-        getUdioCredits(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Udio probe timed out (12s)')), 12_000)),
-      ]);
-      udioLive = { ok: true, credits: credits.credits, detail: `Udio reachable — ${credits.credits} credits` };
-    } catch (err) {
-      udioLive = { ok: false, detail: `Udio probe failed: ${err instanceof Error ? err.message : String(err)}` };
-    }
-  }
-
-  // ── 3. Editor (stitch + host) readiness ────────────────────────────────────
-  const editor = computeEditorReadiness();
-
   // ── 4. Score + verdict + ranked recommendations ────────────────────────────
   const criticalProviders = providers.filter((p) => p.critical);
   const criticalOk = criticalProviders.every((p) => p.present);
@@ -155,11 +129,13 @@ export async function GET(req: NextRequest) {
   for (const p of providers.filter((x) => !x.present)) {
     recommendations.push(`${p.critical ? '[CRITICAL] ' : ''}Provision ${p.key.toUpperCase()} — ${p.role}.`);
   }
+  // The env names behind a Google leg that cannot serve (names only, never a value).
+  const missingEnv = [...new Set(Object.values(legs).flatMap((l) => l.missing))];
+  if (missingEnv.length) {
+    recommendations.push(`[CONFIG] Set or fix in Vercel: ${missingEnv.join(', ')} (Vertex AI on the keyless WIF chain, docs/VEO_ENGINE.md; never an API key).`);
+  }
   for (const pr of probes.filter((x) => !x.ok)) recommendations.push(`[CONTRACT] ${pr.name}: ${pr.detail}`);
   if (!editor.canDeliverMaster) recommendations.push('[DELIVERY] Configure Supabase Storage so the stitched master can be hosted + signed.');
-  if (!providers.find((p) => p.key === 'nanobanana')?.present) {
-    recommendations.push('[QUALITY] NanoBanana absent — selfie→stylized-frame identity lock is degraded to direct image-to-video.');
-  }
 
   const verdict =
     !criticalOk || !probesOk
@@ -176,7 +152,6 @@ export async function GET(req: NextRequest) {
     healthy: criticalOk && probesOk && editor.canDeliverMaster,
     providers,
     liveContracts: probes,
-    ...(udioLive ? { udioLive } : {}),
     delivery: { canDeliverMaster: editor.canDeliverMaster, stitchPath: editor.stitchPath },
     recommendations,
     note: 'Free self-test: contract probes use cost-free rejection paths (malformed poll token + sub-threshold assemble). Provider presence is names-only and never reads a secret value.',

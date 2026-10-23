@@ -2,17 +2,19 @@
  * app/api/system/film-readiness/route.ts
  * ======================================
  * PHASE 46 §1 — Runtime structural configuration report for the 30-second film
- * pipeline. Hit this on the LIVE Vercel deployment to see, per agent, exactly
- * which credential alias the production shell has provisioned — without ever
- * exposing a secret value.
+ * pipeline. Hit this on the LIVE Vercel deployment to see, per leg, whether the
+ * production shell has what that leg's engine needs — without ever exposing a
+ * secret value.
  *
  *   GET /api/system/film-readiness
  *
- * For each of the four film agents (Nano Banana storyboard, LTX director,
- * Udio score, ElevenLabs voice) it reports:
- *   - present:       is ANY accepted alias populated?
- *   - resolvedAlias: WHICH alias name resolved (names only, never the value)
- *   - checkedAliases:the full precedence list the resolver walks
+ * The four generation legs are Google's on Vertex AI (lib/chat/filmEngines): the Gemini storyboard, Veo clips, the
+ * Lyria score and the Cloud TTS voice. For each it reports:
+ *   - present: can the leg's engine serve with this env?
+ *   - engine:  which engine serves it
+ *   - missing: the env-variable NAMES that keep it from serving (never a value)
+ * Until 2026-10-23 the legs were Nano Banana, LTX, Udio and ElevenLabs, each with its key's aliases, and a deploy
+ * without those keys read BLOCKED although the film no longer used any of them.
  *
  * The report is names-only by construction: it returns boolean presence and
  * env-var NAMES, and never returns, logs, or hashes the secret material. Use it
@@ -20,78 +22,25 @@
  */
 
 import { NextResponse } from 'next/server';
-import { LTX_API_KEY_ALIASES } from '@/lib/chat/ltxKey';
-import {
-  resolveAliasName,
-  UDIO_API_KEY_ALIASES,
-  ELEVENLABS_API_KEY_ALIASES,
-  NANOBANANA_API_KEY_ALIASES,
-} from '@/lib/chat/mediaKeys';
+import { computeFilmEngines } from '@/lib/chat/filmEngines';
 import { computeEditorReadiness, editorVerdict, editorSyncInstructions } from '@/lib/chat/filmReadiness';
 import { opsCallerAllowed, opsNotFound } from '@/lib/security/opsAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-type AgentRole = 'storyboard' | 'director' | 'score' | 'voice';
-
-type ProviderReadiness = {
-  agent: AgentRole;
-  provider: 'nanobanana' | 'ltx' | 'udio' | 'elevenlabs';
-  role: string;
-  present: boolean;
-  resolvedAlias: string | null;
-  canonicalEnv: string;
-  checkedAliases: readonly string[];
-  /** Per-alias presence (names + booleans ONLY, never values). Lets us see, for
-   *  diagnostics, exactly WHICH env aliases the deploy has set — e.g. whether a
-   *  funded key lives under a non-resolved alias (the LTX key-mismatch case). */
-  presentAliases: { name: string; present: boolean }[];
-};
-
-function describe(
-  agent: AgentRole,
-  provider: ProviderReadiness['provider'],
-  role: string,
-  aliases: readonly string[],
-): ProviderReadiness {
-  const resolvedAlias = resolveAliasName(aliases);
-  return {
-    agent,
-    provider,
-    role,
-    present: resolvedAlias !== null,
-    resolvedAlias,
-    canonicalEnv: aliases[0] ?? '',
-    checkedAliases: aliases,
-    presentAliases: aliases.map((name) => ({
-      name,
-      present: typeof process.env[name] === 'string' && process.env[name]!.trim().length > 0,
-    })),
-  };
-}
-
 export async function GET(req: Request) {
   // ⚠️ OPERATORS ONLY (lib/security/opsAccess). Names-only is still a map of exactly which credentials this deployment
   // lacks — reconnaissance, not product data. Non-admins get a 404 in production.
   if (!(await opsCallerAllowed(req))) return opsNotFound();
-  const providers: ProviderReadiness[] = [
-    describe('storyboard', 'nanobanana', 'Nano Banana — 5-beat storyboard architect', NANOBANANA_API_KEY_ALIASES),
-    describe('director', 'ltx', 'LTX Director — clip render + characterReference', LTX_API_KEY_ALIASES),
-    describe('score', 'udio', 'Udio — cohesive cinematic score', UDIO_API_KEY_ALIASES),
-    describe('voice', 'elevenlabs', 'ElevenLabs — voiceover / foley master', ELEVENLABS_API_KEY_ALIASES),
-  ];
+  const providers = computeFilmEngines();
+  const byAgent = Object.fromEntries(providers.map((p) => [p.agent, p.present])) as Record<(typeof providers)[number]['agent'], boolean>;
 
-  const byProvider = Object.fromEntries(providers.map((p) => [p.provider, p.present])) as Record<
-    ProviderReadiness['provider'],
-    boolean
-  >;
-
-  // The director (LTX) is the hard floor: no clips can render without it. Audio
-  // is optional and degrades gracefully (silent/ambient fallback) when absent.
-  const canRenderClips = byProvider.ltx;
-  const canScore = byProvider.udio;
-  const canVoice = byProvider.elevenlabs;
+  // The director (Veo) is the hard floor: no clips can render without it. The score and the voice are the film's own
+  // legs: a missing one is that leg's outcome (no music, no narration), never another engine.
+  const canRenderClips = byAgent.director;
+  const canScore = byAgent.score;
+  const canVoice = byAgent.voice;
   const generationAutonomous = canRenderClips && (canScore || canVoice);
 
   // PHASE 56 §1 — cover the FINAL leg: clips alone are not a film. The editor /
@@ -108,9 +57,9 @@ export async function GET(req: Request) {
 
   const missing = providers.filter((p) => !p.present);
   const providerSync = missing.map((p) => ({
-    provider: p.provider,
+    provider: p.agent,
     role: p.role,
-    action: `Set ${p.canonicalEnv} in the Vercel project (Settings → Environment Variables → Production), or any accepted alias: ${p.checkedAliases.join(', ')}`,
+    action: `${p.engine} cannot serve: set or fix ${p.missing.join(', ')} in the Vercel project (Settings → Environment Variables → Production). The Vertex identity is the keyless WIF chain (docs/VEO_ENGINE.md); never an API key.`,
   }));
   const editorSync = editorSyncInstructions(editor).map((e) => ({
     provider: 'editor' as const,
@@ -119,15 +68,15 @@ export async function GET(req: Request) {
   }));
   const syncInstructions = [...providerSync, ...editorSync];
 
-  // Whole-chain verdict: a missing LTX key or an un-hostable master both mean
-  // the user cannot receive a finished film, so both are BLOCKED.
+  // Whole-chain verdict: no Veo or an un-hostable master both mean the user
+  // cannot receive a finished film, so both are BLOCKED.
   const verdict = !canRenderClips
-    ? 'BLOCKED — LTX director key absent; no clips can render'
+    ? 'BLOCKED — Veo on Vertex AI is not configured; no clips can render'
     : !canDeliverMaster
       ? `BLOCKED (delivery) — clips render but ${editorVerdict(editor).replace(/^BLOCKED — /, '')}`
       : fullyAutonomous
         ? 'READY — full autonomous chain can fire end-to-end (generate → stitch → deliver)'
-        : 'PARTIAL — clips render + master delivers; audio leg will use graceful fallback';
+        : 'PARTIAL — clips render + master delivers; the film has no music and no narration until Lyria or Cloud TTS can serve';
 
   return NextResponse.json({
     pipeline: '30-second-film',
@@ -150,6 +99,6 @@ export async function GET(req: Request) {
         'The assemble route picks the GPU RunPod worker when configured, else stitches on-node with the bundled CPU FFmpeg binary (always available). A playable master REQUIRES Supabase Storage (master hosting). There is no clip failover or score rescue: a missed clip or score is that leg\'s own outcome, never a second provider.',
     },
     syncInstructions,
-    note: 'Names-only report. Presence reflects whether a non-empty value exists under an accepted alias; secret values are never read into the response. A present key can still be rejected by the provider at call time (e.g. 401) — this report confirms wiring, not validity.',
+    note: 'Names-only report. Presence reflects whether the leg\'s engine has the configuration it needs; secret values are never read into the response. A configured leg can still be refused at call time (e.g. a missing IAM grant) — this report confirms wiring, not validity; /api/health/public runs the free live checks.',
   });
 }

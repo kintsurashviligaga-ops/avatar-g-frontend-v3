@@ -234,9 +234,6 @@
     "app/api/research/start/route.ts": [
       "gemini_developer_api"
     ],
-    "app/api/system/film-selftest/route.ts": [
-      "udio"
-    ],
     "app/api/tasks/route.ts": [
       "nanobananaapi",
       "replicate"
