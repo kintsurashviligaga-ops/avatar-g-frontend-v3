@@ -340,7 +340,8 @@ export async function say(page: Page, text: string): Promise<void> {
     await expect(box).toBeVisible();
   }
   await box.fill(text);
-  await box.press('Enter');
+  // Plain Enter inserts a newline; the composer sends on its explicit shortcut (as tests/video-core-live/_live does).
+  await box.press('Control+Enter');
 }
 
 export const FILE_INPUT = 'input[type=file][multiple][accept^="image/*,audio/*"][accept*="application/pdf"]';
@@ -383,11 +384,23 @@ export function userBubble(page: Page, text: string): Locator {
   return page.locator('div.whitespace-pre-wrap', { hasText: text }).first();
 }
 
-/** Chat → the Video tool through the sidebar's own row (the control a user has), then the panel on screen. */
+const VIDEO_SECTION: Record<Locale, string> = { en: 'Video', ka: 'ვიდეო', ru: 'Видео' };
+
+/**
+ * Chat → the Video tool through the composer's „+" tool sheet (the control a user has: the expanded sidebar lists no tools),
+ * then its settings on screen — a desktop's panel, a phone's sheet — following the settings toggle when picking the tool
+ * left them shut.
+ */
 export async function openVideoTool(page: Page, isMobile: boolean, locale: Locale = 'en'): Promise<void> {
-  await openSidebar(page, isMobile, locale);
-  await page.locator('[data-tour="tool-video"]').first().click();
-  await expect(page.getByTestId('video-create-panel')).toBeVisible({ timeout: 15_000 });
+  if (isMobile) await closeOptionsSheet(page);
+  await page.getByTestId('plus').click();
+  const sheet = page.getByTestId('tool-sheet');
+  await sheet.getByRole('list', { name: VIDEO_SECTION[locale], exact: true }).getByRole('button').first().click();
+  await expect(sheet).toHaveCount(0);
+  const toggle = page.getByTestId('options-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', /^(true|false)$/);
+  if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+  await expect(page.getByTestId('video-create-panel').filter({ visible: true }).first()).toBeVisible({ timeout: 15_000 });
 }
 
 /** The sidebar's Chat row, the way back from a tool. */
