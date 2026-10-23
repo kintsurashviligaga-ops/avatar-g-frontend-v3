@@ -41,7 +41,8 @@ The PRs are stacked: each one contains every PR above it in this table, so they 
 | 21 | #136 | `claude/p1-12-agent-g-delegate-r7` | Agent G sub-tasks: voice on Gemini only, image/music/video refuse as `google_only` |
 | 22 | #137 | `claude/p1-13-music-vocals-gate` | Sung songs refused before any charge until Lyria vocals are verified; the Music panel locks Instrumental on |
 | 23 | #138 | `claude/p1-14-health-vertex-only` | Operator health and the admin readiness panel report Vertex, not AI Studio or vendor keys; the avatar's stored voice says Cloud TTS |
-| 24 | this PR | `claude/p1-15-no-vendor-probes` | Admin and health probes no longer call outside vendors; the HeyGen admin diagnostic is removed |
+| 24 | #139 | `claude/p1-15-no-vendor-probes` | Admin and health probes no longer call outside vendors; the HeyGen admin diagnostic is removed |
+| 25 | this PR | `claude/p1-16-admin-diagnostics-google` | The admin engine diagnostics (`/api/health/providers`, `/api/admin/reliability`) name Google engines only |
 
 Merging only the top PR carries the whole stack in one deploy. Merging them one at a time gives smaller steps to roll back.
 
@@ -146,5 +147,6 @@ These are still read by routes the stack keeps, so they stay until jobs from bef
 - ~~`/api/ai/music` sends a sung request to Lyria without the vocals gate that `lyriaBed` applies~~ Done in row 22 (GG 2026-10-23: block until verified): the route refuses a sung song as `unsupported` before the budget, the ledger or Lyria, reading the same `lyriaVocalsVerified` gate as Music Studio and the film beds. `/api/ai/music/engines` reports `vocals`, and the Music panel locks Instrumental on with a note until it is true. Setting `MUSIC_LYRIA_VOCALS_VERIFIED=1` after the budgeted vocals check reopens songs everywhere at once.
 - ~~Agent G's delegate route still has vendor branches to sweep~~ Done in row 21: a voice sub-task reads with `/api/tts/gemini` only (no Voice Lab fallback, no vendor name in the error), and image, music and video sub-tasks refuse as `google_only` before any call.
 - ~~The talking avatar's stored job result still labels its voice `elevenlabs`~~ Done in row 23: `/api/genjutsu/status` stores `voice: 'google-cloud-tts'`. Rows already stored keep their old label; nothing reads the field.
+- ~~`/api/health/providers` still names FLUX 1.1 Pro (or NanoBanana) as the chat image engine and lists outside vendors' keys~~ Done in row 25: its chat image line names what `ServiceManager` runs (Imagen first only when `GEMINI_IMAGEN_ENABLED` is on, then `gemini-3.1-flash-image`), and the DeepSeek, Atlas, Anthropic, Replicate, Runway, ElevenLabs, LTX and Udio rows are gone. `/api/admin/reliability` no longer names a Runway model. The reachability baseline loses both files.
 - `tests/agent-g-refine-avatar.spec.ts` (not in CI) fails before it reaches the avatar, on the base as well; it needs repair.
 - Dead vendor modules that route tests still mock as "never called" witnesses (Replicate, Flux, xAI, NanoBanana, World Labs, Replicate STT) wait for those tests to move onto the fetch spy.

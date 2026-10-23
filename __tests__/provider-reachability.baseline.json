@@ -4,9 +4,6 @@
     "app/api/admin/model-catalog/route.ts": [
       "nanobananaapi"
     ],
-    "app/api/admin/reliability/route.ts": [
-      "runway"
-    ],
     "app/api/agent-g/telegram/route.ts": [
       "openai"
     ],
@@ -150,11 +147,6 @@
     "app/api/genjutsu/status/route.ts": [
       "higgsfield",
       "replicate"
-    ],
-    "app/api/health/providers/route.ts": [
-      "atlascloud",
-      "deepseek",
-      "runway"
     ],
     "app/api/heygen/avatar/route.ts": [
       "heygen"

@@ -17,7 +17,6 @@ interface Snapshot {
   scenePlanningLive: boolean;
   providers: Record<string, boolean>;
   videoModel: string;
-  runwayModel: string;
   reliability: { windowDays: number; totals: { total: number; completed: number; failed: number; inFlight: number; successRate: number | null }; perService: ServiceStat[]; recentFailures: { service: string; at: string }[] };
   financials: { grossRevenueGel: number; apiRawCostGel: number; netMarginGel: number; netMarginPct: number | null; topupCount: number; packageDistribution: { tier: string; count: number; totalGel: number }[] };
   warnings: string[];
