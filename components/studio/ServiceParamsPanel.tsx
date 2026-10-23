@@ -298,7 +298,7 @@ export function ServiceParamsPanel({
   const [stage, setStage] = useState<{ label: string; pct: number } | null>(null);
   /**
    * Seconds since Run was pressed. The progress card needs a real clock to pace its estimate against —
-   * these panels never tracked one, so they could not show elapsed time or a remaining figure at all.
+   * these panels never tracked one, so they could not show a number at all.
    */
   const [elapsed, setElapsed] = useState(0);
   /** Short confirmation from a result action ("Saved", "Link copied"), cleared on the next run. */
@@ -813,9 +813,9 @@ export function ServiceParamsPanel({
           {/* THE SAME CARD the chat shows for image/music/video. These panels used to get a 2px
               indeterminate bar with one label and no number — for renders that take two to seven
               minutes. A wait with no feedback is indistinguishable from a hang, which is exactly why
-              montage and dubbing "felt broken". `compact` drops the stage checklist because this
-              surface is inside the chat box, but the live percentage, the running stage and the
-              estimated remaining time are the whole point and stay.
+              montage and dubbing "felt broken". `compact` fits the card inside the chat box with
+              the loop as a small tile; the live percentage and the running stage are the whole
+              point and stay (since Phase 2 they are all the card prints).
               A server-reported pct/stage overrides the time estimate whenever the pipeline sends one. */}
           <GenerationProgress
             kind={PROGRESS_KIND[service]}
