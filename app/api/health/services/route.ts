@@ -1,7 +1,7 @@
 /**
  * GET /api/health/services
  *
- * Production-grade connectivity probe for every AI provider + infrastructure
+ * Production-grade connectivity probe for every provider + infrastructure
  * integration wired into MyAvatar.ge. Each probe:
  *   - confirms the env var is present
  *   - performs the lightest possible authenticated call (model list, account
@@ -15,6 +15,11 @@
  *
  * Returns JSON. NEVER throws — failures are encoded per-service so the matrix
  * always renders even when one provider is down.
+ *
+ * GOOGLE ONLY (MASTER TASK v3.1). Every model call is on Vertex AI and no other vendor may serve one, so the outside
+ * vendors (Anthropic, OpenAI, NanoBanana, Replicate, LTX, Udio, HeyGen) are not probed: a probe sent this deployment's
+ * key for a service it must not use, and its answer said nothing about what runs. Gemini (Vertex readiness) and Cloud
+ * TTS cover the models; Supabase, Stripe and Sentry the infrastructure.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -109,95 +114,13 @@ export async function GET(req: NextRequest) {
 
   const probes: Array<Promise<ProbeResult>> = [
     // ── LLM / Text ─────────────────────────────────────────────────────────
-    probe('Anthropic Claude', 'llm', 'ANTHROPIC_API_KEY', process.env.ANTHROPIC_API_KEY, async () => {
-      const r = await fetchWithTimeout('https://api.anthropic.com/v1/models', {
-        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
-      });
-      return { ok: r.ok, message: r.ok ? `${r.status} OK` : `${r.status} ${r.statusText}` };
-    }),
-    probe('OpenAI', 'llm', 'OPENAI_API_KEY', process.env.OPENAI_API_KEY, async () => {
-      const r = await fetchWithTimeout('https://api.openai.com/v1/models', {
-        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-      });
-      return { ok: r.ok, message: r.ok ? `${r.status} OK` : `${r.status} ${r.statusText}` };
-    }),
     // Gemini runs on Vertex AI only (MASTER TASK v3.1): the policy, the variable names and a minted Workload Identity
     // token. No model call, nothing billed, and an AI Studio key is neither read nor sent.
     googleGeminiProbe(),
 
-    // ── Image ──────────────────────────────────────────────────────────────
-    probe('NanoBanana (image)', 'image', 'NANOBANANA_API_KEY', process.env.NANOBANANA_API_KEY, async () => {
-      const base = process.env.NANOBANANA_API_BASE_URL || 'https://api.nanobananaapi.ai';
-      // GET record-info with a sentinel taskId — auth-valid keys hit the app layer
-      // (returns 200 with code:422 "record does not exist"), invalid keys are rejected
-      // at HTTP layer with 401/403.
-      const r = await fetchWithTimeout(`${base}/api/v1/nanobanana/record-info?taskId=healthcheck`, {
-        headers: { Authorization: `Bearer ${process.env.NANOBANANA_API_KEY}` },
-      });
-      if ([401, 403].includes(r.status)) {
-        return { ok: false, message: `${r.status} auth rejected` };
-      }
-      return { ok: r.ok, message: `${r.status} OK · key valid` };
-    }),
-    probe('Replicate (fallback)', 'image', 'REPLICATE_API_TOKEN', process.env.REPLICATE_API_TOKEN, async () => {
-      const r = await fetchWithTimeout('https://api.replicate.com/v1/account', {
-        headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN}` },
-      });
-      const ok = r.ok;
-      let msg = `${r.status} ${r.statusText}`;
-      if (ok) {
-        const j = (await r.json().catch(() => ({}))) as { username?: string; type?: string };
-        msg = `${r.status} OK · ${j.username ?? 'user'}/${j.type ?? '?'}`;
-      }
-      return { ok, message: msg.slice(0, 80) };
-    }),
-
-    // ── Video ──────────────────────────────────────────────────────────────
-    probe('LTX Video', 'video', 'LTX_VIDEO_API_KEY', process.env.LTX_VIDEO_API_KEY ?? process.env.LTX2_API_KEY, async () => {
-      const key = process.env.LTX_VIDEO_API_KEY ?? process.env.LTX2_API_KEY;
-      // LTX has no list endpoint; do an OPTIONS or POST with invalid body to confirm 401 vs 200
-      const r = await fetchWithTimeout('https://api.ltx.video/v1/text-to-video', {
-        method: 'OPTIONS',
-        headers: { Authorization: `Bearer ${key}` },
-      });
-      // OPTIONS often returns 204/200/405 — anything that's NOT 401/403 means key works
-      return {
-        ok: ![401, 403].includes(r.status),
-        message: `${r.status} ${r.statusText}`.slice(0, 80),
-      };
-    }),
-
-    // ── Music ──────────────────────────────────────────────────────────────
-    probe('Udio (music)', 'music', 'UDIO_API_KEY', process.env.UDIO_API_KEY, async () => {
-      const base = process.env.UDIO_API_URL || 'https://udioapi.pro';
-      const r = await fetchWithTimeout(`${base}/api/feed?limit=1`, {
-        headers: { Authorization: `Bearer ${process.env.UDIO_API_KEY}` },
-      });
-      return {
-        ok: ![401, 403].includes(r.status),
-        message: `${r.status} ${r.statusText}`.slice(0, 80),
-      };
-    }),
-
     // ── Voice TTS ──────────────────────────────────────────────────────────
     // ElevenLabs reads no line since PR 5d, so it is no longer probed (PR 6b).
     cloudTtsProbe(),
-
-    // ── Avatar / Talking Head ──────────────────────────────────────────────
-    probe('HeyGen (avatar)', 'avatar', 'HEYGEN_API_KEY', process.env.HEYGEN_API_KEY, async () => {
-      // /v2/voices is much lighter than /v2/avatars (~5KB vs >1MB) but still
-      // requires a valid API key — perfect for a fast reachability probe.
-      // Allow extra timeout since HeyGen US-East has variable latency.
-      const r = await fetchWithTimeout(
-        'https://api.heygen.com/v2/voices',
-        { headers: { 'X-Api-Key': process.env.HEYGEN_API_KEY! } },
-        12000,
-      );
-      if (!r.ok) return { ok: false, message: `${r.status} ${r.statusText}` };
-      const j = (await r.json().catch(() => ({}))) as { data?: { voices?: unknown[] } };
-      const count = j.data?.voices?.length;
-      return { ok: true, message: `${r.status} OK · ${count ?? '?'} voices available` };
-    }),
 
     // ── Infra ──────────────────────────────────────────────────────────────
     probe('Supabase (DB+Auth)', 'infra', 'NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL, async () => {

@@ -29,6 +29,10 @@ export const maxDuration = 60;
  * verbatim, because "which key is broken" is never as useful as "what did it say when we tried".
  *
  * ADMIN ONLY, and it returns no key material: statuses and provider error messages, nothing else.
+ *
+ * GOOGLE ONLY (MASTER TASK v3.1). The outside vendors (Anthropic, Replicate, HeyGen) are not probed: no model call may
+ * go to them, and a probe sent this deployment's key to a service it must not use. Gemini, Veo and Cloud TTS are the
+ * Vertex identity's own checks; Stripe and Resend stay because payments and sign-up email run on them.
  */
 
 interface ProbeResult {
@@ -91,30 +95,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return result;
     })(),
 
-    probe('anthropic', process.env.ANTHROPIC_API_KEY, async (k) => {
-      const r = await get('https://api.anthropic.com/v1/models?limit=1', {
-        headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01' },
-      });
-      return { provider: 'anthropic', configured: true, ok: r.ok, detail: `HTTP ${r.status}` };
-    }),
-
-    probe('replicate', process.env.REPLICATE_API_TOKEN, async (k) => {
-      const r = await get('https://api.replicate.com/v1/account', { headers: { Authorization: `Bearer ${k}` } });
-      const j = (await r.json().catch(() => ({}))) as { username?: string };
-      return { provider: 'replicate', configured: true, ok: r.ok, detail: r.ok ? `account ${j.username ?? 'ok'}` : `HTTP ${r.status}` };
-    }),
-
     // CLOUD TTS — every spoken line in the product since PR 5d, on the Vertex identity (Georgian on Gemini-TTS). The free
     // voices list must answer; nothing is synthesised. (ElevenLabs reads no line any more and is not probed.)
     checkCloudTts().then(
       (r): ProbeResult => ({ provider: 'cloud-tts', configured: r.state !== 'unconfigured', ok: r.state === 'ok', detail: r.detail }),
     ),
-
-    probe('heygen', process.env.HEYGEN_API_KEY, async (k) => {
-      const r = await get('https://api.heygen.com/v1/user/remaining_quota', { headers: { 'X-Api-Key': k } });
-      const body = await r.text().catch(() => '');
-      return { provider: 'heygen', configured: true, ok: r.ok, detail: r.ok ? body.slice(0, 120) : `HTTP ${r.status}` };
-    }),
 
     // STRIPE — the mode matters more than the balance: a site in test mode takes no real money, however
     // valid the key is.
