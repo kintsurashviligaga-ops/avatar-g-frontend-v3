@@ -139,6 +139,13 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
   useEffect(() => {
     if (status && !status.lengths.includes(p.duration)) onDuration(30);
   }, [status, p.duration, onDuration]);
+  // A sung song only once Lyria vocals are verified (GET /api/ai/music/engines `vocals`, the gate the route refuses by).
+  // Until then Instrumental is locked on, so Create never sends a song the route would refuse.
+  const vocalsLocked = !!status && !status.vocals;
+  const onInstrumental = p.onInstrumental;
+  useEffect(() => {
+    if (vocalsLocked && !p.instrumental) onInstrumental(true);
+  }, [vocalsLocked, p.instrumental, onInstrumental]);
 
   // ── the price: the shared quote at the seconds the route bills ────────────────────────────────────────
   const cover = isCoverRun({ hasAudio: !!p.audio, audioMode: p.audioMode, trainedVoiceActive: trainedActive });
@@ -162,7 +169,7 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
   }, [p.instrumental]);
   const changeLyrics = (v: string) => {
     // Typing words means a sung track: switch Instrumental off first (the stash is moot — these are new words).
-    if (p.instrumental && v.trim()) { stash.current = ''; p.onInstrumental(false); }
+    if (p.instrumental && v.trim() && !vocalsLocked) { stash.current = ''; p.onInstrumental(false); }
     p.onLyrics(v.slice(0, LYRICS_MAX));
   };
   const toggleInstrumental = () => p.onInstrumental(!p.instrumental);
@@ -233,7 +240,7 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
   // ── saved lists ────────────────────────────────────────────────────────────────────────────────────────
   const applySaved = (kind: 'lyrics' | 'styles', item: LibraryItem) => {
     if (kind === 'lyrics') {
-      if (p.instrumental) { stash.current = ''; p.onInstrumental(false); }
+      if (p.instrumental && !vocalsLocked) { stash.current = ''; p.onInstrumental(false); }
       p.onLyrics(item.text.slice(0, LYRICS_MAX));
     } else {
       if (item.text) p.onStyleText(item.text.slice(0, STYLE_TEXT_MAX));
@@ -293,6 +300,7 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
           onChange={p.onStyleText}
           instrumental={p.instrumental}
           onInstrumental={toggleInstrumental}
+          vocalsLocked={vocalsLocked}
           wandBusy={styleBusy}
           onWand={() => void runStyleWand(setStyleNote)}
           note={styleNote}
@@ -308,6 +316,7 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
             onChange={changeLyrics}
             instrumental={p.instrumental}
             onInstrumental={toggleInstrumental}
+            vocalsLocked={vocalsLocked}
             coverMode={cover}
             wandBusy={lyricsBusy}
             onWand={() => void runLyricsWand()}

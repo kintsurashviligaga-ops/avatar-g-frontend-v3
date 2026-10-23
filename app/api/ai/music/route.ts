@@ -30,7 +30,7 @@ import {
   type MusicControls, type MusicControlsReport, type MusicEngineId,
 } from '@/lib/ai/musicControls';
 import { isMusicEngineId, LYRIA_CLIP_MAX_SEC, LYRIA_PRO_MODEL, lyriaModelForSec, musicLengthDirection, musicTargetSec, offeredMusicLengths } from '@/lib/studio/musicEngines';
-import { lyriaProMaxSec } from '@/lib/music/studio/capabilities';
+import { lyriaProMaxSec, lyriaVocalsVerified } from '@/lib/music/studio/capabilities';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 
 /**
@@ -249,6 +249,18 @@ export async function POST(req: NextRequest) {
       : l === 'ru'
         ? 'Эта длительность пока недоступна: выберите 30 секунд. Списания не было.'
         : 'ეს ხანგრძლივობა ჯერ მიუწვდომელია: აირჩიე 30 წამი. თანხა არ ჩამოგეჭრა.';
+    return NextResponse.json({ success: false, code: 'unsupported', error: 'unsupported', message, url: null }, { status: 400 });
+  }
+
+  // A SUNG track is Lyria vocals, offered only once verified (MUSIC_LYRIA_VOCALS_VERIFIED, the gate Music Studio and the
+  // film beds read). Refused before any charge; never composed as an instrumental instead (R7).
+  if (!makeInstrumental && !lyriaVocalsVerified()) {
+    const l = billingLocale(req);
+    const message = l === 'en'
+      ? 'Sung songs are not available yet: choose an instrumental. You were not charged.'
+      : l === 'ru'
+        ? 'Песни с вокалом пока недоступны: выберите инструментал. Списания не было.'
+        : 'ნამღერი სიმღერა ჯერ მიუწვდომელია: აირჩიე ინსტრუმენტალი. თანხა არ ჩამოგეჭრა.';
     return NextResponse.json({ success: false, code: 'unsupported', error: 'unsupported', message, url: null }, { status: 400 });
   }
 

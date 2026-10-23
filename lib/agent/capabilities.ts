@@ -152,7 +152,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'music.generate': c({
     id: 'music.generate', serviceId: 'music.generate', does: 'A track, a song or a soundtrack',
-    routes: ['/api/ai/music'], engine: 'Lyria 3; a cover or a trained voice is refused',
+    routes: ['/api/ai/music'], engine: 'Lyria 3; a cover or a trained voice is refused, a sung song until vocals are verified',
     pricing: { key: 'music', charge: 'charged' }, approval: 'agent-card', timeoutSec: 300, retry: 'refund-on-miss',
     idempotency: 'one job per confirm (the client queue)', cancel: 'client-abort', qc: null, artifact: 'audio', library: 'filed',
     label: 'BLOCKED_OWNER',

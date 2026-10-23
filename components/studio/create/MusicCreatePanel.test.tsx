@@ -25,6 +25,7 @@ const STATUS = {
   references: { cover: true, voice: true },
   chain: ['lyria', 'elevenlabs-music', 'musicgen'],
   lengths: [30, 60, 90, 0], // Lyria 3 Pro verified: every panel length is made
+  vocals: true, // Lyria vocals verified: a sung song is offered (the vocals-off case has its own tests)
 };
 
 const STYLE_OPTIONS = [
@@ -159,6 +160,46 @@ describe('Instrumental keeps the lyrics box empty', () => {
     fireEvent.change(screen.getByTestId('music-lyrics-input'), { target: { value: 'new words' } });
     expect(screen.getByTestId('music-instrumental').getAttribute('aria-pressed')).toBe('false');
     expect((screen.getByTestId('music-lyrics-input') as HTMLTextAreaElement).value).toBe('new words');
+  });
+});
+
+describe('sung songs are offered only once Lyria vocals are verified (GG 2026-10-23)', () => {
+  const vocalsOff = () => fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond({ ...STATUS, vocals: false }) : respond({})));
+  const pill = () => screen.getByTestId('music-instrumental');
+
+  test('the panel snaps to Instrumental, locks the pill on and says why', async () => {
+    vocalsOff();
+    render(<Host />);
+    await waitFor(() => expect(pill().getAttribute('aria-pressed')).toBe('true'));
+    expect(pill().getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('music-vocals-note').textContent).toBe('Sung songs are not available yet — instrumentals only for now');
+    fireEvent.click(pill());
+    expect(pill().getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('typing words does not switch it off while vocals are unverified', async () => {
+    vocalsOff();
+    render(<Host />);
+    await waitFor(() => expect(pill().getAttribute('aria-pressed')).toBe('true'));
+    fireEvent.change(screen.getByTestId('music-lyrics-input'), { target: { value: 'new words' } });
+    expect(pill().getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('Simple mode is locked the same way', async () => {
+    vocalsOff();
+    window.localStorage.setItem('myavatar:music-ui-mode', 'simple');
+    render(<Host />);
+    await waitFor(() => expect(pill().getAttribute('aria-pressed')).toBe('true'));
+    expect(pill().getAttribute('aria-disabled')).toBe('true');
+    expect(within(screen.getByTestId('music-simple')).getByTestId('music-vocals-note')).toBeTruthy();
+  });
+
+  test('verified: the pill is free and no note is shown', async () => {
+    render(<Host />);
+    await act(async () => { await Promise.resolve(); });
+    expect(pill().getAttribute('aria-pressed')).toBe('false');
+    expect(pill().getAttribute('aria-disabled')).toBeNull();
+    expect(screen.queryByTestId('music-vocals-note')).toBeNull();
   });
 });
 

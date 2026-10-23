@@ -89,6 +89,8 @@ export interface MusicCreateCopy {
   vocalGender: string;
   vocalInfo: string;
   vocalOff: string;
+  /** Sung songs are not offered yet (Lyria vocals unverified): Instrumental is locked on. */
+  vocalsSoon: string;
   weirdnessInfo: string;
   styleInfluenceInfo: string;
   info: string;
@@ -189,6 +191,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     vocalGender: 'ვოკალის სქესი',
     vocalInfo: 'ვინ მღერის. „ავტო“ ძრავას ანდობს არჩევანს; დუეტში მამაკაცისა და ქალის ხმაა.',
     vocalOff: 'ინსტრუმენტულზე არ გამოიყენება',
+    vocalsSoon: 'ნამღერი სიმღერა ჯერ მიუწვდომელია — ჯერჯერობით მხოლოდ ინსტრუმენტული',
     weirdnessInfo: 'რამდენად უჩვეულო იყოს ტრეკი: დაბალი — ნაცნობი, მაღალი — ექსპერიმენტული.',
     styleInfluenceInfo: 'რამდენად მკაცრად მიჰყვეს ტრეკი არჩეულ სტილებს: დაბალი — თავისუფალი შთაგონება, მაღალი — მკაცრად.',
     info: 'ინფორმაცია',
@@ -283,6 +286,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     vocalGender: 'Vocal gender',
     vocalInfo: 'Who sings. Auto lets the engine decide; Duet uses a male and a female voice.',
     vocalOff: 'Not used for instrumentals',
+    vocalsSoon: 'Sung songs are not available yet — instrumentals only for now',
     weirdnessInfo: 'How unusual the track should be: low is familiar, high is experimental.',
     styleInfluenceInfo: 'How closely the track follows your styles: low is loose inspiration, high is strict.',
     info: 'Info',
@@ -377,6 +381,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     vocalGender: 'Пол вокала',
     vocalInfo: 'Кто поёт. «Авто» оставляет выбор движку; в дуэте — мужской и женский голоса.',
     vocalOff: 'Для инструментала не используется',
+    vocalsSoon: 'Песни с вокалом пока недоступны — пока только инструментал',
     weirdnessInfo: 'Насколько необычным будет трек: низкое — привычно, высокое — экспериментально.',
     styleInfluenceInfo: 'Насколько строго трек следует стилям: низкое — свободное вдохновение, высокое — строго.',
     info: 'Подробнее',
