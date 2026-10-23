@@ -21,6 +21,12 @@ type Result = { service: string; status: string; message: string; envVar: string
 const ADMIN = 'test-admin-key';
 const AI_STUDIO_KEY = 'AQ.test-services-key-0123456789abcdef';
 const ANTHROPIC = 'sk-ant-test-0123456789abcdef';
+const STRIPE = 'sk_test_services-0123456789abcdef';
+/** Outside vendors v3.1 denies, with the key each probe used to send. */
+const OUTSIDE = {
+  ANTHROPIC_API_KEY: ANTHROPIC, OPENAI_API_KEY: 'sk-openai-test', NANOBANANA_API_KEY: 'nb-test', REPLICATE_API_TOKEN: 'r8-test',
+  LTX_VIDEO_API_KEY: 'ltx-test', UDIO_API_KEY: 'udio-test', HEYGEN_API_KEY: 'heygen-test',
+};
 const VERTEX_ENV = {
   GCP_PROJECT_ID: 'gen-lang-client-0671348730',
   GCP_PROJECT_NUMBER: '467145118875',
@@ -28,7 +34,7 @@ const VERTEX_ENV = {
   GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
   GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
 };
-const ENV_VARS = ['ADMIN_KEY', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'ANTHROPIC_API_KEY', 'ELEVENLABS_API_KEY', ...Object.keys(VERTEX_ENV)] as const;
+const ENV_VARS = ['ADMIN_KEY', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'ELEVENLABS_API_KEY', 'STRIPE_SECRET_KEY', 'LTX2_API_KEY', ...Object.keys(OUTSIDE), ...Object.keys(VERTEX_ENV)] as const;
 const saved: Record<string, string | undefined> = {};
 const realFetch = global.fetch;
 const fetchMock = jest.fn();
@@ -130,20 +136,32 @@ test('voice: a Cloud TTS refusal is an ERROR that says why; no Vertex config is 
 });
 
 test('no outbound URL carries any `key=` query parameter', async () => {
-  process.env.ANTHROPIC_API_KEY = ANTHROPIC;
+  process.env.STRIPE_SECRET_KEY = STRIPE;
   await run();
+  expect((fetchMock.mock.calls as [string][]).some(([u]) => u.startsWith('https://api.stripe.com/'))).toBe(true);
   for (const [u] of fetchMock.mock.calls as [string][]) expect(u).not.toMatch(/[?&]key=/);
 });
 
 test('a probe that throws with its key in the message reports it redacted', async () => {
-  process.env.ANTHROPIC_API_KEY = ANTHROPIC;
+  process.env.STRIPE_SECRET_KEY = STRIPE;
   fetchMock.mockImplementation(async (url: string) => {
-    if (url.startsWith('https://api.anthropic.com/')) throw new TypeError(`Headers.append: "${ANTHROPIC}" is an invalid header value.`);
+    if (url.startsWith('https://api.stripe.com/')) throw new TypeError(`Headers.append: "Bearer ${STRIPE}" is an invalid header value.`);
     return new Response('{}', { status: 200 });
   });
 
-  const anthropic = (await run()).find((r) => r.service === 'Anthropic Claude');
-  expect(anthropic?.status).toBe('ERROR');
-  expect(anthropic?.message).not.toContain(ANTHROPIC);
-  expect(anthropic?.message).toContain('[redacted]');
+  const stripe = (await run()).find((r) => r.service === 'Stripe');
+  expect(stripe?.status).toBe('ERROR');
+  expect(stripe?.message).not.toContain(STRIPE);
+  expect(stripe?.message).toContain('[redacted]');
+});
+
+test('outside vendors are never probed (v3.1): no row, no request, no key sent, whatever keys are set', async () => {
+  Object.assign(process.env, OUTSIDE, { LTX2_API_KEY: 'ltx2-test' });
+  const results = await run();
+  expect(results.map((r) => r.service).filter((s) => /anthropic|openai|nanobanana|replicate|ltx|udio|heygen/i.test(s))).toEqual([]);
+  const sent = JSON.stringify(fetchMock.mock.calls);
+  for (const host of ['anthropic.com', 'openai.com', 'nanobananaapi.ai', 'replicate.com', 'ltx.video', 'udioapi', 'heygen.com']) {
+    expect(sent).not.toContain(host);
+  }
+  for (const key of [...Object.values(OUTSIDE), 'ltx2-test']) expect(sent).not.toContain(key);
 });

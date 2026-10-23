@@ -68,6 +68,9 @@ it('answers 404 to a caller who is not an admin, and probes nothing', async () =
 it('never generates or spends Developer API balance during a diagnostic GET, even with a configured key', async () => {
   process.env.GEMINI_API_KEY = 'gemini-test-key';
   process.env.ANTHROPIC_API_KEY = 'anthropic-test-key';
+  // The probes that still make requests (Stripe, Resend), so there are calls to check.
+  process.env.STRIPE_SECRET_KEY = 'sk_test_probe-key';
+  process.env.RESEND_API_KEY = 're_probe-key';
   mockAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok'] });
   const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ models: [] }), { status: 200 }));
   try {
@@ -129,6 +132,21 @@ it('logs the missing variable names and skips the auth check when Vertex is not 
   await GET(req());
   expect(mockAuth).not.toHaveBeenCalled();
   expect(warn).toHaveBeenCalledWith('[provider-probe] veo ok=false transport:none · google-only:true · vertex:missing GCP_VEO_BUCKET');
+});
+
+it('never probes an outside vendor (v3.1): no Anthropic, Replicate or HeyGen row, request or key', async () => {
+  Object.assign(process.env, { ANTHROPIC_API_KEY: 'anthropic-test-key', REPLICATE_API_TOKEN: 'r8-test-key', HEYGEN_API_KEY: 'heygen-test-key' });
+  mockAuth.mockResolvedValue({ ok: true, steps: ['mode:wif', 'token:ok'] });
+  const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
+  try {
+    const body = (await (await GET(req())).json()) as { results: Array<{ provider: string }>; summary: { not_configured: string[] } };
+    expect(body.results.map((r) => r.provider).sort()).toEqual(['cloud-tts', 'gemini', 'resend', 'stripe', 'veo']);
+    const sent = JSON.stringify(fetchSpy.mock.calls);
+    for (const host of ['anthropic.com', 'replicate.com', 'heygen.com']) expect(sent).not.toContain(host);
+    for (const key of ['anthropic-test-key', 'r8-test-key', 'heygen-test-key']) expect(sent).not.toContain(key);
+  } finally {
+    fetchSpy.mockRestore();
+  }
 });
 
 // Speech runs on Cloud TTS since PR 5d: the probe asks its free voices list, and ElevenLabs is never asked, even with a key.
