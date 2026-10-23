@@ -54,7 +54,8 @@ export interface MusicEngineStatusEntry {
 /** GET /api/ai/music/engines — booleans only, never a key, model id or URL. */
 export interface MusicEnginesStatus {
   engines: Record<MusicEngineId, MusicEngineStatusEntry>;
-  /** Whether the two reference paths the "+ Audio" / "+ Voice" pill uses (Replicate: MusicGen melody · MiniMax) can run. */
+  /** Whether the two reference paths the "+ Audio" / "+ Voice" pill uses can run. Both ran on Replicate (MusicGen melody ·
+   *  MiniMax), outside the provider boundary, so both are false (lib/ai/musicEnginesStatus). */
   references: { cover: boolean; voice: boolean };
   /** What Auto tries, in order: the configured engines that are not busy. */
   chain: MusicEngineId[];
@@ -183,7 +184,7 @@ export interface EngineCopy {
   priceNote: string;
   /** Under the list: what happens when an engine returns less than was asked. */
   settleNote: string;
-  /** The fixed engines behind the two reference paths. */
+  /** The two reference paths (a cover, your voice), named by what they do: the engines they ran on are withdrawn. */
   cover: { name: string; short: string };
   voice: { name: string; short: string };
 }
@@ -204,8 +205,8 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
     },
     priceNote: 'ფასი ყველა ძრავზე ერთნაირია — მას მხოლოდ ხანგრძლივობა განსაზღვრავს.',
     settleNote: 'თუ ძრავა შენს არჩეულზე მოკლე ტრეკს დააბრუნებს, სხვაობა ავტომატურად გიბრუნდება.',
-    cover: { name: 'MusicGen · ქავერი', short: 'ქავერი' },
-    voice: { name: 'MiniMax · შენი ხმა', short: 'შენი ხმა' },
+    cover: { name: 'ქავერი', short: 'ქავერი' },
+    voice: { name: 'შენი ხმა', short: 'შენი ხმა' },
   },
   en: {
     auto: {
@@ -222,8 +223,8 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
     },
     priceNote: 'The price is the same on every engine — only the length sets it.',
     settleNote: 'If an engine returns a shorter track than you picked, the difference is refunded automatically.',
-    cover: { name: 'MusicGen · cover', short: 'Cover' },
-    voice: { name: 'MiniMax · your voice', short: 'Your voice' },
+    cover: { name: 'Cover', short: 'Cover' },
+    voice: { name: 'Your voice', short: 'Your voice' },
   },
   ru: {
     auto: {
@@ -240,8 +241,8 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
     },
     priceNote: 'Цена одинакова для всех движков — её задаёт только длина.',
     settleNote: 'Если движок вернул трек короче выбранного, разница возвращается автоматически.',
-    cover: { name: 'MusicGen · кавер', short: 'Кавер' },
-    voice: { name: 'MiniMax · ваш голос', short: 'Ваш голос' },
+    cover: { name: 'Кавер', short: 'Кавер' },
+    voice: { name: 'Ваш голос', short: 'Ваш голос' },
   },
 };
 
@@ -254,7 +255,7 @@ export function chainNames(status: MusicEnginesStatus | null, locale: string): s
 }
 
 /**
- * The pill's label: a reference track fixes the engine (a cover is MusicGen's melody model, a cloned voice is MiniMax);
+ * The pill's label: a reference track names its path (a cover, your voice), since the engine pick does not apply to it;
  * otherwise the effective pick, or "Auto".
  */
 export function enginePillLabel(o: {

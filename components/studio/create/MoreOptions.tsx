@@ -5,8 +5,9 @@
  * marks and an accent thumb — and, below them, the templates gallery (thumbnails and all). The track length and the tempo are
  * the two tiles beside Create (CreateBar), on screen in both modes, so they are not repeated here.
  *
- * The sliders say what they are. On Lyria and ElevenLabs they only add a sentence to the text brief ("approximate", the
- * hint lib/ai/musicControls insists on); on an engine that takes them as parameters (MusicGen) the hint says so instead.
+ * The sliders say what they are. On Lyria, the one engine, they only add a sentence to the text brief ("approximate", the
+ * hint lib/ai/musicControls insists on); an engine whose status reads `controls: 'native'` would take them as parameters,
+ * and the hint says so instead.
  */
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';

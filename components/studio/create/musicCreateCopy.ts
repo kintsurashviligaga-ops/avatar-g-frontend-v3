@@ -22,7 +22,7 @@ export interface MusicCreateCopy {
   signInToCreate: string;
   engine: string;
   engineSheetTitle: string;
-  /** A reference track fixes the engine: "A reference file runs on its own engine: MusicGen · cover". */
+  /** A reference track sets how the track is made, so the engine pick does not apply ("A reference file (Cover) …"). */
   engineFixed: (name: string) => string;
   // + Audio | + Voice
   addAudio: string;
@@ -33,6 +33,8 @@ export interface MusicCreateCopy {
   refVoice: string;
   refCoverNote: string;
   refVoiceNote: string;
+  /** On an attached file whose path the server refuses (today: every cover and voice; they ran on Replicate). */
+  refOffNote: string;
   refRemove: string;
   refSwitch: string;
   refTrained: string;
@@ -131,14 +133,15 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     signInToCreate: 'შედი შესაქმნელად',
     engine: 'ძრავა',
     engineSheetTitle: 'მუსიკის ძრავა',
-    engineFixed: (n) => `რეფერენს-ფაილი საკუთარ ძრავას იყენებს: ${n}`,
+    engineFixed: (n) => `რეფერენს-ფაილი (${n}) თავად განსაზღვრავს, როგორ შეიქმნება ტრეკი — ძრავის არჩევანი აქ არ მოქმედებს.`,
     addAudio: '+ აუდიო',
     addVoice: '+ ხმა',
     soon: 'მალე',
     unavailable: 'ამჟამად მიუწვდომელია',
     refCover: 'მელოდიის რეფერენსი',
     refVoice: 'შენი ხმის ნიმუში',
-    refCoverNote: 'MusicGen ამ მელოდიას ინსტრუმენტულად გადააკეთებს — 30 წმ, ფიქსირებული ფასი. ლირიკა არ გამოიყენება.',
+    refCoverNote: 'ეს მელოდია ინსტრუმენტულად გადაკეთდება — 30 წმ, ფიქსირებული ფასი. ლირიკა არ გამოიყენება.',
+    refOffNote: 'ამ ფაილს ვერ გამოვიყენებ: მუსიკას აქ მხოლოდ Google Lyria ქმნის, შენი აღწერით. შესაქმნელად ფაილი მოაშორე.',
     refVoiceNote: 'სიმღერა შენი ხმით შესრულდება — საჭიროა ~15 წმ სუფთა ხმა; იმღერება ლირიკის პირველი ~360 სიმბოლო.',
     refRemove: 'ფაილის მოცილება',
     refSwitch: 'როგორ გამოვიყენო ეს ფაილი',
@@ -226,14 +229,15 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     signInToCreate: 'Sign in to create',
     engine: 'Engine',
     engineSheetTitle: 'Music engine',
-    engineFixed: (n) => `A reference file runs on its own engine: ${n}`,
+    engineFixed: (n) => `A reference file (${n}) decides how this track is made, so the engine pick does not apply.`,
     addAudio: '+ Audio',
     addVoice: '+ Voice',
     soon: 'Soon',
     unavailable: 'Not available right now',
     refCover: 'Melody reference',
     refVoice: 'Your voice sample',
-    refCoverNote: 'MusicGen re-imagines this melody as an instrumental — 30 s, flat price. Lyrics are not used.',
+    refCoverNote: 'This melody is re-imagined as an instrumental — 30 s, flat price. Lyrics are not used.',
+    refOffNote: 'This file can’t be used: only Google Lyria composes music here, from your words. Remove it to create.',
     refVoiceNote: 'The song is sung in your voice — needs ~15 s of clear voice; the first ~360 characters of lyrics are sung.',
     refRemove: 'Remove the file',
     refSwitch: 'How to use this file',
@@ -321,14 +325,15 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     signInToCreate: 'Войдите, чтобы создавать',
     engine: 'Движок',
     engineSheetTitle: 'Музыкальный движок',
-    engineFixed: (n) => `Референс-файл идёт через свой движок: ${n}`,
+    engineFixed: (n) => `Референс-файл (${n}) сам определяет, как создаётся трек, — выбор движка здесь не действует.`,
     addAudio: '+ Аудио',
     addVoice: '+ Голос',
     soon: 'Скоро',
     unavailable: 'Сейчас недоступно',
     refCover: 'Референс мелодии',
     refVoice: 'Образец вашего голоса',
-    refCoverNote: 'MusicGen переосмыслит эту мелодию как инструментал — 30 с, фиксированная цена. Текст не используется.',
+    refCoverNote: 'Эта мелодия будет переосмыслена как инструментал — 30 с, фиксированная цена. Текст не используется.',
+    refOffNote: 'Этот файл нельзя использовать: музыку здесь создаёт только Google Lyria, по вашему описанию. Уберите его, чтобы создать трек.',
     refVoiceNote: 'Песня будет спета вашим голосом — нужно ~15 с чистого голоса; поётся первые ~360 символов текста.',
     refRemove: 'Убрать файл',
     refSwitch: 'Как использовать файл',

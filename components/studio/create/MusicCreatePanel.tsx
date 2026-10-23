@@ -126,9 +126,13 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
   const balance = useCreditsBalance((s) => s.balance);
   useEffect(() => { void useCreditsBalance.getState().get(); }, []);
 
-  const trainedActive = p.trainedVoice.available && p.trainedVoice.on && !p.instrumental;
+  // The route refuses a trained voice with the sample (`references.voice`), so a locked voice path is never "active".
+  const trainedActive = p.trainedVoice.available && p.trainedVoice.on && !p.instrumental && status?.references.voice !== false;
   // A trained voice sends no reference at all (the attached file is ignored), so only the other cases fix the engine.
   const reference: RefKind | null = p.audio && !trainedActive ? p.audioMode : null;
+  // An attached file whose path the route refuses (today every cover and voice) blocks Create: the note under "+ Audio |
+  // + Voice" says why and how to clear it, and the press is never sent to come back refused.
+  const refOff = !!reference && status?.references[reference] === false;
   const pref: MusicEnginePref = effectiveEnginePref(storedPref, status, { instrumental: p.instrumental });
   const firstEngine = pref !== 'auto' ? pref : status?.chain[0] ?? 'lyria';
   const controlsMode = status?.engines[firstEngine]?.controls ?? 'prompt';
@@ -148,7 +152,8 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
   }, [vocalsLocked, p.instrumental, onInstrumental]);
 
   // ── the price: the shared quote at the seconds the route bills ────────────────────────────────────────
-  const cover = isCoverRun({ hasAudio: !!p.audio, audioMode: p.audioMode, trainedVoiceActive: trainedActive });
+  // A refused cover bills nothing and fixes no length, so it is not quoted as one.
+  const cover = !refOff && isCoverRun({ hasAudio: !!p.audio, audioMode: p.audioMode, trainedVoiceActive: trainedActive });
   const price = musicQuote({ duration: p.duration, cover });
   const insufficient = !p.guest && balance !== null && balance < price;
 
@@ -251,6 +256,7 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
 
   // ── Create ─────────────────────────────────────────────────────────────────────────────────────────────
   const create = () => {
+    if (refOff) return;
     if (insufficient) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }
     // An empty description still creates: the style line is the brief (what send() always fell back to).
     p.onCreate(p.styleText.trim() || `${musicStyleLine(p.styles)} music`);
@@ -364,6 +370,7 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
         price={price}
         insufficient={insufficient}
         onCreate={create}
+        blocked={refOff}
         duration={p.duration}
         onDuration={p.onDuration}
         cover={cover}
