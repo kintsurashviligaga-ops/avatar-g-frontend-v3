@@ -17,7 +17,7 @@ import { ImageModelsTable } from './ImageModelsTable';
 import { ImageResultPane, type ImageResultActions } from './ImageResultPane';
 
 export function ImageDesk({
-  locale, results, notice, aspect, model, elapsedSec, capSecFor, actions, busy, upscaling, conversation, messageCount, agentG,
+  locale, results, notice, aspect, model, actions, busy, upscaling, conversation, messageCount, agentG,
 }: {
   locale: string;
   results: readonly ImageResultView[];
@@ -25,8 +25,6 @@ export function ImageDesk({
   aspect: string;
   /** The picked image model; by default the browser's pick (lib/studio/modelPick). */
   model?: string;
-  elapsedSec: number;
-  capSecFor: (quality: string) => number;
   actions: ImageResultActions;
   busy: boolean;
   upscaling: boolean;
@@ -41,7 +39,7 @@ export function ImageDesk({
   return (
     <div data-testid="image-desk" className="min-w-0 space-y-7 px-0.5 pb-2 pt-2">
       {agentG}
-      <ImageResultPane locale={locale} results={results} notice={notice} aspect={aspect} elapsedSec={elapsedSec} capSecFor={capSecFor} actions={actions} busy={busy} upscaling={upscaling} />
+      <ImageResultPane locale={locale} results={results} notice={notice} aspect={aspect} actions={actions} busy={busy} upscaling={upscaling} />
       <ImageModelsTable locale={locale} {...(model ? { model } : {})} />
       {messageCount > 0 && (
         <section data-testid="image-conversation">

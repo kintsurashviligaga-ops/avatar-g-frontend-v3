@@ -22,18 +22,32 @@ async function seed(page: Page): Promise<void> {
   });
 }
 
-async function openImage(page: Page): Promise<void> {
+/** Picks a tool the way the studio's own buttons do. Picking it can leave its settings shut (the current composer): the tool
+ *  chip opens them, as a person would, and `ready` is the panel's visible copy (the phone sheet and the desktop rail both
+ *  mount one). */
+async function pickTool(page: Page, tool: string, ready: string): Promise<void> {
   await page.goto('/en/dashboard', { waitUntil: 'load' });
   await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
-  await expect(page.getByTestId('image-create-panel')).toBeVisible({ timeout: 15_000 });
-  // The dummy-Supabase dev server has no session; the studio stops a guest before any request. Pin "signed in" after mount.
+  await page.evaluate((t) => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: t })), tool);
+  const toggle = page.getByTestId('options-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', /^(true|false)$/);
+  if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+  await expect(page.getByTestId(ready).filter({ visible: true }).first()).toBeVisible({ timeout: 15_000 });
+}
+
+/** The dummy-Supabase dev server has no session; the studio stops a guest before any request. Pin "signed in" after mount. */
+async function pinSignedIn(page: Page): Promise<void> {
   await page.evaluate(() => {
     const el = document.documentElement;
     const pin = () => { if (el.dataset.authed !== '1') el.dataset.authed = '1'; };
     pin();
     new MutationObserver(pin).observe(el, { attributes: true, attributeFilter: ['data-authed'] });
   });
+}
+
+async function openImage(page: Page): Promise<void> {
+  await pickTool(page, 'image', 'image-create-panel');
+  await pinSignedIn(page);
 }
 
 const sse = (frames: unknown[]): string => frames.map((f) => `data: ${typeof f === 'string' ? f : JSON.stringify(f)}\n\n`).join('');
@@ -71,7 +85,8 @@ async function type(page: Page, text: string): Promise<void> {
     await expect(box).toBeVisible();
   }
   await box.fill(text);
-  await box.press('Enter');
+  // Plain Enter inserts a newline (GG's composer, 2026-10-21); match its explicit send shortcut.
+  await box.press('Control+Enter');
 }
 
 test.use({ viewport: DESKTOP });
@@ -163,16 +178,8 @@ test.describe('Agent G gates every message typed in Image mode', () => {
 // ─── Music and Video: the other two tools that spend. Their layouts keep the thread visible, so Agent G answers there. ───
 
 async function openTool(page: Page, tool: 'music' | 'video', ready: string): Promise<void> {
-  await page.goto('/en/dashboard', { waitUntil: 'load' });
-  await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
-  await page.evaluate((t) => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: t })), tool);
-  await expect(page.getByTestId(ready)).toBeVisible({ timeout: 15_000 });
-  await page.evaluate(() => {
-    const el = document.documentElement;
-    const pin = () => { if (el.dataset.authed !== '1') el.dataset.authed = '1'; };
-    pin();
-    new MutationObserver(pin).observe(el, { attributes: true, attributeFilter: ['data-authed'] });
-  });
+  await pickTool(page, tool, ready);
+  await pinSignedIn(page);
 }
 
 /** Records every request the paid routes of Music and Video would receive — a greeting must produce none. */
@@ -237,10 +244,7 @@ test.describe('signed out', () => {
   test.beforeEach(async ({ page }) => { await seed(page); });
 
   async function openImageAsGuest(page: Page): Promise<void> {
-    await page.goto('/en/dashboard', { waitUntil: 'load' });
-    await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
-    await expect(page.getByTestId('image-create-panel')).toBeVisible({ timeout: 15_000 });
+    await pickTool(page, 'image', 'image-create-panel');
   }
 
   test('"hello" with the Image tool open gets Agent G\'s answer — not a sign-in wall, not a render', async ({ page }) => {
@@ -271,12 +275,9 @@ test.describe('Agent G directs plain chat and Avatar', () => {
   async function openChat(page: Page): Promise<void> {
     await page.goto('/en/dashboard', { waitUntil: 'load' });
     await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
-    await page.evaluate(() => {
-      const el = document.documentElement;
-      const pin = () => { if (el.dataset.authed !== '1') el.dataset.authed = '1'; };
-      pin();
-      new MutationObserver(pin).observe(el, { attributes: true, attributeFilter: ['data-authed'] });
-    });
+    // The studio opens on its last tool; plain chat is picked explicitly, as agent-g-chat-yes does.
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'chat' })));
+    await pinSignedIn(page);
   }
 
   test('chat: "draw me …" waits for Agent G’s card — the render starts only on Create, with the words as typed', async ({ page }) => {
@@ -307,12 +308,19 @@ test.describe('Agent G directs plain chat and Avatar', () => {
     expect(calls.image).toHaveLength(1);
   });
 
-  test('Avatar: "აქ ხარ?" is answered in words — no presenter video is requested', async ({ page }) => {
+  /** Avatar's paid routes (a greeting must reach none) and its door: GET /api/avatar/veo says whether the built-in Veo
+   *  avatar is open to this user and at what price (app/api/avatar/veo). The dummy-Supabase server has no user, so it
+   *  would always answer closed; `door` stands in for the server's answer. */
+  async function mockAvatar(page: Page, door: { open: boolean; credits: number }): Promise<{ spent: string[]; chat: number }> {
     const seen = { spent: [] as string[], chat: 0 };
     for (const glob of ['**/api/heygen/**', '**/api/video/lipsync**', '**/api/avatar/**']) {
       await page.route(glob, (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (route.request().method() === 'GET' && path === '/api/avatar/veo') {
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, ...door, seconds: 8 }) });
+        }
         if (route.request().method() !== 'POST') return route.fallback();
-        seen.spent.push(new URL(route.request().url()).pathname);
+        seen.spent.push(path);
         return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       });
     }
@@ -325,6 +333,11 @@ test.describe('Agent G directs plain chat and Avatar', () => {
       });
     });
     await page.route('**/api/chat/title', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
+    return seen;
+  }
+
+  test('Avatar: "აქ ხარ?" is answered in words — no presenter video is requested', async ({ page }) => {
+    const seen = await mockAvatar(page, { open: true, credits: 25 });
     await openChat(page);
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'avatar' })));
     await expect(page.getByTestId('avatar-templates')).toBeAttached({ timeout: 15_000 });
@@ -335,6 +348,20 @@ test.describe('Agent G directs plain chat and Avatar', () => {
     // A real script is confirmed first, and still nothing is requested until Create.
     await type(page, 'Welcome to my channel, today we cook khachapuri together');
     await expect(page.locator('[data-testid="agent-g-card"][data-kind="confirm"]')).toBeVisible({ timeout: 10_000 });
+    // The card carries the door's own price, not the old avatar tool's.
+    await expect(page.getByTestId('agent-g-confirm')).toHaveAttribute('data-price', '25');
     expect(seen.spent).toEqual([]);
+  });
+
+  test('Avatar: where the door is closed, a script is told so in words — no card, no price, nothing requested', async ({ page }) => {
+    const seen = await mockAvatar(page, { open: false, credits: 25 });
+    await openChat(page);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'avatar' })));
+    await expect(page.getByTestId('avatar-templates')).toBeAttached({ timeout: 15_000 });
+    await type(page, 'Welcome to my channel, today we cook khachapuri together');
+    await expect(page.getByText(/isn.t available on your account yet/).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('agent-g-card')).toHaveCount(0);
+    expect(seen.spent).toEqual([]);
+    expect(seen.chat).toBe(0);
   });
 });

@@ -62,9 +62,3 @@ export function nearestAspect(width: number, height: number): ShootAspect {
   }
   return best;
 }
-
-/**
- * Seconds a render of this tier is EXPECTED to take — what the result card paces its bar against. The same measured
- * curve as OmniStudio's imgTargetFor (NanoBanana was observed still working at 48 s; 4K Pro takes minutes).
- */
-export const shootTargetSec = (quality: string): number => (quality === 'standard' ? 55 : quality === 'high' ? 75 : 215);

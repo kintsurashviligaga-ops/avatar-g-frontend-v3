@@ -19,8 +19,7 @@ import {
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './ui/tokens';
-import { Slider } from './ui/controls';
-import { easedPct } from './ui/GenerationProgress';
+import { ProgressLine, Slider } from './ui/controls';
 import { LoadingLoop } from './ui/LoadingLoop';
 import { describeOpFailure } from '@/lib/ui/opFailure';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
@@ -40,15 +39,9 @@ const MAX_CLIPS = 35;
 const MAX_SEQ_CLIPS = 12;
 const MASK_CAP = 1536;
 
-// Agent G granular reasoning steps shown in the editor's processing overlay (mirrors the chat overlay's 5 steps).
-const EDITOR_STEPS: { icon: string; ka: string; en: string; ru: string }[] = [
-  { icon: '🔍', ka: 'მიმდინარეობს ბრძანების ანალიზი…', en: 'Parsing command parameters…', ru: 'Разбираю параметры…' },
-  { icon: '⚙️', ka: 'AI მოდელების ინიციალიზაცია…', en: 'Spinning up specialized models…', ru: 'Запускаю нейромодели…' },
-  { icon: '🎨', ka: 'მიმდინარეობს კრეატიული გენერაცია…', en: 'Rendering creative modifications…', ru: 'Генерирую изменения…' },
-  { icon: '💾', ka: 'ფაილი ინახება ბიბლიოთეკაში…', en: 'Securely persisting final asset…', ru: 'Надёжно сохраняю результат…' },
-  { icon: '🚀', ka: 'მზადაა! სამუშაო სივრცე ახლდება…', en: 'Content ready. Refreshing workspace…', ru: 'Готово! Обновляю область…' },
-];
-const stepForPct = (p: number) => (p < 15 ? 0 : p < 35 ? 1 : p < 75 ? 2 : p < 95 ? 3 : 4);
+// The short label beside the export's percent. The edit routes report no progress, so the percent stays at 0% until
+// the asset exists, and the label says only that the work is running (§3.3: no step walked by the clock, never "ready").
+const EDITOR_WAIT = { ka: 'მუშავდება…', en: 'Working…', ru: 'Обрабатываю…' } as const;
 
 interface Copy {
   title: string; subtitle: string; drop: string; dropHint: string; dropHintAudio: string; pick: string;
@@ -795,13 +788,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const doExport = useCallback(async () => {
     if (!clip) { flash(t.needClip); return; }
     if (!hasMutations || exporting) return;
-    setExporting(true); setExportPct(6); setResult(null); setSuccessAsset(null);
-    const t0 = Date.now();
-    // ⚠️ WAS AN INCREMENTING TICKER THAT CONVERGED ON 90 AND THEN STOPPED. Once there it sat
-    // motionless for the rest of the render — indistinguishable from a crash, and the natural
-    // response to that is a reload, which loses the export. Driven by ELAPSED TIME it keeps
-    // easing toward 95 for as long as the job actually runs, and can never freeze on a number.
-    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 150)), 400);
+    // 0% until the file exists: the route reports no progress, and a number paced to the clock is what §3.3 forbids.
+    // The loading loop in the overlay is what shows the work is alive.
+    setExporting(true); setExportPct(0); setResult(null); setSuccessAsset(null);
     try {
       const byId = new Map(clips.map((c) => [c.id, c]));
       if (isPhoto) {
@@ -857,7 +846,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         finishExport(res, 'video');
       }
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
 
     async function postEdit(payload: Record<string, unknown>) {
       const { body } = await postJson('/api/ai/edit', payload);
@@ -884,10 +873,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     const c = maskCanvasRef.current;
     // MASK SAFETY GUARD (V3) — never POST without a painted mask; the Remove button is also disabled until then.
     if (!maskPainted || !c) { flash(t.paintFirst); return; }
-    setExporting(true); setExportPct(20); setResult(null); setSuccessAsset(null);
-    // Progress TICK so the bar keeps moving during the (long) Replicate poll instead of appearing frozen at 25%.
-    const t0 = Date.now();
-    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 120)), 600);
+    setExporting(true); setExportPct(0); setResult(null); setSuccessAsset(null);
     try {
       const maskUrl = c.toDataURL('image/png');
       const path = pathOf(await uploadClip(clip.file));
@@ -899,15 +885,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       else if (ok && j?.url) { setExportPct(100); try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ } onAssetReady(j.url, 'image'); flash(t.done); }
       else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, maskPainted, prompt, onAssetReady, flash, t.paintFirst, t.failed, t.done, t.inpaintOff, t.insufficient, t.timedOut]);
 
   // ── AI Photo Studio — remove_bg / upscale / face_restore / colorize via Replicate (billed server-side) ──
   const runPhotoAction = useCallback(async (action: 'remove_bg' | 'upscale' | 'face_restore' | 'colorize') => {
     if (!clip || exporting) return;
-    setExporting(true); setExportPct(15); setSuccessAsset(null);
-    const t0 = Date.now();
-    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 120)), 500);
+    setExporting(true); setExportPct(0); setSuccessAsset(null);
     try {
       // CHAIN: run on the last AI result if present, else the cached original (upload once, then reuse).
       let src = chainPath;
@@ -929,16 +913,14 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         flash(t.done);
       } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
   // Agent G multi-action CHAIN (photo): the server runs each op in sequence (rehosting each intermediary) and bills
   // the whole chain atomically — one request, one final URL, one refund on any failure.
   const runPhotoChain = useCallback(async (actions: string[]) => {
     if (!clip || exporting || actions.length < 2) return;
-    setExporting(true); setExportPct(10); setSuccessAsset(null);
-    const t0 = Date.now();
-    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 120)), 600);
+    setExporting(true); setExportPct(0); setSuccessAsset(null);
     try {
       let src = chainPath;
       if (!src) { src = originalPath ?? pathOf(await uploadClip(clip.file)); if (src && !originalPath) setOriginalPath(src); }
@@ -954,7 +936,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         onAssetReady(j.url, 'image'); flash(t.done);
       } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
   // ── Audio Studio: playback, generative separation (billed), deterministic process (free) ──
@@ -977,9 +959,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
 
   const runAudioAI = useCallback(async (action: 'vocal_isolation' | 'splitter') => {
     if (!clip || exporting) return;
-    setExporting(true); setExportPct(12); setSuccessAsset(null); setSecondaryAudio(null);
-    const t0 = Date.now();
-    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 120)), 600);
+    setExporting(true); setExportPct(0); setSuccessAsset(null); setSecondaryAudio(null);
     try {
       const src = await audioSource();
       if (!src) { flash(t.failed); return; }
@@ -995,7 +975,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         onAssetReady(j.url, 'audio'); flash(t.done);
       } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioSource, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
   // Trim counts as an edit only when the user NARROWED the range from the full clip — not the
@@ -1006,9 +986,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const runAudioProcess = useCallback(async () => {
     if (!clip || exporting) return;
     if (!audioHasEdit) { flash(t.editHint); return; }
-    setExporting(true); setExportPct(15); setSuccessAsset(null); setSecondaryAudio(null);
-    const t0 = Date.now();
-    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 150)), 350);
+    setExporting(true); setExportPct(0); setSuccessAsset(null); setSecondaryAudio(null);
     try {
       const src = await audioSource();
       if (!src) { flash(t.failed); return; }
@@ -1016,7 +994,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       const j = body as { url?: string | null } | null;
       if (ok && j?.url) { setExportPct(100); onAssetReady(j.url, 'audio'); flash(t.done); } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioVol, audioDur, onAssetReady, flash, t.failed, t.done, t.editHint, t.timedOut]);
 
   // In-editor Agent G command box: classify a typed instruction with the SAME brain and dispatch it on the current
@@ -1074,8 +1052,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     if (!clip || exporting) return;
     const p = bgPrompt.trim();
     if (!p) { flash(t.agentNoOp); return; }
-    setExporting(true); setExportPct(15); setSuccessAsset(null);
-    const tick = window.setInterval(() => setExportPct((prev) => (prev < 90 ? prev + Math.max(1, Math.round((90 - prev) / 16)) : prev)), 600);
+    setExporting(true); setExportPct(0); setSuccessAsset(null);
     try {
       let src = chainPath;
       if (!src) { src = originalPath ?? pathOf(await uploadClip(clip.file)); if (src && !originalPath) setOriginalPath(src); }
@@ -1091,7 +1068,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         onAssetReady(j.url, 'image'); flash(t.done);
       } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
-    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+    finally { window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, bgPrompt, chainPath, originalPath, onAssetReady, flash, t.agentNoOp, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
   // Agent G one-shot: once the forwarded clip is loaded, auto-run the requested AI action(s). A photo CHAIN (>1)
@@ -1646,22 +1623,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
             <div className="w-full max-w-[360px] rounded-2xl border border-app-border/20 bg-app-surface p-5 shadow-2xl">
               <div aria-hidden="true" data-testid="editor-export-loop" className="relative mb-3 h-[140px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15"><LoadingLoop /></div>
               <div className="mb-3 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.15em] text-app-accent"><Sparkles size={13} />G-Agent</div>
-              {/* Granular 5-step reasoning card, active step derived from the live progress. */}
-              <div className="mb-3 flex flex-col gap-1.5">
-                {EDITOR_STEPS.map((ph, i) => {
-                  const cur = stepForPct(exportPct);
-                  const state = i < cur ? 'done' : i === cur ? 'active' : 'pending';
-                  return (
-                    <div key={i} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] transition-all ${state === 'active' ? 'bg-app-accent/12 text-app-text ring-1 ring-app-accent/30' : state === 'done' ? 'text-app-muted/70' : 'text-app-muted/40'}`}>
-                      <span className="text-[15px] leading-none">{state === 'done' ? '✅' : ph.icon}</span>
-                      <span className="min-w-0 flex-1 font-medium">{norm(locale) === 'en' ? ph.en : norm(locale) === 'ru' ? ph.ru : ph.ka}</span>
-                      {state === 'active' && <span aria-hidden="true" className="h-[7px] w-[7px] shrink-0 rounded-full bg-app-accent" />}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-app-elevated"><div className="h-full rounded-full transition-all duration-300" style={{ width: `${exportPct}%`, background: 'linear-gradient(90deg, rgb(34,211,238), rgb(6,182,212))' }} /></div>
-              <div className="mt-2 text-[11px] tabular-nums text-app-muted">{exportPct}%</div>
+              {/* The export's percent and a short label (§3.3: a number and one label; no bar, no step list). */}
+              <ProgressLine pct={exportPct} label={EDITOR_WAIT[norm(locale)]} className="justify-start" />
             </div>
           ) : successAsset ? (
             <div className="w-full max-w-[360px] rounded-2xl border border-app-border/20 bg-app-surface p-5 shadow-2xl">

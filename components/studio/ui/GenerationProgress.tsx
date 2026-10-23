@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { AlertTriangle, Check, Clock, X } from 'lucide-react';
 import { LoadingLoop } from './LoadingLoop';
 
@@ -7,115 +8,49 @@ import { LoadingLoop } from './LoadingLoop';
  * THE loading card. One shape for every service that makes the user wait.
  *
  * ⚠️ WHY THIS MOVED OUT OF OmniStudio. It lived there and served exactly four kinds — image, music,
- * video, lipsync — so those four got a real progress experience (a big live percentage, the stage being
- * worked on, a checklist of what is done and what is left, and an estimate of the time remaining) while
- * montage, dubbing, presentation, 3D and the editor got a thin indeterminate bar with a single label,
- * or nothing at all. Same product, same wait, two completely different answers to "is this working?".
+ * video, lipsync — so those four got a real progress experience while montage, dubbing, presentation,
+ * 3D and the editor got a thin indeterminate bar with a single label, or nothing at all. Same product,
+ * same wait, two completely different answers to "is this working?".
  *
  * A wait with no feedback is indistinguishable from a hang. That is the whole reason these renders felt
  * broken: a montage that takes four minutes behind a 2px bar with no number reads as frozen long before
  * it reads as slow.
  *
- * TWO HONESTY RULES, both load-bearing:
+ * PERCENT AND A SHORT LABEL, NOTHING ELSE (MASTER TASK v3.1 §3.3, Phase 2 PR 3, GG's plan of 2026-10-23).
+ * The card used to add a bar, a stage checklist and a "remaining ~m:ss" clock under the number. Three
+ * readings of one guess disagreed with each other (the clock ran out while the bar still crawled), so the
+ * number and the stage it is on are what stays. The loading loop (./LoadingLoop) is the picture, as before.
  *
- *  1. THE BAR NEVER REACHES 100% ON A GUESS. It eases asymptotically toward 95% and completes only when
- *     the caller swaps the card for the real asset. A bar that hits 100% and then sits there is worse
- *     than no bar — it says "done" while the user waits, and the next thing they do is reload and lose
- *     the render.
- *  2. THE ESTIMATE IS PACED TO THE REAL WALL-CLOCK, per service. A number that expires while the job is
- *     still running teaches the user to distrust every number the product shows them.
+ * THREE HONESTY RULES, all load-bearing (§3.3):
  *
- * When the pipeline reports its own stage (the v2 services publish one to the job row), that text takes
- * over the headline — a real stage beats an interpolated guess.
+ *  1. NEVER 100% BEFORE THE ASSET. A server's own percent is held under 100, and the card reads 100 only in
+ *     `done`, when the caller has the real asset. A number that hits 100 and then sits there says "done" while
+ *     the user waits, and the next thing they do is reload and lose the render.
+ *  2. THE NUMBER NEVER GOES BACK. A poll that reports less than the last one holds the number where it was.
+ *  3. THE NUMBER IS MEASURED. It is the server's percent (or a count the pipeline reports, such as frames or
+ *     shots). With none yet, the card holds the last real value, or 0, under a short waiting label. Until Phase 2
+ *     it eased a guess toward 95 by the clock; §3.3 rules that out ("do not manufacture time-driven precision"),
+ *     and the guess was wrong by five times on the default image tier.
+ *
+ * When the pipeline reports its own stage (the v2 services publish one to the job row), that text is the label.
  */
-
-export type ProgressKind =
-  | 'image' | 'music' | 'video' | 'lipsync'
-  | 'remix' | 'montage' | 'dubbing' | 'presentation' | 'model3d' | 'editor';
 
 type Lang = 'ka' | 'en' | 'ru';
 
 /**
- * Stage narration per service.
- *
- * These are what the user reads while waiting, so they name the WORK, not the implementation: "mixing
- * the voices", not "ffmpeg pass 2". Each list is ordered and the card walks it in step with the bar.
+ * A running job's number: never above 99 before the asset (rule 1), never below what it last showed (rule 2).
+ * `pct` is this render's reading. While `active` is false (queued, finished, failed or stopped) the held peak is let go, so the next run of the same card starts from 0 instead of from the last job's number.
  */
-export const STAGES: Record<Lang, Record<ProgressKind, string[]>> = {
-  ka: {
-    image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
-    music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
-    video: ['სცენარს ვშლი…', 'აუდიო & SFX…', 'ხმა…', 'ვიდეო კადრები…', 'მასტერინგი…', 'გრაფიკა…'],
-    lipsync: ['ფოტოს ვამზადებ…', 'ავატარი ცოცხლდება…', 'ვასრულებ…'],
-    remix: ['ვიდეოს ვამზადებ…', 'ცვლილებას ვამუშავებ…', 'ვასრულებ…'],
-    montage: ['კადრებს ვამზადებ…', 'გადასვლებს ვაწყობ…', 'ხმას ვურევ…', 'ვასრულებ…'],
-    dubbing: ['ხმას ვაცალკევებ…', 'ტექსტს ვშიფრავ…', 'ვთარგმნი…', 'ხმას ვქმნი…', 'ვასინქრონებ…', 'ვურევ…'],
-    presentation: ['გეგმას ვაწყობ…', 'სლაიდებს ვწერ…', 'ვხატავ…', 'ვასრულებ…'],
-    model3d: ['რეფერენსს ვამზადებ…', 'ფორმას ვაშენებ…', 'ტექსტურას ვადებ…', 'ვასრულებ…'],
-    editor: ['ფაილებს ვამზადებ…', 'მონტაჟს ვაწყობ…', 'ვარენდერებ…', 'ვასრულებ…'],
-  },
-  en: {
-    image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
-    music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
-    video: ['Scripting…', 'Audio SFX…', 'Voice…', 'Video clips…', 'Mastering…', 'Graphics…'],
-    lipsync: ['Preparing the photo…', 'Bringing the avatar to life…', 'Finishing up…'],
-    remix: ['Preparing the video…', 'Applying the change…', 'Finishing up…'],
-    montage: ['Preparing the shots…', 'Building the transitions…', 'Mixing the audio…', 'Finishing up…'],
-    dubbing: ['Extracting the audio…', 'Transcribing…', 'Translating…', 'Synthesising the voice…', 'Syncing…', 'Mixing…'],
-    presentation: ['Outlining…', 'Writing the slides…', 'Rendering…', 'Finishing up…'],
-    model3d: ['Preparing the reference…', 'Building the mesh…', 'Texturing…', 'Finishing up…'],
-    editor: ['Uploading the clips…', 'Assembling the edit…', 'Rendering…', 'Finishing up…'],
-  },
-  ru: {
-    image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
-    music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
-    video: ['Сценарий…', 'Аудио и SFX…', 'Голос…', 'Видео-клипы…', 'Мастеринг…', 'Графика…'],
-    lipsync: ['Готовлю фото…', 'Оживляю аватар…', 'Завершаю…'],
-    remix: ['Готовлю видео…', 'Применяю изменение…', 'Завершаю…'],
-    montage: ['Готовлю кадры…', 'Строю переходы…', 'Свожу звук…', 'Завершаю…'],
-    dubbing: ['Извлекаю звук…', 'Расшифровываю…', 'Перевожу…', 'Синтезирую голос…', 'Синхронизирую…', 'Свожу…'],
-    presentation: ['Составляю план…', 'Пишу слайды…', 'Рисую…', 'Завершаю…'],
-    model3d: ['Готовлю референс…', 'Строю модель…', 'Накладываю текстуру…', 'Завершаю…'],
-    editor: ['Загружаю клипы…', 'Собираю монтаж…', 'Рендерю…', 'Завершаю…'],
-  },
-};
-
-/**
- * Wall-clock target per service, in seconds — what the "remaining" figure is paced against.
- *
- * These are MEASURED, not guessed, and that matters: an estimate that runs out while the job continues
- * is worse than showing none, because it teaches the user that the product's numbers are decoration.
- * The 30s film is the extreme case at roughly seven minutes end to end (clip generation plus the ffmpeg
- * montage), so its bar has to crawl rather than finish early and stall.
- */
-export const PROGRESS_TARGET: Record<ProgressKind, number> = {
-  image: 65,
-  music: 150,
-  video: 440,
-  // ⚠️ WAS 70. LipsyncStudio's own comment records the measurement — "a live production test showed
-  // SadTalker renders take ~6 min (cold start + render)" — and both surfaces poll for TEN minutes. At
-  // 70s the bar pegged at 95% after about a minute and a half and the remaining figure hit zero, then
-  // the user waited another four minutes staring at a full bar. That is the single most convincing way
-  // to make a working render look hung.
-  lipsync: 360,
-  remix: 120,
-  montage: 200,   // conform pass per source + the N-input stitch + the music mux
-  dubbing: 280,   // seven legs, one TTS call per line of dialogue
-  presentation: 140, // outline + up to 12 sequential image calls + rasterisation
-  model3d: 420,   // reconstruction is the slowest thing in the product
-  editor: 150,
-};
-
-/**
- * The eased curve the card draws, exported so any surface can pace a bar the same way.
- *
- * Asymptotic toward 95: fast at the start, never arriving. That "never arriving" is the point — a bar
- * that reaches its ceiling and stops incrementing looks IDENTICAL to a crashed render, and the user's
- * next move is to reload and lose the work.
- */
-export function easedPct(elapsedSec: number, targetSec: number): number {
-  const t = Math.max(1, targetSec);
-  return Math.min(95, Math.round((1 - Math.exp(-Math.max(0, elapsedSec) / (t / 2.4))) * 100));
+export function useRisingPct(pct: number, active = true): number {
+  const peak = useRef(0);
+  if (!active) {
+    peak.current = 0;
+    return 0;
+  }
+  const next = Math.min(99, Math.max(0, Math.round(Number.isFinite(pct) ? pct : 0)));
+  // Idempotent within a render (a max), so React rendering twice in development changes nothing.
+  if (next > peak.current) peak.current = next;
+  return peak.current;
 }
 
 /** m:ss — exported because the composer's inline status line formats the same clock. */
@@ -146,12 +81,9 @@ const STATE_COPY: Record<Lang, { queued: (n: number) => string; done: string; fa
 export type ProgressState = 'running' | 'queued' | 'done' | 'failed' | 'canceled';
 
 export function GenerationProgress({
-  kind, elapsed, status, locale, targetSec, pct: pctOverride, compact, measuredOnly = false,
+  status, locale, pct: pctOverride, compact,
   title, subtitle, state = 'running', queuePosition, error, onCancel, cancelLabel, children, loop = true,
 }: {
-  kind: ProgressKind;
-  /** Seconds since the run started. */
-  elapsed: number;
   /** The job's own label — shown above the percentage when the tray renders a job it does not own. */
   title?: string;
   /** Which state to draw. Anything but 'running' replaces the animated headline with a terminal line. */
@@ -167,76 +99,51 @@ export function GenerationProgress({
   /** Overrides the card's own wording — a caller that already localises "Stop" keeps its label. */
   cancelLabel?: string;
   /**
-   * A service-specific body, rendered in place of the generic stage checklist.
+   * A service-specific body, rendered under the number and its label.
    *
    * ⚠️ THIS EXISTS SO UNIFYING THE LOOK DOES NOT COST INFORMATION. The film console shows a nine-agent
-   * crew grid and the remix console shows a weighted stage list; both are richer than a checklist and
-   * neither could survive being replaced by this card wholesale. Sharing the SHELL — the card chrome, the
-   * live percentage, the bar, the clock and the cancel button — is what makes every service look like one
-   * product. Sharing the BODY would just delete what each service knows about itself.
+   * crew grid and the remix console shows a weighted stage list; neither could survive being replaced by
+   * this card wholesale. Sharing the SHELL — the card chrome, the loop, the live percentage and the cancel
+   * button — is what makes every service look like one product. Sharing the BODY would just delete what
+   * each service knows about itself.
    */
   children?: React.ReactNode;
   /** A stage the PIPELINE reported — takes over the headline, because it is real. */
   status?: string;
   locale: Lang;
-  /** Override the eased target, e.g. a heavier image tier. */
-  targetSec?: number;
-  /** A real server-reported percentage. Beats the time-based estimate when present. */
+  /** The server's percent (or a count the pipeline reports). Without one the card holds its last value, or 0. */
   pct?: number;
-  /** Drops the stage checklist — for tight surfaces like an in-chat panel. */
+  /** Fills its container and draws the loop as a small tile beside the number — for tight surfaces (the job tray, a panel). */
   compact?: boolean;
-  /**
-   * Print only what the server measured. A job the server runs and reports on (the tray's observed rows) has
-   * no local clock worth easing: with no server percent the card shows no number, no remaining-time guess
-   * and an indeterminate bar, and the headline is the server's stage or a plain "in progress". Off by
-   * default, so every studio that runs its own work keeps the eased estimate it was designed with.
-   */
-  measuredOnly?: boolean;
   /**
    * Draw the loading loop while the job waits or runs (default). Off only where the loop is already on screen
    * right above this card (the film console tucked under its ResultCard), so one wait never shows two loops.
    */
   loop?: boolean;
 }) {
-  const stages = STAGES[locale][kind];
-  const target = targetSec ?? PROGRESS_TARGET[kind];
-  // Eased growth: fast at first, asymptotic toward 95%, so it never "finishes" ahead of the asset.
-  const eased = easedPct(elapsed, target);
-  const measured = typeof pctOverride === 'number' && Number.isFinite(pctOverride) && pctOverride > 0;
-  const pct = measured ? Math.min(99, Math.round(pctOverride as number)) : eased;
-  // No server percent on a measured-only card: nothing to print while it runs (Video Core round 3, no fake %).
-  const unmeasured = measuredOnly && !measured && state === 'running';
-  // Video's bands are deliberately uneven — clip generation dominates 50–85% of the real time, so an
-  // even split would park the label on the wrong stage for minutes.
-  const stageIdx = kind === 'video'
-    ? (pct < 20 ? 0 : pct < 35 ? 1 : pct < 50 ? 2 : pct < 85 ? 3 : pct < 95 ? 4 : 5)
-    : Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
-  const sc = STATE_COPY[locale] ?? STATE_COPY.ka;
   const running = state === 'running';
+  // The last real value, held (rules 1 and 2); 0 until the server reports one (rule 3).
+  const rising = useRisingPct(typeof pctOverride === 'number' ? pctOverride : 0, running);
+  const sc = STATE_COPY[locale] ?? STATE_COPY.ka;
   const working = running || state === 'queued';
-  // Terminal states show 100 — the work IS over — while `running` keeps the honest sub-95 estimate.
-  const shownPct = state === 'done' ? 100 : state === 'queued' ? 0 : running ? pct : 100;
-  const headline = !running
+  // 100 only when the work is over and the asset is in (rule 1). A queued job has not started, and a failed or
+  // stopped one did not finish: none of them prints a number, the label says which it is.
+  const shownPct: number | null = state === 'done' ? 100 : running ? rising : null;
+  const label = !running
     ? (state === 'queued' ? sc.queued(queuePosition ?? 1)
       : state === 'done' ? sc.done
       : state === 'failed' ? (error?.trim() ? error.trim().slice(0, 90) : sc.failed)
       : sc.canceled)
-    : (status && status.trim() ? status.trim() : unmeasured ? sc.running : stages[stageIdx]);
-  const remaining = Math.max(0, Math.round(target - elapsed));
-  const remLabel = locale === 'en' ? 'remaining' : locale === 'ru' ? 'осталось' : 'დარჩა';
+    : (status && status.trim() ? status.trim() : sc.running);
   const tone = state === 'failed' ? 'text-red-500'
     : state === 'done' ? 'text-emerald-500'
     : state === 'canceled' ? 'text-app-muted'
     : 'text-app-accent';
-  const bar = state === 'failed' ? 'bg-red-500'
-    : state === 'done' ? 'bg-emerald-500'
-    : state === 'canceled' ? 'bg-app-border/50'
-    : 'bg-gradient-to-r from-app-accent/75 to-app-accent';
 
   return (
     // `compact` fills its container (the tray is a fixed-width panel); otherwise the card is clamped so a
     // desktop bubble does not stretch a progress card to the full width of the conversation.
-    <div className={`${compact ? 'w-full' : 'w-full max-w-[min(86vw,440px)]'} space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-4 shadow-[0_10px_34px_rgba(0,0,0,0.20)]`}>
+    <div data-testid="generation-progress" data-state={state} className={`${compact ? 'w-full' : 'w-full max-w-[min(86vw,440px)]'} space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-4 shadow-[0_10px_34px_rgba(0,0,0,0.20)]`}>
       {(title || subtitle) && (
         <div className="min-w-0">
           {title && <p className="truncate text-[12.5px] font-semibold text-app-text" title={title}>{title}</p>}
@@ -244,7 +151,8 @@ export function GenerationProgress({
         </div>
       )}
       {/* THE loading picture (the owner's rule, 2026-10-17: every generation shows only this card): while the job
-          waits or runs, the loop fills the card's head. No spinner anywhere on the card. */}
+          waits or runs, the loop fills the card's head. No spinner anywhere on the card. Under reduced motion or
+          Save-Data the loop is its still poster (./LoadingLoop). */}
       {loop && working && !compact && (
         <div aria-hidden="true" data-testid="generation-progress-loop" className="relative h-[150px] w-full overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
           <LoadingLoop />
@@ -258,77 +166,48 @@ export function GenerationProgress({
               <LoadingLoop />
             </div>
           )}
-          <div className="min-w-0">
-            {!unmeasured && (
-              <div className="flex items-baseline gap-1">
+          {/* The progress itself: the number and its label, read out as one progressbar while the job runs. Before the
+              server's first percent it reads 0 and `waiting`; a terminal or queued one is plain text. */}
+          <div
+            className="min-w-0"
+            data-progress={running ? (rising > 0 ? 'measured' : 'waiting') : state}
+            {...(running ? {
+              role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100,
+              ...(shownPct !== null ? { 'aria-valuenow': shownPct } : {}),
+              'aria-valuetext': shownPct !== null ? `${shownPct}% · ${label}` : label,
+              'aria-label': title || label,
+            } : {})}
+          >
+            {shownPct !== null && (
+              <div className="flex items-baseline gap-1" data-testid="generation-progress-pct">
                 <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{shownPct}</span>
                 <span className="text-[17px] font-semibold text-app-muted">%</span>
               </div>
             )}
             <span className={`mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium ${tone}`}>
               {running ? null
-                : state === 'queued' ? <Clock size={13} className="shrink-0" />
-                : state === 'done' ? <Check size={13} className="shrink-0" />
-                : state === 'failed' ? <AlertTriangle size={13} className="shrink-0" />
-                : <X size={13} className="shrink-0" />}
-              <span className="truncate">{headline}</span>
+                : state === 'queued' ? <Clock size={13} className="shrink-0" aria-hidden="true" />
+                : state === 'done' ? <Check size={13} className="shrink-0" aria-hidden="true" />
+                : state === 'failed' ? <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
+                : <X size={13} className="shrink-0" aria-hidden="true" />}
+              <span className="truncate" data-testid="generation-progress-label">{label}</span>
             </span>
           </div>
         </div>
-        <div className="flex shrink-0 items-end gap-2">
-          {running && !unmeasured && (
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-app-muted/70">{remLabel}</p>
-              <p className="text-[15px] font-semibold tabular-nums text-app-text">{remaining > 0 ? `~${fmtClock(remaining)}` : '…'}</p>
-            </div>
-          )}
-          {onCancel && (running || state === 'queued') && (
-            <button
-              type="button"
-              onClick={onCancel}
-              aria-label={cancelLabel || sc.cancel}
-              title={cancelLabel || sc.cancel}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
-            >
-              <X size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-app-border/15">
-        {unmeasured ? (
-          // Indeterminate: it moves, it measures nothing, and assistive tech is not handed a number either.
-          <div data-progress="indeterminate" className={`h-full w-1/3 animate-pulse rounded-full ${bar}`} />
-        ) : (
-          <div
-            className={`h-full rounded-full transition-[width] duration-700 ease-out ${bar}`}
-            style={{ width: `${state === 'queued' ? 8 : Math.max(6, shownPct)}%` }}
-          />
+        {onCancel && working && (
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label={cancelLabel || sc.cancel}
+            title={cancelLabel || sc.cancel}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-red-500/10 hover:text-red-500 motion-reduce:transition-none"
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
         )}
       </div>
 
       {children}
-
-      {!children && !compact && running && (
-        <ul className="space-y-1.5 pt-0.5">
-          {stages.map((s, i) => {
-            const state = i < stageIdx ? 'done' : i === stageIdx ? 'active' : 'pending';
-            return (
-              <li key={i} className={`flex items-center gap-2.5 text-[12.5px] ${state === 'pending' ? 'text-app-muted/45' : state === 'active' ? 'font-medium text-app-text' : 'text-app-muted'}`}>
-                {state === 'done' ? (
-                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Check size={12} className="text-app-accent" /></span>
-                ) : state === 'active' ? (
-                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><span className="h-[7px] w-[7px] rounded-full bg-app-accent" /></span>
-                ) : (
-                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center"><span className="h-[13px] w-[13px] rounded-full border border-app-border/30" /></span>
-                )}
-                <span className="truncate">{s}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
     </div>
   );
 }

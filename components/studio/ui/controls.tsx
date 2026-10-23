@@ -27,6 +27,7 @@ import {
   NOTE_BASE, NOTE_TONE, type NoteTone,
   DROPZONE, DROPZONE_IDLE, DROPZONE_OVER, DROPZONE_FILLED,
 } from './tokens';
+import { useRisingPct } from './GenerationProgress';
 
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
@@ -340,27 +341,31 @@ export function Note({ tone = 'info', children }: { tone?: NoteTone; children: R
 }
 
 /**
- * Determinate-when-known, indeterminate-when-not.
+ * A wait's number and its short label, for a surface with its own frame (an upload, the montage export, a 3D plan, a
+ * result tile): the loading card's rules without the card (./GenerationProgress, MASTER TASK v3.1 §3.3). No bar.
  *
- * A bar frozen at 0% reads as "nothing is happening", which is exactly what these long renders look like
- * before their first stage lands — so with no percentage it animates instead of sitting still.
+ *  · Never 100 while it runs (99 at most) and never back while it is on screen (useRisingPct). It is mounted only
+ *    while the work runs, so the next run starts from 0.
+ *  · Before the first percent (`pct` missing or 0) it reads 0% with its label: §3.3 keeps the last real value or 0%
+ *    and a short waiting state, never a number paced to the clock. The loading loop beside it is what moves; this
+ *    line does not animate.
  */
-export function ProgressBar({ pct, label }: { pct?: number; label?: ReactNode }) {
-  const known = typeof pct === 'number' && Number.isFinite(pct) && pct > 0;
+export function ProgressLine({ pct, label, ariaLabel, className }: { pct?: number | null; label?: ReactNode; ariaLabel?: string; className?: string }) {
+  const shown = useRisingPct(typeof pct === 'number' ? pct : 0);
+  const text = typeof label === 'string' ? label : undefined;
   return (
-    <div className="min-w-0 space-y-1">
-      {label != null && (
-        <div className="flex items-center justify-between gap-2 text-[11px] text-app-muted">
-          <span className="min-w-0 truncate">{label}</span>
-          {known && <span className="shrink-0 tabular-nums">{Math.round(pct)}%</span>}
-        </div>
-      )}
-      <div className="h-1 w-full overflow-hidden rounded-full bg-app-elevated">
-        <div
-          className={cx('h-full rounded-full bg-app-accent transition-[width] duration-500', !known && 'animate-progress-indeterminate')}
-          style={{ width: known ? `${Math.min(100, Math.max(0, pct))}%` : '40%' }}
-        />
-      </div>
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={shown}
+      aria-valuetext={text ? `${shown}% · ${text}` : `${shown}%`}
+      {...(ariaLabel ? { 'aria-label': ariaLabel } : {})}
+      data-testid="progress-line"
+      className={cx('flex min-w-0 items-baseline justify-center gap-1.5 text-[12.5px] text-app-muted', className)}
+    >
+      <span className="shrink-0 text-[15px] font-semibold tabular-nums text-app-text" data-testid="progress-line-pct">{shown}%</span>
+      {label != null && <span className="min-w-0 truncate">· {label}</span>}
     </div>
   );
 }

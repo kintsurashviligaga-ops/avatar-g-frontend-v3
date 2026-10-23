@@ -20,7 +20,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
 import {
   Panel, PanelHeader, Group, Row, Label, TextArea, LabelledField,
-  ChipGroup, ToggleRow, PrimaryButton, SecondaryButton, GhostButton, Note, ProgressBar, Dropzone, CardSelect, Disclosure, TextArea as UiTextArea,
+  ChipGroup, ToggleRow, PrimaryButton, SecondaryButton, GhostButton, Note, ProgressLine, Dropzone, CardSelect, Disclosure, TextArea as UiTextArea,
 } from './ui/controls';
 import { useUpload } from './ui/useUpload';
 import { checkSourceDuration, readVideoDurationSec } from '@/lib/media/videoDuration';
@@ -142,13 +142,6 @@ const COPY = {
  * Showing those raw would be worse than showing nothing, so each is given a human sentence. An unknown
  * stage falls through to the raw name rather than to silence — a new leg should still be visible.
  */
-/** Each panel service's progress vocabulary and wall-clock pacing. */
-const PROGRESS_KIND = {
-  dubbing: 'dubbing',
-  presentation: 'presentation',
-  model3d: 'model3d',
-} as const;
-
 const STAGE_LABELS: Record<Lang, Record<string, string>> = {
   ka: {
     queued: 'რიგში…',
@@ -296,11 +289,6 @@ export function ServiceParamsPanel({
   // was already finished, and every one of those stages went to a row nobody was watching. The client
   // now NAMES the job up front and polls it, turning "Working…" into the leg actually running.
   const [stage, setStage] = useState<{ label: string; pct: number } | null>(null);
-  /**
-   * Seconds since Run was pressed. The progress card needs a real clock to pace its estimate against —
-   * these panels never tracked one, so they could not show elapsed time or a remaining figure at all.
-   */
-  const [elapsed, setElapsed] = useState(0);
   /** Short confirmation from a result action ("Saved", "Link copied"), cleared on the next run. */
   const [note, setNote] = useState<string | null>(null);
   // THE 3D SCENE (components/studio/scene). "Add to scene" is offered only while a scene is mounted to take it — the
@@ -313,11 +301,6 @@ export function ServiceParamsPanel({
   // current handler without taking it as a dependency.
   const onDeliveredRef = useRef(onDelivered);
   useEffect(() => { onDeliveredRef.current = onDelivered; }, [onDelivered]);
-  useEffect(() => {
-    if (!busy) { setElapsed(0); return; }
-    const id = window.setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [busy]);
 
   // Dubbing
   const [sourceVideoUrl, setSourceVideoUrl] = useState('');
@@ -616,7 +599,7 @@ export function ServiceParamsPanel({
                 else { setDubFile(null); setSourceVideoUrl(''); setDubDurationSec(null); }
               }}
             />
-            {dubUpload.busy && <ProgressBar label={t.uploading} />}
+            {dubUpload.busy && <ProgressLine label={t.uploading} />}
             {dubUpload.error && <Note tone="error">{dubUpload.error}</Note>}
             {dubTooLong && <Note tone="error">{dubTooLong}</Note>}
             {sourceVideoUrl && !dubUpload.busy && (
@@ -738,7 +721,7 @@ export function ServiceParamsPanel({
                     else { setImg3dFile(null); setImageUrl3d(''); }
                   }}
                 />
-                {img3dUpload.busy && <ProgressBar label={t.uploading} />}
+                {img3dUpload.busy && <ProgressLine label={t.uploading} />}
                 {img3dUpload.error && <Note tone="error">{img3dUpload.error}</Note>}
                 {imageUrl3d && !img3dUpload.busy && <Note tone="success">{t.fileReady}</Note>}
               </div>
@@ -813,14 +796,12 @@ export function ServiceParamsPanel({
           {/* THE SAME CARD the chat shows for image/music/video. These panels used to get a 2px
               indeterminate bar with one label and no number — for renders that take two to seven
               minutes. A wait with no feedback is indistinguishable from a hang, which is exactly why
-              montage and dubbing "felt broken". `compact` drops the stage checklist because this
-              surface is inside the chat box, but the live percentage, the running stage and the
-              estimated remaining time are the whole point and stay.
-              A server-reported pct/stage overrides the time estimate whenever the pipeline sends one. */}
+              montage and dubbing "felt broken". `compact` fits the card inside the chat box with
+              the loop as a small tile; the live percentage and the running stage are the whole
+              point and stay (since Phase 2 they are all the card prints).
+              The number and the stage are the pipeline's own; before its first percent the card reads 0 (§3.3). */}
           <GenerationProgress
-            kind={PROGRESS_KIND[service]}
             locale={lang}
-            elapsed={elapsed}
             compact
             {...(stage?.pct ? { pct: stage.pct } : {})}
             {...(stage ? { status: STAGE_LABELS[lang][stage.label] ?? stage.label } : {})}

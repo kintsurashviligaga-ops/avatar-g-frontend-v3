@@ -30,9 +30,6 @@ export interface VideoStageProgress {
   pct?: number;
   /** The pipeline's own line ("Rendering scenes 2/3"). */
   stage?: string;
-  /** Seconds since the render started and the seconds the time estimate is paced against (when no real percent). */
-  elapsedSec?: number;
-  capSec?: number;
 }
 
 export interface VideoStageProps {
@@ -75,7 +72,7 @@ export function VideoStage({ locale, latest, progress, tier, mode, seconds, onTi
         <div className="mx-auto w-full" style={{ maxWidth: `calc(44vh * ${ratioOf(progress?.aspect ?? latest?.aspect ?? '16:9')})` }}>
           {progress ? (
             <ResultCard kind="video" size="tile" aspect={progress.aspect} state={typeof progress.pct === 'number' && progress.pct >= 96 ? 'finalizing' : 'rendering'}
-              locale={lang} pct={progress.pct} stage={progress.stage} elapsedSec={progress.elapsedSec ?? 0} capSec={progress.capSec ?? 440} />
+              locale={lang} pct={progress.pct} stage={progress.stage} />
           ) : latest ? (
             <ResultCard kind="video" size="tile" aspect={latest.aspect} state="ready" locale={lang} media={{ type: 'video', url: latest.url }} />
           ) : (

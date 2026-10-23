@@ -2,22 +2,23 @@
  * @jest-environment jsdom
  *
  * ResultCard — one tile from "asked for" to "on screen". What is pinned here is the contract a screenshot
- * cannot hold: the tile keeps the result's shape in every state, the percentage is honest (a real percent
- * wins, a guess stops at 92), cancel / retry / dismiss call back, and state changes — not percent ticks —
- * are announced.
+ * cannot hold: the tile keeps the result's shape in every state, the percentage is honest (the server's percent,
+ * or 0% and the last real value; never a guess paced to the clock, §3.3), cancel / retry / dismiss call back, and
+ * state changes — not percent ticks — are announced.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { ResultCard, resultPct, RESULT_HOLD_PCT } from './ResultCard';
+import { ResultCard, resultPct } from './ResultCard';
 
 describe('resultPct — honest progress', () => {
-  it('uses a real server percent when there is one', () => {
-    expect(resultPct({ state: 'rendering', pct: 12, elapsedSec: 500, capSec: 60 })).toBe(12);
+  it('uses the server percent, under 100', () => {
+    expect(resultPct({ state: 'rendering', pct: 12 })).toBe(12);
     expect(resultPct({ state: 'rendering', pct: 100 })).toBe(99); // 100 only when the media is here
   });
-  it('otherwise paces elapsed / cap and holds at 92 until the job is ready', () => {
-    expect(resultPct({ state: 'rendering', elapsedSec: 30, capSec: 100 })).toBe(30);
-    expect(resultPct({ state: 'rendering', elapsedSec: 999, capSec: 100 })).toBe(RESULT_HOLD_PCT);
-    expect(resultPct({ state: 'finalizing', elapsedSec: 10, capSec: 100 })).toBe(RESULT_HOLD_PCT);
+  it('with no percent it reads 0, rendering or finalizing (§3.3: no number paced to the clock)', () => {
+    expect(resultPct({ state: 'rendering' })).toBe(0);
+    expect(resultPct({ state: 'rendering', pct: null })).toBe(0);
+    expect(resultPct({ state: 'finalizing' })).toBe(0);
+    expect(resultPct({ state: 'rendering', pct: Number.NaN })).toBe(0);
   });
   it('queued is 0 and ready is 100', () => {
     expect(resultPct({ state: 'queued', pct: 40 })).toBe(0);
@@ -26,13 +27,15 @@ describe('resultPct — honest progress', () => {
 });
 
 describe('ResultCard', () => {
-  it('renders a rendering video as a 9:16 tile with «ვიდეო · 9:16 · 12%», a bar and a 44 px cancel', () => {
+  it('renders a rendering video as a 9:16 tile with «ვიდეო · 9:16 · 12%» and a 44 px cancel, and no drawn bar', () => {
     const onCancel = jest.fn();
     const { container } = render(<ResultCard kind="video" aspect="9:16" state="rendering" locale="ka" pct={12} onCancel={onCancel} />);
     expect(screen.getByText('ვიდეო · 9:16 · 12%')).toBeTruthy();
     const tile = container.querySelector('[data-testid="result-card"] > div') as HTMLElement;
     expect(tile.style.aspectRatio).toBe('9 / 16');
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('12');
+    // The caption is the progressbar: no width-animated bar under it (MASTER TASK v3.1 §3.3, Phase 2 PR 4).
+    expect(container.querySelector('[class*="transition-[width]"], [style*="width"]')).toBeNull();
     expect(container.querySelector('[data-testid="loading-loop-poster"]')).not.toBeNull(); // the loading loop, not a spinner
     const cancel = screen.getByRole('button', { name: 'გაუქმება' });
     expect(cancel.className).toContain('h-11');
@@ -44,7 +47,7 @@ describe('ResultCard', () => {
   it('keeps the same shape when the media arrives, and offers open / download / use as reference', () => {
     const onOpen = jest.fn();
     const onUseAsRef = jest.fn();
-    const { container, rerender } = render(<ResultCard kind="image" aspect="4:5" state="rendering" locale="en" elapsedSec={5} capSec={50} />);
+    const { container, rerender } = render(<ResultCard kind="image" aspect="4:5" state="rendering" locale="en" />);
     const shapeBefore = (container.querySelector('[data-testid="result-card"] > div') as HTMLElement).style.aspectRatio;
     rerender(<ResultCard kind="image" aspect="4:5" state="ready" locale="en" media={{ type: 'image', url: 'https://x.test/a.png' }} onOpen={onOpen} onUseAsRef={onUseAsRef} />);
     const shapeAfter = (container.querySelector('[data-testid="result-card"] > div') as HTMLElement).style.aspectRatio;
@@ -75,10 +78,27 @@ describe('ResultCard', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it('says «რიგში» when queued, with the bar at zero', () => {
+  it('says «რიგში» when queued, with no number', () => {
     render(<ResultCard kind="video" aspect="16:9" state="queued" locale="ka" pct={50} />);
     expect(screen.getByText('ვიდეო · 16:9 · რიგში')).toBeTruthy();
-    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+    // A job that has not started has no percent to report: the progressbar is indeterminate, like the loading card's.
+    expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false);
+  });
+
+  it('never reads 100 while rendering, and its number never goes back', () => {
+    const { rerender } = render(<ResultCard kind="video" aspect="9:16" state="rendering" locale="en" pct={100} />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Video · 9:16 · 99%');
+    rerender(<ResultCard kind="video" aspect="9:16" state="rendering" locale="en" pct={40} />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Video · 9:16 · 99%');
+  });
+
+  it('reads 0% until the server reports, then keeps the last real value when the reports stop', () => {
+    const { rerender } = render(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 0%');
+    rerender(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" pct={20} />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 20%');
+    rerender(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" />);
+    expect(screen.getByTestId('result-card-caption').textContent).toBe('Image · 1:1 · 20%');
   });
 
   it('announces state changes politely, not every percent', () => {

@@ -3,7 +3,7 @@
  * One message read against the screen (lib/agent/chatTurn): the 13 sentences of the Master Task as the studio meets them,
  * with cards, tray jobs and a reply in flight. Nothing here runs or charges; the step says what the studio does.
  */
-import { planChatTurn, wordsAreForChat, workOf, type ChatSnapshot, type ThreadCard, type TrayJob } from './chatTurn';
+import { planChatTurn, wordsAreForChat, wordsAskToBeTold, workOf, type ChatSnapshot, type ThreadCard, type TrayJob } from './chatTurn';
 
 const base: ChatSnapshot = {
   mode: 'chat', locale: 'ka', attachments: [], cards: [], jobs: [], foreground: null,
@@ -325,6 +325,23 @@ describe('wordsAreForChat: a spend-at-once tool never runs on talk', () => {
     ['Summer sale: 50% off everything', false], ['ზაფხულის ფასდაკლება', false], ['', false],
   ])('%s → %s', (text, forChat) => {
     expect(wordsAreForChat(text, 'video', 'ka')).toBe(forChat);
+  });
+});
+
+describe('wordsAskToBeTold: „storyboard" or „3 scenes" in a question is its topic, not a brief', () => {
+  test.each([
+    // asks — the chat answers them
+    ['open the settings and tell me what a storyboard is', true], ['tell me what a storyboard is', true],
+    ['what is a storyboard', true], ['how do I make a 3-scene video?', true], ['explain storyboards', true],
+    ['რა არის სთორიბორდი?', true], ['მითხარი რა არის სთორიბორდი', true], ['ამიხსენი მრავალსცენიანი ვიდეო', true],
+    ['что такое раскадровка?', true], ['объясни, как работает раскадровка', true],
+    // briefs — the shortcut plans them
+    ['შექმენი სთორიბორდი: ზღვა, ნავი, მზის ამოსვლა', false], ['make a storyboard of a cat chasing a mouse', false],
+    ['storyboard: a cat on the roof, then it jumps', false], ['მრავალსცენიანი ვიდეო ზღვაზე', false],
+    ['სთორიბორდი ზღვაზე, ნავი და მზე', false], ['a storyboard for my coffee shop ad', false],
+    ['make a 3-scene video where a dog wonders what is happening', false], ['can you make a storyboard of a cat?', false],
+  ])('%s → %s', (text, asks) => {
+    expect(wordsAskToBeTold(text, 'chat', 'ka')).toBe(asks);
   });
 });
 

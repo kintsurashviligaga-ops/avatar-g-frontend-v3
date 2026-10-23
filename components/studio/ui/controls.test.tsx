@@ -6,7 +6,7 @@
  * 44px grab strip and the shrinkable track on are present.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
-import { Slider } from './controls';
+import { ProgressLine, Slider } from './controls';
 
 test('the label is the range input\'s accessible name, and the value shows with its suffix', () => {
   render(<Slider label="Weirdness" min={0} max={100} value={70} suffix="" onChange={jest.fn()} />);
@@ -91,5 +91,35 @@ describe('Create-screen options: tick marks and an accent thumb', () => {
     render(<Slider ticks={4} label="Weirdness" min={0} max={100} value={50} onChange={jest.fn()} />);
     expect(screen.getByTestId('slider-ticks').children).toHaveLength(5);
     expect(screen.getByTestId('slider-ticks').parentElement!.className).toContain('flex-1');
+  });
+});
+
+describe('ProgressLine: a number and a label, no bar (MASTER TASK v3.1 §3.3)', () => {
+  const bar = () => screen.getByRole('progressbar');
+
+  it('before the first percent it reads 0% with its label (§3.3: the last real value or 0%, never a clock)', () => {
+    render(<ProgressLine label="Uploading…" />);
+    expect(bar().textContent).toBe('0%· Uploading…');
+    expect(bar().getAttribute('aria-valuenow')).toBe('0');
+    expect(bar().getAttribute('aria-valuetext')).toBe('0% · Uploading…');
+  });
+
+  it('prints «NN% · label» and reads it out the same way', () => {
+    render(<ProgressLine pct={42} label="Mixing" />);
+    expect(bar().textContent).toBe('42%· Mixing');
+    expect(bar().getAttribute('aria-valuenow')).toBe('42');
+    expect(bar().getAttribute('aria-valuetext')).toBe('42% · Mixing');
+  });
+
+  it('never reads 100 and never goes back while it is on screen', () => {
+    const { rerender } = render(<ProgressLine pct={100} />);
+    expect(screen.getByTestId('progress-line-pct').textContent).toBe('99%');
+    rerender(<ProgressLine pct={60} />);
+    expect(screen.getByTestId('progress-line-pct').textContent).toBe('99%');
+  });
+
+  it('draws no fill and animates nothing', () => {
+    const { container } = render(<ProgressLine pct={30} label="x" />);
+    expect(container.querySelector('[style], [class*="animate-"], [class*="transition-"]')).toBeNull();
   });
 });
