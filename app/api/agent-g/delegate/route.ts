@@ -6,12 +6,21 @@
  * music, video, avatar, chat, terminal, content-writer, etc.)
  *
  * Protected by x-agent-g-secret header.
+ *
+ * ⚠️ NO FALLBACK BETWEEN ENGINES (PROJECT_MASTER R7, MASTER TASK v3.1). A voice line that /api/tts/gemini cannot read is
+ * this route's error; it is never sent on to another engine. Image, music and video sub-tasks used to post to the
+ * Replicate, Udio and LTX routes, which only answer 503 `google_only` since PR 5c; they now refuse here, before any
+ * call, with the same message (lib/providers/mediaPolicy).
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { customAvatarText } from '@/lib/avatar/curated';
+import { googleOnlyMessage } from '@/lib/providers/mediaPolicy';
 import { secretMatches } from '@/lib/security/secretMatch';
+
+/** A sub-task whose tool has no Google engine in this route. Answered 503 with the studio's google_only text. */
+class PausedTool extends Error {}
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -76,21 +85,15 @@ async function dispatchAgent(
   const goal = String(input.goal ?? input.prompt ?? input.text ?? '');
   const locale = String(input.language ?? input.locale ?? 'ka');
 
-  // ── Image generation (Replicate → NanoBanana fallback built into endpoint) ──
-  if (agent === 'image') {
-    const res = await callJson(origin, headers, '/api/replicate/image', 'POST', {
-      prompt: goal,
-      quality: String(input.quality ?? 'standard'),
-    });
-    if (res.ok) {
-      const d = res.json as { url?: string; imageUrl?: string; output?: string[] };
-      const url = d?.url ?? d?.imageUrl ?? (d?.output as string[])?.[0] ?? null;
-      return { output: { type: 'image', url, goal } };
-    }
-    throw new Error(`სურათის გენერაცია ვერ მოხდა (${res.status})`);
+  // ── Image, music and video ───────────────────────────────────────────────────
+  // Their only legs here were Replicate, Udio and LTX, whose routes refuse every call (google_only). Refuse before the
+  // hop; the Image, Music and Video tools render on Google's engines.
+  if (agent === 'image' || agent === 'music' || agent === 'video') {
+    throw new PausedTool(googleOnlyMessage(locale));
   }
 
   // ── Voice / TTS ──────────────────────────────────────────────────────────────
+  // One engine: Gemini's own voice. A miss is this sub-task's error, never a second engine (R7).
   if (agent === 'voice' || (agent === 'voice-lab' && action === 'synthesize_voice')) {
     const text = String(input.text ?? goal);
     const res = await callJson(origin, headers, '/api/tts/gemini', 'POST', {
@@ -98,38 +101,7 @@ async function dispatchAgent(
       locale,
     });
     if (res.ok) return { output: { type: 'audio', source: 'gemini-native', text, locale } };
-
-    // Fallback: voice-lab endpoint
-    const fallback = await callJson(origin, headers, '/api/voice-lab/jobs', 'POST', {
-      type: 'generate',
-      input: { text, language: locale, title: 'Agent G TTS' },
-    });
-    if (fallback.ok) return { output: { type: 'audio', source: 'voice-lab', text, locale, data: fallback.json } };
-    throw new Error(`ხმის სინთეზი ვერ მოხდა (ElevenLabs + voice-lab გაუმართავია)`);
-  }
-
-  // ── Music generation ─────────────────────────────────────────────────────────
-  if (agent === 'music') {
-    const res = await callJson(origin, headers, '/api/udio/generate', 'POST', {
-      prompt: goal,
-      make_instrumental: Boolean(input.instrumental ?? false),
-    }, 120_000); // Udio needs up to 120s
-    if (res.ok) {
-      const d = res.json as { url?: string; audioUrl?: string };
-      return { output: { type: 'audio', subtype: 'music', url: d?.url ?? d?.audioUrl, goal } };
-    }
-    throw new Error(`მუსიკის გენერაცია ვერ მოხდა (Udio ${res.status})`);
-  }
-
-  // ── Video generation ─────────────────────────────────────────────────────────
-  if (agent === 'video') {
-    const res = await callJson(origin, headers, '/api/ltx-video', 'POST', {
-      prompt: goal,
-      duration: Number(input.duration ?? 6),
-      resolution: String(input.resolution ?? '1920x1080'),
-    }, 120_000);
-    if (res.ok) return { output: { type: 'video', goal, binary: true } };
-    throw new Error(`ვიდეოს გენერაცია ვერ მოხდა (LTX ${res.status})`);
+    throw new Error(`ხმის სინთეზი ვერ მოხდა (${res.status})`);
   }
 
   // ── Avatar ──────────────────────────────────────────────────────────────────
@@ -289,6 +261,6 @@ export async function POST(request: NextRequest) {
     return apiSuccess(result);
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'სერვისი დროებით მიუწვდომელია';
-    return apiError(error, 502, msg);
+    return apiError(error, error instanceof PausedTool ? 503 : 502, msg);
   }
 }
