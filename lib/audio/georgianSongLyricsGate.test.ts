@@ -15,7 +15,6 @@ jest.mock('../ai/lyriaMusic', () => ({
   generateLyriaTrack: (...a: unknown[]) => generateLyriaTrack(...a),
   hasLyriaProvider: () => hasLyriaProvider(),
 }));
-jest.mock('../ai/replicate', () => ({ generateMusic: jest.fn() }));
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
 const generateWithGemini = jest.fn();
 jest.mock('../gemini/client', () => ({ generateWithGemini: (...a: unknown[]) => generateWithGemini(...a) }));

@@ -6,8 +6,8 @@
  * ⚠️ PROJECT_MASTER R7 (no silent fallback): a score miss used to drop to Replicate MusicGen, so the ad
  * came back scored by a provider the platform no longer allows, with nothing in the response to say so. The bed is an
  * optional leg of an ad that is already rendered and paid for, so its failure is the leg's own explicit outcome — the
- * clip delivered WITHOUT music and reported `music: false` — and never a second provider. MusicGen is mocked to
- * SUCCEED here, so any track it produced would show up as `music: true`.
+ * clip delivered WITHOUT music and reported `music: false` — and never a second provider. MusicGen's Replicate client is
+ * gone (PR 20), so a call put back would have to reach the network, and the network spy refuses and records every request.
  *
  * Every provider, the ledger, storage and the idempotency store are mocked — no network, no spend.
  */
@@ -29,7 +29,6 @@ jest.mock('../../../../lib/ai/veoClipSync', () => ({
 }));
 jest.mock('../../../../lib/pipeline/compositing/ffmpeg-overlay', () => ({ overlayMasterUrl: jest.fn() }));
 jest.mock('../../../../lib/chat/filmVoiceover', () => ({ textToHostedSpeech: jest.fn() }));
-jest.mock('../../../../lib/nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
 jest.mock('../../../../lib/ai/lipsync', () => ({ filmLipsyncCreate: jest.fn(), lipsyncFetch: jest.fn() }));
 jest.mock('../../../../lib/security/callerMedia', () => ({
@@ -47,8 +46,6 @@ jest.mock('../../../../lib/audio/lyriaBed', () => ({
   lyriaBedReady: jest.fn(() => true),
   composeLyriaBed: jest.fn(),
 }));
-// Not imported by the route any more — mocked (to SUCCEED) so a fallback put back through it would be caught.
-jest.mock('../../../../lib/ai/replicate', () => ({ generateMusic: jest.fn(async () => ({ audioUrl: 'https://replicate.delivery/musicgen.mp3' })) }));
 jest.mock('../../../../lib/supabase/server', () => ({
   authedClientFromRequest: jest.fn(async () => ({ user: { id: 'user-1' } })),
   createServiceRoleClient: jest.fn(),
@@ -70,7 +67,6 @@ jest.mock('../../../../lib/veo/policy', () => ({ isGoogleOnly: jest.fn(() => tru
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { composeLyriaBed, lyriaBedReady } from '../../../../lib/audio/lyriaBed';
-import { generateMusic } from '../../../../lib/ai/replicate';
 import { muxAudioOntoVideo } from '../../../../lib/video/remixOps';
 import { deductCreditsOnce, refundCredits } from '../../../../lib/orchestrator/ledger';
 
@@ -83,11 +79,14 @@ const post = (body: unknown) =>
 
 /** A single-clip ad: no sceneIndex, so the route lays its own preset score under it. */
 const AD = { op: 'productad', imageUrl: 'https://cdn.example.com/product.jpg', preset: 'luxury', jobId: 'job-ad-1', aspect: '9:16' };
+/** Any request that reached Replicate (MusicGen) — the spy refuses it, so a call shows up here. */
+const replicateCalls = () => jest.mocked(fetch).mock.calls.filter(([u]) => /replicate\.com/.test(String(u)));
 
 beforeEach(() => {
   jest.clearAllMocks();
   (lyriaBedReady as jest.Mock).mockReturnValue(true);
   (composeLyriaBed as jest.Mock).mockResolvedValue('https://storage.example/ad-music.mp3');
+  jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -102,7 +101,7 @@ test('Lyria scores the clip (the baseline): an 8 s instrumental on the clip mode
     instrumental: true, folder: 'productad-music', plan: { model: 'lyria-3-clip-preview', sec: 8 },
   }));
   expect(muxAudioOntoVideo).toHaveBeenCalledWith('https://storage.example/veo-ad.mp4', 'https://storage.example/ad-music.mp3', 'under', 12);
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
 });
 
 test('a Lyria miss ships the clip without music, says so — and MusicGen is never asked', async () => {
@@ -110,7 +109,7 @@ test('a Lyria miss ships the clip without music, says so — and MusicGen is nev
   const res = await POST(post(AD));
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ url: 'https://storage.example/veo-ad.mp4', music: false, charged: true });
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
   expect(muxAudioOntoVideo).not.toHaveBeenCalled();
   // The ad itself was delivered, so its charge stands — exactly as before when no bed could be made.
   expect(deductCreditsOnce).toHaveBeenCalledTimes(1);
@@ -122,7 +121,7 @@ test('Lyria not configured: the same — no music, no MusicGen', async () => {
   const json = await (await POST(post(AD))).json();
   expect(json).toMatchObject({ url: 'https://storage.example/veo-ad.mp4', music: false });
   expect(composeLyriaBed).not.toHaveBeenCalled();
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
 });
 
 test('a replayed charge (same jobId and body, already charged) is refused with 409 before anything renders (C5)', async () => {

@@ -8,7 +8,8 @@
  *   · a guest → 401, no provider, no ledger, no mutex;
  *   · a lookup that throws → 503 (our outage, retryable), no provider, no ledger;
  *   · a signed-in caller passes the gate and is reserved against THEIR account before the render.
- * Every provider, the ledger and the idempotency store are mocked — no network, no spend.
+ * Every provider, the ledger and the idempotency store are mocked — no network, no spend. The Replicate client (MusicGen)
+ * is gone (PR 20), so the network spy is what would catch a call to it.
  */
 jest.mock('server-only', () => ({}));
 // The platform budget guard reads a spend ledger these tests do not have, and it fails closed (MASTER TASK v3.1): here
@@ -29,7 +30,6 @@ jest.mock('../../../../lib/supabase/server', () => ({
 jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ response: null, auth: null, budgetRemaining: null })) }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/ai/replicate', () => ({ generateMusicCover: jest.fn(), generateVoiceSong: jest.fn(), generateMusic: jest.fn() }));
 jest.mock('../../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
 jest.mock('../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(() => true), generateLyriaTrack: jest.fn() }));
 jest.mock('../../../../lib/chat/mediaKeys', () => ({ hasUdioApiKey: jest.fn(() => true) }));
@@ -65,7 +65,6 @@ import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { generateLyriaTrack } from '../../../../lib/ai/lyriaMusic';
 import { generateUdioTrack } from '../../../../lib/udio/client';
-import { generateMusic } from '../../../../lib/ai/replicate';
 import { promptToEnglish } from '../../../../lib/ai/promptToEnglish';
 import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
 import { claimIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
@@ -81,7 +80,7 @@ const BODY = { prompt: 'მშვიდი ფორტეპიანო წვ
 let fetchSpy: jest.SpyInstance;
 
 function expectNothingSpent(): void {
-  for (const provider of [generateLyriaTrack, generateUdioTrack, generateMusic, promptToEnglish]) {
+  for (const provider of [generateLyriaTrack, generateUdioTrack, promptToEnglish]) {
     expect(provider).not.toHaveBeenCalled();
   }
   expect(fetchSpy).not.toHaveBeenCalled();

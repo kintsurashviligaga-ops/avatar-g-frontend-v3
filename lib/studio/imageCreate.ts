@@ -23,7 +23,7 @@ import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 
 /**
  * ⚠️ THE UI OFFERED SIX OF THE ELEVEN RATIOS THAT WORK. /api/nanobanana/image applies NO allowlist — it forwards
- * `body.aspectRatio` straight through (the removed FLUX 1.1 Pro fallback accepted the same eleven, lib/ai/fluxImage.ts:16).
+ * `body.aspectRatio` straight through (the removed FLUX 1.1 Pro fallback accepted the same eleven).
  * The four added here are the ones people actually ask for and could not select: 4:5 is the Instagram feed ratio, 3:4 the
  * standard portrait print, 5:4 its landscape counterpart, and 21:9 cinemascope. Every one already rendered correctly end to
  * end; nothing but this list stood between the user and them.

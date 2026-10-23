@@ -46,13 +46,10 @@ jest.mock('../../../../lib/auth/adminGuard', () => ({
   effectiveAdminAllowlist: jest.fn(async () => ['admin@example.com']),
 }));
 
-// The non-Google engines the route used to cascade to. Any call to these is a failure.
+// The non-Google engines the route used to cascade to. Any call to these is a failure. (Replicate Whisper's client is gone,
+// PR 20: the afterEach checks no request reached Replicate.)
 jest.mock('../../../../lib/voice-v2v/providers', () => ({
   transcribeRealtimePcmChunk: jest.fn(async () => ({ text: 'from openai', provider: 'openai' })),
-}));
-jest.mock('../../../../lib/voice-v2v/replicateStt', () => ({
-  hasReplicateSttKey: jest.fn(() => true),
-  transcribeWithReplicateWhisper: jest.fn(async () => 'გამარჯობა replicate'),
 }));
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -60,13 +57,11 @@ import { POST } from './route';
 import { checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { bookChatUsage } from '../../../../lib/services/billing/chatBudget';
 import { transcribeRealtimePcmChunk } from '../../../../lib/voice-v2v/providers';
-import { transcribeWithReplicateWhisper } from '../../../../lib/voice-v2v/replicateStt';
 
 const USER_ID = '11111111-2222-4333-8444-555555555555';
 const perUserMock = checkRateLimitByKey as jest.MockedFunction<typeof checkRateLimitByKey>;
 const bookMock = bookChatUsage as jest.MockedFunction<typeof bookChatUsage>;
 const openaiMock = transcribeRealtimePcmChunk as jest.MockedFunction<typeof transcribeRealtimePcmChunk>;
-const replicateMock = transcribeWithReplicateWhisper as jest.MockedFunction<typeof transcribeWithReplicateWhisper>;
 
 /** A tiny but real WAV header + a little silence. */
 function wavBytes(): Uint8Array {
@@ -121,7 +116,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const [url] of fetchSpy.mock.calls) expect(String(url)).not.toContain('generativelanguage.googleapis.com');
+  for (const [url] of fetchSpy.mock.calls) {
+    expect(String(url)).not.toContain('generativelanguage.googleapis.com');
+    expect(String(url)).not.toContain('replicate.com');
+  }
   fetchSpy.mockRestore();
   process.env = { ...ENV };
 });
@@ -133,7 +131,6 @@ test('a guest is refused (401 auth_required) and no engine is touched', async ()
   expect(await res.json()).toMatchObject({ success: false, error: 'auth_required', authRequired: true });
   expect(fetchSpy).not.toHaveBeenCalled();
   expect(openaiMock).not.toHaveBeenCalled();
-  expect(replicateMock).not.toHaveBeenCalled();
 });
 
 test('the per-user STT cap applies to a signed-in caller, keyed on the user id', async () => {
@@ -159,7 +156,6 @@ test('Google-only (default): WAV → Gemini on Vertex AI only (bearer token, no 
   const sent = JSON.parse(String(init.body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type: string } }> }> };
   expect(sent.contents[0]!.parts[1]!.inline_data!.mime_type).toBe('audio/wav');
   expect(openaiMock).not.toHaveBeenCalled();
-  expect(replicateMock).not.toHaveBeenCalled();
   expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({
     model: 'gemini-3.8-flash', inputTokens: 40, outputTokens: 4, totalTokens: 44, userId: USER_ID,
   }));
@@ -172,7 +168,6 @@ test('Google-only: a browser WebM is sent as video/webm (best effort); a Gemini 
   expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'unsupported_format' });
   const sent = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type: string } }> }> };
   expect(sent.contents[0]!.parts[1]!.inline_data!.mime_type).toBe('video/webm');
-  expect(replicateMock).not.toHaveBeenCalled();
   expect(openaiMock).not.toHaveBeenCalled();
 });
 
@@ -187,7 +182,6 @@ test('Google-only: a Latin rendering of Georgian speech is rejected (sttAccept) 
   const res = await POST(upload({ language: 'ka-GE' }));
   expect(await res.json()).toEqual({ text: '', provider: 'none' });
   expect(bookMock).toHaveBeenCalledTimes(1);
-  expect(replicateMock).not.toHaveBeenCalled();
 });
 
 test('Google-only: Russian speech in a Georgian session is kept as spoken (Cyrillic), and the answer names it', async () => {
@@ -221,7 +215,6 @@ test('Google-only: a quota outage is an empty transcript with stt_unavailable, n
   expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'stt_unavailable' });
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   expect(openaiMock).not.toHaveBeenCalled();
-  expect(replicateMock).not.toHaveBeenCalled();
 });
 
 test('Google-only: Vertex AI unconfigured → stt_unavailable and no call at all, even with an AI Studio key', async () => {
@@ -236,7 +229,6 @@ test('Google-only: GEMINI_TRANSPORT=gemini_api (the Developer API) → stt_unava
   const res = await POST(upload({ language: 'en-US' }));
   expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'stt_unavailable' });
   expect(fetchSpy).not.toHaveBeenCalled();
-  expect(replicateMock).not.toHaveBeenCalled();
   expect(openaiMock).not.toHaveBeenCalled();
 });
 
@@ -249,7 +241,6 @@ test.each([
   const res = await POST(upload({ language }));
   expect(await res.json()).toMatchObject({ text: 'გამარჯობა', provider: 'gemini' });
   expect(fetchSpy).toHaveBeenCalledTimes(1);
-  expect(replicateMock).not.toHaveBeenCalled();
   expect(openaiMock).not.toHaveBeenCalled();
 });
 

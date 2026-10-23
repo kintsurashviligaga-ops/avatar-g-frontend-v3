@@ -24,7 +24,6 @@ jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: j
 jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ response: null, auth: null, budgetRemaining: null })) }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/ai/replicate', () => ({ generateMusicCover: jest.fn(), generateVoiceSong: jest.fn(), generateMusic: jest.fn() }));
 jest.mock('../../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
 jest.mock('../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(() => true), generateLyriaTrack: jest.fn() }));
 jest.mock('../../../../lib/chat/mediaKeys', () => ({ hasUdioApiKey: jest.fn(() => true) }));
@@ -60,7 +59,6 @@ import { promptToEnglish } from '../../../../lib/ai/promptToEnglish';
 import { hashPayload } from '../../../../lib/orchestrator/idempotency';
 import { generateLyriaTrack } from '../../../../lib/ai/lyriaMusic';
 import { generateUdioTrack } from '../../../../lib/udio/client';
-import { generateMusic } from '../../../../lib/ai/replicate';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/ai/music', {
@@ -94,9 +92,11 @@ afterEach(() => {
 });
 
 function expectNoEngine(): void {
-  for (const engine of [generateLyriaTrack, generateUdioTrack, generateMusic]) {
+  for (const engine of [generateLyriaTrack, generateUdioTrack]) {
     expect(engine).not.toHaveBeenCalled();
   }
+  // MusicGen's Replicate client is gone (PR 20): the network spy is what would catch a call to it.
+  expect(fetchSpy.mock.calls.filter(([u]) => /replicate\.com/.test(String(u)))).toEqual([]);
 }
 
 test('a hostile style is capped at 80 characters and stripped of bidi/zero-width characters and the smuggled line', async () => {

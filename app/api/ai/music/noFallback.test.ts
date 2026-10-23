@@ -6,7 +6,8 @@
  *
  * Unlike the sibling suites this one runs the REAL lib/providers/latencyFailover, so the timeout and breaker legs are
  * the production code paths, not a mock's idea of them. Every provider, the ledger, storage and the idempotency store
- * are mocked — no network, no spend.
+ * are mocked — no network, no spend. MusicGen's Replicate client is gone (PR 20), so the network spy is what would catch a
+ * call to it.
  */
 jest.mock('server-only', () => ({}));
 // The platform budget guard reads a spend ledger these tests do not have, and it fails closed (MASTER TASK v3.1): here
@@ -20,7 +21,6 @@ jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: j
 jest.mock('../../../../lib/api/guard', () => ({ applyApiGuards: jest.fn(async () => ({ response: null, auth: null, budgetRemaining: null })) }));
 jest.mock('../../../../lib/api/rate-limit', () => ({ RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } } }));
 jest.mock('../../../../lib/agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn(async () => null) }));
-jest.mock('../../../../lib/ai/replicate', () => ({ generateMusicCover: jest.fn(), generateVoiceSong: jest.fn(), generateMusic: jest.fn() }));
 jest.mock('../../../../lib/udio/client', () => ({ generateUdioTrack: jest.fn() }));
 jest.mock('../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(() => true), generateLyriaTrack: jest.fn() }));
 jest.mock('../../../../lib/chat/mediaKeys', () => ({ hasUdioApiKey: jest.fn(() => true) }));
@@ -51,7 +51,6 @@ jest.mock('../../../../lib/audio/trackDuration', () => ({ probeTrackDurationSec:
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { generateLyriaTrack } from '../../../../lib/ai/lyriaMusic';
-import { generateMusic } from '../../../../lib/ai/replicate';
 import { generateUdioTrack } from '../../../../lib/udio/client';
 import { isProviderTripped, recordProviderResult } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
@@ -65,6 +64,8 @@ const post = (body: unknown) =>
 
 const BED = { prompt: 'a summer night by the sea', styles: ['pop'], durationSec: 30, tempo: 'medium', instrumental: true, vocalGender: 'auto' };
 const ENV = { ...process.env };
+/** Any request that reached Replicate (MusicGen) — refused by the spy, so a call shows up here and nowhere else. */
+const replicateCalls = () => jest.mocked(fetch).mock.calls.filter(([u]) => /replicate\.com/.test(String(u)));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -73,7 +74,6 @@ beforeEach(() => {
   (generateLyriaTrack as jest.Mock).mockResolvedValue({ base64: 'AAAA', mime: 'audio/mpeg' });
   // Every other engine WOULD succeed — so any track that comes back from one of them is a fallback that ran.
   (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
-  (generateMusic as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/track.mp3' });
   // Cover art (Pollinations) and the re-host both go through fetch — refuse them locally; the route keeps the URL.
   jest.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 500 }));
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -94,9 +94,10 @@ async function expectExplicitFailure(body: unknown, ran: jest.Mock | null): Prom
   expect(deductCredits).toHaveBeenCalledTimes(1);
   expect(refundCredits).toHaveBeenCalledTimes(1);
   expect((refundCredits as jest.Mock).mock.calls[0][2]).toMatch(/:refund$/);
-  for (const engine of [generateLyriaTrack, generateUdioTrack, generateMusic] as jest.Mock[]) {
+  for (const engine of [generateLyriaTrack, generateUdioTrack] as jest.Mock[]) {
     if (engine !== ran) expect(engine).not.toHaveBeenCalled();
   }
+  expect(replicateCalls()).toEqual([]);
 }
 
 describe('Auto — Lyria, and nothing behind it', () => {
@@ -144,9 +145,10 @@ describe.each([['MEDIA_GOOGLE_ONLY unset', ''], ['MEDIA_GOOGLE_ONLY=0, the old o
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ success: false, code: 'unsupported' });
     expect(deductCredits).not.toHaveBeenCalled();
-    for (const engine of [generateLyriaTrack, generateUdioTrack, generateMusic] as jest.Mock[]) {
+    for (const engine of [generateLyriaTrack, generateUdioTrack] as jest.Mock[]) {
       expect(engine).not.toHaveBeenCalled();
     }
+    expect(replicateCalls()).toEqual([]);
   });
 
   test('an explicit Lyria pick is Lyria', async () => {

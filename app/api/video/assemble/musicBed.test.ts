@@ -8,7 +8,8 @@
  * on Replicate MusicGen, a provider the platform no longer allows, and the film shipped with a bed nobody chose. The
  * score is one leg of a film that otherwise renders, so its failure is the leg's own explicit outcome — no music,
  * `scoreFallback: null` (the studio's "no music could be generated" note, lib/chat/filmDelivery) — never a second
- * provider. The token is SET and MusicGen is mocked to SUCCEED here, so a fallback put back would show up at once.
+ * provider. The token is SET and every request goes to a network spy, so a MusicGen call put back (its Replicate client
+ * is gone, PR 20) would show up at once.
  *
  * Driven through the single-clip path (resolveMusicBed is shared with the multi-clip saga). Every provider, the ledger,
  * storage and the stores are mocked — no network, no ffmpeg, no spend.
@@ -69,15 +70,12 @@ jest.mock('../../../../lib/chat/filmVoiceover', () => ({ textToHostedSpeech: jes
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedFilm: jest.fn() }));
 jest.mock('../../../../lib/pipeline/cost', () => ({ estimateFilmCostUsd: jest.fn(() => 0) }));
 jest.mock('../../../../lib/pipeline/checkpoints', () => ({ saveClipCheckpoints: jest.fn() }));
-// Not imported by the route any more — mocked (to SUCCEED) so a fallback put back through it would be caught.
-jest.mock('../../../../lib/ai/replicate', () => ({ generateMusic: jest.fn(async () => ({ audioUrl: 'https://replicate.delivery/musicgen.mp3' })) }));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { generateLyriaTrack, hasLyriaProvider } from '../../../../lib/ai/lyriaMusic';
 import { stitchedSeconds } from '../../../../lib/orchestrator/ffmpeg-filtergraph';
 import { VIDEO_FPS } from '../../../../lib/video/durationContract';
-import { generateMusic } from '../../../../lib/ai/replicate';
 import { muxAudioOntoVideo } from '../../../../lib/video/remixOps';
 import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
 
@@ -91,6 +89,8 @@ const post = (body: unknown) =>
 const CLIP = 'https://storage.example/clip-0.mp4';
 const FILM = { segments: [{ url: CLIP, durationSec: 8 }], scorePrompt: 'instrumental music for a quiet morning in old Tbilisi' };
 const ENV = { ...process.env };
+/** Any request that reached Replicate (MusicGen) — the spy refuses it, so a call shows up here. */
+const replicateCalls = () => jest.mocked(fetch).mock.calls.filter(([u]) => /replicate\.com/.test(String(u)));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -101,6 +101,7 @@ beforeEach(() => {
   delete process.env.MUSIC_LYRIA_VOCALS_VERIFIED;
   (hasLyriaProvider as jest.Mock).mockReturnValue(true);
   (generateLyriaTrack as jest.Mock).mockResolvedValue({ base64: 'AAAA', mime: 'audio/mpeg' });
+  jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -121,7 +122,7 @@ test('an explicitly requested score uses Lyria: an instrumental on the clip mode
     url: 'https://storage.example/scored-master.mp4', scoreFallback: 'lyria', musicUrl: 'https://storage.example/lyria-score.mp3', single: true,
   });
   expect(lyriaCall()).toMatchObject({ instrumental: true, model: 'lyria-3-clip-preview' });
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
 });
 
 test('a speech film without a music request keeps its native audio and never orders a score', async () => {
@@ -129,7 +130,7 @@ test('a speech film without a music request keeps its native audio and never ord
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ url: CLIP, scoreFallback: null, musicUrl: null, single: true });
   expect(generateLyriaTrack).not.toHaveBeenCalled();
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
   expect(muxAudioOntoVideo).not.toHaveBeenCalled();
 });
 
@@ -138,7 +139,7 @@ test('a Lyria miss leaves the film without music and says so — MusicGen is nev
   const res = await POST(post(FILM));
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ url: CLIP, scoreFallback: null, musicUrl: null, single: true });
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
   expect(muxAudioOntoVideo).not.toHaveBeenCalled();
   // Nothing was produced (no bed, no voiceover, no overlay), so the route's existing rule hands the stitch charge back.
   expect(deductCredits).toHaveBeenCalledTimes(1);
@@ -151,7 +152,7 @@ test('Lyria not configured: the same — no music, no MusicGen', async () => {
   const json = await (await POST(post(FILM))).json();
   expect(json).toMatchObject({ url: CLIP, scoreFallback: null, musicUrl: null });
   expect(generateLyriaTrack).not.toHaveBeenCalled();
-  expect(generateMusic).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
 });
 
 describe('the score is as long as Lyria is verified for', () => {
@@ -184,7 +185,7 @@ describe('a sung song (music video)', () => {
   test('before Lyria vocals are verified: no music, and no instrumental is put in its place', async () => {
     await POST(post(SONG)).catch(() => undefined);
     expect(generateLyriaTrack).not.toHaveBeenCalled();
-    expect(generateMusic).not.toHaveBeenCalled();
+    expect(replicateCalls()).toEqual([]);
   });
 
   test('once verified: the brief in English, the song language from what was typed, a tempo on the 8 s scene grid', async () => {

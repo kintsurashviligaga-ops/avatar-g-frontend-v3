@@ -1,7 +1,8 @@
 /** @jest-environment node */
 /**
  * orchestrate() and the outside engines (MASTER TASK v3.1), and the order of its first checks — behaviourally, through
- * the real router (every provider module mocked; nothing here can reach the network).
+ * the real router (every provider module mocked; nothing here can reach the network). The World Labs client is gone
+ * (PR 20), so the network spy is what would catch a call to it.
  *
  *   · The chat branches whose only engines are outside ones (music on Udio / MusicGen, the Replicate intents, the
  *     interior redesign and the 3D room) answer the paused-tool sentence before any balance read, charge or provider
@@ -34,8 +35,6 @@ jest.mock('../orchestrator/ledger', () => ({
 jest.mock('../gemini/client', () => ({ generateWithGemini: jest.fn(async () => ({ text: 'hi there', model: 'gemini-test' })) }));
 jest.mock('@anthropic-ai/sdk', () => jest.fn().mockImplementation(() => ({ messages: { create: jest.fn() } })));
 jest.mock('../udio/client', () => ({ startUdioGeneration: jest.fn(), getUdioGenerationStatus: jest.fn() }));
-jest.mock('../worldlabs/client', () => ({ generateWorldLabsInterior: jest.fn() }));
-jest.mock('../nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../replicate/client', () => ({ createPrediction: jest.fn(), pollUntilDone: jest.fn(), pollPrediction: jest.fn() }));
 jest.mock('../monetization/audit-engine', () => ({
   isFounderAuditCommand: jest.fn(() => false),
@@ -55,7 +54,6 @@ import { hasSufficientBalance } from '../orchestrator/ledger';
 import { generateWithGemini } from '../gemini/client';
 import { startUdioGeneration } from '../udio/client';
 import { createPrediction } from '../replicate/client';
-import { generateWorldLabsInterior } from '../worldlabs/client';
 import { googleOnlyMessage, GOOGLE_ONLY_CODE } from '../providers/mediaPolicy';
 
 const { __sm: sm } = jest.requireMock('./ServiceManager') as { __sm: { execute: jest.Mock; poll: jest.Mock } };
@@ -84,6 +82,8 @@ const VERTEX_ENV = {
 const ENV = ['MEDIA_GOOGLE_ONLY', 'OUTSIDE_ENGINES_APPROVED', 'FILM_ALLOW_ANONYMOUS', 'GEMINI_API_KEY', 'GEMINI_TRANSPORT', 'UDIO_API_KEY', 'REPLICATE_API_TOKEN', ...Object.keys(VERTEX_ENV)];
 const saved: Record<string, string | undefined> = {};
 let fetchSpy: jest.SpyInstance;
+/** Any request that reached World Labs (the 3D room) — the spy refuses it, so a call shows up here. */
+const worldLabsCalls = () => fetchSpy.mock.calls.filter(([u]) => /worldlabs\.ai/.test(String(u)));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -107,7 +107,7 @@ afterEach(() => {
 function expectNoOutsideEngine(): void {
   expect(startUdioGeneration).not.toHaveBeenCalled();
   expect(createPrediction).not.toHaveBeenCalled();
-  expect(generateWorldLabsInterior).not.toHaveBeenCalled();
+  expect(worldLabsCalls()).toEqual([]);
   expect(hasSufficientBalance).not.toHaveBeenCalled();
   expect(sm.execute).not.toHaveBeenCalled();
 }
@@ -173,7 +173,7 @@ describe('an explicit film dispatch reaches the film pipeline whatever the brief
     const res = await orchestrate(input({ message, metadata }));
     expect(handleFilmComposite).toHaveBeenCalledTimes(1);
     expect(res.metadata).toMatchObject({ provider: 'film' });
-    expect(generateWorldLabsInterior).not.toHaveBeenCalled();
+    expect(worldLabsCalls()).toEqual([]);
   });
 
   it('a storyboard render with a reference photo is not answered as text by the vision branch', async () => {

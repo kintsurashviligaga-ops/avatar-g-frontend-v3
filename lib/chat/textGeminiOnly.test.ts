@@ -35,8 +35,6 @@ jest.mock('../gemini/client', () => ({ generateWithGemini: jest.fn() }));
 // Claude must never be reached: constructing the client fails the test (it used to be the specialist lead and the fallback).
 jest.mock('@anthropic-ai/sdk', () => jest.fn().mockImplementation(() => ({ messages: { create: jest.fn(async () => ({ model: 'claude', content: [{ type: 'text', text: 'from claude' }], usage: {} })) } })));
 jest.mock('../udio/client', () => ({ startUdioGeneration: jest.fn(), getUdioGenerationStatus: jest.fn() }));
-jest.mock('../worldlabs/client', () => ({ generateWorldLabsInterior: jest.fn() }));
-jest.mock('../nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../replicate/client', () => ({ createPrediction: jest.fn(), pollUntilDone: jest.fn(), pollPrediction: jest.fn() }));
 jest.mock('../monetization/audit-engine', () => ({
   isFounderAuditCommand: jest.fn(() => false),

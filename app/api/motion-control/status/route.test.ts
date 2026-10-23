@@ -19,7 +19,6 @@ jest.mock('../../../../lib/orchestrator/jobs', () => ({
   jobOwnerId: jest.fn(async () => 'user-1'),
 }));
 jest.mock('../../../../lib/orchestrator/ledger', () => ({ refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 5 })) }));
-jest.mock('../../../../lib/ai/replicate', () => ({ generateMusic: jest.fn() }));
 jest.mock('../../../../lib/video/remixOps', () => ({ muxAudioOntoVideo: jest.fn(), fitAspect: jest.fn(async () => 'https://x.supabase.co/fitted.mp4') }));
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 

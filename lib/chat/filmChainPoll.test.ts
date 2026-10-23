@@ -33,8 +33,6 @@ jest.mock('./filmBilling', () => ({ recordFilmScenes: (...a: unknown[]) => mockR
 jest.mock('../gemini/client', () => ({ generateWithGemini: jest.fn() }));
 jest.mock('@anthropic-ai/sdk', () => jest.fn().mockImplementation(() => ({ messages: { create: jest.fn() } })));
 jest.mock('../udio/client', () => ({ startUdioGeneration: jest.fn(), getUdioGenerationStatus: jest.fn() }));
-jest.mock('../worldlabs/client', () => ({ generateWorldLabsInterior: jest.fn() }));
-jest.mock('../nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../replicate/client', () => ({ createPrediction: jest.fn(), pollUntilDone: jest.fn(), pollPrediction: jest.fn() }));
 jest.mock('../monetization/audit-engine', () => ({
   isFounderAuditCommand: jest.fn(() => false), isFounder: jest.fn(() => false), runFounderAudit: jest.fn(),
