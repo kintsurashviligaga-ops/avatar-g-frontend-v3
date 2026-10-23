@@ -9,9 +9,12 @@
  *
  * The share sheet needs a fresh tap, and fetching a large clip can outlast it. Then nothing is lost: the file is kept and
  * offered once more behind one tap (the `myavatar:save-ready` event, drawn by components/studio/ui/SaveReadyPrompt).
+ * Other devices can start our signed Storage attachments after a bounded metadata
+ * request, without buffering the full file in JavaScript. `started` is not a
+ * transfer-completion acknowledgement; unsupported links retain the byte path.
  */
 
-export type SaveOutcome = 'shared' | 'downloaded' | 'cancelled' | 'needs-tap' | 'opened';
+export type SaveOutcome = 'shared' | 'downloaded' | 'started' | 'cancelled' | 'needs-tap' | 'opened';
 
 interface ShareNav {
   canShare?: (d: { files?: File[] }) => boolean;
@@ -64,6 +67,44 @@ function downloadBlob(blob: Blob, name: string): void {
   setTimeout(() => URL.revokeObjectURL(href), 5000);
 }
 
+/** Only our existing signed Storage links qualify; possession of that token is unchanged. */
+function storageAttachment(url: string, name: string): URL | null {
+  try {
+    const origin = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '');
+    const asset = new URL(url);
+    if (origin.protocol !== 'https:' || asset.origin !== origin.origin || asset.username || asset.password) return null;
+    if (!/^\/storage\/v1\/object\/sign\/[^/]+\/.+/.test(asset.pathname) || !asset.searchParams.get('token')) return null;
+    asset.hash = '';
+    asset.searchParams.set('download', name);
+    return asset;
+  } catch { return null; }
+}
+
+/** Browser-managed attachment: headers suffice; the browser owns the subsequent transfer. */
+async function startStorageDownload(url: string, base: string, fallbackExt?: string): Promise<boolean> {
+  const attachment = storageAttachment(url, fileNameFor(base, '', url, fallbackExt));
+  if (!attachment) return false;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const headers = await fetch(attachment.href, { method: 'HEAD', cache: 'no-store', redirect: 'error', signal: controller.signal });
+    const mime = headers.headers.get('content-type') ?? '';
+    // Content-Type is CORS-readable. Content-Disposition need not be exposed to
+    // JS: Storage's documented `download` parameter makes the GET an attachment.
+    if (!headers.ok || !/^(image|video|audio)\//i.test(mime)) return false;
+    const name = fileNameFor(base, mime, url, fallbackExt);
+    attachment.searchParams.set('download', name);
+    const a = document.createElement('a');
+    a.href = attachment.href;
+    a.download = name;
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    try { a.click(); } finally { a.remove(); }
+    return true;
+  } catch { return false; }
+  finally { clearTimeout(timer); }
+}
+
 /** Hand a file already in memory to the share sheet (from a fresh tap). */
 export async function shareFile(file: File, nav: ShareNav = navigator as ShareNav): Promise<SaveOutcome> {
   try {
@@ -83,6 +124,10 @@ export async function shareFile(file: File, nav: ShareNav = navigator as ShareNa
  * offline) is opened instead, which beats a button that does nothing.
  */
 export async function saveMedia(url: string, base: string, opts: { fallbackExt?: string } = {}): Promise<SaveOutcome> {
+  const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as ShareNav | undefined;
+  // Apple Photos sharing still needs a complete File and a fresh user gesture.
+  // "started" deliberately does not claim that the browser has finished saving.
+  if (typeof document !== 'undefined' && !isAppleTouch(nav) && await startStorageDownload(url, base, opts.fallbackExt)) return 'started';
   let blob: Blob;
   try {
     const r = await fetch(url, { cache: 'no-store' });
@@ -93,7 +138,6 @@ export async function saveMedia(url: string, base: string, opts: { fallbackExt?:
     return 'opened';
   }
   const name = fileNameFor(base, blob.type, url, opts.fallbackExt);
-  const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as ShareNav | undefined;
   if (nav && isAppleTouch(nav) && belongsInPhotos(blob.type) && typeof nav.share === 'function') {
     const file = new File([blob], name, { type: blob.type });
     if (nav.canShare?.({ files: [file] })) {
