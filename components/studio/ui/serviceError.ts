@@ -40,7 +40,10 @@ type Known =
   // project; first seen with ElevenLabs, 2026-10-17 09:31Z) — a retry cannot help, so its copy never says "try again".
   | 'voice_unavailable' | 'speech_too_long' | 'voice_off'
   // 423 `locked`: the tool is not open to this account yet (app/api/avatar/veo, the VFX ops) — refused before any charge.
-  | 'locked';
+  | 'locked'
+  // 422 `capability_unavailable`: no verified Google engine does this (MASTER TASK v3.1; the custom avatar, lib/avatar/
+  // curated) — refused before any charge. The route's own sentence names the gap and wins; this line is its fallback.
+  | 'capability_unavailable';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -72,6 +75,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     speech_too_long: 'ტექსტი ავატარის 8 წამს არ ეტევა. შეამოკლე და სცადე ხელახლა — თანხა არ ჩამოგეჭრა.',
     voice_off: 'ქართული ხმა ახლა გამორთულია, ამიტომ ავატარი ვერ გაკეთდება. თანხა არ ჩამოგეჭრა.',
     locked: 'ეს ხელსაწყო შენს ანგარიშზე ჯერ ხელმისაწვდომი არ არის. თანხა არ ჩამოგეჭრა.',
+    capability_unavailable: 'ეს შესაძლებლობა Google-ზე ჯერ ხელმისაწვდომი არ არის. თანხა არ ჩამოგეჭრა.',
   },
   en: {
     insufficient_credits: 'Not enough credits. Top up your balance and try again.',
@@ -102,6 +106,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     speech_too_long: 'The line does not fit the avatar’s 8 seconds. Shorten it and try again — you were not charged.',
     voice_off: 'The Georgian voice is switched off right now, so the avatar cannot be made. You were not charged.',
     locked: 'This tool isn’t available on your account yet. You were not charged.',
+    capability_unavailable: 'This isn’t available on Google yet. You were not charged.',
   },
   ru: {
     insufficient_credits: 'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
@@ -132,6 +137,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     speech_too_long: 'Текст не помещается в 8 секунд аватара. Сократите его и попробуйте снова — списания не было.',
     voice_off: 'Грузинский голос сейчас отключён, поэтому аватар не получится. Списания не было.',
     locked: 'Этот инструмент пока недоступен для вашего аккаунта. Списания не было.',
+    capability_unavailable: 'Эта возможность пока недоступна в Google. Списания не было.',
   },
 };
 
@@ -161,6 +167,7 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^speech_too_long$/, 'speech_too_long'],
   [/^voice_off$/, 'voice_off'],
   [/^locked$/, 'locked'],
+  [/^capability_unavailable$/, 'capability_unavailable'],
   [/^not_configured$/, 'provider_not_configured'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often
   // as "not enough". A false positive here is a slightly-wrong-but-actionable message; a miss is a
@@ -230,6 +237,10 @@ export function describeGenerationFailure(body: unknown, locale: string, fallbac
   if (b.code === 'platform_budget' || b.error === 'platform_budget') {
     if (typeof b.message === 'string' && b.message.trim()) return b.message;
     return budgetRefusalMessage(lang, typeof b.budgetReason === 'string' ? b.budgetReason : null);
+  }
+  // A capability gap is named by the route (lib/avatar/curated: which avatar is not available, and what still works).
+  if ((b.code === 'capability_unavailable' || b.error === 'capability_unavailable') && typeof b.message === 'string' && b.message.trim()) {
+    return b.message;
   }
   if (b.refunded === true && b.success !== true) return COPY[lang].generation_refunded;
   for (const field of [b.code, b.error]) {

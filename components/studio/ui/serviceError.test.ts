@@ -10,6 +10,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './serviceError';
+import { customAvatarBody } from '../../../lib/avatar/curated';
 import { budgetRefusalMessage } from '../../../lib/services/billing/budgetMessage';
 
 const KA_FALLBACK = 'ვერ მოხერხდა';
@@ -222,6 +223,15 @@ describe('describeGenerationFailure — the platform\'s AI limit (2026-10-16)', 
 });
 
 describe('the avatar route’s refusals read as what happened (GG 2026-10-18)', () => {
+  // MASTER TASK v3.1 PR 9: the custom-avatar refusal says its own gap; without a sentence the code still has a line.
+  it('422 capability_unavailable shows the route\'s own sentence, else its own line, never the generic one', () => {
+    const body = customAvatarBody('en');
+    expect(describeGenerationFailure(body, 'en', 'FALLBACK')).toBe(body.message);
+    expect(describeGenerationFailure({ success: false, error: 'capability_unavailable' }, 'en', 'FALLBACK')).toBe('This isn’t available on Google yet. You were not charged.');
+    expect(describeGenerationFailure({ success: false, code: 'capability_unavailable' }, 'ka', 'FALLBACK')).toContain('Google-ზე');
+    expect(describeGenerationFailure({ success: false, code: 'capability_unavailable' }, 'ru', 'FALLBACK')).toContain('Списания не было');
+  });
+
   it('423 locked, speech_too_long and voice_off each have their own line, never the generic one', () => {
     for (const l of ['ka', 'en', 'ru']) {
       for (const error of ['locked', 'speech_too_long', 'voice_off']) {

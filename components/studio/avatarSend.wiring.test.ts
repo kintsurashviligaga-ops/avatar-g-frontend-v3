@@ -12,23 +12,25 @@ const src = readFileSync(join(__dirname, 'OmniStudio.tsx'), 'utf8');
 const lip = src.slice(src.indexOf("if (effMode === 'lipsync') {"), src.indexOf('// ── CHAT (multimodal Gemini)'));
 
 describe('avatar send wiring', () => {
-  it('a refused start stops the retries and shows its own reason', () => {
-    expect(lip).toMatch(/refusal = startRefusal\(startJson\);\s*if \(refusal\) break;/);
-    expect(lip).toContain('describeGenerationFailure(refusal.body, locale, t.lipsyncFailed)');
+  // MASTER TASK v3.1 PR 9 (GG, 2026-10-22: built-in avatars only): the HeyGen presenter and the /api/video/lipsync dub,
+  // which the Google-only boundary refused (their 3× retry of a 503 ended in "re-attach the photo", 2026-10-16), are gone.
+  it('the avatar calls the Veo avatar only: no HeyGen presenter, no lip-sync dub, no upload of the face', () => {
+    expect(lip).toContain("fetch('/api/avatar/veo'");
+    expect(lip).not.toContain('/api/heygen/');
+    expect(lip).not.toContain('/api/video/lipsync');
+    expect(lip).not.toContain('uploadBigFile(');
   });
-  it('only the spoken words reach the voice, in both the presenter and the photo path', () => {
-    expect(lip).toContain('splitAvatarScript(text).speech');
-    expect(lip).toContain('JSON.stringify({ text: spoken, orientation: lipOrientation, gender: voiceGender })');
-    expect(lip).toContain('...(spoken ? { text: spoken } : {})');
-    expect(lip).not.toMatch(/\.\.\.\(text \? \{ text \} : \{\}\)/);
+  it('only the spoken words reach the voice', () => {
+    expect(lip).toContain('const spoken = splitAvatarScript(text).speech || text;');
+    expect(lip).toContain('avatar: lipFace, speech: spoken, direction: splitAvatarScript(text).direction, aspect: veoAspect, voiceGender,');
+    expect(lip).not.toMatch(/speech: text[,\s]/);
   });
-  it('the card, Veo, presenter and dub use the same resolved voice; auto never reaches a voice API', () => {
+  it('the card and Veo use the same resolved voice; auto never reaches a voice API', () => {
     expect(src).toContain('avatarVoiceGender(lipGender, hintText)');
     expect(src).toContain('gender: resolveLipGender(promptText)');
     expect(src).toContain('gender: resolveLipGender(text)');
     expect(lip).toContain('const voiceGender = resolveLipGender(text);');
     expect(lip).toContain('aspect: veoAspect, voiceGender,');
-    expect(lip).toContain('...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: voiceGender })');
     expect(lip).not.toContain('gender: lipGender');
   });
 });
@@ -51,24 +53,44 @@ describe('avatar panel and Live hand-off wiring (GG 2026-10-16)', () => {
 });
 
 describe('Veo avatar wiring (GG chose Veo, 2026-10-16)', () => {
-  it('a photo with words tries the Google Veo avatar first and polls the scene status route; 423 falls back', () => {
+  it('a built-in face with words goes to the Google Veo avatar and polls the scene status route; 423 is said, not fallen back from', () => {
     expect(lip).toContain("fetch('/api/avatar/veo'");
-    expect(lip).toContain('if (veoRes.status !== 423)');
     expect(lip).toContain('/api/genjutsu/status?id=');
-    expect(lip).toMatch(/if \(!audioUrl && spoken && /);
+    expect(lip).toContain(': veoRes.status === 423 ? avatarUnavailableText(locale) : describeGenerationFailure(vj, locale, t.lipsyncFailed);');
+    expect(lip).not.toContain('veoRes.status !== 423');
+  });
+});
+
+describe('built-in avatars only (GG, 2026-10-22; MASTER TASK v3.1 PR 9)', () => {
+  const send = src.slice(src.indexOf('const send = useCallback(async'), src.indexOf("if (effMode === 'lipsync') {"));
+  const sayGap = "setMessages((prev) => [...prev, { role: 'assistant', text: customAvatarText(locale, { kept: true }), notice: true }]);";
+  it('the face is the picked preset or a ready presenter, and only a built-in face is named to the server', () => {
+    expect(lip).toContain('const lipFace = curatedAvatarFace(lipPreset ?? stockAvatarFace(voiceGender, veoAspect));');
+    expect(lip).toContain("const ownFace = cardFace || attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType) || isAudio(a.mimeType));");
+  });
+  it('an own photo, video, voice or twin face says the gap and returns BEFORE the draft is cleared or anything is sent', () => {
+    const gate = lip.indexOf('if (ownFace || !lipFace) {');
+    expect(gate).toBeGreaterThan(0);
+    expect(lip.slice(gate, gate + 220)).toContain(sayGap);
+    expect(lip.slice(gate, gate + 220)).toMatch(/notice: true \}\]\);\s*return;/);
+    expect(gate).toBeLessThan(lip.indexOf("setInput(''); setAttachments([]); setBusy(true);"));
+    expect(gate).toBeLessThan(lip.indexOf("fetch('/api/avatar/veo'"));
+  });
+  it('the composer gate and the chat order say the same gap before any card or price, keeping the draft', () => {
+    const gate = send.slice(send.indexOf("if (gateMode === 'avatar') {"));
+    expect(gate).toContain("const customFace = hasAudio || attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) || (!!lipPreset && !curatedAvatarFace(lipPreset));");
+    expect(gate.indexOf(sayGap)).toBeLessThan(gate.indexOf('const card: AgentGCardState = { kind: verdict.kind'));
+    expect(src).toMatch(/if \(customFace && avatarDoor\?\.open\) \{\s*gatePendingRef\.current = null;\s*setMessages\(\(prev\) => \[\.\.\.prev, \{ role: 'assistant', text: customAvatarText\(locale, \{ kept: true \}\), notice: true \}\]\);\s*return;/);
+    // No card offers "your photo" any more, and no retake carries one.
+    expect(src).not.toContain("? 'photo' : lipPreset ? 'preset' : 'stock'");
+    expect(src).not.toContain('refImage: spec.photo');
+    expect(src).not.toContain('refImage: photo.dataUrl');
   });
 });
 
 describe('a talking avatar ordered with no photo, in the chat or the avatar tool (GG, 2026-10-17 07:39Z)', () => {
   const send = src.slice(src.indexOf('const send = useCallback(async'), src.indexOf("if (effMode === 'lipsync') {"));
-  it('no photo and no preset: a ready presenter where the Veo avatar is open; HeyGen only when it is closed', () => {
-    expect(lip).toContain('const veoDoor = !faceAtt && !lipPreset && text && !audioAtt ? await readVeoAvatarDoor() : null;');
-    expect(lip).toContain('const lipFace = lipPreset ?? (veoDoor?.open ? stockAvatarFace(voiceGender, veoAspect) : null);');
-    expect(lip).toContain('if (!faceAtt && !lipFace && text) {');
-    expect(lip).toContain('const chosenPreset = lipFace;');
-  });
-  it('Veo gets the voice’s gender, the frame and the price on screen; a video face stays a dub', () => {
-    expect(lip).toMatch(/if \(!audioUrl && spoken && \(!faceAtt \|\| isImage\(faceAtt\.mimeType\)\)\)/);
+  it('Veo gets the voice’s gender, the frame and the price on screen', () => {
     expect(lip).toContain('aspect: veoAspect, voiceGender,');
     expect(lip).toContain('expectedCredits: veoDoorRef.current.credits');
   });
@@ -102,7 +124,7 @@ describe('a talking avatar ordered with no photo, in the chat or the avatar tool
     expect(lip).not.toMatch(/for \(let i = 0; i < 60 && vj\.jobId/);
   });
   it('in the chat the order gets Agent G’s card, and its yes renders it as the avatar tool’s — no chat route reads it again', () => {
-    expect(send).toContain("kind: 'confirm', target: 'avatar', prompt: text, credits: avatarDoor.credits, madeIn: 'chat', aspect,");
+    expect(send).toContain("kind: 'confirm', target: 'avatar', prompt: text, credits: avatarDoor.credits, madeIn: 'chat', aspect };");
     expect(send).toContain("const chatAvatar = mode === 'chat' && opts?.confirmed === true && opts.target === 'avatar';");
     expect(send).toContain("if (chatAvatar) effMode = 'lipsync';");
     expect(send).toContain("const studio = mode === 'chat' && !chatAvatar ? detectStudioIntent(text) : null;");

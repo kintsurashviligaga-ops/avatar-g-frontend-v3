@@ -100,15 +100,14 @@ import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsWithUsd } from '@/lib/credits/pricing';
 import { budgetShortLabel } from '@/lib/services/billing/budgetMessage';
-import { nextAvatarAttempt, startRefusal } from '@/lib/avatar/renderAttempts';
 import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob';
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
 import { avatarRetakeText, filmRefineNote, improvedBrief, refineChange } from '@/lib/chat/refineRequest';
 import { quoteSceneRedo, runSceneRedo, sceneRedoAsk, sceneRedoOfferText, sceneRedoProgressText, sceneRedoResultText, weakScenesText } from '@/lib/chat/filmSceneRedoClient';
 import { type AvatarFace, avatarAskLineText, avatarVoiceGender, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
+import { curatedAvatarFace, customAvatarText } from '@/lib/avatar/curated';
 import { GENJUTSU_HARD_CAP_MS } from '@/lib/genjutsu/limits';
-import { twinCopy } from '@/components/twin/copy';
-import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
+import { RehostSourceError, fetchRehostSource } from '@/components/twin/rehostSource';
 import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/useMyTwin';
 /** The avatar gallery's first card: opens the user's own face photo picker (it is not a preset). */
 const OWN_PHOTO_CARD_ID = 'own-photo';
@@ -1155,7 +1154,7 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   /** A delivered film's own brief, length, frame and references: „უკეთესად გააკეთე" re-plans THIS film (lib/chat/refineRequest). Never persisted. */
   filmSpec?: FilmRefineSpec;
   /** A delivered talking avatar's order: „უკეთესად გააკეთე" offers another take of the same line. Never persisted. */
-  avatarSpec?: { prompt: string; aspect: '9:16' | '16:9'; photo?: string };
+  avatarSpec?: { prompt: string; aspect: '9:16' | '16:9' };
   /** The assembler's quality check on a finished film (FilmQaBadge under the player). */
   filmQa?: FilmQaSummary;
   /** Orientation of a video result, so the player uses the right aspect box on reload. */
@@ -6703,7 +6702,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const spec = last.avatarSpec;
           const card: AgentGCardState = {
             kind: 'confirm', target: 'avatar', prompt: spec.prompt, credits: door.credits, aspect: spec.aspect,
-            ...(spec.photo ? { refImage: spec.photo } : {}), ...(mode === 'chat' ? { madeIn: 'chat' as const } : {}),
+            ...(mode === 'chat' ? { madeIn: 'chat' as const } : {}),
           };
           gatePendingRef.current = null;
           trackQuoteShown(serviceForTool('avatar'), door.credits, 'agent-card');
@@ -6866,6 +6865,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // avatar not public) got a priced card whose Create fell to routes that refuse; an order with no line got a card that
         // read the ORDER aloud; a line past 8 s was refused only after Create. Each is now said in words, before any card.
         if (gateMode === 'avatar') {
+          // Built-in avatars only (GG, 2026-10-22; MASTER TASK v3.1 PR 9): an own photo, video, voice or twin face gets the
+          // gap in words, before any card or price, and the draft stays in the composer (lib/avatar/curated).
+          const customFace = hasAudio || attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) || (!!lipPreset && !curatedAvatarFace(lipPreset));
+          if (door?.open && customFace) {
+            gatePendingRef.current = null;
+            setMessages((prev) => [...prev, { role: 'assistant', text: customAvatarText(locale, { kept: true }), notice: true }]);
+            return;
+          }
           const line = splitAvatarScript(promptText);
           const isMultiScene = /(?:სცენა\s*[1-9]|scene\s*[1-9]|\d+[- ]?სცენიან)/iu.test(promptText);
           const fit = !isMultiScene && line.speech && !hasAudio ? avatarLineFit(line.speech) : null;
@@ -6892,7 +6899,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           ? avatarOfferText({
             speech: avatarLine.speech, direction: avatarLine.direction, gender: resolveLipGender(promptText),
             aspect: (aspectFromText(promptText, { ratioOnly: true }) ?? lipFormat) === '16:9' ? '16:9' : '9:16',
-            face: attachments.some((a) => isImage(a.mimeType)) ? 'photo' : lipPreset ? 'preset' : 'stock', credits, locale,
+            face: lipPreset ? 'preset' : 'stock', credits, locale,
           })
           : gateMessage({ kind: verdict.kind, mode: gateMode, prompt: promptText, locale });
         setMessages((prev) => [
@@ -7087,10 +7094,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // THE TALKING AVATAR RUNS IN THE CHAT (GG 2026-10-16 18:21Z: every service in the chat; 2026-10-17 07:39Z: „შექმენი
       // ავატარი რომელიც ამბობს ქართულად: …" made nothing). An order that names its line gets Agent G's card where the Veo
       // avatar is open to the caller: the line, the voice, the face, the frame and Veo's price; its Create or a „კი" renders
-      // it (send with target 'avatar'). The photo attached with the order is the face. Without a line, or with the door
-      // closed, the Avatar tool opens as before.
+      // it (send with target 'avatar'). Without a line, or with the door closed, the Avatar tool opens as before.
+      // Built-in avatars only (GG, 2026-10-22; MASTER TASK v3.1 PR 9): an order sent with a photo, a video or a voice, or
+      // with the twin's face picked, is a custom avatar: the gap is said and the draft stays (lib/avatar/curated).
+      const customFace = studio.service === 'avatar'
+        && (attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType) || isAudio(a.mimeType)) || (!!lipPreset && !curatedAvatarFace(lipPreset)));
       const avatarLine = studio.service === 'avatar' && !attachments.some((a) => !isImage(a.mimeType)) ? splitAvatarScript(text) : null;
-      const avatarDoor = avatarLine ? await readVeoAvatarDoor() : null;
+      const avatarDoor = avatarLine || customFace ? await readVeoAvatarDoor() : null;
+      if (customFace && avatarDoor?.open) {
+        gatePendingRef.current = null;
+        setMessages((prev) => [...prev, { role: 'assistant', text: customAvatarText(locale, { kept: true }), notice: true }]);
+        return;
+      }
       // GG 2026-10-18: a bare order („შემიქმენი ავატარი") read ITSELF aloud on a paid card. Now: the door closed → said
       // plainly; no line → Agent G asks for it (the next message is the line, kept with the order's look); a line too long
       // for the 8 s clip → asked to shorten. No card, no price, nothing started — the photo stays attached for the answer.
@@ -7109,26 +7124,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
       }
       if (avatarLine?.speech && avatarDoor?.open) {
-        const photo = attachments.find((a) => isImage(a.mimeType));
         const ratio = aspectFromText(text, { ratioOnly: true });
         const aspect: '9:16' | '16:9' = (ratio ?? lipFormat) === '16:9' ? '16:9' : '9:16';
-        const face: AvatarFace = photo ? 'photo' : lipPreset ? 'preset' : 'stock';
-        const card: AgentGCardState = {
-          kind: 'confirm', target: 'avatar', prompt: text, credits: avatarDoor.credits, madeIn: 'chat', aspect,
-          ...(photo ? { refImage: photo.dataUrl } : {}),
-        };
+        const face: AvatarFace = lipPreset ? 'preset' : 'stock';
+        const card: AgentGCardState = { kind: 'confirm', target: 'avatar', prompt: text, credits: avatarDoor.credits, madeIn: 'chat', aspect };
         gatePendingRef.current = null;
         trackQuoteShown(serviceForTool('avatar'), avatarDoor.credits, 'agent-card');
         setMessages((prev) => [
           ...prev,
-          { role: 'user', text, ...(photo ? { medias: [photo], modelMedias: [] } : {}) },
+          { role: 'user', text },
           {
             role: 'assistant', agentG: card,
             text: avatarOfferText({ speech: avatarLine.speech, direction: avatarLine.direction, gender: resolveLipGender(text), aspect, face, credits: avatarDoor.credits, locale }),
           },
         ]);
         setGateFrom(messages.length);
-        if (photo) setAttachments([]);
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         return;
       }
@@ -7550,30 +7560,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return;
     }
 
-    // ── LIP-SYNC / DUB FROM TEXT ───────────────────────────────────────────────
-    // Attach a video → type a script → it's spoken (ElevenLabs, optionally re-voiced in
-    // the user's TRAINED voice via RVC) → Wav2Lip keys the character's lips to that
-    // audio. A direct audio attachment also works (skips TTS). One long request → the
-    // synced master, rendered inline like any other video result.
+    // ── THE TALKING AVATAR ─────────────────────────────────────────────────────
+    // A built-in avatar says the typed words on Google Veo (GG's choice, 2026-10-16; app/api/avatar/veo). BUILT-IN AVATARS
+    // ONLY (GG, 2026-10-22; MASTER TASK v3.1 PR 9): the face is the preset picked in the panel, else a ready presenter of
+    // the voice's gender and the frame's shape, and the browser only NAMES it (the server reads it from its own files).
+    // An own photo, a video to dub, a recorded or uploaded voice and the Digital Twin's face are custom avatars: the gap is
+    // said in the chat and the draft stays in the composer (lib/avatar/curated), before anything is uploaded or charged.
+    // The HeyGen presenter and the /api/video/lipsync dub, which the Google-only boundary refuses, are no longer called.
     // effMode, not mode: an unmistakable image/video/music command typed while the composer happens to be
     // parked in avatar mode belongs to that service, not to this one. See the mode-release guard above.
     if (effMode === 'lipsync') {
-      // Output format the user picked: presenter dimension + the result player's box.
-      const lipOrientation = lipFormat === '9:16' ? 'vertical' : lipFormat === '1:1' ? 'square' : 'landscape';
-      const lipResultOrientation: 'landscape' | 'vertical' = lipFormat === '16:9' ? 'landscape' : 'vertical';
-      // A render still going when the poll budget ran out. It is already paid for (reserved at POST), so no fallback
-      // starts a second paid job beside it (lib/avatar/renderAttempts) — the user is told it ran long instead.
+      // A render still going when the poll budget ran out. It is already paid for (reserved at POST), so nothing starts a
+      // second paid job beside it — the user is told it ran long instead.
       const lipStillRendering = locale === 'en'
         ? 'The avatar is still rendering after several minutes, so we stopped waiting. Please try again later.'
         : locale === 'ru'
           ? 'Аватар всё ещё рендерится спустя несколько минут — ожидание остановлено. Попробуйте позже.'
           : 'ავატარი რამდენიმე წუთის შემდეგაც მზადდება — ლოდინი შევწყვიტეთ. სცადე მოგვიანებით.';
-      // The "face" can be a VIDEO or a still PHOTO (Wav2Lip animates a portrait into a
-      // talking clip) → covers both "dub a video" and "make a character speak".
-      // An avatar agreed on a card carries the photo sent with its order (its refImage): a chat order, or a re-take.
-      const cardFace: Media | undefined = opts?.refImage ? { dataUrl: opts.refImage, mimeType: /^data:([^;,]+)/.exec(opts.refImage)?.[1] ?? 'image/jpeg' } : undefined;
-      const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType)) ?? cardFace;
-      const audioAtt = attachments.find((a) => isAudio(a.mimeType));
+      // An avatar agreed on an older card can carry the photo sent with its order (its refImage): a custom face now.
+      const cardFace = !!opts?.refImage;
+      const ownFace = cardFace || attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType) || isAudio(a.mimeType));
       // Only the words go to the voice. "The avatar, emotionally, says: …" was read out whole (Production 2026-10-16):
       // the direction part ("emotionally, with gestures") is how it behaves, not what it says (lib/avatar/scriptSplit).
       const spoken = splitAvatarScript(text).speech || text;
@@ -7581,213 +7587,56 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const voiceGender = resolveLipGender(text);
       const namedRatio = opts?.aspect ?? (text ? aspectFromText(text, { ratioOnly: true }) : null);
       const veoAspect: '9:16' | '16:9' = (namedRatio ?? lipFormat) === '16:9' ? '16:9' : '9:16';
-      // ⚠️ NO PHOTO AND NO PRESET WENT TO THE HEYGEN PRESENTER, which the Google-only boundary refuses (GG, 2026-10-17
-      // 07:39Z: „ეს ხელსაწყო დროებით შეჩერებულია…", nothing made). Where the Veo avatar is open to this caller a ready
-      // presenter of the voice's gender and the frame's shape is the face (lib/avatar/chatAvatar), and Veo renders it below.
-      const veoDoor = !faceAtt && !lipPreset && text && !audioAtt ? await readVeoAvatarDoor() : null;
-      const lipFace = lipPreset ?? (veoDoor?.open ? stockAvatarFace(voiceGender, veoAspect) : null);
-      // PRESENTER — no face photo AND no chosen preset, but a typed script → a
-      // consistent stock avatar speaks it in the CLONED Georgian voice (audio-driven
-      // HeyGen). START + POLL, mobile-safe. (A face OR a preset falls through to the
-      // talking-photo flow below.)
-      if (!faceAtt && !lipFace && text) {
-        setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: t.generatingLipsync, genKind: 'lipsync' }]);
-        setInput(''); setAttachments([]); setBusy(true);
-        try {
-          // Two-phase START (each request stays well under the gateway timeout):
-          // A) synthesize the cloned-voice audio, B) submit it to HeyGen → videoId.
-          const synRes = await fetch('/api/heygen/presenter', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            // Honour the panel's Voice (Female/Male) + Format selections.
-            body: JSON.stringify({ text: spoken, orientation: lipOrientation, gender: voiceGender }),
-          });
-          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string; error?: string; code?: string };
-          let sj: { success?: boolean; videoId?: string; error?: string; code?: string } = {};
-          // ONE ENGINE: the presenter is HeyGen. Without it the server refuses Phase A before charging (no SadTalker leg).
-          if (syn.success && syn.audioUrl && syn.heygenReady !== false) {
-            const genRes = await fetch('/api/heygen/presenter', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-              // chargeToken = Phase A's price hold; the server releases it as it reserves this render (one presenter, one charge).
-              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation, chargeToken: syn.chargeToken }),
-            });
-            sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string; error?: string; code?: string };
-          }
-          let url: string | null = null;
-          // Say why a start was refused (not configured, no credits) instead of the generic "lip-sync failed".
-          let failReason: string | null = !syn.success && (syn.code || syn.error) ? describeGenerationFailure(syn, locale, t.lipsyncFailed)
-            : syn.success && !sj.success && (sj.code || sj.error) ? describeGenerationFailure(sj, locale, t.lipsyncFailed) : null;
-          const heygenVideoId = sj.success && sj.videoId ? sj.videoId : null;
-          let heygenSettled = false;
-          if (heygenVideoId) {
-            for (let i = 0; i < 90 && !url && !failReason; i++) { // ~9 min of quick polls
-              if (!mine()) return;
-              await new Promise((r) => setTimeout(r, 6000));
-              const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(heygenVideoId)}`, { credentials: 'include', signal: ac.signal });
-              const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
-              // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
-              // `refunded: true` (the GET's refund landed) → the one refund notice; otherwise the mapped failure code.
-              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeGenerationFailure(pj, locale, t.lipsyncFailed); break; }
-            }
-            // ⚠️ Out of polls with no verdict = the HeyGen video is STILL RENDERING, and it is paid for. Falling back
-            // here reserved a second price for the same presenter (or 402'd a user who could afford exactly one).
-            if (!url && !heygenSettled) failReason = lipStillRendering;
-          }
-          // ⚠️ NO SADTALKER LEG (the owner, 2026-10-09: no silent fallback to another outside provider). HeyGen unavailable or a
-          // terminal HeyGen failure (refunded by its poll; Phase B's own refusals refund themselves) ends here with its reason.
-          setMessages((prev) => {
-            if (!mine()) return prev;
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync', orientation: lipResultOrientation } : { role: 'assistant', text: `⚠️ ${failReason || t.lipsyncFailed}` };
-            return next;
-          });
-          if (mine() && url) notifyCredit('avatar');
-          else if (mine()) trackGenerationFailed('avatar.talking', failReason ? 'refused' : 'no_result');
-        } catch {
-          if (!mine()) return;
-          trackGenerationFailed('avatar.talking', 'exception');
-          setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` }; return next; });
-        } finally {
-          if (mine()) setBusy(false);
-        }
+      const lipFace = curatedAvatarFace(lipPreset ?? stockAvatarFace(voiceGender, veoAspect));
+      if (ownFace || !lipFace) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: customAvatarText(locale, { kept: true }), notice: true }]);
         return;
       }
-      if ((!faceAtt && !lipFace) || (!text && !audioAtt)) {
-        setMessages((prev) => [...prev, { role: 'assistant', text: t.lipsyncNeedFiles }]);
+      if (!text) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: avatarAskLineText(locale) }]);
         return;
       }
-      // Show the chosen face in the user bubble (uploaded attachment, the card's photo, OR the preset / presenter thumb).
-      const bubbleMedias: Media[] = attachments.length ? attachments : cardFace ? [cardFace] : (lipFace ? [{ dataUrl: lipFace, mimeType: 'image/jpeg' }] : []);
-      const chosenPreset = lipFace;
-      setMessages((prev) => [...prev, { role: 'user', text, ...(bubbleMedias.length ? { medias: bubbleMedias } : {}) }, { role: 'assistant', text: t.generatingLipsync }]);
+      setMessages((prev) => [...prev, { role: 'user', text, medias: [{ dataUrl: lipFace, mimeType: 'image/jpeg' }] }, { role: 'assistant', text: t.generatingLipsync }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
-        // A preset is a /public path → uploadBigFile re-fetches it same-origin and
-        // re-hosts to the user's storage, giving the provider a known-good https face.
-        let faceSourceBad = false;
-        const videoUrl = faceAtt
-          ? await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType)
-          : await uploadBigFile(chosenPreset!, 'image/jpeg', () => { faceSourceBad = true; });
-        if (!videoUrl && faceSourceBad && (chosenPreset === myTwinFace || isTwinSignedUrl(chosenPreset))) {
-          // The picked twin face lapsed (or the twin was deleted): say so — never render an error body as a face.
-          setMessages((prev) => {
-            if (!mine()) return prev;
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${twinCopy(locale).myTwinStale}` };
-            return next;
-          });
-          return;
-        }
-        if (!videoUrl) throw new Error('upload failed');
-        const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
-        // GOOGLE VEO AVATAR first (GG's choice, 2026-10-16): the photo is the first frame and Veo speaks the words. Open to
-        // admins until the owner opens it (423 → the older path below, which the Google-only boundary refuses with its
-        // reason). A recorded/uploaded track cannot drive Veo's own voice, and a video face is a dub, so both keep the
-        // older path. A Georgian line is ElevenLabs' voice in `voiceGender` (GG, 2026-10-17 07:54Z); the price on screen
-        // goes with it, so a changed price is refused before any charge (409 price_changed).
-        if (!audioUrl && spoken && (!faceAtt || isImage(faceAtt.mimeType))) {
-          const veoRes = await fetch('/api/avatar/veo', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({
-              photo: videoUrl, speech: spoken, direction: text ? splitAvatarScript(text).direction : '', aspect: veoAspect, voiceGender,
-              ...(veoDoorRef.current?.open ? { expectedCredits: veoDoorRef.current.credits } : {}),
-            }),
-          });
-          if (veoRes.status !== 423) {
-            const vj = (await veoRes.json().catch(() => ({}))) as { success?: boolean; jobId?: string; error?: string; code?: string; refunded?: boolean };
-            let veoUrl: string | null = null;
-            let veoFail: string | null = vj.success && vj.jobId ? null : describeGenerationFailure(vj, locale, t.lipsyncFailed);
-            // Short polls (mobile-safe) for as long as the server keeps the job open: it refunds and closes it at
-            // GENJUTSU_HARD_CAP_MS (12 min) and says so. Stopping at 6 min told the user „still rendering" on a paid job
-            // that could still arrive (GG 2026-10-18); a minute's slack lets the server's own verdict land.
-            const veoPollUntil = Date.now() + GENJUTSU_HARD_CAP_MS + 60_000;
-            while (Date.now() < veoPollUntil && vj.jobId && !veoUrl && !veoFail) {
-              if (!mine()) return;
-              await new Promise((r) => setTimeout(r, 6000));
-              const pr = await fetch(`/api/genjutsu/status?id=${encodeURIComponent(vj.jobId)}`, { credentials: 'include', signal: ac.signal }).catch(() => null);
-              const pj = (await pr?.json().catch(() => ({}))) as { done?: boolean; state?: string; videoUrl?: string; error?: string; refunded?: boolean } | undefined;
-              if (pj?.done) { if (pj.videoUrl) veoUrl = pj.videoUrl; else veoFail = describeGenerationFailure(pj, locale, t.lipsyncFailed); }
-            }
-            if (!veoUrl && !veoFail) veoFail = lipStillRendering;
-            setMessages((prev) => {
-              if (!mine()) return prev;
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last && last.role === 'assistant') next[next.length - 1] = veoUrl ? { role: 'assistant', text: '', videoUrl: veoUrl, genKind: 'lipsync', orientation: veoAspect === '16:9' ? 'landscape' : 'vertical', ...(text ? { avatarSpec: { prompt: text, aspect: veoAspect, ...(faceAtt?.dataUrl.startsWith('data:image/') ? { photo: faceAtt.dataUrl } : {}) } } : {}) } : { role: 'assistant', text: `⚠️ ${veoFail}` };
-              return next;
-            });
-            if (mine() && veoUrl) notifyCredit('avatar');
-            return;
-          }
-        }
-        const startBody = JSON.stringify({
-          videoUrl,
-          ...(audioUrl ? { audioUrl } : {}),
-          ...(spoken ? { text: spoken } : {}),
-          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: voiceGender }),
-          orientation: lipOrientation, // honour the Format selector (9:16 / 16:9 / 1:1) in the HeyGen render
+        // A Georgian line is a Cloud TTS voice in `voiceGender` (GG, 2026-10-17 07:54Z; MASTER TASK v3.1 PR 5d); the price
+        // on screen goes with it, so a changed price is refused before any charge (409 price_changed). Closed to this
+        // account (423, the Veo avatar not public yet): said plainly, nothing started.
+        const veoRes = await fetch('/api/avatar/veo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+          body: JSON.stringify({
+            avatar: lipFace, speech: spoken, direction: splitAvatarScript(text).direction, aspect: veoAspect, voiceGender,
+            ...(veoDoorRef.current?.open ? { expectedCredits: veoDoorRef.current.credits } : {}),
+          }),
         });
-        // START the job (returns fast) → poll in SHORT requests (mobile-safe). The
-        // SadTalker provider intermittently crashes (Pillow 'ANTIALIAS' on some of its
-        // runtime builds), so retry the WHOLE job up to 3× — a fresh run lands on a
-        // good build. Non-transient failures bail immediately.
-        let resultUrl: string | null = null;
-        let resultErr: string | null = null;
-        // One engine per video (lib/ai/lipsync lipsyncCreate): a failed HeyGen job is not re-run on SadTalker.
-        let stillRendering = false;
-        // Whether the FINAL attempt ended in a terminal failure its GET confirmed refunded — the only case the bubble may
-        // say "credits refunded". Reset per attempt, so a start that failed afterwards claims nothing.
-        let lastRefunded = false;
-        // A start the server REFUSED (Google-only boundary, credits, configuration) is shown with its reason and never
-        // retried: three retries of a 503 google_only ended in "re-attach the photo" (Production 2026-10-16).
-        let refusal: { code: string; body: Record<string, unknown> } | null = null;
-        for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
+        const vj = (await veoRes.json().catch(() => ({}))) as { success?: boolean; jobId?: string; error?: string; code?: string; refunded?: boolean };
+        let veoUrl: string | null = null;
+        let veoFail: string | null = vj.success && vj.jobId ? null
+          : veoRes.status === 423 ? avatarUnavailableText(locale) : describeGenerationFailure(vj, locale, t.lipsyncFailed);
+        // Short polls (mobile-safe) for as long as the server keeps the job open: it refunds and closes it at
+        // GENJUTSU_HARD_CAP_MS (12 min) and says so. Stopping at 6 min told the user „still rendering" on a paid job
+        // that could still arrive (GG 2026-10-18); a minute's slack lets the server's own verdict land.
+        const veoPollUntil = Date.now() + GENJUTSU_HARD_CAP_MS + 60_000;
+        while (Date.now() < veoPollUntil && vj.jobId && !veoUrl && !veoFail) {
           if (!mine()) return;
-          lastRefunded = false;
-          const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: startBody, credentials: 'include', signal: ac.signal });
-          const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
-          if (!startJson.jobId) {
-            refusal = startRefusal(startJson);
-            if (refusal) break;
-            resultErr = 'start failed'; continue;
-          }
-          const usedHeygen = String(startJson.jobId).startsWith('heygen:');
-          resultErr = null;
-          let settled = false;
-          for (let i = 0; i < 70; i++) { // ~7 min per attempt; each poll is a quick request
-            if (!mine()) return;
-            await new Promise((r) => setTimeout(r, 6000));
-            const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
-            const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null; refunded?: boolean };
-            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; lastRefunded = pj.refunded === true; break; }
-          }
-          // A failed HeyGen job stops (no engine switch); SadTalker retries only its known transient crash.
-          // ⚠️ A job still rendering when the polls ran out STOPS the chain: it is reserved, and another attempt would
-          // reserve a second price for the same video (lib/avatar/renderAttempts).
-          const next = nextAvatarAttempt({ settled, url: resultUrl, error: resultErr, usedHeygen });
-          if (next === 'deliver') break;
-          if (next === 'stop') { stillRendering = !settled; break; }
+          await new Promise((r) => setTimeout(r, 6000));
+          const pr = await fetch(`/api/genjutsu/status?id=${encodeURIComponent(vj.jobId)}`, { credentials: 'include', signal: ac.signal }).catch(() => null);
+          const pj = (await pr?.json().catch(() => ({}))) as { done?: boolean; state?: string; videoUrl?: string; error?: string; refunded?: boolean } | undefined;
+          if (pj?.done) { if (pj.videoUrl) veoUrl = pj.videoUrl; else veoFail = describeGenerationFailure(pj, locale, t.lipsyncFailed); }
         }
+        if (!veoUrl && !veoFail) veoFail = lipStillRendering;
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
-          if (last && last.role === 'assistant') {
-            next[next.length - 1] = resultUrl
-              ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
-              : refusal
-                ? { role: 'assistant', text: `⚠️ ${describeGenerationFailure(refusal.body, locale, t.lipsyncFailed)}` }
-              : stillRendering
-                ? { role: 'assistant', text: `⚠️ ${lipStillRendering}` }
-                : lastRefunded
-                  ? { role: 'assistant', text: `⚠️ ${describeGenerationFailure({ refunded: true }, locale, t.lipsyncFailed)}` }
-                  : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
-          }
+          if (last && last.role === 'assistant') next[next.length - 1] = veoUrl ? { role: 'assistant', text: '', videoUrl: veoUrl, genKind: 'lipsync', orientation: veoAspect === '16:9' ? 'landscape' : 'vertical', avatarSpec: { prompt: text, aspect: veoAspect } } : { role: 'assistant', text: `⚠️ ${veoFail}` };
           return next;
         });
+        if (mine() && veoUrl) notifyCredit('avatar');
+        else if (mine()) trackGenerationFailed('avatar.talking', vj.jobId ? 'no_result' : 'refused');
       } catch {
         if (!mine()) return;
+        trackGenerationFailed('avatar.talking', 'exception');
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
