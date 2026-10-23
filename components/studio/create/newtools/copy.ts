@@ -41,13 +41,12 @@ export interface ShootCopy {
   badFile: string;
   tooMany: string;
   modelLabel: string;
+  /** The one Google image model the route renders with (the image tool's row, "Google Gemini"). */
   modelValue: string;
-  /** The closed section for the technical choices (GG 2026-10-18): model, resolution, camera. */
+  /** The closed section for the technical choices (GG 2026-10-18): the model, and the camera in the Photographer. No size:
+   *  the render takes none (GG 2026-10-23, "Hide"). */
   advanced: string;
   aspect: string;
-  quality: string;
-  /** One line per tier, in the quality sheet (the tiers differ in detail and time, NOT in price). */
-  qualityHint: { standard: string; high: string; ultra: string };
   count: string;
   auto: string;
   roomType: string;
@@ -96,7 +95,8 @@ export interface ShootCopy {
     interior: { name: string; note: string }[];
     photoshoot: { name: string; note: string }[];
   };
-  qualityNote: string;
+  /** Under Models & prices: one price per image, whatever else is picked. */
+  priceNote: string;
   walkthroughNote: string;
 }
 
@@ -121,11 +121,9 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     badFile: 'გამოიყენე JPG, PNG ან WebP ფოტო, მაქსიმუმ 12 მბ.',
     tooMany: 'მაქსიმუმ 3 ფოტო.',
     modelLabel: 'მოდელი',
-    modelValue: 'ავტო',
+    modelValue: 'Google Gemini',
     advanced: 'პროფესიონალური პარამეტრები',
     aspect: 'პროპორცია',
-    quality: 'ხარისხი',
-    qualityHint: { standard: 'ყველაზე სწრაფი', high: 'ბალანსი სიჩქარესა და დეტალს შორის', ultra: 'მაქსიმალური დეტალი, ყველაზე ნელი' },
     count: 'რაოდენობა',
     auto: 'ავტო',
     roomType: 'ოთახის ტიპი',
@@ -192,15 +190,15 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     perImage: 'სურათზე',
     models: {
       interior: [
-        { name: 'ოთახის რედიზაინი', note: 'სურათი ფოტოდან · 1K · 2K · 4K — ფასი ერთია' },
+        { name: 'ოთახის რედიზაინი', note: 'სურათი ფოტოდან, ერთ ფასად' },
         { name: '3D გეგმა', note: 'ოთახის განლაგება 3D-ში, ფოტოდან' },
         { name: 'ვიდეო-ტური · 8 წმ', note: 'ვიდეო სტუდიაში, სურათიდან' },
       ],
       photoshoot: [
-        { name: 'ფოტოსესია', note: 'სურათი კადრზე · 1K · 2K · 4K — ფასი ერთია' },
+        { name: 'ფოტოსესია', note: 'სურათი კადრზე, ერთ ფასად' },
       ],
     },
-    qualityNote: 'ხარისხი (1K/2K/4K) დეტალს ცვლის და არა ფასს.',
+    priceNote: 'ყველა სურათს ერთი ფასი აქვს.',
     walkthroughNote: 'ფასი ვიდეო სტუდიაშია — იქ დაფიქსირდება.',
   },
   en: {
@@ -217,11 +215,9 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     badFile: 'Use JPG, PNG or WebP photos up to 12 MB.',
     tooMany: 'Up to 3 photos.',
     modelLabel: 'Model',
-    modelValue: 'Auto',
+    modelValue: 'Google Gemini',
     advanced: 'Advanced settings',
     aspect: 'Aspect ratio',
-    quality: 'Quality',
-    qualityHint: { standard: 'Fastest', high: 'A balance of speed and detail', ultra: 'Maximum detail, slowest' },
     count: 'Images',
     auto: 'Auto',
     roomType: 'Room type',
@@ -288,15 +284,15 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     perImage: 'per image',
     models: {
       interior: [
-        { name: 'Room redesign', note: 'An image from your photo · 1K · 2K · 4K — one price' },
+        { name: 'Room redesign', note: 'An image from your photo, at one price' },
         { name: '3D plan', note: 'The room’s layout in 3D, from your photo' },
         { name: 'Walkthrough · 8 s', note: 'In the Video studio, from the picture' },
       ],
       photoshoot: [
-        { name: 'Photoshoot', note: 'An image per shot · 1K · 2K · 4K — one price' },
+        { name: 'Photoshoot', note: 'An image per shot, at one price' },
       ],
     },
-    qualityNote: 'Quality (1K / 2K / 4K) changes the detail, not the price.',
+    priceNote: 'Every image costs the same.',
     walkthroughNote: 'Priced and charged in the Video studio.',
   },
   ru: {
@@ -313,11 +309,9 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     badFile: 'Нужны фото JPG, PNG или WebP до 12 МБ.',
     tooMany: 'Не больше 3 фото.',
     modelLabel: 'Модель',
-    modelValue: 'Авто',
+    modelValue: 'Google Gemini',
     advanced: 'Профессиональные настройки',
     aspect: 'Соотношение',
-    quality: 'Качество',
-    qualityHint: { standard: 'Быстрее всего', high: 'Баланс скорости и деталей', ultra: 'Максимум деталей, дольше всего' },
     count: 'Количество',
     auto: 'Авто',
     roomType: 'Тип комнаты',
@@ -390,15 +384,15 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     perImage: 'за изображение',
     models: {
       interior: [
-        { name: 'Редизайн комнаты', note: 'Изображение по вашему фото · 1K · 2K · 4K — одна цена' },
+        { name: 'Редизайн комнаты', note: 'Изображение по вашему фото, по одной цене' },
         { name: '3D-план', note: 'Планировка комнаты в 3D по фото' },
         { name: 'Видео-обход · 8 с', note: 'В видео-студии, по картинке' },
       ],
       photoshoot: [
-        { name: 'Фотосессия', note: 'Изображение за кадр · 1K · 2K · 4K — одна цена' },
+        { name: 'Фотосессия', note: 'Изображение за кадр, по одной цене' },
       ],
     },
-    qualityNote: 'Качество (1K / 2K / 4K) меняет детализацию, а не цену.',
+    priceNote: 'Каждое изображение стоит одинаково.',
     walkthroughNote: 'Цена и списание — в видео-студии.',
   },
 };

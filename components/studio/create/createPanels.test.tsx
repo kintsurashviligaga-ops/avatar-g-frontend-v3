@@ -80,6 +80,20 @@ test('photoshoot: header · prompt · upload · presets · Advanced settings · 
   expect(within(screen.getByTestId('photoshoot-lens')).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Preset', '24 mm', '35 mm', '50 mm', '85 mm']);
 });
 
+test.each(['interior', 'photoshoot'] as const)('%s: no size anywhere (GG 2026-10-23, "Hide"): Advanced names the one Google model and offers no 1K / 2K / 4K', (tool) => {
+  render(<Harness tool={tool} />);
+  const size = /\b[124]K\b/;
+  expect(screen.getByTestId(`${tool}-advanced-toggle`).textContent).toContain('Google Gemini');
+  expect(screen.getByTestId(`${tool}-advanced-toggle`).textContent).not.toMatch(size);
+  openAdvanced(tool);
+  const advanced = screen.getByTestId(`${tool}-advanced`);
+  expect(advanced.textContent).toContain('Google Gemini');
+  expect(advanced.textContent).not.toMatch(size);
+  expect(screen.queryByTestId(`${tool}-pro-chip-quality`)).toBeNull();
+  expect(screen.queryByTestId(`${tool}-chip-quality`)).toBeNull();
+  expect(screen.getByTestId(`${tool}-chips`).textContent).not.toMatch(size);
+});
+
 test('a style pick lights its card and shows its Adds line; a second tap lets it go', () => {
   render(<Harness tool="interior" />);
   const card = () => screen.getByRole('radio', { name: 'Scandinavian' });
@@ -167,6 +181,8 @@ test('a signed-in press submits one job per render, each POSTing ONE reference a
     expect(b.aspectRatio).toBe('9:16'); // "Auto" = the photo's own shape (748x1600)
     expect(b.batchTile).toBe(i);
     expect(b.prompt).toBe('Interior design, Japandi');
+    // The form's quality still rides along (the route files the render under it); no chip sets it, and the render takes no size.
+    expect(b.quality).toBe('high');
     expect(Object.keys(b).filter((k) => /credit|price|cost|amount/i.test(k))).toEqual([]);
   }
   expect(new Set(bodies.map((b) => b.jobId)).size).toBe(2);

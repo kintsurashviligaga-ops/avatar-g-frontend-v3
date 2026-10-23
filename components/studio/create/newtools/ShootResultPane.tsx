@@ -151,7 +151,7 @@ export function ModelsPrices({ tool, locale, prices }: { tool: ShootKind; locale
         ))}
       </ul>
       <p className="px-5 pb-4 pt-2 text-[12px] leading-snug text-app-muted">
-        {copy.qualityNote}{tool === 'interior' ? ` ${copy.walkthroughNote}` : ''}
+        {copy.priceNote}{tool === 'interior' ? ` ${copy.walkthroughNote}` : ''}
       </p>
     </section>
   );

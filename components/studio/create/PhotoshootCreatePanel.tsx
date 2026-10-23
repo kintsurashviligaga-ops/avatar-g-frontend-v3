@@ -3,8 +3,8 @@
 /**
  * PhotoshootCreatePanel — the PHOTOGRAPHER's settings, in the same creation grammar as the Interior designer's
  * (InteriorCreatePanel): header · the prompt card · a dashed card for your product / person photos (optional, up to 3 — each
- * shot separately) · a carousel of shoot presets · Advanced settings, shut (the model, the resolution, the camera: lens ·
- * light · angle · depth of field, as chips) · the chip row (aspect · count) · the Generate pill with its price.
+ * shot separately) · a carousel of shoot presets · Advanced settings, shut (the model and the camera: lens · light · angle ·
+ * depth of field, as chips; no size, GG 2026-10-23 "Hide") · the chip row (aspect · count) · the Generate pill with its price.
  *
  * ⚠️ NOT THE `photo` TOOL. `photo` is on-device culling (no upload, no credits); this one makes new pictures and spends
  * credits per image. A pure view bound through props to useShootStudio — the price is the route's own function
@@ -19,7 +19,7 @@ import { templateLang } from '@/lib/studio/templates';
 import { toolName } from '@/lib/studio/tools';
 import { SHOOT_MAX_PHOTOS } from '@/lib/studio/shootQuote';
 import { ChipScroller, PanelHeader, ProSettings, PromptCard, UploadCard } from './newtools/PanelParts';
-import { ShootFooter, ShootQualityChip, shootQualityLabel } from './newtools/shared';
+import { ShootFooter } from './newtools/shared';
 import { TemplateCarousel } from './newtools/TemplateCarousel';
 import { SHOOT_COPY, shootLang } from './newtools/copy';
 import type { PhotoshootForm } from './newtools/useShootStudio';
@@ -67,8 +67,7 @@ export function PhotoshootCreatePanel(p: PhotoshootPanelProps) {
         activeId={p.form.template}
         onPick={(id) => { if (id) p.onPickPreset(id); else p.onPatch({ template: null }); }}
         addsLine={picked ? photoshootAddsLine(picked, tl) : null} emptyLine={c.carouselNone} />
-      <ProSettings copy={copy} summary={[copy.modelValue, shootQualityLabel(p.form.quality), ...cameraPicks].join(' · ')} testId="photoshoot">
-        <ShootQualityChip copy={copy} locale={p.locale} form={p.form} onQuality={(quality) => p.onPatch({ quality })} testId="photoshoot" />
+      <ProSettings copy={copy} summary={[copy.modelValue, ...cameraPicks].join(' · ')} testId="photoshoot">
         <section data-testid="photoshoot-camera" aria-label={copy.lens} className="space-y-3">
           <ChipScroller label={copy.lens} testId="photoshoot-lens" options={[preset, ...LENS_OPTIONS.map((o) => ({ value: o.id, label: o.label[lang] }))]}
             value={p.form.lens} onChange={(lens) => p.onPatch({ lens })} />
