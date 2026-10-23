@@ -11,6 +11,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, Film, Hand, Image as ImageIcon, Mic, Minus, Music2, Sparkles, Square, X } from 'lucide-react';
 import { clockText, type StepState, type TaskCardModel } from '@/lib/agent/media/taskSteps';
 import { LoadingLoop } from './ui/LoadingLoop';
+import { ProgressLine } from './ui/controls';
 
 type Lang = 'ka' | 'en' | 'ru';
 const L: Record<Lang, { fold: string; unfold: string; steps: string; files: string; state: Record<StepState, string> }> = {
@@ -115,11 +116,8 @@ export function AgentTaskCard({
         </div>
       ) : null}
 
-      {model.pct !== null ? (
-        <div className="mx-4 h-1 overflow-hidden rounded-full bg-app-border/20" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={model.pct} aria-label={model.title}>
-          <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(3, model.pct)}%` }} />
-        </div>
-      ) : null}
+      {/* The run's own percent, as a number (§3.3: no bar). The header already says what is running. */}
+      {model.pct !== null ? <ProgressLine pct={model.pct} ariaLabel={model.title} className="mx-4 mb-1 justify-start" /> : null}
 
       <div id={listId} hidden={folded}>
         {/* Every file the task works on, by name and in the order sent: the user sees nothing was left out. */}

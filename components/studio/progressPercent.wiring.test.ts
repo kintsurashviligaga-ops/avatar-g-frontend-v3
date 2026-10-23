@@ -3,8 +3,8 @@
  * never a drawn bar beside it, and never 100 before the asset. The storyboard board, the storyboard being built and a
  * film bubble each had a width-animated bar under their number; the bars are gone and the numbers are held under 100.
  *
- * The one bar left is the composer's attachment upload, which Phase 2 PR 4 moves onto the same loader. This count may
- * only go down.
+ * The composer's attachment upload was the last bar here; PR 4 made it a number too (./noProgressBars.test.ts
+ * now holds the whole studio to that).
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,13 +12,9 @@ import { join } from 'node:path';
 const src = readFileSync(join(process.cwd(), 'components/studio/OmniStudio.tsx'), 'utf8');
 
 describe('OmniStudio waits print a number, not a bar', () => {
-  test('one width-animated bar is left, the attachment upload (PR 4)', () => {
-    const bars = src.match(/transition-\[width\]/g) ?? [];
-    expect(bars.length).toBeLessThanOrEqual(1);
-    if (bars.length === 1) {
-      const at = src.indexOf('transition-[width]');
-      expect(src.slice(at - 400, at)).toContain('aria-label={`${a.name');
-    }
+  test('no width-animated bar is left, the attachment upload included', () => {
+    expect(src.match(/transition-\[width\]/g) ?? []).toEqual([]);
+    expect(src).toContain('data-testid="composer-attachment-pct"');
   });
 
   test('the storyboard board counts frames into a held number', () => {

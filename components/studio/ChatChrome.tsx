@@ -248,7 +248,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // publishes it as --kb-inset for the fixed-position overlays.
   const { keyboardOffset, viewportHeight, viewportTop } = useKeyboardResilience();
   const [menuOpen, setMenuOpen] = useState(false);
-  // GLOBAL LOADING BAR — a thin top progress bar shown during ANY generation. OmniStudio
+  // WHAT IS GENERATING — a pill at the top naming the service during ANY generation. OmniStudio
   // (and other surfaces) emit `myavatar:busy` {active, service}; the shell just renders.
   const [genBusy, setGenBusy] = useState(false);
   const [genService, setGenService] = useState<string | null>(null);
@@ -702,7 +702,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     };
   }, [refreshConversations]);
 
-  // Global loading bar — listen for generation activity emitted by OmniStudio.
+  // The generating pill — listen for generation activity emitted by OmniStudio.
   useEffect(() => {
     const onBusy = (e: Event) => {
       const d = (e as CustomEvent<{ active?: boolean; service?: string | null }>).detail;
@@ -1096,12 +1096,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       paddingLeft: 'env(safe-area-inset-left, 0px)',
       paddingRight: 'env(safe-area-inset-right, 0px)',
     }}>
-      {/* ── GLOBAL LOADING BAR — thin indeterminate top bar during ANY generation ── */}
+      {/* ── WHAT IS GENERATING, while ANY generation runs: a small pill naming the service. The thin sweeping bar that
+          sat above it is gone since Phase 2 (MASTER TASK v3.1 §3.3): the job's own card carries the number. ── */}
       {genBusy && (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-[999]" aria-hidden style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-          <div className="relative h-[3px] w-full overflow-hidden bg-app-accent/15">
-            <span className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-app-accent" style={{ animation: 'mya-loadbar 1.1s ease-in-out infinite' }} />
-          </div>
           {genService && (
             <div className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full border border-app-border/15 bg-app-surface/95 px-3 py-1 text-[11px] font-medium text-app-text shadow-lg backdrop-blur-sm">
               <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-app-accent align-middle motion-safe:animate-pulse" />

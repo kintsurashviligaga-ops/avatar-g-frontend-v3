@@ -20,7 +20,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
 import {
   Panel, PanelHeader, Group, Row, Label, TextArea, LabelledField,
-  ChipGroup, ToggleRow, PrimaryButton, SecondaryButton, GhostButton, Note, ProgressBar, Dropzone, CardSelect, Disclosure, TextArea as UiTextArea,
+  ChipGroup, ToggleRow, PrimaryButton, SecondaryButton, GhostButton, Note, ProgressLine, Dropzone, CardSelect, Disclosure, TextArea as UiTextArea,
 } from './ui/controls';
 import { useUpload } from './ui/useUpload';
 import { checkSourceDuration, readVideoDurationSec } from '@/lib/media/videoDuration';
@@ -616,7 +616,7 @@ export function ServiceParamsPanel({
                 else { setDubFile(null); setSourceVideoUrl(''); setDubDurationSec(null); }
               }}
             />
-            {dubUpload.busy && <ProgressBar label={t.uploading} />}
+            {dubUpload.busy && <ProgressLine label={t.uploading} />}
             {dubUpload.error && <Note tone="error">{dubUpload.error}</Note>}
             {dubTooLong && <Note tone="error">{dubTooLong}</Note>}
             {sourceVideoUrl && !dubUpload.busy && (
@@ -738,7 +738,7 @@ export function ServiceParamsPanel({
                     else { setImg3dFile(null); setImageUrl3d(''); }
                   }}
                 />
-                {img3dUpload.busy && <ProgressBar label={t.uploading} />}
+                {img3dUpload.busy && <ProgressLine label={t.uploading} />}
                 {img3dUpload.error && <Note tone="error">{img3dUpload.error}</Note>}
                 {imageUrl3d && !img3dUpload.busy && <Note tone="success">{t.fileReady}</Note>}
               </div>

@@ -3630,8 +3630,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     } catch { /* no URL API — the chat simply opens in its default mode */ }
   }, []);
-  // GLOBAL LOADING BAR — surface the active generation to the ChatChrome shell so a thin
-  // top progress bar shows during ANY generation (chat/image/music/video/storyboard/
+  // WHAT IS GENERATING — surface the active generation to the ChatChrome shell so its pill
+  // names the service during ANY generation (chat/image/music/video/storyboard/
   // product), regardless of which panel is open. Event-driven (no prop/context refactor):
   // the shell just listens for `myavatar:busy`.
   useEffect(() => {
@@ -9926,7 +9926,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-1.5">
                       {m.batch.tiles.map((tile, k) => (
-                        // Every tile is a ResultCard: while it renders, the loading loop and a thin bar in the
+                        // Every tile is a ResultCard: while it renders, the loading loop and its percent in the
                         // batch's own ratio (it used to be a bare spinner in a grey box); when it lands, the
                         // image with open / download / use-as-reference; when it fails, one line, a retry of
                         // THAT tile only (the good variations are not re-billed) and a way to put it away.
@@ -10190,12 +10190,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       />
                     );
                   }
-                  // Generative modes get the live staged progress card (bar + clock +
-                  // narrated steps) — the real "loading process". Chat gets typing dots.
+                  // Generative modes get the live progress card (the loop, the percent and
+                  // the stage) — the real "loading process". Chat gets typing dots.
                   // isInflightVideo also opens the second (mode/storyboard) gate so a queued film
                   // bubble in chat mode without a storyboard still shows the console.
                   if ((pending || isInflightVideo || isInflightGen) && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0 || isInflightVideo || isInflightGen)) {
-                    // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
+                    // Pace the image's number to the chosen resolution (1K ≈ 40s · 2K ≈
                     // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
                     //
                     // ⚠️ THE 2K FIGURE WAS FIVE TIMES TOO LONG. 170s came from the original per-tier
@@ -10208,7 +10208,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     // Prefer the kind stamped on the message at render-start (intrinsic),
                     // so a mid-render mode switch can't swap the wrong progress UI in.
                     const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
-                    // A ×2/×4 batch draws one ResultCard per tile above (each with its own bar) — an aggregate
+                    // A ×2/×4 batch draws one ResultCard per tile above (each with its own percent) — an aggregate
                     // card under the grid would say the same thing twice.
                     if (kind === 'image' && m.batch && m.batch.tiles.length > 0) return null;
                     // THE RESULT'S SHAPE FROM THE FIRST SECOND: the tile a job renders into has the ratio of the
@@ -12011,7 +12011,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {attachments.map((a, ai) => {
               // Every uploaded file says where it is: uploading (a bar and its %), Ready (stored and checked), or why it
               // failed with Retry. The state is the server's, never a timer.
-              const pct = Math.round((a.progress ?? 0) * 100);
+              // Under 100 while it uploads: the tile's ✓ is what says the file is in (§3.3).
+              const pct = Math.min(99, Math.round((a.progress ?? 0) * 100));
               // A photo or document read in full on this device rides inline with the message (no upload, so no status):
               // it is ready too, and says so. It had no check while the clips beside it did (owner, 2026-10-11 11:40Z).
               const ready = a.status === 'ready' || (!a.status && !!a.dataUrl);
@@ -12060,9 +12061,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </span>
                   </span>
                 )}
+                {/* The upload's percent on the tile, as a number (no bar). */}
                 {a.status === 'uploading' && (
-                  <span className="pointer-events-none absolute inset-x-1.5 bottom-1.5 h-1 overflow-hidden rounded-full bg-black/40" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${a.name ?? ''} ${stateWord}`}>
-                    <span className="block h-full rounded-full bg-app-accent transition-[width] duration-200" style={{ width: `${Math.max(4, pct)}%` }} />
+                  <span className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-center" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${a.name ?? ''} ${stateWord}`}>
+                    <span data-testid="composer-attachment-pct" className="rounded bg-black/70 px-1 text-[10px] font-semibold tabular-nums leading-[14px] text-white">{pct}%</span>
                   </span>
                 )}
                 {ready && (
