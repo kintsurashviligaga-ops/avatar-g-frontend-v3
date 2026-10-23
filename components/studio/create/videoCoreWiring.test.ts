@@ -158,7 +158,8 @@ describe('§5 · a storyboard miss is SAID with a Retry — nothing renders, not
     expect(studio).toMatch(/describeOpFailure\(body, t\.sbFailed\)\}`, retryVideo: true, retryReq: \{ filmPrompt, refs, orientation \} \}\]\);/);
     expect(studio).toMatch(/failVisible\(j\);[^\n]*\n\s*return;/);
     expect(studio).toMatch(/if \(ac\.signal\.aborted\) return;[^\n]*\n\s*failVisible\(\);/);
-    expect(studio).toMatch(/onRetry=\{!busy && r \? \(\) => void createStoryboard\(r\.filmPrompt, r\.refs, r\.orientation\) : undefined\}/);
+    // The Retry plans the storyboard again; while another generation is busy it stays on the card, disabled (Phase 2 PR 6).
+    expect(studio).toMatch(/onRetry=\{r \? \(\) => void createStoryboard\(r\.filmPrompt, r\.refs, r\.orientation\) : undefined\}\s*retryBlocked=\{busy\}/);
   });
 });
 

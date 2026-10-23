@@ -140,3 +140,76 @@ describe('ResultCard errorFull (the film\'s refusal reasons, Video Core round 3)
     expect(svgs().some((c) => c.includes('top-1/2') && c.includes('text-app-text/20'))).toBe(true);
   });
 });
+
+describe('ResultCard — one primary action per state, from lib/studio/cardState (MASTER TASK v3.1 §3.1, Phase 2 PR 6)', () => {
+  const primaries = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('[data-primary]')];
+  const noop = () => undefined;
+
+  it.each([
+    ['queued', 'queued', 'stop'],
+    ['rendering', 'running', 'stop'],
+    ['finalizing', 'running', 'stop'],
+    ['error', 'failed', 'propose'],
+  ] as const)('%s reads as cardState %s with exactly one primary: %s', (state, cardState, action) => {
+    const { container } = render(<ResultCard kind="video" aspect="16:9" state={state} locale="en" onCancel={noop} onRetry={noop} onDismiss={noop} />);
+    expect(container.querySelector('[data-testid="result-card"]')!.getAttribute('data-card-state')).toBe(cardState);
+    const p = primaries(container);
+    expect(p).toHaveLength(1);
+    expect(p[0]!.getAttribute('data-primary')).toBe(action);
+    expect((p[0] as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('ready: the one primary is "use" — the picture for an image, the open button for a video, the download without an opener', () => {
+    const img = render(<ResultCard kind="image" aspect="1:1" state="ready" locale="en" media={{ type: 'image', url: 'https://x/a.png' }} onOpen={noop} onUseAsRef={noop} />);
+    expect(primaries(img.container).map((e) => [e.tagName, e.getAttribute('data-primary')])).toEqual([['BUTTON', 'use']]);
+    expect(primaries(img.container)[0]!.getAttribute('aria-label')).toBe('Open');
+    img.unmount();
+    const vid = render(<ResultCard kind="video" aspect="9:16" state="ready" locale="en" media={{ type: 'video', url: 'https://x/a.mp4' }} onOpen={noop} />);
+    expect(primaries(vid.container)).toHaveLength(1);
+    expect(primaries(vid.container)[0]!.getAttribute('aria-label')).toBe('Open');
+    vid.unmount();
+    const bare = render(<ResultCard kind="video" aspect="9:16" state="ready" locale="en" media={{ type: 'video', url: 'https://x/a.mp4' }} />);
+    expect(primaries(bare.container).map((e) => [e.tagName, e.getAttribute('aria-label')])).toEqual([['A', 'Download']]);
+  });
+
+  it('a job with no stop route keeps the stop button, disabled and saying why, so nothing else takes its place', () => {
+    const { container } = render(<ResultCard kind="image" aspect="1:1" state="rendering" locale="en" />);
+    const p = primaries(container);
+    expect(p).toHaveLength(1);
+    expect(p[0]!.getAttribute('data-primary')).toBe('stop');
+    expect((p[0] as HTMLButtonElement).disabled).toBe(true);
+    expect(p[0]!.getAttribute('aria-label')).toBe('This one cannot be stopped');
+  });
+
+  it('a retry blocked by another generation stays on the card, disabled, and comes back enabled in the same place', () => {
+    const onRetry = jest.fn();
+    const { container, rerender } = render(<ResultCard kind="image" aspect="1:1" state="error" locale="en" onRetry={onRetry} retryBlocked />);
+    const btn = screen.getByRole('button', { name: 'Try again' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    fireEvent.click(btn);
+    expect(onRetry).not.toHaveBeenCalled();
+    rerender(<ResultCard kind="image" aspect="1:1" state="error" locale="en" onRetry={onRetry} />);
+    expect(primaries(container)).toEqual([btn]);
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failure with no retry route has no primary on the card in any locale (the composer, which keeps the prompt, is the way to try again)', () => {
+    for (const locale of ['ka', 'en', 'ru'] as const) {
+      const { container, unmount } = render(<ResultCard kind="image" aspect="1:1" state="error" locale={locale} error="⚠️ No" onDismiss={noop} />);
+      expect(primaries(container)).toHaveLength(0);
+      unmount();
+    }
+  });
+
+  it('the disabled stop reads in each locale', () => {
+    const labels = (['ka', 'en', 'ru'] as const).map((locale) => {
+      const { container, unmount } = render(<ResultCard kind="music" aspect="1:1" state="queued" locale={locale} />);
+      const l = primaries(container)[0]!.getAttribute('aria-label');
+      unmount();
+      return l;
+    });
+    expect(labels).toEqual(['ამის შეჩერება ვერ ხერხდება', 'This one cannot be stopped', 'Это нельзя остановить']);
+  });
+});

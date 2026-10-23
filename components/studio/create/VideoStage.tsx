@@ -42,6 +42,8 @@ export interface VideoStageProps {
   onTier: (t: VideoQuality) => void;
   onOpenInEditor: (url: string) => void;
   onNote: (msg: string) => void;
+  /** Stops the render the tile shows (the film bubble's own stop). Without it the tile's stop is disabled. */
+  onCancel?: () => void;
 }
 
 /** The film's width ÷ height from its "9:16" label (16:9 when unreadable). */
@@ -50,7 +52,7 @@ const ratioOf = (aspect: string): number => {
   return m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : 16 / 9;
 };
 
-export function VideoStage({ locale, latest, progress, tier, mode, seconds, onTier, onOpenInEditor, onNote }: VideoStageProps) {
+export function VideoStage({ locale, latest, progress, tier, mode, seconds, onTier, onOpenInEditor, onNote, onCancel }: VideoStageProps) {
   const lang = videoLang(locale);
   return (
     <section data-testid="video-stage" aria-label={vc(VIDEO_COPY.result, locale)} className="mx-auto w-full max-w-3xl space-y-5 pb-4 pt-2">
@@ -72,7 +74,7 @@ export function VideoStage({ locale, latest, progress, tier, mode, seconds, onTi
         <div className="mx-auto w-full" style={{ maxWidth: `calc(44vh * ${ratioOf(progress?.aspect ?? latest?.aspect ?? '16:9')})` }}>
           {progress ? (
             <ResultCard kind="video" size="tile" aspect={progress.aspect} state={typeof progress.pct === 'number' && progress.pct >= 96 ? 'finalizing' : 'rendering'}
-              locale={lang} pct={progress.pct} stage={progress.stage} />
+              locale={lang} pct={progress.pct} stage={progress.stage} {...(onCancel ? { onCancel } : {})} />
           ) : latest ? (
             <ResultCard kind="video" size="tile" aspect={latest.aspect} state="ready" locale={lang} media={{ type: 'video', url: latest.url }} />
           ) : (
