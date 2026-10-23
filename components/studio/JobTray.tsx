@@ -4,8 +4,8 @@
  * JobTray — the live background-render panel.
  * ===========================================
  *
- * Renders the capped-parallel queue: up to 3 jobs show a real-time bar ("Rendering
- * 45%") and any overflow shows its live position ("In Queue: #1"). Each local job has its
+ * Renders the capped-parallel queue: up to 3 jobs show a live percentage and stage
+ * ("45% · Rendering") and any overflow shows its live position ("In Queue: #1"). Each local job has its
  * own cancel control (per-job AbortController in the engine); a server-side job the server can
  * stop (an Agent G montage or MP3 extraction) cancels through POST /api/tasks. Terminal jobs linger
  * briefly so the user sees the ✓/✕, then can be cleared.
