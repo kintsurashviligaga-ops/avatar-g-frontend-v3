@@ -45,3 +45,21 @@ describe('an empty history', () => {
     expect(chrome).toContain("const tStartChat = locale === 'en' ? 'Start a chat' : locale === 'ru' ? 'Начать чат' : 'დაიწყე ჩატი';");
   });
 });
+
+describe('a delete hands focus on (Phase 2 PR 8; the browser half is tests/delete-x.spec.ts)', () => {
+  it('each row\'s title is marked for the hand-off, inside the one list', () => {
+    expect(chrome).toContain('<div data-testid="history-list" className="space-y-2 pb-2">');
+    expect(chrome).toContain('title={c.title} data-conv-open={c.id}');
+  });
+
+  it('the X that had focus gives it to the next row, the previous at the end, the empty list\'s action when none is left', () => {
+    const at = chrome.indexOf('const handleDeleteConversation = useCallback(');
+    expect(at).toBeGreaterThan(0);
+    const body = chrome.slice(at, at + 1800);
+    expect(body).toContain('if (document.activeElement === x) {');
+    expect(body).toContain('(titles[at + 1] ?? titles[at - 1])');
+    expect(body).toContain(`'[data-testid="history-empty"] button'`);
+    // Read while the row is still on the page: the optimistic removal comes after.
+    expect(body.indexOf('document.activeElement === x')).toBeLessThan(body.indexOf('setConversations((prev) => prev.filter'));
+  });
+});
