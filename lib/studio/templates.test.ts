@@ -112,10 +112,11 @@ describe('image', () => {
   test('no card defaults to 4K (owner decision 2026-10-01 c): Product, Poster and Wallpaper start at 2K', () => {
     for (const t of IMAGE_TEMPLATES) expect(t.values.quality).not.toBe('ultra');
     for (const id of ['product', 'poster', 'wallpaper']) expect(imageTemplateValues(id)!.quality).toBe('high');
-    // …and no hint still promises 4K by default (a 2K card that says "at 4K" would describe a render it does not make).
-    for (const t of IMAGE_TEMPLATES) expect(t.hint.en).not.toMatch(/\bat 4K\b/);
   });
-  test('choosing Ultra by hand is still possible — the card just stops being lit', () => {
+  test('no hint names a size in any language (GG 2026-10-23, "Hide"): the image tool offers none', () => {
+    for (const t of IMAGE_TEMPLATES) for (const text of Object.values(t.hint)) expect(text).not.toMatch(/\b[124]K\b|\b[124]К\b/);
+  });
+  test('a quality other than the card\'s is not that card — the match still compares it', () => {
     const v = imageTemplateValues('product')!;
     expect(matchImageTemplate({ ...v, quality: 'ultra' })).toBeNull();
   });

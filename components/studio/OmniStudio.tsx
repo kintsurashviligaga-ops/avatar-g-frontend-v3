@@ -2533,9 +2533,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [showJump, setShowJump] = useState(false);
   // Per-service generation options.
   const [imgAspect, setImgAspect] = useState<ImgAspect>(IMAGE_PANEL_DEFAULTS.aspect);
-  // Default to the 2K tier for sharper, higher-fidelity output. The wider provider
-  // poll window now makes 2K reliable (~33s live) without the old timeouts; users can
-  // drop to 1K for speed or pick 4K for maximum detail.
+  // The request's quality ('high' unless a template sets another). No screen offers it (GG 2026-10-23, "Hide"): the render
+  // takes no size; the route files the request under it and a template card still matches on it.
   const [imgQuality, setImgQuality] = useState<ImgQuality>(IMAGE_PANEL_DEFAULTS.quality);
   const [imgStyle, setImgStyle] = useState<string>(IMAGE_PANEL_DEFAULTS.style);
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
@@ -8408,7 +8407,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /** What a call may know about the screen (get_screen_state). Short strings only — it is spoken context, not a dump. */
   const liveScreenState = (): Record<string, unknown> => {
     const settings: Record<string, unknown> | undefined =
-      activeTool === 'image' ? { aspectRatio: imgAspect, style: imgStyle, quality: imgQuality, count: imgCount }
+      activeTool === 'image' ? { aspectRatio: imgAspect, style: imgStyle, count: imgCount } // no size: the screen offers none
         : activeTool === 'video' ? { aspectRatio: aspectForOrientation(videoOrientation), durationSec: videoDuration, style: videoStyle }
           : activeTool === 'music' ? { durationSec: musicDuration || 'full song', instrumental: musicInstrumental, style: musicGenre }
             : undefined;
@@ -10987,13 +10986,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             micState={recording ? 'recording' : transcribing ? 'transcribing' : 'idle'}
             templates={IMAGE_TEMPLATES.map((tp) => ({
               id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
-              thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon, meta: `${tp.values.aspect} · ${tp.values.quality === 'ultra' ? '4K' : tp.values.quality === 'high' ? '2K' : '1K'}`,
+              thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon, meta: tp.values.aspect,
               adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
             }))}
             activeTemplate={activeImagePreset}
             onPickTemplate={applyImagePreset}
             aspect={imgAspect} onAspect={setImgAspect}
-            quality={imgQuality} onQuality={setImgQuality}
+            quality={imgQuality}
             count={imgCount} onCount={setImgCount}
             style={imgStyle} onStyle={setImgStyle} styleLabel={(s) => styleLabel(s, locale)}
             negative={imgNegative} onNegative={setImgNegative}
@@ -11940,8 +11939,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             results={imageDeskResults}
             notice={latestNotice(messages, imageDeskResults)}
             aspect={imgAspect}
-            quality={imgQuality}
-            onQuality={setImgQuality}
             elapsedSec={elapsed}
             capSecFor={imgTargetFor}
             actions={imageDeskActions}

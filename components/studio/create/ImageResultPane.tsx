@@ -17,7 +17,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Clapperboard, Download, Image as ImageIcon, Loader2, Pencil, Plus, RotateCcw, Share2, Sparkles } from 'lucide-react';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
-import { tierFor, imageLang } from '@/lib/studio/imageCreate';
+import { imageLang } from '@/lib/studio/imageCreate';
 import type { ImageResultView } from '@/lib/studio/imageResults';
 import { imageCreateCopy } from './imageCreateCopy';
 
@@ -183,12 +183,12 @@ export function ImageResultPane({
     );
   }
 
-  const tier = shown ? tierFor(shown.quality) : null;
   return (
     <section data-testid="image-result-pane" aria-labelledby="image-result-heading" className="min-w-0 space-y-3">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
         <h2 id="image-result-heading" className="text-[15px] font-semibold text-app-text">{c.result}</h2>
-        {shown && tier && <span className="text-[12.5px] tabular-nums text-app-muted">{shown.aspect} · {tier.res}</span>}
+        {/* The aspect only: the render takes no size, so a "2K" here would name a resolution the picture does not have. */}
+        {shown && <span className="text-[12.5px] tabular-nums text-app-muted">{shown.aspect}</span>}
       </div>
       {shown && shown.prompt && <p className="line-clamp-2 text-[13px] leading-snug text-app-muted">{shown.prompt}</p>}
       {notice && (

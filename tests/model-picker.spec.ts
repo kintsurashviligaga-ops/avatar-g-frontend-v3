@@ -4,11 +4,11 @@ import { MODELS, publicModel } from '@/lib/providers/registry';
 /**
  * The studio's ModelPicker in a real browser (components/studio/ui/ModelPicker), on a 390 × 844 phone and a 1280 × 800 desktop:
  *
- *   image   the prompt card's "Model … ▾" opens the sheet; Google first (Auto · Nano Banana V2 · Pro, Auto the default), then
- *           the Higgsfield image models, every one dimmed "paused while it moves to Google's engines" (a denied vendor,
- *           MASTER TASK v3.1) — Soul 2 too, though this mocked older server says it runs; no price in the list; a Google pick
- *           changes the row, survives a reload, and the Generate request CARRIES THE MODEL ID (`model`) — the id the server
- *           validates and quotes.
+ *   image   Advanced's "Model … ▾" opens the sheet: the one Google row first and checked (GG 2026-10-23, "Hide": no Nano
+ *           Banana V2 / Pro row and no size chip, though this mocked older server still lists both), then the Higgsfield image
+ *           models, every one dimmed "paused while it moves to Google's engines" (a denied vendor, MASTER TASK v3.1) — Soul 2
+ *           too, though the server says it runs; no price in the list; the Generate request CARRIES THE MODEL ID (`model`), the
+ *           id the server validates and quotes, and a V2 / Pro pick stored before is sent as the Google row.
  *   higgs   a tap on a Higgsfield row does nothing: Generate stays Google's, and nothing is sent to POST /api/generate.
  *   video   the Model row opens the same sheet with the mode switch on top; a Veo pick changes the film's model (the hero)
  *           and survives a reload.
@@ -133,7 +133,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
     test.use(phone ? { viewport, hasTouch: true, isMobile: true } : { viewport });
     test.beforeEach(async ({ page }) => { await seed(page); });
 
-    test('image: change the model → the Generate request carries its id; no price in the list; the pick survives a reload', async ({ page }) => {
+    test('image: one Google row and no size chip; the Generate request carries its id; a V2 / Pro pick from before is sent as it', async ({ page }) => {
       const calls: ImageRequest[] = [];
       await mockImageRoute(page, calls);
       const asked = await mockCatalogue(page);
@@ -141,7 +141,8 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await pretendSignedIn(page);
       const panel = page.getByTestId('image-create-panel').filter({ visible: true }).first();
       await openAdvanced(panel);
-      await expect(panel.getByTestId('model-row')).toContainText('Auto');
+      await expect(panel.getByTestId('model-row')).toContainText('Google Gemini');
+      await expect(panel.getByTestId('chip-quality')).toHaveCount(0);
 
       await panel.getByTestId('model-row').click();
       const sheet = page.getByRole('dialog', { name: 'Model' });
@@ -150,6 +151,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       const rows = sheet.getByRole('radio');
       await expect(rows.first()).toHaveAttribute('data-model', 'nb/auto'); // Google first, and the default
       await expect(sheet.locator('[data-model="nb/auto"]')).toHaveAttribute('aria-checked', 'true');
+      await expect(sheet.locator('[data-model="nb/v2"], [data-model="nb/pro"]')).toHaveCount(0); // the older server lists both
       for (const id of ['hf/soul-2', 'hf/soul']) {
         await expect(sheet.locator(`[data-model="${id}"]`)).toHaveAttribute('aria-disabled', 'true');
         await expect(sheet.locator(`[data-model="${id}"]`)).toContainText('Paused while it moves to Google’s engines');
@@ -159,30 +161,26 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       expect(await noSideways(page)).toBe(0);
       await shot(page, `${phone ? 'phone' : 'desktop'}-image-models`);
 
-      await sheet.locator('[data-model="nb/pro"]').click();
+      await sheet.locator('[data-model="nb/auto"]').click();
       await expect(sheet).toBeHidden();
-      await expect(panel.getByTestId('model-row')).toContainText('Nano Banana Pro');
-      await expect(panel.getByTestId('chip-quality')).toHaveText('2K');
+      await expect(panel.getByTestId('model-row')).toContainText('Google Gemini');
 
       await panel.getByTestId('create-prompt').fill('A lighthouse on a cliff at sunset');
       await panel.getByTestId('create-generate').click();
       await expect.poll(() => calls.length).toBe(1);
-      expect(calls[0]).toMatchObject({ prompt: 'A lighthouse on a cliff at sunset', quality: 'high', model: 'nb/pro' });
+      expect(calls[0]).toMatchObject({ prompt: 'A lighthouse on a cliff at sunset', model: 'nb/auto' });
 
-      // Remembered in this browser: a reload opens on the same model, and the next request names it again.
+      // A Pro pick stored while that row was offered: a reload reads it as the Google row, and the request names that.
+      await page.evaluate(() => localStorage.setItem('myavatar:model:image', 'nb/pro'));
       await openTool(page, 'image', 'image-create-panel');
       await pretendSignedIn(page);
       const again = page.getByTestId('image-create-panel').filter({ visible: true }).first();
       await openAdvanced(again);
-      await expect(again.getByTestId('model-row')).toContainText('Nano Banana Pro');
-      await again.getByTestId('model-row').click();
-      await page.getByRole('dialog', { name: 'Model' }).locator('[data-model="nb/v2"]').click();
-      await again.getByTestId('chip-quality').click();
-      await page.getByRole('dialog', { name: 'Quality' }).getByRole('radio', { name: /4K/ }).click();
+      await expect(again.getByTestId('model-row')).toContainText('Google Gemini');
       await again.getByTestId('create-prompt').fill('The same lighthouse, at dawn');
       await again.getByTestId('create-generate').click();
       await expect.poll(() => calls.length).toBe(2);
-      expect(calls[1]).toMatchObject({ quality: 'ultra', model: 'nb/v2' });
+      expect(calls[1]).toMatchObject({ model: 'nb/auto' });
     });
 
     test('Higgsfield: a tap on its row does nothing — Generate stays Google\'s, and nothing is sent to /api/generate', async ({ page }) => {
@@ -199,7 +197,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await soul2.click({ force: true }); // a dimmed row: the tap must change nothing
       await expect(sheet).toBeVisible();
       await page.keyboard.press('Escape');
-      await expect(panel.getByTestId('model-row')).toContainText('Auto');
+      await expect(panel.getByTestId('model-row')).toContainText('Google Gemini');
       await expect(panel.getByTestId('hf-generate')).toHaveCount(0);
       expect(await page.evaluate(() => localStorage.getItem('myavatar:model:image'))).toBeNull();
       expect(await noSideways(page)).toBe(0);

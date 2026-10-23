@@ -2,7 +2,7 @@
 /**
  * lib/studio/imageCreate.ts — what the Create screen says about the image route must BE what the route does.
  *
- * The screen quotes a price, names an engine per size and limits the reference pictures. Each of those is read off
+ * The screen quotes a price, names the engine and limits the reference pictures. Each of those is read off
  * app/api/nanobanana/image/route.ts here (its source text, so no provider and no network is touched): when the route
  * changes and this module does not, a test fails instead of the Generate button promising something the bill disagrees with.
  */
@@ -10,10 +10,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { quoteCredits } from '@/lib/credits/quote';
-import { catalogueEntry, catalogueFor, imageEndpointFor } from '@/lib/providers/catalogue';
+import { RETIRED_IMAGE_MODEL_IDS, catalogueEntry, catalogueFor, imageEndpointFor } from '@/lib/providers/catalogue';
 import {
-  IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_QUALITIES, IMG_STYLES,
-  imageCredits, imageModelFor, imageStyleSlug, imageStyleSwatch, imageVariant, nativeQuality, tierFor, tierModelLabel,
+  IMAGE_MAX_REFERENCES, IMG_ASPECTS, IMG_COUNTS, IMG_QUALITIES, IMG_STYLES,
+  imageCredits, imageModelFor, imageStyleSlug, imageStyleSwatch,
 } from './imageCreate';
 
 const route = readFileSync(join(process.cwd(), 'app/api/nanobanana/image/route.ts'), 'utf8');
@@ -38,39 +38,34 @@ describe('the price', () => {
 });
 
 describe('the engine', () => {
-  test('Auto runs each size on the endpoint the route always used — the route resolves it from the catalogue, nowhere else', () => {
-    const auto = catalogueEntry('nb/auto')!;
-    expect(Object.fromEntries(IMAGE_TIERS.map((t) => [t.quality, imageEndpointFor(auto, t.quality)]))).toEqual({ standard: 'v2-1k', high: 'v2-2k', ultra: 'pro-4k' });
-    for (const t of IMAGE_TIERS) expect(imageVariant('nb/auto', t.quality).endpoint).toBe(t.endpoint);
-    // The V2 family up to 2K, Pro at 4K — the label the picker prints.
-    expect(IMAGE_TIERS.map((t) => t.family)).toEqual(['V2', 'V2', 'Pro']);
-    expect(tierModelLabel(tierFor('ultra'))).toBe('Nano Banana Pro · 4K');
+  test('each quality a request carries is filed under the endpoint the route always used — resolved from the catalogue only', () => {
+    const row = catalogueEntry('nb/auto')!;
+    expect(Object.fromEntries(IMG_QUALITIES.map(([q]) => [q, imageEndpointFor(row, q)]))).toEqual({ standard: 'v2-1k', high: 'v2-2k', ultra: 'pro-4k' });
     expect(route).not.toMatch(/QUALITY_ENDPOINT/);
     expect(route).toMatch(/const endpoint {4}= pick\.endpoint;/);
     expect(route).toMatch(/imageEndpointFor\(entry, quality\)/);
   });
 
-  test('the sizes the panel offers are exactly the sizes the engine has', () => {
-    expect(IMG_QUALITIES.map(([q, label]) => [q, label])).toEqual(IMAGE_TIERS.map((t) => [t.quality, t.res]));
+  test('⚠️ the render takes no size, which is why no screen offers one (GG 2026-10-23, "Hide") — a size reaching it fails here', () => {
+    const at = route.indexOf('generateGeminiImage({');
+    const call = route.slice(at, route.indexOf('})', at));
+    expect(call).toMatch(/prompt: finalPrompt/);
+    expect(call).toMatch(/aspectRatio:/);
+    expect(call).not.toMatch(/quality|endpoint|imageSize|resolution|\bsize\b/i);
   });
 
-  test('the models a user can pick are the catalogue\'s image-route rows; V2 and Pro pin the family, Pro starts at 2K', () => {
-    expect(catalogueFor('image').filter((e) => e.wire.runner === 'image').map((e) => e.id)).toEqual(['nb/auto', 'nb/v2', 'nb/pro']);
-    expect(['standard', 'high', 'ultra'].map((q) => imageVariant('nb/v2', q).endpoint)).toEqual(['v2-1k', 'v2-2k', 'v2-4k']);
-    expect(['high', 'ultra'].map((q) => imageVariant('nb/pro', q).endpoint)).toEqual(['pro-1k2k', 'pro-4k']);
-    expect(imageVariant('nb/pro', 'high').res).toBe('2K'); // pro-1k2k renders 2K (lib/nanobanana/client extractResolution)
-    expect(imageVariant('nb/pro', 'standard').native).toBe(false);
-    expect(nativeQuality('nb/pro', 'standard')).toBe('high');
-    expect(nativeQuality('nb/v2', 'standard')).toBe('standard');
-    // A Studio β model, an unknown id, nothing: the image tool runs Auto — it never sends what its route cannot run.
+  test('the one model a user can pick is the catalogue\'s Google row; a retired Nano Banana V2 / Pro id resolves to it', () => {
+    expect(catalogueFor('image').filter((e) => e.wire.runner === 'image').map((e) => e.id)).toEqual(['nb/auto']);
+    for (const id of RETIRED_IMAGE_MODEL_IDS) expect(imageModelFor(id).id).toBe('nb/auto');
+    // A Studio β model, an unknown id, nothing: the image tool runs the Google row — it never sends what its route cannot run.
     expect(imageModelFor('hf/soul-2').id).toBe('nb/auto');
     expect(imageModelFor('nope').id).toBe('nb/auto');
     expect(imageModelFor(null).id).toBe('nb/auto');
-    // The price does not depend on the model: one image's quote at every model and size (the route's only charge).
+    // The price is one image's quote whatever the request carries (the route's only charge).
     expect(imageCredits(1)).toBe(creditCostFor('image'));
     // ⚠️ Google's image model is the route's ONE engine (MASTER TASK v3.1; PROJECT_MASTER R7, no silent fallback): the
     // NanoBanana leg and the Grok (xAI) and FLUX 1.1 Pro (Replicate) legs that stood behind it are gone, whatever
-    // MEDIA_GOOGLE_ONLY says. The picker's tiers still choose the endpoint the reply and the double-click key name.
+    // MEDIA_GOOGLE_ONLY says. The request's quality still chooses the endpoint the reply and the double-click key name.
     expect(route).not.toMatch(/generateGrokImage|generateFluxProImage|@\/lib\/ai\/xaiImage|@\/lib\/ai\/fluxImage/);
     expect(route).not.toMatch(/generateNanoBananaImage|@\/lib\/nanobanana\/client|isMediaGoogleOnly/);
     expect(route.match(/\bgenerateGeminiImage\(/g)).toHaveLength(1);
@@ -87,13 +82,14 @@ describe('the reference picture', () => {
 });
 
 describe('the option lists', () => {
-  test('ratios, sizes, styles and counts are what the studio has always offered (the templates reference them)', () => {
+  test('ratios, styles and counts are what the studio has always offered; the qualities are what a template may set', () => {
     expect(IMG_ASPECTS).toHaveLength(10);
     expect(new Set(IMG_ASPECTS).size).toBe(10);
     expect(IMG_ASPECTS[0]).toBe('1:1');
     expect(IMG_STYLES).toHaveLength(13);
     expect(IMG_STYLES[0]).toBe('Auto');
     expect([...IMG_COUNTS]).toEqual([1, 2, 4]);
+    expect(IMG_QUALITIES.map(([q]) => q)).toEqual(['standard', 'high', 'ultra']);
   });
 });
 

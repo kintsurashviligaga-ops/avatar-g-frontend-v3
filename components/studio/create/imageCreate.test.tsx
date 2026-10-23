@@ -17,7 +17,7 @@ import { __resetStudioModelsCache } from './useStudioModels';
 
 const templateItems = (locale: string): ImageCreatePanelProps['templates'] => IMAGE_TEMPLATES.map((tp) => ({
   id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)], thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon,
-  meta: `${tp.values.aspect} · ${tp.values.quality === 'ultra' ? '4K' : tp.values.quality === 'high' ? '2K' : '1K'}`,
+  meta: tp.values.aspect,
   adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
 }));
 
@@ -29,7 +29,7 @@ function props(over: Partial<ImageCreatePanelProps> = {}): ImageCreatePanelProps
     references: [], onAddReference: jest.fn(), onRemoveReference: jest.fn(), foreignFileCount: 0, onClearForeignFiles: jest.fn(),
     prompt: '', onPrompt: jest.fn(),
     templates: templateItems(locale), activeTemplate: null, onPickTemplate: jest.fn(),
-    aspect: '1:1', onAspect: jest.fn(), quality: 'high', onQuality: jest.fn(), count: 1, onCount: jest.fn(),
+    aspect: '1:1', onAspect: jest.fn(), quality: 'high', count: 1, onCount: jest.fn(),
     style: 'Auto', onStyle: jest.fn(), styleLabel: (s: string) => s, negative: '', onNegative: jest.fn(),
     balance: 100, onGenerate: jest.fn(), onTopUp: jest.fn(),
     ...over,
@@ -43,7 +43,7 @@ const show = (over: Partial<ImageCreatePanelProps> = {}) => {
 };
 
 const generate = () => screen.getByTestId('create-generate');
-/** Advanced settings (GG 2026-10-18): the model row and the resolution chip live behind it, shut by default. */
+/** Advanced settings (GG 2026-10-18): the model row lives behind it, shut by default. */
 const openAdvanced = () => fireEvent.click(screen.getByTestId('advanced-toggle'));
 
 // The model pick is remembered per browser (lib/studio/modelPick): one test's pick must not leak into the next.
@@ -72,7 +72,7 @@ describe('the rows, in the reference\'s order', () => {
     expect(screen.queryByTestId('create-close')).toBeNull();
   });
 
-  test('the prompt card IS the prompt; the model row reads "Model … Auto" under Advanced settings, not in the card', () => {
+  test('the prompt card IS the prompt; the model row reads "Model … Google Gemini" under Advanced settings, not in the card', () => {
     const { p, container } = show({ prompt: 'a red fox' });
     const prompt = screen.getByTestId('create-prompt') as HTMLTextAreaElement;
     expect(prompt.value).toBe('a red fox');
@@ -81,13 +81,14 @@ describe('the rows, in the reference\'s order', () => {
     expect(p.onPrompt).toHaveBeenCalledWith('a red fox in snow');
     expect(screen.queryByTestId('model-row')).toBeNull();
     expect(screen.getByTestId('advanced-toggle').textContent).toContain('Advanced settings');
-    expect(screen.getByTestId('advanced-toggle').textContent).toContain('Auto · 2K');
+    expect(screen.getByTestId('advanced-toggle').textContent).toContain('Google Gemini');
+    expect(screen.getByTestId('advanced-toggle').textContent).not.toMatch(/\b[124]K\b/); // no size: the render takes none
     openAdvanced();
     const row = screen.getByTestId('model-row');
     expect(container.querySelector('[data-create-row="prompt"]')!.contains(row)).toBe(false);
     expect(container.querySelector('[data-create-row="advanced"]')!.contains(row)).toBe(true);
     expect(row.textContent).toContain('Model');
-    expect(row.textContent).toContain('Auto');
+    expect(row.textContent).toContain('Google Gemini');
     expect(row.getAttribute('aria-haspopup')).toBe('dialog');
   });
 
@@ -133,7 +134,7 @@ describe('the price is ON the button, and it is the quote', () => {
     expect(generate().getAttribute('data-price')).toBe(String(quoteCredits({ tool: 'image', count: 4 })));
   });
 
-  test('the size does not change the price — every size is billed the same by the route', () => {
+  test('the quality a template sets does not change the price — the route bills one image', () => {
     const { rerenderWith } = show({ quality: 'standard' });
     const a = generate().getAttribute('data-price');
     rerenderWith({ quality: 'ultra' });
@@ -201,20 +202,27 @@ describe('Generate never silently does nothing', () => {
 });
 
 describe('the chips show the live values and open large pickers', () => {
-  test('aspect · count read from the props, in that order, beside Generate; the resolution chip is under Advanced settings', () => {
+  test('aspect · count read from the props, in that order, beside Generate', () => {
     const { container, rerenderWith } = show({ aspect: '9:16', quality: 'ultra', count: 4 });
-    expect(screen.queryByTestId('chip-quality')).toBeNull();
-    openAdvanced();
     const chips = ['chip-aspect', 'chip-count'].map((id) => screen.getByTestId(id));
-    const quality = screen.getByTestId('chip-quality');
-    expect([...chips, quality].map((c) => c.textContent)).toEqual(['9:16', '4', '4K']);
+    expect(chips.map((c) => c.textContent)).toEqual(['9:16', '4']);
     const row = container.querySelector('[data-create-row="options"]')!;
     expect(chips.every((c) => row.contains(c))).toBe(true);
-    expect(container.querySelector('[data-create-row="advanced"]')!.contains(quality)).toBe(true);
     expect(chips[0]!.compareDocumentPosition(chips[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     rerenderWith({ aspect: '21:9', quality: 'standard', count: 2 });
-    expect([...chips, quality].map((c) => c.textContent)).toEqual(['21:9', '2', '1K']);
-    expect([...chips, quality].map((c) => c.getAttribute('aria-label'))).toEqual(['Aspect ratio: 21:9', 'Count: 2', 'Quality: 1K']);
+    expect(chips.map((c) => c.textContent)).toEqual(['21:9', '2']);
+    expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['Aspect ratio: 21:9', 'Count: 2']);
+  });
+
+  test('⚠️ no size chip anywhere (GG 2026-10-23, "Hide"): the render takes no size, so 1K / 2K / 4K are not offered', () => {
+    const { container } = show({ quality: 'ultra' });
+    openAdvanced();
+    expect(screen.queryByTestId('chip-quality')).toBeNull();
+    expect(screen.queryByTestId('picker-quality')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Quality' })).toBeNull();
+    const advanced = container.querySelector('[data-create-row="advanced"]')!.textContent!;
+    expect(advanced).not.toMatch(/\b[124]K\b|Quality/);
+    expect(container.querySelector('[data-create-row="options"]')!.textContent).not.toMatch(/\b[124]K\b/);
   });
 
   test('the aspect picker is a sheet of ten ratios, each a ≥ 44 px tile with its drawn shape; the current one is checked', () => {
@@ -231,21 +239,6 @@ describe('the chips show the live values and open large pickers', () => {
     expect(screen.queryByRole('dialog', { name: 'Aspect ratio' })).toBeNull();
   });
 
-  test('the quality picker names the model at each size and prices it from the quote', () => {
-    const { p } = show({ quality: 'high' });
-    openAdvanced();
-    fireEvent.click(screen.getByTestId('chip-quality'));
-    const options = within(screen.getByRole('dialog', { name: 'Quality' })).getAllByRole('radio');
-    expect(options.map((o) => o.querySelector('span.text-\\[15px\\]')?.textContent)).toEqual(['1K', '2K', '4K']);
-    expect(options[0]!.textContent).toContain('Nano Banana V2');
-    expect(options[2]!.textContent).toContain('Nano Banana Pro');
-    const price = creditsLabel(quoteCredits({ tool: 'image', count: 1 }), 'en');
-    for (const o of options) expect(o.textContent).toContain(price);
-    expect(options.every((o) => o.className.includes('min-h-[56px]'))).toBe(true);
-    fireEvent.click(options[2]!);
-    expect(p.onQuality).toHaveBeenCalledWith('ultra');
-  });
-
   test('the count picker prices each choice from the quote', () => {
     const { p } = show({ count: 2 });
     fireEvent.click(screen.getByTestId('chip-count'));
@@ -259,10 +252,9 @@ describe('the chips show the live values and open large pickers', () => {
   });
 
   test('arrow keys move through a picker and Escape closes it', () => {
-    show();
-    openAdvanced();
-    fireEvent.click(screen.getByTestId('chip-quality'));
-    const dialog = screen.getByRole('dialog', { name: 'Quality' });
+    show({ count: 2 });
+    fireEvent.click(screen.getByTestId('chip-count'));
+    const dialog = screen.getByRole('dialog', { name: 'How many images' });
     const options = within(dialog).getAllByRole('radio');
     options[1]!.focus();
     fireEvent.keyDown(options[1]!, { key: 'ArrowDown' });
@@ -272,7 +264,7 @@ describe('the chips show the live values and open large pickers', () => {
     // One Tab stop: only the checked radio is tabbable.
     expect(options.map((o) => o.tabIndex)).toEqual([-1, 0, -1]);
     act(() => { fireEvent.keyDown(window, { key: 'Escape' }); });
-    expect(screen.queryByRole('dialog', { name: 'Quality' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'How many images' })).toBeNull();
   });
 
   test('on a desktop the picker is a popover anchored to the chip (not the sheet), closed by Escape or an outside press', () => {
@@ -312,18 +304,19 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   };
   afterEach(() => { global.fetch = realFetch; });
 
-  test('Google\'s Nano Banana first (Auto checked); every Higgsfield image model listed and dimmed (a denied vendor)', async () => {
+  test('the one Google row first (and checked); every Higgsfield image model listed and dimmed (a denied vendor)', async () => {
     deployment([]);
     show();
     openAdvanced();
     fireEvent.click(screen.getByTestId('model-row'));
     const hf = catalogueFor('image').filter((e) => e.provider === 'higgsfield').map((e) => e.id);
-    expect(rows().map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro', ...hf]);
+    expect(rows().map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', ...hf]); // V2 / Pro retired (GG 2026-10-23)
     await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Paused while it moves to Google’s engines'));
-    expect(rows().filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro']);
+    expect(rows().filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto']);
     expect(row('nb/auto').getAttribute('aria-checked')).toBe('true');
-    expect(row('nb/auto').textContent).toContain('V2 at 1K and 2K, Pro at 4K');
-    expect(row('nb/pro').textContent).toContain('Max quality'); // the speed/quality badge
+    expect(row('nb/auto').textContent).toContain('Google Gemini');
+    expect(row('nb/auto').textContent).toContain('Google’s image model on Vertex AI');
+    expect(row('nb/auto').textContent).not.toMatch(/Nano Banana|V2|\b[124]K\b/);
     for (const id of hf) expect(row(id).getAttribute('aria-disabled')).toBe('true');
     // ⚠️ No price anywhere in the model list — the request names the model and the server quotes it.
     const dialog = screen.getByRole('dialog', { name: 'Model' });
@@ -339,10 +332,10 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
     await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Paused while it moves to Google’s engines'));
     fireEvent.click(row('hf/soul-2'));
     expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy(); // still open: nothing happened
-    fireEvent.click(row('nb/v2'));
+    fireEvent.click(row('nb/auto'));
     expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull();
-    expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana V2');
-    expect(window.localStorage.getItem('myavatar:model:image')).toBe('nb/v2');
+    expect(screen.getByTestId('model-row').textContent).toContain('Google Gemini');
+    expect(window.localStorage.getItem('myavatar:model:image')).toBeNull(); // the default is never stored
   });
 
   test('⚠️ a Higgsfield model is never a choice, even when an older server says it runs: a tap does nothing, Generate stays Google\'s', async () => {
@@ -361,33 +354,34 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
     expect(screen.getByTestId('chip-count')).toBeTruthy();
   });
 
-  test('a Higgsfield pick remembered from before reads as Auto at once — no server answer needed, so none is asked', () => {
+  test('a Higgsfield pick remembered from before reads as the Google row at once — no server answer needed, so none is asked', () => {
     window.localStorage.setItem('myavatar:model:image', 'hf/soul-2');
     deployment([]);
     show();
     openAdvanced();
-    expect(screen.getByTestId('model-row').textContent).toContain('Auto');
+    expect(screen.getByTestId('model-row').textContent).toContain('Google Gemini');
     expect(screen.queryByTestId('hf-generate')).toBeNull();
     expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/api/studio/catalogue'), expect.anything());
   });
 
-  test('a model without the size on screen moves the size chip to one it has (Nano Banana Pro starts at 2K) and names the gap', () => {
-    const { p } = show({ quality: 'standard', model: 'nb/pro', onModel: jest.fn() });
-    expect(p.onQuality).toHaveBeenCalledWith('high');
-    openAdvanced();
-    fireEvent.click(screen.getByTestId('chip-quality'));
-    const options = within(screen.getByRole('dialog', { name: 'Quality' })).getAllByRole('radio');
-    expect((options[0] as HTMLButtonElement).disabled).toBe(true);
-    expect(options[0]!.textContent).toContain('Nano Banana Pro does not render this size');
-    expect(options[1]!.textContent).toContain('Nano Banana Pro');
+  test('⚠️ a Nano Banana V2 / Pro pick from before (GG 2026-10-23, "Hide") reads as the Google row, stored or controlled', () => {
+    for (const id of ['nb/v2', 'nb/pro']) {
+      window.localStorage.setItem('myavatar:model:image', id);
+      const stored = show({ quality: 'standard' });
+      expect(screen.getByTestId('advanced-toggle').textContent).toContain('Google Gemini');
+      expect(screen.getByTestId('advanced-toggle').textContent).not.toMatch(/Nano Banana|V2|Pro\b/);
+      stored.unmount();
+      const controlled = show({ model: id, onModel: jest.fn() });
+      expect(screen.getByTestId('advanced-toggle').textContent).toContain('Google Gemini');
+      controlled.unmount();
+    }
   });
 
-  test('controlled: `model` / `onModel` override the browser\'s pick', () => {
+  test('controlled: `onModel` takes the tap instead of the browser\'s store', () => {
     const onModel = jest.fn();
-    show({ model: 'nb/pro', onModel });
-    expect(screen.getByTestId('advanced-toggle').textContent).toContain('Nano Banana Pro');
+    show({ model: 'nb/auto', onModel });
     openAdvanced();
-    expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana Pro');
+    expect(screen.getByTestId('model-row').textContent).toContain('Google Gemini');
     fireEvent.click(screen.getByTestId('model-row'));
     fireEvent.click(row('nb/auto'));
     expect(onModel).toHaveBeenCalledWith('nb/auto');

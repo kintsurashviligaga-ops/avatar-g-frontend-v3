@@ -160,13 +160,15 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
 // ─── Image ─────────────────────────────────────────────────────────────────────────────────────────────
 
 // ⚠️ NO CARD DEFAULTS TO 4K (owner decision 2026-10-01 c). Product, Poster and Wallpaper were 'ultra' (the 4K Pro
-// endpoint, the slowest tier and the one most likely to time out); they now start at 'high' (2K). Ultra stays one tap
-// away in the Quality control for anyone who wants it, and the card simply stops being lit, as the contract above says.
+// endpoint, the slowest tier and the one most likely to time out); they now start at 'high' (2K).
+// ⚠️ NO HINT NAMES A SIZE (GG 2026-10-23, "Hide"). The image tool offers no size: the render takes none and every size
+// cost the same, so a hint that said "at 2K" or "pick 4K" described a control that is gone. `quality` stays in the values
+// because the request still carries it (the idempotency key and the endpoint the reply names).
 export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
   {
     tool: 'image', id: 'product',
     label: T('პროდუქტის ფოტო', 'Product Shot', 'Фото товара'),
-    hint: T('1:1, 2K — კატალოგის ხარისხი', '1:1 at 2K — catalogue quality', '1:1, 2K — каталожное качество'),
+    hint: T('1:1 — კატალოგის ხარისხი', '1:1 — catalogue quality', '1:1 — каталожное качество'),
     adds: T('სტუდიური ფონი და რბილი შუქი', 'A clean studio backdrop and soft light', 'Чистый студийный фон и мягкий свет'),
     thumb: '/templates/image/product.jpg', palette: ['#160E06', '#E0A458'],
     values: { aspect: '1:1', quality: 'high', style: 'Photorealistic' },
@@ -174,7 +176,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
   {
     tool: 'image', id: 'social',
     label: T('სოციალური პოსტი', 'Social Post', 'Пост для соцсетей'),
-    hint: T('4:5 — Instagram-ის ლენტა, 2K', '4:5 for the Instagram feed, 2K', '4:5 — лента Instagram, 2K'),
+    hint: T('4:5 — Instagram-ის ლენტა', '4:5 for the Instagram feed', '4:5 — лента Instagram'),
     adds: T('ცოცხალი ლაიფსთაილ კადრი ლენტისთვის', 'A bright lifestyle look made for the feed', 'Яркий лайфстайл-кадр для ленты'),
     thumb: '/templates/image/social.jpg', palette: ['#0C1424', '#5BA6F0'],
     values: { aspect: '4:5', quality: 'high', style: 'Photorealistic' },
@@ -182,7 +184,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
   {
     tool: 'image', id: 'poster',
     label: T('კინოპოსტერი', 'Cinematic Poster', 'Киноафиша'),
-    hint: T('3:4, 2K — დიდი ბეჭდვისთვის აირჩიე 4K', '3:4 at 2K — pick 4K for large prints', '3:4, 2K — для крупной печати выберите 4K'),
+    hint: T('3:4 — ბეჭდვისა და ეკრანისთვის', '3:4 for print and screen', '3:4 — для печати и экрана'),
     adds: T('პოსტერის კომპოზიცია, ადგილი სათაურისთვის', 'Poster composition with room for a title', 'Композиция афиши с местом для названия'),
     thumb: '/templates/image/poster.jpg', palette: ['#1A0C08', '#FF8A4C'],
     values: { aspect: '3:4', quality: 'high', style: 'Cinematic' },
@@ -190,7 +192,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
   {
     tool: 'image', id: 'wallpaper',
     label: T('ფონი', 'Wallpaper', 'Обои'),
-    hint: T('16:9, 2K', '16:9 widescreen at 2K', '16:9, 2K'),
+    hint: T('16:9 — ფართო ეკრანი', '16:9 widescreen', '16:9 — широкий экран'),
     adds: T('ფართო ხედი, თავისუფალი ცენტრით', 'A wide vista with an uncluttered centre', 'Широкий вид со свободным центром'),
     thumb: '/templates/image/wallpaper.jpg', palette: ['#06101C', '#3FA9F5'],
     values: { aspect: '16:9', quality: 'high', style: 'Cinematic' },

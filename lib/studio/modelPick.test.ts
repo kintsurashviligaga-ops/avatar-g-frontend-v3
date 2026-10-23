@@ -14,22 +14,34 @@ beforeEach(() => { window.localStorage.clear(); __resetModelPickMemory(); });
 
 describe('the stored pick', () => {
   test('per service and per surface; the default is not stored; a foreign or unknown id is no pick at all', () => {
-    expect(getModelPick('image')).toBeNull();
-    setModelPick('image', 'nb/pro');
-    expect(window.localStorage.getItem('myavatar:model:image')).toBe('nb/pro');
-    expect(getModelPick('image')).toBe('nb/pro');
-    expect(getModelPick('image', 'studio')).toBeNull(); // Studio β remembers its own
-    setModelPick('image', 'nb/v2', 'studio');
-    expect(window.localStorage.getItem(modelPickKey('image', 'studio'))).toBe('nb/v2');
-    expect(getModelPick('image')).toBe('nb/pro');
-
-    setModelPick('image', 'nb/auto');
-    expect(window.localStorage.getItem('myavatar:model:image')).toBeNull();
-    setModelPick('image', 'google/veo-3.1'); // another service's model is not an image pick
-    setModelPick('image', 'evil');
-    expect(getModelPick('image')).toBeNull();
-    window.localStorage.setItem('myavatar:model:video', 'nb/pro'); // hand-edited storage
     expect(getModelPick('video')).toBeNull();
+    setModelPick('video', 'google/veo-3.1');
+    expect(window.localStorage.getItem('myavatar:model:video')).toBe('google/veo-3.1');
+    expect(getModelPick('video')).toBe('google/veo-3.1');
+    expect(getModelPick('video', 'studio')).toBeNull(); // Studio β remembers its own
+    setModelPick('video', 'google/veo-3.1-lite', 'studio');
+    expect(window.localStorage.getItem(modelPickKey('video', 'studio'))).toBe('google/veo-3.1-lite');
+    expect(getModelPick('video')).toBe('google/veo-3.1');
+
+    setModelPick('video', 'google/veo-3.1-fast');
+    expect(window.localStorage.getItem('myavatar:model:video')).toBeNull();
+    setModelPick('video', 'nb/auto'); // another service's model is not a video pick
+    setModelPick('video', 'evil');
+    expect(getModelPick('video')).toBeNull();
+    window.localStorage.setItem('myavatar:model:image', 'google/veo-3.1'); // hand-edited storage
+    expect(getModelPick('image')).toBeNull();
+  });
+
+  test('⚠️ a retired Nano Banana V2 / Pro pick (GG 2026-10-23, "Hide") reads as no pick, and is never stored again', () => {
+    for (const id of ['nb/v2', 'nb/pro']) {
+      window.localStorage.setItem('myavatar:model:image', id); // stored while the rows were still offered
+      expect(getModelPick('image')).toBeNull();
+      expect(imageModelField()).toEqual({ model: 'nb/auto' });
+      window.localStorage.clear();
+      setModelPick('image', id);
+      expect(window.localStorage.getItem('myavatar:model:image')).toBeNull();
+      expect(getModelPick('image')).toBeNull();
+    }
   });
 
   test('⚠️ storage that throws (private mode, quota, blocked) never throws here — the pick holds for this page', () => {
@@ -47,20 +59,20 @@ describe('the stored pick', () => {
   });
 
   test('the hook follows every pick, including one made by another view of the same service', () => {
-    const { result } = renderHook(() => useModelPick('image'));
+    const { result } = renderHook(() => useModelPick('video'));
     expect(result.current[0]).toBeNull();
-    act(() => { setModelPick('image', 'nb/v2'); });
-    expect(result.current[0]).toBe('nb/v2');
-    act(() => { result.current[1]('nb/pro'); });
-    expect(result.current[0]).toBe('nb/pro');
+    act(() => { setModelPick('video', 'google/veo-3.1'); });
+    expect(result.current[0]).toBe('google/veo-3.1');
+    act(() => { result.current[1]('google/veo-3.1-lite'); });
+    expect(result.current[0]).toBe('google/veo-3.1-lite');
   });
 });
 
 describe('the image request always names the picked model', () => {
-  test('the Google pick (Auto by default) — so the server quotes and renders exactly what the screen says', () => {
+  test('the one Google row — so the server quotes and renders exactly what the screen says', () => {
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
-    setModelPick('image', 'nb/pro');
-    expect(imageModelField()).toEqual({ model: 'nb/pro' });
+    setModelPick('image', 'nb/auto');
+    expect(imageModelField()).toEqual({ model: 'nb/auto' });
     expect(higgsfieldPicked('image')).toBe(false);
   });
 
@@ -139,8 +151,10 @@ describe('the rows a picker offers', () => {
   });
 
   test('the effective pick: the stored one if a tap could choose it now, else the default', () => {
+    const video = pickerRows('video', { runners: ['film'], status: null });
+    expect(effectivePick('video', 'google/veo-3.1', video)).toBe('google/veo-3.1');
     const rows = pickerRows('image', { runners: ['image'], status: null });
-    expect(effectivePick('image', 'nb/pro', rows)).toBe('nb/pro');
+    expect(effectivePick('image', 'nb/pro', rows)).toBe('nb/auto'); // a retired row
     expect(effectivePick('image', 'hf/soul-2', rows)).toBe('nb/auto');
     expect(effectivePick('image', null, rows)).toBe('nb/auto');
   });

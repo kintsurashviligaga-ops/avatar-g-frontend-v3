@@ -2,8 +2,8 @@
 
 /**
  * ImageDesk — what the CENTRE column shows in the Image tool on a desktop (ref6's grammar: the form is beside, the result is the
- * page). From the top: the Result pane (the latest picture or batch, the actions, the earlier ones), "Models & prices" (the table that
- * is also the size picker), and the conversation — kept, one tap away, because the thread is where every other tool's output and the
+ * page). From the top: the Result pane (the latest picture or batch, the actions, the earlier ones), "Models & prices" (the picked
+ * model and its price), and the conversation — kept, one tap away, because the thread is where every other tool's output and the
  * history live, and nothing is deleted for the sake of a tidier page.
  *
  * It replaces the greeting-and-chips empty state and the message list while the Image tool is open at ≥ 1024 px; the Create screen
@@ -11,21 +11,18 @@
  */
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, MessagesSquare } from 'lucide-react';
-import type { ImgQuality } from '@/lib/studio/imageCreate';
 import type { ImageResultView } from '@/lib/studio/imageResults';
 import { imageCreateCopy } from './imageCreateCopy';
 import { ImageModelsTable } from './ImageModelsTable';
 import { ImageResultPane, type ImageResultActions } from './ImageResultPane';
 
 export function ImageDesk({
-  locale, results, notice, aspect, quality, onQuality, model, elapsedSec, capSecFor, actions, busy, upscaling, conversation, messageCount, agentG,
+  locale, results, notice, aspect, model, elapsedSec, capSecFor, actions, busy, upscaling, conversation, messageCount, agentG,
 }: {
   locale: string;
   results: readonly ImageResultView[];
   notice: { text: string; topUp: boolean } | null;
   aspect: string;
-  quality: ImgQuality;
-  onQuality: (q: ImgQuality) => void;
   /** The picked image model; by default the browser's pick (lib/studio/modelPick). */
   model?: string;
   elapsedSec: number;
@@ -45,7 +42,7 @@ export function ImageDesk({
     <div data-testid="image-desk" className="min-w-0 space-y-7 px-0.5 pb-2 pt-2">
       {agentG}
       <ImageResultPane locale={locale} results={results} notice={notice} aspect={aspect} elapsedSec={elapsedSec} capSecFor={capSecFor} actions={actions} busy={busy} upscaling={upscaling} />
-      <ImageModelsTable locale={locale} quality={quality} onQuality={onQuality} {...(model ? { model } : {})} />
+      <ImageModelsTable locale={locale} {...(model ? { model } : {})} />
       {messageCount > 0 && (
         <section data-testid="image-conversation">
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}

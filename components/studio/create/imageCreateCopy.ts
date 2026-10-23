@@ -39,9 +39,6 @@ export interface ImageCreateCopy {
   negativePlaceholder: string;
   // — option chips and their pickers
   aspect: string;
-  quality: string;
-  /** Under a size the picked model does not render (Nano Banana Pro has no 1K). */
-  qualityNotOnModel: (model: string) => string;
   count: string;
   countTitle: string;
   countOption: (n: number) => string;
@@ -109,8 +106,6 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     negative: 'ნეგატიური პრომპტი',
     negativePlaceholder: 'რა ავიცილოთ სურათში…',
     aspect: 'პროპორცია',
-    quality: 'ხარისხი',
-    qualityNotOnModel: (m) => `${m} ამ ზომას არ აკეთებს`,
     count: 'რაოდენობა',
     countTitle: 'რამდენი სურათი',
     countOption: (n) => `${n} სურათი`,
@@ -126,7 +121,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     colModel: 'მოდელი',
     colPrice: 'ფასი',
     creditsPerImage: (c) => `${c} კრედიტი / სურათი`,
-    priceNote: 'ფასი ყველა ზომაზე ერთია. ×2 და ×4 თითო სურათზე ითვლება.',
+    priceNote: 'ყველა სურათს ერთი ფასი აქვს; ×2 და ×4 თითო სურათზე ითვლება.',
     conversation: 'საუბარი',
     actDownload: 'ჩამოტვირთვა',
     actShare: 'გაზიარება',
@@ -168,8 +163,6 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     negative: 'Negative prompt',
     negativePlaceholder: 'What to avoid in the image…',
     aspect: 'Aspect ratio',
-    quality: 'Quality',
-    qualityNotOnModel: (m) => `${m} does not render this size`,
     count: 'Count',
     countTitle: 'How many images',
     countOption: (n) => (n === 1 ? '1 image' : `${n} images`),
@@ -185,7 +178,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     colModel: 'Model',
     colPrice: 'Price',
     creditsPerImage: (c) => `${c} ${c === 1 ? 'credit' : 'credits'} / image`,
-    priceNote: 'The price is the same at every size. ×2 and ×4 are billed per image.',
+    priceNote: 'Every image costs the same; ×2 and ×4 are billed per image.',
     conversation: 'Conversation',
     actDownload: 'Download',
     actShare: 'Share',
@@ -227,8 +220,6 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     negative: 'Негативный промпт',
     negativePlaceholder: 'Что исключить из изображения…',
     aspect: 'Соотношение',
-    quality: 'Качество',
-    qualityNotOnModel: (m) => `${m} не делает этот размер`,
     count: 'Количество',
     countTitle: 'Сколько изображений',
     countOption: (n) => `${n} ${plural(n, 'изображение', 'изображения', 'изображений')}`,
@@ -244,7 +235,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     colModel: 'Модель',
     colPrice: 'Цена',
     creditsPerImage: (c) => `${c} ${plural(c, 'кредит', 'кредита', 'кредитов')} / изобр.`,
-    priceNote: 'Цена одинакова для любого размера. ×2 и ×4 считаются за каждое изображение.',
+    priceNote: 'Каждое изображение стоит одинаково; ×2 и ×4 считаются за каждое изображение.',
     conversation: 'Беседа',
     actDownload: 'Скачать',
     actShare: 'Поделиться',

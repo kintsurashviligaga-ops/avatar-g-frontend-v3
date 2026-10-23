@@ -10,18 +10,17 @@
  *   prompt        the prompt card (GG 2026-10-18: what to make comes first, then its file)
  *   upload        a dashed card: "Choose an image to upload (max N)" — N is what the image route REALLY takes (one)
  *   templates     a collapsible gallery directly under the upload (open on a desktop, shut on a phone)
- *   advanced      „პროფესიონალური პარამეტრები", shut: "◎ Model … Auto ▾" — the studio's ModelPicker (components/studio/ui):
- *                 Google's Nano Banana first (Auto · V2 · Pro, Auto the default), then the Higgsfield image models — open where
- *                 this deployment can run them (keys · HF_ENABLED_MODELS · STUDIO_V2), dimmed with why where it cannot. A
- *                 Higgsfield pick swaps the footer's Generate for HiggsfieldGenerate (the studio saga: the price on the button
- *                 is the server's, the tap confirms it); a Google pick sends `model` to /api/nanobanana/image as before ·
- *                 the resolution chip [◇ 2K] · style · negative prompt · whatever the studio slots in (Script → Storyboard).
- *                 Shut, its summary names the model and the resolution.
+ *   advanced      „პროფესიონალური პარამეტრები", shut: "◎ Model … Google Gemini ▾" — the studio's ModelPicker
+ *                 (components/studio/ui): the one Google row, then the Higgsfield image models dimmed as paused. A Google pick
+ *                 sends `model` to /api/nanobanana/image as before · style · negative prompt · whatever the studio slots in
+ *                 (Script → Storyboard). Shut, its summary names the model (and the style when one is picked).
+ *                 ⚠️ NO SIZE CHIP (GG 2026-10-23, "Hide"): the render takes no size and every size cost the same, so the
+ *                 1K / 2K / 4K chip and the Nano Banana V2 / Pro rows are gone until a size is verified to reach the render.
  *   ─ footer (sticky) ─
  *   chips         [▢ 1:1] [⧉ 1] — each opens a picker with large 44 px+ options
  *   Generate ✦ N  full width; N is `quoteCredits`, the SAME function the route charges with
  *
- * ⚠️ NOTHING THAT EXISTED IS GONE: the ten ratios, the three sizes, ×1/×2/×4, all thirteen styles, the negative prompt, the
+ * ⚠️ NOTHING ELSE THAT EXISTED IS GONE: the ten ratios, ×1/×2/×4, all thirteen styles, the negative prompt, the
  * template gallery (thumbnails, "Adds: …", the picked-card semantics — OmniStudio's `applyImagePreset`), the reference picture and
  * Script → Storyboard (the `advancedExtra` slot). Only their place changed.
  *
@@ -30,7 +29,7 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
-import { ChevronDown, Cpu, Gem, Image as ImageIcon, Layers, LayoutTemplate, SlidersHorizontal, Wand2, X } from 'lucide-react';
+import { ChevronDown, Cpu, Image as ImageIcon, Layers, LayoutTemplate, SlidersHorizontal, Wand2, X } from 'lucide-react';
 import { GenerateButton } from '@/components/studio/ui/GenerateButton';
 import { ModelPicker } from '@/components/studio/ui/ModelPicker';
 import { TemplateGallery, type TemplateCardItem } from '@/components/studio/ui/TemplateGallery';
@@ -38,8 +37,8 @@ import { TextArea } from '@/components/studio/ui/controls';
 import { CHIP_BASE, CHIP_OFF, CHIP_ON } from '@/components/studio/ui/tokens';
 import { creditsLabel } from '@/lib/credits/quote';
 import {
-  IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageStyleSwatch,
-  imageVariant, nativeQuality, tierFor, type ImgAspect, type ImgCount, type ImgQuality,
+  IMAGE_MAX_REFERENCES, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageStyleSwatch,
+  type ImgAspect, type ImgCount, type ImgQuality,
 } from '@/lib/studio/imageCreate';
 import { DEFAULT_MODEL, catalogueEntry, type ModelRunner } from '@/lib/providers/catalogue';
 import { effectivePick, pickerRows, useModelPick } from '@/lib/studio/modelPick';
@@ -52,7 +51,7 @@ import { OptionPicker, type PickerOption } from './OptionPicker';
 import { PromptModelCard, type MicState } from './PromptModelCard';
 import { ReferenceUploadCard } from './ReferenceUploadCard';
 
-type PickerId = 'model' | 'aspect' | 'quality' | 'count';
+type PickerId = 'model' | 'aspect' | 'count';
 
 /** What this panel can run: /api/nanobanana/image (Google), and the studio saga (Higgsfield) where the deployment has it. */
 const IMAGE_RUNNERS: readonly ModelRunner[] = ['image', 'studio'];
@@ -87,8 +86,8 @@ export interface ImageCreatePanelProps {
   // ── options
   aspect: ImgAspect;
   onAspect: (v: ImgAspect) => void;
+  /** The studio's quality (a template sets it). Nothing here offers it: it only rides along with a Higgsfield pick's hints. */
   quality: ImgQuality;
-  onQuality: (v: ImgQuality) => void;
   count: ImgCount;
   onCount: (v: ImgCount) => void;
   style: string;
@@ -181,16 +180,6 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
     if (p.model !== undefined || !status || !pickedIsStudio || rows.some((r) => r.entry.id === picked && r.selectable)) return;
     setStoredModel(DEFAULT_MODEL.image);
   }, [p.model, status, pickedIsStudio, rows, picked, setStoredModel]);
-  const tier = tierFor(p.quality);
-  const onQuality = p.onQuality;
-  // A model without the size on screen (Nano Banana Pro has no 1K) moves the chip to the nearest size it HAS — the chip never
-  // reads a size the render would not be.
-  useEffect(() => {
-    if (hf) return;
-    const q = nativeQuality(model.id, p.quality);
-    if (q !== p.quality) onQuality(q);
-  }, [hf, model.id, p.quality, onQuality]);
-
   // ── local view state ─────────────────────────────────────────────────────────────────────────────────────────────────────
   // null = "the default for this width" (open on a desktop, shut on a phone); the first tap makes it the user's choice.
   const [tplOpenChoice, setTplOpenChoice] = useState<boolean | null>(null);
@@ -219,7 +208,6 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   };
 
   const aspectBtn = useRef<HTMLButtonElement | null>(null);
-  const qualityBtn = useRef<HTMLButtonElement | null>(null);
   const countBtn = useRef<HTMLButtonElement | null>(null);
   const closePicker = useCallback(() => setPicker(null), []);
 
@@ -236,15 +224,6 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
 
   // ── picker contents ──────────────────────────────────────────────────────────────────────────────────────────────────────
   const aspectOptions = useMemo<PickerOption<ImgAspect>[]>(() => IMG_ASPECTS.map((a) => ({ value: a, label: a, glyph: <AspectGlyph ratio={a} size={26} on={a === p.aspect} /> })), [p.aspect]);
-  const qualityOptions = useMemo<PickerOption<ImgQuality>[]>(() => IMAGE_TIERS.map((t) => {
-    if (hf) return { value: t.quality, label: t.res, glyph: <Gem size={20} />, hint: `${hf.label[lang]} · ${t.note[lang]}` };
-    const v = imageVariant(model.id, t.quality);
-    return {
-      value: t.quality, label: t.res, glyph: <Gem size={20} />, disabled: !v.native,
-      hint: v.native ? `Nano Banana ${v.family} · ${t.note[lang]}` : c.qualityNotOnModel(model.label[lang]),
-      trailing: creditsLabel(imageCredits(1), p.locale),
-    };
-  }), [lang, p.locale, model, hf, c]);
   const countOptions = useMemo<PickerOption<ImgCount>[]>(() => IMG_COUNTS.map((n) => ({
     value: n, label: c.countOption(n), glyph: <Layers size={20} />, trailing: creditsLabel(imageCredits(n), p.locale),
   })), [c, p.locale]);
@@ -343,7 +322,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         <DisclosureRow
           icon={<SlidersHorizontal size={18} />}
           title={c.advanced}
-          summary={[model.label[lang], tier.res, ...(p.style !== 'Auto' ? [p.styleLabel(p.style)] : [])].join(' · ')}
+          summary={[model.label[lang], ...(p.style !== 'Auto' ? [p.styleLabel(p.style)] : [])].join(' · ')}
           dot={dirtyAdvanced}
           open={advOpen}
           onToggle={() => { setAdvOpen(!advOpen); if (!advOpen) reveal(advSection.current); }}
@@ -369,10 +348,6 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
                 <ChevronDown size={18} aria-hidden="true" className={`text-app-muted transition-transform ${picker === 'model' ? 'rotate-180' : ''}`} />
               </span>
             </button>
-            <div className="flex min-w-0 items-center justify-between gap-3">
-              <p className="text-[12.5px] font-semibold text-app-text">{c.quality}</p>
-              <OptionChip ref={qualityBtn} icon={<Gem size={18} />} label={`${c.quality}: ${tier.res}`} expanded={picker === 'quality'} onClick={() => setPicker((cur) => (cur === 'quality' ? null : 'quality'))} testId="chip-quality">{tier.res}</OptionChip>
-            </div>
             <div>
               <p className="mb-2 text-[12.5px] font-semibold text-app-text">{c.style}</p>
               {/* Wraps, never scrolls sideways: thirteen styles in a strip hid most of them behind the edge. */}
@@ -432,7 +407,6 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
 
       {/* ── pickers: a sheet on a phone, a popover on a desktop ── */}
       <OptionPicker open={picker === 'aspect'} onClose={closePicker} title={c.aspect} closeLabel={c.pickerClose} options={aspectOptions} value={p.aspect} onSelect={p.onAspect} desktop={p.desktop} anchorRef={aspectBtn} columns={5} testId="picker-aspect" />
-      <OptionPicker open={picker === 'quality'} onClose={closePicker} title={c.quality} closeLabel={c.pickerClose} options={qualityOptions} value={p.quality} onSelect={p.onQuality} desktop={p.desktop} anchorRef={qualityBtn} testId="picker-quality" />
       <OptionPicker open={picker === 'count'} onClose={closePicker} title={c.countTitle} closeLabel={c.pickerClose} options={countOptions} value={p.count} onSelect={p.onCount} desktop={p.desktop} anchorRef={countBtn} testId="picker-count" />
       {/* ⚠️ No price in the model list: the request names the model and the server quotes it — the number is on Generate. */}
       <ModelPicker
