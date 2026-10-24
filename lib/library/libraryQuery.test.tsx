@@ -22,8 +22,8 @@ jest.mock('../supabase/browser', () => ({
 }));
 
 import {
-  LIBRARY_UPDATED_EVENT, LibraryFetchError, fetchLibraryPage, libraryFailure, libraryKeys, removeLibraryItem, resetLibraryOwnerForTests,
-  useLibraryFeed, useLibraryPage,
+  DEVICE_FAVORITES_KEY, LIBRARY_UPDATED_EVENT, LibraryFetchError, fetchLibraryPage, libraryFailure, libraryKeys, migrateDeviceFavorites,
+  removeLibraryItem, resetDeviceFavoritesForTests, resetLibraryOwnerForTests, setLibraryFavorite, useLibraryFeed, useLibraryPage,
 } from './libraryQuery';
 
 notifyManager.setScheduler((run) => run());
@@ -69,7 +69,7 @@ test('the request skips the browser cache, carries the abort signal, and keeps t
   expect(calls[0]!.init).toMatchObject({ cache: 'no-store', credentials: 'include' });
   expect(calls[0]!.init?.signal).toBeInstanceOf(AbortSignal);
   expect(ids('page')).toEqual(['a1']);
-  // The Favorites window: every kind, the newest 60, no offset (as the page asked before).
+  // No kind and no offset: every kind, the newest `limit`.
   await act(async () => { await fetchLibraryPage({ limit: 60 }); });
   expect(calls[1]!.url).toBe('/api/studio/library?limit=60');
 });
@@ -203,4 +203,153 @@ test('a tab whose links are about to run out is fetched again on return; a fresh
   expect(calls.map((c) => new URL(c.url, 'https://x').searchParams.get('kind'))).toEqual(['film,avatar', 'music', 'film,avatar']);
   await act(async () => { view.rerender(<QueryClientProvider client={client}><Page kind="music" /></QueryClientProvider>); });
   expect(calls).toHaveLength(3); // music's links last a day: its return sends nothing
+});
+
+describe('stars (§4.2.4)', () => {
+  type Data = { items: (ReturnType<typeof item> & { favorite?: boolean })[]; demo: boolean; nextCursor: string | null };
+  const star = (id: string, favorite: boolean) => ({ ...item(id), favorite });
+  const filmKey = libraryKeys.page('user-a', 'film,avatar', 12, 0);
+  const favKey = libraryKeys.page('user-a', '', 12, 0, true);
+  const feedKey = libraryKeys.feed('user-a', 24);
+  let patch: { ok: boolean; status: number; ids?: string[] } | Error;
+  beforeEach(() => {
+    resetDeviceFavoritesForTests();
+    window.localStorage.clear();
+    patch = { ok: true, status: 200 };
+    global.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (init?.method === 'PATCH') {
+        if (patch instanceof Error) throw patch;
+        const p = patch;
+        const body = JSON.parse(String(init.body)) as { id?: string; ids?: string[]; favorite: boolean };
+        return { ok: p.ok, status: p.status, json: async () => ({ success: p.ok, favorite: body.favorite, ids: p.ids ?? (body.ids ?? [body.id]) }) };
+      }
+      const a = answer(url);
+      return { ok: a.ok, status: a.status, json: async () => ({ items: a.items }) };
+    }) as unknown as typeof fetch;
+  });
+  function seed() {
+    client.setQueryData(filmKey, { items: [star('a1', false), star('a2', true)], demo: false, nextCursor: null });
+    client.setQueryData(favKey, { items: [star('a2', true), star('a3', true)], demo: false, nextCursor: null });
+    client.setQueryData(feedKey, { pages: [{ items: [star('a1', false), star('a2', true)], demo: false, nextCursor: null }], pageParams: [null] });
+  }
+  const flags = (key: readonly unknown[]) => client.getQueryData<Data>(key)!.items.map((it) => `${it.id}:${it.favorite ? 1 : 0}`);
+  const feedFlags = () => client.getQueryData<{ pages: Data[] }>(feedKey)!.pages[0]!.items.map((it) => `${it.id}:${it.favorite ? 1 : 0}`);
+
+  test('the Favorites tab asks the route for the starred works, paged, under a key of its own', async () => {
+    await act(async () => { await fetchLibraryPage({ limit: 12, offset: 24, favorites: true }); });
+    expect(calls[0]!.url).toBe('/api/studio/library?favorite=1&limit=12&offset=24');
+    expect(favKey).not.toEqual(libraryKeys.page('user-a', '', 12, 0));
+    expect(libraryKeys.page('user-a', 'film', 12, 0)).toEqual(['library', 'user-a', 'page', { kind: 'film', limit: 12, offset: 0 }]); // unchanged
+
+    function Fav() {
+      const q = useLibraryPage('', 12, 12, true);
+      return <ul data-testid="fav">{q.data?.items.map((it) => <li key={it.id}>{it.id}</li>)}</ul>;
+    }
+    await act(async () => { mount(<Fav />); });
+    expect(calls[1]!.url).toBe('/api/studio/library?favorite=1&limit=12&offset=12');
+    expect(ids('fav')).toEqual(['a1']);
+  });
+
+  test('a star shows on every loaded page at once, and the server is told which work', async () => {
+    seed();
+    let ok: boolean | undefined;
+    await act(async () => { ok = await setLibraryFavorite(client, 'user-a', 'a1', true); });
+    expect(ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe('/api/studio/library');
+    expect(calls[0]!.init).toMatchObject({ method: 'PATCH', credentials: 'include', cache: 'no-store' });
+    expect(JSON.parse(String(calls[0]!.init!.body))).toEqual({ id: 'a1', favorite: true });
+    expect(flags(filmKey)).toEqual(['a1:1', 'a2:1']);
+    expect(feedFlags()).toEqual(['a1:1', 'a2:1']);
+    // The new star belongs on the Favorites pages: they are fetched again the next time they are shown.
+    expect(client.getQueryState(favKey)!.isInvalidated).toBe(true);
+    expect(client.getQueryState(filmKey)!.isInvalidated).toBe(false);
+  });
+
+  test('a star taken off leaves the Favorites pages at once and stays on the others, switched off', async () => {
+    seed();
+    await act(async () => { await setLibraryFavorite(client, 'user-a', 'a2', false); });
+    expect(flags(favKey)).toEqual(['a3:1']);
+    expect(flags(filmKey)).toEqual(['a1:0', 'a2:0']);
+    expect(feedFlags()).toEqual(['a1:0', 'a2:0']);
+  });
+
+  test('a star the server refuses, or cannot hear, is put back everywhere', async () => {
+    for (const refusal of [{ ok: false, status: 503 }, { ok: false, status: 404 }, new TypeError('Failed to fetch')]) {
+      seed();
+      patch = refusal;
+      let ok: boolean | undefined;
+      await act(async () => { ok = await setLibraryFavorite(client, 'user-a', 'a2', false); });
+      expect(ok).toBe(false);
+      expect(flags(favKey)).toEqual(['a2:1', 'a3:1']);
+      expect(flags(filmKey)).toEqual(['a1:0', 'a2:1']);
+      expect(feedFlags()).toEqual(['a1:0', 'a2:1']);
+    }
+  });
+
+  test('another account\'s pages are never touched', async () => {
+    seed();
+    const otherKey = libraryKeys.page('user-b', 'film,avatar', 12, 0);
+    client.setQueryData(otherKey, { items: [star('a1', false)], demo: false, nextCursor: null });
+    await act(async () => { await setLibraryFavorite(client, 'user-a', 'a1', true); });
+    expect(flags(otherKey)).toEqual(['a1:0']);
+  });
+
+  test('a browser\'s old stars move to the account once; the ones that are not its works stay in the browser', async () => {
+    window.localStorage.setItem(DEVICE_FAVORITES_KEY, JSON.stringify(['a1', 'x9', 'a2']));
+    seed();
+    patch = { ok: true, status: 200, ids: ['a1', 'a2'] };
+    let moved: number | undefined;
+    await act(async () => { moved = await migrateDeviceFavorites(client, 'user-a'); });
+    expect(moved).toBe(2);
+    expect(JSON.parse(String(calls[0]!.init!.body))).toEqual({ ids: ['a1', 'x9', 'a2'], favorite: true });
+    expect(calls[0]!.init).toMatchObject({ method: 'PATCH', credentials: 'include' });
+    expect(JSON.parse(window.localStorage.getItem(DEVICE_FAVORITES_KEY)!)).toEqual(['x9']);
+    expect(client.getQueryState(filmKey)!.isInvalidated).toBe(true); // shown again with the moved stars
+
+    // Once per account per tab: the leftover is not offered again here.
+    await act(async () => { moved = await migrateDeviceFavorites(client, 'user-a'); });
+    expect(moved).toBe(0);
+    expect(calls).toHaveLength(1);
+    // The next account on this browser moves its own.
+    patch = { ok: true, status: 200, ids: ['x9'] };
+    await act(async () => { moved = await migrateDeviceFavorites(client, 'user-b'); });
+    expect(moved).toBe(1);
+    expect(window.localStorage.getItem(DEVICE_FAVORITES_KEY)).toBeNull(); // nothing left: the list is gone
+  });
+
+  test('nothing moves for a visitor, an empty or unreadable list, or a server that cannot take them', async () => {
+    window.localStorage.setItem(DEVICE_FAVORITES_KEY, JSON.stringify(['a1']));
+    await expect(migrateDeviceFavorites(client, 'guest')).resolves.toBe(0);
+    await expect(migrateDeviceFavorites(client, '')).resolves.toBe(0);
+    expect(calls).toHaveLength(0);
+
+    patch = { ok: false, status: 503 };
+    await expect(migrateDeviceFavorites(client, 'user-a')).resolves.toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(window.localStorage.getItem(DEVICE_FAVORITES_KEY)!)).toEqual(['a1']); // kept for a later tab
+
+    resetDeviceFavoritesForTests();
+    patch = new TypeError('Failed to fetch');
+    await expect(migrateDeviceFavorites(client, 'user-a')).resolves.toBe(0);
+    expect(JSON.parse(window.localStorage.getItem(DEVICE_FAVORITES_KEY)!)).toEqual(['a1']);
+
+    for (const raw of ['not json', '{"a1":true}', '[]', JSON.stringify([7, '', 'x'.repeat(201)])]) {
+      resetDeviceFavoritesForTests();
+      calls = [];
+      window.localStorage.setItem(DEVICE_FAVORITES_KEY, raw);
+      await expect(migrateDeviceFavorites(client, 'user-a')).resolves.toBe(0);
+      expect(calls).toHaveLength(0);
+    }
+  });
+
+  test('a long list is sent 200 at a time; the rest waits for a later tab', async () => {
+    const many = Array.from({ length: 250 }, (_, i) => `w${i}`);
+    window.localStorage.setItem(DEVICE_FAVORITES_KEY, JSON.stringify(many));
+    patch = { ok: true, status: 200, ids: many.slice(0, 200) };
+    await expect(migrateDeviceFavorites(client, 'user-a')).resolves.toBe(200);
+    expect((JSON.parse(String(calls[0]!.init!.body)) as { ids: string[] }).ids).toEqual(many.slice(0, 200));
+    expect(JSON.parse(window.localStorage.getItem(DEVICE_FAVORITES_KEY)!)).toEqual(many.slice(200));
+  });
 });

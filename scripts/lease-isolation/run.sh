@@ -3,7 +3,8 @@
 # (lib/orchestrator/ledgerOnce.pg.test.ts, before and after 20261002d) and multi-step runs on real ffmpeg
 # (lib/agent/run/runIsolation.pg.test.ts), the delivery outbox's store (lib/notifications/outboxIsolation.pg.test.ts) and
 # the R2 duplicate guard (lib/orchestrator/idempotencyStore.pg.test.ts, before and after its proposal) and a film's payment and
-# stitches (lib/chat/filmBilling.pg.test.ts, before and after migration 20261014a), against a REAL but throwaway database: a local Postgres 16 with the
+# stitches (lib/chat/filmBilling.pg.test.ts, before and after migration 20261014a) and the Library's stars
+# (lib/library/libraryFavorites.pg.test.ts, before and after 20261024a), against a REAL but throwaway database: a local Postgres 16 with the
 # Production shape (./schema.sql) behind a real PostgREST (Docker). Nothing here can reach Production: the database
 # lives in a temp dir on this machine, PostgREST listens on 127.0.0.1, and every suite refuses any non-local URL.
 #
@@ -96,3 +97,13 @@ psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q \
   -c "drop table if exists public.storyboard_approvals; drop table if exists public.storyboard_revisions;"
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f "$B3"
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f scripts/lease-isolation/b3-storyboard-revisions.check.sql
+# Phase 3 PR 4: Library stars through the Library route itself, on generation_jobs as its signed-in reader meets it in
+# Production. First without supabase/migrations/20261024a_library_favorites.sql (as Production is until the owner applies
+# it: the Library loads, stars answer 503), then with it applied twice (it must be re-runnable).
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f scripts/lease-isolation/library-favorites.setup.sql
+FAV_PHASE=before node node_modules/.bin/jest lib/library/libraryFavorites.pg.test.ts --no-watchman --ci --forceExit
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261024a_library_favorites.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261024a_library_favorites.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
+sleep 2
+FAV_PHASE=after node node_modules/.bin/jest lib/library/libraryFavorites.pg.test.ts --no-watchman --ci --forceExit
