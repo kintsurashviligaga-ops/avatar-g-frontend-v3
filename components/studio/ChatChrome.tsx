@@ -829,6 +829,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const onDashboard = isStudioPath(pathname);
   const handleDeleteConversation = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    // ⚠️ FOCUS FOLLOWS THE DELETE (§3.2, Phase 2 PR 8). The X that had focus leaves the page with its row, and focus fell
+    // to <body>: a keyboard user started again from the top of the page. It moves to the next row's title (the previous
+    // one at the end of the list, the empty list's action when none is left). Read before the row goes.
+    const x = e.currentTarget as HTMLElement;
+    if (document.activeElement === x) {
+      const titles = Array.from(x.closest('[data-testid="history-list"]')?.querySelectorAll<HTMLElement>('[data-conv-open]') ?? []);
+      const at = titles.findIndex((t) => t.dataset.convOpen === id);
+      const nextId = at < 0 ? null : (titles[at + 1] ?? titles[at - 1])?.dataset.convOpen ?? null;
+      window.requestAnimationFrame(() => {
+        const target = nextId
+          ? Array.from(document.querySelectorAll<HTMLElement>('[data-conv-open]')).find((t) => t.dataset.convOpen === nextId)
+          : document.querySelector<HTMLElement>('[data-testid="history-empty"] button');
+        target?.focus();
+      });
+    }
     setConversations((prev) => prev.filter((c) => c.id !== id)); // optimistic
 
     /** Remove the row from storage ourselves. Returns false when there was nothing left to remove. */
@@ -1204,14 +1219,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           ) : convMatches.length === 0 ? (
             serviceHits.length > 0 ? null : <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
           ) : (
-            <div className="space-y-2 pb-2">
+            <div data-testid="history-list" className="space-y-2 pb-2">
               {convGroups.map((g) => (
                 <div key={g.key} className="space-y-0.5">
                   <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-medium text-app-muted/70">{g.label}</p>
                   {g.items.map((c) => (
                     <div key={c.id} className="group flex min-h-11 items-center">
                       {/* Separate targets keep long titles and neighboring rows clear of Delete. */}
-                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="flex min-h-[44px] min-w-0 flex-1 items-center truncate rounded-lg px-2.5 text-left text-[13.5px] text-app-text/90 transition-colors hover:bg-app-elevated">
+                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} data-conv-open={c.id} className="flex min-h-[44px] min-w-0 flex-1 items-center truncate rounded-lg px-2.5 text-left text-[13.5px] text-app-text/90 transition-colors hover:bg-app-elevated">
                         {c.title}
                       </button>
                       {/* No translated centering or expanded pseudo-hitbox: active scaling stays centered. */}
