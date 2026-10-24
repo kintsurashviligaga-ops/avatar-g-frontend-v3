@@ -6,7 +6,7 @@
  * Shown only while a `?tts=` trial is on in this tab, which only the owner's links set; for anyone else it renders
  * nothing. A small card in the corner, not in the way of a tap: the model being tried, the time from the tap to the
  * first sound, how often the read waited for its next chunk, and per chunk how long the route took for how much
- * audio. Those are the numbers the chunk sizes are tuned with (lib/speech/chunk), so the owner can send a screenshot.
+ * audio, or why it sent none. Those are the numbers the chunk sizes are tuned with (lib/speech/chunk), so the owner can send a screenshot.
  */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { speechTrialModel, speechTrialRecorder, type SpeechTrialRead } from '@/lib/speech/trial';
@@ -49,7 +49,9 @@ export function SpeechTrialPanel({ locale = 'ka' }: { locale?: Locale }) {
           </div>
           {read.chunks.slice(0, MAX_ROWS).map((c, i) => (
             <div key={i}>
-              #{i + 1} {c.chars} {l.chars} → {seconds(c.synthMs)} · {l.audio} {seconds(c.audioMs)}
+              #{i + 1} {c.chars} {l.chars} → {seconds(c.synthMs)} · {c.miss ? '✗' : `${l.audio} ${seconds(c.audioMs)}`}
+              {/* Why no audio came back, so one screenshot says it (the owner's 3.8 trial read nothing, 2026-10-24). */}
+              {c.miss ? <div data-speech-trial-miss className="break-words pl-3 text-red-300">{c.miss}</div> : null}
             </div>
           ))}
         </>

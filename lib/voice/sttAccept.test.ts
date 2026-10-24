@@ -1,13 +1,13 @@
 /** @jest-environment node */
-import { acceptTranscript, hasGeorgianScript } from './sttAccept';
+import { acceptTranscript, hasGeorgianScript, isNotATranscript } from './sttAccept';
 
 describe('THE BUG: a confident non-Georgian answer used to end the cascade', () => {
   it('rejects Latin transliteration of Georgian speech', () => {
     expect(acceptTranscript('gamarjoba rogor xar', 'ka-GE')).toBe(false);
   });
 
-  it('rejects an English rendering of Georgian speech — the screenshot symptom', () => {
-    expect(acceptTranscript("Dismiss Jimmy Carter don't give up but I gave her", 'ka-GE')).toBe(false);
+  it('rejects Russian typed out in Latin letters, the same failure for a Russian speaker', () => {
+    expect(acceptTranscript('privet kak dela', 'ka-GE')).toBe(false);
   });
 
   it('rejects an LLM refusal, which is non-empty and would have been stored as the transcript', () => {
@@ -27,8 +27,8 @@ describe('a Georgian request keeps a RUSSIAN speaker’s words as spoken', () =>
   it('accepts Cyrillic (Russian speech in a Georgian session — never translated into Georgian)', () => {
     expect(acceptTranscript('привет, как дела?', 'ka-GE')).toBe(true);
   });
-  it('a single stray Cyrillic letter is not enough', () => {
-    expect(acceptTranscript('hello д', 'ka-GE')).toBe(false);
+  it('a single stray Cyrillic letter does not make a transliteration Russian', () => {
+    expect(acceptTranscript('gamarjoba rogor xar д', 'ka-GE')).toBe(false);
   });
   it("'auto' accepts any language", () => {
     expect(acceptTranscript('hello there', 'auto')).toBe(true);
@@ -60,5 +60,35 @@ describe('script detection covers the whole Georgian block', () => {
   it('not fooled by Cyrillic or Latin', () => {
     expect(hasGeorgianScript('привет')).toBe(false);
     expect(hasGeorgianScript('hello')).toBe(false);
+  });
+});
+
+describe('English in a Georgian session is kept: Gemini is the whole engine (GG, production 2026-10-24)', () => {
+  it('an English sentence is what an English speaker said, not a leg to skip', () => {
+    expect(acceptTranscript('How do I get from Tbilisi to Batumi by train?', 'ka-GE')).toBe(true);
+    expect(acceptTranscript('hello', 'ka-GE')).toBe(true);
+  });
+  it('names, products and numbers in Latin letters are kept', () => {
+    expect(acceptTranscript('iPhone 15 Pro', 'ka-GE')).toBe(true);
+    expect(acceptTranscript('OK', 'ka-GE')).toBe(true);
+  });
+  it('a transliteration in quotes is still a transliteration', () => {
+    expect(acceptTranscript('"gamarjoba, rogor xar?"', 'ka-GE')).toBe(false);
+  });
+});
+
+describe('the model talking about the audio is never a transcript, in any language', () => {
+  it.each([['ka-GE'], ['en-US'], ['ru-RU'], ['auto']])('%s refuses refusals and silence labels', (lang) => {
+    expect(acceptTranscript("I'm sorry, but I can't transcribe this audio.", lang)).toBe(false);
+    expect(acceptTranscript('Unfortunately, the recording contains no speech.', lang)).toBe(false);
+    expect(acceptTranscript('[silence]', lang)).toBe(false);
+    expect(acceptTranscript('(inaudible)', lang)).toBe(false);
+    expect(acceptTranscript('No speech detected.', lang)).toBe(false);
+  });
+  it('speech that only mentions audio is kept', () => {
+    expect(isNotATranscript("I can't hear the audio on my laptop")).toBe(false);
+    expect(isNotATranscript('Sorry, I am late, the train was slow')).toBe(false);
+    expect(isNotATranscript('Turn the music up')).toBe(false);
+    expect(acceptTranscript('Silence is golden', 'en-US')).toBe(true);
   });
 });

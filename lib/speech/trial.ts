@@ -71,6 +71,12 @@ export interface SpeechTrialChunk {
   readonly synthMs: number;
   /** null when no audio came back. */
   readonly audioMs: number | null;
+  /**
+   * Why no audio came back, when none did: the route's status and code, then what it said beyond them ("502
+   * tts_failed · Google 404 NOT_FOUND: …"). ⚠️ The card used to show only "audio …" for a chunk that failed, so the
+   * owner's 3.8 trial (2026-10-24) read nothing and the screenshot could not say why.
+   */
+  readonly miss?: string;
 }
 
 /**
