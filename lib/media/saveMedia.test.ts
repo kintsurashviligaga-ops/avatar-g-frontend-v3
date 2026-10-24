@@ -61,7 +61,9 @@ describe('saving', () => {
   const realFetch = global.fetch;
   const realNav = Object.getOwnPropertyDescriptor(window, 'navigator');
   let clicked: string[];
+  let clickedUrls: string[];
   let opened: string[];
+  const storageOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   function setNavigator(nav: Record<string, unknown>) {
     Object.defineProperty(window, 'navigator', { configurable: true, value: { ...nav } });
@@ -72,8 +74,10 @@ describe('saving', () => {
 
   beforeEach(() => {
     clicked = [];
+    clickedUrls = [];
     opened = [];
-    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { clicked.push(this.download); });
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { clicked.push(this.download); clickedUrls.push(this.href); });
     jest.spyOn(window, 'open').mockImplementation((u) => { opened.push(String(u)); return null; });
     (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:x';
     (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => undefined;
@@ -81,7 +85,85 @@ describe('saving', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     global.fetch = realFetch;
+    if (storageOrigin === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = storageOrigin;
     if (realNav) Object.defineProperty(window, 'navigator', realNav);
+  });
+
+  const signedAsset = 'https://example.supabase.co/storage/v1/object/sign/renders/clip.mp4?token=signed-token&download=old.mp4&cache=1';
+
+  it('starts a trusted storage attachment after headers, without waiting for file bytes', async () => {
+    setNavigator({ userAgent: MAC_UA });
+    const blob = jest.fn(() => new Promise<Blob>(() => {}));
+    global.fetch = jest.fn(async () => ({ ok: true, headers: new Headers({ 'Content-Type': 'image/jpeg' }), blob })) as unknown as typeof fetch;
+    await expect(saveMedia(signedAsset, 'myavatar-image.png')).resolves.toBe('started');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ method: 'HEAD' }));
+    expect(blob).not.toHaveBeenCalled();
+    expect(clicked).toEqual(['myavatar-image.jpg']);
+    const link = new URL(clickedUrls[0]!);
+    expect(link.origin).toBe('https://example.supabase.co');
+    expect(link.pathname).toBe('/storage/v1/object/sign/renders/clip.mp4');
+    expect(link.searchParams.get('token')).toBe('signed-token');
+    expect(link.searchParams.get('cache')).toBe('1');
+    expect(link.searchParams.getAll('download')).toEqual(['myavatar-image.jpg']);
+    expect(opened).toEqual([]);
+  });
+
+  it.each([
+    'https://other.supabase.co/storage/v1/object/sign/renders/clip.mp4?token=t',
+    'https://example.supabase.co.evil.test/storage/v1/object/sign/renders/clip.mp4?token=t',
+    'https://example.supabase.co/api/clip.mp4?token=t',
+    'https://example.supabase.co/storage/v1/object/sign/renders/clip.mp4',
+    'https://user:password@example.supabase.co/storage/v1/object/sign/renders/clip.mp4?token=t',
+  ])('keeps the byte-based path for an unqualified URL: %s', async (url) => {
+    setNavigator({ userAgent: MAC_UA });
+    respond('video/mp4');
+    await expect(saveMedia(url, 'clip')).resolves.toBe('downloaded');
+    expect(global.fetch).toHaveBeenCalledWith(url, { cache: 'no-store' });
+    expect(clickedUrls).toEqual(['blob:x']);
+  });
+
+  it.each([false, true])('falls back to bytes when storage does not return usable media metadata (HTTP ok=%s)', async (ok) => {
+    setNavigator({ userAgent: MAC_UA });
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce({ ok, headers: new Headers({ 'Content-Type': 'text/html' }) })
+      .mockResolvedValueOnce({ ok: true, blob: async () => new Blob(['x'], { type: 'video/mp4' }) });
+    global.fetch = fetcher as unknown as typeof fetch;
+    await expect(saveMedia(signedAsset, 'clip')).resolves.toBe('downloaded');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(clickedUrls).toEqual(['blob:x']);
+  });
+
+  it('a stalled metadata request is aborted after two seconds and uses the existing byte path', async () => {
+    jest.useFakeTimers();
+    setNavigator({ userAgent: MAC_UA });
+    let signal: AbortSignal | undefined;
+    const fetcher = jest.fn().mockImplementationOnce((_url, init: RequestInit) => new Promise((_resolve, reject) => {
+      signal = init.signal as AbortSignal;
+      signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+    })).mockResolvedValueOnce({ ok: true, blob: async () => new Blob(['x'], { type: 'video/mp4' }) });
+    global.fetch = fetcher as unknown as typeof fetch;
+    try {
+      const saving = saveMedia(signedAsset, 'clip');
+      expect(signal?.aborted).toBe(false);
+      await jest.advanceTimersByTimeAsync(2000);
+      await expect(saving).resolves.toBe('downloaded');
+      expect(signal?.aborted).toBe(true);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(clickedUrls).toEqual(['blob:x']);
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('keeps iPhone Photos sharing for trusted storage links, with no metadata request', async () => {
+    respond('video/mp4');
+    const share = jest.fn(async () => undefined);
+    setNavigator({ userAgent: IPHONE_UA, share, canShare: () => true });
+    await expect(saveMedia(signedAsset, 'clip')).resolves.toBe('shared');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledWith(signedAsset, { cache: 'no-store' });
+    expect(share).toHaveBeenCalledTimes(1);
+    expect(clicked).toEqual([]);
   });
 
   it('on an iPhone a video goes to the share sheet as a file (→ "Save Video" → Photos), not a download', async () => {

@@ -50,7 +50,7 @@ TTFT comes out as `rate + auth + body + prompt + max(budget, profile, memory) + 
 
 Phase 3 PR 7 works on this path. It gives profile and memory a deadline and drops them when they run late. Billing stays a hard gate that fails closed.
 
-### Download with #166 (same benchmark, `lib/media/saveMedia.ts` from #166)
+### Download with #166 (same benchmark; #166 is in `main` since `201a5839`)
 
 | Interaction | p50 | p95 |
 |---|---|---|
