@@ -6,9 +6,11 @@ import { act, fireEvent, render as rtlRender, screen } from '@testing-library/re
 import { notifyManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { resetLibraryOwnerForTests } from '../../lib/library/libraryQuery';
+import { readLibraryView, saveLibraryView } from '../../lib/library/libraryView';
 
 const push = jest.fn();
-jest.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push }) }));
+let mockSearch = new URLSearchParams();
+jest.mock('next/navigation', () => ({ useSearchParams: () => mockSearch, useRouter: () => ({ push }) }));
 // The shared save (lib/media/saveMedia), held open until a test lets it finish.
 let finishSave: () => void = () => {};
 const mockSaveMedia = jest.fn((_url: string, _base: string, _opts?: { fallbackExt?: string }) => new Promise<string>((done) => { finishSave = () => done('downloaded'); }));
@@ -46,6 +48,7 @@ beforeEach(() => {
   push.mockReset();
   mockSaveMedia.mockClear();
   window.sessionStorage.clear();
+  mockSearch = new URLSearchParams();
   global.fetch = jest.fn(async (url: string) => {
     requested.push(url);
     const kind = new URL(url, 'https://x').searchParams.get('kind') ?? '';
@@ -225,6 +228,68 @@ test('going back to a tab already loaded shows it at once: no spinner, no reques
   expect(document.querySelector('video')?.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
   await act(async () => {});
   expect(kinds()).toEqual(['film,avatar', 'image,interior']);
+});
+
+// §4.2.6: a return (back from Montage, a reload of the tab) finds the page as it was left, not on the first tab.
+describe('where the page was left', () => {
+  const offsets = () => requested.map((u) => new URL(u, 'https://x').searchParams.get('offset'));
+  const active = (name: RegExp) => screen.getByRole('button', { name }).className.includes('bg-app-accent');
+
+  test('the tab and the search come back, and only that tab is read', async () => {
+    let view: ReturnType<typeof render>;
+    await act(async () => { view = render(<LibraryGallery locale="en" />); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Music$/ })); });
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: 'Tbilisi' } });
+    act(() => { view.unmount(); });
+    const before = requested.length;
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    expect(active(/^Music$/)).toBe(true);
+    expect((screen.getByPlaceholderText('Search…') as HTMLInputElement).value).toBe('Tbilisi');
+    expect(kinds().slice(before)).toEqual(['music']);
+    expect(document.querySelector('audio')?.getAttribute('src')).toBe(SONG.url);
+  });
+
+  test('a kept page is the first and only read, before the session is even known', async () => {
+    saveLibraryView('page', 'guest', { tab: 'image', page: 1 });
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    expect(kinds()).toEqual(['image,interior']);
+    expect(offsets()).toEqual(['12']);
+    expect(active(/^Image$/)).toBe(true);
+  });
+
+  test('the sidebar\'s ?tab= link wins over the kept view', async () => {
+    saveLibraryView('page', 'guest', { tab: 'music', page: 2, q: 'sea' });
+    mockSearch = new URLSearchParams('tab=image');
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    expect(kinds()).toEqual(['image,interior']);
+    expect(offsets()).toEqual(['0']);
+    expect((screen.getByPlaceholderText('Search…') as HTMLInputElement).value).toBe('');
+    expect(readLibraryView('page', 'guest')).toMatchObject({ tab: 'image', page: 0, q: '' });
+  });
+
+  test('another account\'s view, or a broken one, is not used', async () => {
+    saveLibraryView('page', 'user-x', { tab: 'music', q: 'sea' });
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    expect(kinds()).toEqual(['film,avatar']);
+    expect(readLibraryView('page', 'user-x')).toBeNull(); // the page now keeps this visitor's view
+  });
+
+  test('stored nonsense is ignored', async () => {
+    window.sessionStorage.setItem('myavatar:library-view', JSON.stringify({ page: { owner: 'guest', tab: 'films!', page: -3, q: 5 } }));
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    expect(kinds()).toEqual(['film,avatar']);
+    expect(offsets()).toEqual(['0']);
+    expect((screen.getByPlaceholderText('Search…') as HTMLInputElement).value).toBe('');
+  });
+
+  test('the scroll comes back once the tab is on screen', async () => {
+    saveLibraryView('page', 'guest', { tab: 'music', scroll: 700 });
+    await act(async () => {
+      render(<div data-testid="shell" style={{ overflowY: 'auto' }}><LibraryGallery locale="en" /></div>);
+    });
+    expect(screen.getByTestId('shell').scrollTop).toBe(700);
+    expect(active(/^Music$/)).toBe(true);
+  });
 });
 
 test('a tab older than 30 s stays on screen while it is refreshed behind it', async () => {

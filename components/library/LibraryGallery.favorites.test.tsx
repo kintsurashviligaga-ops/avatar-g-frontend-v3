@@ -8,6 +8,7 @@ import { act, fireEvent, render as rtlRender, screen } from '@testing-library/re
 import { notifyManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { DEVICE_FAVORITES_KEY, resetDeviceFavoritesForTests, resetLibraryOwnerForTests } from '../../lib/library/libraryQuery';
+import { saveLibraryView } from '../../lib/library/libraryView';
 
 let session: { user: { id: string } } | null = { user: { id: 'user-s' } };
 jest.mock('../../lib/supabase/browser', () => ({
@@ -50,6 +51,7 @@ beforeEach(() => {
   resetLibraryOwnerForTests();
   resetDeviceFavoritesForTests();
   window.localStorage.clear();
+  window.sessionStorage.clear();
   session = { user: { id: 'user-s' } };
   client = new QueryClient();
   reads = [];
@@ -172,4 +174,11 @@ test('a signed-out visitor\'s demo examples have no star, and the browser\'s old
   expect(screen.queryAllByTestId('library-star')).toHaveLength(0);
   expect(patches).toHaveLength(0);
   expect(window.localStorage.getItem(DEVICE_FAVORITES_KEY)).toBe('["f1"]');
+});
+
+// §4.2.6: the session is read after the first render; the kept view is the account's, and it is decided before any read.
+test('a signed-in return opens the Favorites page it was left on, and reads nothing else', async () => {
+  saveLibraryView('page', 'user-s', { tab: 'favorites', page: 1 });
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  expect(reads.map((q) => q.toString())).toEqual(['favorite=1&limit=12&offset=12']);
 });

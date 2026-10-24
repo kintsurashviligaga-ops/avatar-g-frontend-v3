@@ -7,7 +7,8 @@ import { signedInLibrary } from '../perf/session';
  * network edge, media from the repo's fixtures).
  *   · a film far below the screen gets no link, so it reads nothing, until it is scrolled near;
  *   · going to Image and back to Video shows the same <video> elements, first frame already there, and reads no film;
- *   · the Library API is not asked again for a tab it already has.
+ *   · the Library API is not asked again for a tab it already has;
+ *   · a reload finds the tab, the search and the scroll as they were left, and reads only that tab.
  */
 test.use({ viewport: { width: 390, height: 640 } });
 test.describe.configure({ timeout: 180_000 }); // cold `next dev` route
@@ -52,4 +53,34 @@ test('films off screen read nothing; a tab that comes back reads no film again',
   await page.waitForTimeout(500);
   expect(films()).toBe(filmsBefore); // no film read again
   expect(traffic.library.length - libraryBefore).toBe(1); // Image was new; Video came from what was loaded
+});
+
+test('a reload finds the tab, the search and the scroll as they were left', async ({ page, baseURL }) => {
+  const traffic = await signedInLibrary(page, baseURL);
+  await page.goto('/en/library', { waitUntil: 'load' });
+  await expect(page.locator('video')).toHaveCount(12, { timeout: 120_000 });
+  const tab = (name: string) => page.locator('h1', { hasText: 'Library' }).locator('..').getByRole('button', { name, exact: true });
+  await tab('Music').click();
+  await expect(page.locator('audio')).toHaveCount(12, { timeout: 30_000 });
+  await page.getByPlaceholder('Search…').fill('music');
+  // The shell's scroll box (ChatChrome scrollBody): the gallery's nearest ancestor that scrolls.
+  const scrollBox = (y?: number) => page.evaluate((to) => {
+    let at = [...document.querySelectorAll('h1')].find((h) => h.textContent === 'Library')?.parentElement ?? null;
+    while (at && !/(auto|scroll)/.test(getComputedStyle(at).overflowY)) at = at.parentElement;
+    if (!at) return -1;
+    if (to !== undefined) at.scrollTop = Math.min(to, at.scrollHeight - at.clientHeight);
+    return Math.round(at.scrollTop);
+  }, y);
+  const left = await scrollBox(400);
+  expect(left).toBeGreaterThan(100);
+  await page.waitForTimeout(300); // the scroll is saved on the next frame
+  const libraryBefore = traffic.library.length;
+
+  await page.reload({ waitUntil: 'load' });
+  await expect(page.locator('audio')).toHaveCount(12, { timeout: 120_000 });
+  await expect(tab('Music')).toHaveClass(/bg-app-accent/);
+  await expect(page.getByPlaceholder('Search…')).toHaveValue('music');
+  await expect.poll(() => scrollBox(), { timeout: 10_000 }).toBe(left);
+  const kinds = traffic.library.slice(libraryBefore).map((r) => new URL(r.url()).searchParams.get('kind'));
+  expect(kinds).toEqual(['music']); // the Video tab was never asked for
 });

@@ -35,9 +35,11 @@ import {
 } from '@/lib/library/libraryQuery';
 import { PooledVideo } from '@/components/library/PooledVideo';
 import { videoKey } from '@/lib/library/videoPool';
+import { readLibraryView, saveLibraryView, useKeptScroll } from '@/lib/library/libraryView';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
+const isTab = (v: unknown): v is Tab => v === 'video' || v === 'image' || v === 'music' || v === 'favorites';
 
 // ⚠️ DOWNLOAD SAVED ONLY SOMETIMES (GG, 2026-10-18). This page kept its own older copy of the save: it fetched the whole
 // file first and only then asked for the system share sheet — a browser lets a page open that only for a few seconds
@@ -110,18 +112,37 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const t = COPY[lang];
   const router = useRouter();
 
-  const [tab, setTab] = useState<Tab>('video');
+  const owner = useLibraryOwner();
   // The sidebar's Favorites row deep-links here with ?tab=favorites. Read once on mount: without this the
   // row would land on the Videos tab and quietly do nothing, which is worse than not offering the row.
   const searchParams = useSearchParams();
+  // Where this page was left (§4.2.6, lib/library/libraryView): its tab, page and search come back on return, decided
+  // before the first read so no tab is fetched only to be left at once. The sidebar's ?tab= link wins.
+  const keptView = (who: string | null) => (who && !searchParams?.get('tab') ? readLibraryView('page', who) : null);
+  const [tab, setTab] = useState<Tab>(() => { const kept = keptView(owner); return kept && isTab(kept.tab) ? kept.tab : 'video'; });
   useEffect(() => {
     const requested = searchParams?.get('tab');
     if (requested === 'favorites' || requested === 'video' || requested === 'image' || requested === 'music') {
       setTab(requested);
     }
   }, [searchParams]);
-  const [page, setPage] = useState(0);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(() => keptView(owner)?.page ?? 0);
+  const [searchQuery, setSearchQuery] = useState(() => keptView(owner)?.q ?? '');
+  // The account the view above is that of. An account known only after the first render (the session read) gets its
+  // view here, in render, while its reads are still off; another account in this browser tab starts fresh.
+  const [viewOf, setViewOf] = useState<string | null>(owner);
+  if (owner && viewOf !== owner) {
+    const kept = keptView(owner);
+    if (kept || viewOf) {
+      setTab(kept && isTab(kept.tab) ? kept.tab : 'video');
+      setPage(kept?.page ?? 0);
+      setSearchQuery(kept?.q ?? '');
+    }
+    setViewOf(owner);
+  }
+  useEffect(() => {
+    if (viewOf) saveLibraryView('page', viewOf, { tab, page, q: searchQuery });
+  }, [viewOf, tab, page, searchQuery]);
   const [favFailed, setFavFailed] = useState(false);
   const favBusyRef = useRef(new Set<string>());
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -146,7 +167,6 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const { refetch, dataUpdatedAt } = library;
   // Every answer brings a fresh link for a file that failed (forgetLibraryLink), so every file gets another go.
   useEffect(() => { setFailed(new Set()); }, [dataUpdatedAt]);
-  const owner = useLibraryOwner();
   const queryClient = useQueryClient();
   // The stars this browser kept before they were the account's move to it, once.
   useEffect(() => { if (owner) void migrateDeviceFavorites(queryClient, owner); }, [owner, queryClient]);
@@ -178,6 +198,9 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     if (!q) return items;
     return items.filter((it) => (it.prompt ?? '').toLowerCase().includes(q) || (it.kind ?? '').toLowerCase().includes(q));
   }, [items, searchQuery]);
+  // And how far it was scrolled, once its first read is on screen.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useKeptScroll(rootRef, 'page', viewOf, !loading);
 
   const onTab = useCallback((next: Tab) => { setTab(next); setPage(0); setFavFailed(false); }, []);
 
@@ -220,7 +243,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const tabIcon = (tb: Tab) => tb === 'video' ? <Film size={14} /> : tb === 'image' ? <ImageIcon size={14} /> : tb === 'music' ? <Music2 size={14} /> : <Star size={14} />;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6">
+    <div ref={rootRef} className="mx-auto w-full max-w-5xl px-4 py-6">
       <h1 className="mb-4 text-[22px] font-bold tracking-tight text-app-text">{t.title}</h1>
 
       {/* PHASE 6.3 — search (16px font → no iOS zoom; filters the loaded items by prompt/kind) */}

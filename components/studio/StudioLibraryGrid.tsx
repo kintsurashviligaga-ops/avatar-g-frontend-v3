@@ -37,6 +37,7 @@ import { DemoNotice, GuestEmpty, LibraryFailed } from '@/components/library/Libr
 import { SHOOT_COPY, shootLang } from './create/newtools/copy';
 import { PlanView } from './create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
+import { readLibraryView, saveLibraryView, useKeptScroll } from '@/lib/library/libraryView';
 import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
   Inbox, RefreshCw, Trash2, AlertTriangle, Boxes, Move3d,
@@ -45,6 +46,7 @@ import {
 type Lang = 'ka' | 'en' | 'ru';
 
 type FilterKey = 'all' | 'videos' | 'soundtracks' | 'avatars-images';
+const isFilter = (v: unknown): v is FilterKey => v === 'all' || v === 'videos' || v === 'soundtracks' || v === 'avatars-images';
 
 const COPY: Record<Lang, {
   title: string; subtitle: string;
@@ -456,14 +458,24 @@ const LibraryCard = memo(function LibraryCard({
 
 export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?: Lang; onClose?: () => void }) {
   const t = COPY[locale] ?? COPY.ka;
-  const [filter, setFilter] = useState<FilterKey>('all');
+  const owner = useLibraryOwner();
+  // The filter this sheet was left on comes back when it opens again (§4.2.6, lib/library/libraryView). It only filters
+  // what is loaded, so nothing is read for it; another account in this browser tab starts on All.
+  const keptFilter = (who: string | null): FilterKey => {
+    const tab = who ? readLibraryView('slideover', who)?.tab : undefined;
+    return isFilter(tab) ? tab : 'all';
+  };
+  const [filter, setFilter] = useState<FilterKey>(() => keptFilter(owner));
+  const [viewOf, setViewOf] = useState<string | null>(owner);
+  if (owner && viewOf !== owner) { setFilter(keptFilter(owner)); setViewOf(owner); }
+  useEffect(() => { if (viewOf) saveLibraryView('slideover', viewOf, { tab: filter }); }, [viewOf, filter]);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLElement | null>(null);
   // VECTOR 6 — ids we've already shown (never "new") + the currently-badged fresh arrivals.
   const seenIdsRef = useRef<Set<string>>(new Set());
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   const feed = useLibraryFeed(PAGE_SIZE);
-  const owner = useLibraryOwner();
   const queryClient = useQueryClient();
   const { data, isPending, isFetching, isFetchingNextPage, hasNextPage, isFetchNextPageError, fetchNextPage, refetch } = feed;
   // Every loaded page, newest first. Defensive: drop any duplicates if pages overlap on a fresh write.
@@ -478,6 +490,8 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
   const failure = feed.isError && !data ? libraryFailure(feed.error) : null;
   // A page that failed stops the endless scroll, so it does not pound the route.
   const exhausted = items !== null && (!hasNextPage || isFetchNextPageError);
+  // And how far the sheet was scrolled, once its first read is on screen.
+  useKeptScroll(rootRef, 'slideover', viewOf, items !== null);
 
   /** Fetch every loaded page again (every link in it minted fresh), behind the grid. */
   const load = useCallback(() => { void refetch(); }, [refetch]);
@@ -540,7 +554,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
   ]), [t]);
 
   return (
-    <section className="w-full">
+    <section ref={rootRef} className="w-full">
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold tracking-tight text-white">{t.title}</h2>

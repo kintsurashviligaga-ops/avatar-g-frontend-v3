@@ -92,6 +92,8 @@ Phase 3 PR 7 works on this path. It gives profile and memory a deadline and drop
 | Library, warm return to a tab already shown | p95 ≤ 150 ms, no blank replacement screen | 29.7 / 55.8 ms | 29.4 / 41.5 ms | Still met. Spinner in 0 of 30 returns, 0 Library requests. |
 | Library, first open of a tab | (none) | 123.6 / 140.1 ms | 121.9 / 143.1 ms | Unchanged, as expected: it still waits for the API. |
 
+**Also in this PR:** a return to the Library (a reload, or back from Montage) opens the tab, page and search it was left on, scrolled where it was, and reads only that tab. `tests/library-films-kept.spec.ts` checks this after a reload: the Library API is asked only for Music, and the Video tab is never read. The benchmark above still starts every run on the first tab.
+
 **What this does not show:**
 
 - How many films the first open of a page reads. A film now gets its link only when its card is within 300 px of the screen. `tests/library-films-kept.spec.ts` shows this on a phone-sized window: a film far below the screen reads nothing until it is scrolled to. The benchmark does not count first-open reads.
