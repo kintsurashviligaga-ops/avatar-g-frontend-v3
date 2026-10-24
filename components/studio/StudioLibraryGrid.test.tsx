@@ -5,6 +5,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { notifyManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { resetLibraryOwnerForTests } from '../../lib/library/libraryQuery';
+import { saveLibraryView } from '../../lib/library/libraryView';
 
 jest.mock('./create/newtools/PlanView', () => ({
   PlanView: ({ style }: { style: { styleName: string } }) => <figure data-testid="plan-ready">{style.styleName}</figure>,
@@ -38,7 +39,10 @@ beforeAll(() => {
 notifyManager.setScheduler((run) => run());
 let client: QueryClient;
 beforeEach(() => {
+  // jsdom plays no media: a film let go (lib/library/videoPool) asks the browser to drop its file.
+  jest.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   resetLibraryOwnerForTests();
+  window.sessionStorage.clear();
   client = new QueryClient();
   global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [PLAN, FILM] }) })) as unknown as typeof fetch;
 });
@@ -110,6 +114,58 @@ test('opening the slide-over again shows the loaded list at once and refreshes i
   expect(document.querySelector('.animate-pulse')).toBeNull();
   await act(async () => { release(); });
   expect(screen.getByAltText('Japandi bedroom')).toBeTruthy();
+});
+
+// §4.2.5: the slide-over opened again used to read every film again.
+test('opening the slide-over again gives a film card the same <video>, its link untouched', async () => {
+  const stub = globalThis.IntersectionObserver;
+  // Everything on screen: a card gives its film the link at once.
+  (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class {
+    constructor(private cb: (e: { isIntersecting: boolean; target: Element }[]) => void) {}
+    observe(target: Element) { this.cb([{ isIntersecting: true, target }]); }
+    disconnect() {}
+  };
+  try {
+    const first = render(<QueryClientProvider client={client}><StudioLibraryGrid locale="en" /></QueryClientProvider>);
+    await screen.findByTestId('library-plan-toggle');
+    const film = document.querySelector('video')!;
+    expect(film.getAttribute('src')).toBe(`${FILM.url}#t=0.1`);
+    first.unmount();
+    const setAttribute = jest.spyOn(film, 'setAttribute');
+    await mount();
+    expect(document.querySelector('video')).toBe(film);
+    expect(setAttribute).not.toHaveBeenCalledWith('src', expect.anything());
+  } finally {
+    (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = stub;
+  }
+});
+
+// §4.2.6: the sheet opens again on the filter it was left on, scrolled where it was.
+test('opening the slide-over again keeps its filter and scroll', async () => {
+  const sheet = () => (
+    <QueryClientProvider client={client}>
+      <div data-testid="sheet" style={{ overflowY: 'auto' }}><StudioLibraryGrid locale="en" /></div>
+    </QueryClientProvider>
+  );
+  let view: ReturnType<typeof render>;
+  await act(async () => { view = render(sheet()); });
+  await screen.findByTestId('library-plan-toggle');
+  fireEvent.click(screen.getByRole('button', { name: /^Videos/ }));
+  const box = screen.getByTestId('sheet');
+  box.scrollTop = 260;
+  box.dispatchEvent(new Event('scroll'));
+  await act(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+  act(() => { view.unmount(); });
+  await act(async () => { render(sheet()); });
+  expect(screen.getByTestId('sheet').scrollTop).toBe(260);
+  expect(screen.queryByTestId('library-plan-toggle')).toBeNull(); // still on Videos
+  expect(document.querySelectorAll('video')).toHaveLength(1);
+});
+
+test('another account\'s filter is not used', async () => {
+  saveLibraryView('slideover', 'user-x', { tab: 'videos' });
+  await mount();
+  expect(await screen.findByTestId('library-plan-toggle')).toBeTruthy(); // on All
 });
 
 test('a file saved in the studio comes in with a „New" badge; what was loaded stays', async () => {

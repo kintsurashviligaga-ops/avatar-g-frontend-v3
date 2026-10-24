@@ -30,11 +30,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { describeServiceError } from './ui/serviceError';
 import { saveMedia } from '@/lib/media/saveMedia';
-import { LIBRARY_UPDATED_EVENT, type LibraryItem, libraryFailure, removeLibraryItem, useLibraryFeed, useLibraryOwner } from '@/lib/library/libraryQuery';
+import { LIBRARY_UPDATED_EVENT, type LibraryItem, forgetLibraryLink, libraryFailure, removeLibraryItem, useLibraryFeed, useLibraryOwner } from '@/lib/library/libraryQuery';
+import { PooledVideo } from '@/components/library/PooledVideo';
+import { videoKey } from '@/lib/library/videoPool';
 import { DemoNotice, GuestEmpty, LibraryFailed } from '@/components/library/LibraryState';
 import { SHOOT_COPY, shootLang } from './create/newtools/copy';
 import { PlanView } from './create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
+import { readLibraryView, saveLibraryView, useKeptScroll } from '@/lib/library/libraryView';
 import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
   Inbox, RefreshCw, Trash2, AlertTriangle, Boxes, Move3d,
@@ -43,6 +46,7 @@ import {
 type Lang = 'ka' | 'en' | 'ru';
 
 type FilterKey = 'all' | 'videos' | 'soundtracks' | 'avatars-images';
+const isFilter = (v: unknown): v is FilterKey => v === 'all' || v === 'videos' || v === 'soundtracks' || v === 'avatars-images';
 
 const COPY: Record<Lang, {
   title: string; subtitle: string;
@@ -157,9 +161,11 @@ function filterMatches(kind: string, f: FilterKey): boolean {
 // card re-renders on each page merge. Props are stable (t is a constant COPY object, onDeleted is a
 // useCallback), so memo skips re-rendering the settled grid. Pure render perf; no behaviour change.
 const LibraryCard = memo(function LibraryCard({
-  item, t, locale, onDeleted, onRetry, isNew = false, canDelete = true,
+  item, owner, t, locale, onDeleted, onRetry, isNew = false, canDelete = true,
 }: {
   item: LibraryItem;
+  /** Whose Library this is (the film's kept <video> is filed under it). */
+  owner: string;
   t: (typeof COPY)['ka'];
   /** Needed to localize a delete failure — `t` alone cannot say which language it is. A constant
    *  string, so memo stays effective. */
@@ -186,8 +192,8 @@ const LibraryCard = memo(function LibraryCard({
   const [showPlan, setShowPlan] = useState(false);
   // The file would not load (an expired or missing link): MediaUnavailable instead of the browser's "Unable to play media".
   const [failed, setFailed] = useState(false);
-  const onMediaError = useCallback(() => { setFailed(true); setLoaded(true); }, []);
-  // A fresh list brings a freshly signed link: give the file another go.
+  const onMediaError = useCallback(() => { forgetLibraryLink(item.url); setFailed(true); setLoaded(true); }, [item.url]);
+  // A fresh list brings a freshly signed link for a file that failed (forgetLibraryLink): give the file another go.
   useEffect(() => { setFailed(false); }, [item.url]);
 
   const flash = useCallback((which: 'prompt' | 'link') => {
@@ -267,13 +273,14 @@ const LibraryCard = memo(function LibraryCard({
           <MediaUnavailable lang={locale} onRetry={onRetry} />
         ) : isVideo(item.kind) ? (
           <>
-            {/* #t=0.1 makes the browser paint an early frame as the poster. */}
-            <video
-              ref={videoRef}
+            {/* #t=0.1 makes the browser paint an early frame as the poster. The element is kept between two showings
+                of this card (PooledVideo): the slide-over opened again reads nothing again, and a film below the fold
+                reads nothing until it is near the screen. */}
+            <PooledVideo
+              poolKey={videoKey(owner, item.id)}
+              videoRef={videoRef}
               src={`${item.url}#t=0.1`}
-              preload="metadata"
-              playsInline
-              onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+              onLoadedMetadata={(v) => setDuration(v.duration)}
               onLoadedData={() => setLoaded(true)}
               onError={onMediaError}
               onEnded={() => setPlaying(false)}
@@ -451,14 +458,24 @@ const LibraryCard = memo(function LibraryCard({
 
 export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?: Lang; onClose?: () => void }) {
   const t = COPY[locale] ?? COPY.ka;
-  const [filter, setFilter] = useState<FilterKey>('all');
+  const owner = useLibraryOwner();
+  // The filter this sheet was left on comes back when it opens again (§4.2.6, lib/library/libraryView). It only filters
+  // what is loaded, so nothing is read for it; another account in this browser tab starts on All.
+  const keptFilter = (who: string | null): FilterKey => {
+    const tab = who ? readLibraryView('slideover', who)?.tab : undefined;
+    return isFilter(tab) ? tab : 'all';
+  };
+  const [filter, setFilter] = useState<FilterKey>(() => keptFilter(owner));
+  const [viewOf, setViewOf] = useState<string | null>(owner);
+  if (owner && viewOf !== owner) { setFilter(keptFilter(owner)); setViewOf(owner); }
+  useEffect(() => { if (viewOf) saveLibraryView('slideover', viewOf, { tab: filter }); }, [viewOf, filter]);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLElement | null>(null);
   // VECTOR 6 — ids we've already shown (never "new") + the currently-badged fresh arrivals.
   const seenIdsRef = useRef<Set<string>>(new Set());
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   const feed = useLibraryFeed(PAGE_SIZE);
-  const owner = useLibraryOwner();
   const queryClient = useQueryClient();
   const { data, isPending, isFetching, isFetchingNextPage, hasNextPage, isFetchNextPageError, fetchNextPage, refetch } = feed;
   // Every loaded page, newest first. Defensive: drop any duplicates if pages overlap on a fresh write.
@@ -473,6 +490,8 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
   const failure = feed.isError && !data ? libraryFailure(feed.error) : null;
   // A page that failed stops the endless scroll, so it does not pound the route.
   const exhausted = items !== null && (!hasNextPage || isFetchNextPageError);
+  // And how far the sheet was scrolled, once its first read is on screen.
+  useKeptScroll(rootRef, 'slideover', viewOf, items !== null);
 
   /** Fetch every loaded page again (every link in it minted fresh), behind the grid. */
   const load = useCallback(() => { void refetch(); }, [refetch]);
@@ -535,7 +554,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
   ]), [t]);
 
   return (
-    <section className="w-full">
+    <section ref={rootRef} className="w-full">
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold tracking-tight text-white">{t.title}</h2>
@@ -594,7 +613,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
           <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <AnimatePresence mode="popLayout">
               {visible.map((item) => (
-                <LibraryCard locale={locale} key={item.id} item={item} t={t} onDeleted={handleDeleted} onRetry={load} isNew={newIds.has(item.id)} canDelete={!demo} />
+                <LibraryCard locale={locale} key={item.id} item={item} owner={owner ?? 'guest'} t={t} onDeleted={handleDeleted} onRetry={load} isNew={newIds.has(item.id)} canDelete={!demo} />
               ))}
             </AnimatePresence>
           </div>

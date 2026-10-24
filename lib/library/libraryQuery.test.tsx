@@ -22,9 +22,11 @@ jest.mock('../supabase/browser', () => ({
 }));
 
 import {
-  DEVICE_FAVORITES_KEY, LIBRARY_UPDATED_EVENT, LibraryFetchError, fetchLibraryPage, libraryFailure, libraryKeys, migrateDeviceFavorites,
-  removeLibraryItem, resetDeviceFavoritesForTests, resetLibraryOwnerForTests, setLibraryFavorite, useLibraryFeed, useLibraryPage,
+  DEVICE_FAVORITES_KEY, LIBRARY_UPDATED_EVENT, LibraryFetchError, type LibraryPage, fetchLibraryPage, forgetLibraryLink, keepLiveLinks,
+  libraryFailure, libraryKeys, migrateDeviceFavorites, removeLibraryItem, resetDeviceFavoritesForTests, resetLibraryOwnerForTests,
+  setLibraryFavorite, useLibraryFeed, useLibraryPage,
 } from './libraryQuery';
+import { keepVideo, keptVideoCount, videoKey } from './videoPool';
 
 notifyManager.setScheduler((run) => run());
 
@@ -351,5 +353,80 @@ describe('stars (§4.2.4)', () => {
     await expect(migrateDeviceFavorites(client, 'user-a')).resolves.toBe(200);
     expect((JSON.parse(String(calls[0]!.init!.body)) as { ids: string[] }).ids).toEqual(many.slice(0, 200));
     expect(JSON.parse(window.localStorage.getItem(DEVICE_FAVORITES_KEY)!)).toEqual(many.slice(200));
+  });
+});
+
+describe('links kept while good (§4.2.3, §4.2.5)', () => {
+  const NOW = Date.parse('2026-10-24T08:00:00Z');
+  const at = (ms: number) => new Date(NOW + ms).toISOString();
+  const HOUR = 3600_000;
+  const signed = (id: string, token: string, expiresAt: string, object = id) =>
+    ({ ...item(id), url: `https://ours.supabase.co/storage/v1/object/sign/renders/${object}.mp4?token=${token}`, expiresAt });
+  const page = (items: ReturnType<typeof item>[]): LibraryPage => ({ items, demo: false, nextCursor: null });
+  const tokens = (p: LibraryPage) => p.items.map((it) => new URL(it.url).searchParams.get('token') ?? it.url);
+
+  test('a refreshed page keeps a link still good for the same file; one about to run out, another file or an unsigned link is replaced', () => {
+    const old = page([
+      signed('a', 'old', at(HOUR)), signed('b', 'old', at(5 * 60_000)), signed('c', 'old', at(HOUR)),
+      { ...item('d'), url: 'https://cdn.example.com/d.mp4' },
+    ]);
+    const next = page([
+      signed('a', 'new', at(2 * HOUR)), signed('b', 'new', at(2 * HOUR)),
+      signed('c', 'new', at(2 * HOUR), 'c-rerendered'), // the work's file was replaced
+      { ...item('d'), url: 'https://cdn.example.com/d2.mp4' }, // no expiresAt: not this route's signed link
+      signed('e', 'new', at(2 * HOUR)), // new on the page
+    ]);
+    const out = keepLiveLinks(old, next, NOW);
+    expect(tokens(out)).toEqual(['old', 'new', 'new', 'https://cdn.example.com/d2.mp4', 'new']);
+    expect(out.items[0]!.expiresAt).toBe(at(HOUR)); // the kept link's own expiry, so it is refreshed in time
+    expect(out.items[1]!.expiresAt).toBe(at(2 * HOUR));
+    expect(out.items[2]!.url).toContain('c-rerendered.mp4');
+  });
+
+  test('nothing kept is `next` itself; the endless list keeps links across its pages; a link that failed is never kept', () => {
+    const next = page([signed('a', 'new', at(2 * HOUR))]);
+    expect(keepLiveLinks(undefined, next, NOW)).toBe(next);
+    expect(keepLiveLinks(page([signed('a', 'new', at(2 * HOUR))]), next, NOW)).toBe(next); // the same link: nothing to keep
+    expect(keepLiveLinks(page([signed('z', 'old', at(HOUR))]), next, NOW)).toBe(next);
+
+    const feed = (a: LibraryPage, b: LibraryPage) => ({ pages: [a, b], pageParams: [undefined, 'c1'] });
+    const kept = keepLiveLinks(feed(page([signed('a', 'old', at(HOUR))]), page([signed('b', 'old', at(HOUR))])),
+      feed(page([signed('b', 'new', at(2 * HOUR))]), page([signed('a', 'new', at(2 * HOUR))])), NOW); // moved between pages
+    expect(kept.pages.map(tokens)).toEqual([['old'], ['old']]);
+    expect(kept.pageParams).toEqual([undefined, 'c1']);
+
+    const old = page([signed('a', 'old', at(HOUR))]);
+    forgetLibraryLink(`${old.items[0]!.url}#t=0.1`); // as the card reports it, with its media fragment
+    expect(tokens(keepLiveLinks(old, next, NOW))).toEqual(['new']);
+  });
+
+  test('a page fetched again keeps the link on screen; after a failure the fresh one replaces it', async () => {
+    let token = 0;
+    answer = () => ({ ok: true, status: 200, items: [signed('a1', `t${++token}`, new Date(Date.now() + 23 * HOUR).toISOString())] });
+    await act(async () => { mount(<Page />); });
+    const key = libraryKeys.page('user-a', 'film,avatar', 12, 0);
+    const first = client.getQueryData<LibraryPage>(key)!;
+    expect(tokens(first)).toEqual(['t1']);
+
+    await act(async () => { await client.refetchQueries({ queryKey: key }); });
+    expect(calls).toHaveLength(2);
+    expect(client.getQueryData<LibraryPage>(key)).toBe(first); // unchanged: the same object, nothing re-rendered
+
+    forgetLibraryLink(first.items[0]!.url);
+    await act(async () => { await client.refetchQueries({ queryKey: key }); });
+    expect(tokens(client.getQueryData<LibraryPage>(key)!)).toEqual(['t3']);
+  });
+
+  test('a sign-in as someone else lets go of the first account\'s kept films', async () => {
+    const load = jest.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
+    await act(async () => { mount(<Page />); });
+    const film = document.createElement('video');
+    film.setAttribute('src', item('a1').url);
+    keepVideo(videoKey('user-a', 'a1'), film);
+    expect(keptVideoCount()).toBe(1);
+    await act(async () => { authListener!('SIGNED_IN', { user: { id: 'user-b' } }); });
+    expect(keptVideoCount()).toBe(0);
+    expect(film.hasAttribute('src')).toBe(false);
+    load.mockRestore();
   });
 });

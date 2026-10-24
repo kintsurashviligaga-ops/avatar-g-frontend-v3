@@ -81,3 +81,21 @@ Phase 3 PR 7 works on this path. It gives profile and memory a deadline and drop
 
 - The 30 s window. Each warm return here comes about a second after the tab was shown. A return after 30 s shows the cached grid at once and refreshes it behind the grid (unit test `LibraryGallery.test.tsx`); that refresh is not timed here.
 - Production or Preview. These are mock numbers, as above.
+
+## After PR 5: films kept between showings (24 October 2026)
+
+**What was measured:** the code of `claude/p3-05-posters` (the report's commit column shows its base, `b8a2fab2`), same benchmark, same fixtures, same machine as the tables above.
+
+| Interaction | §4.1 target | After PR 2 p50 / p95 | After PR 5 p50 / p95 | What the run shows |
+|---|---|---|---|---|
+| Media requests on a warm return | (none) | 12 | 0 | The film cards get their own `<video>` elements back, already loaded, so no film is read again. Before this PR every return read the metadata of all 12 films. |
+| Library, warm return to a tab already shown | p95 ≤ 150 ms, no blank replacement screen | 29.7 / 55.8 ms | 29.4 / 41.5 ms | Still met. Spinner in 0 of 30 returns, 0 Library requests. |
+| Library, first open of a tab | (none) | 123.6 / 140.1 ms | 121.9 / 143.1 ms | Unchanged, as expected: it still waits for the API. |
+
+**Also in this PR:** a return to the Library (a reload, or back from Montage) opens the tab, page and search it was left on, scrolled where it was, and reads only that tab. `tests/library-films-kept.spec.ts` checks this after a reload: the Library API is asked only for Music, and the Video tab is never read. The benchmark above still starts every run on the first tab.
+
+**What this does not show:**
+
+- How many films the first open of a page reads. A film now gets its link only when its card is within 300 px of the screen. `tests/library-films-kept.spec.ts` shows this on a phone-sized window: a film far below the screen reads nothing until it is scrolled to. The benchmark does not count first-open reads.
+- No poster images were made. Works have no stored poster, and making one would need the producers, storage and a decision from the owner. Instead, the card keeps the film's first frame from its own element.
+- Production or Preview. These are mock numbers, as above.

@@ -26,12 +26,18 @@
  * the starred works (all of them, paged like any tab), and setLibraryFavorite changes one star on every loaded page at
  * once, puts it back if the server refuses, and tells the server. The stars one browser kept before (localStorage
  * `myavatar:favorites`, not tied to any account) move to the signed-in account once (migrateDeviceFavorites).
+ *
+ * A work's link is kept while it is good (§4.2.3, §4.2.5). Every answer signs its links afresh, but a refreshed page
+ * keeps the link a work already had, for the same storage object, while it has more than EXPIRY_MARGIN_MS left: a film
+ * on screen is not pointed at a new address and read again just because its page was refreshed. A link that failed to
+ * load (forgetLibraryLink) is never kept, so the next answer's fresh one replaces it.
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { type InfiniteData, type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type InfiniteData, type QueryClient, replaceEqualDeep, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
+import { releaseKeptVideosExcept } from '@/lib/library/videoPool';
 
 export interface LibraryItem {
   id: string;
@@ -84,6 +90,52 @@ function expiresSoon(data: LibraryPage | InfiniteData<LibraryPage> | undefined, 
   const pages = 'pages' in data ? data.pages : [data];
   return pages.some((p) => p.items.some((it) => !!it.expiresAt && Date.parse(it.expiresAt) - now < EXPIRY_MARGIN_MS));
 }
+
+// ── Links ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/** The storage object a link points at: the link without its token (query) and its media fragment. */
+const objectOf = (url: string) => url.split('#')[0]!.split('?')[0]!;
+// Links that failed to load in this tab; never kept over a fresh one. Bounded: the oldest are forgotten first.
+const failedLinks = new Set<string>();
+const MAX_FAILED_LINKS = 500;
+
+/** A link would not load (expired, revoked, a broken object): the next answer's fresh link replaces it. */
+export function forgetLibraryLink(url: string) {
+  const link = url.split('#')[0]!;
+  failedLinks.delete(link);
+  failedLinks.add(link);
+  if (failedLinks.size > MAX_FAILED_LINKS) failedLinks.delete(failedLinks.values().next().value!);
+}
+
+/**
+ * `next` with each work's link from `old` kept: the same work, the same storage object, a link this route signed, still
+ * good for more than EXPIRY_MARGIN_MS, and not one that failed. `next` itself when nothing was kept.
+ */
+export function keepLiveLinks<T extends LibraryPage | InfiniteData<LibraryPage>>(old: T | undefined, next: T, now = Date.now()): T {
+  if (!old || !next) return next;
+  const pagesOf = (d: LibraryPage | InfiniteData<LibraryPage>) => ('pages' in d ? d.pages : [d]);
+  const live = new Map<string, LibraryItem>();
+  for (const p of pagesOf(old)) {
+    for (const it of p?.items ?? []) {
+      if (it.expiresAt && Date.parse(it.expiresAt) - now > EXPIRY_MARGIN_MS && !failedLinks.has(it.url.split('#')[0]!)) live.set(it.id, it);
+    }
+  }
+  if (live.size === 0) return next;
+  let kept = false;
+  const keep = (items: LibraryItem[]) => items.map((it) => {
+    const was = live.get(it.id);
+    if (!was || !it.expiresAt || was.url === it.url || objectOf(was.url) !== objectOf(it.url)) return it;
+    kept = true;
+    return { ...it, url: was.url, expiresAt: was.expiresAt };
+  });
+  const out = 'pages' in next
+    ? { ...next, pages: next.pages.map((p) => ({ ...p, items: keep(p.items) })) }
+    : { ...next, items: keep(next.items) };
+  return kept ? (out as T) : next;
+}
+
+/** React Query's structural sharing, after the links still good are kept (so an unchanged page stays the same object). */
+const shareKeepingLinks = (old: unknown, next: unknown) =>
+  replaceEqualDeep(old, keepLiveLinks(old as LibraryPage | undefined, next as LibraryPage));
 
 export const libraryKeys = {
   /** Everything of one owner's Library. */
@@ -150,16 +202,20 @@ export function useLibraryOwner(): string | null {
   const queryClient = useQueryClient();
   // A different account (or a sign-out) never sees the previous one's works.
   useEffect(() => {
-    if (current) queryClient.removeQueries({ queryKey: ['library'], predicate: (q) => q.queryKey[1] !== current });
+    if (!current) return;
+    queryClient.removeQueries({ queryKey: ['library'], predicate: (q) => q.queryKey[1] !== current });
+    releaseKeptVideosExcept(current); // and none of its films' <video> elements stays in memory either
   }, [current, queryClient]);
   return current ?? null;
 }
 
-/** Tests only: forget the session read, so the next mount reads it again. */
+/** Tests only: forget the session read (and this tab's failed links and kept films), so the next mount reads it again. */
 export function resetLibraryOwnerForTests() {
   owner = undefined;
   started = false;
   listeners.clear();
+  failedLinks.clear();
+  releaseKeptVideosExcept(null);
 }
 
 /** One quiet retry for a server or network failure; a 4xx (signed out, refused) is final. */
@@ -176,6 +232,7 @@ export function useLibraryPage(kind: string, limit: number, offset?: number, fav
     queryFn: ({ signal }) => fetchLibraryPage({ kind, limit, offset, favorites }, signal),
     enabled: who !== null,
     staleTime: (q) => (expiresSoon(q.state.data) ? 0 : LIBRARY_STALE_MS),
+    structuralSharing: shareKeepingLinks,
     // Opening the page (a new mount) always checks behind what is shown; switching tabs on it does not.
     refetchOnMount: 'always',
     retry: retryOnce,
@@ -196,6 +253,7 @@ export function useLibraryFeed(limit: number) {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: who !== null,
     staleTime: (q) => (expiresSoon(q.state.data) ? 0 : LIBRARY_STALE_MS),
+    structuralSharing: shareKeepingLinks,
     refetchOnMount: 'always',
     retry: retryOnce,
   });
