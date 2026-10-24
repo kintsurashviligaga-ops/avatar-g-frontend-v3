@@ -2,7 +2,10 @@
  * The /library page: avatar videos sit with the films, the Interior designer's 3D plans (filed with their render) with the
  * pictures, and a plan opens on its card. RoomViewer is three.js, so PlanView is stubbed: this pins the page, not WebGL.
  */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import { notifyManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
+import { resetLibraryOwnerForTests } from '../../lib/library/libraryQuery';
 
 const push = jest.fn();
 jest.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push }) }));
@@ -16,6 +19,14 @@ jest.mock('../studio/create/newtools/PlanView', () => ({
 
 import LibraryGallery from './LibraryGallery';
 
+// The page reads through the app's React Query client (lib/library/libraryQuery): a fresh one per test, its updates
+// delivered at once instead of on a timer, so a test sees what one act() brings.
+notifyManager.setScheduler((run) => run());
+let client: QueryClient;
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
+
 const PLAN = {
   id: 'plan-1', kind: 'interior', url: 'https://ours.supabase.co/storage/v1/object/sign/renders/room.png?token=t',
   prompt: 'Japandi bedroom', orientation: 'landscape', createdAt: '2026-10-10T00:00:00Z',
@@ -27,6 +38,8 @@ const SONG = { id: 'song-1', kind: 'music', url: 'https://ours.supabase.co/stora
 
 let requested: string[] = [];
 beforeEach(() => {
+  resetLibraryOwnerForTests();
+  client = new QueryClient();
   requested = [];
   push.mockReset();
   mockSaveMedia.mockClear();
@@ -182,4 +195,69 @@ test('Download saves through the shared save, once, and the button is busy until
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
   await act(async () => { fireEvent.click(screen.getAllByTestId('library-download')[1]!); finishSave(); });
   expect(mockSaveMedia).toHaveBeenLastCalledWith(MODEL.url, 'myavatar-image-glb-1', { fallbackExt: 'glb' });
+});
+
+// §4.2 (Phase 3 PR 2): a warm tab switch shows the tab at once, never a blank spinner, and sends nothing while it is
+// current. The before table (docs/master-v3.1/PERFORMANCE_PHASE3.md) had every return blank the grid and refetch.
+test('going back to a tab already loaded shows it at once: no spinner, no request', async () => {
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
+  expect(kinds()).toEqual(['film,avatar', 'image,interior']);
+  act(() => { fireEvent.click(screen.getByRole('button', { name: /^Video$/ })); });
+  expect(document.querySelector('.py-20 .animate-spin')).toBeNull();
+  expect(document.querySelector('video')?.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
+  await act(async () => {});
+  expect(kinds()).toEqual(['film,avatar', 'image,interior']);
+});
+
+test('a tab older than 30 s stays on screen while it is refreshed behind it', async () => {
+  const now = jest.spyOn(Date, 'now');
+  let clock = Date.parse('2026-10-24T06:00:00Z');
+  now.mockImplementation(() => clock);
+  try {
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
+    clock += 31_000;
+    const calls = delayedLibraryRequests();
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /^Video$/ })); });
+    expect(calls).toHaveLength(1); // the refresh went out…
+    expect(document.querySelector('.py-20 .animate-spin')).toBeNull(); // …behind the grid, which never blanked
+    expect(document.querySelector('video')?.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
+    const NEWER = { ...AVATAR, id: 'av-2', url: 'https://cdn.example.com/b.mp4' };
+    await act(async () => { calls[0]!.resolve([NEWER, AVATAR]); });
+    expect([...document.querySelectorAll('video')].map((v) => v.getAttribute('src'))).toEqual([`${NEWER.url}#t=0.1`, `${AVATAR.url}#t=0.1`]);
+  } finally {
+    now.mockRestore();
+  }
+});
+
+test('a failed request is not kept as „nothing created": the next visit asks again', async () => {
+  global.fetch = jest.fn(async (url: string) => {
+    requested.push(url);
+    return { ok: false, status: 503, json: async () => ({}) };
+  }) as unknown as typeof fetch;
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 1100)); }); // its one quiet retry
+  expect(requested).toHaveLength(2);
+  expect(screen.getByText('Nothing created yet')).toBeTruthy(); // the page still says what it said before
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Video$/ })); });
+  expect(kinds().filter((k) => k === 'film,avatar').length).toBeGreaterThan(2); // asked again, not served an empty cache
+});
+
+test('a deleted file leaves the page at once, and the page asks for what moved up on the next visit', async () => {
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+  try {
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    expect(document.querySelectorAll('video')).toHaveLength(1);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Delete' })); });
+    expect(requested.at(-1)).toContain(`id=${AVATAR.id}`);
+    expect(document.querySelectorAll('video')).toHaveLength(0);
+    const before = requested.length;
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Video$/ })); });
+    expect(requested.slice(before).map((u) => new URL(u, 'https://x').searchParams.get('kind'))).toEqual(['image,interior', 'film,avatar']);
+  } finally {
+    confirm.mockRestore();
+  }
 });

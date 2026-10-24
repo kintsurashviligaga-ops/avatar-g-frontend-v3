@@ -66,3 +66,18 @@ Phase 3 PR 7 works on this path. It gives profile and memory a deadline and drop
 - The extra 20 ms or so before the request is the HEAD check.
 - Other links keep the old path.
 - Whether production Storage answers HEAD on `/object/sign/` is not measured here.
+
+## After PR 2: one Library cache (24 October 2026)
+
+**What was measured:** the code of `claude/p3-02-library-query` (the report's commit column shows its base, `9feeadec`), same benchmark, same fixtures, same machine as the "before" table.
+
+| Interaction | §4.1 target | Before p50 / p95 | After p50 / p95 | What the run shows |
+|---|---|---|---|---|
+| Library, warm return to a tab already shown | p95 ≤ 150 ms, no blank replacement screen | 124.7 / 142 ms | 29.7 / 55.8 ms | Met. The grid comes back from the cache: spinner in 0 of 30 returns (before: 30 of 30), 0 Library requests (before: 1). |
+| Library, first open of a tab | (none) | 120.8 / 139.1 ms | 123.6 / 140.1 ms | Unchanged. A tab not loaded yet has nothing true to show, so it still waits for the API and shows the spinner. |
+| Media requests on a warm return | (none) | 12 | 12 | Unchanged. The films are rebuilt as `<video>` elements and read their metadata again. Phase 3 PR 5 (posters) works on this. |
+
+**What this does not show:**
+
+- The 30 s window. Each warm return here comes about a second after the tab was shown. A return after 30 s shows the cached grid at once and refreshes it behind the grid (unit test `LibraryGallery.test.tsx`); that refresh is not timed here.
+- Production or Preview. These are mock numbers, as above.

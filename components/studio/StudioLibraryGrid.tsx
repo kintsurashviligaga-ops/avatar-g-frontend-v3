@@ -18,13 +18,18 @@
  *
  * Fail-soft by construction: an unauthenticated visitor or an empty account sees
  * a friendly empty state, never an error wall.
+ *
+ * The list comes from lib/library/libraryQuery (shared with the /library page): opening the slide-over again shows
+ * what was loaded at once and refreshes it behind the grid, and a new file saved in the studio refreshes every loaded
+ * page instead of cutting the list back to its first 24 (§4.2).
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { describeServiceError } from './ui/serviceError';
 import { saveMedia } from '@/lib/media/saveMedia';
-import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
+import { LIBRARY_UPDATED_EVENT, type LibraryItem, removeLibraryItem, useLibraryFeed, useLibraryOwner } from '@/lib/library/libraryQuery';
 import { SHOOT_COPY, shootLang } from './create/newtools/copy';
 import { PlanView } from './create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
@@ -34,17 +39,6 @@ import {
 } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
-
-interface LibraryItem {
-  id: string;
-  kind: string;
-  url: string;
-  prompt: string | null;
-  orientation: 'landscape' | 'vertical';
-  createdAt: string;
-  /** An interior 3D plan: `url` is the render it was made for (GET /api/studio/library). */
-  plan?: { geometry: RoomGeometry; style: StyleGuide };
-}
 
 type FilterKey = 'all' | 'videos' | 'soundtracks' | 'avatars-images';
 
@@ -451,101 +445,72 @@ const LibraryCard = memo(function LibraryCard({
 
 export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?: Lang; onClose?: () => void }) {
   const t = COPY[locale] ?? COPY.ka;
-  const [items, setItems] = useState<LibraryItem[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('all');
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   // VECTOR 6 — ids we've already shown (never "new") + the currently-badged fresh arrivals.
   const seenIdsRef = useRef<Set<string>>(new Set());
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
-  /** Fresh load — replaces everything; resets pagination cursor. */
-  const load = useCallback(async () => {
-    setLoading(true); setExhausted(false);
-    try {
-      const res = await fetch(`/api/studio/library?limit=${PAGE_SIZE}&offset=0`, { cache: 'no-store', credentials: 'include' });
-      const json = (await res.json()) as { items?: LibraryItem[] };
-      const list = Array.isArray(json.items) ? json.items : [];
-      list.forEach((it) => seenIdsRef.current.add(it.id)); // initial/reset load → these are NOT "new"
-      setItems(list);
-      if (list.length < PAGE_SIZE) setExhausted(true);
-    } catch {
-      setItems([]); setExhausted(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const feed = useLibraryFeed(PAGE_SIZE);
+  const owner = useLibraryOwner();
+  const queryClient = useQueryClient();
+  const { data, isPending, isFetching, isFetchingNextPage, hasNextPage, isFetchNextPageError, fetchNextPage, refetch } = feed;
+  // Every loaded page, newest first. Defensive: drop any duplicates if pages overlap on a fresh write. A failed first
+  // load shows the empty state, as before.
+  const items = useMemo<LibraryItem[] | null>(() => {
+    if (!data) return isPending ? null : [];
+    const seen = new Set<string>();
+    return data.pages.flatMap((p) => p.items).filter((it) => (seen.has(it.id) ? false : (seen.add(it.id), true)));
+  }, [data, isPending]);
+  const loading = isFetching && !isFetchingNextPage;
+  // A page that failed stops the endless scroll, so it does not pound the route.
+  const exhausted = items !== null && (!hasNextPage || isFetchNextPageError);
+
+  /** Fetch every loaded page again (every link in it minted fresh), behind the grid. */
+  const load = useCallback(() => { void refetch(); }, [refetch]);
 
   /** Append the next page — called by the IntersectionObserver sentinel. */
-  const loadMore = useCallback(async () => {
-    if (loadingMore || exhausted || items === null) return;
-    setLoadingMore(true);
-    try {
-      const res = await fetch(`/api/studio/library?limit=${PAGE_SIZE}&offset=${items.length}`, { cache: 'no-store', credentials: 'include' });
-      const json = (await res.json()) as { items?: LibraryItem[] };
-      const more = Array.isArray(json.items) ? json.items : [];
-      more.forEach((it) => seenIdsRef.current.add(it.id)); // paged-in → seen, never "new"
-      if (more.length === 0) { setExhausted(true); return; }
-      // Defensive: drop any duplicates if pages overlap on a fresh write.
-      setItems((prev) => {
-        const seen = new Set((prev ?? []).map((x) => x.id));
-        const merged = [...(prev ?? []), ...more.filter((x) => !seen.has(x.id))];
-        if (more.length < PAGE_SIZE) setExhausted(true);
-        return merged;
-      });
-    } catch {
-      // Soft-fail: keep what we have, mark exhausted so the loop doesn't pound.
-      setExhausted(true);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [items, loadingMore, exhausted]);
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
-  useEffect(() => { void load(); }, [load]);
-
-  // Remix persistence last-mile (VECTOR 6) — refetch the moment a new asset is auto-saved (OmniStudio
-  // dispatches 'myavatar:library-updated' after every autoSaveToLibrary), so a fresh remix/render appears
-  // instantly — and flag the just-added ids with a "New" badge that auto-clears after a few seconds.
+  // Remix persistence last-mile (VECTOR 6) — OmniStudio dispatches 'myavatar:library-updated' after every
+  // autoSaveToLibrary; the shared query refreshes every loaded page, and the ids that refresh brings to the top get a
+  // "New" badge that auto-clears after a few seconds. Paged-in and first-loaded items are seen, never "new".
+  const freshPendingRef = useRef(false);
   useEffect(() => {
-    const onUpdated = async () => {
-      try {
-        const res = await fetch(`/api/studio/library?limit=${PAGE_SIZE}&offset=0`, { cache: 'no-store', credentials: 'include' });
-        const json = (await res.json()) as { items?: LibraryItem[] };
-        const list = Array.isArray(json.items) ? json.items : [];
-        const fresh = list.filter((it) => !seenIdsRef.current.has(it.id)).map((it) => it.id);
-        list.forEach((it) => seenIdsRef.current.add(it.id));
-        setItems(list);
-        setExhausted(list.length < PAGE_SIZE);
-        if (fresh.length) {
-          setNewIds((prev) => { const n = new Set(prev); fresh.forEach((id) => n.add(id)); return n; });
-          window.setTimeout(() => {
-            setNewIds((prev) => { const n = new Set(prev); fresh.forEach((id) => n.delete(id)); return n; });
-          }, 6000);
-        }
-      } catch {
-        // fall back to a plain refresh if the badge-diff fetch fails
-        void load();
-      }
-    };
-    window.addEventListener('myavatar:library-updated', onUpdated);
-    return () => window.removeEventListener('myavatar:library-updated', onUpdated);
-  }, [load]);
+    const mark = () => { freshPendingRef.current = true; };
+    window.addEventListener(LIBRARY_UPDATED_EVENT, mark);
+    return () => window.removeEventListener(LIBRARY_UPDATED_EVENT, mark);
+  }, []);
+  useEffect(() => {
+    if (!data || isFetching) return;
+    const seen = seenIdsRef.current;
+    const fresh = freshPendingRef.current && seen.size > 0
+      ? (data.pages[0]?.items ?? []).filter((it) => !seen.has(it.id)).map((it) => it.id)
+      : [];
+    freshPendingRef.current = false;
+    data.pages.forEach((p) => p.items.forEach((it) => seen.add(it.id)));
+    if (!fresh.length) return;
+    setNewIds((prev) => { const n = new Set(prev); fresh.forEach((id) => n.add(id)); return n; });
+    window.setTimeout(() => {
+      setNewIds((prev) => { const n = new Set(prev); fresh.forEach((id) => n.delete(id)); return n; });
+    }, 6000);
+  }, [data, isFetching]);
 
   // IntersectionObserver — page in when the sentinel hits the viewport.
   useEffect(() => {
     if (!sentinelRef.current || exhausted) return;
     const obs = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) void loadMore();
+      if (entries[0]?.isIntersecting) loadMore();
     }, { rootMargin: '300px 0px' });
     obs.observe(sentinelRef.current);
     return () => obs.disconnect();
   }, [loadMore, exhausted, items?.length]);
 
   const handleDeleted = useCallback((id: string) => {
-    setItems((prev) => (prev ?? []).filter((x) => x.id !== id));
-  }, []);
+    if (owner) removeLibraryItem(queryClient, owner, id);
+  }, [owner, queryClient]);
 
   /** Filter the loaded items client-side so tab switches are instant — the
    *  server's optional `kind` param doesn't map cleanly to our 4 user tabs. */
@@ -607,7 +572,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
         })}
       </div>
 
-      {loading && items === null ? (
+      {items === null ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="aspect-video animate-pulse rounded-2xl border border-app-border/10 bg-app-elevated/50" />
@@ -627,7 +592,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
               kick off the next page when ~300px from the viewport. */}
           {!exhausted && (
             <div ref={sentinelRef} className="mt-6 flex items-center justify-center py-6 text-app-muted">
-              {loadingMore ? (
+              {isFetchingNextPage ? (
                 <span className="inline-flex items-center gap-2 text-[12px]">
                   <Loader2 className="h-4 w-4 animate-spin" /> {t.loadingMore}
                 </span>

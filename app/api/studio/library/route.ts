@@ -197,10 +197,11 @@ export async function GET(req: NextRequest) {
 
     const items = rows;
 
-    // Short PRIVATE browser cache: the library changes rarely, so this cuts refetches on tab-switches.
-    // It must stay well under the 24h signing TTL above — a cached page holding stale tokens past their
-    // expiry would reintroduce exactly the 400s this route now prevents. 30s against 24h is safe.
-    return NextResponse.json({ items }, { headers: { 'Cache-Control': 'private, max-age=30', ...timing.headers() } });
+    // NOT CACHED BY THE BROWSER (§4.2). The page is one account's works with signed links in it, and a browser cache keys
+    // by URL, not by account: on a shared device the next account could be served this answer. Both Library screens
+    // keep it instead in lib/library/libraryQuery, keyed by the account and dropped when the session changes; they
+    // fetch with `no-store`, which this header now matches (it said `private, max-age=30`, which they never used).
+    return NextResponse.json({ items }, { headers: { 'Cache-Control': 'private, no-store', ...timing.headers() } });
   } catch {
     return NextResponse.json({ items: [] }, { headers: timing.headers() });
   }
