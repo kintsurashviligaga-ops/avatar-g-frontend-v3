@@ -26,7 +26,9 @@ import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 import { editKindFor, stashPendingEdit } from '@/lib/studio/pendingEdit';
 import { saveMedia } from '@/lib/media/saveMedia';
 import { DemoNotice, GuestEmpty, LibraryFailed } from '@/components/library/LibraryState';
-import { type LibraryItem, libraryFailure, removeLibraryItem, useLibraryOwner, useLibraryPage } from '@/lib/library/libraryQuery';
+import { type LibraryItem, forgetLibraryLink, libraryFailure, removeLibraryItem, useLibraryOwner, useLibraryPage } from '@/lib/library/libraryQuery';
+import { PooledVideo } from '@/components/library/PooledVideo';
+import { videoKey } from '@/lib/library/videoPool';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -153,14 +155,16 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   // Nothing to show and the read failed. A refresh that fails behind a loaded tab keeps the tab on screen.
   const failure = library.isError && !library.data ? libraryFailure(library.error) : null;
   const { refetch, dataUpdatedAt } = library;
-  // Every answer brings freshly signed links, so every file gets another go.
+  // Every answer brings a fresh link for a file that failed (forgetLibraryLink), so every file gets another go.
   useEffect(() => { setFailed(new Set()); }, [dataUpdatedAt]);
   const owner = useLibraryOwner();
   const queryClient = useQueryClient();
 
   // Fetch the page again behind the grid (fresh links for every file in it): no spinner.
   const reload = useCallback(() => { void refetch(); }, [refetch]);
-  const onMediaError = useCallback((id: string) => {
+  const onMediaError = useCallback((it: LibraryItem) => {
+    forgetLibraryLink(it.url); // the next answer's fresh link replaces it, not this one kept
+    const id = it.id;
     setFailed((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
     if (!autoRetriedRef.current) { autoRetriedRef.current = true; reload(); }
   }, [reload]);
@@ -270,11 +274,15 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                 <div key={it.id} className={`group flex flex-col overflow-hidden rounded-2xl border border-app-border/15 bg-app-elevated/40 ${openPlan === it.id ? 'col-span-full' : ''}`}>
                   <div className={`relative w-full overflow-hidden bg-app-bg/60 ${it.orientation === 'vertical' ? 'aspect-[9/16]' : isMusic ? 'aspect-square' : 'aspect-video'}`}>
                     {/* #t=0.1 makes the browser seek to 0.1s and paint THAT frame as the
-                        poster — without it many browsers show a black thumbnail until play. */}
+                        poster — without it many browsers show a black thumbnail until play. The element is kept
+                        between two showings of this card (PooledVideo), so a tab or page that comes back reads
+                        nothing again, and a film below the fold reads nothing until it is near the screen. */}
                     {failed.has(it.id) && <MediaUnavailable lang={lang} onRetry={reload} />}
-                    {isVideo && !failed.has(it.id) && <video src={`${it.url}#t=0.1`} controls playsInline preload="metadata" onError={() => onMediaError(it.id)} className="h-full w-full object-cover" />}
+                    {isVideo && !failed.has(it.id) && (
+                      <PooledVideo poolKey={videoKey(owner ?? 'guest', it.id)} src={`${it.url}#t=0.1`} controls onError={() => onMediaError(it)} className="h-full w-full object-cover" />
+                    )}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    {isImage && !failed.has(it.id) && <img src={it.url} alt={it.prompt ?? 'image'} onError={() => onMediaError(it.id)} className="h-full w-full object-cover" loading="lazy" />}
+                    {isImage && !failed.has(it.id) && <img src={it.url} alt={it.prompt ?? 'image'} onError={() => onMediaError(it)} className="h-full w-full object-cover" loading="lazy" decoding="async" />}
                     {it.plan && (
                       <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur">
                         <Move3d size={12} aria-hidden="true" /> {t.plan}
@@ -283,7 +291,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                     {isMusic && !failed.has(it.id) && (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3">
                         <Music2 size={28} className="text-app-accent" />
-                        <audio src={it.url} controls className="w-full" preload="none" onError={() => onMediaError(it.id)} />
+                        <audio src={it.url} controls className="w-full" preload="none" onError={() => onMediaError(it)} />
                       </div>
                     )}
                     {/* Favorite star */}

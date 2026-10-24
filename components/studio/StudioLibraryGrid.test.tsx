@@ -38,6 +38,8 @@ beforeAll(() => {
 notifyManager.setScheduler((run) => run());
 let client: QueryClient;
 beforeEach(() => {
+  // jsdom plays no media: a film let go (lib/library/videoPool) asks the browser to drop its file.
+  jest.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   resetLibraryOwnerForTests();
   client = new QueryClient();
   global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [PLAN, FILM] }) })) as unknown as typeof fetch;
@@ -110,6 +112,30 @@ test('opening the slide-over again shows the loaded list at once and refreshes i
   expect(document.querySelector('.animate-pulse')).toBeNull();
   await act(async () => { release(); });
   expect(screen.getByAltText('Japandi bedroom')).toBeTruthy();
+});
+
+// §4.2.5: the slide-over opened again used to read every film again.
+test('opening the slide-over again gives a film card the same <video>, its link untouched', async () => {
+  const stub = globalThis.IntersectionObserver;
+  // Everything on screen: a card gives its film the link at once.
+  (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class {
+    constructor(private cb: (e: { isIntersecting: boolean; target: Element }[]) => void) {}
+    observe(target: Element) { this.cb([{ isIntersecting: true, target }]); }
+    disconnect() {}
+  };
+  try {
+    const first = render(<QueryClientProvider client={client}><StudioLibraryGrid locale="en" /></QueryClientProvider>);
+    await screen.findByTestId('library-plan-toggle');
+    const film = document.querySelector('video')!;
+    expect(film.getAttribute('src')).toBe(`${FILM.url}#t=0.1`);
+    first.unmount();
+    const setAttribute = jest.spyOn(film, 'setAttribute');
+    await mount();
+    expect(document.querySelector('video')).toBe(film);
+    expect(setAttribute).not.toHaveBeenCalledWith('src', expect.anything());
+  } finally {
+    (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = stub;
+  }
 });
 
 test('a file saved in the studio comes in with a „New" badge; what was loaded stays', async () => {

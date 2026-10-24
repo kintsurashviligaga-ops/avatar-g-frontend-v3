@@ -38,6 +38,8 @@ const SONG = { id: 'song-1', kind: 'music', url: 'https://ours.supabase.co/stora
 
 let requested: string[] = [];
 beforeEach(() => {
+  // jsdom plays no media: a film let go (lib/library/videoPool) asks the browser to drop its file.
+  jest.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   resetLibraryOwnerForTests();
   client = new QueryClient();
   requested = [];
@@ -100,6 +102,21 @@ test('the Video tab asks for films and avatar videos; the Image tab for pictures
   expect(document.querySelector('video')?.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
   expect(kinds()).toEqual(['film,avatar', 'image,interior']);
+});
+
+// §4.2.5: switching tabs used to rebuild every film card, and each new <video> read its file again.
+test('a film tab that comes back shows the same <video>, its link untouched: nothing is read again', async () => {
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  const film = document.querySelector('video')!;
+  expect(film.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
+  const setAttribute = jest.spyOn(film, 'setAttribute');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
+  expect(document.querySelector('video')).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Video$/ })); });
+  expect(document.querySelector('video')).toBe(film);
+  expect(film.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
+  expect(setAttribute).not.toHaveBeenCalledWith('src', expect.anything());
+  expect(film.controls).toBe(true);
 });
 
 test('a 3D plan shows its render with a „3D plan" badge and opens on the card', async () => {
