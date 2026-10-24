@@ -19,8 +19,11 @@ jest.mock('server-only', () => ({}));
 
 let mockUser: { id: string; email?: string; email_confirmed_at?: string } | null = null;
 const mockRpc = jest.fn(async () => ({ data: [] as unknown[], error: null as unknown }));
+/** The panel-granted admin list (lib/auth/adminGuard reads `admin_emails` through the service role), and when it answers. */
+let mockAdminRows: () => Promise<{ data: Array<{ email: string }> | null; error: unknown }> = async () => ({ data: [], error: null });
 jest.mock('../../../../lib/supabase/server', () => ({
   authedClientFromRequest: jest.fn(async () => ({ supabase: { rpc: mockRpc }, user: mockUser })),
+  createServiceRoleClient: jest.fn(() => ({ from: () => ({ select: () => mockAdminRows() }) })),
 }));
 
 jest.mock('../../../../lib/ai/google/chatStream', () => ({
@@ -69,19 +72,19 @@ jest.mock('@ai-sdk/anthropic', () => ({ createAnthropic: jest.fn(() => mockAnthr
 jest.mock('ai', () => ({ streamText: jest.fn() }));
 
 import { NextRequest } from 'next/server';
-import { POST, HEARTBEAT_MS, TURN_DEADLINE_MS, maxDuration } from './route';
+import { POST, CONTEXT_DEADLINE_MS, HEARTBEAT_MS, TURN_DEADLINE_MS, maxDuration } from './route';
 import { streamGeminiChat, type StreamGeminiChatInput, type StreamGeminiChatResult } from '../../../../lib/ai/google/chatStream';
 import { chatBudgetRefusal, bookChatUsage } from '../../../../lib/services/billing/chatBudget';
 import { budgetRefusalMessage } from '../../../../lib/services/billing/budgetMessage';
 import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, refundRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { embed } from '../../../../lib/memory/embed';
-import { buildProfilePreamble } from '../../../../lib/chat/userMemory';
+import { buildProfilePreamble, extractProfileFacts, getUserProfileFacts, saveUserProfileFacts } from '../../../../lib/chat/userMemory';
 import { reportError } from '../../../../lib/observability/report-error';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { streamText } from 'ai';
 import { decodeFrames, type ChatFrame } from '../../../../lib/chat/sse';
 import { DEFAULT_CHAT_MODELS } from '../../../../lib/ai/google/models';
-import { adminAllowlist } from '../../../../lib/auth/adminGuard';
+import { adminAllowlist, invalidateAdminAllowlist } from '../../../../lib/auth/adminGuard';
 import { VEO_AVATAR_PROMPT_CREDITS } from '../../../../lib/chat/platformPrompt';
 import {
   GUEST_GLOBAL_KEY,
@@ -158,6 +161,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser = { id: USER_ID };
   mockRpc.mockImplementation(async () => ({ data: [], error: null }));
+  mockAdminRows = async () => ({ data: [], error: null });
+  invalidateAdminAllowlist();
   process.env = { ...ENV };
   delete process.env.FILM_ALLOW_ANONYMOUS;
   delete process.env.AI_GOOGLE_ONLY;
@@ -881,6 +886,31 @@ describe('chat modes', () => {
     expect(refundRateLimitByKey).not.toHaveBeenCalled();
   });
 
+  test('a Pro answer that broke off after its first words is never asked again of Fast, and keeps its allowance spent', async () => {
+    mockStream.mockImplementationOnce(
+      gemini(
+        [
+          { meta: { provider: 'gemini', model: 'gemini-3.1-pro-preview' } },
+          { text: 'ნახევარი' },
+          { meta: { provider: 'gemini', model: 'gemini-3.1-pro-preview', partial: true } },
+          { error: { code: 'unavailable', retryable: true, message: 'The AI service is temporarily unavailable on our side.' } },
+        ],
+        {
+          ok: false,
+          model: 'gemini-3.1-pro-preview',
+          text: 'ნახევარი',
+          error: { code: 'unavailable', retryable: true, message: 'overloaded' },
+          attempts: [{ model: 'gemini-3.1-pro-preview', code: 'unavailable' }],
+        },
+      ),
+    );
+    const frames = await framesOf(await POST(post({ ...userTurn('prove it'), mode: 'pro', protocol: 2 })));
+    expect(mockStream).toHaveBeenCalledTimes(1);
+    expect(frames).toContainEqual({ text: 'ნახევარი' });
+    expect(frames.filter((f) => f !== 'DONE' && 'error' in f)).toEqual([{ error: expect.objectContaining({ code: 'unavailable' }) }]);
+    expect(refundRateLimitByKey).not.toHaveBeenCalled();
+  });
+
   test('a spent Pro allowance DOWNGRADES to Fast (not a refusal) and says so in every {meta}', async () => {
     const resetSec = Math.ceil(Date.parse('2026-10-01T08:15:00.000Z') / 1000);
     (checkRateLimitByKey as jest.Mock)
@@ -1064,6 +1094,142 @@ describe('a turn that thinks before it answers', () => {
     expect(frames[frames.length - 1]).toBe('DONE');
     expect(reportError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ stage: 'turn-deadline', mode: 'pro' }));
     expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+// ─── Context on a deadline (§4.4) ────────────────────────────────────────────
+
+describe('profile facts, memory and the avatar check are waited for only CONTEXT_DEADLINE_MS (§4.4)', () => {
+  /** Reads the whole body while `advance` drives the fake clock; returns the raw SSE text. */
+  async function drain(res: Response, advance: () => Promise<void>): Promise<string> {
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let raw = '';
+    const reading = (async () => {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        raw += dec.decode(value, { stream: true });
+      }
+    })();
+    await advance();
+    await reading;
+    return raw;
+  }
+  /** Resolves with `value` once the fake clock has moved `ms`. */
+  const after = <T,>(ms: number, value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
+  const memoryRow = async () => ({ data: [{ id: 'm1', fact: 'Loves jazz', similarity: 0.9 }], error: null });
+  const OFFERED = `talking avatar ${VEO_AVATAR_PROMPT_CREDITS} cr`;
+  const ADMIN = 'second-admin@example.com';
+
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    delete process.env.MEDIA_GOOGLE_ONLY;
+    delete process.env.OUTSIDE_ENGINES_APPROVED;
+    delete process.env.AVATAR_VEO_PUBLIC;
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test('a slow memory is left out: the model is asked at the deadline, without it', async () => {
+    (embed as jest.Mock).mockImplementationOnce(() => after(10_000, [0.1, 0.2]));
+    mockRpc.mockImplementation(memoryRow);
+    const res = await POST(post(userTurn('რა მოვუსმინო?')));
+    const raw = await drain(res, async () => {
+      await jest.advanceTimersByTimeAsync(CONTEXT_DEADLINE_MS - 1);
+      expect(mockStream).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      expect(mockStream).toHaveBeenCalledTimes(1);
+    });
+    expect(lastStreamInput().config.system).not.toContain('Loves jazz');
+    expect(decodeFrames(raw)).toEqual([{ meta: expect.objectContaining({ provider: 'gemini' }) }, { text: 'ok' }, 'DONE']);
+  });
+
+  test('a slow profile read is left out, and a fact the user just stated is still saved when it comes back', async () => {
+    (getUserProfileFacts as jest.Mock).mockImplementationOnce(() => after(10_000, []));
+    (buildProfilePreamble as jest.Mock).mockReturnValueOnce('USER PROFILE: name: Giorgi.');
+    (extractProfileFacts as jest.Mock).mockReturnValueOnce([{ key: 'name', value: 'Giorgi', category: 'identity' }]);
+    const res = await POST(post(userTurn('მე გიორგი ვარ')));
+    await drain(res, () => jest.advanceTimersByTimeAsync(CONTEXT_DEADLINE_MS));
+    expect(mockStream).toHaveBeenCalledTimes(1);
+    expect(lastStreamInput().config.system).not.toContain('USER PROFILE');
+    expect(saveUserProfileFacts).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(saveUserProfileFacts).toHaveBeenCalledWith(expect.anything(), USER_ID, [{ key: 'name', value: 'Giorgi', category: 'identity' }]);
+  });
+
+  test('a budget check slower than the deadline is waited for in full, and the memory that came in meanwhile is used', async () => {
+    (chatBudgetRefusal as jest.Mock).mockImplementationOnce(() => after(2_000, null));
+    (embed as jest.Mock).mockImplementationOnce(() => after(1_500, [0.1, 0.2]));
+    mockRpc.mockImplementation(memoryRow);
+    const res = await POST(post(userTurn('რა მოვუსმინო?')));
+    await drain(res, async () => {
+      await jest.advanceTimersByTimeAsync(1_999);
+      expect(mockStream).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      expect(mockStream).toHaveBeenCalledTimes(1);
+    });
+    expect(lastStreamInput().config.system).toContain('- Loves jazz');
+  });
+
+  test('a budget refusal still refuses at once, whatever the memory is doing', async () => {
+    (chatBudgetRefusal as jest.Mock).mockResolvedValueOnce('daily_limit');
+    (embed as jest.Mock).mockImplementationOnce(() => after(10_000, [0.1, 0.2]));
+    const res = await POST(post(userTurn('გამარჯობა')));
+    const frames = decodeFrames(await drain(res, () => jest.advanceTimersByTimeAsync(0)));
+    expect(frames).toEqual([
+      { meta: { provider: 'budget', model: 'none' } },
+      { text: BUDGET_NOTICE_KA },
+      { error: { code: 'budget', retryable: false, message: BUDGET_NOTICE_KA, lang: 'ka' } },
+      'DONE',
+    ]);
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  test('an avatar check that answers late offers no avatar this turn, and the answer does not wait for it', async () => {
+    mockUser = { id: USER_ID, email: ADMIN, email_confirmed_at: '2026-01-01T00:00:00Z' };
+    mockAdminRows = () => after(10_000, { data: [{ email: ADMIN }], error: null });
+    const res = await POST(post(userTurn('ფოტო ალაპარაკე')));
+    await drain(res, () => jest.advanceTimersByTimeAsync(CONTEXT_DEADLINE_MS));
+    expect(mockStream).toHaveBeenCalledTimes(1);
+    expect(lastStreamInput().config.system).not.toContain(OFFERED);
+    expect(lastStreamInput().config.system).toMatch(/^NOT AVAILABLE YET: .*ავატარი/m);
+  });
+
+  test('the same check in time offers it, and the budget was priced on a prompt at least as long as the turn\'s', async () => {
+    mockUser = { id: USER_ID, email: ADMIN, email_confirmed_at: '2026-01-01T00:00:00Z' };
+    mockAdminRows = () => after(100, { data: [{ email: ADMIN }], error: null });
+    const res = await POST(post(userTurn('ფოტო ალაპარაკე')));
+    await drain(res, () => jest.advanceTimersByTimeAsync(CONTEXT_DEADLINE_MS));
+    const { system } = lastStreamInput().config;
+    expect(system).toContain(OFFERED);
+    const estimateText = (chatBudgetRefusal as jest.Mock).mock.calls[0][0] as string;
+    expect(estimateText.length).toBeGreaterThanOrEqual(system.length + 'ფოტო ალაპარაკე'.length);
+  });
+
+  test('a browser that leaves while the turn waits never reaches the model, and nothing is booked', async () => {
+    (embed as jest.Mock).mockImplementationOnce(() => after(10_000, [0.1, 0.2]));
+    const res = await POST(post(userTurn('hi')));
+    const reader = res.body!.getReader();
+    await reader.read(); // the opening keep-alive
+    await reader.cancel();
+    await jest.advanceTimersByTimeAsync(10_010); // past the deadline and past the memory itself
+    expect(mockStream).not.toHaveBeenCalled();
+    expect(bookChatUsage).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('grounding and an attached photo ride through a turn whose memory was late', async () => {
+    (embed as jest.Mock).mockImplementationOnce(() => after(10_000, [0.1, 0.2]));
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    const res = await POST(post({ messages: [{ role: 'user', content: [{ type: 'text', text: 'რა არის ეს?' }, { type: 'image', image: png }] }] }));
+    await drain(res, () => jest.advanceTimersByTimeAsync(CONTEXT_DEADLINE_MS));
+    const input = lastStreamInput();
+    expect(input.config.googleSearch).toBe(true);
+    expect(input.messages).toEqual([
+      { role: 'user', content: [{ type: 'text', text: 'რა არის ეს?' }, { type: 'image', image: png, mediaType: 'image/png' }] },
+    ]);
   });
 });
 

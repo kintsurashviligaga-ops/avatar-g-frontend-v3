@@ -10,6 +10,11 @@
  * Each sample is a traced turn (x-myavatar-trace), so the route's own spans (lib/perf/serverTiming) come back in the
  * SSE comment line and are reported beside the client-side TTFT (request sent → first `{text}` frame decoded).
  *
+ * Three runs of the same turn: every dependency at its fixture latency (`chat.ttft`), then one of them slow, the waits
+ * the route bounds with CONTEXT_DEADLINE_MS: the memory's embedding (`chat.ttft.slow-memory`), and the avatar check's
+ * admin-list read on an instance that has not cached it yet (`chat.ttft.cold-admin`, the user has a confirmed email
+ * that is not on the static list).
+ *
  * Run: npm run perf:mock (or npx jest -c jest.perf.config.cjs perf/chat-ttft.perf.ts). Writes perf-results/chat.json.
  */
 jest.mock('server-only', () => ({}));
@@ -28,6 +33,12 @@ const FIXTURE = {
   rpc: ms('RPC', 50),
   firstToken: ms('FIRST_TOKEN', 400),
 };
+/** The slow dependency of each slow run, in ms. */
+const SLOW = { embed: ms('SLOW_EMBED', 1500), adminList: ms('SLOW_ADMIN_LIST', 800) };
+/** What the current run sets: the embedding's latency, and the signed-in user's confirmed email (null: none). */
+let mockEmbedMs = FIXTURE.embed;
+let mockEmail: string | null = null;
+let mockAdminListMs = 0;
 const sleep = (n: number) => new Promise<void>((r) => setTimeout(r, n));
 
 jest.mock('../lib/supabase/server', () => ({
@@ -35,9 +46,13 @@ jest.mock('../lib/supabase/server', () => ({
     await sleep(FIXTURE.auth);
     return {
       supabase: { rpc: jest.fn(async () => { await sleep(FIXTURE.rpc); return { data: [], error: null }; }) },
-      user: { id: '6f1c2b3a-1111-4222-8333-444455556666' },
+      user: { id: '6f1c2b3a-1111-4222-8333-444455556666', ...(mockEmail ? { email: mockEmail, email_confirmed_at: '2026-01-01T00:00:00Z' } : {}) },
     };
   }),
+  // The panel-granted admin list (lib/auth/adminGuard), read through the service role: empty, after mockAdminListMs.
+  createServiceRoleClient: jest.fn(() => ({
+    from: () => ({ select: async () => { await sleep(mockAdminListMs); return { data: [], error: null }; } }),
+  })),
 }));
 jest.mock('../lib/ai/google/chatStream', () => ({
   streamGeminiChat: jest.fn(async (input: { onFrame: (f: unknown) => void | Promise<void> }) => {
@@ -72,7 +87,7 @@ jest.mock('../lib/api/rate-limit', () => {
     global.setInterval = realSetInterval;
   }
 });
-jest.mock('../lib/memory/embed', () => ({ embed: jest.fn(async () => { await sleep(FIXTURE.embed); return [0.1, 0.2, 0.3]; }) }));
+jest.mock('../lib/memory/embed', () => ({ embed: jest.fn(async () => { await sleep(mockEmbedMs); return [0.1, 0.2, 0.3]; }) }));
 jest.mock('../lib/chat/userMemory', () => ({
   getUserProfileFacts: jest.fn(async () => { await sleep(FIXTURE.profile); return []; }),
   buildProfilePreamble: jest.fn(() => null),
@@ -84,6 +99,7 @@ jest.mock('../lib/observability/report-error', () => ({ reportError: jest.fn() }
 import { randomBytes } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { POST } from '../app/api/chat/gemini/route';
+import { invalidateAdminAllowlist } from '../lib/auth/adminGuard';
 import { decodeFrames } from '../lib/chat/sse';
 import { parseServerTiming } from '../lib/perf/serverTiming';
 import { MIN_P95_SAMPLES, summarize, writeResults } from './stats';
@@ -114,23 +130,47 @@ async function oneTurn(): Promise<{ ttft: number; done: number; spans: Record<st
   return { ttft, done: doneAt, spans: parseServerTiming(comment) as Record<string, number> };
 }
 
-test(`chat TTFT over fixture latencies (${SAMPLES} samples)`, async () => {
-  await oneTurn(); // warm the module graph; not counted
+/** SAMPLES turns, after one warm-up turn that is not counted; `before` runs ahead of every turn. */
+async function turns(before: () => void = () => {}): Promise<Array<Awaited<ReturnType<typeof oneTurn>>>> {
+  before();
+  await oneTurn();
   const runs = [];
-  for (let i = 0; i < SAMPLES; i += 1) runs.push(await oneTurn());
+  for (let i = 0; i < SAMPLES; i += 1) {
+    before();
+    runs.push(await oneTurn());
+  }
   expect(runs.every((r) => Number.isFinite(r.ttft))).toBe(true);
+  return runs;
+}
+
+test(`chat TTFT over fixture latencies (${SAMPLES} samples per run)`, async () => {
+  const normal = await turns();
+  mockEmbedMs = SLOW.embed;
+  const slowMemory = await turns();
+  mockEmbedMs = FIXTURE.embed;
+  mockEmail = 'bench-user@example.com';
+  mockAdminListMs = SLOW.adminList;
+  const coldAdmin = await turns(() => invalidateAdminAllowlist());
 
   const fixture = Object.entries(FIXTURE).map(([k, v]) => `${k} ${v}`).join(', ');
   const base = {
     environment: 'mock' as const,
-    payload: `1 short user turn, Fast, signed in; fixture ms: ${fixture}`,
     network: 'in-process (no network)',
     cache: 'warm' as const,
     unit: 'ms' as const,
     note: 'Route critical path over fixed fixture latencies; not a provider or production number.',
   };
+  const payload = `1 short user turn, Fast, signed in; fixture ms: ${fixture}`;
+  const ttft = (runs: typeof normal) => runs.map((r) => r.ttft);
+  const spans = (runs: typeof normal) => runs.map((r) => r.spans);
   writeResults('chat', [
-    summarize({ ...base, interaction: 'chat.ttft' }, runs.map((r) => r.ttft), runs.map((r) => r.spans)),
-    summarize({ ...base, interaction: 'chat.done' }, runs.map((r) => r.done)),
+    summarize({ ...base, payload, interaction: 'chat.ttft' }, ttft(normal), spans(normal)),
+    summarize({ ...base, payload, interaction: 'chat.done' }, normal.map((r) => r.done)),
+    summarize({ ...base, payload: `${payload}; embed ${SLOW.embed}`, interaction: 'chat.ttft.slow-memory' }, ttft(slowMemory), spans(slowMemory)),
+    summarize(
+      { ...base, payload: `${payload}; admin list read ${SLOW.adminList} on every turn (not cached)`, interaction: 'chat.ttft.cold-admin' },
+      ttft(coldAdmin),
+      spans(coldAdmin),
+    ),
   ]);
-}, 120_000);
+}, 600_000);

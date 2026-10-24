@@ -119,3 +119,36 @@ Phase 3 PR 7 works on this path. It gives profile and memory a deadline and drop
 - **Off an iPhone, no large file is held in memory.** A file over 50 MB on another origin, or a video there of unknown size, opens in a new tab instead. A link to our Storage takes this path only when its headers could not be read within 2 s.
 
 **What this does not show:** Production or Preview. Whether production Storage answers HEAD on `/object/sign/` with the same types is not measured here. A file over 50 MB on another origin is covered by unit tests, not by the benchmark.
+
+## After PR 7: chat (24 October 2026)
+
+**What was measured:** the chat benchmark (`perf/chat-ttft.perf.ts`), now with three runs of the same turn, on `5ff5b376` (PR 6's head, the "before") and on the code of `claude/p3-07-chat-ttft` (the "after"; the report's commit column shows its base). Both used the same benchmark file, fixture and machine. Each run is 30 traced turns after one warm-up turn.
+
+- **Normal:** every dependency at the fixture latencies above.
+- **Slow memory:** the memory's embedding takes 1500 ms instead of 150 ms.
+- **Cold admin check:** the signed-in user has a confirmed email that is not on the static admin list, so the avatar check reads the admin list from the database. That read takes 800 ms, and the cache is emptied before every turn, as on an instance that has not read it yet.
+
+| Run | §4.1 target | Before p50 / p95 | After p50 / p95 | What the run shows |
+|---|---|---|---|---|
+| Normal | p50 ≤ 1.5 s, p95 ≤ 4 s on an authorised warm benchmark | 696.7 / 699.5 ms | 697.2 / 700.3 ms | Unchanged. Everything is in before the 500 ms deadline, so the turn is the same. |
+| Slow memory | (same) | 2046 / 2047.1 ms | 996.6 / 998.1 ms | The model was asked only after the slow memory. Now it is asked at the deadline, without the memory. |
+| Cold admin check | (same) | 1481 / 1482.3 ms | 995.9 / 998.2 ms | The response waited for the admin list before it started. Now the check runs alongside the budget, and the turn stops waiting for it at the deadline (no avatar is offered that turn). |
+
+**Spans, median (ms):**
+
+| Run | | rate | auth | admin | budget | profile | embed | memory | model | ttft |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Slow memory | before | 30.7 | 60.5 | 0.2 | 80.3 | 40.7 | 1500.6 | 1551.2 | 401 | 2045.2 |
+| Slow memory | after | 30.8 | 60.6 | 0.2 | 80.4 | 40.6 | (late) | (late) | 400.9 | 995.9 |
+| Cold admin check | before | 30.8 | 60.6 | 800.7 | 80.3 | 40.3 | 150.6 | 201.1 | 401 | 1480.1 |
+| Cold admin check | after | 30.8 | 60.5 | 800.6 | 80.4 | 40.7 | 150.2 | 200.8 | 400.5 | 995.2 |
+
+"(late)" means the span ended after the turn's spans were written, because the turn no longer waited for it.
+
+**How:** in `app/api/chat/gemini/route.ts`, the profile facts, the memory and the avatar check get `CONTEXT_DEADLINE_MS` (500 ms) from when they start, or until the budget answers if that is later. The budget is still waited for in full and still fails closed. 500 ms is a chosen bound: production latencies of these steps have not been measured.
+
+**What this does not show:**
+
+- A real provider. The §4.1 chat target is for an authorised warm benchmark on live Flash, and that is the owner's decision 3, not taken. These are mock numbers: the route's own waits over fixed fixture latencies.
+- Production or Preview latencies of the memory, the profile read or the admin list read. How often a real turn hits the deadline is not known.
+- The first open of the route on a cold function. Every run here is warm.

@@ -20,11 +20,11 @@ const TRACE_ID = /^[0-9a-f]{16,32}$/;
 
 /**
  * Every span a route may report. Library: auth → db → proof (legacy manual saves) → sign, with fav (the page's stars)
- * alongside proof and sign. Chat, before the stream:
- * rate (the limiters, summed), auth, body, admin (the avatar-door check the prompt waits for), prompt. Chat, in the
- * stream: budget, profile, embed, memory (embed + match_memories), model (the call's start to its first text),
- * ttft (the request's start to the first text written). `respond` is the time until the response was handed back,
- * `total` the whole request.
+ * alongside proof and sign. Chat, before the stream: rate (the limiters, summed), auth, body, prompt. Chat, started
+ * before the stream and read in it: admin (the avatar-door check). Chat, in the stream: budget, profile, embed, memory
+ * (embed + match_memories), prompt again when the avatar check decided it (the two add up), model (the call's start to
+ * its first text), ttft (the request's start to the first text written). `respond` is the time until the response was
+ * handed back, `total` the whole request.
  */
 export const SPAN_NAMES = [
   'rate',
