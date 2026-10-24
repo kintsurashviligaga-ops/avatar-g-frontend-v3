@@ -96,13 +96,50 @@ async function recordPlays(page: Page): Promise<void> {
     w.__tap = 0;
     document.addEventListener('click', () => { w.__tap = performance.now(); }, true);
     const play = HTMLMediaElement.prototype.play;
+    const watched = new WeakSet<HTMLMediaElement>();
     HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
       // `src` first: right after a new source is set, currentSrc still names the one before until the element loads.
       const src = this.src || this.currentSrc || '';
-      if (src.startsWith('blob:')) w.__plays.push({ src, at: performance.now() });
+      if (src.startsWith('blob:')) {
+        w.__plays.push({ src, at: performance.now() });
+        // What the element did, for the message of a read that does not finish (the element is not in the document).
+        const m = window as unknown as { __media: string[]; __el?: HTMLMediaElement };
+        m.__media ??= [];
+        m.__el = this;
+        if (!watched.has(this)) {
+          watched.add(this);
+          for (const type of ['playing', 'pause', 'waiting', 'stalled', 'ended', 'error']) {
+            this.addEventListener(type, () => {
+              if (m.__media.length < 60) m.__media.push(`${type}@${this.currentTime.toFixed(2)}${this.error ? ` err=${this.error.code}` : ''}`);
+            });
+          }
+        }
+        const pending = play.call(this);
+        void Promise.resolve(pending).catch((e: unknown) => { m.__media.push(`play() rejected: ${(e as Error)?.name}`); });
+        return pending;
+      }
       return play.call(this);
     };
   });
+}
+
+/** The audio element's events and state, for a failure message. */
+const mediaLog = (page: Page) => page.evaluate(() => {
+  const m = window as unknown as { __media?: string[]; __el?: HTMLMediaElement };
+  const el = m.__el;
+  const state = el
+    ? `currentTime=${el.currentTime.toFixed(2)} duration=${el.duration} readyState=${el.readyState} networkState=${el.networkState} paused=${el.paused} error=${el.error?.code ?? 'none'}`
+    : 'no chunk element played';
+  return `${state}; events: ${(m.__media ?? []).join(', ') || 'none'}`;
+});
+
+/** Waits for the read to end (the button says "Read aloud" again); when it does not, says what the audio element did. */
+async function readEnds(page: Page): Promise<void> {
+  try {
+    await expect(readButton(page)).toBeVisible({ timeout: 30_000 });
+  } catch (e) {
+    throw new Error(`The read did not end. ${await mediaLog(page)}\n${(e as Error).message}`);
+  }
 }
 
 const plays = (page: Page) => page.evaluate(() => (window as unknown as { __plays: unknown[] }).__plays.length);
@@ -141,7 +178,7 @@ async function readWhole(page: Page): Promise<number> {
   const before = await plays(page);
   await readButton(page).click();
   await expect(page.getByRole('button', { name: PAUSE, exact: true })).toBeVisible({ timeout: 20_000 });
-  await expect(readButton(page)).toBeVisible({ timeout: 30_000 });
+  await readEnds(page);
   return page.evaluate((n) => {
     const w = window as unknown as { __plays: Array<{ at: number }>; __tap: number };
     return Math.round(w.__plays[n]!.at - w.__tap);
@@ -205,7 +242,7 @@ test('a chunk that fails stops the read there, and "Try again" reads on from it'
   expect(await plays(page)).toBe(1);
 
   await page.getByRole('button', { name: RETRY, exact: true }).click();
-  await expect(readButton(page)).toBeVisible({ timeout: 30_000 });
+  await readEnds(page);
   expect(await plays(page)).toBe(CHUNKS.length);
   // Chunk 1 was asked for again; every other chunk once (audio fetched ahead of the failure was kept).
   expect(tts.texts.filter((t) => t === CHUNKS[1])).toHaveLength(2);
