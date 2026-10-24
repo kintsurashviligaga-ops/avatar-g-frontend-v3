@@ -11,8 +11,9 @@
  * - `play` stops whatever is being read, whoever started it, and reads the new text. `toggle` is what a Stop button
  *   does: the same owner's tap stops its read, a failed read is tried again, anything else starts. `playPause` is a
  *   Pause button: the same owner's tap pauses its read and the next one goes on from there.
- * - The text is cut by lib/speech/chunk, so every character is read once, in order. At most SPEECH_AHEAD syntheses are in
- *   flight at once, and at most that many chunks are fetched ahead of the one playing.
+ * - The text is cut by lib/speech/chunk, so every character is read once, in order: a short first sentence, then chunks
+ *   that grow (SPEECH_CHUNK_RAMP), so each request is small next to the audio already on its way. At most SPEECH_AHEAD
+ *   syntheses are in flight at once, and at most that many chunks are fetched ahead of the one playing.
  * - A chunk that fails (no audio, bytes that are not a valid WAV, an element error, a stall, the browser refusing to
  *   play) is never skipped. The read stops there as `failed`, with the chunk's offset in the text, and `retry` reads on
  *   from that chunk. Audio already fetched for the chunks after it is kept for the retry.
@@ -34,7 +35,7 @@
  */
 import { blobBytes } from './blob';
 import { browserSpeechCache, type SpeechCache } from './cache';
-import { chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
+import { SPEECH_CHUNK_RAMP, chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
 import type { SpeechLocale } from './contract';
 import { speechLocaleOf } from './locale';
 import { fetchSpeech, requestSpeech } from './request';
@@ -43,8 +44,14 @@ import { inspectWav } from './wav';
 import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
 import { MIC_RELEASE_EVENT } from '@/lib/voice/micBus';
 
-/** Syntheses in flight at once, and chunks fetched ahead of the one playing. */
-export const SPEECH_AHEAD = 2;
+/**
+ * Syntheses in flight at once, and chunks fetched ahead of the one playing. ⚠️ It was 2 until GG heard the read stop
+ * and go on (Production 2026-10-24): every request pays a fixed wait before any audio, and with 2 the third chunk was
+ * asked for only once the first one played, so a short first chunk left the third one late. With 3 the first three are
+ * asked for at once, and chunk k is asked for when chunk k − 3 starts. Billing is unchanged: the same text is sent,
+ * only sooner.
+ */
+export const SPEECH_AHEAD = 3;
 /** A chunk that has played this long past its own duration without `ended` is a stall, not a slow ending. */
 export const SPEECH_STALL_GRACE_MS = 15_000;
 /** A 0.001 s silent WAV: playing it inside the tap is what unlocks the element for the plays that follow the fetch. */
@@ -172,7 +179,7 @@ export class SpeechPlayer {
       this.publish({ ...IDLE_SPEECH, status: 'failed', owner: req.owner, fault, rate: this.rate });
       return;
     }
-    const chunks = chunkSpeech(req.text, req.chunking ?? { leadSentence: true });
+    const chunks = chunkSpeech(req.text, req.chunking ?? { leadSentence: true, ramp: SPEECH_CHUNK_RAMP });
     if (!chunks.length) {
       this.publish({ ...IDLE_SPEECH, status: 'done', owner: req.owner, rate: this.rate });
       return;

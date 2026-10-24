@@ -126,23 +126,26 @@ test('unlocks the element with the silent clip inside the tap, before any await'
   expect(r.s()).toMatchObject({ status: 'loading', owner: 'a', index: 0, total: 5, offset: 0, fault: null, rate: 1 });
 });
 
-test('reads every chunk in order, at most 2 syntheses in flight and 2 ahead, then done; every URL revoked', async () => {
+test('reads every chunk in order, at most SPEECH_AHEAD (3) syntheses in flight and 3 ahead, then done; every URL revoked', async () => {
+  expect(SPEECH_AHEAD).toBe(3);
   const r = rig();
   r.player.play(req());
+  // The first three are asked for at once (GG, Production 2026-10-24: with two, the third came late).
   expect(r.calls.map((c) => c.text)).toEqual(SENTENCES.slice(0, SPEECH_AHEAD));
 
   answer(r, 0);
   await until(() => r.s().status === 'playing', 'chunk 0 playing');
-  // While chunk 0 plays, chunks 1 and 2 are being fetched, and no more.
-  expect(r.calls.map((c) => c.text)).toEqual(SENTENCES.slice(0, 3));
-  expect(r.open()).toHaveLength(2);
+  // While chunk 0 plays, chunks 1, 2 and 3 are being fetched, and no more.
+  expect(r.calls.map((c) => c.text)).toEqual(SENTENCES.slice(0, 4));
+  expect(r.open()).toHaveLength(3);
 
   answer(r, 1);
   answer(r, 2);
-  await until(() => r.calls.length === 3, 'settled');
+  answer(r, 3);
+  await until(() => r.calls.length === 4 && r.open().length === 0, 'settled');
   await tick();
-  // Two are ready ahead of the one playing: the window is full, nothing more is asked for.
-  expect(r.calls).toHaveLength(3);
+  // Three are ready ahead of the one playing: the window is full, nothing more is asked for.
+  expect(r.calls).toHaveLength(4);
 
   for (let i = 0; i < SENTENCES.length; i++) {
     await until(() => r.s().status === 'playing' && r.s().index === i, `chunk ${i} playing`);
@@ -178,8 +181,9 @@ test('a failed chunk in the middle stops the read THERE, never skips it; retry r
   const before = r.calls.length;
   r.player.retry();
   expect(r.audio.plays[r.audio.plays.length - 1]).toBe(SILENT_WAV); // the retry tap unlocks again
-  // Chunk 1 is asked for again; chunk 2 is already here, so the next request is chunk 3.
-  expect(r.calls.slice(before).map((c) => c.text)).toEqual([SENTENCES[1], SENTENCES[3]]);
+  // Chunk 1 is asked for again; chunk 2 is already here, so the next requests are chunks 3 and 4 (stopped by the
+  // failure before they answered).
+  expect(r.calls.slice(before).map((c) => c.text)).toEqual([SENTENCES[1], SENTENCES[3], SENTENCES[4]]);
   answer(r, 1);
   await until(() => r.s().status === 'playing' && r.s().index === 1, 'chunk 1 playing');
   r.audio.end();

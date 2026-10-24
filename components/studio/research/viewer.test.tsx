@@ -229,8 +229,15 @@ describe('talking to the report', () => {
     await waitFor(() => expect(screen.getByTestId('research-reading').getAttribute('data-state')).toBe('playing'));
     const first = synthCalls[0]!;
     expect(first).not.toContain('Georgia leads');
-    act(() => { mockAudio.onended?.(); });
+    // Every chunk before the one with no audio plays to its end, and the read goes on to the next.
+    const failedAt = synthCalls.findIndex((t) => t.includes('Georgia leads'));
+    expect(failedAt).toBeGreaterThan(0);
+    for (let i = 0; i < failedAt; i++) {
+      await waitFor(() => expect(speechPlayer().getState()).toMatchObject({ status: 'playing', index: i }));
+      act(() => { mockAudio.onended?.(); });
+    }
     await waitFor(() => expect(screen.getByTestId('research-reading').getAttribute('data-state')).toBe('error'));
+    expect(speechPlayer().getState().index).toBe(failedAt);
     expect(screen.getByTestId('research-reading').textContent).toContain('Reading aloud did not work');
     const missed = synthCalls.find((t) => t.includes('Georgia leads'))!;
     const before = synthCalls.length;
