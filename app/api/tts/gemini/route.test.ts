@@ -535,6 +535,41 @@ describe("the owner's listening trial (body.model)", () => {
     expect(adminMock).not.toHaveBeenCalled();
   });
 
+  const NOT_SERVED = JSON.stringify({
+    error: {
+      code: 404,
+      status: 'NOT_FOUND',
+      message:
+        'Publisher Model `projects/my-project-123/locations/global/publishers/google/models/gemini-3.8-flash-tts` was not found or your project does not have access to it. Contact sa-tts@my-project-123.iam.gserviceaccount.com',
+    },
+  });
+
+  test("a trial model Google refuses: the 502 says why, in Google's words, without the project", async () => {
+    mockAdmin = true;
+    fetchSpy.mockImplementation(async () => new Response(NOT_SERVED, { status: 404 }));
+    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string; status: number; reason: string; detail: string };
+    expect(body).toMatchObject({ error: 'tts_failed', status: 404, reason: 'NOT_FOUND' });
+    expect(body.detail).toMatch(/^Publisher Model `projects\/…\/locations\/global\/publishers\/google\/models\/gemini-3\.8-flash-tts` was not found/);
+    expect(body.detail).not.toMatch(/my-project-123|iam\.gserviceaccount/);
+    expect(body.detail.length).toBeLessThanOrEqual(160);
+  });
+
+  test("anyone else's refused call names Google's status and reason, never its sentence", async () => {
+    mockAdmin = false;
+    fetchSpy.mockImplementation(async () => new Response(NOT_SERVED, { status: 404 }));
+    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(await res.json()).toEqual({ error: 'tts_failed', status: 404, reason: 'NOT_FOUND' });
+  });
+
+  test('an answer that is not Google JSON adds nothing', async () => {
+    mockAdmin = true;
+    fetchSpy.mockImplementation(async () => new Response('<html>Bad Gateway</html>', { status: 404 }));
+    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(await res.json()).toEqual({ error: 'tts_failed', status: 404 });
+  });
+
   test('GEMINI_TTS_MODEL set to a 3.8 model also sends the text without the directive', async () => {
     process.env.GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
     await POST(post({ text: 'hello', locale: 'en' }));

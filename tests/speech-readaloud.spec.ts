@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route, type TestInfo } from '@playwright/test';
 
-import { chunkSpeech } from '../lib/speech/chunk';
+import { SPEECH_CHUNK_RAMP, chunkSpeech } from '../lib/speech/chunk';
 import { SPEECH_HEADERS } from '../lib/speech/contract';
 import { FakeLive, fakeMicrophone, mockLiveToken, signIn } from './fixtures/liveVoice';
 import { WAV_MONO_24K, pcm16Tone } from './fixtures/speechAudio';
@@ -31,8 +31,8 @@ const REPLY = [
   'მეორე აბზაცი უფრო გრძელია და ორ წინადადებას შეიცავს. ეს მისი მეორე წინადადებაა.',
   'მესამე აბზაცი პასუხს ამთავრებს.',
 ].join('\n\n');
-// The player's own cut (lib/speech/player plays chunkSpeech(text, { leadSentence: true })).
-const CHUNKS = chunkSpeech(REPLY, { leadSentence: true }).map((c) => c.text);
+// The player's own cut (lib/speech/player plays chunkSpeech(text, { leadSentence: true, ramp: SPEECH_CHUNK_RAMP })).
+const CHUNKS = chunkSpeech(REPLY, { leadSentence: true, ramp: SPEECH_CHUNK_RAMP }).map((c) => c.text);
 
 const READ = 'ხმამაღლა წაკითხვა';
 const PAUSE = 'პაუზა';

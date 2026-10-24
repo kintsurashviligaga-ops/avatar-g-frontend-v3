@@ -11,8 +11,9 @@
  * - `play` stops whatever is being read, whoever started it, and reads the new text. `toggle` is what a Stop button
  *   does: the same owner's tap stops its read, a failed read is tried again, anything else starts. `playPause` is a
  *   Pause button: the same owner's tap pauses its read and the next one goes on from there.
- * - The text is cut by lib/speech/chunk, so every character is read once, in order. At most SPEECH_AHEAD syntheses are in
- *   flight at once, and at most that many chunks are fetched ahead of the one playing.
+ * - The text is cut by lib/speech/chunk, so every character is read once, in order: a short first sentence, then chunks
+ *   that grow (SPEECH_CHUNK_RAMP), so each request is small next to the audio already on its way. At most SPEECH_AHEAD
+ *   syntheses are in flight at once, and at most that many chunks are fetched ahead of the one playing.
  * - A chunk that fails (no audio, bytes that are not a valid WAV, an element error, a stall, the browser refusing to
  *   play) is never skipped. The read stops there as `failed`, with the chunk's offset in the text, and `retry` reads on
  *   from that chunk. Audio already fetched for the chunks after it is kept for the retry.
@@ -34,17 +35,23 @@
  */
 import { blobBytes } from './blob';
 import { browserSpeechCache, type SpeechCache } from './cache';
-import { chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
+import { SPEECH_CHUNK_RAMP, chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
 import type { SpeechLocale } from './contract';
 import { speechLocaleOf } from './locale';
-import { fetchSpeech, requestSpeech } from './request';
+import { fetchSpeech, requestSpeech, speechResult, type SpeechMiss } from './request';
 import { speechTrialModel, speechTrialRecorder, wavAudioMs } from './trial';
 import { inspectWav } from './wav';
 import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
 import { MIC_RELEASE_EVENT } from '@/lib/voice/micBus';
 
-/** Syntheses in flight at once, and chunks fetched ahead of the one playing. */
-export const SPEECH_AHEAD = 2;
+/**
+ * Syntheses in flight at once, and chunks fetched ahead of the one playing. ⚠️ It was 2 until GG heard the read stop
+ * and go on (Production 2026-10-24): every request pays a fixed wait before any audio, and with 2 the third chunk was
+ * asked for only once the first one played, so a short first chunk left the third one late. With 3 the first three are
+ * asked for at once, and chunk k is asked for when chunk k − 3 starts. Billing is unchanged: the same text is sent,
+ * only sooner.
+ */
+export const SPEECH_AHEAD = 3;
 /** A chunk that has played this long past its own duration without `ended` is a stall, not a slow ending. */
 export const SPEECH_STALL_GRACE_MS = 15_000;
 /** A 0.001 s silent WAV: playing it inside the tap is what unlocks the element for the plays that follow the fetch. */
@@ -172,7 +179,7 @@ export class SpeechPlayer {
       this.publish({ ...IDLE_SPEECH, status: 'failed', owner: req.owner, fault, rate: this.rate });
       return;
     }
-    const chunks = chunkSpeech(req.text, req.chunking ?? { leadSentence: true });
+    const chunks = chunkSpeech(req.text, req.chunking ?? { leadSentence: true, ramp: SPEECH_CHUNK_RAMP });
     if (!chunks.length) {
       this.publish({ ...IDLE_SPEECH, status: 'done', owner: req.owner, rate: this.rate });
       return;
@@ -451,6 +458,12 @@ export class SpeechPlayer {
 
 // ─── the browser's one player ────────────────────────────────────────────────────────────────────────────────
 
+/** A trial chunk's miss, as its card row says it: "502 tts_failed · Google 404 NOT_FOUND: …" ("no answer" for none). */
+export function trialMiss(miss: SpeechMiss): string {
+  const head = miss.status ? [String(miss.status), miss.error].filter(Boolean).join(' ') : 'no answer';
+  return miss.cause ? `${head} · ${miss.cause}` : head;
+}
+
 /**
  * The browser's wiring: one <audio>, no read during a call, and POST /api/tts/gemini once per chunk (lib/speech/request)
  * unless `cache` already holds that chunk for this account (lib/speech/cache).
@@ -462,15 +475,16 @@ export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlaye
     synth: async (text, locale, signal) => {
       if (!speechTrialModel()) return cache ? cache.synth(text, locale, signal, fetchSpeech) : requestSpeech(text, locale, signal);
       const askedAt = Date.now();
-      const answer = await fetchSpeech(text, locale, signal);
+      const result = await speechResult(text, locale, signal);
       if (!signal.aborted) {
-        speechTrialRecorder().onChunk({
-          chars: text.length,
-          synthMs: Date.now() - askedAt,
-          audioMs: answer ? wavAudioMs(answer.blob.size, answer.profile) : null,
-        });
+        const synthMs = Date.now() - askedAt;
+        speechTrialRecorder().onChunk(
+          result.ok
+            ? { chars: text.length, synthMs, audioMs: wavAudioMs(result.answer.blob.size, result.answer.profile) }
+            : { chars: text.length, synthMs, audioMs: null, miss: trialMiss(result.miss) },
+        );
       }
-      return answer?.blob ?? null;
+      return result.ok ? result.answer.blob : null;
     },
     createAudio: () => new Audio() as unknown as SpeechAudio,
     createObjectURL: (blob) => URL.createObjectURL(blob),

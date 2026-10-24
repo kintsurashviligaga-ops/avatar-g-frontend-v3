@@ -5,6 +5,7 @@
 import {
   SPEECH_CHUNK_MAX_CHARS,
   SPEECH_CHUNK_MIN_CHARS,
+  SPEECH_CHUNK_RAMP,
   chunkIndexAt,
   chunkSpeech,
   speechSentences,
@@ -137,6 +138,74 @@ describe('chunks', () => {
     expect(chunkSpeech(s, { leadSentence: true, leadMax: 5 }).map((c) => c.text)).toEqual([s]);
   });
 
+  describe('ramp: the chunks grow, so each request is small next to the audio already on its way', () => {
+    const SENT = 'ეს არის პასუხის კიდევ ერთი წინადადება, რომელიც ცოტა გრძელია.';
+    const reply = `გამარჯობა! ${Array.from({ length: 30 }, () => SENT).join(' ')}`;
+    const ramped = (src: string, extra: Parameters<typeof chunkSpeech>[1] = {}) =>
+      chunkSpeech(src, { leadSentence: true, ramp: SPEECH_CHUNK_RAMP, ...extra });
+
+    test('GG, Production 2026-10-24: "გამარჯობა!" is no longer followed by a 600-character request', () => {
+      const lens = ramped(reply).map((c) => c.text.length);
+      expect(texts(reply).length).toBeLessThan(lens.length);
+      expect(chunkSpeech(reply, { leadSentence: true }).map((c) => c.text.length)[1]).toBeGreaterThan(500); // the old cut
+      expect(lens[0]).toBe('გამარჯობა!'.length);
+      for (let k = 1; k < lens.length; k++) {
+        const before = lens[k - 1]! + (k >= 2 ? lens[k - 2]! : 0);
+        expect(lens[k]).toBeLessThanOrEqual(Math.min(SPEECH_CHUNK_MAX_CHARS, Math.max(SPEECH_CHUNK_MIN_CHARS + SENT.length, Math.floor(SPEECH_CHUNK_RAMP * before))));
+      }
+      // It grows: the last full chunks are far longer than the second one, and none passes the limit.
+      expect(Math.max(...lens)).toBeGreaterThan(lens[1]! * 4);
+      expect(Math.max(...lens)).toBeLessThanOrEqual(SPEECH_CHUNK_MAX_CHARS);
+      expect(coverageFault(reply, ramped(reply), SPEECH_CHUNK_MAX_CHARS)).toBeNull();
+    });
+
+    test('a sentence longer than its chunk may hold is cut after a clause mark that fits', () => {
+      const src = 'Hi. One, two, three, four, five, six, seven, eight, nine, ten, eleven, twelve, thirteen.';
+      const out = ramped(src).map((c) => c.text);
+      expect(out[0]).toBe('Hi.');
+      expect(out[1]!.length).toBeLessThanOrEqual(SPEECH_CHUNK_MIN_CHARS);
+      expect(out[1]!.endsWith(',')).toBe(true);
+      expect(out.join(' ')).toBe(src);
+    });
+
+    test('a sentence only a little over is read whole: no tail under 40 characters is cut off', () => {
+      const src = 'EV market. Summary. Sales grew fast in 2025, driven by tax cuts. Findings. Georgia leads.';
+      const out = ramped(src).map((c) => c.text);
+      expect(out).toContain('Sales grew fast in 2025, driven by tax cuts.');
+      expect(out.join(' ')).toBe(src);
+    });
+
+    test('with leadSentence, a long first sentence is cut at a clause mark within leadMax', () => {
+      const first = `${Array.from({ length: 20 }, (_, i) => `part number ${i + 1}`).join(', ')}.`;
+      const src = `${first} The end.`;
+      expect(first.length).toBeGreaterThan(220);
+      const out = ramped(src).map((c) => c.text);
+      expect(out[0]!.length).toBeLessThanOrEqual(220);
+      expect(out[0]!.endsWith(',')).toBe(true);
+      expect(out.join(' ')).toBe(src);
+      // Without the ramp it was one chunk.
+      expect(chunkSpeech(src, { leadSentence: true }).map((c) => c.text)).toEqual([src]);
+    });
+
+    test('a sentence with no clause mark that fits is read whole, up to maxChars', () => {
+      const long = `${'word '.repeat(30).trim()}.`;
+      const src = `Hi. ${long}`;
+      expect(ramped(src).map((c) => c.text)).toEqual(['Hi.', long]);
+      const huge = `${'word '.repeat(200).trim()}.`;
+      const out = ramped(`Hi. ${huge}`).map((c) => c.text);
+      expect(out[0]).toBe('Hi.');
+      for (const t of out) expect(t.length).toBeLessThanOrEqual(SPEECH_CHUNK_MAX_CHARS);
+      expect(out.slice(1).join(' ')).toBe(huge);
+    });
+
+    test('a paragraph still ends a chunk, and the next one keeps growing from the chunks before it', () => {
+      const src = `Hi.\n\n${SENT} ${SENT}\n\n${SENT} ${SENT} ${SENT}`;
+      const out = ramped(src);
+      expect(coverageFault(src, out, SPEECH_CHUNK_MAX_CHARS)).toBeNull();
+      for (const c of out) expect(src.slice(c.start, c.end).trim()).not.toMatch(/\n\n/);
+    });
+  });
+
   test('maxChars is clamped to [40, the route limit]', () => {
     const s = `${'word '.repeat(600)}end.`;
     for (const c of chunkSpeech(s, { maxChars: 5 })) expect(c.text.length).toBeLessThanOrEqual(SPEECH_CHUNK_MIN_CHARS);
@@ -193,7 +262,7 @@ describe('every character exactly once, for any text', () => {
     '.', ',', ';', ':', '—', '!', '?', '?!', ' ', ' ', ' ', ' ', '  ', '\t', '\n', '\n\n', ' \n \n ', ' ',
   ];
 
-  test('400 random texts, any limit, with and without a lead sentence', () => {
+  test('400 random texts, any limit, with and without a lead sentence and the ramp', () => {
     const next = rng(20261024);
     for (let n = 0; n < 400; n++) {
       const len = Math.floor(next() * 220);
@@ -201,9 +270,11 @@ describe('every character exactly once, for any text', () => {
       for (let i = 0; i < len; i++) s += PIECES[Math.floor(next() * PIECES.length)];
       const max = SPEECH_CHUNK_MIN_CHARS + Math.floor(next() * 300);
       const leadSentence = next() < 0.5;
-      const fault = coverageFault(s, chunkSpeech(s, { maxChars: max, leadSentence }), max);
-      if (fault) throw new Error(`case ${n} (max ${max}, lead ${leadSentence}): ${fault}\n${JSON.stringify(s)}`);
-      expect(chunkSpeech(s, { maxChars: max, leadSentence })).toEqual(chunkSpeech(s, { maxChars: max, leadSentence }));
+      const ramp = next() < 0.5 ? SPEECH_CHUNK_RAMP : undefined;
+      const opts = { maxChars: max, leadSentence, ramp };
+      const fault = coverageFault(s, chunkSpeech(s, opts), max);
+      if (fault) throw new Error(`case ${n} (max ${max}, lead ${leadSentence}, ramp ${ramp}): ${fault}\n${JSON.stringify(s)}`);
+      expect(chunkSpeech(s, opts)).toEqual(chunkSpeech(s, opts));
     }
   });
 });

@@ -136,6 +136,31 @@ describe('the browser wiring', () => {
     expect(chunk.chars).toBe('Hello.'.length);
     expect(chunk.synthMs).toBeGreaterThanOrEqual(0);
     expect(chunk.audioMs).toBe(wavAudioMs(WAV_MONO_24K.length, '|24000x1'));
+    expect(chunk.miss).toBeUndefined();
+  });
+
+  test('a trial chunk the route refused records why, and nothing plays', async () => {
+    window.history.replaceState({}, '', '/ka/studio?tts=gemini-3.8-flash-lite-tts');
+    const rec = speechTrialRecorder();
+    rec.onState({ status: 'loading', owner: 'omni:c:3', index: 0 });
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({
+      ok: false,
+      status: 502,
+      json: async () => ({ error: 'tts_failed', status: 400, reason: 'INVALID_ARGUMENT', detail: 'Voice is not supported' }),
+    }));
+    expect(await browserSpeechDeps(null).synth('Hello.', 'en', new AbortController().signal)).toBeNull();
+    const chunk = rec.snapshot()!.chunks[0]!;
+    expect(chunk.audioMs).toBeNull();
+    expect(chunk.miss).toBe('502 tts_failed · Google 400 INVALID_ARGUMENT: Voice is not supported');
+  });
+
+  test('no answer at all is said so', async () => {
+    window.history.replaceState({}, '', '/ka/studio?tts=gemini-3.8-flash-tts');
+    const rec = speechTrialRecorder();
+    rec.onState({ status: 'loading', owner: 'omni:c:4', index: 0 });
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => { throw new TypeError('fetch failed'); });
+    await browserSpeechDeps(null).synth('Hello.', 'en', new AbortController().signal);
+    expect(rec.snapshot()!.chunks[0]!.miss).toBe('no answer');
   });
 });
 
