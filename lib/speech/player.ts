@@ -8,8 +8,9 @@
  * middle of a reply without a word. Two could play at once.
  *
  * Here there is one player and one <audio> element for the whole page:
- * - `play` stops whatever is being read, whoever started it, and reads the new text. `toggle` is what a speaker button
- *   does: the same owner's tap stops its read, a failed read is tried again, anything else starts.
+ * - `play` stops whatever is being read, whoever started it, and reads the new text. `toggle` is what a Stop button
+ *   does: the same owner's tap stops its read, a failed read is tried again, anything else starts. `playPause` is a
+ *   Pause button: the same owner's tap pauses its read and the next one goes on from there.
  * - The text is cut by lib/speech/chunk, so every character is read once, in order. At most SPEECH_AHEAD syntheses are in
  *   flight at once, and at most that many chunks are fetched ahead of the one playing.
  * - A chunk that fails (no audio, bytes that are not a valid WAV, an element error, a stall, the browser refusing to
@@ -185,6 +186,24 @@ export class SpeechPlayer {
     if (s.owner === req.owner && isSpeaking(s)) return this.stop();
     if (s.owner === req.owner && s.status === 'failed' && this.read?.req.text === req.text) return this.retry();
     this.play(req);
+  }
+
+  /**
+   * A play / pause button: its own read pauses while it plays, and goes on from the same moment on the next tap. A read
+   * that has not been heard yet (its first chunk still loading) is stopped instead: there is nothing to go on from. A
+   * failed read is tried again, anything else starts.
+   *
+   * ⚠️ THE STUDIO'S BUTTON SAID „PAUSE" AND STOPPED THE READ (GG, production 2026-10-24): it called `toggle`, so the next
+   * tap read the reply again from the first word. `toggle` stays what a Stop button does (the older chat screens).
+   */
+  playPause(req: SpeechRequest): void {
+    const s = this.state;
+    if (s.owner === req.owner && this.read?.req.text === req.text) {
+      if (s.status === 'paused') return this.resume();
+      if (s.status === 'loading' && s.index === 0) return this.stop();
+      if (s.status === 'playing' || s.status === 'loading') return this.pause();
+    }
+    this.toggle(req);
   }
 
   /** Read on from the chunk that failed. Call it synchronously from the tap. */
