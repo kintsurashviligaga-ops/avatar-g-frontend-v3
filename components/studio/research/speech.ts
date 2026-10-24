@@ -15,6 +15,7 @@
  */
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { plainTextForSpeech } from '@/lib/research/report';
+import { SPEECH_CLIENT_DEADLINE_MS } from '@/lib/speech/deadline';
 
 /** One TTS request's text. Shorter than the route's 2,000-character ceiling; sentence-sized so the first sound is fast. */
 export const CHUNK_MAX_CHARS = 600;
@@ -268,11 +269,13 @@ export function browserSpeechDeps(locale: string): SpeechDeps {
   const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   return {
     async synth(text, signal) {
-      // The caller's signal (stop) plus a ceiling, so a hung synthesis cannot hold the read on "preparing" forever.
+      // The caller's signal (stop) plus a ceiling, so a hung synthesis cannot hold the read on "preparing" forever. The
+      // ceiling is the shared one (lib/speech/deadline): a little longer than the route's own deadline, so its answer
+      // arrives first.
       const ctrl = new AbortController();
       const onAbort = () => ctrl.abort();
       signal.addEventListener('abort', onAbort);
-      const timer = setTimeout(() => ctrl.abort(), 25_000);
+      const timer = setTimeout(() => ctrl.abort(), SPEECH_CLIENT_DEADLINE_MS);
       try {
         const res = await fetch('/api/tts/gemini', {
           method: 'POST',

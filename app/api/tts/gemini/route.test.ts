@@ -3,7 +3,10 @@
  * POST /api/tts/gemini — Gemini read-aloud, pinned with every provider mocked (no network, no spend).
  *
  *   · the TTS bucket (not WRITE) throttles it; a guest is refused before Google is touched;
- *   · the "Read aloud verbatim:" directive and the 3-attempt retry are kept;
+ *   · the "Read aloud verbatim:" directive is kept;
+ *   · §5.3.4: one 25 s deadline from arrival and at most 2 Gemini calls, the second only for a failure that can pass and
+ *     with 5 s left; the browser closing the request aborts the call in flight and starts no other (499); the deadline
+ *     passing is 504;
  *   · the voice follows voice > gender > persona > Aoede, and Georgian only ever gets a verified voice;
  *   · locale → speechConfig.languageCode for en/ru only (never ka), dropped after a 400, switchable off;
  *   · usage is booked (real usageMetadata when Google reports it) and a budget refusal spends nothing;
@@ -46,6 +49,7 @@ jest.mock('../../../../lib/services/billing/chatBudget', () => {
 
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
+import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { bookChatUsage, chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
 import { inspectWav } from '../../../../lib/speech/wav';
@@ -65,11 +69,20 @@ const limitMock = checkRateLimit as jest.MockedFunction<typeof checkRateLimit>;
 const budgetMock = chatBudgetAllows as jest.MockedFunction<typeof chatBudgetAllows>;
 const bookMock = bookChatUsage as jest.MockedFunction<typeof bookChatUsage>;
 
-const post = (body: unknown) =>
+const post = (body: unknown, signal?: AbortSignal) =>
   new NextRequest('https://myavatar.ge/api/tts/gemini', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  });
+
+/** A Gemini call that never answers on its own: it rejects only when its signal aborts (the deadline or the browser). */
+const hangs = async (_url: unknown, init?: RequestInit) =>
+  new Promise<Response>((_resolve, reject) => {
+    const signal = init?.signal;
+    if (signal?.aborted) return reject(signal.reason);
+    signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
   });
 
 /** One second of 24 kHz 16-bit mono silence, as Gemini returns it. */
@@ -302,26 +315,124 @@ test('en/ru carry speechConfig.languageCode; GEMINI_TTS_LANGUAGE_CODE=0 turns it
   expect(sent(2).generationConfig.speechConfig.languageCode).toBeUndefined();
 });
 
-test('3 attempts on failure; a 400 with a languageCode drops it for the retries', async () => {
+test('a 400 with a languageCode is retried once without it', async () => {
   fetchSpy
     .mockImplementationOnce(async () => new Response('bad languageCode', { status: 400 }))
-    .mockImplementationOnce(async () => new Response('Model tried to generate text', { status: 400 }))
     .mockImplementationOnce(async () => okAudio());
   const res = await POST(post({ text: 'Is this read?', locale: 'en' }));
   expect(res.status).toBe(200);
-  expect(fetchSpy).toHaveBeenCalledTimes(3);
+  expect(fetchSpy).toHaveBeenCalledTimes(2);
   expect(sent(0).generationConfig.speechConfig.languageCode).toBe('en-US');
   expect(sent(1).generationConfig.speechConfig.languageCode).toBeUndefined();
-  expect(sent(2).generationConfig.speechConfig.languageCode).toBeUndefined();
 });
 
-test('after 3 failed attempts → 502 tts_failed, and nothing is booked', async () => {
+test('the answer-mode 400 and a network error are retried once; the second call reads the same text', async () => {
+  fetchSpy
+    .mockImplementationOnce(async () => new Response('Model tried to generate text, but it should only be used for TTS', { status: 400 }))
+    .mockImplementationOnce(async () => okAudio());
+  expect((await POST(post({ text: 'გამარჯობა, როგორ ხარ?', locale: 'ka' }))).status).toBe(200);
+  expect(fetchSpy).toHaveBeenCalledTimes(2);
+  expect(sent(1).contents[0]!.parts[0]!.text).toBe(sent(0).contents[0]!.parts[0]!.text);
+
+  fetchSpy.mockClear();
+  fetchSpy.mockImplementationOnce(async () => { throw new TypeError('fetch failed'); }).mockImplementationOnce(async () => okAudio());
+  expect((await POST(post({ text: 'hello', locale: 'en' }))).status).toBe(200);
+  expect(fetchSpy).toHaveBeenCalledTimes(2);
+});
+
+test('at most 2 calls: two failures that can pass → 502 tts_failed, and nothing is booked', async () => {
   fetchSpy.mockImplementation(async () => new Response('overloaded', { status: 503 }));
   const res = await POST(post({ text: 'hello', locale: 'en' }));
   expect(res.status).toBe(502);
-  expect(await res.json()).toMatchObject({ error: 'tts_failed' });
-  expect(fetchSpy).toHaveBeenCalledTimes(3);
+  expect(await res.json()).toMatchObject({ error: 'tts_failed', status: 503 });
+  expect(fetchSpy).toHaveBeenCalledTimes(2);
   expect(bookMock).not.toHaveBeenCalled();
+});
+
+test.each([
+  [403, 'PERMISSION_DENIED'],
+  [404, 'model not found'],
+  [400, 'INVALID_ARGUMENT: voice'],
+  [401, 'UNAUTHENTICATED'],
+])('a %i (%s) fails the same way twice, so it is not repeated', async (status, detail) => {
+  fetchSpy.mockImplementation(async () => new Response(detail, { status }));
+  // Georgian: no languageCode rides along, so a plain 400 has nothing to drop.
+  const res = await POST(post({ text: 'გამარჯობა', locale: 'ka' }));
+  expect(res.status).toBe(502);
+  expect(await res.json()).toMatchObject({ error: 'tts_failed', status });
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+});
+
+describe('the browser closing the request ends the work (§5.3.4: no untracked retries spending)', () => {
+  test('mid-call: the call in flight is aborted, none follows, 499, nothing booked', async () => {
+    const ctrl = new AbortController();
+    fetchSpy.mockImplementation(async (url: unknown, init?: RequestInit) => {
+      queueMicrotask(() => ctrl.abort());
+      return hangs(url, init);
+    });
+    const res = await POST(post({ text: 'hello', locale: 'en' }, ctrl.signal));
+    expect(res.status).toBe(499);
+    expect(await res.json()).toEqual({ error: 'client_closed' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(((fetchSpy.mock.calls[0]![1] as RequestInit).signal as AbortSignal).aborted).toBe(true);
+    expect(bookMock).not.toHaveBeenCalled();
+  });
+
+  test('after a failure that could be retried: the retry is not started', async () => {
+    const ctrl = new AbortController();
+    fetchSpy.mockImplementation(async () => { ctrl.abort(); return new Response('overloaded', { status: 503 }); });
+    const res = await POST(post({ text: 'hello', locale: 'en' }, ctrl.signal));
+    expect(res.status).toBe(499);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('during the checks: Google is never asked', async () => {
+    const ctrl = new AbortController();
+    (authedClientFromRequest as jest.Mock).mockImplementationOnce(async () => { ctrl.abort(); return { user: mockUser }; });
+    const res = await POST(post({ text: 'hello', locale: 'en' }, ctrl.signal));
+    expect(res.status).toBe(499);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(bookMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('one deadline of 25 s from arrival', () => {
+  beforeEach(() => { jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] }); });
+
+  test('a call that never answers is aborted at 25 s → 504 tts_timeout, and no second call is made', async () => {
+    fetchSpy.mockImplementation(hangs);
+    const pending = POST(post({ text: 'hello', locale: 'en' }));
+    await jest.advanceTimersByTimeAsync(24_999);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    const res = await pending;
+    expect(res.status).toBe(504);
+    expect(await res.json()).toEqual({ error: 'tts_timeout' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(bookMock).not.toHaveBeenCalled();
+  });
+
+  test('a failure that could pass, with under 5 s left, is not retried: the retry would be cut off', async () => {
+    fetchSpy.mockImplementation(() => new Promise<Response>((resolve) => setTimeout(() => resolve(new Response('overloaded', { status: 503 })), 20_500)));
+    const pending = POST(post({ text: 'hello', locale: 'en' }));
+    await jest.advanceTimersByTimeAsync(20_500);
+    const res = await pending;
+    expect(res.status).toBe(502);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('with 5 s or more left, it is retried, and the retry runs on what is left of the same deadline', async () => {
+    fetchSpy
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => setTimeout(() => resolve(new Response('overloaded', { status: 503 })), 19_000)))
+      .mockImplementationOnce(hangs);
+    const pending = POST(post({ text: 'hello', locale: 'en' }));
+    await jest.advanceTimersByTimeAsync(19_250);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // 25 s from arrival, not 25 s from the retry.
+    await jest.advanceTimersByTimeAsync(5_750);
+    const res = await pending;
+    expect(res.status).toBe(504);
+  });
 });
 
 test('books the reported usage on the TTS model with the user id', async () => {

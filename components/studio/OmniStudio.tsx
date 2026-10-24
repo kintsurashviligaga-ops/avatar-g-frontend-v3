@@ -94,6 +94,7 @@ import { Markdown } from './Markdown';
 // VFX (Genjutsu): three.js-free, loaded only when the VFX tool opens; the skeleton is the panel's first-paint height.
 const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
+import { requestSpeech } from '@/lib/speech/request';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
@@ -262,19 +263,12 @@ const serviceLabel = (id: string, locale: string): string => (isToolId(id) ? too
  */
 /**
  * One TTS request → an object URL of the spoken audio, or null. Shared by read-aloud (speakMsg) and the voice-turn
- * pre-synthesis in streamChat. Bounded so a HUNG TTS call can't keep the read-aloud spinner up indefinitely.
+ * pre-synthesis in streamChat. lib/speech/request bounds it (a HUNG TTS call can't keep the read-aloud spinner up) and
+ * never retries it; `signal` is the read's, so a stop or another message cancels the request at the route too (§5.3.4).
  */
-async function synthTtsUrl(chunk: string, locale: Lang): Promise<string | null> {
-  try {
-    const res = await fetch('/api/tts/gemini', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: chunk, locale }),
-      signal: AbortSignal.timeout(25_000),
-    });
-    if (!res.ok) return null;
-    return URL.createObjectURL(await res.blob());
-  } catch { return null; }
+async function synthTtsUrl(chunk: string, locale: Lang, signal?: AbortSignal): Promise<string | null> {
+  const blob = await requestSpeech(chunk, locale, signal);
+  return blob ? URL.createObjectURL(blob) : null;
 }
 
 /** Revoke a pending synthesis's URL once it lands (an abandoned read must not leak its blob). */
@@ -2359,6 +2353,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Monotonic token so a tap that cancels (or supersedes) an in-flight read-aloud
   // doesn't let the orphaned fetch start playing after the user moved on.
   const ttsTokenRef = useRef(0);
+  // The current read's requests: aborted on stop, on another message and on unmount, so a synthesis in flight is
+  // cancelled at the route as well (MASTER TASK v3.1 §5.3.4) instead of only being ignored when it lands.
+  const ttsAbortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   // v330 — dedicated hidden inputs for the Video panel's asset slots: a single
   // Character Reference image and a custom Audio Track (beat/song), each kept
@@ -7955,14 +7952,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const speakMsg = useCallback(async (text: string, i: number) => {
     // Tapping the active bubble (loading OR playing) stops it — bump the token so any
     // in-flight synthesis for it is abandoned rather than auto-playing later, and unblock+revoke the current chunk.
-    if (speakingIdx === i) { ttsTokenRef.current++; if (ttsAudioRef.current) ttsAudioRef.current.pause(); ttsResolveRef.current?.(); setSpeakingIdx(null); setSpeakPhase(null); return; }
+    if (speakingIdx === i) { ttsTokenRef.current++; ttsAbortRef.current?.abort(); if (ttsAudioRef.current) ttsAudioRef.current.pause(); ttsResolveRef.current?.(); setSpeakingIdx(null); setSpeakPhase(null); return; }
     // Read-aloud is a signed-in tool (/api/tts/gemini refuses guests): a guest's tap opens sign-in instead of a
     // spinner that quietly plays nothing.
     if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
       window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
       return;
     }
-    // Switching to a DIFFERENT message mid-read: unblock+revoke the prior chunk before we retarget the element.
+    // Switching to a DIFFERENT message mid-read: cancel its requests, unblock+revoke the prior chunk before we retarget
+    // the element.
+    ttsAbortRef.current?.abort();
+    const reading = new AbortController();
+    ttsAbortRef.current = reading;
     ttsResolveRef.current?.();
     const token = ++ttsTokenRef.current;
     const live = () => token === ttsTokenRef.current;
@@ -7992,7 +7993,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     ttsPrefetchRef.current = null;
     if (!chunks.length) { dropTtsUrl(pre?.url); setSpeakingIdx(null); setSpeakPhase(null); return; }
 
-    const synth = (chunk: string): Promise<string | null> => synthTtsUrl(chunk, locale);
+    const synth = (chunk: string): Promise<string | null> => synthTtsUrl(chunk, locale, reading.signal);
     const drainNext = (pr: Promise<string | null>) => dropTtsUrl(pr);
     try {
       const first = pre && pre.text === chunks[0] ? pre.url : null;
@@ -8071,7 +8072,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   useEffect(() => { speakMsgRef.current = speakMsg; }, [speakMsg]);
 
   // Stop any in-flight read-aloud when the studio unmounts (pause + unblock/revoke the current chunk).
-  useEffect(() => () => { try { ttsAudioRef.current?.pause(); ttsResolveRef.current?.(); } catch { /* noop */ } }, []);
+  useEffect(() => () => { try { ttsAbortRef.current?.abort(); ttsAudioRef.current?.pause(); ttsResolveRef.current?.(); } catch { /* noop */ } }, []);
 
   // ── Voice SAMPLE for "sing in my voice" (music) ──────────────────────────────
   // Add an audio blob/file as the music VOICE reference (replaces any prior audio),
