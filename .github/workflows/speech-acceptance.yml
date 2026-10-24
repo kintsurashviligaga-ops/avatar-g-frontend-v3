@@ -1,0 +1,57 @@
+name: Speech acceptance
+# Read-aloud in Chromium, Firefox and WebKit (MASTER TASK v3.1 §5, Phase 4 PR 8): tests/speech-readaloud.spec.ts with
+# the chat, the read-aloud route, Supabase and Gemini Live mocked. No provider is called and nothing is spent.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/speech/**'
+      - 'app/api/tts/**'
+      - 'lib/audio/premium-tts*'
+      - 'lib/voice/micBus.ts'
+      - 'lib/auth/sessionCleanup.ts'
+      - 'components/studio/OmniStudio.tsx'
+      - 'components/studio/ChatChrome.tsx'
+      - 'components/studio/research/speech.ts'
+      - 'components/voice/**'
+      - 'tests/speech-readaloud.spec.ts'
+      - 'tests/fixtures/speechAudio.ts'
+      - 'tests/fixtures/liveVoice.ts'
+      - 'playwright.speech.config.ts'
+      - '.github/workflows/speech-acceptance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: speech-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  read-aloud:
+    name: read-aloud (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    # `playwright install --with-deps` alone can take 10-12 minutes on a slow runner (see e2e.yml).
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    env:
+      PLAYWRIGHT_SUPABASE_URL: https://example.supabase.co
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Read-aloud in ${{ matrix.browser }} (mocked provider)
+        run: npx playwright test --config=playwright.speech.config.ts --project=${{ matrix.browser }}
+        timeout-minutes: 15
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: speech-evidence-${{ matrix.browser }}
+          path: test-results/
+          retention-days: 14

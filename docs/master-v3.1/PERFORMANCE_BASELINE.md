@@ -2,7 +2,7 @@
 
 v1 was written in Phase 0, on 22 October 2026, and measured nothing: every number in it was a code constant or a §4.1 target. It is in the Phase 0 audit PR #114, which is still a draft. This v2 replaces it. If #114 is merged later, keep this version of the file.
 
-v2 holds the Phase 3 numbers, one row per §4.1 interaction, as they were before Phase 3 and as they are after it. The run setup, the fixtures and the server spans for each change are in `PERFORMANCE_PHASE3.md`.
+v2 holds the Phase 3 numbers, one row per §4.1 interaction, as they were before Phase 3 and as they are after it. The run setup, the fixtures and the server spans for each change are in `PERFORMANCE_PHASE3.md`. Phase 4 added the read-aloud rows; their setup is in `PHASE4_EVIDENCE.md`.
 
 ## Which environments were measured
 
@@ -34,7 +34,8 @@ Every mock p95 comes from 30 samples, nearest rank, after one warm-up that is no
 | Chat, first semantic token, slow memory (embedding 1500 ms) | same | mock | 2046 / 2047.1 ms | 996.6 / 998.1 ms | Not judged, as above. | PR 7 #173 (deadline for profile, memory and the avatar check) |
 | Chat, first semantic token, cold admin check (admin list read 800 ms, not cached) | same | mock | 1481 / 1482.3 ms | 995.9 / 998.2 ms | Not judged, as above. | PR 7 #173 |
 | Chat, first semantic token | same | live provider | not measured | not measured | not measured | — |
-| Warm inline read-aloud, first audible speech | p95 ≤ 2.5 s | all | not measured | not measured | not measured | Not in Phase 3. |
+| Warm inline read-aloud, first audible speech (read-aloud route fixture 0 ms; "before" is `d773f521`, the Phase 4 starting point) | p95 ≤ 2.5 s | mock | A reply never read: 77.7 / 167.6 ms, 1 request. The same reply again: 62.8 / 120.7 ms, 1 request. After a reload: 197.1 / 316.4 ms, 1 request. | A reply never read: 76.8 / 127.3 ms, 1 request. The same reply again: 51.8 / 85.1 ms, 0 requests. After a reload: 263.4 / 388 ms, 0 requests (read back from IndexedDB). | Not judged: the target includes Gemini TTS's time, and the fixture answers in 0 ms. | PR 6 #180 (replay). Setup and reading: `PHASE4_EVIDENCE.md`. |
+| Warm inline read-aloud, first audible speech | same | live provider | not measured | not measured | not measured | — |
 
 ## The v1 code facts, now
 
@@ -48,7 +49,7 @@ v1 listed what in the code would shape these numbers. This is where each one sta
 | Library films | (not in v1) | A film card gets its own `<video>` back on a return, already loaded, so nothing is read again (12 media requests per return became 0). A film gets its link only when its card is within 300 px of the screen. | PR 5 #171 |
 | Download | `fetch`, then `await r.blob()` before the save, so starting a save took as long as the whole transfer. | Our signed Storage links (pictures, films, songs, 3D models, PDFs) are saved as attachments: the browser takes the file as it arrives. A double click saves one file. A link Storage refuses is signed afresh once through the Library. Off an iPhone, a file over 50 MB on another origin, or a video there of unknown size, opens in a tab instead of being held in memory. The iPhone and iPad share sheet is unchanged. | #166, PR 6 #172 |
 | Chat route | The response, its first keep-alive and the budget check waited for the avatar capability check. Profile and memory ran in parallel, but the model was asked only after all of them. | The avatar check runs inside the stream. The profile facts, the memory and the avatar check are waited for at most `CONTEXT_DEADLINE_MS` (500 ms) from their start, or until the budget answers if that is later. Whatever is late is left out of that turn, and a late avatar check means no avatar offer. The budget is still waited for in full and still fails closed. While the avatar check is out, the budget estimate is priced on the longer of the two prompts. | PR 7 #173 |
-| Read-aloud | Client timeout 25 s; the route tries up to 3 times at 25 s each, with `maxDuration = 30`. | Not changed in Phase 3, and not measured. | — |
+| Read-aloud | Client timeout 25 s; the route tries up to 3 times at 25 s each, with `maxDuration = 30`. | One deadline of 25 s from the request's arrival, at most 2 Gemini calls, the browser's stop ends the route; the browser waits 28 s and never retries. Text is cut into whole sentences of at most 600 characters, the first short sentence alone; at most 2 requests in flight. One player per page. A reply heard again is read from the browser: 0 requests, also after a reload. | #177, #178, #179, #180 |
 
 ## The v1 trace plan, now
 
