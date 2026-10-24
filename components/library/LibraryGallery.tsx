@@ -219,12 +219,21 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     savingRef.current.add(it.id);
     setSaving(new Set(savingRef.current));
     try {
-      await saveMedia(it.url, saveName(it), { fallbackExt: fallbackExt(it) });
+      // A link that ran out is signed afresh before or while saving (§4.3): the page is read again, as on any refresh.
+      await saveMedia(it.url, saveName(it), {
+        fallbackExt: fallbackExt(it),
+        expiresAt: it.expiresAt,
+        relink: async () => {
+          forgetLibraryLink(it.url); // never kept over the fresh one
+          const r = await refetch();
+          return r.data?.items.find((x) => x.id === it.id)?.url ?? null;
+        },
+      });
     } finally {
       savingRef.current.delete(it.id);
       setSaving(new Set(savingRef.current));
     }
-  }, []);
+  }, [refetch]);
 
   // Edit (GG's UI/UX plan, 2026-10-18): the file opens in the studio's Montage — a film or a picture on the timeline, a song
   // as the music (GG's card answer the same day). It rides over in this tab's sessionStorage (a signed link never goes in

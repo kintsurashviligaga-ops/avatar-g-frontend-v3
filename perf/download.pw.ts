@@ -105,6 +105,9 @@ async function downloads(browser: Browser, baseURL: string | undefined, url: str
       await file.delete();
       expect(arrivals.length).toBeGreaterThan(seen);
       if (i >= 0) runs.push({ request: arrivals[seen]! - started, start, done });
+      // Another tap on the same link within SAME_SAVE_MS of a finished save is the same save (lib/media/saveMedia: a
+      // double click saves one file), so the next sample waits that long. Not part of any timing.
+      await page.waitForTimeout(1100);
     }
     return runs;
   } finally {

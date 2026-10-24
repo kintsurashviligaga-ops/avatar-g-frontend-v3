@@ -99,3 +99,23 @@ Phase 3 PR 7 works on this path. It gives profile and memory a deadline and drop
 - How many films the first open of a page reads. A film now gets its link only when its card is within 300 px of the screen. `tests/library-films-kept.spec.ts` shows this on a phone-sized window: a film far below the screen reads nothing until it is scrolled to. The benchmark does not count first-open reads.
 - No poster images were made. Works have no stored poster, and making one would need the producers, storage and a decision from the owner. Instead, the card keeps the film's first frame from its own element.
 - Production or Preview. These are mock numbers, as above.
+
+## After PR 6: download (24 October 2026)
+
+**What was measured:** the code of `claude/p3-06-download` (the report's commit column shows its base, `b70d7fdb`), same download benchmark, same fixtures, same machine as the "Download with #166" table. Each sample now waits 1.1 s before the next one, because a tap on the same link within 1 s of a finished save is the same save (a double click saves one file). The wait is outside every timing.
+
+| Interaction | §4.1 / §4.3 target | With #166 p50 / p95 | After PR 6 p50 / p95 | What the run shows |
+|---|---|---|---|---|
+| Storage link, click to request | app overhead ≤ 250 ms | 70.3 / 84.8 ms | 74 / 98.7 ms | Met. |
+| Storage link, click to saving starts | initiation measured apart from transfer | 84.6 / 102 ms | 91 / 114.7 ms | Met: saving starts after the headers. The time to a complete file is measured on its own, in the next row. |
+| Storage link, click to file complete | (none) | 1775.3 / 1806.4 ms | 1796.8 / 1864.9 ms | The link speed sets it (about 1678 ms for the file). |
+| Foreign link, click to saving starts | (none) | 1738.8 / 1747 ms | 1743.7 / 1775.4 ms | Unchanged: an 8 MB file on another origin is still read, then saved. |
+
+**What else this PR changes, checked by tests rather than timed:**
+
+- **A double click saves one file.** `lib/media/saveMedia` gives a second tap on the same link the first one's outcome while it runs and for 1 s after it produced a file.
+- **A link that ran out is signed afresh.** Storage's 400, 401 or 403 makes the Library read its page again, and the save goes on with the work's fresh link. `tests/storage-download-start.spec.ts` shows it: the refused HEAD, one more Library read, one file, nothing opened in a tab.
+- **3D models, PDFs and songs from our Storage start like pictures and films.** The browser takes the file as it arrives, named `.glb`, `.pdf` or `.mp3`. Before, a `model/gltf-binary` link was read whole into the page first.
+- **Off an iPhone, no large file is held in memory.** A file over 50 MB on another origin, or a video there of unknown size, opens in a new tab instead. A link to our Storage takes this path only when its headers could not be read within 2 s.
+
+**What this does not show:** Production or Preview. Whether production Storage answers HEAD on `/object/sign/` with the same types is not measured here. A file over 50 MB on another origin is covered by unit tests, not by the benchmark.

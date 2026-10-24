@@ -201,7 +201,7 @@ test('Download saves through the shared save, once, and the button is busy until
   await act(async () => { fireEvent.click(button); });
   await act(async () => { fireEvent.click(button); }); // a second, impatient tap
   expect(mockSaveMedia).toHaveBeenCalledTimes(1);
-  expect(mockSaveMedia).toHaveBeenCalledWith(AVATAR.url, 'myavatar-avatar-av-1', { fallbackExt: 'mp4' });
+  expect(mockSaveMedia).toHaveBeenCalledWith(AVATAR.url, 'myavatar-avatar-av-1', expect.objectContaining({ fallbackExt: 'mp4' }));
   expect(button).toHaveProperty('disabled', true);
   expect(button.getAttribute('aria-busy')).toBe('true');
   await act(async () => { finishSave(); });
@@ -211,10 +211,35 @@ test('Download saves through the shared save, once, and the button is busy until
   // A song keeps its own extension when the bytes do not say; a 3D model downloads as .glb.
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Music$/ })); });
   await act(async () => { fireEvent.click(screen.getByTestId('library-download')); finishSave(); });
-  expect(mockSaveMedia).toHaveBeenLastCalledWith(SONG.url, 'myavatar-music-song-1', { fallbackExt: 'mp3' });
+  expect(mockSaveMedia).toHaveBeenLastCalledWith(SONG.url, 'myavatar-music-song-1', expect.objectContaining({ fallbackExt: 'mp3' }));
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
   await act(async () => { fireEvent.click(screen.getAllByTestId('library-download')[1]!); finishSave(); });
-  expect(mockSaveMedia).toHaveBeenLastCalledWith(MODEL.url, 'myavatar-image-glb-1', { fallbackExt: 'glb' });
+  expect(mockSaveMedia).toHaveBeenLastCalledWith(MODEL.url, 'myavatar-image-glb-1', expect.objectContaining({ fallbackExt: 'glb' }));
+});
+
+// §4.3: a link that ran out is signed afresh. The save is handed when the link runs out, and a way to get the work's new
+// link: the page read again, as on any refresh. Nothing is generated or written.
+test('a Download whose link ran out gets the work\'s fresh link from the page read again', async () => {
+  const expiresAt = new Date(Date.now() + 20_000).toISOString();
+  let round = 0;
+  global.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+    requested.push(`${init?.method ?? 'GET'} ${url}`);
+    round += 1;
+    const link = `https://ours.supabase.co/storage/v1/object/sign/renders/a.mp4?token=round-${round}`;
+    return { ok: true, status: 200, json: async () => ({ items: [{ ...AVATAR, url: link, expiresAt }] }) };
+  }) as unknown as typeof fetch;
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  const before = requested.length;
+  await act(async () => { fireEvent.click(screen.getByTestId('library-download')); });
+  const [url, , opts] = mockSaveMedia.mock.calls[0]! as unknown as [string, string, { expiresAt?: string; relink?: () => Promise<string | null> }];
+  expect(opts.expiresAt).toBe(expiresAt);
+  let fresh: string | null = null;
+  await act(async () => { fresh = await opts.relink!(); });
+  expect(fresh).not.toBeNull();
+  expect(fresh).not.toBe(url);
+  expect(fresh).toBe(`https://ours.supabase.co/storage/v1/object/sign/renders/a.mp4?token=round-${round}`);
+  expect(requested.slice(before).every((r) => r.startsWith('GET /api/studio/library?'))).toBe(true);
+  await act(async () => { finishSave(); });
 });
 
 // §4.2 (Phase 3 PR 2): a warm tab switch shows the tab at once, never a blank spinner, and sends nothing while it is
