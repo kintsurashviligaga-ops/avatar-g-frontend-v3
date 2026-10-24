@@ -93,7 +93,10 @@ tab, and `?tts=off` ends it (`lib/speech/trial.ts`, sessionStorage). The request
 only when it is on `TTS_MODELS` and the account is an admin (`isAdminIdentity`, failing closed); anyone else is read
 with `ttsModel()`. The model chosen is the one called, budgeted, booked and named in `X-Speech-Model`; there is no
 fallback to another model. While a trial is on, the browser skips the replay cache: the cache holds another model's
-audio, and a replay would make the trial model sound faster than it is.
+audio, and a replay would make the trial model sound faster than it is. The trial also measures each read and shows
+it in a small corner card (`components/studio/SpeechTrialPanel.tsx`, `SpeechTrialRecorder`): the time from the tap
+to the first sound, how many times the read waited for its next chunk and for how long, and for each chunk its length,
+the route's time and the seconds of audio it sent. No TTS model's speed is measured anywhere else.
 
 Errors are JSON `{ error }`: 400 `text is required`, 401, 413 `text_too_long`, 429, 499 `client_closed`, 502
 `tts_failed` / `tts_empty` / `tts_bad_audio`, 503 `budget_exhausted` / `gemini_key_missing`, 504 `tts_timeout`.

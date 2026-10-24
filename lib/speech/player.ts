@@ -36,7 +36,7 @@ import { browserSpeechCache, type SpeechCache } from './cache';
 import { chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
 import type { SpeechLocale } from './contract';
 import { fetchSpeech, requestSpeech } from './request';
-import { speechTrialModel } from './trial';
+import { speechTrialModel, speechTrialRecorder, wavAudioMs } from './trial';
 import { inspectWav } from './wav';
 import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
 import { MIC_RELEASE_EVENT } from '@/lib/voice/micBus';
@@ -452,9 +452,20 @@ export class SpeechPlayer {
 export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlayerDeps {
   return {
     // A listening trial (lib/speech/trial) skips the replay cache: it holds audio of another model, and a replay would
-    // make the model under trial sound faster than it is. Nothing of the trial is kept either.
-    synth: (text, locale, signal) =>
-      cache && !speechTrialModel() ? cache.synth(text, locale, signal, fetchSpeech) : requestSpeech(text, locale, signal),
+    // make the model under trial sound faster than it is. Nothing of the trial is kept; what it took is measured.
+    synth: async (text, locale, signal) => {
+      if (!speechTrialModel()) return cache ? cache.synth(text, locale, signal, fetchSpeech) : requestSpeech(text, locale, signal);
+      const askedAt = Date.now();
+      const answer = await fetchSpeech(text, locale, signal);
+      if (!signal.aborted) {
+        speechTrialRecorder().onChunk({
+          chars: text.length,
+          synthMs: Date.now() - askedAt,
+          audioMs: answer ? wavAudioMs(answer.blob.size, answer.profile) : null,
+        });
+      }
+      return answer?.blob ?? null;
+    },
     createAudio: () => new Audio() as unknown as SpeechAudio,
     createObjectURL: (blob) => URL.createObjectURL(blob),
     revokeObjectURL: (url) => URL.revokeObjectURL(url),
@@ -483,6 +494,8 @@ export function speechPlayer(): SpeechPlayer {
     const player = new SpeechPlayer(browserSpeechDeps(cache));
     shared = player;
     sharedCache = cache;
+    // The owner's listening trial records each read (what lib/speech/trial's panel shows); nothing else listens.
+    if (speechTrialModel()) player.subscribe((s) => speechTrialRecorder().onState(s));
     if (typeof window !== 'undefined') {
       window.addEventListener(MIC_RELEASE_EVENT, () => player.stop());
       window.addEventListener(SESSION_CLEARED_EVENT, () => {
