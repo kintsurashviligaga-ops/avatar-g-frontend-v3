@@ -1,6 +1,6 @@
--- 20261024a_library_favorites.sql — NOT YET APPLIED. To be applied by the owner in the Supabase SQL Editor (this exact
--- file) before the PR that reads it (Phase 3 PR 4, favorites) is merged. GG chose this table on 2026-10-24 07:19Z
--- (decision card: "C: ცალკე ცხრილი").
+-- 20261024a_library_favorites.sql — applied to Production (zwksnayknzggdcenqqxy) by the owner in the Supabase SQL Editor
+-- on 2026-10-24 ~08:05Z, this exact file, before the PR that reads it (Phase 3 PR 4, favorites) was merged. GG chose this
+-- table on 2026-10-24 07:19Z (decision card: "C: ცალკე ცხრილი").
 --
 -- WHY A TABLE. A Library star used to live in one browser's localStorage, unscoped by account, and the Favorites tab only
 -- filtered the newest 60 works (MASTER TASK v3.1 §4.2.4). Keeping it on the work's own generation_jobs row
