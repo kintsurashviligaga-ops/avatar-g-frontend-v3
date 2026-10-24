@@ -134,7 +134,6 @@ export async function POST(req: NextRequest) {
     // `?diag=1` is an operator breadcrumb (which engine ran, key presence, upstream error text — never the key).
     // Anyone else asking for it simply gets the normal answer.
     const wantDiag = req.nextUrl.searchParams.get('diag') === '1';
-    const diagAllowed = wantDiag && (await isAdminUser(user?.email));
 
     const audioBase64 = Buffer.from(bytes).toString('base64');
     const declaredMime = audio.type || '';
@@ -173,6 +172,9 @@ export async function POST(req: NextRequest) {
 
     if (text) code = undefined;
     const headers = timing();
+    // Only a miss has anything to diagnose, so the admin list is read for a miss only: the dictation's final pass
+    // always asks (components/chat/composer/useDictation transcribeUrlFor), and a transcript must not wait on the check.
+    const diagAllowed = wantDiag && !text && (await isAdminUser(user?.email));
     const heard = text ? transcriptSpeechLang(text) : null;
     const payload = { text, provider, ...(heard ? { language: heard } : {}), ...(code ? { code } : {}) };
     if (diagAllowed) {

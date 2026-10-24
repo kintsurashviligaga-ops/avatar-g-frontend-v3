@@ -10,11 +10,7 @@
  *  · The language is the one the user SPEAKS (lib/voice/speechLang): their typed native script, else the language the
  *    server heard last time, else Georgian for a Georgian UI, else 'auto' — the recorder, where Gemini identifies it
  *    (Web Speech cannot) and the answer is remembered for the next dictation. Never a translation.
- *  · Apple's engine (iOS and macOS Safari) always records: Gemini hears Georgian, English and Russian in one clip, and
- *    the language guessed above is only its hint. ⚠️ IT USED TO RECORD ONLY FOR GEORGIAN (Apple's engine has none) and
- *    use Web Speech in the guessed language otherwise. On an iPhone that had typed Russian once, Georgian and English
- *    speech came out as Russian-engine nonsense ("Akino Gett Батуми"; GG, production 2026-10-24): Web Speech hears
- *    only the one language it is set to, and the guess is a guess.
+ *  · Apple's engine (iOS and macOS Safari) has no Georgian, so `ka` there goes straight to the recorder.
  *  · Otherwise, record and POST to /api/voice/transcribe, streaming interim passes into the box on the
  *    `lib/voice/interimCadence` back-off, then one final pass on Stop.
  *  · NO AUTO-SEND. Dictation fills the box and waits for the user to tap Send (product decision; the
@@ -374,6 +370,25 @@ export function dictationWarning(kind: DictationWarningKind, locale?: string): s
         'ტრანსკრიფცია არ პასუხობს — სიტყვები შესაძლოა არ ჩაიწეროს.',
       );
   }
+}
+
+/**
+ * The FINAL pass asks the route for its diagnostics (`?diag=1`). The route answers them to an admin only (the owner)
+ * and ignores the flag for anyone else, so only the owner's warning can carry Google's reason.
+ * ⚠️ GG's mic on Production (2026-10-24) said only "speech recognition is unavailable right now": the route's
+ * `stt_unavailable` stands for every Google failure (access, quota, a refused request, a missing model), and the
+ * reason was in a server log nobody could read.
+ */
+export function transcribeUrlFor(base: string, kind: 'interim' | 'final'): string {
+  if (kind !== 'final') return base;
+  return `${base}${base.includes('?') ? '&' : '?'}diag=1`;
+}
+
+/** Google's reason from the route's admin diagnostics, bounded and without the project's path; null when none. */
+export function ownerSttReason(diag: unknown): string | null {
+  const raw = diag && typeof diag === 'object' ? (diag as { geminiError?: unknown }).geminiError : null;
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  return raw.replace(/projects\/[^/\s"'`]{1,200}/g, 'projects/…').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
 /** The route's `code` (a 200 with no text) → the localized warning for a final pass. */
@@ -954,7 +969,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       // The extension must match the bytes — Whisper-class legs dispatch on it (lib/voice/audioExt).
       fd.append('audio', blob, `clip.${audioExtFor(blob.type || r.session?.mimeType)}`);
       fd.append('language', r.lang);
-      const res = await d.fetch(o.transcribeUrl ?? '/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'same-origin', signal: ctrl.signal });
+      const res = await d.fetch(transcribeUrlFor(o.transcribeUrl ?? '/api/voice/transcribe', kind), { method: 'POST', body: fd, credentials: 'same-origin', signal: ctrl.signal });
       // Re-check AFTER the await: a send() while this was in flight already emptied the box.
       if (stale()) return;
       if (res.status === 401) {
@@ -965,7 +980,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         return;
       }
       if (!res.ok) throw new PassFailure(res.status === 429 ? 'rate_limited' : 'http');
-      const j = (await res.json().catch(() => ({}))) as { text?: unknown; language?: unknown; code?: unknown };
+      const j = (await res.json().catch(() => ({}))) as { text?: unknown; language?: unknown; code?: unknown; diag?: unknown };
       if (stale()) return;
       const took = d.now() - t0;
       if (run.passMs.length < DICTATION_METRICS_MAX_PASSES) run.passMs.push(took);
@@ -998,7 +1013,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         // user's whole dictation, so say so now instead of leaving an unchanged box.
         if (kind === 'final') {
           run.errorCode = sttCodeMetric(code);
-          setWarn(sttCodeWarning(code, o.locale));
+          const why = ownerSttReason(j.diag);
+          setWarn(why ? `${sttCodeWarning(code, o.locale)} (${why})` : sttCodeWarning(code, o.locale));
         }
         return;
       }
@@ -1230,9 +1246,9 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     let learned: SpeechLang | null = null;
     try { learned = d.loadSpeechLang(); } catch { /* unknown */ }
     const want = resolveSpeechLang({ locale: o.locale, typed: o.speechLang ?? null, learned });
-    // Apple's engine records every language: it hears only the one it is set to, and the language here is a guess.
-    const SR = want === 'auto' || isAppleSpeechEngine(d.userAgent()) ? undefined : d.speechRecognition();
-    const webSpeech = want !== 'auto' && !!SR && !unsupportedLangsRef.current.has(want);
+    const SR = want === 'auto' ? undefined : d.speechRecognition();
+    const webSpeech = want !== 'auto' && !!SR && !(isAppleSpeechEngine(d.userAgent()) && want.startsWith('ka'))
+      && !unsupportedLangsRef.current.has(want);
     // The tap shows 'starting' at once; 'listening' only once capture really runs.
     const run = beginRun(want, webSpeech ? 'webspeech' : 'recorder');
     if (want === 'auto' || !SR || !webSpeech) { await startRecorder(want, run); return; }

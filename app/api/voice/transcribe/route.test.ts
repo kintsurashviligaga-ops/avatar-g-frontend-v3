@@ -272,6 +272,13 @@ test('?diag=1 from an allowlisted admin returns the breadcrumb, without any cred
   expect(raw).not.toContain('vertex-token');
 });
 
+test('?diag=1 on a transcript that came back: the plain answer, nothing to diagnose', async () => {
+  mockUser = { id: USER_ID, email: 'Admin@Example.com' };
+  fetchSpy.mockImplementationOnce(async () => geminiOk('გამარჯობა'));
+  const res = await POST(upload({ diag: true }));
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+});
+
 test('empty audio → 400 before any engine', async () => {
   const res = await POST(upload({ bytes: new Uint8Array(0) }));
   expect(res.status).toBe(400);
