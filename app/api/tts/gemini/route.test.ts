@@ -7,6 +7,8 @@
  *   · the voice follows voice > gender > persona > Aoede, and Georgian only ever gets a verified voice;
  *   · locale → speechConfig.languageCode for en/ru only (never ka), dropped after a 400, switchable off;
  *   · usage is booked (real usageMetadata when Google reports it) and a budget refusal spends nothing;
+ *   · Phase 4 (§5.2–5.3): every audio part is read in order and wrapped once, with the contract headers; a format it
+ *     cannot prove is 502 tts_bad_audio (booked, not retried); text over 2,000 characters is 413 before any spend;
  *   · v3.1: the call goes to Vertex AI with a Workload Identity token; an AI Studio key is never read or sent.
  */
 jest.mock('server-only', () => ({}));
@@ -47,7 +49,16 @@ import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { bookChatUsage, chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
 import { inspectWav } from '../../../../lib/speech/wav';
-import { MONO_16K, geminiAudioResponse } from '../../../../tests/fixtures/speechAudio';
+import { SPEECH_MAX_CHARS } from '../../../../lib/speech/contract';
+import {
+  L16_24K,
+  MONO_16K,
+  MONO_24K,
+  MULTI_PART_24K,
+  WAV_DOUBLE_WRAPPED,
+  WAV_MONO_24K,
+  geminiAudioResponse,
+} from '../../../../tests/fixtures/speechAudio';
 
 const USER_ID = '11111111-2222-4333-8444-555555555555';
 const limitMock = checkRateLimit as jest.MockedFunction<typeof checkRateLimit>;
@@ -178,6 +189,85 @@ test('the WAV it answers passes the speech contract: rate, channels and frame co
   const res = await POST(post({ text: 'hello', locale: 'en' }));
   const r = inspectWav(new Uint8Array(await res.arrayBuffer()));
   expect(r).toEqual({ ok: true, info: expect.objectContaining({ sampleRate: 16000, channels: 1, frames: MONO_16K.length / 2, durationMs: 500 }) });
+});
+
+test('the contract headers name the version, the layout and the frame count of the WAV in the body', async () => {
+  const res = await POST(post({ text: 'hello', locale: 'en' }));
+  expect(res.status).toBe(200);
+  expect(res.headers.get('x-speech-contract')).toBe('1');
+  expect(res.headers.get('x-speech-sample-rate')).toBe('24000');
+  expect(res.headers.get('x-speech-channels')).toBe('1');
+  expect(res.headers.get('x-speech-frames')).toBe('24000');
+  expect(res.headers.get('x-speech-model')).toBe('gemini-2.5-flash-preview-tts');
+  expect(res.headers.get('x-voice-name')).toBe('Aoede');
+  expect(res.headers.get('x-voice-provider')).toBe('gemini-native');
+  expect(res.headers.get('content-length')).toBe(String(44 + 48_000));
+});
+
+test('an answer in three audio parts is read whole and in order (it used to keep the first part only)', async () => {
+  fetchSpy.mockImplementation(async () => geminiAudioResponse(MULTI_PART_24K.map((pcm) => ({ pcm, mimeType: L16_24K }))));
+  const res = await POST(post({ text: 'A longer sentence that came back in parts.', locale: 'en' }));
+  expect(res.status).toBe(200);
+  expect(res.headers.get('x-speech-frames')).toBe('28800');
+  const body = Buffer.from(await res.arrayBuffer());
+  expect(body.subarray(44).equals(Buffer.concat(MULTI_PART_24K.map((p) => Buffer.from(p))))).toBe(true);
+  // Booked on the whole 1.2 s, not on the first 0.3 s.
+  expect(bookMock.mock.calls[0]![0]).toMatchObject({ outputTokens: Math.ceil(1.2 * 32) });
+});
+
+test('a part that is already a WAV is not wrapped again (its header would have played as a click)', async () => {
+  fetchSpy.mockImplementation(async () => geminiAudioResponse([{ pcm: WAV_MONO_24K, mimeType: 'audio/wav' }]));
+  const res = await POST(post({ text: 'hello', locale: 'en' }));
+  expect(res.status).toBe(200);
+  expect(Buffer.from(await res.arrayBuffer()).equals(Buffer.from(WAV_MONO_24K))).toBe(true);
+});
+
+test('text parts beside the audio are ignored; an answer with no audio is 502 tts_empty and books nothing', async () => {
+  fetchSpy.mockImplementationOnce(async () => geminiAudioResponse([{ text: 'Sure:' }, { pcm: MONO_24K, mimeType: L16_24K }]));
+  expect((await POST(post({ text: 'hello', locale: 'en' }))).status).toBe(200);
+  bookMock.mockClear();
+  fetchSpy.mockImplementationOnce(async () => geminiAudioResponse([{ text: 'I cannot read that.' }]));
+  const res = await POST(post({ text: 'hello', locale: 'en' }));
+  expect(res.status).toBe(502);
+  expect(await res.json()).toMatchObject({ error: 'tts_empty' });
+  expect(bookMock).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['a WAV wrapped twice', [{ pcm: WAV_DOUBLE_WRAPPED, mimeType: 'audio/wav' }], 'double_wrapped'],
+  ['PCM whose label states no rate', [{ pcm: MONO_24K, mimeType: 'audio/L16;codec=pcm' }], 'unlabelled'],
+  ['parts at two rates', [{ pcm: MONO_24K, mimeType: L16_24K }, { pcm: MONO_16K, mimeType: 'audio/L16;rate=16000' }], 'mixed_layout'],
+])('%s → 502 tts_bad_audio (%s), never played at a guessed rate; what Google charged is still booked', async (_why, parts, fault) => {
+  fetchSpy.mockImplementation(async () => geminiAudioResponse(parts, { promptTokenCount: 9, candidatesTokenCount: 30, totalTokenCount: 39 }));
+  const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const res = await POST(post({ text: 'hello', locale: 'en' }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'tts_bad_audio', fault });
+    // One answer, one attempt: a malformed answer is not retried into a second charge.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(bookMock).toHaveBeenCalledTimes(1);
+    expect(bookMock.mock.calls[0]![0]).toMatchObject({ inputTokens: 9, outputTokens: 30, totalTokens: 39, userId: USER_ID });
+    expect(err).toHaveBeenCalledWith('[tts/gemini] audio refused', fault, `(${parts.length} part(s))`);
+  } finally {
+    err.mockRestore();
+  }
+});
+
+test(`text over ${SPEECH_MAX_CHARS} characters is refused with 413 before any spend; it used to be cut without a word`, async () => {
+  const res = await POST(post({ text: 'a'.repeat(SPEECH_MAX_CHARS + 1), locale: 'en' }));
+  expect(res.status).toBe(413);
+  expect(await res.json()).toEqual({ error: 'text_too_long', maxChars: SPEECH_MAX_CHARS });
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(budgetMock).not.toHaveBeenCalled();
+  expect(bookMock).not.toHaveBeenCalled();
+});
+
+test(`exactly ${SPEECH_MAX_CHARS} characters (after trimming) are sent whole`, async () => {
+  const text = 'ა'.repeat(SPEECH_MAX_CHARS);
+  const res = await POST(post({ text: `  ${text}\n`, locale: 'ka' }));
+  expect(res.status).toBe(200);
+  expect(sent().contents[0]!.parts[0]!.text).toBe(`Read aloud verbatim: ${text}`);
 });
 
 test('gender=male → Charon (unchanged contract)', async () => {

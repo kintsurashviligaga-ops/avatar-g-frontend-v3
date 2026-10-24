@@ -239,7 +239,12 @@ export interface GoogleTtsOptions {
 export const GOOGLE_TTS_PART_CHARS = 1500;
 /** The same for Gemini-TTS, whose text field takes up to 4,000 bytes: 1,200 Georgian letters are 3,600 bytes. */
 export const GEMINI_TTS_PART_CHARS = 1200;
-/** Longest text one synthesis reads at all: the old TTS route's bound. */
+/**
+ * Longest text one synthesis reads at all: the old TTS route's bound. A longer text is refused (null) before any request;
+ * it used to be cut here without a word, so the end of a long text was never spoken (MASTER TASK v3.1 §5.3.1). Callers
+ * bound their own text below it (orbit 2,500, voice-lab 5,000, film narration 2,400, voice-v2v sentence chunks, and
+ * /api/elevenlabs/tts answers 413); an Agent G Telegram reply over it takes that handler's existing miss path (sent as text).
+ */
 export const GOOGLE_TTS_MAX_CHARS = 5000;
 
 /**
@@ -287,11 +292,11 @@ async function synthesizePart(
 /**
  * Synthesise `text` to an MP3 ArrayBuffer via Google Cloud TTS: Georgian with a Gemini-TTS voice, any other language
  * with the best available neural voice for the detected/declared language. Returns null on any failure; a part that
- * fails fails the whole read, never a hole.
+ * fails fails the whole read, never a hole. A text over GOOGLE_TTS_MAX_CHARS is null before any request.
  */
 export async function synthesizeGoogleTts(text: string, opts: GoogleTtsOptions = {}): Promise<ArrayBuffer | null> {
-  const clean = (text ?? '').trim().slice(0, GOOGLE_TTS_MAX_CHARS);
-  if (!clean) return null;
+  const clean = (text ?? '').trim();
+  if (!clean || clean.length > GOOGLE_TTS_MAX_CHARS) return null;
   const languageCode = opts.languageCode ?? ttsLanguageCode(clean);
 
   if (readsWithGeminiTts(languageCode)) {
