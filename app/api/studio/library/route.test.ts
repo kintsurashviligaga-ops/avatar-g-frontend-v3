@@ -229,6 +229,41 @@ const post = (body: unknown) =>
   });
 const saved = () => mockRecord.mock.calls.map((c) => c[0]);
 
+describe('GET — server timing (lib/perf/serverTiming), only for a traced request', () => {
+  const TRACE = '0123456789abcdef';
+  const traced = (path = '/api/studio/library?limit=40') =>
+    GET(new NextRequest(`https://myavatar.ge${path}`, { headers: { 'x-myavatar-trace': TRACE } }));
+
+  test('a traced request gets its auth, db, proof and sign spans, with no URL, token or prompt in them', async () => {
+    mockRows = [
+      row('a', signed('renders', 'u/a.mp4'), { params: { prompt: 'a secret prompt' } }),
+      row('b', signed('renders', 'u/b.mp4'), { params: { source: 'manual-save', prompt: 'another prompt' } }),
+    ];
+    const res = await traced();
+    const timing = res.headers.get('server-timing') ?? '';
+    expect(timing.split(', ').map((e) => e.split(';')[0])).toEqual(['auth', 'db', 'proof', 'sign', 'total']);
+    for (const entry of timing.split(', ')) expect(entry).toMatch(/^[a-z]+;dur=\d+(\.\d)?$/);
+    expect(timing).not.toMatch(/token|supabase|prompt|renders/);
+    expect(res.headers.get('x-myavatar-trace')).toBe(TRACE);
+    expect(res.headers.get('cache-control')).toBe('private, max-age=30');
+  });
+
+  test('the early answers carry the spans too (an unknown kind, a failed query)', async () => {
+    const res = await traced('/api/studio/library?kind=nope');
+    expect(res.headers.get('server-timing')).toMatch(/^auth;dur=[\d.]+, total;dur=[\d.]+$/);
+  });
+
+  test('an untraced request (or a malformed id) is answered exactly as before: no timing, no echo', async () => {
+    mockRows = [row('a', signed('renders', 'u/a.mp4'))];
+    for (const headers of [{}, { 'x-myavatar-trace': 'not a trace id, a prompt' }]) {
+      const res = await GET(new NextRequest('https://myavatar.ge/api/studio/library?limit=40', { headers }));
+      expect(res.headers.get('server-timing')).toBeNull();
+      expect(res.headers.get('x-myavatar-trace')).toBeNull();
+      expect(res.headers.get('cache-control')).toBe('private, max-age=30');
+    }
+  });
+});
+
 describe('POST — signed-in only, and only URLs the caller can already read', () => {
   test('anonymous → 401, nothing filed (no demo-library write)', async () => {
     mockUser = null;

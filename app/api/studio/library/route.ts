@@ -27,6 +27,7 @@ import {
 } from '@/lib/orchestrator/storage-adapter';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { normalizeRoomGeometry, normalizeStyleGuide, type RoomGeometry, type StyleGuide } from '@/lib/orchestrator/interior';
+import { serverTiming } from '@/lib/perf/serverTiming';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -76,12 +77,15 @@ function pickUrl(row: GenerationJobRow): string | null {
 }
 
 export async function GET(req: NextRequest) {
-  const { supabase, user } = await authedClientFromRequest(req);
+  // Spans (auth, db, proof, sign) only for a request that opts in with a trace id (lib/perf/serverTiming); every
+  // other request is answered exactly as before.
+  const timing = serverTiming(req);
+  const { supabase, user } = await timing.time('auth', authedClientFromRequest(req));
   // Anonymous testers (no sign-in) see the shared DEMO library, read with the service
   // role since there's no session for RLS. Signed-in users see their own via RLS.
   const uid = user?.id ?? DEMO_VOICE_USER_ID;
   const client = user ? supabase : createServiceRoleClient();
-  if (!client) return NextResponse.json({ items: [] });
+  if (!client) return NextResponse.json({ items: [] }, { headers: timing.headers() });
 
   const limit = Math.min(60, Math.max(1, Number(req.nextUrl.searchParams.get('limit') ?? 40) || 40));
   // offset enables infinite-scroll pagination from the client — capped only
@@ -91,7 +95,7 @@ export async function GET(req: NextRequest) {
   // kinds are dropped; a filter with none left matches nothing rather than everything.
   const kindParam = req.nextUrl.searchParams.get('kind');
   const kinds = kindParam === null ? null : kindParam.split(',').map((k) => k.trim()).filter((k): k is ProduceKind => (VALID_KINDS as string[]).includes(k));
-  if (kinds && kinds.length === 0) return NextResponse.json({ items: [] });
+  if (kinds && kinds.length === 0) return NextResponse.json({ items: [] }, { headers: timing.headers() });
 
   try {
     let query = client
@@ -104,8 +108,8 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + limit - 1);
     if (kinds) query = kinds.length === 1 ? query.eq('service_type', kinds[0]) : query.in('service_type', kinds);
 
-    const { data, error } = await query;
-    if (error || !Array.isArray(data)) return NextResponse.json({ items: [] });
+    const { data, error } = await timing.time('db', Promise.resolve(query));
+    if (error || !Array.isArray(data)) return NextResponse.json({ items: [] }, { headers: timing.headers() });
 
     // Belt and braces: the query is already `.eq('user_id', uid)` (and RLS for a session client); a row for anyone
     // else never reaches the signer below even if that filter is ever dropped.
@@ -154,7 +158,7 @@ export async function GET(req: NextRequest) {
     // (provenOwnSignedLink); the proof is written back so the next read skips the probe. Bounded per page.
     const legacy = [...unproven.entries()].slice(0, LEGACY_PROOFS_PER_PAGE);
     const svc = legacy.length ? createServiceRoleClient() : null;
-    await Promise.all(legacy.map(async ([i, row]) => {
+    await timing.time('proof', Promise.all(legacy.map(async ([i, row]) => {
       const item = rows[i];
       if (!item || !(await provenOwnSignedLink(item.url))) return;
       resignable.add(i);
@@ -162,7 +166,7 @@ export async function GET(req: NextRequest) {
       try {
         await svc?.from('generation_jobs').update({ params: { ...params, storage_verified: true } }).eq('id', row.id).eq('user_id', uid);
       } catch { /* the proof is simply repeated on the next read */ }
-    }));
+    })));
 
     const hosts = ownStorageHosts();
     const buckets = libraryMediaBuckets();
@@ -177,7 +181,7 @@ export async function GET(req: NextRequest) {
       byBucket.set(ref.bucket, paths);
     });
 
-    await Promise.all([...byBucket.entries()].map(async ([bucket, paths]) => {
+    await timing.time('sign', Promise.all([...byBucket.entries()].map(async ([bucket, paths]) => {
       const list = [...paths.keys()];
       // 24h: comfortably longer than any session, short enough that a leaked URL is not permanent.
       const signed = await createSignedAssetUrls(bucket, list, 86_400).catch(() => list.map(() => null));
@@ -189,16 +193,16 @@ export async function GET(req: NextRequest) {
           if (row) row.url = fresh;
         }
       });
-    }));
+    })));
 
     const items = rows;
 
     // Short PRIVATE browser cache: the library changes rarely, so this cuts refetches on tab-switches.
     // It must stay well under the 24h signing TTL above — a cached page holding stale tokens past their
     // expiry would reintroduce exactly the 400s this route now prevents. 30s against 24h is safe.
-    return NextResponse.json({ items }, { headers: { 'Cache-Control': 'private, max-age=30' } });
+    return NextResponse.json({ items }, { headers: { 'Cache-Control': 'private, max-age=30', ...timing.headers() } });
   } catch {
-    return NextResponse.json({ items: [] });
+    return NextResponse.json({ items: [] }, { headers: timing.headers() });
   }
 }
 
