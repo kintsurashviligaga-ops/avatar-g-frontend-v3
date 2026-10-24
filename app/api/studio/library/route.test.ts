@@ -245,7 +245,7 @@ describe('GET — server timing (lib/perf/serverTiming), only for a traced reque
     for (const entry of timing.split(', ')) expect(entry).toMatch(/^[a-z]+;dur=\d+(\.\d)?$/);
     expect(timing).not.toMatch(/token|supabase|prompt|renders/);
     expect(res.headers.get('x-myavatar-trace')).toBe(TRACE);
-    expect(res.headers.get('cache-control')).toBe('private, max-age=30');
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
   });
 
   test('the early answers carry the spans too (an unknown kind, a failed query)', async () => {
@@ -259,7 +259,7 @@ describe('GET — server timing (lib/perf/serverTiming), only for a traced reque
       const res = await GET(new NextRequest('https://myavatar.ge/api/studio/library?limit=40', { headers }));
       expect(res.headers.get('server-timing')).toBeNull();
       expect(res.headers.get('x-myavatar-trace')).toBeNull();
-      expect(res.headers.get('cache-control')).toBe('private, max-age=30');
+      expect(res.headers.get('cache-control')).toBe('private, no-store');
     }
   });
 });

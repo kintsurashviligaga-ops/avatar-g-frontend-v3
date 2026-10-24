@@ -78,7 +78,7 @@ export async function signedInLibrary(page: Page, baseURL: string | undefined, r
     const limit = Number(q.get('limit') ?? 40);
     const items = rows.filter((it) => kinds.length === 0 || kinds.includes(it.kind)).slice(offset, offset + limit);
     await new Promise((done) => setTimeout(done, LIBRARY_API_MS));
-    await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'cache-control': 'private, max-age=30' }, body: JSON.stringify({ items }) });
+    await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'cache-control': 'private, no-store' }, body: JSON.stringify({ items }) });
   });
   await page.route('**/api/orchestrator/jobs*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"jobs":[]}' }));
   await page.route(/\/api\/tasks(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"tasks":[]}' }));

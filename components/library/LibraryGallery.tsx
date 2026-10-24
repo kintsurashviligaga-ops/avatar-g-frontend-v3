@@ -8,17 +8,21 @@
  * existing, RLS-protected API: GET /api/studio/library?kind=&limit=&offset= and
  * DELETE /api/studio/library?id=. Favorites are device-local (localStorage) so no
  * schema change is needed. Mobile-first grid, Georgian default copy.
+ *
+ * Pages come from lib/library/libraryQuery (shared with StudioLibraryGrid): a tab already loaded comes back at once,
+ * and is refreshed behind the grid when it is older than 30 s, instead of a spinner replacing it (§4.2).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight, Move3d, Scissors } from 'lucide-react';
-import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { SHOOT_COPY } from '@/components/studio/create/newtools/copy';
 import { PlanView } from '@/components/studio/create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 import { editKindFor, stashPendingEdit } from '@/lib/studio/pendingEdit';
 import { saveMedia } from '@/lib/media/saveMedia';
+import { type LibraryItem, removeLibraryItem, useLibraryOwner, useLibraryPage } from '@/lib/library/libraryQuery';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -37,19 +41,10 @@ function fallbackExt(it: { kind: string; url: string }): string {
   return VIDEO_KINDS.has(it.kind) ? 'mp4' : it.kind === 'music' ? 'mp3' : 'png';
 }
 
-interface LibraryItem {
-  id: string;
-  kind: string; // film | avatar | image | interior | music | voice
-  url: string;
-  prompt: string | null;
-  orientation: 'landscape' | 'vertical';
-  createdAt: string;
-  /** An interior 3D plan: `url` is the render it was made for (GET /api/studio/library). */
-  plan?: { geometry: RoomGeometry; style: StyleGuide };
-}
-
 const PAGE_SIZE = 12;
+const FAV_WINDOW = 60; // favorites: pull a wide window of every kind, filter locally
 const FAV_KEY = 'myavatar:favorites';
+const NO_ITEMS: LibraryItem[] = [];
 
 // Which service_type(s) each tab shows (the API takes a comma list): avatar videos sit with the films, the Interior
 // designer's 3D plans (filed with their render) with the pictures. Favorites pull across all kinds and filter locally.
@@ -111,8 +106,6 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   }, [searchParams]);
   const [page, setPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [items, setItems] = useState<LibraryItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [favs, setFavs] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
   // Files being saved: the button spins until the file is out, and a second tap meanwhile starts no second download.
@@ -122,8 +115,6 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   // Files that would not load. The first failure fetches the page again once, quietly (every link in it is minted
   // fresh, which mends a page left open past its links' 24 h); a file that fails again shows MediaUnavailable.
   const [failed, setFailed] = useState<Set<string>>(new Set());
-  const [refetch, setRefetch] = useState(0);
-  const quietRef = useRef(false);
   const autoRetriedRef = useRef(false);
 
   // Load favorites from localStorage once.
@@ -148,31 +139,21 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     });
   }, []);
 
-  // Fetch the current tab/page. Favorites fetch a wider window (all kinds) then filter.
-  useEffect(() => {
-    let alive = true;
-    const controller = new AbortController();
-    if (!quietRef.current) setLoading(true);
-    quietRef.current = false;
-    const isFav = tab === 'favorites';
-    const qs = new URLSearchParams();
-    if (!isFav) { qs.set('kind', TAB_KIND[tab]); qs.set('limit', String(PAGE_SIZE)); qs.set('offset', String(page * PAGE_SIZE)); }
-    else { qs.set('limit', '60'); } // favorites: pull a wide window, filter locally
-    fetch(`/api/studio/library?${qs.toString()}`, { cache: 'no-store', credentials: 'include', signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((j: { items?: LibraryItem[] }) => {
-        if (!alive) return;
-        // Favorites are filtered in render (off `favs`), so toggling a star never
-        // re-fetches — the effect only depends on tab + page.
-        setItems(Array.isArray(j.items) ? j.items : []);
-        setFailed(new Set());
-      })
-      .catch(() => { if (alive) setItems([]); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; controller.abort(); };
-  }, [tab, page, refetch]);
+  // The current tab/page. Favorites fetch a wider window (all kinds) then filter in render (off `favs`), so toggling a
+  // star never re-fetches. A tab seen before comes from the cache at once; leaving a tab mid-request aborts it (#160).
+  const isFav = tab === 'favorites';
+  const library = useLibraryPage(isFav ? '' : TAB_KIND[tab], isFav ? FAV_WINDOW : PAGE_SIZE, isFav ? undefined : page * PAGE_SIZE);
+  // A failed request shows the empty state, as before; telling „failed" from „empty" is §4.2's next step.
+  const items = library.data?.items ?? NO_ITEMS;
+  const loading = library.isPending;
+  const { refetch, dataUpdatedAt } = library;
+  // Every answer brings freshly signed links, so every file gets another go.
+  useEffect(() => { setFailed(new Set()); }, [dataUpdatedAt]);
+  const owner = useLibraryOwner();
+  const queryClient = useQueryClient();
 
-  const reload = useCallback(() => { quietRef.current = true; setRefetch((n) => n + 1); }, []);
+  // Fetch the page again behind the grid (fresh links for every file in it): no spinner.
+  const reload = useCallback(() => { void refetch(); }, [refetch]);
   const onMediaError = useCallback((id: string) => {
     setFailed((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
     if (!autoRetriedRef.current) { autoRetriedRef.current = true; reload(); }
@@ -198,11 +179,11 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     try {
       const r = await fetch(`/api/studio/library?id=${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
       if (r.ok) {
-        setItems((prev) => prev.filter((it) => it.id !== id));
+        if (owner) removeLibraryItem(queryClient, owner, id);
         if (favs.has(id)) { const n = new Set(favs); n.delete(id); persistFavs(n); }
       }
     } catch { /* fail-soft */ } finally { setBusyId(null); }
-  }, [t.confirmDel, favs, persistFavs]);
+  }, [t.confirmDel, favs, persistFavs, owner, queryClient]);
 
   const download = useCallback(async (it: LibraryItem) => {
     if (savingRef.current.has(it.id)) return;
