@@ -4,9 +4,21 @@ MASTER TASK v3.1 §5. Eight PRs, #175 to #182, each merged on its own owner deci
 defect was, what fixed it and what proves it. The promises themselves are in `SPEECH_CONTRACT.md`.
 
 §5's acceptance says: "Verify ka/en/ru pacing with authorized audio samples before claiming the speech defect fixed."
-That listening has not been done yet (owner's decision 1, after this PR). Nothing on this page claims the voice sounds
-right. It shows that every sentence is asked for, checked, played in order and played once, and how much of the wait
-is the app's own.
+The owner listened on Production on 2026-10-24 (decision 1), and **the speech defect is not fixed**: see "The owner's
+listening" below. Nothing on this page claims the voice sounds right. It shows that every sentence is asked for,
+checked, played in order and played once, and how much of the wait is the app's own.
+
+## The owner's listening (decision 1, 2026-10-24 15:40Z)
+
+GG listened on Production after #181, in Georgian, English and Russian. What was heard, and where it is taken up:
+
+| Heard | Cause found in the code | Taken up in |
+|---|---|---|
+| The voice starts very late after the tap, and the wait is long. | Each chunk's audio is made in full by `gemini-2.5-flash-preview-tts` before any of it is sent; no stream. Not measured live. | A newer Gemini TTS model is the owner's decision (a billed check on Vertex). |
+| The voice stops in the middle of a reply and then goes on. | The first chunk is one short sentence (a few seconds of audio), the second up to 600 characters; the second is not made before the first ends, so the voice waits for it. | The PR after this one: chunk sizes grow so the next one is ready in time. |
+| The voice sounds like a robot, in all three languages. | Not proven. Each chunk is a separate synthesis, so the intonation starts again at every chunk; the model is the older preview TTS. | With the model decision above. |
+| "Pause" did not pause: the next tap read the reply again from the first word. | The studio's button called `toggle`, which stops a read. | The PR after this one: the button pauses, and "Continue" goes on from there. |
+| "hi" in English, and Russian, were answered in Georgian (the chat, not the voice). | A one-word message followed the Georgian UI, and Russian typed in Latin letters was not recognised. | A PR after this one (`lib/chat/replyLocale.ts`). |
 
 ## The defects and their fixes
 
@@ -40,7 +52,11 @@ Results:
 
 - **Chromium (local, headless, 1280 × 800):** 5 of 5 pass, in two runs in a row.
 - **Chromium, Firefox and WebKit (CI):** `.github/workflows/speech-acceptance.yml` runs the spec on every PR that touches
-  speech code, one job per browser. The results for this PR are in its checks.
+  speech code, one job per browser. The results for this PR are in its checks: all three pass.
+- **Firefox needs an audio output.** The CI runner has no sound card. There Firefox played each chunk to its end and then
+  raised `MEDIA_ERR_DECODE` instead of only `ended`, which the player rightly counts as a failed chunk. The workflow
+  starts a PulseAudio server (it falls back to a null sink) before the Firefox job, as every user's device has an audio
+  output. Chromium and WebKit fake one themselves.
 
 ## Timings (mock)
 
