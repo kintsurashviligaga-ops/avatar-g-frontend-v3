@@ -28,19 +28,29 @@ const mockPaging: Array<[string, ...unknown[]]> = [];
 let mockQueryError: { message: string } | null = null;
 let mockQueryThrows = false;
 let mockNoService = false;
-function mockQuery() {
+/** public.library_favorites: what a read of it answers, and every write to it. */
+let mockFavRows: Array<{ job_id: string }> = [];
+let mockFavError: { message: string } | null = null;
+const mockFavWrites: Array<{ op: string; rows?: unknown; opts?: unknown; filters: Array<[string, ...unknown[]]> }> = [];
+const mockSelects: Array<[string, string]> = [];
+function mockQuery(table = 'generation_jobs') {
   const chain: Record<string, unknown> = {};
-  for (const m of ['select', 'like', 'limit']) chain[m] = () => chain;
+  const write = table === 'library_favorites' ? { op: 'read', filters: [] as Array<[string, ...unknown[]]> } as (typeof mockFavWrites)[number] : null;
+  chain.select = (cols: string) => { mockSelects.push([table, cols]); return chain; };
+  for (const m of ['like', 'limit']) chain[m] = () => chain;
+  chain.upsert = (rows: unknown, opts: unknown) => { if (write) { write.op = 'upsert'; write.rows = rows; write.opts = opts; mockFavWrites.push(write); } return chain; };
+  chain.delete = () => { if (write) { write.op = 'delete'; mockFavWrites.push(write); } return chain; };
   for (const m of ['order', 'range', 'or']) chain[m] = (...a: unknown[]) => { mockPaging.push([m, ...a]); return chain; };
   chain.update = (patch: Record<string, unknown>) => { mockUpdates.push(patch); return chain; };
-  for (const m of ['eq', 'neq', 'in']) chain[m] = (...a: unknown[]) => { mockFilters.push([m, ...a]); return chain; };
-  chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => (
-    mockQueryThrows ? reject(new Error('socket hang up')) : resolve({ data: mockQueryError ? null : mockRows, error: mockQueryError })
-  );
+  for (const m of ['eq', 'neq', 'in']) chain[m] = (...a: unknown[]) => { (write ? write.filters : mockFilters).push([m, ...a]); return chain; };
+  chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
+    if (write) return resolve({ data: mockFavError ? null : write.op === 'read' ? mockFavRows : null, error: mockFavError });
+    return mockQueryThrows ? reject(new Error('socket hang up')) : resolve({ data: mockQueryError ? null : mockRows, error: mockQueryError });
+  };
   return chain;
 }
 const mockServiceClient = {
-  from: () => mockQuery(),
+  from: (table: string) => mockQuery(table),
   storage: {
     from: (bucket: string) => ({
       createSignedUrls: async (paths: string[], ttl: number) => {
@@ -51,7 +61,7 @@ const mockServiceClient = {
   },
 };
 jest.mock('../../../../lib/supabase/server', () => ({
-  authedClientFromRequest: jest.fn(async () => ({ supabase: { from: () => mockQuery() }, user: mockUser })),
+  authedClientFromRequest: jest.fn(async () => ({ supabase: { from: (table: string) => mockQuery(table) }, user: mockUser })),
   createServiceRoleClient: () => (mockNoService ? null : mockServiceClient),
 }));
 jest.mock('../../../../lib/audio/voiceModel', () => ({ DEMO_VOICE_USER_ID: 'demo-user' }));
@@ -62,7 +72,7 @@ jest.mock('../../../../lib/orchestrator/jobs', () => ({
 }));
 
 import { NextRequest } from 'next/server';
-import { decodeLibraryCursor, encodeLibraryCursor, GET, POST } from './route';
+import { decodeLibraryCursor, encodeLibraryCursor, GET, PATCH, POST } from './route';
 
 const ENV = { ...process.env };
 let fetchSpy: jest.SpyInstance;
@@ -80,6 +90,10 @@ beforeEach(() => {
   mockQueryError = null;
   mockQueryThrows = false;
   mockNoService = false;
+  mockFavRows = [];
+  mockFavError = null;
+  mockFavWrites.length = 0;
+  mockSelects.length = 0;
   mockRecord.mockClear();
   fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 206 }));
 });
@@ -364,7 +378,8 @@ describe('GET — server timing (lib/perf/serverTiming), only for a traced reque
     ];
     const res = await traced();
     const timing = res.headers.get('server-timing') ?? '';
-    expect(timing.split(', ').map((e) => e.split(';')[0])).toEqual(['auth', 'db', 'proof', 'sign', 'total']);
+    // `fav` is the page's stars, read alongside proof and sign (a signed-in caller).
+    expect(timing.split(', ').map((e) => e.split(';')[0])).toEqual(['auth', 'db', 'fav', 'proof', 'sign', 'total']);
     for (const entry of timing.split(', ')) expect(entry).toMatch(/^[a-z]+;dur=\d+(\.\d)?$/);
     expect(timing).not.toMatch(/token|supabase|prompt|renders/);
     expect(res.headers.get('x-myavatar-trace')).toBe(TRACE);
@@ -479,5 +494,147 @@ describe('POST — one file, one Library row', () => {
     const res = await POST(post({ url: signed('renders', 'remix/new.mp4'), kind: 'film' }));
     expect(res.status).toBe(200);
     expect(mockRecord).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('stars (§4.2.4): the account’s, in public.library_favorites, never a write to generation_jobs', () => {
+  const read = async (qs = 'limit=40') => {
+    const res = await GET(new NextRequest(`https://myavatar.ge/api/studio/library?${qs}`));
+    return { res, body: (await res.json()) as { items: Array<{ id: string; favorite?: boolean }>; error?: string; demo?: boolean } };
+  };
+  const patch = (body: unknown) => PATCH(new NextRequest('https://myavatar.ge/api/studio/library', {
+    method: 'PATCH', body: JSON.stringify(body), headers: { 'content-type': 'application/json' },
+  }));
+
+  test('a signed-in page says which works are starred, from one read of the page’s ids', async () => {
+    mockRows = [row('a', signed('renders', 'a.mp4')), row('vremix:productad:b', signed('renders', 'b.mp4')), row('c', signed('renders', 'c.mp4'))];
+    mockFavRows = [{ job_id: 'vremix:productad:b' }];
+    const { body } = await read();
+    expect(body.items.map((i) => [i.id, i.favorite])).toEqual([['a', false], ['vremix:productad:b', true], ['c', false]]);
+    expect(mockFavWrites).toHaveLength(0);
+    expect(mockSelects).toContainEqual(['library_favorites', 'job_id']);
+  });
+
+  test('stars that cannot be read leave `favorite` out; the page still loads', async () => {
+    mockRows = [row('a', signed('renders', 'a.mp4'))];
+    mockFavError = { message: 'relation "public.library_favorites" does not exist' };
+    const { res, body } = await read();
+    expect(res.status).toBe(200);
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).not.toHaveProperty('favorite');
+  });
+
+  test('the demo library has no stars, and is never asked for them', async () => {
+    mockUser = null;
+    mockRows = [row('demo-1', signed('renders', 'd.mp4'), { user_id: 'demo-user' })];
+    const { body } = await read();
+    expect(body.demo).toBe(true);
+    expect(body.items[0]).not.toHaveProperty('favorite');
+    expect(mockSelects.some(([t]) => t === 'library_favorites')).toBe(false);
+  });
+
+  test('favorite=1 reads only the starred works, through an inner join on the caller’s own stars, paged and ordered like any tab', async () => {
+    mockRows = [row('a', signed('renders', 'a.mp4')), row('b', signed('renders', 'b.mp4'))];
+    const { res, body } = await read('favorite=1&limit=12&offset=12');
+    expect(res.status).toBe(200);
+    expect(body.items.map((i) => [i.id, i.favorite])).toEqual([['a', true], ['b', true]]);
+    expect(mockSelects.find(([t]) => t === 'generation_jobs')?.[1]).toMatch(/,library_favorites!inner\(job_id\)$/);
+    expect(mockPaging).toEqual([['order', 'created_at', { ascending: false }], ['order', 'id', { ascending: false }], ['range', 12, 23]]);
+    expect(mockFilters).toContainEqual(['eq', 'user_id', USER]);
+  });
+
+  test('favorite=1 without the table: 503 favorites_unavailable, never an empty Favorites tab', async () => {
+    mockQueryError = { message: 'Could not find a relationship between generation_jobs and library_favorites' };
+    const { res, body } = await read('favorite=1&limit=12');
+    expect(res.status).toBe(503);
+    expect(body).toEqual({ items: [], error: 'favorites_unavailable' });
+  });
+
+  test('favorite=1 signed out: no stars, nothing read', async () => {
+    mockUser = null;
+    const { res, body } = await read('favorite=1&limit=12');
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ items: [], demo: true, nextCursor: null });
+    expect(mockSelects).toEqual([]);
+  });
+
+  test('star: only a finished Library work the caller’s own session can read, upserted with the CALLER’s id', async () => {
+    mockRows = [row('vremix:restyle:j1', signed('renders', 'r.mp4'))];
+    const res = await patch({ id: 'vremix:restyle:j1', favorite: true });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    expect(await res.json()).toEqual({ success: true, favorite: true, ids: ['vremix:restyle:j1'] });
+    expect(mockFilters).toEqual(expect.arrayContaining([
+      ['in', 'id', ['vremix:restyle:j1']], ['eq', 'user_id', USER], ['eq', 'status', 'completed'], ['neq', 'service_type', 'voice'],
+    ]));
+    expect(mockFavWrites).toEqual([{
+      op: 'upsert', rows: [{ user_id: USER, job_id: 'vremix:restyle:j1' }], opts: { onConflict: 'user_id,job_id', ignoreDuplicates: true }, filters: [],
+    }]);
+    expect(mockUpdates).toEqual([]); // the work's own row is never written (its updated_at would move)
+  });
+
+  test('star a work that is not the caller’s: 404, nothing written', async () => {
+    mockRows = [];
+    const res = await patch({ id: 'someone-elses-job', favorite: true });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ success: false, error: 'not_found' });
+    expect(mockFavWrites).toEqual([]);
+  });
+
+  test('a batch (a browser’s old stars) stars only the caller’s own works and names only those', async () => {
+    mockRows = [row('mine-1', signed('renders', 'm1.mp4')), row('mine-2', signed('renders', 'm2.mp4'))];
+    const res = await patch({ ids: ['mine-1', 'theirs', 'mine-2', 'mine-1'], favorite: true });
+    expect(await res.json()).toEqual({ success: true, favorite: true, ids: ['mine-1', 'mine-2'] });
+    expect(mockFilters).toContainEqual(['in', 'id', ['mine-1', 'theirs', 'mine-2']]);
+    expect(mockFavWrites[0]?.rows).toEqual([{ user_id: USER, job_id: 'mine-1' }, { user_id: USER, job_id: 'mine-2' }]);
+  });
+
+  test('a batch with none of the caller’s works: 200 with no ids, nothing written', async () => {
+    const res = await patch({ ids: ['theirs-1', 'theirs-2'], favorite: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, favorite: true, ids: [] });
+    expect(mockFavWrites).toEqual([]);
+  });
+
+  test('unstar deletes only the caller’s own stars', async () => {
+    const res = await patch({ id: 'a', favorite: false });
+    expect(await res.json()).toEqual({ success: true, favorite: false, ids: ['a'] });
+    expect(mockFavWrites).toEqual([{ op: 'delete', filters: [['eq', 'user_id', USER], ['in', 'job_id', ['a']]] }]);
+    expect(mockUpdates).toEqual([]);
+  });
+
+  test('signed out: 401, nothing read or written', async () => {
+    mockUser = null;
+    const res = await patch({ id: 'a', favorite: true });
+    expect(res.status).toBe(401);
+    expect(mockSelects).toEqual([]);
+    expect(mockFavWrites).toEqual([]);
+  });
+
+  test.each([
+    ['no favorite flag', { id: 'a' }],
+    ['a non-boolean flag', { id: 'a', favorite: 'yes' }],
+    ['no id', { favorite: true }],
+    ['an empty batch', { ids: [], favorite: true }],
+    ['a batch over 200', { ids: Array.from({ length: 201 }, (_, i) => `j${i}`), favorite: true }],
+    ['an id that could break a filter', { id: 'a),user_id.neq.(x', favorite: true }],
+    ['a non-string id in a batch', { ids: ['a', 7], favorite: true }],
+  ])('400 for %s', async (_label, body) => {
+    const res = await patch(body);
+    expect(res.status).toBe(400);
+    expect(mockSelects).toEqual([]);
+    expect(mockFavWrites).toEqual([]);
+  });
+
+  test('the table cannot be written (not applied yet, or no service role): 503, never a silent success', async () => {
+    mockRows = [row('a', signed('renders', 'a.mp4'))];
+    mockFavError = { message: 'relation "public.library_favorites" does not exist' };
+    expect((await patch({ id: 'a', favorite: true })).status).toBe(503);
+    expect((await patch({ id: 'a', favorite: false })).status).toBe(503);
+    mockFavError = null;
+    mockNoService = true;
+    const res = await patch({ id: 'a', favorite: true });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ success: false, error: 'favorites_unavailable' });
   });
 });

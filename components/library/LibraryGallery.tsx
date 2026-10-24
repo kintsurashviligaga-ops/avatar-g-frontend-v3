@@ -6,14 +6,17 @@
  * A proper page (not the slide-over StudioLibraryGrid) with four tabs — Video ·
  * Image · Music · Favorites — over the user's completed generations. Reuses the
  * existing, RLS-protected API: GET /api/studio/library?kind=&limit=&offset= and
- * DELETE /api/studio/library?id=. Favorites are device-local (localStorage) so no
- * schema change is needed. Mobile-first grid, Georgian default copy.
+ * DELETE /api/studio/library?id=. Mobile-first grid, Georgian default copy.
  *
  * Pages come from lib/library/libraryQuery (shared with StudioLibraryGrid): a tab already loaded comes back at once,
  * and is refreshed behind the grid when it is older than 30 s, instead of a spinner replacing it (§4.2).
  *
  * A read that failed says so (LibraryFailed) instead of „nothing created yet", and a signed-out visitor's demo library
  * is labelled as examples, with no Delete (§4.2.7).
+ *
+ * Stars are the account's (§4.2.4): the star on a card is the server's (PATCH /api/studio/library, public.library_favorites)
+ * and the Favorites tab pages through every starred work, not a filter over the newest 60 in this browser. The stars this
+ * browser kept before move to the account once (migrateDeviceFavorites).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,7 +29,9 @@ import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 import { editKindFor, stashPendingEdit } from '@/lib/studio/pendingEdit';
 import { saveMedia } from '@/lib/media/saveMedia';
 import { DemoNotice, GuestEmpty, LibraryFailed } from '@/components/library/LibraryState';
-import { type LibraryItem, libraryFailure, removeLibraryItem, useLibraryOwner, useLibraryPage } from '@/lib/library/libraryQuery';
+import {
+  type LibraryItem, libraryFailure, migrateDeviceFavorites, removeLibraryItem, setLibraryFavorite, useLibraryOwner, useLibraryPage,
+} from '@/lib/library/libraryQuery';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -46,18 +51,16 @@ function fallbackExt(it: { kind: string; url: string }): string {
 }
 
 const PAGE_SIZE = 12;
-const FAV_WINDOW = 60; // favorites: pull a wide window of every kind, filter locally
-const FAV_KEY = 'myavatar:favorites';
 const NO_ITEMS: LibraryItem[] = [];
 
 // Which service_type(s) each tab shows (the API takes a comma list): avatar videos sit with the films, the Interior
-// designer's 3D plans (filed with their render) with the pictures. Favorites pull across all kinds and filter locally.
+// designer's 3D plans (filed with their render) with the pictures. Favorites are the starred works of every kind.
 const TAB_KIND: Record<Exclude<Tab, 'favorites'>, string> = { video: 'film,avatar', image: 'image,interior', music: 'music' };
 const VIDEO_KINDS = new Set(['film', 'avatar']);
 const IMAGE_KINDS = new Set(['image', 'interior']);
 
 const COPY: Record<Lang, {
-  title: string; tabs: Record<Tab, string>; empty: string; download: string; del: string; edit: string;
+  title: string; tabs: Record<Tab, string>; empty: string; emptyFav: string; favFailed: string; download: string; del: string; edit: string;
   play: string; confirmDel: string; prev: string; next: string; page: string; search: string;
   plan: string; openPlan: string; closePlan: string;
 }> = {
@@ -65,6 +68,8 @@ const COPY: Record<Lang, {
     title: 'ბიბლიოთეკა',
     tabs: { video: 'ვიდეო', image: 'სურათი', music: 'მუსიკა', favorites: 'ფავორიტი' },
     empty: 'ჯერ არაფერი შექმენით',
+    emptyFav: 'რჩეულები ჯერ ცარიელია. ნამუშევარზე ვარსკვლავს დააჭირე და აქ გამოჩნდება.',
+    favFailed: 'ვარსკვლავი ვერ შეინახა. სცადე თავიდან.',
     download: 'ჩამოტვირთვა', del: 'წაშლა', edit: 'რედაქტირება ედიტორში', play: 'დაკვრა',
     confirmDel: 'წავშალო ეს ფაილი სამუდამოდ?', prev: 'წინა', next: 'შემდეგი', page: 'გვერდი', search: 'ძიება…',
     plan: '3D გეგმა', openPlan: '3D გეგმის ნახვა', closePlan: 'გეგმის დახურვა',
@@ -73,6 +78,8 @@ const COPY: Record<Lang, {
     title: 'Library',
     tabs: { video: 'Video', image: 'Image', music: 'Music', favorites: 'Favorites' },
     empty: 'Nothing created yet',
+    emptyFav: 'No favorites yet. Tap the star on a work to keep it here.',
+    favFailed: 'The star could not be saved. Try again.',
     download: 'Download', del: 'Delete', edit: 'Open in Editor', play: 'Play',
     confirmDel: 'Delete this file permanently?', prev: 'Prev', next: 'Next', page: 'Page', search: 'Search…',
     plan: '3D plan', openPlan: 'View 3D plan', closePlan: 'Close plan',
@@ -81,6 +88,8 @@ const COPY: Record<Lang, {
     title: 'Библиотека',
     tabs: { video: 'Видео', image: 'Фото', music: 'Музыка', favorites: 'Избранное' },
     empty: 'Пока ничего не создано',
+    emptyFav: 'В избранном пока пусто. Нажмите звезду на работе, и она появится здесь.',
+    favFailed: 'Не удалось сохранить отметку. Попробуйте ещё раз.',
     download: 'Скачать', del: 'Удалить', edit: 'Открыть в редакторе', play: 'Воспроизвести',
     confirmDel: 'Удалить этот файл навсегда?', prev: 'Назад', next: 'Далее', page: 'Стр.', search: 'Поиск…',
     plan: '3D-план', openPlan: 'Открыть 3D-план', closePlan: 'Закрыть план',
@@ -110,7 +119,8 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   }, [searchParams]);
   const [page, setPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [favs, setFavs] = useState<Set<string>>(new Set());
+  const [favFailed, setFavFailed] = useState(false);
+  const favBusyRef = useRef(new Set<string>());
   const [busyId, setBusyId] = useState<string | null>(null);
   // Files being saved: the button spins until the file is out, and a second tap meanwhile starts no second download.
   const [saving, setSaving] = useState<ReadonlySet<string>>(new Set());
@@ -121,32 +131,10 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const [failed, setFailed] = useState<Set<string>>(new Set());
   const autoRetriedRef = useRef(false);
 
-  // Load favorites from localStorage once.
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(FAV_KEY);
-      if (raw) setFavs(new Set(JSON.parse(raw) as string[]));
-    } catch { /* ignore corrupt favorites */ }
-  }, []);
-
-  const persistFavs = useCallback((next: Set<string>) => {
-    setFavs(next);
-    try { localStorage.setItem(FAV_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
-  }, []);
-
-  const toggleFav = useCallback((id: string) => {
-    setFavs((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      try { localStorage.setItem(FAV_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
-
-  // The current tab/page. Favorites fetch a wider window (all kinds) then filter in render (off `favs`), so toggling a
-  // star never re-fetches. A tab seen before comes from the cache at once; leaving a tab mid-request aborts it (#160).
+  // The current tab/page; Favorites is a page of the starred works of every kind. A tab seen before comes from the cache
+  // at once; leaving a tab mid-request aborts it (#160).
   const isFav = tab === 'favorites';
-  const library = useLibraryPage(isFav ? '' : TAB_KIND[tab], isFav ? FAV_WINDOW : PAGE_SIZE, isFav ? undefined : page * PAGE_SIZE);
+  const library = useLibraryPage(isFav ? '' : TAB_KIND[tab], PAGE_SIZE, page * PAGE_SIZE, isFav);
   const items = library.data?.items ?? NO_ITEMS;
   const loading = library.isPending;
   const demo = library.data?.demo === true;
@@ -157,6 +145,19 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   useEffect(() => { setFailed(new Set()); }, [dataUpdatedAt]);
   const owner = useLibraryOwner();
   const queryClient = useQueryClient();
+  // The stars this browser kept before they were the account's move to it, once.
+  useEffect(() => { if (owner) void migrateDeviceFavorites(queryClient, owner); }, [owner, queryClient]);
+
+  // A star shows at once on every loaded page and goes back if the server refuses it. One tap at a time per work.
+  const toggleFav = useCallback(async (it: LibraryItem) => {
+    if (!owner || owner === 'guest' || favBusyRef.current.has(it.id)) return;
+    favBusyRef.current.add(it.id);
+    try {
+      setFavFailed(!(await setLibraryFavorite(queryClient, owner, it.id, it.favorite !== true)));
+    } finally {
+      favBusyRef.current.delete(it.id);
+    }
+  }, [owner, queryClient]);
 
   // Fetch the page again behind the grid (fresh links for every file in it): no spinner.
   const reload = useCallback(() => { void refetch(); }, [refetch]);
@@ -165,31 +166,25 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     if (!autoRetriedRef.current) { autoRetriedRef.current = true; reload(); }
   }, [reload]);
 
-  // Favorites tab filters the fetched window by the local set, then paginates locally.
-  // PHASE 6.3 — client-side search over the loaded items (prompt + kind match). Applied on
-  // top of the tab filter; empty query is a no-op so paging behaviour is unchanged.
+  // PHASE 6.3 — client-side search over the loaded items (prompt + kind match); empty query is a no-op so paging
+  // behaviour is unchanged.
   const display = useMemo(() => {
-    const base = tab === 'favorites'
-      ? items.filter((it) => favs.has(it.id)).slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
-      : items;
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return base;
-    return base.filter((it) => (it.prompt ?? '').toLowerCase().includes(q) || (it.kind ?? '').toLowerCase().includes(q));
-  }, [tab, items, favs, page, searchQuery]);
+    if (!q) return items;
+    return items.filter((it) => (it.prompt ?? '').toLowerCase().includes(q) || (it.kind ?? '').toLowerCase().includes(q));
+  }, [items, searchQuery]);
 
-  const onTab = useCallback((next: Tab) => { setTab(next); setPage(0); }, []);
+  const onTab = useCallback((next: Tab) => { setTab(next); setPage(0); setFavFailed(false); }, []);
 
   const del = useCallback(async (id: string) => {
     if (!window.confirm(t.confirmDel)) return;
     setBusyId(id);
     try {
       const r = await fetch(`/api/studio/library?id=${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
-      if (r.ok) {
-        if (owner) removeLibraryItem(queryClient, owner, id);
-        if (favs.has(id)) { const n = new Set(favs); n.delete(id); persistFavs(n); }
-      }
+      // The work's star goes with it (library_favorites cascades), and so does its card on every loaded page.
+      if (r.ok && owner) removeLibraryItem(queryClient, owner, id);
     } catch { /* fail-soft */ } finally { setBusyId(null); }
-  }, [t.confirmDel, favs, persistFavs, owner, queryClient]);
+  }, [t.confirmDel, owner, queryClient]);
 
   const download = useCallback(async (it: LibraryItem) => {
     if (savingRef.current.has(it.id)) return;
@@ -213,9 +208,8 @@ export default function LibraryGallery({ locale }: { locale: string }) {
     router.push(`/${locale}/dashboard`); // the signed-in studio (/{lang} sends a signed-in visitor there anyway)
   }, [router, locale]);
 
-  // Next page exists when a full window came back (or, for favorites, more starred
-  // items remain beyond this page).
-  const hasNext = tab !== 'favorites' ? items.length === PAGE_SIZE : items.filter((it) => favs.has(it.id)).length > (page + 1) * PAGE_SIZE;
+  // Next page exists when a full page came back (Favorites pages like every other tab).
+  const hasNext = items.length === PAGE_SIZE;
 
   const TABS: Tab[] = useMemo(() => ['video', 'image', 'music', 'favorites'], []);
   const tabIcon = (tb: Tab) => tb === 'video' ? <Film size={14} /> : tb === 'image' ? <ImageIcon size={14} /> : tb === 'music' ? <Music2 size={14} /> : <Star size={14} />;
@@ -256,11 +250,12 @@ export default function LibraryGallery({ locale }: { locale: string }) {
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
           {/* A line icon, not an emoji (docs/DESIGN.md §6) — the copy below says what is empty. */}
           <Inbox size={40} strokeWidth={1.25} aria-hidden="true" className="text-app-muted/70" />
-          <p className="text-[14px] text-app-muted">{t.empty}</p>
+          <p className="text-[14px] text-app-muted">{isFav ? t.emptyFav : t.empty}</p>
         </div>
       ) : (
         <>
           {demo && <DemoNotice lang={lang} />}
+          {favFailed && <p role="alert" data-testid="library-fav-failed" className="mb-3 text-[13px] text-red-400">{t.favFailed}</p>}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {display.map((it) => {
               const isVideo = VIDEO_KINDS.has(it.kind);
@@ -286,11 +281,14 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                         <audio src={it.url} controls className="w-full" preload="none" onError={() => onMediaError(it.id)} />
                       </div>
                     )}
-                    {/* Favorite star */}
-                    <button type="button" onClick={() => toggleFav(it.id)} aria-label={t.tabs.favorites} aria-pressed={favs.has(it.id)}
-                      className={`absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 backdrop-blur transition ${favs.has(it.id) ? 'text-yellow-400' : 'text-white/80 hover:text-white'}`}>
-                      <Star size={15} fill={favs.has(it.id) ? 'currentColor' : 'none'} />
-                    </button>
+                    {/* Favorite star: the account's, so a signed-out visitor's demo examples have none. */}
+                    {!demo && (
+                      <button type="button" onClick={() => void toggleFav(it)} aria-label={t.tabs.favorites} aria-pressed={it.favorite === true}
+                        data-testid="library-star"
+                        className={`absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 backdrop-blur transition ${it.favorite ? 'text-yellow-400' : 'text-white/80 hover:text-white'}`}>
+                        <Star size={15} fill={it.favorite ? 'currentColor' : 'none'} />
+                      </button>
+                    )}
                   </div>
                   {it.plan && openPlan === it.id && (
                     <div className="p-2 pb-0"><PlanView geometry={it.plan.geometry} style={it.plan.style} copy={SHOOT_COPY[lang]} /></div>

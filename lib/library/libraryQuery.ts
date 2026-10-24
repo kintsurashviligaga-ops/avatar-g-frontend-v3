@@ -21,6 +21,11 @@
  * The route tells its answers apart (§4.2.7): a page of the caller's own works, the shared demo library for a signed-out
  * visitor (`demo`), a database it could not reach (503) and any other failure (500). A failure stays an error here
  * (libraryFailure says which), so neither screen can show it as „nothing created yet".
+ *
+ * Stars are the account's (§4.2.4): every signed-in item says whether it is starred, the Favorites tab is a page query of
+ * the starred works (all of them, paged like any tab), and setLibraryFavorite changes one star on every loaded page at
+ * once, puts it back if the server refuses, and tells the server. The stars one browser kept before (localStorage
+ * `myavatar:favorites`, not tied to any account) move to the signed-in account once (migrateDeviceFavorites).
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
@@ -39,6 +44,8 @@ export interface LibraryItem {
   plan?: { geometry: RoomGeometry; style: StyleGuide };
   /** When `url` stops working (ISO), if the route minted it. */
   expiresAt?: string;
+  /** The signed-in owner starred it. Absent on the demo library (and when the stars could not be read). */
+  favorite?: boolean;
 }
 
 export interface LibraryPage {
@@ -81,19 +88,21 @@ function expiresSoon(data: LibraryPage | InfiniteData<LibraryPage> | undefined, 
 export const libraryKeys = {
   /** Everything of one owner's Library. */
   owner: (owner: string) => ['library', owner] as const,
-  /** One page of one tab: `kind` is the API's comma list ('' = every kind). */
-  page: (owner: string, kind: string, limit: number, offset: number) => ['library', owner, 'page', { kind, limit, offset }] as const,
+  /** One page of one tab: `kind` is the API's comma list ('' = every kind); `favorites` only the starred works. */
+  page: (owner: string, kind: string, limit: number, offset: number, favorites = false) =>
+    ['library', owner, 'page', favorites ? { kind, limit, offset, favorites } : { kind, limit, offset }] as const,
   /** The studio grid's endless list, every kind. */
   feed: (owner: string, limit: number) => ['library', owner, 'feed', { limit }] as const,
 };
 
-/** `offset` left out asks for the newest `limit` (the /library Favorites window); `before` continues after a cursor. */
+/** `offset` left out asks for the newest `limit`; `before` continues after a cursor; `favorites` reads the starred works. */
 export async function fetchLibraryPage(
-  query: { kind?: string; limit: number; offset?: number; before?: string },
+  query: { kind?: string; limit: number; offset?: number; before?: string; favorites?: boolean },
   signal?: AbortSignal,
 ): Promise<LibraryPage> {
   const qs = new URLSearchParams();
   if (query.kind) qs.set('kind', query.kind);
+  if (query.favorites) qs.set('favorite', '1');
   qs.set('limit', String(query.limit));
   if (query.offset !== undefined) qs.set('offset', String(query.offset));
   if (query.before) qs.set('before', query.before);
@@ -158,13 +167,13 @@ const retryOnce = (failures: number, error: unknown) =>
   failures < 1 && !(error instanceof LibraryFetchError && error.status >= 400 && error.status < 500);
 
 // ── Reads ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-/** One page of one tab (the /library page). `kind` '' with no `offset` is its Favorites window: the newest `limit`. */
-export function useLibraryPage(kind: string, limit: number, offset?: number) {
+/** One page of one tab (the /library page); `favorites` makes it a page of the starred works (the Favorites tab). */
+export function useLibraryPage(kind: string, limit: number, offset?: number, favorites = false) {
   const who = useLibraryOwner();
   useLibraryUpdates(who);
   return useQuery({
-    queryKey: libraryKeys.page(who ?? '', kind, limit, offset ?? -1),
-    queryFn: ({ signal }) => fetchLibraryPage({ kind, limit, offset }, signal),
+    queryKey: libraryKeys.page(who ?? '', kind, limit, offset ?? -1, favorites),
+    queryFn: ({ signal }) => fetchLibraryPage({ kind, limit, offset, favorites }, signal),
     enabled: who !== null,
     staleTime: (q) => (expiresSoon(q.state.data) ? 0 : LIBRARY_STALE_MS),
     // Opening the page (a new mount) always checks behind what is shown; switching tabs on it does not.
@@ -216,4 +225,102 @@ export function removeLibraryItem(queryClient: QueryClient, who: string, id: str
     return { ...data, items: drop(data.items) };
   });
   void queryClient.invalidateQueries({ queryKey: libraryKeys.owner(who), refetchType: 'none' });
+}
+
+/** Is this cached query a page of the Favorites tab? */
+const isFavoritesKey = (key: readonly unknown[]) =>
+  key[2] === 'page' && !!key[3] && typeof key[3] === 'object' && (key[3] as { favorites?: unknown }).favorites === true;
+
+/**
+ * Star or unstar one work (§4.2.4). Every loaded page of the owner shows the new star at once; an unstarred work leaves
+ * the Favorites pages at once, and a starred one is on them the next time they are shown. The server is told; if it
+ * refuses (or cannot be reached) every page is put back as it was and this answers false.
+ */
+export async function setLibraryFavorite(queryClient: QueryClient, who: string, id: string, favorite: boolean): Promise<boolean> {
+  type Data = LibraryPage | InfiniteData<LibraryPage>;
+  const before = queryClient.getQueriesData<Data>({ queryKey: libraryKeys.owner(who) });
+  const mark = (items: LibraryItem[], dropUnstarred: boolean) => items
+    .filter((it) => !(dropUnstarred && !favorite && it.id === id))
+    .map((it) => (it.id === id ? { ...it, favorite } : it));
+  for (const [key, data] of before) {
+    if (!data) continue;
+    const onFavorites = isFavoritesKey(key);
+    queryClient.setQueryData<Data>(key, 'pages' in data
+      ? { ...data, pages: data.pages.map((p) => ({ ...p, items: mark(p.items, onFavorites) })) }
+      : { ...data, items: mark(data.items, onFavorites) });
+  }
+  // The Favorites pages are out of date either way (a new star belongs on them, a removed one moved the rest up).
+  void queryClient.invalidateQueries({ queryKey: libraryKeys.owner(who), predicate: (q) => isFavoritesKey(q.queryKey), refetchType: 'none' });
+  let ok = false;
+  try {
+    const res = await fetch('/api/studio/library', {
+      method: 'PATCH',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, favorite }),
+    });
+    ok = res.ok;
+  } catch { /* offline: put it back below */ }
+  if (!ok) for (const [key, data] of before) queryClient.setQueryData(key, data);
+  return ok;
+}
+
+/** Where a browser kept its stars before they were the account's: an id list, not tied to any account. */
+export const DEVICE_FAVORITES_KEY = 'myavatar:favorites';
+const triedThisTab = new Set<string>();
+
+/**
+ * Move the stars this browser kept to the signed-in account, once per account per tab. The server stars only the ids
+ * that are this account's own works; the others stay in this browser, untouched (a shared browser keeps both accounts'
+ * old stars, and the next account moves its own). The list is emptied of what was moved, and removed once empty.
+ * Answers how many were moved (0 when there was nothing to move or the server could not take them; it is tried again in
+ * a later tab).
+ */
+export async function migrateDeviceFavorites(queryClient: QueryClient, who: string): Promise<number> {
+  if (!who || who === 'guest' || triedThisTab.has(who) || typeof window === 'undefined') return 0;
+  triedThisTab.add(who);
+  let kept: string[];
+  try {
+    const raw = window.localStorage.getItem(DEVICE_FAVORITES_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    kept = Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string' && v.length > 0 && v.length <= 200) : [];
+  } catch {
+    return 0; // storage blocked, or a list that is not ours to read
+  }
+  if (kept.length === 0) return 0;
+  const batch = kept.slice(0, 200);
+  let moved: string[] = [];
+  try {
+    const res = await fetch('/api/studio/library', {
+      method: 'PATCH',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: batch, favorite: true }),
+    });
+    if (!res.ok) return 0;
+    const json = (await res.json()) as { ids?: unknown };
+    moved = Array.isArray(json.ids) ? json.ids.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return 0;
+  }
+  const gone = new Set(moved);
+  const left = kept.filter((v) => !gone.has(v));
+  try {
+    if (left.length) window.localStorage.setItem(DEVICE_FAVORITES_KEY, JSON.stringify(left));
+    else window.localStorage.removeItem(DEVICE_FAVORITES_KEY);
+  } catch { /* the server already has them; the list is simply offered again */ }
+  if (moved.length) {
+    // A first read still on its way may have been answered before the stars moved, and an invalidation would only join
+    // it (it has no data to cancel for), so it is called off and asked again.
+    await queryClient.cancelQueries({ queryKey: libraryKeys.owner(who) });
+    void queryClient.invalidateQueries({ queryKey: libraryKeys.owner(who) });
+  }
+  return moved.length;
+}
+
+/** Tests only: let migrateDeviceFavorites run again in this tab. */
+export function resetDeviceFavoritesForTests() {
+  triedThisTab.clear();
 }

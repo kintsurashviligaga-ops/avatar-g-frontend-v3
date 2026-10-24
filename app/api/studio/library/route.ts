@@ -13,6 +13,12 @@
  * A failure used to be a 200 with no items, which both Library screens showed as „nothing created yet".
  * `items: []` stays in the error bodies for any reader that looks only at `items`.
  *
+ * Stars (§4.2.4): a signed-in caller's items carry `favorite`, and `favorite=1` reads only the starred works, paged like any
+ * tab, so the Favorites tab covers the whole collection (it used to filter the newest 60 in one browser). The stars live
+ * in public.library_favorites (supabase/migrations/20261024a), read through the caller's own session (RLS: owner only)
+ * and written by PATCH below. Without that table a page still loads with every star off, and `favorite=1` answers
+ * 503 { items: [], error: 'favorites_unavailable' }.
+ *
  * Films rendered in the conversational studio are filed here by the assemble
  * route (recordCompletedFilm), alongside any avatar/image/music/voice produce
  * jobs — one unified per-user media history.
@@ -53,6 +59,8 @@ export interface LibraryItem {
   plan?: { geometry: RoomGeometry; style: StyleGuide };
   /** When `url` stops working, if this answer minted it (ISO). Absent: a link this route did not sign (its issuer decides). */
   expiresAt?: string;
+  /** The signed-in owner starred it. Absent on the demo library, and when the stars could not be read. */
+  favorite?: boolean;
 }
 
 /** How long a link minted here works. 24 h: longer than any session, short enough that a leaked link is not permanent. */
@@ -84,9 +92,9 @@ export function decodeLibraryCursor(raw: string | null): { t: string; i: string 
 }
 
 /** A no-store error answer: never „you have no works". */
-function failure(status: 503 | 500, timing: ReturnType<typeof serverTiming>) {
+function failure(status: 503 | 500, timing: ReturnType<typeof serverTiming>, error = status === 503 ? 'library_unavailable' : 'library_failed') {
   return NextResponse.json(
-    { items: [], error: status === 503 ? 'library_unavailable' : 'library_failed' },
+    { items: [], error },
     { status, headers: { 'Cache-Control': 'private, no-store', ...timing.headers() } },
   );
 }
@@ -140,7 +148,9 @@ export async function GET(req: NextRequest) {
   // kinds are dropped; a filter with none left matches nothing rather than everything.
   const kindParam = req.nextUrl.searchParams.get('kind');
   const kinds = kindParam === null ? null : kindParam.split(',').map((k) => k.trim()).filter((k): k is ProduceKind => (VALID_KINDS as string[]).includes(k));
-  if (kinds && kinds.length === 0) {
+  // Only the starred works. A signed-out visitor has none (the demo library is nobody's to star).
+  const favoritesOnly = req.nextUrl.searchParams.get('favorite') === '1';
+  if ((kinds && kinds.length === 0) || (favoritesOnly && !user)) {
     return NextResponse.json({ items: [], demo, nextCursor: null }, { headers: { 'Cache-Control': 'private, no-store', ...timing.headers() } });
   }
   // A malformed cursor is refused rather than read as „from the top", which would repeat the first page.
@@ -153,7 +163,9 @@ export async function GET(req: NextRequest) {
   try {
     let query = client
       .from('generation_jobs')
-      .select(JOB_COLUMNS)
+      // The inner join keeps only rows the caller starred (RLS lets them see their own stars only), in the same order and
+      // with the same cursor as every other tab.
+      .select(favoritesOnly ? `${JOB_COLUMNS},library_favorites!inner(job_id)` : JOB_COLUMNS)
       .eq('user_id', uid)
       .eq('status', 'completed')
       .neq('service_type', 'voice') // trained voice models aren't playable Library media
@@ -166,15 +178,15 @@ export async function GET(req: NextRequest) {
     if (before) query = query.or(`created_at.lt."${before.t}",and(created_at.eq."${before.t}",id.lt."${before.i}")`);
 
     const { data, error } = await timing.time('db', Promise.resolve(query));
-    if (error || !Array.isArray(data)) return failure(503, timing);
+    if (error || !Array.isArray(data)) return failure(503, timing, favoritesOnly ? 'favorites_unavailable' : undefined);
     // A full page may have more behind it. The cursor is the last ROW read (a row without media is skipped below, but
     // it still marks where this page ended).
-    const last = data.length === limit ? (data as GenerationJobRow[])[data.length - 1] : undefined;
+    const last = data.length === limit ? (data as unknown as GenerationJobRow[])[data.length - 1] : undefined;
     const nextCursor = last ? encodeLibraryCursor(last.created_at, last.id) : null;
 
     // Belt and braces: the query is already `.eq('user_id', uid)` (and RLS for a session client); a row for anyone
     // else never reaches the signer below even if that filter is ever dropped.
-    const owned = (data as GenerationJobRow[]).filter((row) => row.user_id === uid);
+    const owned = (data as unknown as GenerationJobRow[]).filter((row) => row.user_id === uid);
     const resignable = new Set<number>(); // indices into `rows`
     const unproven = new Map<number, GenerationJobRow>(); // legacy manual saves, proven below or left as stored
     const rows: LibraryItem[] = [];
@@ -217,6 +229,14 @@ export async function GET(req: NextRequest) {
     // row whose URL we wrote or verified (mayResign).
     // A manual save filed before POST probed it is re-signed once its own stored token proves the link was ours
     // (provenOwnSignedLink); the proof is written back so the next read skips the probe. Bounded per page.
+    // Which of this page the caller starred, read while the links are proven and signed. A failed read leaves `favorite`
+    // out (the screen shows the star off), never fails the page.
+    const starred = user && !favoritesOnly && rows.length
+      ? timing.time('fav', Promise.resolve(client.from('library_favorites').select('job_id').in('job_id', rows.map((r) => r.id))))
+        .then(({ data: favs, error: favError }) => (favError || !Array.isArray(favs) ? null : new Set(favs.map((f) => String((f as { job_id: unknown }).job_id)))))
+        .catch(() => null)
+      : Promise.resolve(null);
+
     const legacy = [...unproven.entries()].slice(0, LEGACY_PROOFS_PER_PAGE);
     const svc = legacy.length ? createServiceRoleClient() : null;
     await timing.time('proof', Promise.all(legacy.map(async ([i, row]) => {
@@ -258,6 +278,8 @@ export async function GET(req: NextRequest) {
       });
     })));
 
+    const stars = favoritesOnly ? null : await starred;
+    if (user && (favoritesOnly || stars)) for (const item of rows) item.favorite = favoritesOnly || stars!.has(item.id);
     const items = rows;
 
     // NOT CACHED BY THE BROWSER (§4.2). The page is one account's works with signed links in it, and a browser cache keys
@@ -402,5 +424,69 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: true, storage });
   } catch (e) {
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : 'delete failed' }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/studio/library — star or unstar works (§4.2.4). Body `{ id, favorite }` for one work, or
+ * `{ ids, favorite }` (at most MAX_FAVORITE_IDS) for the one-time move of the stars a browser kept before stars were the
+ * account's (lib/library/libraryQuery migrateDeviceFavorites).
+ *
+ * ⚠️ NOT ON THE WORK'S OWN ROW. A star is a row in public.library_favorites, never a write to generation_jobs: every write
+ * there moves its updated_at, and the bell's feed, the task tray and the delivery outbox read a recent updated_at as
+ * "this just finished" (supabase/migrations/20261024a). Written through the service role (nobody else may write the
+ * table), so the caller is checked by hand first: a work is starred only when the caller's OWN session can read it as one
+ * of their finished Library works, and an unstar deletes only the caller's own stars. An id that is not theirs (a
+ * browser shared by two accounts keeps both accounts' old stars) is skipped, and nothing says whose it is.
+ *
+ * 401 signed out · 400 a malformed body · 404 the one work named is not the caller's · 503 the stars cannot be written
+ * (no table yet, no service role). Success: `{ success: true, favorite, ids }`, ids being the works now in that state.
+ */
+const MAX_FAVORITE_IDS = 200;
+const FAVORITE_ID = /^[A-Za-z0-9:_.-]{1,200}$/;
+
+export async function PATCH(req: NextRequest) {
+  const headers = { 'Cache-Control': 'private, no-store' };
+  const { supabase, user } = await authedClientFromRequest(req);
+  if (!user) return NextResponse.json({ success: false, error: 'unauthenticated' }, { status: 401, headers });
+  const body = (await req.json().catch(() => ({}))) as { id?: unknown; ids?: unknown; favorite?: unknown };
+  const one = typeof body.id === 'string';
+  const raw: unknown[] | null = one ? [body.id] : Array.isArray(body.ids) ? body.ids : null;
+  if (typeof body.favorite !== 'boolean' || !raw || raw.length === 0 || raw.length > MAX_FAVORITE_IDS
+    || !raw.every((v): v is string => typeof v === 'string' && FAVORITE_ID.test(v))) {
+    return NextResponse.json({ success: false, error: 'invalid_request' }, { status: 400, headers });
+  }
+  const favorite = body.favorite;
+  const ids = [...new Set(raw as string[])];
+  const svc = createServiceRoleClient();
+  if (!svc) return NextResponse.json({ success: false, error: 'favorites_unavailable' }, { status: 503, headers });
+  try {
+    if (!favorite) {
+      const { error } = await svc.from('library_favorites').delete().eq('user_id', user.id).in('job_id', ids);
+      if (error) return NextResponse.json({ success: false, error: 'favorites_unavailable' }, { status: 503, headers });
+      return NextResponse.json({ success: true, favorite, ids }, { headers });
+    }
+    const { data, error } = await supabase
+      .from('generation_jobs')
+      .select('id')
+      .in('id', ids)
+      .eq('user_id', user.id)
+      .eq('status', 'completed')
+      .neq('service_type', 'voice');
+    if (error || !Array.isArray(data)) return NextResponse.json({ success: false, error: 'library_unavailable' }, { status: 503, headers });
+    const asked = new Set(ids);
+    const mine = data.map((r) => String((r as { id: unknown }).id)).filter((id) => asked.has(id));
+    if (mine.length === 0) {
+      return one
+        ? NextResponse.json({ success: false, error: 'not_found' }, { status: 404, headers })
+        : NextResponse.json({ success: true, favorite, ids: [] }, { headers });
+    }
+    const { error: starError } = await svc
+      .from('library_favorites')
+      .upsert(mine.map((job_id) => ({ user_id: user.id, job_id })), { onConflict: 'user_id,job_id', ignoreDuplicates: true });
+    if (starError) return NextResponse.json({ success: false, error: 'favorites_unavailable' }, { status: 503, headers });
+    return NextResponse.json({ success: true, favorite, ids: mine }, { headers });
+  } catch {
+    return NextResponse.json({ success: false, error: 'favorite_failed' }, { status: 500, headers });
   }
 }
