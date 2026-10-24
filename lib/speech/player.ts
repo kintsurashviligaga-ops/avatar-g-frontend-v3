@@ -38,7 +38,7 @@ import { browserSpeechCache, type SpeechCache } from './cache';
 import { SPEECH_CHUNK_RAMP, chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
 import type { SpeechLocale } from './contract';
 import { speechLocaleOf } from './locale';
-import { fetchSpeech, requestSpeech } from './request';
+import { fetchSpeech, requestSpeech, speechResult, type SpeechMiss } from './request';
 import { speechTrialModel, speechTrialRecorder, wavAudioMs } from './trial';
 import { inspectWav } from './wav';
 import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
@@ -458,6 +458,12 @@ export class SpeechPlayer {
 
 // ─── the browser's one player ────────────────────────────────────────────────────────────────────────────────
 
+/** A trial chunk's miss, as its card row says it: "502 tts_failed · Google 404 NOT_FOUND: …" ("no answer" for none). */
+export function trialMiss(miss: SpeechMiss): string {
+  const head = miss.status ? [String(miss.status), miss.error].filter(Boolean).join(' ') : 'no answer';
+  return miss.cause ? `${head} · ${miss.cause}` : head;
+}
+
 /**
  * The browser's wiring: one <audio>, no read during a call, and POST /api/tts/gemini once per chunk (lib/speech/request)
  * unless `cache` already holds that chunk for this account (lib/speech/cache).
@@ -469,15 +475,16 @@ export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlaye
     synth: async (text, locale, signal) => {
       if (!speechTrialModel()) return cache ? cache.synth(text, locale, signal, fetchSpeech) : requestSpeech(text, locale, signal);
       const askedAt = Date.now();
-      const answer = await fetchSpeech(text, locale, signal);
+      const result = await speechResult(text, locale, signal);
       if (!signal.aborted) {
-        speechTrialRecorder().onChunk({
-          chars: text.length,
-          synthMs: Date.now() - askedAt,
-          audioMs: answer ? wavAudioMs(answer.blob.size, answer.profile) : null,
-        });
+        const synthMs = Date.now() - askedAt;
+        speechTrialRecorder().onChunk(
+          result.ok
+            ? { chars: text.length, synthMs, audioMs: wavAudioMs(result.answer.blob.size, result.answer.profile) }
+            : { chars: text.length, synthMs, audioMs: null, miss: trialMiss(result.miss) },
+        );
       }
-      return answer?.blob ?? null;
+      return result.ok ? result.answer.blob : null;
     },
     createAudio: () => new Audio() as unknown as SpeechAudio,
     createObjectURL: (blob) => URL.createObjectURL(blob),

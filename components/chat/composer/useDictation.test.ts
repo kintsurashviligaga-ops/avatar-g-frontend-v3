@@ -11,7 +11,9 @@ import {
   dictationWarning,
   downsampleTo16k,
   isAppleSpeechEngine,
+  ownerSttReason,
   speechLangFor,
+  transcribeUrlFor,
   useDictation,
   type CaptureFactory,
   type DictationDeps,
@@ -315,7 +317,8 @@ describe('recorder path (WAV)', () => {
     expect(h.track.stop).toHaveBeenCalled();
     expect(h.fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = h.fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/voice/transcribe');
+    // The final pass asks for the route's diagnostics; only an admin's answer carries them.
+    expect(url).toBe('/api/voice/transcribe?diag=1');
     expect(init.method).toBe('POST');
     const fd = init.body as FormData;
     const audio = fd.get('audio') as File;
@@ -643,6 +646,31 @@ describe('speed and truth (owner, 2026-10-11 PART 4)', () => {
     expect(h.result.current.d.warn).toBe(dictationWarning('unavailable', 'en'));
     expect(h.result.current.value).toBe('');
     expect(reportMetrics.mock.calls[0]![0]).toMatchObject({ outcome: 'error', errorCode: 'stt_unavailable' });
+  });
+
+  test("the owner's final-pass warning says Google's reason; interim passes do not ask for it (GG, production 2026-10-24)", async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest.fn(async (url: string) =>
+      url.includes('diag=1')
+        ? jsonRes({ text: '', provider: 'none', code: 'stt_unavailable', diag: { geminiError: 'Gemini STT failed (400) on gemini-3.8-flash: projects/my-proj-1/locations/global bad field' } })
+        : jsonRes({ text: '', provider: 'none', code: 'stt_unavailable' }));
+    const h = harness({ locale: 'en', deps: { speechRecognition: () => undefined, fetch: fetchMock as unknown as typeof fetch } });
+    await act(async () => { await h.result.current.d.toggle(); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/api/voice/transcribe');
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    expect(h.result.current.d.warn).toBe(
+      `${dictationWarning('unavailable', 'en')} (Gemini STT failed (400) on gemini-3.8-flash: projects/…/locations/global bad field)`,
+    );
+  });
+
+  test('transcribeUrlFor and ownerSttReason', () => {
+    expect(transcribeUrlFor('/api/voice/transcribe', 'interim')).toBe('/api/voice/transcribe');
+    expect(transcribeUrlFor('/api/voice/transcribe', 'final')).toBe('/api/voice/transcribe?diag=1');
+    expect(transcribeUrlFor('/x?a=1', 'final')).toBe('/x?a=1&diag=1');
+    expect(ownerSttReason(undefined)).toBeNull();
+    expect(ownerSttReason({ geminiError: null })).toBeNull();
+    expect(ownerSttReason({ geminiError: 'x'.repeat(500) })).toHaveLength(200);
   });
 
   test('one metrics summary per dictation: the three latencies a person feels, the engine time, and never the words', async () => {

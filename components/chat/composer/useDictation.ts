@@ -372,6 +372,25 @@ export function dictationWarning(kind: DictationWarningKind, locale?: string): s
   }
 }
 
+/**
+ * The FINAL pass asks the route for its diagnostics (`?diag=1`). The route answers them to an admin only (the owner)
+ * and ignores the flag for anyone else, so only the owner's warning can carry Google's reason.
+ * ⚠️ GG's mic on Production (2026-10-24) said only "speech recognition is unavailable right now": the route's
+ * `stt_unavailable` stands for every Google failure (access, quota, a refused request, a missing model), and the
+ * reason was in a server log nobody could read.
+ */
+export function transcribeUrlFor(base: string, kind: 'interim' | 'final'): string {
+  if (kind !== 'final') return base;
+  return `${base}${base.includes('?') ? '&' : '?'}diag=1`;
+}
+
+/** Google's reason from the route's admin diagnostics, bounded and without the project's path; null when none. */
+export function ownerSttReason(diag: unknown): string | null {
+  const raw = diag && typeof diag === 'object' ? (diag as { geminiError?: unknown }).geminiError : null;
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  return raw.replace(/projects\/[^/\s"'`]{1,200}/g, 'projects/…').replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
 /** The route's `code` (a 200 with no text) → the localized warning for a final pass. */
 export function sttCodeWarning(code: string, locale?: string): string {
   return dictationWarning(code === 'stt_unavailable' ? 'unavailable' : code === 'unsupported_format' ? 'format' : 'failed', locale);
@@ -950,7 +969,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       // The extension must match the bytes — Whisper-class legs dispatch on it (lib/voice/audioExt).
       fd.append('audio', blob, `clip.${audioExtFor(blob.type || r.session?.mimeType)}`);
       fd.append('language', r.lang);
-      const res = await d.fetch(o.transcribeUrl ?? '/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'same-origin', signal: ctrl.signal });
+      const res = await d.fetch(transcribeUrlFor(o.transcribeUrl ?? '/api/voice/transcribe', kind), { method: 'POST', body: fd, credentials: 'same-origin', signal: ctrl.signal });
       // Re-check AFTER the await: a send() while this was in flight already emptied the box.
       if (stale()) return;
       if (res.status === 401) {
@@ -961,7 +980,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         return;
       }
       if (!res.ok) throw new PassFailure(res.status === 429 ? 'rate_limited' : 'http');
-      const j = (await res.json().catch(() => ({}))) as { text?: unknown; language?: unknown; code?: unknown };
+      const j = (await res.json().catch(() => ({}))) as { text?: unknown; language?: unknown; code?: unknown; diag?: unknown };
       if (stale()) return;
       const took = d.now() - t0;
       if (run.passMs.length < DICTATION_METRICS_MAX_PASSES) run.passMs.push(took);
@@ -994,7 +1013,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         // user's whole dictation, so say so now instead of leaving an unchanged box.
         if (kind === 'final') {
           run.errorCode = sttCodeMetric(code);
-          setWarn(sttCodeWarning(code, o.locale));
+          const why = ownerSttReason(j.diag);
+          setWarn(why ? `${sttCodeWarning(code, o.locale)} (${why})` : sttCodeWarning(code, o.locale));
         }
         return;
       }

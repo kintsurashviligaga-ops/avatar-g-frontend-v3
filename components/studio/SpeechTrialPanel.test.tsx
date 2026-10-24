@@ -37,6 +37,18 @@ test('with a trial: the model, a hint, then the first sound, the waits and each 
   now.mockRestore();
 });
 
+test("a chunk that came back without audio says why (the owner's 3.8 trial read nothing, 2026-10-24)", () => {
+  window.history.replaceState({}, '', '/ka/dashboard?tts=gemini-3.8-flash-tts');
+  render(<SpeechTrialPanel locale="ka" />);
+  const rec = speechTrialRecorder();
+  act(() => {
+    rec.onState({ status: 'loading', owner: 'omni:c:2', index: 0 });
+    rec.onChunk({ chars: 81, synthMs: 1_200, audioMs: null, miss: '502 tts_failed · Google 404 NOT_FOUND: Publisher Model … was not found' });
+  });
+  expect(screen.getByText('#1 81 სიმბ. → 1.2 s · ✗')).toBeTruthy();
+  expect(screen.getByText('502 tts_failed · Google 404 NOT_FOUND: Publisher Model … was not found')).toBeTruthy();
+});
+
 test('the labels follow the studio language', () => {
   window.history.replaceState({}, '', '/en/dashboard?tts=gemini-3.8-flash-tts');
   render(<SpeechTrialPanel locale="en" />);
