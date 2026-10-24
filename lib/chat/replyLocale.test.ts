@@ -1,4 +1,4 @@
-import { detectReplyLocale, isReplyLocale, replyLocaleForText, resolveReplyLocale, type ReplyLocale } from './replyLocale';
+import { detectReplyLocale, isReplyLocale, ownLocaleForText, replyLocaleForText, resolveReplyLocale, type ReplyLocale } from './replyLocale';
 
 const user = (content: string) => ({ role: 'user', content });
 
@@ -45,9 +45,10 @@ describe('isReplyLocale', () => {
 });
 
 describe('replyLocaleForText — short or ambiguous text follows the UI locale', () => {
-  it.each(UI_LOCALES)('UI %s: "ok", "?", emoji, digits, one word and product names stay in the UI locale', (ui) => {
-    for (const text of ['ok', 'OK!', '?', '???', '👍', '🙂🙏', '12345', 'lol', 'Hello', 'thanks!', 'iPhone 15 Pro', 'iPhone 15 Pro?', 'GPT-5', '', '   ']) {
+  it.each(UI_LOCALES)('UI %s: "ok", "?", emoji, digits, a bare word and product names stay in the UI locale', (ui) => {
+    for (const text of ['ok', 'OK!', '?', '???', '👍', '🙂🙏', '12345', 'lol', 'yes', 'iPhone 15 Pro', 'iPhone 15 Pro?', 'GPT-5', '', '   ']) {
       expect([text, replyLocaleForText(text, ui)]).toEqual([text, ui]);
+      expect([text, ownLocaleForText(text, ui)]).toEqual([text, null]);
     }
   });
 
@@ -120,6 +121,33 @@ describe('replyLocaleForText — Latin text', () => {
     }
   });
 
+  it('a short English greeting or thanks is English, whatever the UI (GG, production 2026-10-24: „hi" got Georgian)', () => {
+    for (const ui of UI_LOCALES) {
+      for (const text of ['hi', 'Hi!', 'Hello', 'hello!', 'hey', 'Hey there', 'thanks!', 'Thanks a lot', 'good morning', 'bye']) {
+        expect([ui, text, replyLocaleForText(text, ui)]).toEqual([ui, text, 'en']);
+      }
+    }
+  });
+
+  it('Russian typed in Latin letters is ru (GG, production 2026-10-24: Russian got Georgian)', () => {
+    for (const ui of UI_LOCALES) {
+      for (const text of ['privet kak dela', 'Privet!', 'spasibo', 'Zdravstvuyte, pomogi mne', 'napishi stikh pro more', 'kak dela?', 'da, khorosho']) {
+        expect([ui, text, replyLocaleForText(text, ui)]).toEqual([ui, text, 'ru']);
+      }
+    }
+  });
+
+  it('weak Russian translit words alone ("da", "net", "no") are not Russian', () => {
+    expect(replyLocaleForText('net', 'ka')).toBe('ka');
+    expect(replyLocaleForText('no', 'en')).toBe('en');
+    expect(replyLocaleForText('da', 'en')).toBe('en');
+  });
+
+  it('Georgian translit stays Georgian with a Georgian UI, also beside a word Russian shares', () => {
+    expect(replyLocaleForText('gamarjoba, rogor xar?', 'ka')).toBe('ka');
+    expect(replyLocaleForText('madloba da kargad', 'ka')).toBe('ka');
+  });
+
   it('two Latin words with no English function word are not English', () => {
     expect(replyLocaleForText('Samsung Galaxy', 'ka')).toBe('ka');
     expect(replyLocaleForText('Samsung Galaxy', 'ru')).toBe('ru');
@@ -187,10 +215,29 @@ describe('resolveReplyLocale', () => {
     expect(resolveReplyLocale(ru, 'en')).toBe('ru');
   });
 
-  it('only the latest user message decides — an ambiguous one follows the UI, not an older user turn', () => {
+  it('a latest user message that says no language keeps the conversation\'s: the latest user turn that said one', () => {
+    // GG, production 2026-10-24: after a Russian exchange, an „ok" went back to the Georgian UI.
     const convo = [user('Привет, как дела?'), assistant('Хорошо, спасибо!'), user('ok')];
-    expect(resolveReplyLocale(convo, 'ka')).toBe('ka');
-    expect(resolveReplyLocale(convo, 'en')).toBe('en');
+    expect(resolveReplyLocale(convo, 'ka')).toBe('ru');
+    expect(resolveReplyLocale(convo, 'en')).toBe('ru');
+    const en = [user('გამარჯობა'), assistant('გამარჯობა!'), user('how are you today?'), assistant('Fine!'), user('👍')];
+    expect(resolveReplyLocale(en, 'ka')).toBe('en');
+    // A Georgian chat stays Georgian on an "ok" — the reason the UI hint exists.
+    const ka = [user('როგორ ხარ?'), assistant('კარგად!'), user('ok')];
+    expect(resolveReplyLocale(ka, 'ka')).toBe('ka');
+    expect(resolveReplyLocale(ka, 'en')).toBe('ka');
+  });
+
+  it('a conversation of nothing but "ok"s, and an assistant turn, never decide: the UI locale', () => {
+    expect(resolveReplyLocale([user('ok'), assistant('Хорошо!'), user('?')], 'ka')).toBe('ka');
+    expect(resolveReplyLocale([assistant('Привет!'), user('👍')], 'en')).toBe('en');
+  });
+
+  it('looks back at most 8 user messages for the conversation\'s language', () => {
+    const old = [user('Привет, как дела?'), ...Array.from({ length: 8 }, () => [assistant('…'), user('ok')]).flat()];
+    expect(resolveReplyLocale(old, 'ka')).toBe('ka');
+    expect(resolveReplyLocale(old.slice(2), 'ka')).toBe('ka');
+    expect(resolveReplyLocale([user('Привет, как дела?'), ...old.slice(3)], 'ka')).toBe('ru');
   });
 
   it('reads multimodal (parts) content', () => {

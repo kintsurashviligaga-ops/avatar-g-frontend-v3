@@ -335,6 +335,12 @@ describe('buildPlatformPrompt — locale variants', () => {
     }
   });
 
+  it('Georgian or Russian typed in Latin letters is answered in its own script', () => {
+    expect(build('ka')).toContain('Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.');
+    expect(build('ru')).toContain('Russian typed in Latin letters ("privet", "kak dela") is still Russian: answer it in Cyrillic.');
+    expect(build('en')).not.toMatch(/typed in Latin letters/);
+  });
+
   it.each(LOCALES)('lists every studio tool under its %s UI name and tagline, or names it as not available yet', (locale) => {
     for (const veoAvatar of [false, true]) {
       const p = buildPlatformPrompt({ locale, now: NOW, veoAvatar });

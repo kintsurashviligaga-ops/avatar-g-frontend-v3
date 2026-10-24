@@ -33,8 +33,8 @@
  * allowance is spent), 'pro_busy' (Pro failed even after a retry; its allowance is given back) or 'guest'.
  *
  * LANGUAGE: the body's optional `language` ('ka' | 'en' | 'ru', the UI locale) is a hint — the reply follows the
- * user's own words when they clearly are another language, the hint otherwise (lib/chat/replyLocale
- * `resolveReplyLocale`); the route's notices are written in the hint.
+ * user's own words when they say a language ("hi" and Russian in Latin letters included), else the conversation's
+ * latest one, else the hint (lib/chat/replyLocale `resolveReplyLocale`); the route's notices are written in the hint.
  *
  * ⚠️ THE CLIENT PICKS A MODE, NEVER A MODEL. A model id in the body is ignored; the chain is chosen here, so a request
  * cannot point a turn at an arbitrary (or costlier) model.
@@ -510,7 +510,7 @@ export async function POST(req: NextRequest) {
   const v2 = body.protocol === 2 || body.protocol === '2';
   // ⚠️ THE UI LOCALE IS A HINT, NOT A LOCK — AND NOT IGNORED. It used to win outright when sent, and without it the
   // latest message's dominant script decided, so "ok" answered a Georgian user in English. The user's own words win
-  // when they clearly are another language; short or ambiguous ones follow the UI (lib/chat/replyLocale).
+  // when they say a language; an "ok" keeps the conversation's, and the UI's only when none was said (lib/chat/replyLocale).
   const uiLocale: Locale | null = isReplyLocale(body.language) ? body.language : null;
   const respLocale: Locale = resolveReplyLocale(localeView(wire), uiLocale);
   /** The route's own notices are UI text: the interface's language when the client said it, else the reply's. */

@@ -57,11 +57,18 @@ export function isReplyLocale(v: unknown): v is ReplyLocale {
  *   · Georgian or Cyrillic letters (≥ 2) are the user's language — Latin letters beside them are names, terms or
  *     pasted text ("თარგმნე: The quick brown fox…" is a Georgian request);
  *   · with a Georgian UI, Georgian typed in Latin letters ("gamarjoba", "rogor xar", "madloba") is Georgian;
- *   · Latin text is English only when it reads as English: two words or more with an English function word
- *     ("how are you", "thank you") — never "ok", "lol", "iPhone 15 Pro" or a bare term;
- *   · everything else ("?", emoji, digits, one word) is the UI locale.
+ *   · Russian typed in Latin letters ("privet", "kak dela", "spasibo") is Russian;
+ *   · Latin text is English when it reads as English: two words or more with an English function word
+ *     ("how are you", "thank you"), or a short greeting or thanks ("hi", "Hello!", "thanks") — never "ok", "lol",
+ *     "iPhone 15 Pro" or a bare term;
+ *   · everything else ("?", emoji, digits, "ok") says nothing of its own: it keeps the language of the user's latest
+ *     message that did say one, and the UI locale when none did.
  * With an English UI, an English sentence wraps whatever it quotes ("translate to English: გამარჯობა" stays English).
  * The prompt still lets the user ask for another language explicitly.
+ *
+ * ⚠️ „HI" WAS ANSWERED IN GEORGIAN, AND SO WAS RUSSIAN (GG, production 2026-10-24: „I write in English, it answers in
+ * Georgian; I write in Russian, it answers in Georgian"). A one-word greeting was "too short" and followed the Georgian
+ * UI, Russian in Latin letters read as nothing, and an "ok" after a Russian exchange went back to the UI's Georgian.
  */
 const GEORGIAN_RE = /[Ⴀ-ჿᲐ-Ჿⴀ-⴯]/g;
 const CYRILLIC_RE = /[Ѐ-ӿ]/g;
@@ -82,6 +89,41 @@ const ENGLISH_FUNCTION_WORDS: ReadonlySet<string> = new Set([
   'tell', 'thank', 'thanks', 'that', 'the', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'to', 'up',
   'us', 'want', 'was', 'we', 'were', 'what', "what's", 'when', 'where', 'which', 'who', 'why', 'will', 'with', 'would',
   'write', 'yes', 'you', "you're", 'your',
+]);
+
+/**
+ * A greeting or thanks that is English on its own: "hi", "Hello!", "thanks", "good morning". Counted only in a short
+ * message (ENGLISH_GREETING_MAX_WORDS), where it is the message; "ok", "yes" and "lol" are not here, they say nothing.
+ */
+const ENGLISH_GREETINGS: ReadonlySet<string> = new Set([
+  'hi', 'hii', 'hey', 'heya', 'hiya', 'hello', 'helo', 'howdy', 'greetings', 'morning', 'afternoon', 'evening',
+  'goodnight', 'thanks', 'thank', 'thx', 'thanx', 'tnx', 'bye', 'goodbye', 'sorry',
+]);
+const ENGLISH_GREETING_MAX_WORDS = 3;
+
+/**
+ * Russian words as people type them in Latin letters (several spellings: zh/j, kh/h, y/i, sh/sch). Only words that are
+ * not everyday English; the few that are ("net", "da", "kto") count only beside a distinctive one, as for Georgian.
+ */
+const LATIN_RUSSIAN_WORDS: ReadonlySet<string> = new Set([
+  'privet', 'privetik', 'zdravstvuy', 'zdravstvuyte', 'zdravstvujte', 'zdravstvuite', 'zdorovo', 'dobroe', 'dobryy',
+  'dobryi', 'dobriy', 'dobry', 'utro', 'vecher', 'dela', 'delo', 'kak', 'chto', 'shto', 'eto', 'etot', 'eta',
+  'spasibo', 'spasiba', 'pozhaluysta', 'pozhalujsta', 'pojaluysta', 'pojalusta', 'pozhalusta', 'poka', 'khorosho',
+  'horosho', 'xorosho', 'plokho', 'ploho', 'normalno', 'otlichno', 'ladno', 'konechno', 'nichego', 'menya', 'mne',
+  'tebya', 'tebe', 'mozhno', 'mojno', 'mozhesh', 'mojesh', 'mozhete', 'mojete', 'mogu', 'nado',
+  'nuzhno', 'nujno', 'khochu', 'hochu', 'xochu', 'znayu', 'znaesh', 'ponyal', 'ponyala', 'napishi', 'napisat',
+  'rasskazhi', 'raskaji', 'skazhi', 'skaji', 'pomogi', 'pomoch', 'sdelay', 'sdelai', 'davay', 'davai', 'pokazhi',
+  'segodnya', 'zavtra', 'vchera', 'seychas', 'sejchas', 'sichas', 'gde', 'kogda', 'pochemu', 'zachem', 'skolko',
+  'kakoy', 'kakoi', 'kakaya', 'kakie', 'ochen', 'tozhe', 'toje', 'tolko', 'uzhe', 'uje', 'yeshche', 'eshche', 'eshe',
+  'esche', 'vse', 'vsyo', 'vsio', 'budet', 'byl', 'byla', 'mozhet', 'mojet', 'potom', 'zdes', 'tam', 'tut', 'kuda',
+  'russkiy', 'russkii', 'russki', 'porusski', 'russkom', 'angliyskom', 'gruzinskom', 'bratan', 'krasivo',
+  'interesno', 'pravda', 'tochno', 'voobshche', 'voobshe', 'prosto', 'sovsem', 'vremya', 'rabota', 'rabotaet',
+  'kartinku', 'pesnyu', 'stikh', 'stih',
+]);
+/** Everyday English (or Georgian translit) words that are also Russian: they count only beside a distinctive word. */
+const LATIN_RUSSIAN_WEAK: ReadonlySet<string> = new Set([
+  'da', 'net', 'ne', 'ya', 'ty', 'vy', 'on', 'ona', 'oni', 'my', 'i', 'v', 'na', 's', 'k', 'u', 'o', 'a', 'no', 'kto',
+  'tak', 'nu', 'vot', 'pro', 'dlya', 'dlia', 'ili', 'vas', 'vam', 'nam', 'po',
 ]);
 
 /**
@@ -125,8 +167,20 @@ function latinWords(prose: string): string[] {
 
 /** Latin text that reads as English (see the rule above). */
 function readsAsEnglish(words: readonly string[]): boolean {
+  if (words.length && words.length <= ENGLISH_GREETING_MAX_WORDS && words.some((w) => ENGLISH_GREETINGS.has(w))) return true;
   if (words.length < 2) return false;
   return words.some((w) => ENGLISH_FUNCTION_WORDS.has(w));
+}
+
+/** Russian typed in Latin letters: two distinctive words, or one that, with the weak ones, is half the message. */
+function latinRussian(words: readonly string[]): boolean {
+  let strong = 0;
+  let weak = 0;
+  for (const w of words) {
+    if (LATIN_RUSSIAN_WORDS.has(w)) strong++;
+    else if (LATIN_RUSSIAN_WEAK.has(w)) weak++;
+  }
+  return strong >= 2 || (strong >= 1 && (strong + weak) * 2 >= words.length);
 }
 
 /** Georgian typed in Latin letters: two distinctive words, or one that, with the weak ones, is half the message. */
@@ -140,8 +194,11 @@ function latinGeorgian(words: readonly string[]): boolean {
   return strong >= 2 || (strong >= 1 && (strong + weak) * 2 >= words.length);
 }
 
-/** The reply language for one message's text, given the UI locale. Pure; exported for tests. */
-export function replyLocaleForText(text: string, uiLocale: ReplyLocale): ReplyLocale {
+/**
+ * The language one message's text says of its own, given the UI locale, or null when it says none ("ok", "?", an emoji,
+ * a product name). Pure; exported for tests.
+ */
+export function ownLocaleForText(text: string, uiLocale: ReplyLocale): ReplyLocale | null {
   const prose = ownWords(typeof text === 'string' ? text : '');
   const ka = (prose.match(GEORGIAN_RE) ?? []).length;
   const ru = (prose.match(CYRILLIC_RE) ?? []).length;
@@ -150,24 +207,39 @@ export function replyLocaleForText(text: string, uiLocale: ReplyLocale): ReplyLo
 
   if (uiLocale === 'en') {
     if (readsAsEnglish(words)) return 'en';
-    return nonLatin ?? 'en';
+    if (nonLatin) return nonLatin;
+    return latinRussian(words) ? 'ru' : null;
   }
   if (nonLatin) return nonLatin;
   if (uiLocale === 'ka' && latinGeorgian(words)) return 'ka';
+  if (latinRussian(words)) return 'ru';
   if (readsAsEnglish(words)) return 'en';
-  return uiLocale;
+  return null;
 }
+
+/** The reply language for one message's text alone, given the UI locale. Pure; exported for tests. */
+export function replyLocaleForText(text: string, uiLocale: ReplyLocale): ReplyLocale {
+  return ownLocaleForText(text, uiLocale) ?? uiLocale;
+}
+
+/** How many of the latest user messages an "ok" looks back through for the conversation's language. */
+const LOOKBACK_USER_MESSAGES = 8;
 
 /**
  * The chat's reply language. With a valid `uiLocale` (the client's `language`), the latest USER message decides as
- * described above; without one (an older client), the legacy dominant-script detection.
+ * described above; one that says no language of its own keeps the language of the latest user message that did (up to
+ * LOOKBACK_USER_MESSAGES back), else the UI locale. Without one (an older client), the legacy dominant-script detection.
  */
 export function resolveReplyLocale(messages: readonly LocaleMessage[], uiLocale?: unknown): ReplyLocale {
   if (!isReplyLocale(uiLocale)) return detectReplyLocale(messages);
   if (!Array.isArray(messages)) return uiLocale;
-  for (let i = messages.length - 1; i >= 0; i--) {
+  let seen = 0;
+  for (let i = messages.length - 1; i >= 0 && seen < LOOKBACK_USER_MESSAGES; i--) {
     const m = messages[i];
-    if (m && m.role === 'user') return replyLocaleForText(textOf(m.content), uiLocale);
+    if (!m || m.role !== 'user') continue;
+    seen++;
+    const own = ownLocaleForText(textOf(m.content), uiLocale);
+    if (own) return own;
   }
   return uiLocale;
 }
