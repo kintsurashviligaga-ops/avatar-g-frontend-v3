@@ -152,9 +152,12 @@ test.describe('phone 375×812 — ref3', () => {
     await expect(go).toContainText(String(quoteCredits({ tool: 'image', count: 4 })));
   });
 
-  test('no horizontal scroll — the sheet open, a picker open, the gallery open — and the composer\'s text box steps aside', async ({ page }) => {
+  test('no horizontal scroll — the sheet open, a picker open, the gallery open — and one description box at a time', async ({ page }) => {
     await openImage(page);
     expect(await noSideways(page)).toEqual({ page: 0, body: 0, sheet: 0 });
+    // The prompt lives in the sheet while it is open: the composer's text box steps aside, so one box is on screen.
+    await expect(page.getByTestId('composer-input')).toBeHidden();
+    await page.getByTestId('create-prompt').fill('A lighthouse on a cliff at sunset');
     await page.getByTestId('templates-toggle').click();
     await page.getByTestId('advanced-toggle').click();
     await page.getByTestId('chip-aspect').click();
@@ -162,16 +165,22 @@ test.describe('phone 375×812 — ref3', () => {
     expect(await noSideways(page)).toEqual({ page: 0, body: 0, sheet: 0 });
     await page.keyboard.press('Escape');
 
-    // The prompt lives in the sheet; closing it leaves the pill's [+] · tool chip · mic, and no second text box.
+    // Closing the sheet brings the composer's box back holding the same words: the draft stays, and the composer is
+    // available while the settings are shut (#113, merged 2026-10-22). The pill keeps [+], the tool button (which says
+    // Image) and the settings toggle beside it.
     await page.getByTestId('create-close').click();
     await expect(page.getByTestId('image-create-panel')).toBeHidden();
-    await expect(page.getByTestId('composer-input')).toBeHidden();
+    await expect(page.getByTestId('composer-input')).toBeVisible();
+    await expect(page.getByTestId('composer-input')).toHaveValue('A lighthouse on a cliff at sunset');
     await expect(page.getByTestId('plus')).toBeVisible();
-    await expect(page.getByTestId('options-toggle')).toContainText('Image');
+    await expect(page.getByTitle('Switch service')).toContainText('Image');
+    await expect(page.getByTestId('options-toggle')).toHaveAttribute('aria-expanded', 'false');
     expect(await noSideways(page)).toEqual({ page: 0, body: 0, sheet: 0 });
-    // …and the chip brings the screen back.
+    // …and the chip brings the screen back, its box holding the words, the composer's box aside again.
     await page.getByTestId('options-toggle').click();
     await expect(page.getByTestId('image-create-panel')).toBeVisible();
+    await expect(page.getByTestId('create-prompt')).toHaveValue('A lighthouse on a cliff at sunset');
+    await expect(page.getByTestId('composer-input')).toBeHidden();
   });
 
   test('the pickers are sheets with large options: ten ratios drawn as shapes and one Google model to pick', async ({ page }) => {

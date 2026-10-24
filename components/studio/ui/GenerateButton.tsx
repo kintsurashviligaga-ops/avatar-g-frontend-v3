@@ -77,6 +77,9 @@ export function GenerateButton({
         aria-busy={loading || undefined}
         aria-label={accessible}
         data-testid={testId}
+        // The panel's one primary action (Phase 2 PR 7): a panel shows this OR the composer's Send, never both
+        // (tests/one-primary.spec.ts counts them at 390 and 1440 px).
+        data-primary="create"
         data-price={priced ? credits : free ? 'free' : undefined}
         // A priced run is never pressed by a voice call (lib/voice/liveUi): it goes through start_generation's yes + countdown.
         data-live-guard={priced ? 'spend' : undefined}
