@@ -46,6 +46,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.browser }}
+      # The runner has no sound card. Firefox plays the audio to its end there and then raises a media error instead of
+      # only `ended`, which the player rightly counts as a failed chunk. A PulseAudio server (it falls back to a null
+      # sink) gives it the audio output every user's device has. Chromium and WebKit fake one themselves.
+      - name: Audio output for Firefox
+        if: matrix.browser == 'firefox'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl info | grep -E 'Server Name|Default Sink'
       - name: Read-aloud in ${{ matrix.browser }} (mocked provider)
         run: npx playwright test --config=playwright.speech.config.ts --project=${{ matrix.browser }}
         timeout-minutes: 15

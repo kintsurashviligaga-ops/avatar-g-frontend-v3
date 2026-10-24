@@ -128,7 +128,7 @@ const mediaLog = (page: Page) => page.evaluate(() => {
   const m = window as unknown as { __media?: string[]; __el?: HTMLMediaElement };
   const el = m.__el;
   const state = el
-    ? `currentTime=${el.currentTime.toFixed(2)} duration=${el.duration} readyState=${el.readyState} networkState=${el.networkState} paused=${el.paused} error=${el.error?.code ?? 'none'}`
+    ? `currentTime=${el.currentTime.toFixed(2)} duration=${el.duration} readyState=${el.readyState} networkState=${el.networkState} paused=${el.paused} error=${el.error ? `${el.error.code} ${el.error.message}` : 'none'}`
     : 'no chunk element played';
   return `${state}; events: ${(m.__media ?? []).join(', ') || 'none'}`;
 });
