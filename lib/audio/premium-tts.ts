@@ -1,58 +1,25 @@
 'use client';
 
-/** One sanctioned Gemini TTS playback. Epochs prevent stale requests from playing after Stop. */
-import { MIC_RELEASE_EVENT } from '@/lib/voice/micBus';
+/**
+ * lib/audio/premium-tts.ts — read-aloud for the older chat screens, on the page's one player (lib/speech/player).
+ *
+ * It used to own a second <audio> element, read only the first 800 characters of a reply, and could play over the
+ * studio's read. Now it starts the shared player: the whole text is read in sentence chunks, a chunk that fails stops
+ * the read there instead of being skipped, and any other read (or Live taking the microphone) stops this one. Gemini TTS
+ * on Vertex only, through /api/tts/gemini: no other provider and never a browser voice.
+ */
+import type { SpeechLocale } from '@/lib/speech/contract';
+import { speechPlayer } from '@/lib/speech/player';
 
-let current: HTMLAudioElement | null = null;
-let currentUrl: string | null = null;
-let request: AbortController | null = null;
-let epoch = 0;
-let releaseListener: (() => void) | null = null;
+/** The owner of a read started here (the speech-mode replies of the older chat screens). */
+export const PREMIUM_OWNER = 'premium';
 
-export function stopPremium(): void {
-  epoch += 1;
-  request?.abort(); request = null;
-  try { current?.pause(); } catch { /* unavailable media API */ }
-  if (currentUrl) { URL.revokeObjectURL(currentUrl); currentUrl = null; }
-  current = null;
-  if (releaseListener && typeof window !== 'undefined') window.removeEventListener(MIC_RELEASE_EVENT, releaseListener);
-  releaseListener = null;
+/** Read `text` aloud, stopping whatever else is being read. Not inside a tap? The element was unlocked by an earlier one. */
+export function speakPremium(text: string, locale: SpeechLocale = 'ka'): void {
+  speechPlayer().play({ owner: PREMIUM_OWNER, text, locale });
 }
 
-/** Explicit TTS helper, not an automatic transcript reader. No alternate provider fallback. */
-export async function speakPremium(text: string, locale: 'ka' | 'en' | 'ru' = 'ka'): Promise<HTMLAudioElement | null> {
-  stopPremium();
-  const mine = epoch;
-  const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 800);
-  if (!clean) return null;
-  const controller = new AbortController();
-  request = controller;
-  const timer = setTimeout(() => { if (mine === epoch) stopPremium(); }, 30_000);
-  releaseListener = () => stopPremium();
-  if (typeof window !== 'undefined') window.addEventListener(MIC_RELEASE_EVENT, releaseListener);
-  try {
-    const res = await fetch('/api/tts/gemini', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: clean, locale }), signal: controller.signal,
-    });
-    if (!res.ok || mine !== epoch) return null;
-    const blob = await res.blob();
-    if (!blob.size || mine !== epoch) return null;
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    current = audio; currentUrl = url;
-    audio.onended = () => { if (mine === epoch) stopPremium(); };
-    audio.onerror = () => { if (mine === epoch) stopPremium(); };
-    await audio.play();
-    if (mine !== epoch) { audio.pause(); return null; }
-    return audio;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-    if (mine === epoch) {
-      request = null;
-      if (!current || current.paused) stopPremium();
-    }
-  }
+/** Stop the read started by speakPremium; a read another button started is left alone. */
+export function stopPremium(): void {
+  speechPlayer().stop(PREMIUM_OWNER);
 }

@@ -12,7 +12,7 @@
  * while the latest bubble streams.
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { Loader2, RotateCcw, ThumbsUp, ThumbsDown, Check, Copy, Square, Volume2, ImageOff } from 'lucide-react';
@@ -22,7 +22,7 @@ import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-c
 import { buildSuggestedActions } from '@/lib/orchestrator/actions';
 import type { AssetRef, PipelineContext, ServiceResponse, SuggestedAction } from '@/lib/orchestrator/types';
 import type { ChatMessage, ServiceId, Locale } from '@/components/chat/types';
-import { speakPremium, stopPremium } from '@/lib/audio/premium-tts';
+import { useSpeaker } from '@/lib/speech/useSpeech';
 
 // R3F is client-only + heavy — load the 3D room viewer on demand (no SSR).
 const RoomViewer = dynamic(() => import('@/components/chat/RoomViewer'), {
@@ -452,28 +452,20 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-// Premium TTS — routes through the shared streaming-capable speakPremium handler
-// (ElevenLabs Georgian, progressive chunk-buffered playback; NEVER a browser voice).
+// Read-aloud on the page's one player (lib/speech/player): Gemini TTS through /api/tts/gemini, the whole reply in
+// sentence chunks (NEVER a browser voice). A tap while reading stops; after a failed chunk it reads on from that chunk.
 function SpeakerButton({ text, locale }: { text: string; locale: string }) {
-  const [state, setState] = useState<'idle' | 'loading' | 'playing'>('idle');
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speaker = useSpeaker(`messages:${useId()}`);
+  const state = speaker.status === 'loading' ? 'loading' : speaker.speaking ? 'playing' : speaker.status === 'failed' ? 'failed' : 'idle';
+  // Unmounting while this button's read is under way stops it.
+  const { stop } = speaker;
+  useEffect(() => () => stop(), [stop]);
 
-  useEffect(() => () => { try { audioRef.current?.pause(); } catch { /* noop */ } }, []);
+  const onClick = useCallback(() => {
+    speaker.toggle(text, locale === 'en' || locale === 'ru' ? locale : 'ka');
+  }, [speaker, text, locale]);
 
-  const onClick = useCallback(async () => {
-    if (state === 'loading') return;
-    if (state === 'playing') { stopPremium(); setState('idle'); return; }
-    const clean = text.replace(/\s+/g, ' ').trim().slice(0, 800);
-    if (!clean) return;
-    setState('loading');
-    const a = await speakPremium(clean, (locale === 'en' || locale === 'ru' ? locale : 'ka'));
-    if (!a) { setState('idle'); return; }
-    audioRef.current = a;
-    setState('playing');
-    a.addEventListener('ended', () => setState('idle'));
-  }, [state, text, locale]);
-
-  const title = state === 'playing' ? 'Stop' : state === 'loading' ? 'Synthesizing' : 'Speak';
+  const title = state === 'playing' ? 'Stop' : state === 'loading' ? 'Synthesizing' : state === 'failed' ? 'Try again' : 'Speak';
   return (
     <ActionIcon title={title} onClick={onClick} active={state === 'playing'} tone="cyan">
       {state === 'loading'

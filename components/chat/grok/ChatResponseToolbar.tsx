@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useId } from 'react'
 import type { ChatMode } from './ChatModeSelector'
-import { speakPremium, stopPremium } from '@/lib/audio/premium-tts'
+import { useSpeaker } from '@/lib/speech/useSpeech'
 
 interface ChatResponseToolbarProps {
   content: string
@@ -13,7 +13,9 @@ interface ChatResponseToolbarProps {
 export function ChatResponseToolbar({ content, mode, responseTime }: ChatResponseToolbarProps) {
   const [liked, setLiked] = useState<'up' | 'down' | null>(null)
   const [copied, setCopied] = useState(false)
-  const [speakState, setSpeakState] = useState<'idle' | 'loading' | 'playing'>('idle')
+  // Read-aloud on the page's one player (lib/speech/player): this button's own read, by a per-instance owner.
+  const speaker = useSpeaker(`toolbar:${useId()}`)
+  const speakState = speaker.status === 'loading' ? 'loading' : speaker.speaking ? 'playing' : speaker.status === 'failed' ? 'failed' : 'idle'
 
   const handleCopy = useCallback(async () => {
     try {
@@ -33,16 +35,9 @@ export function ChatResponseToolbar({ content, mode, responseTime }: ChatRespons
     }
   }, [content, handleCopy])
 
-  // Premium Georgian voice ONLY — routes through /api/elevenlabs/tts. The native
-  // browser speechSynthesis robot voice is forbidden product-wide.
-  const handleSpeak = useCallback(async () => {
-    if (speakState === 'playing' || speakState === 'loading') { stopPremium(); setSpeakState('idle'); return }
-    setSpeakState('loading')
-    const audio = await speakPremium(content, 'ka')
-    if (!audio) { setSpeakState('idle'); return }
-    setSpeakState('playing')
-    audio.addEventListener('ended', () => setSpeakState('idle'), { once: true })
-  }, [content, speakState])
+  // Gemini TTS (Vertex) through /api/tts/gemini ONLY. The native browser speechSynthesis robot voice is forbidden
+  // product-wide. A tap while reading stops; after a failed chunk it reads on from that chunk.
+  const handleSpeak = useCallback(() => speaker.toggle(content, 'ka'), [content, speaker])
 
   const modeLabel = mode === 'deep' ? 'Deep' : mode === 'expert' ? 'Expert' : mode === 'auto' ? 'Auto' : 'Fast'
 
@@ -90,7 +85,7 @@ export function ChatResponseToolbar({ content, mode, responseTime }: ChatRespons
         </button>
 
         {/* Audio / Speak — premium Georgian voice */}
-        <button onClick={handleSpeak} className={`grok-toolbar-btn ${speakState !== 'idle' ? 'active' : ''}`} aria-label="Speak" aria-busy={speakState === 'loading'} type="button" title={speakState === 'playing' ? 'Stop' : speakState === 'loading' ? 'Loading…' : 'Read aloud (premium voice)'}>
+        <button onClick={handleSpeak} className={`grok-toolbar-btn ${speakState !== 'idle' ? 'active' : ''}`} aria-label="Speak" aria-busy={speakState === 'loading'} type="button" title={speakState === 'playing' ? 'Stop' : speakState === 'loading' ? 'Loading…' : speakState === 'failed' ? 'Try again' : 'Read aloud (premium voice)'}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
             <path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" />

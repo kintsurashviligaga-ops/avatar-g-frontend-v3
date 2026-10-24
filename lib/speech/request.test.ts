@@ -65,3 +65,16 @@ test(`it waits ${SPEECH_CLIENT_DEADLINE_MS} ms, longer than the route's deadline
   expect(jest.getTimerCount()).toBe(0);
   expect(hangs).toHaveBeenCalledTimes(1);
 });
+
+test('a 401 opens the sign-in prompt (when there is a window) and is null', async () => {
+  const dispatched: string[] = [];
+  const g = globalThis as unknown as { window?: { dispatchEvent(e: Event): boolean } };
+  g.window = { dispatchEvent: (e: Event) => { dispatched.push(e.type); return true; } };
+  try {
+    const f = jest.fn(async () => new Response('{"error":"unauthorized"}', { status: 401 }));
+    expect(await requestSpeech('hello', 'en', undefined, f as unknown as typeof fetch)).toBeNull();
+    expect(dispatched).toEqual(['myavatar:auth-required']);
+  } finally {
+    delete g.window;
+  }
+});

@@ -29,6 +29,8 @@ export async function requestSpeech(
       body: JSON.stringify({ text, locale }),
       signal: deadline.signal,
     });
+    // Signed out (the session ended while the page stayed open): the app's sign-in prompt opens instead of a silent miss.
+    if (res.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
     if (!res.ok) return null;
     const blob = await res.blob();
     // Cancelled while the body was arriving: the caller has moved on, so nothing is handed back to play.
