@@ -14,10 +14,11 @@
  *   • Hover quick-actions — Download (mp4/png), Share/Copy Link, Copy prompt, Delete (confirm)
  *   • Shimmer placeholders — per-tile until media paints
  *   • Empty state — branded illustration + CTA
- *   • Infinite scroll — IntersectionObserver-based, page size 24 → offset bump
+ *   • Infinite scroll — IntersectionObserver-based, page size 24, each page after the last one's cursor
  *
- * Fail-soft by construction: an unauthenticated visitor or an empty account sees
- * a friendly empty state, never an error wall.
+ * An empty account sees a friendly empty state. A read that failed says so, with a retry, instead of „nothing here
+ * yet"; a signed-out visitor's demo library is labelled as examples, with no Delete (§4.2.7, components/library/
+ * LibraryState).
  *
  * The list comes from lib/library/libraryQuery (shared with the /library page): opening the slide-over again shows
  * what was loaded at once and refreshes it behind the grid, and a new file saved in the studio refreshes every loaded
@@ -29,7 +30,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { describeServiceError } from './ui/serviceError';
 import { saveMedia } from '@/lib/media/saveMedia';
-import { LIBRARY_UPDATED_EVENT, type LibraryItem, removeLibraryItem, useLibraryFeed, useLibraryOwner } from '@/lib/library/libraryQuery';
+import { LIBRARY_UPDATED_EVENT, type LibraryItem, libraryFailure, removeLibraryItem, useLibraryFeed, useLibraryOwner } from '@/lib/library/libraryQuery';
+import { DemoNotice, GuestEmpty, LibraryFailed } from '@/components/library/LibraryState';
 import { SHOOT_COPY, shootLang } from './create/newtools/copy';
 import { PlanView } from './create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
@@ -155,7 +157,7 @@ function filterMatches(kind: string, f: FilterKey): boolean {
 // card re-renders on each page merge. Props are stable (t is a constant COPY object, onDeleted is a
 // useCallback), so memo skips re-rendering the settled grid. Pure render perf; no behaviour change.
 const LibraryCard = memo(function LibraryCard({
-  item, t, locale, onDeleted, onRetry, isNew = false,
+  item, t, locale, onDeleted, onRetry, isNew = false, canDelete = true,
 }: {
   item: LibraryItem;
   t: (typeof COPY)['ka'];
@@ -167,6 +169,8 @@ const LibraryCard = memo(function LibraryCard({
   onRetry: () => void;
   /** VECTOR 6 — a subtle badge when this asset was just added via a live library refresh. */
   isNew?: boolean;
+  /** false for the demo library's examples: nobody's to delete. */
+  canDelete?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [duration, setDuration] = useState<number>(0);
@@ -355,15 +359,17 @@ const LibraryCard = memo(function LibraryCard({
           >
             {copied === 'link' ? <Check className="h-3.5 w-3.5 text-[#338FE8]" /> : <Share2 className="h-3.5 w-3.5" />}
           </button>
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            title={t.deleteAsset}
-            aria-label={t.deleteAsset}
-            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-red-500/30 hover:text-red-300"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              title={t.deleteAsset}
+              aria-label={t.deleteAsset}
+              className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-red-500/30 hover:text-red-300"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -455,14 +461,16 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
   const owner = useLibraryOwner();
   const queryClient = useQueryClient();
   const { data, isPending, isFetching, isFetchingNextPage, hasNextPage, isFetchNextPageError, fetchNextPage, refetch } = feed;
-  // Every loaded page, newest first. Defensive: drop any duplicates if pages overlap on a fresh write. A failed first
-  // load shows the empty state, as before.
+  // Every loaded page, newest first. Defensive: drop any duplicates if pages overlap on a fresh write.
   const items = useMemo<LibraryItem[] | null>(() => {
     if (!data) return isPending ? null : [];
     const seen = new Set<string>();
     return data.pages.flatMap((p) => p.items).filter((it) => (seen.has(it.id) ? false : (seen.add(it.id), true)));
   }, [data, isPending]);
   const loading = isFetching && !isFetchingNextPage;
+  const demo = data?.pages[0]?.demo === true;
+  // Nothing loaded and the read failed. A refresh that fails behind a loaded grid keeps the grid.
+  const failure = feed.isError && !data ? libraryFailure(feed.error) : null;
   // A page that failed stops the endless scroll, so it does not pound the route.
   const exhausted = items !== null && (!hasNextPage || isFetchNextPageError);
 
@@ -572,7 +580,9 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
         })}
       </div>
 
-      {items === null ? (
+      {failure ? (
+        <LibraryFailed lang={locale} failure={failure} onRetry={load} retrying={isFetching} />
+      ) : items === null ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="aspect-video animate-pulse rounded-2xl border border-app-border/10 bg-app-elevated/50" />
@@ -580,10 +590,11 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
         </div>
       ) : visible && visible.length > 0 ? (
         <>
+          {demo && <DemoNotice lang={locale} />}
           <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <AnimatePresence mode="popLayout">
               {visible.map((item) => (
-                <LibraryCard locale={locale} key={item.id} item={item} t={t} onDeleted={handleDeleted} onRetry={load} isNew={newIds.has(item.id)} />
+                <LibraryCard locale={locale} key={item.id} item={item} t={t} onDeleted={handleDeleted} onRetry={load} isNew={newIds.has(item.id)} canDelete={!demo} />
               ))}
             </AnimatePresence>
           </div>
@@ -602,6 +613,8 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
             </div>
           )}
         </>
+      ) : demo && items.length === 0 ? (
+        <GuestEmpty lang={locale} />
       ) : (
         <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-app-border/10 bg-app-elevated/50">

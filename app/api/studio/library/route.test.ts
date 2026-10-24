@@ -5,7 +5,8 @@
  *   POST: signed-in only; one of OUR storage objects only through a currently valid signed URL (probed); anything else
  *         must be a public http(s) address. Nothing lands in the shared demo library any more.
  *   GET:  the service role re-signs only a SIGNED url on OUR host, in one of OUR media buckets, on a row the caller
- *         owns whose URL we wrote or verified — batched, one call per bucket.
+ *         owns whose URL we wrote or verified — batched, one call per bucket. A failure is an error status, never an
+ *         empty Library; the demo library says it is one; pages continue from a cursor.
  *
  * The session, the service-role client, the job store and the network are mocked; storage-adapter runs for real.
  */
@@ -22,12 +23,20 @@ const mockSignCalls: Array<{ bucket: string; paths: string[]; ttl: number }> = [
 
 const mockFilters: Array<[string, ...unknown[]]> = [];
 const mockUpdates: Array<Record<string, unknown>> = [];
+/** order / range / or, in call order: how the page is cut. */
+const mockPaging: Array<[string, ...unknown[]]> = [];
+let mockQueryError: { message: string } | null = null;
+let mockQueryThrows = false;
+let mockNoService = false;
 function mockQuery() {
   const chain: Record<string, unknown> = {};
-  for (const m of ['select', 'order', 'range', 'like', 'limit']) chain[m] = () => chain;
+  for (const m of ['select', 'like', 'limit']) chain[m] = () => chain;
+  for (const m of ['order', 'range', 'or']) chain[m] = (...a: unknown[]) => { mockPaging.push([m, ...a]); return chain; };
   chain.update = (patch: Record<string, unknown>) => { mockUpdates.push(patch); return chain; };
   for (const m of ['eq', 'neq', 'in']) chain[m] = (...a: unknown[]) => { mockFilters.push([m, ...a]); return chain; };
-  chain.then = (resolve: (v: unknown) => unknown) => resolve({ data: mockRows, error: null });
+  chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => (
+    mockQueryThrows ? reject(new Error('socket hang up')) : resolve({ data: mockQueryError ? null : mockRows, error: mockQueryError })
+  );
   return chain;
 }
 const mockServiceClient = {
@@ -43,7 +52,7 @@ const mockServiceClient = {
 };
 jest.mock('../../../../lib/supabase/server', () => ({
   authedClientFromRequest: jest.fn(async () => ({ supabase: { from: () => mockQuery() }, user: mockUser })),
-  createServiceRoleClient: () => mockServiceClient,
+  createServiceRoleClient: () => (mockNoService ? null : mockServiceClient),
 }));
 jest.mock('../../../../lib/audio/voiceModel', () => ({ DEMO_VOICE_USER_ID: 'demo-user' }));
 const mockRecord = jest.fn(async (_input: Record<string, unknown>) => true);
@@ -53,7 +62,7 @@ jest.mock('../../../../lib/orchestrator/jobs', () => ({
 }));
 
 import { NextRequest } from 'next/server';
-import { GET, POST } from './route';
+import { decodeLibraryCursor, encodeLibraryCursor, GET, POST } from './route';
 
 const ENV = { ...process.env };
 let fetchSpy: jest.SpyInstance;
@@ -67,6 +76,10 @@ beforeEach(() => {
   mockSignCalls.length = 0;
   mockFilters.length = 0;
   mockUpdates.length = 0;
+  mockPaging.length = 0;
+  mockQueryError = null;
+  mockQueryThrows = false;
+  mockNoService = false;
   mockRecord.mockClear();
   fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 206 }));
 });
@@ -220,6 +233,116 @@ describe('GET — the kind filter', () => {
     expect(serviceFilters()).toEqual([['eq', 'service_type', 'film']]);
     const res = await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=bogus'));
     expect(((await res.json()) as { items: unknown[] }).items).toEqual([]);
+  });
+});
+
+describe('GET — empty, demo, unavailable and failed are told apart (§4.2.7)', () => {
+  const read = async (path = '/api/studio/library?limit=40') => {
+    const res = await GET(new NextRequest(`https://myavatar.ge${path}`));
+    return { status: res.status, cache: res.headers.get('cache-control'), body: (await res.json()) as Record<string, unknown> };
+  };
+
+  test('the caller\'s own works say demo: false; an empty Library is a 200 with no items', async () => {
+    mockRows = [row('a', 'https://cdn.example.com/a.mp4')];
+    expect(await read()).toMatchObject({ status: 200, body: { demo: false } });
+    mockRows = [];
+    expect(await read()).toEqual({ status: 200, cache: 'private, no-store', body: { items: [], demo: false, nextCursor: null } });
+  });
+
+  test('a signed-out visitor gets the demo library, marked as such', async () => {
+    mockUser = null;
+    mockRows = [row('d', 'https://cdn.example.com/demo.mp4', { user_id: 'demo-user' })];
+    const { status, body } = await read();
+    expect(status).toBe(200);
+    expect(body.demo).toBe(true);
+    expect((body.items as Array<{ id: string }>).map((i) => i.id)).toEqual(['d']);
+    expect(mockFilters).toEqual(expect.arrayContaining([['eq', 'user_id', 'demo-user']]));
+  });
+
+  test('a database error is 503 „unavailable", not „you have no works"', async () => {
+    mockQueryError = { message: 'connection refused' };
+    expect(await read()).toEqual({ status: 503, cache: 'private, no-store', body: { items: [], error: 'library_unavailable' } });
+  });
+
+  test('no demo reader for a signed-out visitor is 503 too', async () => {
+    mockUser = null;
+    mockNoService = true;
+    expect(await read()).toMatchObject({ status: 503, body: { error: 'library_unavailable' } });
+  });
+
+  test('anything else that throws is 500 „failed"', async () => {
+    mockQueryThrows = true;
+    expect(await read()).toEqual({ status: 500, cache: 'private, no-store', body: { items: [], error: 'library_failed' } });
+  });
+});
+
+describe('GET — stable pages: a cursor names where the last page ended (§4.2.4)', () => {
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => row(`job_${String(i).padStart(3, '0')}`, 'https://cdn.example.com/x.mp4', { created_at: `2026-10-${String(20 - Math.floor(i / 10)).padStart(2, '0')}T00:00:00.000+00:00` }));
+
+  test('one total order: newest first, then id', async () => {
+    await GET(new NextRequest('https://myavatar.ge/api/studio/library?limit=24'));
+    expect(mockPaging).toEqual([
+      ['order', 'created_at', { ascending: false }],
+      ['order', 'id', { ascending: false }],
+      ['range', 0, 23],
+    ]);
+  });
+
+  test('a full page carries the cursor of its last row; a short page carries none', async () => {
+    mockRows = rows(3);
+    let body = (await (await GET(new NextRequest('https://myavatar.ge/api/studio/library?limit=3'))).json()) as { nextCursor: string | null };
+    expect(decodeLibraryCursor(body.nextCursor)).toEqual({ t: mockRows[2]!.created_at, i: 'job_002' });
+    body = (await (await GET(new NextRequest('https://myavatar.ge/api/studio/library?limit=4'))).json()) as { nextCursor: string | null };
+    expect(body.nextCursor).toBeNull();
+  });
+
+  test('a row with no media still marks where the page ended', async () => {
+    mockRows = [row('a', 'https://cdn.example.com/a.mp4'), row('b', '', { signed_url: null })];
+    const body = (await (await GET(new NextRequest('https://myavatar.ge/api/studio/library?limit=2'))).json()) as { items: unknown[]; nextCursor: string };
+    expect(body.items).toHaveLength(1);
+    expect(decodeLibraryCursor(body.nextCursor)?.i).toBe('b');
+  });
+
+  test('`before` reads strictly after that row, from the top of the remaining rows (offset is ignored)', async () => {
+    const cursor = encodeLibraryCursor('2026-10-20T00:00:00.123456+00:00', 'vremix:productad:abc');
+    await GET(new NextRequest(`https://myavatar.ge/api/studio/library?limit=24&offset=48&before=${cursor}`));
+    expect(mockPaging).toEqual([
+      ['order', 'created_at', { ascending: false }],
+      ['order', 'id', { ascending: false }],
+      ['range', 0, 23],
+      ['or', 'created_at.lt."2026-10-20T00:00:00.123456+00:00",and(created_at.eq."2026-10-20T00:00:00.123456+00:00",id.lt."vremix:productad:abc")'],
+    ]);
+  });
+
+  test.each([
+    ['not base64 JSON', 'nope!'],
+    ['a quote in the id', Buffer.from(JSON.stringify({ t: '2026-10-20T00:00:00Z', i: 'a",id.gt."' })).toString('base64url')],
+    ['a comma and parenthesis in the id', Buffer.from(JSON.stringify({ t: '2026-10-20T00:00:00Z', i: 'a),or(id.gt.0' })).toString('base64url')],
+    ['not a time', Buffer.from(JSON.stringify({ t: 'yesterday', i: 'a' })).toString('base64url')],
+    ['a missing part', Buffer.from(JSON.stringify({ t: '2026-10-20T00:00:00Z' })).toString('base64url')],
+  ])('a malformed cursor (%s) is refused with 400 and reads nothing', async (_label, before) => {
+    const res = await GET(new NextRequest(`https://myavatar.ge/api/studio/library?before=${encodeURIComponent(before)}`));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe('bad_cursor');
+    expect(mockPaging).toEqual([]);
+  });
+
+  test('a cursor round-trips the stored time and id exactly', () => {
+    for (const [t, i] of [['2026-10-24T05:51:46.123456+00:00', 'prod_1700000000000_ab12cd'], ['2026-10-24 05:51:46+00', '11111111-2222-4333-8444-555555555555']] as const) {
+      expect(decodeLibraryCursor(encodeLibraryCursor(t, i))).toEqual({ t, i });
+    }
+  });
+});
+
+describe('GET — expiresAt says when a link minted here stops working', () => {
+  test('a re-signed link carries its 24 h expiry; a link we did not sign carries none', async () => {
+    const now = Date.parse('2026-10-24T06:00:00.000Z');
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    mockRows = [row('ours', signed('renders', 'u/a.mp4')), row('ext', 'https://cdn.example.com/b.mp4')];
+    const items = (await (await GET(new NextRequest('https://myavatar.ge/api/studio/library?limit=40'))).json()).items as Array<{ id: string; expiresAt?: string }>;
+    clock.mockRestore();
+    expect(items.find((i) => i.id === 'ours')?.expiresAt).toBe('2026-10-25T06:00:00.000Z');
+    expect(items.find((i) => i.id === 'ext')).not.toHaveProperty('expiresAt');
   });
 });
 

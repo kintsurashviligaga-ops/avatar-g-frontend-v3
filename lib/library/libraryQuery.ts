@@ -17,6 +17,10 @@
  *
  * Obsolete requests are still cancelled (#160): the fetch takes React Query's signal, and a query nobody is looking at
  * any more is aborted. A late answer can only land in its own tab's cache, never on the tab on screen.
+ *
+ * The route tells its answers apart (§4.2.7): a page of the caller's own works, the shared demo library for a signed-out
+ * visitor (`demo`), a database it could not reach (503) and any other failure (500). A failure stays an error here
+ * (libraryFailure says which), so neither screen can show it as „nothing created yet".
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
@@ -33,9 +37,17 @@ export interface LibraryItem {
   createdAt: string;
   /** An interior 3D plan: `url` is the render it was made for. */
   plan?: { geometry: RoomGeometry; style: StyleGuide };
+  /** When `url` stops working (ISO), if the route minted it. */
+  expiresAt?: string;
 }
 
-interface LibraryPage { items: LibraryItem[] }
+export interface LibraryPage {
+  items: LibraryItem[];
+  /** The shared demo library a signed-out visitor is shown: examples, not anyone's works. */
+  demo: boolean;
+  /** Where the next page starts (the studio grid's endless list); null at the end. */
+  nextCursor: string | null;
+}
 
 /** How long a loaded page counts as current. Within it, going back to a tab sends nothing. */
 export const LIBRARY_STALE_MS = 30_000;
@@ -51,6 +63,21 @@ export class LibraryFetchError extends Error {
   }
 }
 
+/** Why a read failed, for the screen: the Library could not be reached (503, or no answer at all), or it failed. */
+export type LibraryFailure = 'unavailable' | 'failed';
+export function libraryFailure(error: unknown): LibraryFailure {
+  if (error instanceof LibraryFetchError) return error.status === 503 ? 'unavailable' : 'failed';
+  return 'unavailable'; // the fetch itself threw: offline, or the route never answered
+}
+
+/** A loaded page whose links run out within this long counts as out of date, so the next look fetches fresh ones. */
+const EXPIRY_MARGIN_MS = 10 * 60_000;
+function expiresSoon(data: LibraryPage | InfiniteData<LibraryPage> | undefined, now = Date.now()): boolean {
+  if (!data) return false;
+  const pages = 'pages' in data ? data.pages : [data];
+  return pages.some((p) => p.items.some((it) => !!it.expiresAt && Date.parse(it.expiresAt) - now < EXPIRY_MARGIN_MS));
+}
+
 export const libraryKeys = {
   /** Everything of one owner's Library. */
   owner: (owner: string) => ['library', owner] as const,
@@ -60,16 +87,24 @@ export const libraryKeys = {
   feed: (owner: string, limit: number) => ['library', owner, 'feed', { limit }] as const,
 };
 
-/** `offset` left out asks for the newest `limit` (the /library Favorites window). */
-export async function fetchLibraryPage(query: { kind?: string; limit: number; offset?: number }, signal?: AbortSignal): Promise<LibraryPage> {
+/** `offset` left out asks for the newest `limit` (the /library Favorites window); `before` continues after a cursor. */
+export async function fetchLibraryPage(
+  query: { kind?: string; limit: number; offset?: number; before?: string },
+  signal?: AbortSignal,
+): Promise<LibraryPage> {
   const qs = new URLSearchParams();
   if (query.kind) qs.set('kind', query.kind);
   qs.set('limit', String(query.limit));
   if (query.offset !== undefined) qs.set('offset', String(query.offset));
+  if (query.before) qs.set('before', query.before);
   const res = await fetch(`/api/studio/library?${qs.toString()}`, { cache: 'no-store', credentials: 'include', signal });
   if (!res.ok) throw new LibraryFetchError(res.status);
-  const json = (await res.json()) as { items?: LibraryItem[] };
-  return { items: Array.isArray(json.items) ? json.items : [] };
+  const json = (await res.json()) as { items?: LibraryItem[]; demo?: unknown; nextCursor?: unknown };
+  return {
+    items: Array.isArray(json.items) ? json.items : [],
+    demo: json.demo === true,
+    nextCursor: typeof json.nextCursor === 'string' && json.nextCursor ? json.nextCursor : null,
+  };
 }
 
 // ── Who owns the cache ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -131,25 +166,27 @@ export function useLibraryPage(kind: string, limit: number, offset?: number) {
     queryKey: libraryKeys.page(who ?? '', kind, limit, offset ?? -1),
     queryFn: ({ signal }) => fetchLibraryPage({ kind, limit, offset }, signal),
     enabled: who !== null,
-    staleTime: LIBRARY_STALE_MS,
+    staleTime: (q) => (expiresSoon(q.state.data) ? 0 : LIBRARY_STALE_MS),
     // Opening the page (a new mount) always checks behind what is shown; switching tabs on it does not.
     refetchOnMount: 'always',
     retry: retryOnce,
   });
 }
 
-/** The studio grid's endless list of every kind, `limit` per page. */
+/**
+ * The studio grid's endless list of every kind, `limit` per page. Each page continues from the cursor the one before
+ * it ended on, so a file saved or deleted while scrolling neither repeats nor skips a row (§4.2.4).
+ */
 export function useLibraryFeed(limit: number) {
   const who = useLibraryOwner();
   useLibraryUpdates(who);
   return useInfiniteQuery({
     queryKey: libraryKeys.feed(who ?? '', limit),
-    queryFn: ({ signal, pageParam }) => fetchLibraryPage({ limit, offset: pageParam }, signal),
-    initialPageParam: 0,
-    // Next offset = what is loaded so far; a short page means the end.
-    getNextPageParam: (last, pages) => (last.items.length < limit ? undefined : pages.reduce((n, p) => n + p.items.length, 0)),
+    queryFn: ({ signal, pageParam }) => fetchLibraryPage({ limit, before: pageParam ?? undefined }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: who !== null,
-    staleTime: LIBRARY_STALE_MS,
+    staleTime: (q) => (expiresSoon(q.state.data) ? 0 : LIBRARY_STALE_MS),
     refetchOnMount: 'always',
     retry: retryOnce,
   });

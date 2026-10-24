@@ -239,7 +239,11 @@ test('a failed request is not kept as „nothing created": the next visit asks a
   await act(async () => { render(<LibraryGallery locale="en" />); });
   await act(async () => { await new Promise((r) => setTimeout(r, 1100)); }); // its one quiet retry
   expect(requested).toHaveLength(2);
-  expect(screen.getByText('Nothing created yet')).toBeTruthy(); // the page still says what it said before
+  // It says the Library could not be reached, not that there is nothing in it (§4.2.7).
+  expect(screen.getByTestId('library-failed').getAttribute('data-failure')).toBe('unavailable');
+  expect(screen.getByText('The Library is not reachable right now.')).toBeTruthy();
+  expect(screen.getByText('Your works are safe.')).toBeTruthy();
+  expect(screen.queryByText('Nothing created yet')).toBeNull();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Video$/ })); });
   expect(kinds().filter((k) => k === 'film,avatar').length).toBeGreaterThan(2); // asked again, not served an empty cache
@@ -260,4 +264,92 @@ test('a deleted file leaves the page at once, and the page asks for what moved u
   } finally {
     confirm.mockRestore();
   }
+});
+
+describe('empty, demo, unavailable and failed are told apart (§4.2.7)', () => {
+  const answerWith = (fn: (url: string) => { ok: boolean; status: number; body?: unknown } | 'offline') => {
+    global.fetch = jest.fn(async (url: string) => {
+      requested.push(url);
+      const a = fn(url);
+      if (a === 'offline') throw new TypeError('Failed to fetch');
+      return { ok: a.ok, status: a.status, json: async () => a.body ?? {} };
+    }) as unknown as typeof fetch;
+  };
+  const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 1100)); }); // the one quiet retry
+
+  test('a 500 says it failed; offline says it could not be reached; Try again recovers', async () => {
+    let mode: 'fail' | 'offline' | 'ok' = 'fail';
+    answerWith(() => (mode === 'fail' ? { ok: false, status: 500 } : mode === 'offline' ? 'offline' : { ok: true, status: 200, body: { items: [AVATAR] } }));
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    await settle();
+    expect(screen.getByTestId('library-failed').getAttribute('data-failure')).toBe('failed');
+    expect(screen.getByText('The Library could not be loaded.')).toBeTruthy();
+
+    mode = 'offline';
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })); });
+    await settle();
+    expect(screen.getByTestId('library-failed').getAttribute('data-failure')).toBe('unavailable');
+
+    mode = 'ok';
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })); });
+    expect(screen.queryByTestId('library-failed')).toBeNull();
+    expect(document.querySelector('video')?.getAttribute('src')).toBe(`${AVATAR.url}#t=0.1`);
+  });
+
+  test('a refresh that fails behind a loaded tab keeps the tab on screen', async () => {
+    let fail = false;
+    answerWith(() => (fail ? { ok: false, status: 503 } : { ok: true, status: 200, body: { items: [AVATAR] } }));
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    fail = true;
+    await act(async () => { await client.invalidateQueries({ queryKey: ['library'] }); });
+    await settle();
+    expect(document.querySelectorAll('video')).toHaveLength(1);
+    expect(screen.queryByTestId('library-failed')).toBeNull();
+  });
+
+  test('the demo library is labelled as examples, offers sign-in, and has no Delete', async () => {
+    answerWith(() => ({ ok: true, status: 200, body: { items: [AVATAR], demo: true } }));
+    const onAuth = jest.fn();
+    window.addEventListener('myavatar:auth-required', onAuth);
+    try {
+      await act(async () => { render(<LibraryGallery locale="en" />); });
+      expect(screen.getByTestId('library-demo').textContent).toContain('These are examples. Sign in to see your own works.');
+      expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Download' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+      expect(onAuth).toHaveBeenCalledTimes(1);
+      expect((onAuth.mock.calls[0]![0] as CustomEvent).detail).toBe('login');
+    } finally {
+      window.removeEventListener('myavatar:auth-required', onAuth);
+    }
+  });
+
+  test('a signed-out visitor with no demo works is asked to sign in, not told they made nothing', async () => {
+    answerWith(() => ({ ok: true, status: 200, body: { items: [], demo: true } }));
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    expect(screen.getByTestId('library-guest').textContent).toContain('Sign in to see your works.');
+    expect(screen.queryByText('Nothing created yet')).toBeNull();
+  });
+
+  test('an account with nothing in it still says so', async () => {
+    answerWith(() => ({ ok: true, status: 200, body: { items: [], demo: false } }));
+    await act(async () => { render(<LibraryGallery locale="en" />); });
+    expect(screen.getByText('Nothing created yet')).toBeTruthy();
+    expect(screen.queryByTestId('library-failed')).toBeNull();
+    expect(screen.queryByTestId('library-demo')).toBeNull();
+  });
+
+  test('Georgian and Russian copy for a failure and for the demo', async () => {
+    answerWith(() => ({ ok: false, status: 500 }));
+    let view: ReturnType<typeof render>;
+    await act(async () => { view = render(<LibraryGallery locale="ka" />); });
+    await settle();
+    expect(screen.getByText('ბიბლიოთეკა ვერ ჩაიტვირთა.')).toBeTruthy();
+    expect(screen.getByText('შენი ნამუშევრები შენახულია.')).toBeTruthy();
+    view!.unmount();
+    client = new QueryClient();
+    answerWith(() => ({ ok: true, status: 200, body: { items: [AVATAR], demo: true } }));
+    await act(async () => { render(<LibraryGallery locale="ru" />); });
+    expect(screen.getByTestId('library-demo').textContent).toContain('Это примеры. Войдите, чтобы увидеть свои работы.');
+  });
 });

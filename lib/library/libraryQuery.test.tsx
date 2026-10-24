@@ -22,7 +22,8 @@ jest.mock('../supabase/browser', () => ({
 }));
 
 import {
-  LIBRARY_UPDATED_EVENT, fetchLibraryPage, libraryKeys, removeLibraryItem, resetLibraryOwnerForTests, useLibraryFeed, useLibraryPage,
+  LIBRARY_UPDATED_EVENT, LibraryFetchError, fetchLibraryPage, libraryFailure, libraryKeys, removeLibraryItem, resetLibraryOwnerForTests,
+  useLibraryFeed, useLibraryPage,
 } from './libraryQuery';
 
 notifyManager.setScheduler((run) => run());
@@ -76,7 +77,7 @@ test('the request skips the browser cache, carries the abort signal, and keeps t
 test('every key starts with the account; a sign-in as someone else drops the first account\'s works', async () => {
   await act(async () => { mount(<><Page /><Feed /></>); });
   expect(ownersInCache()).toEqual(['user-a']);
-  expect(client.getQueryData(libraryKeys.page('user-a', 'film,avatar', 12, 0))).toEqual({ items: [item('a1')] });
+  expect(client.getQueryData(libraryKeys.page('user-a', 'film,avatar', 12, 0))).toEqual({ items: [item('a1')], demo: false, nextCursor: null });
 
   answer = () => ({ ok: true, status: 200, items: [item('b1')] });
   await act(async () => { authListener!('SIGNED_IN', { user: { id: 'user-b' } }); });
@@ -138,4 +139,68 @@ test('a deleted file leaves every loaded page at once, without a request', async
   expect(ids('feed')).toEqual(['a2']);
   expect(calls).toHaveLength(before);
   expect(client.getQueryState(libraryKeys.page('user-a', 'film,avatar', 12, 0))?.isInvalidated).toBe(true);
+});
+
+test('the answer says whether it is the demo library and where the next page starts; `before` is sent as given', async () => {
+  global.fetch = jest.fn(async (url: string) => {
+    calls.push({ url });
+    return { ok: true, status: 200, json: async () => ({ items: [item('d1')], demo: true, nextCursor: 'abc' }) };
+  }) as unknown as typeof fetch;
+  await expect(fetchLibraryPage({ limit: 24, before: 'eyJ0Ijoi' })).resolves.toEqual({ items: [item('d1')], demo: true, nextCursor: 'abc' });
+  expect(calls[0]!.url).toBe('/api/studio/library?limit=24&before=eyJ0Ijoi');
+});
+
+test('a failure is „unavailable" for a 503 or no answer at all, „failed" otherwise', () => {
+  expect(libraryFailure(new LibraryFetchError(503))).toBe('unavailable');
+  expect(libraryFailure(new TypeError('Failed to fetch'))).toBe('unavailable');
+  expect(libraryFailure(new LibraryFetchError(500))).toBe('failed');
+  expect(libraryFailure(new LibraryFetchError(400))).toBe('failed');
+});
+
+test('200+ works scroll in whole, each exactly once, while files are saved and deleted between pages (§4.2.4)', async () => {
+  // A route with the real cursor rule: newest first, then id; `before` = strictly after that row.
+  type Row = ReturnType<typeof item>;
+  let rows: Row[] = Array.from({ length: 210 }, (_, i) => ({ ...item(`w${String(i).padStart(3, '0')}`), createdAt: new Date(Date.parse('2026-10-24T00:00:00Z') - Math.floor(i / 3) * 60_000).toISOString() }));
+  const order = (a: Row, b: Row) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1);
+  rows.sort(order);
+  global.fetch = jest.fn(async (url: string) => {
+    const q = new URL(url, 'https://x').searchParams;
+    const limit = Number(q.get('limit'));
+    const before = q.get('before') ? (JSON.parse(q.get('before')!) as { t: string; i: string }) : null;
+    const after = before ? rows.filter((r) => r.createdAt < before.t || (r.createdAt === before.t && r.id < before.i)) : rows;
+    const page = after.slice(0, limit);
+    const last = page.length === limit ? page[page.length - 1]! : null;
+    return { ok: true, status: 200, json: async () => ({ items: page, demo: false, nextCursor: last ? JSON.stringify({ t: last.createdAt, i: last.id }) : null }) };
+  }) as unknown as typeof fetch;
+
+  let feed: ReturnType<typeof useLibraryFeed> | null = null;
+  function Grab() { feed = useLibraryFeed(24); return null; }
+  await act(async () => { mount(<Grab />); });
+  const original = new Set(rows.map((r) => r.id));
+  let turn = 0;
+  while (feed!.hasNextPage) {
+    // Between two pages: a new file lands on top, and a file already loaded is deleted.
+    rows = [{ ...item(`new${turn}`), createdAt: new Date(Date.parse('2026-10-24T01:00:00Z') + turn * 1000).toISOString() }, ...rows].sort(order);
+    rows = rows.filter((r) => r.id !== `w${String(turn * 5).padStart(3, '0')}`);
+    turn += 1;
+    await act(async () => { await feed!.fetchNextPage(); });
+  }
+  const loaded = feed!.data!.pages.flatMap((p) => p.items.map((it) => it.id));
+  expect(loaded.length).toBe(new Set(loaded).size); // nothing twice
+  const missing = [...original].filter((id) => !loaded.includes(id) && rows.some((r) => r.id === id));
+  expect(missing).toEqual([]); // nothing still there was skipped
+  expect(loaded.filter((id) => original.has(id)).length).toBeGreaterThanOrEqual(200);
+});
+
+test('a tab whose links are about to run out is fetched again on return; a fresh one is not', async () => {
+  const soon = new Date(Date.now() + 5 * 60_000).toISOString();
+  const later = new Date(Date.now() + 23 * 3600_000).toISOString();
+  answer = (url) => ({ ok: true, status: 200, items: [{ ...item(url.includes('music') ? 'm1' : 'f1'), expiresAt: url.includes('music') ? later : soon }] });
+  const view = mount(<Page kind="film,avatar" />);
+  await act(async () => {});
+  await act(async () => { view.rerender(<QueryClientProvider client={client}><Page kind="music" /></QueryClientProvider>); });
+  await act(async () => { view.rerender(<QueryClientProvider client={client}><Page kind="film,avatar" /></QueryClientProvider>); });
+  expect(calls.map((c) => new URL(c.url, 'https://x').searchParams.get('kind'))).toEqual(['film,avatar', 'music', 'film,avatar']);
+  await act(async () => { view.rerender(<QueryClientProvider client={client}><Page kind="music" /></QueryClientProvider>); });
+  expect(calls).toHaveLength(3); // music's links last a day: its return sends nothing
 });
