@@ -37,8 +37,8 @@ import dynamic from 'next/dynamic';
 // chat bundle; opens as a full-screen overlay from a floating mic button. Additive: the text chat is untouched.
 const VoiceConversation = dynamic(() => import('@/components/voice/VoiceConversation'), { ssr: false });
 // Gemini Multimodal Live overlay — now the DEFAULT voice (live-validated native audio). ON unless
-// NEXT_PUBLIC_GEMINI_LIVE_ENABLED is explicitly set falsy, which reverts to the ElevenLabs
-// VoiceConversation below. Requires a signed-in userId to mint an ephemeral Live token (guests fall
+// NEXT_PUBLIC_GEMINI_LIVE_ENABLED is explicitly set falsy, which reverts to the turn-by-turn
+// VoiceConversation below (Gemini speech-to-text → chat → Gemini TTS). Requires a signed-in userId to mint an ephemeral Live token (guests fall
 // back to VoiceConversation regardless).
 const GeminiLiveConversation = dynamic(() => import('@/components/voice/GeminiLiveConversation'), { ssr: false });
 // Live Avatar enrollment (selfie + optional voice) → sets the user's core avatar shown in voice mode.
@@ -298,7 +298,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Live Avatar enrollment modal (selfie + voice) — opened from the profile menu or the myavatar:avatar-enroll event.
   const [avatarEnrollOpen, setAvatarEnrollOpen] = useState(false);
   // Set when the Live token mint reports Live is disabled/unavailable server-side (503) → fall back to the
-  // ElevenLabs voice stack at runtime for this open. Reset on each fresh open so a transient miss retries Live.
+  // turn-by-turn voice call at runtime for this open. Reset on each fresh open so a transient miss retries Live.
   const [liveUnavailable, setLiveUnavailable] = useState(false);
   // Signed-in user id — needed to mint a Gemini Live ephemeral token (flag-gated live voice only).
   const [userId, setUserId] = useState<string | null>(null);
@@ -442,7 +442,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   }, [voiceOpen, userId]);
   const liveUid = voiceUid ?? userId;
   // Signed in, but the client has not resolved WHO yet (the session was seeded from the server): wait for the id
-  // instead of starting the ElevenLabs fallback and swapping it for Live a moment later.
+  // instead of starting the turn-by-turn voice call and swapping it for Live a moment later.
   const awaitingLiveUid = GEMINI_LIVE_ENABLED && authed && !liveUid && !liveUnavailable;
 
   // ⚠️ THE GENERATION GATE, PUBLISHED WHERE ANY SURFACE CAN READ IT SYNCHRONOUSLY. The composer must

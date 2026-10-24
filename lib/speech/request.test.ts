@@ -3,7 +3,7 @@
  * lib/speech/request — one POST per chunk, cancelled with its caller, bounded, never retried (§5.3.4).
  */
 import { SPEECH_CLIENT_DEADLINE_MS } from './deadline';
-import { SPEECH_ROUTE, fetchSpeech, requestSpeech } from './request';
+import { SPEECH_ROUTE, fetchSpeech, requestSpeech, speechResult } from './request';
 import { SPEECH_HEADERS } from './contract';
 import { WAV_MONO_24K } from '../../tests/fixtures/speechAudio';
 
@@ -97,4 +97,25 @@ test('fetchSpeech hands back the profile the headers state, or null when they do
   const bare = await fetchSpeech('hello', 'en', undefined, (async () => wav()) as unknown as typeof fetch);
   expect(bare?.profile).toBeNull();
   expect(bare?.blob.size).toBe(WAV_MONO_24K.length);
+});
+
+test.each([
+  ['the platform AI limit', async () => new Response('{"error":"budget_exhausted"}', { status: 503 }), { status: 503, error: 'budget_exhausted' }],
+  ['a text over the limit', async () => new Response('{"error":"text_too_long"}', { status: 413 }), { status: 413, error: 'text_too_long' }],
+  ['a body that is not JSON', async () => new Response('overloaded', { status: 503 }), { status: 503, error: null }],
+  ['a network error', async () => { throw new TypeError('fetch failed'); }, { status: 0, error: null }],
+  ['an empty body', async () => new Response(new Uint8Array(0), { status: 200 }), { status: 0, error: null }],
+])('speechResult names the miss: %s, after ONE request', async (_why, impl, miss) => {
+  const f = jest.fn(impl);
+  expect(await speechResult('hello', 'en', undefined, f as unknown as typeof fetch)).toEqual({ ok: false, miss });
+  expect(f).toHaveBeenCalledTimes(1);
+});
+
+test('speechResult hands back the WAV like fetchSpeech, and a caller that already left sends nothing', async () => {
+  const r = await speechResult('hello', 'en', undefined, (async () => wav()) as unknown as typeof fetch);
+  expect(r.ok && r.answer.blob.size).toBe(WAV_MONO_24K.length);
+  const ctrl = new AbortController();
+  ctrl.abort();
+  expect(await speechResult('hello', 'en', ctrl.signal, hangs as unknown as typeof fetch)).toEqual({ ok: false, miss: { status: 0, error: null } });
+  expect(hangs).not.toHaveBeenCalled();
 });

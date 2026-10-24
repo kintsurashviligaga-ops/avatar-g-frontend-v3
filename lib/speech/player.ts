@@ -23,7 +23,8 @@
  * - playbackRate is 1 unless the read asks for another speed (the read-aloud controls offer one); a speed belongs to its
  *   read, so no other read is ever sped up by it. A rate never corrects audio: the WAV states its rate (lib/speech/wav),
  *   and a WAV that does not is refused.
- * - A read does not start while a Live call has the speakers, and Live taking the microphone stops it (browser wiring).
+ * - A read does not start while a call has the speakers (Gemini Live, or the voice call that stands in for it), and a
+ *   call starting stops it (browser wiring: Live takes the microphone, the voice call stops the player itself).
  * - Hearing a reply again sends no request: the browser wiring reads each chunk through the replay cache
  *   (lib/speech/cache), and signing out stops the read and clears the cache.
  *
@@ -49,7 +50,7 @@ export type SpeechStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'failed' 
 /**
  * Why a read stopped early. synthesis: the route sent no audio. bad_audio: the bytes are not a WAV the contract allows.
  * playback: the element failed or stalled. blocked: the browser refused to play (a retry is a new tap, which it allows).
- * live_call: a Live call has the speakers.
+ * live_call: a call has the speakers (Gemini Live, or the voice call that stands in for it).
  */
 export type SpeechFault = 'synthesis' | 'bad_audio' | 'playback' | 'blocked' | 'live_call';
 
@@ -425,7 +426,7 @@ export class SpeechPlayer {
 // ─── the browser's one player ────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The browser's wiring: one <audio>, no read during Live, and POST /api/tts/gemini once per chunk (lib/speech/request)
+ * The browser's wiring: one <audio>, no read during a call, and POST /api/tts/gemini once per chunk (lib/speech/request)
  * unless `cache` already holds that chunk for this account (lib/speech/cache).
  */
 export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlayerDeps {
@@ -434,8 +435,15 @@ export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlaye
     createAudio: () => new Audio() as unknown as SpeechAudio,
     createObjectURL: (blob) => URL.createObjectURL(blob),
     revokeObjectURL: (url) => URL.revokeObjectURL(url),
-    blocked: () => (typeof document !== 'undefined' && document.documentElement.dataset.liveCall === '1' ? 'live_call' : null),
+    blocked: () => (onCall() ? 'live_call' : null),
   };
+}
+
+/** A call has the speakers: Gemini Live (<html data-live-call>) or the voice call (<html data-voice-call>). */
+function onCall(): boolean {
+  if (typeof document === 'undefined') return false;
+  const root = document.documentElement.dataset;
+  return root.liveCall === '1' || root.voiceCall === '1';
 }
 
 let shared: SpeechPlayer | null = null;
@@ -461,6 +469,19 @@ export function speechPlayer(): SpeechPlayer {
     }
   }
   return shared;
+}
+
+/**
+ * The voice call (components/voice/VoiceConversation) has the speakers until the returned release is called: the read
+ * under way stops, and no read starts meanwhile (<html data-voice-call>). Gemini Live needs no claim: it takes the
+ * microphone, which stops the read, and sets data-live-call itself.
+ */
+export function claimSpeakersForCall(): () => void {
+  if (typeof document === 'undefined') return () => undefined;
+  const root = document.documentElement;
+  root.dataset.voiceCall = '1';
+  speechPlayer().stop();
+  return () => { delete root.dataset.voiceCall; };
 }
 
 /** The replay cache of the page's player. */

@@ -208,7 +208,7 @@ export interface UseDictationResult {
   engine: DictationEngine | null;
   /** Localized warning (transcription failed / not responding, mic blocked), or null. */
   warn: string | null;
-  /** 'voice' while the box text came from dictation; send() reads it to tag the turn and auto-play the reply. */
+  /** 'voice' while the box text came from dictation; send() reads it to tag the turn (inputMethod). */
   inputSourceRef: MutableRefObject<'text' | 'voice'>;
   /** Start, or stop (with a final pass) when starting / listening. */
   toggle(): Promise<void>;
@@ -982,7 +982,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         const next = r.base + t;
         markText(run);
         // Read the LIVE box: if the user typed since our last write, keep their edit and do not re-tag it as
-        // voice (a late final pass would otherwise clobber it and wrongly auto-play the reply).
+        // voice (a late final pass would otherwise clobber it and tag a typed turn as spoken).
         o.setValue((cur) => {
           if (cur !== '' && cur !== lastWriteRef.current) return cur;
           lastWriteRef.current = next;

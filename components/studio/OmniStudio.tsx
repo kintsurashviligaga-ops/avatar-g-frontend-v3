@@ -2355,12 +2355,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // PDFs/audio/multiples the way the shared attach button could).
   const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
   const lipAudioRef = useRef<HTMLInputElement | null>(null);
-  // AUTO-PLAY TTS: when a chat turn was started by VOICE (mic/dictation), the assistant's finished reply is
-  // auto-spoken via /api/tts/gemini. Set by send() right before streamChat, consumed once at stream end.
-  // A TYPED turn leaves this false, so its reply stays text-only. speakMsgRef bridges to speakMsg (which is
-  // defined AFTER streamChat) without a temporal-dead-zone reference.
-  const autoPlayReplyRef = useRef(false);
-  const speakMsgRef = useRef<((text: string, i: number) => void) | null>(null);
+  // No reply is read aloud on its own: dictation is text input, and a reply is heard only when its speaker button is
+  // pressed (speakMsg). The old voice-turn auto-play was never armed and is gone (MASTER TASK v3.1 §5, Phase 4).
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
   // dictation recorder above so the two never collide.
   const voiceFileRef = useRef<HTMLInputElement | null>(null);
@@ -2372,7 +2368,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   // Dictation (mic → composer): Web Speech where the engine can do the language, otherwise record → 16 kHz WAV →
   // /api/voice/transcribe (Gemini STT). The hook owns both recognizers, the echo guard and the takeover guard;
-  // `inputSourceRef` is 'voice' while the box text came from the mic (send() tags the turn + auto-plays the reply).
+  // `inputSourceRef` is 'voice' while the box text came from the mic (send() tags the turn's inputMethod).
   // The language the user is evidently using: the newest of their recent turns written in a native script (Georgian
   // or Cyrillic). The mic then listens in THAT language, whatever the UI's — Latin is no signal (see speechLang).
   const typedLang = useMemo(() => {
@@ -2441,7 +2437,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const genActiveRef = useRef(false);
   // Type-ahead: a plain chat message sent WHILE the previous turn is still streaming is parked here
   // (not stranded in the composer), then sent the moment the turn finishes — see the flush effect. Carries
-  // viaVoice so a dictated follow-up still tags inputMethod:'voice' + auto-plays its reply.
+  // viaVoice so a dictated follow-up still tags inputMethod:'voice'.
   const pendingChatRef = useRef<{ text: string; viaVoice: boolean } | null>(null);
   /**
    * Take a parked type-ahead message back into the composer instead of letting it send.
@@ -5831,10 +5827,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     abortRef.current = ac;
     ac.signal.addEventListener('abort', () => chatStop(), { once: true });
     const mine = () => genIdRef.current === myGen;
-    // Consume the auto-play flag ONCE at the start (a voice-initiated turn set it just before this call).
-    // Captured locally so a later regenerate/typed turn — which never sets it — can't inherit it.
-    const autoPlayReply = autoPlayReplyRef.current;
-    autoPlayReplyRef.current = false;
     const sid = `chat-${myGen}-${Date.now().toString(36)}`;
     setMessages([...history, { role: 'assistant', text: '', id: sid }]);
     streamingIdRef.current = sid;
@@ -5927,9 +5919,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const svc = hasServiceBlock(result.text) ? parseServiceBlock(result.text) : null;
         const cleaned = svc && svc.service && svc.text.length < 200 ? svc.text : result.text;
         persistChatTurn('assistant', cleaned);
-        // AUTO-PLAY: a VOICE-initiated turn speaks its finished reply aloud (Gemini native TTS). The assistant bubble
-        // is the last message → index history.length (streamChat set [...history, reply]).
-        if (autoPlayReply) speakMsgRef.current?.(cleaned, history.length);
       }
     } finally {
       if (streamingIdRef.current === sid) streamingIdRef.current = null;
@@ -5947,9 +5936,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     pendingChatRef.current = null;
     const userMsg: Msg = { role: 'user', text: queued.text, inputMethod: queued.viaVoice ? 'voice' : 'text' };
     persistChatTurn('user', queued.text);
-    // Preserve the queued turn's voice intent so a dictated follow-up still auto-plays its reply (consumed
-    // at the top of streamChat).
-    autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     // streamChat renders the user turn from its history arg (setMessages([...history, assistant])), so
     // no separate setMessages is needed here — that would only double-render the bubble.
     void streamChat([...messagesRef.current, userMsg]);
@@ -6468,7 +6454,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       clearPendingPrompt();
     }
     const text = (opts?.promptOverride ?? input).trim();
-    // Was this send's text dictated (mic) or typed? Drives inputMethod + whether the reply auto-plays.
+    // Was this send's text dictated (mic) or typed? Drives the turn's inputMethod.
     // The mic sets inputSourceRef to 'voice' while transcribing; the keyboard onChange resets it to 'text'.
     const viaVoice = opts?.viaVoice ?? (inputSourceRef.current === 'voice');
     // VIDEO with a loaded script / scene frames can generate with NO typed text + NO image
@@ -6758,7 +6744,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // A phone's Create sheet covers the thread: close it so the answer is SEEN (the generate branches do the same).
         if (!isDesktop) setOptionsOpen(false);
         persistChatTurn('user', text);
-        autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
         await streamChat([...messages, chatTurn]);
         return;
       }
@@ -7294,7 +7279,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); setAttachments([]);
       inputSourceRef.current = 'text';
       persistChatTurn('user', asked, attachments);
-      autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
       setBusy(false);
       await streamChat([...messages, videoTurn]);
       return;
@@ -7596,9 +7580,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setInput(''); setAttachments([]);
     inputSourceRef.current = 'text'; // reset for the next turn (the box is now empty)
     persistChatTurn('user', text, attachments); // mirror the user turn to the server (fail-soft; anonymous → no-op)
-    // Arm auto-play ONLY for a voice-initiated turn — its reply will be spoken aloud at stream end; a typed
-    // turn stays text-only. Consumed at the top of streamChat.
-    autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     await streamChat([...messages, userMsg]);
   }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
@@ -7925,10 +7906,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     player.toggle({ owner, text, locale });
   }, [locale, conversationId]);
-
-  // Keep speakMsgRef pointed at the latest speakMsg so streamChat (defined earlier) can auto-play a
-  // voice-initiated reply without a temporal-dead-zone reference.
-  useEffect(() => { speakMsgRef.current = speakMsg; }, [speakMsg]);
 
   // Another chat opens, or the studio unmounts: a read the studio started stops (its requests are cancelled at the
   // route too), so nothing of the chat left behind plays over the one on screen.
@@ -9552,7 +9529,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (busy || genActiveRef.current) return false;
         clearComposer();
         persistChatTurn('user', text);
-        autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
         void streamChat([...msgs, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }]);
         return true;
       case 'redo':
