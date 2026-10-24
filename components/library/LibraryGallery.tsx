@@ -151,13 +151,14 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   // Fetch the current tab/page. Favorites fetch a wider window (all kinds) then filter.
   useEffect(() => {
     let alive = true;
+    const controller = new AbortController();
     if (!quietRef.current) setLoading(true);
     quietRef.current = false;
     const isFav = tab === 'favorites';
     const qs = new URLSearchParams();
     if (!isFav) { qs.set('kind', TAB_KIND[tab]); qs.set('limit', String(PAGE_SIZE)); qs.set('offset', String(page * PAGE_SIZE)); }
     else { qs.set('limit', '60'); } // favorites: pull a wide window, filter locally
-    fetch(`/api/studio/library?${qs.toString()}`, { cache: 'no-store', credentials: 'include' })
+    fetch(`/api/studio/library?${qs.toString()}`, { cache: 'no-store', credentials: 'include', signal: controller.signal })
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((j: { items?: LibraryItem[] }) => {
         if (!alive) return;
@@ -168,7 +169,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
       })
       .catch(() => { if (alive) setItems([]); })
       .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    return () => { alive = false; controller.abort(); };
   }, [tab, page, refetch]);
 
   const reload = useCallback(() => { quietRef.current = true; setRefetch((n) => n + 1); }, []);

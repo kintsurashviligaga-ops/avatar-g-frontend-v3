@@ -41,6 +41,46 @@ beforeEach(() => {
 
 const kinds = () => requested.map((u) => new URL(u, 'https://x').searchParams.get('kind'));
 
+// Deliberately let a cancelled transport settle late: abort is best effort, so
+// obsolete responses must still leave the current tab alone.
+function delayedLibraryRequests() {
+  const calls: { signal?: AbortSignal | null; resolve: (items: unknown[]) => void }[] = [];
+  global.fetch = jest.fn((_url: string, init?: RequestInit) => new Promise<Response>((resolve) => {
+    calls.push({ signal: init?.signal, resolve: (items) => resolve({ ok: true, json: async () => ({ items }) } as Response) });
+  })) as unknown as typeof fetch;
+  return calls;
+}
+
+test('rapid tab changes cancel obsolete requests while the newest request remains active', async () => {
+  const calls = delayedLibraryRequests();
+  await act(async () => { render(<LibraryGallery locale="en" />); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Music$/ })); });
+  expect(calls).toHaveLength(3);
+  expect(calls[0]!.signal?.aborted).toBe(true);
+  expect(calls[1]!.signal?.aborted).toBe(true);
+  expect(calls[2]!.signal?.aborted).toBe(false);
+  await act(async () => { calls[2]!.resolve([SONG]); });
+  expect(document.querySelector('audio')?.getAttribute('src')).toBe(SONG.url);
+  await act(async () => { calls[1]!.resolve([PLAN]); calls[0]!.resolve([AVATAR]); });
+  expect(document.querySelector('audio')?.getAttribute('src')).toBe(SONG.url);
+  expect(document.querySelector('video')).toBeNull();
+});
+
+test('late obsolete responses cannot replace the current tab, and leaving releases its request', async () => {
+  const calls = delayedLibraryRequests();
+  let view: ReturnType<typeof render>;
+  await act(async () => { view = render(<LibraryGallery locale="en" />); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Image$/ })); });
+  await act(async () => { calls[1]!.resolve([PLAN]); });
+  await act(async () => { calls[0]!.resolve([AVATAR]); });
+  expect(screen.getByAltText(PLAN.prompt)).toBeTruthy();
+  expect(document.querySelector('video')).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Music$/ })); });
+  view!.unmount();
+  expect(calls[2]!.signal?.aborted).toBe(true);
+});
+
 test('the Video tab asks for films and avatar videos; the Image tab for pictures and 3D plans', async () => {
   await act(async () => { render(<LibraryGallery locale="en" />); });
   expect(kinds()).toEqual(['film,avatar']);
