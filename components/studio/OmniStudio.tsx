@@ -2319,12 +2319,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (res.ok) { try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ } }
     }).catch(() => {});
   }, []);
-  // Read-aloud: the page's one player (lib/speech/player) owns playback; a bubble's read is the owner "omni:<index>".
+  // Read-aloud: the page's one player (lib/speech/player) owns playback; a bubble's read is the owner
+  // "omni:<conversation>:<index>", so bubble 3 of another chat is never taken for bubble 3 of this one.
   // speakingIdx is the bubble being read (its button stops it), speakPhase 'loading' while its chunk is synthesised
   // and 'playing' once audio plays, speakFailedIdx the bubble whose read stopped at a chunk that failed ("Try again"
   // reads on from that chunk).
   const speech = useSpeechState();
-  const speechIdx = speech.owner?.startsWith('omni:') ? Number(speech.owner.slice(5)) : null;
+  const omniOwner = `omni:${conversationId}:`;
+  const speechIdx = speech.owner?.startsWith(omniOwner) ? Number(speech.owner.slice(omniOwner.length)) : null;
   const speakingIdx = speechIdx !== null && isSpeaking(speech) ? speechIdx : null;
   const speakPhase: 'loading' | 'playing' | null = speakingIdx === null ? null : speech.status === 'loading' ? 'loading' : 'playing';
   const speakFailedIdx = speechIdx !== null && speech.status === 'failed' ? speechIdx : null;
@@ -7913,7 +7915,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // other tap reads that reply and stops whatever else was being read (here or on another screen).
   const speakMsg = useCallback((text: string, i: number) => {
     const player = speechPlayer();
-    const owner = `omni:${i}`;
+    const owner = `omni:${conversationId}:${i}`;
     const now = player.getState();
     // Read-aloud is a signed-in tool (/api/tts/gemini refuses guests): a guest's tap opens sign-in instead of a
     // spinner that quietly plays nothing. Stopping a read is always allowed.
@@ -7922,17 +7924,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return;
     }
     player.toggle({ owner, text, locale });
-  }, [locale]);
+  }, [locale, conversationId]);
 
   // Keep speakMsgRef pointed at the latest speakMsg so streamChat (defined earlier) can auto-play a
   // voice-initiated reply without a temporal-dead-zone reference.
   useEffect(() => { speakMsgRef.current = speakMsg; }, [speakMsg]);
 
-  // The studio unmounts: a read it started stops (its requests are cancelled at the route too).
+  // Another chat opens, or the studio unmounts: a read the studio started stops (its requests are cancelled at the
+  // route too), so nothing of the chat left behind plays over the one on screen.
   useEffect(() => () => {
     const player = speechPlayer();
     if (player.getState().owner?.startsWith('omni:')) player.stop();
-  }, []);
+  }, [conversationId]);
 
   // ── Voice SAMPLE for "sing in my voice" (music) ──────────────────────────────
   // Add an audio blob/file as the music VOICE reference (replaces any prior audio),

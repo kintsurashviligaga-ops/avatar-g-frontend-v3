@@ -40,7 +40,9 @@ import { liveVoiceFor, resolveAgentProfile, type AgentProfile, type LiveVoice } 
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { bookChatUsage, chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { isEnabledByDefault } from '@/lib/env/flag';
-import { SPEECH_CONTRACT_VERSION, SPEECH_HEADERS, SPEECH_MAX_CHARS, SPEECH_RESPONSE_MIME } from '@/lib/speech/contract';
+import {
+  SPEECH_CONTRACT_VERSION, SPEECH_HEADERS, SPEECH_MAX_CHARS, SPEECH_RESPONSE_MIME, speechPacing,
+} from '@/lib/speech/contract';
 import { audioFromGeminiParts } from '@/lib/speech/geminiAudio';
 import {
   SPEECH_DEADLINE_MS,
@@ -303,6 +305,10 @@ export async function POST(req: NextRequest) {
         [SPEECH_HEADERS.channels]: String(audio.info.channels),
         [SPEECH_HEADERS.frames]: String(audio.info.frames),
         [SPEECH_HEADERS.model]: model,
+        // The language code of the call that answered (a 400 drops it for the retry).
+        [SPEECH_HEADERS.pacing]: speechPacing(languageCode),
+        // Not an HTTP cache: the browser's replay cache (lib/speech/cache) keeps a read, keyed by account and by
+        // everything above.
         'Cache-Control': 'no-store',
       },
     });

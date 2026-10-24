@@ -3,7 +3,8 @@
  * lib/speech/request — one POST per chunk, cancelled with its caller, bounded, never retried (§5.3.4).
  */
 import { SPEECH_CLIENT_DEADLINE_MS } from './deadline';
-import { SPEECH_ROUTE, requestSpeech } from './request';
+import { SPEECH_ROUTE, fetchSpeech, requestSpeech } from './request';
+import { SPEECH_HEADERS } from './contract';
 import { WAV_MONO_24K } from '../../tests/fixtures/speechAudio';
 
 const wav = () => new Response(Buffer.from(WAV_MONO_24K), { status: 200, headers: { 'content-type': 'audio/wav' } });
@@ -77,4 +78,23 @@ test('a 401 opens the sign-in prompt (when there is a window) and is null', asyn
   } finally {
     delete g.window;
   }
+});
+
+test('fetchSpeech hands back the profile the headers state, or null when they do not state one', async () => {
+  const headers = {
+    'content-type': 'audio/wav',
+    [SPEECH_HEADERS.contract]: '1',
+    [SPEECH_HEADERS.pacing]: '1;lang=en-US',
+    [SPEECH_HEADERS.model]: 'gemini-2.5-flash-preview-tts',
+    [SPEECH_HEADERS.voice]: 'Aoede',
+    [SPEECH_HEADERS.sampleRate]: '24000',
+    [SPEECH_HEADERS.channels]: '1',
+  };
+  const f = jest.fn(async () => new Response(Buffer.from(WAV_MONO_24K), { status: 200, headers }));
+  const a = await fetchSpeech('hello', 'en', undefined, f as unknown as typeof fetch);
+  expect(a?.blob.size).toBe(WAV_MONO_24K.length);
+  expect(a?.profile).toBe('c1|p1;lang=en-US|gemini-2.5-flash-preview-tts|Aoede|24000x1');
+  const bare = await fetchSpeech('hello', 'en', undefined, (async () => wav()) as unknown as typeof fetch);
+  expect(bare?.profile).toBeNull();
+  expect(bare?.blob.size).toBe(WAV_MONO_24K.length);
 });

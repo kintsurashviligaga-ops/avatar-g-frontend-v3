@@ -14,6 +14,21 @@ export const SPEECH_CONTRACT_VERSION = 1 as const;
 
 export type SpeechLocale = 'ka' | 'en' | 'ru';
 
+/**
+ * How the route speaks a text with a given model and voice: the directive it prepends, the language codes it sends,
+ * the voice it maps a locale to. Bumped when any of those changes, so the browser's replay cache (lib/speech/cache)
+ * stops replaying audio made the old way.
+ */
+export const SPEECH_PACING_VERSION = 1 as const;
+
+/**
+ * The X-Speech-Pacing value for audio made with `languageCode` (undefined: the model detected the language itself, as
+ * it always does for Georgian). E.g. "1;lang=en-US", "1;lang=auto".
+ */
+export function speechPacing(languageCode?: string): string {
+  return `${SPEECH_PACING_VERSION};lang=${languageCode || 'auto'}`;
+}
+
 /** The most characters one request may carry. The client splits a longer message into chunks below it. */
 export const SPEECH_MAX_CHARS = 2000;
 
@@ -29,7 +44,30 @@ export const SPEECH_HEADERS = {
   frames: 'X-Speech-Frames',
   model: 'X-Speech-Model',
   voice: 'X-Voice-Name',
+  /** How the audio was made: speechPacing(the language code the answering call carried). */
+  pacing: 'X-Speech-Pacing',
 } as const;
+
+/**
+ * What made an answer's audio, from its headers: contract, pacing, model, voice and PCM layout, e.g.
+ * "c1|p1;lang=auto|gemini-2.5-flash-preview-tts|Aoede|24000x1". Two answers with the same profile were made the same
+ * way, so the replay cache (lib/speech/cache) keys on it. Null when a header is missing or the contract is another
+ * version: such audio is played but never kept.
+ */
+export function speechProfile(headers: { get(name: string): string | null } | null | undefined): string | null {
+  if (!headers) return null;
+  const contract = headers.get(SPEECH_HEADERS.contract);
+  const parts = [
+    headers.get(SPEECH_HEADERS.pacing),
+    headers.get(SPEECH_HEADERS.model),
+    headers.get(SPEECH_HEADERS.voice),
+    headers.get(SPEECH_HEADERS.sampleRate),
+    headers.get(SPEECH_HEADERS.channels),
+  ];
+  if (contract !== String(SPEECH_CONTRACT_VERSION) || parts.some((v) => !v || v.includes('|'))) return null;
+  const [pacing, model, voice, rate, channels] = parts as string[];
+  return `c${contract}|p${pacing}|${model}|${voice}|${rate}x${channels}`;
+}
 
 export function normalizeSpeechLocale(raw: unknown): SpeechLocale {
   return raw === 'en' || raw === 'ru' ? raw : 'ka';
