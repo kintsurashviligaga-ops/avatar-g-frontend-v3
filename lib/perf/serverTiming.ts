@@ -19,7 +19,8 @@ export const TRACE_HEADER = 'x-myavatar-trace';
 const TRACE_ID = /^[0-9a-f]{16,32}$/;
 
 /**
- * Every span a route may report. Library: auth → db → proof (legacy manual saves) → sign. Chat, before the stream:
+ * Every span a route may report. Library: auth → db → proof (legacy manual saves) → sign, with fav (the page's stars)
+ * alongside proof and sign. Chat, before the stream:
  * rate (the limiters, summed), auth, body, admin (the avatar-door check the prompt waits for), prompt. Chat, in the
  * stream: budget, profile, embed, memory (embed + match_memories), model (the call's start to its first text),
  * ttft (the request's start to the first text written). `respond` is the time until the response was handed back,
@@ -34,6 +35,7 @@ export const SPAN_NAMES = [
   'db',
   'proof',
   'sign',
+  'fav',
   'budget',
   'profile',
   'embed',
