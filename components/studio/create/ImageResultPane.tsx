@@ -125,7 +125,7 @@ export function ImageResultPane({
               {...(tile.error ? { error: tile.error } : {})}
               {...(tile.url ? { onOpen: () => actions.open(tile.url!), onUseAsRef: () => actions.toVideo(tile.url!) } : {})}
               {...(tile.status === 'pending' && tile.jobId ? { onCancel: () => actions.cancelJob(tile.jobId!) } : {})}
-              {...(!busy ? { onRetry: () => actions.retryTile(shown.index) } : {})}
+              onRetry={() => actions.retryTile(shown.index)} retryBlocked={busy}
               {...(tile.status === 'failed' ? { onDismiss: () => actions.dismiss(shown.index, k) } : {})}
             />
           ))}
@@ -141,7 +141,7 @@ export function ImageResultPane({
     body = (
       <div className="mx-auto space-y-2" style={{ width: frameWidth(shown.aspect) }}>
         <ResultCard kind="image" size="tile" aspect={shown.aspect} state="error" locale={lang} error={shown.message}
-          {...(shown.canReroll && !busy ? { onRetry: () => actions.reroll(shown.index) } : {})}
+          {...(shown.canReroll ? { onRetry: () => actions.reroll(shown.index) } : {})} retryBlocked={busy}
           onDismiss={() => actions.dismiss(shown.index)} />
         {shown.topUp && <div className="flex justify-center">{topUpButton}</div>}
       </div>

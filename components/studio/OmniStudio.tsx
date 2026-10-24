@@ -118,6 +118,7 @@ import { serviceForTool, trackGenerationCompleted, trackGenerationConfirmed, tra
 import { ensureNotificationPermission, fireCompletionNotification } from '@/lib/notify/browserNotify';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { serializeStoryboardMatrix, type StoryboardMatrixCell } from '@/lib/pipeline/storyboardBridge';
+import { storyboardPlanningNotice } from '@/lib/video/storyboardNotice';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useJobQueue } from '@/store/useJobQueue';
@@ -4713,14 +4714,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
-    // Live ETA notice for video generation
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        text: "🎬 **ვიდეოს გენერაცია დაიწყო (3 სცენა · 24 წმ)**\n\n⏳ **სავარაუდო დრო: ~5–10 წუთი.**\nმიმდინარეობს Veo 2-ის თანმიმდევრული დამუშავება სტუდიური ხარისხით. გთხოვთ დაელოდოთ...",
-      }
-    ]);
     // The failure, visible: the route's own sentence when it gave one (describeOpFailure keeps machine codes out of a
     // Georgian interface), the translated line otherwise — as the chat's error card, whose Retry plans the storyboard
     // again (never a render) and whose Dismiss puts it away. Nothing after a user cancel.
@@ -4733,6 +4726,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // The grid the board is planned on: the length just set by the chat step (state has not settled yet) or the panel's.
     const planSec = opts?.nativeSec ?? videoDuration;
     const sceneCount = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(planSec));
+    // The chat says the board is being PLANNED, with this board's scene count and length, in the user's language
+    // (GG, 2026-10-23). Nothing generates and nothing is charged until the board's Generate; that render's own bubble
+    // says generation started. When the plan comes back, the line takes the count of scenes it actually planned.
+    const noticeId = `sbplan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setMessages((prev) => [...prev, { role: 'assistant', id: noticeId, text: storyboardPlanningNotice(locale, sceneCount, planSec) }]);
     // The PICKED template card's id on every storyboard call, so the board is planned with the look the render will use.
     const templateRef = pickedVideoTemplateId ? { templateId: pickedVideoTemplateId } : {};
     try {
@@ -4766,6 +4764,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
       const planned = j.scenes;
+      if (planned.length !== sceneCount) {
+        setMessages((prev) => prev.map((m) => (m.id === noticeId ? { ...m, text: storyboardPlanningNotice(locale, planned.length, planSec) } : m)));
+      }
       // ANCHOR MODE — when ≥2 reference images were uploaded the route returns them as
       // the ordered per-scene frames (scene 1 → image 1, …). Use them directly and DON'T
       // stream a FLUX frame over them; they also become the render's per-scene anchors.
@@ -9914,7 +9915,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           onOpen={tile.url ? () => setLightbox(tile.url!) : undefined}
                           onUseAsRef={tile.url ? () => sendImageToVideo(tile.url!) : undefined}
                           onCancel={tile.status === 'pending' && tile.jobId ? () => cancelQueueJob(tile.jobId!) : undefined}
-                          onRetry={busy ? undefined : () => void runImageBatch(m.batch!.spec, 1)}
+                          onRetry={() => void runImageBatch(m.batch!.spec, 1)}
+                          retryBlocked={busy}
                           onDismiss={tile.status === 'failed' ? () => setMessages((prev) => prev.map((pm) => ((m.id ? pm.id === m.id : pm === m) && pm.batch
                             ? { ...pm, batch: { ...pm.batch, tiles: pm.batch.tiles.filter((_, j) => j !== k) } }
                             : pm))) : undefined}
@@ -10087,7 +10089,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           locale={locale}
                           error={m.text}
                           errorFull
-                          onRetry={!busy && r ? () => void createStoryboard(r.filmPrompt, r.refs, r.orientation) : undefined}
+                          onRetry={r ? () => void createStoryboard(r.filmPrompt, r.refs, r.orientation) : undefined}
+                          retryBlocked={busy}
                           onDismiss={() => setMessages((prev) => prev.filter((pm) => (m.id ? pm.id !== m.id : pm !== m)))}
                         />
                         {/* The scenes that rendered stay paid (R3 matrix rows 6-7), so they are handed over, not lost with the cut. */}
@@ -11660,6 +11663,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
         onOpenInEditor={(url) => openInEditor(url, 'video')}
         onNote={(msg) => { setShareToast(msg); setTimeout(() => setShareToast((x) => (x === msg ? null : x)), 2200); }}
+        // The same stop as the film's bubble in the thread: its queue job, else the foreground render.
+        {...(doingMsg ? { onCancel: () => cancelBubbleJob(doingMsg) } : {})}
       />
     );
   })();

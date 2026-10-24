@@ -31,6 +31,12 @@ beforeEach(() => {
 
 const QUOTE = { ok: true, jobId: 'job-1', credits: 5, expiresAt: Date.now() + 1e6, plan: { v: 1 }, token: 'tok', summary: { model: 'lyria-3-clip-preview', transport: 'vertex', durationSec: 30, exactDuration: false, directions: [] }, providerInput: 'x' };
 const view = (status: string, extra: Record<string, unknown> = {}) => ({ ok: true, jobId: 'job-1', status, stage: status === 'running' ? 'generating' : status, attempt: 1, error: null, settlementPending: false, cancellable: status === 'queued' || status === 'running', result: null, ...extra });
+// Cancel is on the card from its first frame, disabled until the job's first answer says it can be stopped.
+const liveCancel = async (name: RegExp | string) => {
+  const b = await screen.findByRole('button', { name });
+  await waitFor(() => expect(b).toBeEnabled());
+  return b;
+};
 
 test('the panel draft passes the server contract (labels cleaned, the model length)', () => {
   expect(MusicRequestSchema.safeParse(DRAFT.request).success).toBe(true);
@@ -68,7 +74,7 @@ test('a reload follows the remembered job instead of quoting again; Cancel stops
     return { body: cancelled ? view('cancelled', { error: 'cancelled' }) : view('running') };
   };
   render(<MusicStudioCard draft={DRAFT} locale="en" />);
-  const cancel = await screen.findByRole('button', { name: /Cancel/ });
+  const cancel = await liveCancel(/Cancel/);
   expect(calls.some((c) => c.url.endsWith('/quote'))).toBe(false);
   await act(async () => { fireEvent.click(cancel); });
   await screen.findByText(/Cancelled\. The reserved credits were returned\./);
@@ -87,7 +93,7 @@ test('a refused cancellation stays running, shows the server error, and retries 
     return { body: view('running') };
   };
   render(<MusicStudioCard draft={DRAFT} locale="en" />);
-  const cancel = await screen.findByRole('button', { name: /Cancel/ });
+  const cancel = await liveCancel(/Cancel/);
   await act(async () => { fireEvent.click(cancel); });
   expect(await screen.findByRole('alert')).toHaveTextContent('Please wait before cancelling again.');
   expect(screen.getByTestId('music-card')).toHaveAttribute('data-phase', 'running');
@@ -103,7 +109,7 @@ test('two taps during a pending cancellation send one request', async () => {
   localStorage.setItem(`music-studio:job:${DRAFT.id}`, 'job-1');
   handler = () => ({ body: view('running') });
   render(<MusicStudioCard draft={DRAFT} locale="en" />);
-  const cancel = await screen.findByRole('button', { name: /Cancel/ });
+  const cancel = await liveCancel(/Cancel/);
   let finish!: (response: Response) => void;
   const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
   fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
@@ -122,7 +128,7 @@ test.each(COPY_LANGS)('a cancellation network failure has an honest localized fa
     return { body: view('running') };
   };
   render(<MusicStudioCard draft={DRAFT} locale={locale} />);
-  const cancel = await screen.findByRole('button', { name: musicCardCopy(locale).cancel });
+  const cancel = await liveCancel(musicCardCopy(locale).cancel);
   await act(async () => { fireEvent.click(cancel); });
   expect(await screen.findByRole('alert')).toHaveTextContent(musicCardCopy(locale).cancelFailed);
   expect(screen.getByTestId('music-card')).toHaveAttribute('data-phase', 'running');
@@ -174,4 +180,64 @@ test('every sentence exists in ka / en / ru, and every stage has a sentence', ()
     const t = ['ka', 'en', 'ru'].map((l) => stageText(st, l));
     expect(new Set(t).size).toBe(3);
   }
+});
+
+describe('one primary action per state, from lib/studio/cardState (MASTER TASK v3.1 §3.1, Phase 2 PR 6)', () => {
+  const primaries = () => [...document.querySelectorAll<HTMLElement>('[data-primary]')];
+  const cardState = () => screen.getByTestId('music-card').getAttribute('data-card-state');
+
+  test('the button is there from the first frame: pressed while the price comes, then Create with it', async () => {
+    let price!: () => void;
+    handler = (u) => (u.endsWith('/quote') ? { body: QUOTE } : { body: view('queued') });
+    const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+    const real = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementationOnce((url, init) => new Promise<Response>((resolve) => { price = () => resolve(real(url, init) as unknown as Response); }));
+    render(<MusicStudioCard draft={DRAFT} locale="en" />);
+    expect(cardState()).toBe('quoting');
+    const pressed = primaries();
+    expect(pressed.map((e) => [e.getAttribute('data-primary'), (e as HTMLButtonElement).disabled])).toEqual([['propose', true]]);
+    expect(pressed[0]).toHaveTextContent('Getting the price…');
+    await act(async () => { price(); });
+    await screen.findByRole('button', { name: /5 credits will be charged/ });
+    expect(cardState()).toBe('awaiting_approval');
+    expect(primaries().map((e) => [e.getAttribute('data-primary'), (e as HTMLButtonElement).disabled])).toEqual([['approve', false]]);
+  });
+
+  test('a job the server cannot stop keeps Cancel, disabled and saying why, in every locale', async () => {
+    for (const locale of COPY_LANGS) {
+      localStorage.setItem(`music-studio:job:${DRAFT.id}`, 'job-1');
+      handler = () => ({ body: view('running', { cancellable: false }) });
+      const { unmount } = render(<MusicStudioCard draft={DRAFT} locale={locale} />);
+      await waitFor(() => expect(primaries()[0]).toHaveTextContent(musicCardCopy(locale).cannotCancel));
+      expect(cardState()).toBe('running');
+      expect(primaries()).toHaveLength(1);
+      expect(primaries()[0]).toBeDisabled();
+      expect(primaries()[0]!.getAttribute('data-primary')).toBe('stop');
+      unmount();
+    }
+  });
+
+  test('a failure offers Try again; a delivered track offers Download as its one primary', async () => {
+    localStorage.setItem(`music-studio:job:${DRAFT.id}`, 'job-1');
+    handler = () => ({ body: view('failed', { error: 'provider_error' }) });
+    const failed = render(<MusicStudioCard draft={DRAFT} locale="en" />);
+    await screen.findByTestId('music-retry');
+    expect(cardState()).toBe('failed');
+    expect(primaries().map((e) => e.getAttribute('data-testid'))).toEqual(['music-retry']);
+    failed.unmount();
+    localStorage.setItem(`music-studio:job:${DRAFT.id}`, 'job-1');
+    handler = () => ({ body: view('completed', { result: { url: 'https://x/s.mp3', durationSec: 30.8, mime: 'audio/mpeg', modelId: 'lyria-3-clip-preview', credits: 5 } }) });
+    render(<MusicStudioCard draft={DRAFT} locale="en" />);
+    await screen.findByTestId('music-download');
+    expect(cardState()).toBe('completed');
+    expect(primaries().map((e) => [e.getAttribute('data-testid'), e.getAttribute('data-primary')])).toEqual([['music-download', 'use']]);
+  });
+
+  test('a refusal offers no button: the server said no before any work', async () => {
+    handler = () => ({ status: 400, body: { ok: false, code: 'unsupported', message: 'No.' } });
+    render(<MusicStudioCard draft={DRAFT} locale="en" />);
+    await screen.findByRole('alert');
+    expect(cardState()).toBe('failed');
+    expect(primaries()).toHaveLength(0);
+  });
 });
