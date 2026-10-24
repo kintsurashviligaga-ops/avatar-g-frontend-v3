@@ -17,6 +17,7 @@
  *   play) is never skipped. The read stops there as `failed`, with the chunk's offset in the text, and `retry` reads on
  *   from that chunk. Audio already fetched for the chunks after it is kept for the retry.
  * - "done" comes only after the last chunk has ended.
+ * - A read is voiced in its text's language (lib/speech/locale), whatever the page's: one voice for the whole read.
  * - Every object URL is revoked when its chunk ends or the read stops; only one exists at a time.
  * - The element is unlocked with a silent clip synchronously inside the tap (iOS/Safari block a first play() that comes
  *   after an awaited fetch), and reused for every chunk, so later plays are allowed.
@@ -35,6 +36,7 @@ import { blobBytes } from './blob';
 import { browserSpeechCache, type SpeechCache } from './cache';
 import { chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
 import type { SpeechLocale } from './contract';
+import { speechLocaleOf } from './locale';
 import { fetchSpeech, requestSpeech } from './request';
 import { speechTrialModel, speechTrialRecorder, wavAudioMs } from './trial';
 import { inspectWav } from './wav';
@@ -75,6 +77,7 @@ export const IDLE_SPEECH: SpeechState = { status: 'idle', owner: null, index: 0,
 export interface SpeechRequest {
   readonly owner: string;
   readonly text: string;
+  /** The page's language. The read is voiced in the text's own (lib/speech/locale); this is kept for a text with none. */
   readonly locale: SpeechLocale;
   /** Default: lib/speech/chunk's 600 characters, with the first short sentence on its own so it is heard sooner. */
   readonly chunking?: SpeechChunkOptions;
@@ -175,7 +178,10 @@ export class SpeechPlayer {
       return;
     }
     this.unlock();
-    const read: Read = { req, chunks, ctrl: new AbortController(), answered: new Map(), pending: new Map(), current: 0, taken: -1 };
+    // ⚠️ The text's language, not the page's (GG, production 2026-10-24): an English reply on the Georgian studio was
+    // voiced as Georgian. Decided once for the whole text, so every chunk of the read has the same voice.
+    const voiced: SpeechRequest = { ...req, locale: speechLocaleOf(req.text, req.locale) };
+    const read: Read = { req: voiced, chunks, ctrl: new AbortController(), answered: new Map(), pending: new Map(), current: 0, taken: -1 };
     this.read = read;
     this.publish({ status: 'loading', owner: req.owner, index: 0, total: chunks.length, offset: 0, fault: null, rate: this.rate });
     void this.run(read, 0);

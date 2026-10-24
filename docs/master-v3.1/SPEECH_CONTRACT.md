@@ -33,7 +33,11 @@ The two voice calls are not readers. They have the speakers while they are on:
 
 `POST /api/tts/gemini`, JSON `{ text, locale }`, with the session cookie (`lib/speech/request.ts`).
 
-- `locale` is `ka`, `en` or `ru`.
+- `locale` is `ka`, `en` or `ru`: the language of the whole message being read, not of the page
+  (`speechLocaleOf` in `lib/speech/locale.ts`, decided once per read in the player). Georgian or Cyrillic letters
+  that are at least a fifth of the message's letters make it `ka` or `ru`; otherwise Latin letters make it `en`; code
+  and links are not counted, and a message with no letters keeps the page's language. Before this, an English or
+  Russian reply on the Georgian studio was sent as `ka`, and read with the voice and settings for Georgian.
 - `text` is one chunk. The browser cuts a message with `chunkSpeech(text, { leadSentence: true })`
   (`lib/speech/chunk.ts`):
   - every character is in exactly one chunk, in order;
