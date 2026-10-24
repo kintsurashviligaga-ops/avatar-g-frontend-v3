@@ -16,8 +16,10 @@ readers use it:
 | Research report | `research` | `components/studio/research/speech.ts` |
 | Read-aloud controls (behind `NEXT_PUBLIC_VOICE_EXPERIENCE_V2`, unset in Production) | `controls:<id>` | `lib/voice/experience/readAloud.ts` |
 
-`play` stops whatever is being read, whoever started it. A speaker button's tap toggles: the same owner's tap stops its
-read, a failed read is tried again, and anything else starts a new read.
+`play` stops whatever is being read, whoever started it. The studio's speaker button is a Pause button (`playPause`):
+the same owner's tap pauses its read where it is, and the next tap ("Continue") goes on from that moment with no new
+request; a tap before anything was heard stops the read. The older chat screens' button is a Stop button (`toggle`):
+the same owner's tap stops its read. On both, a failed read is tried again, and anything else starts a new read.
 
 The two voice calls are not readers. They have the speakers while they are on:
 
@@ -125,7 +127,9 @@ the AI limit with its own message.
   - a replay sends 0 requests, also after a reload;
   - a failed chunk stops the read and "Try again" reads on from it;
   - a chat switch plays nothing late;
-  - a Live call stops the read.
+  - a Live call stops the read;
+  - "Pause" pauses the read where it is (also while the next chunk is on its way), "Continue" goes on from there with no
+    new request, and a tap before anything was heard stops the read.
 - Timings: `perf/readaloud.pw.ts` (`npm run perf:browser`) times the tap to the first chunk's `playing`, for a reply never
   read, the same reply again and the same reply after a reload, with the request count of each. The numbers are in
   `PERFORMANCE_BASELINE.md` and `PHASE4_EVIDENCE.md`.

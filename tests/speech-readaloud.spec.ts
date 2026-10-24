@@ -3,7 +3,8 @@ import { expect, test, type Page, type Route, type TestInfo } from '@playwright/
 import { chunkSpeech } from '../lib/speech/chunk';
 import { SPEECH_HEADERS } from '../lib/speech/contract';
 import { FakeLive, fakeMicrophone, mockLiveToken, signIn } from './fixtures/liveVoice';
-import { WAV_MONO_24K } from './fixtures/speechAudio';
+import { WAV_MONO_24K, pcm16Tone } from './fixtures/speechAudio';
+import { wrapPcm16 } from '../lib/speech/wav';
 
 /**
  * Read-aloud in a real browser (MASTER TASK v3.1 §5, Phase 4 PR 8), on the studio chat's speaker button, the one
@@ -18,7 +19,10 @@ import { WAV_MONO_24K } from './fixtures/speechAudio';
  * - hearing the reply again sends no request, in the same page and after a reload (IndexedDB);
  * - a chunk that fails stops the read there, and "Try again" reads on from that chunk;
  * - opening another chat while a chunk is on its way plays nothing late;
- * - starting a Live call stops the read, and nothing of it plays under the call.
+ * - starting a Live call stops the read, and nothing of it plays under the call;
+ * - "Pause" pauses the read where it is, and "Continue" goes on from there (it used to stop, and the next tap read the
+ *   reply again from the first word).
+ * - a tap before anything was heard stops the read.
  * The timings it attaches are app overhead with an instant fake provider, never provider latency.
  */
 
@@ -32,7 +36,11 @@ const CHUNKS = chunkSpeech(REPLY, { leadSentence: true }).map((c) => c.text);
 
 const READ = 'ხმამაღლა წაკითხვა';
 const PAUSE = 'პაუზა';
+const CONTINUE = 'გაგრძელება';
+const STOP = 'გაჩერება';
 const RETRY = 'თავიდან სცადე';
+/** Four seconds of audio, for a chunk that must still be playing when the test taps. */
+const WAV_4S = wrapPcm16(pcm16Tone({ channels: 1, frames: 96000, period: 120 }), { sampleRate: 24000, channels: 1 });
 
 const sse = (frames: unknown[]): string =>
   frames.map((f) => `data: ${typeof f === 'string' ? f : JSON.stringify(f)}\n\n`).join('');
@@ -44,6 +52,8 @@ interface Tts {
   failOnce: Set<number>;
   /** Requests for chunks at or after this index wait until `open()` is called; null answers at once. */
   holdFrom: number | null;
+  /** Chunk indexes answered with four seconds of audio instead of one. */
+  long: Set<number>;
   open(): void;
 }
 
@@ -53,6 +63,7 @@ async function mockTts(page: Page): Promise<Tts> {
     texts: [],
     failOnce: new Set(),
     holdFrom: null,
+    long: new Set(),
     open() { tts.holdFrom = null; const w = waiting; waiting = []; for (const go of w) go(); },
   };
   await page.route('**/api/tts/gemini', async (route: Route) => {
@@ -65,6 +76,7 @@ async function mockTts(page: Page): Promise<Tts> {
         await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"tts_unavailable"}' });
         return;
       }
+      const long = tts.long.has(index);
       await route.fulfill({
         status: 200,
         contentType: 'audio/wav',
@@ -76,9 +88,9 @@ async function mockTts(page: Page): Promise<Tts> {
           [SPEECH_HEADERS.voice]: 'Kore',
           [SPEECH_HEADERS.sampleRate]: '24000',
           [SPEECH_HEADERS.channels]: '1',
-          [SPEECH_HEADERS.frames]: '24000',
+          [SPEECH_HEADERS.frames]: long ? '96000' : '24000',
         },
-        body: Buffer.from(WAV_MONO_24K),
+        body: Buffer.from(long ? WAV_4S : WAV_MONO_24K),
       });
     } catch {
       // The browser cancelled the request (stop, another chat): there is nobody to answer.
@@ -143,6 +155,11 @@ async function readEnds(page: Page): Promise<void> {
 }
 
 const plays = (page: Page) => page.evaluate(() => (window as unknown as { __plays: unknown[] }).__plays.length);
+/** The chunk element's position and whether it is paused. */
+const element = (page: Page) => page.evaluate(() => {
+  const el = (window as unknown as { __el?: HTMLMediaElement }).__el;
+  return { at: el?.currentTime ?? -1, paused: el?.paused ?? true, src: el?.src ?? '' };
+});
 
 async function openChat(page: Page, baseURL: string | undefined): Promise<void> {
   await page.addInitScript(() => { try { localStorage.setItem('myavatar:tour-seen', '1'); } catch { /* storage blocked */ } });
@@ -282,5 +299,72 @@ test('starting a Live call stops the read, and nothing of it plays under the cal
   tts.open();
   await page.waitForTimeout(2_500);
   expect(await plays(page)).toBe(1);
+  await expect(page.locator('[data-speech]')).toHaveCount(0);
+});
+
+test('"Pause" pauses the read where it is, and "Continue" goes on from there', async ({ page, baseURL }) => {
+  const tts = await mockTts(page);
+  tts.long.add(0);
+  await openChat(page, baseURL);
+  await askForReply(page);
+
+  await readButton(page).click();
+  await expect(page.getByRole('button', { name: PAUSE, exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect.poll(async () => (await element(page)).at, { timeout: 10_000 }).toBeGreaterThan(0.3);
+  await page.getByRole('button', { name: PAUSE, exact: true }).click();
+  await expect(page.getByRole('button', { name: CONTINUE, exact: true })).toBeVisible();
+  const paused = await element(page);
+  expect(paused.paused).toBe(true);
+  expect(paused.at).toBeLessThan(3.9);
+  await page.waitForTimeout(1_000);
+  expect((await element(page)).at).toBeCloseTo(paused.at, 1);
+
+  await page.getByRole('button', { name: CONTINUE, exact: true }).click();
+  await expect(page.getByRole('button', { name: PAUSE, exact: true })).toBeVisible();
+  // The same chunk goes on from where it was, not from the start: same source, a later position.
+  await expect.poll(async () => (await element(page)).at, { timeout: 5_000 }).toBeGreaterThan(paused.at + 0.2);
+  expect((await element(page)).src).toBe(paused.src);
+  await readEnds(page);
+  // Every chunk was asked for once and none twice: the pause cost no synthesis.
+  expect(tts.texts).toEqual(CHUNKS);
+  // One play() per chunk, and one more for the Continue.
+  expect(await plays(page)).toBe(CHUNKS.length + 1);
+});
+
+test('paused while the next chunk is on its way, nothing plays until "Continue"', async ({ page, baseURL }) => {
+  const tts = await mockTts(page);
+  tts.holdFrom = 1;
+  await openChat(page, baseURL);
+  await askForReply(page);
+
+  await readButton(page).click();
+  await expect.poll(() => plays(page), { timeout: 20_000 }).toBe(1);
+  // Chunk 0 ends; chunk 1 is still on its way, and the button still pauses (something has been heard).
+  await expect(page.locator('[data-speech="loading"]')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: PAUSE, exact: true }).click();
+  await expect(page.getByRole('button', { name: CONTINUE, exact: true })).toBeVisible();
+  tts.open();
+  await page.waitForTimeout(2_000);
+  expect(await plays(page)).toBe(1);
+
+  await page.getByRole('button', { name: CONTINUE, exact: true }).click();
+  await readEnds(page);
+  expect(tts.texts).toEqual(CHUNKS);
+  expect(await plays(page)).toBe(CHUNKS.length);
+});
+
+test('a tap before anything was heard stops the read', async ({ page, baseURL }) => {
+  const tts = await mockTts(page);
+  tts.holdFrom = 0;
+  await openChat(page, baseURL);
+  await askForReply(page);
+
+  await readButton(page).click();
+  await expect(page.getByRole('button', { name: STOP, exact: true })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: STOP, exact: true }).click();
+  await expect(readButton(page)).toBeVisible();
+  tts.open();
+  await page.waitForTimeout(2_000);
+  expect(await plays(page)).toBe(0);
   await expect(page.locator('[data-speech]')).toHaveCount(0);
 });
