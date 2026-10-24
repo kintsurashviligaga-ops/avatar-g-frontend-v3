@@ -234,10 +234,10 @@ test('text parts beside the audio are ignored; an answer with no audio is 502 tt
 });
 
 test.each([
-  ['a WAV wrapped twice', [{ pcm: WAV_DOUBLE_WRAPPED, mimeType: 'audio/wav' }], 'double_wrapped'],
-  ['PCM whose label states no rate', [{ pcm: MONO_24K, mimeType: 'audio/L16;codec=pcm' }], 'unlabelled'],
-  ['parts at two rates', [{ pcm: MONO_24K, mimeType: L16_24K }, { pcm: MONO_16K, mimeType: 'audio/L16;rate=16000' }], 'mixed_layout'],
-])('%s → 502 tts_bad_audio (%s), never played at a guessed rate; what Google charged is still booked', async (_why, parts, fault) => {
+  ['a WAV wrapped twice', 'double_wrapped', [{ pcm: WAV_DOUBLE_WRAPPED, mimeType: 'audio/wav' }]],
+  ['PCM whose label states no rate', 'unlabelled', [{ pcm: MONO_24K, mimeType: 'audio/L16;codec=pcm' }]],
+  ['parts at two rates', 'mixed_layout', [{ pcm: MONO_24K, mimeType: L16_24K }, { pcm: MONO_16K, mimeType: 'audio/L16;rate=16000' }]],
+])('%s → 502 tts_bad_audio (%s), never played at a guessed rate; what Google charged is still booked', async (_why, fault, parts) => {
   fetchSpy.mockImplementation(async () => geminiAudioResponse(parts, { promptTokenCount: 9, candidatesTokenCount: 30, totalTokenCount: 39 }));
   const err = jest.spyOn(console, 'error').mockImplementation(() => {});
   try {
