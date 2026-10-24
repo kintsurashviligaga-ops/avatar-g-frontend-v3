@@ -215,6 +215,8 @@ test('the contract headers name the version, the layout and the frame count of t
   expect(res.headers.get('x-voice-name')).toBe('Aoede');
   expect(res.headers.get('x-voice-provider')).toBe('gemini-native');
   expect(res.headers.get('content-length')).toBe(String(44 + 48_000));
+  // How it was made, for the browser's replay cache: the pacing version and the language code that rode along.
+  expect(res.headers.get('x-speech-pacing')).toBe('1;lang=en-US');
 });
 
 test('an answer in three audio parts is read whole and in order (it used to keep the first part only)', async () => {
@@ -306,13 +308,14 @@ test('a custom persona voice is used when no voice/gender is sent, and gender st
 });
 
 test('en/ru carry speechConfig.languageCode; GEMINI_TTS_LANGUAGE_CODE=0 turns it off', async () => {
-  await POST(post({ text: 'hello', locale: 'en' }));
+  expect((await POST(post({ text: 'hello', locale: 'en' }))).headers.get('x-speech-pacing')).toBe('1;lang=en-US');
   expect(sent(0).generationConfig.speechConfig.languageCode).toBe('en-US');
-  await POST(post({ text: 'привет', locale: 'ru' }));
+  expect((await POST(post({ text: 'привет', locale: 'ru' }))).headers.get('x-speech-pacing')).toBe('1;lang=ru-RU');
   expect(sent(1).generationConfig.speechConfig.languageCode).toBe('ru-RU');
+  expect((await POST(post({ text: 'გამარჯობა', locale: 'ka' }))).headers.get('x-speech-pacing')).toBe('1;lang=auto');
   process.env.GEMINI_TTS_LANGUAGE_CODE = '0';
-  await POST(post({ text: 'hello', locale: 'en' }));
-  expect(sent(2).generationConfig.speechConfig.languageCode).toBeUndefined();
+  expect((await POST(post({ text: 'hello', locale: 'en' }))).headers.get('x-speech-pacing')).toBe('1;lang=auto');
+  expect(sent(3).generationConfig.speechConfig.languageCode).toBeUndefined();
 });
 
 test('a 400 with a languageCode is retried once without it', async () => {
@@ -324,6 +327,8 @@ test('a 400 with a languageCode is retried once without it', async () => {
   expect(fetchSpy).toHaveBeenCalledTimes(2);
   expect(sent(0).generationConfig.speechConfig.languageCode).toBe('en-US');
   expect(sent(1).generationConfig.speechConfig.languageCode).toBeUndefined();
+  // The header names the call that answered: no language code.
+  expect(res.headers.get('x-speech-pacing')).toBe('1;lang=auto');
 });
 
 test('the answer-mode 400 and a network error are retried once; the second call reads the same text', async () => {

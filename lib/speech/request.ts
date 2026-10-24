@@ -7,9 +7,15 @@
  * retried here: the route owns the retry budget (lib/speech/deadline), and retrying on top of it would multiply it.
  */
 import { SPEECH_CLIENT_DEADLINE_MS, speechDeadline } from './deadline';
-import type { SpeechLocale } from './contract';
+import { speechProfile, type SpeechLocale } from './contract';
 
 export const SPEECH_ROUTE = '/api/tts/gemini';
+
+/** One chunk's audio, and what made it (lib/speech/contract speechProfile; null when the headers do not say). */
+export interface SpeechAnswer {
+  readonly blob: Blob;
+  readonly profile: string | null;
+}
 
 /** The WAV for `text`, or null (refused, failed, timed out or cancelled). */
 export async function requestSpeech(
@@ -18,6 +24,16 @@ export async function requestSpeech(
   signal?: AbortSignal,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Blob | null> {
+  return (await fetchSpeech(text, locale, signal, fetchImpl))?.blob ?? null;
+}
+
+/** requestSpeech, with the profile the answer's headers state. */
+export async function fetchSpeech(
+  text: string,
+  locale: SpeechLocale,
+  signal?: AbortSignal,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SpeechAnswer | null> {
   const deadline = speechDeadline(SPEECH_CLIENT_DEADLINE_MS, signal);
   try {
     // The caller already moved on: nothing is asked for.
@@ -34,7 +50,7 @@ export async function requestSpeech(
     if (!res.ok) return null;
     const blob = await res.blob();
     // Cancelled while the body was arriving: the caller has moved on, so nothing is handed back to play.
-    return deadline.signal.aborted || !blob.size ? null : blob;
+    return deadline.signal.aborted || !blob.size ? null : { blob, profile: speechProfile(res.headers) };
   } catch {
     return null;
   } finally {

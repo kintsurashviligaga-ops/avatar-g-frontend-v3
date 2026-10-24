@@ -24,13 +24,18 @@
  *   read, so no other read is ever sped up by it. A rate never corrects audio: the WAV states its rate (lib/speech/wav),
  *   and a WAV that does not is refused.
  * - A read does not start while a Live call has the speakers, and Live taking the microphone stops it (browser wiring).
+ * - Hearing a reply again sends no request: the browser wiring reads each chunk through the replay cache
+ *   (lib/speech/cache), and signing out stops the read and clears the cache.
  *
  * Audio, synthesis and URL APIs are injected (SpeechPlayerDeps), so the state machine is tested without a browser.
  */
+import { blobBytes } from './blob';
+import { browserSpeechCache, type SpeechCache } from './cache';
 import { chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
 import type { SpeechLocale } from './contract';
-import { requestSpeech } from './request';
+import { fetchSpeech, requestSpeech } from './request';
 import { inspectWav } from './wav';
+import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
 import { MIC_RELEASE_EVENT } from '@/lib/voice/micBus';
 
 /** Syntheses in flight at once, and chunks fetched ahead of the one playing. */
@@ -50,7 +55,7 @@ export type SpeechFault = 'synthesis' | 'bad_audio' | 'playback' | 'blocked' | '
 
 export interface SpeechState {
   readonly status: SpeechStatus;
-  /** Who started the read (e.g. "omni:3"); kept through failed and done, null when idle. */
+  /** Who started the read (e.g. "omni:<chat>:3"); kept through failed and done, null when idle. */
   readonly owner: string | null;
   /** The chunk loading, playing, paused or failed (0-based). */
   readonly index: number;
@@ -417,23 +422,15 @@ export class SpeechPlayer {
   }
 }
 
-/** A blob's bytes. FileReader where Blob.arrayBuffer is missing (Safari before 14, jsdom). */
-function blobBytes(blob: Blob): Promise<Uint8Array> {
-  if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer().then((b) => new Uint8Array(b));
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsArrayBuffer(blob);
-  });
-}
-
 // ─── the browser's one player ────────────────────────────────────────────────────────────────────────────────
 
-/** The browser's wiring: POST /api/tts/gemini once per chunk (lib/speech/request), one <audio>, no read during Live. */
-export function browserSpeechDeps(): SpeechPlayerDeps {
+/**
+ * The browser's wiring: one <audio>, no read during Live, and POST /api/tts/gemini once per chunk (lib/speech/request)
+ * unless `cache` already holds that chunk for this account (lib/speech/cache).
+ */
+export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlayerDeps {
   return {
-    synth: (text, locale, signal) => requestSpeech(text, locale, signal),
+    synth: (text, locale, signal) => (cache ? cache.synth(text, locale, signal, fetchSpeech) : requestSpeech(text, locale, signal)),
     createAudio: () => new Audio() as unknown as SpeechAudio,
     createObjectURL: (blob) => URL.createObjectURL(blob),
     revokeObjectURL: (url) => URL.revokeObjectURL(url),
@@ -442,13 +439,32 @@ export function browserSpeechDeps(): SpeechPlayerDeps {
 }
 
 let shared: SpeechPlayer | null = null;
+let sharedCache: SpeechCache | null = null;
 
-/** The page's one player. Live taking the microphone (lib/voice/micBus) stops any read, so two voices never overlap. */
+/**
+ * The page's one player, with the page's replay cache. Live taking the microphone (lib/voice/micBus) stops any read,
+ * so two voices never overlap. Signing out (lib/auth/sessionCleanup) stops any read and clears the cache, so nothing
+ * of that account is heard or kept after it.
+ */
 export function speechPlayer(): SpeechPlayer {
   if (!shared) {
-    const player = new SpeechPlayer(browserSpeechDeps());
+    const cache = browserSpeechCache();
+    const player = new SpeechPlayer(browserSpeechDeps(cache));
     shared = player;
-    if (typeof window !== 'undefined') window.addEventListener(MIC_RELEASE_EVENT, () => player.stop());
+    sharedCache = cache;
+    if (typeof window !== 'undefined') {
+      window.addEventListener(MIC_RELEASE_EVENT, () => player.stop());
+      window.addEventListener(SESSION_CLEARED_EVENT, () => {
+        player.stop();
+        void cache.clear();
+      });
+    }
   }
   return shared;
+}
+
+/** The replay cache of the page's player. */
+export function speechCache(): SpeechCache {
+  speechPlayer();
+  return sharedCache!;
 }
