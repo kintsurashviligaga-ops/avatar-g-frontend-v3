@@ -13,7 +13,8 @@
  *   6. the platform budget pre-check at the mode's primary model's rate (BillingGuard, fails closed) — refused IN-STREAM;
  *   7. platform prompt (lib/chat/platformPrompt) + the user's profile facts + vector memory, then the agent profile
  *      (lib/agents/profile) turns persona + prompt into the Gemini config, and the mode lays its generation settings
- *      over it (`applyChatMode`);
+ *      over it (`applyChatMode`). The facts, the memory and the talking-avatar check run alongside step 6 and are
+ *      waited for only up to CONTEXT_DEADLINE_MS (left out when late); the budget is waited for in full;
  *   8. lib/ai/google/chatStream streams the turn across chatModelChain(mode) with typed errors;
  *   9. no other vendor: a Gemini failure is a notice, never an Anthropic answer (no env value restores the old
  *      fallback, MASTER TASK v3.1);
@@ -129,6 +130,16 @@ export const HEARTBEAT_MS = 8_000;
  * connection the platform kills at maxDuration with no explanation. 20 s of headroom covers the notice + booking.
  */
 export const TURN_DEADLINE_MS = (maxDuration - 20) * 1000;
+
+/**
+ * ⚠️ THE MODEL WAITS FOR THE BUDGET, NOT FOR THE EXTRAS (MASTER TASK v3.1 §4.4). The profile facts, the vector memory
+ * and the talking-avatar check run alongside the budget check, and the turn waits for them this long from when they
+ * started, or until the budget answers if that is later. Whatever is not in by then is left out of this turn
+ * (fail-soft): the answer comes without that context, and a late avatar check offers no avatar. The budget has no such
+ * deadline: it is the gate, and it fails closed. 500 ms is a chosen bound, not a measured one: the mock fixture's
+ * memory takes 200 ms (embedding, then the lookup), and production has not been timed.
+ */
+export const CONTEXT_DEADLINE_MS = 500;
 
 /**
  * Each mode's output ceiling floor, THINKING INCLUDED (Gemini counts thought tokens against maxOutputTokens) — see
@@ -370,6 +381,22 @@ async function settleWithin(p: Promise<unknown>, ms: number): Promise<void> {
   if (timer) clearTimeout(timer);
 }
 
+/**
+ * `p`'s value when it is in within `ms`, else `late`; a rejection is `late` too. One already in always wins, even at
+ * `ms` ≤ 0: its callbacks run before any timer can.
+ */
+async function valueWithin<T>(p: Promise<T>, ms: number, late: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const value = await Promise.race([
+    p.catch(() => late),
+    new Promise<T>((resolve) => {
+      timer = setTimeout(() => resolve(late), Math.max(0, ms));
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+  return value;
+}
+
 /** A complete SSE response from a fixed list of frames (the in-stream refusals decided before the model runs). */
 function frameResponse(frames: ReadonlyArray<ChatFrame | 'DONE'>): Response {
   return new Response(frames.map((f) => encodeFrame(f)).join(''), { headers: SSE_HEADERS });
@@ -446,10 +473,11 @@ export async function POST(req: NextRequest) {
   /** The verified ACCOUNT, or null — a session id of "anonymous" is not an account (generationGate.isAnonymousUser). */
   const accountId = isAnonymousUser(userId) ? null : userId;
   // The Veo talking avatar runs for the admin until GG opens it (app/api/avatar/veo), so the prompt offers the Avatar
-  // tool only to whoever that route lets through. Started here, read when the prompt is built.
-  const veoAvatarPromise: Promise<boolean> = veoAvatarPublic()
-    ? Promise.resolve(true)
-    : accountId ? timing.time('admin', isAdminIdentity(auth.user).catch(() => false)) : Promise.resolve(false);
+  // tool only to whoever that route lets through. Known at once when it is open to all or there is no account;
+  // otherwise checked from here and read in the stream, by CONTEXT_DEADLINE_MS (a late answer offers no avatar).
+  const veoAvatarKnown: boolean | null = veoAvatarPublic() ? true : accountId ? null : false;
+  const veoAvatarPromise: Promise<boolean> =
+    veoAvatarKnown !== null ? Promise.resolve(veoAvatarKnown) : timing.time('admin', isAdminIdentity(auth.user).catch(() => false));
   const guest = !accountId && !anonymousGenerationAllowed();
   if (guest && !guestChatEnabled()) {
     const loc = requestLocale(req);
@@ -567,9 +595,14 @@ export async function POST(req: NextRequest) {
   // grounding is off for them (lib/chat/guestChat). The prompt is told either way, so a turn without the tool says it
   // cannot open links instead of "summarizing" a page it never read.
   const urlContextOn = !guest && wantsUrlContext(latestUserText);
-  const veoAvatar = await veoAvatarPromise;
   const promptStarted = performance.now();
-  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn, veoAvatar });
+  const promptFor = (veoAvatar: boolean) =>
+    buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn, veoAvatar });
+  // ⚠️ THE ESTIMATE NEVER COMES IN UNDER THE TURN. While the avatar check is still out, the budget is priced on the
+  // longer of the two prompts the turn can get (the one offering the avatar is a line longer); the turn gets its own
+  // prompt once the check is in. Known at once, the prompt is the turn's own from the start.
+  const estimatePrompt =
+    veoAvatarKnown !== null ? promptFor(veoAvatarKnown) : [promptFor(true), promptFor(false)].reduce((a, b) => (b.length > a.length ? b : a));
   const modelMessages = toModelMessages(wire);
   const historyChars = wire.reduce((n, m) => n + estimateWireChars(m), 0);
   timing.add('prompt', performance.now() - promptStarted);
@@ -579,15 +612,14 @@ export async function POST(req: NextRequest) {
   // at the mode's PRIMARY model — a Pro turn pre-checked at the flat Flash rate looked cheaper than it is.
   const budgetPromise = timing.time(
     'budget',
-    chatBudgetRefusal(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => GUARD_UNAVAILABLE),
+    chatBudgetRefusal(`${estimatePrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => GUARD_UNAVAILABLE),
   );
-  const preamblesPromise: Promise<[string | null, string | null]> =
-    auth.supabase && accountId
-      ? Promise.all([
-          timing.time('profile', buildProfileFactsPreamble(auth.supabase, accountId, latestUserText)),
-          timing.time('memory', buildMemoryPreamble(auth.supabase, accountId, latestUserText, timing)),
-        ])
-      : Promise.resolve([null, null]);
+  // Profile facts and memory, then read in the stream by CONTEXT_DEADLINE_MS from now.
+  const contextStarted = performance.now();
+  const profilePromise: Promise<string | null> =
+    auth.supabase && accountId ? timing.time('profile', buildProfileFactsPreamble(auth.supabase, accountId, latestUserText)) : Promise.resolve(null);
+  const memoryPromise: Promise<string | null> =
+    auth.supabase && accountId ? timing.time('memory', buildMemoryPreamble(auth.supabase, accountId, latestUserText, timing)) : Promise.resolve(null);
 
   const abort = new AbortController();
   const onClientGone = () => abort.abort();
@@ -676,7 +708,19 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        const [profilePreamble, memoryPreamble] = await preamblesPromise;
+        // ── CONTEXT, FAIL-SOFT: what is in by CONTEXT_DEADLINE_MS (or by now, when the budget took longer). Left out
+        //    otherwise: no profile facts, no memory, no avatar offer this turn.
+        const left = contextStarted + CONTEXT_DEADLINE_MS - performance.now();
+        const [profilePreamble, memoryPreamble, veoAvatar] = await Promise.all([
+          valueWithin(profilePromise, left, null),
+          valueWithin(memoryPromise, left, null),
+          valueWithin(veoAvatarPromise, left, false),
+        ]);
+        // The browser left while the turn waited (Stop, a closed tab): the model is never asked.
+        if (abort.signal.aborted && !deadlineHit) return;
+        const turnPromptStarted = performance.now();
+        const platformPrompt = veoAvatarKnown !== null ? estimatePrompt : promptFor(veoAvatar);
+        timing.add('prompt', performance.now() - turnPromptStarted);
         const platformSystem = [platformPrompt, profilePreamble, memoryPreamble].filter(Boolean).join('\n\n');
         // The persona block is APPENDED by the profile, so the platform rules keep precedence over what is, for a
         // custom persona, untrusted user text.
