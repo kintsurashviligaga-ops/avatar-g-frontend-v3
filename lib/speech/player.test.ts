@@ -359,6 +359,72 @@ describe('one read at a time', () => {
   });
 });
 
+describe('playPause: a Pause button', () => {
+  test('a tap while it plays pauses the read where it is; the next tap goes on from there, not from the start', async () => {
+    const r = rig();
+    r.player.playPause(req('a'));
+    answer(r, 0);
+    await until(() => r.s().status === 'playing', 'playing');
+    r.audio.currentTime = 0.05;
+    r.player.playPause(req('a'));
+    expect(r.s()).toMatchObject({ status: 'paused', owner: 'a', index: 0 });
+    expect(r.audio.pause).toHaveBeenCalled();
+    const asked = r.calls.length;
+    const plays = r.audio.plays.length;
+    r.player.playPause(req('a'));
+    expect(r.s()).toMatchObject({ status: 'playing', owner: 'a', index: 0 });
+    // The same chunk plays on: no new synthesis, no new source, the element keeps its position.
+    expect(r.calls).toHaveLength(asked);
+    expect(r.created).toHaveLength(1);
+    expect(r.audio.plays).toHaveLength(plays + 1);
+    expect(r.audio.plays[plays]).toBe('blob:1');
+    expect(r.audio.currentTime).toBe(0.05);
+    r.audio.end();
+    answer(r, 1);
+    await until(() => r.s().status === 'playing' && r.s().index === 1, 'chunk 1 playing');
+  });
+
+  test('paused between chunks, the next tap plays the next chunk once it is in', async () => {
+    const r = rig();
+    r.player.playPause(req('a'));
+    answer(r, 0);
+    await until(() => r.s().status === 'playing', 'playing');
+    r.audio.end();
+    await until(() => r.s().status === 'loading' && r.s().index === 1, 'loading chunk 1');
+    r.player.playPause(req('a'));
+    expect(r.s()).toMatchObject({ status: 'paused', index: 1 });
+    answer(r, 1);
+    await until(() => r.created.length === 2, 'chunk 1 loaded');
+    await tick();
+    expect(r.s().status).toBe('paused');
+    r.player.playPause(req('a'));
+    expect(r.s()).toMatchObject({ status: 'playing', index: 1 });
+  });
+
+  test('a tap before anything was heard stops the read: there is nothing to go on from', () => {
+    const r = rig();
+    r.player.playPause(req('a'));
+    expect(r.s()).toMatchObject({ status: 'loading', index: 0 });
+    r.player.playPause(req('a'));
+    expect(r.s()).toMatchObject({ status: 'idle', owner: null });
+    expect(r.calls.every((c) => c.signal.aborted || c.settled)).toBe(true);
+  });
+
+  test('a failed read is tried again; another reply, or an edited one, starts afresh', async () => {
+    const r = rig();
+    r.player.playPause(req('a'));
+    answer(r, 0, null);
+    await until(() => r.s().status === 'failed', 'failed');
+    const retry = jest.spyOn(r.player, 'retry');
+    r.player.playPause(req('a'));
+    expect(retry).toHaveBeenCalledTimes(1);
+    answer(r, 0);
+    await until(() => r.s().status === 'playing', 'playing');
+    r.player.playPause(req('b', 'Another reply.'));
+    expect(r.s()).toMatchObject({ status: 'loading', owner: 'b', total: 1 });
+  });
+});
+
 test('pause and resume, while playing and while loading', async () => {
   const r = rig();
   r.player.play(req());

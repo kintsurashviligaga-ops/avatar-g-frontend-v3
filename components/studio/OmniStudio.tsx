@@ -2321,14 +2321,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, []);
   // Read-aloud: the page's one player (lib/speech/player) owns playback; a bubble's read is the owner
   // "omni:<conversation>:<index>", so bubble 3 of another chat is never taken for bubble 3 of this one.
-  // speakingIdx is the bubble being read (its button stops it), speakPhase 'loading' while its chunk is synthesised
-  // and 'playing' once audio plays, speakFailedIdx the bubble whose read stopped at a chunk that failed ("Try again"
-  // reads on from that chunk).
+  // speakingIdx is the bubble being read (its button pauses it, and goes on from there), speakPhase 'loading' while its
+  // chunk is synthesised, 'playing' once audio plays and 'paused' after a tap, speakFailedIdx the bubble whose read
+  // stopped at a chunk that failed ("Try again" reads on from that chunk). speakStops: nothing of the read has been
+  // heard yet, so the tap stops it (lib/speech/player playPause).
   const speech = useSpeechState();
   const omniOwner = `omni:${conversationId}:`;
   const speechIdx = speech.owner?.startsWith(omniOwner) ? Number(speech.owner.slice(omniOwner.length)) : null;
   const speakingIdx = speechIdx !== null && isSpeaking(speech) ? speechIdx : null;
-  const speakPhase: 'loading' | 'playing' | null = speakingIdx === null ? null : speech.status === 'loading' ? 'loading' : 'playing';
+  const speakPhase: 'loading' | 'playing' | 'paused' | null = speakingIdx === null ? null
+    : speech.status === 'loading' ? 'loading' : speech.status === 'paused' ? 'paused' : 'playing';
+  const speakStops = speakPhase === 'loading' && speech.index === 0;
   const speakFailedIdx = speechIdx !== null && speech.status === 'failed' ? speechIdx : null;
   // Remix: per-film-bubble edit draft + which film is currently remixing.
   const [remixDrafts, setRemixDrafts] = useState<Record<number, string>>({});
@@ -7904,7 +7907,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
       return;
     }
-    player.toggle({ owner, text, locale });
+    // ⚠️ THE BUTTON SAYS „PAUSE", SO IT PAUSES (GG, production 2026-10-24): it used to stop the read, and the next tap
+    // read the reply again from the first word. Now the tap pauses, the next one goes on from the same moment.
+    player.playPause({ owner, text, locale });
   }, [locale, conversationId]);
 
   // Another chat opens, or the studio unmounts: a read the studio started stops (its requests are cancelled at the
@@ -10395,6 +10400,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   const copyWord = locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება';
                   const readWord = locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა';
                   const retryReadWord = locale === 'en' ? 'Try again' : locale === 'ru' ? 'Повторить' : 'თავიდან სცადე';
+                  const pauseWord = locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა';
+                  const resumeWord = locale === 'en' ? 'Continue' : locale === 'ru' ? 'Продолжить' : 'გაგრძელება';
+                  const stopWord = locale === 'en' ? 'Stop' : locale === 'ru' ? 'Стоп' : 'გაჩერება';
+                  // What this bubble's tap does now: go on, stop a read not heard yet, or pause.
+                  const speakWord = speakPhase === 'paused' ? resumeWord : speakStops ? stopWord : pauseWord;
                   return (
                     // -ml-2.5: the first icon (not its 40 px state layer) lines up with the reply's text edge.
                     <div className={`-ml-2.5 mt-2 flex min-w-0 items-center gap-0.5 text-app-muted transition-opacity duration-200 ${isLast ? '' : '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100'}`}>
@@ -10422,8 +10432,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       <button
                         type="button"
                         onClick={() => speakMsg(m.text, i)}
-                        aria-label={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : speakFailedIdx === i ? retryReadWord : readWord}
-                        title={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : speakFailedIdx === i ? retryReadWord : readWord}
+                        aria-label={speakingIdx === i ? speakWord : speakFailedIdx === i ? retryReadWord : readWord}
+                        title={speakingIdx === i ? speakWord : speakFailedIdx === i ? retryReadWord : readWord}
                         data-speech={speakingIdx === i ? speakPhase : speakFailedIdx === i ? 'failed' : undefined}
                         className={
                           speakingIdx === i
@@ -10442,13 +10452,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         ) : speakingIdx === i ? (
                           speakPhase === 'loading' ? (
                             <Loader2 size={17} aria-hidden="true" className="animate-spin text-blue-400" />
+                          ) : speakPhase === 'paused' ? (
+                            <>
+                              <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
+                                <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+                              </svg>
+                              <span>{resumeWord}</span>
+                            </>
                           ) : (
                             <>
                               <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
                                 <rect x="6" y="5" width="4" height="14" rx="1.2" />
                                 <rect x="14" y="5" width="4" height="14" rx="1.2" />
                               </svg>
-                              <span>{locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა'}</span>
+                              <span>{pauseWord}</span>
                             </>
                           )
                         ) : (
@@ -10525,7 +10542,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakStops, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to
