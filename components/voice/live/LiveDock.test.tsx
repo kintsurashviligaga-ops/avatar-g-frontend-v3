@@ -52,8 +52,9 @@ describe('LiveDock', () => {
     expect(dock).toHaveTextContent(t.callLabel);
     expect(dock).toHaveTextContent('Agent G');
     expect(dock).toHaveTextContent('STATUS');
-    // The agent is the rocket, in the orb.
-    expect(dock.querySelector('[data-testid="live-orb-rocket"]')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
+    // No rocket (2026-10-24): the orb is the approved blue disc with the white waveform.
+    expect(dock.innerHTML).not.toMatch(/rocket/i);
+    expect(dock.querySelectorAll('img')).toHaveLength(0);
     // Every control is a ≥ 44 px target with a name in the language.
     for (const name of [t.mute, t.expand, t.end]) {
       expect(screen.getByRole('button', { name }).className).toMatch(/\bh-\[44px\]/);
