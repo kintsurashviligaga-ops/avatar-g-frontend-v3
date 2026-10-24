@@ -1,37 +1,45 @@
 'use client';
 
 /**
- * useReportVoice — the viewer's read-aloud, as a hook around ReadAloudPlayer (speech.ts): one player per open report, torn
- * down when the viewer closes or Live takes the microphone and speakers. `activity` is what commands.planReportCommand needs
- * to decide whether "stop" / "pause" / "resume" mean anything right now.
+ * useReportVoice — the viewer's read-aloud, on the page's one player (lib/speech/player). A read started here stops any
+ * other, and any other (or Live taking the microphone) stops this one; it also stops when the viewer closes. `activity` is
+ * what commands.planReportCommand needs to decide whether "stop" / "pause" / "resume" mean anything right now.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SpeechLocale } from '@/lib/speech/contract';
+import { speechPlayer, type SpeechRequest } from '@/lib/speech/player';
+import { useSpeechState } from '@/lib/speech/useSpeech';
 import type { VoiceActivity } from './commands';
-import { browserSpeechDeps, planAnswerSpeech, planReportSpeech, ReadAloudPlayer, type PlayerState } from './speech';
+import { planAnswerSpeech, planReportSpeech, viewerPlayerState } from './speech';
 
-const IDLE: PlayerState = { status: 'idle', index: 0, total: 0 };
+/** The owner of a read the report viewer started. */
+export const RESEARCH_OWNER = 'research';
+
+const ours = () => speechPlayer().getState().owner === RESEARCH_OWNER;
 
 export function useReportVoice(locale: string) {
-  const [state, setState] = useState<PlayerState>(IDLE);
+  const speech = useSpeechState();
+  const state = useMemo(() => viewerPlayerState(speech, RESEARCH_OWNER), [speech]);
   const [partial, setPartial] = useState(false);
-  const player = useRef<ReadAloudPlayer | null>(null);
+  const last = useRef<SpeechRequest | null>(null);
+  const lang: SpeechLocale = locale === 'en' || locale === 'ru' ? locale : 'ka';
 
-  const get = useCallback((): ReadAloudPlayer => {
-    if (!player.current) player.current = new ReadAloudPlayer(browserSpeechDeps(locale), setState);
-    return player.current;
-  }, [locale]);
+  useEffect(() => () => speechPlayer().stop(RESEARCH_OWNER), []);
 
-  useEffect(() => () => { player.current?.dispose(); player.current = null; }, []);
-
+  const read = useCallback((text: string) => {
+    const req: SpeechRequest = { owner: RESEARCH_OWNER, text, locale: lang };
+    last.current = req;
+    speechPlayer().play(req);
+  }, [lang]);
   const readReport = useCallback((markdown: string) => {
     const plan = planReportSpeech(markdown);
     setPartial(plan.partial);
-    get().start(plan.chunks);
-  }, [get]);
+    read(plan.text);
+  }, [read]);
   const readAnswer = useCallback((markdown: string) => {
     setPartial(false);
-    get().start(planAnswerSpeech(markdown).chunks);
-  }, [get]);
+    read(planAnswerSpeech(markdown).text);
+  }, [read]);
 
   const activity: VoiceActivity = state.status === 'loading' ? 'loading' : state.status === 'playing' ? 'playing' : state.status === 'paused' ? 'paused' : 'idle';
 
@@ -40,11 +48,15 @@ export function useReportVoice(locale: string) {
     activity,
     partial,
     /** Call inside the tap that will start a read after an await (a spoken answer). */
-    prime: useCallback(() => get().prime(), [get]),
+    prime: useCallback(() => speechPlayer().prime(), []),
     readReport,
     readAnswer,
-    pause: useCallback(() => player.current?.pause(), []),
-    resume: useCallback(() => player.current?.resume(), []),
-    stop: useCallback(() => { player.current?.stop(); setPartial(false); }, []),
+    /** Read on from the chunk that failed (a read that never started is started again). Call it from the tap. */
+    retry: useCallback(() => {
+      if (ours() && speechPlayer().getState().status === 'failed' && last.current) speechPlayer().toggle(last.current);
+    }, []),
+    pause: useCallback(() => { if (ours()) speechPlayer().pause(); }, []),
+    resume: useCallback(() => { if (ours()) speechPlayer().resume(); }, []),
+    stop: useCallback(() => { speechPlayer().stop(RESEARCH_OWNER); setPartial(false); }, []),
   };
 }

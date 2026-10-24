@@ -93,8 +93,8 @@ import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 // VFX (Genjutsu): three.js-free, loaded only when the VFX tool opens; the skeleton is the panel's first-paint height.
 const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
-import { chunkForTts } from '@/lib/audio/ttsChunks';
-import { requestSpeech } from '@/lib/speech/request';
+import { isSpeaking, speechPlayer } from '@/lib/speech/player';
+import { useSpeechState } from '@/lib/speech/useSpeech';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
@@ -261,21 +261,6 @@ const serviceLabel = (id: string, locale: string): string => (isToolId(id) ? too
  * state is explicit. Reused by every generation entry point (chat/image/music/video,
  * product ad, character swap).
  */
-/**
- * One TTS request → an object URL of the spoken audio, or null. Shared by read-aloud (speakMsg) and the voice-turn
- * pre-synthesis in streamChat. lib/speech/request bounds it (a HUNG TTS call can't keep the read-aloud spinner up) and
- * never retries it; `signal` is the read's, so a stop or another message cancels the request at the route too (§5.3.4).
- */
-async function synthTtsUrl(chunk: string, locale: Lang, signal?: AbortSignal): Promise<string | null> {
-  const blob = await requestSpeech(chunk, locale, signal);
-  return blob ? URL.createObjectURL(blob) : null;
-}
-
-/** Revoke a pending synthesis's URL once it lands (an abandoned read must not leak its blob). */
-function dropTtsUrl(p: Promise<string | null> | null | undefined): void {
-  void p?.then((u) => { if (u) URL.revokeObjectURL(u); });
-}
-
 function busyToastMessage(locale: Lang): string {
   return locale === 'en'
     ? 'Another generation is currently in progress. Please wait for it to complete.'
@@ -2334,10 +2319,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (res.ok) { try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ } }
     }).catch(() => {});
   }, []);
-  const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
-  // Read-aloud phase for the speaking bubble — 'loading' while eleven_v3 synthesises
-  // (a few seconds), 'playing' once audio starts. Drives the dynamic listen button.
-  const [speakPhase, setSpeakPhase] = useState<'loading' | 'playing' | null>(null);
+  // Read-aloud: the page's one player (lib/speech/player) owns playback; a bubble's read is the owner "omni:<index>".
+  // speakingIdx is the bubble being read (its button stops it), speakPhase 'loading' while its chunk is synthesised
+  // and 'playing' once audio plays, speakFailedIdx the bubble whose read stopped at a chunk that failed ("Try again"
+  // reads on from that chunk).
+  const speech = useSpeechState();
+  const speechIdx = speech.owner?.startsWith('omni:') ? Number(speech.owner.slice(5)) : null;
+  const speakingIdx = speechIdx !== null && isSpeaking(speech) ? speechIdx : null;
+  const speakPhase: 'loading' | 'playing' | null = speakingIdx === null ? null : speech.status === 'loading' ? 'loading' : 'playing';
+  const speakFailedIdx = speechIdx !== null && speech.status === 'failed' ? speechIdx : null;
   // Remix: per-film-bubble edit draft + which film is currently remixing.
   const [remixDrafts, setRemixDrafts] = useState<Record<number, string>>({});
   const [remixBusyIdx, setRemixBusyIdx] = useState<number | null>(null);
@@ -2346,16 +2336,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Inline edit-&-resend of a user turn: which message is being edited + its draft.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
-  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
-  // Resolver for the CURRENTLY-playing chunk's await — invoked on stop / message-switch so the loop unblocks and its
-  // blob URL is revoked (pause/src-swap fire neither `ended` nor `error`, so without this the promise + URL leak).
-  const ttsResolveRef = useRef<(() => void) | null>(null);
-  // Monotonic token so a tap that cancels (or supersedes) an in-flight read-aloud
-  // doesn't let the orphaned fetch start playing after the user moved on.
-  const ttsTokenRef = useRef(0);
-  // The current read's requests: aborted on stop, on another message and on unmount, so a synthesis in flight is
-  // cancelled at the route as well (MASTER TASK v3.1 §5.3.4) instead of only being ignored when it lands.
-  const ttsAbortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   // v330 — dedicated hidden inputs for the Video panel's asset slots: a single
   // Character Reference image and a custom Audio Track (beat/song), each kept
@@ -2379,10 +2359,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // defined AFTER streamChat) without a temporal-dead-zone reference.
   const autoPlayReplyRef = useRef(false);
   const speakMsgRef = useRef<((text: string, i: number) => void) | null>(null);
-  // SPEAK SOONER: a voice turn's reply starts synthesising its FIRST sentence while the rest still streams
-  // (chunkForTts leadSentence — that chunk is final once the second sentence begins). speakMsg takes it when its own
-  // first chunk is the same text, so the reply's voice starts the moment the stream ends instead of a TTS later.
-  const ttsPrefetchRef = useRef<{ text: string; url: Promise<string | null> } | null>(null);
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
   // dictation recorder above so the two never collide.
   const voiceFileRef = useRef<HTMLInputElement | null>(null);
@@ -5857,16 +5833,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // Captured locally so a later regenerate/typed turn — which never sets it — can't inherit it.
     const autoPlayReply = autoPlayReplyRef.current;
     autoPlayReplyRef.current = false;
-    dropTtsUrl(ttsPrefetchRef.current?.url);
-    ttsPrefetchRef.current = null;
-    // A voice turn: watch the stream and pre-synthesise its first sentence as soon as that sentence is complete.
-    const stopPrefetch = autoPlayReply
-      ? chat.store.subscribe(() => {
-        if (ttsPrefetchRef.current || !mine()) return;
-        const lead = chunkForTts(chat.store.getSnapshot().text, 600, { leadSentence: true });
-        if (lead.length >= 2 && lead[0]) ttsPrefetchRef.current = { text: lead[0], url: synthTtsUrl(lead[0], locale) };
-      })
-      : null;
     const sid = `chat-${myGen}-${Date.now().toString(36)}`;
     setMessages([...history, { role: 'assistant', text: '', id: sid }]);
     streamingIdRef.current = sid;
@@ -5964,12 +5930,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (autoPlayReply) speakMsgRef.current?.(cleaned, history.length);
       }
     } finally {
-      stopPrefetch?.();
-      // Not spoken (an error, a stop, a superseded turn): the pre-synthesised sentence goes unused — release it.
-      // (speakMsg takes it synchronously, so a reply that IS being spoken has already emptied the ref.)
-      // (Read through a cast: TS keeps the `= null` above narrowed, but the stream's subscriber set it since.)
-      const unused = ttsPrefetchRef.current as { url: Promise<string | null> } | null;
-      if (autoPlayReply && unused) { dropTtsUrl(unused.url); ttsPrefetchRef.current = null; }
       if (streamingIdRef.current === sid) streamingIdRef.current = null;
       setStreamingId((cur) => (cur === sid ? null : cur));
       if (mine()) setBusy(false);
@@ -7946,133 +7906,33 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     persistChatTurn('user', trimmed);
   }, [editingIdx, editText, messages, streamChat, persistChatTurn]);
 
-  // Read an assistant reply aloud via the premium TTS route (ElevenLabs Georgian
-  // voice, Google-TTS fallback). Toggles: tapping the speaking message stops it.
-  // Only one plays at a time. Fail-soft: any miss just clears the speaking state.
-  const speakMsg = useCallback(async (text: string, i: number) => {
-    // Tapping the active bubble (loading OR playing) stops it — bump the token so any
-    // in-flight synthesis for it is abandoned rather than auto-playing later, and unblock+revoke the current chunk.
-    if (speakingIdx === i) { ttsTokenRef.current++; ttsAbortRef.current?.abort(); if (ttsAudioRef.current) ttsAudioRef.current.pause(); ttsResolveRef.current?.(); setSpeakingIdx(null); setSpeakPhase(null); return; }
+  // Read an assistant reply aloud (Gemini native TTS through /api/tts/gemini). The page has ONE player
+  // (lib/speech/player): it unlocks the reused <audio> inside this tap (iOS/Safari), reads every sentence in order with
+  // at most two chunks synthesised ahead, and never skips one — a chunk that fails stops the read there. So a tap on
+  // the bubble being read stops it, a tap on a bubble whose read failed reads on from the chunk that failed, and any
+  // other tap reads that reply and stops whatever else was being read (here or on another screen).
+  const speakMsg = useCallback((text: string, i: number) => {
+    const player = speechPlayer();
+    const owner = `omni:${i}`;
+    const now = player.getState();
     // Read-aloud is a signed-in tool (/api/tts/gemini refuses guests): a guest's tap opens sign-in instead of a
-    // spinner that quietly plays nothing.
-    if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
+    // spinner that quietly plays nothing. Stopping a read is always allowed.
+    if (!(now.owner === owner && isSpeaking(now)) && typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
       window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
       return;
     }
-    // Switching to a DIFFERENT message mid-read: cancel its requests, unblock+revoke the prior chunk before we retarget
-    // the element.
-    ttsAbortRef.current?.abort();
-    const reading = new AbortController();
-    ttsAbortRef.current = reading;
-    ttsResolveRef.current?.();
-    const token = ++ttsTokenRef.current;
-    const live = () => token === ttsTokenRef.current;
-
-    // AUTOPLAY UNLOCK — the "speaker button does nothing" bug. The first audio.play() previously ran AFTER an awaited
-    // TTS fetch, by which time the click's user-activation had expired, so iOS/Safari silently blocked playback. Fix:
-    // reuse ONE <audio> element and prime it with a tiny silent WAV SYNCHRONOUSLY here (inside the click gesture) so
-    // the later src+play() after the fetch is already user-activated. Everything below this line may await freely.
-    const SILENT_WAV = 'data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA==';
-    let audioEl = ttsAudioRef.current;
-    if (!audioEl) { audioEl = new Audio(); ttsAudioRef.current = audioEl; }
-    audioEl.pause();
-    audioEl.src = SILENT_WAV;
-    void audioEl.play().catch(() => {}); // primes playback permission within the gesture (must NOT be awaited)
-
-    setSpeakingIdx(i);
-    setSpeakPhase('loading'); // spinner while Gemini synthesises the native voice
-
-    // CHUNKED read-aloud: split into sentence-sized chunks and synthesise + play them back-to-back so
-    // the WHOLE message is read and the FIRST sentence starts fast (the next chunk is pre-fetched while
-    // the current one plays). Now on Gemini NATIVE audio (/api/tts/gemini) — no ElevenLabs, no lag, and
-    // it no longer stops after one word.
-    // The first chunk is the first SENTENCE alone (when short): its audio comes back in a fraction of a 600-char
-    // request, and the rest is synthesised while it plays.
-    const chunks = chunkForTts(text, 180, { leadSentence: true });
-    const pre = ttsPrefetchRef.current;
-    ttsPrefetchRef.current = null;
-    if (!chunks.length) { dropTtsUrl(pre?.url); setSpeakingIdx(null); setSpeakPhase(null); return; }
-
-    const synth = (chunk: string): Promise<string | null> => synthTtsUrl(chunk, locale, reading.signal);
-    const drainNext = (pr: Promise<string | null>) => dropTtsUrl(pr);
-    try {
-      const first = pre && pre.text === chunks[0] ? pre.url : null;
-      if (pre && !first) drainNext(pre.url);
-      // Kick off up to 3 chunks in PARALLEL immediately so mid-text pauses never happen
-      const queue: Array<Promise<string | null> | null> = chunks.map((c, idx) =>
-        idx === 0 ? (first ?? synth(c)) : idx < 3 ? synth(c) : null
-      );
-      const drainRemaining = (fromIdx: number) => {
-        for (let k = fromIdx; k < queue.length; k++) {
-          if (queue[k]) drainNext(queue[k]!);
-        }
-      };
-      for (let idx = 0; idx < chunks.length; idx++) {
-        if (!queue[idx]) queue[idx] = synth(chunks[idx]!);
-        if (idx + 3 < chunks.length && !queue[idx + 3]) queue[idx + 3] = synth(chunks[idx + 3]!);
-        const url = await queue[idx]!;
-        if (!live()) { if (url) URL.revokeObjectURL(url); drainRemaining(idx + 1); return; }
-        if (!url) continue;
-        const el = ttsAudioRef.current;
-        if (!el) { URL.revokeObjectURL(url); drainRemaining(idx + 1); return; }
-        el.src = url; // reuse the SAME (already user-activated) element so play() is never blocked
-        try { el.load(); } catch { /* noop */ } // iOS: force the element to (re)load the new WAV fully — without
-        // this a reused element can play only the first moments of a swapped src, the "cuts off after a few words".
-        if (live()) setSpeakPhase('playing');
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          // ⚠️ THE WATCHDOG IS PART OF THE FIX, NOT A PRECAUTION. Ignoring a stale error means that if a
-          // load genuinely dies without ever firing `ended`, nothing would resolve this promise and the
-          // read would hang forever with the spinner up — trading a truncation for a freeze, which is
-          // worse. A sentence of TTS is a few seconds, so this ceiling can never cut real audio short;
-          // it only guarantees the loop always moves on.
-          let guard = 0;
-          const done = () => {
-            if (settled) return;
-            settled = true;
-            if (guard) window.clearTimeout(guard);
-            ttsResolveRef.current = null;
-            el.onended = null;
-            el.onerror = null;
-            URL.revokeObjectURL(url);
-            resolve();
-          };
-          guard = window.setTimeout(done, 90_000);
-          // Register with the ref so a stop / message-switch can force this to resolve (pause fires neither event).
-          ttsResolveRef.current = done;
-
-          // ⚠️ A STALE `error` FROM THE PREVIOUS CHUNK ENDED THIS ONE BEFORE IT PLAYED — the read cut off
-          // after two or three words. One <audio> element is deliberately reused across chunks (that is
-          // what keeps playback user-activated), and `el.load()` on a src swap ABORTS the pending load,
-          // which fires `error`. That event is asynchronous, so it can land AFTER the next chunk has
-          // already assigned its own handlers — and the old handler ran `done`, which revoked this
-          // chunk's blob URL and advanced the loop before a single sample was played. Every later chunk
-          // met the same fate, so the message stopped almost immediately while the UI showed success.
-          //
-          // The guard: only accept an error that actually belongs to THIS chunk. `currentSrc` is the URL
-          // the element is really working on, so an event from a superseded load no longer counts. A
-          // genuine failure still ends the chunk — `el.error` is set for those, and the loop's `continue`
-          // skips it and keeps reading the rest.
-          const isForThisChunk = () => !el.currentSrc || el.currentSrc === url;
-          el.onended = () => { if (isForThisChunk()) done(); };
-          el.onerror = () => { if (isForThisChunk() && el.error) done(); };
-          // play() rejecting IS about the call we just made, so it is always ours to handle.
-          el.play().catch(done);
-        });
-        if (!live()) { drainRemaining(idx + 1); return; } // stopped mid-read → don't leak the prefetched chunk
-      }
-      if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
-    } catch {
-      if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
-    }
-  }, [speakingIdx, locale]);
+    player.toggle({ owner, text, locale });
+  }, [locale]);
 
   // Keep speakMsgRef pointed at the latest speakMsg so streamChat (defined earlier) can auto-play a
   // voice-initiated reply without a temporal-dead-zone reference.
   useEffect(() => { speakMsgRef.current = speakMsg; }, [speakMsg]);
 
-  // Stop any in-flight read-aloud when the studio unmounts (pause + unblock/revoke the current chunk).
-  useEffect(() => () => { try { ttsAbortRef.current?.abort(); ttsAudioRef.current?.pause(); ttsResolveRef.current?.(); } catch { /* noop */ } }, []);
+  // The studio unmounts: a read it started stops (its requests are cancelled at the route too).
+  useEffect(() => () => {
+    const player = speechPlayer();
+    if (player.getState().owner?.startsWith('omni:')) player.stop();
+  }, []);
 
   // ── Voice SAMPLE for "sing in my voice" (music) ──────────────────────────────
   // Add an audio blob/file as the music VOICE reference (replaces any prior audio),
@@ -10555,6 +10415,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   const bad = locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი';
                   const copyWord = locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება';
                   const readWord = locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა';
+                  const retryReadWord = locale === 'en' ? 'Try again' : locale === 'ru' ? 'Повторить' : 'თავიდან სცადე';
                   return (
                     // -ml-2.5: the first icon (not its 40 px state layer) lines up with the reply's text edge.
                     <div className={`-ml-2.5 mt-2 flex min-w-0 items-center gap-0.5 text-app-muted transition-opacity duration-200 ${isLast ? '' : '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100'}`}>
@@ -10581,16 +10442,25 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {process.env.NEXT_PUBLIC_VOICE_EXPERIENCE_V2 === '1' ? <ReadAloudControls text={m.text} locale={locale} /> : (
                       <button
                         type="button"
-                        onClick={() => void speakMsg(m.text, i)}
-                        aria-label={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : readWord}
-                        title={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : readWord}
+                        onClick={() => speakMsg(m.text, i)}
+                        aria-label={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : speakFailedIdx === i ? retryReadWord : readWord}
+                        title={speakingIdx === i ? (locale === 'en' ? 'Pause' : locale === 'ru' ? 'Пауза' : 'პაუზა') : speakFailedIdx === i ? retryReadWord : readWord}
+                        data-speech={speakingIdx === i ? speakPhase : speakFailedIdx === i ? 'failed' : undefined}
                         className={
                           speakingIdx === i
                             ? 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-blue-500/15 px-3 text-[12px] font-medium text-blue-400 ring-1 ring-blue-400/30 transition-all duration-150 hover:bg-blue-500/25'
-                            : act
+                            : speakFailedIdx === i
+                              ? 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-amber-500/15 px-3 text-[12px] font-medium text-amber-400 ring-1 ring-amber-400/30 transition-all duration-150 hover:bg-amber-500/25'
+                              : act
                         }
                       >
-                        {speakingIdx === i ? (
+                        {speakFailedIdx === i ? (
+                          // The read stopped at a chunk that failed; this tap reads on from that chunk (nothing is skipped).
+                          <>
+                            <RotateCcw size={16} aria-hidden="true" />
+                            <span>{retryReadWord}</span>
+                          </>
+                        ) : speakingIdx === i ? (
                           speakPhase === 'loading' ? (
                             <Loader2 size={17} aria-hidden="true" className="animate-spin text-blue-400" />
                           ) : (
@@ -10676,7 +10546,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

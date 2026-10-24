@@ -8,31 +8,41 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { done, job } from './testing';
 import { getResearchState, researchActions, resetResearchStoreForTests } from './store';
 import { resetEnsureJobForTests } from './useEnsureJob';
-import type { AudioLike, SpeechDeps } from './speech';
+import { speechPlayer, type SpeechAudio, type SpeechPlayer } from '../../../lib/speech/player';
 
 const mockPrime = jest.fn();
 jest.mock('../../../lib/voice/livePrime', () => ({ primeLive: () => mockPrime() }));
 jest.mock('../Markdown', () => ({ Markdown: ({ children }: { children: string }) => <div data-testid="md">{children}</div> }));
 
-const synthCalls: string[] = [];
-class FakeAudio implements AudioLike {
+// The page's one player, on a fake voice: every chunk it asks for is recorded and answered with a valid WAV.
+const mockSynthCalls: string[] = [];
+/** The next chunk containing this text gets no audio (once). */
+let mockMissOnce: string | null = null;
+class FakeAudio implements SpeechAudio {
   src = ''; onended: (() => void) | null = null; onerror: (() => void) | null = null; currentSrc: string | undefined; error: unknown = null;
   plays: string[] = [];
   play() { this.currentSrc = this.src; this.plays.push(this.src); return Promise.resolve(); }
   pause() {}
   load() { this.currentSrc = this.src; }
 }
-let audio = new FakeAudio();
-jest.mock('./speech', () => {
-  const actual = jest.requireActual('./speech');
-  const deps = (): SpeechDeps => ({
-    async synth(text) { synthCalls.push(text); return new Blob([text]); },
-    createAudio: () => audio,
-    createObjectURL: () => `blob:${synthCalls.length}`,
+let mockAudio = new FakeAudio();
+jest.mock('../../../lib/speech/player', () => {
+  const actual = jest.requireActual('../../../lib/speech/player');
+  const { WAV_MONO_24K } = jest.requireActual('../../../tests/fixtures/speechAudio');
+  let player: SpeechPlayer | null = null;
+  const speechPlayer = () => (player ??= new actual.SpeechPlayer({
+    async synth(text: string) {
+      mockSynthCalls.push(text);
+      if (mockMissOnce && text.includes(mockMissOnce)) { mockMissOnce = null; return null; }
+      return new Blob([WAV_MONO_24K]);
+    },
+    createAudio: () => mockAudio,
+    createObjectURL: () => `blob:${mockSynthCalls.length}`,
     revokeObjectURL: () => undefined,
-  });
-  return { ...actual, browserSpeechDeps: deps };
+  }));
+  return { ...actual, speechPlayer };
 });
+const synthCalls = mockSynthCalls;
 
 // eslint-disable-next-line import/first
 import { ReportViewer } from './ReportViewer';
@@ -73,9 +83,12 @@ beforeEach(() => {
   resetEnsureJobForTests();
   synthCalls.length = 0;
   mockPrime.mockClear();
-  audio = new FakeAudio();
+  mockAudio = new FakeAudio();
+  mockMissOnce = null;
+  speechPlayer().dispose();
   network();
 });
+afterEach(() => speechPlayer().dispose()); // no chunk's stall timer outlives its test
 
 describe('what is on screen', () => {
   test('title, meta, the report, and only REAL web sources as chips (never a javascript: link)', async () => {
@@ -175,10 +188,11 @@ describe('talking to the report', () => {
     open();
     await screen.findByRole('dialog');
     typeAndSend('წამიკითხე');
-    await waitFor(() => expect(synthCalls.length).toBeGreaterThan(0));
-    expect(synthCalls[0]).toContain('Sales grew fast in 2025');
-    expect(synthCalls[0]).not.toMatch(/#|\[1\]|\*\*/);
-    expect(synthCalls[0]!.length).toBeLessThanOrEqual(600);
+    await waitFor(() => expect(synthCalls.join(' ')).toContain('Sales grew fast in 2025'));
+    for (const sent of synthCalls) {
+      expect(sent).not.toMatch(/#|\[1\]|\*\*/);
+      expect(sent.length).toBeLessThanOrEqual(600);
+    }
     expect(asks).toHaveLength(0);
     await waitFor(() => expect(screen.getByTestId('research-reading').getAttribute('data-state')).toBe('playing'));
     typeAndSend('stop');
@@ -206,6 +220,34 @@ describe('talking to the report', () => {
     await waitFor(() => expect(screen.getByTestId('research-reading').getAttribute('data-state')).toBe('playing'));
     fireEvent.click(screen.getAllByRole('button', { name: 'Stop' })[0]!);
     await waitFor(() => expect(screen.queryByTestId('research-reading')).toBeNull());
+  });
+
+  test('a chunk with no audio stops the read THERE; Try again reads on from that chunk — not from the start, and nothing skipped', async () => {
+    mockMissOnce = 'Georgia leads';
+    open();
+    fireEvent.click(await screen.findByTestId('research-read-aloud'));
+    await waitFor(() => expect(screen.getByTestId('research-reading').getAttribute('data-state')).toBe('playing'));
+    const first = synthCalls[0]!;
+    expect(first).not.toContain('Georgia leads');
+    act(() => { mockAudio.onended?.(); });
+    await waitFor(() => expect(screen.getByTestId('research-reading').getAttribute('data-state')).toBe('error'));
+    expect(screen.getByTestId('research-reading').textContent).toContain('Reading aloud did not work');
+    const missed = synthCalls.find((t) => t.includes('Georgia leads'))!;
+    const before = synthCalls.length;
+    fireEvent.click(screen.getByTestId('research-read-retry'));
+    await waitFor(() => expect(screen.getByTestId('research-reading').getAttribute('data-state')).toBe('playing'));
+    expect(synthCalls.slice(before)).toEqual([missed]); // only the chunk that failed is asked for again
+    act(() => { mockAudio.onended?.(); });
+    await waitFor(() => expect(screen.queryByTestId('research-reading')).toBeNull());
+    expect(synthCalls.filter((t) => t === first)).toHaveLength(1);
+  });
+
+  test('closing the viewer stops its read', async () => {
+    const view = open();
+    fireEvent.click(await screen.findByTestId('research-read-aloud'));
+    await waitFor(() => expect(speechPlayer().getState()).toMatchObject({ owner: 'research', status: 'playing' }));
+    view.unmount();
+    expect(speechPlayer().getState().status).toBe('idle');
   });
 
   test('the mic and the send button are real 44 px controls with names', async () => {

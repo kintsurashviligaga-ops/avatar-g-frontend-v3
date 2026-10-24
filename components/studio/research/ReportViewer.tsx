@@ -226,7 +226,7 @@ export function ReportViewer({ id, locale, canLive }: { id: string; locale: stri
                     <button type="button" onClick={voice.pause} className={`${iconBtn} px-3 text-app-text hover:bg-app-bg/40`}><Pause size={15} aria-hidden="true" />{c.readPause}</button>
                   ) : null}
                   {v.status === 'error' ? (
-                    <button type="button" onClick={() => { voice.prime(); run({ type: 'read' }); }} className={`${iconBtn} px-3 text-app-accent hover:bg-app-bg/40`}>{c.retry}</button>
+                    <button type="button" onClick={voice.retry} data-testid="research-read-retry" className={`${iconBtn} px-3 text-app-accent hover:bg-app-bg/40`}>{c.retry}</button>
                   ) : (
                     <button type="button" onClick={voice.stop} className={`${iconBtn} px-3 text-app-muted hover:bg-app-bg/40`}><Square size={14} aria-hidden="true" />{c.readStop}</button>
                   )}
