@@ -123,3 +123,49 @@ test('a file saved in the studio comes in with a „New" badge; what was loaded 
   expect(screen.getAllByText('New')).toHaveLength(1);
   expect(screen.getByAltText('Japandi bedroom')).toBeTruthy();
 });
+
+describe('failed, demo and the endless list (§4.2.4, §4.2.7)', () => {
+  test('a failed first read says so with a retry, not „Nothing here yet"', async () => {
+    let ok = false;
+    global.fetch = jest.fn(async () => (ok
+      ? { ok: true, status: 200, json: async () => ({ items: [FILM] }) }
+      : { ok: false, status: 503, json: async () => ({ items: [], error: 'library_unavailable' }) })) as unknown as typeof fetch;
+    await mount();
+    await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    expect(screen.getByTestId('library-failed').getAttribute('data-failure')).toBe('unavailable');
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
+    ok = true;
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })); });
+    expect(screen.queryByTestId('library-failed')).toBeNull();
+    expect(document.querySelectorAll('video')).toHaveLength(1);
+  });
+
+  test('the demo library is labelled as examples and its cards have no Delete', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [FILM], demo: true, nextCursor: null }) })) as unknown as typeof fetch;
+    await mount();
+    expect(screen.getByTestId('library-demo')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  test('the next page is asked for after the cursor the last one ended on', async () => {
+    const urls: string[] = [];
+    global.fetch = jest.fn(async (url: string) => {
+      urls.push(url);
+      const before = new URL(url, 'https://x').searchParams.get('before');
+      return { ok: true, status: 200, json: async () => (before ? { items: [PLAN], nextCursor: null } : { items: [FILM], nextCursor: 'CURSOR-1' }) };
+    }) as unknown as typeof fetch;
+    let seen: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
+    (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class {
+      constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) { seen = cb; }
+      observe() {} disconnect() {}
+    };
+    try {
+      await mount();
+      await act(async () => { seen!([{ isIntersecting: true }]); });
+      expect(urls).toEqual(['/api/studio/library?limit=24', '/api/studio/library?limit=24&before=CURSOR-1']);
+      expect(await screen.findByAltText('Japandi bedroom')).toBeTruthy();
+    } finally {
+      (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class { observe() {} disconnect() {} };
+    }
+  });
+});

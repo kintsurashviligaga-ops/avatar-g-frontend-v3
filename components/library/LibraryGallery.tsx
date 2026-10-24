@@ -11,6 +11,9 @@
  *
  * Pages come from lib/library/libraryQuery (shared with StudioLibraryGrid): a tab already loaded comes back at once,
  * and is refreshed behind the grid when it is older than 30 s, instead of a spinner replacing it (§4.2).
+ *
+ * A read that failed says so (LibraryFailed) instead of „nothing created yet", and a signed-out visitor's demo library
+ * is labelled as examples, with no Delete (§4.2.7).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,7 +25,8 @@ import { PlanView } from '@/components/studio/create/newtools/PlanView';
 import { MediaUnavailable } from '@/components/library/MediaUnavailable';
 import { editKindFor, stashPendingEdit } from '@/lib/studio/pendingEdit';
 import { saveMedia } from '@/lib/media/saveMedia';
-import { type LibraryItem, removeLibraryItem, useLibraryOwner, useLibraryPage } from '@/lib/library/libraryQuery';
+import { DemoNotice, GuestEmpty, LibraryFailed } from '@/components/library/LibraryState';
+import { type LibraryItem, libraryFailure, removeLibraryItem, useLibraryOwner, useLibraryPage } from '@/lib/library/libraryQuery';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -143,9 +147,11 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   // star never re-fetches. A tab seen before comes from the cache at once; leaving a tab mid-request aborts it (#160).
   const isFav = tab === 'favorites';
   const library = useLibraryPage(isFav ? '' : TAB_KIND[tab], isFav ? FAV_WINDOW : PAGE_SIZE, isFav ? undefined : page * PAGE_SIZE);
-  // A failed request shows the empty state, as before; telling „failed" from „empty" is §4.2's next step.
   const items = library.data?.items ?? NO_ITEMS;
   const loading = library.isPending;
+  const demo = library.data?.demo === true;
+  // Nothing to show and the read failed. A refresh that fails behind a loaded tab keeps the tab on screen.
+  const failure = library.isError && !library.data ? libraryFailure(library.error) : null;
   const { refetch, dataUpdatedAt } = library;
   // Every answer brings freshly signed links, so every file gets another go.
   useEffect(() => { setFailed(new Set()); }, [dataUpdatedAt]);
@@ -242,6 +248,10 @@ export default function LibraryGallery({ locale }: { locale: string }) {
 
       {loading ? (
         <div className="flex items-center justify-center py-20 text-app-muted"><Loader2 className="animate-spin" size={22} /></div>
+      ) : failure ? (
+        <LibraryFailed lang={lang} failure={failure} onRetry={reload} retrying={library.isFetching} />
+      ) : display.length === 0 && demo ? (
+        <GuestEmpty lang={lang} />
       ) : display.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
           {/* A line icon, not an emoji (docs/DESIGN.md §6) — the copy below says what is empty. */}
@@ -250,6 +260,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
         </div>
       ) : (
         <>
+          {demo && <DemoNotice lang={lang} />}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {display.map((it) => {
               const isVideo = VIDEO_KINDS.has(it.kind);
@@ -305,10 +316,13 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                           <Scissors size={15} />
                         </button>
                       )}
-                      <button type="button" onClick={() => del(it.id)} disabled={busyId === it.id} aria-label={t.del} title={t.del}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50">
-                        {busyId === it.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                      </button>
+                      {/* A demo example is nobody's to delete (the route refuses a signed-out delete anyway). */}
+                      {!demo && (
+                        <button type="button" onClick={() => del(it.id)} disabled={busyId === it.id} aria-label={t.del} title={t.del}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50">
+                          {busyId === it.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
