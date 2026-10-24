@@ -94,7 +94,8 @@ export class FakeLive {
   }
 }
 
-async function signIn(page: Page, baseURL: string | undefined): Promise<void> {
+/** Signed in for real: the session cookie plus a mocked Supabase `/auth/v1/user` (ChatChrome then publishes data-authed). */
+export async function signIn(page: Page, baseURL: string | undefined): Promise<void> {
   await page.context().addCookies([{ name: AUTH_COOKIE, value: sessionCookieValue(), url: baseURL ?? 'http://localhost:3000' }]);
   await page.route(`${SUPABASE_URL}/auth/v1/user`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(USER) }));
   await page.route(`${SUPABASE_URL}/auth/v1/token**`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ access_token: 'x', token_type: 'bearer', expires_in: 3600, refresh_token: 'y', user: USER }) }));
@@ -102,7 +103,7 @@ async function signIn(page: Page, baseURL: string | undefined): Promise<void> {
 }
 
 /** A silent microphone: headless Chromium has none, and the real capture path (worklet, levels) must still run. */
-async function fakeMicrophone(page: Page): Promise<void> {
+export async function fakeMicrophone(page: Page): Promise<void> {
   // A returning user: the first-run welcome and the cookie banner were answered on an earlier visit.
   await page.addInitScript(() => {
     try {
@@ -157,20 +158,7 @@ export async function openLiveCall(page: Page, baseURL: string | undefined, live
   });
   await signIn(page, baseURL);
   await live.install(page);
-  await page.route('**/api/voice/live', (r) => r.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      token: 'e2e-ephemeral-token',
-      model: 'models/gemini-live-e2e',
-      expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-      setupMessage: { setup: { model: 'models/gemini-live-e2e', generationConfig: { responseModalities: ['AUDIO'] } } },
-      setupLocked: true,
-      voice: 'Aoede',
-      locale: 'ka',
-      actions: true,
-    }),
-  }));
+  await mockLiveToken(page);
   await page.route('**/api/avatar/core', (r) => r.fulfill({ status: 404, contentType: 'application/json', body: '{}' }));
   await page.route('**/api/chat/title', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"ხმოვანი"}' }));
 
@@ -189,3 +177,20 @@ export async function openLiveCall(page: Page, baseURL: string | undefined, live
   return spend;
 }
 
+/** The Live token mint, answered: a locked setup for the fake Gemini Live server (FakeLive). */
+export async function mockLiveToken(page: Page): Promise<void> {
+  await page.route('**/api/voice/live', (r) => r.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      token: 'e2e-ephemeral-token',
+      model: 'models/gemini-live-e2e',
+      expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      setupMessage: { setup: { model: 'models/gemini-live-e2e', generationConfig: { responseModalities: ['AUDIO'] } } },
+      setupLocked: true,
+      voice: 'Aoede',
+      locale: 'ka',
+      actions: true,
+    }),
+  }));
+}
