@@ -13,7 +13,9 @@
  *
  * Body: { text, locale?: 'ka'|'en'|'ru', gender?: 'male'|'female', voice?: 'Aoede'|'Charon'|'Kore'|'Puck',
  *         personaId?, customPersona?, model? }. `model` is the owner's listening trial (lib/speech/trial): an
- *         allowlisted TTS id honoured for an ADMIN account only; anyone else, or any other value, gets ttsModel(). `text` longer than SPEECH_MAX_CHARS (2,000) is refused with 413 text_too_long
+ *         allowlisted TTS id honoured for an ADMIN account only; anyone else, or any other value, gets ttsModel().
+ *         When Google refuses a call, the 502 tts_failed names Google's status and its reason ("NOT_FOUND"); for a
+ *         trial request it also carries Google's sentence (`detail`, project paths removed) for the trial card. `text` longer than SPEECH_MAX_CHARS (2,000) is refused with 413 text_too_long
  *         before any provider I/O; it used to be cut at 2,000 without a word (§5.3.1). The client splits a message into
  *         chunks well below the limit.
  * Time and attempts (§5.3.4, lib/speech/deadline): ONE deadline of SPEECH_DEADLINE_MS (25 s) from the moment the request
@@ -116,10 +118,48 @@ function pickVoice(profile: AgentProfile, voice: unknown, gender: unknown, local
  * closed here); everything else is ttsModel(), exactly as before. Never a fallback between models: the model chosen
  * here is the one called, budgeted and booked.
  */
-async function modelFor(user: AdminCandidate | null | undefined, requested: unknown): Promise<string> {
+async function modelFor(
+  user: AdminCandidate | null | undefined,
+  requested: unknown,
+): Promise<{ model: string; trial: boolean }> {
   const id = normalizeModelId(requested)?.toLowerCase();
-  if (!id || !TTS_MODELS.includes(id)) return ttsModel();
-  return (await isAdminIdentity(user).catch(() => false)) ? id : ttsModel();
+  if (!id || !TTS_MODELS.includes(id)) return { model: ttsModel(), trial: false };
+  return (await isAdminIdentity(user).catch(() => false)) ? { model: id, trial: true } : { model: ttsModel(), trial: false };
+}
+
+/** Google's error body, from either of its shapes ({ error } or [{ error }]). */
+function googleError(detail: string): { status?: unknown; message?: unknown } | null {
+  try {
+    const parsed = JSON.parse(detail) as unknown;
+    const first = Array.isArray(parsed) ? parsed[0] : parsed;
+    const error = (first as { error?: unknown } | null)?.error;
+    return error && typeof error === 'object' ? (error as { status?: unknown; message?: unknown }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Google's name for a failure ("NOT_FOUND", "INVALID_ARGUMENT"), or null. A fixed vocabulary, safe for any caller. */
+function googleReason(detail: string): string | null {
+  const status = googleError(detail)?.status;
+  return typeof status === 'string' && /^[A-Z_]{1,40}$/.test(status) ? status : null;
+}
+
+/**
+ * Google's own sentence about a failure, for the owner's listening trial only (the request was an admin's, naming a
+ * model): what the trial card shows, so one screenshot says why a model did not read (a model Vertex does not serve
+ * here, a field it refuses). Project paths and addresses are removed, and it is cut at TRIAL_DETAIL_CHARS.
+ */
+const TRIAL_DETAIL_CHARS = 160;
+function trialDetail(detail: string): string | null {
+  const message = googleError(detail)?.message;
+  if (typeof message !== 'string' || !message.trim()) return null;
+  return message
+    .replace(/projects\/[^/\s"'`]{1,200}/g, 'projects/…')
+    .replace(/[\w.+-]{1,64}@[\w-]{1,64}(?:\.[\w-]{1,64}){1,8}/g, '…')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, TRIAL_DETAIL_CHARS);
 }
 
 /** Await a bookkeeping promise for at most `ms`; the timer is cleared either way (no dangling handle). */
@@ -185,7 +225,7 @@ export async function POST(req: NextRequest) {
   // name predates Vertex and is kept for the client.
   if (googleTransportBlocker()) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
 
-  const model = await modelFor(user, body.model);
+  const { model, trial } = await modelFor(user, body.model);
   const profile = resolveAgentProfile({
     personaId: typeof body.personaId === 'string' ? body.personaId : null,
     customPersona: body.customPersona,
@@ -258,7 +298,12 @@ export async function POST(req: NextRequest) {
       if (!again) {
         if (deadline.signal.aborted) return ended();
         console.error(`[tts/gemini] upstream error (attempt ${attempt} of ${SPEECH_MAX_ATTEMPTS}, no retry)`, status, detail.slice(0, 200));
-        return NextResponse.json({ error: 'tts_failed', status }, { status: 502 });
+        const reason = googleReason(detail);
+        const said = trial ? trialDetail(detail) : null;
+        return NextResponse.json(
+          { error: 'tts_failed', status, ...(reason ? { reason } : {}), ...(said ? { detail: said } : {}) },
+          { status: 502 },
+        );
       }
       console.warn(`[tts/gemini] upstream ${status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
       // A 400 while a languageCode rode along may be the languageCode itself (see TTS_LANGUAGE_CODE) — the retry

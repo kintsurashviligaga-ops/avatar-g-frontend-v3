@@ -3,7 +3,7 @@
  * lib/speech/request — one POST per chunk, cancelled with its caller, bounded, never retried (§5.3.4).
  */
 import { SPEECH_CLIENT_DEADLINE_MS } from './deadline';
-import { SPEECH_ROUTE, fetchSpeech, requestSpeech, speechResult } from './request';
+import { SPEECH_ROUTE, fetchSpeech, missCause, requestSpeech, speechResult } from './request';
 import { SPEECH_HEADERS } from './contract';
 import { WAV_MONO_24K } from '../../tests/fixtures/speechAudio';
 
@@ -113,6 +113,16 @@ test.each([
   ['a body that is not JSON', async () => new Response('overloaded', { status: 503 }), { status: 503, error: null }],
   ['a network error', async () => { throw new TypeError('fetch failed'); }, { status: 0, error: null }],
   ['an empty body', async () => new Response(new Uint8Array(0), { status: 200 }), { status: 0, error: null }],
+  [
+    'a model Google refused',
+    async () => new Response('{"error":"tts_failed","status":404,"reason":"NOT_FOUND","detail":"Publisher Model … was not found"}', { status: 502 }),
+    { status: 502, error: 'tts_failed', cause: 'Google 404 NOT_FOUND: Publisher Model … was not found' },
+  ],
+  [
+    'audio the route refused',
+    async () => new Response('{"error":"tts_bad_audio","fault":"bad_rate"}', { status: 502 }),
+    { status: 502, error: 'tts_bad_audio', cause: 'bad_rate' },
+  ],
 ])('speechResult names the miss: %s, after ONE request', async (_why, impl, miss) => {
   const f = jest.fn(impl);
   expect(await speechResult('hello', 'en', undefined, f as unknown as typeof fetch)).toEqual({ ok: false, miss });
@@ -126,4 +136,12 @@ test('speechResult hands back the WAV like fetchSpeech, and a caller that alread
   ctrl.abort();
   expect(await speechResult('hello', 'en', ctrl.signal, hangs as unknown as typeof fetch)).toEqual({ ok: false, miss: { status: 0, error: null } });
   expect(hangs).not.toHaveBeenCalled();
+});
+
+test('missCause says only what the body states, in a bounded, plain form', () => {
+  expect(missCause(null)).toBeNull();
+  expect(missCause({ error: 'tts_failed' })).toBeNull();
+  expect(missCause({ error: 'tts_failed', status: 503 })).toBe('Google 503');
+  expect(missCause({ status: 'x', reason: 'not a <word>', fault: 42 })).toBeNull();
+  expect(missCause({ detail: 'x'.repeat(500) })).toBe('x'.repeat(160));
 });

@@ -203,9 +203,18 @@ test("language 'auto': no hint in the prompt, any language accepted, and the lan
 });
 
 test('an unknown language value is the Georgian default, as before', async () => {
-  fetchSpy.mockImplementationOnce(async () => geminiOk('hello there'));
+  fetchSpy.mockImplementationOnce(async () => geminiOk('gamarjoba rogor xar'));
   const res = await POST(upload({ language: 'xx-YY' }));
-  expect(await res.json()).toEqual({ text: '', provider: 'none' }); // Latin under the ka-GE default is still a miss
+  // Georgian in Latin letters under the ka-GE default is still a miss, and the prompt's hint is Georgian.
+  expect(await res.json()).toEqual({ text: '', provider: 'none' });
+  const prompt = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)).contents[0].parts[0].text as string;
+  expect(prompt).toMatch(/most likely speaks Georgian/);
+});
+
+test('Google-only: English speech in a Georgian session is kept, and the answer names it (GG, production 2026-10-24)', async () => {
+  fetchSpy.mockImplementationOnce(async () => geminiOk('How do I get to Batumi?'));
+  const res = await POST(upload({ language: 'ka-GE' }));
+  expect(await res.json()).toEqual({ text: 'How do I get to Batumi?', provider: 'gemini', language: 'en-US' });
 });
 
 test('Google-only: a quota outage is an empty transcript with stt_unavailable, never a vendor swap', async () => {

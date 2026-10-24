@@ -49,6 +49,26 @@ export async function fetchSpeech(
 export interface SpeechMiss {
   readonly status: number;
   readonly error: string | null;
+  /**
+   * What the route said beyond its code, when it said more: Google's status and reason, the audio fault, and for the
+   * owner's listening trial Google's own sentence ("Google 404 NOT_FOUND: Publisher Model … was not found"). Shown
+   * on the trial card (lib/speech/trial); absent otherwise.
+   */
+  readonly cause?: string;
+}
+
+/** SpeechMiss.cause from a route's error body, or null when it says nothing beyond its code. */
+export function missCause(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as { status?: unknown; reason?: unknown; fault?: unknown; detail?: unknown };
+  const word = (v: unknown): string | null => (typeof v === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(v) ? v : null);
+  const head = [
+    typeof b.status === 'number' && Number.isInteger(b.status) && b.status >= 0 && b.status < 1000 ? `Google ${b.status}` : null,
+    word(b.reason),
+    word(b.fault),
+  ].filter(Boolean).join(' ');
+  const detail = typeof b.detail === 'string' ? b.detail.trim().slice(0, 160) : '';
+  return [head, detail].filter(Boolean).join(': ') || null;
 }
 
 export type SpeechResult =
@@ -83,7 +103,11 @@ export async function speechResult(
     if (res.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
-      return { ok: false, miss: { status: res.status, error: typeof body?.error === 'string' ? body.error : null } };
+      const cause = missCause(body);
+      return {
+        ok: false,
+        miss: { status: res.status, error: typeof body?.error === 'string' ? body.error : null, ...(cause ? { cause } : {}) },
+      };
     }
     const blob = await res.blob();
     // Cancelled while the body was arriving: the caller has moved on, so nothing is handed back to play.
