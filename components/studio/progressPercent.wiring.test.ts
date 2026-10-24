@@ -4,7 +4,8 @@
  * film bubble each had a width-animated bar under their number; the bars are gone and the numbers are held under 100.
  *
  * The composer's attachment upload was the last bar here; PR 4 made it a number too (./noProgressBars.test.ts
- * now holds the whole studio to that).
+ * now holds the whole studio to that). Since the measured-percent PR no wait here paces its number to the clock
+ * (./measuredPercent.test.ts).
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,11 +23,13 @@ describe('OmniStudio waits print a number, not a bar', () => {
     expect(src).toContain('data-testid="storyboard-progress"');
   });
 
-  test('the storyboard being built prints the eased number and no clock', () => {
+  test('the storyboard being built reads 0% under its label: the planner reports no percent, and nothing paces one', () => {
     const at = src.indexOf('data-testid="storyboard-building-progress"');
     expect(at).toBeGreaterThan(0);
     const block = src.slice(at, at + 600);
-    expect(block).toContain('easedPct(elapsed, 150)');
+    expect(block).toContain('aria-valuenow={0}');
+    expect(block).toContain('>0%</span>');
+    expect(block).not.toContain('easedPct');
     expect(block).not.toContain('fmtClock');
   });
 

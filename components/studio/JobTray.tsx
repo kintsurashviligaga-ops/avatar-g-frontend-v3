@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useJobQueue } from '@/store/useJobQueue';
 import type { Job } from '@/lib/jobs/jobQueue';
 import { mergeTrayJobs } from '@/lib/jobs/durableJobs';
-import { GenerationProgress, type ProgressKind, type ProgressState } from './ui/GenerationProgress';
+import { GenerationProgress, type ProgressState } from './ui/GenerationProgress';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -126,26 +126,17 @@ function tr(locale: Lang) {
  * of them to unify the look would trade one complaint for another.
  */
 function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (id: string) => void }) {
-  // `product` is the only queue kind with no card equivalent; it is a video deliverable, so it reads as one.
-  const kind: ProgressKind = job.kind === 'product' ? 'video' : job.kind === 'avatar' ? 'lipsync' : job.kind;
   const state: ProgressState =
     job.status === 'rendering' ? 'running'
     : job.status === 'queued' ? 'queued'
     : job.status;
-  // Seconds this JOB has been running — not the shared component clock the inline card used to use.
-  const startedAt = job.startedAt ?? job.createdAt ?? Date.now();
-  const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
   // A local job stops in this tab; an observed one only when the server can stop it (an Agent G job).
   const stoppable = !job.observed || job.cancellable === true;
 
   return (
     <GenerationProgress
-      kind={kind}
       locale={locale}
       compact
-      // A server-observed job prints only the server's percent: with pct null there is no "<n>%" estimate.
-      measuredOnly={job.observed === true}
-      elapsed={elapsed}
       title={job.label}
       state={state}
       {...(job.pct ? { pct: job.pct } : {})}

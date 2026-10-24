@@ -61,7 +61,7 @@ function frameWidth(aspect: string): string {
 const ICON_BTN = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 disabled:opacity-40';
 
 export function ImageResultPane({
-  locale, results, notice, aspect, elapsedSec, capSecFor, actions, busy, upscaling,
+  locale, results, notice, aspect, actions, busy, upscaling,
 }: {
   locale: string;
   results: readonly ImageResultView[];
@@ -69,9 +69,6 @@ export function ImageResultPane({
   notice: { text: string; topUp: boolean } | null;
   /** The ratio currently selected — the empty frame takes its shape. */
   aspect: string;
-  elapsedSec: number;
-  /** Seconds a render of a size is paced against (the studio's `imgTargetFor`). */
-  capSecFor: (quality: string) => number;
   actions: ImageResultActions;
   busy: boolean;
   upscaling: boolean;
@@ -107,7 +104,7 @@ export function ImageResultPane({
   } else if (shown.state === 'rendering') {
     body = (
       <div className="mx-auto" style={{ width: frameWidth(shown.aspect) }}>
-        <ResultCard kind="image" size="tile" aspect={shown.aspect} state="rendering" locale={lang} elapsedSec={elapsedSec} capSec={capSecFor(shown.quality)} stage={shown.stage}
+        <ResultCard kind="image" size="tile" aspect={shown.aspect} state="rendering" locale={lang} stage={shown.stage}
           onCancel={() => actions.cancel(shown.index)} />
       </div>
     );
@@ -124,13 +121,11 @@ export function ImageResultPane({
               aspect={shown.aspect}
               locale={lang}
               state={tile.status === 'done' && tile.url ? 'ready' : tile.status === 'failed' ? 'error' : 'rendering'}
-              elapsedSec={elapsedSec}
-              capSec={capSecFor(shown.quality)}
               {...(tile.status === 'done' && tile.url ? { media: { type: 'image' as const, url: tile.url } } : {})}
               {...(tile.error ? { error: tile.error } : {})}
               {...(tile.url ? { onOpen: () => actions.open(tile.url!), onUseAsRef: () => actions.toVideo(tile.url!) } : {})}
               {...(tile.status === 'pending' && tile.jobId ? { onCancel: () => actions.cancelJob(tile.jobId!) } : {})}
-              {...(!busy ? { onRetry: () => actions.retryTile(shown.index) } : {})}
+              onRetry={() => actions.retryTile(shown.index)} retryBlocked={busy}
               {...(tile.status === 'failed' ? { onDismiss: () => actions.dismiss(shown.index, k) } : {})}
             />
           ))}
@@ -146,7 +141,7 @@ export function ImageResultPane({
     body = (
       <div className="mx-auto space-y-2" style={{ width: frameWidth(shown.aspect) }}>
         <ResultCard kind="image" size="tile" aspect={shown.aspect} state="error" locale={lang} error={shown.message}
-          {...(shown.canReroll && !busy ? { onRetry: () => actions.reroll(shown.index) } : {})}
+          {...(shown.canReroll ? { onRetry: () => actions.reroll(shown.index) } : {})} retryBlocked={busy}
           onDismiss={() => actions.dismiss(shown.index)} />
         {shown.topUp && <div className="flex justify-center">{topUpButton}</div>}
       </div>

@@ -92,3 +92,8 @@ test('§50: a shown price is reported once under its catalog service; a free or 
   setup({ credits: 60 });
   expect(mockTrack).not.toHaveBeenCalled();
 });
+
+test('it is the panel\'s one primary action: marked data-primary="create" (Phase 2 PR 7, tests/one-primary.spec.ts)', () => {
+  expect(setup().btn.getAttribute('data-primary')).toBe('create');
+  expect(setup({ disabled: true }).btn.getAttribute('data-primary')).toBe('create');
+});

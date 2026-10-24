@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Download, Film, Image as ImageIcon, ImagePlus, Maximize2, Music2, RotateCcw, ScanFace, X } from 'lucide-react';
 import { LoadingLoop } from './LoadingLoop';
 import { useRisingPct } from './GenerationProgress';
+import { fromResultState, primaryAction } from '@/lib/studio/cardState';
 
 /**
  * ResultCard — one tile for a generation from the moment it is asked for to the moment it is on screen:
@@ -13,9 +14,15 @@ import { useRisingPct } from './GenerationProgress';
  * 2026-10-17) with the percent and a short label over it — not a spinner (docs/DESIGN.md §5, §8), and since
  * Phase 2 no bar either (MASTER TASK v3.1 §3.3).
  *
- * Honest progress, same rules as GenerationProgress: a server-reported percent wins; otherwise elapsed / cap,
- * held at 92 % until the job is actually ready. The number never claims "done" on a guess, and never goes back
- * while the job runs (useRisingPct).
+ * Honest progress, same rules as GenerationProgress: the number is the server's percent, held under 100 until the
+ * job is actually ready, and it never goes back while the job runs (useRisingPct). With no percent yet it reads 0;
+ * it no longer paces a guess to the clock (§3.3: no time-driven precision).
+ *
+ * One primary button per state, from lib/studio/cardState (MASTER TASK v3.1 §3.1, Phase 2 PR 6): stop while it
+ * waits, try again when it failed, open (or download) when it is ready. It carries `data-primary` with the action's
+ * name, and it does not come and go under the user's finger: a job with no stop route shows stop disabled, and a retry
+ * that cannot run while another generation is busy (`retryBlocked`) shows try-again disabled. The one card without a
+ * primary is a failure with no retry route at all: trying again is the composer's, which keeps the prompt.
  *
  * Presentation only: it owns no job and polls nothing. The caller passes the state it already has (the
  * message, the batch tile) and the handlers that already exist (stop, retry, lightbox, the video bridge).
@@ -30,26 +37,20 @@ const KIND: Record<Lang, Record<ResultKind, string>> = {
   ru: { video: 'Видео', image: 'Изображение', music: 'Музыка', avatar: 'Аватар' },
 };
 
-const COPY: Record<Lang, { queued: string; rendering: string; finalizing: string; ready: string; failed: string; cancel: string; retry: string; dismiss: string; open: string; download: string; useAsRef: string; details: string }> = {
-  ka: { queued: 'რიგში', rendering: 'მზადდება', finalizing: 'სრულდება…', ready: 'მზადაა', failed: 'ვერ მოხერხდა', cancel: 'გაუქმება', retry: 'თავიდან ცდა', dismiss: 'დამალვა', open: 'გახსნა', download: 'ჩამოტვირთვა', useAsRef: 'რეფერენსად გამოყენება', details: 'დეტალები' },
-  en: { queued: 'Queued', rendering: 'Rendering', finalizing: 'Finishing…', ready: 'Ready', failed: 'Failed', cancel: 'Cancel', retry: 'Try again', dismiss: 'Dismiss', open: 'Open', download: 'Download', useAsRef: 'Use as reference', details: 'Details' },
-  ru: { queued: 'В очереди', rendering: 'Готовится', finalizing: 'Завершаю…', ready: 'Готово', failed: 'Не удалось', cancel: 'Отмена', retry: 'Повторить', dismiss: 'Скрыть', open: 'Открыть', download: 'Скачать', useAsRef: 'Как референс', details: 'Подробности' },
+const COPY: Record<Lang, { queued: string; rendering: string; finalizing: string; ready: string; failed: string; cancel: string; cannotCancel: string; retry: string; dismiss: string; open: string; download: string; useAsRef: string; details: string }> = {
+  ka: { queued: 'რიგში', rendering: 'მზადდება', finalizing: 'სრულდება…', ready: 'მზადაა', failed: 'ვერ მოხერხდა', cancel: 'გაუქმება', cannotCancel: 'ამის შეჩერება ვერ ხერხდება', retry: 'თავიდან ცდა', dismiss: 'დამალვა', open: 'გახსნა', download: 'ჩამოტვირთვა', useAsRef: 'რეფერენსად გამოყენება', details: 'დეტალები' },
+  en: { queued: 'Queued', rendering: 'Rendering', finalizing: 'Finishing…', ready: 'Ready', failed: 'Failed', cancel: 'Cancel', cannotCancel: 'This one cannot be stopped', retry: 'Try again', dismiss: 'Dismiss', open: 'Open', download: 'Download', useAsRef: 'Use as reference', details: 'Details' },
+  ru: { queued: 'В очереди', rendering: 'Готовится', finalizing: 'Завершаю…', ready: 'Готово', failed: 'Не удалось', cancel: 'Отмена', cannotCancel: 'Это нельзя остановить', retry: 'Повторить', dismiss: 'Скрыть', open: 'Открыть', download: 'Скачать', useAsRef: 'Как референс', details: 'Подробности' },
 };
-
-/** The ceiling a time-based estimate may reach; only the real result takes the number past it. */
-export const RESULT_HOLD_PCT = 92;
 
 /**
  * The percentage the card shows. Exported so the rule is tested on its own:
- * ready → 100 · queued → 0 · a real server percent (1–99) → itself · otherwise elapsed / cap, held at 92.
+ * ready → 100 · queued → 0 · a server percent → itself, under 100 · none yet → 0 (the card holds the last one it had).
  */
-export function resultPct({ state, pct, elapsedSec, capSec }: { state: ResultState; pct?: number | null; elapsedSec?: number; capSec?: number }): number {
+export function resultPct({ state, pct }: { state: ResultState; pct?: number | null }): number {
   if (state === 'ready') return 100;
   if (state === 'queued') return 0;
-  if (typeof pct === 'number' && Number.isFinite(pct) && pct > 0) return Math.min(99, Math.round(pct));
-  const cap = Math.max(1, capSec ?? 60);
-  const byTime = Math.round((Math.max(0, elapsedSec ?? 0) / cap) * 100);
-  return state === 'finalizing' ? RESULT_HOLD_PCT : Math.min(RESULT_HOLD_PCT, byTime);
+  return typeof pct === 'number' && Number.isFinite(pct) && pct > 0 ? Math.min(99, Math.round(pct)) : 0;
 }
 
 /** CSS aspect-ratio for "9:16"-style labels; anything unparseable falls back to square. */
@@ -76,11 +77,8 @@ export interface ResultCardProps {
   aspect: string;
   state: ResultState;
   locale: Lang;
-  /** A real, server-reported percent. Wins over the time estimate. */
+  /** The server's percent. Without one the tile holds its last value, or 0. */
   pct?: number | null;
-  elapsedSec?: number;
-  /** Seconds the time estimate is paced against. */
-  capSec?: number;
   /** A stage the pipeline reported — the second line under the caption. */
   stage?: string;
   /** A frame to show faintly behind a failed job (e.g. the first storyboard frame); a working tile shows the loop. */
@@ -88,7 +86,10 @@ export interface ResultCardProps {
   media?: { type: 'video' | 'image'; url: string; poster?: string | null };
   error?: string;
   onCancel?: () => void;
+  /** Try again. Leave it out when this failure has no retry route (the composer, which keeps the prompt, is the way). */
   onRetry?: () => void;
+  /** A retry exists but cannot run now (another generation is busy): the button stays, disabled. */
+  retryBlocked?: boolean;
   onDismiss?: () => void;
   onOpen?: () => void;
   onUseAsRef?: () => void;
@@ -104,15 +105,15 @@ export interface ResultCardProps {
 }
 
 export function ResultCard({
-  kind, aspect, state, locale, pct, elapsedSec, capSec, stage, poster, media, error,
-  onCancel, onRetry, onDismiss, onOpen, onUseAsRef, size = 'feed', errorFull = false, children,
+  kind, aspect, state, locale, pct, stage, poster, media, error,
+  onCancel, onRetry, retryBlocked = false, onDismiss, onOpen, onUseAsRef, size = 'feed', errorFull = false, children,
 }: ResultCardProps) {
   const lang: Lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const c = COPY[lang];
   const working = state === 'queued' || state === 'rendering' || state === 'finalizing';
   const running = state === 'rendering' || state === 'finalizing';
   // The number on the tile only rises while it renders; queued and finished tiles let go of it (useRisingPct).
-  const risen = useRisingPct(resultPct({ state, pct, elapsedSec, capSec }), running);
+  const risen = useRisingPct(resultPct({ state, pct }), running);
   const shown = state === 'ready' ? 100 : risen;
   const kindLabel = KIND[lang][kind];
   // «ვიდეო · 9:16 · 12%» — music has no frame, so no ratio in its caption.
@@ -121,6 +122,12 @@ export function ResultCard({
   const secondLine = state === 'finalizing' ? c.finalizing : stage?.replace(/^⚠️\s*/, '').trim();
   const oneLineError = (error ?? '').replace(/^⚠️\s*/, '').split('\n')[0]?.trim() || c.failed;
   const Icon = KIND_ICON[kind];
+  // The card's state and its one primary action (stop · try again · open). Enabled only with a handler to run it.
+  const card = fromResultState(state);
+  const primary = primaryAction(card, { cancellable: !!onCancel });
+  const canRetry = primary.action === 'propose' && primary.enabled && !!onRetry && !retryBlocked;
+  // A ready image opens from the picture itself; a ready video from its open button; without an opener, the download.
+  const useVia = !media ? null : onOpen ? (media.type === 'image' ? 'picture' : 'open') : 'download';
 
   // Announce STATE changes, not every percent tick — a screen reader reading "12%, 13%, 14%" is noise.
   const announce = state === 'error' ? `${kindLabel}: ${c.failed}. ${oneLineError}` : `${kindLabel}: ${c[state === 'queued' ? 'queued' : state === 'ready' ? 'ready' : state === 'finalizing' ? 'finalizing' : 'rendering']}`;
@@ -133,7 +140,7 @@ export function ResultCard({
   const btn = 'flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm ring-1 ring-white/15 transition-colors hover:bg-black/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent';
 
   return (
-    <div className={size === 'tile' ? 'w-full' : feedWidth(aspect)} data-testid="result-card" data-state={state}>
+    <div className={size === 'tile' ? 'w-full' : feedWidth(aspect)} data-testid="result-card" data-state={state} data-card-state={card.state}>
       <div
         className="group relative w-full overflow-hidden rounded-2xl bg-app-elevated/40 ring-1 ring-app-border/10"
         style={{ aspectRatio: ratio(kind === 'music' ? '1:1' : aspect) }}
@@ -142,7 +149,7 @@ export function ResultCard({
           media.type === 'video' ? (
             <video src={media.url} poster={media.poster ?? undefined} controls playsInline preload="metadata" aria-label={`${kindLabel} · ${c.ready}`} className="h-full w-full bg-black object-contain" />
           ) : onOpen ? (
-            <button type="button" onClick={onOpen} className="block h-full w-full cursor-zoom-in" aria-label={c.open}>
+            <button type="button" onClick={onOpen} className="block h-full w-full cursor-zoom-in" aria-label={c.open} {...(useVia === 'picture' ? { 'data-primary': 'use' } : {})}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={media.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
             </button>
@@ -170,23 +177,24 @@ export function ResultCard({
         {state === 'ready' && media && (onOpen || onUseAsRef || media.url) && (
           <div className="absolute right-2 top-2 z-10 flex gap-1.5 transition-opacity duration-200 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100">
             {onOpen && media.type === 'video' && (
-              <button type="button" onClick={onOpen} aria-label={c.open} title={c.open} className={btn}><Maximize2 size={16} /></button>
+              <button type="button" onClick={onOpen} aria-label={c.open} title={c.open} className={btn} data-primary="use"><Maximize2 size={16} /></button>
             )}
-            <a href={media.url} download target="_blank" rel="noopener noreferrer" aria-label={c.download} title={c.download} className={btn}><Download size={16} /></a>
+            <a href={media.url} download target="_blank" rel="noopener noreferrer" aria-label={c.download} title={c.download} className={btn} {...(useVia === 'download' ? { 'data-primary': 'use' } : {})}><Download size={16} /></a>
             {onUseAsRef && (
               <button type="button" onClick={onUseAsRef} aria-label={c.useAsRef} title={c.useAsRef} className={btn}><ImagePlus size={16} /></button>
             )}
           </div>
         )}
 
-        {/* Working: cancel (44 px), and the caption with the percent, which is the progressbar (no drawn bar). */}
+        {/* Working: stop (44 px), and the caption with the percent, which is the progressbar (no drawn bar). A job with no
+            stop route keeps the button, disabled, and says why on hover; nothing else takes its place. */}
         {working && (
           <>
-            {onCancel && (
-              <button type="button" onClick={onCancel} aria-label={c.cancel} title={c.cancel} className={`absolute right-2 top-2 z-10 ${btn}`}>
-                <X size={16} />
-              </button>
-            )}
+            <button type="button" onClick={onCancel} disabled={!primary.enabled} data-primary="stop"
+              aria-label={primary.enabled ? c.cancel : c.cannotCancel} title={primary.enabled ? c.cancel : c.cannotCancel}
+              className={`absolute right-2 top-2 z-10 ${btn} disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-black/45`}>
+              <X size={16} />
+            </button>
             <div
               className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pb-3 pt-8"
               role="progressbar" aria-label={caption} aria-valuemin={0} aria-valuemax={100}
@@ -198,14 +206,14 @@ export function ResultCard({
           </>
         )}
 
-        {/* Error: one line, retry, dismiss. */}
+        {/* Error: one line, try again (the primary; disabled while another generation is busy), dismiss. */}
         {state === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
             <AlertTriangle aria-hidden="true" size={size === 'tile' ? 16 : 20} className="text-app-warning" />
             <p className={`${errorFull ? '' : 'line-clamp-2 '}text-app-text/85 ${size === 'tile' ? 'text-[11px]' : 'text-[12.5px]'}`} title={oneLineError}>{oneLineError}</p>
             <div className="flex items-center gap-1.5">
               {onRetry && (
-                <button type="button" onClick={onRetry} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-text px-3.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90">
+                <button type="button" onClick={onRetry} disabled={!canRetry} data-primary="propose" className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-text px-3.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
                   <RotateCcw size={14} aria-hidden="true" /> {c.retry}
                 </button>
               )}

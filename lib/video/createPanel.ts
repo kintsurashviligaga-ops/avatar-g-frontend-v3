@@ -249,20 +249,6 @@ export function videoResolution(seconds: number): VeoResolution {
 }
 
 /**
- * How long a film of this length takes, for the "~N min" under the composer and the result card's pace.
- * MEASURED: one scene ≈ 120 s, three ≈ 300 s, six ≈ 440 s (components/studio/ui/GenerationProgress PROGRESS_TARGET.video).
- * Beyond six scenes the last measured slope is not known to hold, so it is extended generously (+60 s a scene): an estimate
- * that runs out while the film is still rendering teaches people to distrust every number.
- */
-export function videoWaitSecs(seconds: number): number {
-  const scenes = sceneCountForSeconds(seconds);
-  if (scenes <= 1) return 120;
-  if (scenes <= 3) return 120 + (scenes - 1) * 90;
-  if (scenes <= 6) return 300 + Math.round((scenes - 3) * (140 / 3));
-  return 440 + (scenes - 6) * 60;
-}
-
-/**
  * Seconds of title-card intro the music video's graphics pass puts at the start (musicVideoGraphics clamps it to `length − 6`,
  * so a short film is safe): 2 s for ONE clip, 10 s up to 48 s, 13 s from 48 s. These are the three values the panel always
  * used for 8 / 24 / 48 s, extended to every length without moving any of them.

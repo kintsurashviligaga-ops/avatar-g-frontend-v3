@@ -141,7 +141,8 @@ export const VIDEO_COPY = {
   // desktop stage
   result: T('შედეგი', 'Result', 'Результат'),
   resultEmpty: T('შენი ვიდეო აქ გამოჩნდება', 'Your video will appear here', 'Ваше видео появится здесь'),
-  resultEmptySub: T('აღწერე კადრი პანელში და დააჭირე „შექმნას“', 'Describe a shot in the panel and press Generate', 'Опишите кадр в панели и нажмите «Создать»'),
+  // The panel has no prompt and no Generate (promptInChat, above): the composer's priced Send is the one button.
+  resultEmptySub: T('ვიდეო აღწერე ჩატის ველში და დააჭირე გაგზავნას', 'Describe the video in the chat box and press Send', 'Опишите видео в поле чата и нажмите «Отправить»'),
   resultRendering: T('ვიდეო იქმნება…', 'Your video is rendering…', 'Видео создаётся…'),
   openInEditor: T('რედაქტორში გახსნა', 'Open in editor', 'Открыть в редакторе'),
   modelsPrices: T('მოდელები და ფასები', 'Models & prices', 'Модели и цены'),

@@ -14,7 +14,6 @@
  * disabled (with its reason) for a run that began from nothing; and the 3D plan's caption says what it is (the room's layout,
  * not the redesign).
  */
-import { useEffect, useState } from 'react';
 import { Clapperboard, Move3d, RefreshCw, SlidersHorizontal, Sparkle, Trash2, X } from 'lucide-react';
 import { ResultCard, type ResultState } from '@/components/studio/ui/ResultCard';
 import { LoadingLoop } from '@/components/studio/ui/LoadingLoop';
@@ -22,10 +21,10 @@ import { ResultActions } from '@/components/studio/ui/ResultActions';
 import { NOTE_BASE, NOTE_TONE } from '@/components/studio/ui/tokens';
 import { ProgressLine } from '@/components/studio/ui/controls';
 import { creditsLabel } from '@/lib/credits/quote';
-import { shootTargetSec, type ShootAspect } from '@/lib/studio/shootQuote';
+import { type ShootAspect } from '@/lib/studio/shootQuote';
 import type { ShootKind } from '@/lib/studio/shootWire';
 import { SHOOT_COPY, shootLang, type ShootCopy } from './copy';
-import { runBusy, type PlanState, type ShootRun, type ShootTile } from './shootRuns';
+import { type PlanState, type ShootRun, type ShootTile } from './shootRuns';
 import { PlanView } from './PlanView';
 
 export interface ShootPaneProps {
@@ -77,16 +76,15 @@ function PlanCard({ plan, copy }: { plan: PlanState; copy: ShootCopy }) {
 
 // ─── One tile ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-function Tile({ run, tile, now, copy, locale, p }: { run: ShootRun; tile: ShootTile; now: number; copy: ShootCopy; locale: string; p: ShootPaneProps }) {
+function Tile({ run, tile, copy, locale, p }: { run: ShootRun; tile: ShootTile; copy: ShootCopy; locale: string; p: ShootPaneProps }) {
   const state: ResultState = tile.status === 'ready' ? 'ready' : tile.status === 'error' ? 'error' : tile.status === 'queued' ? 'queued' : 'rendering';
   const lang = shootLang(locale);
   const hasSource = tile.photoIndex >= 0 && !!run.photos[tile.photoIndex];
-  const elapsed = tile.startedAt ? Math.max(0, Math.round((now - tile.startedAt) / 1000)) : 0;
   const planBusy = tile.plan?.status === 'running';
   return (
     <div data-testid="shoot-tile" data-state={tile.status} className="min-w-0 space-y-2">
       <ResultCard
-        kind="image" aspect={tile.aspect} state={state} locale={lang} size="tile" elapsedSec={elapsed} capSec={shootTargetSec(run.quality)}
+        kind="image" aspect={tile.aspect} state={state} locale={lang} size="tile"
         {...(tile.url ? { media: { type: 'image' as const, url: tile.url } } : {})}
         {...(tile.error ? { error: tile.error } : {})}
         onCancel={() => p.onCancel(tile.jobId)}
@@ -162,13 +160,6 @@ const timeOf = (ts: number) => { const d = new Date(ts); return `${String(d.getH
 export function ShootResultPane(p: ShootPaneProps) {
   const copy = SHOOT_COPY[shootLang(p.locale)];
   const mine = p.runs.filter((r) => r.tool === p.tool);
-  const busy = mine.some(runBusy);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!busy) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [busy]);
 
   // ⚠️ NO WELCOME CARD. A hero with the tool's description, three numbered steps and a price table used to fill this pane
   // before the first run — and it stayed on screen behind the settings sheet every time the tool was opened and closed
@@ -206,7 +197,7 @@ export function ShootResultPane(p: ShootPaneProps) {
               </button>
             </header>
             <div className={`grid gap-3 ${cols}`}>
-              {run.tiles.map((t) => <Tile key={t.id} run={run} tile={t} now={now} copy={copy} locale={p.locale} p={p} />)}
+              {run.tiles.map((t) => <Tile key={t.id} run={run} tile={t} copy={copy} locale={p.locale} p={p} />)}
             </div>
             {plans.map((t) => <PlanCard key={`plan-${t.id}`} plan={t.plan!} copy={copy} />)}
           </section>

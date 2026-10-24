@@ -11,7 +11,7 @@ import { quoteCredits } from '@/lib/credits/quote';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { PRODUCE_COST } from '@/lib/orchestrator/produceCost';
 import {
-  PLAN_3D_CREDITS, SHOOT_ASPECTS, SHOOT_COUNTS, SHOOT_MAX_PHOTOS, WALKTHROUGH_SECONDS, nearestAspect, shootCredits, shootTargetSec,
+  PLAN_3D_CREDITS, SHOOT_ASPECTS, SHOOT_COUNTS, SHOOT_MAX_PHOTOS, WALKTHROUGH_SECONDS, nearestAspect, shootCredits,
   shootTiles, walkthroughCredits,
 } from './shootQuote';
 
@@ -95,9 +95,5 @@ describe('shape and pace', () => {
     expect(nearestAspect(1920, 1080)).toBe('16:9');
     expect(nearestAspect(0, 0)).toBe('1:1');
     expect(nearestAspect(Number.NaN, 100)).toBe('1:1');
-  });
-  test('the render target follows the tier\'s measured time', () => {
-    expect(shootTargetSec('standard')).toBeLessThan(shootTargetSec('high'));
-    expect(shootTargetSec('high')).toBeLessThan(shootTargetSec('ultra'));
   });
 });

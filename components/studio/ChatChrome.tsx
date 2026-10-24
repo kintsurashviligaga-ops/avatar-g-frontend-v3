@@ -47,20 +47,12 @@ const LiveAvatarEnroll = dynamic(() => import('@/components/voice/LiveAvatarEnro
 // is on — off until legal approves the consent text (lib/legal/content.ts); with it off nothing here changes.
 const TwinCapture = dynamic(() => import('@/components/twin/TwinCapture'), { ssr: false });
 const TWIN_ENABLED = isTwinEnabled();
-// PREMIUM real-time lip-synced avatar (LiveAvatar/LiveKit). Attempted FIRST when enabled; auto-falls back to
-// the Gemini audio-reactive selfie avatar until LIVEAVATAR_API_KEY is set AND the account is funded.
-// ⚠️ OPT-IN (NEXT_PUBLIC_LIVEAVATAR_ENABLED=1). Live mode is Google-only by default: Gemini Live's native audio is
-// both the speech-to-text and the voice. LiveAvatar is a separate vendor with its own STT/TTS, and a funded key in
-// the environment was enough for it to take over every voice call ahead of Gemini.
-const LiveAvatarRealtime = dynamic(() => import('@/components/voice/LiveAvatarRealtime'), { ssr: false });
-const LIVEAVATAR_ENABLED = isTruthyFlag(process.env.NEXT_PUBLIC_LIVEAVATAR_ENABLED);
-// After a LiveAvatar mint miss (unfunded/unconfigured), skip re-probing for a cooldown so the common
-// (unfunded) voice-open stays instant on the Gemini path instead of paying the ~1-2s LiveAvatar probe every
-// time — while still auto-retrying (and auto-activating) once the window lapses and funding lands.
-let liveAvatarCooldownUntil = 0;
-const LIVEAVATAR_COOLDOWN_MS = 5 * 60 * 1000;
+// ⚠️ NO LIVEAVATAR TIER (Phase 2 PR 7, GG's plan of 2026-10-23). The opt-in LiveAvatar/LiveKit call (a separate vendor with
+// its own speech-to-text and voice) used to be tried before Gemini whenever NEXT_PUBLIC_LIVEAVATAR_ENABLED was on; its
+// session route answers 503 under MASTER TASK v3.1. The voice button opens Gemini Live's selfie avatar directly. The
+// component stays in components/voice/LiveAvatarRealtime.tsx, unmounted: the plan keeps its code.
 const GEMINI_LIVE_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
-import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
+import { isEnabledByDefault } from '@/lib/env/flag';
 import { isTwinEnabled } from '@/lib/twin/flag';
 import { twinCopy } from '@/components/twin/copy';
 import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
@@ -308,9 +300,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Set when the Live token mint reports Live is disabled/unavailable server-side (503) → fall back to the
   // ElevenLabs voice stack at runtime for this open. Reset on each fresh open so a transient miss retries Live.
   const [liveUnavailable, setLiveUnavailable] = useState(false);
-  // Set when the LiveAvatar real-time mint is unavailable (unfunded/unconfigured/connect fail) → drop to the
-  // Gemini audio-reactive selfie avatar. Reset on each open so it auto-activates the moment funding lands.
-  const [liveAvatarUnavailable, setLiveAvatarUnavailable] = useState(false);
   // Signed-in user id — needed to mint a Gemini Live ephemeral token (flag-gated live voice only).
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -393,7 +382,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
           // Not a gesture, so there is no prime to adopt — but the rest of the page may already hold the mic (dictation,
           // the music recorder): ask them to let go before Live asks for it, or Android refuses the capture.
-          if (data.user) { requestMicRelease('live'); setLiveUnavailable(false); setLiveAvatarUnavailable(false); setVoiceOpen(true); }
+          if (data.user) { requestMicRelease('live'); setLiveUnavailable(false); setVoiceOpen(true); }
           else { setAuthMode('login'); setAuthOpen(true); }
         }
       } catch { /* no URL API */ }
@@ -431,10 +420,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   useEffect(() => {
     const openVoice = () => {
       // The composer's chip primed Live inside the tap (lib/voice/livePrime). When this open will NOT be Gemini Live —
-      // the flag is off, or the opt-in LiveAvatar goes first — nobody adopts that prime: release it now, before the
-      // other engine asks for the same microphone.
-      if (!authed || !GEMINI_LIVE_ENABLED || (LIVEAVATAR_ENABLED && Date.now() >= liveAvatarCooldownUntil)) dropUnadoptedPrime();
-      if (authed) { setLiveUnavailable(false); setLiveAvatarUnavailable(false); setVoiceOpen(true); }
+      // a guest, or the flag is off — nobody adopts that prime: release it now, before the other engine asks for the
+      // same microphone.
+      if (!authed || !GEMINI_LIVE_ENABLED) dropUnadoptedPrime();
+      if (authed) { setLiveUnavailable(false); setVoiceOpen(true); }
       else { setAuthMode('login'); setAuthOpen(true); }
     };
     window.addEventListener('myavatar:voice-open', openVoice);
@@ -1612,18 +1601,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           Gemini-style live-voice chip, right of the dictation mic), which dispatches
           'myavatar:voice-open' — handled by the effect above (authed → open; guest → sign-in).
           This de-clutters the workspace (no redundant floating FAB) while keeping one clear CTA. */}
-      {/* Voice cascade: real-time lip-synced LiveAvatar (premium) → Gemini audio-reactive selfie → ElevenLabs.
-          Each tier hands down via onUnavailable, so voice mode always resolves to a working experience and
-          auto-upgrades to the real avatar the moment LiveAvatar is funded. */}
+      {/* Voice: Gemini Live's audio-reactive selfie avatar; when Live is off or unavailable, the voice conversation below.
+          Live hands down via onUnavailable, so voice mode always resolves to a working experience. */}
       {voiceOpen && !awaitingLiveUid && (
-        LIVEAVATAR_ENABLED && liveUid && !liveAvatarUnavailable && Date.now() >= liveAvatarCooldownUntil
-          ? <LiveAvatarRealtime locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => { liveAvatarCooldownUntil = Date.now() + LIVEAVATAR_COOLDOWN_MS; setLiveAvatarUnavailable(true); }} />
-          : GEMINI_LIVE_ENABLED && liveUid && !liveUnavailable
-            ? <VoicePreferencesProvider userId={voiceV2 ? liveUid : ''}><GeminiLiveConversation userId={liveUid} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)}
-                // The persona the chat is using speaks on the call too (read at open time; localStorage is not reactive).
-                personaId={loadSelectedPersonaId() || undefined}
-                customPersona={loadCustomPersonas().find((p: Persona) => p.id === activePersonaId)} /></VoicePreferencesProvider>
-            : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />
+        GEMINI_LIVE_ENABLED && liveUid && !liveUnavailable
+          ? <VoicePreferencesProvider userId={voiceV2 ? liveUid : ''}><GeminiLiveConversation userId={liveUid} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)}
+              // The persona the chat is using speaks on the call too (read at open time; localStorage is not reactive).
+              personaId={loadSelectedPersonaId() || undefined}
+              customPersona={loadCustomPersonas().find((p: Persona) => p.id === activePersonaId)} /></VoicePreferencesProvider>
+          : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />
       )}
 
       {/* Live Avatar enrollment — selfie + optional voice → the user's core avatar for voice mode. With the twin flag on,

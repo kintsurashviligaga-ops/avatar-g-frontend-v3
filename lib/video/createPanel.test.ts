@@ -32,7 +32,6 @@ import {
   videoPriceRows,
   videoQuote,
   videoResolution,
-  videoWaitSecs,
 } from './createPanel';
 
 describe('the price is the quote, for every length, tier and mode', () => {
@@ -243,18 +242,6 @@ describe('the render', () => {
   test('a 4 s or 6 s clip renders 720p, from 8 s it renders 1080p', () => {
     expect([4, 6].map(videoResolution)).toEqual(['720p', '720p']);
     expect([8, 16, 96, 240].map(videoResolution)).toEqual(['1080p', '1080p', '1080p', '1080p']);
-  });
-
-  test('the wait estimate keeps the three measured points and only ever grows', () => {
-    expect(videoWaitSecs(8)).toBe(120);
-    expect(videoWaitSecs(24)).toBe(300);
-    expect(videoWaitSecs(48)).toBe(440);
-    let prev = 0;
-    for (const s of VIDEO_DURATION_STOPS) {
-      const w = videoWaitSecs(s);
-      expect(w).toBeGreaterThanOrEqual(prev);
-      prev = w;
-    }
   });
 
   test('the music video’s intro keeps its three old values for 8 / 24 / 48 s and is defined, and only grows, everywhere between', () => {

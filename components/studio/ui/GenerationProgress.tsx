@@ -21,114 +21,25 @@ import { LoadingLoop } from './LoadingLoop';
  * readings of one guess disagreed with each other (the clock ran out while the bar still crawled), so the
  * number and the stage it is on are what stays. The loading loop (./LoadingLoop) is the picture, as before.
  *
- * THREE HONESTY RULES, all load-bearing:
+ * THREE HONESTY RULES, all load-bearing (§3.3):
  *
- *  1. NEVER 100% ON A GUESS. The estimate eases asymptotically toward 95% (a server's own percent is held
- *     under 100) and the card reads 100 only in `done`, when the caller has the real asset. A number that
- *     hits 100 and then sits there says "done" while the user waits, and the next thing they do is reload
- *     and lose the render.
- *  2. THE NUMBER NEVER GOES BACK. A server percent that arrives below the estimate already shown, or a
- *     poll that reports less than the last one, holds the number where it was.
- *  3. THE ESTIMATE IS PACED TO THE REAL WALL-CLOCK, per service. A number that runs out while the job is
- *     still running teaches the user to distrust every number the product shows them.
+ *  1. NEVER 100% BEFORE THE ASSET. A server's own percent is held under 100, and the card reads 100 only in
+ *     `done`, when the caller has the real asset. A number that hits 100 and then sits there says "done" while
+ *     the user waits, and the next thing they do is reload and lose the render.
+ *  2. THE NUMBER NEVER GOES BACK. A poll that reports less than the last one holds the number where it was.
+ *  3. THE NUMBER IS MEASURED. It is the server's percent (or a count the pipeline reports, such as frames or
+ *     shots). With none yet, the card holds the last real value, or 0, under a short waiting label. Until Phase 2
+ *     it eased a guess toward 95 by the clock; §3.3 rules that out ("do not manufacture time-driven precision"),
+ *     and the guess was wrong by five times on the default image tier.
  *
- * When the pipeline reports its own stage (the v2 services publish one to the job row), that text takes
- * over the label — a real stage beats an interpolated guess.
+ * When the pipeline reports its own stage (the v2 services publish one to the job row), that text is the label.
  */
-
-export type ProgressKind =
-  | 'image' | 'music' | 'video' | 'lipsync'
-  | 'remix' | 'montage' | 'dubbing' | 'presentation' | 'model3d' | 'editor';
 
 type Lang = 'ka' | 'en' | 'ru';
 
 /**
- * Stage narration per service.
- *
- * These are what the user reads while waiting, so they name the WORK, not the implementation: "mixing
- * the voices", not "ffmpeg pass 2". Each list is ordered and the card walks it in step with the number.
- */
-export const STAGES: Record<Lang, Record<ProgressKind, string[]>> = {
-  ka: {
-    image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
-    music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
-    video: ['სცენარს ვშლი…', 'აუდიო & SFX…', 'ხმა…', 'ვიდეო კადრები…', 'მასტერინგი…', 'გრაფიკა…'],
-    lipsync: ['ფოტოს ვამზადებ…', 'ავატარი ცოცხლდება…', 'ვასრულებ…'],
-    remix: ['ვიდეოს ვამზადებ…', 'ცვლილებას ვამუშავებ…', 'ვასრულებ…'],
-    montage: ['კადრებს ვამზადებ…', 'გადასვლებს ვაწყობ…', 'ხმას ვურევ…', 'ვასრულებ…'],
-    dubbing: ['ხმას ვაცალკევებ…', 'ტექსტს ვშიფრავ…', 'ვთარგმნი…', 'ხმას ვქმნი…', 'ვასინქრონებ…', 'ვურევ…'],
-    presentation: ['გეგმას ვაწყობ…', 'სლაიდებს ვწერ…', 'ვხატავ…', 'ვასრულებ…'],
-    model3d: ['რეფერენსს ვამზადებ…', 'ფორმას ვაშენებ…', 'ტექსტურას ვადებ…', 'ვასრულებ…'],
-    editor: ['ფაილებს ვამზადებ…', 'მონტაჟს ვაწყობ…', 'ვარენდერებ…', 'ვასრულებ…'],
-  },
-  en: {
-    image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
-    music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
-    video: ['Scripting…', 'Audio SFX…', 'Voice…', 'Video clips…', 'Mastering…', 'Graphics…'],
-    lipsync: ['Preparing the photo…', 'Bringing the avatar to life…', 'Finishing up…'],
-    remix: ['Preparing the video…', 'Applying the change…', 'Finishing up…'],
-    montage: ['Preparing the shots…', 'Building the transitions…', 'Mixing the audio…', 'Finishing up…'],
-    dubbing: ['Extracting the audio…', 'Transcribing…', 'Translating…', 'Synthesising the voice…', 'Syncing…', 'Mixing…'],
-    presentation: ['Outlining…', 'Writing the slides…', 'Rendering…', 'Finishing up…'],
-    model3d: ['Preparing the reference…', 'Building the mesh…', 'Texturing…', 'Finishing up…'],
-    editor: ['Uploading the clips…', 'Assembling the edit…', 'Rendering…', 'Finishing up…'],
-  },
-  ru: {
-    image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
-    music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
-    video: ['Сценарий…', 'Аудио и SFX…', 'Голос…', 'Видео-клипы…', 'Мастеринг…', 'Графика…'],
-    lipsync: ['Готовлю фото…', 'Оживляю аватар…', 'Завершаю…'],
-    remix: ['Готовлю видео…', 'Применяю изменение…', 'Завершаю…'],
-    montage: ['Готовлю кадры…', 'Строю переходы…', 'Свожу звук…', 'Завершаю…'],
-    dubbing: ['Извлекаю звук…', 'Расшифровываю…', 'Перевожу…', 'Синтезирую голос…', 'Синхронизирую…', 'Свожу…'],
-    presentation: ['Составляю план…', 'Пишу слайды…', 'Рисую…', 'Завершаю…'],
-    model3d: ['Готовлю референс…', 'Строю модель…', 'Накладываю текстуру…', 'Завершаю…'],
-    editor: ['Загружаю клипы…', 'Собираю монтаж…', 'Рендерю…', 'Завершаю…'],
-  },
-};
-
-/**
- * Wall-clock target per service, in seconds — what the estimated percentage is paced against.
- *
- * These are MEASURED, not guessed, and that matters: an estimate that runs out while the job continues
- * is worse than showing none, because it teaches the user that the product's numbers are decoration.
- * The 30s film is the extreme case at roughly seven minutes end to end (clip generation plus the ffmpeg
- * montage), so its number has to crawl rather than finish early and stall.
- */
-export const PROGRESS_TARGET: Record<ProgressKind, number> = {
-  image: 65,
-  music: 150,
-  video: 440,
-  // ⚠️ WAS 70. LipsyncStudio's own comment records the measurement — "a live production test showed
-  // SadTalker renders take ~6 min (cold start + render)" — and both surfaces poll for TEN minutes. At
-  // 70s the bar pegged at 95% after about a minute and a half and the remaining figure hit zero, then
-  // the user waited another four minutes staring at a full bar. That is the single most convincing way
-  // to make a working render look hung.
-  lipsync: 360,
-  remix: 120,
-  montage: 200,   // conform pass per source + the N-input stitch + the music mux
-  dubbing: 280,   // seven legs, one TTS call per line of dialogue
-  presentation: 140, // outline + up to 12 sequential image calls + rasterisation
-  model3d: 420,   // reconstruction is the slowest thing in the product
-  editor: 150,
-};
-
-/**
- * The eased curve the card prints, exported so any surface can pace its number the same way.
- *
- * Asymptotic toward 95: fast at the start, never arriving. That "never arriving" is the point — a number
- * that reaches its ceiling and stops moving looks IDENTICAL to a crashed render, and the user's next move
- * is to reload and lose the work.
- */
-export function easedPct(elapsedSec: number, targetSec: number): number {
-  const t = Math.max(1, targetSec);
-  return Math.min(95, Math.round((1 - Math.exp(-Math.max(0, elapsedSec) / (t / 2.4))) * 100));
-}
-
-/**
  * A running job's number: never above 99 before the asset (rule 1), never below what it last showed (rule 2).
- * `pct` is this render's reading. While `active` is false (queued, finished, failed, stopped, or nothing measured)
- * the held peak is let go, so the next run of the same card starts from 0 instead of from the last job's number.
+ * `pct` is this render's reading. While `active` is false (queued, finished, failed or stopped) the held peak is let go, so the next run of the same card starts from 0 instead of from the last job's number.
  */
 export function useRisingPct(pct: number, active = true): number {
   const peak = useRef(0);
@@ -170,12 +81,9 @@ const STATE_COPY: Record<Lang, { queued: (n: number) => string; done: string; fa
 export type ProgressState = 'running' | 'queued' | 'done' | 'failed' | 'canceled';
 
 export function GenerationProgress({
-  kind, elapsed, status, locale, targetSec, pct: pctOverride, compact, measuredOnly = false,
+  status, locale, pct: pctOverride, compact,
   title, subtitle, state = 'running', queuePosition, error, onCancel, cancelLabel, children, loop = true,
 }: {
-  kind: ProgressKind;
-  /** Seconds since the run started. */
-  elapsed: number;
   /** The job's own label — shown above the percentage when the tray renders a job it does not own. */
   title?: string;
   /** Which state to draw. Anything but 'running' replaces the animated headline with a terminal line. */
@@ -203,51 +111,30 @@ export function GenerationProgress({
   /** A stage the PIPELINE reported — takes over the headline, because it is real. */
   status?: string;
   locale: Lang;
-  /** Override the eased target, e.g. a heavier image tier. */
-  targetSec?: number;
-  /** A real server-reported percentage. Beats the time-based estimate when present. */
+  /** The server's percent (or a count the pipeline reports). Without one the card holds its last value, or 0. */
   pct?: number;
   /** Fills its container and draws the loop as a small tile beside the number — for tight surfaces (the job tray, a panel). */
   compact?: boolean;
-  /**
-   * Print only what the server measured. A job the server runs and reports on (the tray's observed rows) has
-   * no local clock worth easing: with no server percent the card shows no number (an indeterminate progressbar),
-   * and the label is the server's stage or a plain "in progress". Off by default, so every studio that runs its
-   * own work keeps the eased estimate it was designed with.
-   */
-  measuredOnly?: boolean;
   /**
    * Draw the loading loop while the job waits or runs (default). Off only where the loop is already on screen
    * right above this card (the film console tucked under its ResultCard), so one wait never shows two loops.
    */
   loop?: boolean;
 }) {
-  const stages = STAGES[locale][kind];
-  const target = targetSec ?? PROGRESS_TARGET[kind];
-  // Eased growth: fast at first, asymptotic toward 95%, so it never "finishes" ahead of the asset.
-  const eased = easedPct(elapsed, target);
-  const measured = typeof pctOverride === 'number' && Number.isFinite(pctOverride) && pctOverride > 0;
   const running = state === 'running';
-  // No server percent on a measured-only card: nothing to print while it runs (Video Core round 3, no fake %).
-  const unmeasured = measuredOnly && !measured && running;
-  // The number on screen only rises (rule 2): a server percent below the estimate already shown holds it.
-  const rising = useRisingPct(measured ? (pctOverride as number) : eased, running && !unmeasured);
-  // Video's bands are deliberately uneven — clip generation dominates 50–85% of the real time, so an
-  // even split would park the label on the wrong stage for minutes.
-  const stageIdx = kind === 'video'
-    ? (rising < 20 ? 0 : rising < 35 ? 1 : rising < 50 ? 2 : rising < 85 ? 3 : rising < 95 ? 4 : 5)
-    : Math.min(stages.length - 1, Math.floor((rising / 100) * stages.length));
+  // The last real value, held (rules 1 and 2); 0 until the server reports one (rule 3).
+  const rising = useRisingPct(typeof pctOverride === 'number' ? pctOverride : 0, running);
   const sc = STATE_COPY[locale] ?? STATE_COPY.ka;
   const working = running || state === 'queued';
   // 100 only when the work is over and the asset is in (rule 1). A queued job has not started, and a failed or
   // stopped one did not finish: none of them prints a number, the label says which it is.
-  const shownPct: number | null = state === 'done' ? 100 : running && !unmeasured ? rising : null;
+  const shownPct: number | null = state === 'done' ? 100 : running ? rising : null;
   const label = !running
     ? (state === 'queued' ? sc.queued(queuePosition ?? 1)
       : state === 'done' ? sc.done
       : state === 'failed' ? (error?.trim() ? error.trim().slice(0, 90) : sc.failed)
       : sc.canceled)
-    : (status && status.trim() ? status.trim() : unmeasured ? sc.running : stages[stageIdx]);
+    : (status && status.trim() ? status.trim() : sc.running);
   const tone = state === 'failed' ? 'text-red-500'
     : state === 'done' ? 'text-emerald-500'
     : state === 'canceled' ? 'text-app-muted'
@@ -279,11 +166,11 @@ export function GenerationProgress({
               <LoadingLoop />
             </div>
           )}
-          {/* The progress itself: the number and its label, read out as one progressbar while the job runs. An
-              unmeasured job is an indeterminate progressbar (no value); a terminal or queued one is plain text. */}
+          {/* The progress itself: the number and its label, read out as one progressbar while the job runs. Before the
+              server's first percent it reads 0 and `waiting`; a terminal or queued one is plain text. */}
           <div
             className="min-w-0"
-            data-progress={unmeasured ? 'indeterminate' : running ? (measured ? 'measured' : 'estimated') : state}
+            data-progress={running ? (rising > 0 ? 'measured' : 'waiting') : state}
             {...(running ? {
               role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100,
               ...(shownPct !== null ? { 'aria-valuenow': shownPct } : {}),

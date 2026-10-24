@@ -587,7 +587,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     setPanel(null);
     const clientJobId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : '';
     const body = buildRenderBody(editRef.current, sourcesRef.current);
-    setExp({ phase: 'running', stage: null, pct: 3 });
+    setExp({ phase: 'running', stage: null, pct: 0 }); // 0% until the render reports one (§3.3)
     const stop = { done: false };
     let delivered = false;
     onExportStart?.();

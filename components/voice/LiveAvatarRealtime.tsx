@@ -10,6 +10,9 @@
  * funded. On ANY failure — mint error, connect error, no video, or a disconnect before going live — it calls
  * onUnavailable(), and the parent (ChatChrome) falls back to the audio-reactive selfie avatar
  * (GeminiLiveConversation). So this NEVER breaks voice mode; it simply lights up automatically once funded.
+ *
+ * ⚠️ UNMOUNTED (Phase 2 PR 7, GG's plan of 2026-10-23): nothing renders it. ChatChrome's voice button opens Gemini Live
+ * directly, since this is a separate vendor and its session route answers 503 under MASTER TASK v3.1. The code stays.
  */
 import { Loader2, Mic, MicOff, PhoneOff } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';

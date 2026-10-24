@@ -6,6 +6,12 @@
  *   inline player, download, edits (new versions, the original kept) and Regenerate (a new quote — never silent).
  * The server owns the job: the started job id is remembered per draft, so a reload, a locked phone or a closed tab
  * comes back to the same job. Refusals show the server's own sentence in the user's language.
+ *
+ * Its state and its one primary button come from lib/studio/cardState (MASTER TASK v3.1 §3.1, Phase 2 PR 6), marked
+ * `data-card-state` and `data-primary`: Create (pressed and waiting while the price is fetched, so it does not appear
+ * under the finger), Cancel while the job runs (disabled when this job cannot be stopped), Try again after a failure
+ * or a stop, Download when the track is here. A refusal offers none: the server said no before any work, and trying
+ * again is the conversation's.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Download, Loader2, Music2, RotateCcw, Scissors, X } from 'lucide-react';
@@ -16,6 +22,7 @@ import { LIVE_RESULT_EVENT, type LiveResultNote } from '@/lib/voice/liveTools';
 import { musicCardCopy, stageText } from './musicCardCopy';
 import { downloadHref, mimeOfUrl, trackFileName } from './musicDraft';
 import { joinNewestTracks, registerMusicCard, type MusicCardPhase } from './musicVoiceBridge';
+import { fromMusicPhase, primaryAction, type LegacyMusicJobStatus } from '@/lib/studio/cardState';
 
 export interface MusicDraft { id: string; request: MusicRequest }
 
@@ -190,10 +197,13 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
 
   const shell = 'mt-2 w-full max-w-[480px] rounded-2xl border border-app-border/15 bg-app-elevated/40 p-3.5';
   const r = draft.request;
+  // The card's state in the one studio vocabulary. A remembered job with no answer yet reads as queued.
+  const card = fromMusicPhase(phase.k, phase.k === 'job' ? ((phase.view?.status ?? 'queued') as LegacyMusicJobStatus) : undefined);
+  const primary = primaryAction(card, { cancellable: phase.k === 'job' && phase.view?.cancellable === true });
 
   if (phase.k === 'refused') {
     return (
-      <div className={shell} role="alert" data-testid="music-card" data-phase="refused" ref={rootRef}>
+      <div className={shell} role="alert" data-testid="music-card" data-phase="refused" data-card-state={card.state} ref={rootRef}>
         <p className="flex items-start gap-2 text-[13px] text-app-text"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />{/* A song refused as unsupported says WHY (vocals unverified) and that it was not swapped for an instrumental. */}{r.mode === 'song' && phase.r.code === 'unsupported' ? c.songRefused : phase.r.message ?? c.genericError}</p>
       </div>
     );
@@ -202,7 +212,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   if (phase.k === 'quoting' || phase.k === 'quoted' || phase.k === 'starting') {
     const q = phase.k === 'quoting' ? null : phase.q;
     return (
-      <div className={shell} aria-busy={phase.k !== 'quoted'} data-testid="music-card" data-phase={phase.k === 'quoting' ? 'pricing' : phase.k} ref={rootRef}>
+      <div className={shell} aria-busy={phase.k !== 'quoted'} data-testid="music-card" data-phase={phase.k === 'quoting' ? 'pricing' : phase.k} data-card-state={card.state} ref={rootRef}>
         <p className="flex items-center gap-2 text-[13px] font-semibold text-app-text"><Music2 className="h-4 w-4 text-app-accent" aria-hidden />{c.planTitle}</p>
         <p className="mt-1.5 line-clamp-3 text-[13px] text-app-text/85">{r.prompt}</p>
         <ul className="mt-2 flex flex-wrap gap-1.5 text-[11.5px] text-app-text/70">
@@ -213,16 +223,21 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
           <li className="rounded-full bg-app-border/10 px-2 py-0.5">{c.approxLength(q?.summary.durationSec ?? r.durationSec)}</li>
           {q && <li className="rounded-full bg-app-border/10 px-2 py-0.5">{q.summary.model}</li>}
         </ul>
-        {!q ? (
-          <p className="mt-3 flex items-center gap-2 text-[12.5px] text-app-text/70"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />{c.pricing}</p>
-        ) : (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button type="button" data-testid="music-confirm" data-credits={q.credits} data-live-guard="spend" className={`${btn} bg-app-accent text-white hover:bg-app-accent/90`} onClick={confirm} disabled={phase.k === 'starting'} aria-label={c.confirmAria(q.credits)}>
-              {phase.k === 'starting' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}{c.confirm(q.credits)}
+        {/* One button from the first frame: pressed and waiting while the price is fetched, then Create with it. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {!q ? (
+            <button type="button" data-testid="music-pricing" data-primary={primary.action} className={`${btn} bg-app-accent text-white`} disabled aria-busy="true">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />{c.pricing}
             </button>
-            <span className="text-[11.5px] text-app-text/60">{c.lengthNote}</span>
-          </div>
-        )}
+          ) : (
+            <>
+              <button type="button" data-testid="music-confirm" data-primary={primary.action} data-credits={q.credits} data-live-guard="spend" className={`${btn} bg-app-accent text-white hover:bg-app-accent/90`} onClick={confirm} disabled={!primary.enabled} aria-label={c.confirmAria(q.credits)}>
+                {primary.busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}{c.confirm(q.credits)}
+              </button>
+              <span className="text-[11.5px] text-app-text/60">{c.lengthNote}</span>
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -230,39 +245,41 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   const v = phase.view;
   if (!v || !isFinal(v)) {
     return (
-      <div className={shell} aria-live="polite" aria-busy="true" data-testid="music-card" data-phase="running" data-stage={v?.stage ?? 'queued'} ref={rootRef}>
+      <div className={shell} aria-live="polite" aria-busy="true" data-testid="music-card" data-phase="running" data-stage={v?.stage ?? 'queued'} data-card-state={card.state} ref={rootRef}>
         <div aria-hidden="true" data-testid="music-loop" className="relative mb-2 h-[120px] overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15"><LoadingLoop /></div>
         <p className="text-[13px] text-app-text" data-testid="music-stage">{stageText(v?.stage ?? 'queued', locale)}</p>
-        {v?.cancellable && <button type="button" data-testid="music-cancel" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={cancel} disabled={cancelBusy}><X className="h-4 w-4" aria-hidden />{c.cancel}</button>}
+        {/* Cancel is always here while it runs: disabled until the job's first answer, and disabled and saying so for a
+            job the server says cannot be stopped. */}
+        <button type="button" data-testid="music-cancel" data-primary={primary.action} className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10 disabled:cursor-not-allowed`} onClick={cancel} disabled={!primary.enabled || cancelBusy}><X className="h-4 w-4" aria-hidden />{v && !v.cancellable ? c.cannotCancel : c.cancel}</button>
         {cancelError && <p role="alert" className="mt-2 text-[13px] text-app-text">{cancelError}</p>}
       </div>
     );
   }
   if (v.status !== 'completed' || !v.result) {
     return (
-      <div className={shell} role="status" data-testid="music-card" data-phase={v.status === 'cancelled' ? 'cancelled' : 'failed'} ref={rootRef}>
+      <div className={shell} role="status" data-testid="music-card" data-phase={v.status === 'cancelled' ? 'cancelled' : 'failed'} data-card-state={card.state} ref={rootRef}>
         <p className="flex items-start gap-2 text-[13px] text-app-text"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />{c.failed(v.status === 'cancelled', v.error)}</p>
         {v.settlementPending && <p className="mt-1 text-[11.5px] text-app-text/60">{c.refundPending}</p>}
-        <button type="button" data-testid="music-retry" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={() => { remember(draft.id, null); setPhase({ k: 'quoting' }); }}><RotateCcw className="h-4 w-4" aria-hidden />{c.retry}</button>
+        <button type="button" data-testid="music-retry" data-primary={primary.action} className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={() => { remember(draft.id, null); setPhase({ k: 'quoting' }); }}><RotateCcw className="h-4 w-4" aria-hidden />{c.retry}</button>
       </div>
     );
   }
   const res = v.result;
   return (
-    <div className={shell} data-testid="music-card" data-phase="completed" data-job-id={v.jobId} ref={rootRef}>
+    <div className={shell} data-testid="music-card" data-phase="completed" data-job-id={v.jobId} data-card-state={card.state} ref={rootRef}>
       <audio controls preload="metadata" src={res.url} className="w-full" aria-label={c.playerAria} data-testid="music-player">
         <track kind="captions" />
       </audio>
       <p className="mt-1.5 text-[11.5px] text-app-text/60">{c.delivered(Math.round(res.durationSec), res.credits, res.modelId)}</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <a data-testid="music-download" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} href={downloadHref(res.url, trackFileName(v.jobId, res.mime))} download={trackFileName(v.jobId, res.mime)}><Download className="h-4 w-4" aria-hidden />{c.download}</a>
+        <a data-testid="music-download" data-primary={primary.action} className={`${btn} bg-app-accent text-white hover:bg-app-accent/90`} href={downloadHref(res.url, trackFileName(v.jobId, res.mime))} download={trackFileName(v.jobId, res.mime)}><Download className="h-4 w-4" aria-hidden />{c.download}</a>
         <button type="button" data-testid="music-regenerate" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={() => onRegenerate?.({ id: `${draft.id}-r${Date.now().toString(36)}`, request: { ...draft.request, parentJobId: v.jobId } })}><RotateCcw className="h-4 w-4" aria-hidden />{c.regenerate}</button>
       </div>
       <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void runEdit(); }}>
         <label className="sr-only" htmlFor={`ms-edit-${draft.id}`}>{c.editLabel}</label>
         <input id={`ms-edit-${draft.id}`} data-testid="music-edit-input" value={edit.text} onChange={(e) => setEdit((s) => ({ ...s, text: e.target.value }))} placeholder={c.editPlaceholder}
           className="min-h-[44px] flex-1 rounded-full border border-app-border/20 bg-transparent px-3 text-[13px] text-app-text placeholder:text-app-text/40" />
-        <button type="submit" data-testid="music-edit-apply" className={`${btn} bg-app-accent/90 text-white`} disabled={edit.busy || !edit.text.trim()}>{edit.busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Scissors className="h-4 w-4" aria-hidden />}{c.apply}</button>
+        <button type="submit" data-testid="music-edit-apply" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} disabled={edit.busy || !edit.text.trim()}>{edit.busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Scissors className="h-4 w-4" aria-hidden />}{c.apply}</button>
       </form>
       {edit.note && <p className="mt-1.5 text-[12px] text-amber-300" role="status" data-testid="music-edit-note">{edit.note}</p>}
       {edit.versions.map((ver) => (

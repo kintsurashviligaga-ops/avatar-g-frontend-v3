@@ -138,7 +138,9 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['character swap', 'face swap', 'swap the character', 'swap character', 'swap the face', 'swap face', 'სახის შეცვლა', 'პერსონაჟის შეცვლა', 'замена лица', 'замена персонажа', 'ამ ბიჭით', 'ამ გოგოთი'],
   }),
   svc({
-    id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'live',
+    // HIDDEN (Phase 2 PR 7, GG's plan of 2026-10-23), like the video remix: the panel only showed a form the server
+    // refused, so no menu, search or Agent G route offers it. The id stays (§50 analytics identity).
+    id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'hidden',
     boundary: 'violation', boundaryNote: 'Kling image-to-video via Replicate (/api/motion-control): refused before any charge (no Google engine)',
     label: l('მოძრაობის გადატანა', 'Motion transfer', 'Перенос движения'),
     // ⚠️ Says what runs: a photo + a written motion (Kling image-to-video). It used to promise "like a reference video",
