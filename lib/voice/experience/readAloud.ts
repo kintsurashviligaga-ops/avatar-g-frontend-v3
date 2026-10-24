@@ -1,5 +1,6 @@
 import { stopPremium } from '@/lib/audio/premium-tts';
 import { MIC_RELEASE_EVENT } from '@/lib/voice/micBus';
+import { SPEECH_CLIENT_DEADLINE_MS } from '@/lib/speech/deadline';
 
 export type ReaderStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'completed' | 'error';
 export interface ReaderSnapshot { status: ReaderStatus; chunk: number; total: number; speed: number; error?: string }
@@ -100,7 +101,7 @@ export function browserReaderDeps(locale: 'ka' | 'en' | 'ru'): ReaderDeps {
       const controller = new AbortController(), abort = () => controller.abort();
       if (outerSignal.aborted) controller.abort();
       outerSignal.addEventListener('abort', abort, { once: true });
-      const timer = setTimeout(abort, 30_000);
+      const timer = setTimeout(abort, SPEECH_CLIENT_DEADLINE_MS); // the shared ceiling (lib/speech/deadline)
       try {
         const res = await fetch('/api/tts/gemini', { method: 'POST', credentials: 'include',
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale }), signal: controller.signal });

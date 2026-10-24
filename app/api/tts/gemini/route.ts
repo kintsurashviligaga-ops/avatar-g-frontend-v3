@@ -15,6 +15,13 @@
  *         personaId?, customPersona? }. `text` longer than SPEECH_MAX_CHARS (2,000) is refused with 413 text_too_long
  *         before any provider I/O; it used to be cut at 2,000 without a word (§5.3.1). The client splits a message into
  *         chunks well below the limit.
+ * Time and attempts (§5.3.4, lib/speech/deadline): ONE deadline of SPEECH_DEADLINE_MS (25 s) from the moment the request
+ * arrives, inside the 30 s function limit, and at most SPEECH_MAX_ATTEMPTS (2) Gemini calls within it. A second call is
+ * made only for a failure that can pass (a network error, 408/429/5xx, the answer-mode 400, a 400 with a languageCode)
+ * and only with SPEECH_RETRY_MIN_MS (5 s) left. The browser closing the request aborts the call in flight and no new
+ * one starts (499 client_closed); the deadline passing is 504 tts_timeout. It used to be 3 calls of 25 s each, which
+ * the 30 s limit cut off, and a retry kept going after the browser had given up.
+ *
  * Voice precedence: an explicit `voice` > `gender` (keeps the persona's voice when it already has that gender) >
  * the active persona's voice > Aoede. ⚠️ Only Aoede and Charon are verified speaking Georgian, so a Georgian chunk
  * maps Kore → Aoede and Puck → Charon (lib/agents/profile liveVoiceFor) — the same rule Live uses.
@@ -35,6 +42,13 @@ import { bookChatUsage, chatBudgetAllows } from '@/lib/services/billing/chatBudg
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { SPEECH_CONTRACT_VERSION, SPEECH_HEADERS, SPEECH_MAX_CHARS, SPEECH_RESPONSE_MIME } from '@/lib/speech/contract';
 import { audioFromGeminiParts } from '@/lib/speech/geminiAudio';
+import {
+  SPEECH_DEADLINE_MS,
+  SPEECH_MAX_ATTEMPTS,
+  SPEECH_RETRY_MIN_MS,
+  pauseUnlessAborted,
+  speechDeadline,
+} from '@/lib/speech/deadline';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,7 +56,8 @@ export const maxDuration = 30;
 
 /** Only for the usage estimate of an answer whose audio was refused (its own rate could not be trusted). */
 const ESTIMATE_RATE = 24000;
-const MAX_ATTEMPTS = 3;
+/** The pause before the second attempt. */
+const RETRY_PAUSE_MS = 250;
 const DIRECTIVE = 'Read aloud verbatim: ';
 
 type TtsLocale = 'ka' | 'en' | 'ru';
@@ -104,7 +119,23 @@ async function settleWithin(p: Promise<unknown>, ms: number): Promise<void> {
 
 const count = (n: unknown): number | undefined => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : undefined);
 
+/**
+ * Whether a failed Gemini call may be made once more. `status` 0 = no answer at all (a network error).
+ *   · 408, 429 and 5xx are passing conditions on Google's side.
+ *   · 400 "Model tried to generate text": the preview TTS model slipped into answering instead of reading (see the
+ *     directive); it reads the same text on the next call.
+ *   · any 400 while a languageCode rode along: the languageCode may be the cause, and the retry goes without it.
+ * Everything else (401/403 access, 404 model, any other 400) fails the same way twice, so it is not repeated.
+ */
+function retryableTtsFailure(status: number, detail: string, hadLanguageCode: boolean): boolean {
+  if (status === 0 || status === 408 || status === 429 || status >= 500) return true;
+  if (status === 400) return hadLanguageCode || /tried to generate text/i.test(detail);
+  return false;
+}
+
 export async function POST(req: NextRequest) {
+  // The one deadline is counted from here, so the checks below spend from it too.
+  const startedAt = Date.now();
   // Its own bucket (RATE_LIMITS.TTS): a long reply is ~14 chunk requests, which the shared WRITE bucket 429'd.
   const limited = await checkRateLimit(req, RATE_LIMITS.TTS);
   if (limited) return limited;
@@ -155,8 +186,8 @@ export async function POST(req: NextRequest) {
   // comparison) that stops the TTS model from trying to ANSWER question-like text. Without it, input such
   // as "გამარჯობა, როგორ ხარ?" makes the model attempt a reply and return HTTP 400 ("Model tried to
   // generate text, but it should only be used for TTS"). Even with it, the preview TTS model very
-  // occasionally still slips into answer-mode, so we retry.
-  const callGemini = async (): Promise<Response> =>
+  // occasionally still slips into answer-mode, so that 400 is retried (retryableTtsFailure).
+  const callGemini = async (signal: AbortSignal): Promise<Response> =>
     // Through the Google transport: the API key rides in a header (never the URL), or Vertex gets a WIF token.
     // ⚠️ The TTS model on Vertex AI is not proven for this project yet — a miss there is a 502, not a switch.
     googleModelFetch(model, 'generateContent', {
@@ -171,34 +202,60 @@ export async function POST(req: NextRequest) {
           },
         },
       }),
-      signal: AbortSignal.timeout(25_000),
+      signal,
     });
 
+  // One deadline for every call below: what is left of SPEECH_DEADLINE_MS, ended at once by the browser leaving.
+  const deadline = speechDeadline(SPEECH_DEADLINE_MS - (Date.now() - startedAt), req.signal);
+  const ended = () => {
+    const cancelled = deadline.cause() === 'cancelled';
+    console.warn(`[tts/gemini] ${cancelled ? 'the browser closed the request' : 'deadline passed'}; no further call`);
+    return cancelled
+      ? NextResponse.json({ error: 'client_closed' }, { status: 499 })
+      : NextResponse.json({ error: 'tts_timeout' }, { status: 504 });
+  };
+
   try {
-    // The preview TTS model intermittently slips into answer-mode (HTTP 400) or flakes under load, so a
-    // single retry still dropped ~1 in 5 chunks from the read-aloud in prod. Retry up to 3 times total
-    // with a short backoff → the effective drop rate falls below ~1%, so the whole message is read.
-    let res = await callGemini();
-    for (let attempt = 1; attempt < MAX_ATTEMPTS && !res.ok; attempt++) {
-      const detail = await res.text().catch(() => '');
-      console.warn(`[tts/gemini] upstream ${res.status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
-      // A 400 while a languageCode rode along may be the languageCode itself (see TTS_LANGUAGE_CODE) — the
-      // remaining attempts go without it, i.e. exactly the request shape verified live.
-      if (res.status === 400 && languageCode) languageCode = undefined;
-      await new Promise((r) => setTimeout(r, 250 * attempt));
-      res = await callGemini();
+    // The browser left during the checks above: nothing is asked of Google.
+    if (deadline.signal.aborted) return ended();
+    let res: Response | null = null;
+    for (let attempt = 1; ; attempt++) {
+      let detail = '';
+      try {
+        res = await callGemini(deadline.signal);
+      } catch (e) {
+        if (deadline.signal.aborted) return ended();
+        res = null;
+        detail = e instanceof Error ? e.message : String(e);
+      }
+      if (res?.ok) break;
+      if (res) detail = await res.text().catch(() => '');
+      const status = res?.status ?? 0;
+      const again =
+        attempt < SPEECH_MAX_ATTEMPTS &&
+        retryableTtsFailure(status, detail, !!languageCode) &&
+        deadline.remaining() >= SPEECH_RETRY_MIN_MS;
+      if (!again) {
+        if (deadline.signal.aborted) return ended();
+        console.error(`[tts/gemini] upstream error (attempt ${attempt} of ${SPEECH_MAX_ATTEMPTS}, no retry)`, status, detail.slice(0, 200));
+        return NextResponse.json({ error: 'tts_failed', status }, { status: 502 });
+      }
+      console.warn(`[tts/gemini] upstream ${status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
+      // A 400 while a languageCode rode along may be the languageCode itself (see TTS_LANGUAGE_CODE) — the retry
+      // goes without it, i.e. exactly the request shape verified live.
+      if (status === 400 && languageCode) languageCode = undefined;
+      if (!(await pauseUnlessAborted(RETRY_PAUSE_MS, deadline.signal))) return ended();
     }
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      console.error(`[tts/gemini] upstream error (after ${MAX_ATTEMPTS} attempts)`, res.status, detail.slice(0, 200));
-      return NextResponse.json({ error: 'tts_failed', status: res.status }, { status: 502 });
-    }
-    const data = (await res.json().catch(() => null)) as
+    // The loop above leaves only through `break`, i.e. with an OK answer in hand.
+    const data = (await res!.json().catch(() => null)) as
       | {
           candidates?: Array<{ content?: { parts?: unknown } }>;
           usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
         }
       | null;
+    // Cut off while the answer was still arriving: Google may have charged for it, but there is no audio to give. An
+    // answer that did arrive in full is booked and returned below even if the clock ran out a moment later.
+    if (!data && deadline.signal.aborted) return ended();
     const audio = audioFromGeminiParts(data?.candidates?.[0]?.content?.parts);
 
     // Book what Google reported (TTS-family rates in costModel) — also when the audio it sent is refused below, since
@@ -252,5 +309,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error('[tts/gemini] threw', e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: 'tts_failed' }, { status: 502 });
+  } finally {
+    deadline.dispose();
   }
 }
