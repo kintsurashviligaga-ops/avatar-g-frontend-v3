@@ -19,7 +19,7 @@ import {
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { copyLiveText, liveBrowserIntent, liveRecoveryLink } from '@/lib/voice/liveBrowserRecovery';
 import { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './liveOverlayCopy';
-import { LiveErrorPanel } from './LiveCallChrome';
+import { LiveAmbientGlow, LiveErrorPanel, LiveVoicePill } from './LiveCallChrome';
 import type {
   LiveCaption,
   LiveErrorCode,
@@ -29,7 +29,7 @@ import type {
 } from './useGeminiLiveSession';
 import { isMicErrorCode } from "./useGeminiLiveSession";
 import LiveDock, { LIVE_DOCK_STRINGS } from "./LiveDock";
-import { LiveWaveform, orbStateFor } from "./LiveOrb";
+import { orbStateFor } from "./LiveOrb";
 import { liveCurrentStep, type LiveJobLine } from "./LiveActivityFeed";
 import type { LiveActivityItem } from './liveActivity';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
@@ -178,14 +178,7 @@ export function LiveModeOverlay({
       />
 
       {/* 2. ქვემოდან ამომავალი რბილი ცისფერი ნათება (Gemini Live Ambient Nebula) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[65vh] opacity-90 transition-opacity duration-700"
-        style={{
-          background:
-            'radial-gradient(ellipse 95% 60% at 50% 100%, rgba(26, 115, 232, 0.42) 0%, rgba(13, 37, 89, 0.22) 45%, rgba(0, 0, 0, 0) 80%)',
-        }}
-      />
+      <LiveAmbientGlow />
 
       {/* Screen docking and secondary call controls. */}
       {!error && <div className="relative z-20 flex items-center justify-between px-5 pb-4 pt-12">
@@ -328,14 +321,9 @@ export function LiveModeOverlay({
           </button>
 
           {/* The audio meter is decorative; the separate native button interrupts speech. */}
-          <div
-            data-testid="live-waveform"
-            aria-hidden="true"
-            className="relative flex h-14 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-sky-300/40 shadow-[0_0_42px_rgba(37,99,235,0.65),inset_0_1px_2px_rgba(255,255,255,0.35)] min-[360px]:w-28 min-[390px]:w-36 sm:w-40"
-            style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #38bdf8 100%)' }}
-          >
-            <LiveWaveform state={waveformState} getLevels={getLevels} className="[&_span]:bg-white" />
-          </div>
+          <span data-testid="live-waveform" aria-hidden="true" className="flex">
+            <LiveVoicePill state={waveformState} getLevels={getLevels} />
+          </span>
 
           {/* 4. მიკროფონის ღილაკი */}
           <button
