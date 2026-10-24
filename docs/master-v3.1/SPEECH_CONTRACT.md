@@ -38,16 +38,20 @@ The two voice calls are not readers. They have the speakers while they are on:
   that are at least a fifth of the message's letters make it `ka` or `ru`; otherwise Latin letters make it `en`; code
   and links are not counted, and a message with no letters keeps the page's language. Before this, an English or
   Russian reply on the Georgian studio was sent as `ka`, and read with the voice and settings for Georgian.
-- `text` is one chunk. The browser cuts a message with `chunkSpeech(text, { leadSentence: true })`
-  (`lib/speech/chunk.ts`):
+- `text` is one chunk. The browser cuts a message with
+  `chunkSpeech(text, { leadSentence: true, ramp: SPEECH_CHUNK_RAMP })` (`lib/speech/chunk.ts`):
   - every character is in exactly one chunk, in order;
   - a chunk is whole sentences, at most 600 characters;
   - the first sentence is a chunk of its own when it is short, so speech starts sooner;
+  - the chunks grow: each says at most 1.5 × the two before it (at least 40 characters), and the first at most 220,
+    so each request is small next to the audio already on its way; a sentence longer than its chunk may hold is cut
+    after a clause mark that fits and leaves at least 40 characters after it, and read whole when it has none;
   - a sentence longer than the limit is cut at a clause mark, else at a space;
   - Georgian, English and Russian abbreviations and decimals do not end a sentence.
 - The route refuses text over `SPEECH_MAX_CHARS` (2,000) with 413 `text_too_long` before any provider call. It never
   cuts text silently.
-- At most `SPEECH_AHEAD` (2) chunk requests are in flight at once.
+- At most `SPEECH_AHEAD` (3) chunk requests are in flight at once, and chunk k is asked for when chunk k − 3 starts.
+  It was 2 until GG heard the read stop between chunks (Production 2026-10-24).
 - The browser waits `SPEECH_CLIENT_DEADLINE_MS` (28 s) and never retries a chunk itself.
 - The caller's stop (another message, another chat, a call, unmount, sign-out) aborts the request, so the route stops
   too.

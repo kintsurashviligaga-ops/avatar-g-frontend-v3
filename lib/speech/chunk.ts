@@ -44,10 +44,29 @@ export interface SpeechChunkOptions {
   leadSentence?: boolean;
   /** Default 220. */
   leadMax?: number;
+  /**
+   * Let the chunks grow instead of jumping to `maxChars` (see SPEECH_CHUNK_RAMP). Chunk k (k ≥ 1) holds at most
+   * `ramp` × the spoken length of the two chunks before it (at least SPEECH_CHUNK_MIN_CHARS, at most `maxChars`), and
+   * with `leadSentence` the first chunk holds at most `leadMax`. A sentence longer than its chunk may hold is cut at
+   * its last clause mark (, ; : — –) that fits and leaves at least SPEECH_CHUNK_MIN_CHARS after it, and read whole
+   * when it has none (up to `maxChars`; past that it is cut as without the ramp).
+   */
+  ramp?: number;
 }
 
 export const SPEECH_CHUNK_MAX_CHARS = 600;
 export const SPEECH_CHUNK_MIN_CHARS = 40;
+
+/**
+ * ⚠️ THE READ STOPPED IN THE MIDDLE AND THEN WENT ON (GG, Production 2026-10-24). With the lead sentence on its own,
+ * the next chunk took up to 600 characters: "გამარჯობა!" (under a second of audio) was followed by a request for half a
+ * minute of it, which could not be ready when the lead ended, so the read waited. The player asks for chunk k when
+ * chunk k − SPEECH_AHEAD starts (lib/speech/player), and chunk k must be ready when chunk k − 1 ends. Growing each
+ * chunk to at most 1.5 × the two before it keeps every request small next to the audio already on its way, whatever
+ * fixed cost each request has. UNCERTAIN: no TTS model's speed is measured (the owner's trial card, lib/speech/trial,
+ * measures it); this is the value to change once it is.
+ */
+export const SPEECH_CHUNK_RAMP = 1.5;
 
 /**
  * Words whose '.' does not end a sentence, lower-cased, with their inner dots ("т.е." is "т.е"). Georgian has no
@@ -179,30 +198,88 @@ function splitLong(source: string, start: number, end: number, max: number): Arr
   return out;
 }
 
+/**
+ * Where to cut [start, end) so that its first piece says at most `limit` characters: after the last clause mark (then
+ * a space) that fits, keeps the piece above 40% of `limit` and leaves at least SPEECH_CHUNK_MIN_CHARS after it, or -1
+ * when there is none. A sentence only a few characters over is read whole: cutting off a short tail would add a seam
+ * in the voice and a request, and save no wait.
+ */
+function clauseCut(source: string, start: number, end: number, limit: number): number {
+  const from = skipSpace(source, start);
+  const windowEnd = Math.min(end - 1, from + limit);
+  const floor = from + Math.floor(limit * 0.4);
+  for (let k = windowEnd - 1; k > floor; k--) {
+    if (!CLAUSE_MARK.test(source[k]!) || !isSpace(source[k + 1])) continue;
+    if (spoken(source.slice(k + 1, end)).length >= SPEECH_CHUNK_MIN_CHARS) return k + 1;
+  }
+  return -1;
+}
+
 /** The speech chunks of `source`. Whitespace-only text has none. */
 export function chunkSpeech(source: string, opts: SpeechChunkOptions = {}): SpeechChunk[] {
   const text = source ?? '';
   if (!spoken(text)) return [];
   const max = Math.min(SPEECH_MAX_CHARS, Math.max(SPEECH_CHUNK_MIN_CHARS, Math.floor(opts.maxChars ?? SPEECH_CHUNK_MAX_CHARS)));
   const leadMax = Math.min(max, opts.leadMax ?? 220);
+  const ramp = opts.ramp !== undefined && Number.isFinite(opts.ramp) && opts.ramp > 0 ? opts.ramp : null;
 
   const ranges: Array<{ start: number; end: number }> = [];
-  let open: { start: number; end: number; hardEnd: boolean } | null = null;
-  const flush = () => { if (open) ranges.push({ start: open.start, end: open.end }); open = null; };
+  /** Spoken length of each range, for the ramp. */
+  const lens: number[] = [];
+  const push = (r: { start: number; end: number }) => {
+    ranges.push({ start: r.start, end: r.end });
+    lens.push(spoken(text.slice(r.start, r.end)).length);
+  };
+  /** The most the next chunk may say. With the ramp, the first one says at most `leadMax` when the lead is asked for. */
+  const room = (): number => {
+    const k = lens.length;
+    if (!ramp) return max;
+    if (k === 0) return opts.leadSentence ? leadMax : max;
+    const before = lens[k - 1]! + (k >= 2 ? lens[k - 2]! : 0);
+    return Math.min(max, Math.max(SPEECH_CHUNK_MIN_CHARS, Math.floor(ramp * before)));
+  };
+  let open: { start: number; end: number; hardEnd: boolean; limit: number } | null = null;
+  const flush = () => { if (open) push(open); open = null; };
 
-  speechSentences(text).forEach((s, i) => {
+  speechSentences(text).forEach((sentence, i) => {
+    let s: Span = sentence;
     const len = spoken(text.slice(s.start, s.end)).length;
-    if (len > max) {
+    if (len > max && !ramp) {
       flush();
-      ranges.push(...splitLong(text, s.start, s.end, max));
+      for (const piece of splitLong(text, s.start, s.end, max)) push(piece);
       return;
     }
     if (i === 0 && opts.leadSentence && len <= leadMax) {
-      ranges.push({ start: s.start, end: s.end });
+      push(s);
       return;
     }
-    if (open && (open.hardEnd || spoken(text.slice(open.start, s.end)).length > max)) flush();
-    open = open ? { start: open.start, end: s.end, hardEnd: s.hardEnd } : { ...s };
+    for (;;) {
+      if (open && (open.hardEnd || spoken(text.slice(open.start, s.end)).length > open.limit)) flush();
+      if (open) {
+        open = { ...open, end: s.end, hardEnd: s.hardEnd };
+        return;
+      }
+      const limit = room();
+      const rest = spoken(text.slice(s.start, s.end)).length;
+      if (rest <= limit) {
+        open = { ...s, limit };
+        return;
+      }
+      // Longer than this chunk may say: cut at a clause mark, read the rest as the next chunk(s).
+      const cut = clauseCut(text, s.start, s.end, limit);
+      if (cut > 0) {
+        push({ start: s.start, end: cut });
+        s = { start: cut, end: s.end, hardEnd: s.hardEnd };
+        continue;
+      }
+      // No clause mark that fits: whole if the route takes it, else cut as before.
+      if (rest <= max) {
+        push(s);
+      } else {
+        for (const piece of splitLong(text, s.start, s.end, max)) push(piece);
+      }
+      return;
+    }
   });
   flush();
 
