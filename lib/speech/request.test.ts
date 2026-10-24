@@ -20,6 +20,14 @@ const initOf = (f: jest.Mock, i = 0) => f.mock.calls[i]![1] as RequestInit;
 
 afterEach(() => { jest.useRealTimers(); hangs.mockClear(); });
 
+test('a listening trial names its model in the request; with none the body is text and locale only', async () => {
+  const f = jest.fn(async () => wav());
+  await speechResult('Hello.', 'en', undefined, f as unknown as typeof fetch, 'gemini-3.8-flash-tts');
+  expect(JSON.parse(String(initOf(f).body))).toEqual({ text: 'Hello.', locale: 'en', model: 'gemini-3.8-flash-tts' });
+  await speechResult('Hello.', 'en', undefined, f as unknown as typeof fetch, null);
+  expect(JSON.parse(String(initOf(f, 1).body))).toEqual({ text: 'Hello.', locale: 'en' });
+});
+
 test('POSTs the text and locale to the read-aloud route with the session cookie, and hands back the WAV', async () => {
   const f = jest.fn(async () => wav());
   const blob = await requestSpeech('გამარჯობა', 'ka', undefined, f as unknown as typeof fetch);

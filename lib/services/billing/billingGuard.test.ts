@@ -172,7 +172,9 @@ describe('per-model Gemini token pricing', () => {
       'gemini-3.5-transcribe-live': 'live-audio',
       // tts — also checked before flash
       'gemini-2.5-flash-preview-tts': 'tts-flash',
-      'gemini-3.8-flash-tts': 'tts-flash',
+      'gemini-3.8-flash-tts': 'tts-3.8',
+      'gemini-3.8-flash-lite-tts': 'tts-3.8',
+      'models/gemini-3.8-flash-tts': 'tts-3.8',
       'gemini-3.1-flash-tts-preview': 'tts-flash',
       'gemini-2.5-pro-preview-tts': 'tts-pro',
       // suffixes / prefixes a provider or SDK adds must not knock an id onto the fallback
@@ -218,6 +220,9 @@ describe('per-model Gemini token pricing', () => {
     expect(cost('gemini-3.1-pro-preview')).toBeCloseTo((1000 * 2 + 500 * 12) / 1e6, 6);
     expect(cost('gemini-2.5-flash-native-audio-latest')).toBeCloseTo((1000 * 3 + 500 * 12) / 1e6, 6);
     expect(cost('gemini-2.5-flash-preview-tts')).toBeCloseTo((1000 * 0.5 + 500 * 10) / 1e6, 6);
+    // 3.8 TTS: the 2027 Flash rate for both, never below what Google charges in either period.
+    expect(cost('gemini-3.8-flash-tts')).toBeCloseTo((1000 * 1 + 500 * 18) / 1e6, 6);
+    expect(cost('gemini-3.8-flash-lite-tts')).toBeCloseTo((1000 * 1 + 500 * 18) / 1e6, 6);
     // Unknown id → exactly the pre-per-model flat rate.
     expect(cost('some-future-model')).toBeCloseTo((1000 * 1.5 + 500 * 9) / 1e6, 6);
   });

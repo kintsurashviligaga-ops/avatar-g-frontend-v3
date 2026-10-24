@@ -73,6 +73,7 @@ export type GeminiPriceFamily =
   | 'flash-lite-2.5' // gemini-2.5-flash-lite
   | 'live-audio'     // Live API native-audio / *-live / *-transcribe-live
   | 'tts-flash'      // *-flash-*tts*
+  | 'tts-3.8'        // gemini-3.8-flash-tts, gemini-3.8-flash-lite-tts
   | 'tts-pro';       // *-pro-*tts*
 
 /**
@@ -185,9 +186,17 @@ export const GEMINI_PRICE_TABLE: Readonly<Record<GeminiPriceFamily, GeminiFamily
     inputPerMillion: 3.0, outputPerMillion: 12.0, cachedInputPerMillion: 3.0,
     grounding: { per: 'query', usd: 0 },
   },
-  // gemini-2.5-flash-preview-tts: text in, AUDIO out. UNCERTAIN for the 3.x TTS ids — priced as 2.5. No tools.
+  // gemini-2.5-flash-preview-tts: text in, AUDIO out. UNCERTAIN for gemini-3.1-flash-tts-preview — priced as 2.5. No tools.
   'tts-flash': {
     inputPerMillion: 0.5, outputPerMillion: 10.0, cachedInputPerMillion: 0.5,
+    grounding: { per: 'query', usd: 0 },
+  },
+  // gemini-3.8-flash-tts and gemini-3.8-flash-lite-tts. Vertex AI price list (read 2026-10-24): Flash TTS $0.50 in /
+  // $9.00 out and Flash-Lite TTS $0.50 / $6.00 through 2026-12-31, then $1.00 / $18.00 and $1.00 / $12.00 from
+  // 2027-01-01. Both are booked at the higher 2027 Flash rate: over-booking is the safe direction, and the 2.5 rate
+  // ($0.50 / $10.00) would under-book them from January.
+  'tts-3.8': {
+    inputPerMillion: 1.0, outputPerMillion: 18.0, cachedInputPerMillion: 1.0,
     grounding: { per: 'query', usd: 0 },
   },
   // gemini-2.5-pro-preview-tts.
@@ -207,7 +216,10 @@ export const GEMINI_PRICE_TABLE: Readonly<Record<GeminiPriceFamily, GeminiFamily
 export function geminiPriceFamily(model: string | null | undefined): GeminiPriceFamily | null {
   const id = String(model ?? '').trim().toLowerCase().replace(/^models\//, '');
   if (!id.startsWith('gemini-') || id.length > 128) return null;
-  if (/(^|-)tts(-|$)/.test(id)) return /-pro(-|$)/.test(id) ? 'tts-pro' : 'tts-flash';
+  if (/(^|-)tts(-|$)/.test(id)) {
+    if (/-pro(-|$)/.test(id)) return 'tts-pro';
+    return /^gemini-3\.8-/.test(id) ? 'tts-3.8' : 'tts-flash';
+  }
   if (/native-audio|(^|-)live(-|$)|transcribe/.test(id)) return 'live-audio';
   // Image-OUTPUT models bill image tokens at a far higher output rate than text; not a chat price — fallback.
   if (/(^|-)image(-|$)/.test(id)) return null;

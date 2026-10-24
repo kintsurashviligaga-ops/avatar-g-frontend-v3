@@ -36,6 +36,7 @@ import { browserSpeechCache, type SpeechCache } from './cache';
 import { chunkSpeech, type SpeechChunk, type SpeechChunkOptions } from './chunk';
 import type { SpeechLocale } from './contract';
 import { fetchSpeech, requestSpeech } from './request';
+import { speechTrialModel } from './trial';
 import { inspectWav } from './wav';
 import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
 import { MIC_RELEASE_EVENT } from '@/lib/voice/micBus';
@@ -450,7 +451,10 @@ export class SpeechPlayer {
  */
 export function browserSpeechDeps(cache: SpeechCache | null = null): SpeechPlayerDeps {
   return {
-    synth: (text, locale, signal) => (cache ? cache.synth(text, locale, signal, fetchSpeech) : requestSpeech(text, locale, signal)),
+    // A listening trial (lib/speech/trial) skips the replay cache: it holds audio of another model, and a replay would
+    // make the model under trial sound faster than it is. Nothing of the trial is kept either.
+    synth: (text, locale, signal) =>
+      cache && !speechTrialModel() ? cache.synth(text, locale, signal, fetchSpeech) : requestSpeech(text, locale, signal),
     createAudio: () => new Audio() as unknown as SpeechAudio,
     createObjectURL: (blob) => URL.createObjectURL(blob),
     revokeObjectURL: (url) => URL.revokeObjectURL(url),

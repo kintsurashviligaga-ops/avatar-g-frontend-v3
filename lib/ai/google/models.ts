@@ -99,7 +99,22 @@ export const LIVE_MODELS: readonly string[] = [
 /** The TTS default (verified Georgian; /api/tts/gemini's "Read aloud verbatim:" directive is tuned on it). */
 export const DEFAULT_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 
-export const TTS_MODELS: readonly string[] = [DEFAULT_TTS_MODEL, 'gemini-3.8-flash-tts', 'gemini-3.1-flash-tts-preview'];
+export const TTS_MODELS: readonly string[] = [
+  DEFAULT_TTS_MODEL,
+  'gemini-3.8-flash-tts',
+  'gemini-3.8-flash-lite-tts',
+  'gemini-3.1-flash-tts-preview',
+];
+
+/**
+ * Whether a TTS model reads its text field strictly as a verbatim transcript, so an inline instruction such as
+ * "Read aloud verbatim:" would itself be SPOKEN. Google's 3.8 TTS model pages say so ("treats input text strictly
+ * as a verbatim transcript"; directions go in speech metadata). The 2.5 and 3.1 models still need the directive
+ * (without it a question gets HTTP 400 "Model tried to generate text").
+ */
+export function ttsReadsVerbatim(model: string): boolean {
+  return /^gemini-3\.8-/.test(model.trim().replace(/^models\//i, '').toLowerCase());
+}
 
 /** The STT default: a multimodal generateContent model given a "transcribe this audio" prompt (geminiStt.ts). */
 export const DEFAULT_STT_MODEL = 'gemini-3.8-flash';

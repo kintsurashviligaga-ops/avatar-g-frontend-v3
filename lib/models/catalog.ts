@@ -205,6 +205,7 @@ export const MODEL_CATALOG: ModelCatalog = {
     ...(
       [
         ['gemini-3.8-flash-tts', 'Gemini 3.8 Flash TTS'],
+        ['gemini-3.8-flash-lite-tts', 'Gemini 3.8 Flash-Lite TTS'],
         ['gemini-3.1-flash-tts-preview', 'Gemini 3.1 Flash TTS Preview'],
       ] as const
     ).map(([id, label]): ModelCatalogEntry => ({

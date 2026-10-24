@@ -12,7 +12,9 @@
  *   · usage is booked (real usageMetadata when Google reports it) and a budget refusal spends nothing;
  *   · Phase 4 (§5.2–5.3): every audio part is read in order and wrapped once, with the contract headers; a format it
  *     cannot prove is 502 tts_bad_audio (booked, not retried); text over 2,000 characters is 413 before any spend;
- *   · v3.1: the call goes to Vertex AI with a Workload Identity token; an AI Studio key is never read or sent.
+ *   · v3.1: the call goes to Vertex AI with a Workload Identity token; an AI Studio key is never read or sent;
+ *   · the owner's listening trial: a requested allowlisted `model` is honoured for an admin only, and the 3.8 models get
+ *     the text without the directive (they read it as a transcript).
  */
 jest.mock('server-only', () => ({}));
 
@@ -42,6 +44,14 @@ jest.mock('../../../../lib/veo/vertexAuth', () => ({
   getVertexAccessToken: jest.fn(async () => 'vertex-token'),
 }));
 
+let mockAdmin: boolean | 'throws' = false;
+jest.mock('../../../../lib/auth/adminGuard', () => ({
+  isAdminIdentity: jest.fn(async () => {
+    if (mockAdmin === 'throws') throw new Error('admin list unreadable');
+    return mockAdmin;
+  }),
+}));
+
 jest.mock('../../../../lib/services/billing/chatBudget', () => {
   const actual = jest.requireActual('../../../../lib/services/billing/chatBudget');
   return { ...actual, chatBudgetAllows: jest.fn(async () => true), bookChatUsage: jest.fn(async () => undefined) };
@@ -52,6 +62,7 @@ import { POST } from './route';
 import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { bookChatUsage, chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
+import { isAdminIdentity } from '../../../../lib/auth/adminGuard';
 import { inspectWav } from '../../../../lib/speech/wav';
 import { SPEECH_MAX_CHARS } from '../../../../lib/speech/contract';
 import {
@@ -120,6 +131,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useRealTimers();
   mockUser = { id: USER_ID };
+  mockAdmin = false;
   delete process.env.FILM_ALLOW_ANONYMOUS;
   delete process.env.GEMINI_TTS_MODEL;
   delete process.env.GEMINI_TTS_LANGUAGE_CODE;
@@ -465,6 +477,69 @@ test('an allowlisted GEMINI_TTS_MODEL is used; an unknown one falls back to the 
   process.env.GEMINI_TTS_MODEL = 'gemini-9-evil/../x';
   await POST(post({ text: 'hello', locale: 'en' }));
   expect(sentUrl(1)).toContain('/models/gemini-2.5-flash-preview-tts:generateContent');
+});
+
+describe("the owner's listening trial (body.model)", () => {
+  const adminMock = isAdminIdentity as jest.MockedFunction<typeof isAdminIdentity>;
+
+  test('an admin gets the allowlisted model asked for: called, budgeted, booked and named in the headers', async () => {
+    mockAdmin = true;
+    const res = await POST(post({ text: 'გამარჯობა, როგორ ხარ?', locale: 'ka', model: 'gemini-3.8-flash-tts' }));
+    expect(res.status).toBe(200);
+    expect(adminMock).toHaveBeenCalledWith(mockUser);
+    expect(sentUrl()).toContain('/models/gemini-3.8-flash-tts:generateContent');
+    expect(budgetMock).toHaveBeenCalledWith('გამარჯობა, როგორ ხარ?', 'gemini-3.8-flash-tts');
+    expect(res.headers.get('x-speech-model')).toBe('gemini-3.8-flash-tts');
+    // 3.8 reads the text strictly as a transcript: the directive would be spoken, so it is not sent.
+    expect(sent().contents[0]!.parts[0]!.text).toBe('გამარჯობა, როგორ ხარ?');
+    expect(bookMock.mock.calls[0]![0]).toMatchObject({ model: 'gemini-3.8-flash-tts', inputChars: 'გამარჯობა, როგორ ხარ?'.length });
+  });
+
+  test('Flash-Lite and the default can be asked for too; the default keeps its directive', async () => {
+    mockAdmin = true;
+    await POST(post({ text: 'hello', locale: 'en', model: 'models/gemini-3.8-flash-lite-tts' }));
+    expect(sentUrl(0)).toContain('/models/gemini-3.8-flash-lite-tts:generateContent');
+    expect(sent(0).contents[0]!.parts[0]!.text).toBe('hello');
+    await POST(post({ text: 'hello', locale: 'en', model: 'gemini-2.5-flash-preview-tts' }));
+    expect(sentUrl(1)).toBe(VERTEX_TTS_URL);
+    expect(sent(1).contents[0]!.parts[0]!.text).toBe('Read aloud verbatim: hello');
+  });
+
+  test('anyone else asking for a model gets the usual one, with the directive', async () => {
+    mockAdmin = false;
+    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(res.status).toBe(200);
+    expect(sentUrl()).toBe(VERTEX_TTS_URL);
+    expect(sent().contents[0]!.parts[0]!.text).toBe('Read aloud verbatim: hello');
+    expect(res.headers.get('x-speech-model')).toBe('gemini-2.5-flash-preview-tts');
+  });
+
+  test('an admin check that fails is a "no" (closed), never the requested model', async () => {
+    mockAdmin = 'throws';
+    await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(sentUrl()).toBe(VERTEX_TTS_URL);
+  });
+
+  test.each(['gemini-2.5-flash', 'gemini-9-evil/../x', 'gemini-2.5-pro-preview-tts', 42, ''])(
+    'model=%p is not on the list: the usual model, and the admin list is not even read',
+    async (model) => {
+      mockAdmin = true;
+      await POST(post({ text: 'hello', locale: 'en', model }));
+      expect(sentUrl()).toBe(VERTEX_TTS_URL);
+      expect(adminMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test('no model in the body (every ordinary request): the admin list is not read', async () => {
+    await POST(post({ text: 'hello', locale: 'en' }));
+    expect(adminMock).not.toHaveBeenCalled();
+  });
+
+  test('GEMINI_TTS_MODEL set to a 3.8 model also sends the text without the directive', async () => {
+    process.env.GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
+    await POST(post({ text: 'hello', locale: 'en' }));
+    expect(sent().contents[0]!.parts[0]!.text).toBe('hello');
+  });
 });
 
 test('a budget refusal is a 503 before Google is called', async () => {

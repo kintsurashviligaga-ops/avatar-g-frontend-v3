@@ -11,6 +11,7 @@
  */
 import { SPEECH_CLIENT_DEADLINE_MS, speechDeadline } from './deadline';
 import { speechProfile, type SpeechLocale } from './contract';
+import { speechTrialModel } from './trial';
 
 export const SPEECH_ROUTE = '/api/tts/gemini';
 
@@ -56,12 +57,16 @@ export type SpeechResult =
 
 const NO_ANSWER: SpeechResult = { ok: false, miss: { status: 0, error: null } };
 
-/** fetchSpeech, and on a miss the reason the route gave. */
+/**
+ * fetchSpeech, and on a miss the reason the route gave. `model` is the owner's listening trial (lib/speech/trial):
+ * named in the request only while a trial is on, and honoured by the route for an admin account only.
+ */
 export async function speechResult(
   text: string,
   locale: SpeechLocale,
   signal?: AbortSignal,
   fetchImpl: typeof fetch = fetch,
+  model: string | null = speechTrialModel(),
 ): Promise<SpeechResult> {
   const deadline = speechDeadline(SPEECH_CLIENT_DEADLINE_MS, signal);
   try {
@@ -71,7 +76,7 @@ export async function speechResult(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ text, locale }),
+      body: JSON.stringify(model ? { text, locale, model } : { text, locale }),
       signal: deadline.signal,
     });
     // Signed out (the session ended while the page stayed open): the app's sign-in prompt opens instead of a silent miss.

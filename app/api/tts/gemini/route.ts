@@ -12,7 +12,8 @@
  * any turn is sent).
  *
  * Body: { text, locale?: 'ka'|'en'|'ru', gender?: 'male'|'female', voice?: 'Aoede'|'Charon'|'Kore'|'Puck',
- *         personaId?, customPersona? }. `text` longer than SPEECH_MAX_CHARS (2,000) is refused with 413 text_too_long
+ *         personaId?, customPersona?, model? }. `model` is the owner's listening trial (lib/speech/trial): an
+ *         allowlisted TTS id honoured for an ADMIN account only; anyone else, or any other value, gets ttsModel(). `text` longer than SPEECH_MAX_CHARS (2,000) is refused with 413 text_too_long
  *         before any provider I/O; it used to be cut at 2,000 without a word (§5.3.1). The client splits a message into
  *         chunks well below the limit.
  * Time and attempts (§5.3.4, lib/speech/deadline): ONE deadline of SPEECH_DEADLINE_MS (25 s) from the moment the request
@@ -35,7 +36,8 @@ import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate
 import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { ttsModel } from '@/lib/ai/google/models';
+import { TTS_MODELS, normalizeModelId, ttsModel, ttsReadsVerbatim } from '@/lib/ai/google/models';
+import { isAdminIdentity, type AdminCandidate } from '@/lib/auth/adminGuard';
 import { liveVoiceFor, resolveAgentProfile, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { bookChatUsage, chatBudgetAllows } from '@/lib/services/billing/chatBudget';
@@ -107,6 +109,19 @@ function pickVoice(profile: AgentProfile, voice: unknown, gender: unknown, local
   return liveVoiceFor(v, locale);
 }
 
+/**
+ * The model this request is read with. ⚠️ The owner's listening on 2026-10-24 found the default slow and robotic, so
+ * the 3.8 TTS models are tried on the owner's own account first (lib/speech/trial sends `model`). A requested id is
+ * honoured only when it is on TTS_MODELS AND the caller is an admin (the one admin rule, isAdminIdentity, which fails
+ * closed here); everything else is ttsModel(), exactly as before. Never a fallback between models: the model chosen
+ * here is the one called, budgeted and booked.
+ */
+async function modelFor(user: AdminCandidate | null | undefined, requested: unknown): Promise<string> {
+  const id = normalizeModelId(requested)?.toLowerCase();
+  if (!id || !TTS_MODELS.includes(id)) return ttsModel();
+  return (await isAdminIdentity(user).catch(() => false)) ? id : ttsModel();
+}
+
 /** Await a bookkeeping promise for at most `ms`; the timer is cleared either way (no dangling handle). */
 async function settleWithin(p: Promise<unknown>, ms: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -144,6 +159,7 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as {
     text?: unknown; locale?: unknown; gender?: unknown; voice?: unknown; personaId?: unknown; customPersona?: unknown;
+    model?: unknown;
   };
   const text = (typeof body.text === 'string' ? body.text : '').trim();
   if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 });
@@ -169,7 +185,7 @@ export async function POST(req: NextRequest) {
   // name predates Vertex and is kept for the client.
   if (googleTransportBlocker()) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
 
-  const model = ttsModel();
+  const model = await modelFor(user, body.model);
   const profile = resolveAgentProfile({
     personaId: typeof body.personaId === 'string' ? body.personaId : null,
     customPersona: body.customPersona,
@@ -189,13 +205,15 @@ export async function POST(req: NextRequest) {
   // as "გამარჯობა, როგორ ხარ?" makes the model attempt a reply and return HTTP 400 ("Model tried to
   // generate text, but it should only be used for TTS"). Even with it, the preview TTS model very
   // occasionally still slips into answer-mode, so that 400 is retried (retryableTtsFailure).
+  // ⚠️ NOT for the 3.8 models: they read the text strictly as a transcript, so the directive would be spoken.
+  const prompt = ttsReadsVerbatim(model) ? text : `${DIRECTIVE}${text}`;
   const callGemini = async (signal: AbortSignal): Promise<Response> =>
     // Through the Google transport: the API key rides in a header (never the URL), or Vertex gets a WIF token.
     // ⚠️ The TTS model on Vertex AI is not proven for this project yet — a miss there is a 502, not a switch.
     googleModelFetch(model, 'generateContent', {
       method: 'POST',
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: `${DIRECTIVE}${text}` }] }],
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
@@ -275,7 +293,7 @@ export async function POST(req: NextRequest) {
           ...(inputTokens !== undefined ? { inputTokens } : {}),
           outputTokens,
           ...(totalTokens !== undefined ? { totalTokens } : {}),
-          inputChars: text.length + DIRECTIVE.length,
+          inputChars: prompt.length,
           userId: user?.id ?? null,
         }),
         1_500,
