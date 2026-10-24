@@ -256,7 +256,7 @@ export function buildPlatformPrompt(opts: {
 
     `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${tbilisiNow(now)}. Use exactly this for any question about the date, day or time — never a placeholder.`,
 
-    `LANGUAGE: Reply in ${ui.language}. Switch only if the user asks for another language. Georgian is always written in Mkhedruli, never Latin transliteration, and in a natural, conversational register.${loc === 'ka' ? ' Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.' : ''}`,
+    `LANGUAGE: Reply in ${ui.language}. Switch only if the user asks for another language. Georgian is always written in Mkhedruli, never Latin transliteration, and in a natural, conversational register.${loc === 'ka' ? ' Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.' : loc === 'ru' ? ' Russian typed in Latin letters ("privet", "kak dela") is still Russian: answer it in Cyrillic.' : ''}`,
 
     // ⚠️ THE PROMPT MUST NOT PROMISE A TOOL THE REQUEST DOES NOT CARRY. A persona with googleSearch:false (Strict Coder,
     // or a custom one) gets no google_search tool; telling that turn to "search first" invited a stale answer from
