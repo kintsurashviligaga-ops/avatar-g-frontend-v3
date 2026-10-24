@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { belongsInPhotos, extensionFor, fileNameFor, isAppleTouch, saveMedia, shareFile } from './saveMedia';
+import { BUFFER_MAX_BYTES, SAME_SAVE_MS, belongsInPhotos, extensionFor, fileNameFor, forgetSavesForTests, isAppleTouch, saveMedia, shareFile } from './saveMedia';
 import { AUDIO_ACCEPT, withAudioTypes } from './accept';
 
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
@@ -33,6 +33,18 @@ describe('the saved file has one extension, the right one', () => {
     expect(extensionFor('video/mp4')).toBe('mp4');
     expect(extensionFor('audio/mp4')).toBe('m4a');
     expect(extensionFor('audio/mpeg')).toBe('mp3');
+  });
+  it('a 3D model, a PDF and the less common picture, film and sound types (§4.3)', () => {
+    expect(extensionFor('model/gltf-binary')).toBe('glb');
+    expect(extensionFor('model/gltf+json')).toBe('gltf');
+    expect(extensionFor('application/pdf')).toBe('pdf');
+    expect(extensionFor('image/avif')).toBe('avif');
+    expect(extensionFor('video/mpeg')).toBe('mpg'); // not .mp3
+    expect(extensionFor('audio/x-m4a')).toBe('m4a');
+    expect(extensionFor('audio/wav')).toBe('wav');
+    expect(extensionFor('audio/flac')).toBe('flac');
+    expect(extensionFor('audio/ogg; codecs=opus')).toBe('ogg');
+    expect(fileNameFor('myavatar-image-chair', 'application/octet-stream', 'https://s/renders/chair.glb?token=1', 'png')).toBe('myavatar-image-chair.glb');
   });
   it('a JPEG behind a ".png" name is saved as .jpg, not "x.png.jpeg"', () => {
     expect(fileNameFor('myavatar-image.png', 'image/jpeg', 'https://s/x.png?token=1')).toBe('myavatar-image.jpg');
@@ -73,6 +85,7 @@ describe('saving', () => {
   }
 
   beforeEach(() => {
+    forgetSavesForTests();
     clicked = [];
     clickedUrls = [];
     opened = [];
@@ -222,6 +235,159 @@ describe('saving', () => {
     setNavigator({ userAgent: IPHONE_UA });
     await expect(saveMedia('https://s/a.mp4', 'v')).resolves.toBe('opened');
     expect(opened).toEqual(['https://s/a.mp4']);
+  });
+
+  describe('a double click (§4.3)', () => {
+    it('saves one file: the second tap gets the first one\'s outcome', async () => {
+      setNavigator({ userAgent: MAC_UA });
+      global.fetch = jest.fn(async () => ({ ok: true, status: 200, headers: new Headers({ 'Content-Type': 'video/mp4' }) })) as unknown as typeof fetch;
+      const first = saveMedia(signedAsset, 'clip');
+      const second = saveMedia(`${signedAsset}#t=0.1`, 'clip');
+      expect(second).toBe(first);
+      await expect(first).resolves.toBe('started');
+      await expect(saveMedia(signedAsset, 'clip')).resolves.toBe('started'); // a tap just after: still the same save
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(clicked).toHaveLength(1);
+    });
+
+    it('a later tap saves again', async () => {
+      jest.useFakeTimers();
+      try {
+        setNavigator({ userAgent: MAC_UA });
+        global.fetch = jest.fn(async () => ({ ok: true, status: 200, headers: new Headers({ 'Content-Type': 'image/png' }) })) as unknown as typeof fetch;
+        await expect(saveMedia(signedAsset, 'a')).resolves.toBe('started');
+        await jest.advanceTimersByTimeAsync(SAME_SAVE_MS);
+        await expect(saveMedia(signedAsset, 'a')).resolves.toBe('started');
+        expect(clicked).toHaveLength(2);
+      } finally { jest.useRealTimers(); }
+    });
+
+    it('a closed share sheet lets the next tap open it again', async () => {
+      respond('image/png');
+      const share = jest.fn(async () => { throw Object.assign(new Error('x'), { name: 'AbortError' }); });
+      setNavigator({ userAgent: IPHONE_UA, share, canShare: () => true });
+      await expect(saveMedia('https://s/a.png', 'img')).resolves.toBe('cancelled');
+      await expect(saveMedia('https://s/a.png', 'img')).resolves.toBe('cancelled');
+      expect(share).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('a link that ran out (§4.3)', () => {
+    const fresh = 'https://example.supabase.co/storage/v1/object/sign/renders/clip.mp4?token=fresh-token';
+    const answers = (...list: { status: number; type?: string; blob?: string }[]) => jest.fn(async () => {
+      const a = list.shift() ?? { status: 500 };
+      return { ok: a.status >= 200 && a.status < 300, status: a.status, headers: new Headers(a.type ? { 'Content-Type': a.type } : {}),
+        blob: async () => new Blob([a.blob ?? 'x'], { type: a.type ?? '' }) };
+    });
+
+    it('a link Storage refuses is replaced once, and the save goes on with the fresh one', async () => {
+      setNavigator({ userAgent: MAC_UA });
+      const fetcher = answers({ status: 400 }, { status: 200, type: 'video/mp4' });
+      global.fetch = fetcher as unknown as typeof fetch;
+      const relink = jest.fn(async () => fresh);
+      await expect(saveMedia(signedAsset, 'clip', { relink })).resolves.toBe('started');
+      expect(relink).toHaveBeenCalledTimes(1);
+      expect(fetcher.mock.calls.map((c) => (c as unknown[])[1])).toEqual([expect.objectContaining({ method: 'HEAD' }), expect.objectContaining({ method: 'HEAD' })]);
+      expect(new URL(clickedUrls[0]!).searchParams.get('token')).toBe('fresh-token');
+      expect(opened).toEqual([]);
+    });
+
+    it('a link already out is replaced before anything is asked', async () => {
+      setNavigator({ userAgent: MAC_UA });
+      const fetcher = answers({ status: 200, type: 'image/jpeg' });
+      global.fetch = fetcher as unknown as typeof fetch;
+      const relink = jest.fn(async () => fresh);
+      await expect(saveMedia(signedAsset, 'a', { relink, expiresAt: new Date(Date.now() + 5_000).toISOString() })).resolves.toBe('started');
+      expect(relink).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(String((fetcher.mock.calls[0] as unknown[])[0])).toContain('token=fresh-token');
+    });
+
+    it('a link with time left is not replaced', async () => {
+      setNavigator({ userAgent: MAC_UA });
+      global.fetch = answers({ status: 200, type: 'image/jpeg' }) as unknown as typeof fetch;
+      const relink = jest.fn(async () => fresh);
+      await expect(saveMedia(signedAsset, 'a', { relink, expiresAt: new Date(Date.now() + 3_600_000).toISOString() })).resolves.toBe('started');
+      expect(relink).not.toHaveBeenCalled();
+    });
+
+    it('on an iPhone the refused file is read again from the fresh link and still goes to the share sheet', async () => {
+      const fetcher = answers({ status: 403 }, { status: 200, type: 'video/mp4' });
+      global.fetch = fetcher as unknown as typeof fetch;
+      const share = jest.fn(async () => undefined);
+      setNavigator({ userAgent: IPHONE_UA, share, canShare: () => true });
+      await expect(saveMedia(signedAsset, 'clip', { relink: async () => fresh })).resolves.toBe('shared');
+      expect(fetcher.mock.calls.map((c) => (c as unknown[])[0])).toEqual([signedAsset, fresh]);
+    });
+
+    it('with no fresh link to be had, it does what it did before: one fresh-link ask, then the byte path', async () => {
+      setNavigator({ userAgent: MAC_UA });
+      const fetcher = answers({ status: 400 }, { status: 400 });
+      global.fetch = fetcher as unknown as typeof fetch;
+      const relink = jest.fn(async () => null);
+      await expect(saveMedia(signedAsset, 'clip', { relink })).resolves.toBe('opened');
+      expect(relink).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(clicked).toEqual([]);
+    });
+  });
+
+  describe('a large file is never held in memory off an iPhone (§4.3)', () => {
+    const foreign = 'https://cdn.example.com/films/long.mp4?sig=1';
+    function answer(headers: Record<string, string>) {
+      const blob = jest.fn(async () => new Blob(['x'], { type: headers['Content-Type'] ?? '' }));
+      const cancel = jest.fn(async () => undefined);
+      global.fetch = jest.fn(async () => ({ ok: true, status: 200, headers: new Headers(headers), body: { cancel }, blob })) as unknown as typeof fetch;
+      return { blob, cancel };
+    }
+
+    it('a file over the limit opens in a tab: its bytes are never read', async () => {
+      setNavigator({ userAgent: MAC_UA });
+      const { blob, cancel } = answer({ 'Content-Type': 'video/mp4', 'Content-Length': String(BUFFER_MAX_BYTES + 1) });
+      await expect(saveMedia(foreign, 'film')).resolves.toBe('opened');
+      expect(blob).not.toHaveBeenCalled();
+      expect(cancel).toHaveBeenCalled();
+      expect(opened).toEqual([foreign]);
+      expect(clicked).toEqual([]);
+    });
+
+    it('so does a video of unknown size', async () => {
+      setNavigator({ userAgent: MAC_UA });
+      const { blob } = answer({ 'Content-Type': 'video/mp4' });
+      await expect(saveMedia(foreign, 'film')).resolves.toBe('opened');
+      expect(blob).not.toHaveBeenCalled();
+    });
+
+    it('a small file still downloads', async () => {
+      setNavigator({ userAgent: MAC_UA });
+      const { blob } = answer({ 'Content-Type': 'video/mp4', 'Content-Length': '2048' });
+      await expect(saveMedia(foreign, 'film')).resolves.toBe('downloaded');
+      expect(blob).toHaveBeenCalled();
+      expect(clicked).toEqual(['film.mp4']);
+    });
+
+    it('an iPhone still reads a large video: its share sheet needs the whole file', async () => {
+      const { blob } = answer({ 'Content-Type': 'video/mp4', 'Content-Length': String(BUFFER_MAX_BYTES * 2) });
+      const share = jest.fn(async () => undefined);
+      setNavigator({ userAgent: IPHONE_UA, share, canShare: () => true });
+      await expect(saveMedia(foreign, 'film')).resolves.toBe('shared');
+      expect(blob).toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    ['model/gltf-binary', 'https://example.supabase.co/storage/v1/object/sign/renders/chair.glb?token=t', 'myavatar-image-chair.glb'],
+    ['application/octet-stream', 'https://example.supabase.co/storage/v1/object/sign/renders/chair.glb?token=t', 'myavatar-image-chair.glb'],
+    ['application/pdf', 'https://example.supabase.co/storage/v1/object/sign/renders/plan.pdf?token=t', 'myavatar-image-chair.pdf'],
+    ['audio/mpeg', 'https://example.supabase.co/storage/v1/object/sign/renders/song?token=t', 'myavatar-image-chair.mp3'],
+  ])('a Storage %s starts as an attachment too, with the right name', async (type, url, name) => {
+    setNavigator({ userAgent: MAC_UA });
+    const blob = jest.fn();
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, headers: new Headers({ 'Content-Type': type }), blob })) as unknown as typeof fetch;
+    await expect(saveMedia(url, 'myavatar-image-chair', { fallbackExt: 'png' })).resolves.toBe('started');
+    expect(blob).not.toHaveBeenCalled();
+    expect(clicked).toEqual([name]);
+    expect(new URL(clickedUrls[0]!).searchParams.get('download')).toBe(name);
   });
 
   it('the second tap hands the kept file to the sheet', async () => {

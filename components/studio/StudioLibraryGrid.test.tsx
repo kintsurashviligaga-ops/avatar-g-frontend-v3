@@ -7,6 +7,9 @@ import { notifyManager, QueryClient, QueryClientProvider } from '@tanstack/react
 import { resetLibraryOwnerForTests } from '../../lib/library/libraryQuery';
 import { saveLibraryView } from '../../lib/library/libraryView';
 
+// The shared save (lib/media/saveMedia), answered at once: these tests pin what the card hands it.
+const mockSaveMedia = jest.fn(async (_url: string, _base: string, _opts?: unknown) => 'started');
+jest.mock('../../lib/media/saveMedia', () => ({ saveMedia: (url: string, base: string, opts?: unknown) => mockSaveMedia(url, base, opts) }));
 jest.mock('./create/newtools/PlanView', () => ({
   PlanView: ({ style }: { style: { styleName: string } }) => <figure data-testid="plan-ready">{style.styleName}</figure>,
 }));
@@ -43,6 +46,7 @@ beforeEach(() => {
   jest.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   resetLibraryOwnerForTests();
   window.sessionStorage.clear();
+  mockSaveMedia.mockClear();
   client = new QueryClient();
   global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [PLAN, FILM] }) })) as unknown as typeof fetch;
 });
@@ -166,6 +170,30 @@ test('another account\'s filter is not used', async () => {
   saveLibraryView('slideover', 'user-x', { tab: 'videos' });
   await mount();
   expect(await screen.findByTestId('library-plan-toggle')).toBeTruthy(); // on All
+});
+
+// §4.3: the card hands the save the file's name and extension, when its link runs out, and a way to a fresh one.
+test('Download hands the save a fresh link when the old one ran out: the list read again', async () => {
+  const expiresAt = new Date(Date.now() + 20_000).toISOString();
+  let round = 0;
+  global.fetch = jest.fn(async () => {
+    round += 1;
+    const film = { ...FILM, url: `https://ours.supabase.co/storage/v1/object/sign/renders/f.mp4?token=round-${round}`, expiresAt };
+    return { ok: true, status: 200, json: async () => ({ items: [film, PLAN] }) };
+  }) as unknown as typeof fetch;
+  await mount();
+  await screen.findByTestId('library-plan-toggle');
+  const reads = round;
+  await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Download' })[0]!); });
+  expect(mockSaveMedia).toHaveBeenCalledTimes(1);
+  const [url, base, opts] = mockSaveMedia.mock.calls[0]! as unknown as [string, string, { fallbackExt?: string; expiresAt?: string; relink?: () => Promise<string | null> }];
+  expect(url).toContain(`token=round-${reads}`);
+  expect(base).toBe('myavatar-film-film-1');
+  expect(opts).toMatchObject({ fallbackExt: 'mp4', expiresAt });
+  let fresh: string | null = null;
+  await act(async () => { fresh = await opts.relink!(); });
+  expect(round).toBeGreaterThan(reads);
+  expect(fresh).toBe(`https://ours.supabase.co/storage/v1/object/sign/renders/f.mp4?token=round-${round}`);
 });
 
 test('a file saved in the studio comes in with a „New" badge; what was loaded stays', async () => {

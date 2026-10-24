@@ -161,7 +161,7 @@ function filterMatches(kind: string, f: FilterKey): boolean {
 // card re-renders on each page merge. Props are stable (t is a constant COPY object, onDeleted is a
 // useCallback), so memo skips re-rendering the settled grid. Pure render perf; no behaviour change.
 const LibraryCard = memo(function LibraryCard({
-  item, owner, t, locale, onDeleted, onRetry, isNew = false, canDelete = true,
+  item, owner, t, locale, onDeleted, onRetry, onRelink, isNew = false, canDelete = true,
 }: {
   item: LibraryItem;
   /** Whose Library this is (the film's kept <video> is filed under it). */
@@ -173,6 +173,8 @@ const LibraryCard = memo(function LibraryCard({
   onDeleted: (id: string) => void;
   /** Fetch the list again (every link in it minted fresh), offered when this file will not load. */
   onRetry: () => void;
+  /** A fresh link to this work's file when its link ran out (the list read again), or null. */
+  onRelink: (item: LibraryItem) => Promise<string | null>;
   /** VECTOR 6 — a subtle badge when this asset was just added via a live library refresh. */
   isNew?: boolean;
   /** false for the demo library's examples: nobody's to delete. */
@@ -216,11 +218,14 @@ const LibraryCard = memo(function LibraryCard({
       // .glb first: the mesh rides under service_type 'image', so extension-by-kind alone renamed a
       // model to .png and made the downloaded file unopenable.
       const ext = is3d(item.url) ? 'glb' : isVideo(item.kind) ? 'mp4' : isAudio(item.kind) ? 'mp3' : 'png';
-      await saveMedia(item.url, `myavatar-${item.kind}-${item.id.slice(0, 8)}`, { fallbackExt: ext });
+      // A link that ran out is signed afresh (the list read again) before or while saving (§4.3).
+      await saveMedia(item.url, `myavatar-${item.kind}-${item.id.slice(0, 8)}`, {
+        fallbackExt: ext, expiresAt: item.expiresAt, relink: () => onRelink(item),
+      });
     } finally {
       setDownloading(false);
     }
-  }, [item.url, item.kind, item.id]);
+  }, [item, onRelink]);
 
   const handleShare = useCallback(async () => {
     const nav = navigator as Navigator & { share?: (d: { title?: string; url?: string }) => Promise<void> };
@@ -539,6 +544,13 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
     if (owner) removeLibraryItem(queryClient, owner, id);
   }, [owner, queryClient]);
 
+  /** A work's link ran out: read every loaded page again (each link signed afresh) and hand back the work's new one. */
+  const relink = useCallback(async (item: LibraryItem) => {
+    forgetLibraryLink(item.url); // never kept over the fresh one
+    const r = await refetch();
+    return r.data?.pages.flatMap((p) => p.items).find((it) => it.id === item.id)?.url ?? null;
+  }, [refetch]);
+
   /** Filter the loaded items client-side so tab switches are instant — the
    *  server's optional `kind` param doesn't map cleanly to our 4 user tabs. */
   const visible = useMemo(() => {
@@ -613,7 +625,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
           <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <AnimatePresence mode="popLayout">
               {visible.map((item) => (
-                <LibraryCard locale={locale} key={item.id} item={item} owner={owner ?? 'guest'} t={t} onDeleted={handleDeleted} onRetry={load} isNew={newIds.has(item.id)} canDelete={!demo} />
+                <LibraryCard locale={locale} key={item.id} item={item} owner={owner ?? 'guest'} t={t} onDeleted={handleDeleted} onRetry={load} onRelink={relink} isNew={newIds.has(item.id)} canDelete={!demo} />
               ))}
             </AnimatePresence>
           </div>
