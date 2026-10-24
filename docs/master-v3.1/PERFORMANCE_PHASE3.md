@@ -1,6 +1,6 @@
 # Phase 3 measurements
 
-Spec §4.1 asks for measurement before optimisation. This file holds the Phase 3 numbers as they are taken. Phase 3 PR 8 folds them into `PERFORMANCE_BASELINE.md` v2.
+Spec §4.1 asks for measurement before optimisation. This file holds the Phase 3 numbers as they were taken, with each run's setup and spans. `PERFORMANCE_BASELINE.md` v2 sums them up, one row per §4.1 interaction.
 
 ## How to read these numbers
 
