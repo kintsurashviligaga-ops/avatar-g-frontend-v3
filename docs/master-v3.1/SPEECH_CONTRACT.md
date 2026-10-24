@@ -83,7 +83,20 @@ Headers:
 | `Cache-Control` | `no-store`: replay is the browser's job (below), not an HTTP cache |
 
 The `Read aloud verbatim:` directive stays in the prompt (GG's decision 2, 2026-10-24). It is not spoken. Without it,
-question text gets HTTP 400 "Model tried to generate text".
+question text gets HTTP 400 "Model tried to generate text". The 3.8 TTS models (`gemini-3.8-flash-tts`,
+`gemini-3.8-flash-lite-tts`) get the text without it: Google says they read the text strictly as a transcript, so the
+directive would be spoken (`ttsReadsVerbatim` in `lib/ai/google/models.ts`).
+
+The owner's listening trial (after the listening of 2026-10-24 failed). A link with `?tts=<model id>` (one of
+`gemini-2.5-flash-preview-tts`, `gemini-3.8-flash-tts`, `gemini-3.8-flash-lite-tts`) picks the model for that browser
+tab, and `?tts=off` ends it (`lib/speech/trial.ts`, sessionStorage). The request then carries `model`. The route uses it
+only when it is on `TTS_MODELS` and the account is an admin (`isAdminIdentity`, failing closed); anyone else is read
+with `ttsModel()`. The model chosen is the one called, budgeted, booked and named in `X-Speech-Model`; there is no
+fallback to another model. While a trial is on, the browser skips the replay cache: the cache holds another model's
+audio, and a replay would make the trial model sound faster than it is. The trial also measures each read and shows
+it in a small corner card (`components/studio/SpeechTrialPanel.tsx`, `SpeechTrialRecorder`): the time from the tap
+to the first sound, how many times the read waited for its next chunk and for how long, and for each chunk its length,
+the route's time and the seconds of audio it sent. No TTS model's speed is measured anywhere else.
 
 Errors are JSON `{ error }`: 400 `text is required`, 401, 413 `text_too_long`, 429, 499 `client_closed`, 502
 `tts_failed` / `tts_empty` / `tts_bad_audio`, 503 `budget_exhausted` / `gemini_key_missing`, 504 `tts_timeout`.

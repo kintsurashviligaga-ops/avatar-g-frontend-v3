@@ -132,6 +132,7 @@ import { cardSignature, hasCard, mergeServerTurns, readTurnMeta, turnMetaOf } fr
 import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
+import { SpeechTrialPanel } from './SpeechTrialPanel';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 // The catalogue says which studios are live (a „მალე" tag otherwise); the tool list itself is lib/studio/tools.
 import { SERVICE_CATALOGUE } from '@/lib/services/serviceCatalogue';
@@ -12421,6 +12422,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           positions). Portaled to document.body so it floats above the studio shell.
           Renders nothing when there are no jobs. */}
       <Portal><JobTray locale={locale} /></Portal>
+      {/* The owner's read-aloud trial (?tts=…): what it measured. Renders nothing without a trial. */}
+      <Portal><SpeechTrialPanel locale={locale} /></Portal>
       {/* Full-screen image lightbox — tap any chat image to open it edge-to-edge.
           Backdrop tap / the X button / Esc all close it; the picture itself swallows
           the click so it stays open while you inspect it. */}

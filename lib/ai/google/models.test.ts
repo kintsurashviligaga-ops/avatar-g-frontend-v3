@@ -19,6 +19,7 @@ import {
   sttModel,
   toModelResource,
   ttsModel,
+  ttsReadsVerbatim,
   type ChatChainKey,
   type ChatTier,
 } from './models';
@@ -398,6 +399,17 @@ describe('resolveLiveModel / defaultLiveModel', () => {
       expect(defaultLiveModel()).toBe(DEFAULT_LIVE_MODEL);
       expect(resolveLiveModel()).toBe(DEFAULT_LIVE_MODEL);
     },
+  );
+});
+
+describe('ttsReadsVerbatim', () => {
+  it.each(['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts', 'models/gemini-3.8-flash-tts', ' Gemini-3.8-Flash-TTS '])(
+    '%p reads its text as a transcript (no directive)',
+    (id) => expect(ttsReadsVerbatim(id)).toBe(true),
+  );
+  it.each(['gemini-2.5-flash-preview-tts', 'gemini-3.1-flash-tts-preview', 'gemini-2.5-pro-preview-tts'])(
+    '%p still takes the "Read aloud verbatim:" directive',
+    (id) => expect(ttsReadsVerbatim(id)).toBe(false),
   );
 });
 
