@@ -2,8 +2,9 @@
 
 /**
  * VoiceConversation — continuous, hands-free, full-duplex-style voice node (Phase 10). Tier 3 of ChatChrome's voice
- * cascade: the ElevenLabs fallback a user gets when Gemini Live is unavailable for them (a provider outage, no live
- * user id, NEXT_PUBLIC_GEMINI_LIVE_ENABLED off).
+ * cascade: the turn-by-turn voice call a user gets when Gemini Live is unavailable for them (a provider outage, no live
+ * user id, NEXT_PUBLIC_GEMINI_LIVE_ENABLED off). Every leg is Google: Gemini speech-to-text, the chat, Gemini TTS.
+ * (It was the ElevenLabs stack; that provider is withdrawn, MASTER TASK v3.1.)
  *
  * Tap ONCE to start a live session; after that it listens continuously, auto-detects when you
  * stop speaking (VAD), replies out loud, and immediately listens again — hands-free multi-turn
@@ -11,14 +12,18 @@
  * English and Russian all work (the routes own the language; VAD is language-agnostic).
  *
  * Pipeline (unchanged REST contract — every leg fail-open + timeout-guarded):
- *   mic → VAD endpoint → /api/voice/transcribe → /api/voice/chat → /api/tts/gemini (chunked).
+ *   mic → VAD endpoint → /api/voice/transcribe → /api/voice/chat → /api/tts/gemini (one request per reply).
  *
  * The hard-won robustness (why the old shell felt "dead"):
  *  - ONE AudioContext is created AND resumed INSIDE the first tap gesture and reused for the whole
  *    session. A suspended context (no gesture) makes the analyser read zeros forever — the classic
  *    dead shell — and iOS caps contexts + gesture-couples resume, so per-turn contexts can't resume.
  *  - TTS plays THROUGH that running context (decodeAudioData → BufferSource), so playback is never
- *    blocked by the HTMLAudioElement autoplay policy on turns 2..N (no fresh gesture there).
+ *    blocked by the HTMLAudioElement autoplay policy on turns 2..N (no fresh gesture there). The reply's audio is
+ *    asked for through the speech contract (lib/speech/request speechResult: one request, the client deadline, no
+ *    retry of its own) and must pass its WAV check (lib/speech/wav) before it is decoded.
+ *  - The call has the speakers while it is open (lib/speech/player claimSpeakersForCall): a reply being read aloud
+ *    stops when it opens, and no read-aloud starts until it closes, so two voices never overlap.
  *  - The assistant's own voice can't self-trigger the mic: a hard STATE GATE runs normal endpoint
  *    VAD only while listening; during playback only a stricter barge detector runs (+ a per-chunk
  *    grace window). echoCancellation is a secondary defence.
@@ -53,6 +58,10 @@ import {
   type VadState,
 } from '@/lib/voice/vad';
 import { useMicRelease } from '@/lib/voice/micBus';
+import { blobBytes } from '@/lib/speech/blob';
+import { claimSpeakersForCall } from '@/lib/speech/player';
+import { speechResult } from '@/lib/speech/request';
+import { inspectWav } from '@/lib/speech/wav';
 import { isSpeechLang, loadLearnedSpeechLang, resolveSpeechLang, saveLearnedSpeechLang, transcriptSpeechLang } from '@/lib/voice/speechLang';
 
 import LiveCaptions from './live/LiveCaptions';
@@ -263,6 +272,9 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     return () => { mountedRef.current = false; teardown(); };
   }, [teardown]);
 
+  // The call has the speakers while it is open: a reply being read aloud stops now, and none starts until it closes.
+  useEffect(() => claimSpeakersForCall(), []);
+
   // VECTOR 1 — pre-warm the AudioContext on mount (this component only mounts when the voice overlay opens,
   // so it's a safe head-start): the context is CREATED suspended here — no user gesture needed to create,
   // only to resume, which the first tap already does — so the first turn's playback/analysis doesn't pay the
@@ -425,25 +437,20 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       if (!answer) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
       setTurn((p) => ({ ...p, reply: answer }));
 
-      // 3) TTS — feed the WHOLE reply to ElevenLabs in ONE call and play a single unbroken buffer. No
-      //    sentence/chunk slicing → no cut words, no dropped tails. Voice replies are short (trimForSpeech
-      //    caps at 700 chars), well within ElevenLabs' single-request limit.
+      // 3) TTS — the WHOLE reply in ONE request (lib/speech/request speechResult), played as a single unbroken buffer:
+      //    no slicing → no cut words, no dropped tails. Voice replies are short (the chat route caps them at 600
+      //    characters), well within the route's SPEECH_MAX_CHARS. Bytes that fail the WAV check are never decoded:
+      //    that is a failed reply, not a guess at what the bytes might be.
       go('speaking');
       vadStateRef.current = createVadState(vadStateRef.current.floor); // fresh state for barge detection
       let buf: AudioBuffer | null = null;
       try {
-        const res = await fetch('/api/tts/gemini', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ text: answer, locale: spokenLocale }), signal: turnSignal(30_000, ttsSig),
-        });
-        if (res.status === 503) {
-          const ej = (await res.json().catch(() => null)) as { error?: string } | null;
-          if (ej?.error === 'budget_exhausted') { if (!stale()) { go('error'); setError('budget'); } return; }
-        }
-        if (res.ok) {
-          const bytes = await res.arrayBuffer();
+        const spoken = await speechResult(answer, spokenLocale, ttsSig);
+        if (!spoken.ok && spoken.miss.error === 'budget_exhausted') { if (!stale()) { go('error'); setError('budget'); } return; }
+        if (spoken.ok) {
+          const bytes = await blobBytes(spoken.answer.blob);
           const ctx = audioCtxRef.current;
-          if (ctx && bytes.byteLength >= 256) buf = await ctx.decodeAudioData(bytes.slice(0)).catch(() => null);
+          if (ctx && inspectWav(bytes).ok) buf = await ctx.decodeAudioData(bytes.slice().buffer).catch(() => null);
         }
       } catch { buf = null; }
       if (stale()) return;

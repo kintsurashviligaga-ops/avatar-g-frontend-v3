@@ -1,9 +1,11 @@
 /**
- * The ElevenLabs fallback (tier 3 of ChatChrome's voice cascade) wears the Gemini Live call's screen: the rocket orb
+ * The turn-by-turn voice call (tier 3 of ChatChrome's voice cascade) wears the Gemini Live call's screen: the rocket orb
  * with the large faint rocket behind it, „ცოცხალი ზარი“, the status line with the waveform, the captions, and the round
  * glass row (Mute · End) — portalled, pinned dark, a dialog. The session underneath is unchanged: auto-start on a
  * running context (else one tap), tap-to-end-turn, transcribe → chat → TTS through the context, hands-free re-arm.
- * Mute switches the mic track off. Driven through a fake Web Audio + MediaRecorder + fetch.
+ * Mute switches the mic track off. The reply's audio goes through the speech contract: a WAV is decoded, other bytes are
+ * a failed reply, and the call has the speakers while it is open (no read-aloud plays under it).
+ * Driven through a fake Web Audio + MediaRecorder + fetch.
  */
 import '@testing-library/jest-dom';
 import { StrictMode } from 'react';
@@ -12,6 +14,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
 import VoiceConversation, { VOICE_CONVERSATION_STRINGS, voiceOrbState } from './VoiceConversation';
 import { budgetRefusalMessage } from '../../lib/services/billing/budgetMessage';
+import { speechPlayer } from '../../lib/speech/player';
+import { WAV_MONO_24K } from '../../tests/fixtures/speechAudio';
 
 // ── Fakes ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -64,10 +68,12 @@ const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
 const getUserMedia = jest.fn(async () => stream as unknown as MediaStream);
 
 const json = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body, arrayBuffer: async () => new ArrayBuffer(0) });
+/** The read-aloud route's answer: these bytes as its body (jsdom has no Response). */
+const speech = (bytes: Uint8Array) => ({ ok: true, status: 200, headers: null, json: async () => ({}), blob: async () => new Blob([bytes], { type: 'audio/wav' }) });
 const defaultFetch = async (url: string): Promise<unknown> => {
   if (url === '/api/voice/transcribe') return json(200, { text: 'გამარჯობა', language: 'ka' });
   if (url === '/api/voice/chat') return json(200, { reply: 'სალამი, რით დაგეხმარო?', locale: 'ka' });
-  if (url === '/api/tts/gemini') return { ok: true, status: 200, json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(2048) };
+  if (url === '/api/tts/gemini') return speech(WAV_MONO_24K);
   return json(404, {});
 };
 const fetchMock = jest.fn(defaultFetch);
@@ -90,12 +96,18 @@ beforeEach(() => {
   (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder = FakeRecorder;
   (globalThis as unknown as { fetch: unknown }).fetch = fetchMock;
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+  // jsdom has no media playback: the page's read-aloud <audio> (lib/speech/player), which the call stops, is stubbed.
+  const media = window.HTMLMediaElement.prototype;
+  jest.spyOn(media, 'play').mockImplementation(() => Promise.resolve());
+  jest.spyOn(media, 'pause').mockImplementation(() => undefined);
+  jest.spyOn(media, 'load').mockImplementation(() => undefined);
   if (typeof realTimeout !== 'function') {
     (AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout = () => new AbortController().signal;
   }
 });
 
 afterEach(() => {
+  jest.restoreAllMocks();
   delete w.AudioContext;
   delete w.MediaRecorder;
   delete (globalThis as unknown as { MediaRecorder?: unknown }).MediaRecorder;
@@ -284,6 +296,64 @@ describe('VoiceConversation — the Live call screen', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: VOICE_CONVERSATION_STRINGS.en.endTurn })); });
     await flush();
     expect(screen.getByRole('alert').textContent).toBe(budgetRefusalMessage('en', 'daily_limit'));
+  });
+
+  it('bytes that are not a WAV are a failed reply: never decoded, never played', async () => {
+    sourceThrows = true;
+    let decode: jest.Mock | null = null;
+    const Ctx = class extends FakeAudioContext { constructor() { super(); decode = this.decodeAudioData; } };
+    w.AudioContext = Ctx;
+    fetchMock.mockImplementation(async (url: string): Promise<unknown> => {
+      if (url === '/api/voice/transcribe') return json(200, { text: 'hello', language: 'en' });
+      if (url === '/api/voice/chat') return json(200, { reply: 'Hi there.', locale: 'en' });
+      if (url === '/api/tts/gemini') return speech(new Uint8Array(2048)); // what this test used to answer with
+      return json(404, {});
+    });
+    await renderVoice('en');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: VOICE_CONVERSATION_STRINGS.en.endTurn })); });
+    await flush();
+    await flush();
+    expect(decode!).not.toHaveBeenCalled();
+    expect(sources).toHaveLength(0);
+    expect(screen.getByRole('alert').textContent).toBe(VOICE_CONVERSATION_STRINGS.en.noReply);
+  });
+
+  it('asks for the reply in the language it is in, once, through the read-aloud route', async () => {
+    sourceThrows = true;
+    fetchMock.mockImplementation(async (url: string): Promise<unknown> => {
+      if (url === '/api/voice/transcribe') return json(200, { text: 'привет', language: 'ru' });
+      if (url === '/api/voice/chat') return json(200, { reply: 'Здравствуйте!', locale: 'ru' });
+      return defaultFetch(url);
+    });
+    await renderVoice('ka');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: VOICE_CONVERSATION_STRINGS.ka.endTurn })); });
+    await flush();
+    await flush();
+    const tts = fetchMock.mock.calls.filter(([u]) => u === '/api/tts/gemini');
+    expect(tts).toHaveLength(1);
+    const init = (tts[0] as unknown as [string, RequestInit])[1];
+    expect(init).toMatchObject({ method: 'POST', credentials: 'include' });
+    expect(JSON.parse(String(init.body))).toEqual({ text: 'Здравствуйте!', locale: 'ru' });
+    expect(sources).toHaveLength(1);
+  });
+
+  it('has the speakers while it is open: a read-aloud stops when it opens, none starts under it, and it lets go on close', async () => {
+    fetchMock.mockImplementation(async (url: string): Promise<unknown> =>
+      (url === '/api/tts/gemini' ? new Promise(() => undefined) : defaultFetch(url)));
+    const player = speechPlayer();
+    try {
+      player.play({ owner: 'omni:c1:0', text: 'A reply being read.', locale: 'en' });
+      expect(player.getState().owner).toBe('omni:c1:0');
+      const { unmount } = await renderVoice('en');
+      expect(player.getState().status).toBe('idle');
+      expect(document.documentElement.dataset.voiceCall).toBe('1');
+      player.play({ owner: 'omni:c1:1', text: 'Another reply.', locale: 'en' });
+      expect(player.getState()).toMatchObject({ status: 'failed', fault: 'live_call' });
+      unmount();
+      expect(document.documentElement.dataset.voiceCall).toBeUndefined();
+    } finally {
+      player.stop();
+    }
   });
 
   it('survives the development double-mount (Strict Mode): one live mic, listening — not stuck on connecting', async () => {
