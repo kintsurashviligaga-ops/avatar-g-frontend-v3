@@ -1,8 +1,8 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
 
-// A fake service-role client that records which bucket every storage call went to. Only storage is faked;
-// the DB "richness" writes in enrollSelfieAvatar get an `{ error }` answer, which is exactly prod's shape.
+// A fake service-role client that records which bucket every storage call went to. Only storage is faked.
+// (The private photo store itself is covered against the full storage fake in liveAvatar.test.ts.)
 type Call = { bucket: string; op: 'upload' | 'getPublicUrl' | 'remove' | 'createBucket' | 'getBucket'; path: string; contentType?: string; public?: boolean };
 const calls: Call[] = [];
 let uploadError: { message: string } | null = null;
@@ -158,13 +158,15 @@ describe('one current voiceprint per user — a re-enroll from another browser l
   });
 });
 
-describe('the poster stays public until Wave 3 (the Live orb reads it by public URL)', () => {
-  test('selfie → avatars/live-avatars/<uid>/poster.jpg; no voice write rides along', async () => {
+describe('the selfie is never public any more (2026-10-24) — lib/avatar/liveAvatar.ts stores it, private', () => {
+  test('bytes that are not the image they claim are refused before any storage call; nothing public is asked for', async () => {
     const r = await enrollSelfieAvatar(UID, `data:image/jpeg;base64,${bytes(2048)}`);
-    expect(r.ok).toBe(true);
-    expect(calls.filter((c) => c.op === 'upload')).toEqual([
-      { bucket: 'avatars', op: 'upload', path: `live-avatars/${UID}/poster.jpg`, contentType: 'image/jpeg' },
-    ]);
-    expect(calls.filter((c) => c.op === 'getPublicUrl').map((c) => c.path)).toEqual([`live-avatars/${UID}/poster.jpg`]);
+    expect(r).toEqual({ ok: false, status: 415, error: 'content_mismatch' });
+    expect(writes()).toEqual([]);
+    expect(calls.filter((c) => c.op === 'getPublicUrl')).toEqual([]);
+  });
+
+  test('no data URL → 400 no_image', async () => {
+    expect(await enrollSelfieAvatar(UID, 'https://example.com/me.jpg')).toEqual({ ok: false, status: 400, error: 'no_image' });
   });
 });

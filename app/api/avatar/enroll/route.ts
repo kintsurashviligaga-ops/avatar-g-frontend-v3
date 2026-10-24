@@ -7,8 +7,9 @@
  * all a talking-head Live session needs. Shares its core with the cross-device handoff (lib/avatar/enroll).
  *
  * Authed (the userId comes from the caller's session). Body: { dataUrl: "data:image/…;base64,…",
- * voiceDataUrl?: "data:audio/…;base64,…" }. The optional voice sample is STORED in the PRIVATE twin bucket
- * (the poster stays public) — enrollment never kicks off any background voice-clone training / render.
+ * voiceDataUrl?: "data:audio/…;base64,…", source?: 'camera' | 'upload' }. The photo AND the optional voice sample are
+ * stored PRIVATE (lib/avatar/liveAvatar.ts) — enrollment never kicks off any background voice-clone training / render.
+ * Answers { url (signed, short-lived), avatarAssetId (= the avatar id), avatar (id, state, prep…), voice }.
  */
 import 'server-only';
 import { NextResponse, type NextRequest } from 'next/server';
@@ -28,8 +29,8 @@ export async function POST(req: Request) {
     const limited = await checkRateLimit(req as NextRequest, RATE_LIMITS.WRITE);
     if (limited) return limited;
 
-    const body = (await req.json().catch(() => null)) as { dataUrl?: string; voiceDataUrl?: string } | null;
-    const result = await enrollSelfieAvatar(user.id, body?.dataUrl ?? '');
+    const body = (await req.json().catch(() => null)) as { dataUrl?: string; voiceDataUrl?: string; source?: string } | null;
+    const result = await enrollSelfieAvatar(user.id, body?.dataUrl ?? '', body?.source === 'upload' ? 'upload' : 'camera');
     if (!result.ok) {
       // eslint-disable-next-line no-console
       console.error(`[avatar/enroll] FAILED for user ${user.id}: ${result.error} (${result.status})`);
@@ -37,13 +38,14 @@ export async function POST(req: Request) {
     }
     // STORE the optional voice sample (private bucket) — best-effort, never fails the selfie enrollment and
     // never triggers background training/generation (that's the "training in the corner" bug this fixes).
+    let voice: 'saved' | 'failed' | 'none' = 'none';
     if (typeof body?.voiceDataUrl === 'string' && body.voiceDataUrl.startsWith('data:')) {
-      await storeLiveAvatarVoice(user.id, body.voiceDataUrl);
+      voice = (await storeLiveAvatarVoice(user.id, body.voiceDataUrl)).ok ? 'saved' : 'failed';
     }
-    return NextResponse.json({ url: result.url, avatarAssetId: result.avatarAssetId });
+    return NextResponse.json({ url: result.url, avatarAssetId: result.avatarAssetId, avatar: result.avatar, voice });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error('[avatar/enroll] unhandled exception:', e instanceof Error ? e.stack || e.message : e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'failed' }, { status: 500 });
+    return NextResponse.json({ error: 'failed' }, { status: 500 });
   }
 }

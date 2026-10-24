@@ -1,20 +1,22 @@
 'use client';
 
 /**
- * LiveAvatarEnroll — the "Avatar & Voice Profile" enrollment for Live Avatar Voice Mode.
+ * LiveAvatarEnroll — "Your Live Avatar": a photo of you (camera or upload) and an OPTIONAL ~15 s voice sample.
  *
- * Captures a SELFIE (live camera with front/back flip, or a photo upload) and an OPTIONAL ~15s voice
- * sample, then does exactly ONE thing on Save:
- *   • POST /api/avatar/enroll  → STORES the selfie (core avatar poster, shown + audio-reactive during the
- *     Gemini Live session) to public live-avatar storage (avatars/live-avatars/<uid>/poster.jpg) AND, when
- *     recorded, the voice sample to the dedicated PRIVATE `twins` bucket (twins/<uid>/voice.*). It deliberately does NOT kick
- *     off any background voice-clone TRAINING or render, so nothing is queued in the corner; the Save
- *     button only enrolls.
+ * The owner's P0 correction task (2026-10-24, phase 2):
+ *   • the live CAMERA PREVIEW and the CAPTURED PHOTO are two different things on screen: the preview says "camera", the
+ *     photo says "your photo", and Save works only on a captured or uploaded photo (the button tells you why it waits);
+ *   • the photo is 9:16 at the camera's own resolution (no upscaling) — what Google's custom Live Avatar needs
+ *     (≥720×1280) when the camera can give it; an upload is turned upright and scaled down, never cropped here;
+ *   • Save shows real progress (upload %, then processing) and clear errors, then the SAVED avatar with its state:
+ *       Saved avatar photo · Custom Live Avatar ready · Custom Live Avatar access unavailable;
+ *   • opening it again shows the saved avatar (it survives refresh and re-login), with Replace and Delete.
+ * Storage is private on the server (lib/avatar/liveAvatar.ts): signed URLs only. Nothing is trained or rendered.
  *
- * The camera stream is acquired ONCE and reused across flips/captures (permission isn't re-prompted), and
- * fully released on close. Front camera is mirrored for a natural selfie. Fail-open throughout.
+ * The camera stream is acquired once and reused across flips/captures, and fully released on close. The front camera
+ * preview is mirrored; the captured photo is not.
  */
-import { Camera, Check, Loader2, Mic, RotateCcw, Smartphone, SwitchCamera, Upload, X } from 'lucide-react';
+import { Camera, Check, Loader2, Mic, RotateCcw, Smartphone, SwitchCamera, Trash2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Locale = 'ka' | 'en' | 'ru';
@@ -31,42 +33,126 @@ interface Props {
   handoffToken?: string;
 }
 
+type AvatarState = 'saved_photo' | 'custom_ready' | 'custom_unavailable';
+interface SavedAvatar {
+  id: string;
+  photoUrl: string;
+  state: AvatarState;
+  updatedAt: string;
+  prep: { ok: boolean; reasons: string[] };
+}
+
+/** The photo's longer edge after capture/upload: enough for Google's 1080×1920, small enough for one request. */
+const MAX_EDGE = 1920;
+const MAX_UPLOAD_FILE = 25 * 1024 * 1024;
+const SAVE_TIMEOUT_MS = 60_000;
+
 const T: Record<Locale, Record<string, string>> = {
   ka: {
-    title: 'შენი ცოცხალი ავატარი', selfie: 'გადაიღე სელფი', capture: 'გადაღება', retake: 'თავიდან',
-    upload: 'ატვირთვა', flip: 'კამერის შებრუნება', voice: 'ხმის ნიმუში (არასავალდებულო)',
-    recVoice: 'ჩაწერე ~15წმ', recording: 'იწერება…', stop: 'გაჩერება', voiceReady: 'ხმა ჩაწერილია ✓',
-    save: 'შენახვა და გააქტიურება', saving: 'ინახება…', done: 'ავატარი მზადაა!',
-    camErr: 'კამერა ვერ ჩაირთო — ატვირთე ფოტო.', saveErr: 'ვერ შეინახა — სცადე თავიდან.',
-    hint: 'ეს გამოჩნდება ხმოვან რეჟიმში და ილაპარაკებს შენს ნაცვლად.',
+    title: 'შენი ცოცხალი ავატარი', capture: 'გადაღება', retake: 'თავიდან', upload: 'ფოტოს ატვირთვა', flip: 'კამერის შებრუნება',
+    voice: 'ხმის ნიმუში (არასავალდებულო)', recVoice: 'ჩაწერე ~15წმ', recording: 'იწერება…', stop: 'გაჩერება', voiceReady: 'ხმა ჩაწერილია ✓',
+    save: 'შენახვა და გააქტიურება', needPhoto: 'ჯერ გადაიღე ან ატვირთე ფოტო', uploading: 'იტვირთება', processing: 'მუშავდება…',
+    cameraLabel: 'კამერა', photoLabel: 'შენი ფოტო', frameHint: 'სახე და მხრები ჩარჩოში, კარგ შუქზე',
+    camErr: 'კამერა ვერ ჩაირთო — ატვირთე ფოტო.', hint: 'ეს გამოჩნდება ხმოვან რეჟიმში და ილაპარაკებს შენს ნაცვლად.',
     onPhone: 'გააგრძელე ტელეფონით', scanQr: 'დაასკანერე ტელეფონის კამერით', waitingPhone: 'ველოდები ტელეფონს…',
-    phoneDoneMsg: 'მზადაა! დაბრუნდი კომპიუტერთან.', back: 'უკან',
+    phoneDoneMsg: 'მზადაა! დაბრუნდი კომპიუტერთან.', back: 'უკან', done: 'მზადაა', saved: 'ავატარი შენახულია',
+    replace: 'შეცვლა', delete: 'წაშლა', confirmDelete: 'წავშალო ავატარი? ფოტო სამუდამოდ წაიშლება.', deleted: 'ავატარი წაიშალა',
+    stateSaved: 'შენახული ფოტო', stateReady: 'პერსონალური Live ავატარი მზადაა', stateUnavailable: 'პერსონალური Live ავატარი ჯერ მიუწვდომელია',
+    whySmall: 'Google-ის პერსონალური ავატარისთვის საჭიროა 9:16 და მინიმუმ 720×1280. ეს ფოტო უფრო პატარაა — გადაიღე ტელეფონით.',
+    whyUnavailable: 'ფოტო Google-ის ფორმატს აკმაყოფილებს, მაგრამ პერსონალური ავატარის წვდომა Google-ის მხრიდან ჯერ ჩართული არ არის.',
+    voiceSaved: 'ხმის ნიმუში შენახულია', voiceFailed: 'ხმის ნიმუში ვერ შეინახა — ფოტო შენახულია.',
+    e_no_image: 'ფოტო ვერ მოიძებნა — გადაიღე ან ატვირთე თავიდან.', e_too_small: 'ფოტო ძალიან პატარაა.', e_too_large: 'ფოტო ძალიან დიდია.',
+    e_unsupported_type: 'ეს ფორმატი არ მიიღება — გამოიყენე JPEG, PNG ან WebP.', e_content_mismatch: 'ფაილი სურათს არ ჰგავს.',
+    e_undecodable: 'ფოტო ვერ წავიკითხე — სცადე სხვა.', e_storage_unavailable: 'შენახვა დროებით ვერ ხერხდება — სცადე ცოტა ხანში.',
+    e_unauthorized: 'სესია ამოიწურა — შედი თავიდან.', e_rate: 'ძალიან ბევრი მცდელობა — მოიცადე წუთით.', e_timeout: 'დრო ამოიწურა — შეამოწმე ინტერნეტი და სცადე თავიდან.',
+    e_network: 'კავშირი ვერ დამყარდა — სცადე თავიდან.', e_generic: 'ვერ შეინახა — სცადე თავიდან.', e_link: 'ბმული ვადაგასულია ან უკვე გამოყენებული — დაასკანერე ახალი QR.',
   },
   en: {
-    title: 'Your Live Avatar', selfie: 'Take a selfie', capture: 'Capture', retake: 'Retake',
-    upload: 'Upload', flip: 'Flip camera', voice: 'Voice sample (optional)',
-    recVoice: 'Record ~15s', recording: 'Recording…', stop: 'Stop', voiceReady: 'Voice recorded ✓',
-    save: 'Save & activate', saving: 'Saving…', done: 'Avatar ready!',
-    camErr: 'Camera unavailable — upload a photo instead.', saveErr: 'Could not save — try again.',
-    hint: 'This appears in voice mode and speaks for you.',
+    title: 'Your Live Avatar', capture: 'Capture', retake: 'Retake', upload: 'Upload a photo', flip: 'Flip camera',
+    voice: 'Voice sample (optional)', recVoice: 'Record ~15s', recording: 'Recording…', stop: 'Stop', voiceReady: 'Voice recorded ✓',
+    save: 'Save & activate', needPhoto: 'Take or upload a photo first', uploading: 'Uploading', processing: 'Processing…',
+    cameraLabel: 'Camera', photoLabel: 'Your photo', frameHint: 'Face and shoulders in the frame, in good light',
+    camErr: 'Camera unavailable — upload a photo instead.', hint: 'This appears in voice mode and speaks for you.',
     onPhone: 'Continue on phone', scanQr: 'Scan with your phone camera', waitingPhone: 'Waiting for your phone…',
-    phoneDoneMsg: 'Done! Return to your computer.', back: 'Back',
+    phoneDoneMsg: 'Done! Return to your computer.', back: 'Back', done: 'Done', saved: 'Avatar saved',
+    replace: 'Replace', delete: 'Delete', confirmDelete: 'Delete your avatar? The photo is removed for good.', deleted: 'Avatar deleted',
+    stateSaved: 'Saved avatar photo', stateReady: 'Custom Live Avatar ready', stateUnavailable: 'Custom Live Avatar access unavailable',
+    whySmall: 'Google’s custom avatar needs 9:16 at 720×1280 or more. This photo is smaller — take it with a phone camera.',
+    whyUnavailable: 'The photo meets Google’s format, but custom avatar access is not enabled on Google’s side yet.',
+    voiceSaved: 'Voice sample saved', voiceFailed: 'The voice sample was not saved — the photo is.',
+    e_no_image: 'No photo found — take or upload it again.', e_too_small: 'The photo is too small.', e_too_large: 'The photo is too large.',
+    e_unsupported_type: 'This format is not accepted — use JPEG, PNG or WebP.', e_content_mismatch: 'The file does not look like an image.',
+    e_undecodable: 'Could not read the photo — try another.', e_storage_unavailable: 'Saving is unavailable right now — try again shortly.',
+    e_unauthorized: 'Your session ended — sign in again.', e_rate: 'Too many attempts — wait a minute.', e_timeout: 'Timed out — check your connection and try again.',
+    e_network: 'No connection — try again.', e_generic: 'Could not save — try again.', e_link: 'This link has expired or was used — scan a new QR code.',
   },
   ru: {
-    title: 'Ваш живой аватар', selfie: 'Сделайте селфи', capture: 'Снять', retake: 'Заново',
-    upload: 'Загрузить', flip: 'Сменить камеру', voice: 'Образец голоса (необязательно)',
-    recVoice: 'Запишите ~15с', recording: 'Запись…', stop: 'Стоп', voiceReady: 'Голос записан ✓',
-    save: 'Сохранить и включить', saving: 'Сохранение…', done: 'Аватар готов!',
-    camErr: 'Камера недоступна — загрузите фото.', saveErr: 'Не удалось сохранить — попробуйте снова.',
-    hint: 'Появится в голосовом режиме и будет говорить за вас.',
+    title: 'Ваш живой аватар', capture: 'Снять', retake: 'Заново', upload: 'Загрузить фото', flip: 'Сменить камеру',
+    voice: 'Образец голоса (необязательно)', recVoice: 'Запишите ~15с', recording: 'Запись…', stop: 'Стоп', voiceReady: 'Голос записан ✓',
+    save: 'Сохранить и включить', needPhoto: 'Сначала снимите или загрузите фото', uploading: 'Загрузка', processing: 'Обработка…',
+    cameraLabel: 'Камера', photoLabel: 'Ваше фото', frameHint: 'Лицо и плечи в кадре, при хорошем свете',
+    camErr: 'Камера недоступна — загрузите фото.', hint: 'Появится в голосовом режиме и будет говорить за вас.',
     onPhone: 'Продолжить на телефоне', scanQr: 'Отсканируйте камерой телефона', waitingPhone: 'Ожидание телефона…',
-    phoneDoneMsg: 'Готово! Вернитесь к компьютеру.', back: 'Назад',
+    phoneDoneMsg: 'Готово! Вернитесь к компьютеру.', back: 'Назад', done: 'Готово', saved: 'Аватар сохранён',
+    replace: 'Заменить', delete: 'Удалить', confirmDelete: 'Удалить аватар? Фото будет удалено навсегда.', deleted: 'Аватар удалён',
+    stateSaved: 'Сохранённое фото', stateReady: 'Персональный Live-аватар готов', stateUnavailable: 'Персональный Live-аватар пока недоступен',
+    whySmall: 'Для персонального аватара Google нужно 9:16 и не меньше 720×1280. Это фото меньше — снимите камерой телефона.',
+    whyUnavailable: 'Фото подходит под формат Google, но доступ к персональным аватарам у Google ещё не включён.',
+    voiceSaved: 'Образец голоса сохранён', voiceFailed: 'Образец голоса не сохранён — фото сохранено.',
+    e_no_image: 'Фото не найдено — снимите или загрузите снова.', e_too_small: 'Фото слишком маленькое.', e_too_large: 'Фото слишком большое.',
+    e_unsupported_type: 'Этот формат не принимается — JPEG, PNG или WebP.', e_content_mismatch: 'Файл не похож на изображение.',
+    e_undecodable: 'Не удалось прочитать фото — попробуйте другое.', e_storage_unavailable: 'Сохранение сейчас недоступно — попробуйте позже.',
+    e_unauthorized: 'Сессия завершилась — войдите снова.', e_rate: 'Слишком много попыток — подождите минуту.', e_timeout: 'Время вышло — проверьте связь и повторите.',
+    e_network: 'Нет соединения — попробуйте снова.', e_generic: 'Не удалось сохранить — попробуйте снова.', e_link: 'Ссылка устарела или уже использована — отсканируйте новый QR.',
   },
 };
 
+/** A server error code (or HTTP status) → the sentence the person reads. */
+export function enrollErrorText(t: Record<string, string>, code: string | undefined, status: number): string {
+  if (status === 401) return code === 'invalid_or_expired_link' ? t.e_link! : t.e_unauthorized!;
+  if (status === 429) return t.e_rate!;
+  const key = code ? `e_${code}` : '';
+  return (key && t[key]) || (status === 503 ? t.e_storage_unavailable! : t.e_generic!);
+}
+
+/** Draw `src` (sx,sy,sw,sh) into a canvas scaled so the longer edge is at most MAX_EDGE — never enlarged. */
+function toJpeg(canvas: HTMLCanvasElement, src: CanvasImageSource, sx: number, sy: number, sw: number, sh: number, mirror: boolean): string {
+  const scale = Math.min(1, MAX_EDGE / Math.max(sw, sh));
+  canvas.width = Math.round(sw * scale);
+  canvas.height = Math.round(sh * scale);
+  const cx = canvas.getContext('2d');
+  if (!cx) return '';
+  cx.setTransform(1, 0, 0, 1, 0, 0);
+  if (mirror) { cx.translate(canvas.width, 0); cx.scale(-1, 1); }
+  cx.drawImage(src, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
+/** POST JSON with upload progress (fetch has none) and a hard timeout. */
+function postWithProgress(url: string, body: string, onProgress: (pct: number) => void): Promise<{ status: number; json: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.withCredentials = true;
+    xhr.timeout = SAVE_TIMEOUT_MS;
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      let json: Record<string, unknown> = {};
+      try { json = JSON.parse(xhr.responseText || '{}') as Record<string, unknown>; } catch { /* not JSON */ }
+      resolve({ status: xhr.status, json });
+    };
+    xhr.ontimeout = () => reject(new Error('timeout'));
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.send(body);
+  });
+}
+
 export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, handoffToken }: Props) {
   const t = T[locale] ?? T.ka;
-  const [selfie, setSelfie] = useState<string | null>(null); // captured data-url
+  const [selfie, setSelfie] = useState<{ dataUrl: string; source: 'camera' | 'upload'; width: number; height: number } | null>(null);
+  const [saved, setSaved] = useState<SavedAvatar | null>(null); // the avatar on the server
+  const [view, setView] = useState<'loading' | 'saved' | 'capture'>(handoffToken ? 'capture' : 'loading');
   const [qr, setQr] = useState<{ dataUrl: string; url: string } | null>(null); // desktop → phone QR
   const [waiting, setWaiting] = useState(false); // desktop: polling for the phone to finish
   const [phoneDone, setPhoneDone] = useState(false); // phone side: enrolled successfully
@@ -75,8 +161,12 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
   const [camErr, setCamErr] = useState(false);
   const [recording, setRecording] = useState(false);
   const [voiceSample, setVoiceSample] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [voiceResult, setVoiceResult] = useState<'saved' | 'failed' | null>(null);
+  const [progress, setProgress] = useState<{ phase: 'uploading' | 'processing'; pct: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const saving = progress !== null;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -90,32 +180,63 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
     streamRef.current?.getTracks().forEach((tk) => tk.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+    setCamReady(false);
   }, []);
 
   const startCamera = useCallback(async () => {
-    // Reuse an already-open stream if the facing hasn't changed (no re-prompt).
     if (streamRef.current) return;
     setCamErr(false);
     let stream: MediaStream | null = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingRef.current, width: 720, height: 720 } });
+      // Portrait at the camera's best: a phone gives 1080×1920; a laptop webcam gives what it has (never upscaled).
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facingRef.current, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 9 / 16 } },
+      });
     } catch {
       try { stream = await navigator.mediaDevices.getUserMedia({ video: true }); } catch { setCamErr(true); return; }
     }
     streamRef.current = stream;
     const v = videoRef.current;
-    if (v) { v.srcObject = stream; await v.play().catch(() => {}); setCamReady(true); }
+    if (!v) return;
+    v.srcObject = stream;
+    await v.play().catch(() => {});
+    // Capture is offered only once a frame has a size: a click before that would grab nothing.
+    if (!v.videoWidth) {
+      await new Promise<void>((resolve) => {
+        const done = () => { v.removeEventListener('loadedmetadata', done); v.removeEventListener('resize', done); resolve(); };
+        v.addEventListener('loadedmetadata', done);
+        v.addEventListener('resize', done);
+        setTimeout(done, 5000);
+      });
+    }
+    if (streamRef.current === stream) { if (v.videoWidth) setCamReady(true); else setCamErr(true); }
   }, []);
 
-  // Open the camera on mount (unless a photo was uploaded); release everything on unmount.
+  // The saved avatar first (refresh / re-login keep it); the camera only when there is none or on Replace.
   useEffect(() => {
-    if (!selfie) void startCamera();
-    return () => {
-      stopCamera();
-      audioStreamRef.current?.getTracks().forEach((tk) => tk.stop());
-      audioStreamRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (handoffToken) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch('/api/avatar/core', { credentials: 'include' });
+        const j = (await r.json().catch(() => ({}))) as { data?: { live_avatar?: SavedAvatar | null } };
+        const live = j?.data?.live_avatar;
+        if (!alive) return;
+        if (r.ok && live) { setSaved(live); setView('saved'); } else setView('capture');
+      } catch {
+        if (alive) setView('capture');
+      }
+    })();
+    return () => { alive = false; };
+  }, [handoffToken]);
+
+  useEffect(() => {
+    if (view === 'capture' && !selfie && !qr) void startCamera();
+  }, [view, selfie, qr, startCamera]);
+
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((tk) => tk.stop());
+    audioStreamRef.current?.getTracks().forEach((tk) => tk.stop());
   }, []);
 
   const flipCamera = useCallback(async () => {
@@ -128,24 +249,37 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
   const capture = useCallback(() => {
     const v = videoRef.current, c = canvasRef.current;
     if (!v || !c || !v.videoWidth) return;
-    // Square center-crop to a clean portrait.
-    const size = Math.min(v.videoWidth, v.videoHeight);
-    c.width = size; c.height = size;
-    const cx = c.getContext('2d');
-    if (!cx) return;
-    if (facingRef.current === 'user') { cx.translate(size, 0); cx.scale(-1, 1); } // un-mirror the selfie
-    cx.drawImage(v, (v.videoWidth - size) / 2, (v.videoHeight - size) / 2, size, size, 0, 0, size, size);
-    setSelfie(c.toDataURL('image/jpeg', 0.9));
-    stopCamera(); setCamReady(false);
+    // The largest centred 9:16 of the frame, at the camera's own resolution.
+    const vw = v.videoWidth, vh = v.videoHeight;
+    const sw = vw * 16 > vh * 9 ? Math.floor((vh * 9) / 16) : vw;
+    const sh = vw * 16 > vh * 9 ? vh : Math.floor((vw * 16) / 9);
+    const dataUrl = toJpeg(c, v, Math.floor((vw - sw) / 2), Math.floor((vh - sh) / 2), sw, sh, facingRef.current === 'user');
+    if (!dataUrl) return;
+    setSelfie({ dataUrl, source: 'camera', width: c.width, height: c.height });
+    setErr(null);
+    stopCamera();
   }, [stopCamera]);
 
-  const retake = useCallback(() => { setSelfie(null); void startCamera(); }, [startCamera]);
+  const retake = useCallback(() => { setSelfie(null); setErr(null); }, []);
 
-  const onFile = useCallback((f: File) => {
-    const reader = new FileReader();
-    reader.onload = () => { setSelfie(String(reader.result || '')); stopCamera(); setCamReady(false); };
-    reader.readAsDataURL(f);
-  }, [stopCamera]);
+  const onFile = useCallback(async (f: File) => {
+    setErr(null);
+    if (!f.type.startsWith('image/')) { setErr(t.e_unsupported_type!); return; }
+    if (f.size > MAX_UPLOAD_FILE) { setErr(t.e_too_large!); return; }
+    const c = canvasRef.current;
+    if (!c) return;
+    try {
+      // Upright (EXIF orientation applied), then scaled down; a HEIC opens where the browser can decode it.
+      const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
+      const dataUrl = toJpeg(c, bmp, 0, 0, bmp.width, bmp.height, false);
+      bmp.close();
+      if (!dataUrl) throw new Error('canvas');
+      setSelfie({ dataUrl, source: 'upload', width: c.width, height: c.height });
+      stopCamera();
+    } catch {
+      setErr(/heic|heif/i.test(f.type) ? t.e_unsupported_type! : t.e_undecodable!);
+    }
+  }, [stopCamera, t]);
 
   const toggleRecord = useCallback(async () => {
     if (recording) { try { recRef.current?.stop(); } catch { /* noop */ } return; }
@@ -171,49 +305,54 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
 
   const save = useCallback(async () => {
     if (!selfie || saving) return;
-    setSaving(true); setErr(null);
+    setErr(null); setNotice(null);
+    setProgress({ phase: 'uploading', pct: 0 });
+    const onPct = (pct: number) => setProgress(pct >= 100 ? { phase: 'processing', pct: 100 } : { phase: 'uploading', pct });
     try {
       if (handoffToken) {
-        // PHONE side of a handoff — one token-authorized call carries the selfie + optional voice.
-        const r = await fetch('/api/avatar/handoff/complete', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: handoffToken, dataUrl: selfie, ...(voiceSample ? { voiceDataUrl: voiceSample } : {}) }),
-          signal: AbortSignal.timeout(45_000), // never leave the button stuck on "saving…"
-        });
-        const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-        if (!r.ok || !j.ok) throw new Error(j.error || 'failed');
-        setPhoneDone(true); setSaving(false);
+        const { status, json } = await postWithProgress('/api/avatar/handoff/complete',
+          JSON.stringify({ token: handoffToken, dataUrl: selfie.dataUrl, ...(voiceSample ? { voiceDataUrl: voiceSample } : {}) }), onPct);
+        if (status !== 200 || !json.ok) { setErr(enrollErrorText(t, json.error as string | undefined, status)); return; }
+        setPhoneDone(true);
         return;
       }
-      // ONE call does the whole job: store the selfie AND (if recorded) the voice sample in the user's public
-      // live-avatar storage, and register the avatar. It deliberately does NOT kick off any background
-      // voice-clone training / render — the Save button only enrolls; nothing appears in the corner tray.
-      const r = await fetch('/api/avatar/enroll', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ dataUrl: selfie, ...(voiceSample ? { voiceDataUrl: voiceSample } : {}) }),
-        signal: AbortSignal.timeout(45_000), // never leave the button stuck on "saving…"
-      });
-      const j = (await r.json().catch(() => ({}))) as { url?: string; error?: string };
-      if (!r.ok || !j.url) throw new Error(j.error || `save failed (HTTP ${r.status})`);
-      onEnrolled?.(j.url);
-      onClose(); // success → close the sheet; NEVER leave "saving…" hanging
+      const { status, json } = await postWithProgress('/api/avatar/enroll',
+        JSON.stringify({ dataUrl: selfie.dataUrl, source: selfie.source, ...(voiceSample ? { voiceDataUrl: voiceSample } : {}) }), onPct);
+      const avatar = json.avatar as SavedAvatar | undefined;
+      if (status !== 200 || !avatar || typeof json.url !== 'string') { setErr(enrollErrorText(t, json.error as string | undefined, status)); return; }
+      setSaved(avatar);
+      setVoiceResult(json.voice === 'saved' ? 'saved' : json.voice === 'failed' ? 'failed' : null);
+      setSelfie(null); setVoiceSample(null);
+      setView('saved');
+      onEnrolled?.(json.url);
     } catch (e) {
-      // Surface the ACTUAL error (server detail or a timeout) to the user + console — not just a generic string.
-      const msg = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error('[LiveAvatarEnroll] save failed:', msg);
-      const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
-      setErr(timedOut ? (t.saveErr ?? 'Timed out — try again.') : (msg && msg !== 'Failed to fetch' ? msg : (t.saveErr ?? 'Could not save — try again.')));
-      setSaving(false);
+      console.error('[LiveAvatarEnroll] save failed:', e instanceof Error ? e.message : e);
+      setErr(e instanceof Error && e.message === 'timeout' ? t.e_timeout! : t.e_network!);
+    } finally {
+      setProgress(null);
     }
-  }, [selfie, saving, voiceSample, handoffToken, onEnrolled, onClose, t.saveErr]);
+  }, [selfie, saving, voiceSample, handoffToken, onEnrolled, t]);
+
+  const remove = useCallback(async () => {
+    if (deleting || !window.confirm(t.confirmDelete)) return;
+    setDeleting(true); setErr(null);
+    try {
+      const r = await fetch('/api/avatar/core', { method: 'DELETE', credentials: 'include' });
+      if (!r.ok) { setErr(enrollErrorText(t, undefined, r.status)); return; }
+      setSaved(null); setVoiceResult(null); setNotice(t.deleted!); setView('capture');
+    } catch {
+      setErr(t.e_network!);
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleting, t]);
 
   // ── Desktop → phone handoff ──────────────────────────────────────────────────
-  const baselineRef = useRef<string | null>(null); // avatar_updated_at captured when the QR opens
+  const baselineRef = useRef<string | null>(null); // the avatar's updated_at when the QR opens
   const startPhoneHandoff = useCallback(async () => {
     setErr(null);
     try {
-      // Snapshot the current avatar state so polling can detect the NEW enrollment (updated_at changes).
       const cur = await fetch('/api/avatar/core', { credentials: 'include' }).then((r) => r.json()).catch(() => ({}));
       baselineRef.current = cur?.data?.updated_at ?? null;
       const r = await fetch('/api/avatar/handoff/start', {
@@ -221,47 +360,55 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
         body: JSON.stringify({ locale }),
       });
       const j = (await r.json().catch(() => ({}))) as { url?: string; qrDataUrl?: string; error?: string };
-      if (!r.ok || !j.qrDataUrl || !j.url) throw new Error(j.error || 'failed');
-      stopCamera(); setCamReady(false);
+      if (!r.ok || !j.qrDataUrl || !j.url) { setErr(enrollErrorText(t, j.error, r.status)); return; }
+      stopCamera();
       setQr({ dataUrl: j.qrDataUrl, url: j.url }); setWaiting(true);
     } catch {
-      setErr(t.saveErr ?? 'Could not start — try again.');
+      setErr(t.e_network!);
     }
-  }, [locale, stopCamera, t.saveErr]);
+  }, [locale, stopCamera, t]);
 
-  // While the QR is showing, poll the user's OWN core avatar; the phone finishing changes updated_at.
+  // While the QR is showing, poll the user's OWN avatar; the phone finishing changes updated_at.
   useEffect(() => {
     if (!qr || !waiting) return;
     let alive = true;
     const id = setInterval(async () => {
       try {
         const j = await fetch('/api/avatar/core', { credentials: 'include' }).then((r) => r.json()).catch(() => ({}));
-        const poster = j?.data?.poster_url;
+        const live = j?.data?.live_avatar as SavedAvatar | null | undefined;
         const updated = j?.data?.updated_at ?? null;
-        if (alive && poster && j.data?.status === 'ready' && updated !== baselineRef.current) {
-          clearInterval(id); setWaiting(false);
-          onEnrolled?.(poster); onClose();
+        if (alive && live && updated !== baselineRef.current) {
+          clearInterval(id); setWaiting(false); setQr(null);
+          setSaved(live); setView('saved');
+          onEnrolled?.(live.photoUrl);
         }
       } catch { /* keep polling */ }
     }, 3000);
     return () => { alive = false; clearInterval(id); };
-  }, [qr, waiting, onEnrolled, onClose]);
+  }, [qr, waiting, onEnrolled]);
+
+  const stateText = saved ? (saved.state === 'custom_ready' ? t.stateReady : saved.state === 'custom_unavailable' ? t.stateUnavailable : t.stateSaved) : '';
+  const stateWhy = saved ? (saved.state === 'saved_photo' ? (saved.prep.reasons.includes('too_small') ? t.whySmall : '') : saved.state === 'custom_unavailable' ? t.whyUnavailable : '') : '';
+  const capturing = view === 'capture' && !phoneDone && !qr;
 
   return (
-    <div className="fixed inset-0 z-[300] flex flex-col bg-app-bg/97 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
+    <div className="fixed inset-0 z-[300] flex flex-col bg-app-bg/97 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title} data-testid="live-avatar-enroll" data-view={phoneDone ? 'phone-done' : qr ? 'qr' : view}>
       <div className="flex items-center justify-between px-5 pt-5" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}>
         <span className="text-[15px] font-semibold text-app-text">{t.title}</span>
-        <button type="button" onClick={onClose} aria-label="close" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.08] text-app-text hover:bg-white/[0.14]"><X size={18} /></button>
+        <button type="button" onClick={onClose} aria-label="close" className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.08] text-app-text hover:bg-white/[0.14]"><X size={18} /></button>
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-6 py-4">
+        {view === 'loading' && <Loader2 className="animate-spin text-app-muted" size={26} />}
+
         {phoneDone && (
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400"><Check size={40} /></div>
-            <span className="text-[16px] font-semibold text-app-text">{t.done}</span>
+            <span className="text-[16px] font-semibold text-app-text">{t.saved}</span>
             <span className="max-w-xs text-[13px] text-app-muted">{t.phoneDoneMsg}</span>
           </div>
         )}
+
         {qr && !phoneDone && (
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="rounded-3xl bg-white p-4 shadow-2xl">
@@ -270,67 +417,98 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
             </div>
             <span className="flex items-center gap-2 text-[14px] font-medium text-app-text"><Smartphone size={18} /> {t.scanQr}</span>
             <span className="flex items-center gap-2 text-[12.5px] text-app-muted"><Loader2 className="animate-spin" size={14} /> {t.waitingPhone}</span>
-            <button type="button" onClick={() => { setQr(null); setWaiting(false); void startCamera(); }} className="mt-1 flex h-10 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-white/[0.14]"><RotateCcw size={15} /> {t.back}</button>
+            <button type="button" onClick={() => { setQr(null); setWaiting(false); }} className="mt-1 flex h-11 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-white/[0.14]"><RotateCcw size={15} /> {t.back}</button>
           </div>
         )}
-        {!phoneDone && !qr && (<>
-        {/* Selfie stage — live camera or captured preview */}
-        <div className="relative aspect-square w-[min(72vw,320px)] overflow-hidden rounded-3xl border border-white/12 bg-black/40">
-          {selfie ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={selfie} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <>
-              <video ref={videoRef} playsInline muted className={`h-full w-full object-cover ${facing === 'user' ? '-scale-x-100' : ''}`} />
-              {!camReady && !camErr && <div className="absolute inset-0 flex items-center justify-center text-app-muted"><Loader2 className="animate-spin" size={26} /></div>}
-              {camErr && <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-[12.5px] text-app-muted">{t.camErr}</div>}
-            </>
-          )}
-        </div>
-        <canvas ref={canvasRef} className="hidden" />
 
-        {!selfie && <span className="text-[12.5px] text-app-muted">{t.hint}</span>}
-
-        {/* Capture controls */}
-        {!selfie ? (
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => fileRef.current?.click()} className="flex h-11 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-white/[0.14]"><Upload size={16} /> {t.upload}</button>
-            <button type="button" onClick={capture} disabled={!camReady} aria-label={t.capture} className="flex h-16 w-16 items-center justify-center rounded-full bg-app-accent text-white shadow-lg transition hover:brightness-110 disabled:opacity-40"><Camera size={26} /></button>
-            <button type="button" onClick={() => void flipCamera()} disabled={!camReady} aria-label={t.flip} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.08] text-app-text hover:bg-white/[0.14] disabled:opacity-40"><SwitchCamera size={18} /></button>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+        {view === 'saved' && saved && !qr && (
+          <div className="flex flex-col items-center gap-4 text-center" data-testid="live-avatar-saved" data-state={saved.state}>
+            <div className="relative aspect-[9/16] w-[min(52vw,220px)] overflow-hidden rounded-3xl border border-white/12 bg-black/40">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={saved.photoUrl} alt={t.photoLabel} className="h-full w-full object-cover" />
+            </div>
+            <span className="flex items-center gap-1.5 text-[15px] font-semibold text-app-text"><Check size={17} className="text-emerald-400" /> {t.saved}</span>
+            <span data-testid="live-avatar-state" className={`rounded-full px-3 py-1 text-[12.5px] ${saved.state === 'custom_ready' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/[0.08] text-app-muted'}`}>{stateText}</span>
+            {stateWhy && <span className="max-w-sm text-[12.5px] leading-relaxed text-app-muted">{stateWhy}</span>}
+            {voiceResult && <span className={`text-[12.5px] ${voiceResult === 'saved' ? 'text-emerald-400' : 'text-amber-300'}`}>{voiceResult === 'saved' ? t.voiceSaved : t.voiceFailed}</span>}
+            <div className="mt-1 flex items-center gap-3">
+              <button type="button" onClick={() => { setView('capture'); setNotice(null); }} className="flex h-11 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-white/[0.14]"><RotateCcw size={15} /> {t.replace}</button>
+              <button type="button" onClick={() => void remove()} disabled={deleting} className="flex h-11 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-rose-500/20 disabled:opacity-40">{deleting ? <Loader2 className="animate-spin" size={15} /> : <Trash2 size={15} />} {t.delete}</button>
+            </div>
           </div>
-        ) : (
-          <button type="button" onClick={retake} className="flex h-11 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-white/[0.14]"><RotateCcw size={16} /> {t.retake}</button>
         )}
 
-        {/* Optional voice sample */}
-        <div className="mt-1 flex flex-col items-center gap-2">
-          <span className="text-[11px] uppercase tracking-wider text-app-muted">{t.voice}</span>
-          {voiceSample ? (
-            <span className="flex items-center gap-1.5 text-[13px] text-emerald-400"><Check size={15} /> {t.voiceReady}</span>
+        {capturing && (<>
+          {/* Two different things, said so: the live camera, or the photo that will be saved. */}
+          <div className="relative aspect-[9/16] w-[min(52vw,240px)] max-h-[52vh] overflow-hidden rounded-3xl border border-white/12 bg-black/40" data-testid={selfie ? 'live-avatar-photo' : 'live-avatar-camera'}>
+            {selfie ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={selfie.dataUrl} alt={t.photoLabel} className="h-full w-full object-cover" />
+            ) : (
+              <>
+                <video ref={videoRef} playsInline muted className={`h-full w-full object-cover ${facing === 'user' ? '-scale-x-100' : ''}`} />
+                {camReady && <div aria-hidden className="pointer-events-none absolute left-1/2 top-[14%] h-[46%] w-[62%] -translate-x-1/2 rounded-[50%] border-2 border-dashed border-white/50" />}
+                {!camReady && !camErr && <div className="absolute inset-0 flex items-center justify-center text-app-muted"><Loader2 className="animate-spin" size={26} /></div>}
+                {camErr && <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-[12.5px] text-app-muted">{t.camErr}</div>}
+              </>
+            )}
+            <span className={`absolute left-2 top-2 rounded-full px-2.5 py-1 text-[11px] font-medium ${selfie ? 'bg-emerald-500/85 text-white' : 'bg-black/60 text-white/85'}`}>
+              {selfie ? t.photoLabel : t.cameraLabel}
+            </span>
+          </div>
+
+          <span className="text-center text-[12.5px] text-app-muted">{selfie ? t.hint : t.frameHint}</span>
+
+          {!selfie ? (
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => fileRef.current?.click()} className="flex h-11 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-white/[0.14]"><Upload size={16} /> {t.upload}</button>
+              <button type="button" onClick={capture} disabled={!camReady} aria-label={t.capture} className="flex h-16 w-16 items-center justify-center rounded-full bg-app-accent text-white shadow-lg transition hover:brightness-110 disabled:opacity-40"><Camera size={26} /></button>
+              <button type="button" onClick={() => void flipCamera()} disabled={!camReady} aria-label={t.flip} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.08] text-app-text hover:bg-white/[0.14] disabled:opacity-40"><SwitchCamera size={18} /></button>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} />
+            </div>
           ) : (
-            <button type="button" onClick={() => void toggleRecord()} className={`flex h-10 items-center gap-2 rounded-full px-4 text-[13px] transition ${recording ? 'bg-app-danger/20 text-app-danger' : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}>
-              <Mic size={16} /> {recording ? t.stop + ' · ' + t.recording : t.recVoice}
-            </button>
+            <button type="button" onClick={retake} disabled={saving} className="flex h-11 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-white/[0.14] disabled:opacity-40"><RotateCcw size={16} /> {t.retake}</button>
           )}
-        </div>
 
-        {/* Continue on phone — desktop only (the phone side already IS on a phone). */}
-        {!handoffToken && !selfie && (
-          <button type="button" onClick={() => void startPhoneHandoff()} className="flex h-10 items-center gap-2 rounded-full bg-white/[0.06] px-4 text-[12.5px] text-app-muted transition hover:bg-white/[0.12] hover:text-app-text"><Smartphone size={15} /> {t.onPhone}</button>
-        )}
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-app-muted">{t.voice}</span>
+            {voiceSample ? (
+              <span className="flex items-center gap-1.5 text-[13px] text-emerald-400"><Check size={15} /> {t.voiceReady}</span>
+            ) : (
+              <button type="button" onClick={() => void toggleRecord()} className={`flex h-11 items-center gap-2 rounded-full px-4 text-[13px] transition ${recording ? 'bg-app-danger/20 text-app-danger' : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}>
+                <Mic size={16} /> {recording ? t.stop + ' · ' + t.recording : t.recVoice}
+              </button>
+            )}
+          </div>
 
-        {err && <span className="text-[12.5px] text-app-danger">{err}</span>}
+          {!handoffToken && !selfie && (
+            <button type="button" onClick={() => void startPhoneHandoff()} className="flex h-11 items-center gap-2 rounded-full bg-white/[0.06] px-4 text-[12.5px] text-app-muted transition hover:bg-white/[0.12] hover:text-app-text"><Smartphone size={15} /> {t.onPhone}</button>
+          )}
         </>)}
+
+        <canvas ref={canvasRef} className="hidden" />
+        {notice && <span role="status" className="text-[12.5px] text-app-muted">{notice}</span>}
+        {err && <span role="alert" data-testid="live-avatar-error" className="max-w-sm text-center text-[12.5px] text-app-danger">{err}</span>}
       </div>
 
-      {/* Save bar — only in the capture flow (not on the QR-wait or done screens). */}
-      {!phoneDone && !qr && (
+      {/* Save bar — only while capturing. It waits for a captured or uploaded photo, and says so. */}
+      {capturing && (
         <div className="border-t border-white/10 bg-black/40 px-6 py-4 backdrop-blur-xl" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
-          <button type="button" onClick={() => void save()} disabled={!selfie || saving}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-app-accent text-[15px] font-semibold text-white shadow-lg transition hover:brightness-110 disabled:opacity-40">
-            {saving ? <><Loader2 className="animate-spin" size={18} /> {t.saving}</> : <>{t.save}</>}
+          <button type="button" onClick={() => void save()} disabled={!selfie || saving} data-testid="live-avatar-save"
+            className="relative flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-app-accent text-[15px] font-semibold text-white shadow-lg transition hover:brightness-110 disabled:opacity-40">
+            {progress && <span aria-hidden className="absolute inset-y-0 left-0 bg-white/20 transition-[width]" style={{ width: `${progress.pct}%` }} />}
+            <span className="relative flex items-center gap-2">
+              {progress
+                ? <><Loader2 className="animate-spin" size={18} /> {progress.phase === 'uploading' ? `${t.uploading} ${progress.pct}%` : t.processing}</>
+                : t.save}
+            </span>
           </button>
+          {!selfie && <p className="mt-2 text-center text-[12px] text-app-muted" data-testid="live-avatar-save-hint">{t.needPhoto}</p>}
+        </div>
+      )}
+      {view === 'saved' && saved && !qr && (
+        <div className="border-t border-white/10 bg-black/40 px-6 py-4 backdrop-blur-xl" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
+          <button type="button" onClick={onClose} className="flex h-12 w-full items-center justify-center rounded-2xl bg-app-accent text-[15px] font-semibold text-white shadow-lg transition hover:brightness-110">{t.done}</button>
         </div>
       )}
     </div>
