@@ -3,14 +3,18 @@
  *
  * The chat "read aloud" button (OmniStudio speakMsg, lib/audio/premium-tts) and the voice-call loop
  * (VoiceConversation) post a chunk of text here; we call the Gemini TTS model (generateContent →
- * responseModalities:['AUDIO']) with a built-in Google voice and return the spoken audio. Gemini returns raw
- * 16-bit mono PCM (audio/L16;rate=24000), which <audio> can't play, so we wrap it in a minimal WAV container and
- * return audio/wav. Verified live: 24 kHz PCM, natural Georgian, ~1-2 s/chunk. Rate-limited AND signed-in only:
+ * responseModalities:['AUDIO']) with a built-in Google voice and return the spoken audio as ONE WAV (the speech contract,
+ * lib/speech). Gemini answers with one or more inline audio parts, raw 16-bit PCM labelled with its rate
+ * (audio/L16;codec=pcm;rate=24000) or a complete WAV; lib/speech/geminiAudio reads every part in order, checks the
+ * format against the bytes and wraps the samples once (§5.2). Verified live: 24 kHz PCM, natural Georgian,
+ * ~1-2 s/chunk. Rate-limited AND signed-in only:
  * it spends the Google Cloud project's balance, and a guest has no assistant reply to read aloud (the studio stops a guest before
  * any turn is sent).
  *
  * Body: { text, locale?: 'ka'|'en'|'ru', gender?: 'male'|'female', voice?: 'Aoede'|'Charon'|'Kore'|'Puck',
- *         personaId?, customPersona? }.
+ *         personaId?, customPersona? }. `text` longer than SPEECH_MAX_CHARS (2,000) is refused with 413 text_too_long
+ *         before any provider I/O; it used to be cut at 2,000 without a word (§5.3.1). The client splits a message into
+ *         chunks well below the limit.
  * Voice precedence: an explicit `voice` > `gender` (keeps the persona's voice when it already has that gender) >
  * the active persona's voice > Aoede. ⚠️ Only Aoede and Charon are verified speaking Georgian, so a Georgian chunk
  * maps Kore → Aoede and Puck → Charon (lib/agents/profile liveVoiceFor) — the same rule Live uses.
@@ -29,14 +33,17 @@ import { liveVoiceFor, resolveAgentProfile, type AgentProfile, type LiveVoice } 
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { bookChatUsage, chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { isEnabledByDefault } from '@/lib/env/flag';
+import { SPEECH_CONTRACT_VERSION, SPEECH_HEADERS, SPEECH_MAX_CHARS, SPEECH_RESPONSE_MIME } from '@/lib/speech/contract';
+import { audioFromGeminiParts } from '@/lib/speech/geminiAudio';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-const DEFAULT_RATE = 24000;
-const MAX_TEXT = 2000;
+/** Only for the usage estimate of an answer whose audio was refused (its own rate could not be trusted). */
+const ESTIMATE_RATE = 24000;
 const MAX_ATTEMPTS = 3;
+const DIRECTIVE = 'Read aloud verbatim: ';
 
 type TtsLocale = 'ka' | 'en' | 'ru';
 
@@ -83,29 +90,6 @@ function pickVoice(profile: AgentProfile, voice: unknown, gender: unknown, local
   return liveVoiceFor(v, locale);
 }
 
-/** Wrap raw 16-bit mono little-endian PCM in a 44-byte WAV header so the browser <audio> can play it. */
-function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + pcm.length, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20); // PCM
-  header.writeUInt16LE(numChannels, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(byteRate, 28);
-  header.writeUInt16LE(blockAlign, 32);
-  header.writeUInt16LE(bitsPerSample, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([header, pcm]);
-}
-
 /** Await a bookkeeping promise for at most `ms`; the timer is cleared either way (no dangling handle). */
 async function settleWithin(p: Promise<unknown>, ms: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -128,9 +112,13 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     text?: unknown; locale?: unknown; gender?: unknown; voice?: unknown; personaId?: unknown; customPersona?: unknown;
   };
-  const text = (typeof body.text === 'string' ? body.text : '').trim().slice(0, MAX_TEXT);
+  const text = (typeof body.text === 'string' ? body.text : '').trim();
   if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 });
   const locale = normalizeLocale(body.locale);
+  // Refused, not cut: a cut read sounds finished while the end of the message was never spoken.
+  if (text.length > SPEECH_MAX_CHARS) {
+    return NextResponse.json({ error: 'text_too_long', maxChars: SPEECH_MAX_CHARS }, { status: 413 });
+  }
 
   // ⚠️ IT WAS OPEN TO ANYONE ("so guest read-aloud works too"), with up to three billed attempts per call and only a
   // per-IP limit whose IP header was spoofable. A guest has no reply to read — the studio stops them before any turn
@@ -174,7 +162,7 @@ export async function POST(req: NextRequest) {
     googleModelFetch(model, 'generateContent', {
       method: 'POST',
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: `Read aloud verbatim: ${text}` }] }],
+        contents: [{ role: 'user', parts: [{ text: `${DIRECTIVE}${text}` }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
@@ -207,45 +195,57 @@ export async function POST(req: NextRequest) {
     }
     const data = (await res.json().catch(() => null)) as
       | {
-          candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string; mimeType?: string } }> } }>;
+          candidates?: Array<{ content?: { parts?: unknown } }>;
           usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
         }
       | null;
-    const part = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
-    const b64 = part?.inlineData?.data;
-    if (!b64) return NextResponse.json({ error: 'tts_empty' }, { status: 502 });
+    const audio = audioFromGeminiParts(data?.candidates?.[0]?.content?.parts);
 
-    const pcm = Buffer.from(b64, 'base64');
-    const rate = Number((part?.inlineData?.mimeType || '').match(/rate=(\d+)/)?.[1]) || DEFAULT_RATE;
-    const wav = pcmToWav(pcm, rate);
+    // Book what Google reported (TTS-family rates in costModel) — also when the audio it sent is refused below, since
+    // Google has charged for it either way. Estimate from the audio length only when it reported nothing. Bounded: the
+    // audio is the product, bookkeeping must not hold it back. An answer with no audio at all books nothing, as before.
+    if (audio.ok || audio.audioParts > 0) {
+      const u = data?.usageMetadata;
+      const inputTokens = count(u?.promptTokenCount);
+      const seconds = audio.ok ? audio.info.durationMs / 1000 : audio.audioBytes / (ESTIMATE_RATE * 2);
+      const outputTokens = count(u?.candidatesTokenCount) ?? Math.ceil(seconds * AUDIO_TOKENS_PER_SECOND);
+      const totalTokens = count(u?.totalTokenCount);
+      await settleWithin(
+        bookChatUsage({
+          model,
+          ...(inputTokens !== undefined ? { inputTokens } : {}),
+          outputTokens,
+          ...(totalTokens !== undefined ? { totalTokens } : {}),
+          inputChars: text.length + DIRECTIVE.length,
+          userId: user?.id ?? null,
+        }),
+        1_500,
+      );
+    }
 
-    // Book what Google reported (TTS-family rates in costModel); estimate from the audio length only when it
-    // reported nothing. Bounded: the audio is the product, bookkeeping must not hold it back.
-    const u = data?.usageMetadata;
-    const inputTokens = count(u?.promptTokenCount);
-    const outputTokens = count(u?.candidatesTokenCount) ?? Math.ceil((pcm.length / (rate * 2)) * AUDIO_TOKENS_PER_SECOND);
-    const totalTokens = count(u?.totalTokenCount);
-    await settleWithin(
-      bookChatUsage({
-        model,
-        ...(inputTokens !== undefined ? { inputTokens } : {}),
-        outputTokens,
-        ...(totalTokens !== undefined ? { totalTokens } : {}),
-        inputChars: text.length + 'Read aloud verbatim: '.length,
-        userId: user?.id ?? null,
-      }),
-      1_500,
-    );
+    if (!audio.ok && audio.fault === 'no_audio') return NextResponse.json({ error: 'tts_empty' }, { status: 502 });
+    if (!audio.ok) {
+      // A format we cannot prove is refused rather than played too fast, too slow or with a header read as sound.
+      console.error('[tts/gemini] audio refused', audio.fault, `(${audio.audioParts} part(s))`);
+      return NextResponse.json({ error: 'tts_bad_audio', fault: audio.fault }, { status: 502 });
+    }
+    if (audio.info.frames === 0) return NextResponse.json({ error: 'tts_empty' }, { status: 502 });
+    const wav = audio.wav;
 
     // Hand the underlying bytes to NextResponse as a plain ArrayBuffer (Buffer isn't a valid BodyInit type).
     const bytes = wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength) as ArrayBuffer;
     return new NextResponse(bytes, {
       status: 200,
       headers: {
-        'Content-Type': 'audio/wav',
+        'Content-Type': SPEECH_RESPONSE_MIME,
         'Content-Length': String(wav.byteLength),
         'X-Voice-Provider': 'gemini-native',
-        'X-Voice-Name': voiceName,
+        [SPEECH_HEADERS.voice]: voiceName,
+        [SPEECH_HEADERS.contract]: String(SPEECH_CONTRACT_VERSION),
+        [SPEECH_HEADERS.sampleRate]: String(audio.info.sampleRate),
+        [SPEECH_HEADERS.channels]: String(audio.info.channels),
+        [SPEECH_HEADERS.frames]: String(audio.info.frames),
+        [SPEECH_HEADERS.model]: model,
         'Cache-Control': 'no-store',
       },
     });

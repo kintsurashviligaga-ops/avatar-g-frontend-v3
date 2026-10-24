@@ -9,7 +9,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { requestedVoiceId } from '@/lib/audio/voiceId';
-import { synthesizeGoogleTts, ttsLanguageCode } from '@/lib/audio/google-tts';
+import { GOOGLE_TTS_MAX_CHARS, synthesizeGoogleTts, ttsLanguageCode } from '@/lib/audio/google-tts';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
 export const dynamic = 'force-dynamic';
@@ -62,6 +62,11 @@ export async function POST(req: NextRequest) {
   // NUMERIC NORMALIZATION (V2) — spell Arabic digits as Georgian cardinal words BEFORE synthesis so the engine reads
   // "190" as "ას ოთხმოცდაათი", never digit-by-digit. Georgian text ONLY — en/ru keep the engine's own normalization.
   if (languageCode === 'ka-GE') text = numbersToGeorgianWords(text);
+  // Refused before any provider call, and measured on the text that would be read (digits spelled out are longer).
+  // It used to be cut at 5,000 characters without a word.
+  if (text.length > GOOGLE_TTS_MAX_CHARS) {
+    return NextResponse.json({ error: 'text_too_long', maxChars: GOOGLE_TTS_MAX_CHARS }, { status: 413 });
+  }
 
   const audio = await synthesizeGoogleTts(text, { languageCode, gender: body.gender === 'male' ? 'MALE' : 'FEMALE' });
   if (!audio || audio.byteLength < 1024) {

@@ -105,6 +105,19 @@ test('Georgian digits are read as Georgian words; English keeps its own', async 
   ]);
 });
 
+test('text over 5,000 characters is a 413 before Cloud TTS (it used to be cut without a word), measured as it would be read', async () => {
+  mockUser = { id: 'user-1' };
+  const res = await POST(post({ text: 'a'.repeat(5001), locale: 'en' }));
+  expect(res.status).toBe(413);
+  expect(await res.json()).toEqual({ error: 'text_too_long', maxChars: 5000 });
+  // Georgian digits are spelled out first, so a text under the limit can read over it.
+  const georgian = `${'ა'.repeat(4990)} 1990`;
+  expect(georgian.length).toBeLessThanOrEqual(5000);
+  expect((await POST(post({ text: georgian, locale: 'ka' }))).status).toBe(413);
+  expect(googleMock).not.toHaveBeenCalled();
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+
 /**
  * ⚠️ PROJECT_MASTER R7 — NO SILENT FALLBACK. A request uses ONE engine; when Cloud TTS fails the route answers its
  * explicit 502. ElevenLabs (fetch) and Azure stay ready to answer, so a fallback put back would be caught here.

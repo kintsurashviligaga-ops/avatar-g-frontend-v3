@@ -165,6 +165,20 @@ test('no token → null before any request', async () => {
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+test(`a text over GOOGLE_TTS_MAX_CHARS is null before any request (it used to be cut without a word); exactly the limit is read`, async () => {
+  expect(await tts.synthesizeGoogleTts('a'.repeat(tts.GOOGLE_TTS_MAX_CHARS + 1), { languageCode: 'en-US' })).toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled();
+
+  fetchMock.mockImplementation(async (url: string) => (url.includes('/voices') ? json(200, VOICES) : audio()));
+  const atLimit = `${'word '.repeat(tts.GOOGLE_TTS_MAX_CHARS / 5 - 1)}ends.`;
+  expect(atLimit.length).toBe(tts.GOOGLE_TTS_MAX_CHARS);
+  expect(await tts.synthesizeGoogleTts(`  ${atLimit}  `, { languageCode: 'en-US' })).not.toBeNull();
+  const read = (fetchMock.mock.calls as [string, Init][])
+    .filter(([u]) => u.endsWith(':synthesize'))
+    .map(([, i]) => JSON.parse(String(i.body)).input.text as string);
+  expect(read.join(' ')).toBe(atLimit);
+});
+
 test('a 403 (the API off on the project, or the account not allowed) is heard once, then nothing is asked again', async () => {
   fetchMock.mockResolvedValueOnce(json(403, { error: { message: 'Cloud Text-to-Speech API has not been used in project' } }));
   const heard: number[] = [];
