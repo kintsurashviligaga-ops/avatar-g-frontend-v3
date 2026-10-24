@@ -46,6 +46,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { bookChatUsage, chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
+import { inspectWav } from '../../../../lib/speech/wav';
+import { MONO_16K, geminiAudioResponse } from '../../../../tests/fixtures/speechAudio';
 
 const USER_ID = '11111111-2222-4333-8444-555555555555';
 const limitMock = checkRateLimit as jest.MockedFunction<typeof checkRateLimit>;
@@ -169,6 +171,13 @@ test('a signed-in caller gets a WAV from Vertex AI (bearer token, no key); the d
   expect(b.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Aoede');
   // Georgian never carries a languageCode (ka-GE is not a documented SpeechConfig language).
   expect(b.generationConfig.speechConfig.languageCode).toBeUndefined();
+});
+
+test('the WAV it answers passes the speech contract: rate, channels and frame count are the ones Google sent', async () => {
+  fetchSpy.mockImplementation(async () => geminiAudioResponse([{ pcm: MONO_16K, mimeType: 'audio/L16;codec=pcm;rate=16000' }]));
+  const res = await POST(post({ text: 'hello', locale: 'en' }));
+  const r = inspectWav(new Uint8Array(await res.arrayBuffer()));
+  expect(r).toEqual({ ok: true, info: expect.objectContaining({ sampleRate: 16000, channels: 1, frames: MONO_16K.length / 2, durationMs: 500 }) });
 });
 
 test('gender=male → Charon (unchanged contract)', async () => {
