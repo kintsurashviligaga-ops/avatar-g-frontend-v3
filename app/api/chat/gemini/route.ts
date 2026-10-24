@@ -90,6 +90,7 @@ import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { isAdminIdentity, type AdminCandidate } from '@/lib/auth/adminGuard';
 import { veoAvatarPublic } from '@/lib/avatar/veoAvatar';
+import { serverTiming, type ServerTiming } from '@/lib/perf/serverTiming';
 
 /** Derived from the helper's own return type — lib/supabase/server does not export its client alias. */
 type AnyAuthedClient = Awaited<ReturnType<typeof authedClientFromRequest>>['supabase'];
@@ -383,10 +384,10 @@ function frameResponse(frames: ReadonlyArray<ChatFrame | 'DONE'>): Response {
  * turn — `auth.getUser()` is a network round-trip, not a local decode), and this runs CONCURRENTLY with the profile
  * facts and the budget check instead of in series in front of the model.
  */
-async function buildMemoryPreamble(supabase: AnyAuthedClient, userId: string, userText: string): Promise<string | null> {
+async function buildMemoryPreamble(supabase: AnyAuthedClient, userId: string, userText: string, timing: ServerTiming): Promise<string | null> {
   try {
     if (!userText) return null;
-    const embedding = await embed(userText);
+    const embedding = await timing.time('embed', embed(userText));
     if (!embedding) return null;
     const { data, error } = await supabase.rpc('match_memories', { query_embedding: embedding, match_count: 5 });
     if (error) {
@@ -423,8 +424,12 @@ async function buildProfileFactsPreamble(supabase: AnyAuthedClient, userId: stri
 // ─── Route ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  // Where the turn's time goes (rate, auth, body, admin, prompt before the stream; budget, profile, embed, memory,
+  // model, ttft in it), only for a request that opts in with a trace id: lib/perf/serverTiming. Untraced turns are
+  // answered byte for byte as before.
+  const timing = serverTiming(req);
   // Cheap per-IP burst guard, before any network call (auth is a Supabase round-trip).
-  const ipLimited = await checkRateLimit(req, RATE_LIMITS.READ);
+  const ipLimited = await timing.time('rate', checkRateLimit(req, RATE_LIMITS.READ));
   if (ipLimited) return ipLimited;
 
   const contentLength = Number(req.headers.get('content-length') ?? 0);
@@ -436,7 +441,7 @@ export async function POST(req: NextRequest) {
   // AND for all guests together. A failed session lookup is treated as anonymous — fail closed into that policy.
   // CHAT_GUEST_ENABLED=0 restores the 401; FILM_ALLOW_ANONYMOUS=1 (demos) keeps its older, looser meaning.
   const auth: { supabase: AnyAuthedClient | null; user: ({ id: string } & AdminCandidate) | null } =
-    await authedClientFromRequest(req).catch(() => ({ supabase: null, user: null }));
+    await timing.time('auth', authedClientFromRequest(req).catch(() => ({ supabase: null, user: null })));
   const userId = auth.user?.id ?? null;
   /** The verified ACCOUNT, or null — a session id of "anonymous" is not an account (generationGate.isAnonymousUser). */
   const accountId = isAnonymousUser(userId) ? null : userId;
@@ -444,7 +449,7 @@ export async function POST(req: NextRequest) {
   // tool only to whoever that route lets through. Started here, read when the prompt is built.
   const veoAvatarPromise: Promise<boolean> = veoAvatarPublic()
     ? Promise.resolve(true)
-    : accountId ? isAdminIdentity(auth.user).catch(() => false) : Promise.resolve(false);
+    : accountId ? timing.time('admin', isAdminIdentity(auth.user).catch(() => false)) : Promise.resolve(false);
   const guest = !accountId && !anonymousGenerationAllowed();
   if (guest && !guestChatEnabled()) {
     const loc = requestLocale(req);
@@ -453,7 +458,7 @@ export async function POST(req: NextRequest) {
 
   let body: ChatRequestBody;
   try {
-    const parsed: unknown = await req.json();
+    const parsed: unknown = await timing.time('body', req.json());
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('body is not an object');
     body = parsed as ChatRequestBody;
   } catch (error) {
@@ -493,7 +498,8 @@ export async function POST(req: NextRequest) {
     // the global bucket on turns it would be refused anyway.
     const guestCapped =
       !refusal &&
-      ((await checkRateLimit(req, guestChatDailyLimit())) ?? (await checkRateLimitByKey(GUEST_GLOBAL_KEY, guestChatGlobalDailyLimit())));
+      ((await timing.time('rate', checkRateLimit(req, guestChatDailyLimit()))) ??
+        (await timing.time('rate', checkRateLimitByKey(GUEST_GLOBAL_KEY, guestChatGlobalDailyLimit()))));
     if (refusal || guestCapped) {
       if (guestCapped) console.warn('[/api/chat/gemini] guest chat cap reached');
       const why = refusal ?? 'cap';
@@ -508,8 +514,8 @@ export async function POST(req: NextRequest) {
   const capped = guest
     ? null
     : accountId
-      ? await checkRateLimitByKey(accountId, RATE_LIMITS.CHAT_USER)
-      : await checkRateLimit(req, RATE_LIMITS.CHAT_USER);
+      ? await timing.time('rate', checkRateLimitByKey(accountId, RATE_LIMITS.CHAT_USER))
+      : await timing.time('rate', checkRateLimit(req, RATE_LIMITS.CHAT_USER));
   if (capped) {
     console.warn('[/api/chat/gemini] daily chat cap reached');
     const message = DAILY_CAP_NOTICE[noticeLocale];
@@ -534,7 +540,7 @@ export async function POST(req: NextRequest) {
   if (requestedMode === 'pro' && accountId) {
     // AFTER CHAT_USER, so a Pro turn draws on both buckets. A spent Pro allowance does not refuse the turn — like the
     // Gemini app, it is answered by Fast and the `{meta}` says so (the stored choice stays Pro; it resumes at reset).
-    const proSpent = await checkRateLimitByKey(accountId, chatProUserLimit());
+    const proSpent = await timing.time('rate', checkRateLimitByKey(accountId, chatProUserLimit()));
     if (proSpent) {
       mode = 'fast';
       const resetAt = resetAtOf(proSpent);
@@ -561,19 +567,25 @@ export async function POST(req: NextRequest) {
   // grounding is off for them (lib/chat/guestChat). The prompt is told either way, so a turn without the tool says it
   // cannot open links instead of "summarizing" a page it never read.
   const urlContextOn = !guest && wantsUrlContext(latestUserText);
-  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn, veoAvatar: await veoAvatarPromise });
+  const veoAvatar = await veoAvatarPromise;
+  const promptStarted = performance.now();
+  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn, veoAvatar });
   const modelMessages = toModelMessages(wire);
   const historyChars = wire.reduce((n, m) => n + estimateWireChars(m), 0);
+  timing.add('prompt', performance.now() - promptStarted);
 
   // Started now, awaited inside the stream: their latencies overlap each other and the Response is returned at once.
   // The budget estimate covers the platform prompt and the history text, not just the latest message, and is priced
   // at the mode's PRIMARY model — a Pro turn pre-checked at the flat Flash rate looked cheaper than it is.
-  const budgetPromise = chatBudgetRefusal(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => GUARD_UNAVAILABLE);
+  const budgetPromise = timing.time(
+    'budget',
+    chatBudgetRefusal(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => GUARD_UNAVAILABLE),
+  );
   const preamblesPromise: Promise<[string | null, string | null]> =
     auth.supabase && accountId
       ? Promise.all([
-          buildProfileFactsPreamble(auth.supabase, accountId, latestUserText),
-          buildMemoryPreamble(auth.supabase, accountId, latestUserText),
+          timing.time('profile', buildProfileFactsPreamble(auth.supabase, accountId, latestUserText)),
+          timing.time('memory', buildMemoryPreamble(auth.supabase, accountId, latestUserText, timing)),
         ])
       : Promise.resolve([null, null]);
 
@@ -679,6 +691,9 @@ export async function POST(req: NextRequest) {
         if (urlContextOn) config.urlContext = true;
         const inputChars = platformSystem.length + historyChars;
 
+        // The first model text of the turn, for the trace: `model` from the first call's start, `ttft` from the request's.
+        const modelStarted = performance.now();
+        let firstText = false;
         /** One chain, streamed to the browser; everything Google billed for it is booked. */
         const runChain = async (models: readonly string[], cfg: GeminiChatConfig, retryTransientOnce: boolean): Promise<StreamGeminiChatResult> => {
           const r = await streamGeminiChat({
@@ -693,6 +708,11 @@ export async function POST(req: NextRequest) {
             onFrame: (frame) => {
               if ('error' in frame) return;
               write(decorate(frame));
+              if (!firstText && 'text' in frame && frame.text) {
+                firstText = true;
+                timing.add('model', performance.now() - modelStarted);
+                timing.since('ttft');
+              }
             },
           });
           // ⚠️ BOOK WHAT GOOGLE BILLED, NOT JUST WHAT SUCCEEDED. A turn that failed mid-answer, was aborted by the
@@ -782,6 +802,15 @@ export async function POST(req: NextRequest) {
         if (!abort.signal.aborted) notice('unavailable', { afterText: false });
       } finally {
         stopTimers();
+        // A traced turn's spans, as one SSE comment line (dropped by every SSE parser) just before [DONE].
+        const spans = timing.sseComment();
+        if (spans && open) {
+          try {
+            controller.enqueue(encoder.encode(spans));
+          } catch {
+            /* consumer gone */
+          }
+        }
         tryWrite('DONE');
         // ⚠️ THE BOOKING IS AWAITED BEFORE THE STREAM CLOSES. Once the response ends, a serverless function can be
         // frozen with the insert still in flight, and a lost booking is spend the budget guard never sees. [DONE] is
@@ -804,5 +833,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return new Response(readable, { headers: SSE_HEADERS });
+  return new Response(readable, { headers: { ...SSE_HEADERS, ...timing.headers('respond') } });
 }

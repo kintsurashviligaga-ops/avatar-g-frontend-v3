@@ -1099,3 +1099,51 @@ describe('URL reading (GEMINI_CHAT_URL_CONTEXT)', () => {
     expect('urlContext' in lastConfig()).toBe(false);
   });
 });
+
+// ─── Server timing (lib/perf/serverTiming) ───────────────────────────────────
+
+describe('server timing, only for a traced turn', () => {
+  const TRACE = 'fedcba9876543210';
+  const names = (value: string | null) => (value ?? '').split(', ').map((e) => e.split(';')[0]);
+
+  test('a traced turn gets its pre-stream spans in the header and the rest as one SSE comment before [DONE]', async () => {
+    (embed as jest.Mock).mockResolvedValueOnce([0.1, 0.2]);
+    const res = await POST(post(userTurn('remember my secret prompt'), { 'x-myavatar-trace': TRACE }));
+    expect(res.headers.get('x-myavatar-trace')).toBe(TRACE);
+    const header = res.headers.get('server-timing');
+    expect(names(header)).toEqual(expect.arrayContaining(['rate', 'auth', 'body', 'prompt', 'respond']));
+    expect(names(header).at(-1)).toBe('respond');
+
+    const body = await res.text();
+    const comment = body.split('\n\n').find((e) => e.startsWith(': server-timing '));
+    expect(comment).toBeDefined();
+    expect(names(comment!.slice(': server-timing '.length))).toEqual(
+      expect.arrayContaining(['rate', 'auth', 'body', 'prompt', 'budget', 'profile', 'embed', 'memory', 'model', 'ttft', 'total']),
+    );
+    // Just before [DONE], and nothing but names and numbers in it.
+    expect(body.endsWith(`${comment}\n\ndata: [DONE]\n\n`)).toBe(true);
+    for (const entry of comment!.slice(': server-timing '.length).split(', ')) expect(entry).toMatch(/^[a-z]+;dur=\d+(\.\d)?$/);
+    expect(comment).not.toMatch(/secret|gemini|ok|key/);
+    // The frames a client reads are the same as an untraced turn's.
+    expect(decodeFrames(body)).toEqual([{ meta: expect.objectContaining({ provider: 'gemini' }) }, { text: 'ok' }, 'DONE']);
+  });
+
+  test('an untraced turn (or a malformed id) is byte for byte what it was: no header, no echo, no comment line', async () => {
+    for (const headers of [{}, { 'x-myavatar-trace': 'please log my prompt' }]) {
+      const res = await POST(post(userTurn('hi'), headers));
+      expect(res.headers.get('server-timing')).toBeNull();
+      expect(res.headers.get('x-myavatar-trace')).toBeNull();
+      expect(await res.text()).not.toContain('server-timing');
+    }
+  });
+
+  test('the budget still refuses a traced turn in-stream, and its spans still close the stream', async () => {
+    (chatBudgetRefusal as jest.Mock).mockResolvedValueOnce('daily_limit');
+    const res = await POST(post(userTurn('hi'), { 'x-myavatar-trace': TRACE }));
+    const body = await res.text();
+    expect(mockStream).not.toHaveBeenCalled();
+    expect(body).toMatch(/: server-timing [^\n]*budget;dur=/);
+    expect(body).not.toMatch(/ttft;dur=/);
+    expect(body.endsWith('data: [DONE]\n\n')).toBe(true);
+  });
+});

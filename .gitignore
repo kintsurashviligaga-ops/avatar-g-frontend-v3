@@ -21,6 +21,7 @@ tsconfig.tsbuildinfo
 .env*.local
 test-results/
 playwright-report/
+perf-results/
 
 # Debug/temp files
 __*.txt
