@@ -133,6 +133,30 @@ function buildParts(prompt: string, attachments?: GeminiAttachment[]): Part[] {
   return parts;
 }
 
+// ─── Thinking ─────────────────────────────────────────────────────────────────
+
+/**
+ * Gemini 3 models documented to ACCEPT `thinkingLevel: 'minimal'`: 3.0 – 3.6 Flash and every 3.x Flash-Lite (the same
+ * allowlist as lib/ai/google/chatStream MINIMAL_OK_RE). 3.7 / 3.8 Flash and Pro answer 'minimal' with a 400.
+ */
+const MINIMAL_OK_RE = /^gemini-3(?:\.[0-6])?-flash(?:-|$)|^gemini-3(?:\.\d+)?-flash-lite(?:-|$)/i;
+
+/**
+ * A caller's thinking budget, in the knob the model takes.
+ *
+ * ⚠️ GEMINI 3 HAS NO thinkingBudget. 3.8 Flash (the flash tier) accepts `thinkingBudget: 0` and thinks anyway: Agent G's
+ * steps took 20–34 s and ran into MAX_TOKENS, so a Live task timed out at 40 s twice (measured 2026-10-25; the same step
+ * took 4.9 s with `thinkingLevel: 'low'`). So a Gemini 3 model gets the nearest level: 0 → the least it accepts
+ * ('minimal' where documented, else 'low'), a positive budget 'low', a negative one (dynamic) the model's default.
+ * Every other model (2.5) keeps the budget as given.
+ */
+export function thinkingFieldFor(model: string, budget: number): { thinkingConfig?: Record<string, unknown> } {
+  if (!/^gemini-3(?:\.\d+)?-/i.test(model)) return { thinkingConfig: { thinkingBudget: budget } };
+  if (budget < 0) return {};
+  const isPro = /(?:^|-)pro(?:-|$)/i.test(model);
+  return { thinkingConfig: { thinkingLevel: budget === 0 && !isPro && MINIMAL_OK_RE.test(model) ? 'minimal' : 'low' } };
+}
+
 // ─── Core generate function ───────────────────────────────────────────────────
 
 export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResponse> {
@@ -159,9 +183,9 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
       temperature: req.temperature ?? 0.7,
       topP: req.topP ?? DEFAULT_TOP_P,
       topK: req.topK ?? DEFAULT_TOP_K,
-      // Disable/limit gemini-2.5 "thinking" when a budget is given — thinking can add tens
-      // of seconds, which breaks latency-bounded callers (e.g. the storyboard decomposer).
-      ...(req.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: req.thinkingBudget } } : {}),
+      // Disable/limit "thinking" when a budget is given — thinking can add tens of seconds, which breaks
+      // latency-bounded callers (e.g. the storyboard decomposer, Agent G's steps). Gemini 3 takes a level, not a budget.
+      ...(req.thinkingBudget !== undefined ? thinkingFieldFor(modelName, req.thinkingBudget) : {}),
       ...(req.responseMimeType ? { responseMimeType: req.responseMimeType } : {}),
     },
   };

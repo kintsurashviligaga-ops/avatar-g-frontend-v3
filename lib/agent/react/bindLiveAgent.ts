@@ -48,6 +48,7 @@ import 'server-only';
  */
 import { imageQuoteTool, type ImageToolContext } from '@/lib/image/studio/agentTool';
 import { llmText } from '@/lib/ai/llmText';
+import { chatModelChain, geminiTierModel } from '@/lib/ai/google/models';
 import { newRunMeter, type AgentRunMetrics } from '@/lib/ai/usageMetrics';
 import { structuredLog } from '@/lib/logger';
 import { runReActLoop, type AgentTool, type ReActResult } from './coordinator';
@@ -151,21 +152,51 @@ export const MAX_ANALYSES_PER_RUN = 2;
 
 type RunMeter = ReturnType<typeof newRunMeter>;
 
+/** One step's model call never runs longer than this. */
+export const LLM_STEP_TIMEOUT_MS = 40_000;
+/** A first attempt that still has the step-down behind it stops this long before the run's deadline. */
+export const STEP_DOWN_RESERVE_MS = 12_000;
+/** The step-down is tried only with at least this much of the run left. */
+export const MIN_LLM_ATTEMPT_MS = 5_000;
+
+/**
+ * The model a step that missed retries on: the next model of the chat's Flash chain (3.6 Flash after 3.8 Flash
+ * today), so one slow or busy model no longer ends a Live task.
+ */
+export function stepDownModel(): string | undefined {
+  const primary = geminiTierModel('flash');
+  return chatModelChain('standard').find((id) => id !== primary);
+}
+
 /**
  * Collapse the ReAct transcript into a single llmText call. The system prompt and the transcript so far are the same
  * prefix on every step of a run, which is what Gemini's implicit context cache keys on; the meter records the hits.
+ *
+ * ⚠️ EACH CALL FITS THE RUN'S DEADLINE. The call used to get a flat 40 s, so a step started late in a Live task's 45 s
+ * budget outlived the call that asked for it, and a model that missed ended the run (GG's task failed twice,
+ * 2026-10-25). Now the first attempt stops STEP_DOWN_RESERVE_MS before the deadline, and a miss is retried once on
+ * stepDownModel() in whatever time is left.
  */
-function llmAdapterFor(meter: RunMeter) {
+function llmAdapterFor(meter: RunMeter, deadlineMs?: number) {
   return async (messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string | null> => {
     const system = messages.find((m) => m.role === 'system')?.content;
     const convo = messages
       .filter((m) => m.role !== 'system')
       .map((m) => (m.role === 'assistant' ? `Assistant: ${m.content}` : m.content))
       .join('\n\n');
-    return llmText({
-      system, user: convo, maxTokens: 900, temperature: 0.4, timeoutMs: 40_000, googleOnly: true,
+    const call = (timeoutMs: number, geminiModel?: string) => llmText({
+      system, user: convo, maxTokens: 900, temperature: 0.4, timeoutMs, googleOnly: true,
+      ...(geminiModel ? { geminiModel } : {}),
       onUsage: (u) => meter.addLlm(u),
     });
+    const left = () => (deadlineMs ? deadlineMs - Date.now() : Infinity);
+    const fallback = stepDownModel();
+    const first = fallback
+      ? Math.max(left() - STEP_DOWN_RESERVE_MS, Math.min(left(), MIN_LLM_ATTEMPT_MS))
+      : left();
+    const text = await call(Math.max(1, Math.min(LLM_STEP_TIMEOUT_MS, first)));
+    if (text != null || !fallback || left() < MIN_LLM_ATTEMPT_MS) return text;
+    return call(Math.min(LLM_STEP_TIMEOUT_MS, left()), fallback);
   };
 }
 
@@ -554,7 +585,7 @@ export async function runLiveAgent(
     analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({
-    llm: llmAdapterFor(meter),
+    llm: llmAdapterFor(meter, opts?.deadlineMs),
     tools: timed(buildLiveToolRegistry(ctx, { goal: userGoal }), meter),
     userGoal,
     maxSteps: opts?.maxSteps,

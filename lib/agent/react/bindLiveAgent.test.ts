@@ -35,7 +35,7 @@ jest.mock('../../api/rate-limit', () => ({
 const mockLog = jest.fn();
 jest.mock('../../logger', () => ({ structuredLog: (...a: unknown[]) => mockLog(...a) }));
 
-import { buildLiveToolRegistry, runLiveAgent, AGENT_ANALYZE_NOTE, AGENT_AUDIO_NOTE, AGENT_EDIT_NOTE, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, MAX_ANALYSES_PER_RUN, type AgentContext } from './bindLiveAgent';
+import { buildLiveToolRegistry, runLiveAgent, stepDownModel, LLM_STEP_TIMEOUT_MS, MIN_LLM_ATTEMPT_MS, STEP_DOWN_RESERVE_MS, AGENT_ANALYZE_NOTE, AGENT_AUDIO_NOTE, AGENT_EDIT_NOTE, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, MAX_ANALYSES_PER_RUN, type AgentContext } from './bindLiveAgent';
 
 const CTX = { userId: '11111111-2222-4333-8444-555555555555' };
 const ENV = { ...process.env };
@@ -197,6 +197,46 @@ test('Google-only (default): the brain is llmText with googleOnly, and the syste
   expect(opts.system).toContain(AGENT_MEDIA_NOTE);
   expect(opts.system).toContain('PERSONA X');
   expect(opts.system).not.toContain('orchestrate_media');
+});
+
+describe('each step fits the run deadline, and a miss steps down once (GG\'s Live task, 2026-10-25)', () => {
+  test('the step-down is the next Flash model of the chat chain: 3.6 Flash after 3.8 Flash', () => {
+    delete process.env.GEMINI_MODEL_FLASH;
+    delete process.env.GEMINI_CHAT_MODELS;
+    expect(stepDownModel()).toBe('gemini-3.6-flash');
+    process.env.GEMINI_MODEL_FLASH = 'gemini-3.6-flash';
+    expect(stepDownModel()).toBe('gemini-3.8-flash');
+  });
+
+  test('a Live run: the first attempt leaves room for the step-down; without a deadline it keeps the 40 s cap', async () => {
+    mockLlm.mockResolvedValueOnce('{"final":"ok"}');
+    await runLiveAgent('hello', CTX, { deadlineMs: Date.now() + 45_000 });
+    const t = mockLlm.mock.calls[0][0].timeoutMs as number;
+    expect(t).toBeLessThanOrEqual(45_000 - STEP_DOWN_RESERVE_MS);
+    expect(t).toBeGreaterThan(45_000 - STEP_DOWN_RESERVE_MS - 1_000);
+    expect(mockLlm.mock.calls[0][0].geminiModel).toBeUndefined();
+
+    mockLlm.mockResolvedValueOnce('{"final":"ok"}');
+    await runLiveAgent('hello', CTX);
+    expect(mockLlm.mock.calls[1][0].timeoutMs).toBe(LLM_STEP_TIMEOUT_MS);
+  });
+
+  test('a miss is retried once on the step-down model within what is left, and the task still answers', async () => {
+    mockLlm.mockResolvedValueOnce(null).mockResolvedValueOnce('{"final":"done on 3.6"}');
+    const r = await runLiveAgent('hello', CTX, { deadlineMs: Date.now() + 45_000 });
+    expect(r).toMatchObject({ answer: 'done on 3.6', stopReason: 'final' });
+    expect(mockLlm).toHaveBeenCalledTimes(2);
+    expect(mockLlm.mock.calls[1][0]).toMatchObject({ geminiModel: 'gemini-3.6-flash', googleOnly: true });
+    expect(mockLlm.mock.calls[1][0].timeoutMs).toBeLessThanOrEqual(45_000);
+  });
+
+  test('late in the run: the attempt gets only what is left, and with no time for a step-down the miss ends the run', async () => {
+    mockLlm.mockResolvedValueOnce(null);
+    const r = await runLiveAgent('hello', CTX, { deadlineMs: Date.now() + MIN_LLM_ATTEMPT_MS - 1_000 });
+    expect(r.stopReason).toBe('llm_error');
+    expect(mockLlm).toHaveBeenCalledTimes(1);
+    expect(mockLlm.mock.calls[0][0].timeoutMs).toBeLessThanOrEqual(MIN_LLM_ATTEMPT_MS - 1_000);
+  });
 });
 
 test.each([{ AI_GOOGLE_ONLY: '0' }, { AI_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-20-deepseek' }])(
