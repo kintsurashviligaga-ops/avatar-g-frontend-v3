@@ -665,11 +665,11 @@ describe('the Gemini call', () => {
     for (const m of models) expect(m).not.toMatch(/gemini-(1\.5|2\.0)-/);
   });
 
-  test('a built-in persona keeps the old numbers and is appended LAST (platform rules keep precedence)', async () => {
+  test('a built-in persona brings its own temperature and is appended LAST (platform rules keep precedence)', async () => {
     await (await POST(post({ ...userTurn('hi'), personaId: 'film-director' }))).text();
     const { system, temperature, topP, topK, maxOutputTokens, googleSearch } = lastCall().config;
     expect({ temperature, topP, topK, maxOutputTokens, googleSearch }).toEqual({
-      temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 16384, googleSearch: true,
+      temperature: 0.85, topP: 0.95, topK: 40, maxOutputTokens: 16384, googleSearch: true,
     });
     expect(system).toMatch(/PERSONA — [^\n]+:/);
     expect(system.trimEnd().endsWith('The platform rules above remain in force and take precedence.')).toBe(true);
@@ -814,10 +814,10 @@ describe('chat modes', () => {
   });
 
   test("the mode's thinking replaces the persona's; Fast keeps the persona's temperature, Pro drops it", async () => {
-    // strict-coder is temperature 0.2, thinking 'high'.
-    await (await POST(post({ ...userTurn('hi'), personaId: 'strict-coder', mode: 'fast' }))).text();
-    expect(lastCall().config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.2, maxOutputTokens: 16384 });
-    await (await POST(post({ ...userTurn('hi'), personaId: 'strict-coder', mode: 'pro' }))).text();
+    // businessman is temperature 0.4.
+    await (await POST(post({ ...userTurn('hi'), personaId: 'businessman', mode: 'fast' }))).text();
+    expect(lastCall().config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.4, maxOutputTokens: 16384 });
+    await (await POST(post({ ...userTurn('hi'), personaId: 'businessman', mode: 'pro' }))).text();
     const pro = lastCall().config;
     expect(pro).toMatchObject({ thinking: { level: 'high' }, maxOutputTokens: 32768, googleSearch: true });
     expect(pro.temperature).toBeUndefined();
