@@ -2,6 +2,7 @@
 // Usage: node run.mjs <mode> [avatarName]
 //   mode = names   → setups with several avatar names, no turn (setup errors cost nothing), prints which open
 //   mode = talk    → one session with avatarName, one Georgian text turn, records every server message for ~25 s
+//   mode = speak   → the same user turn as SPEECH over realtimeInput.audio (like the app's mic): heard, tool calls, answer
 //   mode = setup   → the EXACT setups the mint route builds for an avatar call (setups.json, dumped from route.test.ts with
 //                    the avatar on: full = actions + captions + resumption + compression, fullVad = + realtimeInputConfig,
 //                    noTools = the browser's no-tools retry), each closed the moment setupComplete arrives (no turn: free)
@@ -129,6 +130,107 @@ if (mode === 'names') {
     try { s.ws.close(); } catch {}
     await sleep(500);
   }
+  process.exit(0);
+}
+
+// speak: the user's turn as SPEECH (the app streams the mic; `talk` sends text). The words come from the voice model
+// reading PROMPT aloud (Vertex only, no other TTS), resampled to 16 kHz and streamed in 40 ms chunks at real time, then
+// silence, like an open mic. FIXTURE (default fullVad) is the app's exact setup; MODEL/LOCATION pick the session under
+// test (AS_VOICE=1 strips the avatar: the same setup as a plain voice call). Tool calls get app-like answers.
+if (mode === 'speak') {
+  const ttsLoc = process.env.TTS_LOCATION || 'europe-west4';
+  const ttsModel = `projects/${PROJECT}/locations/${ttsLoc}/publishers/google/models/gemini-live-2.5-flash-native-audio`;
+  const ttsUrl = `wss://${ttsLoc}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
+  const say = process.env.PROMPT || 'სურათი გამიკეთე: NASCAR-ის რბოლა.';
+  const pcm24 = await new Promise((resolve) => {
+    const ws = new WebSocket(ttsUrl, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    const chunks = []; let done = false;
+    const finish = () => { if (done) return; done = true; try { ws.close(); } catch {} resolve(Buffer.concat(chunks)); };
+    ws.on('open', () => ws.send(JSON.stringify({ setup: { model: ttsModel, generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } } },
+      systemInstruction: { parts: [{ text: 'You are a speech engine. Read the user message aloud exactly as written, word for word, in its own language, with nothing added before or after.' }] } } })));
+    ws.on('message', (raw) => {
+      const m = JSON.parse(raw.toString());
+      if (m.setupComplete) ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: say }] }], turnComplete: true } }));
+      for (const p of m.serverContent?.modelTurn?.parts ?? []) if (p.inlineData?.data) chunks.push(Buffer.from(p.inlineData.data, 'base64'));
+      if (m.serverContent?.turnComplete) finish();
+    });
+    ws.on('close', finish); ws.on('error', finish);
+    setTimeout(finish, 20000);
+  });
+  // 24 kHz → 16 kHz (linear), int16 LE.
+  const inN = pcm24.length >> 1; const outN = Math.floor(inN * 2 / 3); const pcm16 = Buffer.alloc(outN * 2);
+  for (let i = 0; i < outN; i++) {
+    const x = i * 1.5; const i0 = Math.floor(x); const f = x - i0;
+    const a = i0 < inN ? pcm24.readInt16LE(i0 * 2) : 0; const b = i0 + 1 < inN ? pcm24.readInt16LE((i0 + 1) * 2) : a;
+    pcm16.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(a + (b - a) * f))), i * 2);
+  }
+  const speechMs = Math.round(outN / 16);
+  const fixtures = JSON.parse(readFileSync(here('setups.json'), 'utf8'));
+  let setup = { ...fixtures[process.env.FIXTURE || 'fullVad'].setup, model };
+  if (process.env.AS_VOICE === '1') {
+    const { avatarConfig, ...rest } = setup;
+    setup = { ...rest, generationConfig: { ...rest.generationConfig, responseModalities: ['AUDIO'] } };
+  }
+  const st = open(null, { setup: withVoice(setup) });
+  const answers = [];
+  st.ws.on('message', (raw) => {
+    const m = JSON.parse(raw.toString());
+    const calls = m.toolCall?.functionCalls ?? [];
+    if (!calls.length) return;
+    const functionResponses = calls.map((c) => {
+      const response = c.name === 'prepare_generation'
+        ? { ok: true, summary: 'Wrote the image order into the chat on screen; Agent G answers it there (its price card). Nothing was generated and no credits were spent. Call get_screen_state in a moment: if waitingForYes shows a price, tell it and ask whether to start. On their clear yes call start_generation.' }
+        : c.name === 'get_screen_state'
+        ? { ok: true, studio: 'chat', waitingForYes: { tool: 'image', priceCredits: 5, priceText: '5 credits = 50 tetri' } }
+        : { ok: true };
+      answers.push(c.name);
+      return { id: c.id, name: c.name, response };
+    });
+    st.ws.send(JSON.stringify({ toolResponse: { functionResponses } }));
+  });
+  const ok = await Promise.race([st.ready, sleep(15000).then(() => 'timeout')]);
+  if (ok !== true) { console.log(JSON.stringify({ ok, close: st.close, error: st.error, speechMs })); process.exit(1); }
+  const mime = 'audio/pcm;rate=16000';
+  const CH = 640 * 2; // 40 ms
+  const silence = Buffer.alloc(CH);
+  const sentAt = Date.now() - st.t0;
+  for (let i = 0; i < pcm16.length; i += CH) {
+    st.ws.send(JSON.stringify({ realtimeInput: { audio: { mimeType: mime, data: pcm16.subarray(i, i + CH).toString('base64') } } }));
+    await sleep(40);
+  }
+  // An open mic: silence for up to 20 s more, ending early 6 s after the last tool/turn activity.
+  let last = Date.now();
+  let seen = 0;
+  for (let i = 0; i < 500 && !st.close; i++) {
+    st.ws.send(JSON.stringify({ realtimeInput: { audio: { mimeType: mime, data: silence.toString('base64') } } }));
+    await sleep(40);
+    if (st.msgs.length !== seen) {
+      seen = st.msgs.length;
+      if (st.msgs.some((x) => x.t > last - st.t0 && (x.m.toolCall || x.m.serverContent?.turnComplete || x.m.serverContent?.outputTranscription))) last = Date.now();
+    }
+    if (Date.now() - last > 8000 && Date.now() - st.t0 > sentAt + speechMs + 4000) break;
+  }
+  try { st.ws.close(); } catch {}
+  await sleep(300);
+  const ev = [];
+  let inText = ''; let outText = ''; let usage = null;
+  for (const { t, m } of st.msgs) {
+    if (m.usageMetadata) usage = m.usageMetadata;
+    const sc = m.serverContent;
+    if (sc?.inputTranscription?.text) inText += sc.inputTranscription.text;
+    if (sc?.outputTranscription?.text) outText += sc.outputTranscription.text;
+    if (m.toolCall) ev.push({ t: t - sentAt, toolCall: (m.toolCall.functionCalls ?? []).map((c) => `${c.name} ${JSON.stringify(c.args ?? {}).slice(0, 160)}`) });
+    if (sc?.turnComplete) ev.push({ t: t - sentAt, turnComplete: true });
+    if (sc?.interrupted) ev.push({ t: t - sentAt, interrupted: true });
+  }
+  const report = {
+    mode: 'speak', model: MODEL, location: LOCATION, asVoice: process.env.AS_VOICE === '1', fixture: process.env.FIXTURE || 'fullVad',
+    said: say, speechMs, ttsBytes: pcm24.length, setupMs: st.setupMs, close: st.close,
+    heard: inText.slice(0, 200), answered: outText.slice(0, 400), toolsAnswered: answers, events: ev.slice(0, 30),
+    totalTokens: usage?.totalTokenCount ?? null,
+  };
+  writeFileSync(here(`report-speak-${process.env.AS_VOICE === '1' ? 'voice' : 'avatar'}.json`), JSON.stringify(report, null, 2));
+  console.log(JSON.stringify(report, null, 2));
   process.exit(0);
 }
 
