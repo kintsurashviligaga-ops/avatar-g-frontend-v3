@@ -586,10 +586,11 @@ describe('geminiLive — GeminiLiveSession', () => {
 describe('talking avatar (gemini-3.8-live)', () => {
   const base = { model: 'gemini-3.8-live', systemInstruction: 'hi', voiceName: 'Aoede' };
 
-  it('answers in VIDEO, drops the voice, puts avatarConfig at the top of setup', () => {
+  it('answers in VIDEO with the chosen voice, puts avatarConfig at the top of setup', () => {
     const { setup } = buildLiveSetup({ ...base, transcribe: true, avatar: { avatarName: 'Kira', videoBitrateBps: 1_500_000 } });
     expect(setup.generationConfig.responseModalities).toEqual(['VIDEO']);
-    expect(setup.generationConfig.speechConfig).toBeUndefined();
+    // Without it the avatar speaks in the model's default (male) voice.
+    expect(setup.generationConfig.speechConfig).toEqual({ voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } });
     expect(setup.avatarConfig).toEqual({ avatarName: 'Kira', videoBitrateBps: 1_500_000 });
     expect(setup.outputAudioTranscription).toEqual({});
     expect(JSON.stringify(setup.generationConfig)).not.toContain('avatar');
