@@ -5,7 +5,25 @@ opens Vertex AI with its own Cloud Run service account and pipes frames both way
 The rules live in `lib/voice/relay` (ticket, setup lock, allowed frames, limits, one log line per session) and are
 unit-tested there.
 
-Status: **BUILT, not deployed.** Nothing here has spoken to Vertex AI yet.
+Status: deployed as `live-relay` in us-central1 (2026-10-25), min-instances 1, behind `LIVE_RELAY_URL` (Live is open to
+admins only, `LIVE_AUDIENCE`).
+
+## Region
+
+Measured from Tbilisi (GG's network, 2026-10-25, gemini-live-2.5-flash-native-audio, 3 runs each, median):
+
+| Vertex region | setupComplete | first audio |
+|---|---|---|
+| us-central1 | 1235 ms | 2025 ms |
+| europe-west4 | 564 ms | 1185 ms |
+| europe-west1 | 550 ms | 1195 ms |
+
+The TLS handshake is the same everywhere (Google's edge is local); the difference is the trip to the region's Live
+backend. Put the relay and Vertex in the SAME European region (`--region europe-west4` and
+`VERTEX_LIVE_LOCATION=europe-west4`), so audio does not cross the Atlantic twice. All three regions serve the model.
+
+Each `relay.session_end` line also says where the session waited: `setupMs` (connect → setup frame), `upstreamMs`
+(setup → Vertex socket open) and `readyMs` (setup → Vertex's setupComplete); -1 means that step never happened.
 
 ## How a call runs
 
@@ -44,16 +62,20 @@ gcloud iam service-accounts create live-relay --display-name="Live relay"
 gcloud projects add-iam-policy-binding <PROJECT> --member=serviceAccount:live-relay@<PROJECT>.iam.gserviceaccount.com --role=roles/aiplatform.user
 openssl rand -base64 48 | tr -d '\n' | gcloud secrets create live-relay-ticket-secret --data-file=-
 gcloud secrets add-iam-policy-binding live-relay-ticket-secret --member=serviceAccount:live-relay@<PROJECT>.iam.gserviceaccount.com --role=roles/secretmanager.secretAccessor
-gcloud run deploy live-relay --source . --region us-central1 \
+gcloud run deploy live-relay --source . --region europe-west4 \
   --service-account live-relay@<PROJECT>.iam.gserviceaccount.com \
   --allow-unauthenticated --timeout 3600 --max-instances 2 --concurrency 50 \
   --set-secrets LIVE_RELAY_TICKET_SECRET=live-relay-ticket-secret:latest \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=<PROJECT>,VERTEX_LIVE_LOCATION=us-central1,LIVE_RELAY_MODELS=<vertex model ids>
+  --set-env-vars GOOGLE_CLOUD_PROJECT=<PROJECT>,VERTEX_LIVE_LOCATION=europe-west4,LIVE_RELAY_MODELS=<vertex model ids>
 ```
 
 `--allow-unauthenticated` is needed because browsers connect directly; the ticket is the authentication. The same
 secret goes into Vercel as `LIVE_RELAY_TICKET_SECRET`, with `LIVE_RELAY_URL=wss://<service host>/v1/live`. Set them on
 **Preview first**. Setting them on Production turns Live on for every user.
+
+Moving region: deploy the same service in the new region (same secret, same env, the new `VERTEX_LIVE_LOCATION`), set
+`LIVE_RELAY_URL` to the new host on Preview, test, then on Production, then delete the old region's service (or set its
+`--min-instances 0`), so the warm instance is not paid twice. To go back, point `LIVE_RELAY_URL` at the old host again.
 
 Rollback: remove `LIVE_RELAY_URL` from Vercel. The app goes back to the REST voice loop at once. Then
 `gcloud run services delete live-relay`.
