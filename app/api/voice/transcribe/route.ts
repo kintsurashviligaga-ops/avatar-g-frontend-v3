@@ -3,7 +3,7 @@ import { acceptTranscript } from '@/lib/voice/sttAccept';
 import { transcriptSpeechLang } from '@/lib/voice/speechLang';
 import {
   geminiAudioInput,
-  hasGeminiSttKey,
+  geminiSttBlocker,
   transcribeWithGeminiDetailed,
   GeminiSttError,
   type GeminiSttResult,
@@ -143,7 +143,9 @@ export async function POST(req: NextRequest) {
     let provider = 'none';
     let code: 'unsupported_format' | 'stt_unavailable' | undefined;
     let geminiErrMsg: string | null = null;
-    const geminiKeyPresent = hasGeminiSttKey();
+    // Why Vertex AI cannot serve (variable names only), or null. It is the owner's reason when no call is made at all.
+    const blocker = geminiSttBlocker();
+    const geminiKeyPresent = !blocker;
 
     const runGemini = async (): Promise<void> => {
       if (!gem.mimeType) { code = 'unsupported_format'; return; }
@@ -168,7 +170,7 @@ export async function POST(req: NextRequest) {
     const timing = () => ({ 'Server-Timing': `stt;dur=${Date.now() - sttStartedAt}` });
     // Gemini is the whole engine.
     if (geminiKeyPresent) await runGemini();
-    else code = 'stt_unavailable';
+    else { code = 'stt_unavailable'; geminiErrMsg = blocker; }
 
     if (text) code = undefined;
     const headers = timing();

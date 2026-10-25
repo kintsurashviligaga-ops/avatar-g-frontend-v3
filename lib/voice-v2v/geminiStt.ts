@@ -20,24 +20,37 @@ import 'server-only';
  */
 import { NotConfiguredError } from '@/lib/contracts/geminiTransport';
 import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
-import { DEFAULT_STT_MODEL, isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
+import { DEFAULT_CHAT_MODELS, DEFAULT_STT_MODEL, STT_MODELS, isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
 
 /** True when Vertex AI can serve a call (the name predates Vertex; no key is involved). */
 export function hasGeminiSttKey(): boolean {
   return !googleTransportBlocker();
 }
 
+/** Why Vertex AI cannot serve a call right now (names only, never values), or null. The route shows it to the owner. */
+export function geminiSttBlocker(): string | null {
+  return googleTransportBlocker();
+}
+
 // ─── Model chain ─────────────────────────────────────────────────────────────
 
 /**
- * Step-downs after the configured STT model. Google RETIRES aliases without notice (gemini-2.0-flash went 404 and
- * silently killed Georgian dictation), so a model-missing / overloaded answer moves to the next id. Retired ids
- * (gemini-2.0-*, 1.5-*) never appear — `gemini-2.0-flash-lite` used to be the last step here — and neither does a
- * 2.5 id: a new Google project's key answers 404 "no longer available to new users" for them. The default leads the
- * step-downs so an operator override that fails still falls back to it (the chain de-duplicates). `gemini-flash-latest`
- * was the last step until v3.1: it is a Gemini-API-only alias and answers 404 on Vertex AI.
+ * Step-downs after the configured STT model: the default, then the chat's Flash chain (DEFAULT_CHAT_MODELS.standard,
+ * kept to STT_MODELS). Google RETIRES aliases without notice (gemini-2.0-flash went 404 and silently killed Georgian
+ * dictation), so a model-missing / overloaded / rate-limited answer moves to the next id. Retired ids (gemini-2.0-*,
+ * 1.5-*) and 2.5 ids never appear (a new Google project gets 404 "no longer available to new users" for them), nor does
+ * `gemini-flash-latest`, a Gemini-API-only alias that answers 404 on Vertex AI.
+ *
+ * ⚠️ THE CHAT CAN STEP DOWN WHERE THE MIC COULD NOT. On 2026-10-24 GG's chat answered while every dictation said
+ * "speech recognition is unavailable", through the same Vertex project and token. The chat rotates 3.8 → 3.6 → 3.5
+ * Flash on a missing model or a 429 (Vertex quotas are per model); the mic tried 3.8 and 3.7 Flash and stopped at the
+ * first 429. Whether that is why the mic failed is UNVERIFIED (Google's reason was not readable then); the mic now
+ * steps down through the chat's models either way. 3.7 Flash left the list: no surface has seen it answer here.
  */
-const STT_STEP_DOWNS = [DEFAULT_STT_MODEL, 'gemini-3.7-flash'] as const;
+const STT_STEP_DOWNS: readonly string[] = [
+  DEFAULT_STT_MODEL,
+  ...DEFAULT_CHAT_MODELS.standard.filter((m) => STT_MODELS.includes(m)),
+];
 
 /**
  * [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped. Every id is one Vertex AI serves:
@@ -226,15 +239,15 @@ export interface GeminiSttResult {
 }
 
 /**
- * A transcript needs no reasoning and thinking adds seconds, so the models we have VERIFIED get their thinking turned
- * down with the field THEY take: the 2.5 Flash family `thinkingBudget: 0`; `gemini-3.8-flash` (the default) its
- * documented floor `thinkingLevel: 'low'` — `'minimal'` is a 400 on it (verified live 2026-10-02, together with 200 for
- * 'low'). A wrong field is a 400 that does not rotate, and `-latest` aliases can change family under us — so everything
- * else gets the model default.
+ * A transcript needs no reasoning and thinking adds seconds, so thinking is turned down with the field each family
+ * takes: the 2.5 Flash family `thinkingBudget: 0`; every Gemini 3 model `thinkingLevel: 'low'`. 'low' is accepted by
+ * all of them (lib/ai/google/chatStream thinkingConfigFor), while `'minimal'` is a 400 on 3.7 / 3.8 Flash (verified
+ * live on 3.8 Flash 2026-10-02, together with 200 for 'low'). A 400 does not rotate, so 'low' everywhere is the safe
+ * choice for the step-downs too. Anything else (`-latest` aliases can change family under us) gets the model default.
  */
 function thinkingFor(model: string): Record<string, unknown> | undefined {
   if (/^gemini-2\.5-flash(?:-lite)?(?:-|$)/i.test(model)) return { thinkingBudget: 0 };
-  if (/^gemini-3\.8-flash$/i.test(model)) return { thinkingLevel: 'low' };
+  if (/^gemini-3(?:\.\d+)?-/i.test(model)) return { thinkingLevel: 'low' };
   return undefined;
 }
 
@@ -247,11 +260,15 @@ function cleanTranscript(raw: string): string {
   return t;
 }
 
+/** Answers that move to the next model: Vertex AI quotas and capacity are per model, as the chat's rotation assumes. */
+const ROTATES: ReadonlySet<GeminiSttErrorCode> = new Set(['model_missing', 'unavailable', 'rate_limited']);
+
 /**
- * Transcribe a short clip with Gemini. Rotates to the next model only when the model is missing or overloaded;
- * an auth / quota / rate-limit / bad-request answer throws a GeminiSttError at once (another model on the same project
- * would fail the same way — and bill another attempt). Bounded by ONE overall deadline across all attempts, so it
- * can never outlive the route's maxDuration.
+ * Transcribe a short clip with Gemini. Rotates to the next model when the model is missing, overloaded or rate
+ * limited (a 429 is that model's bucket on Vertex AI; Google bills no failed call); an auth / quota / bad-request
+ * answer throws a GeminiSttError at once (another model on the same project would fail the same way). Bounded by ONE
+ * overall deadline across all attempts, so it can never outlive the route's maxDuration. The error names every model
+ * tried and its status, so the owner's warning shows the whole chain, not only the last answer.
  */
 export async function transcribeWithGeminiDetailed(
   audioBase64: string,
@@ -268,13 +285,18 @@ export async function transcribeWithGeminiDetailed(
 
   const deadline = Date.now() + Math.max(1_000, opts.timeoutMs ?? 22_000);
   let last: GeminiSttError | null = null;
+  const tried: string[] = [];
+  /** `gemini-3.8-flash 429, gemini-3.6-flash 404: ` before the answer that ended the chain; '' after one attempt. */
+  const chain = (): string => (tried.length > 1 ? `${tried.join(', ')}: ` : '');
 
   for (const model of models) {
     const remaining = deadline - Date.now();
     if (remaining < 500) break;
     const thinkingConfig = thinkingFor(model);
     const body = JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: sttPrompt(language) }, { inline_data: { mime_type: mimeType, data: audioBase64 } }] }],
+      // camelCase, as every other Vertex AI caller here sends it (the chat SDK, the image studio). Proto JSON also
+      // accepts `inline_data`, the Developer API's documented spelling this used to send.
+      contents: [{ role: 'user', parts: [{ text: sttPrompt(language) }, { inlineData: { mimeType, data: audioBase64 } }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
     });
 
@@ -289,7 +311,8 @@ export async function transcribeWithGeminiDetailed(
     } catch (e) {
       if (e instanceof NotConfiguredError) throw new GeminiSttError(e.message, 'auth', undefined, model);
       // A timeout / reset is not the model's fault, and the deadline is shared — stop here.
-      throw new GeminiSttError(`Gemini STT network error on ${model}: ${e instanceof Error ? e.name : 'unknown'}`, 'network', undefined, model);
+      tried.push(`${model} network`);
+      throw new GeminiSttError(`${chain()}Gemini STT network error on ${model}: ${e instanceof Error ? e.name : 'unknown'}`, 'network', undefined, model);
     }
 
     if (res.ok) {
@@ -309,8 +332,9 @@ export async function transcribeWithGeminiDetailed(
     const detail = await res.text().catch(() => '');
     const code = classifySttStatus(res.status, detail);
     // Upstream text is trimmed and kept server-side (the route shows it to admins in ?diag only).
-    last = new GeminiSttError(`Gemini STT failed (${res.status}) on ${model}: ${detail.slice(0, 160)}`, code, res.status, model);
-    if (code !== 'model_missing' && code !== 'unavailable') throw last;
+    tried.push(`${model} ${res.status}`);
+    last = new GeminiSttError(`${chain()}Gemini STT failed (${res.status}) on ${model}: ${detail.slice(0, 160)}`, code, res.status, model);
+    if (!ROTATES.has(code)) throw last;
   }
 
   throw last ?? new GeminiSttError('Gemini STT failed: no model answered before the deadline', 'network');
