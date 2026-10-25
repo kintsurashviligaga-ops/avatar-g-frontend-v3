@@ -39,6 +39,8 @@ import { LIVE_AGENT_FILES_MAX, liveAttachedRefs } from '@/lib/voice/liveAttached
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { setChatMode } from '@/lib/chat/chatModeStore';
+import { selectPersona } from '@/components/chat/ModelSwitcher';
+import { BUILT_IN_PERSONAS } from '@/lib/services/personas/personas';
 import type { LiveFunctionResponse } from '@/lib/voice/geminiLive';
 import {
   LIVE_ACTION_EVENT,
@@ -122,6 +124,8 @@ export interface LiveActionEnv {
   openArtifact: (detail: OpenArtifactDetail) => boolean;
   /** The chat model picker (a global store, so it works on any page). Defaults to lib/chat/chatModeStore. */
   setChatModel?: (model: LiveChatModel) => void;
+  /** set_persona: the persona the chat and the call use ('' = none). Defaults to the picker's own store and event. */
+  setPersona?: (id: string) => void;
   /**
    * The countdown ran out and the user's own words were a yes: the studio runs `detail.target` (a prepared render, or
    * one Agent G card) with `detail.approval`. True when a studio took it; it may refuse through `detail.reply`.
@@ -398,6 +402,8 @@ export interface LiveCallOutcome {
   screen?: true;
   /** call_view: the model asked for this view. */
   view?: LiveCallView;
+  /** set_persona: the persona now chosen ('' = none) — the host reconnects the call in it. */
+  persona?: string;
   /**
    * A start was accepted: the countdown to run it (the host shows it with Cancel). `since`: when the price or the plan
    * was told — only the user's words after it can be the yes that runs it.
@@ -825,6 +831,19 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
       (env.setChatModel ?? ((m: LiveChatModel) => setChatMode(m)))(action.model);
       return { response: answer({ ok: true, summary: `The text chat now answers with ${MODEL_NAME[action.model]}.` }) };
     }
+    case 'set_persona': {
+      const id = action.persona === 'default' ? '' : action.persona;
+      (env.setPersona ?? selectPersona)(id);
+      const name = BUILT_IN_PERSONAS.find((p) => p.id === id)?.name.en ?? 'Agent G (no persona)';
+      return {
+        response: answer({
+          ok: true,
+          summary: `The persona is now ${name}, in the text chat too. The call reconnects in that role right after your reply: `
+            + 'say one short line now, already in the new role.',
+        }),
+        persona: id,
+      };
+    }
     case 'call_view':
       return {
         response: answer({
@@ -1112,6 +1131,8 @@ export interface UseLiveActionsResult {
   screenSeq: number;
   /** The last call_view the model asked for (with a sequence number, so asking twice still applies). */
   viewRequest: { view: LiveCallView; seq: number } | null;
+  /** The last persona set_persona chose ('' = none), numbered like viewRequest: the host reconnects the call in it. */
+  personaRequest: { id: string; seq: number } | null;
   /** A confirmed generation counting down, or how the last one ended. */
   pendingRun: LivePendingRun | null;
   /** The user's Cancel on the countdown. */
@@ -1134,6 +1155,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   const [endRequested, setEndRequested] = useState(false);
   const [screenSeq, setScreenSeq] = useState(0);
   const [viewRequest, setViewRequest] = useState<{ view: LiveCallView; seq: number } | null>(null);
+  const [personaRequest, setPersonaRequest] = useState<{ id: string; seq: number } | null>(null);
   const [pendingRun, setPendingRun] = useState<LivePendingRun | null>(null);
   const envRef = useRef(env);
   envRef.current = env;
@@ -1259,6 +1281,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
     let end = false;
     let screen = false;
     let view: LiveCallView | null = null;
+    let persona: string | undefined;
     let run: { id: string; run: LiveRun } | null = null;
     let cancel = false;
     const pendings: Array<{ index: number; promise: Promise<LiveFunctionResponse> }> = [];
@@ -1284,6 +1307,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
       if (out.endCall) end = true;
       if (out.screen) screen = true;
       if (out.view) view = out.view;
+      if (out.persona !== undefined) persona = out.persona;
       if (out.cancelRun) { cancel = true; run = null; }
       if (out.run) run = { id: typeof call?.id === 'string' && call.id ? call.id : localId, run: out.run };
     }
@@ -1297,6 +1321,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
       if (end) setEndRequested(true);
       if (screen) setScreenSeq((n) => n + 1);
       if (view) { const v = view; setViewRequest((p) => ({ view: v, seq: (p?.seq ?? 0) + 1 })); }
+      if (persona !== undefined) { const id = persona; setPersonaRequest((p) => ({ id, seq: (p?.seq ?? 0) + 1 })); }
       if (cancel) stopRun();
       if (run) armRun(run.id, run.run);
     }
@@ -1318,7 +1343,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   }, [stopRun]);
 
   return {
-    cards, endRequested, screenSeq, viewRequest, pendingRun, cancelRun, onToolCall, onToolCallCancellation, onHeard,
-    registerPlan, planTold,
+    cards, endRequested, screenSeq, viewRequest, personaRequest, pendingRun, cancelRun, onToolCall, onToolCallCancellation,
+    onHeard, registerPlan, planTold,
   };
 }
