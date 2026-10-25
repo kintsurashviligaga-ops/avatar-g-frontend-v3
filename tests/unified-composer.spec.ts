@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page, type Route } from '@playwright/test';
-import { quoteCredits } from '@/lib/credits/quote';
 import {
   openStudio, pinSignedIn, say, attachClipsAndTrack, typeFilmPrompt, sendFilm, waitForClipCard,
   CLIP_JOB_ID, CLIP_URL, FILE_INPUT, JOB_ID, MASTER_URL, OMNI_EDIT_JOB_ID, OMNI_EDIT_URL, taskView, json, type Locale,
