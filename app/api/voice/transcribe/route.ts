@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { acceptTranscript } from '@/lib/voice/sttAccept';
-import { transcriptSpeechLang } from '@/lib/voice/speechLang';
+import { heardSpeechLang } from '@/lib/voice/speechLang';
 import {
   geminiAudioInput,
   geminiSttBlocker,
@@ -148,6 +148,8 @@ export async function POST(req: NextRequest) {
     const gem = geminiAudioInput(declaredMime, new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 64)));
 
     let text = '';
+    /** The language code the model named for the speech (`[ru] …`), when it named one. */
+    let spoken: string | null = null;
     let provider = 'none';
     let code: 'unsupported_format' | 'stt_unavailable' | undefined;
     let geminiErrMsg: string | null = null;
@@ -160,7 +162,7 @@ export async function POST(req: NextRequest) {
       try {
         const result = await transcribeWithGeminiDetailed(audioBase64, gem.mimeType, language, trialModel ? { models: [trialModel] } : {});
         await bookStt(result, user?.id);
-        if (acceptTranscript(result.text, language)) { text = result.text; provider = 'gemini'; }
+        if (acceptTranscript(result.text, language)) { text = result.text; spoken = result.spoken ?? null; provider = 'gemini'; }
       } catch (geminiErr) {
         geminiErrMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
         // A 400 on a container Gemini does not document as audio is a FORMAT miss, not an outage.
@@ -185,7 +187,7 @@ export async function POST(req: NextRequest) {
     // Only a miss has anything to diagnose, so the admin list is read for a miss only: the dictation's final pass
     // always asks (components/chat/composer/useDictation transcribeUrlFor), and a transcript must not wait on the check.
     const diagAllowed = wantDiag && !text && (await isAdminUser(user?.email));
-    const heard = text ? transcriptSpeechLang(text) : null;
+    const heard = text ? heardSpeechLang(text, spoken) : null;
     const payload = { text, provider, ...(heard ? { language: heard } : {}), ...(code ? { code } : {}) };
     if (diagAllowed) {
       return NextResponse.json({
