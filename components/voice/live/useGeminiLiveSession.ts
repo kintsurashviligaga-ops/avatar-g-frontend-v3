@@ -55,7 +55,7 @@
  */
 import { useCallback, useEffect, useReducer, useRef, useState, type MutableRefObject } from 'react';
 
-import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
+import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, livePersonaReminder, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import {
   GeminiLiveSession,
@@ -83,6 +83,13 @@ import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
 /** setupComplete deadline per handshake. A hung handshake then retries once instead of spinning forever. */
 export const LIVE_SETUP_TIMEOUT_MS = 8000;
+/**
+ * The same deadline through our Live relay. A relay scaled to zero boots first (GG's call 2026-10-25: upstream not
+ * open after 6.5 s), and the relay's own upstream handshake may take 10 s — 8 s gave up on a call about to open.
+ */
+export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
+/** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. */
+const MAX_TIMEOUT_RETRIES = 1;
 /** Window event the default transcript sink dispatches (detail: LiveTurn) when the host passes no onTurn. */
 export const LIVE_TRANSCRIPT_EVENT = 'myavatar:live-transcript';
 
@@ -280,6 +287,12 @@ export interface UseGeminiLiveSessionResult {
   retry: () => void;
   /** Local barge-in: stop playback now and drop the rest of the answer. */
   interrupt: () => void;
+  /**
+   * A FRESH session inside the same call (mic and screen kept): the next mint reads the options as they are now — a
+   * persona chosen by voice (set_persona) takes over. The chat so far rides along as for any fresh session. False when
+   * there is no ready call to renew.
+   */
+  renew: () => boolean;
   setMuted: (muted: boolean) => void;
   toggleMute: () => void;
   sendVideoFrame: (frameBase64: string, mimeType?: string) => void;
@@ -403,6 +416,7 @@ export function buildLiveInstruction(opts: {
   if (!text.includes(LIVE_SPOKEN_RULE)) text = `${text}\n\n${LIVE_SPOKEN_RULE}`;
   text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
+  if (personaActive && !override) text = `${text}\n${livePersonaReminder(profile)}`;
   return {
     systemInstruction: text,
     voiceName: live.voiceName,
@@ -618,7 +632,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const readyRef = useRef(false);
   /** Tool answers that came back after the connection was renewed: told to the new connection as [App] notes. */
   const lateAnswersRef = useRef<string[]>([]);
-  const tokenRef = useRef<{ token: string; expiresAtMs: number | null } | null>(null);
+  const tokenRef = useRef<{ token: string; expiresAtMs: number | null; relayUrl?: string } | null>(null);
   const modelRef = useRef<string | null>(null);
   const serverSetupRef = useRef<Obj | null>(null);
   const handleRef = useRef<string | null>(null);
@@ -626,6 +640,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const actionsOffRef = useRef(false); // this call gave up the UI-action declarations after a failed handshake
   const planRef = useRef<PlanStep[]>([]);
   const stepRef = useRef(0);
+  const timeoutRetriesRef = useRef(0); // same-setup retries the current plan spent on handshakes that timed out
   const phaseRef = useRef<'initial' | 'resume'>('initial');
   const reconnectingRef = useRef(false);
   const resumesRef = useRef(0);
@@ -922,7 +937,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     } finally {
       if (mintTimer) clearTimeout(mintTimer);
     }
-    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown };
+    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
     if (!res.ok || !token) {
       if (res.status === 401) return { ok: false, code: 'auth' };
@@ -932,7 +947,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     if (gen !== genRef.current) return { ok: true }; // a later call owns the refs now; its caller bails on gen anyway
     const exp = typeof j.expiresAt === 'string' ? Date.parse(j.expiresAt) : NaN;
-    tokenRef.current = { token, expiresAtMs: Number.isFinite(exp) ? exp : null };
+    // A relay ticket opens our Live relay (lib/voice/liveMint); only a wss:// URL is taken.
+    const relayUrl = typeof j.relayUrl === 'string' && j.relayUrl.startsWith('wss://') ? j.relayUrl : undefined;
+    tokenRef.current = { token, expiresAtMs: Number.isFinite(exp) ? exp : null, ...(relayUrl ? { relayUrl } : {}) };
     mintedAtRef.current = deps().now();
     modelRef.current = typeof j.model === 'string' ? j.model : null;
     // /api/voice/live answers `setupMessage` (the frame it locked into the token); `setup` is accepted for older routes.
@@ -1151,16 +1168,24 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     // The deadline runs from CONSTRUCTION, not from socket open (GeminiLiveSession's own setupTimeoutMs only arms
     // on open, so a socket stuck in CONNECTING would never time out). Expiry = a close before setupComplete.
     clearHandshakeTimer();
-    const timeoutMs = optsRef.current.setupTimeoutMs ?? LIVE_SETUP_TIMEOUT_MS;
+    const timeoutMs = optsRef.current.setupTimeoutMs ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
     handshakeTimerRef.current = setTimeout(() => {
       handshakeTimerRef.current = null;
       if (!current() || readyRef.current) return;
       sessionRef.current = null; // detach first: the close below must not be handled twice
       try { session.close(); } catch { /* noop */ }
+      // ⚠️ GG 2026-10-25: „ვიდეო პანელი გახსენი“ did nothing. A cold relay ran out the clock, the plan's next step
+      // dropped the UI actions, and the call that opened could not open a panel. A handshake that ran out of time
+      // was never REFUSED: it retries the same setup on a fresh ticket (a ticket opens one new session) first.
+      const step = planRef.current[stepRef.current];
+      if (step && timeoutRetriesRef.current < MAX_TIMEOUT_RETRIES) {
+        timeoutRetriesRef.current += 1;
+        planRef.current.splice(stepRef.current + 1, 0, { freshToken: true, handle: step.handle, ...(step.degrade ? { degrade: true } : {}) });
+      }
       onSessionClosed();
     }, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(
-      { token: tok.token, setupMessage: buildSetupMessage(handle) },
+      { token: tok.token, ...(tok.relayUrl ? { relayUrl: tok.relayUrl } : {}), setupMessage: buildSetupMessage(handle) },
       {
         onOpen: () => { opened = true; },
         onSetupComplete: () => { if (current()) onReady(session); },
@@ -1241,9 +1266,29 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       { freshToken: true, handle: null },
     ];
     stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
     phaseRef.current = 'resume';
     void runStepRef.current();
   };
+
+  const renew = useCallback((): boolean => {
+    if (!activeRef.current || reconnectingRef.current || !readyRef.current) return false;
+    reconnectingRef.current = true;
+    clearGoAwayTimer();
+    const old = sessionRef.current;
+    sessionRef.current = null; // first, so the old socket's close is ignored
+    readyRef.current = false;
+    try { old?.close(); } catch { /* noop */ }
+    // The old handle resumes the OLD setup (the relay and Google refuse a changed one): a new session, then once more.
+    handleRef.current = null;
+    if (!isPlaying()) setStatusSafe('reconnecting');
+    planRef.current = [{ freshToken: true, handle: null }, { freshToken: true, handle: null }];
+    stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
+    phaseRef.current = 'resume';
+    void runStepRef.current();
+    return true;
+  }, [clearGoAwayTimer, isPlaying, setStatusSafe]);
 
   // ── Mic ingest (worklet / ScriptProcessor → VAD → socket or pre-setup buffer) ──
   const ingest = useCallback((pcm: Int16Array, rms: number) => {
@@ -1599,6 +1644,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       { freshToken: true, handle: undefined, degrade: true },
     ];
     stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
     openSession(planRef.current[0]!.handle);
   }, [attachMic, deps, emitHeard, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
 
@@ -1704,7 +1750,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
-    start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
+    start, stop, retry, interrupt, renew, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
   };
 }
 

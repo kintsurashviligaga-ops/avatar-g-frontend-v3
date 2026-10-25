@@ -64,10 +64,16 @@ jest.mock('../../../../lib/memory/context', () => ({ memoryContextOf: (u: string
 // The Live minter (lib/voice/liveMint): none exists under v3.1. Mocked as present so the server-owned lock stays pinned;
 // `mockMinterPresent = false` is the production state.
 let mockMinterPresent = true;
+let mockRelayUrl: string | undefined;
 const mockMint = jest.fn();
+let mockAudienceAllows = true;
+const mockAudience = jest.fn();
+jest.mock('../../../../lib/voice/liveAudience', () => ({
+  liveAudienceAllows: async (...a: unknown[]) => { mockAudience(...a); return mockAudienceAllows; },
+}));
 jest.mock('../../../../lib/voice/liveMint', () => ({
   LIVE_TRANSPORT_UNAVAILABLE: 'no Live transport',
-  liveTokenMinter: () => (mockMinterPresent ? { mint: (...a: unknown[]) => mockMint(...a) } : null),
+  liveTokenMinter: () => (mockMinterPresent ? { mint: (...a: unknown[]) => mockMint(...a), ...(mockRelayUrl ? { wsUrl: mockRelayUrl } : {}) } : null),
 }));
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -128,6 +134,8 @@ beforeEach(() => {
   process.env.GEMINI_API_KEY = 'test-gemini-key'; // present on purpose: the route must never read or send it
   budgetMock.mockResolvedValue(true);
   mockMinterPresent = true;
+  mockAudienceAllows = true;
+  mockRelayUrl = undefined;
   mintSpy.mockReset().mockImplementation(async () =>
     new Response(JSON.stringify({ name: 'auth_tokens/eph-123' }), { status: 200 }));
   netSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => {
@@ -168,6 +176,24 @@ describe('gates', () => {
     expect(res.status).toBe(401);
     expect(ipLimitMock).toHaveBeenCalledWith(expect.anything(), RATE_LIMITS.VOICE_TOKEN);
     expect(mintSpy).not.toHaveBeenCalled();
+  });
+
+  test('outside the rollout audience → the same 503 as no transport, after sign-in, before the daily cap and the mint', async () => {
+    mockAudienceAllows = false;
+    const res = await POST(post({}));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'live_transport_unavailable' });
+    expect(mockAudience).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }));
+    expect(perUserMock).not.toHaveBeenCalled();
+    expect(budgetMock).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
+    expect(logMock).toHaveBeenCalledWith('info', 'voice.live.audience_refused', { audience: 'admins' });
+  });
+
+  test('signed out is a 401 before the audience is asked', async () => {
+    mockUserId = null;
+    await POST(post({}));
+    expect(mockAudience).not.toHaveBeenCalled();
   });
 
   test('the per-user daily cap is keyed on the session user, never a body userId', async () => {
@@ -224,6 +250,19 @@ describe('the mint', () => {
       locale: 'ka',
     });
     expect(j.setupMessage).toEqual({ setup: s });
+  });
+
+  test('a relay minter: the browser is told where to connect, and the ticket is minted for the session user', async () => {
+    mockRelayUrl = 'wss://live-relay.example.run.app/v1/live';
+    const res = await POST(post({ userId: 'ignored' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ token: 'auth_tokens/eph-123', relayUrl: 'wss://live-relay.example.run.app/v1/live' });
+    expect(mintBody().subject).toBe('user-1');
+  });
+
+  test('no relay: no relayUrl in the answer (the browser dials Google as before)', async () => {
+    const j = await (await POST(post({}))).json();
+    expect(j.relayUrl).toBeUndefined();
   });
 
   test('the instruction: live persona + Google-only platform prompt + the spoken-call rule; no stale vendors', async () => {

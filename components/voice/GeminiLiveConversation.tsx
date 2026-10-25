@@ -136,21 +136,29 @@ export default function GeminiLiveConversation({
 }: Props) {
   const loc = normalizeVoiceLocale(locale);
 
-  // Persona + Google-only platform prompt + spoken-call rules. Built here (not in the hook) so the hook stays a pure
-  // transport; used only when the mint returns no server-locked setup.
-  const instruction = useMemo(
-    () => buildLiveInstruction({ locale: loc, personaId, customPersona, personaOverride: systemInstruction }),
-    [loc, personaId, customPersona, systemInstruction],
-  );
-
-  // Which voice speaks. Toggling it reconnects (a fresh session; deliberate voice switches happen between sentences).
-  const profileGender = genderOfVoice(instruction.voiceName);
-  const [voiceGender, setVoiceGender] = useState<Gender>(gender ?? profileGender);
-  const voiceName = voiceGender === profileGender ? instruction.voiceName : GEMINI_LIVE_VOICES[voiceGender];
-
   // Voice-to-action: the server decides whether the token carries the functions (GEMINI_LIVE_ACTIONS); this screen
   // asks because it executes them.
   const liveActions = useLiveActions();
+
+  // A persona chosen BY VOICE (set_persona, GG 2026-10-25) takes over from the one the call opened with; '' = none.
+  const { personaRequest } = liveActions;
+  const activePersonaId = personaRequest ? (personaRequest.id || undefined) : personaId;
+  const activeCustomPersona = personaRequest ? undefined : customPersona;
+
+  // Persona + Google-only platform prompt + spoken-call rules. Built here (not in the hook) so the hook stays a pure
+  // transport; used only when the mint returns no server-locked setup.
+  const instruction = useMemo(
+    () => buildLiveInstruction({ locale: loc, personaId: activePersonaId, customPersona: activeCustomPersona, personaOverride: systemInstruction }),
+    [loc, activePersonaId, activeCustomPersona, systemInstruction],
+  );
+
+  // Which voice speaks: the persona's, until the user picks the other one. Toggling it reconnects (a fresh session;
+  // deliberate voice switches happen between sentences). A persona switched by voice brings its own voice, unless the
+  // user chose one — so the choice is kept apart from the persona's (null = not chosen).
+  const profileGender = genderOfVoice(instruction.voiceName);
+  const [chosenGender, setChosenGender] = useState<Gender | null>(gender ?? null);
+  const voiceGender: Gender = chosenGender ?? profileGender;
+  const voiceName = voiceGender === profileGender ? instruction.voiceName : GEMINI_LIVE_VOICES[voiceGender];
 
   const session = useGeminiLiveSession({
     locale: loc,
@@ -159,8 +167,8 @@ export default function GeminiLiveConversation({
     temperature: instruction.temperature,
     tools: instruction.googleSearch ? ['google_search'] : [],
     parity: geminiLiveParityEnabled(),
-    personaId,
-    customPersona,
+    personaId: activePersonaId,
+    customPersona: activeCustomPersona,
     researchId,
     onTurn,
     onUsage,
@@ -172,6 +180,21 @@ export default function GeminiLiveConversation({
     onHeard: liveActions.onHeard,
   });
   const { start, stop, sendVideoFrame, status, interrupt } = session;
+
+  // set_persona: once the model's short line in the new role has played, a fresh session in that persona (the mic and
+  // the screen stay; the chat so far rides along). Bounded like end_call's goodbye; a call that is not ready yet waits.
+  const renewRef = useRef(session.renew);
+  renewRef.current = session.renew;
+  const renewedSeqRef = useRef(0);
+  useEffect(() => {
+    if (!personaRequest || renewedSeqRef.current >= personaRequest.seq || status === 'closed' || status === 'error') return;
+    const answering = status === 'speaking' || status === 'thinking';
+    const seq = personaRequest.seq;
+    const timer = setTimeout(() => {
+      if (renewRef.current()) renewedSeqRef.current = seq;
+    }, answering ? LIVE_END_CALL_MAX_WAIT_MS : LIVE_END_CALL_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [personaRequest, status]);
 
   // ── THE CALL ON THE SCREEN ─────────────────────────────────────────────────────────────────────────────────────
   // Full screen while you only talk; DOCKED into a slim bar the moment the agent changes something on screen (a studio,
@@ -269,7 +292,7 @@ export default function GeminiLiveConversation({
   useEffect(() => {
     void start();
     return () => stop();
-  }, [start, stop, userId, voiceGender]);
+  }, [start, stop, userId, chosenGender]);
 
   // A call that ended or failed must not keep the camera hot behind the error screen.
   useEffect(() => {
@@ -329,7 +352,7 @@ export default function GeminiLiveConversation({
         ? (loc === 'en' ? 'Female voice — switch to the male voice' : loc === 'ru' ? 'Женский голос — переключить на мужской' : 'ქალის ხმა — გადართე კაცის ხმაზე')
         : (loc === 'en' ? 'Male voice — switch to the female voice' : loc === 'ru' ? 'Мужской голос — переключить на женский' : 'კაცის ხმა — გადართე ქალის ხმაზე')}
       icon={<Volume2 size={22} className="text-app-accent" aria-hidden />}
-      onClick={() => setVoiceGender((v) => (v === 'female' ? 'male' : 'female'))}
+      onClick={() => setChosenGender(voiceGender === 'female' ? 'male' : 'female')}
       locale={loc}
       testId="live-voice-switch"
     />
