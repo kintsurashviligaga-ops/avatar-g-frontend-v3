@@ -36,7 +36,7 @@ import { veoModelProblem } from '@/lib/veo/engine';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 import { CLIP_SPEECH_MAX_CHARS, asksForSubtitles, clipNegativePrompt, clipVoicedByTts, composeClipPrompt, spokenText } from '@/lib/video/clipPrompt';
 import { readClipPrompt } from '@/lib/video/clipSpeech';
-import { clipVoicePath, directClipCredits, directClipEngine, parseDirectClipRequest, type DirectClipRequest } from '@/lib/video/directClip';
+import { DIRECT_CLIP_BODY_MAX_BYTES, clipVoicePath, directClipCredits, directClipEngine, parseDirectClipRequest, type DirectClipRequest } from '@/lib/video/directClip';
 import { submitOmniClip } from '@/lib/video/omniClip';
 
 export const dynamic = 'force-dynamic';
@@ -69,7 +69,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const serviceOff = await serviceOffResponse('video');
   if (serviceOff) return serviceOff;
 
-  const parsed = parseDirectClipRequest(await readJson(req));
+  // Its photos ride in the body: read up to their ceiling, never the 64 KB default (which refused every photo).
+  const parsed = parseDirectClipRequest(await readJson(req, DIRECT_CLIP_BODY_MAX_BYTES));
   if (!parsed.ok) return fail(400, 'invalid_request', { issues: [{ path: parsed.field, code: parsed.code }] });
   const r = parsed.value;
 

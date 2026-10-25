@@ -33,7 +33,13 @@ export const directClipEngine = (seconds: number): DirectClipEngine => (seconds 
 export const DIRECT_CLIP_MAX_PHOTOS = 3;
 export const DIRECT_CLIP_PROMPT_MAX = 2_000;
 /** One photo's bytes. The browser sends them downscaled (≤ 1280 px JPEG, a few hundred KB); this is the ceiling. */
-export const DIRECT_CLIP_PHOTO_MAX_BYTES = 1_500_000;
+export const DIRECT_CLIP_PHOTO_MAX_BYTES = 1_000_000;
+/**
+ * The whole JSON body POST /api/video/clip reads: three photos at their ceiling as base64 (4 MB) and the words, under
+ * Vercel's 4.5 MB request limit. ⚠️ The route used to read at most 64 KB (lib/studio/http readJson's default), so ANY
+ * clip with a photo was refused as an empty request (GG's E2E, 2026-10-25 20:00Z) — the mocked browser tests never saw it.
+ */
+export const DIRECT_CLIP_BODY_MAX_BYTES = 4_400_000;
 
 export type DirectClipAspect = '9:16' | '16:9';
 export type DirectClipResolution = '720p' | '1080p';
@@ -126,13 +132,18 @@ export type DirectClipParse =
 
 const DATA_URL = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
 
+/** The bytes a base64 string decodes to (its `=` padding is not data). The browser counts a photo the same way. */
+export function base64Bytes(base64: string): number {
+  return Math.floor((base64.length * 3) / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+}
+
 /** A photo as the browser sends it: a base64 data URL of a JPEG, PNG or WebP. Null for anything else. */
 export function parseClipPhoto(v: unknown): DirectClipPhoto | 'too_large' | null {
   if (typeof v !== 'string') return null;
   const m = DATA_URL.exec(v.trim());
   if (!m) return null;
   const base64 = m[2]!;
-  if (Math.floor((base64.length * 3) / 4) > DIRECT_CLIP_PHOTO_MAX_BYTES) return 'too_large';
+  if (base64Bytes(base64) > DIRECT_CLIP_PHOTO_MAX_BYTES) return 'too_large';
   return { base64, mimeType: m[1] as DirectClipPhoto['mimeType'] };
 }
 

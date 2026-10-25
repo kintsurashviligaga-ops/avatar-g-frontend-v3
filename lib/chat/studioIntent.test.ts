@@ -148,3 +148,19 @@ describe('Agent G PART 1: lengths with a hyphen, and a frame shape is not a tran
     expect(mineTargetLanguage('dub it into English')).toBe('en');
   });
 });
+
+describe('what someone SAYS in a request („…") names no tool (GG\'s E2E, 2026-10-25 20:00Z)', () => {
+  const BRIEF = 'Veo 3.1, 8s, 9:16. Same actors, clothes and outdoor podcast terrace. 0-2s: over-host-shoulder angle toward woman; '
+    + '2-8s: smooth push-in to her close-up. She says in Georgian: „ჩემი ფოტო ავტვირთე, Agent G-ს 48-წამიანი ვლოგი ვთხოვე და მზა, '
+    + 'დამონტაჟებული ვიდეო მივიღე!" Host reacts with surprise. Photorealism, elegant gestures, accurate lip-sync, clear voice, no captions.';
+  test('a clip brief whose Georgian line says „დამონტაჟებული ვიდეო" is not a montage', () => {
+    expect(detectStudioIntent(BRIEF)).toBeNull();
+    expect(detectStudioIntent('გააკეთე ვიდეო, სადაც კაცი ამბობს: „ეს ვიდეო დავამონტაჟე და ავტვირთე"')).toBeNull();
+    expect(detectStudioIntent('Make a video where she says “I dubbed this whole film myself”')).toBeNull();
+  });
+  test('the words around the quote still ask for the tool, and a quoted name of a word or two stays', () => {
+    expect(detectStudioIntent('დაამონტაჟე ეს ვიდეოები, ბოლოს ის ამბობს: „მადლობა, რომ უყურეთ"')).toMatchObject({ service: 'montage' });
+    expect(detectStudioIntent('გახსენი „მონტაჟი" და დაამონტაჟე ეს კლიპები')).toMatchObject({ service: 'montage' });
+    expect(detectStudioIntent('make me a 5-slide presentation titled "How we edit and dub our films"')).toMatchObject({ service: 'presentation', params: { slideCount: 5 } });
+  });
+});

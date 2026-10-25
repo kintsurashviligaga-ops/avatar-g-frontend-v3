@@ -1,9 +1,15 @@
+import { DIRECT_CLIP_PHOTO_MAX_BYTES, base64Bytes } from '@/lib/video/directClip';
+
+/** A JPEG's quality, tried in turn until the photo is under the route's ceiling (a busy 1280 px frame can pass 1 MB at 0.86). */
+const QUALITIES = [0.86, 0.75, 0.62] as const;
+
 /**
- * A photo as POST /api/video/clip takes it: a JPEG data URL, its longest side at most 1280 px (a few hundred KB; the route's
- * ceiling is 1.5 MB a photo). A photo from this chat's thread or the Library can be a link to our storage: it is fetched
- * and drawn the same way. Browser-only; null when the picture cannot be read, never a throw.
+ * A photo as POST /api/video/clip takes it: a JPEG data URL, its longest side at most 1280 px and its bytes under the
+ * route's ceiling (DIRECT_CLIP_PHOTO_MAX_BYTES, 1 MB: three of them fit the request). A photo from this chat's thread or
+ * the Library can be a link to our storage: it is fetched and drawn the same way. Browser-only; null when the picture
+ * cannot be read or made small enough, never a throw.
  */
-export async function toClipPhoto(src: string, maxDim = 1280): Promise<string | null> {
+export async function toClipPhoto(src: string, maxDim = 1280, maxBytes = DIRECT_CLIP_PHOTO_MAX_BYTES): Promise<string | null> {
   if (typeof document === 'undefined' || !src) return null;
   let objectUrl: string | null = null;
   try {
@@ -35,8 +41,12 @@ export async function toClipPhoto(src: string, maxDim = 1280): Promise<string | 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const out = canvas.toDataURL('image/jpeg', 0.86);
-    return out.startsWith('data:image/jpeg;base64,') ? out : null;
+    for (const q of QUALITIES) {
+      const out = canvas.toDataURL('image/jpeg', q);
+      if (!out.startsWith('data:image/jpeg;base64,')) return null;
+      if (base64Bytes(out.slice(out.indexOf(',') + 1)) <= maxBytes) return out;
+    }
+    return null;
   } catch {
     return null;
   } finally {

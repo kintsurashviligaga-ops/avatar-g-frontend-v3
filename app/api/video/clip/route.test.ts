@@ -49,7 +49,7 @@ import { removeStorageObjects } from '../../../../lib/orchestrator/storage-adapt
 import { readClipPrompt } from '../../../../lib/video/clipSpeech';
 import { serviceOffResponse } from '../../../../lib/server/serviceSwitches';
 import { quoteCredits } from '../../../../lib/credits/quote';
-import { clipVoicePath } from '../../../../lib/video/directClip';
+import { DIRECT_CLIP_BODY_MAX_BYTES, DIRECT_CLIP_PHOTO_MAX_BYTES, clipVoicePath } from '../../../../lib/video/directClip';
 import { submitOmniClip } from '../../../../lib/video/omniClip';
 import { veoModelProblem } from '../../../../lib/veo/engine';
 
@@ -133,6 +133,32 @@ test('one photo is the FIRST FRAME (its own bytes, cropped to fill), at the leng
   expect(sub.startImage).toEqual({ kind: 'bytes', base64: JPEG.split(',')[1], mimeType: 'image/jpeg' });
   expect(sub).toMatchObject({ resizeMode: 'crop', durationSec: 4, aspect: '16:9' });
   expect(sub.prompt).toMatch(/^Start exactly from the first frame/);
+});
+
+test('a photo of a real size is read: the body holds three photos at their ceiling, never only 64 KB (GG\'s E2E, 2026-10-25)', async () => {
+  // A phone photo as the browser sends it (≤ 1280 px JPEG): a few hundred KB of base64. The route used to read 64 KB of
+  // body, so every clip with a photo was refused as „no prompt" before anything else ran.
+  const photo = (bytes: number, seed: number) => `data:image/jpeg;base64,${Buffer.alloc(bytes, seed).toString('base64')}`;
+  const one = photo(400_000, 7);
+  let res = await POST(post({ prompt: 'ის იღიმის', photos: [one] }));
+  expect(res.status).toBe(202);
+  expect((submitScene as jest.Mock).mock.calls[0][0].startImage).toEqual({ kind: 'bytes', base64: one.split(',')[1], mimeType: 'image/jpeg' });
+
+  const ceiling = [photo(DIRECT_CLIP_PHOTO_MAX_BYTES, 1), photo(DIRECT_CLIP_PHOTO_MAX_BYTES, 2), photo(DIRECT_CLIP_PHOTO_MAX_BYTES, 3)];
+  const body = JSON.stringify({ prompt: 'სამივე ერთად სეირნობს', photos: ceiling });
+  expect(body.length).toBeLessThan(DIRECT_CLIP_BODY_MAX_BYTES);
+  expect(DIRECT_CLIP_BODY_MAX_BYTES).toBeLessThan(4.5 * 1024 * 1024); // Vercel's request limit for a function
+  res = await POST(post({ prompt: 'სამივე ერთად სეირნობს', photos: ceiling }));
+  expect(res.status).toBe(202);
+  expect((submitScene as jest.Mock).mock.calls[1][0].referenceImages).toHaveLength(3);
+
+  // A photo over its ceiling is refused free, and so is a body over the cap.
+  jest.clearAllMocks();
+  for (const photos of [[photo(DIRECT_CLIP_PHOTO_MAX_BYTES + 3, 4)], [photo(1_600_000, 5), photo(1_600_000, 6)]]) {
+    expect((await POST(post({ prompt: 'ის იღიმის', photos }))).status).toBe(400);
+  }
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(submitScene).not.toHaveBeenCalled();
 });
 
 test('two photos are reference images, and reference mode is 8 s whatever was asked', async () => {
