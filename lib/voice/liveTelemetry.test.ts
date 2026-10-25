@@ -46,6 +46,13 @@ describe('sanitizeLiveContext', () => {
     expect(heavy).not.toHaveProperty('attempts');
     expect(utf8Length(JSON.stringify(heavy))).toBeLessThanOrEqual(LIVE_TELEMETRY_MAX_BYTES);
   });
+
+  test('a handshake timeout keeps where it waited: relay flag, ms to open, ms since open, bytes still buffered', () => {
+    const p = sanitizeLiveContext({ code: 'handshake_timeout', relay: true, msToOpen: 212.6, msSinceOpen: 6000, bufferedBytes: 39124 });
+    expect(p).toMatchObject({ code: 'handshake_timeout', relay: true, msToOpen: 213, msSinceOpen: 6000, bufferedBytes: 39124 });
+    expect(sanitizeLiveContext({ code: 'handshake_timeout', relay: 'yes', bufferedBytes: -5 })).toMatchObject({ bufferedBytes: 0 });
+    expect(sanitizeLiveContext({ code: 'handshake_timeout', relay: 'yes' })).not.toHaveProperty('relay');
+  });
 });
 
 test('utf8Length counts bytes the way the wire does', () => {
