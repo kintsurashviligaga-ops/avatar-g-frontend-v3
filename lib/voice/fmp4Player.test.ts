@@ -1,4 +1,6 @@
+import type { AvatarAudioDeps } from './avatarAudio';
 import { EVICT_AFTER_S, Fmp4Player, LIVE_EDGE_S, MAX_LAG_S, type AvatarPlayerState, type Fmp4PlayerDeps } from './fmp4Player';
+import { toBase64, vertexFragment, vertexInit } from './testing/fmp4Fixtures';
 
 // A minimal init (ftyp + moov) and fragment (moof + mdat); the codec sniffing itself is covered by fmp4.test.ts.
 const box = (type: string, body: number[] = []): number[] => {
@@ -67,7 +69,28 @@ function fakeVideo() {
   return v;
 }
 
-function setup(managed = false) {
+/** The call's speaker path for the voice-through-Web-Audio tests; `decodes` = the browser's AudioDecoder takes AAC. */
+function callOutput(decodes: boolean) {
+  const node = () => ({ connect: jest.fn(), disconnect: jest.fn(), gain: { value: 1 }, threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 0 }, attack: { value: 0 }, release: { value: 0 } });
+  const ctx = { currentTime: 0, state: 'running', createGain: node, createDynamicsCompressor: node };
+  const decoded: unknown[] = [];
+  class Decoder {
+    static isConfigSupported = () => Promise.resolve({ supported: decodes });
+    state = 'configured';
+    configure(): void {}
+    decode(c: unknown): void { decoded.push(c); }
+    close(): void {}
+  }
+  const audioDeps: AvatarAudioDeps = {
+    AudioDecoder: Decoder as unknown as AvatarAudioDeps['AudioDecoder'],
+    EncodedAudioChunk: class { constructor(public init: unknown) {} } as unknown as AvatarAudioDeps['EncodedAudioChunk'],
+    setInterval: () => 1,
+    clearInterval: () => {},
+  };
+  return { audioOutput: () => ({ ctx: ctx as unknown as AudioContext, node: node() as unknown as AudioNode }), audioDeps, decoded };
+}
+
+function setup(managed = false, options?: ConstructorParameters<typeof Fmp4Player>[3]) {
   FakeMediaSource.instances = [];
   FakeMediaSource.supported = true;
   const video = fakeVideo();
@@ -78,7 +101,7 @@ function setup(managed = false) {
     createObjectURL: jest.fn(() => `blob:${FakeMediaSource.instances.length}`),
     revokeObjectURL: jest.fn(),
   };
-  const player = new Fmp4Player(video as unknown as HTMLVideoElement, (s) => states.push(s), deps);
+  const player = new Fmp4Player(video as unknown as HTMLVideoElement, (s) => states.push(s), deps, options);
   return { video, states, deps, player };
 }
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -197,5 +220,43 @@ describe('Fmp4Player', () => {
     expect(video.removeEventListener).toHaveBeenCalledWith('waiting', expect.any(Function));
     player.push(INIT);
     expect(FakeMediaSource.instances).toHaveLength(1);
+  });
+
+  it('with the call output and a decodable voice: the video plays muted, the voice is decoded, the state says playing', async () => {
+    const out = callOutput(true);
+    const { video, states, player } = setup(true, out);
+    player.push(toBase64(vertexInit()));
+    await flush();
+    expect(video.muted).toBe(true);
+    const ms = FakeMediaSource.instances[0]!;
+    ms.fireOpen();
+    player.push(toBase64(vertexFragment(2, 0, [1, 2, 3])));
+    expect(out.decoded).toHaveLength(1);
+    video.buffered.r = [[0, 0.5]];
+    ms.sb.finish();
+    await flush();
+    expect(states[states.length - 1]).toBe('playing'); // heard through the call, not 'muted' (no "tap for sound")
+    player.unlock(); // a tap keeps the video muted: the voice must not play twice
+    expect(video.muted).toBe(true);
+  });
+
+  it('without a decoder for the voice, the video keeps its own sound', async () => {
+    const out = callOutput(false);
+    const { video, player } = setup(true, out);
+    player.push(toBase64(vertexInit()));
+    await flush();
+    expect(video.muted).toBe(false);
+    player.push(toBase64(vertexFragment(2, 0, [1, 2, 3])));
+    expect(out.decoded).toHaveLength(0);
+  });
+
+  it('when a later session cannot decode the voice, the video gets its sound back', async () => {
+    const out = callOutput(true);
+    const { video, player } = setup(false, out);
+    player.push(toBase64(vertexInit()));
+    await flush();
+    expect(video.muted).toBe(true);
+    player.push(INIT); // no AAC track in this init: the voice goes back to the video
+    expect(video.muted).toBe(false);
   });
 });

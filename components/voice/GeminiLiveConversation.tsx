@@ -34,6 +34,7 @@ import { LIVE_CALL_EVENT, LIVE_PLAN_KINDS, LIVE_RESULT_EVENT, type LivePlanKind,
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 import { AVATAR_FALLBACK_MIME } from '@/lib/voice/fmp4';
 import { avatarPlaybackSupported } from '@/lib/voice/fmp4Player';
+import type { AvatarAudioOutput } from '@/lib/voice/avatarAudio';
 import { LIVE_AVATAR_MAX_MS, defaultLiveAvatar, liveAvatarEnabled } from '@/lib/voice/liveAvatar';
 
 import LiveModeOverlay, { LiveControl } from './live/LiveModeOverlay';
@@ -168,7 +169,9 @@ export default function GeminiLiveConversation({
   // until the user turns it on; offered only where it can work (NEXT_PUBLIC_LIVE_AVATAR, and a browser that plays its
   // MP4: on iPhone iOS 17.1+), because its voice is INSIDE the video: a browser that cannot play it would hear nothing.
   // The avatar matches the voice switch (Kira female, Ben male).
-  const avatarPlayer = useLiveAvatarPlayer();
+  // Its voice plays on the call's own output (as loud as a voice call; GG 18:17Z: the avatar was too quiet).
+  const audioOutputRef = useRef<(() => AvatarAudioOutput | null) | null>(null);
+  const avatarPlayer = useLiveAvatarPlayer(useCallback(() => audioOutputRef.current?.() ?? null, []));
   const [avatarAvailable] = useState(() => liveAvatarEnabled() && avatarPlaybackSupported(AVATAR_FALLBACK_MIME));
   const [avatarWanted, setAvatarWanted] = useState(false);
   const [avatarNote, setAvatarNote] = useState<'capped' | 'dailyLimit' | 'disabled' | 'unsupported' | null>(null);
@@ -202,6 +205,7 @@ export default function GeminiLiveConversation({
 
   // set_persona: once the model's short line in the new role has played, a fresh session in that persona (the mic and
   // the screen stay; the chat so far rides along). Bounded like end_call's goodbye; a call that is not ready yet waits.
+  audioOutputRef.current = typeof session.audioOutput === 'function' ? session.audioOutput : null;
   const renewRef = useRef(session.renew);
   renewRef.current = session.renew;
   const renewedSeqRef = useRef(0);

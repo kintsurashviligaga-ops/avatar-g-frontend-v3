@@ -11,9 +11,12 @@
  *    the server may send speech ahead of real time, and dropping it would cut words.
  *  • Memory: what was played more than KEEP_BEHIND_S ago is removed; on QuotaExceededError more is removed and the append
  *    retried once, then the piece is dropped.
- *  • Sound: play() unmuted first; where the browser refuses without a tap (NotAllowedError), the avatar plays muted and
- *    the state says 'muted' so the screen can offer "tap for sound" (unlock() inside that tap).
+ *  • Sound: with the call's speaker path (options.audioOutput) and a browser that decodes the codec, the voice plays
+ *    through Web Audio (lib/voice/avatarAudio) and the <video> plays muted — on iPhone a <video>'s sound is low while
+ *    the microphone is open. Otherwise play() unmuted first; where the browser refuses without a tap (NotAllowedError),
+ *    the avatar plays muted and the state says 'muted' so the screen can offer "tap for sound" (unlock() in that tap).
  */
+import { AvatarAudio, type AvatarAudioDeps, type AvatarAudioOutput } from './avatarAudio';
 import { base64ToBytes, isInitSegment, mseMimeFor } from './fmp4';
 
 export type AvatarPlayerState = 'idle' | 'buffering' | 'playing' | 'muted' | 'blocked' | 'unsupported' | 'error';
@@ -55,6 +58,12 @@ export const EVICT_AFTER_S = 30;
 /** Pieces waiting for the SourceBuffer at most (a stalled decoder must not grow memory without end). */
 export const MAX_QUEUE = 240;
 
+export interface Fmp4PlayerOptions {
+  /** The call's speaker path; with it the voice plays through Web Audio where the browser can decode it. */
+  audioOutput?: () => AvatarAudioOutput | null;
+  audioDeps?: AvatarAudioDeps;
+}
+
 const isQuota = (e: unknown): boolean => !!e && typeof e === 'object' && (e as { name?: unknown }).name === 'QuotaExceededError';
 
 export class Fmp4Player {
@@ -67,17 +76,21 @@ export class Fmp4Player {
   private quotaRetry = false;
   private destroyed = false;
   private state: AvatarPlayerState = 'idle';
+  private readonly audio: AvatarAudio | null;
+  private externalAudio = false; // the voice plays through Web Audio: the <video> is muted on purpose
   private readonly onWaiting = (): void => { this.followLiveEdge(); };
 
   constructor(
     private readonly video: HTMLVideoElement,
     private readonly onState: (state: AvatarPlayerState) => void = () => {},
     private readonly d: Fmp4PlayerDeps = defaultPlayerDeps(),
+    options: Fmp4PlayerOptions = {},
   ) {
     video.playsInline = true;
     video.setAttribute('playsinline', '');
     if (d.managed) (video as HTMLVideoElement & { disableRemotePlayback: boolean }).disableRemotePlayback = true;
     video.addEventListener('waiting', this.onWaiting);
+    this.audio = options.audioOutput ? new AvatarAudio(video, options.audioOutput, (on) => this.onExternalAudio(on), options.audioDeps) : null;
   }
 
   get current(): AvatarPlayerState { return this.state; }
@@ -87,8 +100,9 @@ export class Fmp4Player {
     if (this.destroyed) return;
     const bytes = base64ToBytes(b64);
     if (bytes.length === 0) return;
-    if (isInitSegment(bytes)) { this.open(bytes); return; }
+    if (isInitSegment(bytes)) { this.open(bytes); this.audio?.open(bytes); return; }
     if (!this.ms) return; // a fragment with no init before it cannot be decoded
+    this.audio?.push(bytes);
     this.queue.push(bytes);
     if (this.queue.length > MAX_QUEUE) this.queue.splice(1, this.queue.length - MAX_QUEUE); // keep the head (maybe the init)
     this.pump();
@@ -105,13 +119,14 @@ export class Fmp4Player {
   /** Inside a tap: sound on and playing. */
   unlock(): void {
     if (this.destroyed) return;
-    this.video.muted = false;
+    this.video.muted = this.externalAudio;
     this.play(true);
   }
 
   /** Drop the session's stream (a new call or a voice-only session follows). */
   reset(): void {
     const hadSource = this.url !== null;
+    this.audio?.reset();
     this.closeSource();
     if (hadSource) {
       this.video.removeAttribute('src');
@@ -124,10 +139,25 @@ export class Fmp4Player {
     if (this.destroyed) return;
     this.reset();
     this.destroyed = true;
+    this.audio?.destroy();
     this.video.removeEventListener('waiting', this.onWaiting);
   }
 
   // ── internals ──
+
+  /** The voice moved to Web Audio (the <video> goes quiet) or back to the <video>. */
+  private onExternalAudio(on: boolean): void {
+    if (this.destroyed) return;
+    this.externalAudio = on;
+    const v = this.video;
+    if (on) {
+      v.muted = true;
+      if (this.started && (this.state === 'muted' || this.state === 'blocked')) this.play(false); // muted needs no tap
+    } else if (v.muted) {
+      v.muted = false;
+      if (this.started) this.play(true);
+    }
+  }
 
   private setState(s: AvatarPlayerState): void {
     if (s === this.state) return;
@@ -246,10 +276,11 @@ export class Fmp4Player {
     const v = this.video;
     let p: Promise<void> | undefined;
     try { p = v.play(); } catch (e) { p = Promise.reject(e); }
-    if (!p || typeof p.then !== 'function') { this.setState(v.muted ? 'muted' : 'playing'); return; }
+    const heard = (): AvatarPlayerState => (v.muted && !this.externalAudio ? 'muted' : 'playing');
+    if (!p || typeof p.then !== 'function') { this.setState(heard()); return; }
     const gen = this.generation;
     p.then(
-      () => { if (!this.destroyed) this.setState(v.muted ? 'muted' : 'playing'); },
+      () => { if (!this.destroyed) this.setState(heard()); },
       (err: unknown) => {
         if (this.destroyed || gen !== this.generation) return;
         const name = err && typeof err === 'object' ? (err as { name?: unknown }).name : undefined;

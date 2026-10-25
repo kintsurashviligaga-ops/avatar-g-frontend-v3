@@ -326,6 +326,9 @@ export interface UseGeminiLiveSessionResult {
   sendNote: (text: string) => boolean;
   /** 0..1 levels for visuals; cheap enough to call every animation frame. */
   getLevels: () => LiveLevels;
+  /** The call's speaker path (its AudioContext and the node voice answers play into, before the level meter); null
+   *  until the call has one. The talking avatar's voice plays into it (lib/voice/avatarAudio). */
+  audioOutput: () => { ctx: AudioContext; node: AudioNode } | null;
   /**
    * What the agent is doing right now, oldest first (components/voice/live/liveActivity): a Google Search (queries,
    * then the pages it used) and each tool step, running → done / failed / cancelled. Reset when a call starts.
@@ -1826,10 +1829,16 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     teardown();
   }, [flushTurn, teardown]);
 
+  const audioOutput = useCallback(() => {
+    const ctx = playCtxRef.current;
+    const node = gainRef.current;
+    return ctx && node ? { ctx, node } : null;
+  }, []);
+
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
     start, stop, retry, interrupt, renew, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
-    avatar, avatarRefused,
+    avatar, avatarRefused, audioOutput,
   };
 }
 

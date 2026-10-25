@@ -11,7 +11,8 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { Fmp4Player, type AvatarPlayerState } from '@/lib/voice/fmp4Player';
+import type { AvatarAudioOutput } from '@/lib/voice/avatarAudio';
+import { Fmp4Player, defaultPlayerDeps, type AvatarPlayerState } from '@/lib/voice/fmp4Player';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -83,14 +84,18 @@ function createAvatarVideo(): HTMLVideoElement {
   return v;
 }
 
-export function useLiveAvatarPlayer(): LiveAvatarPlayer {
+/** `audioOutput`: the call's speaker path (useGeminiLiveSession().audioOutput); the voice then plays through it where
+ *  the browser decodes the codec, as loud as a voice call (lib/voice/avatarAudio). Read at each session's start. */
+export function useLiveAvatarPlayer(audioOutput?: () => AvatarAudioOutput | null): LiveAvatarPlayer {
   const [video] = useState<HTMLVideoElement | null>(() => (typeof document === 'undefined' ? null : createAvatarVideo()));
   const [state, setState] = useState<AvatarPlayerState>('idle');
   const playerRef = useRef<Fmp4Player | null>(null);
+  const audioOutputRef = useRef(audioOutput);
+  audioOutputRef.current = audioOutput;
 
   useEffect(() => {
     if (!video) return;
-    const player = new Fmp4Player(video, setState);
+    const player = new Fmp4Player(video, setState, defaultPlayerDeps(), { audioOutput: () => audioOutputRef.current?.() ?? null });
     playerRef.current = player;
     return () => {
       player.destroy();
@@ -123,4 +128,32 @@ export function LiveAvatarSlot({ video, className }: { video: HTMLVideoElement; 
     return () => { if (video.parentNode === host) host.removeChild(video); };
   }, [video]);
   return <div ref={hostRef} data-testid="live-avatar-slot" className={className} />;
+}
+
+const CAPTION_FADE = 'linear-gradient(to bottom, transparent 0, #000 1.25rem)';
+
+/**
+ * The avatar's words over its video. ⚠️ GG 2026-10-25 18:17Z: the text covered the face while it was being written. The
+ * face fills the top of the portrait frame, so the words stay in a low band: 2 lines at most on a short phone, 3 from 780 px
+ * tall, the newest at the bottom (a column that overflows at its top), the older ones fading out, on a dark frosted card.
+ */
+export function LiveAvatarCaption({ text, hidden }: { text: string; hidden?: boolean }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const p = textRef.current;
+    // Overflow at the START of a flex column is not scrollable, so scrollHeight cannot tell: compare the text itself.
+    if (box && p) setClipped(p.offsetHeight > box.clientHeight + 1);
+  }, [text]);
+  return (
+    <div className="rounded-2xl bg-black/45 px-4 py-2.5 shadow-lg ring-1 ring-white/10 backdrop-blur-md">
+      <div ref={boxRef} data-testid="live-avatar-caption" data-clipped={clipped ? '' : undefined}
+        className="flex max-h-[3.5rem] flex-col justify-end overflow-hidden [@media(min-height:780px)]:max-h-[5.25rem]"
+        style={clipped ? { WebkitMaskImage: CAPTION_FADE, maskImage: CAPTION_FADE } : undefined}>
+        <p ref={textRef} aria-hidden={hidden || undefined} className="shrink-0 text-[18px] font-semibold leading-7 tracking-tight text-white">{text}</p>
+      </div>
+    </div>
+  );
 }
