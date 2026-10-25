@@ -186,12 +186,16 @@ export default function GeminiLiveConversation({
   const renewRef = useRef(session.renew);
   renewRef.current = session.renew;
   const renewedSeqRef = useRef(0);
+  // The persona the running session was opened with: asking again for that same one renews nothing (a fresh session
+  // costs a few seconds and starts from the setup again, GG 2026-10-25).
+  const sessionPersonaRef = useRef(personaId ?? '');
   useEffect(() => {
     if (!personaRequest || renewedSeqRef.current >= personaRequest.seq || status === 'closed' || status === 'error') return;
+    if (personaRequest.id === sessionPersonaRef.current) { renewedSeqRef.current = personaRequest.seq; return; }
     const answering = status === 'speaking' || status === 'thinking';
     const seq = personaRequest.seq;
     const timer = setTimeout(() => {
-      if (renewRef.current()) renewedSeqRef.current = seq;
+      if (renewRef.current()) { renewedSeqRef.current = seq; sessionPersonaRef.current = personaRequest.id; }
     }, answering ? LIVE_END_CALL_MAX_WAIT_MS : LIVE_END_CALL_GRACE_MS);
     return () => clearTimeout(timer);
   }, [personaRequest, status]);

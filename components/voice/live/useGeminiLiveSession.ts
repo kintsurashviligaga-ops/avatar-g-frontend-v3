@@ -75,7 +75,7 @@ import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
 import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveCallPersona, liveTranscriptionLanguages } from '@/lib/voice/voicePrompt';
 import type { LiveHeardEvent } from '@/lib/voice/voiceLedger';
 import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
@@ -88,8 +88,18 @@ export const LIVE_SETUP_TIMEOUT_MS = 8000;
  * open after 6.5 s), and the relay's own upstream handshake may take 10 s — 8 s gave up on a call about to open.
  */
 export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
-/** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. */
+/**
+ * Through the relay, once the socket is OPEN the deadline shrinks to this. A warm relay reaches Vertex's setupComplete
+ * in 0.2–1.3 s. ⚠️ GG 2026-10-25 16:11–16:31: 6 of 21 call attempts sat 11–14 s and the relay logged the setup frame
+ * arriving 1–2 ms before the browser closed the socket at the 15 s deadline — the frame was held between browser and
+ * relay until the close, and Vertex was never asked. Waiting longer never helps such a socket; a fresh one does.
+ */
+export const LIVE_RELAY_READY_AFTER_OPEN_MS = 6000;
+/** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. Through the
+ *  relay a held frame struck 2 attempts in a row (16:28Z), and each retry now costs 6 s, not 15: one more retry keeps
+ *  the call's full setup (its UI actions and search) instead of degrading it. */
 const MAX_TIMEOUT_RETRIES = 1;
+const MAX_RELAY_TIMEOUT_RETRIES = 2;
 /** Window event the default transcript sink dispatches (detail: LiveTurn) when the host passes no onTurn. */
 export const LIVE_TRANSCRIPT_EVENT = 'myavatar:live-transcript';
 
@@ -148,8 +158,6 @@ export const LIVE_MIC_MUTED_GRACE_MS = 1500;
 const CAPTURE_START_WAIT_MS = 300;
 /** A playback context still 'suspended' this long after resume() had no user activation: offer "tap to start". */
 const AUDIO_BLOCK_CHECK_MS = 1200;
-
-const LANGUAGE_CODES: Record<'ka' | 'en' | 'ru', string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,7 +220,7 @@ export interface LiveSessionDeps {
   /** The context + mic the Live button primed inside its tap (lib/voice/livePrime). */
   takePrimed: () => PrimedLive | null;
   /** Failure telemetry (lib/voice/liveTelemetry). */
-  report: (code: LiveErrorCode, detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
+  report: (code: LiveErrorCode | 'handshake_timeout', detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
 }
 
 export interface UseGeminiLiveSessionOptions {
@@ -385,13 +393,10 @@ export function normalizeCaption(text: string): string {
 }
 
 /**
- * Spoken-call rule appended to every Live instruction. The platform prompt is written for chat and pins the reply
- * language to the UI locale — but a call must follow the language actually being SPOKEN (the reported "spoke
- * Russian, answered in Georgian" leak that lib/voice/voicePrompt.ts detectSpokenLocale fixed for the REST voice).
+ * Spoken-call rule that ENDS every Live instruction: a call follows the language actually being SPOKEN and stays in it
+ * (lib/voice/voicePrompt.ts LIVE_LANGUAGE_LOCK, the same last line the server-locked setup carries).
  */
-export const LIVE_LANGUAGE_RULE =
-  'LIVE CALL LANGUAGE: answer in the language the user is speaking right now (Georgian, English or Russian), '
-  + 'even when it differs from the LANGUAGE line above.';
+export const LIVE_LANGUAGE_RULE = LIVE_LANGUAGE_LOCK;
 
 /**
  * The client-built Live instruction, used when the mint returns no server-locked setup: the profile's live persona,
@@ -409,14 +414,14 @@ export function buildLiveInstruction(opts: {
 }): { systemInstruction: string; voiceName: string; temperature?: number; googleSearch: boolean; personaActive: boolean } {
   const locale = opts.locale === 'en' || opts.locale === 'ru' ? opts.locale : 'ka';
   const profile = resolveAgentProfile({ personaId: opts.personaId ?? null, customPersona: opts.customPersona });
-  const platformSystem = buildPlatformPrompt({ locale, ...(opts.now ? { now: opts.now } : {}) });
+  const platformSystem = buildPlatformPrompt({ locale, spoken: true, ...(opts.now ? { now: opts.now } : {}) });
   const live = toGeminiLiveSetup(profile, { locale, platformSystem });
   const override = typeof opts.personaOverride === 'string' ? opts.personaOverride.trim() : '';
   let text = override ? `${override}\n\n${platformSystem}` : live.systemInstruction;
   if (!text.includes(LIVE_SPOKEN_RULE)) text = `${text}\n\n${LIVE_SPOKEN_RULE}`;
-  text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
   if (personaActive && !override) text = `${text}\n${livePersonaReminder(profile)}`;
+  text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   return {
     systemInstruction: text,
     voiceName: live.voiceName,
@@ -619,6 +624,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const lastMicRef = useRef<MicResult | null>(null);
   const primedRef = useRef(false);
   const mintsRef = useRef(0);
+  // Why the next token is minted (the route logs it): the call opening, a persona renew, a resume, or a later plan step.
+  const mintWhyRef = useRef<'start' | 'renew' | 'resume' | 'step'>('start');
   const startedAtRef = useRef(0);
   const micResultMsRef = useRef<number | undefined>(undefined);
   const mintedAtRef = useRef(0);
@@ -902,6 +909,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       appliedStyleRef.current = sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : '';
     }
     mintsRef.current += 1;
+    const why = mintWhyRef.current;
+    mintWhyRef.current = 'step';
     const threadId = typeof handle === 'string' ? null : o.chatSessionId !== undefined ? o.chatSessionId : requestLiveThreadId();
     let res: Response;
     // ⚠️ THE MINT HAD NO TIMEOUT. The route retries Google for up to ~28 s; a request that never answered (a captive
@@ -916,6 +925,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         credentials: 'include',
         body: JSON.stringify({
           locale: o.locale || 'ka',
+          why,
           voice: sessionPreferencesRef.current?.voice ?? o.voiceName,
           ...(sessionPreferencesRef.current ? { voiceExperience: sessionPreferencesRef.current } : {}),
           personaId: o.personaId ?? null,
@@ -983,13 +993,13 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     ];
     return buildLiveSetup({
       model: modelRef.current ?? '',
-      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural Georgian sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.",
+      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveCallPersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.\n" + LIVE_LANGUAGE_LOCK,
       voiceName: sessionPreferencesRef.current?.voice ?? o.voiceName ?? 'Aoede',
       turnEagerness: sessionPreferencesRef.current?.eagerness ?? "eager",
       ...(typeof o.temperature === 'number' ? { temperature: o.temperature } : {}),
       ...(parity
         ? {
-          languageCode: LANGUAGE_CODES[locale],
+          languageCode: liveTranscriptionLanguages(locale),
           resumptionHandle: handle ?? null,
           transcribe: true,
           compression: true,
@@ -1164,30 +1174,53 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     if (!tok) return;
     const gen = genRef.current;
     let opened = false;
+    const startedAt = Date.now();
+    let openedAt = 0;
     const current = () => sessionRef.current === session && gen === genRef.current;
     // The deadline runs from CONSTRUCTION, not from socket open (GeminiLiveSession's own setupTimeoutMs only arms
     // on open, so a socket stuck in CONNECTING would never time out). Expiry = a close before setupComplete.
     clearHandshakeTimer();
-    const timeoutMs = optsRef.current.setupTimeoutMs ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
-    handshakeTimerRef.current = setTimeout(() => {
+    const explicitTimeout = optsRef.current.setupTimeoutMs;
+    const timeoutMs = explicitTimeout ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
+    const onDeadline = () => {
       handshakeTimerRef.current = null;
       if (!current() || readyRef.current) return;
+      // Where it waited, read before the close below drops the socket (lib/voice/liveTelemetry).
+      const now = Date.now();
+      const context: LiveFailureContext = {
+        locale: optsRef.current.locale || 'ka',
+        mints: mintsRef.current,
+        degraded: degradedRef.current,
+        relay: !!tok.relayUrl,
+        ...(openedAt ? { msToOpen: openedAt - startedAt, msSinceOpen: now - openedAt, bufferedBytes: session.bufferedAmount } : {}),
+      };
       sessionRef.current = null; // detach first: the close below must not be handled twice
       try { session.close(); } catch { /* noop */ }
+      try { deps().report('handshake_timeout', null, context); } catch { /* telemetry never breaks the call */ }
       // ⚠️ GG 2026-10-25: „ვიდეო პანელი გახსენი“ did nothing. A cold relay ran out the clock, the plan's next step
       // dropped the UI actions, and the call that opened could not open a panel. A handshake that ran out of time
       // was never REFUSED: it retries the same setup on a fresh ticket (a ticket opens one new session) first.
       const step = planRef.current[stepRef.current];
-      if (step && timeoutRetriesRef.current < MAX_TIMEOUT_RETRIES) {
+      if (step && timeoutRetriesRef.current < (tok.relayUrl ? MAX_RELAY_TIMEOUT_RETRIES : MAX_TIMEOUT_RETRIES)) {
         timeoutRetriesRef.current += 1;
         planRef.current.splice(stepRef.current + 1, 0, { freshToken: true, handle: step.handle, ...(step.degrade ? { degrade: true } : {}) });
       }
       onSessionClosed();
-    }, timeoutMs);
+    };
+    handshakeTimerRef.current = setTimeout(onDeadline, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(
       { token: tok.token, ...(tok.relayUrl ? { relayUrl: tok.relayUrl } : {}), setupMessage: buildSetupMessage(handle) },
       {
-        onOpen: () => { opened = true; },
+        onOpen: () => {
+          opened = true;
+          openedAt = Date.now();
+          // Through the relay an open socket gets the short deadline (LIVE_RELAY_READY_AFTER_OPEN_MS); the long one
+          // only covers a relay that is still booting, which holds the socket in CONNECTING.
+          if (tok.relayUrl && explicitTimeout === undefined && current() && handshakeTimerRef.current) {
+            clearTimeout(handshakeTimerRef.current);
+            handshakeTimerRef.current = setTimeout(onDeadline, LIVE_RELAY_READY_AFTER_OPEN_MS);
+          }
+        },
         onSetupComplete: () => { if (current()) onReady(session); },
         onEvent: (ev) => { if (current()) onServerEvent(ev, session); },
         onError: () => {
@@ -1200,7 +1233,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     sessionRef.current = session;
     readyRef.current = false;
     session.connect();
-  }, [buildSetupMessage, clearHandshakeTimer, onReady, onServerEvent, onSessionClosed]);
+  }, [buildSetupMessage, clearHandshakeTimer, deps, onReady, onServerEvent, onSessionClosed]);
 
   runStepRef.current = async () => {
     const gen = genRef.current;
@@ -1252,6 +1285,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     resumesRef.current += 1;
     reconnectingRef.current = true;
+    mintWhyRef.current = 'resume';
     clearGoAwayTimer();
     const old = sessionRef.current;
     sessionRef.current = null; // first, so the old socket's close is ignored
@@ -1274,6 +1308,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const renew = useCallback((): boolean => {
     if (!activeRef.current || reconnectingRef.current || !readyRef.current) return false;
     reconnectingRef.current = true;
+    mintWhyRef.current = 'renew';
     clearGoAwayTimer();
     const old = sessionRef.current;
     sessionRef.current = null; // first, so the old socket's close is ignored
@@ -1514,6 +1549,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const start = useCallback(async (): Promise<void> => {
     if (activeRef.current) return; // a call is already running or starting (double tap, double effect)
     activeRef.current = true;
+    mintWhyRef.current = 'start';
     sessionPreferencesRef.current = experienceRef.current?.preferences ?? null;
     appliedStyleRef.current = sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : '';
     const gen = ++genRef.current;

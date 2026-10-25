@@ -80,6 +80,7 @@ import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { loadLiveReportBlock } from '@/lib/research/liveContext';
 import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
+import { LIVE_LANGUAGE_LOCK, liveTranscriptionLanguages } from '@/lib/voice/voicePrompt';
 import { LIVE_TRANSPORT_UNAVAILABLE, liveTokenMinter } from '@/lib/voice/liveMint';
 import { liveAudienceAllows } from '@/lib/voice/liveAudience';
 
@@ -92,8 +93,9 @@ const NEW_SESSION_WINDOW_MS = 2 * 60 * 1000; // must OPEN the session within ~2 
 
 type LiveLocale = 'ka' | 'en' | 'ru';
 
-/** BCP-47 hint for the INPUT transcription (native-audio models take no speech languageCode — see geminiLive.ts). */
-const TRANSCRIPTION_LANGUAGE: Record<LiveLocale, string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' };
+/** Why the browser asks for a token (it says so in `why`): logged with every mint, so a call that keeps opening
+ *  fresh sessions shows which path opens them (GG, 2026-10-25: one fresh session per answer). */
+const MINT_WHY = ['start', 'renew', 'resume', 'step'] as const;
 
 const MALE_VOICES: ReadonlySet<LiveVoice> = new Set<LiveVoice>(['Charon', 'Puck']);
 
@@ -148,7 +150,8 @@ function liveCallRule(search: boolean, actions: boolean): string {
   return [
     'LIVE VOICE CALL: everything you say is spoken aloud in real time. The FORMAT guidance above does not apply here —',
     'speak natural sentences with no Markdown, lists, headings, tables, code blocks, LaTeX or emoji; describe structure',
-    'in words. If the user speaks another language, answer in that language.',
+    'in words. Answer in the language of the user\'s latest words; when they switch between Georgian, English and',
+    'Russian, switch with your very next reply.',
     // ⚠️ THE TEXT CHAT'S RULES CONTRADICTED THE CALL'S. Above, HANDING OFF says no reply can start a render and ANSWERING
     // says attached files are read in full — true for the text chat, false here: with actions the call DOES open and fill
     // tools, and it never sees a file's content, only its name. ⚠️ It said "you start renders yourself" until 2026-10-16,
@@ -266,7 +269,7 @@ export async function POST(request: NextRequest) {
     const liveFor = (withActions: boolean, withSearch: boolean = search) => toGeminiLiveSetup(
       { ...profile, voice },
       // The report (when there is one) goes BEFORE the call rule: that rule stays the last block, where the model weighs it most.
-      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: withSearch })}${memoryBlock ? `\n\n${memoryBlock}` : ''}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(withSearch, withActions)}` },
+      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: withSearch, spoken: true })}${memoryBlock ? `\n\n${memoryBlock}` : ''}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(withSearch, withActions)}` },
     );
     const live = liveFor(actionsWanted);
     const transcribe = body.transcribe === true;
@@ -275,12 +278,12 @@ export async function POST(request: NextRequest) {
       const tools: LiveTool[] = [...(withActions ? ['live_actions' as const] : []), ...(search ? ['google_search' as const] : [])];
       return buildLiveSetup({
         model,
-        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder,
+        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder + '\n' + LIVE_LANGUAGE_LOCK,
         ...(experience ? { turnEagerness: experience.eagerness } : {}),
         voiceName: l.voiceName,
         // The Live session has always run at the model's default temperature; only an active persona changes that.
         ...(personaActive ? { temperature: l.temperature } : {}),
-        ...(transcribe ? { transcribe: true, languageCode: TRANSCRIPTION_LANGUAGE[locale] } : {}),
+        ...(transcribe ? { transcribe: true, languageCode: liveTranscriptionLanguages(locale) } : {}),
         ...(body.compression === true ? { compression: true } : {}),
         ...('resumptionHandle' in body
           ? { resumptionHandle: typeof body.resumptionHandle === 'string' ? body.resumptionHandle : null }
@@ -326,7 +329,7 @@ export async function POST(request: NextRequest) {
       const plain = liveFor(false, false);
       const legacy = buildLiveSetup({
         model,
-        systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder,
+        systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder + '\n' + LIVE_LANGUAGE_LOCK,
         voiceName: plain.voiceName,
         ...(personaActive ? { temperature: plain.temperature } : {}),
       });
@@ -351,6 +354,14 @@ export async function POST(request: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: 'live_token_empty' }, { status: 503 });
     }
+    structuredLog('info', 'voice.live.minted', {
+      why: (MINT_WHY as readonly unknown[]).includes(body.why) ? String(body.why) : 'unknown',
+      persona: profile.id,
+      locale,
+      resume: typeof body.resumptionHandle === 'string' && body.resumptionHandle !== '',
+      thread: threadBlock !== '',
+      relay: !!minter.wsUrl,
+    });
 
     return NextResponse.json({
       token,

@@ -239,9 +239,11 @@ export interface BuildLiveSetupOptions {
   systemInstruction: string;
   /** Prebuilt voice (Aoede / Charon verified in Georgian). A malformed name falls back to Aoede. */
   voiceName: string;
-  /** BCP-47 (e.g. 'ka-GE'). Sent ONLY as inputAudioTranscription.languageCodes (needs transcribe:true) —
-   *  never as speechConfig.languageCode, which native-audio models do not support (see header). */
-  languageCode?: string;
+  /** BCP-47 (e.g. 'ka-GE'), or several. Sent ONLY as inputAudioTranscription.languageCodes (needs transcribe:true) —
+   *  never as speechConfig.languageCode, which native-audio models do not support (see header). A call that follows
+   *  Georgian, English and Russian sends all three (Vertex accepted it, us-central1, 2026-10-25): with Georgian alone,
+   *  Russian speech came back in the transcript — and in the chat thread a fresh session reads — as Georgian. */
+  languageCode?: string | readonly string[];
   /** 0..2; omitted when not a finite number. */
   temperature?: number;
   /** undefined → no sessionResumption field (no resumption updates, today's wire);
@@ -349,10 +351,10 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
   if (instruction.trim()) setup.systemInstruction = { parts: [{ text: instruction }] };
 
   if (opts?.transcribe === true) {
-    const lang = typeof opts.languageCode === 'string' ? opts.languageCode.trim() : '';
-    // UNCERTAIN (2026-09-30): languageCodes is in the API reference but not yet exercised live on the
-    // v1alpha Constrained endpoint. It is only a HINT; omit languageCode to fall back to auto-detect.
-    setup.inputAudioTranscription = BCP47_RE.test(lang) ? { languageCodes: [lang] } : {};
+    const raw = typeof opts.languageCode === 'string' ? [opts.languageCode] : Array.isArray(opts.languageCode) ? opts.languageCode : [];
+    const langs = [...new Set(raw.map((l) => (typeof l === 'string' ? l.trim() : '')).filter((l) => BCP47_RE.test(l)))];
+    // It is only a HINT; omit languageCode to fall back to auto-detect.
+    setup.inputAudioTranscription = langs.length ? { languageCodes: langs } : {};
     setup.outputAudioTranscription = {};
   }
 
@@ -719,6 +721,9 @@ export class GeminiLiveSession {
   /** The latest RESUMABLE handle from sessionResumptionUpdate (null until one arrives). Pass it as
    *  buildLiveSetup({resumptionHandle}) on the reconnect after a goAway / dropped socket. */
   get resumptionHandle(): string | null { return this.lastResumptionHandle; }
+
+  /** Bytes sent but not yet handed to the network (WebSocket.bufferedAmount); 0 without a socket. */
+  get bufferedAmount(): number { return this.ws?.bufferedAmount ?? 0; }
 
   connect(): void {
     if (this.ws) return;
