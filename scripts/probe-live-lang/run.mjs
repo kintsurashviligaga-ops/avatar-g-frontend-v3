@@ -1,6 +1,6 @@
 // TEST-ONLY probe (never merged): does the Live call answer in the language the user speaks?
 // Usage: node run.mjs <variant.json> [reps]   env: TOKEN (gcloud auth print-access-token), PROJECT, LOCATION
-// Audio: en1.pcm ru1.pcm ru2.pcm in this folder (16 kHz, 16-bit, mono, little-endian, no header).
+// Audio: <turn>.pcm for each name in TURNS (default en1,ru1,ru2) in this folder (16 kHz, 16-bit, mono, little-endian, no header).
 import { readFileSync, appendFileSync } from 'node:fs';
 import WebSocket from 'ws';
 
@@ -10,7 +10,7 @@ const { TOKEN, PROJECT = 'gen-lang-client-0671348730', LOCATION = 'europe-west4'
 const url = `wss://${LOCATION}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
 const msg = JSON.parse(readFileSync(variantPath, 'utf8'));
 msg.setup.model = `projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/gemini-live-2.5-flash-native-audio`;
-const TURNS = ['en1', 'ru1', 'ru2'];
+const TURNS = (process.env.TURNS || 'en1,ru1,ru2').split(',');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const lang = (t) => {
   const ka = (t.match(/[Ⴀ-ჿ]/g) || []).length, ru = (t.match(/[Ѐ-ӿ]/g) || []).length, en = (t.match(/[A-Za-z]/g) || []).length;
