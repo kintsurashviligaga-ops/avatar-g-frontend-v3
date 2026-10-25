@@ -11,4 +11,5 @@ SHAPE=a node run.mjs talk Kira      # one short Georgian turn, ~25 s, writes out
 LOCATION=us-central1 node run.mjs setup    # the app's exact avatar setups (setups.json), closed at setupComplete: free
 LOCATION=us-central1 node run.mjs custom   # own-face avatar with a grey test image (no face): allowlisted or not
 LOCATION=us-central1 FIXTURE=full node run.mjs talk Kira   # PAID (~$0.1): the app's exact setup, one Georgian turn, captions
+LOCATION=us-central1 FIXTURE=full PROMPT="..." node run.mjs talk Kira   # PAID: the same with your own words (does the avatar call tools?)
 ```

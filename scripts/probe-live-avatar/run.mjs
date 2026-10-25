@@ -145,7 +145,7 @@ s.ws.on('message', (raw) => {
 const ok = await Promise.race([s.ready, sleep(15000).then(() => 'timeout')]);
 if (ok !== true) { console.log(JSON.stringify({ avatar: avatarArg, ok, close: s.close, error: s.error })); process.exit(1); }
 const sentAt = Date.now() - s.t0;
-s.ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: 'გამარჯობა! ერთი მოკლე წინადადებით მითხარი, ვინ ხარ.' }] }], turnComplete: true } }));
+s.ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: process.env.PROMPT || 'გამარჯობა! ერთი მოკლე წინადადებით მითხარი, ვინ ხარ.' }] }], turnComplete: true } }));
 let turnDoneAt = -1;
 for (let i = 0; i < 250; i++) {
   await sleep(100);
@@ -160,7 +160,7 @@ await sleep(300);
 const video = []; const parts = []; let usage = null; let firstVideoMs = -1; let text = '';
 for (const { t, m, bytes } of s.msgs) {
   if (m.usageMetadata) usage = m.usageMetadata;
-  if (m.toolCall) parts.push({ t, toolCall: (m.toolCall.functionCalls ?? []).map((c) => c.name) });
+  if (m.toolCall) parts.push({ t, toolCall: (m.toolCall.functionCalls ?? []).map((c) => `${c.name} ${JSON.stringify(c.args ?? {}).slice(0, 200)}`) });
   const sc = m.serverContent;
   if (sc?.outputTranscription?.text) text += sc.outputTranscription.text;
   for (const p of sc?.modelTurn?.parts ?? []) {
@@ -184,6 +184,7 @@ const report = {
   codecs: codecs(all), firstParts: parts.slice(0, 12), lastParts: parts.slice(-6),
   mimeTypes: [...new Set(parts.map((p) => p.mime).filter(Boolean))],
   transcript: text.slice(0, 300), usage,
+  toolCalls: parts.filter((p) => p.toolCall).map((p) => ({ t: p.t, calls: p.toolCall })),
 };
 writeFileSync(here(`report-${avatarArg}.json`), JSON.stringify(report, null, 2));
 console.log(JSON.stringify({ ...report, firstParts: undefined, lastParts: undefined }, null, 2));
