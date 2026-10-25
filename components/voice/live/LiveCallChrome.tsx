@@ -5,20 +5,17 @@
  * whichever engine answers: the Gemini Live call (LiveModeOverlay) and the ElevenLabs fallback (VoiceConversation,
  * used when Gemini Live is unavailable for that user).
  *
- * ⚠️ THE FALLBACK USED TO LOOK LIKE ANOTHER PRODUCT (the owner, 2026-10-03: "the rocket logo on the Live chat, as here,
- * for users too"). VoiceConversation drew a canvas metaball orb that went crimson → violet while speaking — the banned
- * "AI purple" and glow soup (docs/DESIGN.md §6) — with no rocket, no „Live call“ label and a bare ✕. It now renders
- * these pieces around the same LiveOrb, so the two screens can only drift apart on purpose.
+ * ⚠️ THE FALLBACK USED TO LOOK LIKE ANOTHER PRODUCT, and then like the 2026-10-03 rocket call. Since the owner's P0
+ * correction task (2026-10-24) both screens draw the owner's approved Gemini Live design from these pieces, so they can
+ * only drift apart on purpose:
  *
- *   LiveCallFrame   the dark full-screen dialog (pinned dark, above every toast and tray; the host portals it)
- *   LiveBottomScrim the scrim under the control row
- *   LiveTopBar      the live dot + „ცოცხალი ზარი“ on the left, round 44 px buttons on the right
- *   LiveTopToggle   one of those round buttons, as a toggle (captions)
- *   LiveStatusLine  the compact waveform beside the quiet status line
- *   LiveErrorPanel  icon · headline · the reason · a hint · the browser's error name · actions
- *   LiveControlRow  the bottom row of LiveControls (round 56 px glass buttons, each with its word)
+ *   LiveAmbientGlow      the one soft blue glow rising from the bottom of the black screen
+ *   LiveVoicePill        the glowing blue pill with the white waveform (who is talking)
+ *   liveRoundButtonClass the 48 px round glass buttons of the bottom row (camera, mic, end)
+ *   LiveErrorPanel       icon · headline · the reason · a hint · the browser's error name · actions
+ *   LiveControl          a round glass button with its word (the host's extras: the voice switch)
  */
-import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { LiveWaveform, type LiveOrbState } from './LiveOrb';
 import type { LiveLevels } from './useGeminiLiveSession';
@@ -26,7 +23,7 @@ import type { LiveLevels } from './useGeminiLiveSession';
 type Locale = 'ka' | 'en' | 'ru';
 
 /** The product's toggle grammar: a control inverts while on. */
-export const LIVE_TOGGLE_ON = 'bg-app-text text-app-bg';
+const LIVE_TOGGLE_ON = 'bg-app-text text-app-bg';
 
 /** Georgian's tall script keeps the 16 px floor; Latin and Cyrillic secondary copy stays a step quieter. */
 export function liveQuietText(locale: Locale): string {
@@ -38,124 +35,61 @@ export function livePrimaryButtonClass(locale: Locale): string {
   return `inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-app-text px-5 ${liveQuietText(locale)} font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60`;
 }
 
-export interface LiveCallFrameProps extends Omit<HTMLAttributes<HTMLDivElement>, 'role' | 'aria-label'> {
-  /** The dialog's accessible name. */
-  ariaLabel: string;
-  /** Room kept free at the bottom for the control row (and the action strip above it), in CSS px, plus the safe area. */
-  padBottom?: number;
-  children: ReactNode;
-}
-
 /**
- * The call's frame: a full-screen dark dialog. Content is centred between the top bar (64 px) and the control row;
- * the padding reserves both, so on a short landscape phone the status line is never laid out under the controls.
- * `data-theme="dark"` pins the dark tokens on this subtree (they are declared on [data-theme='dark'] in
- * app/globals.css), so the call stays dark in the light theme, as Gemini Live does. z-[130]: above the body-level job
- * tray (z-60), the lightbox (z-100) and the toasts (z-110/111) — the host renders it through a portal on <body>.
+ * THE APPROVED CALL SCREEN (the owner's Gemini Live design of 2026-10-20, commit 088cfaba, and the owner's screenshot of
+ * it): true black, ONE soft blue glow rising from the bottom, the agent's words large at the top left, and one row at the
+ * bottom with the glowing blue voice pill in the middle. No rocket, no orb, no picture behind the call (the owner,
+ * 2026-10-24: the rocket backdrop is retired from every Live state). These three pieces draw it for every engine.
  */
-export const LiveCallFrame = forwardRef<HTMLDivElement, LiveCallFrameProps>(function LiveCallFrame(
-  { ariaLabel, padBottom = 124, className = '', style, children, ...rest },
-  ref,
-) {
+
+/** The bottom glow (the "ambient nebula"): one hue, static, behind everything. */
+export function LiveAmbientGlow() {
   return (
     <div
-      ref={ref}
-      role="dialog"
-      aria-modal="true"
-      aria-label={ariaLabel}
-      tabIndex={-1}
-      data-theme="dark"
-      {...rest}
-      className={`ag-no-drag fixed inset-0 z-[130] flex flex-col items-center justify-center overflow-hidden bg-app-bg text-app-text outline-none ${className}`}
+      aria-hidden
+      data-testid="live-ambient"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[65vh] opacity-90 transition-opacity duration-700"
       style={{
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-        paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${padBottom}px)`,
-        ...style,
+        background:
+          'radial-gradient(ellipse 95% 60% at 50% 100%, rgba(26, 115, 232, 0.42) 0%, rgba(13, 37, 89, 0.22) 45%, rgba(0, 0, 0, 0) 80%)',
       }}
-    >
-      {children}
-    </div>
-  );
-});
-
-/** Under the control row: a scrim so the words stay legible over the camera or the rocket behind the orb. */
-export function LiveBottomScrim() {
-  return <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-56 bg-gradient-to-t from-black/80 via-black/35 to-transparent" />;
-}
-
-export interface LiveTopBarProps {
-  /** „ცოცხალი ზარი“ / "Live call" / «Живой звонок». */
-  label: string;
-  /** The dot pulses while the call is live (never under reduced motion); it stays still on an error. */
-  live?: boolean;
-  /** The round buttons on the right (flip camera, "show the screen", captions). */
-  children?: ReactNode;
-}
-
-/** The top bar: names the call quietly — the user knows where they are — and holds the view toggles. */
-export function LiveTopBar({ label, live = true, children }: LiveTopBarProps) {
-  return (
-    <div
-      className="absolute inset-x-0 z-20 flex h-16 items-center justify-between px-3"
-      style={{ top: 'env(safe-area-inset-top, 0px)' }}
-    >
-      <span data-testid="live-call-label" className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap pl-2 text-[16px] font-medium text-app-text">
-        <span aria-hidden className="relative flex h-2 w-2">
-          {live && <span className="absolute inline-flex h-full w-full rounded-full bg-app-accent opacity-60 motion-safe:animate-ping" />}
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-app-accent" />
-        </span>
-        {label}
-      </span>
-      <span className="flex shrink-0 items-center gap-1.5">{children}</span>
-    </div>
+    />
   );
 }
 
-export interface LiveTopToggleProps {
-  label: string;
-  pressed: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-}
+/** The voice pill's look: the approved blue gradient with its one glow. */
+const LIVE_PILL_CLASS = 'relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-sky-300/40 shadow-[0_0_42px_rgba(37,99,235,0.65),inset_0_1px_2px_rgba(255,255,255,0.35)]';
+const LIVE_PILL_STYLE = { background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #38bdf8 100%)' } as const;
+/** The full-size pill's box (the call's bottom row). */
+const LIVE_PILL_SIZE = 'h-14 w-24 min-[360px]:w-28 min-[390px]:w-36 sm:w-40';
 
-/** A 44 px round toggle for the top bar (aria-pressed; inverts while on). */
-export function LiveTopToggle({ label, pressed, onClick, icon }: LiveTopToggleProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={pressed}
-      className={`flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${pressed ? LIVE_TOGGLE_ON : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}
-    >
-      {icon}
-    </button>
-  );
-}
-
-export interface LiveStatusLineProps {
-  /** The orb's state; the waveform follows it (still while muted). */
+export interface LiveVoicePillProps {
   state: LiveOrbState;
-  muted?: boolean;
   getLevels?: () => LiveLevels;
-  /** The localized status („უკავშირდება…“, "Listening"…), announced politely. */
-  label: string;
-  locale: Locale;
+  /** The pill's box; the full row size by default, the dock passes a small one. */
+  sizeClass?: string;
+  compact?: boolean;
   className?: string;
 }
 
-/** Quiet on purpose: the orb carries the state; the line names it, and the waveform says who is talking. */
-export function LiveStatusLine({ state, muted = false, getLevels, label, locale, className = '' }: LiveStatusLineProps) {
+/** The glowing blue pill with the white waveform: the call's one picture of who is talking. Decorative. */
+export function LiveVoicePill({ state, getLevels, sizeClass = LIVE_PILL_SIZE, compact = false, className = '' }: LiveVoicePillProps) {
   return (
-    <div className={`relative z-10 flex items-center gap-2.5 ${className}`}>
-      <span data-testid="live-waveform" className="flex items-center">
-        <LiveWaveform compact state={muted ? 'idle' : state} getLevels={getLevels} />
-      </span>
-      <span data-testid="live-status" aria-live="polite" className={`${liveQuietText(locale)} font-medium leading-[1.6] text-app-muted`}>
-        {label}
-      </span>
-    </div>
+    <span data-testid="live-voice-pill" aria-hidden="true" className={`${LIVE_PILL_CLASS} ${sizeClass} ${className}`} style={LIVE_PILL_STYLE}>
+      <LiveWaveform compact={compact} state={state} getLevels={getLevels} className="[&_span]:bg-white" />
+    </span>
   );
+}
+
+/** A 48 px round glass button of the approved bottom row (camera, mic, end). */
+export function liveRoundButtonClass(tone: 'glass' | 'on' | 'muted' | 'end' = 'glass'): string {
+  const base = 'flex h-12 w-12 shrink-0 touch-manipulation items-center justify-center rounded-full border border-white/10 shadow-md backdrop-blur-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70';
+  switch (tone) {
+    case 'on': return `${base} bg-white text-black`;
+    case 'muted': return `${base} border-rose-500/30 bg-rose-500/20 text-rose-300`;
+    case 'end': return `${base} bg-white/10 text-white hover:border-rose-500/40 hover:bg-rose-500/25 hover:text-rose-300`;
+    default: return `${base} bg-white/10 text-white hover:bg-white/15`;
+  }
 }
 
 export interface LiveErrorPanelProps {
@@ -241,20 +175,5 @@ export function LiveControl({ label, ariaLabel, icon, onClick, pressed, tone = '
         {label}
       </span>
     </button>
-  );
-}
-
-/** The bottom row of LiveControls. Pixel sizes, not rem (the app's root is 17 px): five 56 px circles + four 4 px gaps
- *  fill a 320 px phone; the gaps open up as the words appear and the screen widens. */
-export function LiveControlRow({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className="absolute inset-x-0 bottom-0 z-20 flex justify-center px-2 min-[400px]:px-4"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
-    >
-      <div data-testid="live-controls" className="flex max-w-full items-start justify-center gap-[4px] min-[360px]:gap-[6px] min-[390px]:gap-[10px] sm:gap-4">
-        {children}
-      </div>
-    </div>
   );
 }

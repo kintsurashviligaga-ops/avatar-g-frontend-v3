@@ -32,20 +32,21 @@
  *  - If the Web-Audio machinery can't be set up, it FALLS BACK to plain tap-to-talk so voice still
  *    works. Tapping the orb while listening always force-ends the turn (manual endpoint).
  *
- * THE SCREEN IS THE LIVE CALL'S (the owner, 2026-10-03: "the rocket logo on the Live chat, as here, for users too").
- * ⚠️ This used to be its own screen: a canvas metaball orb that went crimson → violet while speaking (the banned "AI
- * purple" and glow soup, docs/DESIGN.md §6), no rocket, an unlocalized ✕. It now draws the Gemini Live call's pieces
- * (components/voice/live/LiveCallChrome.tsx): the rocket orb with its one audio-reactive halo (LiveOrb, fed by this
- * session's analysers through `getLevels`), the large faint rocket behind it, „ცოცხალი ზარი“ top-left with the
- * captions toggle, the status line with the compact waveform, the rolling captions, and the round 56 px glass row —
- * Mute · End. The status words are the Live screen's (LIVE_OVERLAY_STRINGS), so „უკავშირდება…“ reads the same on both.
+ * THE SCREEN IS THE LIVE CALL'S, and since 2026-10-24 it is the APPROVED one (the owner's P0 correction task: the old
+ * rocket background is retired from every Live state, and the call wears the owner's Gemini Live design of 2026-10-20).
+ * ⚠️ Why this screen matters most: under MASTER TASK v3.1 nobody mints a Gemini Live token (lib/voice/liveMint.ts, since
+ * #119 on 2026-10-23), so ChatChrome falls back here for EVERY user, and this screen drew the 2026-10-03 rocket orb with
+ * the large faint rocket behind it, which is how the retired rocket came back on the Live chat. It now draws the same
+ * screen as LiveModeOverlay (components/voice/live/LiveCallChrome.tsx: LiveAmbientGlow, LiveVoicePill): true black, the
+ * blue glow from below, the status and the words at the top left, and one row at the bottom: the voice pill (the
+ * end-of-turn control while listening) · Mute · End. The status words are the Live screen's (LIVE_OVERLAY_STRINGS).
  * Mute disables the mic track: the recorder and the VAD hear silence, so a muted user neither ends a turn nor barges in.
  * Like the Live screen it is portalled onto <body>, pinned dark, at z-[130], and is a dialog: focus moves in, Tab is
  * trapped, Escape ends the call.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, Mic, MicOff, PhoneOff, RotateCcw, Subtitles } from 'lucide-react';
+import { AlertCircle, Mic, MicOff, RotateCcw, Subtitles, X } from 'lucide-react';
 
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import {
@@ -64,22 +65,18 @@ import { speechResult } from '@/lib/speech/request';
 import { inspectWav } from '@/lib/speech/wav';
 import { isSpeechLang, loadLearnedSpeechLang, resolveSpeechLang, saveLearnedSpeechLang, transcriptSpeechLang } from '@/lib/voice/speechLang';
 
-import LiveCaptions from './live/LiveCaptions';
+import { tailText } from './live/LiveCaptions';
 import {
-  LiveBottomScrim,
-  LiveCallFrame,
-  LiveControl,
-  LiveControlRow,
+  LiveAmbientGlow,
   LiveErrorPanel,
-  LiveStatusLine,
-  LiveTopBar,
-  LiveTopToggle,
+  LiveVoicePill,
   livePrimaryButtonClass,
   liveQuietText,
+  liveRoundButtonClass,
 } from './live/LiveCallChrome';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
-import LiveOrb, { type LiveOrbState } from './live/LiveOrb';
+import type { LiveOrbState } from './live/LiveOrb';
 import type { LiveCaption, LiveLevels } from './live/useGeminiLiveSession';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -224,7 +221,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   const ttsAbortRef = useRef<AbortController | null>(null);
   const turnAbortRef = useRef<AbortController | null>(null);
 
-  // ── The orb's levels (read by LiveOrb + LiveWaveform once per animation frame each) ──
+  // ── The voice pill's levels (read by LiveWaveform once per animation frame) ──
   const levelBufRef = useRef<Uint8Array | null>(null);
   const levelCacheRef = useRef<{ at: number; value: LiveLevels }>({ at: -1, value: NO_LEVELS });
 
@@ -288,7 +285,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   }, []);
 
   // ── The orb's levels: the MIC while listening (zero while muted), the TTS output while speaking, nothing otherwise.
-  //    LiveOrb and LiveWaveform each read once per frame, so one analyser read serves both (8 ms cache). ──
+  //    LiveWaveform reads once per frame; the 8 ms cache keeps one analyser read per frame. ──
   const getLevels = useCallback((): LiveLevels => {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const cache = levelCacheRef.current;
@@ -676,86 +673,131 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   const errorKind: VoiceError = error ?? 'failed';
 
   const screen = (
-    <LiveCallFrame ref={dialogRef} ariaLabel={t.title} data-voice-status={status}>
-      {!isError && <LiveBottomScrim />}
+    // The approved call screen (LiveCallChrome: LiveAmbientGlow, LiveVoicePill), the same one the Gemini Live call wears
+    // (LiveModeOverlay): true black, the blue glow from below, the words at the top left, one row at the bottom.
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t.title}
+      tabIndex={-1}
+      data-theme="dark"
+      data-live-call-ui
+      data-voice-status={status}
+      className="ag-no-drag fixed inset-0 z-[130] flex select-none flex-col justify-between overflow-hidden bg-black text-white outline-none"
+    >
+      <LiveAmbientGlow />
 
-      <LiveTopBar label={live.live} live={!isError}>
-        {!isError && (
-          <LiveTopToggle label={live.captions} pressed={captionsOn} onClick={() => setCaptionsOn((v) => !v)} icon={<Subtitles size={20} aria-hidden />} />
-        )}
-      </LiveTopBar>
-
-      {isError ? (
-        <LiveErrorPanel
-          icon={errorKind === 'mic' ? <MicOff size={26} /> : <AlertCircle size={26} />}
-          headline={errorKind === 'mic' ? live.micHeadline : t.stopped}
-          reason={errorKind === 'mic' ? t.micDenied : errorKind === 'rate_limited' ? t.rateLimited : errorKind === 'budget' ? budgetRefusalMessage(lang, budgetReasonRef.current) : t.noReply}
-          locale={lang}
-        >
-          <button type="button" onClick={onMicTap} className={livePrimaryButtonClass(lang)}>
-            <RotateCcw size={16} aria-hidden />
-            {t.retry}
-          </button>
-        </LiveErrorPanel>
-      ) : (
-        <>
+      {!isError && (
+        <div className="relative z-20 flex items-center justify-end px-5 pb-4" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 48px)' }}>
           <button
             type="button"
-            onClick={onMicTap}
-            disabled={!orbTappable}
-            aria-label={orbIsControl ? t.endTurn : undefined}
-            aria-hidden={orbIsControl ? undefined : true}
-            tabIndex={orbIsControl ? undefined : -1}
-            data-testid="voice-orb"
-            className="relative z-10 mb-6 touch-manipulation rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 disabled:cursor-default"
+            onClick={() => setCaptionsOn((v) => !v)}
+            aria-label={live.captions}
+            aria-pressed={captionsOn}
+            className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full bg-white/10 text-white/90 backdrop-blur-md transition-all hover:bg-white/15 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70"
           >
-            <LiveOrb state={orbState} getLevels={getLevels} size={208} label={statusLabel} backdrop />
+            <Subtitles size={20} aria-hidden />
           </button>
-
-          <LiveStatusLine state={orbState} muted={muted} getLevels={getLevels} label={statusLabel} locale={lang} />
-
-          {(status === 'off' || status === 'resume') && (
-            <button type="button" onClick={onMicTap} data-testid="voice-start" className={`relative z-10 mt-4 ${livePrimaryButtonClass(lang)}`}>
-              {status === 'off' ? <Mic size={18} aria-hidden /> : <RotateCcw size={18} aria-hidden />}
-              {status === 'off' ? t.tapToStart : t.tapResume}
-            </button>
-          )}
-
-          {/* Until the first turn: how hands-free works (the VAD hears the end of a sentence). */}
-          {status === 'listening' && vadModeRef.current && !turn.said && (
-            <p className={`relative z-10 mt-3 max-w-xs px-6 text-center ${quiet} leading-[1.6] text-app-muted`}>{t.hint}</p>
-          )}
-
-          {captionsOn && (
-            <LiveCaptions captions={captions} locale={lang} className="relative z-10 mt-6 min-h-[5.5rem]" />
-          )}
-        </>
+        </div>
       )}
 
-      {/* The Live call's row: Mute · End (this engine has no camera and one voice). Only End on the error screen. */}
-      <LiveControlRow>
-        {!isError && (
-          <LiveControl
-            label={live.muteShort}
-            ariaLabel={live.mute}
-            icon={muted ? <MicOff size={22} aria-hidden /> : <Mic size={22} aria-hidden />}
-            onClick={toggleMute}
-            pressed={muted}
-            locale={lang}
-            testId="voice-mute"
-          />
+      <div data-testid="live-content" className="relative z-10 mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col justify-start overflow-y-auto overscroll-contain px-6 pb-3 pt-10">
+        {isError ? (
+          <div className="flex flex-1 items-center justify-center">
+            <LiveErrorPanel
+              icon={errorKind === 'mic' ? <MicOff size={26} /> : <AlertCircle size={26} />}
+              headline={errorKind === 'mic' ? live.micHeadline : t.stopped}
+              reason={errorKind === 'mic' ? t.micDenied : errorKind === 'rate_limited' ? t.rateLimited : errorKind === 'budget' ? budgetRefusalMessage(lang, budgetReasonRef.current) : t.noReply}
+              locale={lang}
+            >
+              <button type="button" onClick={onMicTap} className={livePrimaryButtonClass(lang)}>
+                <RotateCcw size={16} aria-hidden />
+                {t.retry}
+              </button>
+            </LiveErrorPanel>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p data-testid="live-status" aria-live="polite" className={`${liveQuietText(lang)} leading-relaxed text-white/70`}>{statusLabel}</p>
+
+            {(status === 'off' || status === 'resume') && (
+              <button type="button" onClick={onMicTap} data-testid="voice-start" className={livePrimaryButtonClass(lang)}>
+                {status === 'off' ? <Mic size={18} aria-hidden /> : <RotateCcw size={18} aria-hidden />}
+                {status === 'off' ? t.tapToStart : t.tapResume}
+              </button>
+            )}
+
+            {/* Until the first turn: how hands-free works (the VAD hears the end of a sentence). */}
+            {status === 'listening' && vadModeRef.current && !turn.said && (
+              <p className={`${quiet} leading-[1.6] text-white/60`}>{t.hint}</p>
+            )}
+
+            {/* The approved captions: what the user said, quieter; the answer large (as LiveModeOverlay draws them). */}
+            {captionsOn && captions.length > 0 && (
+              <div role="log" aria-live="polite" aria-relevant="additions" aria-label={live.captions} className="space-y-3">
+                {captions.map((c) => (
+                  <p
+                    key={c.id}
+                    data-role={c.role}
+                    className={c.role === 'user'
+                      ? 'text-[16px] leading-relaxed text-white/60'
+                      : 'text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]'}
+                  >
+                    {tailText(c.text)}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
         )}
-        <LiveControl
-          label={live.endShort}
-          ariaLabel={live.end}
-          icon={<PhoneOff size={22} aria-hidden />}
-          onClick={onClose}
-          tone="danger"
-          locale={lang}
-          testId="voice-end"
-        />
-      </LiveControlRow>
-    </LiveCallFrame>
+      </div>
+
+      {/* The approved bottom row: the voice pill (the end-of-turn control while listening) · Mute · End.
+          This engine has no camera. Only End on the error screen. */}
+      <div className="relative z-20 flex w-full shrink-0 flex-col items-center justify-center px-4 pt-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 40px)' }}>
+        <div data-testid="live-controls" className="flex w-full max-w-sm items-center justify-center gap-2 min-[360px]:gap-3.5 sm:gap-5">
+          {!isError && (
+            <>
+              <button
+                type="button"
+                onClick={onMicTap}
+                disabled={!orbTappable}
+                aria-label={orbIsControl ? t.endTurn : undefined}
+                aria-hidden={orbIsControl ? undefined : true}
+                tabIndex={orbIsControl ? undefined : -1}
+                data-testid="voice-orb"
+                data-state={orbState}
+                className="touch-manipulation rounded-full transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70 disabled:cursor-default"
+              >
+                <span data-testid="live-waveform" className="flex">
+                  <LiveVoicePill state={muted && status === 'listening' ? 'idle' : orbState} getLevels={getLevels} />
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={toggleMute}
+                aria-label={live.mute}
+                aria-pressed={muted}
+                data-testid="voice-mute"
+                className={liveRoundButtonClass(muted ? 'muted' : 'glass')}
+              >
+                {muted ? <MicOff size={20} aria-hidden /> : <Mic size={20} aria-hidden />}
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={live.end}
+            data-testid="voice-end"
+            className={liveRoundButtonClass('end')}
+          >
+            <X size={22} aria-hidden />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 
   // ChatChrome loads this screen with ssr:false, so document exists; the guard keeps a server render harmless.

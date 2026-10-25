@@ -102,9 +102,11 @@ test.describe('voice mode, end to end', () => {
     live.say('მზად არის, ეკრანზეა.');
     await expect(page.getByTestId('live-dock-line')).toContainText('მზად არის', { timeout: 10_000 });
 
-    // 7 — the dock says who is on the call: the rocket, "Agent G", and a calm End pill (not a red ✕).
+    // 7 — the dock says who is on the call: "Agent G" beside the blue voice orb (no rocket since 2026-10-24), and a
+    //     calm End pill (not a red ✕).
     const dock = page.getByTestId('live-dock');
-    await expect(dock.locator('img[src*="rocket-mark"]').first()).toBeVisible();
+    await expect(dock.getByTestId('live-orb-core')).toBeVisible();
+    await expect(dock.locator('img[src*="rocket-mark"]')).toHaveCount(0);
     await expect(dock).toContainText('Agent G');
     await expect(page.getByTestId('live-dock-end')).toContainText('დასრულება');
 
