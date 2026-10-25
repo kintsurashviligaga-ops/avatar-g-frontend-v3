@@ -134,11 +134,10 @@ for (const vp of VIEWPORTS) {
         const open = await reachablePrimaries(page);
         if (tool.create) {
           expect(open, JSON.stringify(open)).toEqual([{ testId: tool.create, kind: 'create', enabled: true }]);
-        } else if (vp.desktop) {
-          expect(open, JSON.stringify(open)).toEqual([{ testId: 'run-button', kind: 'send', enabled: true }]);
         } else {
-          // The phone's video sheet covers the composer; its own copy points to the chat box.
-          expect(open, JSON.stringify(open)).toEqual([]);
+          // The video settings hold no prompt: the chat box stays under them (on a phone too since the unified composer,
+          // GG 2026-10-25), and its Send is the one primary.
+          expect(open, JSON.stringify(open)).toEqual([{ testId: 'run-button', kind: 'send', enabled: true }]);
         }
 
         // Settings closed: the words typed in the panel are in the composer's box, and its Send is the one primary.

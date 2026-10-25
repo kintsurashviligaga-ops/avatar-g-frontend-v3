@@ -3599,7 +3599,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const shoot = useShootStudio({
     locale,
     notifyCredit,
-    onStarted: () => setOptionsOpen(false),
+    onStarted: () => closeSettingsLayer(),
     onWalkthrough: (url, prompt) => { sendImageToVideo(url); setInput(prompt); },
   });
   const { transitCharacterUrl, transitAudioUrl, transitAudioMeta, transitStoryboard, setTransitStoryboard, clearCharacter, clearAudio, clearStoryboard } = useStudioBridge();
@@ -4431,7 +4431,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const enrich = Boolean(marketing || voiceoverScript.trim());
     const scorePrompt = `${preset} product commercial, premium, uplifting`;
     // Open the result in the chat (like image/music/swap): close the panel + drop a progress bubble.
-    setOptionsOpen(false);
+    closeSettingsLayer();
     setMessages((prev) => [...prev, ...(chatPhoto ? [] : [{ role: 'user' as const, text: `🛍 ${productBrand.trim() || jobLabel}` }]), { role: 'assistant', text: t.remixRunning, id: bubbleId, remixOpKind: 'productad' }]);
     submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: (job) => trackJobSettle(job, bubbleId), run: async ({ signal, onProgress, jobId }): Promise<string> => {
     // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
@@ -5961,7 +5961,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         setAgentGPhase(1);
         const actions = Array.isArray(gj.actions) && gj.actions.length ? gj.actions : gj.action ? [gj.action] : [];
         setEditorAsset({ url: a0.dataUrl, kind: gKind, ...(actions.length ? { autoActions: actions } : {}) });
-        setInput(''); setAttachments([]); setOptionsOpen(false);
+        setInput(''); setAttachments([]); closeSettingsLayer();
         stopDictationEcho(); // a DICTATED edit command must not linger/re-appear after routing to the editor
         await new Promise((r) => window.setTimeout(r, 320)); // let "opening" show for a beat
         setMode('surgical');
@@ -6540,7 +6540,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: filmRefineNote(formatVideoDuration(spec.seconds, locale), refine.change, locale), notice: true }]);
         persistChatTurn('user', text);
         clearBox();
-        if (!isDesktop) setOptionsOpen(false);
+        closeSettingsLayer();
         void createStoryboard(brief, refs, spec.orientation, { nativeSec: spec.seconds, musicVideoMode: spec.musicVideo });
         return;
       }
@@ -6684,7 +6684,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // Agent G answers in words only — no card, no price, nothing started.
       const agentSays = (say: string) => {
         setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: say }]);
-        if (!isDesktop) setOptionsOpen(false);
+        closeSettingsLayer();
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
       };
       if (verdict.kind === 'chat') {
@@ -6697,7 +6697,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const chatTurn: Msg = { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' };
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         // A phone's Create sheet covers the thread: close it so the answer is SEEN (the generate branches do the same).
-        if (!isDesktop) setOptionsOpen(false);
+        closeSettingsLayer();
         persistChatTurn('user', text);
         await streamChat([...messages, chatTurn]);
         return;
@@ -6752,7 +6752,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           { role: 'user', text },
           { role: 'assistant', text: cardText, agentG: card },
         ]);
-        if (!isDesktop) setOptionsOpen(false);
+        closeSettingsLayer();
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         return;
       }
@@ -6782,7 +6782,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // ⚠️ effMode, not mode, in the three generative branches: the release above flipped the CHIP to Image but this
     // very send still built a VIDEO storyboard — the new mode only took effect on the next message.
     if (effMode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
-      setOptionsOpen(false);
+      closeSettingsLayer();
       const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
       const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
       const neg = imgNegative.trim();
@@ -6808,7 +6808,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // an explicit Instrumental choice is never silently overridden into a sung trained track.
       const mUseTrained = effMode === 'music' && (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice && !musicInstrumental;
       if (effMode === 'music' && (text || mAudioRef || mUseTrained) && !mBlocked) {
-        setOptionsOpen(false);
+        closeSettingsLayer();
         const musicPrompt = text || musicLyrics.trim() || `${musicGenre} music`;
         const userBubble = text || (mUseTrained ? t.voiceMode : mAudioRef ? `🎤 ${musicAudioMode === 'voice' ? t.voiceMode : t.coverMode}` : musicPrompt);
         runMusicJob({
@@ -7125,7 +7125,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (chatLane && opts?.confirmed) {
       // IMAGE — text→image; an attached image becomes an img2img ref (mirrors the Image panel).
       if (chatLane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
-        setOptionsOpen(false);
+        closeSettingsLayer();
         // The photo the offer is built on: one attached now, else the one from earlier in the thread it named.
         const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl ?? opts?.refImage;
         const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
@@ -7145,7 +7145,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // video/storyboard route at (musicVideo → videoMode='musicvideo'). Bare "make a song"/"make music"
       // carry no video cue, so they still dispatch here.
       if (chatLane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) {
-        setOptionsOpen(false);
+        closeSettingsLayer();
         const mAudioRef = attachments.find((a) => isAudio(a.mimeType))?.dataUrl;
         const mAudioMime = attachments.find((a) => isAudio(a.mimeType))?.mimeType;
         const mUseTrained = (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice && !musicInstrumental;
@@ -7178,7 +7178,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // MOBILE FIX — collapse the settings panel on generation so the result (video +
     // render progress) isn't buried behind a 58dvh options sheet. The feed (flex-1)
     // then fills the screen; the user re-opens settings to tweak the next run.
-    setOptionsOpen(false);
+    closeSettingsLayer();
     // Kill dictation echo on every committed send (shared with the image/music/chat-generative
     // intercepts above, which return before this point) so a late transcription can't re-fill the
     // composer and the mobile IME buffer commits — see stopDictationEcho for the full rationale.
@@ -7551,7 +7551,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const ac = new AbortController();
     abortRef.current = ac;
     const mine = () => genIdRef.current === myGen;
-    setOptionsOpen(false);
+    closeSettingsLayer();
     setMessages((prev) => [...prev, { role: 'user', text: `🎬 ${label}` }, { role: 'assistant', text: t.remixRunning, remixOpKind: remixOp }]);
     setRemixBusy(true); setBusy(true);
     try {
@@ -7597,7 +7597,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const source = swapSourceVideo.url;
     const charRef = videoCharacterRef;
     const orient = videoOrientation;
-    setOptionsOpen(false);
+    closeSettingsLayer();
     setMessages((prev) => [...prev, { role: 'user', text: `🔄 ${label}` }, { role: 'assistant', text: t.remixRunning, remixOpKind: 'character', id: bubbleId }]);
     submitJob({
       kind: 'remix',
@@ -9293,7 +9293,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       { role: 'user', text },
       { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: offer.mode, prompt: offer.prompt, locale }), agentG: next },
     ]);
-    if (!isDesktop) setOptionsOpen(false);
+    closeSettingsLayer();
     return true;
   };
 
@@ -9401,7 +9401,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: reply, notice: true }]);
       persistChatTurn('user', text);
       persistChatTurn('assistant', reply);
-      if (!isDesktop) setOptionsOpen(false);
+      closeSettingsLayer();
     };
 
     switch (step.kind) {
@@ -9453,7 +9453,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text', ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: `${routeNote}\n${lengthNote}${trackNote}`, notice: true }]);
         persistChatTurn('user', text, attachments);
         setInput(''); setAttachments(tracks); inputSourceRef.current = 'text'; stopDictationEcho();
-        if (!isDesktop) setOptionsOpen(false);
+        closeSettingsLayer();
         void createStoryboard(text, routeRefs, routeOrientation, { nativeSec, musicVideoMode: step.videoMode === 'musicvideo' });
         return true;
       }
@@ -9533,7 +9533,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const logo = step.logo !== undefined ? attachments[step.logo] : undefined;
         if ((!file && !url) || (step.logo !== undefined && !logo)) return false;
         clearComposer();
-        if (!isDesktop) setOptionsOpen(false);
+        closeSettingsLayer();
         void startAgentEdit(text, step.source, step.edits, file ? { file } : { url }, logo);
         return true;
       }
@@ -9542,7 +9542,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const files = [...attachments];
         if (!files.length) return false;
         clearComposer();
-        if (!isDesktop) setOptionsOpen(false);
+        closeSettingsLayer();
         void startAgentRun(text, step.chain, files);
         return true;
       }
@@ -9558,7 +9558,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const file = step.ask.source === 'file' ? attachments[0] : undefined;
         if (step.ask.source === 'file' && !file) return false;
         clearComposer();
-        if (!isDesktop) setOptionsOpen(false);
+        closeSettingsLayer();
         void startAgentAnalyze(text, step.ask, file);
         return true;
       }
@@ -11483,8 +11483,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     ) : null;
   const composerTextHidden = (imageCreate || mode === 'music')
     && (isDesktop ? panelOpen : optionsOpen);
-  // …and on a desktop the box's own Send and enhance go with it: the panel beside it has the priced Create.
-  const composerRunAside = composerTextHidden && isDesktop;
+  // …and the box's own Send and enhance go with it: the layer above it has the priced Create. On a phone too since the
+  // unified composer (GG 2026-10-25) — the box stays under the layer there, so two primaries would be one tap apart.
+  const composerRunAside = composerTextHidden;
   // The composer's montage chip: two or more clips, or a clip with photos and a track (the photos become still shots).
   const chipVideos = attachments.filter((a) => isVideo(a.mimeType)).length;
   const montageChipOn = chipVideos > 1

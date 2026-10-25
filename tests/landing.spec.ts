@@ -177,27 +177,11 @@ async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
   await page.goto(path);
   // The composer is what every path has: the video tool's Create screen replaces the greeting on a desktop.
   await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 30_000 });
-  const desktop = (page.viewportSize()?.width ?? 1280) >= 1024;
-  // On a phone a link to a tool whose input lives in its Create screen opens that screen as a sheet over the composer
-  // (OmniStudio applyTool). A production build does; `next dev` hid it until StrictMode stopped closing it (2026-10-09).
-  // Hold that here, then put the sheet away so each test starts at the composer.
-  if (!desktop && /[?&]tool=(video|product|swap|remix|motion|image|vfx)\b/.test(path)) {
-    const sheet = page.getByTestId('options-sheet');
-    await expect(sheet).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(sheet).toBeHidden();
-  }
-  // On a desktop the Image or Music panel opens with its tool and holds the description, so the composer's box steps
-  // aside (GG, 2026-10-18). The Video panel opens too, but holds no prompt: the box stays beside it (GG, 2026-10-18,
-  // „პრომპტი ჩატის ველში"). Hold that, then put the panel away (the tool chip toggles it) so each test starts the same.
-  if (desktop && /[?&]tool=(video|image|music)\b/.test(path)) {
-    if (/[?&]tool=video\b/.test(path)) {
-      await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
-      await expect(page.getByTestId('composer-input')).toBeVisible();
-    } else {
-      await expect(page.getByTestId('composer-input')).toBeHidden();
-    }
-    await page.getByTestId('options-toggle').click();
+  // The unified composer (GG 2026-10-25): a link to a tool opens the TOOL — its chip and quick settings in the chat box —
+  // and leaves its full settings closed (⋯ opens them as a layer above the box), on a phone and on a desktop alike.
+  if (/[?&]tool=(video|product|swap|remix|motion|image|vfx|music)\b/.test(path)) {
+    await expect(page.getByTestId('active-service-chip')).toBeVisible();
+    await expect(page.locator('#studio-settings').filter({ visible: true })).toHaveCount(0);
   }
   await expect(page.getByTestId('composer-input')).toBeVisible();
 }

@@ -124,12 +124,16 @@ export function AnchoredPopover({
 }: { anchorRef: RefObject<HTMLElement | null>; onClose: () => void; label: string; width?: number; maxHeight?: number; testId?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<Pos | null>(null);
+  // Where the anchor was when the popover was placed: a scroll elsewhere (the thread settling under the settings layer,
+  // a container nudged by focus) must not close a popover whose anchor did not move — only one that would now float.
+  const placedAt = useRef<{ top: number; left: number } | null>(null);
   const close = useCallback(() => { onClose(); anchorRef.current?.focus({ preventScroll: true }); }, [onClose, anchorRef]);
 
   useLayoutEffect(() => {
     const a = anchorRef.current;
     if (!a) return;
     const r = a.getBoundingClientRect();
+    placedAt.current = { top: r.top, left: r.left };
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const width = Math.min(wantWidth, vw - 16);
@@ -149,7 +153,13 @@ export function AnchoredPopover({
       onClose();
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
-    const onScroll = (e: Event) => { if (e.target instanceof Node && ref.current?.contains(e.target)) return; onClose(); };
+    const onScroll = (e: Event) => {
+      if (e.target instanceof Node && ref.current?.contains(e.target)) return;
+      const r = anchorRef.current?.getBoundingClientRect();
+      const at = placedAt.current;
+      if (r && at && Math.abs(r.top - at.top) < 2 && Math.abs(r.left - at.left) < 2) return;
+      onClose();
+    };
     document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('scroll', onScroll, true);

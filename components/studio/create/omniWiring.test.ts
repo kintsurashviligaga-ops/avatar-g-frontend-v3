@@ -116,7 +116,7 @@ describe('the phone: settings open on demand and the composer remains available 
   test('VIDEO keeps the box and its priced Send beside the open panel: the prompt lives only in the chat (GG, 2026-10-18)', () => {
     // The box is never hidden for video, so its Send (not set aside) is the film's one button.
     expect(src).not.toMatch(/const composerTextHidden = [^;]*activeTool === 'video'/);
-    expect(src).toMatch(/const composerRunAside = composerTextHidden && isDesktop;/);
+    expect(src).toMatch(/const composerRunAside = composerTextHidden;/);
     // Its price is the film's quote for the length, tier and mode on the panel (the number the panel's Generate showed).
     expect(src).toMatch(/\? videoQuote\(\{ seconds: videoDuration, tier: veoPlan\.tier, mode: videoMode \}\) \|\| null/);
     expect(src).toContain('onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}');
@@ -145,6 +145,12 @@ describe('the phone: settings open on demand and the composer remains available 
 });
 
 describe('the unified composer (GG 2026-10-25): one conversation on screen, settings anchored to the composer', () => {
+  test('a run, a reply or a card put the settings layer away on a desktop too — it sits over the thread the answer lands in', () => {
+    expect(src).not.toContain('if (!isDesktop) setOptionsOpen(false);');
+    expect((src.match(/closeSettingsLayer\(\);/g) ?? []).length).toBeGreaterThanOrEqual(19);
+    expect(src).toContain('onStarted: () => closeSettingsLayer(),');
+  });
+
   test('the panel gets the desktop flag (templates open, popovers)', () => {
     expect(mounted).toContain('desktop={isDesktop}');
   });
