@@ -19,6 +19,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MotionGlobalConfig } from 'framer-motion';
 
 import { __resetLiveTelemetryBudget } from '@/lib/voice/liveTelemetry';
+import { PERSONA_STORAGE_KEY } from '@/components/studio/PersonaPicker';
 import { primeLive } from '@/lib/voice/livePrime';
 import { LIVE_ACTION_EVENT, LIVE_FUNCTION_DECLARATIONS, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail } from '@/lib/voice/liveTools';
 
@@ -381,6 +382,29 @@ describe('voice-to-action', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test('set_persona switches the persona and, after the answer, reconnects the call in that role', async () => {
+    const { ws, onClose } = await connectedCall();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    try {
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'p1', name: 'set_persona', args: { persona: 'news-journalist' } }] } }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(lastToolResponse(ws)!.toolResponse.functionResponses[0]).toMatchObject({ id: 'p1', response: { ok: true } });
+      expect(window.localStorage.getItem(PERSONA_STORAGE_KEY)).toBe('news-journalist'); // the text chat follows
+      expect(FakeSocket.all).toHaveLength(1);
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_GRACE_MS + 100); });
+    } finally {
+      jest.useRealTimers();
+    }
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(ws.readyState).toBe(FakeSocket.CLOSED);
+    expect(onClose).not.toHaveBeenCalled();
+    const mints = (g.fetch as jest.Mock).mock.calls.filter((c) => c[0] === '/api/voice/live');
+    const body = JSON.parse(String((mints[mints.length - 1]![1] as RequestInit).body));
+    expect(body).toMatchObject({ personaId: 'news-journalist' });
+    expect(body.resumptionHandle ?? null).toBeNull();
+    window.localStorage.clear();
   });
 
   test('end_call with nothing playing → hangs up after the short grace', async () => {
