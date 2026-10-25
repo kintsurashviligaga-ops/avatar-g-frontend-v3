@@ -93,13 +93,17 @@ export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
  * in 0.2–1.3 s. ⚠️ GG 2026-10-25 16:11–16:31: 6 of 21 call attempts sat 11–14 s and the relay logged the setup frame
  * arriving 1–2 ms before the browser closed the socket at the 15 s deadline — the frame was held between browser and
  * relay until the close, and Vertex was never asked. Waiting longer never helps such a socket; a fresh one does.
+ * 6 s → 3 s after GG's avatar calls 17:54–18:03Z: 7 of 14 iPhone sockets held the setup until their own close (every
+ * one through iCloud Private Relay), while a healthy one delivers it 0.1–0.45 s after open and gets setupComplete
+ * ~1 s later (the avatar model in us-central1; voice in 0.1–0.3 s). 3 s is still twice the slowest healthy handshake.
  */
-export const LIVE_RELAY_READY_AFTER_OPEN_MS = 6000;
+export const LIVE_RELAY_READY_AFTER_OPEN_MS = 3000;
 /** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. Through the
- *  relay a held frame struck 2 attempts in a row (16:28Z), and each retry now costs 6 s, not 15: one more retry keeps
- *  the call's full setup (its UI actions and search) instead of degrading it. */
+ *  relay a held frame struck 2 attempts in a row (16:28Z) and 3 in a row twice (17:54Z, 17:56Z; the 4th worked): three
+ *  retries at 3 s each keep the call's full setup (its UI actions and search) instead of degrading it, in less time
+ *  than two at 6 s did. */
 const MAX_TIMEOUT_RETRIES = 1;
-const MAX_RELAY_TIMEOUT_RETRIES = 2;
+const MAX_RELAY_TIMEOUT_RETRIES = 3;
 /** Window event the default transcript sink dispatches (detail: LiveTurn) when the host passes no onTurn. */
 export const LIVE_TRANSCRIPT_EVENT = 'myavatar:live-transcript';
 

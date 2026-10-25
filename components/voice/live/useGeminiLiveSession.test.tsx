@@ -633,7 +633,7 @@ test('through the relay a booting relay (socket still CONNECTING) gets the long 
   }
 });
 
-test('through the relay an OPEN socket with no setupComplete gives up after 6 s, says where it waited, and retries the same setup twice', async () => {
+test('through the relay an OPEN socket with no setupComplete gives up after 3 s, says where it waited, and retries the same setup three times', async () => {
   jest.useFakeTimers();
   try {
     const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
@@ -652,15 +652,18 @@ test('through the relay an OPEN socket with no setupComplete gives up after 6 s,
     expect(h.report).toHaveBeenCalledWith('handshake_timeout', null, expect.objectContaining({
       relay: true, msToOpen: expect.any(Number), msSinceOpen: LIVE_RELAY_READY_AFTER_OPEN_MS, bufferedBytes: 39124,
     }));
-    act(() => FakeSocket.last.open()); // the second socket is held too
-    await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
-    expect(FakeSocket.all).toHaveLength(3);
+    // GG's avatar calls 17:54Z and 17:56Z: three held sockets in a row, the fourth worked.
+    for (const n of [3, 4]) {
+      act(() => FakeSocket.last.open()); // held too
+      await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
+      expect(FakeSocket.all).toHaveLength(n);
+    }
     for (const body of h.mintBodies.slice(1)) expect(body).toMatchObject({ actions: true }); // same setup, not degraded
     act(() => FakeSocket.last.open());
     act(() => FakeSocket.last.receive({ setupComplete: {} }));
     expect(result.current.status).toBe('listening');
     expect(result.current.degraded).toBe(false);
-    expect(h.report).toHaveBeenCalledTimes(2);
+    expect(h.report).toHaveBeenCalledTimes(3);
     unmount();
   } finally {
     jest.useRealTimers();
