@@ -114,9 +114,14 @@ function PickerList<T extends string | number>({
 
 interface Pos { top?: number; bottom?: number; left: number; width: number; maxHeight: number }
 
-function Popover({
-  anchorRef, onClose, label, wide, children,
-}: { anchorRef: RefObject<HTMLElement | null>; onClose: () => void; label: string; wide: boolean; children: ReactNode }) {
+function Popover({ wide, ...rest }: { anchorRef: RefObject<HTMLElement | null>; onClose: () => void; label: string; wide: boolean; children: ReactNode }) {
+  return <AnchoredPopover {...rest} width={wide ? 340 : 300} />;
+}
+
+/** A popover beside (above or below) its anchor, the desktop half of every picker; also the composer's „+" (ServicePicker). */
+export function AnchoredPopover({
+  anchorRef, onClose, label, width: wantWidth = 300, maxHeight: wantMax = 460, testId = 'picker-popover', children,
+}: { anchorRef: RefObject<HTMLElement | null>; onClose: () => void; label: string; width?: number; maxHeight?: number; testId?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<Pos | null>(null);
   const close = useCallback(() => { onClose(); anchorRef.current?.focus({ preventScroll: true }); }, [onClose, anchorRef]);
@@ -127,15 +132,15 @@ function Popover({
     const r = a.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const width = Math.min(wide ? 340 : 300, vw - 16);
+    const width = Math.min(wantWidth, vw - 16);
     // Left-aligned with the chip; when that would run off the right edge, right-aligned with it instead.
     const left = r.left + width > vw - 8 ? Math.max(8, r.right - width) : r.left;
     const below = vh - r.bottom - 12;
     const above = r.top - 12;
     const up = below < 280 && above > below;
-    const maxHeight = Math.max(160, Math.min(460, up ? above : below));
+    const maxHeight = Math.max(160, Math.min(wantMax, up ? above : below));
     setPos(up ? { bottom: vh - r.top + 6, left, width, maxHeight } : { top: r.bottom + 6, left, width, maxHeight });
-  }, [anchorRef, wide]);
+  }, [anchorRef, wantWidth, wantMax]);
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
@@ -162,8 +167,8 @@ function Popover({
       ref={ref}
       role="dialog"
       aria-label={label}
-      data-testid="picker-popover"
-      style={pos ? { position: 'fixed', zIndex: 96, ...pos } : { position: 'fixed', zIndex: 96, visibility: 'hidden', left: 0, top: 0, width: wide ? 340 : 300 }}
+      data-testid={testId}
+      style={pos ? { position: 'fixed', zIndex: 96, ...pos } : { position: 'fixed', zIndex: 96, visibility: 'hidden', left: 0, top: 0, width: wantWidth }}
       className="overflow-y-auto overscroll-contain rounded-3xl border border-app-border/10 bg-app-surface p-2 shadow-[0_18px_50px_rgba(0,0,0,0.5)]"
     >
       {children}

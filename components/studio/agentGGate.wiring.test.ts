@@ -47,7 +47,7 @@ describe('what the gate does with each verdict', () => {
     expect(chat).not.toMatch(/runImageJob|runImageBatch|runMusicJob|createStoryboard|\/api\/video|nanobanana/);
   });
   test('a card makes NO request: it only posts Agent G\'s message', () => {
-    const card = sendBody.slice(at("verdict.kind === 'clarify' || verdict.kind === 'confirm'"), at("gatePendingRef.current = null;\n      setGateFrom(null);\n      if (promptText !== text)"));
+    const card = sendBody.slice(at("verdict.kind === 'clarify' || verdict.kind === 'confirm'"), at("gatePendingRef.current = null;\n      if (promptText !== text)"));
     expect(card).toContain('gateMessage(');
     expect(card).not.toMatch(/fetch\(|runImageJob|runMusicJob|createStoryboard/);
   });

@@ -136,33 +136,38 @@ describe('the phone: settings open on demand and the composer remains available 
   });
 
   test('the sheet\'s generic header gives way to the panel\'s own (tool name ▾ · ✕) — not rendered, because a hidden ✕ would swallow the dialog\'s initial focus', () => {
-    expect(src).toMatch(/\{!imageCreate && !videoCreate && \(\s*<div data-testid="panel-header" className=\{`\$\{shootActive \? 'hidden ' : ''\}\$\{isDesktop/);
-    // The Image screen's own ✕ closes the panel on a desktop and the sheet on a phone.
+    expect(src).toMatch(/\{!imageCreate && !videoCreate && \(\s*<div data-testid="panel-header" className=\{`\$\{shootActive \? 'hidden ' : ''\}flex h-14/);
+    // The Image screen's own ✕ closes the settings layer at every width.
     expect(mounted).toContain('onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))}');
     // …and it is a real removal, never a `hidden` class on the header.
     expect(studio).not.toMatch(/imageCreate \? 'hidden'/);
   });
 });
 
-describe('the desktop: the centre is the Result pane, the right column is the same panel', () => {
+describe('the unified composer (GG 2026-10-25): one conversation on screen, settings anchored to the composer', () => {
   test('the panel gets the desktop flag (templates open, popovers)', () => {
     expect(mounted).toContain('desktop={isDesktop}');
   });
 
-  test('the Result pane + Models & prices stand where the thread would, fed by the same messages and handlers', () => {
-    expect(src).toMatch(/const imageDesk = imageCreate && isDesktop && !imageWorkspace;/);
-    expect(src).toMatch(/const imageDeskResults = imageDesk \? deriveImageResults\(messages, \{ busy \}\) : \[\];/);
-    expect(src).toMatch(/\{imageDesk && imageDeskActions && \(\s*<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">\s*<ImageDesk/);
-    for (const handler of ['regenerate(spec)', 'cancelBubbleJob(m)', 'runImageBatch(b.spec', 'startImageEdit', 'sendImageToVideo', "saveLibButton(u, 'image'", "editButton(u, 'image')", 'void upscale(u)', "dl(u, 'myavatar-image.png')"]) {
+  test('no desk replaces the thread: results and their buttons are in the conversation', () => {
+    expect(src).not.toContain('<ImageDesk');
+    expect(src).not.toContain('<VideoStage');
+    expect(src).not.toContain('<MusicCentrePane');
+    // The thread's own image bubble carries every action the desk had: upscale, re-roll, save, edit, a tile's retry, the batch's re-roll.
+    for (const handler of ['void upscale(m.imageUrl!)', 'void regenerate(m.regen!)', "saveLibButton(m.imageUrl, 'image'", "editButton(m.imageUrl, 'image')", 'void runImageBatch(m.batch!.spec, 1)', 'void runImageBatch(m.batch!.spec, m.batch!.tiles.length)', 'startImageEdit', 'sendImageToVideo']) {
       expect(src).toContain(handler);
     }
-    expect(src).toContain('conversation={messageList}');
+    expect(src).toContain("${imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
+    expect(src).toContain('{showJump && !imageWorkspace && messages.length > 0 && (');
   });
 
-  test('the thread is hidden, never mounted twice: the feed keeps its node, renders nothing, and the jump button waits', () => {
-    expect(src).toContain("${imageDesk || imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
-    expect(src).toContain(') : imageDesk || imageWorkspace ? null : messages.length === 0 && !musicPane ? (');
-    expect(src).toContain('{showJump && !imageDesk && !imageWorkspace && messages.length > 0 && (');
+  test('the settings are one layer above the composer — no right column, no sheet hiding the composer', () => {
+    expect(src).toContain("className={`${settingsLayerOpen ? 'flex' : 'hidden'} fixed z-[95] flex-col`}");
+    expect(src).toMatch(/maxHeight: `min\(60dvh, /);
+    expect(src).not.toMatch(/w-\[300px\] shrink-0 flex-col border-l/);
+    expect(src).toContain("className={imageWorkspace ? 'hidden' : 'shrink-0 pt-1'}");
+    expect(src).toContain('useDialogA11y<HTMLDivElement>(settingsLayerOpen, closeSettingsLayer, { trap: false })');
+    expect(src).not.toContain('data-testid="settings-panel-toggle"');
   });
 });
 

@@ -65,7 +65,6 @@ import { DirectorRunOverlay, useDirectorRunsEnabled } from './video/DirectorRunO
 import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
 import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
 import { VideoCreatePanel } from './create/VideoCreatePanel';
-import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
 import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, narrationCueApplies, veoSpeaksTypedLine, videoQuote } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
@@ -148,7 +147,7 @@ const COMPLETED_SERVICE: Readonly<Record<'image' | 'music' | 'video' | 'avatar' 
   avatar: 'avatar.talking',
   remix: 'video.remix',
 };
-import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
+import type { ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote } from './research';
 import { MusicStudioCard, type MusicDraft } from './music/MusicStudioCard';
 import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './music/musicDraft';
@@ -164,7 +163,6 @@ import { decidePanelCommand, panelCommand, panelCommandReply, type CommandPanel,
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { shootKindForTool, shootOfferText, shootWire, productAdOfferText, productAdPhotoAsk, PRODUCT_PHOTO_WAIT_MS } from '@/lib/chat/chatShoot';
 import type { StudioWire } from '@/lib/studio/shootWire';
-import { AgentGNote } from '@/components/studio/AgentGNote';
 import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
 import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
 import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
@@ -198,7 +196,8 @@ import { notStartedText, persistAudio, persistEdit, persistMontage, persistRun, 
 import { KEEP_OPEN_CHAT_EVENT } from '@/lib/chat/keepOpenChat';
 import { newestWorkingCard } from '@/lib/agent/media/workingCard';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
-import { HIDDEN_TOOLS, toolGroups } from '@/lib/catalog/nav';
+import { composerToolGroups, toolIsBeta } from '@/lib/catalog/nav';
+import { ServicePicker } from '@/components/chat/composer/ServicePicker';
 import { VideoQuickChips } from '@/components/studio/create/VideoQuickChips';
 import { ImageQuickChips } from '@/components/studio/create/ImageQuickChips';
 import { MusicQuickChips } from '@/components/studio/create/MusicQuickChips';
@@ -213,7 +212,6 @@ import { takePendingEdit } from '@/lib/studio/pendingEdit';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { MusicCreatePanel } from './create/MusicCreatePanel';
-import { MusicCentrePane } from './create/MusicCentrePane';
 import type { MusicTrack } from './create/MusicResult';
 import { musicEngineField } from '@/lib/studio/musicEnginePref';
 // The image model the panel's ModelPicker stored — read at request time like the music engine, so a re-roll uses the pick.
@@ -243,11 +241,8 @@ import { ImageWorkspace } from '@/components/studio/image/ImageWorkspace';
 import { useImageStudioAccess } from '@/components/studio/image/useImageStudioAccess';
 import { imageCopy } from '@/components/studio/image/copy';
 import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
-import { ImageDesk } from '@/components/studio/create/ImageDesk';
-import type { ImageResultActions } from '@/components/studio/create/ImageResultPane';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { IMG_ASPECTS, IMG_STYLES, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
-import { deriveImageResults, latestNotice } from '@/lib/studio/imageResults';
 import { withFilmStyle } from '@/lib/studio/style';
 import { AUDIO_ACCEPT } from '@/lib/media/accept';
 import { saveMedia } from '@/lib/media/saveMedia';
@@ -2191,7 +2186,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setPanelServiceRaw(svc);
     // The studio's controls live in the settings (the right panel on a desktop, the sheet on a phone), so opening
     // one shows them — it used to close the options because the panel rendered in a separate box of its own.
-    if (svc) { setModeRaw('chat'); setOptionsOpen(true); }
+    // Interior's room and style are quick chips in the composer, so it opens none; dubbing / 3D / a deck run from the panel.
+    if (svc) { setModeRaw('chat'); if (svc !== 'interior') setOptionsOpen(true); }
   }, []);
   // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
@@ -2450,8 +2446,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number; /** asked in plain chat (one-shot) */ inChat?: boolean } | null>(null);
   /** When Agent G asked for the product's photo for a product ad ordered in the chat without one (the photo sent next makes its card). */
   const productAskRef = useRef<number | null>(null);
-  /** Index in `messages` where Agent G's current gate turn began — the Image desk shows its latest word while the thread is hidden. */
-  const [gateFrom, setGateFrom] = useState<number | null>(null);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
   const storyboardAbortRef = useRef<AbortController | null>(null);
   // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
@@ -3289,7 +3283,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Entering either one shows its panel (a phone's sheet; on a desktop it reveals the column). setPanelService already asks;
   // this held the sheet open through `next dev`'s Strict Mode re-run of the `chatOnly` effect below, which no longer closes
   // anything on mount (2026-10-09).
-  useEffect(() => { if (shootActive) setOptionsOpen(true); }, [shootActive]);
+  // (Entering Interior opened its panel here until 2026-10-25; its room and style are quick chips in the composer now.)
   // ── ONE CONVERSATION (GG 2026-10-25) ──────────────────────────────────────────────────────────────────
   // Picking a service changes the tool and stays in the thread on screen: the composer's service chip is a setting of the
   // conversation, not a second chat. (Until 2026-10-25 every tool opened its own session; those sessions stay in History.)
@@ -3358,8 +3352,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // phone. An effect on the derived tool, not a line in selectTool: it fires once the tool HAS changed, whichever path changed
   // it. (It was also the way around a StrictMode re-run of the chat-only effect below closing a deep link's sheet; that
   // effect no longer closes anything on mount.)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fires when the TOOL changes; a viewport change must not re-open it
-  useEffect(() => { if (activeTool === 'music' && !isDesktop) setOptionsOpen(true); }, [activeTool]);
+  // (Until 2026-10-25 choosing Music opened its Create screen on a phone; its settings are quick chips in the composer now.)
   useEffect(() => { if (mode === 'surgical' || mode === 'photo') setOptionsOpen(false); }, [mode]);
   // Entering the chat puts a phone's settings sheet away (it has nothing to show there), so switching back to a tool
   // never springs a sheet open by itself. The desktop PANEL is not touched: `panelOpen` is the user's choice, and
@@ -3372,26 +3365,36 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (chatOnly && !wasChatOnly.current) setOptionsOpen(false);
     wasChatOnly.current = chatOnly;
   }, [chatOnly]);
-  // The JobTray floats at the right edge; on a desktop it moves left of the settings column instead of over it.
+  // „მეტი პარამეტრი" (GG's unified composer, 2026-10-25): the settings are ONE layer anchored to the composer at every
+  // width — just above it, as wide as it, at most 60 dvh — never the right-hand column or a sheet over the chat. The
+  // composer under it stays usable and the latest messages stay in view above it.
   const settingsSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const settingsLayerOpen = (isDesktop ? panelOpen : optionsOpen) && !chatOnly;
+  const closeSettingsLayer = useCallback(() => { setPanelOpen(false); setOptionsOpen(false); }, []);
+  const [settingsAnchor, setSettingsAnchor] = useState<{ left: number; width: number; bottom: number; top: number } | null>(null);
   useEffect(() => {
-    const root = document.documentElement;
-    const el = settingsSurfaceRef.current;
-    if (!isDesktop || !el) { root.style.setProperty('--settings-w', '0px'); return; }
-    const set = () => root.style.setProperty('--settings-w', `${el.offsetWidth}px`);
-    set();
-    const ro = new ResizeObserver(set);
-    ro.observe(el);
-    return () => { ro.disconnect(); root.style.setProperty('--settings-w', '0px'); };
-    // chatOnly: the column is display:none in chat (offsetWidth 0) — re-measure on the switch rather than trust the
-    // observer to report a hide.
-  }, [isDesktop, mode, chatOnly]);
-  // Below `lg` the settings are a modal sheet: focus in, Tab trapped, Escape closes, focus back to the chip.
-  const settingsSheetRef = useDialogA11y<HTMLDivElement>(!isDesktop && optionsOpen && !chatOnly, () => setOptionsOpen(false));
+    if (!settingsLayerOpen) return;
+    const measure = () => {
+      const el = composerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      setSettingsAnchor({ left: r.left, width: r.width, bottom: Math.max(0, vh - r.top) + 6, top: r.top });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (composerRef.current) ro.observe(composerRef.current);
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); };
+  }, [settingsLayerOpen]);
+  // Non-modal: Escape closes and focus goes back to „⋯", but Tab may leave for the composer and the chat.
+  const settingsSheetRef = useDialogA11y<HTMLDivElement>(settingsLayerOpen, closeSettingsLayer, { trap: false });
   // The „+" sheet: what you bring (photos · camera · files) and what you make (the tools). `toolPickOnly` is the
   // same sheet opened from the settings' service card — the tools alone, no attachment tiles.
   const [toolSheetOpen, setToolSheetOpen] = useState(false);
   const [toolPickOnly, setToolPickOnly] = useState(false);
+  const plusRef = useRef<HTMLButtonElement | null>(null);
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -3484,8 +3487,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const d = (e as CustomEvent).detail;
       // Not 'remix': its panel left every menu (lib/studio/tools.ts PRIMARY_TOOLS).
       if (d === 'chat' || d === 'image' || d === 'music' || d === 'video' || d === 'lipsync') {
-        setMode(d);
-        if (d !== 'chat') setOptionsOpen(true);
+        setMode(d); // the tool's quick settings are in the composer: nothing opens over the chat
       }
     };
     window.addEventListener('omni:set-mode', onSet);
@@ -6486,7 +6488,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         { role: 'user', text: words, medias: [photo], modelMedias: [] },
         { role: 'assistant', text: productAdOfferText({ seconds: productDuration, aspect: productAspect, style: productPreset, locale }), agentG: card },
       ]);
-      setGateFrom(messages.length);
       setAttachments([]);
       setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
     };
@@ -6534,7 +6535,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The photos of the last request when this is still its film (they never travel in a stored message).
         const refs = lastVideoReqRef.current?.filmPrompt === spec.prompt ? lastVideoReqRef.current.refs : spec.refs;
         gatePendingRef.current = null;
-        setGateFrom(null);
         setMode('video'); setVideoMode(spec.musicVideo ? 'musicvideo' : 'documentary');
         setVideoDuration(spec.seconds); setVideoRequestedSec(null);
         setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: filmRefineNote(formatVideoDuration(spec.seconds, locale), refine.change, locale), notice: true }]);
@@ -6555,7 +6555,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         gatePendingRef.current = null;
         trackQuoteShown(serviceForTool('image'), credits, 'agent-card');
         setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: 'image', prompt, locale }), agentG: card }]);
-        setGateFrom(messages.length);
         clearBox();
         return;
       }
@@ -6570,7 +6569,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           gatePendingRef.current = null;
           trackQuoteShown(serviceForTool('avatar'), door.credits, 'agent-card');
           setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: avatarRetakeText(creditsLabel(door.credits, locale), locale), agentG: card }]);
-          setGateFrom(messages.length);
           clearBox();
           return;
         }
@@ -6686,7 +6684,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // Agent G answers in words only — no card, no price, nothing started.
       const agentSays = (say: string) => {
         setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: say }]);
-        setGateFrom(messages.length);
         if (!isDesktop) setOptionsOpen(false);
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
       };
@@ -6699,7 +6696,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         const chatTurn: Msg = { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' };
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
-        setGateFrom(messages.length);
         // A phone's Create sheet covers the thread: close it so the answer is SEEN (the generate branches do the same).
         if (!isDesktop) setOptionsOpen(false);
         persistChatTurn('user', text);
@@ -6756,7 +6752,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           { role: 'user', text },
           { role: 'assistant', text: cardText, agentG: card },
         ]);
-        setGateFrom(messages.length);
         if (!isDesktop) setOptionsOpen(false);
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         return;
@@ -6769,7 +6764,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
       gatePendingRef.current = null;
-      setGateFrom(null);
       if (promptText !== text) { void send({ promptOverride: promptText, confirmed: true }); return; }
     }
     // PHASE 20 — request native-notification permission on the GENERATE gesture (this click),
@@ -6970,7 +6964,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (say) {
           gatePendingRef.current = avatarDoor.open ? { mode: 'avatar', base: avatarLine.direction ? `(${avatarLine.direction})` : '', at: Date.now(), inChat: true } : null;
           setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: say }]);
-          setGateFrom(messages.length);
           setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
           return;
         }
@@ -6990,7 +6983,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             text: avatarOfferText({ speech: avatarLine.speech, direction: avatarLine.direction, gender: resolveLipGender(text), aspect, face, credits: avatarDoor.credits, locale }),
           },
         ]);
-        setGateFrom(messages.length);
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         return;
       }
@@ -7071,7 +7063,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         { role: 'user', text, ...(photos.length ? { medias: photos, modelMedias: [] } : {}) },
         { role: 'assistant', text: shootOfferText({ kind: shootKind, prompt: text, withPhoto: !!refImage, locale }), agentG: card },
       ]);
-      setGateFrom(messages.length);
       if (photos.length) setAttachments([]);
       setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
       return;
@@ -8810,7 +8801,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const card = messagesRef.current[idx]?.agentG;
     if (!card || card.done) return;
     gatePendingRef.current = null;
-    setGateFrom(null);
     resolveGateCard(idx);
     if (card.product) {
       trackGenerationConfirmed('video.product-ad', 'agent-card', card.credits || null);
@@ -8824,7 +8814,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const card = messagesRef.current[idx]?.agentG;
     if (!card || card.done) return;
     gatePendingRef.current = null;
-    setGateFrom(null);
     resolveGateCard(idx);
     setInput(card.prompt);
   }, [resolveGateCard]);
@@ -9259,7 +9248,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (guestStop()) return true;
       const cardAspect = aspect ?? card.aspect;
       gatePendingRef.current = null;
-      setGateFrom(null);
       resolveGateCard(idx);
       if (card.product) {
         trackGenerationConfirmed('video.product-ad', 'agent-card', card.credits || null);
@@ -9305,7 +9293,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       { role: 'user', text },
       { role: 'assistant', text: gateMessage({ kind: 'confirm', mode: offer.mode, prompt: offer.prompt, locale }), agentG: next },
     ]);
-    setGateFrom(messages.length);
     if (!isDesktop) setOptionsOpen(false);
     return true;
   };
@@ -9412,7 +9399,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // (`notice`): it never goes to the chat model as something the model said.
     const say = (reply: string) => {
       setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: reply, notice: true }]);
-      setGateFrom(msgs.length);
       persistChatTurn('user', text);
       persistChatTurn('assistant', reply);
       if (!isDesktop) setOptionsOpen(false);
@@ -9580,9 +9566,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return false;
     }
   };
-
-  // Agent G's note belongs to the tool it was made in: leaving the mode (or starting a new thread) retires it.
-  useEffect(() => { setGateFrom(null); }, [mode]);
 
   /** A Montage export is running / the editor was closed while it ran (MontageStudio onExportStart · onExportEnd). */
   const montageExportingRef = useRef(false);
@@ -10594,7 +10577,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const liveTool = (id: ToolId) => studioServices.find((sv) => sv.id === id)?.live ?? true;
   const toolEntry = (id: ToolId): ToolEntry => ({
     id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
-    ...(liveTool(id) ? {} : { disabled: true, tag: SOON_LABEL[locale] }),
+    ...(liveTool(id) ? (toolIsBeta(id) ? { tag: locale === 'en' ? 'Beta' : locale === 'ru' ? 'Бета' : 'ბეტა' } : {}) : { disabled: true, tag: SOON_LABEL[locale] }),
   });
   // THE ONE ATTACH BUTTON — the composer's paperclip, beside „+" (it used to sit inside the „+" sheet, two taps away):
   // one picker per tool — the phone's own picker offers the library, the camera and files from it. A tool that takes TWO kinds (a face photo + a video / an audio track) gets
@@ -10618,51 +10601,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               : { onAttach: () => fileRef.current?.click() };
   // The Image tool has its own Create screen (components/studio/create): its header IS the tool switcher, so the generic card is not drawn.
   const imageCreate = activeTool === 'image';
-  // ≥ 1024 px: the Image tool's CENTRE column is the Result pane + Models & prices (components/studio/create/ImageDesk) in place of the
-  // greeting and the thread. It reads the same `messages` and calls the same handlers as the thread's own buttons, keyed by the
-  // message's index (resolved against the thread here, so the pane and the thread cannot disagree about what a button does).
+  // (Until 2026-10-25 a desktop's Image tool replaced the thread with a Result pane + Models & prices — ImageDesk. GG's
+  // unified composer keeps the conversation on screen: results, Agent G's words and their buttons are in the thread.)
   const imageWorkspace = imageCreate && imageWorkspaceOpen && !!imageStudioAccess;
-  const imageDesk = imageCreate && isDesktop && !imageWorkspace;
-  // Agent G's latest word on the Image desk (its thread is hidden there): the reply to a greeting, its questions, its confirmation.
-  let gateIdx = -1;
-  if (imageDesk && gateFrom !== null) {
-    for (let i = messages.length - 1; i >= gateFrom; i--) {
-      const gm = messages[i];
-      if (gm && gm.role === 'assistant' && (gm.text || gm.agentG)) { gateIdx = i; break; }
-    }
-  }
-  const gateMsg = gateIdx >= 0 ? messages[gateIdx] : undefined;
-  const agentGNote = gateMsg ? (
-    <AgentGNote
-      text={gateMsg.text} card={gateMsg.agentG} locale={locale}
-      stale={!!gateMsg.agentG && (gateMsg.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== gateMsg.agentG.target)}
-      onConfirm={() => confirmGate(gateIdx)} onEdit={() => editGate(gateIdx)} onDismiss={() => setGateFrom(null)}
-    />
-  ) : null;
-  const imageDeskResults = imageDesk ? deriveImageResults(messages, { busy }) : [];
-  const sameMsg = (m: Msg) => (pm: Msg) => (m.id ? pm.id === m.id : pm === m);
-  const imageDeskActions: ImageResultActions | null = imageDesk ? {
-    open: setLightbox,
-    download: (u) => void dl(u, 'myavatar-image.png'),
-    share: (u) => void share(u, 'myavatar-image.png'),
-    upscale: (u) => void upscale(u),
-    reroll: (i) => { const spec = messages[i]?.regen; if (spec) void regenerate(spec); },
-    edit: startImageEdit,
-    toVideo: sendImageToVideo,
-    renderSave: (u, p) => saveLibButton(u, 'image', p || undefined),
-    renderEditor: (u) => editButton(u, 'image'),
-    cancel: (i) => { const m = messages[i]; if (m) cancelBubbleJob(m); },
-    cancelJob: cancelQueueJob,
-    retryTile: (i) => { const b = messages[i]?.batch; if (b) void runImageBatch(b.spec, 1); },
-    rerollBatch: (i) => { const b = messages[i]?.batch; if (b) void runImageBatch(b.spec, b.tiles.length); },
-    dismiss: (i, tile) => {
-      const m = messages[i];
-      if (!m) return;
-      if (tile === undefined) setMessages((prev) => prev.filter((pm) => !sameMsg(m)(pm)));
-      else setMessages((prev) => prev.map((pm) => (sameMsg(m)(pm) && pm.batch ? { ...pm, batch: { ...pm.batch, tiles: pm.batch.tiles.filter((_, j) => j !== tile) } } : pm)));
-    },
-    topUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
-  } : null;
   // ── The Music tool's latest track, its attached audio and its action row — read by the Create sheet (phone) and the
   // desktop centre pane. The action row mirrors the feed bubble's: download · share · re-roll · save · edit · music video.
   const lastMusic = mode === 'music' ? [...messages].reverse().find((m) => m.audioUrl) : undefined;
@@ -11544,18 +11485,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     && (isDesktop ? panelOpen : optionsOpen);
   // …and on a desktop the box's own Send and enhance go with it: the panel beside it has the priced Create.
   const composerRunAside = composerTextHidden && isDesktop;
-  // Music on a desktop: the latest track and the engines-and-prices list (ref6) lead the centre column; the feed — progress
-  // cards, failures, top-up buttons — continues under them.
-  const musicPane = isDesktop && mode === 'music' ? (
-    <MusicCentrePane
-      locale={locale}
-      track={musicTrack}
-      actions={musicActions}
-      label={t.modeMusic}
-      instrumental={musicInstrumental}
-      reference={musicAudioAtt && !(hasTrainedVoice && useMyVoice && !musicInstrumental) ? musicAudioMode : null}
-    />
-  ) : null;
   // The composer's montage chip: two or more clips, or a clip with photos and a track (the photos become still shots).
   const chipVideos = attachments.filter((a) => isVideo(a.mimeType)).length;
   const montageChipOn = chipVideos > 1
@@ -11566,37 +11495,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const chatSingleRow = false;
   // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
   const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
-  // ── The desktop's centre for the video tool (ref6): the RESULT pane — the latest video of this tool in the thread, or its
-  // progress while one renders — and "Models & prices" (the Veo tiers priced per length, which also pick the model). Phones
-  // have the create sheet only; the thread below the stage is unchanged.
-  const videoStage = (() => {
-    if (activeTool !== 'video' || !isDesktop) return null;
-    const lastIdx = (pred: (m: Msg) => boolean) => {
-      for (let i = messages.length - 1; i >= 0; i -= 1) { const m = messages[i]; if (m && pred(m)) return i; }
-      return -1;
-    };
-    const done = lastIdx((m) => m.role === 'assistant' && !!m.videoUrl && m.genKind !== 'lipsync');
-    const doing = lastIdx((m) => m.role === 'assistant' && m.genKind === 'video' && !m.videoUrl && !m.text.startsWith('⚠️'));
-    const doneMsg = done >= 0 ? messages[done] : undefined;
-    const doingMsg = doing > done ? messages[doing] : undefined;
-    const asked = done > 0 ? [...messages.slice(0, done)].reverse().find((m) => m.role === 'user')?.text : undefined;
-    return (
-      <VideoStage
-        locale={locale}
-        latest={doneMsg?.videoUrl ? { url: doneMsg.videoUrl, aspect: ORIENT_ASPECT[doneMsg.orientation ?? videoOrientation] as string, ...(asked ? { prompt: asked } : {}) } : null}
-        progress={doingMsg ? { aspect: ORIENT_ASPECT[doingMsg.orientation ?? videoOrientation] as string, ...(typeof doingMsg.videoProgress === 'number' ? { pct: doingMsg.videoProgress } : {}), stage: doingMsg.text } : null}
-        tier={veoPlan.tier}
-        mode={videoMode}
-        seconds={videoDuration}
-        onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
-        onOpenInEditor={(url) => openInEditor(url, 'video')}
-        onNote={(msg) => { setShareToast(msg); setTimeout(() => setShareToast((x) => (x === msg ? null : x)), 2200); }}
-        // The same stop as the film's bubble in the thread: its queue job, else the foreground render.
-        {...(doingMsg ? { onCancel: () => cancelBubbleJob(doingMsg) } : {})}
-      />
-    );
-  })();
-
   return (
     // Drag-and-drop covers the whole studio. ⚠️ With the settings beside the centre column, a video dropped on the
     // swap's „ჩააგდე ვიდეო“ zone had no dragover handler under it — the browser opened the file and left the page.
@@ -11641,13 +11539,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
           <PenSquare size={18} aria-hidden="true" />
         </button>
-        {!chatOnly && (
-          <button type="button" onClick={() => setPanelOpen((v) => !v)} aria-expanded={panelOpen} aria-controls="studio-settings"
-            aria-label={settingsWord} title={settingsWord} data-testid="settings-panel-toggle"
-            className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-app-elevated hover:text-app-text ${panelOpen ? 'bg-app-elevated text-app-text' : 'text-app-muted'}`}>
-            <SlidersHorizontal size={18} aria-hidden="true" />
-          </button>
-        )}
+        {/* No settings toggle up here any more (GG's unified composer, 2026-10-25): a service's settings open from the composer. */}
       </header>
     <div
       // ⚠️ A VIEWPORT TRAP ON SHORT SCREENS. `overflow-hidden` here is deliberate — the shell must not
@@ -11741,10 +11633,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // „too tight, the right side does not show well", the owner on 2026-10-09, a Mac with visible scrollbars). The feed
         // now reaches into the column's right padding (-mr-4 pr-4): the text keeps the composer's edge and the bar sits in
         // the gutter, thin and quiet, with its room kept (scrollbar-gutter) so nothing jumps when the thread grows past one screen.
-        className={`${imageDesk || imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y -mr-4 pr-4 pt-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(var(--app-border)/0.35)_transparent] ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
+        className={`${imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y -mr-4 pr-4 pt-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(var(--app-border)/0.35)_transparent] ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
-        {videoStage}
-        {musicPane}
         {shootActive ? (
           <ShootResultPane
             tool={activeTool === 'photoshoot' ? 'photoshoot' : 'interior'} locale={locale} runs={shoot.runs} prices={shoot.prices}
@@ -11752,7 +11642,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             onWalkthrough={shoot.walkthrough} onUseAsReference={shoot.useAsReference} onDismissRun={shoot.dismissRun}
             onDismissTile={shoot.dismissTile} onClear={shoot.clearRuns} onOpenSettings={openSettings}
           />
-        ) : imageDesk || imageWorkspace ? null : messages.length === 0 && !musicPane ? (videoStage ? null : (
+        ) : imageWorkspace ? null : messages.length === 0 ? (
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
@@ -11773,7 +11663,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               )}
             </div>
           </div>
-        )) : messageList}
+        ) : messageList}
         {/* Room for the floating job tray (JobTray publishes --job-tray-h, 0 when it is hidden), so the newest card's
             buttons scroll clear of it on a phone (round-3 browser defect 7). No margin of its own from space-y-*. */}
         <div aria-hidden="true" data-testid="job-tray-spacer" className="shrink-0" style={{ height: 'var(--job-tray-h, 0px)', marginTop: 0 }} />
@@ -11787,25 +11677,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             onClose={() => { setImageWorkspaceOpen(false); setOptionsOpen(true); }} />
         </div>
       )}
-      {imageDesk && imageDeskActions && (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
-          <ImageDesk
-            locale={locale}
-            results={imageDeskResults}
-            notice={latestNotice(messages, imageDeskResults)}
-            aspect={imgAspect}
-            actions={imageDeskActions}
-            busy={busy}
-            upscaling={upscaling}
-            conversation={messageList}
-            messageCount={messages.length}
-            agentG={agentGNote}
-          />
-        </div>
-      )}
-
-      {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
-      {showJump && !imageDesk && !imageWorkspace && messages.length > 0 && (
+      {showJump && !imageWorkspace && messages.length > 0 && (
         <button
           type="button"
           onClick={() => scrollToBottom()}
@@ -11823,7 +11695,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {/* ⚠️ "TWO SCREENS" ON A PHONE (GG's iPhone, 2026-10-16): with a tool's Create sheet open, the chat's own bar (+, clip,
           mic) still sat under the sheet, so the sheet, that bar and Safari's bar read as two stacked screens. The sheet is
           the screen while it is open; closing it brings the bar back. */}
-      <div ref={composerRef} data-testid="composer-bar" className={imageWorkspace || (!isDesktop && optionsOpen && !chatOnly) ? 'hidden' : 'shrink-0 pt-1'}>
+      <div ref={composerRef} data-testid="composer-bar" className={imageWorkspace ? 'hidden' : 'shrink-0 pt-1'}>
         {/* ⚠️ DICTATION USED TO DIE IN SILENCE. Interim transcription failures were swallowed by a bare
             fail-soft catch: a 429 (the route shares the 100-req/60s READ bucket while a long dictation
             fires a pass every 1.2s), a 500 or an offline blip produced no toast and no state change, so
@@ -12207,8 +12079,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
-          <div className="mt-1.5 flex w-full flex-wrap items-center justify-between gap-1.5 px-1 pt-1 border-t border-white/[0.06]">
-            <button type="button" onClick={() => { setToolPickOnly(false); setToolSheetOpen(true); }}
+          <div className={`mt-1.5 flex w-full ${chatOnly ? 'flex-wrap' : 'flex-nowrap'} items-center justify-between gap-1 px-1 pt-1 border-t border-white/[0.06]`}>
+            <button type="button" ref={plusRef} onClick={() => { setToolPickOnly(false); setToolSheetOpen((v) => !v); }}
               aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
               aria-label={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
               title={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
@@ -12233,13 +12105,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
                 chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
             {!chatOnly && (
-              <div className="inline-flex h-10 min-w-0 max-w-full items-center gap-0.5 rounded-full bg-app-accent/15 p-1 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
+              // ActiveServiceChip (GG's unified composer, 2026-10-25): [icon name ▾ | ✕] — ▾ reopens „+", ✕ is back to the chat.
+              // Every part is a 44 px target; the name truncates instead of wrapping the row onto a second line.
+              <div data-testid="active-service-chip" className="inline-flex h-11 min-w-0 shrink items-center rounded-full bg-app-accent/15 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
                 {/* 1. სერვისის სწრაფი შეცვლა (ხსნის სერვისების სიას) */}
                 <button
                   type="button"
                   onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
+                  data-testid="active-service-switch" aria-haspopup="dialog" aria-expanded={toolSheetOpen && toolPickOnly}
+                  aria-label={`${toolLabel} — ${locale === 'en' ? 'switch service' : locale === 'ru' ? 'сменить сервис' : 'სერვისის შეცვლა'}`}
                   title={locale === 'en' ? 'Switch service' : locale === 'ru' ? 'Сменить сервис' : 'სერვისის შეცვლა'}
-                  className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-app-accent transition-colors hover:bg-app-accent/20"
+                  className="inline-flex h-11 min-w-0 items-center gap-1.5 rounded-full pl-3 pr-2 text-app-accent transition-colors hover:bg-app-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
                 >
                   <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
                   <span className="max-w-[88px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
@@ -12254,7 +12130,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   aria-expanded={isDesktop ? panelOpen : optionsOpen}
                   aria-label={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
                   title={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
-                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-white/[0.06] px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
+                  className="inline-flex h-11 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
                 >
                   <SlidersHorizontal size={14} aria-hidden="true" className="shrink-0" />
                   <span className="hidden max-w-[160px] truncate whitespace-nowrap sm:inline">
@@ -12274,10 +12150,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   }}
                   aria-label={locale === 'en' ? 'Close service and return to chat' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის დახურვა და ჩატში დაბრუნება'}
                   title={locale === 'en' ? 'Close service (back to chat)' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის გათიშვა (ჩატში დაბრუნება)'}
-                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-rose-500/15 px-2.5 text-rose-300 transition-colors hover:bg-rose-500/25"
+                  data-testid="active-service-close"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-rose-500/20 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
                 >
-                  <X size={14} aria-hidden="true" />
-                  <span className="ml-0.5 hidden text-[11px] font-medium sm:inline">{locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი'}</span>
+                  <X size={15} aria-hidden="true" />
                 </button>
               </div>
             )}
@@ -12697,43 +12573,36 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ⚠️ TWO PARENTS (an <aside> for desktop, a portaled sheet for phones) REMOUNTED THE PANELS ON EVERY CROSSING OF
         1024 px — an iPad rotated mid-job lost ServiceParamsPanel's 3D poll (the paid model never reached the chat) and
         MotionControlPanel's picked files. Mounted while hidden, for the same reason: closing is not discarding. */}
+    {/* Outside the layer, above the composer: a tap there puts the settings away (the composer below stays live). */}
+    {settingsLayerOpen && settingsAnchor && (
+      <div aria-hidden="true" data-testid="settings-layer-dismiss" onClick={closeSettingsLayer}
+        className="fixed inset-x-0 top-0 z-[94]" style={{ height: settingsAnchor.top }} />
+    )}
     <div
       ref={settingsSurfaceRef}
-      // In the chat the surface is HIDDEN, never unmounted (the keep-mounted rule above): the chat has nothing to set,
-      // and `panelOpen` is left as the user set it, so leaving the chat brings the panel back exactly as it was.
-      className={isDesktop
-        ? `${panelOpen && !chatOnly ? 'flex' : 'hidden'} w-[300px] shrink-0 flex-col border-l border-app-border/10 bg-app-surface/40 xl:w-[340px]`
-        : `${optionsOpen && !chatOnly ? 'flex' : 'hidden'} fixed inset-0 z-[95] items-end justify-center sm:pb-28`}
-      onClick={isDesktop ? undefined : () => setOptionsOpen(false)}
+      // In the chat the layer is HIDDEN, never unmounted (the keep-mounted rule above): the chat has nothing to set.
+      className={`${settingsLayerOpen ? 'flex' : 'hidden'} fixed z-[95] flex-col`}
+      style={settingsAnchor ? {
+        left: settingsAnchor.left, width: settingsAnchor.width, bottom: settingsAnchor.bottom,
+        maxHeight: `min(60dvh, ${Math.max(220, settingsAnchor.top - 12)}px)`,
+      } : { left: 8, right: 8, bottom: 96, maxHeight: '60dvh' }}
     >
-      {isDesktop ? null : <div aria-hidden="true" className="sheet-fade absolute inset-0 bg-black/55" />}
       <div
         ref={settingsSheetRef}
         id="studio-settings"
-        role={isDesktop ? 'complementary' : 'dialog'}
-        aria-modal={isDesktop ? undefined : true}
+        role="dialog"
+        aria-modal={false}
         aria-label={settingsWord}
         data-testid={isDesktop ? 'settings-panel' : 'options-sheet'}
-        onClick={(e) => e.stopPropagation()}
-        className={isDesktop
-          ? 'flex min-h-0 flex-1 flex-col'
-          : 'studio-sheet sheet-rise relative flex max-h-[86svh] w-full flex-col overflow-hidden rounded-t-[28px] border border-app-border/10 bg-app-surface shadow-[0_-12px_40px_rgba(0,0,0,0.35)] sm:max-h-[72svh] sm:max-w-[440px] sm:rounded-[28px]'}
-        style={isDesktop ? undefined : { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        className="studio-sheet sheet-rise relative flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-[24px] border border-app-border/15 bg-app-surface shadow-[0_-12px_40px_rgba(0,0,0,0.35)]"
       >
-        {isDesktop ? null : (
-          <div className="flex shrink-0 justify-center pt-2.5 sm:hidden" aria-hidden="true">
-            <span className="h-1 w-10 rounded-full bg-app-border/25" />
-          </div>
-        )}
         {/* ONE HEADER PER PANEL: the tool's icon and name (▾ switches the tool) and ✕ — the grammar the Image, Video, Interior and
             Photographer screens draw for themselves. It used to be a „Settings" title with a SECOND header under it (a service card:
             icon · name · sub-line · „Change"), and for dubbing / 3D / decks a third („Dubbing — Close ✕"). The Create screens that
             draw their own header get none here — not merely hidden: a display:none ✕ is still the "first focusable"
             useDialogA11y tries to focus, and focus would never enter the sheet. */}
         {!imageCreate && !videoCreate && (
-        <div data-testid="panel-header" className={`${shootActive ? 'hidden ' : ''}${isDesktop
-          ? 'flex h-14 shrink-0 items-center justify-between gap-2 border-b border-app-border/10 pl-3 pr-2'
-          : 'flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-2 sm:pt-4'}`}>
+        <div data-testid="panel-header" className={`${shootActive ? 'hidden ' : ''}flex h-14 shrink-0 items-center justify-between gap-2 border-b border-app-border/10 pl-3 pr-2`}>
           <h2 className="min-w-0 flex-1">
             <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
               aria-label={`${toolLabel} — ${changeToolWord}`} title={changeToolWord} data-testid="panel-tool-switch"
@@ -12744,26 +12613,28 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-app-muted" />
             </button>
           </h2>
-          <button type="button" onClick={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} aria-label={closeWord} title={closeWord}
+          <button type="button" onClick={closeSettingsLayer} aria-label={closeWord} title={closeWord}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
             <X size={17} aria-hidden="true" />
           </button>
         </div>
         )}
-        <div className={isDesktop
-          ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:thin]'
-          : 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 [scrollbar-width:thin] sm:px-4">
           {settingsBody}
         </div>
       </div>
     </div>
-    <ToolSheet
+    {/* „+": every service in GG's three groups (მთავარი · შექმნა · დამატებითი), from the catalog — a sheet on a phone, a popover
+        anchored to „+" on a desktop. Picking one keeps the conversation (GG 2026-10-25). */}
+    <ServicePicker
       open={toolSheetOpen}
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
+      desktop={isDesktop}
+      anchorRef={plusRef}
       title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
-      // The service catalog's categories (lib/catalog/nav.ts) — the same groups as the sidebar, every tool listed.
-      sections={toolGroups().map((g)=>({id:g.id,label:g.label[locale==='en'||locale==='ru'?locale:'ka'],tools:g.tools.filter((t)=>!HIDDEN_TOOLS.has(t)).map(toolEntry)})).filter((g)=>g.tools.length>0)} extras={[]} activeId={activeTool}
+      sections={composerToolGroups().map((g) => ({ id: g.id, label: g.label[locale === 'en' || locale === 'ru' ? locale : 'ka'], tools: g.tools.map(toolEntry) }))}
+      activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id, 'tool-sheet'); }}
     />
     </div>
