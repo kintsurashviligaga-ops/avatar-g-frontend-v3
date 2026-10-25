@@ -173,6 +173,11 @@ export class RelaySession {
   private totalTokens = 0;
   private model = '';
   private resume = false;
+  // When the setup frame arrived, Vertex's socket opened and its setupComplete came back (0 = never). Logged as
+  // durations so a slow call shows WHERE it waited (GG 2026-10-25: half the calls sat ~15 s and the browser gave up).
+  private setupAt = 0;
+  private upstreamAt = 0;
+  private readyAt = 0;
   private stopSession: () => void = () => {};
   private stopIdle: () => void = () => {};
 
@@ -211,6 +216,7 @@ export class RelaySession {
 
   onUpstreamMessage(data: string | Buffer, binary: boolean): void {
     if (this.state !== 'open') return;
+    if (this.readyAt === 0 && (typeof data === 'string' ? data : data.toString('utf8')).includes('"setupComplete"')) this.readyAt = this.d.now();
     const size = typeof data === 'string' ? Buffer.byteLength(data, 'utf8') : data.length;
     this.bytesOut += size;
     this.countUsage(data);
@@ -226,6 +232,7 @@ export class RelaySession {
     const check = checkSetupFrame(text, this.d.claims, this.d.cfg, this.d.used, this.d.now());
     if (!check.ok) return this.end(check.code, check.reason, 'relay');
     this.state = 'connecting';
+    this.setupAt = this.d.now();
     this.model = check.model;
     this.resume = check.resume;
     const remaining = Math.min(this.d.cfg.maxSessionMs, Math.max(0, this.d.claims.exp - this.d.now()));
@@ -235,6 +242,7 @@ export class RelaySession {
         if (this.state === 'closed') { up.close(1000, 'client_gone'); return; }
         this.upstream = up;
         this.state = 'open';
+        this.upstreamAt = this.d.now();
         up.send(check.upstreamFrame, false);
         for (const f of this.pending) up.send(f, false);
         this.pending = [];
@@ -284,6 +292,10 @@ export class RelaySession {
       ...(upstreamCode !== undefined ? { upstreamCode } : {}),
       reason: r,
       durationMs: this.d.now() - this.startedAt,
+      // -1 = that step never happened: no setup frame, Vertex never opened, or no setupComplete.
+      setupMs: this.setupAt ? this.setupAt - this.startedAt : -1,
+      upstreamMs: this.upstreamAt ? this.upstreamAt - this.setupAt : -1,
+      readyMs: this.readyAt ? this.readyAt - this.setupAt : -1,
       bytesIn: this.bytesIn,
       bytesOut: this.bytesOut,
       framesDropped: this.framesDropped,
