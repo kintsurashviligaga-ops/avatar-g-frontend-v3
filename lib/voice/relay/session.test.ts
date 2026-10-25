@@ -141,6 +141,28 @@ describe('RelaySession', () => {
     expect(h.client.sent).toHaveLength(1);
   });
 
+  it('logs where a session waited: setup frame, Vertex open, setupComplete (-1 = never)', async () => {
+    let release: (s: RelaySocket) => void = () => {};
+    const h = harness(() => new Promise((r) => { release = r; }));
+    h.advance(300);
+    h.s.onClientMessage(frame(setup));
+    h.advance(1200);
+    release(h.upstream);
+    await flush();
+    h.advance(400);
+    h.s.onUpstreamMessage(Buffer.from('{"setupComplete":{}}'), true);
+    h.advance(5000);
+    h.s.onUpstreamMessage(Buffer.from('{"setupComplete":{}}'), true); // only the first counts
+    h.s.onClientClose();
+    expect(h.logs.at(-1)).toMatchObject({ e: 'relay.session_end', d: { setupMs: 300, upstreamMs: 1200, readyMs: 1600, opened: true } });
+
+    const stuck = harness(() => new Promise(() => {}));
+    stuck.s.onClientMessage(frame(setup));
+    stuck.advance(14_500);
+    stuck.s.onClientClose();
+    expect(stuck.logs.at(-1)).toMatchObject({ d: { setupMs: 0, upstreamMs: -1, readyMs: -1, opened: false, by: 'client' } });
+  });
+
   it('closes on a second setup and logs the session', async () => {
     const h = harness();
     h.s.onClientMessage(frame(setup));
