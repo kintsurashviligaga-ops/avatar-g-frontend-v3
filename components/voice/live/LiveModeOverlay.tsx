@@ -34,7 +34,7 @@ import { liveCurrentStep, type LiveJobLine } from "./LiveActivityFeed";
 import type { LiveActivityItem } from './liveActivity';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
 import LiveActionCards from './LiveActionCards';
-import { LIVE_AVATAR_STRINGS, LiveAvatarSlot } from './LiveAvatarStage';
+import { LIVE_AVATAR_STRINGS, LiveAvatarCaption, LiveAvatarSlot } from './LiveAvatarStage';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -276,8 +276,8 @@ export function LiveModeOverlay({
             )}
           </LiveErrorPanel>
         ) : (
-          <div className="space-y-4 animate-fade-in">
-            <p data-testid="live-status" aria-live="polite" className="text-[16px] leading-relaxed text-white/70">{t.status[status]}</p>
+          <div className={`animate-fade-in ${avatarOn ? 'space-y-2' : 'space-y-4'}`}>
+            <p data-testid="live-status" aria-live="polite" className={`leading-relaxed text-white/70 ${avatarOn ? 'text-[14px]' : 'text-[16px]'}`}>{t.status[status]}</p>
             {notice && <p role="status" data-testid="live-notice" className="text-[14px] leading-relaxed text-white/80">{notice}</p>}
             {audioBlocked && onResumeAudio && (
               <button type="button" onClick={onResumeAudio}
@@ -286,15 +286,22 @@ export function LiveModeOverlay({
               </button>
             )}
             {/* დიდი რეალურ დროში გამომავალი ქართული ტექსტი */}
-            {showCaptions && captionsOn && <div role="log" aria-live="polite" aria-relevant="additions" aria-label={t.captions} className="space-y-3">
-              {lastUserLine && <p aria-hidden={lastUserLine.final ? undefined : true} className="text-[16px] leading-relaxed text-white/60">{lastUserLine.text}</p>}
-              {lastAgentLine && <p aria-hidden={lastAgentLine.final ? undefined : true} className={`font-semibold leading-relaxed tracking-tight text-white drop-shadow-md ${avatarOn ? 'text-[20px] sm:text-[24px]' : 'text-[26px] sm:text-[32px]'}`}>
-                {lastAgentCaption}
-              </p>}
+            {/* Over the avatar the words keep to a low band (LiveAvatarCaption): the face stays clear. */}
+            {showCaptions && captionsOn && <div role="log" aria-live="polite" aria-relevant="additions" aria-label={t.captions} className={avatarOn ? 'space-y-2' : 'space-y-3'}>
+              {lastUserLine && <p aria-hidden={lastUserLine.final ? undefined : true} className={avatarOn ? 'line-clamp-1 text-[14px] leading-snug text-white/70 drop-shadow' : 'text-[16px] leading-relaxed text-white/60'}>{lastUserLine.text}</p>}
+              {lastAgentLine && (avatarOn
+                ? <LiveAvatarCaption text={lastAgentCaption} hidden={!lastAgentLine.final} />
+                : <p aria-hidden={lastAgentLine.final ? undefined : true} className="text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]">
+                  {lastAgentCaption}
+                </p>)}
             </div>}
 
+            {/* Over the avatar: only the one-line AI notice (the copy button would push the words up into the face). */}
+            {showCaptions && captionsOn && lastAgentCaption && avatarOn && (
+              <p className="text-[11px] tracking-wide text-white/60 drop-shadow">{t.aiNotice}</p>
+            )}
             {/* AI მინიშნება და მოქმედებების ღილაკები */}
-            {showCaptions && captionsOn && lastAgentCaption && (
+            {showCaptions && captionsOn && lastAgentCaption && !avatarOn && (
               <div className="flex flex-col gap-2 pt-2">
                 <div className="flex items-center gap-4 text-xs text-white/50">
                   <button
