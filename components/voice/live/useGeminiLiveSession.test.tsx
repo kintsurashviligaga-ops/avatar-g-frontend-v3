@@ -22,7 +22,7 @@ import {
   LIVE_LANGUAGE_RULE,
   LIVE_MIC_BUSY_RETRY_PAUSE_MS,
   LIVE_MIC_MUTED_GRACE_MS,
-  LIVE_RELAY_SETUP_TIMEOUT_MS,
+  LIVE_RELAY_READY_AFTER_OPEN_MS,
   LIVE_SETUP_TIMEOUT_MS,
   LIVE_TOKEN_FRESH_MS,
   LIVE_TRANSCRIPT_EVENT,
@@ -611,7 +611,7 @@ test('a handshake that TIMES OUT keeps the actions (GG: „ვიდეო პ�
   }
 });
 
-test('through the relay the handshake gets the longer deadline (a relay scaled to zero boots first)', async () => {
+test('through the relay a booting relay (socket still CONNECTING) gets the long deadline', async () => {
   jest.useFakeTimers();
   try {
     const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
@@ -621,15 +621,46 @@ test('through the relay the handshake gets the longer deadline (a relay scaled t
       for (let i = 0; i < 20; i += 1) await Promise.resolve();
     });
     expect(FakeSocket.last.url).toContain('wss://relay.example/v1/live');
-    act(() => FakeSocket.last.open());
     await elapse(LIVE_SETUP_TIMEOUT_MS);
     expect(FakeSocket.all).toHaveLength(1); // the direct-to-Google deadline would have given up here
-    await elapse(LIVE_RELAY_SETUP_TIMEOUT_MS - LIVE_SETUP_TIMEOUT_MS);
+    act(() => FakeSocket.last.open()); // booted late: the open socket now has LIVE_RELAY_READY_AFTER_OPEN_MS
+    act(() => FakeSocket.last.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    expect(h.report).not.toHaveBeenCalled();
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('through the relay an OPEN socket with no setupComplete gives up after 6 s, says where it waited, and retries the same setup twice', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    // GG 2026-10-25: the setup frame sat between browser and relay until the browser closed the socket.
+    act(() => FakeSocket.last.open());
+    (FakeSocket.last as unknown as { bufferedAmount: number }).bufferedAmount = 39124;
+    await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS - 1);
+    expect(FakeSocket.all).toHaveLength(1);
+    await elapse(1);
     expect(FakeSocket.all).toHaveLength(2);
-    expect(h.mintBodies[1]).toMatchObject({ actions: true });
+    expect(h.report).toHaveBeenCalledWith('handshake_timeout', null, expect.objectContaining({
+      relay: true, msToOpen: expect.any(Number), msSinceOpen: LIVE_RELAY_READY_AFTER_OPEN_MS, bufferedBytes: 39124,
+    }));
+    act(() => FakeSocket.last.open()); // the second socket is held too
+    await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
+    expect(FakeSocket.all).toHaveLength(3);
+    for (const body of h.mintBodies.slice(1)) expect(body).toMatchObject({ actions: true }); // same setup, not degraded
     act(() => FakeSocket.last.open());
     act(() => FakeSocket.last.receive({ setupComplete: {} }));
     expect(result.current.status).toBe('listening');
+    expect(result.current.degraded).toBe(false);
+    expect(h.report).toHaveBeenCalledTimes(2);
     unmount();
   } finally {
     jest.useRealTimers();
