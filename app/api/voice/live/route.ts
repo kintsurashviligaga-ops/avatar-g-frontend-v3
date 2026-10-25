@@ -19,14 +19,18 @@
  *
  * Body (all optional): { model, locale: 'ka'|'en'|'ru', personaId, customPersona, gender: 'male'|'female',
  *   voice: 'Aoede'|'Charon'|'Kore'|'Puck', transcribe: boolean, compression: boolean, resumptionHandle: string|null,
- *   actions: boolean, tools: false, researchId: string, chatSessionId: string }
+ *   actions: boolean, tools: false, researchId: string, chatSessionId: string, avatar: 'Kira'|'Ben'|'Leo' }
+ *   `avatar` = A TALKING AVATAR (lib/voice/liveAvatar): with NEXT_PUBLIC_LIVE_AVATAR on, an allowlisted prebuilt name turns
+ *   the session into gemini-3.8-live answering in VIDEO (the avatar's own voice inside), on every wire this route locks.
+ *   Its ticket lives LIVE_AVATAR_TICKET_MS (the relay ends the session there) and it has its own per-user daily cap; a
+ *   refused avatar never refuses the call: it opens as a voice call and `avatar: null` (+ `avatarRefused`) says why.
  *   `researchId` = TALK TO A RESEARCH REPORT: the server loads that finished report for the signed-in OWNER (never text from
  *   the browser), squeezes it to the engine's limit (lib/research/liveContext.ts) and appends it to the locked instruction.
  *   A report that is not the caller's / not finished / not found → 404 `report_unavailable`, no mint.
  *   `chatSessionId` = THE SAME CONVERSATION: the id of the text-chat session the call was opened from. The server loads that
  *   session's newest turns for the signed-in OWNER (lib/voice/liveThread) and appends them to the locked instruction, so the
  *   call continues the chat instead of starting cold. Not the caller's / trashed / malformed → simply no history block.
- * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions }.
+ * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions, avatar, avatarRefused? }.
  *   `setupMessage` is the complete first WS frame ({ setup }) — pass it as GeminiLiveConfig.setupMessage so the
  *   browser sends exactly what the token was minted for.
  *
@@ -83,6 +87,7 @@ import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
 import { LIVE_LANGUAGE_LOCK, liveTranscriptionLanguages } from '@/lib/voice/voicePrompt';
 import { LIVE_TRANSPORT_UNAVAILABLE, liveTokenMinter } from '@/lib/voice/liveMint';
 import { liveAudienceAllows } from '@/lib/voice/liveAudience';
+import { LIVE_AVATAR_BITRATE_BPS, LIVE_AVATAR_MODEL, LIVE_AVATAR_TICKET_MS, liveAvatarEnabled, normalizeLiveAvatar } from '@/lib/voice/liveAvatar';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -224,8 +229,14 @@ export async function POST(request: NextRequest) {
     const body: Body = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Body) : {};
 
     // ── The session, built server-side ──
+    // A talking avatar: switched on, an allowlisted prebuilt name, and the account's avatar sessions for today not used up.
+    let avatarName = normalizeLiveAvatar(body.avatar);
+    let avatarRefused: 'disabled' | 'daily_limit' | null = null;
+    if (avatarName && !liveAvatarEnabled()) { avatarName = null; avatarRefused = 'disabled'; }
+    if (avatarName && (await checkRateLimitByKey(userId, RATE_LIMITS.LIVE_AVATAR_USER))) { avatarName = null; avatarRefused = 'daily_limit'; }
+    const avatar = avatarName ? { avatarName, videoBitrateBps: LIVE_AVATAR_BITRATE_BPS } : null;
     // Allowlisted model: anything malformed, retired or unlisted resolves to the default (never an error).
-    const model = resolveLiveModel(typeof body.model === 'string' ? body.model : null);
+    const model = avatar ? LIVE_AVATAR_MODEL : resolveLiveModel(typeof body.model === 'string' ? body.model : null);
     const modelResource = toModelResource(model);
     const locale = resolveLocale(body, request.headers.get('referer'));
     const profile = resolveAgentProfile({
@@ -289,6 +300,7 @@ export async function POST(request: NextRequest) {
           ? { resumptionHandle: typeof body.resumptionHandle === 'string' ? body.resumptionHandle : null }
           : {}),
         ...(tools.length ? { tools } : {}),
+        ...(avatar ? { avatar } : {}),
       });
     };
     const setupMessage = parityFor(actionsWanted);
@@ -301,7 +313,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = Date.now();
-    const expireTime = new Date(now + SESSION_TTL_MS).toISOString();
+    const expireTime = new Date(now + (avatar ? LIVE_AVATAR_TICKET_MS : SESSION_TTL_MS)).toISOString();
     const newSessionExpireTime = new Date(now + NEW_SESSION_WINDOW_MS).toISOString();
 
     // The lock field is `bidiGenerateContentSetup` — verified live: the earlier `liveConnectConstraints` name is
@@ -332,6 +344,7 @@ export async function POST(request: NextRequest) {
         systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder + '\n' + LIVE_LANGUAGE_LOCK,
         voiceName: plain.voiceName,
         ...(personaActive ? { temperature: plain.temperature } : {}),
+        ...(avatar ? { avatar } : {}),
       });
       res = await mint(legacy.setup, 8_000);
       if (res.ok) {
@@ -361,6 +374,8 @@ export async function POST(request: NextRequest) {
       resume: typeof body.resumptionHandle === 'string' && body.resumptionHandle !== '',
       thread: threadBlock !== '',
       relay: !!minter.wsUrl,
+      ...(avatarName ? { avatar: avatarName } : {}),
+      ...(avatarRefused ? { avatarRefused } : {}),
     });
 
     return NextResponse.json({
@@ -372,6 +387,8 @@ export async function POST(request: NextRequest) {
       voice: live.voiceName,
       locale,
       actions,
+      avatar: avatarName,
+      ...(avatarRefused ? { avatarRefused } : {}),
       // The Live relay the token opens (lib/voice/liveMint); absent = Google directly, as before.
       ...(minter.wsUrl ? { relayUrl: minter.wsUrl } : {}),
     });

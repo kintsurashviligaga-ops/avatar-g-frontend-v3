@@ -9,6 +9,7 @@
  *   VERTEX_LIVE_LOCATION       Vertex region (default us-central1), or `global`.
  *   LIVE_RELAY_MODELS          Vertex model ids the relay opens, comma-separated (required; nothing opens without it).
  *   LIVE_RELAY_MODEL_MAP       app id=Vertex id pairs, comma-separated (e.g. gemini-2.5-flash-native-audio-latest=gemini-live-2.5-flash-native-audio).
+ *   LIVE_RELAY_MODEL_LOCATIONS Vertex id=region pairs for models served elsewhere (e.g. gemini-3.8-live=us-central1).
  *   LIVE_RELAY_ALLOWED_ORIGINS browser origins allowed to connect, comma-separated (e.g. https://myavatar.ge). Empty = any.
  *   LIVE_RELAY_MAX_SESSION_MS, LIVE_RELAY_IDLE_MS, LIVE_RELAY_MAX_FRAME_BYTES, LIVE_RELAY_MAX_CLIENT_BYTES   limits.
  *   PORT                       set by Cloud Run (default 8080).
@@ -30,6 +31,7 @@ const cfg: RelayConfig = {
   project: (env.GOOGLE_CLOUD_PROJECT ?? '').trim(),
   location: (env.VERTEX_LIVE_LOCATION ?? 'us-central1').trim(),
   modelMap: Object.fromEntries(list(env.LIVE_RELAY_MODEL_MAP).map((p) => p.split('=').map((x) => x.trim())).filter((p) => p.length === 2 && p[0] && p[1])),
+  modelLocations: Object.fromEntries(list(env.LIVE_RELAY_MODEL_LOCATIONS).map((p) => p.split('=').map((x) => x.trim())).filter((p) => p.length === 2 && p[0] && /^[a-z0-9-]+$/.test(p[1] ?? ''))),
   allowedModels: new Set(list(env.LIVE_RELAY_MODELS)),
   maxSessionMs: num(env.LIVE_RELAY_MAX_SESSION_MS, RELAY_DEFAULTS.maxSessionMs),
   idleMs: num(env.LIVE_RELAY_IDLE_MS, RELAY_DEFAULTS.idleMs),
@@ -125,7 +127,13 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 const port = num(env.PORT, 8080);
-server.listen(port, () => log('relay.listening', { port, location: cfg.location, models: [...cfg.allowedModels].join(','), origins: origins.size }));
+server.listen(port, () => log('relay.listening', {
+  port,
+  location: cfg.location,
+  models: [...cfg.allowedModels].join(','),
+  modelLocations: Object.entries(cfg.modelLocations ?? {}).map(([m, l]) => `${m}=${l}`).join(','),
+  origins: origins.size,
+}));
 
 // Cloud Run sends SIGTERM before it stops an instance: refuse new sessions, let live ones finish (Cloud Run allows 10 s).
 process.on('SIGTERM', () => {

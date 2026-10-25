@@ -450,3 +450,108 @@ describe('voice-to-action', () => {
     }
   });
 });
+
+describe('the talking avatar', () => {
+  class FakeMS {
+    static isTypeSupported() { return true; }
+    readyState = 'closed';
+    addEventListener() {}
+  }
+  const savedUrl = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+  const savedPlay = HTMLMediaElement.prototype.play;
+  const savedLoad = HTMLMediaElement.prototype.load;
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    saved.MediaSource = g.MediaSource;
+    g.MediaSource = FakeMS;
+    URL.createObjectURL = jest.fn(() => 'blob:avatar');
+    URL.revokeObjectURL = jest.fn();
+    HTMLMediaElement.prototype.play = jest.fn(() => Promise.resolve());
+    HTMLMediaElement.prototype.load = jest.fn();
+    g.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      if (url !== '/api/voice/live') return { ok: false, status: 404, json: async () => ({}) };
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      const avatar = body.avatar ?? null;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          token: 'tok',
+          model: avatar ? 'models/gemini-3.8-live' : 'models/gemini-2.5-flash-native-audio-latest',
+          expiresAt: new Date(Date.now() + 3e5).toISOString(),
+          avatar: avatar === 'Kira' ? 'Kira' : null,
+          ...(avatar === 'Ben' ? { avatarRefused: 'daily_limit' } : {}),
+        }),
+      };
+    });
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    URL.createObjectURL = savedUrl.create;
+    URL.revokeObjectURL = savedUrl.revoke;
+    HTMLMediaElement.prototype.play = savedPlay;
+    HTMLMediaElement.prototype.load = savedLoad;
+  });
+
+  const ready = async (ws: FakeSocket) => {
+    act(() => ws.open());
+    act(() => ws.receive({ setupComplete: {} }));
+    await screen.findByText(LIVE_OVERLAY_STRINGS.en.status.listening);
+  };
+  const mintBodies = () => (g.fetch as jest.Mock).mock.calls
+    .filter((c) => c[0] === '/api/voice/live')
+    .map((c) => JSON.parse(String((c[1] as RequestInit).body)));
+
+  test('the toggle renews the call with Kira; her stream shows on the screen; off goes back to a voice session', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    expect(mintBodies()[0]).not.toHaveProperty('avatar');
+
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Kira', why: 'renew' });
+    expect(screen.getByTestId('live-notice')).toHaveTextContent('Starting the avatar');
+    const ws = FakeSocket.all[1]!;
+    await ready(ws);
+    // An init segment (ftyp): the player opens its MediaSource and the picture takes the screen.
+    act(() => ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: Buffer.from([0, 0, 0, 8, 102, 116, 121, 112]).toString('base64') } }] } } }));
+    await waitFor(() => expect(screen.getByTestId('live-avatar-video')).toBeInTheDocument());
+    // The avatar's answer cannot be cut locally: no stop button while it speaks.
+    act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Hello there' } } }));
+    expect(screen.queryByTestId('live-stop-speaking')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(3));
+    expect(mintBodies()[2]).not.toHaveProperty('avatar');
+    await ready(FakeSocket.all[2]!);
+    expect(screen.queryByTestId('live-avatar-video')).toBeNull();
+  });
+
+  test('a refused avatar turns the toggle off, says why, and does not ask again', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" gender="male" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Ben' });
+    await ready(FakeSocket.all[1]!);
+    await screen.findByText(/avatar limit is used up/);
+    expect(screen.getByTestId('live-avatar-switch')).toHaveAttribute('aria-pressed', 'false');
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
+  test('switched off for this build, or a browser without MSE: no toggle', async () => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    const { unmount } = render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+    unmount();
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    g.MediaSource = undefined;
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+  });
+});

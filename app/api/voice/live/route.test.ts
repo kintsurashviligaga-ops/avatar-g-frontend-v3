@@ -710,3 +710,69 @@ test('v2 preferences are validated and locked server-side without changing tool 
  expect(setup.generationConfig.temperature).toBeUndefined();
  expect(setup).toMatchObject({realtimeInputConfig:{automaticActivityDetection:{silenceDurationMs:1200}}});
 });
+
+describe('the talking avatar (lib/voice/liveAvatar)', () => {
+  type AvatarSetup = Setup & { avatarConfig?: { avatarName: string; videoBitrateBps?: number } };
+  const avatarSetup = (i = 0) => mintBody(i).bidiGenerateContentSetup as AvatarSetup;
+
+  test('switched on: gemini-3.8-live answers in VIDEO with the prebuilt avatar, its own voice, a short ticket', async () => {
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    const before = Date.now();
+    const res = await POST(post({ avatar: 'kira', transcribe: true, compression: true, resumptionHandle: null, actions: true }));
+    expect(res.status).toBe(200);
+    const j = await res.json();
+    const s = avatarSetup();
+    expect(s.model).toBe('models/gemini-3.8-live');
+    expect(s.generationConfig.responseModalities).toEqual(['VIDEO']);
+    expect(s.generationConfig.speechConfig).toBeUndefined();
+    expect(s.generationConfig.thinkingConfig).toBeUndefined();
+    expect(s.avatarConfig).toEqual({ avatarName: 'Kira', videoBitrateBps: 1_500_000 });
+    // The rest of the parity lock stays: captions, resumption, compression, the actions.
+    expect(s.outputAudioTranscription).toEqual({});
+    expect(s.sessionResumption).toEqual({});
+    expect(s.contextWindowCompression).toBeDefined();
+    expect(JSON.stringify(s.tools)).toContain('functionDeclarations');
+    const ttl = Date.parse(mintBody().expireTime) - before;
+    expect(ttl).toBeGreaterThan(5 * 60_000);
+    expect(ttl).toBeLessThanOrEqual(6 * 60_000 + 1000);
+    expect(j).toMatchObject({ avatar: 'Kira', model: 'models/gemini-3.8-live', setupMessage: { setup: { avatarConfig: { avatarName: 'Kira' } } } });
+    expect(j.avatarRefused).toBeUndefined();
+    expect(perUserMock).toHaveBeenCalledWith('user-1', RATE_LIMITS.LIVE_AVATAR_USER);
+    expect(logMock).toHaveBeenCalledWith('info', 'voice.live.minted', expect.objectContaining({ avatar: 'Kira' }));
+  });
+
+  test('the browser\'s no-tools retry and the server\'s legacy lock keep the avatar', async () => {
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = 'on';
+    await POST(post({ avatar: 'Ben', tools: false }));
+    expect(avatarSetup(0).avatarConfig?.avatarName).toBe('Ben');
+    expect(avatarSetup(0).tools).toBeUndefined();
+
+    mintSpy.mockImplementationOnce(async () => new Response('bad', { status: 400 }));
+    const j = await (await POST(post({ avatar: 'Ben', transcribe: true }))).json();
+    expect(mintSpy).toHaveBeenCalledTimes(3);
+    expect(avatarSetup(2).inputAudioTranscription).toBeUndefined(); // the legacy lock
+    expect(avatarSetup(2).avatarConfig?.avatarName).toBe('Ben');
+    expect(avatarSetup(2).generationConfig.responseModalities).toEqual(['VIDEO']);
+    expect(j.avatar).toBe('Ben');
+  });
+
+  test('switched off, over the daily cap, or an unknown name: a voice call, and the browser is told why', async () => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    let j = await (await POST(post({ avatar: 'Kira' }))).json();
+    expect(j).toMatchObject({ avatar: null, avatarRefused: 'disabled', model: 'models/gemini-2.5-flash-native-audio-latest' });
+    expect(avatarSetup(0).avatarConfig).toBeUndefined();
+    expect(avatarSetup(0).generationConfig.responseModalities).toEqual(['AUDIO']);
+
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    perUserMock.mockImplementation(async (_id, cfg) => (cfg === RATE_LIMITS.LIVE_AVATAR_USER ? NextResponse.json({}, { status: 429 }) : null));
+    j = await (await POST(post({ avatar: 'Kira' }))).json();
+    expect(j).toMatchObject({ avatar: null, avatarRefused: 'daily_limit' });
+    expect(avatarSetup(1).avatarConfig).toBeUndefined();
+    perUserMock.mockImplementation(async () => null);
+
+    j = await (await POST(post({ avatar: 'Aria' }))).json();
+    expect(j.avatar).toBeNull();
+    expect(j.avatarRefused).toBeUndefined();
+    expect(avatarSetup(2).avatarConfig).toBeUndefined();
+  });
+});

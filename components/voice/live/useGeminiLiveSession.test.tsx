@@ -1396,3 +1396,53 @@ test('style changes at listening without replacing context; voice applies only o
   expect(h.mintBodies[1].voice).toBe('Charon');
   unmount(); localStorage.clear();
 });
+
+// ─── Talking avatar (lib/voice/liveAvatar) ─────────────────────────────────────
+
+test('avatar: the mint asks for it, its fMP4 goes to onVideo, its words mean speaking, an interruption jumps the player', async () => {
+  const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-3.8-live', expiresAt: future(), avatar: 'Kira' }));
+  const onVideo = jest.fn();
+  const onAvatarInterrupted = jest.fn();
+  const { result, ws, unmount } = await connected({ avatar: 'Kira', onVideo, onAvatarInterrupted, deps: h.deps });
+  expect(h.mintBodies[0]).toMatchObject({ avatar: 'Kira' });
+  expect(result.current.avatar).toBe('Kira');
+  expect(result.current.avatarRefused).toBeNull();
+
+  const piece = { serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: 'AAAA' } }] } } };
+  act(() => ws.receive(piece));
+  expect(onVideo).toHaveBeenCalledWith('AAAA', 'video/mp4');
+  expect(result.current.status).toBe('listening'); // idle frames are not speech
+  expect(h.playCtx.sources).toHaveLength(0); // nothing on the audio graph
+
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'გამარჯობა' } } }));
+  expect(result.current.status).toBe('speaking');
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(onAvatarInterrupted).toHaveBeenCalledTimes(1);
+  expect(result.current.status).toBe('listening');
+
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'კიდევ' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(result.current.status).toBe('listening');
+
+  act(() => result.current.stop());
+  expect(result.current.avatar).toBeNull();
+  unmount();
+});
+
+test('avatar refused by the server: a voice call, and the reason is surfaced', async () => {
+  const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), avatar: null, avatarRefused: 'daily_limit' }));
+  const onAvatarInterrupted = jest.fn();
+  const { result, ws, unmount } = await connected({ avatar: 'Kira', onAvatarInterrupted, deps: h.deps });
+  expect(result.current.avatar).toBeNull();
+  expect(result.current.avatarRefused).toBe('daily_limit');
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(onAvatarInterrupted).not.toHaveBeenCalled();
+  unmount();
+});
+
+test('no avatar asked: the mint body carries none', async () => {
+  const h = harness();
+  const { unmount } = await connected({ deps: h.deps });
+  expect(h.mintBodies[0]).not.toHaveProperty('avatar');
+  unmount();
+});

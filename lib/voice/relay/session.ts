@@ -21,6 +21,10 @@ export interface RelayConfig {
   project: string;
   /** Vertex region, e.g. `us-central1`, or `global`. */
   location: string;
+  /** Vertex model id (bare, after the map) → the region that serves it, when not `location`. gemini-3.8-live (the
+   *  talking avatar) is served in us-central1 only (europe-west4 → close 1008 "publisher model not found", 2026-10-25),
+   *  while voice calls stay on the relay's own, nearer region. */
+  modelLocations?: Record<string, string>;
   /** App model id → Vertex model id (bare ids). Unlisted ids pass through unchanged. */
   modelMap: Record<string, string>;
   /** Vertex model ids (bare, after the map) the relay will open. */
@@ -72,7 +76,7 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
 
 export type SetupCheck =
-  | { ok: true; upstreamFrame: string; resume: boolean; model: string }
+  | { ok: true; upstreamFrame: string; resume: boolean; model: string; location: string }
   | { ok: false; code: number; reason: string };
 
 /** Close codes the relay itself uses. 4xxx are application codes a browser can read. */
@@ -112,8 +116,9 @@ export function checkSetupFrame(raw: string, claims: TicketClaims, cfg: RelayCon
   const model = cfg.modelMap[appModel] ?? appModel;
   if (!cfg.allowedModels.has(model)) return { ok: false, code: RELAY_CLOSE.modelRefused, reason: 'model_not_allowed' };
 
-  const upstream = { setup: { ...setup, model: vertexModelResource(cfg, model) } };
-  return { ok: true, upstreamFrame: JSON.stringify(upstream), resume, model };
+  const location = cfg.modelLocations?.[model] ?? cfg.location;
+  const upstream = { setup: { ...setup, model: vertexModelResource({ project: cfg.project, location }, model) } };
+  return { ok: true, upstreamFrame: JSON.stringify(upstream), resume, model, location };
 }
 
 const FORWARDED = new Set(['realtimeInput', 'clientContent', 'toolResponse']);
@@ -172,6 +177,7 @@ export class RelaySession {
   private framesDropped = 0;
   private totalTokens = 0;
   private model = '';
+  private location = '';
   private resume = false;
   // When the setup frame arrived, Vertex's socket opened and its setupComplete came back (0 = never). Logged as
   // durations so a slow call shows WHERE it waited (GG 2026-10-25: half the calls sat ~15 s and the browser gave up).
@@ -234,10 +240,11 @@ export class RelaySession {
     this.state = 'connecting';
     this.setupAt = this.d.now();
     this.model = check.model;
+    this.location = check.location;
     this.resume = check.resume;
     const remaining = Math.min(this.d.cfg.maxSessionMs, Math.max(0, this.d.claims.exp - this.d.now()));
     this.stopSession = this.d.setTimer(() => this.end(RELAY_CLOSE.sessionLimit, 'session_limit', 'relay'), remaining);
-    this.d.openUpstream(vertexLiveUrl(this.d.cfg.location)).then(
+    this.d.openUpstream(vertexLiveUrl(check.location)).then(
       (up) => {
         if (this.state === 'closed') { up.close(1000, 'client_gone'); return; }
         this.upstream = up;
@@ -285,6 +292,7 @@ export class RelaySession {
       sub: this.d.claims.sub,
       jti: this.d.claims.jti.slice(0, 8),
       model: this.model || 'none',
+      ...(this.location && this.location !== this.d.cfg.location ? { location: this.location } : {}),
       resume: this.resume,
       opened: wasOpen,
       by,
