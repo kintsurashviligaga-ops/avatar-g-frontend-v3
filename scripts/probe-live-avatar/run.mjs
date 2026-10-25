@@ -127,8 +127,16 @@ if (mode === 'names') {
   process.exit(0);
 }
 
-// talk
-const s = open(avatarArg);
+// talk (FIXTURE=full|fullVad|noTools → the app's exact setup from setups.json instead of the bare one; a tool call is
+// answered with an empty result so the turn can finish)
+const s = process.env.FIXTURE
+  ? open(null, { setup: { ...JSON.parse(readFileSync(here('setups.json'), 'utf8'))[process.env.FIXTURE].setup, model } })
+  : open(avatarArg);
+s.ws.on('message', (raw) => {
+  const m = JSON.parse(raw.toString());
+  const calls = m.toolCall?.functionCalls ?? [];
+  if (calls.length) s.ws.send(JSON.stringify({ toolResponse: { functionResponses: calls.map((c) => ({ id: c.id, name: c.name, response: { result: 'ok' } })) } }));
+});
 const ok = await Promise.race([s.ready, sleep(15000).then(() => 'timeout')]);
 if (ok !== true) { console.log(JSON.stringify({ avatar: avatarArg, ok, close: s.close, error: s.error })); process.exit(1); }
 const sentAt = Date.now() - s.t0;
@@ -147,6 +155,7 @@ await sleep(300);
 const video = []; const parts = []; let usage = null; let firstVideoMs = -1; let text = '';
 for (const { t, m, bytes } of s.msgs) {
   if (m.usageMetadata) usage = m.usageMetadata;
+  if (m.toolCall) parts.push({ t, toolCall: (m.toolCall.functionCalls ?? []).map((c) => c.name) });
   const sc = m.serverContent;
   if (sc?.outputTranscription?.text) text += sc.outputTranscription.text;
   for (const p of sc?.modelTurn?.parts ?? []) {
@@ -163,6 +172,7 @@ const all = Buffer.concat(video);
 writeFileSync(here(`out-${avatarArg}.mp4`), all);
 const afterTurn = parts.filter((p) => p.mime && turnDoneAt > 0 && p.t > turnDoneAt);
 const report = {
+  fixture: process.env.FIXTURE ?? null, inputTranscript: s.msgs.map((x) => x.m.serverContent?.inputTranscription?.text ?? '').join('').slice(0, 200),
   avatar: avatarArg, location: LOCATION, model: MODEL, shape: SHAPE, bitrate: BITRATE,
   setupMs: s.setupMs, firstVideoMs, turnDoneAt, close: s.close,
   videoBytes: all.length, videoChunks: video.length, chunksAfterTurnComplete: afterTurn.length,

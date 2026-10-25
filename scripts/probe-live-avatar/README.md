@@ -10,4 +10,5 @@ SHAPE=a node run.mjs names          # setup only, no turn: free. Repeat with SHA
 SHAPE=a node run.mjs talk Kira      # one short Georgian turn, ~25 s, writes out-Kira.mp4 and report-Kira.json
 LOCATION=us-central1 node run.mjs setup    # the app's exact avatar setups (setups.json), closed at setupComplete: free
 LOCATION=us-central1 node run.mjs custom   # own-face avatar with a grey test image (no face): allowlisted or not
+LOCATION=us-central1 FIXTURE=full node run.mjs talk Kira   # PAID (~$0.1): the app's exact setup, one Georgian turn, captions
 ```
