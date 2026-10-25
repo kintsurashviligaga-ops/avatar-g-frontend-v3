@@ -3649,6 +3649,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     onStarted: () => closeSettingsLayer(),
     onWalkthrough: (url, prompt) => { sendImageToVideo(url); setInput(prompt); },
   });
+  // The shoot results sit under the thread now (the feed, below), so a new run is pinned like a new message.
+  useEffect(() => { if (nearBottomRef.current) scrollToBottom(); }, [shoot.runs.length, scrollToBottom]);
   const { transitCharacterUrl, transitAudioUrl, transitAudioMeta, transitStoryboard, setTransitStoryboard, clearCharacter, clearAudio, clearStoryboard } = useStudioBridge();
   // Capped-parallel render queue (Phase 1: the fast IMAGE flow runs 3-at-a-time through
   // it while the tray shows live progress + queue positions).
@@ -11683,14 +11685,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // the gutter, thin and quiet, with its room kept (scrollbar-gutter) so nothing jumps when the thread grows past one screen.
         className={`${imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y -mr-4 pr-4 pt-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(var(--app-border)/0.35)_transparent] ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
-        {shootActive ? (
-          <ShootResultPane
-            tool={activeTool === 'photoshoot' ? 'photoshoot' : 'interior'} locale={locale} runs={shoot.runs} prices={shoot.prices}
-            onOpenImage={setLightbox} onRetry={shoot.retry} onCancel={shoot.cancel} onAnother={shoot.another} onPlan3d={shoot.plan3d}
-            onWalkthrough={shoot.walkthrough} onUseAsReference={shoot.useAsReference} onDismissRun={shoot.dismissRun}
-            onDismissTile={shoot.dismissTile} onClear={shoot.clearRuns} onOpenSettings={openSettings}
-          />
-        ) : imageWorkspace ? null : messages.length === 0 ? (
+        {/* ⚠️ ONE CONVERSATION FOR THE SHOOT TOOLS TOO (GG 2026-10-25). Interior and the Photographer used to REPLACE the
+            thread with their result pane, so picking Interior mid-chat hid the conversation and leaving it hid the rooms.
+            The thread stays; each shoot tool's results follow it while that tool is chosen or has runs (a run in flight
+            keeps its card when another service is picked), and the pane's Settings button brings its own tool back. */}
+        {imageWorkspace ? null : messages.length === 0 && shoot.runs.length === 0 ? (
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
@@ -11712,6 +11711,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             </div>
           </div>
         ) : messageList}
+        {!imageWorkspace && (['interior', 'photoshoot'] as const).filter((k) => activeTool === k || shoot.runs.some((r) => r.tool === k)).map((k) => (
+          <ShootResultPane
+            key={k} tool={k} locale={locale} runs={shoot.runs} prices={shoot.prices}
+            onOpenImage={setLightbox} onRetry={shoot.retry} onCancel={shoot.cancel} onAnother={shoot.another} onPlan3d={shoot.plan3d}
+            onWalkthrough={shoot.walkthrough} onUseAsReference={shoot.useAsReference} onDismissRun={shoot.dismissRun}
+            onDismissTile={shoot.dismissTile} onClear={shoot.clearRuns}
+            onOpenSettings={k === activeTool ? openSettings : () => { selectTool(k); if (isDesktop) setPanelOpen(true); else setOptionsOpen(true); }}
+          />
+        ))}
         {/* Room for the floating job tray (JobTray publishes --job-tray-h, 0 when it is hidden), so the newest card's
             buttons scroll clear of it on a phone (round-3 browser defect 7). No margin of its own from space-y-*. */}
         <div aria-hidden="true" data-testid="job-tray-spacer" className="shrink-0" style={{ height: 'var(--job-tray-h, 0px)', marginTop: 0 }} />
@@ -12155,6 +12163,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {!chatOnly && (
               // ActiveServiceChip (GG's unified composer, 2026-10-25): [icon name ▾ | ✕] — ▾ reopens „+", ✕ is back to the chat.
               // Every part is a 44 px target; the name truncates instead of wrapping the row onto a second line.
+              // The name is the app's text colour, the icon the accent: accent text on the accent tint measured 4.1 : 1 in the
+              // dark theme and 3.6 : 1 in the light one at 12.5 px — under WCAG AA (tests/unified-composer.spec.ts, 11).
               <div data-testid="active-service-chip" className="inline-flex h-11 min-w-0 shrink items-center rounded-full bg-app-accent/15 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
                 {/* 1. სერვისის სწრაფი შეცვლა (ხსნის სერვისების სიას) */}
                 <button
@@ -12163,7 +12173,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   data-testid="active-service-switch" aria-haspopup="dialog" aria-expanded={toolSheetOpen && toolPickOnly}
                   aria-label={`${toolLabel} — ${locale === 'en' ? 'switch service' : locale === 'ru' ? 'сменить сервис' : 'სერვისის შეცვლა'}`}
                   title={locale === 'en' ? 'Switch service' : locale === 'ru' ? 'Сменить сервис' : 'სერვისის შეცვლა'}
-                  className="inline-flex h-11 min-w-0 items-center gap-1 overflow-hidden rounded-full pl-2.5 pr-1 text-app-accent sm:gap-1.5 sm:pl-3 sm:pr-2 transition-colors hover:bg-app-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+                  className="inline-flex h-11 min-w-0 items-center gap-1 overflow-hidden rounded-full pl-2.5 pr-1 text-app-text sm:gap-1.5 sm:pl-3 sm:pr-2 transition-colors hover:bg-app-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
                 >
                   <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
                   <span className="max-w-[88px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>

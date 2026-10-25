@@ -171,6 +171,11 @@ describe('the unified composer (GG 2026-10-25): one conversation on screen, sett
     }
     expect(src).toContain("${imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
     expect(src).toContain('{showJump && !imageWorkspace && messages.length > 0 && (');
+    // Interior and the Photographer follow the thread instead of replacing it, and keep their runs when another service is picked.
+    expect(src).not.toMatch(/\{shootActive \? \(\s*<ShootResultPane/);
+    expect(src).toContain('{imageWorkspace ? null : messages.length === 0 && shoot.runs.length === 0 ? (');
+    expect(src).toContain("{!imageWorkspace && (['interior', 'photoshoot'] as const).filter((k) => activeTool === k || shoot.runs.some((r) => r.tool === k)).map((k) => (");
+    expect(src).toContain('onOpenSettings={k === activeTool ? openSettings : () => { selectTool(k);');
   });
 
   test('the settings are one layer above the composer — no right column, no sheet hiding the composer', () => {
