@@ -715,7 +715,7 @@ describe('the talking avatar (lib/voice/liveAvatar)', () => {
   type AvatarSetup = Setup & { avatarConfig?: { avatarName: string; videoBitrateBps?: number } };
   const avatarSetup = (i = 0) => mintBody(i).bidiGenerateContentSetup as AvatarSetup;
 
-  test('switched on: gemini-3.8-live answers in VIDEO with the prebuilt avatar, its own voice, a short ticket', async () => {
+  test('switched on: gemini-3.8-live answers in VIDEO with the prebuilt avatar, the chosen voice, a short ticket', async () => {
     process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
     const before = Date.now();
     const res = await POST(post({ avatar: 'kira', transcribe: true, compression: true, resumptionHandle: null, actions: true }));
@@ -724,7 +724,7 @@ describe('the talking avatar (lib/voice/liveAvatar)', () => {
     const s = avatarSetup();
     expect(s.model).toBe('models/gemini-3.8-live');
     expect(s.generationConfig.responseModalities).toEqual(['VIDEO']);
-    expect(s.generationConfig.speechConfig).toBeUndefined();
+    expect(s.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Aoede'); // else a man's voice
     expect(s.generationConfig.thinkingConfig).toBeUndefined();
     expect(s.avatarConfig).toEqual({ avatarName: 'Kira', videoBitrateBps: 1_500_000 });
     // The rest of the parity lock stays: captions, resumption, compression, the actions.

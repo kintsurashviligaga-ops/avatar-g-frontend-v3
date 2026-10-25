@@ -4,7 +4,8 @@
  *
  * VERIFIED 2026-10-25 by probe (Vertex, avatar Kira): gemini-3.8-live is served in us-central1 only (the relay routes it
  * there with LIVE_RELAY_MODEL_LOCATIONS); `avatarConfig` sits at the top of `setup`; Kira, Ben and Leo open (Aria, Mia →
- * 1007 "Unsupported avatar name"). The answer is fragmented MP4 with the avatar's own voice inside (lib/voice/fmp4).
+ * 1007 "Unsupported avatar name"). The answer is fragmented MP4 with the voice inside (lib/voice/fmp4); the voice is the
+ * call's speechConfig voice: without one every avatar, Kira too, speaks in the model's default male voice.
  * COST: about 6.2k video tokens per second of speech at $1 per million (≈ $0.37 per minute while the avatar speaks, per
  * Google's price list as reported by third parties; unverified against a bill), on top of the call's audio. So an avatar
  * session is capped at LIVE_AVATAR_MAX_MS: the call then goes on as a voice call.

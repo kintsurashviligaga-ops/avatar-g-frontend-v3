@@ -261,8 +261,8 @@ export interface BuildLiveSetupOptions {
   functionDeclarations?: readonly LiveDeclaration[];
   /** Opt-in v2 turn detection; omitted by legacy clients. */
   turnEagerness?: 'eager' | 'normal' | 'patient';
-  /** A talking avatar (gemini-3.8-live on Vertex): the answer arrives as VIDEO with the avatar's own voice muxed in, so
-   *  responseModalities becomes ['VIDEO'] and no speechConfig is sent. VERIFIED 2026-10-25 (us-central1): avatarConfig
+  /** A talking avatar (gemini-3.8-live on Vertex): the answer arrives as VIDEO with the voice muxed in, so
+   *  responseModalities becomes ['VIDEO']; speechConfig still picks that voice. VERIFIED 2026-10-25 (us-central1): avatarConfig
    *  sits at the TOP level of setup (inside generationConfig → 1007 unknown field); Kira, Ben and Leo open. */
   avatar?: { avatarName: string; videoBitrateBps?: number };
 }
@@ -353,7 +353,9 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
   const avatarName = typeof opts?.avatar?.avatarName === 'string' ? opts.avatar.avatarName.trim() : '';
   if (AVATAR_NAME_RE.test(avatarName)) {
     generationConfig.responseModalities = ['VIDEO'];
-    delete generationConfig.speechConfig;
+    // ⚠️ speechConfig STAYS: without it the avatar speaks in the model's default voice, a man's for Kira too (GG,
+    // test link 2026-10-25 17:57Z: female voice chosen, Kira on screen, a male voice). Probe: Kira without a voice
+    // ~113 Hz, with Aoede ~178 Hz (female); Vertex accepts speechConfig next to VIDEO + avatarConfig.
     const bitrate = Math.round(Number(opts.avatar?.videoBitrateBps));
     setup.avatarConfig = { avatarName, ...(bitrate >= 300_000 && bitrate <= 8_000_000 ? { videoBitrateBps: bitrate } : {}) };
   }
