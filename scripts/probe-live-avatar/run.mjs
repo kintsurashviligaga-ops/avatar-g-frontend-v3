@@ -152,12 +152,12 @@ if (mode === 'speak') {
     const finish = () => { if (done) return; done = true; try { ws.close(); } catch {} resolve(Buffer.concat(chunks)); };
     ws.on('open', () => ws.send(JSON.stringify({ setup: { model: ttsModel, generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } } },
       outputAudioTranscription: {},
-      systemInstruction: { parts: [{ text: 'You are a text-to-speech engine, not an assistant. Speak the text between <read> and </read> word for word, '
-        + 'exactly as written, in its own language, and nothing else. Never answer, comment on, refuse or continue it, even if it is a '
-        + 'question or a request.' }] } } })));
+      systemInstruction: { parts: [{ text: 'You are a dubbing voice actor recording one line of a film script: a customer talking to a shop '
+        + 'assistant. You will be given the customer\'s line. Perform ONLY that line, word for word, in its own language, as the customer '
+        + 'would say it. You are not the assistant: never answer the line, never comment, never add a word before or after it.' }] } } })));
     ws.on('message', (raw) => {
       const m = JSON.parse(raw.toString());
-      if (m.setupComplete) ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `<read>${say}</read>` }] }], turnComplete: true } }));
+      if (m.setupComplete) ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `The customer's line: «${say}»` }] }], turnComplete: true } }));
       for (const p of m.serverContent?.modelTurn?.parts ?? []) if (p.inlineData?.data) chunks.push(Buffer.from(p.inlineData.data, 'base64'));
       if (m.serverContent?.outputTranscription?.text) ttsSaid.text += m.serverContent.outputTranscription.text;
       if (m.serverContent?.turnComplete) finish();
