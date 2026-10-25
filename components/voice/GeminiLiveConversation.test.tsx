@@ -225,7 +225,7 @@ describe('voice-to-action', () => {
   test('the call asks for the actions and its frame declares them', async () => {
     const { ws } = await connectedCall();
     const mint = (g.fetch as jest.Mock).mock.calls.find((c) => c[0] === '/api/voice/live')!;
-    expect(JSON.parse(String((mint[1] as RequestInit).body))).toMatchObject({ actions: true, transcribe: true });
+    expect(JSON.parse(String((mint[1] as RequestInit).body))).toMatchObject({ actions: true, transcribe: true, why: 'start' });
     // (This mint mock returns no server setup, so the hook builds the frame: declarations first, then the persona's search.)
     const tools = (ws.sent[0]!.setup as { tools?: unknown[] }).tools;
     expect(tools?.[0]).toEqual({ functionDeclarations: LIVE_FUNCTION_DECLARATIONS });
@@ -402,8 +402,36 @@ describe('voice-to-action', () => {
     expect(onClose).not.toHaveBeenCalled();
     const mints = (g.fetch as jest.Mock).mock.calls.filter((c) => c[0] === '/api/voice/live');
     const body = JSON.parse(String((mints[mints.length - 1]![1] as RequestInit).body));
-    expect(body).toMatchObject({ personaId: 'news-journalist' });
+    expect(body).toMatchObject({ personaId: 'news-journalist', why: 'renew' });
     expect(body.resumptionHandle ?? null).toBeNull();
+    window.localStorage.clear();
+  });
+
+  test('set_persona for the persona the call already runs renews nothing (no fresh session per answer)', async () => {
+    const { ws } = await connectedCall();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    try {
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'p1', name: 'set_persona', args: { persona: 'news-journalist' } }] } }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_GRACE_MS + 100); });
+    } finally {
+      jest.useRealTimers();
+    }
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    const renewed = FakeSocket.all[1]!;
+    act(() => renewed.open());
+    act(() => renewed.receive({ setupComplete: {} }));
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    try {
+      act(() => renewed.receive({ toolCall: { functionCalls: [{ id: 'p2', name: 'set_persona', args: { persona: 'news-journalist' } }] } }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_MAX_WAIT_MS * 2); });
+    } finally {
+      jest.useRealTimers();
+    }
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(renewed.readyState).not.toBe(FakeSocket.CLOSED);
     window.localStorage.clear();
   });
 
