@@ -528,6 +528,26 @@ describe('the talking avatar', () => {
     expect(screen.queryByTestId('live-avatar-video')).toBeNull();
   });
 
+  test('the avatar call docks when the agent acts on screen: the chat shows, the avatar goes on talking in a small picture', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Kira', actions: true }); // the avatar call can act on screen
+    const ws = FakeSocket.all[1]!;
+    await ready(ws);
+    act(() => ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: Buffer.from([0, 0, 0, 8, 102, 116, 121, 112]).toString('base64') } }] } } }));
+    await waitFor(() => expect(screen.getByTestId('live-avatar-video')).toBeInTheDocument());
+    act(() => ws.receive({ toolCall: { functionCalls: [{ id: 's1', name: 'open_studio', args: { tool: 'image' } }] } }));
+    expect(await screen.findByTestId('live-dock')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: LIVE_OVERLAY_STRINGS.en.title })).toBeNull(); // the full screen gave way
+    const pip = screen.getByTestId('live-avatar-pip');
+    expect(pip).toContainElement(screen.getByTestId('live-avatar-video'));
+    fireEvent.click(pip); // a tap brings the avatar back full screen
+    expect(await screen.findByRole('dialog', { name: LIVE_OVERLAY_STRINGS.en.title })).toBeTruthy();
+  });
+
   test('a refused avatar turns the toggle off, says why, and does not ask again', async () => {
     render(<GeminiLiveConversation userId="u1" locale="en" gender="male" onClose={() => {}} />);
     await waitFor(() => expect(FakeSocket.all).toHaveLength(1));

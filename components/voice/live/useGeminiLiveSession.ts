@@ -99,11 +99,12 @@ export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
  */
 export const LIVE_RELAY_READY_AFTER_OPEN_MS = 3000;
 /** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. Through the
- *  relay a held frame struck 2 attempts in a row (16:28Z) and 3 in a row twice (17:54Z, 17:56Z; the 4th worked): three
- *  retries at 3 s each keep the call's full setup (its UI actions and search) instead of degrading it, in less time
- *  than two at 6 s did. */
+ *  relay a held frame struck 2 attempts in a row (16:28Z), 3 in a row twice (17:54Z, 17:56Z) and 4 in a row (18:47Z,
+ *  GG's avatar call: the 5th socket opened WITHOUT the UI actions, so „make a picture" had no button and the call never
+ *  docked). Six retries at 3 s each keep the call's full setup through such a run; a timeout never drops the actions
+ *  (onSessionClosed skips that step), only the legacy wire after the last retry does. */
 const MAX_TIMEOUT_RETRIES = 1;
-const MAX_RELAY_TIMEOUT_RETRIES = 3;
+const MAX_RELAY_TIMEOUT_RETRIES = 6;
 /** Window event the default transcript sink dispatches (detail: LiveTurn) when the host passes no onTurn. */
 export const LIVE_TRANSCRIPT_EVENT = 'myavatar:live-transcript';
 
@@ -1193,7 +1194,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
   }, [afterTurnBoundary, answerToolCall, clearThinkingTimer, emitHeard, enqueueAudio, flushPlayback, flushTurn, isPlaying, publishCaptions, setStatusSafe]);
 
-  const onSessionClosed = useCallback(() => {
+  /** `timedOut`: the handshake ran out of time; it was never refused, so a step that drops what a refusal blamed (the
+   *  UI-action declarations) does not follow it. */
+  const onSessionClosed = useCallback((timedOut = false) => {
     clearHandshakeTimer();
     const wasReady = readyRef.current;
     sessionRef.current = null;
@@ -1206,6 +1209,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     // The handshake never completed → next step of the plan (retry / degrade / fresh token / fresh session).
     stepRef.current += 1;
+    if (timedOut) while (planRef.current[stepRef.current]?.dropActions) stepRef.current += 1;
     void runStepRef.current();
   }, [clearHandshakeTimer]);
 
@@ -1245,7 +1249,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         timeoutRetriesRef.current += 1;
         planRef.current.splice(stepRef.current + 1, 0, { freshToken: true, handle: step.handle, ...(step.degrade ? { degrade: true } : {}) });
       }
-      onSessionClosed();
+      onSessionClosed(true);
     };
     handshakeTimerRef.current = setTimeout(onDeadline, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(

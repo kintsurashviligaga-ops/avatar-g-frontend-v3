@@ -164,7 +164,9 @@ function liveCallRule(search: boolean, actions: boolean): string {
     // when nothing ran.
     actions
       ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you fill and open tools yourself with your functions, and the user starts every render with its priced button on screen.`
-      : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud.',
+      // ⚠️ GG 2026-10-25 18:52Z: a call that opened without its actions said "the generate button is ready, press it"
+      // when nothing was on screen. Without the functions it changes nothing, and must not say otherwise.
+      : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud. In this call you cannot open, fill or start anything on screen: never say that something is open, ready or waiting for the user\'s tap.',
     'You cannot see or hear the content of files the user attached in this call (a photo, a video, a track): you know them only by name (get_screen_state). Never describe what is in them; offer what you can do with them, or ask the user to type the question in the chat, where the files are read.',
     actions
       ? ''
