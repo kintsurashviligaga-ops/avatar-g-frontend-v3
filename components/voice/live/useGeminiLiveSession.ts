@@ -51,7 +51,7 @@
  */
 import { useCallback, useEffect, useReducer, useRef, useState, type MutableRefObject } from 'react';
 
-import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
+import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, livePersonaReminder, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import {
   GeminiLiveSession,
@@ -394,6 +394,7 @@ export function buildLiveInstruction(opts: {
   if (!text.includes(LIVE_SPOKEN_RULE)) text = `${text}\n\n${LIVE_SPOKEN_RULE}`;
   text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
+  if (personaActive && !override) text = `${text}\n${livePersonaReminder(profile)}`;
   return {
     systemInstruction: text,
     voiceName: live.voiceName,

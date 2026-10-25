@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Annoyed, Bot, Briefcase, Check, Clapperboard, Headphones, Laugh, Plus, Smile, Sparkles, Trash2, X, type LucideIcon } from 'lucide-react';
+import { Annoyed, Bot, Briefcase, Check, Clapperboard, Headphones, Laugh, Newspaper, Plus, Smile, Sparkles, Trash2, X, type LucideIcon } from 'lucide-react';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import {
   BUILT_IN_PERSONAS,
@@ -119,6 +119,7 @@ const PERSONA_ICON: Record<string, LucideIcon> = {
   joker: Laugh,
   businessman: Briefcase,
   'music-producer': Headphones,
+  'news-journalist': Newspaper,
 };
 
 /** The line icon when we have one, the persona's own emoji when we do not. */
