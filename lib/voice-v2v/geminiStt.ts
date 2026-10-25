@@ -249,9 +249,19 @@ const MINIMAL_OK_RE = /^gemini-3(?:\.[0-6])?-flash(?:-|$)|^gemini-3(?:\.\d+)?-fl
  * costs one unbilled answer, not the dictation.
  */
 function thinkingFor(model: string): Record<string, unknown> | undefined {
+  if (isTranscribeModel(model)) return undefined;
   if (/^gemini-2\.5-flash(?:-lite)?(?:-|$)/i.test(model)) return { thinkingBudget: 0 };
   if (/^gemini-3(?:\.\d+)?-/i.test(model)) return { thinkingLevel: MINIMAL_OK_RE.test(model) && !/(?:^|-)pro(?:-|$)/i.test(model) ? 'minimal' : 'low' };
   return undefined;
+}
+
+/**
+ * A dedicated speech-to-text model (lib/ai/google/models TRANSCRIBE_MODEL): it transcribes what it hears, so it gets
+ * the audio alone, with no prompt, no temperature and no thinking config. UNVERIFIED which of those it would refuse;
+ * the owner's `?stt=` trial shows Google's answer.
+ */
+export function isTranscribeModel(model: string): boolean {
+  return /^gemini-[\d.]+-transcribe(?:-|$)/i.test(model) && !/-live(?:-|$)/i.test(model);
 }
 
 /** A 400 about the thinking config: that model refuses what thinkingFor sent, the next one may not. */
@@ -314,12 +324,17 @@ export async function transcribeWithGeminiDetailed(
       ? Math.max(Math.min(remaining, STT_MIN_ATTEMPT_MS), remaining - STT_FALLBACK_RESERVE_MS)
       : remaining;
     const thinkingConfig = thinkingFor(model);
-    const body = JSON.stringify({
-      // camelCase, as every other Vertex AI caller here sends it (the chat SDK, the image studio). Proto JSON also
-      // accepts `inline_data`, the Developer API's documented spelling this used to send.
-      contents: [{ role: 'user', parts: [{ text: sttPrompt(language) }, { inlineData: { mimeType, data: audioBase64 } }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
-    });
+    // camelCase, as every other Vertex AI caller here sends it (the chat SDK, the image studio). Proto JSON also
+    // accepts `inline_data`, the Developer API's documented spelling this used to send.
+    const audio = { inlineData: { mimeType, data: audioBase64 } };
+    const body = JSON.stringify(
+      isTranscribeModel(model)
+        ? { contents: [{ role: 'user', parts: [audio] }] }
+        : {
+            contents: [{ role: 'user', parts: [{ text: sttPrompt(language) }, audio] }],
+            generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
+          },
+    );
 
     let res: Response;
     try {

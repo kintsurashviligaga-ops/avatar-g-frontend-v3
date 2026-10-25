@@ -129,6 +129,16 @@ export function ttsReadsVerbatim(model: string): boolean {
 export const DEFAULT_STT_MODEL = 'gemini-3.6-flash';
 
 /**
+ * Google's dedicated speech-to-text model (public preview since 2026-08-26), for recorded audio on generateContent:
+ * no prompt and no thinking, so it may answer faster than 3.6 Flash, whose ~4 s per call the owner measured on
+ * Production (2026-10-25, iPhone, `?micstats=1`). In STT_MODELS for the owner's `?stt=` trial ONLY: never in the
+ * step-downs, never the default. UNVERIFIED on this project: the id (Vertex AI's `-preview` name, from a secondary
+ * source, as the Agent Platform model page would not load), that it serves generateContent at the `global`
+ * location, and its Georgian. geminiStt sends it the audio alone (isTranscribeModel).
+ */
+export const TRANSCRIBE_MODEL = 'gemini-3.5-transcribe-preview';
+
+/**
  * generateContent models that accept audio input — the only kind geminiStt.ts can call.
  *
  * ⚠️ `gemini-3.5-transcribe-live` is deliberately NOT here: its name says it is a Live (bidi) model, and pointing
@@ -149,6 +159,7 @@ export const STT_MODELS: readonly string[] = [
   'gemini-3.1-flash-lite',
   'gemini-3.5-flash-lite',
   'gemini-3.1-pro-preview',
+  TRANSCRIBE_MODEL,
 ];
 
 /** Streaming transcription model on the key (Live-style). Not used by any path yet. */
