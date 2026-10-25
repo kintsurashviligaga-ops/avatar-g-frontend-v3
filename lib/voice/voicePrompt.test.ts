@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, detectSpokenLocale, liveTranscriptionLanguages, liveVoicePersona, LIVE_LANGUAGE_LOCK } from './voicePrompt';
+import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, detectSpokenLocale, liveTranscriptionLanguages, liveVoicePersona, liveCallPersona, LIVE_LANGUAGE_LOCK } from './voicePrompt';
 
 describe('normalizeVoiceLocale', () => {
   it('defaults to ka; honors en/ru', () => {
@@ -103,6 +103,18 @@ describe('Live call language (GG 2026-10-25: Russian once, then Georgian again)'
   it('the Georgian live persona itself says to answer and stay in the language spoken', () => {
     expect(liveVoicePersona('ka')).toContain('უპასუხე იმ ენაზე, რომელზეც მომხმარებელი ახლა ლაპარაკობს');
     expect(liveVoicePersona('ka')).toContain('დარჩი ამ ენაზე, სანამ თავად არ შეცვლის');
+  });
+
+  it('the call persona has no Georgian text to anchor the reply language, and names only the fallback per locale', () => {
+    for (const l of ['ka', 'en', 'ru'] as const) {
+      expect(liveCallPersona(l)).not.toMatch(/[\u10A0-\u10FF]/);
+      expect(liveCallPersona(l).startsWith(liveVoicePersona('en'))).toBe(true);
+      expect(liveCallPersona(l)).toMatch(/Always answer in the language the user is speaking/);
+    }
+    expect(liveCallPersona('ka')).toMatch(/only when you cannot tell, use Georgian\.$/);
+    expect(liveCallPersona('en')).toMatch(/only when you cannot tell, use English\.$/);
+    expect(liveCallPersona('ru')).toMatch(/only when you cannot tell, use Russian\.$/);
+    expect(liveCallPersona('ka')).toMatch(/speak natural, everyday Georgian/);
   });
 
   it('the lock says to stay in the language, not only to switch once', () => {
