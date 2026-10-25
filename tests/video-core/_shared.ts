@@ -395,7 +395,9 @@ export async function openVideoTool(page: Page, isMobile: boolean, locale: Local
   if (isMobile) await closeOptionsSheet(page);
   await page.getByTestId('plus').click();
   const sheet = page.getByTestId('tool-sheet');
-  await sheet.getByRole('list', { name: VIDEO_SECTION[locale], exact: true }).getByRole('button').first().click();
+  // The unified composer's picker (GG 2026-10-25): groups მთავარი · შექმნა · დამატებითი, each service its own row.
+  await expect(sheet.getByTestId('service-group-create')).toContainText(VIDEO_SECTION[locale]);
+  await sheet.getByTestId('service-video').click();
   await expect(sheet).toHaveCount(0);
   const toggle = page.getByTestId('options-toggle');
   await expect(toggle).toHaveAttribute('aria-expanded', /^(true|false)$/);

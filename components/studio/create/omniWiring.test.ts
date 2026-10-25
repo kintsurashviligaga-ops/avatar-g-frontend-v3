@@ -145,6 +145,12 @@ describe('the phone: settings open on demand and the composer remains available 
 });
 
 describe('the unified composer (GG 2026-10-25): one conversation on screen, settings anchored to the composer', () => {
+  test('outside the layer: a phone\'s backdrop catches the tap; a desktop closes on pointerdown without eating the click', () => {
+    expect(src).toContain('{settingsLayerOpen && settingsAnchor && !isDesktop && (');
+    expect(src).toMatch(/if \(!settingsLayerOpen \|\| !isDesktop\) return;\s*const onDown = \(e: PointerEvent\) => \{/);
+    expect(src).toContain(`if (t.closest('[role="dialog"]') || composerRef.current?.contains(t)) return;`);
+  });
+
   test('a run, a reply or a card put the settings layer away on a desktop too — it sits over the thread the answer lands in', () => {
     expect(src).not.toContain('if (!isDesktop) setOptionsOpen(false);');
     expect((src.match(/closeSettingsLayer\(\);/g) ?? []).length).toBeGreaterThanOrEqual(19);
@@ -174,6 +180,16 @@ describe('the unified composer (GG 2026-10-25): one conversation on screen, sett
     expect(src).toContain("className={imageWorkspace ? 'hidden' : 'shrink-0 pt-1'}");
     expect(src).toContain('useDialogA11y<HTMLDivElement>(settingsLayerOpen, closeSettingsLayer, { trap: false })');
     expect(src).not.toContain('data-testid="settings-panel-toggle"');
+  });
+
+  test('a language switch keeps the composer: stashed before the empty-chat return, taken once before the deep link', () => {
+    const keep = studio.indexOf('const keep = () => {');
+    expect(studio.indexOf('stashComposerHandoff(composerSnapshotRef.current());', keep)).toBeGreaterThan(keep);
+    expect(studio.indexOf('stashComposerHandoff(composerSnapshotRef.current());', keep)).toBeLessThan(studio.indexOf('if (!msgs.length', keep));
+    const take = studio.indexOf('const h = takeComposerHandoff();');
+    expect(take).toBeGreaterThan(0);
+    expect(take).toBeLessThan(studio.indexOf("const tl = url.searchParams.get('tool');"));
+    expect(studio).toContain('if (h.draft.trim()) setInput((prev) => (prev.trim() ? prev : h.draft));');
   });
 });
 

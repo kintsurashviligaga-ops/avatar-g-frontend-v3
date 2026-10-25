@@ -208,6 +208,7 @@ import { INTERIOR_TEMPLATES, ROOM_TYPES, interiorTemplate } from '@/lib/studio/t
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { getService, serviceModeQuery } from '@/lib/catalog/services';
 import { clearPendingPrompt, stashPendingPrompt, takePendingPrompt } from '@/lib/studio/pendingPrompt';
+import { stashComposerHandoff, takeComposerHandoff, type ComposerHandoff } from '@/lib/studio/composerHandoff';
 import { takePendingEdit } from '@/lib/studio/pendingEdit';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
@@ -3213,8 +3214,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // A LANGUAGE SWITCH KEEPS THE CHAT (lib/chat/keepOpenChat). The switch mounts this studio afresh, and a fresh mount
   // opens an empty chat; the switcher announces it first, so the chat on screen is saved as it is and handed to the next
   // mount, exactly as a pick from History is. An empty chat hands nothing over: the next mount opens a fresh one anyway.
+  // …and the composer with it (lib/studio/composerHandoff, GG's scenario 8): the service that is on, its quick settings and
+  // the words not sent yet, read once by the next mount — even when the chat is empty and nothing else is handed over.
+  const composerSnapshotRef = useRef<() => ComposerHandoff>(() => ({ tool: 'chat', draft: '' }));
+  composerSnapshotRef.current = () => ({
+    tool: activeToolRef.current,
+    draft: input,
+    video: { mode: videoMode, seconds: videoDuration, orientation: videoOrientation, tier: veoPlan.tier },
+    image: { aspect: imgAspect, count: imgCount, style: imgStyle },
+    music: { instrumental: musicInstrumental, styles: musicStyles, duration: musicDuration },
+    avatar: { gender: lipGender, format: lipFormat },
+    product: { aspect: productAspect, duration: productDuration, preset: productPreset },
+  });
   useEffect(() => {
     const keep = () => {
+      stashComposerHandoff(composerSnapshotRef.current());
       const msgs = messagesRef.current;
       if (!msgs.length || hydratingRef.current === conversationIdRef.current) return;
       upsertConversation(conversationIdRef.current, msgs, activeToolRef.current);
@@ -3388,6 +3402,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     window.visualViewport?.addEventListener('resize', measure);
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); };
   }, [settingsLayerOpen]);
+  // On a desktop a click outside the layer puts it away WITHOUT eating the click: the sidebar, the header and the thread
+  // stay one click away (a phone keeps the tap-catching backdrop above the composer, as a sheet does). The composer and
+  // any dialog — the layer itself, a picker's popover or sheet, the „+" list — are inside.
+  useEffect(() => {
+    if (!settingsLayerOpen || !isDesktop) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest('[role="dialog"]') || composerRef.current?.contains(t)) return;
+      closeSettingsLayer();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [settingsLayerOpen, isDesktop, closeSettingsLayer]);
   // Non-modal: Escape closes and focus goes back to „⋯", but Tab may leave for the composer and the chat.
   const settingsSheetRef = useDialogA11y<HTMLDivElement>(settingsLayerOpen, closeSettingsLayer, { trap: false });
   // The „+" sheet: what you bring (photos · camera · files) and what you make (the tools). `toolPickOnly` is the
@@ -3501,6 +3529,25 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!p) return;
     if (p.tool !== 'chat') selectTool(p.tool);
     setInput((prev) => (prev.trim() ? prev : p.text));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
+  // A language switch's composer (lib/studio/composerHandoff): the service back on, its quick settings as they were and the
+  // unsent words in an EMPTY box — once, never sent. Declared before the deep-link effect, so an explicit `?tool=` decides.
+  useEffect(() => {
+    const h = takeComposerHandoff();
+    if (!h) return;
+    if (h.tool !== 'chat') selectTool(h.tool);
+    if (h.video) {
+      setVideoMode(h.video.mode); setVideoDuration(h.video.seconds); setVideoOrientation(h.video.orientation);
+      dispatchVeo({ type: 'tier', tier: h.video.tier });
+    }
+    if (h.image && (IMG_ASPECTS as readonly string[]).includes(h.image.aspect)) {
+      setImgAspect(h.image.aspect as ImgAspect); setImgCount(h.image.count); setImgStyle(h.image.style);
+    }
+    if (h.music) { setMusicInstrumental(h.music.instrumental); setMusicStyles(h.music.styles); setMusicDuration(h.music.duration); }
+    if (h.avatar) { setLipGender(h.avatar.gender); setLipFormat(h.avatar.format); }
+    if (h.product) { setProductAspect(h.product.aspect); setProductDuration(h.product.duration); setProductPreset(h.product.preset); }
+    if (h.draft.trim()) setInput((prev) => (prev.trim() ? prev : h.draft));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
   // Deep link: /dashboard?mode=music (the studio's Music tab, a shared link) opens that service. The param is
@@ -12576,7 +12623,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         1024 px — an iPad rotated mid-job lost ServiceParamsPanel's 3D poll (the paid model never reached the chat) and
         MotionControlPanel's picked files. Mounted while hidden, for the same reason: closing is not discarding. */}
     {/* Outside the layer, above the composer: a tap there puts the settings away (the composer below stays live). */}
-    {settingsLayerOpen && settingsAnchor && (
+    {settingsLayerOpen && settingsAnchor && !isDesktop && (
       <div aria-hidden="true" data-testid="settings-layer-dismiss" onClick={closeSettingsLayer}
         className="fixed inset-x-0 top-0 z-[94]" style={{ height: settingsAnchor.top }} />
     )}

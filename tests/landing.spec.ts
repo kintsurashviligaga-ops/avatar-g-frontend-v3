@@ -268,19 +268,18 @@ for (const vp of VIEWPORTS) {
       const sheet = page.getByTestId('tool-sheet');
       await expect(sheet).toBeVisible();
       await expect(sheet.getByTestId('attach')).toHaveCount(0);
-      // The sheet reads the service catalog (§60 step 11): Agent G's chat leads, then one list per category.
-      const group = (name: string) => sheet.getByRole('list', { name, exact: true }).getByRole('button');
-      await expect(sheet.getByRole('list').first()).toHaveAccessibleName('Agent G');
-      await expect(group('Agent G').first()).toContainText('ჩატი');
-      await expect(group('ვიდეო').first()).toContainText('ვიდეო');
-      await expect(group('ვიდეო').first()).toHaveAttribute('aria-pressed', 'true');
-      await expect(group('სურათი და ფოტო').nth(0)).toContainText('სურათი');
-      await expect(group('სურათი და ფოტო').nth(1)).toContainText('ფოტოგრაფი');
-      await expect(group('სურათი და ფოტო').nth(2)).toContainText('ინტერიერის დიზაინერი');
-      await expect(group('მუსიკა').first()).toContainText('მუსიკა');
-      await expect(group('ავატარი').first()).toContainText('ავატარი');
-      // Nothing is lost: the product ad, the swap and motion sit in Video's own list.
-      await expect(group('ვიდეო').nth(1)).toContainText('პროდუქტის რეკლამა');
+      // The unified composer (GG 2026-10-25): the catalog's usable services in three groups — the chat, then the five
+      // makers in GG's order, then everything else; GG's hidden tools stay out.
+      const group = (id: string) => sheet.getByTestId(`service-group-${id}`).getByRole('button');
+      await expect(group('main')).toHaveCount(1);
+      await expect(group('main').first()).toContainText('ჩატი');
+      const create = await group('create').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
+      expect(create).toEqual(['service-video', 'service-image', 'service-music', 'service-avatar', 'service-interior']);
+      await expect(sheet.getByTestId('service-video')).toHaveAttribute('aria-pressed', 'true');
+      await expect(group('extra').first()).toContainText('პროდუქტის რეკლამა');
+      for (const hidden of ['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation']) {
+        await expect(sheet.getByTestId(`service-${hidden}`)).toHaveCount(0);
+      }
     });
 
     test('a service in the sidebar switches the studio and is marked as the active one', async ({ page }) => {
@@ -328,14 +327,16 @@ for (const vp of VIEWPORTS) {
     test('picking the tool that is already on keeps it', async ({ page }) => {
       await openDashboard(page);
       await page.getByTestId('plus').click();
-      const video = page.getByTestId('tool-sheet').getByRole('list', { name: 'ვიდეო', exact: true }).getByRole('button').first();
+      const video = page.getByTestId('tool-sheet').getByTestId('service-video');
       await expect(video).toHaveAttribute('aria-pressed', 'true');
       await video.click();
       await expect(page.getByTestId('tool-sheet')).toHaveCount(0); // the sheet closed
-      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
-      // Picking it again opens its settings again (a desktop's panel, a phone's sheet). GG 2026-10-18: the panel holds no
-      // description of its own — the words stay in the chat box.
-      await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
+      // The unified composer (GG 2026-10-25): the chip names the service and the quick settings show its values.
+      await expect(page.getByTestId('active-service-switch')).toContainText('ვიდეო');
+      await expect(page.getByTestId('quick-video-format')).toContainText('9:16');
+      await expect(page.getByTestId('quick-video-length')).toContainText('24');
+      // The words stay in the chat box: the panel holds no description of its own (GG 2026-10-18).
+      await expect(page.getByTestId('composer-input')).toBeVisible();
       await expect(page.getByTestId('video-prompt-input')).toHaveCount(0);
     });
 
