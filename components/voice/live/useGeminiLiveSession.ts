@@ -1275,6 +1275,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     if (!isPlaying()) setStatusSafe('reconnecting');
     planRef.current = [{ freshToken: true, handle: null }, { freshToken: true, handle: null }];
     stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
     phaseRef.current = 'resume';
     void runStepRef.current();
     return true;
