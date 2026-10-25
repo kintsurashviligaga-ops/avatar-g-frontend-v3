@@ -153,8 +153,8 @@ test('Google-only (default): WAV → Gemini on Vertex AI only (bearer token, no 
   expect(url).not.toContain('key=');
   expect((init.headers as Record<string, string>).Authorization).toBe('Bearer vertex-token');
   expect((init.headers as Record<string, string>)['x-goog-api-key']).toBeUndefined();
-  const sent = JSON.parse(String(init.body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type: string } }> }> };
-  expect(sent.contents[0]!.parts[1]!.inline_data!.mime_type).toBe('audio/wav');
+  const sent = JSON.parse(String(init.body)) as { contents: Array<{ parts: Array<{ inlineData?: { mimeType: string } }> }> };
+  expect(sent.contents[0]!.parts[1]!.inlineData!.mimeType).toBe('audio/wav');
   expect(openaiMock).not.toHaveBeenCalled();
   expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({
     model: 'gemini-3.8-flash', inputTokens: 40, outputTokens: 4, totalTokens: 44, userId: USER_ID,
@@ -166,8 +166,8 @@ test('Google-only: a browser WebM is sent as video/webm (best effort); a Gemini 
   const res = await POST(upload({ bytes: WEBM, type: 'audio/webm;codecs=opus', language: 'en-US' }));
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'unsupported_format' });
-  const sent = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type: string } }> }> };
-  expect(sent.contents[0]!.parts[1]!.inline_data!.mime_type).toBe('video/webm');
+  const sent = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as { contents: Array<{ parts: Array<{ inlineData?: { mimeType: string } }> }> };
+  expect(sent.contents[0]!.parts[1]!.inlineData!.mimeType).toBe('video/webm');
   expect(openaiMock).not.toHaveBeenCalled();
 });
 
@@ -224,6 +224,35 @@ test('Google-only: a quota outage is an empty transcript with stt_unavailable, n
   expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'stt_unavailable' });
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   expect(openaiMock).not.toHaveBeenCalled();
+});
+
+test("Google-only: a 429 on 3.8 Flash moves to the chat's next Flash model; the answer is booked on the model that gave it", async () => {
+  fetchSpy.mockImplementationOnce(async () => new Response('Resource exhausted', { status: 429 }));
+  const res = await POST(upload({ language: 'ka-GE' }));
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+  expect(fetchSpy.mock.calls.map(([url]) => /models\/([^:]+):/.exec(String(url))![1])).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash']);
+  expect(bookMock).toHaveBeenCalledTimes(1);
+  expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.6-flash' }));
+});
+
+test('?diag=1 from the owner on an unconfigured Vertex AI names why (variable names only), with no call', async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
+  const res = await POST(upload({ diag: true, language: 'en-US' }));
+  const j = (await res.json()) as { code: string; diag: Record<string, unknown> };
+  expect(j.code).toBe('stt_unavailable');
+  expect(j.diag).toMatchObject({ geminiKeyPresent: false, geminiError: 'Vertex AI is not configured' });
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+test('?diag=1 from the owner when every model fails: the reason lists each model and its status', async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  fetchSpy.mockImplementation(async () => new Response('Resource exhausted', { status: 429 }));
+  const res = await POST(upload({ diag: true, language: 'en-US' }));
+  const j = (await res.json()) as { code: string; diag: { geminiError: string } };
+  expect(j.code).toBe('stt_unavailable');
+  expect(j.diag.geminiError).toMatch(/^gemini-3\.8-flash 429, gemini-3\.6-flash 429, gemini-3\.5-flash 429: /);
+  expect(fetchSpy).toHaveBeenCalledTimes(3);
 });
 
 test('Google-only: Vertex AI unconfigured → stt_unavailable and no call at all, even with an AI Studio key', async () => {

@@ -316,9 +316,9 @@ describe('speech-to-text and embeddings follow the transport', () => {
     expect(call(0).url).toMatch(/^https:\/\/aiplatform\.googleapis\.com\/v1\/projects\/gen-lang-client-0671348730\/locations\/global\/publishers\/google\/models\/gemini-3\.8-flash:generateContent$/);
     expect(call(0).init.headers.Authorization).toBe('Bearer vertex-token');
     expect(call(0).init.headers['x-goog-api-key']).toBeUndefined();
-    const body = JSON.parse(String(call(0).init.body)) as { contents: Array<{ role: string; parts: Array<{ inline_data?: unknown }> }> };
+    const body = JSON.parse(String(call(0).init.body)) as { contents: Array<{ role: string; parts: Array<{ inlineData?: unknown }> }> };
     expect(body.contents[0]!.role).toBe('user');
-    expect(body.contents[0]!.parts[1]!.inline_data).toEqual({ mime_type: 'audio/wav', data: 'QUJD' });
+    expect(body.contents[0]!.parts[1]!.inlineData).toEqual({ mimeType: 'audio/wav', data: 'QUJD' });
   });
 
   it('Gemini STT on an unconfigured vertex: an auth error, no call, and the API key is not used instead', async () => {
