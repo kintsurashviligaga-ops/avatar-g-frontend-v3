@@ -94,13 +94,18 @@ function greyPng(w = 704, h = 1280) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk('IHDR', ihdr), pngChunk('IDAT', deflateSync(raw)), pngChunk('IEND', Buffer.alloc(0))]);
 }
 
+// VOICE=Kore|Aoede|Charon|… → the fixture setup also carries speechConfig with that prebuilt voice (does the avatar take it?).
+const withVoice = (setup) => (process.env.VOICE
+  ? { ...setup, generationConfig: { ...setup.generationConfig, speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.VOICE } } } } }
+  : setup);
+
 if (mode === 'setup' || mode === 'custom') {
   const fixtures = JSON.parse(readFileSync(here('setups.json'), 'utf8'));
   const cases = mode === 'setup'
     ? Object.entries(fixtures)
     : [['custom', { setup: { ...fixtures.full.setup, avatarConfig: { customizedAvatar: { imageMimeType: 'image/png', imageData: greyPng().toString('base64') }, videoBitrateBps: BITRATE } } }]];
   for (const [name, msg] of cases) {
-    const frame = { setup: { ...msg.setup, model } };
+    const frame = { setup: withVoice({ ...msg.setup, model }) };
     const s = open(null, frame);
     const ok = await Promise.race([s.ready, sleep(15000).then(() => 'timeout')]);
     const closedByServer = s.close; // before our own close below
@@ -130,7 +135,7 @@ if (mode === 'names') {
 // talk (FIXTURE=full|fullVad|noTools → the app's exact setup from setups.json instead of the bare one; a tool call is
 // answered with an empty result so the turn can finish)
 const s = process.env.FIXTURE
-  ? open(null, { setup: { ...JSON.parse(readFileSync(here('setups.json'), 'utf8'))[process.env.FIXTURE].setup, model } })
+  ? open(null, { setup: withVoice({ ...JSON.parse(readFileSync(here('setups.json'), 'utf8'))[process.env.FIXTURE].setup, model }) })
   : open(avatarArg);
 s.ws.on('message', (raw) => {
   const m = JSON.parse(raw.toString());
@@ -169,10 +174,10 @@ for (const { t, m, bytes } of s.msgs) {
   if (!sc?.modelTurn) parts.push({ t, keys: Object.keys(m), sc: sc ? Object.keys(sc) : undefined, wsBytes: bytes });
 }
 const all = Buffer.concat(video);
-writeFileSync(here(`out-${avatarArg}.mp4`), all);
+writeFileSync(here(`out-${avatarArg}${process.env.VOICE ? `-${process.env.VOICE}` : ''}.mp4`), all);
 const afterTurn = parts.filter((p) => p.mime && turnDoneAt > 0 && p.t > turnDoneAt);
 const report = {
-  fixture: process.env.FIXTURE ?? null, inputTranscript: s.msgs.map((x) => x.m.serverContent?.inputTranscription?.text ?? '').join('').slice(0, 200),
+  fixture: process.env.FIXTURE ?? null, voice: process.env.VOICE ?? null, inputTranscript: s.msgs.map((x) => x.m.serverContent?.inputTranscription?.text ?? '').join('').slice(0, 200),
   avatar: avatarArg, location: LOCATION, model: MODEL, shape: SHAPE, bitrate: BITRATE,
   setupMs: s.setupMs, firstVideoMs, turnDoneAt, close: s.close,
   videoBytes: all.length, videoChunks: video.length, chunksAfterTurnComplete: afterTurn.length,
