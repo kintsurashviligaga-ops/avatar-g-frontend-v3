@@ -181,6 +181,12 @@ describe('geminiLive — buildLiveSetup', () => {
     expect('languageCode' in s.generationConfig.speechConfig).toBe(false);
   });
 
+  it('several languageCodes go out in order, once each, malformed ones dropped', () => {
+    const s = setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: ['ru-RU', 'ka-GE', 'ru-RU', 'not a code', 'en-US'] }));
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['ru-RU', 'ka-GE', 'en-US'] });
+    expect(setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: ['??'] })).inputAudioTranscription).toEqual({});
+  });
+
   it('transcribe without / with a malformed languageCode → auto-detect ({}); languageCode without transcribe → ignored', () => {
     expect(setupOf(buildLiveSetup({ ...base, transcribe: true })).inputAudioTranscription).toEqual({});
     expect(setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: 'ka GE; drop' })).inputAudioTranscription).toEqual({});

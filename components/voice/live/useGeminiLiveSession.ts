@@ -75,7 +75,7 @@ import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
 import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveCallPersona, liveTranscriptionLanguages } from '@/lib/voice/voicePrompt';
 import type { LiveHeardEvent } from '@/lib/voice/voiceLedger';
 import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
@@ -148,8 +148,6 @@ export const LIVE_MIC_MUTED_GRACE_MS = 1500;
 const CAPTURE_START_WAIT_MS = 300;
 /** A playback context still 'suspended' this long after resume() had no user activation: offer "tap to start". */
 const AUDIO_BLOCK_CHECK_MS = 1200;
-
-const LANGUAGE_CODES: Record<'ka' | 'en' | 'ru', string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -385,13 +383,10 @@ export function normalizeCaption(text: string): string {
 }
 
 /**
- * Spoken-call rule appended to every Live instruction. The platform prompt is written for chat and pins the reply
- * language to the UI locale — but a call must follow the language actually being SPOKEN (the reported "spoke
- * Russian, answered in Georgian" leak that lib/voice/voicePrompt.ts detectSpokenLocale fixed for the REST voice).
+ * Spoken-call rule that ENDS every Live instruction: a call follows the language actually being SPOKEN and stays in it
+ * (lib/voice/voicePrompt.ts LIVE_LANGUAGE_LOCK, the same last line the server-locked setup carries).
  */
-export const LIVE_LANGUAGE_RULE =
-  'LIVE CALL LANGUAGE: answer in the language the user is speaking right now (Georgian, English or Russian), '
-  + 'even when it differs from the LANGUAGE line above.';
+export const LIVE_LANGUAGE_RULE = LIVE_LANGUAGE_LOCK;
 
 /**
  * The client-built Live instruction, used when the mint returns no server-locked setup: the profile's live persona,
@@ -409,14 +404,14 @@ export function buildLiveInstruction(opts: {
 }): { systemInstruction: string; voiceName: string; temperature?: number; googleSearch: boolean; personaActive: boolean } {
   const locale = opts.locale === 'en' || opts.locale === 'ru' ? opts.locale : 'ka';
   const profile = resolveAgentProfile({ personaId: opts.personaId ?? null, customPersona: opts.customPersona });
-  const platformSystem = buildPlatformPrompt({ locale, ...(opts.now ? { now: opts.now } : {}) });
+  const platformSystem = buildPlatformPrompt({ locale, spoken: true, ...(opts.now ? { now: opts.now } : {}) });
   const live = toGeminiLiveSetup(profile, { locale, platformSystem });
   const override = typeof opts.personaOverride === 'string' ? opts.personaOverride.trim() : '';
   let text = override ? `${override}\n\n${platformSystem}` : live.systemInstruction;
   if (!text.includes(LIVE_SPOKEN_RULE)) text = `${text}\n\n${LIVE_SPOKEN_RULE}`;
-  text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
   if (personaActive && !override) text = `${text}\n${livePersonaReminder(profile)}`;
+  text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   return {
     systemInstruction: text,
     voiceName: live.voiceName,
@@ -619,6 +614,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const lastMicRef = useRef<MicResult | null>(null);
   const primedRef = useRef(false);
   const mintsRef = useRef(0);
+  // Why the next token is minted (the route logs it): the call opening, a persona renew, a resume, or a later plan step.
+  const mintWhyRef = useRef<'start' | 'renew' | 'resume' | 'step'>('start');
   const startedAtRef = useRef(0);
   const micResultMsRef = useRef<number | undefined>(undefined);
   const mintedAtRef = useRef(0);
@@ -902,6 +899,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       appliedStyleRef.current = sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : '';
     }
     mintsRef.current += 1;
+    const why = mintWhyRef.current;
+    mintWhyRef.current = 'step';
     const threadId = typeof handle === 'string' ? null : o.chatSessionId !== undefined ? o.chatSessionId : requestLiveThreadId();
     let res: Response;
     // ⚠️ THE MINT HAD NO TIMEOUT. The route retries Google for up to ~28 s; a request that never answered (a captive
@@ -916,6 +915,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         credentials: 'include',
         body: JSON.stringify({
           locale: o.locale || 'ka',
+          why,
           voice: sessionPreferencesRef.current?.voice ?? o.voiceName,
           ...(sessionPreferencesRef.current ? { voiceExperience: sessionPreferencesRef.current } : {}),
           personaId: o.personaId ?? null,
@@ -983,13 +983,13 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     ];
     return buildLiveSetup({
       model: modelRef.current ?? '',
-      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural Georgian sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.",
+      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveCallPersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.\n" + LIVE_LANGUAGE_LOCK,
       voiceName: sessionPreferencesRef.current?.voice ?? o.voiceName ?? 'Aoede',
       turnEagerness: sessionPreferencesRef.current?.eagerness ?? "eager",
       ...(typeof o.temperature === 'number' ? { temperature: o.temperature } : {}),
       ...(parity
         ? {
-          languageCode: LANGUAGE_CODES[locale],
+          languageCode: liveTranscriptionLanguages(locale),
           resumptionHandle: handle ?? null,
           transcribe: true,
           compression: true,
@@ -1252,6 +1252,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     resumesRef.current += 1;
     reconnectingRef.current = true;
+    mintWhyRef.current = 'resume';
     clearGoAwayTimer();
     const old = sessionRef.current;
     sessionRef.current = null; // first, so the old socket's close is ignored
@@ -1274,6 +1275,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const renew = useCallback((): boolean => {
     if (!activeRef.current || reconnectingRef.current || !readyRef.current) return false;
     reconnectingRef.current = true;
+    mintWhyRef.current = 'renew';
     clearGoAwayTimer();
     const old = sessionRef.current;
     sessionRef.current = null; // first, so the old socket's close is ignored
@@ -1514,6 +1516,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const start = useCallback(async (): Promise<void> => {
     if (activeRef.current) return; // a call is already running or starting (double tap, double effect)
     activeRef.current = true;
+    mintWhyRef.current = 'start';
     sessionPreferencesRef.current = experienceRef.current?.preferences ?? null;
     appliedStyleRef.current = sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : '';
     const gen = ++genRef.current;

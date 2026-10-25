@@ -16,7 +16,7 @@ import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { MIC_RELEASE_EVENT, type MicReleaseDetail } from '@/lib/voice/micBus';
 import { base64ToBytes, bytesToBase64 } from '@/lib/voice/pcm';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona } from '@/lib/voice/voicePrompt';
 
 import {
   LIVE_LANGUAGE_RULE,
@@ -242,8 +242,11 @@ test('setup is the FIRST frame: parity setup (transcription, resumption, compres
   expect(instruction.startsWith('SYS\n' + VOICE_UI_APPROVAL_RULE + '\n')).toBe(true);
   expect(instruction).toContain('[FAST LIVE VOICE RULE]');
   expect(instruction).toContain('prepare_generation');
+  // It said "1-2 short, natural Georgian sentences" — the call then answered English and Russian in Georgian.
+  expect(instruction).not.toMatch(/Georgian sentences/);
+  expect(instruction.endsWith(LIVE_LANGUAGE_RULE)).toBe(true);
   expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
-  expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+  expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'] });
   expect(setup.outputAudioTranscription).toEqual({});
   expect(setup.sessionResumption).toEqual({});
   expect(setup.contextWindowCompression).toEqual({ slidingWindow: {} });
@@ -1329,7 +1332,7 @@ describe('buildLiveInstruction', () => {
 
   it('default call: live persona + Google-only platform prompt + spoken-call rules, model-default temperature', () => {
     const r = buildLiveInstruction({ locale: 'ka', now });
-    expect(r.systemInstruction.startsWith(liveVoicePersona('ka'))).toBe(true);
+    expect(r.systemInstruction.startsWith(liveCallPersona('ka'))).toBe(true);
     expect(r.systemInstruction).toContain('Veo');
     expect(r.systemInstruction).toContain(LIVE_SPOKEN_RULE);
     expect(r.systemInstruction).toContain(LIVE_LANGUAGE_RULE);
@@ -1338,6 +1341,14 @@ describe('buildLiveInstruction', () => {
     expect(r.voiceName).toBe('Aoede');
     expect(r.googleSearch).toBe(true);
     expect(r.personaActive).toBe(false);
+  });
+
+  it('the language rule ends the instruction, after the persona reminder too (GG 2026-10-25)', () => {
+    for (const personaId of [undefined, 'film-director']) {
+      const r = buildLiveInstruction({ locale: 'ka', personaId, now });
+      expect(r.systemInstruction.endsWith(`\n${LIVE_LANGUAGE_RULE}`)).toBe(true);
+      expect(r.systemInstruction).not.toContain('Switch only if the user asks');
+    }
   });
 
   it('an active persona adds its block once and sends its temperature', () => {

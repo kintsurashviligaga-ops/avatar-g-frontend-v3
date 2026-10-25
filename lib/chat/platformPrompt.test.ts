@@ -349,6 +349,18 @@ describe('buildPlatformPrompt — locale variants', () => {
     }
   });
 
+  it.each(LOCALES)('a spoken call follows the language the user speaks, not "switch only if asked" (%s)', (locale) => {
+    // GG 2026-10-25: in a Live call, English and Russian speech got Georgian answers; the text chat's line won.
+    const p = buildPlatformPrompt({ locale, now: NOW, spoken: true });
+    expect(p).toContain('LANGUAGE: Reply in the language the user is speaking: Georgian, English or Russian.');
+    expect(p).toContain('your very next reply is in the new language, without being asked');
+    expect(p).toContain(`Only when you cannot tell, use ${PLATFORM_UI_LABELS[locale].language}.`);
+    expect(p).not.toContain('Switch only if the user asks');
+    expect(p.length).toBeLessThanOrEqual(5000);
+    // The text chat keeps its own rule.
+    expect(build(locale)).toContain('Switch only if the user asks for another language.');
+  });
+
   it('Georgian or Russian typed in Latin letters is answered in its own script', () => {
     expect(build('ka')).toContain('Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.');
     expect(build('ru')).toContain('Russian typed in Latin letters ("privet", "kak dela") is still Russian: answer it in Cyrillic.');
