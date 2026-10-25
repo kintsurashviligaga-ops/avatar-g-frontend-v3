@@ -272,6 +272,16 @@ export interface UseGeminiLiveSessionOptions {
    * (components/voice/live/liveActions, lib/voice/voiceLedger) — never on the model's word that it heard a yes.
    */
   onHeard?: (e: LiveHeardEvent) => void;
+  /**
+   * A talking avatar (lib/voice/liveAvatar): a prebuilt name asks the mint for a gemini-3.8-live VIDEO session. Read at
+   * every mint, so a change takes effect with the next fresh session (renew()). The answer then arrives as fragmented-MP4
+   * pieces through onVideo, the avatar's voice inside them: no audio events, nothing on the playback context.
+   */
+  avatar?: string | null;
+  /** One fMP4 piece of the avatar (base64): the init segment first, then fragments, idle frames included. */
+  onVideo?: (data: string, mimeType: string) => void;
+  /** The server cut the avatar's answer off (the user spoke): the player jumps to its live edge. */
+  onAvatarInterrupted?: () => void;
   deps?: Partial<LiveSessionDeps>;
 }
 
@@ -317,7 +327,13 @@ export interface UseGeminiLiveSessionResult {
    * then the pages it used) and each tool step, running → done / failed / cancelled. Reset when a call starts.
    */
   activity: LiveActivityItem[];
+  /** The avatar the running session was minted with; null = a voice call (none asked, or the server refused it). */
+  avatar: string | null;
+  /** Why the server opened a voice call instead of the avatar that was asked for. */
+  avatarRefused: LiveAvatarRefusal | null;
 }
+
+export type LiveAvatarRefusal = 'disabled' | 'daily_limit';
 
 // ─── Pure helpers (exported for tests) ────────────────────────────────────────
 
@@ -595,6 +611,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const [captions, setCaptions] = useState<LiveCaption[]>([]);
   const [muted, setMutedState] = useState(false);
   const [degraded, setDegraded] = useState(false);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarRefused, setAvatarRefused] = useState<LiveAvatarRefusal | null>(null);
   const [activity, dispatchActivity] = useReducer(liveActivityReducer, [] as LiveActivityItem[]);
 
   // Lifecycle
@@ -642,6 +660,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const tokenRef = useRef<{ token: string; expiresAtMs: number | null; relayUrl?: string } | null>(null);
   const modelRef = useRef<string | null>(null);
   const serverSetupRef = useRef<Obj | null>(null);
+  const avatarSessionRef = useRef<string | null>(null); // the avatar the current mint locked (null = voice call)
   const handleRef = useRef<string | null>(null);
   const degradedRef = useRef(false);
   const actionsOffRef = useRef(false); // this call gave up the UI-action declarations after a failed handshake
@@ -940,6 +959,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           // ⚠️ The legacy wire strips `tools` from the FRAME (PARITY_FIELDS); the LOCK must lose them too, or the token
           // is minted for a setup the browser never sends.
           ...(!parity ? { tools: false } : {}),
+          // On every wire: the legacy retry keeps the avatar too (the route locks it into each of its setups).
+          ...(typeof o.avatar === 'string' && o.avatar ? { avatar: o.avatar } : {}),
         }),
       }), timeout]);
     } catch {
@@ -947,7 +968,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     } finally {
       if (mintTimer) clearTimeout(mintTimer);
     }
-    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown };
+    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown; avatar?: unknown; avatarRefused?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
     if (!res.ok || !token) {
       if (res.status === 401) return { ok: false, code: 'auth' };
@@ -967,6 +988,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     // The server locked no declarations (GEMINI_LIVE_ACTIONS off, or it dropped them after a 400): nothing left to drop,
     // so a refused handshake goes straight to the legacy retry instead of repeating this same setup.
     if (j.actions === false) actionsOffRef.current = true;
+    avatarSessionRef.current = typeof j.avatar === 'string' && j.avatar ? j.avatar : null;
+    setAvatar(avatarSessionRef.current);
+    setAvatarRefused(j.avatarRefused === 'disabled' || j.avatarRefused === 'daily_limit' ? j.avatarRefused : null);
     return { ok: true };
   }, [deps]);
 
@@ -1099,10 +1123,19 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         if (dropModelAudioRef.current) return; // the words of audio we dropped were never heard
         modelTurnOpenRef.current = true;
         if (ev.text) { pendingModelRef.current += ev.text; publishCaptions(); }
+        // An avatar speaks inside its video, which never stops (idle frames): its words are the only sign it is talking.
+        if (avatarSessionRef.current && readyRef.current && statusRef.current !== 'speaking') {
+          clearThinkingTimer();
+          setStatusSafe('speaking');
+        }
+        return;
+      case 'video':
+        try { optsRef.current.onVideo?.(ev.data, ev.mimeType); } catch { /* a host bug must never kill the call */ }
         return;
       case 'interrupted':
         dispatchActivity({ type: 'turnEnd' });
         flushPlayback();
+        if (avatarSessionRef.current) { try { optsRef.current.onAvatarInterrupted?.(); } catch { /* noop */ } }
         // A local barge-in already closed this exchange; closing it again would split the user's next utterance.
         if (!dropModelAudioRef.current) flushTurn(true);
         dropModelAudioRef.current = false;
@@ -1562,6 +1595,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     tokenRef.current = null;
     modelRef.current = null;
     serverSetupRef.current = null;
+    avatarSessionRef.current = null;
+    setAvatar(null);
+    setAvatarRefused(null);
     handleRef.current = null;
     resumesRef.current = 0;
     phaseRef.current = 'initial';
@@ -1687,6 +1723,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const stop = useCallback(() => {
     flushTurn(true);
     teardown();
+    avatarSessionRef.current = null;
+    setAvatar(null);
     setStatusSafe('closed');
   }, [flushTurn, setStatusSafe, teardown]);
 
@@ -1787,6 +1825,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
     start, stop, retry, interrupt, renew, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
+    avatar, avatarRefused,
   };
 }
 

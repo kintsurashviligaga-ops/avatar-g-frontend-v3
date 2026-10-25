@@ -34,6 +34,7 @@ import { liveCurrentStep, type LiveJobLine } from "./LiveActivityFeed";
 import type { LiveActivityItem } from './liveActivity';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
 import LiveActionCards from './LiveActionCards';
+import { LIVE_AVATAR_STRINGS, LiveAvatarSlot } from './LiveAvatarStage';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -70,6 +71,11 @@ export interface LiveModeOverlayProps {
   onToggleDock?: () => void;
   activity?: readonly LiveActivityItem[];
   jobs?: readonly LiveJobLine[];
+  /** The talking avatar's element while an avatar session runs (LiveAvatarStage): the full screen's picture, a small
+   *  one beside the docked bar. The camera then becomes a picture-in-picture. */
+  avatarVideo?: HTMLVideoElement | null;
+  /** One line under the status (the avatar starting, refused or capped). */
+  notice?: string | null;
 }
 
 function useCopyFeedback() {
@@ -116,6 +122,8 @@ export function LiveModeOverlay({
   onOpenAction,
   extraControls,
   showCaptions = true,
+  avatarVideo = null,
+  notice = null,
 }: LiveModeOverlayProps) {
   const transcriptCopy = useCopyFeedback();
   const linkCopy = useCopyFeedback();
@@ -163,22 +171,42 @@ export function LiveModeOverlay({
         onDismissLink={(id) => setDismissedLinks((previous) => new Set(previous).add(id))}
       />
     );
-    return typeof document === "undefined" ? dock : createPortal(dock, document.body);
+    // The avatar keeps talking while docked (its voice is in its video): a small picture, a tap brings the call back.
+    const dockedView = avatarVideo ? (
+      <>
+        {dock}
+        <button type="button" onClick={onToggleDock} aria-label={LIVE_AVATAR_STRINGS[locale].openCall} data-testid="live-avatar-pip"
+          className="fixed bottom-24 right-3 z-[130] h-[150px] w-[84px] overflow-hidden rounded-2xl bg-black shadow-lg ring-1 ring-white/20">
+          <LiveAvatarSlot video={avatarVideo} className="h-full w-full" />
+        </button>
+      </>
+    ) : dock;
+    return typeof document === "undefined" ? dockedView : createPortal(dockedView, document.body);
   }
+
+  const avatarOn = !!avatarVideo && !error;
 
   const overlay = (
     <div ref={dialogRef} role="dialog" aria-modal="true" data-live-call-ui data-live-status={status} aria-label={t.title} tabIndex={-1} data-theme="dark"
       className="fixed inset-0 z-[130] flex select-none flex-col justify-between overflow-hidden bg-black text-white">
-      {/* 1. კამერის ფონი (თუ კამერა ჩართულია) */}
+      {/* 1. The talking avatar fills the screen; the camera then sits in a corner. */}
+      {avatarOn && avatarVideo && <>
+        <LiveAvatarSlot video={avatarVideo} className="absolute inset-0 z-0 bg-black sm:[&>video]:object-contain" />
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-black/50 via-transparent to-black/80" />
+      </>}
+
+      {/* კამერის ფონი (თუ კამერა ჩართულია) */}
       <video
         ref={videoRef}
         playsInline
         muted
-        className={cameraOn && !error ? 'absolute inset-0 z-0 h-full w-full object-cover' : 'hidden'}
+        className={!cameraOn || error ? 'hidden'
+          : avatarOn ? 'absolute right-4 top-28 z-20 h-36 w-24 rounded-2xl object-cover shadow-lg ring-1 ring-white/20'
+          : 'absolute inset-0 z-0 h-full w-full object-cover'}
       />
 
       {/* 2. ქვემოდან ამომავალი რბილი ცისფერი ნათება (Gemini Live Ambient Nebula) */}
-      <LiveAmbientGlow />
+      {!avatarOn && <LiveAmbientGlow />}
 
       {/* Screen docking and secondary call controls. */}
       {!error && <div className="relative z-20 flex items-center justify-between px-5 pb-4 pt-12">
@@ -217,7 +245,7 @@ export function LiveModeOverlay({
       </div>}
 
       {/* 4. ცენტრალური სუბტიტრები (მოტივტივე რეალურ დროში) */}
-      <div data-testid="live-content" className="relative z-10 mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col justify-start overflow-y-auto overscroll-contain px-6 pb-3 pt-10">
+      <div data-testid="live-content" className={`relative z-10 mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col overflow-y-auto overscroll-contain px-6 pb-3 pt-10 ${avatarOn ? 'justify-end' : 'justify-start'}`}>
         {error ? (
           <LiveErrorPanel
             icon={isMicErrorCode(error) ? <MicOff size={32} /> : <WifiOff size={32} />}
@@ -250,6 +278,7 @@ export function LiveModeOverlay({
         ) : (
           <div className="space-y-4 animate-fade-in">
             <p data-testid="live-status" aria-live="polite" className="text-[16px] leading-relaxed text-white/70">{t.status[status]}</p>
+            {notice && <p role="status" data-testid="live-notice" className="text-[14px] leading-relaxed text-white/80">{notice}</p>}
             {audioBlocked && onResumeAudio && (
               <button type="button" onClick={onResumeAudio}
                 className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[16px] font-semibold text-black">
@@ -259,7 +288,7 @@ export function LiveModeOverlay({
             {/* დიდი რეალურ დროში გამომავალი ქართული ტექსტი */}
             {showCaptions && captionsOn && <div role="log" aria-live="polite" aria-relevant="additions" aria-label={t.captions} className="space-y-3">
               {lastUserLine && <p aria-hidden={lastUserLine.final ? undefined : true} className="text-[16px] leading-relaxed text-white/60">{lastUserLine.text}</p>}
-              {lastAgentLine && <p aria-hidden={lastAgentLine.final ? undefined : true} className="text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]">
+              {lastAgentLine && <p aria-hidden={lastAgentLine.final ? undefined : true} className={`font-semibold leading-relaxed tracking-tight text-white drop-shadow-md ${avatarOn ? 'text-[20px] sm:text-[24px]' : 'text-[26px] sm:text-[32px]'}`}>
                 {lastAgentCaption}
               </p>}
             </div>}

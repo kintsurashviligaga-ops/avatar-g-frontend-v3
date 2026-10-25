@@ -582,3 +582,28 @@ describe('geminiLive — GeminiLiveSession', () => {
     expect(FakeSocket.last).toBeNull();
   });
 });
+
+describe('talking avatar (gemini-3.8-live)', () => {
+  const base = { model: 'gemini-3.8-live', systemInstruction: 'hi', voiceName: 'Aoede' };
+
+  it('answers in VIDEO, drops the voice, puts avatarConfig at the top of setup', () => {
+    const { setup } = buildLiveSetup({ ...base, transcribe: true, avatar: { avatarName: 'Kira', videoBitrateBps: 1_500_000 } });
+    expect(setup.generationConfig.responseModalities).toEqual(['VIDEO']);
+    expect(setup.generationConfig.speechConfig).toBeUndefined();
+    expect(setup.avatarConfig).toEqual({ avatarName: 'Kira', videoBitrateBps: 1_500_000 });
+    expect(setup.outputAudioTranscription).toEqual({});
+    expect(JSON.stringify(setup.generationConfig)).not.toContain('avatar');
+  });
+
+  it('ignores a malformed name and an out-of-range bitrate', () => {
+    expect(buildLiveSetup({ ...base, avatar: { avatarName: 'kira; drop' } }).setup.avatarConfig).toBeUndefined();
+    expect(buildLiveSetup({ ...base, avatar: { avatarName: '' } }).setup.generationConfig.responseModalities).toEqual(['AUDIO']);
+    expect(buildLiveSetup({ ...base, avatar: { avatarName: 'Ben', videoBitrateBps: 50_000_000 } }).setup.avatarConfig).toEqual({ avatarName: 'Ben' });
+  });
+
+  it('parses the avatar\'s fMP4 pieces as video events, never as audio', () => {
+    expect(parseLiveServerMessage({
+      serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: 'AAAA' } }] } },
+    })).toEqual([{ kind: 'video', data: 'AAAA', mimeType: 'video/mp4' }]);
+  });
+});
