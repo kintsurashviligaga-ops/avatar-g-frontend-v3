@@ -161,12 +161,22 @@ export const MIN_LLM_ATTEMPT_MS = 5_000;
 
 /**
  * The model a step that missed retries on: the next model of the chat's Flash chain (3.6 Flash after 3.8 Flash
- * today), so one slow or busy model no longer ends a Live task.
+ * today), so one slow or busy model no longer ends a task.
  */
 export function stepDownModel(): string | undefined {
   const primary = geminiTierModel('flash');
   return chatModelChain('standard').find((id) => id !== primary);
 }
+
+/** A run with at most this much time (a Live call's ask_agent_g: 45 s) answers from the quick models. */
+export const QUICK_RUN_MS = 60_000;
+/**
+ * A quick run's step models, fastest first. Vertex probe 2026-10-25 with Agent G's prompt: 3.6 Flash 3.0–3.6 s,
+ * 3.1 Flash-Lite 2.1 s; 3.8 Flash 4.9 s with thinking 'low' once, then over 33 s in GG's Live call.
+ */
+export const QUICK_STEP_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite'] as const;
+/** A quick run's attempt never takes longer than this, so the fallback and the next steps keep their time. */
+export const QUICK_STEP_TIMEOUT_MS = 20_000;
 
 /**
  * Collapse the ReAct transcript into a single llmText call. The system prompt and the transcript so far are the same
@@ -174,10 +184,16 @@ export function stepDownModel(): string | undefined {
  *
  * ⚠️ EACH CALL FITS THE RUN'S DEADLINE. The call used to get a flat 40 s, so a step started late in a Live task's 45 s
  * budget outlived the call that asked for it, and a model that missed ended the run (GG's task failed twice,
- * 2026-10-25). Now the first attempt stops STEP_DOWN_RESERVE_MS before the deadline, and a miss is retried once on
- * stepDownModel() in whatever time is left.
+ * 2026-10-25). Now the first attempt stops STEP_DOWN_RESERVE_MS before the deadline, and a miss is retried once in
+ * whatever time is left: on stepDownModel(), or for a quick run on the next QUICK_STEP_MODELS entry.
+ *
+ * ⚠️ JSON MODE. Every turn is one JSON object, and the call asks for exactly that: given the tool list as prose, 3.6
+ * Flash answered a turn with a native function call it could not form (finishReason MALFORMED_FUNCTION_CALL, no text),
+ * which ended GG's Live task (2026-10-25 10:27Z).
  */
-function llmAdapterFor(meter: RunMeter, deadlineMs?: number) {
+function llmAdapterFor(meter: RunMeter, deadlineMs?: number, quick = false) {
+  const [firstModel, fallback] = quick ? QUICK_STEP_MODELS : [undefined, stepDownModel()];
+  const cap = quick ? QUICK_STEP_TIMEOUT_MS : LLM_STEP_TIMEOUT_MS;
   return async (messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string | null> => {
     const system = messages.find((m) => m.role === 'system')?.content;
     const convo = messages
@@ -185,18 +201,17 @@ function llmAdapterFor(meter: RunMeter, deadlineMs?: number) {
       .map((m) => (m.role === 'assistant' ? `Assistant: ${m.content}` : m.content))
       .join('\n\n');
     const call = (timeoutMs: number, geminiModel?: string) => llmText({
-      system, user: convo, maxTokens: 900, temperature: 0.4, timeoutMs, googleOnly: true,
+      system, user: convo, maxTokens: 1500, temperature: 0.4, timeoutMs, googleOnly: true, json: true,
       ...(geminiModel ? { geminiModel } : {}),
       onUsage: (u) => meter.addLlm(u),
     });
     const left = () => (deadlineMs ? deadlineMs - Date.now() : Infinity);
-    const fallback = stepDownModel();
     const first = fallback
       ? Math.max(left() - STEP_DOWN_RESERVE_MS, Math.min(left(), MIN_LLM_ATTEMPT_MS))
       : left();
-    const text = await call(Math.max(1, Math.min(LLM_STEP_TIMEOUT_MS, first)));
+    const text = await call(Math.max(1, Math.min(cap, first)), firstModel);
     if (text != null || !fallback || left() < MIN_LLM_ATTEMPT_MS) return text;
-    return call(Math.min(LLM_STEP_TIMEOUT_MS, left()), fallback);
+    return call(Math.min(cap, left()), fallback);
   };
 }
 
@@ -585,7 +600,7 @@ export async function runLiveAgent(
     analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({
-    llm: llmAdapterFor(meter, opts?.deadlineMs),
+    llm: llmAdapterFor(meter, opts?.deadlineMs, opts?.deadlineMs !== undefined && opts.deadlineMs - Date.now() <= QUICK_RUN_MS),
     tools: timed(buildLiveToolRegistry(ctx, { goal: userGoal }), meter),
     userGoal,
     maxSteps: opts?.maxSteps,
