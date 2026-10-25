@@ -196,8 +196,14 @@ if (mode === 'speak') {
     const a = i0 < inN ? pcm24.readInt16LE(i0 * 2) : 0; const b = i0 + 1 < inN ? pcm24.readInt16LE((i0 + 1) * 2) : a;
     pcm16.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(a + (b - a) * f))), i * 2);
   }
+  if (!wav && process.env.SAVE_WAV) {
+    const h = Buffer.alloc(44); h.write('RIFF', 0, 'latin1'); h.writeUInt32LE(36 + pcm16.length, 4); h.write('WAVEfmt ', 8, 'latin1');
+    h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(16000, 24); h.writeUInt32LE(32000, 28);
+    h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36, 'latin1'); h.writeUInt32LE(pcm16.length, 40);
+    writeFileSync(process.env.SAVE_WAV, Buffer.concat([h, pcm16]));
+  }
   const speechMs = Math.round(outN / 16);
-  const fixtures = JSON.parse(readFileSync(here('setups.json'), 'utf8'));
+  const fixtures = JSON.parse(readFileSync(here(process.env.SETUPS || 'setups.json'), 'utf8'));
   let setup = { ...fixtures[process.env.FIXTURE || 'fullVad'].setup, model };
   if (process.env.AS_VOICE === '1') {
     const { avatarConfig, ...rest } = setup;
@@ -261,7 +267,7 @@ if (mode === 'speak') {
     heard: inText.slice(0, 200), answered: outText.slice(0, 400), toolsAnswered: answers, events: ev.slice(0, 30),
     totalTokens: usage?.totalTokenCount ?? null,
   };
-  writeFileSync(here(`report-speak-${process.env.AS_VOICE === '1' ? 'voice' : 'avatar'}.json`), JSON.stringify(report, null, 2));
+  writeFileSync(here(`report-speak-${process.env.AS_VOICE === '1' ? 'voice' : 'avatar'}${process.env.TAG ? '-' + process.env.TAG : ''}.json`), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
   process.exit(0);
 }
