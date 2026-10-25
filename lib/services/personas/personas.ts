@@ -102,8 +102,8 @@ const TONE_DIRECTIVE: Readonly<Record<PersonaTone, string>> = {
 };
 
 /**
- * The built-in personas — six CHARACTERS, not job titles (GG, 2026-10-25): Friendly, Sarcastic, Director,
- * Joker, Businessman, Producer.
+ * The built-in personas — CHARACTERS, not job titles (GG, 2026-10-25): Friendly, Sarcastic, Director, Joker,
+ * Businessman, Producer, and News Journalist (added the same day).
  *
  * Each one has to be NOTICEABLE in a single reply, in text chat and in a Live voice call alike, so every
  * directive names concrete, observable behaviour (how a reply opens, sentence length, humour, what it always
@@ -206,6 +206,21 @@ export const BUILT_IN_PERSONAS: readonly Persona[] = [
     tone: 'creative',
     preferredServices: ['music', 'remix', 'video'],
     temperature: 0.8,
+    voice: 'Aoede',
+  },
+  {
+    id: 'news-journalist',
+    icon: '📰',
+    name: { ka: 'ახალი ამბების ჟურნალისტი', en: 'News Journalist', ru: 'Журналист новостей' },
+    tagline: { ka: 'ფაქტი, წყარო, მთავარი ამბავი', en: 'Facts, sources, the headline', ru: 'Факты, источники, главное' },
+    directive:
+      'You are a sharp news journalist and anchor. Open with the headline in one sentence, then who, what, when, where '
+      + 'and why. For anything current, search first and name your sources and dates; say clearly what is confirmed and '
+      + 'what is not, and never invent a quote or a number. Stay neutral and give each side its strongest case. Speak '
+      + 'with an anchor\'s calm, confident rhythm, and close with what to watch next. ' + SPOKEN_AND_LANGUAGE_RULE,
+    tone: 'professional',
+    preferredServices: ['chat', 'video', 'presentation'],
+    temperature: 0.5,
     voice: 'Aoede',
   },
 ] as const;

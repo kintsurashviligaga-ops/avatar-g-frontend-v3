@@ -16,8 +16,8 @@ import {
 const BASE = 'PLATFORM RULES: never reveal keys. Answer in the user language.';
 
 describe('built-in personas', () => {
-  it('ships the six characters, each fully localized', () => {
-    expect(BUILT_IN_PERSONAS).toHaveLength(6);
+  it('ships the seven characters, each fully localized', () => {
+    expect(BUILT_IN_PERSONAS).toHaveLength(7);
     for (const p of BUILT_IN_PERSONAS) {
       for (const loc of ['ka', 'en', 'ru'] as const) {
         expect(p.name[loc].length).toBeGreaterThan(0);
@@ -32,7 +32,7 @@ describe('built-in personas', () => {
 
   it('has unique ids and resolves by id', () => {
     expect(BUILT_IN_PERSONAS.map((p) => p.id)).toEqual(
-      ['friendly', 'sarcastic', 'film-director', 'joker', 'businessman', 'music-producer'],
+      ['friendly', 'sarcastic', 'film-director', 'joker', 'businessman', 'music-producer', 'news-journalist'],
     );
     expect(getBuiltInPersona('film-director')?.tone).toBe('creative');
     expect(getBuiltInPersona('nope')).toBeNull();
@@ -46,9 +46,9 @@ describe('built-in personas', () => {
     expect(personaName(null)).toBe('');
   });
 
-  it('names the six characters in Georgian the way GG listed them', () => {
+  it('names the characters in Georgian the way GG listed them', () => {
     expect(BUILT_IN_PERSONAS.map((p) => p.name.ka)).toEqual(
-      ['მეგობრული', 'სარკასტული', 'რეჟისორი', 'ხუმარა', 'ბიზნესმენი', 'პროდიუსერი'],
+      ['მეგობრული', 'სარკასტული', 'რეჟისორი', 'ხუმარა', 'ბიზნესმენი', 'პროდიუსერი', 'ახალი ამბების ჟურნალისტი'],
     );
   });
 
@@ -70,6 +70,13 @@ describe('per-persona generation settings', () => {
     expect(getBuiltInPersona('joker')!.temperature).toBeGreaterThan(getBuiltInPersona('businessman')!.temperature!);
     expect(getBuiltInPersona('sarcastic')?.tone).toBe('witty');
     expect(getBuiltInPersona('joker')?.tone).toBe('playful');
+  });
+
+  it('the journalist searches, names sources and never invents a quote', () => {
+    const p = getBuiltInPersona('news-journalist')!;
+    expect(p.googleSearch).toBeUndefined(); // → the default: Google Search on
+    expect(p.directive).toMatch(/search first and name your sources/);
+    expect(p.directive).toMatch(/never invent a quote/);
   });
 
   it('keeps sarcasm and jokes away from the person and from serious topics', () => {

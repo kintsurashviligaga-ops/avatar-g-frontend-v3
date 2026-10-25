@@ -72,7 +72,7 @@ import { buildLiveSetup, type LiveSetupMessage, type LiveTool } from '@/lib/voic
 import { validateVoicePreferences, voiceStyleInstruction, VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
 import { LIVE_ACTIONS_RULE } from '@/lib/voice/liveTools';
 import { resolveLiveModel, toModelResource } from '@/lib/ai/google/models';
-import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
+import { resolveAgentProfile, toGeminiLiveSetup, livePersonaReminder, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
@@ -249,6 +249,8 @@ export async function POST(request: NextRequest) {
     const actionsWanted = toolsAllowed && body.actions === true && isEnabledByDefault(process.env.GEMINI_LIVE_ACTIONS);
     const voice = voiceFor(profile, experience?.voice ?? body.voice, body.gender);
     const promptNow = new Date();
+    // Last of all, after the UI rule: the persona stays the voice of the whole call (lib/agents/profile).
+    const reminder = livePersonaReminder(profile) ? `\n${livePersonaReminder(profile)}` : '';
     // The instruction names the action functions ONLY when the lock carries them, so it is built per attempt.
     const liveFor = (withActions: boolean, withSearch: boolean = search) => toGeminiLiveSetup(
       { ...profile, voice },
@@ -262,7 +264,7 @@ export async function POST(request: NextRequest) {
       const tools: LiveTool[] = [...(withActions ? ['live_actions' as const] : []), ...(search ? ['google_search' as const] : [])];
       return buildLiveSetup({
         model,
-        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE),
+        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder,
         ...(experience ? { turnEagerness: experience.eagerness } : {}),
         voiceName: l.voiceName,
         // The Live session has always run at the model's default temperature; only an active persona changes that.
@@ -313,7 +315,7 @@ export async function POST(request: NextRequest) {
       const plain = liveFor(false, false);
       const legacy = buildLiveSetup({
         model,
-        systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE),
+        systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder,
         voiceName: plain.voiceName,
         ...(personaActive ? { temperature: plain.temperature } : {}),
       });

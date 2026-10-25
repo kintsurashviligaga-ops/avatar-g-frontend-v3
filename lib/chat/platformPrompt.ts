@@ -300,7 +300,7 @@ export function buildPlatformPrompt(opts: {
 
     // ⚠️ ASKED WHICH PERSONAS EXIST, IT INVENTED A LIST (GG 2026-10-25, Preview). Nothing told the model what the picker
     // offers, so it named characters the app does not have. The list comes from the catalogue itself.
-    `PERSONAS ("${PERSONA_MENU[loc].row}" in the "${PERSONA_MENU[loc].menu}" menu; only the user switches): ${BUILT_IN_PERSONAS.map((p) => p.name[loc]).join(', ')}, plus user-made. Name no others. A PERSONA block below is the active one.`,
+    `PERSONAS (user picks: "${PERSONA_MENU[loc].menu}" menu → "${PERSONA_MENU[loc].row}"): ${BUILT_IN_PERSONAS.map((p) => p.name[loc]).join(', ')}, plus own. Name no others; a PERSONA block below is active.`,
 
     priceBlock(ui.topUp, closed),
   ].join('\n\n');

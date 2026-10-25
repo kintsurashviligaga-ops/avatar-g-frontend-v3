@@ -6,6 +6,7 @@ import {
   clampAgentProfile,
   safetySettingsFor,
   liveVoiceFor,
+  livePersonaReminder,
   LIVE_SPOKEN_RULE,
   PLATFORM_CHAT_DEFAULTS,
   type AgentProfile,
@@ -277,6 +278,14 @@ describe('Live setup', () => {
     const kore = resolveAgentProfile({ customPersona: { name: 'Coach', directive: 'You coach founders on pitching.', voice: 'Kore' } });
     expect(toGeminiLiveSetup(kore, { locale: 'ka' }).voiceName).toBe('Aoede');
     expect(toGeminiLiveSetup(kore, { locale: 'en' }).voiceName).toBe('Kore');
+  });
+
+  it('the persona reminder is the last word while a persona is active, and nothing without one', () => {
+    expect(livePersonaReminder(resolveAgentProfile({}))).toBe('');
+    expect(livePersonaReminder(resolveAgentProfile({ personaId: 'sarcastic' }))).toMatch(/^STAY IN CHARACTER as "Sarcastic" for the whole call/);
+    const odd = resolveAgentProfile({ customPersona: { name: 'Bad "name"\nhere', directive: 'You coach founders on pitching.' } });
+    expect(livePersonaReminder(odd)).not.toMatch(/\n/);
+    expect(livePersonaReminder(odd)).toContain('as "Bad name here"');
   });
 
   it('an unknown locale falls back to Georgian', () => {

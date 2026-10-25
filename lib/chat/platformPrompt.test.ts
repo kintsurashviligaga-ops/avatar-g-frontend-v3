@@ -279,12 +279,12 @@ describe('buildPlatformPrompt — the persona list is the catalogue (GG 2026-10-
   it.each(LOCALES)('names exactly the built-in personas in the reply language, and where the user switches them (%s)', (locale) => {
     const line = build(locale).split('\n\n').find((b) => b.startsWith('PERSONAS'))!;
     expect(line).toContain(BUILT_IN_PERSONAS.map((p) => p.name[locale]).join(', '));
-    expect(line).toContain({ ka: '"პერსონა" in the "მოდელი" menu', en: '"Persona" in the "Model" menu', ru: '"Персона" in the "Модель" menu' }[locale]);
-    expect(line).toContain('Name no others.');
+    expect(line).toContain({ ka: '"მოდელი" menu → "პერსონა"', en: '"Model" menu → "Persona"', ru: '"Модель" menu → "Персона"' }[locale]);
+    expect(line).toContain('Name no others;');
   });
 
-  it('lists GG\'s six characters in Georgian', () => {
-    expect(build('ka')).toContain('მეგობრული, სარკასტული, რეჟისორი, ხუმარა, ბიზნესმენი, პროდიუსერი, plus user-made');
+  it('lists GG\'s characters in Georgian', () => {
+    expect(build('ka')).toContain('მეგობრული, სარკასტული, რეჟისორი, ხუმარა, ბიზნესმენი, პროდიუსერი, ახალი ამბების ჟურნალისტი');
   });
 });
 
