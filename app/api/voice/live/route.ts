@@ -14,7 +14,8 @@
  * principal is the AUTHENTICATED CALLER (requireUser → session cookie), never a userId from the request
  * body — otherwise anyone could mint a cost-bearing token against another account (IDOR). Voice is
  * intentionally FREE (no credit gate); cost is bounded instead by requireUser + an IP burst limit +
- * a per-USER daily ceiling (defeats IP rotation across throwaway signups) + the platform budget guard.
+ * a per-USER daily ceiling (defeats IP rotation across throwaway signups) + the platform budget guard. While Live rolls
+ * out, only admins get past Gate 4b unless LIVE_AUDIENCE=everyone (lib/voice/liveAudience).
  *
  * Body (all optional): { model, locale: 'ka'|'en'|'ru', personaId, customPersona, gender: 'male'|'female',
  *   voice: 'Aoede'|'Charon'|'Kore'|'Puck', transcribe: boolean, compression: boolean, resumptionHandle: string|null,
@@ -67,6 +68,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
+import type { User } from '@supabase/supabase-js';
 import { requireUser } from '@/lib/supabase/server';
 import { buildLiveSetup, type LiveSetupMessage, type LiveTool } from '@/lib/voice/geminiLive';
 import { validateVoicePreferences, voiceStyleInstruction, VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
@@ -79,6 +81,7 @@ import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { loadLiveReportBlock } from '@/lib/research/liveContext';
 import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
 import { LIVE_TRANSPORT_UNAVAILABLE, liveTokenMinter } from '@/lib/voice/liveMint';
+import { liveAudienceAllows } from '@/lib/voice/liveAudience';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -192,11 +195,19 @@ export async function POST(request: NextRequest) {
     if (limited) return limited;
 
     // ── Gate 4: authenticate the CALLER via their session (never a body userId) ──
-    let userId: string;
+    let user: User;
     try {
-      userId = (await requireUser()).id;
+      user = await requireUser();
     } catch {
       return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+    }
+    const userId = user.id;
+
+    // ── Gate 4b: the rollout audience (lib/voice/liveAudience): admins only unless LIVE_AUDIENCE=everyone. Anyone else
+    // gets the same 503 as a missing transport, so the browser falls back to the REST voice loop. ──
+    if (!(await liveAudienceAllows(user))) {
+      structuredLog('info', 'voice.live.audience_refused', { audience: 'admins' });
+      return NextResponse.json({ error: 'live_transport_unavailable' }, { status: 503 });
     }
 
     // Voice mode is intentionally FREE for every signed-in user (no balance required). There is NO credit gate.
@@ -294,7 +305,7 @@ export async function POST(request: NextRequest) {
     // rejected by the auth_tokens API with HTTP 400 ("Unknown name … Cannot find field"). The minter owns its own
     // transport and credential; the timeout turns a hung mint into the already-handled 503 path.
     const mint = (lock: object, timeoutMs: number) =>
-      minter.mint({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: lock }, timeoutMs);
+      minter.mint({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: lock, subject: userId }, timeoutMs);
 
     // The frame the browser will send — always the one the token was minted for.
     let frame: LiveSetupMessage = setupMessage;
@@ -350,6 +361,8 @@ export async function POST(request: NextRequest) {
       voice: live.voiceName,
       locale,
       actions,
+      // The Live relay the token opens (lib/voice/liveMint); absent = Google directly, as before.
+      ...(minter.wsUrl ? { relayUrl: minter.wsUrl } : {}),
     });
   } catch (error) {
     structuredLog('error', 'voice.live.failed', { error: error instanceof Error ? error.message : 'unknown' });

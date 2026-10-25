@@ -1,0 +1,5 @@
+# Cloud Build gets only the bundle and the Dockerfile.
+*
+!Dockerfile
+!dist/
+!dist/main.cjs

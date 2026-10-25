@@ -55,6 +55,8 @@ export async function mintCallSession(
 ): Promise<CallSession> {
   const minter = deps.minter();
   if (!minter) return { ok: false, error: 'live_transport_unavailable' };
+  // A Live relay ticket opens our relay, not Google; the bridge (lib/calls/bridge/liveLink) still dials Google directly.
+  if (minter.wsUrl) return { ok: false, error: 'live_transport_unavailable' };
   const model = resolveLiveModel(deps.env.WHATSAPP_CALL_LIVE_MODEL ?? null);
   const now = deps.now();
   const frame = buildPhoneLiveSetup({
