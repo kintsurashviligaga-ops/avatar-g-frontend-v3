@@ -135,6 +135,9 @@ export interface GeminiLiveConfig {
   languageCode?: string;
   /** Override the WS base (tests / future version bumps). */
   wsBase?: string;
+  /** Our Live relay (services/live-relay) from /api/voice/live: when set, `token` is a relay ticket and the socket opens
+   *  `${relayUrl}?ticket=…` instead of Google. The relay holds the Vertex credential. */
+  relayUrl?: string;
   /**
    * A complete first frame to send instead of buildSetupMessage(config) — e.g. buildLiveSetup(...) or a setup
    * the server built. A bare BidiGenerateContentSetup (no `setup` key) is wrapped as `{ setup }`.
@@ -684,9 +687,11 @@ export function parseLiveServerMessage(raw: unknown): LiveServerEvent[] {
 /**
  * Build the authenticated WS URL. The credential dictates BOTH the query param AND the version+method:
  * ephemeral token → v1alpha/BidiGenerateContentConstrained + ?access_token; api key (dev-only) →
- * v1beta/BidiGenerateContent + ?key. `wsBase` overrides only the host (tests / future host changes).
+ * v1beta/BidiGenerateContent + ?key. `wsBase` overrides only the host (tests / future host changes). A relay ticket
+ * (config.relayUrl) opens our Live relay instead, which speaks the same wire to the browser.
  */
 export function buildLiveUrl(config: GeminiLiveConfig): string {
+  if (config.relayUrl && config.token) return `${config.relayUrl}?ticket=${encodeURIComponent(config.token)}`;
   const host = config.wsBase || LIVE_WS_HOST;
   if (config.token) return `${host}${TOKEN_METHOD}?access_token=${encodeURIComponent(config.token)}`;
   if (config.apiKey) return `${host}${KEY_METHOD}?key=${encodeURIComponent(config.apiKey)}`;

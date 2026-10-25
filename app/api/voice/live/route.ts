@@ -292,7 +292,7 @@ export async function POST(request: NextRequest) {
     // rejected by the auth_tokens API with HTTP 400 ("Unknown name … Cannot find field"). The minter owns its own
     // transport and credential; the timeout turns a hung mint into the already-handled 503 path.
     const mint = (lock: object, timeoutMs: number) =>
-      minter.mint({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: lock }, timeoutMs);
+      minter.mint({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: lock, subject: userId }, timeoutMs);
 
     // The frame the browser will send — always the one the token was minted for.
     let frame: LiveSetupMessage = setupMessage;
@@ -348,6 +348,8 @@ export async function POST(request: NextRequest) {
       voice: live.voiceName,
       locale,
       actions,
+      // The Live relay the token opens (lib/voice/liveMint); absent = Google directly, as before.
+      ...(minter.wsUrl ? { relayUrl: minter.wsUrl } : {}),
     });
   } catch (error) {
     structuredLog('error', 'voice.live.failed', { error: error instanceof Error ? error.message : 'unknown' });

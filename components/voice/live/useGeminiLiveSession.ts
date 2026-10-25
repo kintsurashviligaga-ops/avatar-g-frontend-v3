@@ -609,7 +609,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const readyRef = useRef(false);
   /** Tool answers that came back after the connection was renewed: told to the new connection as [App] notes. */
   const lateAnswersRef = useRef<string[]>([]);
-  const tokenRef = useRef<{ token: string; expiresAtMs: number | null } | null>(null);
+  const tokenRef = useRef<{ token: string; expiresAtMs: number | null; relayUrl?: string } | null>(null);
   const modelRef = useRef<string | null>(null);
   const serverSetupRef = useRef<Obj | null>(null);
   const handleRef = useRef<string | null>(null);
@@ -913,7 +913,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     } finally {
       if (mintTimer) clearTimeout(mintTimer);
     }
-    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown };
+    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
     if (!res.ok || !token) {
       if (res.status === 401) return { ok: false, code: 'auth' };
@@ -923,7 +923,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     if (gen !== genRef.current) return { ok: true }; // a later call owns the refs now; its caller bails on gen anyway
     const exp = typeof j.expiresAt === 'string' ? Date.parse(j.expiresAt) : NaN;
-    tokenRef.current = { token, expiresAtMs: Number.isFinite(exp) ? exp : null };
+    // A relay ticket opens our Live relay (lib/voice/liveMint); only a wss:// URL is taken.
+    const relayUrl = typeof j.relayUrl === 'string' && j.relayUrl.startsWith('wss://') ? j.relayUrl : undefined;
+    tokenRef.current = { token, expiresAtMs: Number.isFinite(exp) ? exp : null, ...(relayUrl ? { relayUrl } : {}) };
     mintedAtRef.current = deps().now();
     modelRef.current = typeof j.model === 'string' ? j.model : null;
     // /api/voice/live answers `setupMessage` (the frame it locked into the token); `setup` is accepted for older routes.
@@ -1151,7 +1153,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       onSessionClosed();
     }, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(
-      { token: tok.token, setupMessage: buildSetupMessage(handle) },
+      { token: tok.token, ...(tok.relayUrl ? { relayUrl: tok.relayUrl } : {}), setupMessage: buildSetupMessage(handle) },
       {
         onOpen: () => { opened = true; },
         onSetupComplete: () => { if (current()) onReady(session); },

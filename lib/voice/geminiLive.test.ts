@@ -75,6 +75,14 @@ describe('geminiLive — pure wire-format builders/parser', () => {
       .toBe('wss://x.v1beta.GenerativeService.BidiGenerateContent?key=k');
   });
 
+  it('buildLiveUrl opens our Live relay with the ticket when /api/voice/live named one', () => {
+    expect(buildLiveUrl({ token: 'v1.p.s+/', relayUrl: 'wss://relay.example/v1/live', wsBase: 'wss://x' }))
+      .toBe('wss://relay.example/v1/live?ticket=v1.p.s%2B%2F');
+    // A relay without a ticket is not a credential: the old forms are unchanged.
+    expect(buildLiveUrl({ apiKey: 'k', relayUrl: 'wss://relay.example/v1/live', wsBase: 'wss://x' }))
+      .toBe('wss://x.v1beta.GenerativeService.BidiGenerateContent?key=k');
+  });
+
   it('parseLiveServerEvents maps setupComplete', () => {
     expect(parseLiveServerEvents({ setupComplete: {} })).toEqual([{ type: 'setupComplete' }]);
   });
