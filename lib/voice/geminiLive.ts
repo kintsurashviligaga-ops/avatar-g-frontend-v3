@@ -741,6 +741,9 @@ export class GeminiLiveSession {
    *  buildLiveSetup({resumptionHandle}) on the reconnect after a goAway / dropped socket. */
   get resumptionHandle(): string | null { return this.lastResumptionHandle; }
 
+  /** Bytes sent but not yet handed to the network (WebSocket.bufferedAmount); 0 without a socket. */
+  get bufferedAmount(): number { return this.ws?.bufferedAmount ?? 0; }
+
   connect(): void {
     if (this.ws) return;
     if (!this.config.token && !this.config.apiKey) {

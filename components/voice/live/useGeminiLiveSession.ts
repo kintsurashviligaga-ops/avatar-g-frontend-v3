@@ -88,8 +88,18 @@ export const LIVE_SETUP_TIMEOUT_MS = 8000;
  * open after 6.5 s), and the relay's own upstream handshake may take 10 s — 8 s gave up on a call about to open.
  */
 export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
-/** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. */
+/**
+ * Through the relay, once the socket is OPEN the deadline shrinks to this. A warm relay reaches Vertex's setupComplete
+ * in 0.2–1.3 s. ⚠️ GG 2026-10-25 16:11–16:31: 6 of 21 call attempts sat 11–14 s and the relay logged the setup frame
+ * arriving 1–2 ms before the browser closed the socket at the 15 s deadline — the frame was held between browser and
+ * relay until the close, and Vertex was never asked. Waiting longer never helps such a socket; a fresh one does.
+ */
+export const LIVE_RELAY_READY_AFTER_OPEN_MS = 6000;
+/** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. Through the
+ *  relay a held frame struck 2 attempts in a row (16:28Z), and each retry now costs 6 s, not 15: one more retry keeps
+ *  the call's full setup (its UI actions and search) instead of degrading it. */
 const MAX_TIMEOUT_RETRIES = 1;
+const MAX_RELAY_TIMEOUT_RETRIES = 2;
 /** Window event the default transcript sink dispatches (detail: LiveTurn) when the host passes no onTurn. */
 export const LIVE_TRANSCRIPT_EVENT = 'myavatar:live-transcript';
 
@@ -210,7 +220,7 @@ export interface LiveSessionDeps {
   /** The context + mic the Live button primed inside its tap (lib/voice/livePrime). */
   takePrimed: () => PrimedLive | null;
   /** Failure telemetry (lib/voice/liveTelemetry). */
-  report: (code: LiveErrorCode, detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
+  report: (code: LiveErrorCode | 'handshake_timeout', detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
 }
 
 export interface UseGeminiLiveSessionOptions {
@@ -1197,30 +1207,53 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     if (!tok) return;
     const gen = genRef.current;
     let opened = false;
+    const startedAt = Date.now();
+    let openedAt = 0;
     const current = () => sessionRef.current === session && gen === genRef.current;
     // The deadline runs from CONSTRUCTION, not from socket open (GeminiLiveSession's own setupTimeoutMs only arms
     // on open, so a socket stuck in CONNECTING would never time out). Expiry = a close before setupComplete.
     clearHandshakeTimer();
-    const timeoutMs = optsRef.current.setupTimeoutMs ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
-    handshakeTimerRef.current = setTimeout(() => {
+    const explicitTimeout = optsRef.current.setupTimeoutMs;
+    const timeoutMs = explicitTimeout ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
+    const onDeadline = () => {
       handshakeTimerRef.current = null;
       if (!current() || readyRef.current) return;
+      // Where it waited, read before the close below drops the socket (lib/voice/liveTelemetry).
+      const now = Date.now();
+      const context: LiveFailureContext = {
+        locale: optsRef.current.locale || 'ka',
+        mints: mintsRef.current,
+        degraded: degradedRef.current,
+        relay: !!tok.relayUrl,
+        ...(openedAt ? { msToOpen: openedAt - startedAt, msSinceOpen: now - openedAt, bufferedBytes: session.bufferedAmount } : {}),
+      };
       sessionRef.current = null; // detach first: the close below must not be handled twice
       try { session.close(); } catch { /* noop */ }
+      try { deps().report('handshake_timeout', null, context); } catch { /* telemetry never breaks the call */ }
       // ⚠️ GG 2026-10-25: „ვიდეო პანელი გახსენი“ did nothing. A cold relay ran out the clock, the plan's next step
       // dropped the UI actions, and the call that opened could not open a panel. A handshake that ran out of time
       // was never REFUSED: it retries the same setup on a fresh ticket (a ticket opens one new session) first.
       const step = planRef.current[stepRef.current];
-      if (step && timeoutRetriesRef.current < MAX_TIMEOUT_RETRIES) {
+      if (step && timeoutRetriesRef.current < (tok.relayUrl ? MAX_RELAY_TIMEOUT_RETRIES : MAX_TIMEOUT_RETRIES)) {
         timeoutRetriesRef.current += 1;
         planRef.current.splice(stepRef.current + 1, 0, { freshToken: true, handle: step.handle, ...(step.degrade ? { degrade: true } : {}) });
       }
       onSessionClosed();
-    }, timeoutMs);
+    };
+    handshakeTimerRef.current = setTimeout(onDeadline, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(
       { token: tok.token, ...(tok.relayUrl ? { relayUrl: tok.relayUrl } : {}), setupMessage: buildSetupMessage(handle) },
       {
-        onOpen: () => { opened = true; },
+        onOpen: () => {
+          opened = true;
+          openedAt = Date.now();
+          // Through the relay an open socket gets the short deadline (LIVE_RELAY_READY_AFTER_OPEN_MS); the long one
+          // only covers a relay that is still booting, which holds the socket in CONNECTING.
+          if (tok.relayUrl && explicitTimeout === undefined && current() && handshakeTimerRef.current) {
+            clearTimeout(handshakeTimerRef.current);
+            handshakeTimerRef.current = setTimeout(onDeadline, LIVE_RELAY_READY_AFTER_OPEN_MS);
+          }
+        },
         onSetupComplete: () => { if (current()) onReady(session); },
         onEvent: (ev) => { if (current()) onServerEvent(ev, session); },
         onError: () => {
@@ -1233,7 +1266,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     sessionRef.current = session;
     readyRef.current = false;
     session.connect();
-  }, [buildSetupMessage, clearHandshakeTimer, onReady, onServerEvent, onSessionClosed]);
+  }, [buildSetupMessage, clearHandshakeTimer, deps, onReady, onServerEvent, onSessionClosed]);
 
   runStepRef.current = async () => {
     const gen = genRef.current;
