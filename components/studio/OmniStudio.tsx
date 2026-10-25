@@ -156,7 +156,7 @@ import { handleMusicVoice } from './music/musicVoiceBridge';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { remixSceneCredits } from '@/lib/credits/priceBook';
-import { musicQuote } from '@/lib/studio/musicQuote';
+import { isCoverRun, musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
 import { aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference, orientationForAspect } from '@/lib/chat/chatConsent';
@@ -199,6 +199,10 @@ import { KEEP_OPEN_CHAT_EVENT } from '@/lib/chat/keepOpenChat';
 import { newestWorkingCard } from '@/lib/agent/media/workingCard';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { HIDDEN_TOOLS, toolGroups } from '@/lib/catalog/nav';
+import { VideoQuickChips } from '@/components/studio/create/VideoQuickChips';
+import { ImageQuickChips } from '@/components/studio/create/ImageQuickChips';
+import { MusicQuickChips } from '@/components/studio/create/MusicQuickChips';
+import { AvatarQuickChips } from '@/components/studio/create/AvatarQuickChips';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { getService, serviceModeQuery } from '@/lib/catalog/services';
 import { clearPendingPrompt, stashPendingPrompt, takePendingPrompt } from '@/lib/studio/pendingPrompt';
@@ -11423,6 +11427,82 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Closing settings brings the box back as Agent
   // G's line. Mic, Live voice and Send stay in the pill. VIDEO is the other way round (GG 2026-10-18, „პრომპტი ჩატის ველში"):
   // its panel has no prompt, so this box and its priced Send stay beside the open panel.
+  // The quick-settings row of the active service (components/chat/composer/ServiceQuickSettings). Same state, same pickers
+  // as the settings panel; the panel stays mounted behind ⚙ and keeps its own effects (remembered model, off-grid length).
+  const openMoreSettings = () => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v));
+  const moreSettingsOpen = isDesktop ? panelOpen : optionsOpen;
+  const moreSettingsWord = locale === 'en' ? 'More settings' : locale === 'ru' ? 'Ещё настройки' : 'მეტი პარამეტრი';
+  const quickSettings = chatOnly ? null
+    : activeTool === 'video' ? (
+      <div className="px-1 pb-1">
+        <VideoQuickChips
+          locale={locale}
+          desktop={isDesktop}
+          plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan}
+          engine={veoEngine}
+          mode={videoMode}
+          onMode={setVideoMode}
+          seconds={videoDuration}
+          onSeconds={(sec) => { setVideoDuration(sec); setVideoRequestedSec(null); }}
+          format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
+          onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
+          onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
+          caps={videoCaps}
+          requestedSec={videoRequestedSec}
+          joinOverlapSec={videoPlanOpts.joinOverlapSec}
+          onMore={openMoreSettings}
+          moreExpanded={moreSettingsOpen}
+          moreLabel={moreSettingsWord}
+        />
+      </div>
+    ) : mode === 'music' ? (
+      <div className="px-1 pb-1">
+        <MusicQuickChips
+          locale={locale}
+          desktop={isDesktop}
+          instrumental={musicInstrumental} onInstrumental={setMusicInstrumental}
+          styles={musicStyles} onStyles={setMusicStyles}
+          styleOptions={MUSIC_STYLES.map(([val, label]) => ({ id: val, label: label[locale] ?? label.en }))}
+          duration={musicDuration} onDuration={setMusicDuration}
+          cover={isCoverRun({ hasAudio: !!musicAudioAtt, audioMode: musicAudioMode, trainedVoiceActive: hasTrainedVoice && useMyVoice && !musicInstrumental })}
+          onMore={openMoreSettings}
+          moreExpanded={moreSettingsOpen}
+          moreLabel={moreSettingsWord}
+        />
+      </div>
+    ) : activeTool === 'avatar' ? (
+      <div className="px-1 pb-1">
+        <AvatarQuickChips
+          locale={locale}
+          desktop={isDesktop}
+          faceName={(() => {
+            const L = (ka: string, en: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
+            if (attachments.some((a) => isImage(a.mimeType)) && !lipPreset) return L('შენი ფოტო', 'Your photo', 'Ваше фото');
+            if (myTwinFace && lipPreset === myTwinFace) return L('ჩემი ავატარი', 'My avatar', 'Мой аватар');
+            const tp = lipPreset ? AVATAR_TEMPLATES.find((x) => x.values.preset === lipPreset) : undefined;
+            return tp ? tp.label[templateLang(locale)] : L('AI წამყვანი', 'AI presenter', 'AI-ведущий');
+          })()}
+          gender={lipGender} onGender={setLipGender}
+          format={lipFormat} onFormat={setLipFormat}
+          onMore={openMoreSettings}
+          moreExpanded={moreSettingsOpen}
+          moreLabel={moreSettingsWord}
+        />
+      </div>
+    ) : imageCreate ? (
+      <div className="px-1 pb-1">
+        <ImageQuickChips
+          locale={locale}
+          desktop={isDesktop}
+          aspect={imgAspect} onAspect={setImgAspect}
+          count={imgCount} onCount={setImgCount}
+          style={imgStyle} onStyle={setImgStyle} styleLabel={(s) => styleLabel(s, locale)}
+          onMore={openMoreSettings}
+          moreExpanded={moreSettingsOpen}
+          moreLabel={moreSettingsWord}
+        />
+      </div>
+    ) : null;
   const composerTextHidden = (imageCreate || mode === 'music')
     && (isDesktop ? panelOpen : optionsOpen);
   // …and on a desktop the box's own Send and enhance go with it: the panel beside it has the priced Create.
@@ -12084,6 +12164,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               // asks, confirms with the price) — and the video tool's placeholder is locked copy (docs/DESIGN.md §7).
               : `${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
           />
+          {/* QUICK SETTINGS (the unified composer, GG 2026-10-25): the service's main choices as one row of chips in the box,
+              each opening the picker the settings already use — the full settings stay one tap away (⚙). */}
+          {quickSettings}
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
@@ -12126,8 +12209,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <ChevronDown size={13} aria-hidden="true" className="shrink-0 opacity-80" />
                 </button>
 
-                {/* 2. პარამეტრების პანელის ჩაკეცვა / გახსნა */}
-                <button
+                {/* 2. პარამეტრების პანელის ჩაკეცვა / გახსნა — only for a service with no quick-settings row: there the row's ⋯ is it. */}
+                {!quickSettings && <button
                   type="button"
                   onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}
                   data-testid="options-toggle"
@@ -12140,7 +12223,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <span className="hidden max-w-[160px] truncate whitespace-nowrap sm:inline">
                     {toolSummary || (locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები')}
                   </span>
-                </button>
+                </button>}
 
                 {/* 3. ✕ სერვისის დახურვა და მთავარ ჩატში დაბრუნება */}
                 <button
