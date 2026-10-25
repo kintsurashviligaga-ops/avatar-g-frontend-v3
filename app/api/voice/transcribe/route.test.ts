@@ -197,6 +197,21 @@ test('Google-only: Russian speech in a Georgian session is kept as spoken (Cyril
   expect(await res.json()).toEqual({ text: 'привет, как дела', provider: 'gemini', language: 'ru-RU' });
 });
 
+test('Russian speech answered in English: the retry is in Russian, and the answer says Russian (GG, Production 2026-10-25)', async () => {
+  fetchSpy
+    .mockImplementationOnce(async () => geminiOk('[ru] can you make a prompt for VEO 3'))
+    .mockImplementationOnce(async () => geminiOk('[ru] сделай промпт для VEO 3'));
+  const res = await POST(upload({ language: 'en-US' }));
+  expect(await res.json()).toEqual({ text: 'сделай промпт для VEO 3', provider: 'gemini', language: 'ru-RU' });
+  expect(modelsCalled()).toEqual(['gemini-3.6-flash', 'gemini-3.6-flash']);
+});
+
+test('an English answer that still comes back for Russian speech is remembered as Russian, never as English', async () => {
+  fetchSpy.mockImplementation(async () => geminiOk('[ru] can you make a prompt for VEO 3'));
+  const res = await POST(upload({ language: 'en-US' }));
+  expect(await res.json()).toEqual({ text: 'can you make a prompt for VEO 3', provider: 'gemini', language: 'ru-RU' });
+});
+
 test("language 'auto': no hint in the prompt, any language accepted, and the language heard comes back", async () => {
   fetchSpy.mockImplementationOnce(async () => geminiOk('გამარჯობა, როგორ ხარ'));
   let res = await POST(upload({ language: 'auto' }));

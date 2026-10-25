@@ -16,6 +16,8 @@ import {
   geminiSttModelChain,
   GeminiSttError,
   hasGeminiSttKey,
+  isTranslated,
+  splitSpokenTag,
   STT_FALLBACK_RESERVE_MS,
   sniffAudioContainer,
   sttPrompt,
@@ -186,6 +188,43 @@ describe('sttPrompt', () => {
     expect(sttPrompt('auto')).not.toMatch(/most likely/);
     expect(sttPrompt('auto')).toMatch(/Georgian, English, Russian or any other language/);
   });
+
+  it('asks for the language code first, and never a translation into the language of the instructions', () => {
+    for (const l of ['ka-GE', 'en-US', 'ru-RU', 'auto']) {
+      expect(sttPrompt(l)).toMatch(/First write the ISO 639-1 code of the language actually spoken in square brackets/);
+      expect(sttPrompt(l)).toMatch(/not even into the language of these instructions/);
+    }
+  });
+
+  it("after a translated answer the retry states the language outright, whatever the mic's hint was", () => {
+    const p = sttPrompt('en-US', 'ru');
+    expect(p).toMatch(/The speaker speaks Russian\. Write their Russian words in Cyrillic, exactly as spoken; do NOT translate/);
+    expect(p).not.toMatch(/most likely speaks English/);
+    expect(sttPrompt('ka-GE', 'ka')).toMatch(/The speaker speaks Georgian\. Write their Georgian words in the Georgian \(Mkhedruli\) alphabet/);
+  });
+});
+
+describe('splitSpokenTag / isTranslated', () => {
+  it('reads the leading language code and strips it; brackets only, so speech keeps its own first word', () => {
+    expect(splitSpokenTag('[ru] Привет, как дела')).toEqual({ spoken: 'ru', text: 'Привет, как дела' });
+    expect(splitSpokenTag(' [KA-GE] გამარჯობა')).toEqual({ spoken: 'ka', text: 'გამარჯობა' });
+    expect(splitSpokenTag('(en) hello')).toEqual({ spoken: 'en', text: 'hello' });
+    expect(splitSpokenTag('So: I think')).toEqual({ spoken: null, text: 'So: I think' });
+    expect(splitSpokenTag('[silence]')).toEqual({ spoken: null, text: '[silence]' });
+    expect(splitSpokenTag('გამარჯობა')).toEqual({ spoken: null, text: 'გამარჯობა' });
+  });
+
+  it('a one-script language written only in Latin letters is a translation; English and native script never are', () => {
+    // GG, Production 2026-10-25: Russian speech, this sentence in the box.
+    expect(isTranslated('ru', 'can you make a prompt for VEO 3 and make it the podcast 9:16 format video for cinema')).toBe(true);
+    expect(isTranslated('ka', 'How do I get to Batumi?')).toBe(true);
+    expect(isTranslated('ru', 'сделай промпт для VEO 3')).toBe(false);
+    expect(isTranslated('ka', 'გახსენი Instagram')).toBe(false);
+    expect(isTranslated('en', 'hello there')).toBe(false);
+    expect(isTranslated('de', 'guten Tag')).toBe(false);
+    expect(isTranslated(null, 'hello there')).toBe(false);
+    expect(isTranslated('ru', '123')).toBe(false);
+  });
 });
 
 describe('transcribeWithGeminiDetailed', () => {
@@ -259,6 +298,45 @@ describe('transcribeWithGeminiDetailed', () => {
       await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US', { models: [model] });
       expect([model, sentBody(0).generationConfig.thinkingConfig]).toEqual([model, config]);
     }
+  });
+
+  it('strips the language code and returns it; an answer without one is taken as before', async () => {
+    fetchSpy.mockImplementationOnce(async () => ok('[ka] გამარჯობა'));
+    expect(await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE')).toEqual({ text: 'გამარჯობა', model: 'gemini-3.6-flash', spoken: 'ka' });
+    fetchSpy.mockImplementationOnce(async () => ok('[ru]'));
+    expect((await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'auto')).text).toBe('');
+  });
+
+  it('Russian speech answered in English is asked once more, the language stated: the Cyrillic answer wins (GG, 2026-10-25)', async () => {
+    fetchSpy
+      .mockImplementationOnce(async () => ok('[ru] can you make a prompt for VEO 3', { promptTokenCount: 50, candidatesTokenCount: 10, totalTokenCount: 60 }))
+      .mockImplementationOnce(async () => ok('[ru] можешь сделать промпт для VEO 3', { promptTokenCount: 60, candidatesTokenCount: 12, totalTokenCount: 72 }));
+    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US');
+    expect(r).toEqual({
+      text: 'можешь сделать промпт для VEO 3',
+      model: 'gemini-3.6-flash',
+      spoken: 'ru',
+      // Both calls were billed.
+      usage: { inputTokens: 110, outputTokens: 22, totalTokens: 132 },
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(sentBody(0).contents[0]!.parts[0]!.text).toMatch(/most likely speaks English/);
+    expect(sentBody(1).contents[0]!.parts[0]!.text).toMatch(/The speaker speaks Russian\./);
+  });
+
+  it('asks again only once: a second English answer is returned as it is', async () => {
+    fetchSpy.mockImplementation(async () => ok('[ru] can you make a prompt'));
+    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE');
+    expect(r.text).toBe('can you make a prompt');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('a retry that cannot answer still leaves the first answer, not a lost dictation', async () => {
+    fetchSpy
+      .mockImplementationOnce(async () => ok('[ru] can you make a prompt'))
+      .mockImplementationOnce(async () => new Response('bad', { status: 400 }));
+    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ru-RU', { models: ['gemini-3.6-flash'] });
+    expect(r).toMatchObject({ text: 'can you make a prompt', spoken: 'ru' });
   });
 
   it('returns Google-reported usage', async () => {
