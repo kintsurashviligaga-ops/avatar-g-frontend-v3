@@ -51,3 +51,12 @@ test('with ?micstats=1 it shows the page\'s summaries and follows each new dicta
   act(() => { pushDictationMetrics({ ...M, tapToListeningMs: 400 }); });
   expect(screen.getByTestId('mic-stats').textContent).toMatch(/\(2 dictations.*tap→listening 180 \/ 400/);
 });
+
+test("during the owner's ?stt= trial the line names the model it measured; without one it does not", () => {
+  expect(micStatsLine(summarizeDictationLatency([M]), 'en', 'gemini-3.1-flash-lite')).toMatch(/Stop→final 900 \/ 900 · STT gemini-3\.1-flash-lite$/);
+  expect(micStatsLine(summarizeDictationLatency([M]), 'en', null)).toMatch(/Stop→final 900 \/ 900$/);
+  window.history.replaceState(null, '', '/?micstats=1&stt=gemini-3.5-flash');
+  pushDictationMetrics(M);
+  render(<DictationMetricsReadout locale="en" />);
+  expect(screen.getByTestId('mic-stats').textContent).toMatch(/· STT gemini-3\.5-flash$/);
+});

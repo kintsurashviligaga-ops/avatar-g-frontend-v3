@@ -116,8 +116,17 @@ export function ttsReadsVerbatim(model: string): boolean {
   return /^gemini-3\.8-/.test(model.trim().replace(/^models\//i, '').toLowerCase());
 }
 
-/** The STT default: a multimodal generateContent model given a "transcribe this audio" prompt (geminiStt.ts). */
-export const DEFAULT_STT_MODEL = 'gemini-3.8-flash';
+/**
+ * The STT default: a multimodal generateContent model given a "transcribe this audio" prompt (geminiStt.ts).
+ *
+ * ⚠️ 3.8 FLASH WAS TOO SLOW FOR THE MIC. On Production (GG, 2026-10-25 08:51Z) a dictation of two sentences ended in
+ * "Gemini STT network error on gemini-3.8-flash: TimeoutError": 22 s without an answer, the words came into the box
+ * late, and the spinner turned all that time. A transcript needs no reasoning, and 3.8 Flash cannot think less than
+ * `'low'`; 3.6 Flash takes `'minimal'` (lib/voice-v2v/geminiStt thinkingFor). Whether 3.6 Flash is fast enough, and
+ * as good in Georgian, is UNVERIFIED until the owner dictates on Production (`?micstats=1` shows the timings, and
+ * `?stt=<model>` lets the owner try another model from STT_MODELS — lib/voice/sttTrial).
+ */
+export const DEFAULT_STT_MODEL = 'gemini-3.6-flash';
 
 /**
  * generateContent models that accept audio input — the only kind geminiStt.ts can call.
@@ -132,9 +141,13 @@ export const DEFAULT_STT_MODEL = 'gemini-3.8-flash';
  */
 export const STT_MODELS: readonly string[] = [
   DEFAULT_STT_MODEL,
+  'gemini-3.8-flash',
   'gemini-3.7-flash',
-  'gemini-3.6-flash',
   'gemini-3.5-flash',
+  // The chat's Lite models (DEFAULT_CHAT_MODELS.lite): the fastest Gemini models this project serves, for the owner's
+  // `?stt=` trial and a GEMINI_STT_MODEL override. Their Georgian is UNVERIFIED.
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
   'gemini-3.1-pro-preview',
 ];
 

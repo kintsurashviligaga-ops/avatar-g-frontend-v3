@@ -325,11 +325,22 @@ describe('recorder path (WAV)', () => {
     expect(audio.name).toBe('clip.wav');
     expect(audio.type).toBe('audio/wav');
     expect(fd.get('language')).toBe('ka-GE');
+    // No `?stt=` trial: the request names no model, and the route uses its own chain.
+    expect(fd.get('model')).toBeNull();
 
     expect(h.result.current.value).toBe('ტექსტი გამარჯობა');
     expect(h.result.current.d.inputSourceRef.current).toBe('voice');
     expect(h.result.current.d.recording).toBe(false);
     expect(h.result.current.d.transcribing).toBe(false);
+  });
+
+  test("the owner's `?stt=` trial names its model on the request (the route honours it for an admin only)", async () => {
+    const h = harness({ deps: { speechRecognition: () => undefined, sttTrialModel: () => 'gemini-3.1-flash-lite' } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    const fd = (h.fetchMock.mock.calls[0] as [string, RequestInit])[1].body as FormData;
+    expect(fd.get('model')).toBe('gemini-3.1-flash-lite');
+    expect(h.result.current.value).toBe('გამარჯობა');
   });
 
   test('interim passes run on the captured-audio cadence and stream text in', async () => {
