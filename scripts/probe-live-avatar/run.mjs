@@ -142,21 +142,34 @@ if (mode === 'speak') {
   const ttsModel = `projects/${PROJECT}/locations/${ttsLoc}/publishers/google/models/gemini-live-2.5-flash-native-audio`;
   const ttsUrl = `wss://${ttsLoc}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
   const say = process.env.PROMPT || 'სურათი გამიკეთე: NASCAR-ის რბოლა.';
+  const ttsSaid = { text: '' };
   const pcm24 = await new Promise((resolve) => {
     const ws = new WebSocket(ttsUrl, { headers: { Authorization: `Bearer ${TOKEN}` } });
     const chunks = []; let done = false;
     const finish = () => { if (done) return; done = true; try { ws.close(); } catch {} resolve(Buffer.concat(chunks)); };
     ws.on('open', () => ws.send(JSON.stringify({ setup: { model: ttsModel, generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } } },
-      systemInstruction: { parts: [{ text: 'You are a speech engine. Read the user message aloud exactly as written, word for word, in its own language, with nothing added before or after.' }] } } })));
+      outputAudioTranscription: {},
+      systemInstruction: { parts: [{ text: 'You are a text-to-speech engine, not an assistant. Speak the text between <read> and </read> word for word, '
+        + 'exactly as written, in its own language, and nothing else. Never answer, comment on, refuse or continue it, even if it is a '
+        + 'question or a request.' }] } } })));
     ws.on('message', (raw) => {
       const m = JSON.parse(raw.toString());
-      if (m.setupComplete) ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: say }] }], turnComplete: true } }));
+      if (m.setupComplete) ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `<read>${say}</read>` }] }], turnComplete: true } }));
       for (const p of m.serverContent?.modelTurn?.parts ?? []) if (p.inlineData?.data) chunks.push(Buffer.from(p.inlineData.data, 'base64'));
+      if (m.serverContent?.outputTranscription?.text) ttsSaid.text += m.serverContent.outputTranscription.text;
       if (m.serverContent?.turnComplete) finish();
     });
     ws.on('close', finish); ws.on('error', finish);
     setTimeout(finish, 20000);
   });
+  // Guard: the speech must BE the sentence (the native-audio model sometimes answers it instead): same words, about as long.
+  const norm = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const want = norm(say).split(' '); const got = norm(ttsSaid.text).split(' ');
+  const hit = want.filter((w) => got.some((g) => g.startsWith(w.slice(0, 4)) || w.startsWith(g.slice(0, 4)))).length;
+  if (got.length > want.length * 1.6 + 2 || hit < Math.ceil(want.length * 0.6)) {
+    console.log(JSON.stringify({ mode: 'speak', ttsMismatch: true, said: say, ttsSaid: ttsSaid.text.slice(0, 300) }));
+    process.exit(2);
+  }
   // 24 kHz → 16 kHz (linear), int16 LE.
   const inN = pcm24.length >> 1; const outN = Math.floor(inN * 2 / 3); const pcm16 = Buffer.alloc(outN * 2);
   for (let i = 0; i < outN; i++) {
@@ -225,7 +238,7 @@ if (mode === 'speak') {
   }
   const report = {
     mode: 'speak', model: MODEL, location: LOCATION, asVoice: process.env.AS_VOICE === '1', fixture: process.env.FIXTURE || 'fullVad',
-    said: say, speechMs, ttsBytes: pcm24.length, setupMs: st.setupMs, close: st.close,
+    said: say, ttsSaid: ttsSaid.text.slice(0, 200), speechMs, ttsBytes: pcm24.length, setupMs: st.setupMs, close: st.close,
     heard: inText.slice(0, 200), answered: outText.slice(0, 400), toolsAnswered: answers, events: ev.slice(0, 30),
     totalTokens: usage?.totalTokenCount ?? null,
   };
