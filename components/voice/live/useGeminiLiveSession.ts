@@ -70,6 +70,7 @@ import { requestLiveThreadId } from '@/lib/voice/liveThread';
 import { acquireMic, browserMicDeps, type MicDeps, type MicFailure, type MicResult } from '@/lib/voice/micAcquire';
 import { useVoicePreferencesContext } from '@/components/voice/experience/VoicePreferencesProvider';
 import { voiceStyleInstruction, VOICE_UI_APPROVAL_RULE, type VoicePreferences } from '@/lib/voice/experience/settings';
+import { offersUnpreparedStart, UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
 import { voiceStyleCommand } from '@/lib/voice/experience/commands';
 import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
 import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
@@ -672,6 +673,11 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const handleRef = useRef<string | null>(null);
   const degradedRef = useRef(false);
   const actionsOffRef = useRef(false); // this call gave up the UI-action declarations after a failed handshake
+  // An answer that offers to start with nothing prepared (lib/voice/liveUnprepared): a function called since the user's
+  // last words, an order prepared and not yet started, and the notes this call sent about it.
+  const toolSinceUserRef = useRef(false);
+  const preparedRef = useRef(false);
+  const unpreparedNotesRef = useRef(0);
   const planRef = useRef<PlanStep[]>([]);
   const stepRef = useRef(0);
   const timeoutRetriesRef = useRef(0); // same-setup retries the current plan spent on handshakes that timed out
@@ -1125,7 +1131,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         enqueueAudio(ev.data, ev.mimeType);
         return;
       case 'inputTranscript':
-        if (ev.text) { pendingUserRef.current += ev.text; publishCaptions(); emitHeard({ text: pendingUserRef.current }); }
+        if (ev.text) { pendingUserRef.current += ev.text; toolSinceUserRef.current = false; publishCaptions(); emitHeard({ text: pendingUserRef.current }); }
         return;
       case 'outputTranscript':
         if (dropModelAudioRef.current) return; // the words of audio we dropped were never heard
@@ -1152,15 +1158,27 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         if (readyRef.current) setStatusSafe('listening');
         afterTurnBoundary();
         return;
-      case 'turnComplete':
+      case 'turnComplete': {
+        const said = pendingModelRef.current;
         dispatchActivity({ type: 'turnEnd' });
         flushTurn(false);
         dropModelAudioRef.current = false;
         modelTurnOpenRef.current = false;
         clearThinkingTimer();
         if (!isPlaying() && readyRef.current && statusRef.current !== 'listening') setStatusSafe('listening');
+        // ⚠️ GG 2026-10-25: "5 credits. Shall I start?" / "press the button" with no function called left nothing on
+        // screen. Only a call that HAS the functions is told (without them the note would name one it cannot call).
+        const o = optsRef.current;
+        const hasActions = o.actions === true && !actionsOffRef.current && o.parity !== false && !degradedRef.current;
+        if (hasActions && !toolSinceUserRef.current && !preparedRef.current && unpreparedNotesRef.current < UNPREPARED_START_NOTES_MAX
+          && offersUnpreparedStart(said) && readyRef.current && sessionRef.current === session) {
+          unpreparedNotesRef.current += 1;
+          toolSinceUserRef.current = true; // one note per thing the user said
+          session.sendText(UNPREPARED_START_NOTE);
+        }
         afterTurnBoundary();
         return;
+      }
       case 'goAway': {
         // The old connection keeps working for timeLeft: let an in-flight answer finish there, then resume.
         if (!modelTurnOpenRef.current) { reconnectRef.current('goAway'); return; }
@@ -1177,6 +1195,11 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         try { optsRef.current.onUsage?.(ev.totalTokens === undefined ? {} : { totalTokens: ev.totalTokens }); } catch { /* noop */ }
         return;
       case 'toolCall':
+        toolSinceUserRef.current = true;
+        for (const c of ev.calls) {
+          if (c.name === 'prepare_generation') preparedRef.current = true;
+          else if (c.name === 'start_generation') preparedRef.current = false;
+        }
         void answerToolCall(ev.calls, session);
         return;
       case 'toolCallCancellation':
@@ -1603,6 +1626,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     degradedRef.current = false;
     setDegraded(false);
     actionsOffRef.current = false;
+    toolSinceUserRef.current = false;
+    preparedRef.current = false;
+    unpreparedNotesRef.current = 0;
     tokenRef.current = null;
     modelRef.current = null;
     serverSetupRef.current = null;

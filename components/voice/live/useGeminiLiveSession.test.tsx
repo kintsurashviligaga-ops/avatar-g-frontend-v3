@@ -11,6 +11,7 @@ import { VoicePreferencesProvider, useVoicePreferencesContext } from '@/componen
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
+import { UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
 import { LIVE_SPOKEN_RULE } from '@/lib/agents/profile';
 import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
@@ -771,6 +772,62 @@ test('actions: the mint asks for the declarations; the host answers each call by
 
   act(() => ws.receive({ toolCallCancellation: { ids: ['c1'] } }));
   expect(onToolCallCancellation).toHaveBeenCalledWith(['c1']);
+  unmount();
+});
+
+// ─── An offer to start with nothing prepared (lib/voice/liveUnprepared) ───────────
+
+const noteFrames = (ws: { sent: Frame[] }) => ws.sent.filter((f) => f.realtimeInput?.text === UNPREPARED_START_NOTE);
+const answer = (calls: Array<{ id: string; name: string }>) => calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true } }));
+
+test('GG 2026-10-25: "5 credits. Shall I start?" with no function called gets ONE [App] note per thing the user said', async () => {
+  const h = harness();
+  const { ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall: jest.fn(answer) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'სურათი გამიკეთე' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'ფასი 5 კრედიტი. დავიწყო?' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  // The model's next answer repeats itself before the user speaks: no second note.
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  // The note is the app's, never the user's words.
+  expect(noteFrames(ws)[0]).toEqual({ realtimeInput: { text: UNPREPARED_START_NOTE } });
+  unmount();
+});
+
+test('an offer after prepare_generation (in this exchange or one before) is the normal flow: no note', async () => {
+  const h = harness();
+  const { ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall: jest.fn(answer) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'make a picture of a race' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c1', name: 'prepare_generation', args: { tool: 'image' } }] } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'It is 5 credits. Shall I start?' }, turnComplete: true } }));
+  // The user asks again; the prepared order is still on screen.
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'how much?' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Five credits. Shall I start?' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(0);
+  // Once it started, a NEW offer with nothing prepared is caught again.
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c2', name: 'start_generation', args: {} }] } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'now a video' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Press the generate button.' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  unmount();
+});
+
+test(`a call without the functions is never told to call one; a call sends at most ${UNPREPARED_START_NOTES_MAX} notes`, async () => {
+  const h = harness();
+  const plain = await connected({ deps: h.deps });
+  act(() => plain.ws.receive({ serverContent: { inputTranscription: { text: 'make a picture' } } }));
+  act(() => plain.ws.receive({ serverContent: { outputTranscription: { text: 'Shall I start?' }, turnComplete: true } }));
+  expect(noteFrames(plain.ws)).toHaveLength(0);
+  plain.unmount();
+
+  const h2 = harness();
+  const { ws, unmount } = await connected({ deps: h2.deps, actions: true, onToolCall: jest.fn(answer) });
+  for (let i = 0; i < UNPREPARED_START_NOTES_MAX + 2; i++) {
+    act(() => ws.receive({ serverContent: { inputTranscription: { text: `picture ${i}` } } }));
+    act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
+  }
+  expect(noteFrames(ws)).toHaveLength(UNPREPARED_START_NOTES_MAX);
   unmount();
 });
 
