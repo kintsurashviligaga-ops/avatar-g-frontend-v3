@@ -11694,7 +11694,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
             {/* Full-bleed background glow moved to outer viewport shell */}
-            <div className="relative z-10 flex flex-col items-center space-y-3.5 motion-safe:[animation:agSlideUp_0.6s_cubic-bezier(0.2,0.7,0.2,1)_both]">
+            <div className="relative z-10 flex w-full flex-col items-center space-y-3.5 motion-safe:[animation:agSlideUp_0.6s_cubic-bezier(0.2,0.7,0.2,1)_both]">
               {/* Sphere and rocket removed from main chat window per user request */}
               <h1 className="mx-auto max-w-[290px] text-balance font-display text-[28px] font-semibold leading-[1.22] tracking-[-0.02em] text-white sm:max-w-md sm:text-[36px]">
                 {locale === "en" ? "What should we focus on?" : locale === "ru" ? "На чём сфокусируемся?" : "რაზე გავამახვილოთ ყურადღება?"}

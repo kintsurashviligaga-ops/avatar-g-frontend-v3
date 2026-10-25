@@ -639,5 +639,19 @@ for (const vp of VIEWPORTS) {
       await expect(box).toHaveValue('a lighthouse in the storm');
       expect(await noSideways(page)).toBe(0);
     });
+
+    test('the empty chat\'s line about the chosen service stays inside the screen, for every service', async ({ page }) => {
+      // Interior's line ran 20 px past a 390 px screen's left edge once it showed the greeting (the greeting's column had no width).
+      await openStudio(page, { tool: null });
+      for (const id of ['video', 'image', 'music', 'avatar', 'interior', 'product', 'vfx', 'model3d']) {
+        await pickService(page, id, 'en');
+        const hint = page.getByTestId('tool-hint');
+        await expect(hint).toBeVisible();
+        await settled(page);
+        const r = (await hint.boundingBox())!;
+        expect(r.x, `${id}: left edge`).toBeGreaterThanOrEqual(0);
+        expect(r.x + r.width, `${id}: right edge`).toBeLessThanOrEqual(vp.width);
+      }
+    });
   });
 }
