@@ -2,10 +2,16 @@
 // Usage: node run.mjs <mode> [avatarName]
 //   mode = names   → setups with several avatar names, no turn (setup errors cost nothing), prints which open
 //   mode = talk    → one session with avatarName, one Georgian text turn, records every server message for ~25 s
+//   mode = setup   → the EXACT setups the mint route builds for an avatar call (setups.json, dumped from route.test.ts with
+//                    the avatar on: full = actions + captions + resumption + compression, fullVad = + realtimeInputConfig,
+//                    noTools = the browser's no-tools retry), each closed the moment setupComplete arrives (no turn: free)
+//   mode = custom  → the full setup with avatarConfig.customizedAvatar = a synthetic grey 704×1280 PNG (no face, no user
+//                    data), closed at setupComplete: a 1007 "not allowlisted" close = the own-face avatar is BLOCKED_EXTERNAL
 // env: TOKEN (gcloud auth print-access-token), PROJECT, LOCATION (default europe-west4), MODEL (default gemini-3.8-live),
 //      SHAPE = a | b | c  (where avatarConfig sits, see setupFor), BITRATE (videoBitrateBps, default 1500000)
 // Writes out-<avatar>.mp4 (all video bytes in arrival order) and report-<avatar>.json next to this file.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
 import WebSocket from 'ws';
 
 const [, , mode = 'names', avatarArg = 'Kira'] = process.argv;
@@ -28,7 +34,7 @@ function setupFor(avatarName) {
   return { setup: { ...base, generationConfig: { responseModalities: ['VIDEO'], avatarConfig: avatar } } };
 }
 
-function open(avatarName) {
+function open(avatarName, frame = setupFor(avatarName)) {
   const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${TOKEN}` }, maxPayload: 256 * 1024 * 1024 });
   const t0 = Date.now();
   const state = { ws, t0, setupMs: -1, close: null, msgs: [] };
@@ -41,7 +47,7 @@ function open(avatarName) {
     ws.on('close', (code, reason) => { state.close = { code, reason: reason.toString().slice(0, 300), t: Date.now() - t0 }; resolve(false); });
     ws.on('error', (e) => { state.error = e.message; resolve(false); });
   });
-  ws.on('open', () => ws.send(JSON.stringify(setupFor(avatarName))));
+  ws.on('open', () => ws.send(JSON.stringify(frame)));
   return state;
 }
 
@@ -70,6 +76,43 @@ function codecs(buf) {
   const tk = buf.indexOf('tkhd', 0, 'latin1');
   if (tk > 0) { const v = buf[tk + 4]; const off = tk + 4 + (v === 1 ? 88 : 76); r.width = buf.readUInt32BE(off) >> 16; r.height = buf.readUInt32BE(off + 4) >> 16; }
   return r;
+}
+
+// A plain grey 9:16 PNG at the documented minimum (704×1280): enough for Google to judge the request, nobody's face.
+const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (buf) => { let c = 0xffffffff; for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([len, body, crc]);
+}
+function greyPng(w = 704, h = 1280) {
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2; // 8-bit RGB
+  const row = Buffer.alloc(1 + w * 3, 128); row[0] = 0; // filter byte 0, then grey pixels
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk('IHDR', ihdr), pngChunk('IDAT', deflateSync(raw)), pngChunk('IEND', Buffer.alloc(0))]);
+}
+
+if (mode === 'setup' || mode === 'custom') {
+  const fixtures = JSON.parse(readFileSync(here('setups.json'), 'utf8'));
+  const cases = mode === 'setup'
+    ? Object.entries(fixtures)
+    : [['custom', { setup: { ...fixtures.full.setup, avatarConfig: { customizedAvatar: { imageMimeType: 'image/png', imageData: greyPng().toString('base64') }, videoBitrateBps: BITRATE } } }]];
+  for (const [name, msg] of cases) {
+    const frame = { setup: { ...msg.setup, model } };
+    const s = open(null, frame);
+    const ok = await Promise.race([s.ready, sleep(15000).then(() => 'timeout')]);
+    const closedByServer = s.close; // before our own close below
+    try { s.ws.close(); } catch {}
+    await sleep(800);
+    console.log(JSON.stringify({
+      case: name, location: LOCATION, ok, setupMs: s.setupMs, serverClose: closedByServer, error: s.error,
+      frameKB: Math.round(JSON.stringify(frame).length / 1024), modelTurns: s.msgs.filter((x) => x.m.serverContent?.modelTurn).length,
+    }));
+    await sleep(500);
+  }
+  process.exit(0);
 }
 
 if (mode === 'names') {
