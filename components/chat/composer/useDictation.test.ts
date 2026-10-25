@@ -300,10 +300,27 @@ describe('recorder path (WAV)', () => {
     expect(h.result.current.d.engine).toBe('wav');
   });
 
-  test('Apple engine + English keeps Web Speech', async () => {
+  test('Apple engine records English too: Web Speech there hears only the one language it is set to', async () => {
     const h = harness({ locale: 'en', deps: { userAgent: () => SAFARI_UA, loadSpeechLang: () => 'en-US' } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    expect(FakeSR.instances).toHaveLength(0);
+    expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(h.result.current.d.engine).toBe('wav');
+  });
+
+  test('iPhone after a Russian message records, with Russian as the hint only (GG, production 2026-10-24)', async () => {
+    const h = harness({ speechLang: 'ru-RU', deps: { userAgent: () => IPHONE_UA } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    expect(FakeSR.instances).toHaveLength(0);
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    const fd = (h.fetchMock.mock.calls[0] as [string, RequestInit])[1].body as FormData;
+    expect(fd.get('language')).toBe('ru-RU');
+  });
+
+  test('Chrome keeps Web Speech in the language the user evidently speaks', async () => {
+    const h = harness({ speechLang: 'ru-RU', deps: { userAgent: () => CHROME_UA } });
     await act(async () => { await h.result.current.d.toggle(); });
-    expect(FakeSR.instances[0]!.lang).toBe('en-US');
+    expect(FakeSR.instances[0]!.lang).toBe('ru-RU');
   });
 
   test('Stop runs one final pass: POSTs clip.wav (audio/wav) + language, fills the box, does not send', async () => {
@@ -418,6 +435,24 @@ describe('recorder path (WAV)', () => {
     });
     expect(h.result.current.d.recording).toBe(false);
     expect(h.fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('a pause to think between sentences does NOT stop the recorder (GG, Production 2026-10-25: cut off mid-thought)', async () => {
+    const h = harness({ deps: { speechRecognition: () => undefined } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    const level = h.cap.state.onLevel!;
+    await act(async () => {
+      h.setNow(0); level(0.2); // the first sentence
+      h.setNow(100); level(0.001); // a pause to think…
+      h.setNow(2600); level(0.001); // …2.5 s long: the old 1.3 s hold stopped here
+      h.setNow(2700); level(0.2); // the next sentence
+      h.setNow(2800); level(0.001);
+      h.setNow(2800 + SILENCE_HOLD_MS - 1); level(0.001);
+      await flush();
+    });
+    expect(SILENCE_HOLD_MS).toBeGreaterThanOrEqual(3000);
+    expect(h.result.current.d.recording).toBe(true);
+    expect(h.fetchMock).not.toHaveBeenCalled();
   });
 
   test(`the clip stops itself at ${MAX_RECORD_SEC} s (WAV size vs the request ceiling)`, async () => {

@@ -10,7 +10,11 @@
  *  · The language is the one the user SPEAKS (lib/voice/speechLang): their typed native script, else the language the
  *    server heard last time, else Georgian for a Georgian UI, else 'auto' — the recorder, where Gemini identifies it
  *    (Web Speech cannot) and the answer is remembered for the next dictation. Never a translation.
- *  · Apple's engine (iOS and macOS Safari) has no Georgian, so `ka` there goes straight to the recorder.
+ *  · Apple's engine (iOS and macOS Safari) always records: Gemini hears Georgian, English and Russian in one clip, and
+ *    the language guessed above is only its hint. ⚠️ IT USED TO RECORD ONLY FOR GEORGIAN (Apple's engine has none) and
+ *    use Web Speech in the guessed language otherwise. On an iPhone that had typed Russian once, Georgian and English
+ *    speech came out as Russian-engine nonsense ("Akino Gett Батуми"; GG, production 2026-10-24): Web Speech hears
+ *    only the one language it is set to, and the guess is a guess.
  *  · Otherwise, record and POST to /api/voice/transcribe, streaming interim passes into the box on the
  *    `lib/voice/interimCadence` back-off, then one final pass on Stop.
  *  · NO AUTO-SEND. Dictation fills the box and waits for the user to tap Send (product decision; the
@@ -237,7 +241,16 @@ export const TICK_MS = 300;
 /** See the file header: 120 s of 16 kHz WAV ≈ 3.8 MB, under the ~4.5 MB request ceiling. */
 export const MAX_RECORD_SEC = 120;
 export const SILENCE_RMS = 0.035;
-export const SILENCE_HOLD_MS = 1300;
+/**
+ * How long the user must stay quiet, after speaking, before the recorder stops by itself (no auto-send; Stop and the
+ * mic button still stop at once).
+ *
+ * ⚠️ 1.3 s CUT THE OWNER OFF MID-THOUGHT. On Production (GG, iPhone, 2026-10-25 09:44Z) a long Georgian dictation
+ * stopped in the middle and the spinner started: a pause to think between two sentences is longer than 1.3 s, and
+ * the recorder took it for the end. A dictation that stops too early loses the rest of what the user meant to say;
+ * one that stops late only costs a tap or a few seconds. UNVERIFIED that 4 s covers every thinking pause.
+ */
+export const SILENCE_HOLD_MS = 4000;
 export const TRANSCRIBE_TIMEOUT_MS = 30_000;
 export const WEB_SPEECH_START_WATCHDOG_MS = 8000;
 export const WEB_SPEECH_AFTER_SPEECH_WATCHDOG_MS = 2500;
@@ -1253,9 +1266,9 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     let learned: SpeechLang | null = null;
     try { learned = d.loadSpeechLang(); } catch { /* unknown */ }
     const want = resolveSpeechLang({ locale: o.locale, typed: o.speechLang ?? null, learned });
-    const SR = want === 'auto' ? undefined : d.speechRecognition();
-    const webSpeech = want !== 'auto' && !!SR && !(isAppleSpeechEngine(d.userAgent()) && want.startsWith('ka'))
-      && !unsupportedLangsRef.current.has(want);
+    // Apple's engine records every language: it hears only the one it is set to, and the language here is a guess.
+    const SR = want === 'auto' || isAppleSpeechEngine(d.userAgent()) ? undefined : d.speechRecognition();
+    const webSpeech = want !== 'auto' && !!SR && !unsupportedLangsRef.current.has(want);
     // The tap shows 'starting' at once; 'listening' only once capture really runs.
     const run = beginRun(want, webSpeech ? 'webspeech' : 'recorder');
     if (want === 'auto' || !SR || !webSpeech) { await startRecorder(want, run); return; }
