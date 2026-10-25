@@ -9,6 +9,7 @@ import {
   resolveSpeechLang,
   saveLearnedSpeechLang,
   transcriptSpeechLang,
+  heardSpeechLang,
   typedSpeechLang,
 } from './speechLang';
 
@@ -70,4 +71,18 @@ test('isSpeechLang', () => {
   expect(isSpeechLang('ka-GE')).toBe(true);
   expect(isSpeechLang('auto')).toBe(false);
   expect(isSpeechLang(3)).toBe(false);
+});
+
+describe('heardSpeechLang', () => {
+  it("native script wins; Latin text takes the model's own language code, so a translation never teaches the mic English", () => {
+    // GG, Production 2026-10-25: Russian speech came back as English; it must be remembered as Russian.
+    expect(heardSpeechLang('can you make a prompt for VEO 3', 'ru')).toBe('ru-RU');
+    expect(heardSpeechLang('How do I get to Batumi?', 'ka')).toBe('ka-GE');
+    expect(heardSpeechLang('привет', 'en')).toBe('ru-RU');
+    expect(heardSpeechLang('გამარჯობა', 'ru')).toBe('ka-GE');
+    expect(heardSpeechLang('hello there', 'en')).toBe('en-US');
+    expect(heardSpeechLang('hello there', null)).toBe('en-US');
+    expect(heardSpeechLang('hello there', 'de')).toBe('en-US');
+    expect(heardSpeechLang('', null)).toBeNull();
+  });
 });

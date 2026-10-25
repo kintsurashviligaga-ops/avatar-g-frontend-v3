@@ -48,6 +48,19 @@ export function transcriptSpeechLang(text: string | null | undefined): SpeechLan
   return null;
 }
 
+/**
+ * The language the server HEARD, for the answer's `language` (remembered as step 2 below): the transcript's native
+ * script, else the code the model named for the speech (`[ru] …`, lib/voice-v2v/geminiStt splitSpokenTag).
+ * ⚠️ BY SCRIPT ALONE, ONE TRANSLATED ANSWER TAUGHT THE MIC ENGLISH: Russian speech came back as an English sentence
+ * (GG, Production 2026-10-25), its Latin letters were remembered as 'en-US', and the next dictation was hinted English.
+ */
+export function heardSpeechLang(text: string | null | undefined, spoken?: string | null): SpeechLang | null {
+  const byScript = transcriptSpeechLang(text);
+  if (byScript === 'ka-GE' || byScript === 'ru-RU') return byScript;
+  const byTag: SpeechLang | null = spoken === 'ka' ? 'ka-GE' : spoken === 'ru' ? 'ru-RU' : spoken === 'en' ? 'en-US' : null;
+  return byTag ?? byScript;
+}
+
 /** Only an unambiguous native script counts in TYPED text (Latin is often transliterated Georgian). */
 export function typedSpeechLang(text: string | null | undefined): SpeechLang | null {
   const lang = transcriptSpeechLang(text);

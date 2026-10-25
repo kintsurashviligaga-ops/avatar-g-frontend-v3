@@ -171,18 +171,56 @@ const LANGUAGE_NAME: Record<string, string> = {
  * English" made Gemini TRANSLATE Georgian speech into English (and "in Georgian" turned Russian speech into Georgian).
  * Now every prompt says: write the language actually spoken, in its own script — Georgian in Mkhedruli (never Latin;
  * lib/voice/sttAccept rejects Latin for a Georgian request), Russian in Cyrillic. 'auto' gives no hint at all.
+ *
+ * The answer starts with the code of the language heard, `[ru] …` (splitSpokenTag): naming the language before
+ * writing a word keeps the model in it, and lets transcribeWithGeminiDetailed catch a translation (isTranslated).
+ * `firm` is that code after a translated answer: the retry is told the language outright.
  */
-export function sttPrompt(language: string): string {
+export function sttPrompt(language: string, firm?: string | null): string {
   const langName = LANGUAGE_NAME[language];
-  const hint = langName
-    ? `The speaker most likely speaks ${langName}; if they speak another language, write that language instead.`
-    : 'The speaker may speak Georgian, English, Russian or any other language.';
+  const insist = firm ? NATIVE_SCRIPT[firm] : undefined;
+  const hint = insist
+    ? `The speaker speaks ${insist.name}. Write their ${insist.name} words in ${insist.script}, exactly as spoken; do NOT translate them into English or any other language.`
+    : langName
+      ? `The speaker most likely speaks ${langName}; if they speak another language, write that language instead.`
+      : 'The speaker may speak Georgian, English, Russian or any other language.';
   return [
-    'Transcribe this audio verbatim, in the language the speaker actually uses. NEVER translate.',
+    'Transcribe this audio verbatim, in the language the speaker actually uses. NEVER translate, not even into the language of these instructions.',
     hint,
     'Georgian speech is written in the Georgian (Mkhedruli) alphabet, never in Latin letters; Russian in Cyrillic.',
-    'Output ONLY the exact spoken words — no commentary, no quotes, no labels, no extra text. If silent, output nothing.',
+    'First write the ISO 639-1 code of the language actually spoken in square brackets ([ka], [ru], [en] …), then a space, then ONLY the exact spoken words — no commentary, no quotes, no other labels. If silent, output nothing.',
   ].join(' ');
+}
+
+const CYRILLIC_LETTER_RE = /[Ѐ-ӿ]/;
+
+/**
+ * Languages written in ONE script, by ISO 639-1 code: an answer tagged with one of these and written in Latin
+ * letters is a translation, never how anyone speaks them (English, and Latin-script languages, are never flagged).
+ */
+const NATIVE_SCRIPT: Readonly<Record<string, { name: string; script: string; re: RegExp }>> = {
+  ka: { name: 'Georgian', script: 'the Georgian (Mkhedruli) alphabet', re: /[Ⴀ-ჿᲐ-Ჿⴀ-⴯]/ },
+  ru: { name: 'Russian', script: 'Cyrillic', re: CYRILLIC_LETTER_RE },
+  uk: { name: 'Ukrainian', script: 'Cyrillic', re: CYRILLIC_LETTER_RE },
+  be: { name: 'Belarusian', script: 'Cyrillic', re: CYRILLIC_LETTER_RE },
+  bg: { name: 'Bulgarian', script: 'Cyrillic', re: CYRILLIC_LETTER_RE },
+  mk: { name: 'Macedonian', script: 'Cyrillic', re: CYRILLIC_LETTER_RE },
+  kk: { name: 'Kazakh', script: 'Cyrillic', re: CYRILLIC_LETTER_RE },
+  ky: { name: 'Kyrgyz', script: 'Cyrillic', re: CYRILLIC_LETTER_RE },
+};
+
+/** `[ru] Привет` → { spoken: 'ru', text: 'Привет' }. Brackets only, so speech that starts "So: …" keeps its words. */
+const SPOKEN_TAG_RE = /^\s*[[(]([a-z]{2,3})(?:[-_][a-z]{2,4})?[\])]\s*/i;
+
+export function splitSpokenTag(raw: string): { spoken: string | null; text: string } {
+  const m = SPOKEN_TAG_RE.exec(raw);
+  return m ? { spoken: m[1]!.toLowerCase(), text: raw.slice(m[0].length) } : { spoken: null, text: raw };
+}
+
+/** The answer names a one-script language but has none of its letters, only Latin ones: it was translated. */
+export function isTranslated(spoken: string | null, text: string): boolean {
+  const native = spoken ? NATIVE_SCRIPT[spoken] : undefined;
+  return !!native && !native.re.test(text) && /[A-Za-z][^A-Za-z]*[A-Za-z]/.test(text);
 }
 
 export type GeminiSttErrorCode = 'auth' | 'quota' | 'rate_limited' | 'model_missing' | 'bad_request' | 'unavailable' | 'network';
@@ -230,7 +268,9 @@ export interface GeminiSttResult {
   text: string;
   /** The model that answered. */
   model: string;
-  /** usageMetadata as Google reported it (for bookChatUsage), when present. */
+  /** The ISO 639-1 code the model named for the language it heard (`[ru] …`), when it named one. */
+  spoken?: string;
+  /** usageMetadata as Google reported it (for bookChatUsage), when present; a translated answer's retry adds to it. */
   usage?: GeminiSttUsage;
 }
 
@@ -264,6 +304,15 @@ const THINKING_REFUSED_RE = /thinking/i;
 export const STT_FALLBACK_RESERVE_MS = 8_000;
 /** No attempt gets less than this (a reserve never shrinks one below it). */
 const STT_MIN_ATTEMPT_MS = 5_000;
+/** A translated answer is asked again only with at least this long left before the deadline. */
+const STT_RETRY_MIN_MS = 3_000;
+
+/** Both calls of a translated answer's retry are billed: their usage adds up. */
+function addUsage(a: GeminiSttUsage | undefined, b: GeminiSttUsage | undefined): GeminiSttUsage | undefined {
+  if (!a || !b) return a ?? b;
+  const sum = (x?: number, y?: number): number | undefined => (x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0));
+  return { inputTokens: sum(a.inputTokens, b.inputTokens), outputTokens: sum(a.outputTokens, b.outputTokens), totalTokens: sum(a.totalTokens, b.totalTokens) };
+}
 
 const count = (n: unknown): number | undefined => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : undefined);
 
@@ -304,69 +353,91 @@ export async function transcribeWithGeminiDetailed(
   const tried: string[] = [];
   /** `gemini-3.8-flash 429, gemini-3.6-flash 404: ` before the answer that ended the chain; '' after one attempt. */
   const chain = (): string => (tried.length > 1 ? `${tried.join(', ')}: ` : '');
+  /** The language a translated answer named; the one retry insists on it (sttPrompt `firm`). */
+  let firm: string | null = null;
+  /** That translated answer: still returned if the retry cannot answer, rather than losing the dictation. */
+  let translated: GeminiSttResult | null = null;
+  let spent: GeminiSttUsage | undefined;
 
-  for (let i = 0; i < models.length; i++) {
-    const model = models[i]!;
-    const remaining = deadline - Date.now();
-    if (remaining < 500) break;
-    const hasNext = i < models.length - 1;
-    const attemptMs = hasNext
-      ? Math.max(Math.min(remaining, STT_MIN_ATTEMPT_MS), remaining - STT_FALLBACK_RESERVE_MS)
-      : remaining;
-    const thinkingConfig = thinkingFor(model);
-    const body = JSON.stringify({
-      // camelCase, as every other Vertex AI caller here sends it (the chat SDK, the image studio). Proto JSON also
-      // accepts `inline_data`, the Developer API's documented spelling this used to send.
-      contents: [{ role: 'user', parts: [{ text: sttPrompt(language) }, { inlineData: { mimeType, data: audioBase64 } }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
-    });
-
-    let res: Response;
-    try {
-      res = await googleModelFetch(model, 'generateContent', {
-        method: 'POST',
-        cache: 'no-store',
-        body,
-        signal: AbortSignal.timeout(attemptMs),
+  try {
+    for (let i = 0; i < models.length; i++) {
+      const model = models[i]!;
+      const remaining = deadline - Date.now();
+      if (remaining < 500) break;
+      const hasNext = i < models.length - 1;
+      const attemptMs = hasNext
+        ? Math.max(Math.min(remaining, STT_MIN_ATTEMPT_MS), remaining - STT_FALLBACK_RESERVE_MS)
+        : remaining;
+      const thinkingConfig = thinkingFor(model);
+      const body = JSON.stringify({
+        // camelCase, as every other Vertex AI caller here sends it (the chat SDK, the image studio). Proto JSON also
+        // accepts `inline_data`, the Developer API's documented spelling this used to send.
+        contents: [{ role: 'user', parts: [{ text: sttPrompt(language, firm) }, { inlineData: { mimeType, data: audioBase64 } }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
       });
-    } catch (e) {
-      if (e instanceof NotConfiguredError) throw new GeminiSttError(e.message, 'auth', undefined, model);
-      // By name, not `instanceof Error`: AbortSignal.timeout's DOMException can come from another realm.
-      const name = e && typeof e === 'object' && typeof (e as { name?: unknown }).name === 'string' ? (e as { name: string }).name : 'unknown';
-      // This model did not answer in its share of the deadline: the next one gets the rest. A reset is not the
-      // model's fault — stop there.
-      if (name === 'TimeoutError' && hasNext) {
-        tried.push(`${model} timeout`);
-        last = new GeminiSttError(`${chain()}Gemini STT timed out on ${model} after ${Math.round(attemptMs / 1000)} s`, 'network', undefined, model);
-        continue;
+
+      let res: Response;
+      try {
+        res = await googleModelFetch(model, 'generateContent', {
+          method: 'POST',
+          cache: 'no-store',
+          body,
+          signal: AbortSignal.timeout(attemptMs),
+        });
+      } catch (e) {
+        if (e instanceof NotConfiguredError) throw new GeminiSttError(e.message, 'auth', undefined, model);
+        // By name, not `instanceof Error`: AbortSignal.timeout's DOMException can come from another realm.
+        const name = e && typeof e === 'object' && typeof (e as { name?: unknown }).name === 'string' ? (e as { name: string }).name : 'unknown';
+        // This model did not answer in its share of the deadline: the next one gets the rest. A reset is not the
+        // model's fault — stop there.
+        if (name === 'TimeoutError' && hasNext) {
+          tried.push(`${model} timeout`);
+          last = new GeminiSttError(`${chain()}Gemini STT timed out on ${model} after ${Math.round(attemptMs / 1000)} s`, 'network', undefined, model);
+          continue;
+        }
+        tried.push(`${model} ${name === 'TimeoutError' ? 'timeout' : 'network'}`);
+        throw new GeminiSttError(`${chain()}Gemini STT network error on ${model}: ${name}`, 'network', undefined, model);
       }
-      tried.push(`${model} ${name === 'TimeoutError' ? 'timeout' : 'network'}`);
-      throw new GeminiSttError(`${chain()}Gemini STT network error on ${model}: ${name}`, 'network', undefined, model);
+
+      if (res.ok) {
+        const json = (await res.json().catch(() => null)) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
+          usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+        } | null;
+        const parts = json?.candidates?.[0]?.content?.parts ?? [];
+        const { spoken, text: said } = splitSpokenTag(parts.filter((p) => !p.thought).map((p) => p.text ?? '').join(''));
+        const text = cleanTranscript(said);
+        const u = json?.usageMetadata;
+        spent = addUsage(spent, u
+          ? { inputTokens: count(u.promptTokenCount), outputTokens: count(u.candidatesTokenCount), totalTokens: count(u.totalTokenCount) }
+          : undefined);
+        const result: GeminiSttResult = { text, model, ...(spoken ? { spoken } : {}), ...(spent ? { usage: spent } : {}) };
+        // ⚠️ RUSSIAN SPEECH CAME BACK IN ENGLISH (GG, Production 2026-10-25 10:36Z, iPhone, 3.6 Flash): a fluent English
+        // sentence for what was said in Russian, despite "NEVER translate". An answer that names a one-script language
+        // and has none of its letters is asked once more, the language now stated outright.
+        if (!firm && text && isTranslated(spoken, text) && deadline - Date.now() >= STT_RETRY_MIN_MS) {
+          firm = spoken;
+          translated = result;
+          tried.push(`${model} translated (${spoken})`);
+          i--;
+          continue;
+        }
+        return result;
+      }
+
+      const detail = await res.text().catch(() => '');
+      const code = classifySttStatus(res.status, detail);
+      // Upstream text is trimmed and kept server-side (the route shows it to admins in ?diag only).
+      tried.push(`${model} ${res.status}`);
+      last = new GeminiSttError(`${chain()}Gemini STT failed (${res.status}) on ${model}: ${detail.slice(0, 160)}`, code, res.status, model);
+      if (!ROTATES.has(code) && !(code === 'bad_request' && THINKING_REFUSED_RE.test(detail))) throw last;
     }
 
-    if (res.ok) {
-      const json = (await res.json().catch(() => null)) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
-        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
-      } | null;
-      const parts = json?.candidates?.[0]?.content?.parts ?? [];
-      const text = cleanTranscript(parts.filter((p) => !p.thought).map((p) => p.text ?? '').join(''));
-      const u = json?.usageMetadata;
-      const usage: GeminiSttUsage | undefined = u
-        ? { inputTokens: count(u.promptTokenCount), outputTokens: count(u.candidatesTokenCount), totalTokens: count(u.totalTokenCount) }
-        : undefined;
-      return { text, model, ...(usage ? { usage } : {}) };
-    }
-
-    const detail = await res.text().catch(() => '');
-    const code = classifySttStatus(res.status, detail);
-    // Upstream text is trimmed and kept server-side (the route shows it to admins in ?diag only).
-    tried.push(`${model} ${res.status}`);
-    last = new GeminiSttError(`${chain()}Gemini STT failed (${res.status}) on ${model}: ${detail.slice(0, 160)}`, code, res.status, model);
-    if (!ROTATES.has(code) && !(code === 'bad_request' && THINKING_REFUSED_RE.test(detail))) throw last;
+    throw last ?? new GeminiSttError('Gemini STT failed: no model answered before the deadline', 'network');
+  } catch (e) {
+    if (translated) return { ...translated, ...(spent ? { usage: spent } : {}) };
+    throw e;
   }
-
-  throw last ?? new GeminiSttError('Gemini STT failed: no model answered before the deadline', 'network');
 }
 
 /**
