@@ -21,7 +21,7 @@ import {
   type SpeechRecognitionLike,
   type UseDictationOptions,
 } from './useDictation';
-import { requestMicRelease } from '@/lib/voice/micBus';
+import { MIC_RELEASE_EVENT, requestMicRelease, type MicReleaseDetail } from '@/lib/voice/micBus';
 
 // ─── Fakes ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -567,6 +567,32 @@ describe('mic release (Live voice opening)', () => {
     act(() => requestMicRelease('dictation'));
     expect(h.track.stop).not.toHaveBeenCalled();
     expect(h.result.current.d.recording).toBe(true);
+  });
+
+  test('a tap to dictate asks the other holders (a Live call) to let go first; Stop and a guest ask nothing', async () => {
+    const heard: string[] = [];
+    const on = (e: Event) => heard.push((e as CustomEvent<MicReleaseDetail>).detail.reason);
+    window.addEventListener(MIC_RELEASE_EVENT, on);
+    try {
+      const guest = harness({ authed: false, deps: { speechRecognition: () => undefined } });
+      await act(async () => { await guest.result.current.d.toggle(); });
+      expect(heard).toEqual([]);
+
+      let askedBeforeCapture = false;
+      const getUserMedia = jest.fn(async () => {
+        askedBeforeCapture = heard.length === 1;
+        return { getTracks: () => [{ stop: jest.fn() }], getAudioTracks: () => [] } as unknown as MediaStream;
+      });
+      const h = harness({ deps: { speechRecognition: () => undefined, getUserMedia } });
+      await act(async () => { await h.result.current.d.toggle(); await flush(); });
+      expect(heard).toEqual(['dictation']);
+      expect(askedBeforeCapture).toBe(true);
+      expect(h.result.current.d.recording).toBe(true); // its own request does not stop it
+      await act(async () => { await h.result.current.d.toggle(); await flush(); }); // Stop
+      expect(heard).toEqual(['dictation']);
+    } finally {
+      window.removeEventListener(MIC_RELEASE_EVENT, on);
+    }
   });
 
   test('a release during the permission prompt drops the stream that arrives afterwards', async () => {
