@@ -16,11 +16,12 @@ import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { MIC_RELEASE_EVENT, type MicReleaseDetail } from '@/lib/voice/micBus';
 import { base64ToBytes, bytesToBase64 } from '@/lib/voice/pcm';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona } from '@/lib/voice/voicePrompt';
 
 import {
   LIVE_LANGUAGE_RULE,
   LIVE_MIC_BUSY_RETRY_PAUSE_MS,
+  LIVE_MIC_MUTED_GRACE_MS,
   LIVE_RELAY_SETUP_TIMEOUT_MS,
   LIVE_SETUP_TIMEOUT_MS,
   LIVE_TOKEN_FRESH_MS,
@@ -241,8 +242,11 @@ test('setup is the FIRST frame: parity setup (transcription, resumption, compres
   expect(instruction.startsWith('SYS\n' + VOICE_UI_APPROVAL_RULE + '\n')).toBe(true);
   expect(instruction).toContain('[FAST LIVE VOICE RULE]');
   expect(instruction).toContain('prepare_generation');
+  // It said "1-2 short, natural Georgian sentences" — the call then answered English and Russian in Georgian.
+  expect(instruction).not.toMatch(/Georgian sentences/);
+  expect(instruction.endsWith(LIVE_LANGUAGE_RULE)).toBe(true);
   expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
-  expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+  expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'] });
   expect(setup.outputAudioTranscription).toEqual({});
   expect(setup.sessionResumption).toEqual({});
   expect(setup.contextWindowCompression).toEqual({ slidingWindow: {} });
@@ -1095,6 +1099,61 @@ describe('microphone', () => {
     unmount();
   });
 
+  test('a track the browser mutes (another capture took the mic) is re-acquired after the grace; an unmute in time keeps it', async () => {
+    const h = harness();
+    const track2 = makeTrack();
+    const { result, ws, unmount } = await connected({ deps: h.deps });
+    jest.useFakeTimers();
+    try {
+      // A passing mute: unmuted within the grace, nothing happens.
+      act(() => h.track.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS - 100); });
+      act(() => h.track.fire('unmute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+
+      // A mute that stays: the old track is released and a new one is acquired, as for an ended track.
+      h.getUserMedia.mockResolvedValueOnce(streamOf(track2));
+      act(() => h.track.fire('mute'));
+      await act(async () => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); await flushMicrotasks(); });
+      expect(h.track.stop).toHaveBeenCalled();
+      expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+      expect(result.current.status).toBe('listening');
+      const before = ws.sent.filter(isAudioFrame).length;
+      act(() => h.worklets[1]!.emit(pcm(640, 3), 0.01));
+      expect(ws.sent.filter(isAudioFrame)).toHaveLength(before + 1);
+
+      // The re-acquire is once per call: a second lasting mute ends the call instead of listening to silence.
+      act(() => track2.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); });
+      expect(result.current.error).toBe('mic_lost');
+    } finally {
+      jest.useRealTimers();
+      unmount();
+    }
+  });
+
+  test('a mute while the page is hidden waits for the page to come back before re-acquiring', async () => {
+    const h = harness();
+    const { unmount } = await connected({ deps: h.deps });
+    const vis = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    jest.useFakeTimers();
+    try {
+      act(() => h.track.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS * 4); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(1); // hidden: the browser mutes by design
+
+      vis.mockReturnValue('visible');
+      h.getUserMedia.mockResolvedValueOnce(streamOf(makeTrack()));
+      await act(async () => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); await flushMicrotasks(); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+    } finally {
+      vis.mockRestore();
+      jest.useRealTimers();
+      unmount();
+    }
+  });
+
   test('a lost track whose re-acquire fails → mic_lost with the browser\'s reason', async () => {
     const h = harness();
     const { result, unmount } = await connected({ deps: h.deps });
@@ -1273,7 +1332,7 @@ describe('buildLiveInstruction', () => {
 
   it('default call: live persona + Google-only platform prompt + spoken-call rules, model-default temperature', () => {
     const r = buildLiveInstruction({ locale: 'ka', now });
-    expect(r.systemInstruction.startsWith(liveVoicePersona('ka'))).toBe(true);
+    expect(r.systemInstruction.startsWith(liveCallPersona('ka'))).toBe(true);
     expect(r.systemInstruction).toContain('Veo');
     expect(r.systemInstruction).toContain(LIVE_SPOKEN_RULE);
     expect(r.systemInstruction).toContain(LIVE_LANGUAGE_RULE);
@@ -1282,6 +1341,14 @@ describe('buildLiveInstruction', () => {
     expect(r.voiceName).toBe('Aoede');
     expect(r.googleSearch).toBe(true);
     expect(r.personaActive).toBe(false);
+  });
+
+  it('the language rule ends the instruction, after the persona reminder too (GG 2026-10-25)', () => {
+    for (const personaId of [undefined, 'film-director']) {
+      const r = buildLiveInstruction({ locale: 'ka', personaId, now });
+      expect(r.systemInstruction.endsWith(`\n${LIVE_LANGUAGE_RULE}`)).toBe(true);
+      expect(r.systemInstruction).not.toContain('Switch only if the user asks');
+    }
   });
 
   it('an active persona adds its block once and sends its temperature', () => {

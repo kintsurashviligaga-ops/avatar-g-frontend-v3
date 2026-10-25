@@ -51,7 +51,7 @@ import { llmText } from '../../../../lib/ai/llmText';
 import { chatBudgetRefusal } from '../../../../lib/services/billing/chatBudget';
 import { budgetRefusalMessage } from '../../../../lib/services/billing/budgetMessage';
 import { buildProfilePreamble } from '../../../../lib/chat/userMemory';
-import { liveVoicePersona, voicePersona, voiceFallbackReply } from '../../../../lib/voice/voicePrompt';
+import { liveCallPersona, voicePersona, voiceFallbackReply } from '../../../../lib/voice/voicePrompt';
 import { LIVE_SPOKEN_RULE } from '../../../../lib/agents/profile';
 
 const llmMock = llmText as jest.MockedFunction<typeof llmText>;
@@ -129,7 +129,7 @@ test('no persona: the fuller Live persona + the spoken-length rule, no ≤20-wor
   const res = await POST(post({ text: 'გამარჯობა, როგორ ხარ?', locale: 'ka' }));
   expect(res.status).toBe(200);
   const o = lastOpts();
-  expect(o.system).toContain(liveVoicePersona('ka'));
+  expect(o.system).toContain(liveCallPersona('ka'));
   expect(o.system).not.toContain(voicePersona('ka'));
   expect(o.system).toMatch(/VOICE REPLY LENGTH/);
   expect(o.system).not.toContain(LIVE_SPOKEN_RULE); // only added under a persona directive
@@ -143,7 +143,7 @@ test('a custom persona layers its directive + the spoken rule on top of the voic
   const customPersona = { id: 'custom:coach', name: 'Coach', directive: 'You are an upbeat fitness coach.', voice: 'Charon', temperature: 0.9 };
   const res = await POST(post({ text: 'hello there', locale: 'en', personaId: 'custom:coach', customPersona }));
   const o = lastOpts();
-  expect(o.system).toContain(liveVoicePersona('en'));
+  expect(o.system).toContain(liveCallPersona('en'));
   expect(o.system).toContain('upbeat fitness coach');
   expect(o.system).toContain(LIVE_SPOKEN_RULE);
   // The length rule is the LAST line (the model weighs it most).
@@ -170,7 +170,7 @@ test('gender is passed through; Georgian maps an unverified voice onto a verifie
 test('the reply follows the SPOKEN language, not the UI locale', async () => {
   const res = await POST(post({ text: 'Привет, как дела?', locale: 'ka' }));
   expect((await res.json()).locale).toBe('ru');
-  expect(lastOpts().system).toContain(liveVoicePersona('ru'));
+  expect(lastOpts().system).toContain(liveCallPersona('ru'));
 });
 
 test('memory facts are prepended to the system block', async () => {
