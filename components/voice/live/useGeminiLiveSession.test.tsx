@@ -633,7 +633,7 @@ test('through the relay a booting relay (socket still CONNECTING) gets the long 
   }
 });
 
-test('through the relay an OPEN socket with no setupComplete gives up after 3 s, says where it waited, and retries the same setup three times', async () => {
+test('through the relay an OPEN socket with no setupComplete gives up after 3 s, says where it waited, and retries the same setup', async () => {
   jest.useFakeTimers();
   try {
     const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
@@ -652,8 +652,8 @@ test('through the relay an OPEN socket with no setupComplete gives up after 3 s,
     expect(h.report).toHaveBeenCalledWith('handshake_timeout', null, expect.objectContaining({
       relay: true, msToOpen: expect.any(Number), msSinceOpen: LIVE_RELAY_READY_AFTER_OPEN_MS, bufferedBytes: 39124,
     }));
-    // GG's avatar calls 17:54Z and 17:56Z: three held sockets in a row, the fourth worked.
-    for (const n of [3, 4]) {
+    // GG's avatar call 18:47Z: four held sockets in a row, the fifth worked — and must still carry the UI actions.
+    for (const n of [3, 4, 5]) {
       act(() => FakeSocket.last.open()); // held too
       await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
       expect(FakeSocket.all).toHaveLength(n);
@@ -663,7 +663,31 @@ test('through the relay an OPEN socket with no setupComplete gives up after 3 s,
     act(() => FakeSocket.last.receive({ setupComplete: {} }));
     expect(result.current.status).toBe('listening');
     expect(result.current.degraded).toBe(false);
-    expect(h.report).toHaveBeenCalledTimes(3);
+    expect(h.report).toHaveBeenCalledTimes(4);
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('through the relay a long run of held sockets never opens the call without its UI actions; the legacy wire is the last resort', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    for (let n = 2; n <= 8; n += 1) {
+      act(() => FakeSocket.last.open()); // every one held
+      await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
+      expect(FakeSocket.all).toHaveLength(n);
+      if (n <= 7) expect(result.current.degraded).toBe(false);
+    }
+    // 1 + 6 same-setup tries, then the legacy wire — never the parity wire stripped of its actions.
+    expect(result.current.degraded).toBe(true);
+    for (const body of h.mintBodies) if (body.transcribe === true) expect(body).toMatchObject({ actions: true });
     unmount();
   } finally {
     jest.useRealTimers();

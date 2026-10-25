@@ -473,6 +473,7 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
       expect(s.tools).toBeUndefined();
       expect(lockedText()).not.toContain(LIVE_ACTIONS_RULE);
       expect(lockedText()).toMatch(/name it and say how to open it/);
+      expect(lockedText()).toMatch(/never say that something is open, ready or waiting/); // GG 18:52Z: no false "press the button"
       const j = await res.json();
       expect(j).toMatchObject({ token: 'auth_tokens/eph-123', setupLocked: true, actions: false });
     }
