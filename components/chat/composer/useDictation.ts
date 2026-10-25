@@ -237,7 +237,16 @@ export const TICK_MS = 300;
 /** See the file header: 120 s of 16 kHz WAV ≈ 3.8 MB, under the ~4.5 MB request ceiling. */
 export const MAX_RECORD_SEC = 120;
 export const SILENCE_RMS = 0.035;
-export const SILENCE_HOLD_MS = 1300;
+/**
+ * How long the user must stay quiet, after speaking, before the recorder stops by itself (no auto-send; Stop and the
+ * mic button still stop at once).
+ *
+ * ⚠️ 1.3 s CUT THE OWNER OFF MID-THOUGHT. On Production (GG, iPhone, 2026-10-25 09:44Z) a long Georgian dictation
+ * stopped in the middle and the spinner started: a pause to think between two sentences is longer than 1.3 s, and
+ * the recorder took it for the end. A dictation that stops too early loses the rest of what the user meant to say;
+ * one that stops late only costs a tap or a few seconds. UNVERIFIED that 4 s covers every thinking pause.
+ */
+export const SILENCE_HOLD_MS = 4000;
 export const TRANSCRIBE_TIMEOUT_MS = 30_000;
 export const WEB_SPEECH_START_WATCHDOG_MS = 8000;
 export const WEB_SPEECH_AFTER_SPEECH_WATCHDOG_MS = 2500;
