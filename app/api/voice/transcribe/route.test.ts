@@ -57,11 +57,13 @@ import { POST } from './route';
 import { checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { bookChatUsage } from '../../../../lib/services/billing/chatBudget';
 import { transcribeRealtimePcmChunk } from '../../../../lib/voice-v2v/providers';
+import { effectiveAdminAllowlist } from '../../../../lib/auth/adminGuard';
 
 const USER_ID = '11111111-2222-4333-8444-555555555555';
 const perUserMock = checkRateLimitByKey as jest.MockedFunction<typeof checkRateLimitByKey>;
 const bookMock = bookChatUsage as jest.MockedFunction<typeof bookChatUsage>;
 const openaiMock = transcribeRealtimePcmChunk as jest.MockedFunction<typeof transcribeRealtimePcmChunk>;
+const adminListMock = effectiveAdminAllowlist as jest.MockedFunction<typeof effectiveAdminAllowlist>;
 
 /** A tiny but real WAV header + a little silence. */
 function wavBytes(): Uint8Array {
@@ -73,11 +75,12 @@ function wavBytes(): Uint8Array {
 }
 const WEBM = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-function upload(opts: { bytes?: Uint8Array; type?: string; language?: string; diag?: boolean } = {}) {
+function upload(opts: { bytes?: Uint8Array; type?: string; language?: string; diag?: boolean; model?: string } = {}) {
   const form = new FormData();
   const data = opts.bytes ?? wavBytes();
   form.append('audio', new Blob([data as unknown as BlobPart], { type: opts.type ?? 'audio/wav' }), 'clip');
   if (opts.language) form.append('language', opts.language);
+  if (opts.model) form.append('model', opts.model);
   return new NextRequest(`https://myavatar.ge/api/voice/transcribe${opts.diag ? '?diag=1' : ''}`, { method: 'POST', body: form });
 }
 
@@ -96,6 +99,8 @@ const VERTEX_ENV = {
   GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
 };
 let fetchSpy: jest.SpyInstance;
+/** The Vertex AI models the route called, in order. */
+const modelsCalled = () => fetchSpy.mock.calls.map(([url]) => /models\/([^:]+):/.exec(String(url))![1]);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -148,17 +153,19 @@ test('Google-only (default): WAV → Gemini on Vertex AI only (bearer token, no 
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
   expect(url).toBe(
-    'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.8-flash:generateContent',
+    'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.6-flash:generateContent',
   );
   expect(url).not.toContain('key=');
   expect((init.headers as Record<string, string>).Authorization).toBe('Bearer vertex-token');
   expect((init.headers as Record<string, string>)['x-goog-api-key']).toBeUndefined();
-  const sent = JSON.parse(String(init.body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type: string } }> }> };
-  expect(sent.contents[0]!.parts[1]!.inline_data!.mime_type).toBe('audio/wav');
+  const sent = JSON.parse(String(init.body)) as { contents: Array<{ parts: Array<{ inlineData?: { mimeType: string } }> }> };
+  expect(sent.contents[0]!.parts[1]!.inlineData!.mimeType).toBe('audio/wav');
   expect(openaiMock).not.toHaveBeenCalled();
   expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({
-    model: 'gemini-3.8-flash', inputTokens: 40, outputTokens: 4, totalTokens: 44, userId: USER_ID,
+    model: 'gemini-3.6-flash', inputTokens: 40, outputTokens: 4, totalTokens: 44, userId: USER_ID,
   }));
+  // No trial model was named, so the admin list was never read for this dictation.
+  expect(adminListMock).not.toHaveBeenCalled();
 });
 
 test('Google-only: a browser WebM is sent as video/webm (best effort); a Gemini 400 → unsupported_format, still 200', async () => {
@@ -166,8 +173,8 @@ test('Google-only: a browser WebM is sent as video/webm (best effort); a Gemini 
   const res = await POST(upload({ bytes: WEBM, type: 'audio/webm;codecs=opus', language: 'en-US' }));
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'unsupported_format' });
-  const sent = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type: string } }> }> };
-  expect(sent.contents[0]!.parts[1]!.inline_data!.mime_type).toBe('video/webm');
+  const sent = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as { contents: Array<{ parts: Array<{ inlineData?: { mimeType: string } }> }> };
+  expect(sent.contents[0]!.parts[1]!.inlineData!.mimeType).toBe('video/webm');
   expect(openaiMock).not.toHaveBeenCalled();
 });
 
@@ -224,6 +231,85 @@ test('Google-only: a quota outage is an empty transcript with stt_unavailable, n
   expect(await res.json()).toEqual({ text: '', provider: 'none', code: 'stt_unavailable' });
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   expect(openaiMock).not.toHaveBeenCalled();
+});
+
+test("Google-only: a 429 on 3.6 Flash moves to the chat's next Flash model; the answer is booked on the model that gave it", async () => {
+  fetchSpy.mockImplementationOnce(async () => new Response('Resource exhausted', { status: 429 }));
+  const res = await POST(upload({ language: 'ka-GE' }));
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+  expect(modelsCalled()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash']);
+  expect(bookMock).toHaveBeenCalledTimes(1);
+  expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.5-flash' }));
+});
+
+test('Google-only: a model that does not answer in time hands the dictation to the next one (GG, 2026-10-25 TimeoutError)', async () => {
+  fetchSpy.mockImplementationOnce(async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); });
+  const res = await POST(upload({ language: 'ka-GE' }));
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+  expect(modelsCalled()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash']);
+  expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.5-flash' }));
+});
+
+test("the owner's `?stt=` trial: an admin's allowlisted model is used ALONE (no step-downs), and the diag names it", async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  let res = await POST(upload({ language: 'ka-GE', model: 'gemini-3.1-flash-lite' }));
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+  expect(modelsCalled()).toEqual(['gemini-3.1-flash-lite']);
+  expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.1-flash-lite' }));
+  // Its failure is its own: no other model answers for it.
+  fetchSpy.mockClear();
+  fetchSpy.mockImplementation(async () => new Response('Resource exhausted', { status: 429 }));
+  res = await POST(upload({ language: 'ka-GE', model: 'gemini-3.1-flash-lite', diag: true }));
+  const j = (await res.json()) as { code: string; diag: { geminiError: string; trialModel: string } };
+  expect(modelsCalled()).toEqual(['gemini-3.1-flash-lite']);
+  expect(j.code).toBe('stt_unavailable');
+  expect(j.diag.trialModel).toBe('gemini-3.1-flash-lite');
+  expect(j.diag.geminiError).toBe('Gemini STT failed (429) on gemini-3.1-flash-lite: Resource exhausted');
+});
+
+test("a trial model from anyone but an admin, or one outside STT_MODELS, is ignored: the usual chain answers", async () => {
+  let res = await POST(upload({ language: 'ka-GE', model: 'gemini-3.1-pro-preview' }));
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+  expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+  expect(adminListMock).toHaveBeenCalledTimes(1);
+
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  for (const model of ['gemini-9-ultra', 'gemini-flash-latest', 'gemini-2.0-flash']) {
+    fetchSpy.mockClear();
+    adminListMock.mockClear();
+    res = await POST(upload({ language: 'ka-GE', model }));
+    expect(await res.json()).toMatchObject({ text: 'გამარჯობა', provider: 'gemini' });
+    expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+    // Not an allowlisted id: the admin list is not even read.
+    expect(adminListMock).not.toHaveBeenCalled();
+  }
+
+  // The admin check fails closed: an error reading the list is "not admin".
+  fetchSpy.mockClear();
+  adminListMock.mockRejectedValueOnce(new Error('panel down'));
+  res = await POST(upload({ language: 'ka-GE', model: 'gemini-3.1-flash-lite' }));
+  expect(await res.json()).toMatchObject({ text: 'გამარჯობა', provider: 'gemini' });
+  expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+});
+
+test('?diag=1 from the owner on an unconfigured Vertex AI names why (variable names only), with no call', async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
+  const res = await POST(upload({ diag: true, language: 'en-US' }));
+  const j = (await res.json()) as { code: string; diag: Record<string, unknown> };
+  expect(j.code).toBe('stt_unavailable');
+  expect(j.diag).toMatchObject({ geminiKeyPresent: false, geminiError: 'Vertex AI is not configured' });
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+test('?diag=1 from the owner when every model fails: the reason lists each model and its status', async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  fetchSpy.mockImplementation(async () => new Response('Resource exhausted', { status: 429 }));
+  const res = await POST(upload({ diag: true, language: 'en-US' }));
+  const j = (await res.json()) as { code: string; diag: { geminiError: string } };
+  expect(j.code).toBe('stt_unavailable');
+  expect(j.diag.geminiError).toMatch(/^gemini-3\.6-flash 429, gemini-3\.5-flash 429, gemini-3\.8-flash 429: /);
+  expect(fetchSpy).toHaveBeenCalledTimes(3);
 });
 
 test('Google-only: Vertex AI unconfigured → stt_unavailable and no call at all, even with an AI Studio key', async () => {

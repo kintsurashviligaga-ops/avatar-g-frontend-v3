@@ -27,17 +27,26 @@ export function hasGeminiSttKey(): boolean {
   return !googleTransportBlocker();
 }
 
+/** Why Vertex AI cannot serve a call right now (names only, never values), or null. The route shows it to the owner. */
+export function geminiSttBlocker(): string | null {
+  return googleTransportBlocker();
+}
+
 // ─── Model chain ─────────────────────────────────────────────────────────────
 
 /**
- * Step-downs after the configured STT model. Google RETIRES aliases without notice (gemini-2.0-flash went 404 and
- * silently killed Georgian dictation), so a model-missing / overloaded answer moves to the next id. Retired ids
- * (gemini-2.0-*, 1.5-*) never appear — `gemini-2.0-flash-lite` used to be the last step here — and neither does a
- * 2.5 id: a new Google project's key answers 404 "no longer available to new users" for them. The default leads the
- * step-downs so an operator override that fails still falls back to it (the chain de-duplicates). `gemini-flash-latest`
- * was the last step until v3.1: it is a Gemini-API-only alias and answers 404 on Vertex AI.
+ * Step-downs after the configured STT model: the default (3.6 Flash), 3.5 Flash, then 3.8 Flash — the chat's Flash
+ * models (DEFAULT_CHAT_MODELS.standard), fastest first. Google RETIRES aliases without notice (gemini-2.0-flash went 404
+ * and silently killed Georgian dictation), so a model-missing / overloaded / rate-limited / timed-out answer moves to
+ * the next id. Retired ids (gemini-2.0-*, 1.5-*) and 2.5 ids never appear (a new Google project gets 404 "no longer
+ * available to new users" for them), nor does `gemini-flash-latest`, a Gemini-API-only alias that answers 404 on
+ * Vertex AI.
+ *
+ * ⚠️ THE CHAT CAN STEP DOWN WHERE THE MIC COULD NOT (2026-10-24): the chat rotates on a missing model or a 429, the mic
+ * stopped at the first answer. ⚠️ AND 3.8 FLASH WAS TOO SLOW (2026-10-25): the owner's dictation ended in a
+ * TimeoutError on it after 22 s, so it is the LAST step now, not the first (lib/ai/google/models DEFAULT_STT_MODEL).
  */
-const STT_STEP_DOWNS = [DEFAULT_STT_MODEL, 'gemini-3.7-flash'] as const;
+const STT_STEP_DOWNS: readonly string[] = [DEFAULT_STT_MODEL, 'gemini-3.5-flash', 'gemini-3.8-flash'];
 
 /**
  * [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped. Every id is one Vertex AI serves:
@@ -226,17 +235,35 @@ export interface GeminiSttResult {
 }
 
 /**
- * A transcript needs no reasoning and thinking adds seconds, so the models we have VERIFIED get their thinking turned
- * down with the field THEY take: the 2.5 Flash family `thinkingBudget: 0`; `gemini-3.8-flash` (the default) its
- * documented floor `thinkingLevel: 'low'` — `'minimal'` is a 400 on it (verified live 2026-10-02, together with 200 for
- * 'low'). A wrong field is a 400 that does not rotate, and `-latest` aliases can change family under us — so everything
- * else gets the model default.
+ * Gemini 3 models documented to ACCEPT `thinkingLevel: 'minimal'`: 3.0 – 3.6 Flash and every 3.x Flash-Lite (Google's
+ * thinking page, 2026-09-25 — the same allowlist as lib/ai/google/chatStream MINIMAL_OK_RE). 3.7 / 3.8 Flash and Pro
+ * list it as an error (a 400 on 3.8 Flash, verified live 2026-10-02).
+ */
+const MINIMAL_OK_RE = /^gemini-3(?:\.[0-6])?-flash(?:-|$)|^gemini-3(?:\.\d+)?-flash-lite(?:-|$)/i;
+
+/**
+ * A transcript needs no reasoning and thinking adds seconds, so each model thinks as little as it accepts: the 2.5
+ * Flash family `thinkingBudget: 0`; a Gemini 3 model that takes it `thinkingLevel: 'minimal'`, every other Gemini 3
+ * model `'low'`. Anything else (`-latest` aliases can change family under us) gets the model default. A 400 that names
+ * thinking moves to the next model (THINKING_REFUSED_RE), so a model that turns out to refuse 'minimal' on Vertex AI
+ * costs one unbilled answer, not the dictation.
  */
 function thinkingFor(model: string): Record<string, unknown> | undefined {
   if (/^gemini-2\.5-flash(?:-lite)?(?:-|$)/i.test(model)) return { thinkingBudget: 0 };
-  if (/^gemini-3\.8-flash$/i.test(model)) return { thinkingLevel: 'low' };
+  if (/^gemini-3(?:\.\d+)?-/i.test(model)) return { thinkingLevel: MINIMAL_OK_RE.test(model) && !/(?:^|-)pro(?:-|$)/i.test(model) ? 'minimal' : 'low' };
   return undefined;
 }
+
+/** A 400 about the thinking config: that model refuses what thinkingFor sent, the next one may not. */
+const THINKING_REFUSED_RE = /thinking/i;
+
+/**
+ * Of the shared deadline, what one attempt leaves for the next model: an attempt that has a next model to try stops
+ * this long before the deadline, so a slow model can no longer take the whole dictation with it.
+ */
+export const STT_FALLBACK_RESERVE_MS = 8_000;
+/** No attempt gets less than this (a reserve never shrinks one below it). */
+const STT_MIN_ATTEMPT_MS = 5_000;
 
 const count = (n: unknown): number | undefined => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : undefined);
 
@@ -247,11 +274,17 @@ function cleanTranscript(raw: string): string {
   return t;
 }
 
+/** Answers that move to the next model: Vertex AI quotas and capacity are per model, as the chat's rotation assumes. */
+const ROTATES: ReadonlySet<GeminiSttErrorCode> = new Set(['model_missing', 'unavailable', 'rate_limited']);
+
 /**
- * Transcribe a short clip with Gemini. Rotates to the next model only when the model is missing or overloaded;
- * an auth / quota / rate-limit / bad-request answer throws a GeminiSttError at once (another model on the same project
- * would fail the same way — and bill another attempt). Bounded by ONE overall deadline across all attempts, so it
- * can never outlive the route's maxDuration.
+ * Transcribe a short clip with Gemini. Rotates to the next model when the model is missing, overloaded or rate
+ * limited (a 429 is that model's bucket on Vertex AI; Google bills no failed call), refuses the thinking config, or
+ * does not answer within its share of the deadline; an auth / quota / other bad-request answer throws a GeminiSttError
+ * at once (another model on the same project would fail the same way). Bounded by ONE overall deadline across all
+ * attempts, so it can never outlive the route's maxDuration; an attempt with a model after it stops
+ * STT_FALLBACK_RESERVE_MS early, so that model still has time. The error names every model tried and its status, so
+ * the owner's warning shows the whole chain, not only the last answer.
  */
 export async function transcribeWithGeminiDetailed(
   audioBase64: string,
@@ -268,13 +301,23 @@ export async function transcribeWithGeminiDetailed(
 
   const deadline = Date.now() + Math.max(1_000, opts.timeoutMs ?? 22_000);
   let last: GeminiSttError | null = null;
+  const tried: string[] = [];
+  /** `gemini-3.8-flash 429, gemini-3.6-flash 404: ` before the answer that ended the chain; '' after one attempt. */
+  const chain = (): string => (tried.length > 1 ? `${tried.join(', ')}: ` : '');
 
-  for (const model of models) {
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i]!;
     const remaining = deadline - Date.now();
     if (remaining < 500) break;
+    const hasNext = i < models.length - 1;
+    const attemptMs = hasNext
+      ? Math.max(Math.min(remaining, STT_MIN_ATTEMPT_MS), remaining - STT_FALLBACK_RESERVE_MS)
+      : remaining;
     const thinkingConfig = thinkingFor(model);
     const body = JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: sttPrompt(language) }, { inline_data: { mime_type: mimeType, data: audioBase64 } }] }],
+      // camelCase, as every other Vertex AI caller here sends it (the chat SDK, the image studio). Proto JSON also
+      // accepts `inline_data`, the Developer API's documented spelling this used to send.
+      contents: [{ role: 'user', parts: [{ text: sttPrompt(language) }, { inlineData: { mimeType, data: audioBase64 } }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
     });
 
@@ -284,12 +327,21 @@ export async function transcribeWithGeminiDetailed(
         method: 'POST',
         cache: 'no-store',
         body,
-        signal: AbortSignal.timeout(remaining),
+        signal: AbortSignal.timeout(attemptMs),
       });
     } catch (e) {
       if (e instanceof NotConfiguredError) throw new GeminiSttError(e.message, 'auth', undefined, model);
-      // A timeout / reset is not the model's fault, and the deadline is shared — stop here.
-      throw new GeminiSttError(`Gemini STT network error on ${model}: ${e instanceof Error ? e.name : 'unknown'}`, 'network', undefined, model);
+      // By name, not `instanceof Error`: AbortSignal.timeout's DOMException can come from another realm.
+      const name = e && typeof e === 'object' && typeof (e as { name?: unknown }).name === 'string' ? (e as { name: string }).name : 'unknown';
+      // This model did not answer in its share of the deadline: the next one gets the rest. A reset is not the
+      // model's fault — stop there.
+      if (name === 'TimeoutError' && hasNext) {
+        tried.push(`${model} timeout`);
+        last = new GeminiSttError(`${chain()}Gemini STT timed out on ${model} after ${Math.round(attemptMs / 1000)} s`, 'network', undefined, model);
+        continue;
+      }
+      tried.push(`${model} ${name === 'TimeoutError' ? 'timeout' : 'network'}`);
+      throw new GeminiSttError(`${chain()}Gemini STT network error on ${model}: ${name}`, 'network', undefined, model);
     }
 
     if (res.ok) {
@@ -309,8 +361,9 @@ export async function transcribeWithGeminiDetailed(
     const detail = await res.text().catch(() => '');
     const code = classifySttStatus(res.status, detail);
     // Upstream text is trimmed and kept server-side (the route shows it to admins in ?diag only).
-    last = new GeminiSttError(`Gemini STT failed (${res.status}) on ${model}: ${detail.slice(0, 160)}`, code, res.status, model);
-    if (code !== 'model_missing' && code !== 'unavailable') throw last;
+    tried.push(`${model} ${res.status}`);
+    last = new GeminiSttError(`${chain()}Gemini STT failed (${res.status}) on ${model}: ${detail.slice(0, 160)}`, code, res.status, model);
+    if (!ROTATES.has(code) && !(code === 'bad_request' && THINKING_REFUSED_RE.test(detail))) throw last;
   }
 
   throw last ?? new GeminiSttError('Gemini STT failed: no model answered before the deadline', 'network');
