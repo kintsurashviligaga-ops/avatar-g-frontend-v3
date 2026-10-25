@@ -6,7 +6,7 @@
 jest.mock('server-only', () => ({}));
 
 import {
-  composeVeoJobId, genjutsuChargeForPolledId, genjutsuChargeReady, genjutsuChargeRef, genjutsuJobId, parseVeoJobId,
+  composeOmniJobId, composeVeoJobId, genjutsuChargeForPolledId, genjutsuChargeReady, genjutsuChargeRef, genjutsuJobId, parseVeoJobId,
   signGenjutsuCharge, uuidFromRef, withGenjutsuCharge,
 } from './chargeToken';
 
@@ -60,9 +60,23 @@ test('the reservation ref and the job-row id derive from one uuid; only refs thi
 });
 
 test('the job id composite round-trips, and rejects anything malformed', () => {
-  expect(parseVeoJobId(composeVeoJobId(OP, '9:16', 1_760_000_000_123.4))).toEqual({ operation: OP, aspect: '9:16', createdMs: 1_760_000_000_123, voiced: false });
+  expect(parseVeoJobId(composeVeoJobId(OP, '9:16', 1_760_000_000_123.4))).toEqual({ operation: OP, aspect: '9:16', createdMs: 1_760_000_000_123, voiced: false, clipSec: null, engine: 'veo', omniOp: null });
   // The talking avatar voiced by ElevenLabs carries its marker inside the signed id.
   expect(composeVeoJobId(OP, '9:16', 1_760_000_000_000, true)).toBe(`${OP}::9:16::1760000000000::v`);
-  expect(parseVeoJobId(composeVeoJobId(OP, '9:16', 1_760_000_000_000, true))).toEqual({ operation: OP, aspect: '9:16', createdMs: 1_760_000_000_000, voiced: true });
-  for (const bad of ['', OP, `${OP}::1:1::5`, `${OP}::16:9::nope`, `${OP}::16:9::0`, `::16:9::5`, `${OP}::16:9`, `${OP}::16:9::5::x`, `${OP}::16:9::5::v::v`]) expect(parseVeoJobId(bad)).toBeNull();
+  expect(parseVeoJobId(composeVeoJobId(OP, '9:16', 1_760_000_000_000, true))).toEqual({ operation: OP, aspect: '9:16', createdMs: 1_760_000_000_000, voiced: true, clipSec: null, engine: 'veo', omniOp: null });
+  // The video service's direct clip carries its length, and a Georgian line laid over it, inside the signed id.
+  expect(composeVeoJobId(OP, '16:9', 1_760_000_000_000, false, 6)).toBe(`${OP}::16:9::1760000000000::c6`);
+  expect(composeVeoJobId(OP, '9:16', 1_760_000_000_000, true, 8)).toBe(`${OP}::9:16::1760000000000::c8v`);
+  expect(parseVeoJobId(`${OP}::16:9::5::c6`)).toEqual({ operation: OP, aspect: '16:9', createdMs: 5, voiced: false, clipSec: 6, engine: 'veo', omniOp: null });
+  expect(parseVeoJobId(`${OP}::9:16::5::c4v`)).toEqual({ operation: OP, aspect: '9:16', createdMs: 5, voiced: true, clipSec: 4, engine: 'veo', omniOp: null });
+  // The 10 s clip is Gemini Omni Flash's: its interaction id, never voiced over (Omni speaks Georgian itself).
+  expect(composeOmniJobId('ChBjAbC_d-123', '9:16', 1_760_000_000_000)).toBe('ChBjAbC_d-123::9:16::1760000000000::o10');
+  expect(parseVeoJobId('ChBjAbC_d-123::9:16::5::o10')).toEqual({ operation: 'ChBjAbC_d-123', aspect: '9:16', createdMs: 5, voiced: false, clipSec: 10, engine: 'omni', omniOp: 'clip' });
+  // An uploaded video Omni edits or extends: its op and billed seconds ride in the signed id.
+  expect(composeOmniJobId('ChBjAbC_d-123', '16:9', 7, { op: 'edit', seconds: 6 })).toBe('ChBjAbC_d-123::16:9::7::oe6');
+  expect(parseVeoJobId('ChBjAbC_d-123::16:9::7::oe6')).toEqual({ operation: 'ChBjAbC_d-123', aspect: '16:9', createdMs: 7, voiced: false, clipSec: 6, engine: 'omni', omniOp: 'edit' });
+  expect(parseVeoJobId(composeOmniJobId('ChBjAbC_d-123', '9:16', 7, { op: 'extend', seconds: 10 }))).toEqual({ operation: 'ChBjAbC_d-123', aspect: '9:16', createdMs: 7, voiced: false, clipSec: 10, engine: 'omni', omniOp: 'extend' });
+  for (const bad of ['oe5', 'ox12', 'oe', 'ox', 'oy8', 'oe8v', 'oex8']) expect(parseVeoJobId(`ChBjAbC_d-123::9:16::5::${bad}`)).toBeNull();
+  for (const bad of ['', OP, `${OP}::1:1::5`, `${OP}::16:9::nope`, `${OP}::16:9::0`, `::16:9::5`, `${OP}::16:9`, `${OP}::16:9::5::x`, `${OP}::16:9::5::v::v`,
+    `${OP}::16:9::5::c5`, `${OP}::16:9::5::c10`, `${OP}::16:9::5::c`, `${OP}::16:9::5::cv`, `${OP}::16:9::5::c8vv`, `${OP}::16:9::5::vc8`, `${OP}::16:9::5::o8`, `${OP}::16:9::5::o10v`, `${OP}::16:9::5::o`]) expect(parseVeoJobId(bad)).toBeNull();
 });

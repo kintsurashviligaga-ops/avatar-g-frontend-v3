@@ -102,7 +102,7 @@ async function openTool(page: Page, tool: Tool): Promise<void> {
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   // The panels are separate chunks: wait for the one that marks this tool's screen as drawn (a cold `next dev` compiles it
   // on first use).
-  const ready = tool.create ?? (tool.id === 'video' ? 'video-create-panel' : null);
+  const ready = tool.create ?? (tool.id === 'video' ? 'clip-create-panel' : null);
   if (ready) await expect(page.getByTestId(ready).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
 }
 

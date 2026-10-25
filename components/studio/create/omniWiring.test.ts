@@ -117,16 +117,18 @@ describe('the phone: settings open on demand and the composer remains available 
     // The box is never hidden for video, so its Send (not set aside) is the film's one button.
     expect(src).not.toMatch(/const composerTextHidden = [^;]*activeTool === 'video'/);
     expect(src).toMatch(/const composerRunAside = composerTextHidden;/);
-    // Its price is the film's quote for the length, tier and mode on the panel (the number the panel's Generate showed).
-    expect(src).toMatch(/\? videoQuote\(\{ seconds: videoDuration, tier: veoPlan\.tier, mode: videoMode \}\) \|\| null/);
+    // Its price is the clip's for the length, tier, photos and resolution on the panel (GG 2026-10-25: the card's Create
+    // shows the same number, lib/video/directClip = the route's own price).
+    expect(src).toContain('? directClipCredits({ seconds: snapDirectClipSeconds(videoDuration), tier: openClipTier(veoPlan.tier, clipClosedTiers, Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length)), photos: Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length), resolution: clipResolution }) || null');
     expect(src).toContain('onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}');
-    // A balance known to be short opens the top-up (never the film); the trial slot (one clip ≤ 8 s) is never blocked;
-    // a guest (balance unknown) goes on to runTool's own sign-in gate.
-    expect(src).toContain("const short = !freeSlotApplies(videoFreeFilms, videoDuration) && videoBalanceCredits !== null && videoBalanceCredits < composerQuote;");
+    // A balance known to be short opens the top-up (never the clip); a guest (balance unknown) goes on to runTool's own
+    // sign-in gate. There is no free slot for a clip: it is always priced.
+    expect(src).toContain("const short = videoBalanceCredits !== null && videoBalanceCredits < composerQuote;");
     expect(src).toContain("if (short) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }");
-    expect(src).toMatch(/activeTool === 'video' && mode === 'video' && videoTab === 'cinema'\s*\? videoQuote/);
+    expect(src).toMatch(/activeTool === 'video' && mode === 'video' && videoTab === 'cinema'\s*(?:\/\/[^\n]*\n\s*)?\? directClipCredits/);
     // The panel carries no prompt box and no Generate of its own; script, voice details and camera are gone from it.
-    const panel = /<VideoCreatePanel([\s\S]*?)\n {12}\/>/.exec(src)?.[1] ?? '';
+    const panel = /<ClipCreatePanel([\s\S]*?)\n {12}\/>/.exec(src)?.[1] ?? '';
+    expect(panel).not.toBe('');
     expect(panel).not.toMatch(/\bprompt=|onPrompt=|onGenerate|story=\{|voice=\{|advanced=\{|VeoParametersPanel|master-script-input|video-templates/);
   });
 

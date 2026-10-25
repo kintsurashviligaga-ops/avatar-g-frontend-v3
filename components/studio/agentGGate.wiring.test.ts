@@ -42,14 +42,21 @@ describe('the gate runs before anything that spends', () => {
 
 describe('what the gate does with each verdict', () => {
   test('talk goes to the chat stream — never to a tool, never charged', () => {
-    const chat = sendBody.slice(at("verdict.kind === 'chat'"), at("verdict.kind === 'clarify' || verdict.kind === 'confirm'"));
+    const chat = sendBody.slice(at("verdict.kind === 'chat'"), at("verdict.kind === 'clarify' || (verdict.kind === 'confirm' && gateMode !== 'video')"));
     expect(chat).toContain('await streamChat([...messages, chatTurn])');
     expect(chat).not.toMatch(/runImageJob|runImageBatch|runMusicJob|createStoryboard|\/api\/video|nanobanana/);
   });
   test('a card makes NO request: it only posts Agent G\'s message', () => {
-    const card = sendBody.slice(at("verdict.kind === 'clarify' || verdict.kind === 'confirm'"), at("gatePendingRef.current = null;\n      if (promptText !== text)"));
+    const card = sendBody.slice(at("verdict.kind === 'clarify' || (verdict.kind === 'confirm' && gateMode !== 'video')"), at("gatePendingRef.current = null;\n      if (promptText !== text)"));
     expect(card).toContain('gateMessage(');
     expect(card).not.toMatch(/fetch\(|runImageJob|runMusicJob|createStoryboard/);
+  });
+  test('a clear video order skips Agent G\'s card for the clip\'s own (GG 2026-10-25): it still spends nothing before Create', () => {
+    // A second „Create" for the same clip would be a double confirmation; the clip's card (proposeClip) is the one.
+    expect(sendBody).toContain("if (" + "verdict.kind === 'clarify' || (verdict.kind === 'confirm' && gateMode !== 'video')) {");
+    const video = sendBody.slice(at("if (effMode === 'video' && (text ||"), at("if (effMode === 'lipsync')"));
+    expect(video).toContain('await proposeClip({');
+    expect(video).not.toMatch(/fetch\(|createStoryboard|\/api\/video\/clip/);
   });
   test('only a decision lets a prompt through: a confirmed card, or the panel\'s own Generate button', () => {
     // The card's Create, and a typed yes under it (consentRef, GG 2026-10-16), send its prompt with the frame and photo it holds.

@@ -217,9 +217,9 @@ test.describe('the same door guards Music and Video', () => {
     expect(seen.spent).toEqual([]);
   });
 
-  test('Video: "hello" is answered in the thread — no storyboard is planned, nothing is rendered', async ({ page }) => {
+  test('Video: "hello" is answered in the thread — no clip is offered, nothing is made', async ({ page }) => {
     const seen = await mockSpendingRoutes(page);
-    await openTool(page, 'video', 'video-create-panel');
+    await openTool(page, 'video', 'clip-create-panel');
     // GG 2026-10-18: the video panel has no prompt; the chat box stays beside it, and Enter there still meets Agent G.
     await expect(page.getByTestId('composer-input')).toBeVisible();
     await type(page, 'hello');
@@ -228,11 +228,26 @@ test.describe('the same door guards Music and Video', () => {
     expect(seen.spent).toEqual([]);
   });
 
-  test('Video: a thin brief is clarified, with its card in the thread — and still nothing is planned', async ({ page }) => {
+  test('Video: a thin brief is clarified, with its card in the thread — and still nothing is made', async ({ page }) => {
     const seen = await mockSpendingRoutes(page);
-    await openTool(page, 'video', 'video-create-panel');
+    await openTool(page, 'video', 'clip-create-panel');
     await type(page, 'a dog running');
     await expect(page.getByTestId('agent-g-card')).toBeVisible({ timeout: 10_000 });
+    expect(seen.spent).toEqual([]);
+    expect(seen.chat).toBe(0);
+  });
+
+  test('Video: a real brief gets ONE clip\'s card with its price (GG 2026-10-25) — nothing is made before Create', async ({ page }) => {
+    const seen = await mockSpendingRoutes(page);
+    await openTool(page, 'video', 'clip-create-panel');
+    const words = 'a golden retriever runs along a beach at sunset, slow motion, cinematic';
+    await type(page, words);
+    const card = page.getByTestId('clip-card').last();
+    await expect(card).toHaveAttribute('data-phase', 'ask', { timeout: 15_000 });
+    await expect(card.getByTestId('clip-prompt')).toHaveText(`„${words}“`);
+    expect(Number(await card.getByTestId('clip-confirm').getAttribute('data-price'))).toBeGreaterThan(0);
+    // Agent G's own card would be a second „Create" for the same clip: there is one card.
+    await expect(page.getByTestId('agent-g-card')).toHaveCount(0);
     expect(seen.spent).toEqual([]);
     expect(seen.chat).toBe(0);
   });

@@ -3,9 +3,10 @@ import { join } from 'node:path';
 import { test, expect, type Page, type Route } from '@playwright/test';
 import { quoteCredits } from '@/lib/credits/quote';
 import {
-  openStudio, pinSignedIn, say, attachClipsAndTrack, typeFilmPrompt, sendFilm, waitForBoard, cancelStoryboard,
-  FILE_INPUT, JOB_ID, MASTER_URL, taskView, json, type Locale,
+  openStudio, pinSignedIn, say, attachClipsAndTrack, typeFilmPrompt, sendFilm, waitForClipCard,
+  CLIP_JOB_ID, CLIP_URL, FILE_INPUT, JOB_ID, MASTER_URL, OMNI_EDIT_JOB_ID, OMNI_EDIT_URL, taskView, json, type Locale,
 } from './video-core/_shared';
+import { directClipCredits } from '@/lib/video/directClip';
 import { fakeMicrophone, signIn } from './fixtures/liveVoice';
 
 /**
@@ -15,7 +16,7 @@ import { fakeMicrophone, signIn } from './fixtures/liveVoice';
  * check on a phone) is skipped with the reason, never passed.
  *
  *   1  a guest: „+" → a service → its format → a prompt; Send asks to sign in and nothing paid leaves the browser
- *   2  signed in: Video + a reference → the price on Send → the storyboard to approve, at the same price, nothing rendered
+ *   2  signed in: Video + a reference → the price on Send → ONE clip's card at the same price → Create makes it (GG 2026-10-25)
  *   3  an image, then „Send to video": the service changes, the conversation stays
  *   4  dictation start, stop and resume while the service's settings change between the two
  *   5  Avatar picked, then Live: a guest is sent to sign in (no microphone asked), a member gets the call, a refused mic stops it
@@ -51,13 +52,15 @@ const LANG_ITEM = { ka: 'ქარ', en: 'ENG', ru: 'РУС' } as const;
 /** GG's hidden tools (lib/catalog/nav): never in the picker. */
 const HIDDEN = ['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation'];
 const POSTER = readFileSync(join(__dirname, '..', 'public', 'templates', 'image', 'poster.jpg'));
+/** A 4 s 160×120 clip (tests/fixtures/clip.webm): long enough to edit (3 s) and to extend. */
+const CLIP4 = readFileSync(join(__dirname, 'fixtures', 'clip.webm'));
 
 /**
  * Routes that would cost money if they ran (every generation family the studio calls). Counted, never allowed to matter:
- * a scenario asserts how many it saw (a guest: none; an unapproved storyboard: no render).
+ * a scenario asserts how many it saw (a guest: none; a clip's card before Create: none).
  */
 const SPEND = new RegExp('^/api/(' + [
-  'image', 'images', 'video/(?:assemble|remix|generate)', 'music', 'lipsync', 'generate', 'orchestrate', 'chat/orchestrate',
+  'image', 'images', 'video/(?:assemble|remix|generate|clip|omni-edit)', 'music', 'lipsync', 'generate', 'orchestrate', 'chat/orchestrate',
   'orchestrator/(?:produce|music|image|voice|avatar|interior)', 'nanobanana', 'heygen', 'genjutsu', 'ltx-video',
   'motion-control', 'pipeline', 'udio', 'replicate', 'elevenlabs', 'ai/(?:music|upscale|magic-wand|edit|edit-audio|edit-photo)',
   'avatar/(?:create|generate|enroll)', 'v2/(?:dubbing|model3d|presentation)',
@@ -96,24 +99,26 @@ async function pickService(page: Page, id: keyof typeof NAME | string, locale: L
   if (id in NAME && id !== 'chat') await expect(page.getByTestId('active-service-switch')).toContainText(NAME[id as keyof typeof NAME][locale]);
 }
 
-/** The video format through its quick chip (a sheet at every width). */
-async function pickVideoFormat(page: Page, format: '16:9' | '9:16' | '1:1'): Promise<void> {
+/** A quick chip's picker: a sheet on a phone, a popover beside the chip on a desktop. */
+const chipPicker = (page: Page, sheet: string) => page.locator(`[data-testid="${sheet}"], [data-testid="picker-popover"]`).filter({ visible: true }).first();
+
+/** The clip's frame through its quick chip (GG 2026-10-25: 9:16 or 16:9). */
+async function pickVideoFormat(page: Page, format: '16:9' | '9:16'): Promise<void> {
   await page.getByTestId('quick-video-format').click();
-  const sheet = page.getByTestId('video-format-sheet');
-  await expect(sheet).toBeVisible();
-  await sheet.getByTestId(`video-format-${format.replace(':', '-')}`).click();
-  await expect(sheet).toBeHidden();
+  const picker = chipPicker(page, 'video-format-picker');
+  await expect(picker).toBeVisible();
+  await picker.locator(`[role="radio"][data-value="${format}"]`).click();
+  await expect(picker).toBeHidden();
   await expect(page.getByTestId('quick-video-format')).toContainText(format);
 }
 
-/** The video length through its quick chip: a preset, then the sheet put away. */
-async function pickVideoLength(page: Page, sec: number): Promise<void> {
+/** The clip's length through its quick chip: 4 · 6 · 8 · 10 s. */
+async function pickVideoLength(page: Page, sec: 4 | 6 | 8 | 10): Promise<void> {
   await page.getByTestId('quick-video-length').click();
-  const sheet = page.getByTestId('video-duration-sheet');
-  await expect(sheet).toBeVisible();
-  await sheet.getByTestId(`video-preset-${sec}`).click();
-  await page.keyboard.press('Escape');
-  await expect(sheet).toBeHidden();
+  const picker = chipPicker(page, 'video-length-picker');
+  await expect(picker).toBeVisible();
+  await picker.locator(`[role="radio"][data-value="${sec}"]`).click();
+  await expect(picker).toBeHidden();
   await expect(page.getByTestId('quick-video-length')).toContainText(String(sec));
 }
 
@@ -251,31 +256,123 @@ for (const vp of VIEWPORTS) {
       expect(await noSideways(page)).toBe(0);
     });
 
-    test('2 · signed in: Video with a reference — the price on Send, then the storyboard to approve at that price; nothing renders', async ({ page }) => {
-      const calls = await openStudio(page, { tool: null });
+    test('2 · signed in: Video with a reference — the price on Send, then ONE clip\'s card at that price; Create makes it from the words as typed', async ({ page }) => {
+      const calls = await openStudio(page, { tool: null, closedTiers: [] });
+      const spend = watchSpend(page);
       await pickService(page, 'video', 'en');
       await pickVideoLength(page, 8);
       await page.locator(FILE_INPUT).setInputFiles([{ name: 'hero.jpg', mimeType: 'image/jpeg', buffer: POSTER }]);
       await expect(page.getByTitle('hero.jpg')).toBeVisible({ timeout: 10_000 });
-      await typeFilmPrompt(page, 'The woman in the photo walks along the harbour at dawn');
+      const words = 'The woman in the photo walks along the harbour at dawn';
+      await typeFilmPrompt(page, words);
 
       const send = page.getByTestId('run-button');
-      const price = String(quoteCredits({ tool: 'video', seconds: 8, quality: 'fast' }));
+      const price = String(directClipCredits({ seconds: 8, tier: 'fast', photos: 1 }));
       await expect(send).toHaveAttribute('data-price', price);
       await sendFilm(page);
-      await waitForBoard(page, 'en', 1);
-      const plan = calls.storyboard.find((b) => b.planOnly)!;
-      expect(plan, 'the storyboard was planned').toBeTruthy();
-      expect((plan.referenceImages as unknown[] | undefined)?.length ?? 0, 'the reference went with the plan').toBe(1);
-      expect(plan.orientation).toBe('vertical');
-      await expect(page.getByTestId('storyboard-generate')).toHaveAttribute('data-price', price);
-      await expect(page.getByTestId('storyboard-generate')).toBeEnabled();
-      // The approval stage: nothing dispatched, assembled or rendered until the person approves.
+      // GG 2026-10-25 („like Gemini's Veo"): one card, the words exactly as typed, the photo, the price on Create.
+      const card = await waitForClipCard(page);
+      await expect(card.getByTestId('clip-prompt')).toHaveText(`„${words}“`);
+      await expect(card.getByTestId('clip-photos').locator('img')).toHaveCount(1);
+      await expect(card.getByTestId('clip-spec')).toHaveText('8 s · 9:16 · 1080p · 1080×1920 · Veo 3.1 Fast');
+      await expect(card.getByTestId('clip-confirm')).toHaveAttribute('data-price', price);
+      // Nothing is planned or made before Create: no storyboard, no film, no clip.
+      expect(calls.storyboard).toHaveLength(0);
+      expect(calls.clip).toHaveLength(0);
+      expect(spend).toEqual([]);
+
+      await card.getByTestId('clip-confirm').click();
+      await expect.poll(() => calls.clip.length, { timeout: 15_000 }).toBe(1);
+      expect(calls.clip[0]).toMatchObject({ prompt: words, seconds: 8, aspect: '9:16', tier: 'fast', resolution: '720p', expectedCredits: Number(price) });
+      expect(calls.clip[0]!.photos as unknown[]).toHaveLength(1);
+      // The bubble becomes the clip once its signed job says done; no film route is ever called.
+      await expect(page.locator(`video[src^="${CLIP_URL}"]`).first()).toBeAttached({ timeout: 40_000 });
+      expect(calls.clipStatus[0]).toBe(CLIP_JOB_ID);
+      expect(spend).toEqual(['/api/video/clip']);
       expect(calls.orchestrate).toHaveLength(0);
       expect(calls.assemble).toHaveLength(0);
-      expect(calls.directorRuns).toHaveLength(0);
-      await cancelStoryboard(page);
-      expect(calls.orchestrate).toHaveLength(0);
+    });
+
+    test('2b · a clip\'s card: 10 s is Gemini Omni Flash with its resolutions; Cancel makes nothing and charges nothing', async ({ page }) => {
+      const calls = await openStudio(page, { tool: null, closedTiers: [] });
+      await pickService(page, 'video', 'en');
+      await typeFilmPrompt(page, 'A paper boat drifts down a rainy Tbilisi street, close-up');
+      await sendFilm(page);
+      const card = await waitForClipCard(page);
+      await card.getByTestId('clip-len-10').click();
+      await expect(card.getByTestId('clip-spec')).toHaveText('10 s · 9:16 · 720p · 720×1280 · Gemini Omni Flash');
+      await expect(card.getByTestId('clip-confirm')).toHaveAttribute('data-price', '69');
+      await card.getByTestId('clip-res-1080p').click();
+      await expect(card.getByTestId('clip-confirm')).toHaveAttribute('data-price', '102');
+      await card.getByTestId('clip-cancel').click();
+      await expect(page.getByTestId('clip-cancelled').last()).toHaveText('Cancelled. Nothing was charged.');
+      expect(calls.clip).toHaveLength(0);
+    });
+
+    test('2c · Video with an uploaded video: the words edit it (Omni), Extend adds seconds, the price on Create; the result lands in the chat', async ({ page }) => {
+      const calls = await openStudio(page, { tool: null, closedTiers: [] });
+      const spend = watchSpend(page);
+      await pickService(page, 'video', 'en');
+      await page.locator(FILE_INPUT).setInputFiles([{ name: 'boat.webm', mimeType: 'video/webm', buffer: CLIP4 }]);
+      await expect(page.getByTitle('boat.webm')).toBeVisible({ timeout: 10_000 });
+      // Its length, as the browser read it, prices the edit: 4 s at 720p is ✦34 (GG's card 2026-10-25 17:04Z).
+      await expect(page.getByTestId('composer-attachment-length')).toBeVisible({ timeout: 15_000 });
+      const words = 'Make it night, with rain on the water';
+      await typeFilmPrompt(page, words);
+      await expect(page.getByTestId('run-button')).toHaveAttribute('data-price', '34');
+      await sendFilm(page);
+
+      const card = page.getByTestId('edit-card').last();
+      await expect(card).toHaveAttribute('data-phase', 'ask', { timeout: 20_000 });
+      await expect(card.getByTestId('edit-prompt')).toHaveText(`„${words}“`);
+      await expect(card.getByTestId('edit-video')).toHaveAttribute('src', /^blob:/);
+      await expect(card.getByTestId('edit-op-edit')).toHaveAttribute('aria-pressed', 'true');
+      await expect(card.getByTestId('edit-spec')).toHaveText('Edit · 4 s · 720p · Gemini Omni Flash');
+      await expect(card.getByTestId('edit-confirm')).toHaveAttribute('data-price', '34');
+      // Not a new clip of the words alone, and nothing is made before Create.
+      await expect(page.getByTestId('clip-card')).toHaveCount(0);
+      expect(spend).toEqual([]);
+
+      await card.getByTestId('edit-op-extend').click();
+      await card.getByTestId('edit-len-6').click();
+      await card.getByTestId('edit-res-1080p').click();
+      await expect(card.getByTestId('edit-spec')).toHaveText('Extend +6 s → 10 s · 1080p · Gemini Omni Flash');
+      await expect(card.getByTestId('edit-confirm')).toHaveAttribute('data-price', '68');
+      await card.getByTestId('edit-confirm').click();
+
+      await expect.poll(() => calls.omniEdit.length, { timeout: 15_000 }).toBe(1);
+      expect(calls.omniEdit[0]).toEqual({ op: 'extend', prompt: words, video: 'omni-uploads/u/file-1', seconds: 6, resolution: '1080p', expectedCredits: 68 });
+      await expect(page.locator(`video[src^="${OMNI_EDIT_URL}"]`).first()).toBeAttached({ timeout: 40_000 });
+      expect(calls.clipStatus[0]).toBe(OMNI_EDIT_JOB_ID);
+      expect(spend).toEqual(['/api/video/omni-edit']);
+      expect(calls.clip).toHaveLength(0);
+    });
+
+    test('2d · an edit the server measured otherwise: its price goes on Create, nothing is charged until it is pressed again', async ({ page }) => {
+      const calls = await openStudio(page, {
+        tool: null, closedTiers: [],
+        omniEdit: [
+          { status: 409, body: { success: false, error: 'price_changed', credits: 48, seconds: 6, inputSeconds: 5.2 } },
+          { status: 202, body: { success: true, op: 'edit', jobId: OMNI_EDIT_JOB_ID, credits: 48, seconds: 6, aspect: '9:16' } },
+        ],
+      });
+      await pickService(page, 'video', 'en');
+      await page.locator(FILE_INPUT).setInputFiles([{ name: 'boat.webm', mimeType: 'video/webm', buffer: CLIP4 }]);
+      await expect(page.getByTitle('boat.webm')).toBeVisible({ timeout: 10_000 });
+      await typeFilmPrompt(page, 'Turn the boat red');
+      await sendFilm(page);
+      const card = page.getByTestId('edit-card').last();
+      await expect(card).toHaveAttribute('data-phase', 'ask', { timeout: 20_000 });
+      await expect(card.getByTestId('edit-confirm')).toHaveAttribute('data-price', '34');
+      await card.getByTestId('edit-confirm').click();
+      await expect(card.getByTestId('edit-confirm')).toHaveAttribute('data-price', '48', { timeout: 15_000 });
+      await expect(card).toHaveAttribute('data-phase', 'ask');
+      await expect(card.getByTestId('edit-price-note')).toHaveText('A 5.2 s video, priced as 6 s. The frame is the video\'s own.');
+      expect(calls.omniEdit).toHaveLength(1);
+      await card.getByTestId('edit-confirm').click();
+      await expect.poll(() => calls.omniEdit.length, { timeout: 15_000 }).toBe(2);
+      expect(calls.omniEdit[1]).toMatchObject({ op: 'edit', expectedCredits: 48 });
+      await expect(page.locator(`video[src^="${OMNI_EDIT_URL}"]`).first()).toBeAttached({ timeout: 40_000 });
     });
 
     test('3 · an image, then „Send to video": the service is Video and the conversation is all still there', async ({ page }) => {
@@ -562,7 +659,9 @@ for (const vp of VIEWPORTS) {
         expect(composer.checked).toBeGreaterThan(3);
         expect(composer.low, `composer text below AA (${composer.skipped} skipped)`).toEqual([]);
         // Every quick chip says what it is and what it holds („Format: 9:16"), and that it opens a picker.
-        for (const id of ['quick-video-mode', 'quick-video-format', 'quick-video-length', 'quick-video-tier']) {
+        // No music video any more (GG 2026-10-25): the clip's row is its frame, length and quality.
+        await expect(page.getByTestId('quick-video-mode')).toHaveCount(0);
+        for (const id of ['quick-video-format', 'quick-video-length', 'quick-video-tier']) {
           await expect(page.getByTestId(id)).toHaveAttribute('aria-label', /.+: .+/);
           await expect(page.getByTestId(id)).toHaveAttribute('aria-haspopup', 'dialog');
         }

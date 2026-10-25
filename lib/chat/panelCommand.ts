@@ -231,7 +231,7 @@ export function panelCommandReply(outcome: PanelOutcome, locale: string, nameOf:
   switch (outcome.did) {
     case 'opened': {
       const name = `**${nameOf(outcome.tool)}**`;
-      const next = outcome.tool === 'video' ? pick('მითხარი, რაზე იყოს ფილმი.', 'Tell me what the film is about.', 'Скажите, о чём будет фильм.')
+      const next = outcome.tool === 'video' ? pick('მითხარი, რა უნდა ჩანდეს კლიპში.', 'Tell me what the clip should show.', 'Скажите, что должно быть в клипе.')
         : outcome.tool === 'image' ? pick('აღწერე, რა დავხატო.', 'Describe what to draw.', 'Опишите, что нарисовать.')
           : outcome.tool === 'music' ? pick('მითხარი, როგორი მუსიკა გინდა.', 'Tell me what music you want.', 'Скажите, какую музыку сделать.')
             : outcome.tool === 'avatar' ? pick('დაწერე, რა თქვას ავატარმა, ან დაურთე ფოტო.', 'Write what the avatar says, or attach a photo.', 'Напишите, что скажет аватар, или прикрепите фото.')

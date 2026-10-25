@@ -76,6 +76,11 @@ export interface Calls {
   librarySaves: Array<Record<string, unknown>>;
   /** Every GET of a result on the media host (a download fetches the master again). */
   media: string[];
+  /** POST /api/video/clip bodies (the one clip's Create, GG 2026-10-25) and GET /api/genjutsu/status ids. */
+  clip: Array<Record<string, unknown>>;
+  clipStatus: string[];
+  /** POST /api/video/omni-edit bodies (an uploaded video edited or extended by Omni, GG 2026-10-25). */
+  omniEdit: Array<Record<string, unknown>>;
 }
 
 export interface Reply { status: number; body: unknown }
@@ -110,7 +115,22 @@ export interface StudioOptions {
   library?: Array<Record<string, unknown>>;
   /** Jobs the server lists as live (?active=1) from the start — work started elsewhere (another tab, before a reload). */
   others?: Array<Record<string, unknown>>;
+  /** POST /api/video/clip (default: started, CLIP_JOB_ID). */
+  clip?: Reply;
+  /** GET /api/genjutsu/status, one per read until the last, which repeats (default: still rendering, then the clip). */
+  clipStatus?: Array<Record<string, unknown>>;
+  /** GET /api/video/engine → the Veo tiers this deployment cannot render (default: the route is not mocked here). */
+  closedTiers?: Array<'lite' | 'fast' | 'standard'>;
+  /** POST /api/video/omni-edit, one per Create until the last, which repeats (default: started, OMNI_EDIT_JOB_ID). */
+  omniEdit?: Reply[];
 }
+
+/** The signed job id POST /api/video/clip hands back, as the status route reads it. */
+export const CLIP_JOB_ID = 'gjt_e2e-clip-0001::c8';
+export const CLIP_URL = 'https://e2e-media.supabase.co/renders/video-clip/e2e/clip.mp4';
+/** The signed job id POST /api/video/omni-edit hands back (an extend by 8 s), and the result its poll delivers. */
+export const OMNI_EDIT_JOB_ID = 'gjt_e2e-edit-0001::ox8';
+export const OMNI_EDIT_URL = 'https://e2e-media.supabase.co/renders/video-clip/e2e/omni.mp4';
 
 const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
@@ -150,7 +170,7 @@ export const MUSIC_UNREADABLE: Reply = {
  */
 export async function openStudio(page: Page, opts: StudioOptions = {}): Promise<Calls> {
   const locale: Locale = opts.locale ?? 'en';
-  const calls: Calls = { chat: [], quote: [], run: [], editQuote: [], editRun: [], reads: [], cancel: [], storyboard: [], orchestrate: [], assemble: [], directorRuns: [], statusReads: [], sign: [], put: [], verify: [], libraryReads: [], librarySaves: [], media: [] };
+  const calls: Calls = { chat: [], quote: [], run: [], editQuote: [], editRun: [], reads: [], cancel: [], storyboard: [], orchestrate: [], assemble: [], directorRuns: [], statusReads: [], sign: [], put: [], verify: [], libraryReads: [], librarySaves: [], media: [], clip: [], clipStatus: [], omniEdit: [] };
   await page.addInitScript(() => {
     try {
       localStorage.setItem('myavatar-cookie-consent', 'necessary');
@@ -306,6 +326,46 @@ export async function openStudio(page: Page, opts: StudioOptions = {}): Promise<
   });
   await page.route('**/api/audio/georgian-song', (r) => r.fulfill(json(200, { url: null })));
 
+  // The one clip (GG 2026-10-25): its Create posts once, then the signed job is read until it is done.
+  // Only when asked: a spec that mocks the engine itself (before this) keeps its own answer.
+  if (opts.closedTiers) {
+    await page.route('**/api/video/engine', (r) => r.fulfill(json(200, {
+      transport: 'vertex', googleOnly: true, audioToggle: true, enhancePrompt: true, nativeCameraControl: false,
+      tiers: Object.fromEntries((['lite', 'fast', 'standard'] as const).map((t) => [t, { available: !opts.closedTiers!.includes(t), referenceImages: 3, audioToggle: true }])),
+    })));
+  }
+  await page.route('**/api/video/clip', async (r: Route) => {
+    const body = (r.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    calls.clip.push(body);
+    const rep = opts.clip ?? { status: 202, body: { success: true, op: 'clip', jobId: CLIP_JOB_ID, credits: body.expectedCredits, seconds: body.seconds } };
+    await r.fulfill(json(rep.status, rep.body));
+  });
+  const clipViews = opts.clipStatus ? [...opts.clipStatus] : [{ done: false, status: 'running' }, { done: true, videoUrl: CLIP_URL }];
+  // Only the clip's own job: another job's poll (a spec's avatar, its own clip mock) is left to the spec's route.
+  const ownJob = (opts.clip?.body as { jobId?: unknown } | undefined)?.jobId;
+  const clipJobs = new Set([CLIP_JOB_ID, ...(typeof ownJob === 'string' ? [ownJob] : [])]);
+  const editReplies = opts.omniEdit ? [...opts.omniEdit] : [];
+  await page.route('**/api/video/omni-edit', async (r: Route) => {
+    const body = (r.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    calls.omniEdit.push(body);
+    const rep = (editReplies.length > 1 ? editReplies.shift() : editReplies[0]) ?? {
+      status: 202, body: { success: true, op: body.op, jobId: OMNI_EDIT_JOB_ID, credits: body.expectedCredits, seconds: body.seconds, aspect: '16:9' },
+    };
+    await r.fulfill(json(rep.status, rep.body));
+  });
+  const omniEditViews = [{ done: false, state: 'processing' }, { done: true, videoUrl: OMNI_EDIT_URL }];
+  await page.route(/\/api\/genjutsu\/status(\?.*)?$/, async (r: Route) => {
+    const id = new URL(r.request().url()).searchParams.get('id') ?? '';
+    if (id === OMNI_EDIT_JOB_ID) {
+      calls.clipStatus.push(id);
+      await r.fulfill(json(200, omniEditViews.length > 1 ? omniEditViews.shift() : omniEditViews[0]));
+      return;
+    }
+    if (!clipJobs.has(id)) { await r.fallback(); return; }
+    calls.clipStatus.push(id);
+    await r.fulfill(json(200, clipViews.length > 1 ? clipViews.shift() : clipViews[0]));
+  });
+
   const query = opts.tool === null ? '' : `?tool=${opts.tool ?? 'chat'}`;
   await page.goto(`/${locale}/dashboard${query}`);
   await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 60_000 });
@@ -402,7 +462,7 @@ export async function openVideoTool(page: Page, isMobile: boolean, locale: Local
   const toggle = page.getByTestId('options-toggle');
   await expect(toggle).toHaveAttribute('aria-expanded', /^(true|false)$/);
   if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
-  await expect(page.getByTestId('video-create-panel').filter({ visible: true }).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('clip-create-panel').filter({ visible: true }).first()).toBeVisible({ timeout: 15_000 });
 }
 
 /** The sidebar's Chat row, the way back from a tool. */
@@ -414,7 +474,7 @@ export async function openChatTool(page: Page, isMobile: boolean, locale: Locale
 
 /** The Video panel: on a phone it is the options sheet, which a chat step closes after opening the tool. */
 export async function ensureVideoPanel(page: Page): Promise<void> {
-  const panel = page.getByTestId('video-create-panel');
+  const panel = page.getByTestId('clip-create-panel');
   if (await panel.isVisible().catch(() => false)) return;
   await page.getByTestId('options-toggle').click();
   await expect(panel).toBeVisible({ timeout: 10_000 });
@@ -430,6 +490,13 @@ export async function typeFilmPrompt(page: Page, text: string): Promise<void> {
   const box = page.getByTestId('composer-input');
   await expect(box).toBeVisible({ timeout: 10_000 });
   await box.fill(text);
+}
+
+/** The one clip's card in the thread (GG 2026-10-25: every video request is one clip, priced on its Create). */
+export async function waitForClipCard(page: Page): Promise<Locator> {
+  const card = page.getByTestId('clip-card').last();
+  await expect(card).toHaveAttribute('data-phase', 'ask', { timeout: 20_000 });
+  return card;
 }
 
 /** The chat box's priced Send — the film's one button (it replaced the panel's Generate). */

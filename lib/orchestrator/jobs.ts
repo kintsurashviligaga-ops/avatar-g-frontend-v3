@@ -272,16 +272,16 @@ export async function jobOwnerId(id: string): Promise<string | null> {
  * already done (the result). ⚠️ The row is OWNER-WRITABLE: `status` and `result` are whatever the owner last
  * wrote, so they may decide what the owner is shown — never what anyone is paid.
  */
-export async function jobSnapshot(id: string): Promise<{ userId: string; status: string; result: Record<string, unknown> | null } | null> {
+export async function jobSnapshot(id: string): Promise<{ userId: string; status: string; result: Record<string, unknown> | null; params: Record<string, unknown> | null } | null> {
   const sb = client();
   if (!sb || !id) return null;
   try {
-    const { data, error } = await sb.from(TABLE).select('user_id,status,result').eq('id', id).maybeSingle();
+    const { data, error } = await sb.from(TABLE).select('user_id,status,result,params').eq('id', id).maybeSingle();
     if (error || !data) return null;
-    const row = data as { user_id?: unknown; status?: unknown; result?: unknown };
+    const row = data as { user_id?: unknown; status?: unknown; result?: unknown; params?: unknown };
     if (typeof row.user_id !== 'string' || !row.user_id) return null;
-    const result = row.result && typeof row.result === 'object' && !Array.isArray(row.result) ? (row.result as Record<string, unknown>) : null;
-    return { userId: row.user_id, status: typeof row.status === 'string' ? row.status : '', result };
+    const obj = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+    return { userId: row.user_id, status: typeof row.status === 'string' ? row.status : '', result: obj(row.result), params: obj(row.params) };
   } catch {
     return null;
   }

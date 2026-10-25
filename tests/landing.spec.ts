@@ -186,6 +186,17 @@ async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
   await expect(page.getByTestId('composer-input')).toBeVisible();
 }
 
+/** GET /api/video/engine: every Veo tier open, so the prices are what this test reads (a closed tier is never offered). */
+async function openTiers(page: Page) {
+  await page.route('**/api/video/engine', (r) => r.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      transport: 'vertex', googleOnly: true, audioToggle: true, enhancePrompt: true, nativeCameraControl: false,
+      tiers: Object.fromEntries(['lite', 'fast', 'standard'].map((t) => [t, { available: true, referenceImages: 3, audioToggle: true }])),
+    }),
+  }));
+}
+
 /**
  * The settings: on a desktop a panel on the right, open by default (Google AI Studio); on a phone a sheet the tool chip
  * opens (Gemini). Either way the chip's aria-expanded says which, and this returns the visible container.
@@ -255,8 +266,10 @@ for (const vp of VIEWPORTS) {
 
     test('the video tool: the tool chip names what you make, and the composer asks for a shot', async ({ page }) => {
       await openDashboard(page);
-      // The tool chip names what you make and its shape — its text is its accessible name.
-      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
+      // The unified composer (GG 2026-10-25): the chip names the service, the quick settings its shape — one 8 s clip.
+      await expect(page.getByTestId('active-service-switch')).toContainText('ვიდეო');
+      await expect(page.getByTestId('quick-video-format')).toContainText('9:16');
+      await expect(page.getByTestId('quick-video-length')).toContainText('8');
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
@@ -320,7 +333,8 @@ for (const vp of VIEWPORTS) {
       await openSettings(page);
       await page.getByRole('button', { name: 'დახურვა' }).filter({ visible: true }).first().click();
       await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      await expect(toggle).toHaveText('ვიდეო · 9:16 · 24წმ');
+      await expect(page.getByTestId('active-service-switch')).toContainText('ვიდეო');
+      await expect(page.getByTestId('quick-video-length')).toContainText('8');
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
@@ -334,7 +348,8 @@ for (const vp of VIEWPORTS) {
       // The unified composer (GG 2026-10-25): the chip names the service and the quick settings show its values.
       await expect(page.getByTestId('active-service-switch')).toContainText('ვიდეო');
       await expect(page.getByTestId('quick-video-format')).toContainText('9:16');
-      await expect(page.getByTestId('quick-video-length')).toContainText('24');
+      // One clip, 8 s by default (GG 2026-10-25 16:21Z): nothing grows it on its own.
+      await expect(page.getByTestId('quick-video-length')).toContainText('8');
       // The words stay in the chat box: the panel holds no description of its own (GG 2026-10-18).
       await expect(page.getByTestId('composer-input')).toBeVisible();
       await expect(page.getByTestId('video-prompt-input')).toHaveCount(0);
@@ -405,44 +420,42 @@ for (const vp of VIEWPORTS) {
     });
 
     test('the video price is on the chat box\'s Send — it follows quality and length — and nothing sits under the composer', async ({ page }) => {
+      await openTiers(page);
       await openDashboard(page);
-      // Owner, 2026-10-02: no „25 კრედიტი · ~5 წთ“ caption under the box — a tool's price is ON its button. GG 2026-10-18:
-      // the film's words are typed in the chat box, so its Send is the film's one button and carries the quote.
+      // Owner, 2026-10-02: no „25 კრედიტი · ~5 წთ“ caption under the box — a tool's price is ON its button. GG 2026-10-25:
+      // one clip, so Send carries that clip's price (lib/video/directClip, the route's own function).
       await expect(page.getByTestId('price-tag')).toHaveCount(0);
       const pill = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
-      const chip = (await page.getByTestId('options-toggle').boundingBox())!;
-      expect(chip.y).toBeGreaterThanOrEqual(pill.y); // the tool chip is IN the composer
+      const chip = (await page.getByTestId('active-service-switch').boundingBox())!;
+      expect(chip.y).toBeGreaterThanOrEqual(pill.y - 1); // the service chip is IN the composer
       expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
       await page.getByTestId('composer-input').fill('A quiet harbour at dawn');
       const send = page.getByTestId('run-button');
       const settings = await openSettings(page);
-      const quality = settings.getByTestId('video-quality');
-      // 24 s on the default tier (Fast) = 24 × 3.125 credits; Best is ×3.3 (rounded up), Economy ×0.6 — lib/credits/videoPricing.
+      // 8 s: Fast ✦75, Veo 3.1 ✦224, Lite ✦54 (lib/credits/priceBook); 4 s Fast ✦43.
       await expect(send).toHaveAttribute('data-price', '75');
-      await quality.selectOption('standard');
-      await expect(send).toHaveAttribute('data-price', '248');
-      await quality.selectOption('lite');
-      await expect(send).toHaveAttribute('data-price', '45');
-      await quality.selectOption('fast');
+      await settings.getByTestId('clip-panel-tier-standard').click();
+      await expect(send).toHaveAttribute('data-price', '224');
+      await settings.getByTestId('clip-panel-tier-lite').click();
+      await expect(send).toHaveAttribute('data-price', '54');
+      await settings.getByTestId('clip-panel-tier-fast').click();
       await expect(send).toHaveAttribute('data-price', '75');
-      // The length is chosen in its own picker (4 s – 4 min); the price and the composer's chip follow it.
-      await settings.getByTestId('video-tile-length').click();
-      await page.getByTestId('video-preset-8').click();
-      await expect(page.getByTestId('video-duration-price')).toHaveAttribute('data-price', '25');
+      await settings.getByTestId('clip-panel-len-4').click();
+      await expect(send).toHaveAttribute('data-price', '43');
       await page.keyboard.press('Escape');
-      await expect(send).toHaveAttribute('data-price', '25');
-      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 8წმ');
+      await expect(page.getByTestId('quick-video-length')).toContainText('4');
       // The panel has no Generate of its own: one button.
       await expect(settings.getByTestId('video-generate')).toHaveCount(0);
     });
 
     test('the video tool opens on Fast, and Economy / Best are one pick away, each with its price', async ({ page }) => {
+      await openTiers(page);
       await openDashboard(page);
       const settings = await openSettings(page);
-      const quality = settings.getByTestId('video-quality');
-      await expect(quality).toHaveValue('fast');
-      await expect(quality.locator('option[value="standard"]')).toContainText('248');
-      await expect(quality.locator('option[value="lite"]')).toContainText('45');
+      await expect(settings.getByTestId('clip-panel-tier-fast')).toHaveAttribute('aria-checked', 'true');
+      await expect(settings.getByTestId('clip-panel-tier-standard')).toHaveAttribute('data-price', '224');
+      await expect(settings.getByTestId('clip-panel-tier-lite')).toHaveAttribute('data-price', '54');
+      await expect(settings.getByTestId('clip-panel-tier-standard')).toContainText('224');
     });
 
     test('"შესვლა" opens the sign-in', async ({ page }) => {

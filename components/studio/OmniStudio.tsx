@@ -53,22 +53,34 @@ import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type Cha
 import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
 import { wantsSubtitles } from '@/lib/chat/filmVoiceCheck';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
-import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
 import { FilmQaBadge } from './FilmQaBadge';
 import type { MusicVideoLookValue } from './create/MusicVideoLook';
 import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions, storyFramePrompts } from '@/lib/chat/filmPipeline';
 import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, type VeoRenderOptions } from '@/lib/video/veoPlan';
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
 import type { Transition } from '@/lib/veo/types';
-import { useVeoEngineInfo } from './video/VeoParametersPanel';
 import { DirectorRunOverlay, useDirectorRunsEnabled } from './video/DirectorRunOverlay';
+import { useVeoEngineInfo } from './video/VeoParametersPanel';
 import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
 import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
-import { VideoCreatePanel } from './create/VideoCreatePanel';
+import { ClipCreatePanel } from './create/ClipCreatePanel';
+import { ClipAskCard } from './clip/ClipAskCard';
+import {
+  clipAskText, clipAspectFor, clipFailureText, clipNeedsWordsText, clipOneClipNote, clipOrder, openClipTier, clipPhotoLostText, clipRequestBody,
+  clipSecondsFromWords, clipStillRenderingText, clipTooLongText, type ClipAskState,
+} from './clip/clipOrder';
+import { toClipPhoto } from './clip/clipPhoto';
+import { EditAskCard } from './clip/EditAskCard';
+import {
+  editAskText, editFailureText, editNeedsWordsText, editOrder, editPhotosLeftText, editRequestBody, editTooLongText, editTooShortText,
+  editUploadFailedText, type EditAskState,
+} from './clip/editOrder';
+import { OMNI_EDIT_PROMPT_MAX, omniEditCredits, omniEditInputCheck, omniEditOpFromWords } from '@/lib/video/omniEdit';
+import { DIRECT_CLIP_MAX_PHOTOS, DIRECT_CLIP_PROMPT_MAX, directClipCredits, snapDirectClipSeconds, type DirectClipAspect, type DirectClipResolution } from '@/lib/video/directClip';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
-import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, narrationCueApplies, veoSpeaksTypedLine, videoQuote } from '@/lib/video/createPanel';
+import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, veoSpeaksTypedLine, videoQuote } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
-import { VIDEO_FPS, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, panelSecondsAfterBlock, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
+import { VIDEO_FPS, describeDurationBlock, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, panelSecondsAfterBlock, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
 import { approvalForRender, inferOrigin, renderScriptsFor, snapshotRevision, type RenderApprovalWire, type StoryboardRevision } from '@/lib/video/storyboard/revision';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
@@ -101,7 +113,7 @@ import { creditCostFor, creditsWithUsd } from '@/lib/credits/pricing';
 import { budgetShortLabel } from '@/lib/services/billing/budgetMessage';
 import { awaitDroppedJob, isDroppedConnection } from '@/lib/jobs/awaitDroppedJob';
 import { splitAvatarScript } from '@/lib/avatar/scriptSplit';
-import { avatarRetakeText, filmRefineNote, improvedBrief, refineChange } from '@/lib/chat/refineRequest';
+import { avatarRetakeText, improvedBrief, refineChange } from '@/lib/chat/refineRequest';
 import { quoteSceneRedo, runSceneRedo, sceneRedoAsk, sceneRedoOfferText, sceneRedoProgressText, sceneRedoResultText, weakScenesText } from '@/lib/chat/filmSceneRedoClient';
 import { type AvatarFace, avatarAskLineText, avatarVoiceGender, avatarLineFit, avatarOfferText, avatarShortenText, avatarUnavailableText, stockAvatarFace } from '@/lib/avatar/chatAvatar';
 import { curatedAvatarFace, customAvatarText } from '@/lib/avatar/curated';
@@ -125,7 +137,7 @@ import { useDurableProgress } from '@/hooks/useDurableProgress';
 import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from '@/lib/jobs/trackJob';
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
-import { detectIntent, isGenerativeCommand, isMusicVideoIntent, isVideoIntent, resolveGenerativeLane } from '@/lib/chat/intentDetector';
+import { detectIntent, isGenerativeCommand, isVideoIntent, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, updateMessage, getMessages, getConversations } from '@/lib/chat-history';
 import { cardSignature, hasCard, mergeServerTurns, readTurnMeta, turnMetaOf } from '@/lib/chat/turnMeta';
 import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
@@ -158,7 +170,7 @@ import { remixSceneCredits } from '@/lib/credits/priceBook';
 import { isCoverRun, musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { offeredPrompt } from '@/lib/chat/offeredPrompt';
-import { aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference, orientationForAspect } from '@/lib/chat/chatConsent';
+import { aspectFromText, isConsentToStart, latestThreadPhoto, namedMedium, offerUsesReference } from '@/lib/chat/chatConsent';
 import { decidePanelCommand, panelCommand, panelCommandReply, type CommandPanel, type PanelCommand } from '@/lib/chat/panelCommand';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { shootKindForTool, shootOfferText, shootWire, productAdOfferText, productAdPhotoAsk, PRODUCT_PHOTO_WAIT_MS } from '@/lib/chat/chatShoot';
@@ -198,7 +210,7 @@ import { newestWorkingCard } from '@/lib/agent/media/workingCard';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { composerToolGroups, toolIsBeta } from '@/lib/catalog/nav';
 import { ServicePicker } from '@/components/chat/composer/ServicePicker';
-import { VideoQuickChips } from '@/components/studio/create/VideoQuickChips';
+import { ClipQuickChips } from '@/components/studio/create/ClipQuickChips';
 import { ImageQuickChips } from '@/components/studio/create/ImageQuickChips';
 import { MusicQuickChips } from '@/components/studio/create/MusicQuickChips';
 import { AvatarQuickChips } from '@/components/studio/create/AvatarQuickChips';
@@ -244,7 +256,6 @@ import { imageCopy } from '@/components/studio/image/copy';
 import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { IMG_ASPECTS, IMG_STYLES, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
-import { withFilmStyle } from '@/lib/studio/style';
 import { AUDIO_ACCEPT } from '@/lib/media/accept';
 import { saveMedia } from '@/lib/media/saveMedia';
 
@@ -325,6 +336,25 @@ async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e
  * or removed, naming the file.
  */
 const chatUploads = new Map<string, Promise<string | null>>();
+
+/**
+ * Follow one signed genjutsu job (the video service's clip, an edited or extended upload) to its end: every 6 s for as long
+ * as the server keeps it open (it refunds and closes it at GENJUTSU_HARD_CAP_MS), plus a minute for its own verdict. null
+ * when the studio went away meanwhile (nothing is patched then).
+ */
+async function followVideoJob(
+  jobId: string, alive: () => boolean, failText: (body: unknown) => string,
+): Promise<{ url: string } | { failed: string } | { timeout: true } | null> {
+  const until = Date.now() + GENJUTSU_HARD_CAP_MS + 60_000;
+  while (Date.now() < until) {
+    if (!alive()) return null;
+    await new Promise((r) => setTimeout(r, 6000));
+    const pr = await fetch(`/api/genjutsu/status?id=${encodeURIComponent(jobId)}`, { credentials: 'include' }).catch(() => null);
+    const pj = (await pr?.json().catch(() => ({}))) as { done?: boolean; videoUrl?: string; error?: string; refunded?: boolean } | undefined;
+    if (pj?.done) return pj.videoUrl ? { url: pj.videoUrl } : { failed: failText(pj) };
+  }
+  return alive() ? { timeout: true } : null;
+}
 
 // Phase 6 polish — decode an uploaded audio File entirely client-side to get its real
 // duration + a downsampled waveform (N peaks in 0..1) for the music-video preview. Pure
@@ -1104,7 +1134,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -2535,9 +2565,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Spoken voice for the film — ON by default so the character actually TALKS (and,
   // with the lip-sync pass, the lips move with it). When on, a localized cue is
   // appended to the brief so the pipeline generates a voice-over + lip-syncs the master.
-  const [videoNarration, setVideoNarration] = useState(true);
+  const [videoNarration] = useState(true);
   // Narrate the film in the user's TRAINED voice (RVC) — needs a trained model.
-  const [videoMyVoiceNarration, setVideoMyVoiceNarration] = useState(false);
+  const [videoMyVoiceNarration] = useState(false);
   // Lip-sync "dub from text" → speak the typed script in the user's TRAINED voice (RVC).
   const [lipMyVoice, setLipMyVoice] = useState(false);
   // Avatar mode: cloned-voice gender + output format (the panel's selectable options).
@@ -2586,14 +2616,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // the singer performance, for a full music-video edit.
   // PHASE 2 — 6s (single-clip path) · 30s · 60s. 6s → sceneCount 1 → no multi-clip stitch.
   const [videoDuration, setVideoDuration] = useState<number>(VIDEO_PANEL_DEFAULTS.duration);
+  // The 10 s clip's resolution (Gemini Omni Flash, GG's card 2026-10-25 16:51Z): 720p unless 1080p is picked.
+  const [clipResolution, setClipResolution] = useState<DirectClipResolution>('720p');
   // Video Core v1.0 §4 — the length the user ASKED for, as said („29.7 წამი", „ერთი წუთი"), when it is off the grid:
   // videoDuration holds what is RENDERED (the grid), this holds what is DELIVERED (lib/video/durationContract). Null when
   // the request is on the grid or the user picked a length on the panel. The render sends it as finalDurationSec.
   const [videoRequestedSec, setVideoRequestedSec] = useState<number | null>(null);
   // Background score on/off (off → voice-only film). Documentary mode only.
-  const [videoMusic, setVideoMusic] = useState(true);
+  const [videoMusic] = useState(true);
   // Subtitles of the narration (documentary mode): off unless the user turns them on, or asks for them in the brief.
-  const [videoSubtitles, setVideoSubtitles] = useState(false);
+  const [videoSubtitles] = useState(false);
   // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
   // 'musicvideo' → the song rules the master (narrator omitted, backing ducked −12 dB);
   // 'documentary' → narration-forward (voice on top, music ducked under it).
@@ -2625,13 +2657,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // THE GOOGLE VEO PLAN (lib/video/veoPlan) — quality tier, how the photos condition Veo, Veo's own sound, seed lock,
   // negative prompt, and each scene's camera + join. Format and length stay OWNED by videoOrientation / videoDuration
   // (the composer pills and the presets write those) and are mirrored in below, so each value has one source.
-  const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24, tier: 'fast' }));
+  const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 8, tier: 'fast' }));
   // Video Core v1.0 §4 — the plan's join model: the scene timeline's default join. A cut takes nothing off the stitched master; a
   // soft join (crossfade · dissolve · fade) 1 s, so a 60 s film with crossfades is planned as 9 scenes, not 8. The exact per-join
   // stitch of the board that renders is checked in startFilmRender from the joins it will make.
   const videoPlanOpts = useMemo(() => ({ joinOverlapSec: joinOverlapFor(veoPlan.transitionDefault) }), [veoPlan.transitionDefault]);
-  // What the live Veo route honours (sound off and prompt rewriting are Vertex-only) — the panel offers only those.
+  // The Veo tiers this deployment cannot render (GET /api/video/engine): the clip's settings show them as unavailable, and a
+  // clip never runs on one (openClipTier; POST /api/video/clip refuses one free).
   const veoEngine = useVeoEngineInfo();
+  const clipClosedTiers = useMemo(() => (['lite', 'fast', 'standard'] as const).filter((t) => veoEngine?.tiers?.[t]?.available === false), [veoEngine]);
   // V1–V6 director runs (VIDEO_DIRECTOR_RUNS): when on for this user, an approved board renders shot by shot through
   // the director instead of the film render. Off → false → nothing below changes.
   const directorRunsOn = useDirectorRunsEnabled();
@@ -2732,7 +2766,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Phase 6 polish — also carry the real duration + a downsampled waveform (peaks 0..1)
   // decoded client-side, so the music-video panel can show length + a waveform preview.
   const [videoSoundtrack, setVideoSoundtrack] = useState<{ name: string; url: string; durationSec?: number; peaks?: number[]; previewUrl?: string } | null>(null);
-  const [videoSoundtrackBusy, setVideoSoundtrackBusy] = useState(false);
+  const [, setVideoSoundtrackBusy] = useState(false);
   // Dedicated SCRIPT for the video service — uploaded INTO the panel (not the chat
   // composer), so the Director/Storyboard agents always read it regardless of chat mode.
   // .txt/.md are decoded in-browser; .pdf/.docx go through /api/utils/extract-text.
@@ -2987,10 +3021,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
   // Documentary narrator gender (👩 ქალი / 👨 კაცი) → cloned female/male Georgian TTS.
-  const [videoNarratorGender, setVideoNarratorGender] = useState<'male' | 'female'>('female');
+  const [videoNarratorGender] = useState<'male' | 'female'>('female');
   // Multi-character dialogue: when ON, the dialogue textarea is split per speaker
   // (ქალი:/კაცი:/Woman:/Man:) and each line is voiced in its gendered voice + mixed.
-  const [videoMultiChar, setVideoMultiChar] = useState(false);
+  const [videoMultiChar] = useState(false);
   const [videoDialogue, setVideoDialogue] = useState('');
   // DAY-6 — an optional full TIMECODED Master Production Script (SCENE/VOICE/DIALOGUE sheets). When filled it
   // drives the structured storyboard + multi-voice casting (parseMasterScript) instead of the single-prompt path.
@@ -3000,7 +3034,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // /api/video/lipsync kind:'film'. ENGINE VERIFIED end-to-end on Replicate today
   // (prediction q9m5k5nexdrmr0cyyhnt2ca090, ~113s, output mp4). Default ON; fail-open
   // to the un-synced master if anything misses.
-  const [videoLipsync, setVideoLipsync] = useState(true);
+  const [videoLipsync] = useState(true);
   // PHASE 2 L6 — Smart ducking (default ON): in documentary mode the music bed
   // auto-ducks under the dialogue via the assembler's 3-track sidechain. The slider
   // sets the duck depth (−6…−18 dB). Only affects films that carry voice + music +
@@ -3484,7 +3518,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // The sidebar picks a tool through `omni:set-tool`; it learns which one is active from `omni:tool-changed` and
   // from <html data-tool> (read on its mount — a child's first effect runs before its parent's listener exists).
   // The sidebar SEARCH (§51) sends a service instead of a bare tool: `{ tool, service, surface }` — its mode comes with
-  // it (Music video = the Video tool in music-video mode) and it is counted under its own catalog id.
+  // it and it is counted under its own catalog id.
   useEffect(() => {
     // Handling it cancels the event: that is how the sidebar knows the studio heard it (ChatChrome askStudio).
     const onSet = (e: Event) => {
@@ -3497,7 +3531,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       e.preventDefault();
       selectTool(o.tool, o.surface === 'sidebar' ? 'sidebar' : 'search', service?.id ?? null);
       const m = service ? serviceModeQuery(service.id)?.mode : undefined;
-      if (o.tool === 'video' && (m === 'musicvideo' || m === 'documentary')) setVideoMode(m);
+      // No music video any more (GG 2026-10-25 16:10Z): an old link to it opens the clip like any video link.
+      if (o.tool === 'video' && m === 'documentary') setVideoMode(m);
     };
     window.addEventListener('omni:set-tool', onSet);
     return () => window.removeEventListener('omni:set-tool', onSet);
@@ -3538,7 +3573,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!h) return;
     if (h.tool !== 'chat') selectTool(h.tool);
     if (h.video) {
-      setVideoMode(h.video.mode); setVideoDuration(h.video.seconds); setVideoOrientation(h.video.orientation);
+      setVideoDuration(h.video.seconds); setVideoOrientation(h.video.orientation);
       dispatchVeo({ type: 'tier', tier: h.video.tier });
     }
     if (h.image && (IMG_ASPECTS as readonly string[]).includes(h.image.aspect)) {
@@ -3558,12 +3593,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // `?tool=` — any tool, by the id the sidebar uses (/dashboard?tool=product from a page outside the studio).
       const tl = url.searchParams.get('tool');
       if (isToolId(tl)) {
-        // `&mode=` rides along for the Video tool: a catalog link to Music video is `?tool=video&mode=musicvideo`
-        // (lib/catalog/services.serviceHref — /services and the sidebar search). It used to open plain Video.
+        // `&mode=` rode along for the Video tool (`?tool=video&mode=musicvideo`). There is no music video any more (GG
+        // 2026-10-25 16:10Z): an old link opens the clip, and the param is dropped.
         const vm = url.searchParams.get('mode');
-        const videoMode = tl === 'video' && (vm === 'musicvideo' || vm === 'documentary') ? vm : null;
-        selectTool(tl, 'deep-link', serviceForTool(tl, { videoMode }));
-        if (videoMode) { setVideoMode(videoMode); url.searchParams.delete('mode'); }
+        selectTool(tl, 'deep-link', serviceForTool(tl, { videoMode: null }));
+        if (tl === 'video' && vm) url.searchParams.delete('mode');
         // The admin Image Studio's own link: the studio, not the Create sheet under it (it opens once its access answers).
         if (tl === 'image' && url.searchParams.get('imageStudio') === '1') {
           setImageWorkspaceOpen(true); setOptionsOpen(false);
@@ -3639,7 +3673,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // over from another service lands in the bridge store; consume it here, drop it into the
   // right Video slot, switch to video mode, flash a welcome toast, then clear the store.
   // Strictly additive — no-op unless a bridge button fired.
-  const { sendImageToVideo, sendMusicToMusicVideo } = useServiceBridge();
+  const { sendImageToVideo } = useServiceBridge();
   // THE INTERIOR DESIGNER AND THE PHOTOGRAPHER (components/studio/create): their forms, runs and handlers are ONE hook; the two
   // panels and the centre pane are views over it. Above the early returns like every hook. „Walkthrough" hands the picture to
   // the Video studio (8 s) and puts its prompt in the composer; the Video studio prices and charges it.
@@ -3730,21 +3764,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (el) { el.style.outline = '2px solid var(--app-accent, #22d3ee)'; el.style.outlineOffset = '2px'; setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = ''; }, 2000); }
       }, 400);
     }
-    if (transitAudioUrl && transitAudioMeta) {
-      setMode('video');
-      setOptionsOpen(true);
-      setVideoMode('musicvideo'); // a handed-over track implies a music video
-      setVideoSoundtrack({
-        name: transitAudioMeta.filename,
-        url: transitAudioUrl,
-        ...(transitAudioMeta.duration ? { durationSec: transitAudioMeta.duration } : {}),
-        peaks: transitAudioMeta.waveform,
-        previewUrl: transitAudioUrl, // remote signed URL is directly playable for preview
-      });
-      clearAudio();
-      setShareToast(locale === 'en' ? '🎵 Track sent to the Video studio' : locale === 'ru' ? '🎵 Трек перенесён в видео-студию' : '🎵 სიმღერა ვიდეო სტუდიაში გადმოტანილია!');
-      setTimeout(() => setShareToast((s) => (/🎵/.test(s ?? '') ? null : s)), 2600);
-    }
+    // A track handed over for a music video (a bridge of an older page): there is no music video any more (GG
+    // 2026-10-25 16:10Z), so it is let go; the clip's sound follows its words.
+    if (transitAudioUrl && transitAudioMeta) clearAudio();
     // PHASE 29 (VECTOR 2) — a full authored storyboard exported from the Image Studio pre-populates
     // EVERY scene lane: the per-scene frame anchors (videoCharacterRefs), the per-scene shot prompts,
     // the numbered-scene master script, plus duration/orientation/mode. The user then presses Generate
@@ -3761,7 +3783,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (sbPlan.ok) { setVideoDuration(sbPlan.plan.nativeSec); setVideoRequestedSec(sbPlan.plan.deviation === 'trim' ? sbPlan.plan.requestedSec : null); }
       else { setVideoDuration(panelSecondsAfterBlock(sbPlan, videoCaps)); setVideoRequestedSec(null); }
       setVideoOrientation(sb.orientation);
-      if (sb.musicVideoMode) setVideoMode('musicvideo');
       // PHASE 36 — the "Scene frames" lanes ARE videoCharacterRefs. Fill them with the FULL positional
       // sceneFrames array (every scene anchored to its rendered thumbnail) so "Scene frames 0/6" becomes
       // "6/6" natively; fall back to the single identity ref only when the storyboard carried no frames.
@@ -6413,6 +6434,182 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (job) setInput(job.text);
   }, [patchMsgById]);
 
+  // ── THE VIDEO SERVICE'S ONE CLIP (GG 2026-10-25 16:10Z: „like Gemini's Veo"; app/api/video/clip) ───────────────────────
+  // Every video request (the Video tool's Send, a video order typed in the chat, a yes to Agent G, „make it better") becomes
+  // ONE clip's card (components/studio/clip): the words as typed, the photos, 4 · 6 · 8 · 10 s (8 by default), the frame,
+  // the quality as a resolution, the engine and the price on Create. No storyboard, no 16–24 s film guessed from the word
+  // count, no music video, no switch for sound. Create POSTs the clip and polls its signed job; the bubble becomes the
+  // video. It does not hold the chat: the bubble is patched by its id while the user goes on.
+  const clipRunsRef = useRef(new Set<string>());
+  const proposeClip = useCallback(async (input: {
+    prompt: string; photos: readonly string[]; userText: string; medias?: Media[]; seconds?: number | null;
+    aspect?: DirectClipAspect; note?: string; viaVoice?: boolean;
+  }) => {
+    const wanted = input.photos.slice(0, DIRECT_CLIP_MAX_PHOTOS);
+    const photos = (await Promise.all(wanted.map((src) => toClipPhoto(src)))).filter((x): x is string => !!x);
+    const ask = clipOrder({
+      prompt: input.prompt, photos,
+      seconds: input.seconds ?? snapDirectClipSeconds(videoDuration),
+      aspect: input.aspect ?? (videoOrientation === 'landscape' ? '16:9' : '9:16'),
+      tier: openClipTier(veoPlan.tier, clipClosedTiers, photos.length), resolution: clipResolution,
+    });
+    const id = `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const text = [clipAskText(locale), ...(input.note ? [input.note] : []), ...(photos.length < wanted.length ? [clipPhotoLostText(locale)] : [])].join('\n\n');
+    trackQuoteShown(serviceForTool('video'), ask.credits, 'agent-card');
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text: input.userText, inputMethod: input.viaVoice ? 'voice' : 'text', ...(input.medias?.length ? { medias: input.medias } : {}) },
+      { role: 'assistant', id, text, clipAsk: ask },
+    ]);
+    persistChatTurn('user', input.userText, input.medias);
+    closeSettingsLayer();
+  }, [videoDuration, videoOrientation, veoPlan.tier, clipClosedTiers, clipResolution, locale, persistChatTurn, closeSettingsLayer]);
+  const changeClipAsk = useCallback((bubbleId: string, next: ClipAskState) => {
+    patchMsgById(bubbleId, (m) => (m.clipAsk?.phase === 'ask' ? { ...m, clipAsk: { ...next, phase: 'ask' } } : m));
+  }, [patchMsgById]);
+  const cancelClipAsk = useCallback((bubbleId: string) => {
+    patchMsgById(bubbleId, (m) => (m.clipAsk?.phase === 'ask' ? { ...m, clipAsk: { ...m.clipAsk, phase: 'cancelled' } } : m));
+  }, [patchMsgById]);
+  // Create on the card's price: one POST (a double tap is one clip), then the signed job is polled every 6 s for as long
+  // as the server keeps it open (it refunds and closes it at GENJUTSU_HARD_CAP_MS), plus a minute for its own verdict.
+  const confirmClip = useCallback(async (bubbleId: string) => {
+    const ask = messagesRef.current.find((m) => m.id === bubbleId)?.clipAsk;
+    if (!ask || ask.phase !== 'ask' || clipRunsRef.current.has(bubbleId)) return;
+    // A visitor without an account is asked to sign in, as for any paid order; the card stays.
+    if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
+      window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+      return;
+    }
+    clipRunsRef.current.add(bubbleId);
+    const service = serviceForTool('video');
+    trackGenerationConfirmed(service, 'agent-card', ask.credits || null);
+    const setAsk = (phase: ClipAskState['phase'], over: Partial<ClipAskState> = {}) =>
+      patchMsgById(bubbleId, (m) => (m.clipAsk ? { ...m, clipAsk: { ...m.clipAsk, ...over, phase } } : m));
+    const end = (text: string, extra: Partial<Msg> = {}) => patchMsgById(bubbleId, () => ({ role: 'assistant', id: bubbleId, text, ...extra }));
+    setAsk('starting');
+    try {
+      const res = await fetch('/api/video/clip', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(clipRequestBody(ask)),
+      });
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; jobId?: string; error?: string; credits?: number };
+      if (res.status === 401) { setAsk('ask'); window.dispatchEvent(new CustomEvent('myavatar:auth-required')); return; }
+      // The server's price is no longer the card's: the new one goes on Create; nothing was charged.
+      if (res.status === 409 && j.error === 'price_changed' && typeof j.credits === 'number') { setAsk('ask', { credits: j.credits }); return; }
+      if (!res.ok || !j.jobId) {
+        trackGenerationFailed(service, 'refused');
+        end(`⚠️ ${clipFailureText(j, locale)}`, j.error === 'insufficient_credits' ? { topUp: true } : {});
+        return;
+      }
+      setAsk('running');
+      try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ }
+      const out = await followVideoJob(j.jobId, () => mountedRef.current, (b) => clipFailureText(b, locale));
+      if (!out) return;
+      if ('url' in out) {
+        end('', {
+          videoUrl: out.url, genKind: 'video', orientation: ask.aspect === '16:9' ? 'landscape' : 'vertical',
+          clipSpec: { prompt: ask.prompt, photos: ask.photos, seconds: ask.seconds, aspect: ask.aspect },
+        });
+        notifyCredit('video', { seconds: ask.seconds, credits: ask.credits, ...(service ? { service } : {}) });
+      } else {
+        const failed = 'failed' in out ? out.failed : null;
+        trackGenerationFailed(service, failed ? 'no_result' : 'timeout');
+        end(`⚠️ ${failed ?? clipStillRenderingText(locale)}`);
+        // A failed clip was refunded by the server: the balance pill reads it again.
+        if (failed) { try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ } }
+      }
+    } catch {
+      if (mountedRef.current) end(`⚠️ ${clipFailureText({}, locale)}`);
+    } finally {
+      clipRunsRef.current.delete(bubbleId);
+    }
+  }, [patchMsgById, locale, notifyCredit]);
+
+  // ── AN UPLOADED VIDEO, EDITED OR EXTENDED BY OMNI (GG 2026-10-25 16:58Z; card 17:04Z „კი, ორივე"; app/api/video/omni-edit) ──
+  // A video attached in the Video tool with words becomes ITS card (components/studio/clip/EditAskCard): the words as typed,
+  // the video, Edit or Extend (the words pick: „გააგრძელე" extends), +4 · 6 · 8 · 10 s, 720p / 1080p, the price on Create.
+  // It used to be dropped for a new clip of the words alone. Create waits for the chat's own upload of the file (chatUploads),
+  // POSTs its stored path and follows the signed job like the clip; the bubble becomes the result.
+  const proposeEdit = useCallback((input: { prompt: string; video: Media; userText: string; medias: Media[]; viaVoice?: boolean; photosLeft?: boolean }) => {
+    const op = omniEditOpFromWords(input.prompt);
+    const ask = editOrder({
+      op, prompt: input.prompt, inputSec: input.video.durationSec ?? null, resolution: clipResolution,
+      video: {
+        url: input.video.dataUrl, mimeType: input.video.mimeType,
+        ...(input.video.name ? { name: input.video.name } : {}), ...(input.video.poster ? { poster: input.video.poster } : {}),
+        ...(input.video.storagePath ? { path: input.video.storagePath } : {}),
+      },
+    });
+    const id = `edit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    trackQuoteShown(serviceForTool('video'), ask.credits, 'agent-card');
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text: input.userText, inputMethod: input.viaVoice ? 'voice' : 'text', medias: input.medias },
+      { role: 'assistant', id, text: [editAskText(op, locale), ...(input.photosLeft ? [editPhotosLeftText(locale)] : [])].join('\n\n'), editAsk: ask },
+    ]);
+    persistChatTurn('user', input.userText, input.medias);
+    closeSettingsLayer();
+  }, [clipResolution, locale, persistChatTurn, closeSettingsLayer]);
+  const changeEditAsk = useCallback((bubbleId: string, next: EditAskState) => {
+    patchMsgById(bubbleId, (m) => (m.editAsk?.phase === 'ask' ? { ...m, editAsk: { ...next, phase: 'ask' } } : m));
+  }, [patchMsgById]);
+  const cancelEditAsk = useCallback((bubbleId: string) => {
+    patchMsgById(bubbleId, (m) => (m.editAsk?.phase === 'ask' ? { ...m, editAsk: { ...m.editAsk, phase: 'cancelled' } } : m));
+  }, [patchMsgById]);
+  const confirmEdit = useCallback(async (bubbleId: string) => {
+    const ask = messagesRef.current.find((m) => m.id === bubbleId)?.editAsk;
+    if (!ask || ask.phase !== 'ask' || clipRunsRef.current.has(bubbleId)) return;
+    if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
+      window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+      return;
+    }
+    clipRunsRef.current.add(bubbleId);
+    const service = serviceForTool('video');
+    trackGenerationConfirmed(service, 'agent-card', ask.credits || null);
+    const setAsk = (phase: EditAskState['phase'], over: Partial<EditAskState> = {}) =>
+      patchMsgById(bubbleId, (m) => (m.editAsk ? { ...m, editAsk: { ...m.editAsk, ...over, phase } } : m));
+    const end = (text: string, extra: Partial<Msg> = {}) => patchMsgById(bubbleId, () => ({ role: 'assistant', id: bubbleId, text, ...extra }));
+    setAsk('starting');
+    try {
+      // The chat's one stored copy of the file (uploaded when it was picked); nothing is sent without it.
+      const path = ask.video.path ?? (await uploadBigFile(ask.video.url, ask.video.mimeType));
+      if (!path) { end(`⚠️ ${editUploadFailedText(locale)}`); return; }
+      const res = await fetch('/api/video/omni-edit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(editRequestBody(ask, path)),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        success?: boolean; jobId?: string; error?: string; credits?: number; seconds?: number; outputSeconds?: number; inputSeconds?: number; aspect?: string;
+      };
+      if (res.status === 401) { setAsk('ask', { video: { ...ask.video, path } }); window.dispatchEvent(new CustomEvent('myavatar:auth-required')); return; }
+      // The server measured the video and its price is not the card's: the new one (and the length it read) goes on Create.
+      if (res.status === 409 && j.error === 'price_changed' && typeof j.credits === 'number') {
+        setAsk('ask', { credits: j.credits, video: { ...ask.video, path }, ...(typeof j.inputSeconds === 'number' ? { inputSec: j.inputSeconds } : {}) });
+        return;
+      }
+      if (!res.ok || !j.jobId) {
+        trackGenerationFailed(service, 'refused');
+        end(`⚠️ ${editFailureText(j, locale)}`, j.error === 'insufficient_credits' ? { topUp: true } : {});
+        return;
+      }
+      setAsk('running');
+      try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ }
+      const out = await followVideoJob(j.jobId, () => mountedRef.current, (b) => editFailureText(b, locale));
+      if (!out) return;
+      if ('url' in out) {
+        end('', { videoUrl: out.url, genKind: 'video', orientation: j.aspect === '16:9' ? 'landscape' : 'vertical' });
+        notifyCredit('video', { seconds: j.seconds ?? ask.seconds, credits: j.credits ?? ask.credits, ...(service ? { service } : {}) });
+      } else {
+        const failed = 'failed' in out ? out.failed : null;
+        trackGenerationFailed(service, failed ? 'no_result' : 'timeout');
+        end(`⚠️ ${failed ?? clipStillRenderingText(locale)}`);
+        if (failed) { try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ } }
+      }
+    } catch {
+      if (mountedRef.current) end(`⚠️ ${editFailureText({}, locale)}`);
+    } finally {
+      clipRunsRef.current.delete(bubbleId);
+    }
+  }, [patchMsgById, locale, notifyCredit]);
+
   /**
    * ONE WAY TO OPEN THE MONTAGE EDITOR WITH THE USER'S OWN FILES — the typed chat and the Live call both use it, so a
    * spoken „montage these" is exactly a typed one. Every clip and photo goes on the timeline in the order given, the first
@@ -6578,19 +6775,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       const last = lastIdx >= 0 ? messages[lastIdx] : undefined;
       const clearBox = () => { setInput(''); inputSourceRef.current = 'text'; stopDictationEcho(); };
-      if (last?.filmSpec && last.videoUrl && (mode === 'chat' || mode === 'video')) {
-        const spec = last.filmSpec;
-        const brief = improvedBrief(spec.prompt, refine.change, locale);
-        // The photos of the last request when this is still its film (they never travel in a stored message).
-        const refs = lastVideoReqRef.current?.filmPrompt === spec.prompt ? lastVideoReqRef.current.refs : spec.refs;
+      // A clip asked again, changed: the same photos, length and frame on a new card, with the improvement asked for.
+      // A film made before the clip (its filmSpec) is asked again as one 8 s clip from its brief and its photos.
+      const clipAgain = last?.videoUrl && (mode === 'chat' || mode === 'video')
+        ? last.clipSpec ?? (last.filmSpec ? {
+          prompt: last.filmSpec.prompt,
+          photos: lastVideoReqRef.current?.filmPrompt === last.filmSpec.prompt ? lastVideoReqRef.current.refs : last.filmSpec.refs,
+          seconds: 8, aspect: (last.filmSpec.orientation === 'landscape' ? '16:9' : '9:16') as DirectClipAspect,
+        } : null)
+        : null;
+      if (clipAgain) {
+        const prompt = improvedBrief(clipAgain.prompt, refine.change, locale);
         gatePendingRef.current = null;
-        setMode('video'); setVideoMode(spec.musicVideo ? 'musicvideo' : 'documentary');
-        setVideoDuration(spec.seconds); setVideoRequestedSec(null);
-        setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: filmRefineNote(formatVideoDuration(spec.seconds, locale), refine.change, locale), notice: true }]);
-        persistChatTurn('user', text);
         clearBox();
-        closeSettingsLayer();
-        void createStoryboard(brief, refs, spec.orientation, { nativeSec: spec.seconds, musicVideoMode: spec.musicVideo });
+        if (prompt.length > DIRECT_CLIP_PROMPT_MAX) {
+          setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: clipTooLongText(locale, DIRECT_CLIP_PROMPT_MAX), notice: true }]);
+          return;
+        }
+        await proposeClip({ prompt, photos: clipAgain.photos, userText: text, seconds: clipAgain.seconds, aspect: clipAgain.aspect, viaVoice });
         return;
       }
       const imageSpec = last?.imageUrl && last.regen?.kind === 'image' ? last.regen : null;
@@ -6673,6 +6875,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // The chat stays the chat: none of the chat routes between here and there reads it again.
     const chatAvatar = mode === 'chat' && opts?.confirmed === true && opts.target === 'avatar';
     if (chatAvatar) effMode = 'lipsync';
+    // ── A VIDEO ATTACHED IN THE VIDEO TOOL IS EDITED OR EXTENDED (GG 2026-10-25 16:58Z; Gemini Omni Flash) ──
+    // Its words are what to change („გააღამე") or what happens next („გააგრძელე, ის კარს აღებს"), never a new clip's brief
+    // with the video dropped. One video only (several: which one?); its length is checked against Omni's 10 s before any
+    // card (the server measures it again before any charge). Read before Agent G's questions, which are about a new shot.
+    const editVideos = effMode === 'video' ? attachments.filter((a) => isVideo(a.mimeType)) : [];
+    const offerEdit = (): boolean => {
+      if (!editVideos.length) return false;
+      if (editVideos.length > 1) {
+        const kinds = attachments.map((a) => ({ kind: (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other') as AttachmentKind, ...(a.name ? { name: a.name } : {}) }));
+        setMessages((prev) => [...prev, { role: 'assistant', text: pickOneVideoText(kinds, locale), notice: true }]);
+        return true;
+      }
+      const say = (line: string) => { setMessages((prev) => [...prev, { role: 'assistant', text: line, notice: true }]); return true; };
+      if (!text) return say(editNeedsWordsText(locale));
+      if (text.length > OMNI_EDIT_PROMPT_MAX) return say(clipTooLongText(locale, OMNI_EDIT_PROMPT_MAX));
+      const video = editVideos[0]!;
+      const check = omniEditInputCheck(omniEditOpFromWords(text), video.durationSec);
+      if (check === 'too_long') return say(editTooLongText(video.durationSec ?? null, locale));
+      if (check === 'too_short') return say(editTooShortText(locale));
+      const sent = attachments;
+      setInput(''); setAttachments([]); inputSourceRef.current = 'text'; stopDictationEcho();
+      proposeEdit({ prompt: text, video, userText: text, medias: sent, viaVoice, photosLeft: sent.some((a) => isImage(a.mimeType)) });
+      return true;
+    };
     // ── AGENT G · THE GATEKEEPER OF EVERY FOCUS MODE ───────────────────────────────────────────────────────────────
     // ⚠️ "აქ ხარ?" ("are you here?") typed into Image mode STARTED A PAID RENDER. Everything below treats the text of a focus
     // mode as that tool's prompt — runImageJob, runMusicJob, createStoryboard — so a greeting, a question, "thanks" cost
@@ -6751,8 +6977,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         await streamChat([...messages, chatTurn]);
         return;
       }
-      if (verdict.kind === 'clarify' || verdict.kind === 'confirm') {
-        // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
+      // A video attached in the Video tool: its words are an edit's (offerEdit), never a thin brief to ask about.
+      if (gateMode === 'video' && offerEdit()) return;
+      // A video order that is clear goes straight to the clip's own card (proposeClip: the words, the length, the price on
+      // Create): Agent G's card first would be a second „Create" for the same clip. A thin one is still asked about.
+      if (verdict.kind === 'clarify' || (verdict.kind === 'confirm' && gateMode !== 'video')) {
+        // The price on the card is the panel's own: a picture / a track. A video is its clip's card (proposeClip).
         // An avatar is Veo's price where its door is open (2026-10-17: the card said 20, Veo charges 25).
         const door = gateMode === 'avatar' ? await readVeoAvatarDoor() : null;
         // ⚠️ GG 2026-10-18: „it says it's creating the avatar, but nothing is created". A closed door (non-admin, the Veo
@@ -6948,6 +7178,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); stopDictationEcho();
       return;
     }
+    // A video attached in the Video tool is edited or extended (offerEdit), never left out of a new clip — a script of
+    // scenes included.
+    if (offerEdit()) return;
     // Smart Scene & Mode Detection (1 scene = 8s, 2 scenes = 16s, 3 scenes = 24s)
     const sceneHeadersCount = (text.match(/(?:სცენა|scene)\s*[1-9]/gi) || []).length;
     const explicitSceneNumMatch = text.match(/\b([1-6])\s*(?:[- ]?სცენ|სცენა|scenes?)\b/i);
@@ -6966,22 +7199,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // ask about them („tell me what a storyboard is", „how do I make a 3-scene video?") is not: those go on to the chat.
     const isMultiScene = sceneHeadersCount >= 2
       || ((detectedScenes >= 2 || /(?:სთორიბორდ|storyboard|მრავალსცენ)/iu.test(text)) && !wordsAskToBeTold(text, mode, locale));
+    // A script of several scenes is ONE clip now (GG 2026-10-25 16:10Z: „like Gemini's Veo", up to 10 s): its card says so,
+    // shows the words as written and the price. No storyboard of 16–48 s, no music video guessed from the words.
     if (isMultiScene) {
-      const targetScenes = detectedScenes >= 1 ? Math.min(6, detectedScenes) : 2;
-      const targetSec = targetScenes * 8;
       const photoRefs = attachments
         .filter((a) => isImage(a.mimeType) || /\.(jpe?g|png|webp)$/i.test(a.name || ""))
         .map((a) => a.dataUrl)
         .filter(Boolean);
-      const attachedAudio = attachments.find((a) => isAudio(a.mimeType) || /\.(mp3|wav|m4a|aac|ogg)$/i.test(a.name || ""));
-      const isMusicVideoPrompt = /(?:მუსიკალურ\s*(?:კლიპ|ვიდეო)|სიმღერ[აი]|music\s*video|\bsong\b)/iu.test(text) || !!attachedAudio;
-      const ratio = aspectFromText(text, { ratioOnly: true });
-      const sbOrientation = (ratio ?? lipFormat) === "16:9" ? "landscape" : "vertical";
+      if (text.length > DIRECT_CLIP_PROMPT_MAX) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: clipTooLongText(locale, DIRECT_CLIP_PROMPT_MAX), notice: true }]);
+        return;
+      }
+      const namedAspect = clipAspectFor(opts?.aspect) ?? clipAspectFor(aspectFromText(text, { ratioOnly: true }));
+      const sent = attachments;
       setAttachments([]);
       setInput(""); stopDictationEcho();
-      await createStoryboard(text, photoRefs, sbOrientation, {
-        nativeSec: targetSec,
-        musicVideoMode: isMusicVideoPrompt
+      await proposeClip({
+        prompt: text, photos: photoRefs, userText: text, medias: sent, seconds: clipSecondsFromWords(text),
+        ...(namedAspect ? { aspect: namedAspect } : {}), note: clipOneClipNote(locale), viaVoice,
       });
       return;
     }
@@ -7370,21 +7605,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // through here to the multimodal chat branch (unchanged) — the intercept's `!mBlocked`
     // guard lets it pass.
 
-    // ── VIDEO GENERATION (30-second film pipeline) ─────────────────────────────
-    // In video mode the prompt is a scene; an attached photo locks the character.
-    // Reuses the proven driveFilmStudio client (orchestrate → poll → assemble),
-    // streams its live status into the assistant bubble, then renders the master
-    // inline — so the full film service lives in this one chatbox.
-    // BUGFIX — the Director ignored attached scripts/images: the film path only fired on
-    // typed text and dropped non-image attachments. Now it also runs on a script/image-
-    // only request, READS the attached script (.md/.txt) into the brief, and passes the
-    // images through as anchors (≥2 → ordered per-scene anchors, handled server-side).
-    // The dedicated video-panel script slot wins; fall back to a chat-composer text attachment.
+    // ── THE VIDEO TOOL'S SEND: ONE CLIP'S CARD (GG 2026-10-25 16:10Z: „like Gemini's Veo") ─────────────────
+    // The words go to the clip exactly as typed (an attached .txt / .md / .pdf / .docx when nothing is typed); the photos
+    // are the Video tool's own and the ones attached here (one is the first frame, two or three are references). A length
+    // or a frame named in the words („10 წამიანი", „16:9") wins over the panel for this clip. No storyboard, no film, no
+    // music video: the card (proposeClip) shows the price, and nothing is uploaded or charged before its Create.
     let videoScript = effMode === 'video' ? (videoScriptDoc?.text?.trim() || extractScriptText(attachments)) : '';
-    // extractScriptText only decodes PLAIN text (.txt/.md). For a BINARY script — PDF or
-    // DOCX — decode it server-side so the Director still reads it. Fail-open: any miss
-    // leaves videoScript empty and the film proceeds from the typed brief as before.
-    if (effMode === 'video' && !videoScript) {
+    // extractScriptText only decodes PLAIN text (.txt/.md). A BINARY script (PDF or DOCX) is decoded server-side; any
+    // miss leaves it empty and the typed words stand alone.
+    if (effMode === 'video' && !text && !videoScript) {
       const binScript = attachments.find((a) => /pdf|wordprocessingml|officedocument|msword/.test(a.mimeType));
       if (binScript) {
         try {
@@ -7397,57 +7626,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         } catch { /* fail-open — no script */ }
       }
     }
-    const videoHasImages = effMode === 'video' && (videoCharacterRefs.length > 0 || attachments.some((a) => isImage(a.mimeType)));
-    // VECTOR 1 — a quick chat command ("გააკეთე") must NOT drop the manual panel fields. Pull the
-    // typed Master Script + Character Dialogue from live state and fold them into the brief as
-    // AUTHORITATIVE context, so the storyboard / character extractor respects them instead of
-    // inventing a fallback character. (The Generate button already did this; chat-send did not.)
-    const videoMaster = effMode === 'video' ? videoMasterScript.trim() : '';
-    const videoDlg = effMode === 'video' ? videoDialogue.trim() : '';
-    // PHASE 19 — music-video LYRICS (videoSpeech in that mode): fold the user's exact words into the
-    // brief so the AI singer performs THEM (EL Music sings literal ka lyrics) instead of auto-writing.
-    const videoLyrics = effMode === 'video' && videoMode === 'musicvideo' ? videoSpeech.trim() : '';
-    if (effMode === 'video' && (text || videoScript || videoMaster || videoDlg || videoLyrics || videoHasImages)) {
-      // v330 — the dedicated Character Reference slot leads the identity-lock refs,
-      // followed by any generic image attachments (back-compat).
-      const refs = [
-        ...videoCharacterRefs,
-        ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
-      ];
-      // A music video has no spoken narrator → never append the narration cue in that mode. Nor when Veo will say the
-      // typed "What the character says" line on screen: the cue would turn it into an off-screen voice (narrationCueApplies).
-      const wantNarration = narrationCueApplies({
-        mode: videoMode,
-        narrationOn: videoNarration,
-        myVoiceNarration: videoMyVoiceNarration && hasTrainedVoice,
-        characterLineOnVeo: veoSpeaksTypedLine({ speech: videoSpeech, sceneCount: sceneCountForSeconds(videoDuration), nativeAudio: veoPlan.nativeAudio }),
-      });
-      // A file script wins; else the typed Master Script field IS the authoritative script.
-      const scriptBlock = videoScript || videoMaster;
-      // The typed prompt (or a sensible default when only a script/images were given).
-      const baseText = text || (scriptBlock
-        ? (locale === 'en' ? 'Make a cinematic film that follows the attached script.' : locale === 'ru' ? 'Сними фильм строго по приложенному сценарию.' : 'შექმენი კინო ზუსტად ატაჩ სკრიპტის მიხედვით.')
-        : (locale === 'en' ? 'A cinematic film' : locale === 'ru' ? 'Кинематографичный фильм' : 'კინემატოგრაფიული ფილმი'));
-      const styledBase = withFilmStyle(baseText, videoStyle);
-      // A music video's picked genre / light (MusicVideoLook) join the brief the way the retired Music Video director did it.
-      const styledText = videoMode === 'musicvideo' && (mvLook.genre || mvLook.lighting)
-        ? composeMusicVideoPrompt({ userPrompt: styledBase, genreId: mvLook.genre, cameraId: null, lightingId: mvLook.lighting, hasCharacter: refs.length > 0 })
-        : styledBase;
-      // The manual fields are AUTHORITATIVE in the brief → the Director (runPromptAgent) follows them
-      // instead of inventing a different story / character / setting.
-      const filmPrompt = `${styledText}`
-        + (scriptBlock ? `\n\nSCRIPT — the SINGLE source of truth. Base EVERY scene ONLY on this text; keep its exact era/period, setting, location, and characters; invent nothing outside it:\n${scriptBlock.slice(0, 16000)}` : '')
-        + (videoDlg ? `\n\nCHARACTER DIALOGUE (spoken verbatim by the SAME character — never replace the speaker):\n${videoDlg.slice(0, 2000)}` : '')
-        + (videoLyrics ? `\n\nLYRICS (the song's EXACT words — the singer performs THESE verbatim, do not rewrite them):\n${videoLyrics.slice(0, 2000)}` : '')
-        + (wantNarration ? t.narrationCue : '');
-      const bubbleText = text || (videoScript ? '📄 ' + (locale === 'en' ? 'Film from attached script' : locale === 'ru' ? 'Фильм по сценарию' : 'ფილმი ატაჩ სკრიპტით') : baseText);
-      setMessages((prev) => [...prev, { role: 'user', text: bubbleText, ...(attachments.length ? { medias: attachments } : {}) }]);
+    const videoPhotos = effMode === 'video' ? [...videoCharacterRefs, ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl)] : [];
+    if (effMode === 'video' && (text || videoScript || videoPhotos.length)) {
+      const clipPrompt = text || videoScript;
+      if (!clipPrompt || clipPrompt.length > DIRECT_CLIP_PROMPT_MAX) {
+        // Nothing to make yet, or more than one clip can be told: said, and the words and files stay in the composer.
+        setMessages((prev) => [...prev, { role: 'assistant', text: clipPrompt ? clipTooLongText(locale, DIRECT_CLIP_PROMPT_MAX) : clipNeedsWordsText(locale), notice: true }]);
+        return;
+      }
+      const userText = text || ('📄 ' + (locale === 'en' ? 'Clip from the attached text' : locale === 'ru' ? 'Клип по приложенному тексту' : 'კლიპი ატაჩ ტექსტით'));
+      const namedAspect = clipAspectFor(opts?.aspect) ?? clipAspectFor(aspectFromText(clipPrompt, { ratioOnly: true }));
       setInput(''); setAttachments([]);
-      // Storyboard-FIRST: plan the scenes + a frame each for the user to review; the
-      // approved frames then anchor the full render. Music Video Mode is forced 9:16
-      // vertical so the storyboard frames match the full-screen mobile render.
-      const sbOrientation = videoMode === 'musicvideo' ? 'vertical' : videoOrientation;
-      await createStoryboard(filmPrompt, refs, sbOrientation);
+      await proposeClip({
+        prompt: clipPrompt, photos: videoPhotos, userText, medias: attachments,
+        seconds: clipSecondsFromWords(clipPrompt), ...(namedAspect ? { aspect: namedAspect } : {}), viaVoice,
+      });
       return;
     }
 
@@ -7541,12 +7734,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
 
     // ── CHAT (multimodal Gemini) ───────────────────────────────────────────────
-    // FIX 2 — a video brief typed in Chat mode must ACTUALLY start the pipeline,
-    // not return inert "▶ Video Studio" text. On a strong video cue we auto-switch
-    // to Video Studio, pick Music-Video vs Documentary from the wording, post a
-    // clear note, and fire the proven storyboard→render flow (createStoryboard) —
-    // the same path the Video tab uses. Anything that is NOT a clear video brief
-    // falls through to the normal multimodal chat below, unchanged.
+    // FIX 2 — a video brief typed in Chat mode must ACTUALLY lead to a video, not to inert „▶ Video Studio" text. Since
+    // GG's 2026-10-25 16:10Z order („like Gemini's Veo") it is ONE clip's card, here in the chat: the words as typed,
+    // the photos attached to this message (or the thread's photo an offer was built on), a length or frame named in the
+    // words, the price on Create. No storyboard, no music video, no switch to another tool. Anything that is NOT a clear
+    // video brief falls through to the normal multimodal chat below, unchanged.
     // A PHOTO + a named video deliverable is unambiguous: the photo is the character reference and the text
     // is the brief. That case skips the strict isGenerativeCommand() lead-verb gate, which a descriptive
     // brief fails — the exact reason a photo + film brief used to fall through to plain chat and get a
@@ -7554,24 +7746,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const chatPhotoVideoBrief = attachments.some((a) => isImage(a.mimeType)) && mentionsVideoDeliverable(text);
     // A yes to Agent G's film offer: its quoted prompt is the brief, whatever verb it starts with (consentRef).
     const agreedFilm = opts?.confirmed === true && opts.target === 'video';
-    if (mode === 'chat' && text && (agreedFilm || chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || chatLane === 'video_generation')))) {
-      const musicVideo = isMusicVideoIntent(text);
-      setMode('video');
-      setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
-      const routeOrientation = opts?.aspect ? orientationForAspect(opts.aspect) : musicVideo ? 'vertical' : videoOrientation;
-      const routeRefs = [
-        ...videoCharacterRefs,
-        ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
-        ...(opts?.refImage && !attachments.some((a) => isImage(a.mimeType)) ? [opts.refImage] : []),
-      ];
-      const routeNote = locale === 'en'
-        ? '🎬 Opening Video Studio and planning your scenes — review the storyboard, then tap Generate Video.'
-        : locale === 'ru'
-          ? '🎬 Открываю Видеостудию и планирую сцены — проверьте раскадровку и нажмите «Сгенерировать видео».'
-          : '🎬 ვხსნი ვიდეო სტუდიას და ვგეგმავ სცენებს — გადახედე სტორიბორდს და დააჭირე „ვიდეოს გენერაციას“.';
-      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: routeNote, notice: true }]);
+    // A Live call's video order (prepare_generation) named the tool: its words are the clip's, whatever verb they lack.
+    const liveVideo = opts?.liveOrder === 'video';
+    if (mode === 'chat' && text && (agreedFilm || liveVideo || chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || chatLane === 'video_generation')))) {
+      if (text.length > DIRECT_CLIP_PROMPT_MAX) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: clipTooLongText(locale, DIRECT_CLIP_PROMPT_MAX), notice: true }]);
+        return;
+      }
+      const sentPhotos = attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl);
+      const routePhotos = sentPhotos.length ? sentPhotos : opts?.refImage ? [opts.refImage] : [];
+      const namedAspect = clipAspectFor(opts?.aspect) ?? clipAspectFor(aspectFromText(text, { ratioOnly: true }));
+      const sent = attachments;
       setInput(''); setAttachments([]);
-      await createStoryboard(text, routeRefs, routeOrientation);
+      await proposeClip({
+        prompt: text, photos: routePhotos, userText: text, medias: sent,
+        seconds: clipSecondsFromWords(text), ...(namedAspect ? { aspect: namedAspect } : {}), viaVoice,
+      });
       return;
     }
 
@@ -7580,7 +7770,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     inputSourceRef.current = 'text'; // reset for the next turn (the box is now empty)
     persistChatTurn('user', text, attachments); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     await streamChat([...messages, userMsg]);
-  }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
+  }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, proposeClip, proposeEdit, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -8059,7 +8249,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (activeTool === 'vfx' || shootActive) { openSettings(); return; }
     // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
     // §50: an explicit press is the confirmation; a plain send may still stop at Agent G's card (confirmGate reports that one).
-    if (explicitFlag === true) trackGenerationConfirmed(serviceForTool(activeTool, { videoMode }), surface);
+    // A clip is confirmed on its own card (confirmClip), not by the Send that opens it.
+    if (explicitFlag === true && activeTool !== 'video') trackGenerationConfirmed(serviceForTool(activeTool, { videoMode }), surface);
     void send(explicitFlag === true ? { explicit: true } : undefined);
   };
   // ── LIVE → THE STUDIO: the handler (registered above as liveApiRef / liveRunRef) ─────────────────────────────────
@@ -8092,6 +8283,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return { tool: 'video', prompt: storyboard.filmPrompt, credits, ...(lip ? { lipsyncCredits: lip } : {}), kind: 'storyboard' };
     }
     const last = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && !m.notice);
+    // The clip's card, still asking (components/studio/clip): a yes is its Create (consentRef), in the chat or the Video tool.
+    if (last?.clipAsk?.phase === 'ask' && (activeTool === 'chat' || activeTool === 'video')) {
+      return { tool: 'video', prompt: last.clipAsk.prompt, credits: last.clipAsk.credits, kind: 'card' };
+    }
+    // An uploaded video's edit card, the same way.
+    if (last?.editAsk?.phase === 'ask' && (activeTool === 'chat' || activeTool === 'video')) {
+      return { tool: 'video', prompt: last.editAsk.prompt, credits: last.editAsk.credits, kind: 'card' };
+    }
     const card = last?.agentG;
     if (!card || card.done || card.kind !== 'confirm' || card.madeIn !== 'chat' || activeTool !== 'chat') return null;
     return { tool: card.target as ToolId, prompt: card.prompt, ...(card.credits ? { credits: card.credits } : {}), kind: 'card' };
@@ -8385,9 +8584,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           return true;
         }
         if (to === 'music_video') {
-          if (r.kind !== 'audio') { reply({ ok: false, error: 'wrong_kind', message: `Only a music track can be a music video's soundtrack; ${label} is not one.` }); return true; }
-          sendMusicToMusicVideo(r.url, 0, r.what || 'Generated Track');
-          reply({ ok: true, message: `${label} is now the soundtrack of a music video in the Video studio. Next: prepare_generation with tool video describing the visuals.` });
+          // No music video any more (GG 2026-10-25 16:10Z): a video is one clip whose sound follows its words.
+          reply({ ok: false, error: 'not_available', message: `Music videos are not made any more: a video is one clip of 4-10 seconds whose sound follows its description. ${label} can go to "montage" as its music instead.` });
           return true;
         }
         if (to === 'montage') {
@@ -8622,20 +8820,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // product ad, the character swap and the remix (the Create screens of video / image / music / interior / photographer /
   // VFX print theirs on the panel's button). One quote function for both (lib/credits/quote = what the route charges).
   // The avatar's is Veo's where its door is open (avatarCredits): the price on the button is the one charged.
-  // VIDEO (GG 2026-10-18): the prompt lives only in this box, so its Send is the film's one button and carries the film's
-  // quote — videoQuote for the length, tier and mode on the panel, the number its Generate used to show.
+  // VIDEO (GG 2026-10-18): the prompt lives only in this box, so its Send is the clip's one button and carries the clip's
+  // price — directClipCredits for the length, tier, photos and resolution on the panel (GG 2026-10-25).
+  // One video attached in the Video tool is edited or extended (offerEdit in send): Send shows that card's price.
+  const composerVideos = attachments.filter((a) => isVideo(a.mimeType));
+  const composerEditVideo = composerVideos.length === 1 ? composerVideos[0]! : null;
   const composerQuote = activeTool === 'avatar' ? avatarCredits || null
     : activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix'
       ? quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool }) || null
+      : activeTool === 'video' && mode === 'video' && videoTab === 'cinema' && composerEditVideo
+        ? omniEditCredits({ op: omniEditOpFromWords(input), inputSec: composerEditVideo.durationSec ?? 0, resolution: clipResolution }) || null
       : activeTool === 'video' && mode === 'video' && videoTab === 'cinema'
-        ? videoQuote({ seconds: videoDuration, tier: veoPlan.tier, mode: videoMode }) || null
+        // The clip the panel is set to (lib/video/directClip, the route's own price): its card shows the same on Create.
+        ? directClipCredits({ seconds: snapDirectClipSeconds(videoDuration), tier: openClipTier(veoPlan.tier, clipClosedTiers, Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length)), photos: Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length), resolution: clipResolution }) || null
         : null;
-  // The box's Send for a film is the explicit press the panel's Generate was (its price is on it): same runTool path,
-  // same guest gate, storyboard approval and focus gate. A balance known to be short opens the top-up instead, as the
-  // panel's button did; the trial slot (one clip ≤ 8 s) is never blocked.
+  // The box's Send for a clip is the explicit press the panel's Generate was: same runTool path, same guest gate and
+  // focus gate, and it opens the clip's card (its Create is the charge). A balance known to be short opens the top-up
+  // instead, as the panel's button did.
   const runComposer = () => {
     if (composerQuote !== null && activeTool === 'video') {
-      const short = !freeSlotApplies(videoFreeFilms, videoDuration) && videoBalanceCredits !== null && videoBalanceCredits < composerQuote;
+      const short = videoBalanceCredits !== null && videoBalanceCredits < composerQuote;
       if (short) { window.dispatchEvent(new CustomEvent('myavatar:open-credits')); return; }
       runTool(true, 'composer');
       return;
@@ -9307,7 +9511,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}), ...(cardAspect ? { aspect: cardAspect } : {}), ...(card.refImage ? { refImage: card.refImage } : {}), ...(card.single ? { single: true } : {}), ...(card.studio ? { studio: card.studio } : {}) });
       return true;
     }
-    // 2) The priced question before a charged edit of an attached video, and Agent G's plan cards: Create / Start.
+    // 2) The clip's card (components/studio/clip), still asking: the yes is its Create, in the chat or the Video tool.
+    if (last.id && last.clipAsk?.phase === 'ask' && (mode === 'chat' || mode === 'video') && (!said || said === 'video')) {
+      void confirmClip(last.id);
+      return true;
+    }
+    // …and an uploaded video's edit card (components/studio/clip/EditAskCard).
+    if (last.id && last.editAsk?.phase === 'ask' && (mode === 'chat' || mode === 'video') && (!said || said === 'video')) {
+      void confirmEdit(last.id);
+      return true;
+    }
+    // 3) The priced question before a charged edit of an attached video, and Agent G's plan cards: Create / Start.
     if (last.id && mode === 'chat') {
       if (last.remixAsk && !last.remixAsk.done && (!said || said === 'video')) { void confirmChatRemix(last.id); return true; }
       if (last.sceneRedoAsk && !last.sceneRedoAsk.done && (!said || said === 'video')) { void confirmSceneRedo(last.id); return true; }
@@ -9316,7 +9530,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (last.editJob?.phase === 'quoted') { void confirmAgentEdit(last.id); return true; }
       if (last.runJob?.phase === 'planned') { void confirmAgentRun(last.id); return true; }
     }
-    // 3) A reply that offered a quoted prompt (lib/chat/offeredPrompt).
+    // 4) A reply that offered a quoted prompt (lib/chat/offeredPrompt).
     const here = mode === 'image' || mode === 'video' || mode === 'music' ? mode : null;
     const offer = offeredPrompt(last.text, here);
     if (!offer || (said && said !== offer.mode) || (mode !== 'chat' && offer.mode !== mode)) return false;
@@ -9427,19 +9641,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     };
     const isOtherMediaAsk = /(?:სურათ|ფოტო|ნახატ|image|photo|picture|ავატარ|avatar)/iu.test(text) || (/(?:მუსიკ|სიმღერ|music|song)/iu.test(text) && !/(?:კლიპ|ვიდეო|video|clip|სცენ)/iu.test(text));
     const isVideoCreationAsk = !isOtherMediaAsk && /(?:(?:შექმენ|დააგენერირ|გააკეთ|მინდა)[\s\S]{0,40}(?:ვიდეო|ფილმ|კლიპ|სცენ)|ახალი\s*ვიდეო|სარეკლამო\s*(?:ვიდეო|კლიპ)|[1-6][- ]?სცენ|სცენა\s*[1-9]|მუსიკალურ\s*(?:კლიპ|ვიდეო)|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
-    const scHeaders = (text.match(/(?:სცენა|scene)\s*[1-9]/gi) || []).length;
-    const scNumMatch = text.match(/\b([1-6])\s*(?:[- ]?სცენ|სცენა|scenes?)\b/i);
-    const scWord = /(?:ერთი\s*სცენ|ერთსცენ|1[- ]?სცენ|8\s*წამ)/i.test(text) ? 1
-      : /(?:ორი\s*სცენ|ორსცენ|2[- ]?სცენ|16\s*წამ)/i.test(text) ? 2
-      : /(?:სამი\s*სცენ|სამსცენ|სამივე\s*სცენ|3[- ]?სცენ|24\s*წამ)/i.test(text) ? 3
-      : /(?:ოთხი\s*სცენ|ოთხსცენ|4[- ]?სცენ|32\s*წამ)/i.test(text) ? 4 : 0;
-    const cleanWordsCount = text.replace(/(?:შექმენ|დააგენერირ|სარეკლამო|ვიდეო|ფორმატ|კინოსტუდი|9:16|16:9|რეფერენს|პროჟექტორ)/gi, "").trim().split(/\s+/).filter(Boolean).length;
-    const finalScenes = scHeaders >= 2 ? scHeaders : scNumMatch ? parseInt(scNumMatch[1] || "1", 10) : scWord > 0 ? scWord : (cleanWordsCount <= 18 ? 1 : cleanWordsCount <= 32 ? 2 : 3);
-    const autoSec = Math.min(6, Math.max(1, finalScenes)) * 8;
-    const autoVideoMode: "documentary" | "musicvideo" = /(?:მუსიკალურ\s*(?:კლიპ|ვიდეო)|სიმღერ[აი]|music\s*video|\bsong\b)/iu.test(text) ? "musicvideo" : "documentary";
+    // A video ask is ONE clip (GG 2026-10-25 16:10Z): its length is the one the words name (4 · 6 · 8 · 10 s) or the panel's,
+    // never one guessed from the word count or the scenes named, and nothing makes it a music video.
     const autoAspect: "9:16" | "16:9" | undefined = /(?:9:16|ვერტიკალ|vertical)/iu.test(text) ? "9:16" : /(?:16:9|ჰორიზონტალ|landscape)/iu.test(text) ? "16:9" : undefined;
     const step = isVideoCreationAsk
-      ? { kind: "open" as const, videoMode: autoVideoMode, durationSec: autoSec, aspect: autoAspect }
+      ? { kind: "open" as const, aspect: autoAspect, durationSec: undefined as number | undefined }
       : planChatTurn(text, snapshot);
     if (step.kind === 'pass') return false;
 
@@ -9462,48 +9668,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         say(step.text);
         return true;
       case 'open': {
-        // Chat → the Video tool, with the plan SAID (Video Core v1.0 §3–§4): the mode the words name; the length through the
-        // duration contract (requested · rendered · final — never the nearest stop sold as the request); a long-form length
-        // while that pipeline is closed refused with the reason (never a 96 s film for a 240 s ask); no length said → the
-        // panel's default, named, not the last project's. The storyboard is planned (free); nothing renders before Start.
-        const tr = (ka: string, en: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
-        const o = step.aspect ? videoOrientationFor(step.aspect) : null;
-        let nativeSec: number;
-        let lengthNote: string;
-        if (step.durationSec !== undefined) {
-          const v = planFinalDuration(step.durationSec, videoCaps, videoPlanOpts);
-          if (!v.ok) {
-            setMode('video'); setVideoMode(step.videoMode === "musicvideo" ? "musicvideo" : "documentary"); if (o) setVideoOrientation(o);
-            setVideoDuration(panelSecondsAfterBlock(v, videoCaps)); setVideoRequestedSec(null);
-            // The words stay in the box: the refusal names the longest length that can be made, and the user decides.
-            say(`${describeDurationBlock(v, locale)} ${tr('სიგრძე პანელში შეცვალე და ისევ გამომიგზავნე.', 'Change the length on the panel and send again.', 'Измените длину на панели и отправьте снова.')}`);
-            return true;
-          }
-          nativeSec = v.plan.nativeSec;
-          setVideoDuration(nativeSec);
-          setVideoRequestedSec(v.plan.deviation === 'trim' ? v.plan.requestedSec : null);
-          lengthNote = describeDurationPlan(v.plan, locale);
-        } else {
-          nativeSec = VIDEO_PANEL_DEFAULTS.duration;
-          setVideoDuration(nativeSec);
-          setVideoRequestedSec(null);
-          const len = formatVideoDuration(nativeSec, locale);
-          lengthNote = tr(`სიგრძე ნათქვამი არ იყო — ${len} (შეცვალე პანელში).`, `No length was given — ${len} (change it on the panel).`, `Длина не указана — ${len} (измените на панели).`);
-        }
-        setMode('video'); setVideoMode(step.videoMode === "musicvideo" ? "musicvideo" : "documentary"); if (o) setVideoOrientation(o);
-        const routeOrientation = step.videoMode === 'musicvideo' ? 'vertical' : (o ?? videoOrientation);
-        const routeRefs = [...videoCharacterRefs, ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl)];
-        // An attached track is not dropped: it stays in the box for the soundtrack slot (the board is planned without it).
+        // Chat → ONE clip's card, here in the chat (GG 2026-10-25 16:10Z: „like Gemini's Veo"): the words as typed, the
+        // photos attached to this message, the length the words name (else the panel's, 8 s by default), the frame, the
+        // price on Create. A longer length or several scenes asked for is said on the card: one clip is up to 10 s. An
+        // attached track is not dropped: it stays in the box (the clip's sound follows the prompt).
+        if (text.length > DIRECT_CLIP_PROMPT_MAX) { say(clipTooLongText(locale, DIRECT_CLIP_PROMPT_MAX)); return true; }
+        const named = clipSecondsFromWords(text);
+        const tooLong = !named && ((step.durationSec !== undefined && step.durationSec > 10) || /(?:[2-9]\s*[- ]?სცენ|სცენა\s*[2-9]|scenes)/iu.test(text));
+        const namedAspect = clipAspectFor(step.aspect);
         const tracks = attachments.filter((a) => isAudio(a.mimeType));
-        const routeNote = tr('🎬 ვხსნი ვიდეო სტუდიას და ვგეგმავ სცენებს — გადახედე სტორიბორდს და დააჭირე „ვიდეოს გენერაციას“.',
-          '🎬 Opening Video Studio and planning your scenes — review the storyboard, then tap Generate Video.',
-          '🎬 Открываю Видеостудию и планирую сцены — проверьте раскадровку и нажмите «Сгенерировать видео».');
-        const trackNote = tracks.length ? ` ${tr('ტრეკი ყუთში დარჩა — საუნდტრეკად პანელიდან დაამატე.', 'The track stays in the box — add it as the soundtrack from the panel.', 'Трек остался в поле — добавьте его как саундтрек на панели.')}` : '';
-        setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text', ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: `${routeNote}\n${lengthNote}${trackNote}`, notice: true }]);
-        persistChatTurn('user', text, attachments);
+        const sent = attachments;
         setInput(''); setAttachments(tracks); inputSourceRef.current = 'text'; stopDictationEcho();
-        closeSettingsLayer();
-        void createStoryboard(text, routeRefs, routeOrientation, { nativeSec, musicVideoMode: step.videoMode === 'musicvideo' });
+        void proposeClip({
+          prompt: text, photos: sent.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl), userText: text, medias: sent,
+          seconds: named, ...(namedAspect ? { aspect: namedAspect } : {}), viaVoice,
+          ...(tooLong ? { note: clipOneClipNote(locale) } : {}),
+        });
         return true;
       }
       case 'stop':
@@ -9787,12 +9967,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       )}
                       {saveLibButton(m.audioUrl, 'music', m.audioName ? m.audioName.replace(/\.mp3$/i, '') : m.regen?.kind === 'music' ? m.regen.prompt : undefined)}
                       {editButton(m.audioUrl, 'audio')}
-                      {/* Cross-service bridge — turn this track into a music video (Video studio). The 🎤 IS the icon. */}
-                      <button type="button" onClick={() => sendMusicToMusicVideo(m.audioUrl!, 0, m.regen?.kind === 'music' ? (m.regen.prompt || 'Generated Track') : 'Generated Track')}
-                        title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-[16px] leading-none ring-1 ring-app-border/15 transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
-                        🎤
-                      </button>
                     </div>
                   </div>
                 )}
@@ -10521,6 +10695,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.agentG && (
                   <AgentGCard card={m.agentG} locale={locale} stale={m.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
                 )}
+                {m.role === 'assistant' && m.clipAsk && m.id && (
+                  <ClipAskCard ask={m.clipAsk} locale={locale} onChange={(next) => changeClipAsk(m.id!, next)} onConfirm={() => { void confirmClip(m.id!); }} onCancel={() => cancelClipAsk(m.id!)} />
+                )}
+                {m.role === 'assistant' && m.editAsk && m.id && (
+                  <EditAskCard ask={m.editAsk} locale={locale} onChange={(next) => changeEditAsk(m.id!, next)} onConfirm={() => { void confirmEdit(m.id!); }} onCancel={() => cancelEditAsk(m.id!)} />
+                )}
                 {m.role === 'assistant' && m.remixAsk && m.id && (
                   <AgentGCard card={{ kind: 'confirm', target: 'video', madeIn: 'chat', prompt: '', credits: m.remixAsk.credits, done: m.remixAsk.done }} locale={locale} stale={mode !== 'chat'} onConfirm={() => { void confirmChatRemix(m.id!); }} onEdit={() => editChatRemix(m.id!)} />
                 )}
@@ -10530,7 +10710,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakStops, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakStops, speakingIdx, speakFailedIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, askSceneRedo, confirmSceneRedo, editSceneRedo, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain, confirmClip, changeClipAsk, cancelClipAsk, confirmEdit, changeEditAsk, cancelEditAsk]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to
@@ -10677,12 +10857,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       )}
       {saveLibButton(lastMusic.audioUrl, 'music', lastMusic.regen?.kind === 'music' ? lastMusic.regen.prompt : undefined)}
       {editButton(lastMusic.audioUrl, 'audio')}
-      {/* Cross-service bridge — turn this track into a music video. */}
-      <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, lastMusic.regen?.kind === 'music' ? (lastMusic.regen.prompt || 'Generated Track') : 'Generated Track')}
-        title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
-        className={musicActionBtn}>
-        <Clapperboard size={16} aria-hidden="true" />
-      </button>
     </>
   ) : null;
   const settingsBody = (
@@ -10932,54 +11106,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
             {videoTab === 'cinema' && (
-            // ⚠️ THE VIDEO SETTINGS (components/studio/create/VideoCreatePanel — GG 2026-10-18: „ზედმეტი ფუნქციები წაშალე"). The
-            // prompt lives ONLY in the chat box, and the box's Send (the film's price on it, composerQuote) starts the film
-            // through runTool — the path this panel's Generate used. The panel keeps the switches that change the film: film |
-            // music video, length, format, priced quality, Veo's sound, narrator, music, subtitles / lip-sync, the photos. The
-            // script, dialogue, lyrics, scene prompts, effect, voice details and camera are typed in the prompt (or a .txt /
-            // .pdf / .docx attached in the box): their state keeps its defaults and the request reads it unchanged.
-            <VideoCreatePanel
+            // ⚠️ THE VIDEO SETTINGS: ONE CLIP, like Gemini's Veo (components/studio/create/ClipCreatePanel — GG 2026-10-25 16:10Z).
+            // Length 4 · 6 · 8 · 10 s (8 by default), the frame, the quality as a resolution with its price, up to 3 photos.
+            // No film | music video, no narrator / music / subtitles / lip-sync switch: the sound follows the prompt. The prompt
+            // lives ONLY in the chat box; its Send opens the clip's card (proposeClip) with the price on Create.
+            <ClipCreatePanel
               locale={locale}
               surface={isDesktop ? 'panel' : 'sheet'}
               toolName={toolLabel}
               onSwitchTool={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
               onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))}
-              plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan}
-              dispatch={dispatchVeo}
-              engine={veoEngine}
-              mode={videoMode}
-              onMode={setVideoMode}
-              seconds={videoDuration}
+              seconds={snapDirectClipSeconds(videoDuration)}
               onSeconds={(s) => { setVideoDuration(s); setVideoRequestedSec(null); }}
-              format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
-              onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
-              refs={{
-                images: videoCharacterRefs,
-                max: sceneFrameCount,
-                onAddImage: () => { charReplaceRef.current = false; charFileRef.current?.click(); },
-                onRemoveImage: (i) => setVideoCharacterRefs((prev) => prev.filter((_, k) => k !== i)),
-                audio: videoSoundtrack ? { name: videoSoundtrack.name } : null,
-                audioBusy: videoSoundtrackBusy,
-                onAddAudio: () => audioFileRef.current?.click(),
-                onRemoveAudio: () => setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }),
+              aspect={videoOrientation === 'landscape' ? '16:9' : '9:16'}
+              onAspect={(a) => setVideoOrientation(a === '16:9' ? 'landscape' : 'vertical')}
+              tier={veoPlan.tier}
+              onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
+              resolution={clipResolution}
+              onResolution={setClipResolution}
+              photos={{
+                images: videoCharacterRefs.slice(0, DIRECT_CLIP_MAX_PHOTOS),
+                onAdd: () => { charReplaceRef.current = false; charFileRef.current?.click(); },
+                onRemove: (i) => setVideoCharacterRefs((prev) => prev.filter((_, k) => k !== i)),
               }}
-              generate={{ lipsyncCredits: filmLipsyncCredits }}
-              audio={{
-                narration: videoNarration,
-                // The removed „my voice" / „both" choices fall back to one narrator when the narrator is set here.
-                onNarration: (on) => { setVideoNarration(on); if (on) { setVideoMultiChar(false); setVideoMyVoiceNarration(false); } },
-                narratorGender: videoNarratorGender,
-                onNarratorGender: setVideoNarratorGender,
-                music: videoMusic,
-                onMusic: setVideoMusic,
-                subtitles: videoSubtitles,
-                onSubtitles: setVideoSubtitles,
-                lipsync: videoLipsync,
-                onLipsync: setVideoLipsync,
-              }}
-              caps={videoCaps}
-              requestedSec={videoRequestedSec}
-              joinOverlapSec={videoPlanOpts.joinOverlapSec}
+              closedTiers={clipClosedTiers}
             />
             )}
 
@@ -11428,21 +11578,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const quickSettings = chatOnly ? null
     : activeTool === 'video' ? (
       <div className="px-1 pb-1">
-        <VideoQuickChips
+        <ClipQuickChips
           locale={locale}
           desktop={isDesktop}
-          plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan}
-          engine={veoEngine}
-          mode={videoMode}
-          onMode={setVideoMode}
-          seconds={videoDuration}
+          seconds={snapDirectClipSeconds(videoDuration)}
           onSeconds={(sec) => { setVideoDuration(sec); setVideoRequestedSec(null); }}
-          format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
-          onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
+          aspect={videoOrientation === 'landscape' ? '16:9' : '9:16'}
+          onAspect={(a) => setVideoOrientation(a === '16:9' ? 'landscape' : 'vertical')}
+          tier={veoPlan.tier}
           onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
-          caps={videoCaps}
-          requestedSec={videoRequestedSec}
-          joinOverlapSec={videoPlanOpts.joinOverlapSec}
+          resolution={clipResolution}
+          onResolution={setClipResolution}
+          photos={Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length)}
+          closedTiers={clipClosedTiers}
           onMore={openMoreSettings}
           moreExpanded={moreSettingsOpen}
           moreLabel={moreSettingsWord}
@@ -11958,7 +12106,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               let previewUrl: string | undefined;
               try { previewUrl = URL.createObjectURL(f); } catch { /* noop */ }
               setVideoSoundtrack({ name: f.name, url, ...(meta ? { durationSec: meta.durationSec, peaks: meta.peaks } : {}), ...(previewUrl ? { previewUrl } : {}) });
-              setVideoMode('musicvideo'); // an uploaded soundtrack implies music-video intent
             }
           } catch { /* ignore */ } finally {
             setVideoSoundtrackBusy(false);
