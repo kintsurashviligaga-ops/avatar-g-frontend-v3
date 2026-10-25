@@ -81,7 +81,7 @@ import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
 import { structuredLog } from '../../../../lib/logger';
-import { liveVoicePersona } from '../../../../lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveVoicePersona } from '../../../../lib/voice/voicePrompt';
 import { LIVE_SPOKEN_RULE } from '../../../../lib/agents/profile';
 import { LIVE_ACTIONS_RULE, LIVE_FUNCTION_DECLARATIONS } from '../../../../lib/voice/liveTools';
 
@@ -275,6 +275,29 @@ describe('the mint', () => {
     expect(text).not.toMatch(/Runway|FLUX|HeyGen|Udio|ElevenLabs/);
   });
 
+  test('the call follows the language spoken and STAYS in it: the lock ends the instruction, after any persona reminder', async () => {
+    // GG 2026-10-25: a Russian question got one Russian answer, then Georgian again.
+    for (const [i, body] of [{ locale: 'ka' }, { locale: 'ka', personaId: 'sarcastic' }, { locale: 'ru', transcribe: true }].entries()) {
+      await POST(post(body));
+      const text = lockedText(i);
+      expect(text.endsWith(`\n${LIVE_LANGUAGE_LOCK}`)).toBe(true);
+      expect(text).toContain('LANGUAGE: Reply in the language the user is speaking: Georgian, English or Russian.');
+      expect(text).not.toContain('Switch only if the user asks');
+    }
+    expect(lockedText(1)).toMatch(/STAY IN CHARACTER[^\n]*\n[^\n]*LANGUAGE, EVERY TURN/);
+  });
+
+  test('every mint is logged with why the browser asked, never with words or tokens', async () => {
+    await POST(post({ why: 'renew', personaId: 'sarcastic' }));
+    await POST(post({ why: 'nonsense' }));
+    const minted = logMock.mock.calls.filter((c) => c[1] === 'voice.live.minted').map((c) => c[2]);
+    expect(minted).toEqual([
+      { why: 'renew', persona: 'sarcastic', locale: 'ka', resume: false, thread: false, relay: false },
+      expect.objectContaining({ why: 'unknown' }),
+    ]);
+    expect(JSON.stringify(minted)).not.toContain('auth_tokens');
+  });
+
   test('a hostile / retired / unlisted model can never be locked into the token', async () => {
     for (const model of ['gemini-3.1-pro-preview', 'models/gemini-2.0-flash-live-001', '../../x?key=1', 42]) {
       mintSpy.mockClear();
@@ -326,7 +349,7 @@ describe('the mint', () => {
   test('browser opt-ins: transcription (with the locale hint), compression, resumption', async () => {
     await POST(post({ locale: 'ka', transcribe: true, compression: true, resumptionHandle: 'handle-abc' }));
     const s = mintBody().bidiGenerateContentSetup;
-    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'] });
     expect(s.outputAudioTranscription).toEqual({});
     expect(s.contextWindowCompression).toEqual({ slidingWindow: {} });
     expect(s.sessionResumption).toEqual({ handle: 'handle-abc' });
@@ -426,7 +449,7 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
     expect(s.tools).toEqual([DECLS]);
     expect(lockedText()).toContain(LIVE_ACTIONS_RULE);
     // The rest of the parity lock is untouched.
-    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['en-US'] });
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['en-US', 'ka-GE', 'ru-RU'] });
     expect(s.contextWindowCompression).toEqual({ slidingWindow: {} });
     const j = await res.json();
     expect(j.actions).toBe(true);
@@ -487,7 +510,7 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
     expect(mintBody(0).bidiGenerateContentSetup.tools).toEqual([DECLS, { googleSearch: {} }]);
     const retry = mintBody(1).bidiGenerateContentSetup;
     expect(retry.tools).toEqual([{ googleSearch: {} }]);
-    expect(retry.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+    expect(retry.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'] });
     expect(retry.contextWindowCompression).toEqual({ slidingWindow: {} });
     expect(retry.systemInstruction?.parts[0]?.text).not.toContain(LIVE_ACTIONS_RULE);
     const j = await res.json();

@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, detectSpokenLocale } from './voicePrompt';
+import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, detectSpokenLocale, liveTranscriptionLanguages, liveVoicePersona, LIVE_LANGUAGE_LOCK } from './voicePrompt';
 
 describe('normalizeVoiceLocale', () => {
   it('defaults to ka; honors en/ru', () => {
@@ -90,5 +90,23 @@ describe('trimForSpeech', () => {
 describe('voiceFallbackReply', () => {
   it('never returns empty (no silence on an LLM miss)', () => {
     (['ka', 'en', 'ru'] as const).forEach((l) => expect(voiceFallbackReply(l).length).toBeGreaterThan(0));
+  });
+});
+
+describe('Live call language (GG 2026-10-25: Russian once, then Georgian again)', () => {
+  it('transcribes all three languages, the UI language first', () => {
+    expect(liveTranscriptionLanguages('ka')).toEqual(['ka-GE', 'en-US', 'ru-RU']);
+    expect(liveTranscriptionLanguages('en')).toEqual(['en-US', 'ka-GE', 'ru-RU']);
+    expect(liveTranscriptionLanguages('ru')).toEqual(['ru-RU', 'ka-GE', 'en-US']);
+  });
+
+  it('the Georgian live persona itself says to answer and stay in the language spoken', () => {
+    expect(liveVoicePersona('ka')).toContain('უპასუხე იმ ენაზე, რომელზეც მომხმარებელი ახლა ლაპარაკობს');
+    expect(liveVoicePersona('ka')).toContain('დარჩი ამ ენაზე, სანამ თავად არ შეცვლის');
+  });
+
+  it('the lock says to stay in the language, not only to switch once', () => {
+    expect(LIVE_LANGUAGE_LOCK).toMatch(/keep replying in it until the user speaks another one/);
+    expect(LIVE_LANGUAGE_LOCK).toMatch(/Never go back to Georgian/);
   });
 });

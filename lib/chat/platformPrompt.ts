@@ -250,6 +250,12 @@ export function buildPlatformPrompt(opts: {
    * the prompt cannot see who asks, and an avatar the route refuses must not be offered.
    */
   veoAvatar?: boolean;
+  /**
+   * A spoken Live call: the reply follows the language the user SPEAKS, switching at once. The text chat keeps "switch
+   * only if asked" (a typed message's language is plain to see); in a call that line won over the call's own rule and
+   * English speech got Georgian answers (GG, 2026-10-25).
+   */
+  spoken?: boolean;
 }): string {
   const loc: PlatformPromptLocale = opts?.locale === 'en' || opts?.locale === 'ru' ? opts.locale : 'ka';
   const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
@@ -264,7 +270,9 @@ export function buildPlatformPrompt(opts: {
 
     `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${tbilisiNow(now)}. Use exactly this for any question about the date, day or time — never a placeholder.`,
 
-    `LANGUAGE: Reply in ${ui.language}. Switch only if the user asks for another language. Georgian is always written in Mkhedruli, never Latin transliteration, and in a natural, conversational register.${loc === 'ka' ? ' Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.' : loc === 'ru' ? ' Russian typed in Latin letters ("privet", "kak dela") is still Russian: answer it in Cyrillic.' : ''}`,
+    opts?.spoken === true
+      ? `LANGUAGE: Reply in the language the user is speaking: Georgian, English or Russian. When they switch, your very next reply is in the new language, without being asked. Only when you cannot tell, use ${ui.language}. Georgian is natural and conversational.`
+      : `LANGUAGE: Reply in ${ui.language}. Switch only if the user asks for another language. Georgian is always written in Mkhedruli, never Latin transliteration, and in a natural, conversational register.${loc === 'ka' ? ' Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.' : loc === 'ru' ? ' Russian typed in Latin letters ("privet", "kak dela") is still Russian: answer it in Cyrillic.' : ''}`,
 
     // ⚠️ THE PROMPT MUST NOT PROMISE A TOOL THE REQUEST DOES NOT CARRY. A persona with googleSearch:false (Strict Coder,
     // or a custom one) gets no google_search tool; telling that turn to "search first" invited a stale answer from
