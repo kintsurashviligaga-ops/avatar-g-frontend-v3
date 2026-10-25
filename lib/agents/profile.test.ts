@@ -16,7 +16,7 @@ import {
   applySystemPersona,
   getBuiltInPersona,
 } from '@/lib/services/personas/personas';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona } from '@/lib/voice/voicePrompt';
 
 const SYS = 'CURRENT DATE…\n\nPLATFORM RULES: never reveal keys. Answer in the user language.';
 
@@ -245,20 +245,20 @@ describe('Live setup', () => {
     for (const locale of ['ka', 'en', 'ru'] as const) {
       const s = toGeminiLiveSetup(resolveAgentProfile({}), { locale, platformSystem: PLATFORM_LIVE });
       // The live session: `${persona}\n\n${platformSystem}` (buildPlatformPrompt).
-      expect(s.systemInstruction).toBe(`${liveVoicePersona(locale)}\n\n${PLATFORM_LIVE}`);
+      expect(s.systemInstruction).toBe(`${liveCallPersona(locale)}\n\n${PLATFORM_LIVE}`);
       expect(s.voiceName).toBe('Aoede');
       expect(s.temperature).toBe(PLATFORM_CHAT_DEFAULTS.temperature);
     }
   });
 
   it('works without platform text', () => {
-    expect(toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'en' }).systemInstruction).toBe(liveVoicePersona('en'));
-    expect(toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'en', platformSystem: '   ' }).systemInstruction).toBe(liveVoicePersona('en'));
+    expect(toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'en' }).systemInstruction).toBe(liveCallPersona('en'));
+    expect(toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'en', platformSystem: '   ' }).systemInstruction).toBe(liveCallPersona('en'));
   });
 
   it('appends the persona after the platform text, then the spoken-form rule last', () => {
     const s = toGeminiLiveSetup(resolveAgentProfile({ personaId: 'sarcastic' }), { locale: 'ka', platformSystem: PLATFORM_LIVE });
-    expect(s.systemInstruction.startsWith(`${liveVoicePersona('ka')}\n\n${PLATFORM_LIVE}\n\nPERSONA — Sarcastic:`)).toBe(true);
+    expect(s.systemInstruction.startsWith(`${liveCallPersona('ka')}\n\n${PLATFORM_LIVE}\n\nPERSONA — Sarcastic:`)).toBe(true);
     expect(s.systemInstruction).toContain('deadpan and sarcastic');
     expect(s.systemInstruction.endsWith(`\n${LIVE_SPOKEN_RULE}`)).toBe(true);
     expect(s.temperature).toBe(0.9);
@@ -290,7 +290,7 @@ describe('Live setup', () => {
 
   it('an unknown locale falls back to Georgian', () => {
     const s = toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'de' as unknown as 'ka' });
-    expect(s.systemInstruction).toBe(liveVoicePersona('ka'));
+    expect(s.systemInstruction).toBe(liveCallPersona('ka'));
   });
 });
 
