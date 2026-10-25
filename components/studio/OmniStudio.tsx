@@ -203,6 +203,9 @@ import { VideoQuickChips } from '@/components/studio/create/VideoQuickChips';
 import { ImageQuickChips } from '@/components/studio/create/ImageQuickChips';
 import { MusicQuickChips } from '@/components/studio/create/MusicQuickChips';
 import { AvatarQuickChips } from '@/components/studio/create/AvatarQuickChips';
+import { PickerQuickChips } from '@/components/chat/composer/PickerQuickChips';
+import { SHOOT_COPY, shootLang } from '@/components/studio/create/newtools/copy';
+import { INTERIOR_TEMPLATES, ROOM_TYPES, interiorTemplate } from '@/lib/studio/templates.interior';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { getService, serviceModeQuery } from '@/lib/catalog/services';
 import { clearPendingPrompt, stashPendingPrompt, takePendingPrompt } from '@/lib/studio/pendingPrompt';
@@ -11487,6 +11490,40 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           onMore={openMoreSettings}
           moreExpanded={moreSettingsOpen}
           moreLabel={moreSettingsWord}
+        />
+      </div>
+    ) : activeTool === 'product' ? (
+      <div className="px-1 pb-1">
+        <PickerQuickChips
+          testId="product-quick-settings" desktop={isDesktop} closeLabel={SHOOT_COPY[shootLang(locale)].close}
+          onMore={openMoreSettings} moreExpanded={moreSettingsOpen} moreLabel={moreSettingsWord}
+          specs={[
+            { id: 'product-format', label: locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი', value: productAspect,
+              options: (['9:16', '1:1', '16:9'] as const).map((f) => ({ value: f, label: f })), onSelect: (v) => setProductAspect(v as typeof productAspect) },
+            { id: 'product-length', label: locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა', value: productDuration,
+              options: [8, 24, 48].map((sec) => ({ value: sec, label: `${sec}${secsWord}`, trailing: `✦ ${quoteCredits({ tool: 'product', seconds: sec })}` })),
+              onSelect: (v) => setProductDuration(Number(v)) },
+            { id: 'product-style', label: locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი', value: productPreset,
+              options: ([['splash', 'შხეფა', 'Splash', 'Всплеск'], ['epic', 'ეპიკური', 'Epic', 'Эпик'], ['luxury', 'ლუქსი', 'Luxury', 'Люкс'], ['nature', 'ბუნება', 'Nature', 'Природа']] as const)
+                .map(([v, ka, en, ru]) => ({ value: v, label: locale === 'en' ? en : locale === 'ru' ? ru : ka })),
+              onSelect: (v) => setProductPreset(v as typeof productPreset) },
+          ]}
+        />
+      </div>
+    ) : activeTool === 'interior' ? (
+      <div className="px-1 pb-1">
+        <PickerQuickChips
+          testId="interior-quick-settings" desktop={isDesktop} closeLabel={SHOOT_COPY[shootLang(locale)].close}
+          onMore={openMoreSettings} moreExpanded={moreSettingsOpen} moreLabel={moreSettingsWord}
+          specs={[
+            { id: 'interior-room', label: SHOOT_COPY[shootLang(locale)].roomType, value: shoot.interiorProps.form.room,
+              options: ROOM_TYPES.map((r) => ({ value: r.id, label: r.label[shootLang(locale)] })),
+              onSelect: (v) => shoot.interiorProps.onPatch({ room: v as typeof shoot.interiorProps.form.room }) },
+            { id: 'interior-style', label: SHOOT_COPY[shootLang(locale)].interior.carousel, value: shoot.interiorProps.form.template ?? '',
+              valueLabel: interiorTemplate(shoot.interiorProps.form.template)?.label[templateLang(locale)] ?? SHOOT_COPY[shootLang(locale)].interior.carousel,
+              options: INTERIOR_TEMPLATES.map((t) => ({ value: t.id, label: t.label[templateLang(locale)] })),
+              onSelect: (v) => shoot.interiorProps.onPatch({ template: String(v) }) },
+          ]}
         />
       </div>
     ) : imageCreate ? (
