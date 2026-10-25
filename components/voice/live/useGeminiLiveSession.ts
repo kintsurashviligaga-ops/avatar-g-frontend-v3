@@ -41,6 +41,10 @@
  *  • The status said 'listening' while getUserMedia was still pending. It stays 'connecting' until the mic AND
  *    setupComplete both exist, and a track that ends mid-call (Bluetooth drop, a phone call) is re-acquired once
  *    before the call fails as `mic_lost` — it no longer sits on "listening" hearing nothing.
+ *  • ⚠️ A MUTED TRACK IS NOT AN ENDED ONE. iOS mutes an earlier capture when another starts (the chat's dictation, a
+ *    second tab): the track stays 'live' and keeps delivering frames, all silence, so the call streamed nothing to
+ *    Google and never answered (GG's iPhone, 2026-10-25). A track muted for LIVE_MIC_MUTED_GRACE_MS while the page is
+ *    visible now goes through the same one-time re-acquire as an ended one.
  *  • The capture worklet had no outputs and was never connected; WebKit may never pull such a node, so the user
  *    was never heard. It now runs worklet → zero gain → destination (the dictation recorder's pattern).
  *  • VOICE-TO-ACTION (lib/voice/liveTools.ts): `actions: true` asks the mint to lock the UI-action declarations. They
@@ -135,6 +139,11 @@ const BARGE_CFG = bargeConfig(DEFAULT_VAD_CONFIG);
 export const LIVE_TOKEN_FRESH_MS = 90_000;
 /** Retry after `mic_busy` waits this long (after asking other holders to release) before asking for the device. */
 export const LIVE_MIC_BUSY_RETRY_PAUSE_MS = 500;
+/**
+ * A mic track the browser muted (not the user's mute, which only disables it) for this long while the page is visible
+ * is treated as lost. Short enough to recover before the user gives up; long enough for a passing interruption.
+ */
+export const LIVE_MIC_MUTED_GRACE_MS = 1500;
 /** How long a freshly created 16 kHz capture context may take to reach 'running' before capture falls back. */
 const CAPTURE_START_WAIT_MS = 300;
 /** A playback context still 'suspended' this long after resume() had no user activation: offer "tap to start". */
@@ -1429,8 +1438,31 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     const track = stream.getAudioTracks()[0] as (MediaStreamTrack & Partial<EventTarget>) | undefined;
     if (track && typeof track.addEventListener === 'function') {
       const onEnded = () => onMicEndedRef.current(stream);
+      // The browser muting the track (another capture took the device) silences the call just as surely. A hidden
+      // page is muted by design and unmutes on return, so the check waits for the page to be visible again.
+      let mutedTimer: ReturnType<typeof setTimeout> | null = null;
+      const clearMuted = () => { if (mutedTimer !== null) { clearTimeout(mutedTimer); mutedTimer = null; } };
+      const checkMuted = () => {
+        mutedTimer = null;
+        if (track.muted === false) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          mutedTimer = setTimeout(checkMuted, LIVE_MIC_MUTED_GRACE_MS);
+          return;
+        }
+        onMicEndedRef.current(stream);
+      };
+      const onMute = () => { clearMuted(); mutedTimer = setTimeout(checkMuted, LIVE_MIC_MUTED_GRACE_MS); };
       track.addEventListener('ended', onEnded);
-      micEndedCleanupRef.current = () => { try { track.removeEventListener?.('ended', onEnded); } catch { /* noop */ } };
+      track.addEventListener('mute', onMute);
+      track.addEventListener('unmute', clearMuted);
+      micEndedCleanupRef.current = () => {
+        clearMuted();
+        try {
+          track.removeEventListener?.('ended', onEnded);
+          track.removeEventListener?.('mute', onMute);
+          track.removeEventListener?.('unmute', clearMuted);
+        } catch { /* noop */ }
+      };
     }
   }, []);
 

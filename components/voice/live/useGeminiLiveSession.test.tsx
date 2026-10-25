@@ -21,6 +21,7 @@ import { liveVoicePersona } from '@/lib/voice/voicePrompt';
 import {
   LIVE_LANGUAGE_RULE,
   LIVE_MIC_BUSY_RETRY_PAUSE_MS,
+  LIVE_MIC_MUTED_GRACE_MS,
   LIVE_RELAY_SETUP_TIMEOUT_MS,
   LIVE_SETUP_TIMEOUT_MS,
   LIVE_TOKEN_FRESH_MS,
@@ -1093,6 +1094,61 @@ describe('microphone', () => {
     expect(result.current.error).toBe('mic_lost');
     expect(h.report).toHaveBeenCalledWith('mic_lost', expect.anything(), expect.anything());
     unmount();
+  });
+
+  test('a track the browser mutes (another capture took the mic) is re-acquired after the grace; an unmute in time keeps it', async () => {
+    const h = harness();
+    const track2 = makeTrack();
+    const { result, ws, unmount } = await connected({ deps: h.deps });
+    jest.useFakeTimers();
+    try {
+      // A passing mute: unmuted within the grace, nothing happens.
+      act(() => h.track.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS - 100); });
+      act(() => h.track.fire('unmute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+
+      // A mute that stays: the old track is released and a new one is acquired, as for an ended track.
+      h.getUserMedia.mockResolvedValueOnce(streamOf(track2));
+      act(() => h.track.fire('mute'));
+      await act(async () => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); await flushMicrotasks(); });
+      expect(h.track.stop).toHaveBeenCalled();
+      expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+      expect(result.current.status).toBe('listening');
+      const before = ws.sent.filter(isAudioFrame).length;
+      act(() => h.worklets[1]!.emit(pcm(640, 3), 0.01));
+      expect(ws.sent.filter(isAudioFrame)).toHaveLength(before + 1);
+
+      // The re-acquire is once per call: a second lasting mute ends the call instead of listening to silence.
+      act(() => track2.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); });
+      expect(result.current.error).toBe('mic_lost');
+    } finally {
+      jest.useRealTimers();
+      unmount();
+    }
+  });
+
+  test('a mute while the page is hidden waits for the page to come back before re-acquiring', async () => {
+    const h = harness();
+    const { unmount } = await connected({ deps: h.deps });
+    const vis = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    jest.useFakeTimers();
+    try {
+      act(() => h.track.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS * 4); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(1); // hidden: the browser mutes by design
+
+      vis.mockReturnValue('visible');
+      h.getUserMedia.mockResolvedValueOnce(streamOf(makeTrack()));
+      await act(async () => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); await flushMicrotasks(); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+    } finally {
+      vis.mockRestore();
+      jest.useRealTimers();
+      unmount();
+    }
   });
 
   test('a lost track whose re-acquire fails → mic_lost with the browser\'s reason', async () => {
