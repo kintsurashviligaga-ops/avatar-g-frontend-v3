@@ -130,3 +130,32 @@ describe('generateWithGemini — what the call used (Agent G PART 5, G3/G7)', ()
     expect(out).not.toHaveProperty('tokensTotal');
   });
 });
+
+describe('generateWithGemini — a thinking budget in the knob the model takes', () => {
+  async function thinkingSent(model: string | undefined, thinkingBudget: number) {
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true, status: 200, text: async () => '',
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const out = await generateWithGemini({ prompt: 'hi', tier: 'flash', model, thinkingBudget });
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body));
+    return { model: out.model, thinking: body.generationConfig.thinkingConfig };
+  }
+
+  test('3.8 Flash (the flash tier) gets thinkingLevel low for budget 0, never a thinkingBudget it ignores', async () => {
+    expect(await thinkingSent(undefined, 0)).toEqual({ model: DEFAULT_REST_TIER_MODELS.flash, thinking: { thinkingLevel: 'low' } });
+  });
+
+  test("3.6 Flash and Flash-Lite take 'minimal'; Pro never does", async () => {
+    expect((await thinkingSent('gemini-3.6-flash', 0)).thinking).toEqual({ thinkingLevel: 'minimal' });
+    expect((await thinkingSent('gemini-3.1-flash-lite', 0)).thinking).toEqual({ thinkingLevel: 'minimal' });
+    expect((await thinkingSent('gemini-3.1-pro-preview', 0)).thinking).toEqual({ thinkingLevel: 'low' });
+  });
+
+  test('2.5 keeps the budget; a dynamic budget on Gemini 3 leaves the model its default', async () => {
+    expect((await thinkingSent('gemini-2.5-flash', 0)).thinking).toEqual({ thinkingBudget: 0 });
+    expect((await thinkingSent('gemini-3.8-flash', -1)).thinking).toBeUndefined();
+    expect((await thinkingSent('gemini-3.8-flash', 2048)).thinking).toEqual({ thinkingLevel: 'low' });
+  });
+});

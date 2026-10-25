@@ -285,6 +285,18 @@ export const LIVE_SPOKEN_RULE =
   + 'lists, code blocks or emoji. Describe code, tables and shot lists in words.';
 
 /**
+ * The LAST line of a Live instruction while a persona is active ('' without one). ⚠️ THE CHARACTER FADED MID-CALL
+ * (GG, 2026-10-25, Preview): the persona block sits in the middle of a long instruction, and after a few minutes or a
+ * tool call the voice drifted back to the neutral assistant. The routes append this after every other rule, where the
+ * model weighs it most. A user-authored name is reduced to plain letters before it is quoted.
+ */
+export function livePersonaReminder(profile: AgentProfile): string {
+  if (!profile || profile.id === DEFAULT_AGENT_PROFILE_ID) return '';
+  const name = String(profile.label ?? '').replace(/["\s]+/g, ' ').trim().slice(0, 40);
+  return `STAY IN CHARACTER${name ? ` as "${name}"` : ''} for the whole call: every reply, also after a long talk or a function call, keeps this persona's personality and speaking style.`;
+}
+
+/**
  * ⚠️ ONLY AOEDE AND CHARON ARE VERIFIED LIVE IN GEORGIAN. Kore and Puck are valid Gemini voices but nobody
  * has listened to them speak Georgian yet, so a Georgian session maps them onto the verified voice of the
  * same register (Kore → Aoede, Puck → Charon). en/ru sessions get the voice as asked.

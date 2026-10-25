@@ -21,6 +21,8 @@ import { liveVoicePersona } from '@/lib/voice/voicePrompt';
 import {
   LIVE_LANGUAGE_RULE,
   LIVE_MIC_BUSY_RETRY_PAUSE_MS,
+  LIVE_RELAY_SETUP_TIMEOUT_MS,
+  LIVE_SETUP_TIMEOUT_MS,
   LIVE_TOKEN_FRESH_MS,
   LIVE_TRANSCRIPT_EVENT,
   buildLiveInstruction,
@@ -528,7 +530,7 @@ test('reentrancy: a double start is one call; End during the mint releases the m
   unmount();
 });
 
-test('a handshake with no setupComplete times out and retries ONCE on the legacy wire; a second miss is an error', async () => {
+test('a handshake with no setupComplete times out, retries the SAME setup once, then the legacy wire; a third miss is an error', async () => {
   // Fake time: each socket's deadline runs from its construction, so on a loaded machine real time could spend the
   // retry's whole 30 ms before the test opens it, and the retry would never send its setup.
   jest.useFakeTimers();
@@ -545,12 +547,21 @@ test('a handshake with no setupComplete times out and retries ONCE on the legacy
     expect(FakeSocket.all).toHaveLength(1); // not before the deadline
     await elapse(1);
     expect(FakeSocket.all).toHaveLength(2);
-    expect(h.fetchImpl).toHaveBeenCalledTimes(2); // fresh token for the retry
-    expect(result.current.degraded).toBe(true);
+    expect(h.fetchImpl).toHaveBeenCalledTimes(2); // fresh token: a ticket opens one new session
+    // Ran out of time ≠ refused: the same parity setup again, nothing given up.
+    expect(result.current.degraded).toBe(false);
     const ws2 = FakeSocket.last;
     expect(ws2.url).toContain('access_token=tok2');
     act(() => ws2.open());
-    const legacy = ws2.sent[0]!.setup;
+    expect(ws2.sent[0]!.setup.inputAudioTranscription).toBeDefined();
+
+    await elapse(30);
+    expect(FakeSocket.all).toHaveLength(3);
+    expect(result.current.degraded).toBe(true);
+    const ws3 = FakeSocket.last;
+    expect(ws3.url).toContain('access_token=tok3');
+    act(() => ws3.open());
+    const legacy = ws3.sent[0]!.setup;
     expect(legacy.systemInstruction).toBeDefined();
     expect(legacy).not.toHaveProperty('inputAudioTranscription');
     expect(legacy).not.toHaveProperty('sessionResumption');
@@ -559,8 +570,62 @@ test('a handshake with no setupComplete times out and retries ONCE on the legacy
     await elapse(30);
     expect(result.current.status).toBe('error');
     expect(result.current.error).toBe('setup_failed');
-    expect(FakeSocket.all).toHaveLength(2); // ONCE: no third socket
+    expect(FakeSocket.all).toHaveLength(3); // one same-setup retry per plan: no fourth socket
     expect(h.track.stop).toHaveBeenCalled();
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a handshake that TIMES OUT keeps the actions (GG: „ვიდეო პანელი გახსენი“); a later refusal still drops them', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness();
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true, setupTimeoutMs: 30 });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    act(() => FakeSocket.last.open()); // a cold relay: open, no answer in time
+    await elapse(30);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(h.mintBodies[1]).toMatchObject({ transcribe: true, actions: true }); // the voice commands survive
+
+    act(() => FakeSocket.last.close(1007, 'Invalid argument: function_declarations')); // now a REAL refusal
+    await elapse(0);
+    expect(FakeSocket.all).toHaveLength(3);
+    expect(h.mintBodies[2]).toMatchObject({ transcribe: true });
+    expect(h.mintBodies[2]).not.toHaveProperty('actions');
+    expect(result.current.degraded).toBe(false);
+    act(() => FakeSocket.last.open());
+    act(() => FakeSocket.last.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('through the relay the handshake gets the longer deadline (a relay scaled to zero boots first)', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    expect(FakeSocket.last.url).toContain('wss://relay.example/v1/live');
+    act(() => FakeSocket.last.open());
+    await elapse(LIVE_SETUP_TIMEOUT_MS);
+    expect(FakeSocket.all).toHaveLength(1); // the direct-to-Google deadline would have given up here
+    await elapse(LIVE_RELAY_SETUP_TIMEOUT_MS - LIVE_SETUP_TIMEOUT_MS);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(h.mintBodies[1]).toMatchObject({ actions: true });
+    act(() => FakeSocket.last.open());
+    act(() => FakeSocket.last.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
     unmount();
   } finally {
     jest.useRealTimers();
@@ -791,6 +856,36 @@ test('the no-actions retry that connects keeps the parity wire: captions on, res
   act(() => ws2.receive({ setupComplete: {} }));
   expect(result.current.status).toBe('listening');
   expect(result.current.degraded).toBe(false);
+  unmount();
+});
+
+test('renew: a FRESH session in the same call — new mint in the persona as it is now, no old handle, same mic', async () => {
+  const h = harness();
+  const { result, ws, rerender, unmount } = await connected({ deps: h.deps, personaId: 'friendly' });
+  act(() => ws.receive({ sessionResumptionUpdate: { newHandle: 'old-handle', resumable: true } }));
+  expect(h.mintBodies[0]).toMatchObject({ personaId: 'friendly' });
+  rerender({ deps: h.deps, personaId: 'joker' }); // set_persona: the host now passes the new persona
+  let renewed = false;
+  act(() => { renewed = result.current.renew(); });
+  expect(renewed).toBe(true);
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+  expect(ws.readyState).toBe(FakeSocket.CLOSED);
+  expect(h.mintBodies[1]).toMatchObject({ personaId: 'joker', resumptionHandle: null });
+  act(() => FakeSocket.last.open());
+  expect(FakeSocket.last.sent[0]!.setup.sessionResumption).toEqual({}); // a new session, not the old one resumed
+  act(() => FakeSocket.last.receive({ setupComplete: {} }));
+  expect(result.current.status).toBe('listening');
+  expect(h.getUserMedia).toHaveBeenCalledTimes(1); // the mic was kept
+  unmount();
+});
+
+test('renew does nothing while the call is not ready', async () => {
+  const h = harness();
+  const { result, unmount } = await startCall({ deps: h.deps, setupTimeoutMs: 5000 });
+  let renewed = true;
+  act(() => { renewed = result.current.renew(); });
+  expect(renewed).toBe(false);
+  expect(FakeSocket.all).toHaveLength(1);
   unmount();
 });
 
