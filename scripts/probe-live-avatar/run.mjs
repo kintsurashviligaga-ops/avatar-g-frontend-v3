@@ -143,7 +143,10 @@ if (mode === 'speak') {
   const ttsUrl = `wss://${ttsLoc}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
   const say = process.env.PROMPT || 'სურათი გამიკეთე: NASCAR-ის რბოლა.';
   const ttsSaid = { text: '' };
-  const pcm24 = await new Promise((resolve) => {
+  // AUDIO_FILE = a 16 kHz mono 16-bit WAV of the request (macOS: say -o x.aiff "…" && afconvert -f WAVE -d LEI16@16000 -c 1
+  // x.aiff x.wav): used as is, no reader.
+  const wav = process.env.AUDIO_FILE ? readFileSync(process.env.AUDIO_FILE) : null;
+  const pcm24 = wav ? Buffer.alloc(0) : await new Promise((resolve) => {
     const ws = new WebSocket(ttsUrl, { headers: { Authorization: `Bearer ${TOKEN}` } });
     const chunks = []; let done = false;
     const finish = () => { if (done) return; done = true; try { ws.close(); } catch {} resolve(Buffer.concat(chunks)); };
@@ -164,15 +167,31 @@ if (mode === 'speak') {
   });
   // Guard: the speech must BE the sentence (the native-audio model sometimes answers it instead): same words, about as long.
   const norm = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  const want = norm(say).split(' '); const got = norm(ttsSaid.text).split(' ');
+  const want = norm(say).split(' '); const got = norm(ttsSaid.text).split(' ').filter(Boolean);
   const hit = want.filter((w) => got.some((g) => g.startsWith(w.slice(0, 4)) || w.startsWith(g.slice(0, 4)))).length;
-  if (got.length > want.length * 1.6 + 2 || hit < Math.ceil(want.length * 0.6)) {
+  if (!wav && (pcm24.length < 20_000 || !got.length || got.length > want.length * 1.6 + 2 || hit < Math.ceil(want.length * 0.6))) {
     console.log(JSON.stringify({ mode: 'speak', ttsMismatch: true, said: say, ttsSaid: ttsSaid.text.slice(0, 300) }));
     process.exit(2);
   }
+  let pcm16;
+  if (wav) {
+    // RIFF chunks: fmt must be PCM, mono, 16 kHz, 16-bit; the samples are the data chunk.
+    let fmt = null; let data = null;
+    for (let i = 12; i + 8 <= wav.length;) {
+      const id = wav.toString('latin1', i, i + 4); const size = wav.readUInt32LE(i + 4);
+      if (id === 'fmt ') fmt = { format: wav.readUInt16LE(i + 8), channels: wav.readUInt16LE(i + 10), rate: wav.readUInt32LE(i + 12), bits: wav.readUInt16LE(i + 22) };
+      if (id === 'data') data = wav.subarray(i + 8, i + 8 + size);
+      i += 8 + size + (size & 1);
+    }
+    if (!fmt || !data || fmt.format !== 1 || fmt.channels !== 1 || fmt.rate !== 16000 || fmt.bits !== 16) {
+      console.log(JSON.stringify({ mode: 'speak', badWav: true, fmt })); process.exit(2);
+    }
+    pcm16 = data;
+  }
   // 24 kHz → 16 kHz (linear), int16 LE.
-  const inN = pcm24.length >> 1; const outN = Math.floor(inN * 2 / 3); const pcm16 = Buffer.alloc(outN * 2);
-  for (let i = 0; i < outN; i++) {
+  const inN = pcm24.length >> 1; const outN = wav ? pcm16.length >> 1 : Math.floor(inN * 2 / 3);
+  if (!wav) pcm16 = Buffer.alloc(outN * 2);
+  for (let i = 0; !wav && i < outN; i++) {
     const x = i * 1.5; const i0 = Math.floor(x); const f = x - i0;
     const a = i0 < inN ? pcm24.readInt16LE(i0 * 2) : 0; const b = i0 + 1 < inN ? pcm24.readInt16LE((i0 + 1) * 2) : a;
     pcm16.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(a + (b - a) * f))), i * 2);
@@ -238,7 +257,7 @@ if (mode === 'speak') {
   }
   const report = {
     mode: 'speak', model: MODEL, location: LOCATION, asVoice: process.env.AS_VOICE === '1', fixture: process.env.FIXTURE || 'fullVad',
-    said: say, ttsSaid: ttsSaid.text.slice(0, 200), speechMs, ttsBytes: pcm24.length, setupMs: st.setupMs, close: st.close,
+    said: wav ? `(file) ${process.env.AUDIO_FILE.split('/').pop()}` : say, ttsSaid: ttsSaid.text.slice(0, 200), speechMs, ttsBytes: pcm24.length, setupMs: st.setupMs, close: st.close,
     heard: inText.slice(0, 200), answered: outText.slice(0, 400), toolsAnswered: answers, events: ev.slice(0, 30),
     totalTokens: usage?.totalTokenCount ?? null,
   };
