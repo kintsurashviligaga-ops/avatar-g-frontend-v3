@@ -38,6 +38,15 @@ export interface LiveFailureContext {
   mints?: number;
   msToMicResult?: number;
   degraded?: boolean;
+  /** The call went through our Live relay (not Google directly). */
+  relay?: boolean;
+  /** Handshake timeout only: socket construction → open (absent = it never opened). */
+  msToOpen?: number;
+  /** Handshake timeout only: open → the deadline, with no setupComplete in between. */
+  msSinceOpen?: number;
+  /** Handshake timeout only: WebSocket.bufferedAmount at the deadline. ≈ the setup frame's size = the browser never
+   *  put it on the wire; 0 = it left the browser and was held further on. */
+  bufferedBytes?: number;
 }
 
 /** The whitelisted wire shape. */
@@ -58,6 +67,10 @@ export interface LiveTelemetryPayload {
   mints?: number;
   msToMicResult?: number;
   degraded?: boolean;
+  relay?: boolean;
+  msToOpen?: number;
+  msSinceOpen?: number;
+  bufferedBytes?: number;
 }
 
 const str = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v ? v.slice(0, max) : undefined);
@@ -103,6 +116,10 @@ export function sanitizeLiveContext(raw: unknown): LiveTelemetryPayload | null {
     mints: num(r.mints),
     msToMicResult: num(r.msToMicResult),
     degraded: bool(r.degraded),
+    relay: bool(r.relay),
+    msToOpen: num(r.msToOpen),
+    msSinceOpen: num(r.msSinceOpen),
+    bufferedBytes: num(r.bufferedBytes),
   });
   if (byteLength(JSON.stringify(payload)) <= LIVE_TELEMETRY_MAX_BYTES) return payload;
   delete payload.attempts; // the only variable-length part
@@ -154,6 +171,10 @@ export function buildLiveFailurePayload(
     mints: context.mints,
     msToMicResult: context.msToMicResult,
     degraded: context.degraded,
+    relay: context.relay,
+    msToOpen: context.msToOpen,
+    msSinceOpen: context.msSinceOpen,
+    bufferedBytes: context.bufferedBytes,
   });
 }
 
