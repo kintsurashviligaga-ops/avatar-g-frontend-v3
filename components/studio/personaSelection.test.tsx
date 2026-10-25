@@ -12,7 +12,7 @@ beforeEach(() => {
 // tests/persona-selection.spec.ts verifies the composer chip and actual intercepted request payloads.
 test.each([
   ['ka', 'პერსონა', 'რეჟისორი'],
-  ['en', 'Persona', 'Film Director'],
+  ['en', 'Persona', 'Director'],
   ['ru', 'Персона', 'Режиссёр'],
   ['fr', 'პერსონა', 'რეჟისორი'],
 ])('%s names the active specialist (unknown locales use Georgian)', (locale, label, name) => {

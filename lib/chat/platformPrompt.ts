@@ -28,6 +28,7 @@
  */
 import { ownerApprovedPrice } from '@/lib/billing/pricingApproval';
 import { TOOL_META, type ToolId } from '@/lib/studio/tools';
+import { BUILT_IN_PERSONAS } from '@/lib/services/personas/personas';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { SERVICE_CATALOG } from '@/lib/catalog/services';
 import { CREDIT_COSTS, CREDIT_VALUE_GEL, creditsToGel } from '@/lib/credits/pricing';
@@ -226,6 +227,13 @@ const SELF_INTRO: Readonly<Record<PlatformPromptLocale, string>> = {
   ru: 'Я Agent G, ИИ-ассистент MyAvatar.ge.',
 };
 
+/** Where the persona is switched (components/chat/ModelSwitcher: the „Persona" row of the model menu), per reply language. */
+const PERSONA_MENU: Readonly<Record<PlatformPromptLocale, { menu: string; row: string }>> = {
+  ka: { menu: 'მოდელი', row: 'პერსონა' },
+  en: { menu: 'Model', row: 'Persona' },
+  ru: { menu: 'Модель', row: 'Персона' },
+};
+
 export function buildPlatformPrompt(opts: {
   locale: 'ka' | 'en' | 'ru';
   now?: Date;
@@ -289,6 +297,10 @@ export function buildPlatformPrompt(opts: {
     // studio starts an image or a song on the yes to a quoted, priced offer (lib/chat/offeredPrompt + chatConsent), and a film
     // opens its storyboard; so the model offers in exactly that shape and never points at a menu for those three.
     `HANDING OFF: You cannot start, queue or finish a render yourself; the studio starts it in this chat once the user agrees. For an image, song or film never send them to a tool, a menu or the + button, and never ask them to attach again a file that is already in this chat. Missing key details? Ask up to two short questions. Otherwise offer once: format or length, one prompt in quotes (English for an image or film; "the reference image" when it uses their photo), its price from PRICES (one image is ${CREDIT_COSTS.image_generate} credits), ending with exactly this question: "${START_QUESTION[loc]}". A film opens its priced storyboard first. Other tools open from "${ui.toolsSheet}" (+) or "${NAV_GROUP_LABEL.create[loc]}" / "${NAV_GROUP_LABEL.work[loc]}" in the side menu; files attach with "${ui.attach}". The result shows here: never claim anything is processing, or a result you have not seen. Never reply with JSON, commands or routing payloads.`,
+
+    // ⚠️ ASKED WHICH PERSONAS EXIST, IT INVENTED A LIST (GG 2026-10-25, Preview). Nothing told the model what the picker
+    // offers, so it named characters the app does not have. The list comes from the catalogue itself.
+    `PERSONAS (user picks: "${PERSONA_MENU[loc].menu}" menu → "${PERSONA_MENU[loc].row}"): ${BUILT_IN_PERSONAS.map((p) => p.name[loc]).join(', ')}, plus own. Name no others; a PERSONA block below is active.`,
 
     priceBlock(ui.topUp, closed),
   ].join('\n\n');

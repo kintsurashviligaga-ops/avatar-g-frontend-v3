@@ -794,6 +794,36 @@ test('the no-actions retry that connects keeps the parity wire: captions on, res
   unmount();
 });
 
+test('renew: a FRESH session in the same call — new mint in the persona as it is now, no old handle, same mic', async () => {
+  const h = harness();
+  const { result, ws, rerender, unmount } = await connected({ deps: h.deps, personaId: 'friendly' });
+  act(() => ws.receive({ sessionResumptionUpdate: { newHandle: 'old-handle', resumable: true } }));
+  expect(h.mintBodies[0]).toMatchObject({ personaId: 'friendly' });
+  rerender({ deps: h.deps, personaId: 'joker' }); // set_persona: the host now passes the new persona
+  let renewed = false;
+  act(() => { renewed = result.current.renew(); });
+  expect(renewed).toBe(true);
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+  expect(ws.readyState).toBe(FakeSocket.CLOSED);
+  expect(h.mintBodies[1]).toMatchObject({ personaId: 'joker', resumptionHandle: null });
+  act(() => FakeSocket.last.open());
+  expect(FakeSocket.last.sent[0]!.setup.sessionResumption).toEqual({}); // a new session, not the old one resumed
+  act(() => FakeSocket.last.receive({ setupComplete: {} }));
+  expect(result.current.status).toBe('listening');
+  expect(h.getUserMedia).toHaveBeenCalledTimes(1); // the mic was kept
+  unmount();
+});
+
+test('renew does nothing while the call is not ready', async () => {
+  const h = harness();
+  const { result, unmount } = await startCall({ deps: h.deps, setupTimeoutMs: 5000 });
+  let renewed = true;
+  act(() => { renewed = result.current.renew(); });
+  expect(renewed).toBe(false);
+  expect(FakeSocket.all).toHaveLength(1);
+  unmount();
+});
+
 test('mute stops sending (and holds nothing), tells the server the stream ended, and zeroes the input level', async () => {
   const h = harness();
   const { result, ws, unmount } = await connected({ deps: h.deps });

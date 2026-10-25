@@ -51,7 +51,7 @@
  */
 import { useCallback, useEffect, useReducer, useRef, useState, type MutableRefObject } from 'react';
 
-import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
+import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, livePersonaReminder, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import {
   GeminiLiveSession,
@@ -271,6 +271,12 @@ export interface UseGeminiLiveSessionResult {
   retry: () => void;
   /** Local barge-in: stop playback now and drop the rest of the answer. */
   interrupt: () => void;
+  /**
+   * A FRESH session inside the same call (mic and screen kept): the next mint reads the options as they are now — a
+   * persona chosen by voice (set_persona) takes over. The chat so far rides along as for any fresh session. False when
+   * there is no ready call to renew.
+   */
+  renew: () => boolean;
   setMuted: (muted: boolean) => void;
   toggleMute: () => void;
   sendVideoFrame: (frameBase64: string, mimeType?: string) => void;
@@ -394,6 +400,7 @@ export function buildLiveInstruction(opts: {
   if (!text.includes(LIVE_SPOKEN_RULE)) text = `${text}\n\n${LIVE_SPOKEN_RULE}`;
   text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
+  if (personaActive && !override) text = `${text}\n${livePersonaReminder(profile)}`;
   return {
     systemInstruction: text,
     voiceName: live.voiceName,
@@ -1236,6 +1243,24 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     void runStepRef.current();
   };
 
+  const renew = useCallback((): boolean => {
+    if (!activeRef.current || reconnectingRef.current || !readyRef.current) return false;
+    reconnectingRef.current = true;
+    clearGoAwayTimer();
+    const old = sessionRef.current;
+    sessionRef.current = null; // first, so the old socket's close is ignored
+    readyRef.current = false;
+    try { old?.close(); } catch { /* noop */ }
+    // The old handle resumes the OLD setup (the relay and Google refuse a changed one): a new session, then once more.
+    handleRef.current = null;
+    if (!isPlaying()) setStatusSafe('reconnecting');
+    planRef.current = [{ freshToken: true, handle: null }, { freshToken: true, handle: null }];
+    stepRef.current = 0;
+    phaseRef.current = 'resume';
+    void runStepRef.current();
+    return true;
+  }, [clearGoAwayTimer, isPlaying, setStatusSafe]);
+
   // ── Mic ingest (worklet / ScriptProcessor → VAD → socket or pre-setup buffer) ──
   const ingest = useCallback((pcm: Int16Array, rms: number) => {
     if (!activeRef.current) return;
@@ -1672,7 +1697,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
-    start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
+    start, stop, retry, interrupt, renew, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
   };
 }
 
