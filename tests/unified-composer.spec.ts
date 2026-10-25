@@ -6,7 +6,7 @@ import {
   openStudio, pinSignedIn, say, attachClipsAndTrack, typeFilmPrompt, sendFilm, waitForClipCard,
   CLIP_JOB_ID, CLIP_URL, FILE_INPUT, JOB_ID, MASTER_URL, OMNI_EDIT_JOB_ID, OMNI_EDIT_URL, taskView, json, type Locale,
 } from './video-core/_shared';
-import { directClipCredits } from '@/lib/video/directClip';
+import { DIRECT_CLIP_BODY_MAX_BYTES, DIRECT_CLIP_PHOTO_MAX_BYTES, directClipCredits } from '@/lib/video/directClip';
 import { fakeMicrophone, signIn } from './fixtures/liveVoice';
 
 /**
@@ -307,6 +307,31 @@ for (const vp of VIEWPORTS) {
       await card.getByTestId('clip-cancel').click();
       await expect(page.getByTestId('clip-cancelled').last()).toHaveText('Cancelled. Nothing was charged.');
       expect(calls.clip).toHaveLength(0);
+    });
+
+    test('2e · in the chat, a photo + a Veo brief whose Georgian line says „დამონტაჟებული" is ONE clip\'s card, never the Montage editor', async ({ page }) => {
+      // GG's E2E (2026-10-25 20:00Z): this brief opened the Montage editor — the quoted line's „დამონტაჟებული ვიდეო" was read
+      // as a montage ask. A line someone says names no tool (lib/chat/quotedSpeech).
+      const calls = await openStudio(page, { tool: null, closedTiers: [] });
+      await page.locator(FILE_INPUT).setInputFiles([{ name: 'podcast.jpg', mimeType: 'image/jpeg', buffer: POSTER }]);
+      await expect(page.getByTitle('podcast.jpg')).toBeVisible({ timeout: 10_000 });
+      const words = 'Veo 3.1, 8s, 9:16. Same actors, clothes and outdoor podcast terrace. She says in Georgian: „ჩემი ფოტო ავტვირთე, '
+        + 'Agent G-ს 48-წამიანი ვლოგი ვთხოვე და მზა, დამონტაჟებული ვიდეო მივიღე!" Host reacts with surprise. No captions.';
+      await typeFilmPrompt(page, words);
+      // The chat's own Send (no service picked, so not the priced run-button).
+      await page.locator('button[data-primary="send"]').filter({ visible: true }).first().click();
+      const card = await waitForClipCard(page);
+      await expect(card.getByTestId('clip-prompt')).toHaveText(`„${words}“`);
+      await expect(card.getByTestId('clip-photos').locator('img')).toHaveCount(1);
+      await expect(page.locator('html')).not.toHaveAttribute('data-tool', 'montage');
+      await expect(page.getByTestId('montage-preview')).toHaveCount(0);
+      await card.getByTestId('clip-confirm').click();
+      await expect.poll(() => calls.clip.length, { timeout: 15_000 }).toBe(1);
+      expect(calls.clip[0]).toMatchObject({ prompt: words, seconds: 8, aspect: '9:16' });
+      // The photo rides in the body under the route's ceilings (it used to read 64 KB of body and refuse every photo).
+      const photo = (calls.clip[0]!.photos as string[])[0]!;
+      expect(Math.floor((photo.split(',')[1]!.length * 3) / 4)).toBeLessThanOrEqual(DIRECT_CLIP_PHOTO_MAX_BYTES);
+      expect(JSON.stringify(calls.clip[0]).length).toBeLessThan(DIRECT_CLIP_BODY_MAX_BYTES);
     });
 
     test('2c · Video with an uploaded video: the words edit it (Omni), Extend adds seconds, the price on Create; the result lands in the chat', async ({ page }) => {
