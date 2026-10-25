@@ -438,8 +438,15 @@ describe('ttsModel', () => {
 });
 
 describe('sttModel', () => {
-  it('defaults to gemini-3.8-flash', () => {
-    expect(sttModel()).toBe('gemini-3.8-flash');
+  it('defaults to gemini-3.6-flash (3.8 Flash timed out on the owner\'s dictation, 2026-10-25)', () => {
+    expect(sttModel()).toBe('gemini-3.6-flash');
+  });
+
+  it('allowlists the chat\'s Lite models and 3.8 Flash for an override or the owner\'s trial', () => {
+    for (const id of ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']) {
+      process.env.GEMINI_STT_MODEL = id;
+      expect(sttModel()).toBe(id);
+    }
   });
 
   it('GEMINI_STT_MODEL (allowlisted) is honoured', () => {
@@ -472,8 +479,8 @@ describe('sttModel', () => {
 
   it('GEMINI_STT_MODEL wins over the legacy name', () => {
     process.env.VOICE_V2V_GEMINI_MODEL = 'gemini-3.5-flash';
-    process.env.GEMINI_STT_MODEL = 'gemini-3.6-flash';
-    expect(sttModel()).toBe('gemini-3.6-flash');
+    process.env.GEMINI_STT_MODEL = 'gemini-3.8-flash';
+    expect(sttModel()).toBe('gemini-3.8-flash');
   });
 
   it('a retired legacy VOICE_V2V_GEMINI_MODEL is ignored', () => {

@@ -100,6 +100,7 @@ import {
 } from '@/lib/voice/dictationMetrics';
 import { MAX_INTERIM_MS, shouldRunInterimAt } from '@/lib/voice/interimCadence';
 import { useMicRelease } from '@/lib/voice/micBus';
+import { sttTrialModel } from '@/lib/voice/sttTrial';
 import {
   isSpeechLang,
   loadLearnedSpeechLang,
@@ -174,6 +175,8 @@ export interface DictationDeps {
   /** The language the server heard on an earlier clip (lib/voice/speechLang; localStorage by default). */
   loadSpeechLang(): SpeechLang | null;
   saveSpeechLang(lang: SpeechLang): void;
+  /** The owner's `?stt=` model trial (lib/voice/sttTrial), or null; the route honours it for an admin only. */
+  sttTrialModel(): string | null;
 }
 
 export interface UseDictationOptions {
@@ -765,6 +768,7 @@ const defaultDeps = (): DictationDeps => ({
   isGuest: () => typeof document !== 'undefined' && document.documentElement?.dataset?.authed === '0',
   loadSpeechLang: loadLearnedSpeechLang,
   saveSpeechLang: saveLearnedSpeechLang,
+  sttTrialModel: () => sttTrialModel(),
 });
 
 // ─── The hook ────────────────────────────────────────────────────────────────────────────────────────────
@@ -969,6 +973,9 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       // The extension must match the bytes — Whisper-class legs dispatch on it (lib/voice/audioExt).
       fd.append('audio', blob, `clip.${audioExtFor(blob.type || r.session?.mimeType)}`);
       fd.append('language', r.lang);
+      let trial: string | null = null;
+      try { trial = d.sttTrialModel(); } catch { /* no trial */ }
+      if (trial) fd.append('model', trial);
       const res = await d.fetch(transcribeUrlFor(o.transcribeUrl ?? '/api/voice/transcribe', kind), { method: 'POST', body: fd, credentials: 'same-origin', signal: ctrl.signal });
       // Re-check AFTER the await: a send() while this was in flight already emptied the box.
       if (stale()) return;

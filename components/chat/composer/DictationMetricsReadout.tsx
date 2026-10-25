@@ -5,7 +5,8 @@
  * Off unless the page was opened with `?micstats=1` (remembered for the tab; `?micstats=0` turns it off). It exists so
  * a phone can be measured without a desktop inspector: dictate a few times, then screenshot the line. It reads only
  * this page's own summaries (lib/voice/dictationMetrics — timings, never words) and shows p50 / p95 of what was
- * measured; a step no dictation reached shows "—", never a target.
+ * measured; a step no dictation reached shows "—", never a target. During the owner's `?stt=` model trial
+ * (lib/voice/sttTrial) the line ends with that model, so a screenshot says which model it measured.
  */
 import { useEffect, useState } from 'react';
 import {
@@ -15,6 +16,7 @@ import {
   type DictationLatency,
   type LatencyStat,
 } from '@/lib/voice/dictationMetrics';
+import { sttTrialModel } from '@/lib/voice/sttTrial';
 
 export const MIC_STATS_PARAM = 'micstats';
 const MIC_STATS_KEY = 'myavatar:micstats';
@@ -34,24 +36,27 @@ export function micStatsEnabled(search: string, store: Pick<Storage, 'getItem' |
 
 const fmt = (s: LatencyStat): string => (s.n ? `${s.p50} / ${s.p95}` : '—');
 
-export function micStatsLine(l: DictationLatency, locale?: string): string {
+export function micStatsLine(l: DictationLatency, locale?: string, trialModel?: string | null): string {
   const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const label = {
     ka: { head: 'მიკროფონი, ამ მოწყობილობაზე', n: 'კარნახი', tap: 'შეხება→მოსმენა', first: 'პირველი ტექსტი', fin: 'Stop→საბოლოო' },
     en: { head: 'Mic, this device', n: 'dictations', tap: 'tap→listening', first: 'first text', fin: 'Stop→final' },
     ru: { head: 'Микрофон, это устройство', n: 'диктовок', tap: 'нажатие→запись', first: 'первый текст', fin: 'Stop→итог' },
   }[lang];
-  return `${label.head} (${l.dictations} ${label.n}, p50 / p95 ms): ${label.tap} ${fmt(l.tapToListening)} · ${label.first} ${fmt(l.listeningToFirstText)} · ${label.fin} ${fmt(l.stopToFinal)}`;
+  const line = `${label.head} (${l.dictations} ${label.n}, p50 / p95 ms): ${label.tap} ${fmt(l.tapToListening)} · ${label.first} ${fmt(l.listeningToFirstText)} · ${label.fin} ${fmt(l.stopToFinal)}`;
+  return trialModel ? `${line} · STT ${trialModel}` : line;
 }
 
 export function DictationMetricsReadout({ locale }: { locale?: string }) {
   const [on, setOn] = useState(false);
   const [latency, setLatency] = useState<DictationLatency | null>(null);
+  const [trial, setTrial] = useState<string | null>(null);
 
   useEffect(() => {
     let store: Storage | null = null;
     try { store = window.sessionStorage; } catch { /* blocked storage */ }
     setOn(micStatsEnabled(window.location.search, store));
+    setTrial(sttTrialModel());
   }, []);
 
   useEffect(() => {
@@ -65,7 +70,7 @@ export function DictationMetricsReadout({ locale }: { locale?: string }) {
   if (!on || !latency) return null;
   return (
     <div data-testid="mic-stats" aria-live="polite" className="mb-2 px-1 text-[11px] leading-snug tabular-nums text-app-muted">
-      {micStatsLine(latency, locale)}
+      {micStatsLine(latency, locale, trial)}
     </div>
   );
 }
