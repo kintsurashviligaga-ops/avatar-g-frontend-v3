@@ -196,6 +196,12 @@ describe('sttPrompt', () => {
     }
   });
 
+  it('drops hesitation sounds in every language, and names only sounds that are never words', () => {
+    for (const p of [sttPrompt('ka-GE'), sttPrompt('en-US'), sttPrompt('ru-RU'), sttPrompt('auto'), sttPrompt('en-US', 'ru')]) {
+      expect(p).toMatch(/Leave out hesitation sounds that are not words \(uh, um, er, hmm, э-э, мм, ე-ე, მმ\); keep every real word\./);
+    }
+  });
+
   it("after a translated answer the retry states the language outright, whatever the mic's hint was", () => {
     const p = sttPrompt('en-US', 'ru');
     expect(p).toMatch(/The speaker speaks Russian\. Write their Russian words in Cyrillic, exactly as spoken; do NOT translate/);
