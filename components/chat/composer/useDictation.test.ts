@@ -300,10 +300,27 @@ describe('recorder path (WAV)', () => {
     expect(h.result.current.d.engine).toBe('wav');
   });
 
-  test('Apple engine + English keeps Web Speech', async () => {
+  test('Apple engine records English too: Web Speech there hears only the one language it is set to', async () => {
     const h = harness({ locale: 'en', deps: { userAgent: () => SAFARI_UA, loadSpeechLang: () => 'en-US' } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    expect(FakeSR.instances).toHaveLength(0);
+    expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(h.result.current.d.engine).toBe('wav');
+  });
+
+  test('iPhone after a Russian message records, with Russian as the hint only (GG, production 2026-10-24)', async () => {
+    const h = harness({ speechLang: 'ru-RU', deps: { userAgent: () => IPHONE_UA } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    expect(FakeSR.instances).toHaveLength(0);
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    const fd = (h.fetchMock.mock.calls[0] as [string, RequestInit])[1].body as FormData;
+    expect(fd.get('language')).toBe('ru-RU');
+  });
+
+  test('Chrome keeps Web Speech in the language the user evidently speaks', async () => {
+    const h = harness({ speechLang: 'ru-RU', deps: { userAgent: () => CHROME_UA } });
     await act(async () => { await h.result.current.d.toggle(); });
-    expect(FakeSR.instances[0]!.lang).toBe('en-US');
+    expect(FakeSR.instances[0]!.lang).toBe('ru-RU');
   });
 
   test('Stop runs one final pass: POSTs clip.wav (audio/wav) + language, fills the box, does not send', async () => {
