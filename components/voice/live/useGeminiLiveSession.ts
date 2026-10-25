@@ -79,6 +79,13 @@ import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
 /** setupComplete deadline per handshake. A hung handshake then retries once instead of spinning forever. */
 export const LIVE_SETUP_TIMEOUT_MS = 8000;
+/**
+ * The same deadline through our Live relay. A relay scaled to zero boots first (GG's call 2026-10-25: upstream not
+ * open after 6.5 s), and the relay's own upstream handshake may take 10 s — 8 s gave up on a call about to open.
+ */
+export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
+/** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. */
+const MAX_TIMEOUT_RETRIES = 1;
 /** Window event the default transcript sink dispatches (detail: LiveTurn) when the host passes no onTurn. */
 export const LIVE_TRANSCRIPT_EVENT = 'myavatar:live-transcript';
 
@@ -617,6 +624,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const actionsOffRef = useRef(false); // this call gave up the UI-action declarations after a failed handshake
   const planRef = useRef<PlanStep[]>([]);
   const stepRef = useRef(0);
+  const timeoutRetriesRef = useRef(0); // same-setup retries the current plan spent on handshakes that timed out
   const phaseRef = useRef<'initial' | 'resume'>('initial');
   const reconnectingRef = useRef(false);
   const resumesRef = useRef(0);
@@ -1144,12 +1152,20 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     // The deadline runs from CONSTRUCTION, not from socket open (GeminiLiveSession's own setupTimeoutMs only arms
     // on open, so a socket stuck in CONNECTING would never time out). Expiry = a close before setupComplete.
     clearHandshakeTimer();
-    const timeoutMs = optsRef.current.setupTimeoutMs ?? LIVE_SETUP_TIMEOUT_MS;
+    const timeoutMs = optsRef.current.setupTimeoutMs ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
     handshakeTimerRef.current = setTimeout(() => {
       handshakeTimerRef.current = null;
       if (!current() || readyRef.current) return;
       sessionRef.current = null; // detach first: the close below must not be handled twice
       try { session.close(); } catch { /* noop */ }
+      // ⚠️ GG 2026-10-25: „ვიდეო პანელი გახსენი“ did nothing. A cold relay ran out the clock, the plan's next step
+      // dropped the UI actions, and the call that opened could not open a panel. A handshake that ran out of time
+      // was never REFUSED: it retries the same setup on a fresh ticket (a ticket opens one new session) first.
+      const step = planRef.current[stepRef.current];
+      if (step && timeoutRetriesRef.current < MAX_TIMEOUT_RETRIES) {
+        timeoutRetriesRef.current += 1;
+        planRef.current.splice(stepRef.current + 1, 0, { freshToken: true, handle: step.handle, ...(step.degrade ? { degrade: true } : {}) });
+      }
       onSessionClosed();
     }, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(
@@ -1234,6 +1250,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       { freshToken: true, handle: null },
     ];
     stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
     phaseRef.current = 'resume';
     void runStepRef.current();
   };
@@ -1569,6 +1586,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       { freshToken: true, handle: undefined, degrade: true },
     ];
     stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
     openSession(planRef.current[0]!.handle);
   }, [attachMic, deps, emitHeard, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
 
