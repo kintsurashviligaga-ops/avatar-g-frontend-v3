@@ -12079,14 +12079,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
-          <div className={`mt-1.5 flex w-full ${chatOnly ? 'flex-wrap' : 'flex-nowrap'} items-center justify-between gap-1 px-1 pt-1 border-t border-white/[0.06]`}>
+          <div className={`mt-1.5 flex w-full ${chatOnly ? 'flex-wrap' : 'flex-nowrap'} items-center justify-between gap-0.5 px-0 pt-1 sm:gap-1 sm:px-1 border-t border-white/[0.06]`}>
             <button type="button" ref={plusRef} onClick={() => { setToolPickOnly(false); setToolSheetOpen((v) => !v); }}
               aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
               aria-label={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
               title={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
               className={chatOnly
-                ? `group flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-text/90 transition-colors duration-200 hover:bg-app-border/10 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10 ${chatSingleRow ? 'order-first' : ''}`
-                : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
+                ? `group flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-text/90 transition-colors duration-200 hover:bg-app-border/10 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10 ${chatSingleRow ? 'order-first' : ''}`
+                : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
               {/* In the chat the „+“ turns into „×“ while its sheet is open, as Gemini's does. */}
               <Plus size={chatOnly ? 22 : 20} aria-hidden="true" className={chatOnly ? 'transition-transform duration-200 group-aria-expanded:rotate-45 motion-reduce:transition-none' : undefined} />
             </button>
@@ -12098,7 +12098,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 title={attachTarget.attachHint ? `${attachWord} — ${attachTarget.attachHint}` : attachWord}
                 className={chatOnly
                   ? `${chatRound} text-app-text/90 hover:bg-app-border/10 ${chatSingleRow ? 'order-first' : ''}`
-                  : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
+                  : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
                 <Paperclip size={chatOnly ? 20 : 19} aria-hidden="true" />
               </button>
             )}
@@ -12115,11 +12115,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   data-testid="active-service-switch" aria-haspopup="dialog" aria-expanded={toolSheetOpen && toolPickOnly}
                   aria-label={`${toolLabel} — ${locale === 'en' ? 'switch service' : locale === 'ru' ? 'сменить сервис' : 'სერვისის შეცვლა'}`}
                   title={locale === 'en' ? 'Switch service' : locale === 'ru' ? 'Сменить сервис' : 'სერვისის შეცვლა'}
-                  className="inline-flex h-11 min-w-0 items-center gap-1.5 rounded-full pl-3 pr-2 text-app-accent transition-colors hover:bg-app-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+                  className="inline-flex h-11 min-w-0 items-center gap-1 overflow-hidden rounded-full pl-2.5 pr-1 text-app-accent sm:gap-1.5 sm:pl-3 sm:pr-2 transition-colors hover:bg-app-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
                 >
                   <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
                   <span className="max-w-[88px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
-                  <ChevronDown size={13} aria-hidden="true" className="shrink-0 opacity-80" />
+                  {/* On a phone the ▾ gives its 13 px to the name (aria-haspopup still says it opens the list). */}
+                  <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 opacity-80 sm:block" />
                 </button>
 
                 {/* 2. პარამეტრების პანელის ჩაკეცვა / გახსნა — only for a service with no quick-settings row: there the row's ⋯ is it. */}
@@ -12151,7 +12152,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   aria-label={locale === 'en' ? 'Close service and return to chat' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის დახურვა და ჩატში დაბრუნება'}
                   title={locale === 'en' ? 'Close service (back to chat)' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის გათიშვა (ჩატში დაბრუნება)'}
                   data-testid="active-service-close"
-                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-rose-500/20 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+                  className="inline-flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-rose-500/20 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
                 >
                   <X size={15} aria-hidden="true" />
                 </button>
@@ -12188,7 +12189,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 now sits BESIDE the generation Stop, so the two can overlap. */}
             {busy && !recording && !transcribing && (
               <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                className={chatOnly ? `${chatRound} text-app-text/90 hover:bg-app-border/10` : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text'}>
+                className={chatOnly ? `${chatRound} text-app-text/90 hover:bg-app-border/10` : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text'}>
                 <Mic size={chatOnly ? 20 : 19} />
               </button>
             )}
@@ -12196,7 +12197,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 dictate mid-reply would take away the only way to stop that reply. */}
             {busy && (recording || transcribing) && (
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className={`${chatOnly ? chatRound : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity'} bg-app-danger text-white hover:opacity-90`}>
+                className={`${chatOnly ? chatRound : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full transition-opacity'} bg-app-danger text-white hover:opacity-90`}>
                 <Square size={chatOnly ? 14 : 15} className="fill-current" />
               </button>
             )}
@@ -12204,7 +12205,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 while another render runs (their panel buttons never had a busy gate; Stop must not be the only choice). */}
             {busy && !recording && !transcribing && canRun && (activeTool === 'product' || activeTool === 'swap') && (
               <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
+                className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
                 <Send size={17} aria-hidden="true" />
               </button>
             )}
@@ -12212,14 +12213,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {busy && !recording && !transcribing ? (
               // The stop: a red circle with a filled white square (the owner, 2026-10-11: „a red Stop would sit better").
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className={`${chatOnly ? chatRound : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity'} bg-app-danger text-white hover:opacity-90`}>
+                className={`${chatOnly ? chatRound : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full transition-opacity'} bg-app-danger text-white hover:opacity-90`}>
                 <Square size={chatOnly ? 14 : 15} className="fill-current" />
               </button>
             ) : recording ? (
               // While dictating, a STOP that never disappears — even as live text
               // arrives — so recording is always controllable.
               <button type="button" onClick={() => void toggleMic()} aria-label={t.stop} title={t.stop}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
+                className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
                 <Square size={16} />
               </button>
             ) : transcribing ? (
@@ -12231,7 +12232,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 aria-live="polite"
                 aria-label={locale === 'en' ? 'Transcribing' : locale === 'ru' ? 'Расшифровка' : 'ტრანსკრიფცია'}
                 title={locale === 'en' ? 'Transcribing…' : locale === 'ru' ? 'Расшифровка…' : 'ტრანსკრიფცია…'}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent"
+                className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-accent"
               >
                 <Loader2 size={18} className="animate-spin" />
               </span>
@@ -12240,7 +12241,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {/* Mic stays available even with text in the box — tap again to keep
                     dictating / continue where you left off. (Dictation → fills the text box.) */}
                 <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                  className={chatOnly ? `${chatRound} text-app-text/90 hover:bg-app-border/10` : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text'}>
+                  className={chatOnly ? `${chatRound} text-app-text/90 hover:bg-app-border/10` : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text'}>
                   <Mic size={chatOnly ? 20 : 19} />
                 </button>
                 {/* LIVE VOICE — Gemini-style full-duplex voice-dialogue chip, immediately right of the
@@ -12263,7 +12264,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 }}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
-                  className="group relative ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1d4ed8] text-white shadow-[0_0_20px_rgba(29,78,216,0.5)] transition-all duration-200 hover:bg-[#2563eb] active:scale-95">
+                  className="group relative ml-1 flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full bg-[#1d4ed8] text-white shadow-[0_0_20px_rgba(29,78,216,0.5)] transition-all duration-200 hover:bg-[#2563eb] active:scale-95">
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 )}

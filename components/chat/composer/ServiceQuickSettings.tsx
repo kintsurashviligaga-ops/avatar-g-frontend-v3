@@ -76,7 +76,7 @@ export function ServiceQuickSettings({ chips, onMore, moreExpanded, moreLabel, t
       {onMore && (
         <button type="button" onClick={onMore} data-testid={moreTestId} aria-haspopup="dialog" aria-expanded={moreExpanded ?? false}
           aria-label={moreLabel} title={moreLabel}
-          className={`${CHIP} bg-app-surface/60 ring-app-border/15 hover:bg-app-surface`}>
+          className={`${CHIP} min-w-11 justify-center bg-app-surface/60 ring-app-border/15 hover:bg-app-surface`}>
           <MoreHorizontal size={16} aria-hidden="true" />
           <span className="hidden sm:inline">{moreLabel}</span>
         </button>
