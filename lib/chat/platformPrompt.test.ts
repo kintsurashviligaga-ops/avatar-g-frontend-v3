@@ -16,6 +16,7 @@ import { BOG_TOPUP_PACKS_GEL, topupCredits } from '@/lib/billing/bogCatalog';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { PRICE_BOOK } from '@/lib/credits/priceBook';
 import { MUSIC_VIDEO_SURCHARGE_PCT, tierPriceEffect } from '@/lib/video/createPanel';
+import { BUILT_IN_PERSONAS } from '@/lib/services/personas/personas';
 
 const LOCALES: PlatformPromptLocale[] = ['ka', 'en', 'ru'];
 const NOW = new Date('2026-09-30T08:00:00Z'); // 12:00 in Tbilisi (UTC+4)
@@ -271,6 +272,19 @@ describe('buildPlatformPrompt — date line (Tbilisi, UTC+4)', () => {
 describe('buildPlatformPrompt — what it cannot do, it says (GG 2026-10-11 PART 7)', () => {
   it.each(LOCALES)('no browser: never claims a click, a sign-in or a screenshot of a site (%s)', (locale) => {
     expect(build(locale)).toContain('BROWSER: none — never claim to click, log in or screenshot a site.');
+  });
+});
+
+describe('buildPlatformPrompt — the persona list is the catalogue (GG 2026-10-25: asked, it named a list the app does not have)', () => {
+  it.each(LOCALES)('names exactly the built-in personas in the reply language, and where the user switches them (%s)', (locale) => {
+    const line = build(locale).split('\n\n').find((b) => b.startsWith('PERSONAS'))!;
+    expect(line).toContain(BUILT_IN_PERSONAS.map((p) => p.name[locale]).join(', '));
+    expect(line).toContain({ ka: '"პერსონა" in the "მოდელი" menu', en: '"Persona" in the "Model" menu', ru: '"Персона" in the "Модель" menu' }[locale]);
+    expect(line).toContain('Name no others.');
+  });
+
+  it('lists GG\'s six characters in Georgian', () => {
+    expect(build('ka')).toContain('მეგობრული, სარკასტული, რეჟისორი, ხუმარა, ბიზნესმენი, პროდიუსერი, plus user-made');
   });
 });
 
