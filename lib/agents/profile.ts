@@ -32,7 +32,7 @@ import {
   type PersonaThinking,
   type PersonaVoice,
 } from '@/lib/services/personas/personas';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona } from '@/lib/voice/voicePrompt';
 // Type-only, so it is erased at build time: this module stays isomorphic even though chatStream.ts is
 // `server-only`.
 import type { GeminiChatConfig } from '@/lib/ai/google/chatStream';
@@ -331,7 +331,7 @@ export function toGeminiLiveSetup(
   const p = clampAgentProfile(profile);
   const locale = opts?.locale === 'en' || opts?.locale === 'ru' ? opts.locale : 'ka';
   const platform = typeof opts?.platformSystem === 'string' && opts.platformSystem.trim() ? opts.platformSystem : '';
-  const base = [liveVoicePersona(locale), platform].filter(Boolean).join('\n\n');
+  const base = [liveCallPersona(locale), platform].filter(Boolean).join('\n\n');
   const systemInstruction = p.directive ? `${base}\n\n${p.directive}\n${LIVE_SPOKEN_RULE}` : base;
   return {
     systemInstruction,

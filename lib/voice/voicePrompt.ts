@@ -93,6 +93,22 @@ export function liveVoicePersona(locale: VoiceLocale): string {
   return LIVE_PERSONA[locale];
 }
 
+const LIVE_DEFAULT_LANGUAGE: Record<VoiceLocale, string> = { ka: 'Georgian', en: 'English', ru: 'Russian' };
+
+/**
+ * The persona that opens every Gemini Live CALL instruction (lib/agents/profile.ts toGeminiLiveSetup and the client-built
+ * fallback in components/voice/live/useGeminiLiveSession.ts). The UI locale only names the fallback language.
+ *
+ * ⚠️ ENGLISH FOR EVERY LOCALE ON PURPOSE (probe 2026-10-25, Vertex europe-west4, gemini-live-2.5-flash-native-audio,
+ * spoken en → ru → ru turns): with the Georgian persona on top, 2 of 4 sessions answered EVERY turn in Georgian although
+ * the transcription heard English and Russian correctly and LIVE_LANGUAGE_LOCK was the last line. The model picks a
+ * language when the session starts and keeps it. With this English text 6 of 6 sessions answered en → en, ru → ru.
+ */
+export function liveCallPersona(locale: VoiceLocale): string {
+  return `${LIVE_PERSONA.en} When the user speaks Georgian, speak natural, everyday Georgian, never a translation. `
+    + `Always answer in the language the user is speaking (Georgian, English or Russian); only when you cannot tell, use ${LIVE_DEFAULT_LANGUAGE[locale] ?? 'Georgian'}.`;
+}
+
 const FALLBACK: Record<VoiceLocale, string> = {
   ka: 'ბოდიში, ახლა ვერ გავიგე. გაიმეორებ?',
   en: "Sorry, I didn't catch that. Could you say it again?",

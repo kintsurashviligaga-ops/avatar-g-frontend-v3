@@ -81,7 +81,7 @@ import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
 import { structuredLog } from '../../../../lib/logger';
-import { LIVE_LANGUAGE_LOCK, liveVoicePersona } from '../../../../lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveCallPersona } from '../../../../lib/voice/voicePrompt';
 import { LIVE_SPOKEN_RULE } from '../../../../lib/agents/profile';
 import { LIVE_ACTIONS_RULE, LIVE_FUNCTION_DECLARATIONS } from '../../../../lib/voice/liveTools';
 
@@ -268,7 +268,7 @@ describe('the mint', () => {
   test('the instruction: live persona + Google-only platform prompt + the spoken-call rule; no stale vendors', async () => {
     await POST(post({ locale: 'en' }));
     const text = lockedText();
-    expect(text.startsWith(liveVoicePersona('en'))).toBe(true);
+    expect(text.startsWith(liveCallPersona('en'))).toBe(true);
     expect(text).toContain('MyAvatar.ge');
     expect(text).toMatch(/LIVE VOICE CALL/);
     expect(text).toMatch(/cannot search the web during this call/);
@@ -341,7 +341,7 @@ describe('the mint', () => {
   test('without a body locale, the UI locale comes from the referer path; else Georgian', async () => {
     const res = await POST(post({}, { referer: 'https://myavatar.ge/ru/dashboard?voice=1' }));
     expect((await res.json()).locale).toBe('ru');
-    expect(lockedText().startsWith(liveVoicePersona('ru'))).toBe(true);
+    expect(lockedText().startsWith(liveCallPersona('ru'))).toBe(true);
     const res2 = await POST(post({}, { referer: 'not a url' }));
     expect((await res2.json()).locale).toBe('ka');
   });

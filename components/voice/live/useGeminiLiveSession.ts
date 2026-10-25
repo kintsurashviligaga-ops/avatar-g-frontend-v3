@@ -71,7 +71,7 @@ import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
 import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
-import { LIVE_LANGUAGE_LOCK, liveTranscriptionLanguages, liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveCallPersona, liveTranscriptionLanguages } from '@/lib/voice/voicePrompt';
 import type { LiveHeardEvent } from '@/lib/voice/voiceLedger';
 import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
@@ -974,7 +974,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     ];
     return buildLiveSetup({
       model: modelRef.current ?? '',
-      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.\n" + LIVE_LANGUAGE_LOCK,
+      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveCallPersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.\n" + LIVE_LANGUAGE_LOCK,
       voiceName: sessionPreferencesRef.current?.voice ?? o.voiceName ?? 'Aoede',
       turnEagerness: sessionPreferencesRef.current?.eagerness ?? "eager",
       ...(typeof o.temperature === 'number' ? { temperature: o.temperature } : {}),

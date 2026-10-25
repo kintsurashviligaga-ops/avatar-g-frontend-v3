@@ -16,7 +16,7 @@ import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { MIC_RELEASE_EVENT, type MicReleaseDetail } from '@/lib/voice/micBus';
 import { base64ToBytes, bytesToBase64 } from '@/lib/voice/pcm';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona } from '@/lib/voice/voicePrompt';
 
 import {
   LIVE_LANGUAGE_RULE,
@@ -1276,7 +1276,7 @@ describe('buildLiveInstruction', () => {
 
   it('default call: live persona + Google-only platform prompt + spoken-call rules, model-default temperature', () => {
     const r = buildLiveInstruction({ locale: 'ka', now });
-    expect(r.systemInstruction.startsWith(liveVoicePersona('ka'))).toBe(true);
+    expect(r.systemInstruction.startsWith(liveCallPersona('ka'))).toBe(true);
     expect(r.systemInstruction).toContain('Veo');
     expect(r.systemInstruction).toContain(LIVE_SPOKEN_RULE);
     expect(r.systemInstruction).toContain(LIVE_LANGUAGE_RULE);
