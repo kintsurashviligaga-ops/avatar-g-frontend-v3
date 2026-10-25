@@ -420,6 +420,24 @@ describe('recorder path (WAV)', () => {
     expect(h.fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  test('a pause to think between sentences does NOT stop the recorder (GG, Production 2026-10-25: cut off mid-thought)', async () => {
+    const h = harness({ deps: { speechRecognition: () => undefined } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    const level = h.cap.state.onLevel!;
+    await act(async () => {
+      h.setNow(0); level(0.2); // the first sentence
+      h.setNow(100); level(0.001); // a pause to think…
+      h.setNow(2600); level(0.001); // …2.5 s long: the old 1.3 s hold stopped here
+      h.setNow(2700); level(0.2); // the next sentence
+      h.setNow(2800); level(0.001);
+      h.setNow(2800 + SILENCE_HOLD_MS - 1); level(0.001);
+      await flush();
+    });
+    expect(SILENCE_HOLD_MS).toBeGreaterThanOrEqual(3000);
+    expect(h.result.current.d.recording).toBe(true);
+    expect(h.fetchMock).not.toHaveBeenCalled();
+  });
+
   test(`the clip stops itself at ${MAX_RECORD_SEC} s (WAV size vs the request ceiling)`, async () => {
     jest.useFakeTimers();
     const h = harness({ deps: { speechRecognition: () => undefined } });
