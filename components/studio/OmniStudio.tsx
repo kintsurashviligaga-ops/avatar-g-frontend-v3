@@ -198,7 +198,7 @@ import { notStartedText, persistAudio, persistEdit, persistMontage, persistRun, 
 import { KEEP_OPEN_CHAT_EVENT } from '@/lib/chat/keepOpenChat';
 import { newestWorkingCard } from '@/lib/agent/media/workingCard';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
-import { toolGroups } from '@/lib/catalog/nav';
+import { HIDDEN_TOOLS, toolGroups } from '@/lib/catalog/nav';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { getService, serviceModeQuery } from '@/lib/catalog/services';
 import { clearPendingPrompt, stashPendingPrompt, takePendingPrompt } from '@/lib/studio/pendingPrompt';
@@ -1531,22 +1531,6 @@ function upsertConversation(id: string, messages: Msg[], tool?: string): void {
 function deleteConversation(id: string): void {
   saveConversations(loadConversations().filter((c) => c.id !== id));
 }
-/**
- * Which session each service has open in THIS visit (sessionStorage, per account). A new visit starts every service on
- * a fresh session; within a visit, going back to a service brings back the thread you were in there.
- */
-function toolSessionsKey(): string { return `myavatar:tool-sessions:${currentUid() ?? 'anon'}`; }
-function readToolSessions(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const v = JSON.parse(window.sessionStorage.getItem(toolSessionsKey()) ?? '{}') as unknown;
-    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, string>) : {};
-  } catch { return {}; }
-}
-function writeToolSessions(map: Record<string, string>): void {
-  if (typeof window === 'undefined') return;
-  try { window.sessionStorage.setItem(toolSessionsKey(), JSON.stringify(map)); } catch { /* private mode: one thread per visit */ }
-}
 
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
 // A stable per-scene id (session-unique, assigned once at creation) used as the React key so a
@@ -2096,7 +2080,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [attachments, setAttachments] = useState<Media[]>([]);
   // The composer's files belong to the conversation they were attached in (Video Core round 3, browser finding
   // nav-attachments-on-switch): a History pick or a New Chat from the sidebar parks them under the chat being left and
-  // brings back the opened chat's own. A tool pick inside a flow keeps them (switchToolSession is not touched).
+  // brings back the opened chat's own. A tool pick keeps them: it stays in the same conversation.
   const attachmentsNowRef = useRef<Media[]>([]);
   attachmentsNowRef.current = attachments;
   const attachmentDraftsRef = useRef<Map<string, Media[]>>(new Map());
@@ -3100,7 +3084,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const convo = loadConversations().find((c) => c.id === id);
     // A session opened from History returns to the service it belongs to, and becomes that service's open session.
     if (convo?.tool && isToolId(convo.tool) && convo.tool !== activeToolRef.current) applyToolRef.current?.(convo.tool);
-    if (convo?.tool && isToolId(convo.tool)) writeToolSessions({ ...readToolSessions(), [convo.tool]: id });
     // A "cloud:" entry (a conversation from ANOTHER device, merged into the sidebar) carries a serverSid
     // and no local messages yet → continue writing to the SAME Supabase session + lazy-load its transcript.
     const sid = serverSidOf(convo);
@@ -3149,8 +3132,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // (The legacy one-per-account pointer `myavatar:chat-session` is removed wherever it may still be lying around.)
     chatSessionIdRef.current = null;
     try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
-    // "New session" is new for the service on screen: going back to it later in this visit opens this one.
-    writeToolSessions({ ...readToolSessions(), [activeToolRef.current]: id });
     return id;
   }, [conversationId, messages, unparkTypeAhead]);
   const removeConversation = useCallback((id: string) => {
@@ -3302,41 +3283,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // this held the sheet open through `next dev`'s Strict Mode re-run of the `chatOnly` effect below, which no longer closes
   // anything on mount (2026-10-09).
   useEffect(() => { if (shootActive) setOptionsOpen(true); }, [shootActive]);
-  // ── EVERY SERVICE ITS OWN SESSION ────────────────────────────────────────────────────────────────────────────
-  // ⚠️ ONE THREAD FOR EVERY TOOL. A chat, then Video, then the Photographer all landed in ONE conversation: image results
-  // under the chat's answers, a storyboard under those, one History entry titled after the first chat line. Picking a tool
-  // now saves the thread you were in and opens that tool's own session — the one it had in this visit, or a fresh one —
-  // so every service has its own conversation, and History lists them separately.
-  //   · Only an explicit pick swaps (the sidebar, the „+" sheet, the panel's tool switcher, a deep link). A mode change
-  //     inside a flow — a sentence that releases a sticky mode, a result sent on to Video — stays in its thread.
-  //   · Never while something renders: its bubble lives in this thread, and a swap would strand it mid-progress. The
-  //     pick still changes the tool; the next pick after it finishes swaps.
-  //   · An empty thread is simply handed to the new tool (no empty sessions pile up in History).
-  const switchToolSession = useCallback((to: ToolId) => {
-    const from = activeToolRef.current;
-    if (to === from) return;
-    // ⚠️ A LIVE CALL IS ONE CONVERSATION. Its spoken turns land in this thread (myavatar:live-transcript); when the agent
-    // switched tools mid-call, the swap below moved everything said afterwards into another tool's session — the call's
-    // transcript came out split across two chats. While a call is on (<html data-live-call>, GeminiLiveConversation),
-    // the tool changes and the thread stays.
-    if (typeof document !== 'undefined' && document.documentElement.dataset.liveCall === '1') return;
-    const rendering = busy || genActiveRef.current || useJobQueue.getState().jobs.some((j) => j.status === 'rendering' || j.status === 'queued');
-    if (rendering) return;
-    const map = readToolSessions();
-    const hasThread = messagesRef.current.length > 0;
-    if (hasThread) map[from] = conversationId;
-    else if (map[from] === conversationId) delete map[from];
-    const own = map[to];
-    if (own && own !== conversationId && loadConversations().some((c) => c.id === own)) {
-      writeToolSessions(map);
-      void resumeConversation(own);
-      return;
-    }
-    if (!hasThread) { map[to] = conversationId; writeToolSessions(map); return; }
-    const fresh = startNewConversation();
-    // startNewConversation files the new session under the tool still on screen (`from`): put both right.
-    writeToolSessions({ ...map, [to]: fresh });
-  }, [busy, conversationId, resumeConversation, startNewConversation]);
+  // ── ONE CONVERSATION (GG 2026-10-25) ──────────────────────────────────────────────────────────────────
+  // Picking a service changes the tool and stays in the thread on screen: the composer's service chip is a setting of the
+  // conversation, not a second chat. (Until 2026-10-25 every tool opened its own session; those sessions stay in History.)
   const applyTool = useCallback((id: ToolId) => {
     switch (id) {
       case 'video': setMode('video'); setVideoTab('cinema'); break;
@@ -3365,10 +3314,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   applyToolRef.current = applyTool;
   /** `surface` — where the pick came from, for the §50 `catalog_service_opened` event (none: a restart, not a pick). */
   const selectTool = useCallback((id: ToolId, surface?: ServiceSurface, service?: string | null) => {
-    switchToolSession(id);
     applyTool(id);
     if (surface) trackServiceOpened(service ?? serviceForTool(id), surface, id);
-  }, [switchToolSession, applyTool]);
+  }, [applyTool]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
   // closed only on request. Below `lg` they are a sheet (Gemini) that opens on demand.
@@ -12695,7 +12643,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       locale={locale}
       title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
       // The service catalog's categories (lib/catalog/nav.ts) — the same groups as the sidebar, every tool listed.
-      sections={toolGroups().map((g)=>({id:g.id,label:g.label[locale==='en'||locale==='ru'?locale:'ka'],tools:g.tools.filter((t)=>!['swap','photo','photoshoot','motion','dubbing','presentation'].includes(t)).map(toolEntry)})).filter((g)=>g.tools.length>0)} extras={[]} activeId={activeTool}
+      sections={toolGroups().map((g)=>({id:g.id,label:g.label[locale==='en'||locale==='ru'?locale:'ka'],tools:g.tools.filter((t)=>!HIDDEN_TOOLS.has(t)).map(toolEntry)})).filter((g)=>g.tools.length>0)} extras={[]} activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id, 'tool-sheet'); }}
     />
     </div>
