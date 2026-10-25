@@ -9,6 +9,7 @@
  *     The studio turns that flag into one localized notice (components/studio/ui/serviceError → generation_refunded).
  */
 import type { NextRequest } from 'next/server';
+import { paidWritesBlockedOnPreview, PREVIEW_NOT_ISOLATED } from '@/lib/env/previewIsolation';
 
 export type BillingLocale = 'ka' | 'en' | 'ru';
 
@@ -39,13 +40,27 @@ export function ledgerUnavailableMessage(locale: BillingLocale): string {
   return 'ბილინგს ვერ დავუკავშირდით — კრედიტი არ ჩამოგეჭრა. სცადე ცოტა ხანში.';
 }
 
+/**
+ * A Preview that shares the Production database refuses every debit BY DESIGN (lib/env/previewIsolation), so on the
+ * test link the ledger answers like an outage. Said as an outage („we could not check your balance") it was retold by
+ * a Live call as „you have no balance" (GG 2026-10-25 19:11Z): the test link now says what it is.
+ */
+export function previewTestLinkMessage(locale: BillingLocale): string {
+  if (locale === 'en') return 'This is a test link: paid generation is off here and no credits are spent. Real creation works on myavatar.ge.';
+  if (locale === 'ru') return 'Это тестовая ссылка: платная генерация здесь выключена, кредиты не списываются. Создавать можно на myavatar.ge.';
+  return 'ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.';
+}
+
 /** The 503 body for that case — `billing_unavailable` is the code the studio's error mapper already translates. */
 export function ledgerUnavailableBody(locale: BillingLocale): {
   success: false;
-  error: 'billing_unavailable';
-  code: 'billing_unavailable';
+  error: 'billing_unavailable' | typeof PREVIEW_NOT_ISOLATED;
+  code: 'billing_unavailable' | typeof PREVIEW_NOT_ISOLATED;
   message: string;
 } {
+  if (paidWritesBlockedOnPreview()) {
+    return { success: false, error: PREVIEW_NOT_ISOLATED, code: PREVIEW_NOT_ISOLATED, message: previewTestLinkMessage(locale) };
+  }
   return { success: false, error: 'billing_unavailable', code: 'billing_unavailable', message: ledgerUnavailableMessage(locale) };
 }
 

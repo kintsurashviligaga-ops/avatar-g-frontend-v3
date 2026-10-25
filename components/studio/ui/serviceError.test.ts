@@ -172,6 +172,16 @@ describe('describeGenerationFailure — the refund notice is shown when, and onl
       .toBe(describeServiceError('billing_unavailable', 'en', 'y'));
   });
 
+  it('a test link’s refusal is told as a test link, not as a balance problem (GG 2026-10-25: „ბალანსი არ გაქვს“)', () => {
+    const body = { success: false, error: 'preview_not_isolated', code: 'preview_not_isolated', message: 'x' };
+    for (const lang of ['ka', 'en', 'ru'] as const) {
+      const said = describeGenerationFailure(body, lang, 'fallback');
+      expect(said).toMatch(/myavatar\.ge/);
+      expect(said).not.toMatch(/ბალანს|balance|баланс/i);
+    }
+    expect(describeGenerationFailure(body, 'ka', KA_FALLBACK)).toMatch(/სატესტო ბმული/);
+  });
+
   it('falls back like describeServiceError on anything unknown, and on junk input', () => {
     expect(describeGenerationFailure({ error: 'TypeError: x is undefined' }, 'ka', KA_FALLBACK)).toBe(KA_FALLBACK);
     expect(describeGenerationFailure(null, 'ka', KA_FALLBACK)).toBe(KA_FALLBACK);
