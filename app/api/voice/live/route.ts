@@ -163,7 +163,10 @@ function liveCallRule(search: boolean, actions: boolean): string {
     // against LIVE_ACTIONS_RULE (a spoken yes starts nothing) — and the model told GG an image was "already processing"
     // when nothing ran.
     actions
-      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you fill and open tools yourself with your functions, and the user starts every render with its priced button on screen.`
+      // ⚠️ GG 2026-10-25 19:04Z (avatar call): "…and the user starts every render with its priced button on screen" sat
+      // here against LIVE_ACTIONS_RULE's spoken yes (GG 2026-10-18). The call took the button half, quoted a price, sent
+      // GG to a button and called no function at all — nothing was prepared, so the chat never docked to show it.
+      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you fill and open tools yourself with your functions. Never offer a prompt or a price in words, or send the user to a button, before prepare_generation has answered: call it as soon as they ask for a render, say the price its answer gives, and on their own clear yes call start_generation.`
       // ⚠️ GG 2026-10-25 18:52Z: a call that opened without its actions said "the generate button is ready, press it"
       // when nothing was on screen. Without the functions it changes nothing, and must not say otherwise.
       : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud. In this call you cannot open, fill or start anything on screen: never say that something is open, ready or waiting for the user\'s tap.',

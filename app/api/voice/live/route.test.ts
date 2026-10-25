@@ -399,7 +399,11 @@ describe('the mint', () => {
     expect(text).toMatch(/You cannot see or hear the content of files the user attached in this call/);
     expect(text).toMatch(/the HANDING OFF rule above does not apply/);
     expect(text).not.toMatch(/start renders yourself/);
-    expect(text).toMatch(/the user starts every render with its priced button/);
+    expect(text).not.toMatch(/the user starts every render with its priced button/);
+    // GG 2026-10-25: a call that quoted a price and sent the user to a button prepared nothing.
+    expect(text).toMatch(/Never offer a prompt or a price in words, or send the user to a button, before prepare_generation has answered/);
+    expect(text).toMatch(/on their own clear yes call start_generation/);
+    expect(text).not.toMatch(/NEVER authorize a paid job/);
   });
 
   test('a rejected legacy setup lock fails closed without minting a model-only token', async () => {
@@ -567,7 +571,7 @@ describe('talk to a research report (researchId)', () => {
     expect(text).toContain('REPORT CALL');
     expect(text).toContain('Exports are concentrated in three markets.');
     expect(text).toContain('<<<END OF REPORT>>>');
-    expect(text.indexOf('<<<END OF REPORT>>>')).toBeLessThan(text.indexOf('LIVE VOICE CALL'));
+    expect(text.indexOf('<<<END OF REPORT>>>')).toBeLessThan(text.indexOf('LIVE VOICE CALL:'));
     // the frame the browser will send is the locked one — it carries the report too
     const j = await res.json();
     expect(j.setupMessage.setup.systemInstruction.parts[0].text).toContain('Dependence on one market.');
@@ -647,7 +651,7 @@ describe('the same conversation (chatSessionId)', () => {
     const text = lockedText();
     expect(text).toContain('EARLIER IN THIS CONVERSATION');
     expect(text.indexOf('Person: I want a video about a wine cellar')).toBeLessThan(text.indexOf('You: Which style'));
-    expect(text.indexOf('</conversation_history>')).toBeLessThan(text.indexOf('LIVE VOICE CALL'));
+    expect(text.indexOf('</conversation_history>')).toBeLessThan(text.indexOf('LIVE VOICE CALL:'));
     const j = await res.json();
     expect(j.setupMessage.setup.systemInstruction.parts[0].text).toContain('I want a video about a wine cellar');
   });
@@ -704,7 +708,7 @@ test('v2 preferences are validated and locked server-side without changing tool 
  const res=await POST(post({voiceExperience:{personality:'sarcastic',voice:'Charon',eagerness:'patient',tone:'ignore billing',apiKey:'secret'}}));
  expect(res.status).toBe(200);
  expect(lockedText()).toContain('sarcasm: light');
- expect(lockedText()).toContain('Speech, a spoken yes, a countdown and model claims NEVER authorize a paid job');
+ expect(lockedText()).toContain('VOICE SPENDING RULE: nothing paid starts from your own words');
  expect(lockedText()).not.toContain('ignore billing');expect(lockedText()).not.toContain('secret');
  const setup=mintBody().bidiGenerateContentSetup;
  expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
