@@ -7,6 +7,10 @@
  * ⚠️ THE VIDEO IS THE CALLER'S OWN UPLOAD, SIGNED FOR THEM ONLY (lib/security/callerMedia): a path under another account's
  * folder, or another account's storage URL, is refused before anything is fetched. Nothing outside our storage is read.
  *
+ * ⚠️ OR A CLIP MADE IN THIS CHAT (`from`, GG 2026-10-26 15:41Z): Google does not add speech to an uploaded video in which
+ * someone talks, so an Omni clip is continued by its own interaction (`previous_interaction_id`), nothing uploaded. The id
+ * is the one the clip route signed for this caller: another account's, a forged one or a Veo clip's is refused, free.
+ *
  * ⚠️ IT IS MEASURED BEFORE IT IS PRICED. One ffmpeg pass (lib/video/omniEditInput) re-encodes it to the 720p H.264 the
  * 2026-10-25 probe measured and reads its length: over 10 s (Google's limit), too short to edit or unreadable is an honest
  * refusal with nothing taken. An edit's price is that length on the 4 · 6 · 8 · 10 s grid, rounded up; an extend's, the new
@@ -21,7 +25,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { billingLocale, ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { composeOmniJobId, genjutsuChargeReady, genjutsuChargeRef, genjutsuJobId, signGenjutsuCharge, withGenjutsuCharge } from '@/lib/genjutsu/chargeToken';
+import {
+  composeOmniJobId, genjutsuChargeForPolledId, genjutsuChargeReady, genjutsuChargeRef, genjutsuJobId, parseVeoJobId, signGenjutsuCharge,
+  withGenjutsuCharge,
+} from '@/lib/genjutsu/chargeToken';
 import { GENJUTSU_RATE, claimDailySlot, fail, releaseDailySlot } from '@/lib/genjutsu/serverCommon';
 import { reportError } from '@/lib/observability/report-error';
 import { claimIdempotencyKey, hashPayload, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
@@ -31,7 +38,7 @@ import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
 import { readJson } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { submitOmniEdit } from '@/lib/video/omniClip';
+import { isOmniInteractionId, submitOmniEdit } from '@/lib/video/omniClip';
 import {
   omniEditBilledSeconds, omniEditCredits, omniEditInputCheck, omniEditOutputSeconds, omniEditRequestSeconds, parseOmniEditRequest,
   type OmniEditRequest,
@@ -48,7 +55,7 @@ const SOURCE_TTL_SEC = 600;
 
 /** The same request twice at once (a double tap) is one edit, not two. */
 async function claimInflight(userId: string, r: OmniEditRequest): Promise<(() => Promise<void>) | null> {
-  const sig = await hashPayload({ o: r.op, t: r.prompt, v: r.video, s: r.seconds, res: r.resolution });
+  const sig = await hashPayload({ o: r.op, t: r.prompt, v: r.video, f: r.from, s: r.seconds, res: r.resolution });
   const key = `video-omni-edit:${sig}`;
   if (!(await claimIdempotencyKey(userId, key, 120))) return null;
   return async () => { await releaseIdempotencyKey(userId, key).catch(() => undefined); };
@@ -84,27 +91,59 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 }
 
-async function startEdit(userId: string, r: OmniEditRequest, locale: ReturnType<typeof billingLocale>): Promise<NextResponse> {
-  // The caller's own upload only; nothing outside our storage is fetched.
-  const source = await resolveCallerMedia(r.video, userId, SOURCE_TTL_SEC);
-  if (!source.ok) {
-    return source.reason === 'unavailable'
-      ? fail(503, 'video_unavailable', { refunded: false })
-      : fail(source.reason === 'not_owner' ? 403 : 400, source.reason === 'not_owner' ? 'forbidden' : 'invalid_request', { issues: [{ path: 'video', code: source.reason }] });
-  }
-  if (!source.own) return fail(400, 'invalid_request', { issues: [{ path: 'video', code: 'not_own_storage' }] });
-  if (!genjutsuChargeReady()) return NextResponse.json(ledgerUnavailableBody(locale), { status: 503 });
-  // The least this can cost (an extend's exact price, an edit's 4 s one): no balance for it, no fetch and no re-encode.
-  const least = omniEditCredits({ op: r.op, inputSec: 0, seconds: r.seconds, resolution: r.resolution });
-  if (!(await hasSufficientBalance(userId, least))) return fail(402, 'insufficient_credits', { needed: least });
+/** What Omni is given: the caller's upload, measured and re-encoded, or a clip it made for them (its interaction). */
+type EditSource =
+  | { kind: 'upload'; base64: string; mimeType: 'video/mp4'; seconds: number; aspect: '16:9' | '9:16' }
+  | { kind: 'turn'; interactionId: string; seconds: number; aspect: '16:9' | '9:16' };
 
-  // Measured and re-encoded before it is priced: a video Omni cannot take costs nothing.
-  const input = await prepareOmniEditInput(source.url);
+/**
+ * A clip made in this chat (lib/video/omniEdit omniSourceOfJob): the id the clip route signed for THIS caller, an Omni clip
+ * or edit. Its length is the one the id carries (a clip renders exactly that; an edit's is its length on the grid).
+ */
+function turnSource(from: string, userId: string): EditSource | NextResponse {
+  const { jobId, charge } = genjutsuChargeForPolledId(from);
+  if (!charge) return fail(400, 'invalid_request', { issues: [{ path: 'from', code: 'invalid' }] });
+  if (charge.u !== userId) return fail(403, 'forbidden', { issues: [{ path: 'from', code: 'not_owner' }] });
+  const job = parseVeoJobId(jobId);
+  if (!job || job.engine !== 'omni' || (job.omniOp !== 'clip' && job.omniOp !== 'edit') || !job.clipSec || !isOmniInteractionId(job.operation)) {
+    return fail(400, 'invalid_request', { issues: [{ path: 'from', code: 'invalid' }] });
+  }
+  return { kind: 'turn', interactionId: job.operation, seconds: job.clipSec, aspect: job.aspect };
+}
+
+/** The caller's upload, measured and re-encoded before it is priced: a video Omni cannot take costs nothing. */
+async function uploadSource(url: string): Promise<EditSource | NextResponse> {
+  const input = await prepareOmniEditInput(url);
   if (!input.ok) {
     if (input.reason === 'too_long') return fail(422, 'video_too_long', { seconds: Math.round((input.seconds ?? 0) * 10) / 10, maxSeconds: 10, refunded: false });
     if (input.reason === 'unavailable') return fail(503, 'provider_unavailable', { refunded: false });
     return fail(422, input.reason === 'too_large' ? 'video_too_large' : 'video_unreadable', { refunded: false });
   }
+  return { kind: 'upload', base64: input.base64, mimeType: input.mimeType, seconds: input.seconds, aspect: input.width >= input.height ? '16:9' : '9:16' };
+}
+
+async function startEdit(userId: string, r: OmniEditRequest, locale: ReturnType<typeof billingLocale>): Promise<NextResponse> {
+  // A clip made here is checked first (free, no fetch); an upload must be the caller's own, nothing outside our storage.
+  const turn = r.from ? turnSource(r.from, userId) : null;
+  if (turn instanceof NextResponse) return turn;
+  let uploadUrl = '';
+  if (!turn) {
+    const source = await resolveCallerMedia(r.video ?? '', userId, SOURCE_TTL_SEC);
+    if (!source.ok) {
+      return source.reason === 'unavailable'
+        ? fail(503, 'video_unavailable', { refunded: false })
+        : fail(source.reason === 'not_owner' ? 403 : 400, source.reason === 'not_owner' ? 'forbidden' : 'invalid_request', { issues: [{ path: 'video', code: source.reason }] });
+    }
+    if (!source.own) return fail(400, 'invalid_request', { issues: [{ path: 'video', code: 'not_own_storage' }] });
+    uploadUrl = source.url;
+  }
+  if (!genjutsuChargeReady()) return NextResponse.json(ledgerUnavailableBody(locale), { status: 503 });
+  // The least this can cost (an extend's exact price, an edit's 4 s one): no balance for it, no fetch and no re-encode.
+  const least = omniEditCredits({ op: r.op, inputSec: 0, seconds: r.seconds, resolution: r.resolution });
+  if (!(await hasSufficientBalance(userId, least))) return fail(402, 'insufficient_credits', { needed: least });
+
+  const input = turn ?? (await uploadSource(uploadUrl));
+  if (input instanceof NextResponse) return input;
   const check = omniEditInputCheck(r.op, input.seconds);
   if (check === 'too_short') return fail(422, 'video_too_short', { seconds: Math.round(input.seconds * 10) / 10, minSeconds: r.op === 'edit' ? 3 : 1, refunded: false });
   if (check !== 'ok') return fail(422, 'video_unreadable', { refunded: false });
@@ -119,14 +158,14 @@ async function startEdit(userId: string, r: OmniEditRequest, locale: ReturnType<
   const ref = genjutsuChargeRef(userId, uuid);
   const rowId = genjutsuJobId(uuid);
   const createdMs = Date.now();
-  const aspect = input.width >= input.height ? '16:9' : '9:16';
+  const aspect = input.aspect;
   const outputSec = omniEditOutputSeconds(r.op, input.seconds, r.seconds);
 
   const filed = await createJob({
     id: rowId, userId, serviceType: 'film', status: 'processing',
     params: {
       subtype: 'video', op: r.op === 'edit' ? 'omni-edit' : 'omni-extend', engine: 'omni', prompt: r.prompt.slice(0, 200),
-      aspect, seconds: billed, inputSec: Math.round(input.seconds * 100) / 100, outputSec, resolution: r.resolution,
+      aspect, seconds: billed, inputSec: Math.round(input.seconds * 100) / 100, outputSec, resolution: r.resolution, source: input.kind,
       _reserve: { ref, credits },
     },
   });
@@ -148,8 +187,9 @@ async function startEdit(userId: string, r: OmniEditRequest, locale: ReturnType<
   };
 
   const sub = await submitOmniEdit({
-    op: r.op, prompt: r.prompt, video: { base64: input.base64, mimeType: input.mimeType }, inputSec: input.seconds,
-    seconds: omniEditRequestSeconds(r.op, input.seconds, r.seconds), resolution: r.resolution, userId,
+    op: r.op, prompt: r.prompt,
+    ...(input.kind === 'turn' ? { previous: { id: input.interactionId, aspect } } : { video: { base64: input.base64, mimeType: input.mimeType } }),
+    inputSec: input.seconds, seconds: omniEditRequestSeconds(r.op, input.seconds, r.seconds), resolution: r.resolution, userId,
   });
   if (!sub.ok) {
     const refunded = await refund(`omni ${r.op} ${sub.reason}`);

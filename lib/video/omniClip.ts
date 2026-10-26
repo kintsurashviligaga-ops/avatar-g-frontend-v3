@@ -152,8 +152,10 @@ export interface OmniEditSubmitInput {
   op: 'edit' | 'extend';
   /** The user's words, as typed. */
   prompt: string;
-  /** The uploaded video, transcoded to an H.264 / AAC mp4 at 720p or less. */
-  video: { base64: string; mimeType: 'video/mp4' };
+  /** The uploaded video, transcoded to an H.264 / AAC mp4 at 720p or less… */
+  video?: { base64: string; mimeType: 'video/mp4' };
+  /** …or a clip Omni made, continued by its own interaction (lib/video/omniEdit omniSourceOfJob): its id and its frame. */
+  previous?: { id: string; aspect: DirectClipAspect };
   /** Its measured length, for the list-price estimate (its tokens are billed too). */
   inputSec: number;
   /** The `duration` asked for (lib/video/omniEdit omniEditRequestSeconds): an edit's own length, an extend's new seconds. */
@@ -162,9 +164,24 @@ export interface OmniEditSubmitInput {
   userId: string;
 }
 
-/** The edit / extend body (pure). No aspect ratio: Vertex refuses one for an edit, and both keep the video's frame. */
+/**
+ * The edit / extend body (pure). No aspect ratio for an upload: Vertex refuses one for an edit, and both keep the video's
+ * frame. A clip Omni made is continued as Google's own Omni script does it: `previous_interaction_id`, the words, the frame
+ * and length asked for, and no `task` (the script sends none with a previous interaction; the words say edit or extend).
+ */
 export function omniEditRequestBody(input: Omit<OmniEditSubmitInput, 'userId' | 'inputSec'>): Record<string, unknown> {
   const seconds = Math.min(10, Math.max(3, Math.round(input.seconds)));
+  if (input.previous) {
+    return {
+      model: OMNI_MODEL,
+      previous_interaction_id: input.previous.id,
+      input: [{ type: 'text', text: input.prompt }],
+      response_format: { type: 'video', aspect_ratio: input.previous.aspect, resolution: input.resolution, duration: `${seconds}s` },
+      background: true,
+      store: true,
+    };
+  }
+  if (!input.video) throw new Error('omni edit: no video and no previous interaction');
   return {
     model: OMNI_MODEL,
     input: [
@@ -277,6 +294,24 @@ export function readInteraction(body: unknown): OmniReading {
   return { state: 'processing' };
 }
 
+/** What a finished interaction without a clip says (pure, for the log): its status, Google's message, its steps, its usage. */
+export function omniMissDetail(body: unknown): { status: string; error: string; steps: string[]; usage: Record<string, number> | null } {
+  const o = isObj(body) ? body : {};
+  const err = isObj(o.error) ? o.error : null;
+  const steps = Array.isArray(o.steps) ? o.steps : [];
+  return {
+    status: typeof o.status === 'string' ? o.status.slice(0, 40) : '',
+    error: typeof err?.message === 'string' ? err.message.slice(0, 300) : '',
+    // The kinds of each step and of its parts — never their data (an inline video is megabytes).
+    steps: steps.slice(0, 8).map((st) => {
+      if (!isObj(st)) return '?';
+      const parts = Array.isArray(st.content) ? st.content.slice(0, 6).map((c) => (isObj(c) && typeof c.type === 'string' ? c.type.slice(0, 20) : '?')) : [];
+      return `${typeof st.type === 'string' ? st.type.slice(0, 30) : '?'}[${parts.join(',')}]`;
+    }),
+    usage: usageOf(o.usage),
+  };
+}
+
 export type OmniProgress = SceneProgress & { usage?: Record<string, number> | null };
 
 /**
@@ -305,6 +340,9 @@ export async function pollOmniClip(id: string, path: string): Promise<OmniProgre
   }
   const r = readInteraction(body);
   if (r.state === 'processing') return { state: 'processing' };
+  // ⚠️ Two extends came back with nothing and no trace (GG 2026-10-26 15:12Z, 15:39Z): what Google said is logged now.
+  // eslint-disable-next-line no-console
+  if (r.state === 'failed' || !r.video) console.warn('[video.omni] no clip:', JSON.stringify(omniMissDetail(body)));
   if (r.state === 'failed') return { state: 'failed', reason: r.filtered ? 'filtered' : 'generation_failed' };
   if (!r.video) return { state: 'failed', reason: 'generation_failed' };
   const url = await deliverScene(r.video, path);

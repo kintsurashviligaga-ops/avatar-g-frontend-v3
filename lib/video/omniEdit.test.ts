@@ -6,7 +6,7 @@
  */
 import {
   OMNI_EDIT_SECONDS, OMNI_EXTEND_DEFAULT_SECONDS, omniEditBilledSeconds, omniEditCredits, omniEditInputCheck, omniEditOpFromWords,
-  omniEditOutputSeconds, omniEditRequestSeconds, parseOmniEditRequest, snapOmniExtendSeconds,
+  omniEditOutputSeconds, omniEditRequestSeconds, omniSourceOfJob, parseOmniEditRequest, snapOmniExtendSeconds,
 } from './omniEdit';
 
 test('the lengths: 4 · 6 · 8 · 10 s, an extend adds 8 by default; anything else snaps to 8', () => {
@@ -78,11 +78,11 @@ describe('parseOmniEditRequest', () => {
   test('a good body: the words tidied, the defaults filled in', () => {
     expect(parseOmniEditRequest(ok)).toEqual({
       ok: true,
-      value: { op: 'edit', prompt: 'Make it night.', video: 'u-1/chat/clip.mp4', seconds: 8, resolution: '720p', expectedCredits: 48 },
+      value: { op: 'edit', prompt: 'Make it night.', video: 'u-1/chat/clip.mp4', from: null, seconds: 8, resolution: '720p', expectedCredits: 48 },
     });
     expect(parseOmniEditRequest({ op: 'extend', prompt: 'He walks away.', video: 'p' })).toEqual({
       ok: true,
-      value: { op: 'extend', prompt: 'He walks away.', video: 'p', seconds: 8, resolution: '720p', expectedCredits: null },
+      value: { op: 'extend', prompt: 'He walks away.', video: 'p', from: null, seconds: 8, resolution: '720p', expectedCredits: null },
     });
   });
 
@@ -100,4 +100,21 @@ describe('parseOmniEditRequest', () => {
     expect(bad({ expectedCredits: 4.5 })).toEqual({ ok: false, field: 'expectedCredits', code: 'invalid' });
     expect(bad({ expectedCredits: -1 })).toEqual({ ok: false, field: 'expectedCredits', code: 'invalid' });
   });
+
+  test('or a clip made in this chat, by its job id: one source only, and only an Omni clip or edit', () => {
+    const clip = 'v1_ChBjbGlw::9:16::1793029000000::o4~gj1.eyJ2IjoxfQ.mac';
+    expect(parseOmniEditRequest({ op: 'extend', prompt: 'go on', from: clip })).toEqual({
+      ok: true, value: { op: 'extend', prompt: 'go on', video: null, from: clip, seconds: 8, resolution: '720p', expectedCredits: null },
+    });
+    expect(parseOmniEditRequest({ op: 'extend', prompt: 'go on', from: clip, video: 'p' })).toEqual({ ok: false, field: 'video', code: 'invalid' });
+    expect(parseOmniEditRequest({ op: 'extend', prompt: 'go on', from: 'v1_ChBjbGlw::9:16::1793029000000::ox8' })).toEqual({ ok: false, field: 'from', code: 'invalid' });
+    expect(parseOmniEditRequest({ op: 'extend', prompt: 'go on', from: 'projects/p/operations/o::9:16::1793029000000::c8' })).toEqual({ ok: false, field: 'from', code: 'invalid' });
+  });
+});
+
+test('omniSourceOfJob: a clip\'s length or an edit\'s grid length; never an extend\'s result or a Veo clip', () => {
+  expect(omniSourceOfJob('v1_X::9:16::1::o4')).toEqual({ seconds: 4 });
+  expect(omniSourceOfJob('v1_X::16:9::1::o10~gj1.a.b')).toEqual({ seconds: 10 });
+  expect(omniSourceOfJob('v1_X::9:16::1::oe6~gj1.a.b')).toEqual({ seconds: 6 });
+  for (const id of ['v1_X::9:16::1::ox8', 'op::9:16::1::c8', 'op::9:16::1', '', 'v1_X::9:16::1::o5']) expect(omniSourceOfJob(id)).toBeNull();
 });

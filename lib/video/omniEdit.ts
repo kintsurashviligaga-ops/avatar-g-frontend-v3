@@ -77,11 +77,35 @@ export function omniEditOpFromWords(text: string): OmniEditOp {
 
 // ─── The request the chat sends ──────────────────────────────────────────────────────────────────────────────────
 
+// ─── A clip made here, continued by Omni itself ──────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ GG 2026-10-26 15:41Z „მეორე ვიდეო არ გააკეთა": twice an uploaded speaking clip, extended +8 s at 1080p, came back from
+ * Vertex with no video (both refunded). Google's Omni page: „you cannot extend an uploaded video where someone is talking to
+ * add additional dialogue"; speech IS supported when a video Omni made is continued by its `previous_interaction_id`. So a
+ * clip made in this chat is continued that way: its signed job id (lib/genjutsu/chargeToken composeOmniJobId) names the
+ * interaction, and nothing is uploaded.
+ *
+ * A clip (`::o4` … `::o10`) or an edit (`::oe6`, its length on the grid) only, so the source is never over Google's 10 s and
+ * the input tokens stay those the price book's omniEdit row was set for. An extend's result (`::ox8`) is longer than any
+ * price on that row assumed, so it is not continued again.
+ */
+const OMNI_SOURCE_TAIL = /::o(?:(4|6|8|10)|e(4|6|8|10))(?=~|$)/;
+
+/** The length of the clip a job id names, or null when it is not one Omni can continue (pure; the server verifies the id). */
+export function omniSourceOfJob(jobId: string): { seconds: OmniEditSeconds } | null {
+  if (typeof jobId !== 'string' || !jobId || jobId.length > 4_000) return null;
+  const m = OMNI_SOURCE_TAIL.exec(jobId);
+  return m ? { seconds: Number(m[1] ?? m[2]) as OmniEditSeconds } : null;
+}
+
 export interface OmniEditRequest {
   op: OmniEditOp;
   prompt: string;
   /** The uploaded video: its stored path (the chat's upload), resolved for this caller only (lib/security/callerMedia). */
-  video: string;
+  video: string | null;
+  /** Or a clip made in this chat: its signed job id, continued by Omni's own interaction (omniSourceOfJob). */
+  from: string | null;
   /** An extend's new seconds; an edit's are the video's own, measured by the server. */
   seconds: OmniEditSeconds;
   resolution: DirectClipResolution;
@@ -91,7 +115,7 @@ export interface OmniEditRequest {
 
 export type OmniEditParse =
   | { ok: true; value: OmniEditRequest }
-  | { ok: false; field: 'op' | 'prompt' | 'video' | 'seconds' | 'resolution' | 'expectedCredits'; code: 'required' | 'too_long' | 'invalid' };
+  | { ok: false; field: 'op' | 'prompt' | 'video' | 'from' | 'seconds' | 'resolution' | 'expectedCredits'; code: 'required' | 'too_long' | 'invalid' };
 
 /** The body POST /api/video/omni-edit accepts. Strict and free: a bad field is refused before the rate limit and the charge. */
 export function parseOmniEditRequest(raw: unknown): OmniEditParse {
@@ -103,9 +127,12 @@ export function parseOmniEditRequest(raw: unknown): OmniEditParse {
   if (!prompt) return { ok: false, field: 'prompt', code: 'required' };
   if (prompt.length > OMNI_EDIT_PROMPT_MAX) return { ok: false, field: 'prompt', code: 'too_long' };
 
+  // One source: the upload, or a clip made here (never both).
+  const from = typeof b.from === 'string' ? b.from.trim() : '';
+  if (from && !omniSourceOfJob(from)) return { ok: false, field: 'from', code: 'invalid' };
   const video = typeof b.video === 'string' ? b.video.trim() : '';
-  if (!video) return { ok: false, field: 'video', code: 'required' };
-  if (video.length > 4_000) return { ok: false, field: 'video', code: 'invalid' };
+  if (!video && !from) return { ok: false, field: 'video', code: 'required' };
+  if (video.length > 4_000 || (video && from)) return { ok: false, field: 'video', code: 'invalid' };
 
   const rawSec = b.seconds === undefined || b.seconds === null ? OMNI_EXTEND_DEFAULT_SECONDS : b.seconds;
   if (!(OMNI_EDIT_SECONDS as readonly unknown[]).includes(rawSec)) return { ok: false, field: 'seconds', code: 'invalid' };
@@ -116,5 +143,8 @@ export function parseOmniEditRequest(raw: unknown): OmniEditParse {
   const ec = b.expectedCredits;
   if (ec !== undefined && ec !== null && !(typeof ec === 'number' && Number.isInteger(ec) && ec >= 0)) return { ok: false, field: 'expectedCredits', code: 'invalid' };
 
-  return { ok: true, value: { op, prompt, video, seconds: rawSec as OmniEditSeconds, resolution, expectedCredits: typeof ec === 'number' ? ec : null } };
+  return {
+    ok: true,
+    value: { op, prompt, video: video || null, from: from || null, seconds: rawSec as OmniEditSeconds, resolution, expectedCredits: typeof ec === 'number' ? ec : null },
+  };
 }

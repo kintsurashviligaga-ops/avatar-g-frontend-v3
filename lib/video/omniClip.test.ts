@@ -36,7 +36,7 @@ import { BudgetExceededError } from '../services/billing/guardedCall';
 import { VertexAuthError } from '../veo/vertexAuth';
 import {
   OMNI_INPUT_VIDEO_USD_PER_SEC, OMNI_MODEL, OMNI_USD_PER_SEC, isOmniInteractionId, omniEditListUsd, omniEditRequestBody, omniRequestBody,
-  pollOmniClip, readInteraction, submitOmniClip, submitOmniEdit,
+  omniMissDetail, pollOmniClip, readInteraction, submitOmniClip, submitOmniEdit,
 } from './omniClip';
 
 const ID = 'v1_ChBqT21uaVByb2JlMDAx';
@@ -237,6 +237,29 @@ test('the edit body: the video part then the words as typed; the task; no aspect
   // Omni renders 3–10 s; anything else is clamped, never sent as is.
   expect((omniEditRequestBody({ op: 'edit', prompt: 'x', video: VIDEO, seconds: 2, resolution: '720p' }).response_format as { duration: string }).duration).toBe('3s');
   expect((omniEditRequestBody({ op: 'extend', prompt: 'x', video: VIDEO, seconds: 30, resolution: '720p' }).response_format as { duration: string }).duration).toBe('10s');
+});
+
+test('a clip Omni made is continued by its interaction, as Google\'s Omni script does: no video, no task, its own frame', () => {
+  expect(omniEditRequestBody({ op: 'extend', prompt: 'ის კარს აღებს', previous: { id: ID, aspect: '9:16' }, seconds: 8, resolution: '1080p' })).toEqual({
+    model: OMNI_MODEL,
+    previous_interaction_id: ID,
+    input: [{ type: 'text', text: 'ის კარს აღებს' }],
+    response_format: { type: 'video', aspect_ratio: '9:16', resolution: '1080p', duration: '8s' },
+    background: true,
+    store: true,
+  });
+});
+
+test('a finished interaction without a clip is described for the log: status, Google\'s words, step kinds, usage — never the data', () => {
+  const detail = omniMissDetail({
+    status: 'completed',
+    steps: [{ type: 'user_input', content: [{ type: 'video', data: 'A'.repeat(10_000) }, { type: 'text', text: 'secret words' }] }, { type: 'model_output', content: [{ type: 'text', text: 'x' }] }],
+    usage: { total_output_tokens: 0 },
+  });
+  expect(detail).toEqual({ status: 'completed', error: '', steps: ['user_input[video,text]', 'model_output[text]'], usage: { total_output_tokens: 0 } });
+  expect(JSON.stringify(detail)).not.toContain('AAAA');
+  expect(omniMissDetail({ status: 'failed', error: { message: 'Uploaded video with speech cannot be extended.' } })).toMatchObject({ status: 'failed', error: 'Uploaded video with speech cannot be extended.' });
+  expect(omniMissDetail(null)).toEqual({ status: '', error: '', steps: [], usage: null });
 });
 
 test('the edit list price: the seconds rendered and the input video\'s own tokens (5,826 a second, $1.50 per 1M)', () => {

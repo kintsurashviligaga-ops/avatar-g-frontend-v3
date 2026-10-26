@@ -17,7 +17,7 @@ import type { DirectClipResolution } from '@/lib/video/directClip';
 import type { ClipStep } from './ClipProgress';
 import {
   OMNI_EDIT_INPUT_MAX_SEC, OMNI_EDIT_MIN_INPUT_SEC, OMNI_EXTEND_DEFAULT_SECONDS, omniEditBilledSeconds, omniEditCredits, omniEditInputCheck,
-  omniEditOutputSeconds, snapOmniExtendSeconds, type OmniEditOp, type OmniEditSeconds,
+  omniEditOutputSeconds, omniSourceOfJob, snapOmniExtendSeconds, type OmniEditOp, type OmniEditSeconds,
 } from '@/lib/video/omniEdit';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -32,6 +32,11 @@ export interface EditVideo {
   poster?: string;
   /** Where the chat stored it, when its upload has landed; else Create waits for that upload. */
   path?: string;
+  /**
+   * A clip made in this chat: its job id, continued by Omni's own interaction (lib/video/omniEdit omniSourceOfJob) —
+   * speech and all, nothing uploaded. Google adds no speech to an uploaded video in which someone talks.
+   */
+  from?: string;
 }
 
 export interface EditOrder {
@@ -85,9 +90,31 @@ export function editOpAllowed(op: OmniEditOp, inputSec: number | null): boolean 
   return check === 'ok' || check === 'unknown';
 }
 
-/** The body POST /api/video/omni-edit takes: the stored path, and the price the card showed. */
-export function editRequestBody(state: EditAskState, path: string): Record<string, unknown> {
-  return { op: state.op, prompt: state.prompt, video: path, seconds: state.seconds, resolution: state.resolution, expectedCredits: state.credits };
+/**
+ * The clip „გააგრძელე" continues (GG 2026-10-26 15:41Z): the thread's latest video, when Omni made it (`thread`, the Video
+ * tool: a failed try or a note after it is passed over), or only the reply just given (`last`, the chat — „გააგრძელე" after
+ * a long answer continues the answer). Its source and length come from its job id (lib/video/omniEdit omniSourceOfJob).
+ */
+export function clipToContinue<T extends { role: string; notice?: boolean; omniJob?: string; videoUrl?: string }>(
+  msgs: readonly T[], scope: 'thread' | 'last',
+): { msg: T; from: string; url: string; seconds: OmniEditSeconds } | 'extended' | null {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i]!;
+    if (m.role !== 'assistant' || m.notice) continue;
+    const source = m.omniJob && m.videoUrl ? omniSourceOfJob(m.omniJob) : null;
+    if (source) return { msg: m, from: m.omniJob!, url: m.videoUrl!, seconds: source.seconds };
+    // An extend's result is longer than the price book's edit row assumes (lib/video/omniEdit): said, not passed over.
+    if (m.videoUrl && m.omniJob && /::ox(?:4|6|8|10)(?=~|$)/.test(m.omniJob)) return 'extended';
+    // The latest video is the one meant: a Veo clip after an Omni one is not passed over for it.
+    if (scope === 'last' || m.videoUrl) return null;
+  }
+  return null;
+}
+
+/** The body POST /api/video/omni-edit takes: the stored path (or the clip made here), and the price the card showed. */
+export function editRequestBody(state: EditAskState, path: string | null): Record<string, unknown> {
+  const source = state.video.from ? { from: state.video.from } : { video: path };
+  return { op: state.op, prompt: state.prompt, ...source, seconds: state.seconds, resolution: state.resolution, expectedCredits: state.credits };
 }
 
 const sec = (locale: string, s: number) => tr(locale, `${s} წმ`, `${s} s`, `${s} с`);
@@ -110,10 +137,11 @@ export function editSpecLine(state: EditOrder, locale: string): string {
 /** Under the spec line: what the price is for (an edit is billed at its length on the grid, an extend at the new seconds). */
 export function editPriceNote(state: EditOrder, locale: string): string {
   if (state.op === 'extend') {
-    return tr(locale,
+    const own = tr(locale,
       `ფასი მხოლოდ ახალ ${state.seconds} წამზეა. კადრი ვიდეოს საკუთარია.`,
       `The price is for the new ${state.seconds} s only. The frame is the video's own.`,
       `Цена только за новые ${state.seconds} с. Кадр остаётся как в видео.`);
+    return state.video.from ? own : `${own} ${uploadSpeechNote(locale)}`;
   }
   if (!state.inputSec) {
     return tr(locale,
@@ -126,6 +154,25 @@ export function editPriceNote(state: EditOrder, locale: string): string {
     `${round1(state.inputSec)} წამიანი ვიდეო, ფასი ${billed} წამისაა. კადრი ვიდეოს საკუთარია.`,
     `A ${round1(state.inputSec)} s video, priced as ${billed} s. The frame is the video's own.`,
     `Видео ${round1(state.inputSec)} с, цена как за ${billed} с. Кадр остаётся как в видео.`);
+}
+
+/**
+ * An uploaded video is extended without new speech: Google's Omni page says so („you cannot extend an uploaded video where
+ * someone is talking to add additional dialogue"), and GG's two such extends came back empty (2026-10-26 15:12Z, 15:39Z).
+ */
+function uploadSpeechNote(locale: string): string {
+  return tr(locale,
+    'ატვირთულ ვიდეოში, სადაც ვინმე ლაპარაკობს, Google ახალ ლაპარაკს ვერ ამატებს. ჩატში შექმნილ კლიპს კი ლაპარაკიანად აგრძელებს: კლიპის შემდეგ დაწერე „გააგრძელე“.',
+    'Google cannot add new speech to an uploaded video in which someone talks. A clip made in this chat it continues, speech and all: write „continue" after the clip.',
+    'Google не может добавить новую речь в загруженное видео, где кто-то говорит. Клип, созданный в этом чате, он продолжает вместе с речью: напишите «продолжи» после клипа.');
+}
+
+/** „გააგრძელე" after a video that was already extended once: one extend per clip for now, nothing charged. */
+export function extendOnceText(locale: string): string {
+  return tr(locale,
+    'ეს ვიდეო უკვე ერთხელ გაგრძელდა. ჯერჯერობით ჩატში შექმნილ კლიპს ერთხელ ვაგრძელებ. თანხა არ ჩამოგეჭრა.',
+    'This video was already extended once. For now a clip made in this chat is extended once. Nothing was charged.',
+    'Это видео уже продлено один раз. Пока клип из этого чата продлевается один раз. Деньги не списаны.');
 }
 
 /** The card's own words above the prompt. */

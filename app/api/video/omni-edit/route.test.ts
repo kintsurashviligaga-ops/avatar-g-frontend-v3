@@ -29,13 +29,15 @@ jest.mock('../../../../lib/orchestrator/jobs', () => ({ createJob: jest.fn(async
 jest.mock('../../../../lib/server/serviceSwitches', () => ({ serviceOffResponse: jest.fn(async () => null) }));
 jest.mock('../../../../lib/security/callerMedia', () => ({ resolveCallerMedia: jest.fn() }));
 jest.mock('../../../../lib/video/omniEditInput', () => ({ prepareOmniEditInput: jest.fn() }));
-jest.mock('../../../../lib/video/omniClip', () => ({ submitOmniEdit: jest.fn() }));
+jest.mock('../../../../lib/video/omniClip', () => ({ submitOmniEdit: jest.fn(), isOmniInteractionId: (id: string) => /^[A-Za-z0-9_-]{8,256}$/.test(id) }));
 
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
 import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { checkRateLimitByKey } from '../../../../lib/api/rate-limit';
-import { genjutsuChargeForPolledId, parseVeoJobId } from '../../../../lib/genjutsu/chargeToken';
+import {
+  composeOmniJobId, composeVeoJobId, genjutsuChargeForPolledId, parseVeoJobId, signGenjutsuCharge, withGenjutsuCharge,
+} from '../../../../lib/genjutsu/chargeToken';
 import { claimDailySlot, releaseDailySlot } from '../../../../lib/genjutsu/serverCommon';
 import { claimIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '../../../../lib/orchestrator/ledger';
@@ -194,4 +196,47 @@ test('Omni refuses the submit → refunded BY REF, the row closed, the slot give
   const busy = await POST(post(EXTEND));
   expect(busy.status).toBe(503);
   expect(await busy.json()).toMatchObject({ error: 'provider_unavailable', refunded: true });
+});
+
+// ── A clip made in this chat, continued by Omni's own interaction (GG 2026-10-26 15:41Z) ──────────────────────────────────
+const SRC = 'v1_ChBjbGlwTWFkZUhlcmUwMDE';
+/** The id the clip route returned: signed for `u`, naming its interaction, frame and length. */
+const madeHere = (bare: string, u = UID): string => withGenjutsuCharge(bare, signGenjutsuCharge({ u, r: `genjutsu:reserve:00000000-0000-4000-8000-000000000000:${u}`, j: bare })!);
+const CLIP4 = composeOmniJobId(SRC, '9:16', 1_793_029_000_000, undefined, 4);
+
+test('a clip made here is extended by its own interaction: nothing uploaded or re-encoded, billed for the new seconds', async () => {
+  const res = await POST(post({ op: 'extend', prompt: 'ის კარს აღებს და ამბობს: „ნახვამდის“', from: madeHere(CLIP4), seconds: 8, resolution: '1080p', expectedCredits: 88 }));
+  expect(res.status).toBe(202);
+  const j = await res.json();
+  expect(j).toMatchObject({ op: 'extend', credits: 88, seconds: 8, inputSeconds: 4, outputSeconds: 12, resolution: '1080p', aspect: '9:16' });
+  expect(resolveCallerMedia).not.toHaveBeenCalled();
+  expect(prepareOmniEditInput).not.toHaveBeenCalled();
+  expect(submitOmniEdit).toHaveBeenCalledWith({
+    op: 'extend', prompt: 'ის კარს აღებს და ამბობს: „ნახვამდის“', previous: { id: SRC, aspect: '9:16' }, inputSec: 4, seconds: 8, resolution: '1080p', userId: UID,
+  });
+  expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({ op: 'omni-extend', source: 'turn', inputSec: 4, outputSec: 12, _reserve: { credits: 88 } });
+  expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'omni', omniOp: 'extend', clipSec: 8, aspect: '9:16' });
+});
+
+test('only the caller\'s own Omni clip or edit is continued: another account\'s, a forged id, a Veo clip, an extend\'s result → refused free', async () => {
+  const other = await POST(post({ op: 'extend', prompt: 'go on', from: madeHere(CLIP4, '99999999-2222-4333-8444-555555555555') }));
+  expect(other.status).toBe(403);
+  const forged = await POST(post({ op: 'extend', prompt: 'go on', from: `${CLIP4}~gj1.e30.bad` }));
+  expect(forged.status).toBe(400);
+  const unsigned = await POST(post({ op: 'extend', prompt: 'go on', from: CLIP4 }));
+  expect(unsigned.status).toBe(400);
+  // A Veo clip carries no `::o` tail, an extend's result `::ox8`: neither is a source (parsed out before the rate limit).
+  for (const bare of [composeVeoJobId('projects/p/operations/op1', '9:16', 1_793_029_000_000, false, 8), composeOmniJobId(SRC, '9:16', 1_793_029_000_000, { op: 'extend', seconds: 8 })]) {
+    expect((await POST(post({ op: 'extend', prompt: 'go on', from: madeHere(bare) }))).status).toBe(400);
+  }
+  // One source only.
+  expect((await POST(post({ op: 'extend', prompt: 'go on', from: madeHere(CLIP4), video: PATH }))).status).toBe(400);
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(submitOmniEdit).not.toHaveBeenCalled();
+});
+
+test('an edit of a clip made here is priced at the clip\'s own length', async () => {
+  const j = await (await POST(post({ op: 'edit', prompt: 'გააღამე', from: madeHere(composeOmniJobId(SRC, '16:9', 1_793_029_000_000, undefined, 6)) }))).json();
+  expect(j).toMatchObject({ op: 'edit', credits: 48, seconds: 6, inputSeconds: 6, outputSeconds: 6, aspect: '16:9' });
+  expect((submitOmniEdit as jest.Mock).mock.calls[0][0]).toMatchObject({ previous: { id: SRC, aspect: '16:9' }, seconds: 6 });
 });

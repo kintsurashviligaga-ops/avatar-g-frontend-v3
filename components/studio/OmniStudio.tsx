@@ -73,10 +73,11 @@ import {
 import { toClipPhoto } from './clip/clipPhoto';
 import { EditAskCard } from './clip/EditAskCard';
 import {
-  editAskText, editFailureText, editNeedsWordsText, editOrder, editPhotosLeftText, editRequestBody, editTooLongText, editTooShortText,
-  editUploadFailedText, type EditAskState,
+  clipToContinue, editAskText, editFailureText, editNeedsWordsText, editOrder, editPhotosLeftText, editRequestBody, editTooLongText,
+  editTooShortText, editUploadFailedText, extendOnceText, type EditAskState,
 } from './clip/editOrder';
-import { OMNI_EDIT_PROMPT_MAX, omniEditCredits, omniEditInputCheck, omniEditOpFromWords } from '@/lib/video/omniEdit';
+import { OMNI_EDIT_PROMPT_MAX, omniEditCredits, omniEditInputCheck, omniEditOpFromWords, omniSourceOfJob } from '@/lib/video/omniEdit';
+import { withoutMadeUpResults } from '@/lib/chat/madeUpResults';
 import { DIRECT_CLIP_MAX_PHOTOS, DIRECT_CLIP_PROMPT_MAX, OMNI_DEFAULT_RESOLUTION, OMNI_SPEECH_DEFAULT_RESOLUTION, directClipCredits, snapDirectClipSeconds, type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech } from '@/lib/video/directClip';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
 import { promptSpeaksGeorgian } from '@/lib/video/clipPrompt';
@@ -1139,7 +1140,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A clip, an edit or an extend Omni made here: its signed job id, so „გააგრძელე" continues THAT clip by Omni's own interaction, speech and all (lib/video/omniEdit omniSourceOfJob). Never persisted. */ omniJob?: string; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -5857,8 +5858,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // turns [Image: …] blocks into their text, exactly as the finished bubble renders them.
   const streamTransform = useCallback((text: string) => {
     const base = hasImageBlocks(text) ? parseImageBlocks(text).text : text;
-    return stripDanglingServiceBlock(base);
-  }, []);
+    // A result the chat made up (a „[generated video: …]" line) is never shown as one (lib/chat/madeUpResults).
+    return withoutMadeUpResults(stripDanglingServiceBlock(base), locale);
+  }, [locale]);
   // Keep the thread pinned while the reply grows — `messages` no longer changes per chunk, so the host's own
   // scroll effect would not fire. 'auto', not 'smooth': a smooth scroll per frame is its own jitter.
   const pinStream = useCallback((_snap: ChatStreamSnapshot) => {
@@ -5929,8 +5931,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const replyText = result.status === 'error' && !result.text
         ? `⚠️ ${result.error?.message ?? (locale === 'en' ? 'Something went wrong. Please try again.' : locale === 'ru' ? 'Что-то пошло не так. Попробуйте снова.' : 'პასუხის მიღება ვერ მოხერხდა. სცადე თავიდან.')}`
         : result.status === 'error' && result.error
-          ? `${result.text}\n\n⚠️ ${result.error.message}`
-          : result.text;
+          ? `${withoutMadeUpResults(result.text, locale)}\n\n⚠️ ${result.error.message}`
+          : withoutMadeUpResults(result.text, locale);
       // WHO ANSWERED — the raw id and the mode, formatted at render (in the UI language, at the END of the action row).
       // Not the budget notice (not a model's answer). A non-Gemini provider keeps the legacy explicit fallback label,
       // so a degraded answer is never mistaken for Gemini. The server's effective mode wins over the one we asked for.
@@ -5962,7 +5964,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // the original so its render can still offer the one-tap Generate chip). Generation is NEVER auto-fired here.
       if (result.status === 'done' && result.text.trim()) {
         const svc = hasServiceBlock(result.text) ? parseServiceBlock(result.text) : null;
-        const cleaned = svc && svc.service && svc.text.length < 200 ? svc.text : result.text;
+        const cleaned = svc && svc.service && svc.text.length < 200 ? svc.text : withoutMadeUpResults(result.text, locale);
         persistChatTurn('assistant', cleaned);
       }
     } finally {
@@ -6532,6 +6534,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         end('', {
           videoUrl: out.url, genKind: 'video', orientation: ask.aspect === '16:9' ? 'landscape' : 'vertical',
           clipSpec: { prompt: ask.prompt, photos: ask.photos, seconds: ask.seconds, aspect: ask.aspect },
+          ...(omniSourceOfJob(j.jobId) ? { omniJob: j.jobId } : {}),
         });
         notifyCredit('video', { seconds: ask.seconds, credits: ask.credits, ...(service ? { service } : {}) });
       } else {
@@ -6553,7 +6556,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // the video, Edit or Extend (the words pick: „გააგრძელე" extends), +4 · 6 · 8 · 10 s, 720p / 1080p, the price on Create.
   // It used to be dropped for a new clip of the words alone. Create waits for the chat's own upload of the file (chatUploads),
   // POSTs its stored path and follows the signed job like the clip; the bubble becomes the result.
-  const proposeEdit = useCallback((input: { prompt: string; video: Media; userText: string; medias: Media[]; viaVoice?: boolean; photosLeft?: boolean }) => {
+  const proposeEdit = useCallback((input: { prompt: string; video: Media; userText: string; medias: Media[]; viaVoice?: boolean; photosLeft?: boolean; /** A clip made here (its job id), continued by Omni's own interaction. */ from?: string }) => {
     const op = omniEditOpFromWords(input.prompt);
     const ask = editOrder({
       op, prompt: input.prompt, inputSec: input.video.durationSec ?? null, resolution: clipResolution,
@@ -6561,6 +6564,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         url: input.video.dataUrl, mimeType: input.video.mimeType,
         ...(input.video.name ? { name: input.video.name } : {}), ...(input.video.poster ? { poster: input.video.poster } : {}),
         ...(input.video.storagePath ? { path: input.video.storagePath } : {}),
+        ...(input.from ? { from: input.from } : {}),
       },
     });
     const id = `edit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -6594,19 +6598,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const end = (text: string, extra: Partial<Msg> = {}) => patchMsgById(bubbleId, (m) => ({ role: 'assistant', id: bubbleId, text, ...(m.clipTask ? { clipTask: m.clipTask } : {}), ...extra }));
     setAsk('starting');
     try {
-      // The chat's one stored copy of the file (uploaded when it was picked); nothing is sent without it.
-      const path = ask.video.path ?? (await uploadBigFile(ask.video.url, ask.video.mimeType));
-      if (!path) { end(`⚠️ ${editUploadFailedText(locale)}`); return; }
+      // The chat's one stored copy of the file (uploaded when it was picked); nothing is sent without it. A clip made here
+      // is named by its job id instead: nothing to upload.
+      const path = ask.video.from ? null : ask.video.path ?? (await uploadBigFile(ask.video.url, ask.video.mimeType));
+      if (!ask.video.from && !path) { end(`⚠️ ${editUploadFailedText(locale)}`); return; }
       const res = await fetch('/api/video/omni-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(editRequestBody(ask, path)),
       });
       const j = (await res.json().catch(() => ({}))) as {
         success?: boolean; jobId?: string; taskId?: string; error?: string; credits?: number; seconds?: number; outputSeconds?: number; inputSeconds?: number; aspect?: string;
       };
-      if (res.status === 401) { setAsk('ask', { video: { ...ask.video, path } }); window.dispatchEvent(new CustomEvent('myavatar:auth-required')); return; }
+      if (res.status === 401) { setAsk('ask', { video: { ...ask.video, ...(path ? { path } : {}) } }); window.dispatchEvent(new CustomEvent('myavatar:auth-required')); return; }
       // The server measured the video and its price is not the card's: the new one (and the length it read) goes on Create.
       if (res.status === 409 && j.error === 'price_changed' && typeof j.credits === 'number') {
-        setAsk('ask', { credits: j.credits, video: { ...ask.video, path }, ...(typeof j.inputSeconds === 'number' ? { inputSec: j.inputSeconds } : {}) });
+        setAsk('ask', { credits: j.credits, video: { ...ask.video, ...(path ? { path } : {}) }, ...(typeof j.inputSeconds === 'number' ? { inputSec: j.inputSeconds } : {}) });
         return;
       }
       if (!res.ok || !j.jobId) {
@@ -6623,7 +6628,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       });
       if (!out) return;
       if ('url' in out) {
-        end('', { videoUrl: out.url, genKind: 'video', orientation: j.aspect === '16:9' ? 'landscape' : 'vertical' });
+        end('', { videoUrl: out.url, genKind: 'video', orientation: j.aspect === '16:9' ? 'landscape' : 'vertical', omniJob: j.jobId });
         notifyCredit('video', { seconds: j.seconds ?? ask.seconds, credits: j.credits ?? ask.credits, ...(service ? { service } : {}) });
       } else {
         const failed = 'failed' in out ? out.failed : null;
@@ -6791,6 +6796,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (lastFilm && ask && (await askSceneRedo(lastFilm, ask.ordinal, ask.note, text))) {
         persistChatTurn('user', text);
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        return;
+      }
+    }
+    // ── „გააგრძელე …" AFTER A CLIP MADE HERE (GG 2026-10-26 15:41Z „მეორე ვიდეო არ გააკეთა") ──
+    // Google adds no speech to an uploaded video in which someone talks, and a second message without the file reached the
+    // chat, which made up a price and a link. So the words continue THE CLIP ITSELF, by Omni's own interaction, on its edit
+    // card (the price on Create; nothing attached, nothing uploaded). In the Video tool the thread's latest video; in the
+    // chat only the clip just made, so „გააგრძელე" after a long answer still continues the answer (clipToContinue).
+    if (text && !opts?.confirmed && !opts?.explicit && !opts?.fromLive && attachments.length === 0 && (mode === 'chat' || mode === 'video')
+      && omniEditOpFromWords(text) === 'extend') {
+      const clip = clipToContinue(messages, mode === 'video' ? 'thread' : 'last');
+      if (clip) {
+        gatePendingRef.current = null;
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        if (clip === 'extended' || text.length > OMNI_EDIT_PROMPT_MAX) {
+          const say = clip === 'extended' ? extendOnceText(locale) : clipTooLongText(locale, OMNI_EDIT_PROMPT_MAX);
+          setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: say, notice: true }]);
+          return;
+        }
+        proposeEdit({ prompt: text, video: { dataUrl: clip.url, mimeType: 'video/mp4', durationSec: clip.seconds }, userText: text, medias: [], viaVoice, from: clip.from });
         return;
       }
     }
@@ -6992,6 +7017,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         closeSettingsLayer();
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
       };
+      // A video attached in the Video tool with words that continue it („„გაგრძელება" → +8 წმ") is its card, even when
+      // the words read like talk: the chat cannot make it, and once made up a price and a link for it (GG 2026-10-26 15:40Z).
+      if (verdict.kind === 'chat' && gateMode === 'video' && omniEditOpFromWords(text) === 'extend' && offerEdit()) return;
       if (verdict.kind === 'chat') {
         if (busy || genActiveRef.current) {
           // A reply is still streaming: park the message (the type-ahead flush sends it when the turn ends) — never drop it.

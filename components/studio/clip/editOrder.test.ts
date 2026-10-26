@@ -5,7 +5,7 @@
  * length the browser could not read is left to the server; every line is said in the UI language.
  */
 import {
-  changeEdit, editFailureText, editOpAllowed, editOrder, editPriceNote, editRequestBody, editSpecLine, editTooLongText,
+  changeEdit, clipToContinue, editFailureText, editOpAllowed, editOrder, editPriceNote, editRequestBody, editSpecLine, editTooLongText,
 } from './editOrder';
 
 const VIDEO = { url: 'blob:https://myavatar.ge/1', mimeType: 'video/mp4', name: 'clip.mp4' };
@@ -55,7 +55,16 @@ test('the spec line and the price note, in the UI language', () => {
   expect(editSpecLine(editOrder({ ...base, op: 'extend' }), 'ka')).toBe('გაგრძელება +8 წმ → 13 წმ · 720p · Gemini Omni Flash');
   expect(editSpecLine(editOrder({ ...base, inputSec: null }), 'ru')).toBe('Редактирование · 720p · Gemini Omni Flash');
   expect(editPriceNote(editOrder(base), 'en')).toBe('A 5 s video, priced as 6 s. The frame is the video\'s own.');
-  expect(editPriceNote(editOrder({ ...base, op: 'extend' }), 'ka')).toBe('ფასი მხოლოდ ახალ 8 წამზეა. კადრი ვიდეოს საკუთარია.');
+  // An uploaded video gets no new speech (Google's rule); a clip made here does.
+  expect(editPriceNote(editOrder({ ...base, op: 'extend' }), 'ka')).toBe('ფასი მხოლოდ ახალ 8 წამზეა. კადრი ვიდეოს საკუთარია. ატვირთულ ვიდეოში, სადაც ვინმე ლაპარაკობს, Google ახალ ლაპარაკს ვერ ამატებს. ჩატში შექმნილ კლიპს კი ლაპარაკიანად აგრძელებს: კლიპის შემდეგ დაწერე „გააგრძელე“.');
+  expect(editPriceNote(editOrder({ ...base, op: 'extend', video: { ...VIDEO, from: 'v1_X::9:16::1::o4~gj1.a.b' } }), 'ka')).toBe('ფასი მხოლოდ ახალ 8 წამზეა. კადრი ვიდეოს საკუთარია.');
+});
+
+test('a clip made in this chat: the request names it, never a stored path', () => {
+  const o = editOrder({ ...base, op: 'extend', inputSec: 4, resolution: '1080p', video: { ...VIDEO, from: 'v1_X::9:16::1::o4~gj1.a.b' } });
+  expect(editRequestBody(o, null)).toEqual({
+    op: 'extend', prompt: '  გააღამე  ', from: 'v1_X::9:16::1::o4~gj1.a.b', seconds: 8, resolution: '1080p', expectedCredits: 88,
+  });
 });
 
 test('failures say what happened, with the length when the server read it, and that nothing was charged', () => {
@@ -67,4 +76,25 @@ test('failures say what happened, with the length when the server read it, and t
   expect(editFailureText({ error: 'video_too_large' }, 'en')).toMatch(/too large/);
   expect(editFailureText({ error: 'insufficient_credits' }, 'ka')).toMatch(/კრედიტი/);
   expect(editFailureText({}, 'en')).toBeTruthy();
+});
+
+test('„გააგრძელე" continues the latest Omni clip in the Video tool, and in the chat only the reply just given', () => {
+  const CLIP = 'v1_X::9:16::1::o4~gj1.a.b';
+  const thread = [
+    { role: 'assistant', text: '', videoUrl: 'https://r/clip.mp4', omniJob: CLIP },
+    { role: 'user', text: 'გააგრძელე +8' },
+    { role: 'assistant', text: '⚠️ ვერ შეიქმნა' },
+    { role: 'assistant', text: 'note', notice: true },
+  ];
+  expect(clipToContinue(thread, 'thread')).toMatchObject({ from: CLIP, url: 'https://r/clip.mp4', seconds: 4 });
+  // In the chat, a text reply after the clip means „გააგრძელე" is about that reply.
+  expect(clipToContinue(thread, 'last')).toBeNull();
+  expect(clipToContinue(thread.slice(0, 1), 'last')).toMatchObject({ from: CLIP, seconds: 4 });
+  // A Veo clip, or an extend's result, is not one Omni continues; nor is a clip that left no job id.
+  expect(clipToContinue([{ role: 'assistant', text: '', videoUrl: 'u', omniJob: 'op::9:16::1::c8~gj1.a.b' }], 'thread')).toBeNull();
+  // An extend's result is said to be extended already, never passed over for an older clip.
+  expect(clipToContinue([thread[0]!, { role: 'assistant', text: '', videoUrl: 'u', omniJob: 'v1_X::9:16::1::ox8~gj1.a.b' }], 'thread')).toBe('extended');
+  expect(clipToContinue([{ role: 'assistant', text: '', videoUrl: 'u' }], 'thread')).toBeNull();
+  // The latest video is the one meant: a Veo clip after the Omni one is never passed over for it.
+  expect(clipToContinue([thread[0]!, { role: 'assistant', text: '', videoUrl: 'https://r/veo.mp4', omniJob: 'op::9:16::1::c8~gj1.a.b' }], 'thread')).toBeNull();
 });
