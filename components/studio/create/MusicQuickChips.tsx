@@ -2,7 +2,7 @@
 
 /**
  * MusicQuickChips — the music tool's quick settings in the chat box (the unified composer, GG 2026-10-25):
- * `ინსტრუმენტული · ჯაზი ▾ · 30 წმ ▾ · ⋯`.
+ * `ვოკალით | ინსტრუმენტული · ჯაზი ▾ · 30 წმ ▾ · ⋯`.
  *
  * The SAME values as MusicCreatePanel (which stays mounted as the „მეტი პარამეტრი" layer and keeps owning its effects: the
  * vocals lock, the length fallback, the lyrics stash): `musicInstrumental`, `musicStyles`, `musicDuration` in OmniStudio,
@@ -58,7 +58,8 @@ export function MusicQuickChips(p: {
 
   const chips: QuickChip[] = [
     {
-      id: 'music-instrumental', icon: <Disc3 size={15} />, label: cc.instrumental, value: cc.instrumental,
+      // Shown by what it makes (GG 2026-10-26: a simpler flow): „ვოკალით“ for a song, „ინსტრუმენტული“ for a backing track.
+      id: 'music-instrumental', icon: <Disc3 size={15} />, label: cc.instrumental, value: p.instrumental ? cc.instrumental : cc.songWithVocals,
       pressed: p.instrumental, onOpen: () => p.onInstrumental(!p.instrumental),
       ...(vocalsLocked ? { disabled: true, note: cc.vocalsSoon } : {}),
     },
