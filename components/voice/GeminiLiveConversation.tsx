@@ -113,9 +113,10 @@ export function planNote(n: number, kind: LivePlanKind, what: string): string {
 /** The [App] note for a failed generation. The test link's refusal is no failure to retry: nothing can be made there. */
 export function failedNote(what: string): string {
   if (isTestLinkNotice(what)) {
+    // GG 2026-10-26 13:24Z: the model said only „ფასიანი კონტენტის შექმნა ამჟამად მიუწვდომელია", which sounds like an outage.
     return '[App] This is a test link: paid creation is switched off here on purpose, so nothing can be made in this call '
-      + 'and no credits were spent. Tell the user exactly that in one sentence (real creation works on myavatar.ge); do not '
-      + 'offer to try again here.';
+      + 'and no credits were spent. Tell the user in one sentence that this is a test link, that creation is off only here, '
+      + 'and that it works on myavatar.ge. Do not say it is unavailable or broken, and do not offer to try again here.';
   }
   return `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`;
 }
