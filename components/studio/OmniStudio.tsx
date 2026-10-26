@@ -2333,7 +2333,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // The spend itself is already in credit_ledger (the server charged it); Settings → History reads that ledger,
     // so the browser no longer reports amounts (the old POST /api/credits/record trusted a client creditsDelta).
     if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
-    creditToastTimerRef.current = setTimeout(() => setCreditToast(null), 4000);
+    // 10 s (GG 2026-10-26 16:38Z: at 4 s it was gone before he could read or capture it).
+    creditToastTimerRef.current = setTimeout(() => setCreditToast(null), 10_000);
   }, [locale]);
   // Iteration 2 Phase 6 — silently file a result into the Library. Image / music / film
   // already persist server-side via the produce routes; remix / character-swap / product-ad
@@ -12628,19 +12629,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           <Check size={14} className="text-app-accent" /> {shareToast}
         </div>
       )}
-      {/* Credit-deduction toast — dark card, green check, 3 lines (done · spent · balance). */}
+      {/* Credit-deduction toast — dark card, green check, 3 lines (done · charged · balance). It never takes a tap from
+          what lies under it. */}
       {creditToast && (() => {
         return (
           <div
+            role="status"
             className="pointer-events-none fixed inset-x-0 z-[111] mx-auto flex w-fit max-w-[88vw] animate-[fadeIn_0.2s_ease-out] flex-col gap-1 rounded-2xl bg-app-elevated px-4 py-3 text-[13px] font-semibold tabular-nums text-app-text shadow-lg ring-1 ring-app-accent/30"
             // Same fixed-vs-layout-viewport problem as the share toast above.
             style={{ bottom: `calc(env(safe-area-inset-bottom) + ${composerH + 16 + keyboardOffset}px)` }}
           >
             <span className="flex items-center gap-1.5"><Check size={15} className="text-emerald-400" /> {locale === 'en' ? 'Generation complete' : locale === 'ru' ? 'Генерация завершена' : 'გენერაცია დასრულდა'}</span>
             {/* Line icons, not 💳/💰 (docs/DESIGN.md bans emoji as UI) — this toast follows every paid generation. */}
-            <span className="flex items-center gap-1.5 text-app-muted"><CreditCard size={14} aria-hidden="true" /> −{creditsWithUsd(creditToast.credits, locale)}</span>
+            {/* Each line says what it is, and only the charge carries dollars: GG read the balance's „($27)" as the clip's price. */}
+            <span className="flex items-center gap-1.5 text-app-muted"><CreditCard size={14} aria-hidden="true" /> {locale === 'en' ? 'Charged' : locale === 'ru' ? 'Списано' : 'ჩამოიჭრა'}: {creditsWithUsd(creditToast.credits, locale)}</span>
             {creditToast.balanceCredits !== null && (
-              <span className="flex items-center gap-1.5 text-app-muted"><Wallet size={14} aria-hidden="true" /> {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{creditsWithUsd(creditToast.balanceCredits, locale)}</span></span>
+              <span className="flex items-center gap-1.5 text-app-muted"><Wallet size={14} aria-hidden="true" /> {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{creditsLabel(creditToast.balanceCredits, locale)}</span></span>
             )}
           </div>
         );
