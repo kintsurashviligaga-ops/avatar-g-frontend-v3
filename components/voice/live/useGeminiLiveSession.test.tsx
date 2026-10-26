@@ -12,6 +12,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
 import { UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
+import { replyLanguageNote } from '@/lib/voice/replyLanguage';
 import { LIVE_SPOKEN_RULE } from '@/lib/agents/profile';
 import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
@@ -810,7 +811,7 @@ test('actions: the mint asks for the declarations; the host answers each call by
 
 // ─── An offer to start with nothing prepared (lib/voice/liveUnprepared) ───────────
 
-const noteFrames = (ws: { sent: Frame[] }) => ws.sent.filter((f) => f.realtimeInput?.text === UNPREPARED_START_NOTE);
+const noteFrames = (ws: { sent: Frame[] }) => ws.sent.filter((f) => String(f.realtimeInput?.text ?? '').startsWith(UNPREPARED_START_NOTE));
 const answer = (calls: Array<{ id: string; name: string }>) => calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true } }));
 
 test('GG 2026-10-25: "5 credits. Shall I start?" with no function called gets ONE [App] note per thing the user said', async () => {
@@ -823,8 +824,8 @@ test('GG 2026-10-25: "5 credits. Shall I start?" with no function called gets ON
   // The model's next answer repeats itself before the user speaks: no second note.
   act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
   expect(noteFrames(ws)).toHaveLength(1);
-  // The note is the app's, never the user's words.
-  expect(noteFrames(ws)[0]).toEqual({ realtimeInput: { text: UNPREPARED_START_NOTE } });
+  // The note is the app's, never the user's words — and it names the language the user spoke (lib/voice/replyLanguage).
+  expect(noteFrames(ws)[0]).toEqual({ realtimeInput: { text: `${UNPREPARED_START_NOTE}\n${replyLanguageNote('Georgian')}` } });
   unmount();
 });
 
@@ -861,6 +862,42 @@ test(`a call without the functions is never told to call one; a call sends at mo
     act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
   }
   expect(noteFrames(ws)).toHaveLength(UNPREPARED_START_NOTES_MAX);
+  unmount();
+});
+
+// ─── The user's language in every app answer (lib/voice/replyLanguage) ──────────
+
+test('GG 2026-10-26 11:34Z: once the user spoke Georgian, each function answer and [App] note says to reply in Georgian', async () => {
+  const h = harness();
+  const onToolCall = jest.fn((calls: Array<{ id: string; name: string }>) =>
+    calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true, summary: 'The price is waiting for approval.' } })));
+  const { result, ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall });
+  const lastAnswer = () => [...ws.sent].reverse().find((f) => f.toolResponse)?.toolResponse.functionResponses[0].response;
+  const lastNote = () => [...ws.sent].reverse().find((f) => typeof f.realtimeInput?.text === 'string')?.realtimeInput.text;
+
+  // Before the user says anything, nothing is added.
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c0', name: 'open_studio', args: {} }] } }));
+  await waitFor(() => expect(lastAnswer()).toEqual({ ok: true, summary: 'The price is waiting for approval.' }));
+
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: '9,16 ფორმატის სურათი' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c1', name: 'prepare_generation', args: { tool: 'image' } }] } }));
+  await waitFor(() => expect(lastAnswer()).toEqual({
+    ok: true, summary: 'The price is waiting for approval.', reply_in: replyLanguageNote('Georgian'),
+  }));
+  act(() => { result.current.sendNote('[App] Nothing was started. Tell the user plainly.'); });
+  expect(lastNote()).toBe(`[App] Nothing was started. Tell the user plainly.\n${replyLanguageNote('Georgian')}`);
+
+  // Georgian heard in Latin letters is no English: the language stays.
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'ფასი 5 კრედიტია.' }, turnComplete: true } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'Da-adasture.' } } }));
+  act(() => { result.current.sendNote('[App] A new image is ready on screen.'); });
+  expect(lastNote()).toBe(`[App] A new image is ready on screen.\n${replyLanguageNote('Georgian')}`);
+
+  // The user switches to English: so do the answers.
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'now make it a video please' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c2', name: 'prepare_generation', args: { tool: 'video' } }] } }));
+  await waitFor(() => expect(lastAnswer()).toMatchObject({ reply_in: replyLanguageNote('English') }));
   unmount();
 });
 
