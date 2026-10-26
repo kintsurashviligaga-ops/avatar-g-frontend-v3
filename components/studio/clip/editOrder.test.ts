@@ -6,6 +6,7 @@
  */
 import {
   changeEdit, clipToContinue, editFailureText, editOpAllowed, editOrder, editPriceNote, editRequestBody, editSpecLine, editTooLongText,
+  ownClipOfAttachment,
 } from './editOrder';
 
 const VIDEO = { url: 'blob:https://myavatar.ge/1', mimeType: 'video/mp4', name: 'clip.mp4' };
@@ -97,4 +98,19 @@ test('„გააგრძელე" continues the latest Omni clip in the Vide
   expect(clipToContinue([{ role: 'assistant', text: '', videoUrl: 'u' }], 'thread')).toBeNull();
   // The latest video is the one meant: a Veo clip after the Omni one is never passed over for it.
   expect(clipToContinue([thread[0]!, { role: 'assistant', text: '', videoUrl: 'https://r/veo.mp4', omniJob: 'op::9:16::1::c8~gj1.a.b' }], 'thread')).toBeNull();
+});
+
+test('the clip made here, downloaded and attached back, is continued as itself; any other file stays an upload', () => {
+  const CLIP = 'v1_X::9:16::1::o4~gj1.a.b';
+  const thread = [{ role: 'assistant', text: '', videoUrl: 'https://r/clip.mp4', omniJob: CLIP }];
+  // GG 2026-10-26 16:29Z: the studio's own download name and the clip's length.
+  expect(ownClipOfAttachment(thread, { name: 'myavatar-video-1793031990000.mp4', durationSec: 4.02 })).toMatchObject({ from: CLIP, seconds: 4 });
+  // Another file, a length that does not match, or one the browser could not read: an upload, as before.
+  expect(ownClipOfAttachment(thread, { name: 'holiday.mp4', durationSec: 4 })).toBeNull();
+  expect(ownClipOfAttachment(thread, { name: 'myavatar-video-1793031990000.mp4', durationSec: 8 })).toBeNull();
+  expect(ownClipOfAttachment(thread, { name: 'myavatar-video-1793031990000.mp4' })).toBeNull();
+  expect(ownClipOfAttachment([], { name: 'myavatar-video-1793031990000.mp4', durationSec: 4 })).toBeNull();
+  // The thread's latest video is already an extend's result: said, not uploaded.
+  expect(ownClipOfAttachment([...thread, { role: 'assistant', text: '', videoUrl: 'u', omniJob: 'v1_X::9:16::1::ox4~gj1.a.b' }],
+    { name: 'myavatar-video-1793031990000.mp4', durationSec: 8 })).toBe('extended');
 });

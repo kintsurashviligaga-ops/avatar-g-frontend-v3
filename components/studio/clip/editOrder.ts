@@ -111,6 +111,24 @@ export function clipToContinue<T extends { role: string; notice?: boolean; omniJ
   return null;
 }
 
+/** The name the studio's ⬇ / share buttons give a clip (components/studio/OmniStudio). */
+const OWN_CLIP_FILE = /^myavatar-video-\d+\.mp4$/i;
+
+/**
+ * An attached file that IS the thread's clip made here, downloaded and attached back (GG 2026-10-26 16:29Z: the upload
+ * failed, since Google adds no speech to an uploaded video in which someone talks): our download name and the clip's
+ * length (±0.6 s). Then the clip itself is continued, nothing uploaded. Any other file stays an upload.
+ */
+export function ownClipOfAttachment<T extends { role: string; notice?: boolean; omniJob?: string; videoUrl?: string }>(
+  msgs: readonly T[], file: { name?: string; durationSec?: number },
+): ReturnType<typeof clipToContinue<T>> {
+  if (!file.name || !OWN_CLIP_FILE.test(file.name)) return null;
+  const clip = clipToContinue(msgs, 'thread');
+  if (clip === 'extended') return clip;
+  if (!clip || typeof file.durationSec !== 'number' || Math.abs(file.durationSec - clip.seconds) > 0.6) return null;
+  return clip;
+}
+
 /** The body POST /api/video/omni-edit takes: the stored path (or the clip made here), and the price the card showed. */
 export function editRequestBody(state: EditAskState, path: string | null): Record<string, unknown> {
   const source = state.video.from ? { from: state.video.from } : { video: path };

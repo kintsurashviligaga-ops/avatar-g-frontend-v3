@@ -74,7 +74,7 @@ import { toClipPhoto } from './clip/clipPhoto';
 import { EditAskCard } from './clip/EditAskCard';
 import {
   clipToContinue, editAskText, editFailureText, editNeedsWordsText, editOrder, editPhotosLeftText, editRequestBody, editTooLongText,
-  editTooShortText, editUploadFailedText, extendOnceText, type EditAskState,
+  editTooShortText, editUploadFailedText, extendOnceText, ownClipOfAttachment, type EditAskState,
 } from './clip/editOrder';
 import { OMNI_EDIT_PROMPT_MAX, omniEditCredits, omniEditInputCheck, omniEditOpFromWords, omniSourceOfJob } from '@/lib/video/omniEdit';
 import { withoutMadeUpResults } from '@/lib/chat/madeUpResults';
@@ -6944,6 +6944,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (!text) return say(editNeedsWordsText(locale));
       if (text.length > OMNI_EDIT_PROMPT_MAX) return say(clipTooLongText(locale, OMNI_EDIT_PROMPT_MAX));
       const video = editVideos[0]!;
+      // The thread's own clip, downloaded and attached back, is continued as itself (ownClipOfAttachment).
+      const own = omniEditOpFromWords(text) === 'extend' ? ownClipOfAttachment(messages, video) : null;
+      if (own === 'extended') { setInput(''); setAttachments([]); return say(extendOnceText(locale)); }
+      if (own) {
+        setInput(''); setAttachments([]); inputSourceRef.current = 'text'; stopDictationEcho();
+        proposeEdit({ prompt: text, video: { dataUrl: own.url, mimeType: 'video/mp4', durationSec: own.seconds }, userText: text, medias: [], viaVoice, from: own.from });
+        return true;
+      }
       const check = omniEditInputCheck(omniEditOpFromWords(text), video.durationSec);
       if (check === 'too_long') return say(editTooLongText(video.durationSec ?? null, locale));
       if (check === 'too_short') return say(editTooShortText(locale));
