@@ -57,8 +57,22 @@ describe('Georgian heard in Hindi letters is written back in Georgian ones (GG 2
     expect(toCallScript('ուր')).toBe('ურ');
   });
 
+  it('turns Korean letters into Georgian ones (GG 2026-10-26 09:29Z: an answer came back as „대자.")', () => {
+    expect(toCallScript('대자.')).toBe('დეჯა.');
+    expect(toCallScript('끼')).toBe('კი');
+    expect(toCallScript('키')).toBe('ქი');
+    expect(toCallScript('기')).toBe('გი');
+    expect(toCallScript('호')).toBe('ჰო');
+    expect(toCallScript('디아흐')).toBe('დიაჰ'); // ㅡ is the vowel Korean adds, not a sound of the word
+    expect(toCallScript('까르기')).toBe('კარგი');
+    expect(toCallScript('아라')).toBe('არა');
+    expect(toCallScript('빌리')).toBe('ბილი');
+    expect(toCallScript('ok 끼?')).toBe('ok კი?');
+    expect(toCallScript('ㅋ')).toBe(''); // a loose letter, not a syllable
+  });
+
   it('knows which words came in an alphabet the call never speaks', () => {
-    for (const t of ['की', 'كي?', 'կի', 'ok كي']) expect(isMisheardScript(t)).toBe(true);
+    for (const t of ['की', 'كي?', 'կի', 'ok كي', '대자.', 'キ', '是', 'כן', 'ναι', 'ใช่']) expect(isMisheardScript(t)).toBe(true);
     for (const t of ['კი?', 'yes?', 'да?', '', undefined as unknown as string]) expect(isMisheardScript(t)).toBe(false);
   });
 
@@ -69,6 +83,14 @@ describe('Georgian heard in Hindi letters is written back in Georgian ones (GG 2
     expect(judgeUtterance('آرا?')).toBe('no'); // „არა"
     expect(judgeUtterance('კი?')).toBe('unclear');
     expect(judgeUtterance('ok?')).toBe('unclear');
+  });
+
+  it('a yes in Korean letters counts, with plain and ejective stops read as one; a no stays a no; „대자." is neither', () => {
+    for (const t of ['끼', '키', '기', '기?', '호', '디아흐', '까르기', '가르기', '카이', '끼, 까르기']) expect(judgeUtterance(t)).toBe('yes');
+    for (const t of ['아라', '아라, 모이짜데']) expect(judgeUtterance(t)).toBe('no');
+    for (const t of ['대자.', '가', '고양이']) expect(judgeUtterance(t)).toBe('unclear');
+    // The loose reading is only for words that came in another alphabet: Georgian ones are read as written.
+    expect(judgeUtterance('გი')).toBe('unclear');
   });
 
   it('reads Georgian written in Latin letters by sound, and leaves captions in Latin (GG 2026-10-26 07:13Z: „da-adasture.")', () => {

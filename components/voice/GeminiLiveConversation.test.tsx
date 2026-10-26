@@ -23,7 +23,7 @@ import { PERSONA_STORAGE_KEY } from '@/components/studio/PersonaPicker';
 import { primeLive } from '@/lib/voice/livePrime';
 import { LIVE_ACTION_EVENT, LIVE_FUNCTION_DECLARATIONS, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail } from '@/lib/voice/liveTools';
 
-import GeminiLiveConversation, { failedNote } from './GeminiLiveConversation';
+import GeminiLiveConversation, { failedNote, notStartedNote } from './GeminiLiveConversation';
 import { LIVE_ACTION_STRINGS } from './live/LiveActionCards';
 import { LIVE_END_CALL_GRACE_MS, LIVE_END_CALL_MAX_WAIT_MS } from './live/liveActions';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
@@ -584,5 +584,24 @@ describe('failedNote — what the call is told when a generation fails', () => {
   });
   test('any other failure is told plainly, with a retry', () => {
     expect(failedNote('Google timed out')).toBe('[App] A generation failed: "Google timed out". Tell the user plainly and offer to try again.');
+  });
+});
+
+describe('notStartedNote — what the call is told when a voice start counted down and started nothing', () => {
+  test('the answer came out in another alphabet: the model hears it, and that nothing broke (GG 2026-10-26 09:29Z)', () => {
+    const note = notStartedNote('not_heard', '대자.');
+    expect(note).toContain('the app heard only "대자." (in an alphabet the call never speaks');
+    expect(note).toContain('Do not say it started or that something broke');
+    expect(note).toContain('tap the button on the card');
+  });
+  test('an answer in the call\'s own letters that is no yes is quoted without the alphabet remark', () => {
+    const note = notStartedNote('not_heard', 'make it red');
+    expect(note).toContain('the app heard only "make it red", and that is no clear yes');
+    expect(note).not.toContain('alphabet');
+  });
+  test('nothing heard at all keeps the plain note', () => {
+    expect(notStartedNote('not_heard', '')).toBe('[App] Nothing was started: the countdown ended without a clear yes in the user\'s '
+      + 'own words after the price or plan. Do not say it started. Ask the user plainly whether to start; start again only '
+      + 'after they say yes.');
   });
 });

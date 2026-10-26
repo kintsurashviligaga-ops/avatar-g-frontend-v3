@@ -35,6 +35,8 @@
  *     AudioTranscriptionConfig.languageCodes[] (BCP-47 hints for the input transcription).
  *   - inputAudioTranscription / outputAudioTranscription: AudioTranscriptionConfig {languageCodes[],
  *     customVocabulary[], wordTimestamp, diarization, mode: VERBATIM|SMART}; `{}` enables with defaults.
+ *     customVocabulary "biases the ASR model to improve recognition of these specific terms": the input transcription
+ *     gets the short Georgian answers (GG 2026-10-26: „კი" came back in Hindi, Arabic, Latin and Korean letters).
  *   - sessionResumption: SessionResumptionConfig {handle?, transparent?}. Present ⇒ the server sends
  *     sessionResumptionUpdate {newHandle, resumable}. Handles stay valid 2 h after the session ends.
  *   - contextWindowCompression: {slidingWindow: {targetTokens?}, triggerTokens?}; `{slidingWindow:{}}` =
@@ -244,6 +246,9 @@ export interface BuildLiveSetupOptions {
    *  Georgian, English and Russian sends all three (Vertex accepted it, us-central1, 2026-10-25): with Georgian alone,
    *  Russian speech came back in the transcript — and in the chat thread a fresh session reads — as Georgian. */
   languageCode?: string | readonly string[];
+  /** Words the input transcription is biased toward (AudioTranscriptionConfig.customVocabulary; needs transcribe:true):
+   *  the short Georgian answers a voice start is judged on (lib/voice/voicePrompt liveTranscriptionVocabulary). */
+  vocabulary?: readonly string[];
   /** 0..2; omitted when not a finite number. */
   temperature?: number;
   /** undefined → no sessionResumption field (no resumption updates, today's wire);
@@ -280,7 +285,7 @@ export interface LiveSetup {
     thinkingConfig?: { thinkingBudget: number };
   };
   systemInstruction?: { parts: Array<{ text: string }> };
-  inputAudioTranscription?: { languageCodes?: string[] };
+  inputAudioTranscription?: { languageCodes?: string[]; customVocabulary?: string[] };
   outputAudioTranscription?: Record<string, never>;
   sessionResumption?: { handle?: string };
   contextWindowCompression?: { triggerTokens?: number; slidingWindow: { targetTokens?: number } };
@@ -302,6 +307,9 @@ const VOICE_NAME_RE = /^[A-Za-z]{2,32}$/;
 const AVATAR_NAME_RE = /^[A-Z][a-z]{1,31}$/;
 /** BCP-47-ish: 'ka', 'ka-GE', 'zh-Hans', 'pt-BR'. */
 const BCP47_RE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}$/;
+/** customVocabulary: at most this many phrases, each at most this long (a hint list, not a dictionary). */
+const VOCABULARY_MAX = 50;
+const VOCABULARY_WORD_MAX = 40;
 /** Resumption handles are opaque server tokens: printable ASCII, no whitespace, bounded. */
 const RESUMPTION_HANDLE_RE = /^[\x21-\x7E]{1,4096}$/;
 
@@ -370,8 +378,15 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
   if (opts?.transcribe === true) {
     const raw = typeof opts.languageCode === 'string' ? [opts.languageCode] : Array.isArray(opts.languageCode) ? opts.languageCode : [];
     const langs = [...new Set(raw.map((l) => (typeof l === 'string' ? l.trim() : '')).filter((l) => BCP47_RE.test(l)))];
-    // It is only a HINT; omit languageCode to fall back to auto-detect.
-    setup.inputAudioTranscription = langs.length ? { languageCodes: langs } : {};
+    const words = Array.isArray(opts.vocabulary)
+      ? [...new Set(opts.vocabulary.map((w) => (typeof w === 'string' ? w.trim() : '')).filter((w) => w && w.length <= VOCABULARY_WORD_MAX))]
+        .slice(0, VOCABULARY_MAX)
+      : [];
+    // Both are only HINTS; omit languageCode to fall back to auto-detect.
+    setup.inputAudioTranscription = {
+      ...(langs.length ? { languageCodes: langs } : {}),
+      ...(words.length ? { customVocabulary: words } : {}),
+    };
     setup.outputAudioTranscription = {};
   }
 

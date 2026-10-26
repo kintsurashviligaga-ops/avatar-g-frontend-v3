@@ -66,7 +66,7 @@ import {
   type LiveStudioReply,
   type OpenArtifactDetail,
 } from '@/lib/voice/liveTools';
-import { judgeSince, judgeUtterance, type HeardUtterance, type SpokenVerdict } from '@/lib/voice/spokenYes';
+import { judgeSince, judgeUtterance, lastSaidSince, type HeardUtterance, type SpokenVerdict } from '@/lib/voice/spokenYes';
 import { createVoiceLedger, type LiveHeardEvent, type LiveVoicePort, type VoiceLedger } from '@/lib/voice/voiceLedger';
 import {
   controlName,
@@ -1233,9 +1233,12 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   const fireRun = useCallback(async (entry: { id: string; run: LiveRun; cancelled: boolean }) => {
     if (!mountedRef.current || entry.cancelled || runRef.current !== entry) return;
     const e = envNow();
-    const { verdict, said } = judgeRun(e.voice!.heard(), entry.run);
+    const heard = e.voice!.heard();
+    const { verdict, said } = judgeRun(heard, entry.run);
     if (verdict !== 'yes') {
-      finishRun(entry, verdict === 'no' ? 'cancelled' : 'not_heard', verdict === 'no' ? 'said_no' : 'not_heard', said || undefined);
+      // Not heard: the model is told what the user's answer came out as (GG 2026-10-26 09:29Z: „대자.", in Korean letters).
+      const only = verdict === 'no' ? '' : lastSaidSince(heard, entry.run.spokenSince ?? entry.run.since);
+      finishRun(entry, verdict === 'no' ? 'cancelled' : 'not_heard', verdict === 'no' ? 'said_no' : 'not_heard', said || only || undefined);
       return;
     }
     const { target } = entry.run;

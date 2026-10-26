@@ -84,7 +84,7 @@ import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { loadLiveReportBlock } from '@/lib/research/liveContext';
 import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
-import { LIVE_LANGUAGE_LOCK, liveTranscriptionLanguages } from '@/lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveTranscriptionLanguages, liveTranscriptionVocabulary } from '@/lib/voice/voicePrompt';
 import { LIVE_TRANSPORT_UNAVAILABLE, liveTokenMinter } from '@/lib/voice/liveMint';
 import { liveAudienceAllows } from '@/lib/voice/liveAudience';
 import { LIVE_AVATAR_BITRATE_BPS, LIVE_AVATAR_MODEL, LIVE_AVATAR_TICKET_MS, liveAvatarEnabled, normalizeLiveAvatar } from '@/lib/voice/liveAvatar';
@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
         voiceName: l.voiceName,
         // The Live session has always run at the model's default temperature; only an active persona changes that.
         ...(personaActive ? { temperature: l.temperature } : {}),
-        ...(transcribe ? { transcribe: true, languageCode: liveTranscriptionLanguages(locale) } : {}),
+        ...(transcribe ? { transcribe: true, languageCode: liveTranscriptionLanguages(locale), vocabulary: liveTranscriptionVocabulary() } : {}),
         ...(body.compression === true ? { compression: true } : {}),
         ...('resumptionHandle' in body
           ? { resumptionHandle: typeof body.resumptionHandle === 'string' ? body.resumptionHandle : null }
