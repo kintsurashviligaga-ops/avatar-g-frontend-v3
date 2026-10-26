@@ -29,6 +29,28 @@ describe('judgeUtterance', () => {
     expect(judgeUtterance(s)).toBe('unclear');
   });
 
+  // ⚠️ GG 2026-10-26 07:13Z, myavatar.ge: the spoken „დაადასტურე" came back as „da-adasture." and started nothing.
+  it.each([
+    'da-adasture.', 'da adasture', 'daadasture', 'Dadasture', 'ki', 'Ki.', "k'i", 'kii', 'diakh', 'diax', 'diah', 'ho',
+    'kho', 'kargi', 'kai', 'gaakete', 'gaushvi', 'daitsqe', 'ki, gaakete', 'ki batono', 'ra tkma unda', 'ratomats ara',
+    'ok ki', 'ki please', 'kargi, gaushvi', 'ki, da-adasture',
+  ])('Georgian in Latin letters: %s → yes', (s) => {
+    expect(judgeUtterance(s)).toBe('yes');
+  });
+
+  it.each([
+    'ara', 'Ara.', 'ki ara', 'ar daitsqo', 'moitsa', 'moitsade', 'mere', 'nu', 'ki, moitsa', 'da-adasture ara', 'ara?',
+  ])('Georgian in Latin letters: %s → no', (s) => {
+    expect(judgeUtterance(s)).toBe('no');
+  });
+
+  it.each([
+    'ki?', 'da-adasture?', 'da', 'kreta', 'ki, oghond lurji', 'how much?', 'make a donkey', 'okay, create a donkey',
+    'yes, make it blue', 'thanks', 'hello there',
+  ])('Georgian in Latin letters: %s → unclear', (s) => {
+    expect(judgeUtterance(s)).toBe('unclear');
+  });
+
   it('never throws on what is not text', () => {
     expect(judgeUtterance(undefined as unknown as string)).toBe('unclear');
     expect(judgeUtterance(42 as unknown as string)).toBe('unclear');
@@ -62,6 +84,11 @@ describe('judgeSince', () => {
 
   it('a question after the yes leaves it standing', () => {
     expect(judgeSince([u('yes', 300), u('how long will it take?', 400)], 200)).toEqual({ verdict: 'yes', said: 'yes' });
+  });
+
+  it('a yes heard in Latin letters starts what the price was told for (GG 2026-10-26 07:13Z)', () => {
+    expect(judgeSince([u('da-adasture.', 300)], 200)).toEqual({ verdict: 'yes', said: 'da-adasture.' });
+    expect(judgeSince([u('ki', 300), u('ara', 400)], 200).verdict).toBe('no');
   });
 
   it('nothing heard is unclear, never yes', () => {
