@@ -1,29 +1,43 @@
 /**
- * lib/video/clipPrompt.ts — the Veo prompt of ONE direct clip (lib/video/directClip), built from the user's own words.
- * Pure; the server-only reader that fills `ClipReading` is lib/video/clipSpeech.
+ * lib/video/clipPrompt.ts — the prompt of ONE direct clip (lib/video/directClip), built from the user's own words. Pure and
+ * client-safe (the chat's card reads the speech checks below); the server-only reader that fills `ClipReading` is
+ * lib/video/clipSpeech.
  *
  * ⚠️ THE SCENARIO IS THE USER'S (GG, 2026-10-25 16:10Z: the film pipeline's director rewrote it into English scene
- * scripts). Veo reads English best, so the prompt is TRANSLATED, literally, and nothing is added to it but what keeps the
- * photo and the language: a line about the first frame or the reference photos, how a Georgian line is said, and the
+ * scripts). The engines read English best, so the prompt is TRANSLATED, literally, and nothing is added to it but what
+ * keeps the photo and the speech: a line about the first frame or the reference photos, who says which line, and the
  * negative prompt.
  *
- * ⚠️ A GEORGIAN LINE IS SAID BY THE CHARACTER, NOT A NARRATOR (GG: „პერსონაჟს ქართულად უნდა ელაპარაკა"). Veo's own Georgian
- * is garbled (the 2026-10-16 film), so the talking avatar's proven way is used (lib/avatar/veoAvatar): Veo says the same
- * syllables in Latin letters, so its mouth makes them, and on delivery its voice is replaced by the line in a native
- * Google Cloud TTS voice, fitted onto where Veo spoke (lib/avatar/speechMatch). English and Russian lines keep Veo's own
- * voice, verbatim.
+ * ⚠️ A GEORGIAN LINE IS SAID BY THE CHARACTER, IN THEIR OWN VOICE — ON GEMINI OMNI FLASH, AT EVERY LENGTH (GG 2026-10-26
+ * 10:44Z: „ნარაცია თვითონ დაადო", „პერსონაჟებს ერთი ხმა ახმოვანებდა"). Veo's own Georgian is garbled (the 2026-10-16
+ * film), so a Georgian line on Veo used to be replaced by ONE Google Cloud TTS voice laid over Veo's mouth: in GG's
+ * three-person podcast every character spoke in the same narrator's voice, stretched −20…+36 % and laid by order, not by
+ * who spoke. Omni speaks Georgian itself (the 2026-10-25 probe and GG's 08:44Z clip: clear Georgian in the character's
+ * own voice, lips in sync), so a clip with a Georgian line goes to Omni (directClipEngine) and nothing is dubbed. Veo
+ * keeps the clips with no Georgian line; an English or Russian line is said in Veo's own voice, verbatim.
  *
- * ⚠️ OMNI FLASH (the 10 s clip) SPEAKS GEORGIAN ITSELF. The 2026-10-25 Vertex probe: clear, intelligible Georgian in the
- * character's own voice. So its lines stay in their own script, nothing is dubbed, and — Omni has no negative prompt — the
- * "no on-screen text" rule is said in the prompt. The probe's clip said its line twice, so each line is asked for once.
+ * WHO SAYS WHAT. The reader names the character of each line and their voice (`speakers`), and the prompt says the order
+ * and that no two people share a voice — WITHOUT writing the words a second time (Omni's probe said a line twice).
+ *
+ * THE WORDS MUST FIT THE CLIP, checked before any charge (clipSpeechFits): a line longer than the clip is rushed or cut,
+ * never refused by the engine (lib/video/speechTiming).
  */
-import { georgianToLatin } from '@/lib/avatar/speechMatch';
 import { isGeorgianText } from '@/lib/audio/tts-model';
+import { OVERFLOW_TOLERANCE, sceneSpeechCapacity, speechSeconds } from './speechTiming';
+
+/** Who says a line: the character as the prompt names them, in English („the man", „the host"), and their voice. */
+export interface ClipSpeaker {
+  who: string;
+  voice: 'male' | 'female' | null;
+}
 
 /** What the reader found in the prompt. `english` marks each spoken line as `[LINE n]` (1-based, in `lines` order). */
 export interface ClipReading {
   english: string;
   lines: string[];
+  /** Who says each line, in `lines` order (the same length; `who` is empty when the prompt does not say). */
+  speakers: ClipSpeaker[];
+  /** The voice of the one who speaks, when one does (the first line's). */
   speaker: 'male' | 'female' | null;
   /** Nobody in the prompt speaks, sings or talks: Veo is told so, or it invents English chatter. */
   silent: boolean;
@@ -62,17 +76,72 @@ export function parseClipReading(raw: string): ClipReading | null {
   if (!Array.isArray(o.lines) || o.lines.length > 6 || !o.lines.every((l) => typeof l === 'string')) return null;
   const lines = (o.lines as string[]).map((l) => l.replace(/\s+/g, ' ').trim().replace(/^["„“«]+|["“”»]+$/g, '').trim()).filter(Boolean);
   const speaker = o.speaker === 'male' || o.speaker === 'female' ? o.speaker : null;
-  return { english, lines, speaker, silent: o.silent === true && lines.length === 0 };
+  const said = Array.isArray(o.speakers) ? o.speakers : [];
+  const speakers = lines.map((_, i): ClipSpeaker => {
+    const v = (said[i] && typeof said[i] === 'object' ? said[i] : {}) as Record<string, unknown>;
+    const who = typeof v.who === 'string' ? v.who.replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+    const voice = v.voice === 'male' || v.voice === 'female' ? v.voice : lines.length === 1 ? speaker : null;
+    return { who, voice };
+  });
+  return { english, lines, speakers, speaker: speaker ?? speakers[0]?.voice ?? null, silent: o.silent === true && lines.length === 0 };
 }
 
-/** All the lines, in order, as one read: the text Cloud TTS speaks for a Georgian clip. */
+/** All the lines, in order, as one read (what CLIP_SPEECH_MAX_CHARS counts). */
 export function spokenText(lines: readonly string[]): string {
   return lines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Whether the clip's lines are Georgian, so its voice is Cloud TTS's over Veo's mouth (lib/avatar/voicedClip). */
-export function clipVoicedByTts(lines: readonly string[]): boolean {
+/** Whether a character says a Georgian line: then the clip is Gemini Omni Flash's, which says it in their own voice. */
+export function speaksGeorgian(lines: readonly string[]): boolean {
   return lines.some((l) => isGeorgianText(l));
+}
+
+/** A Georgian verb of speaking („ამბობს", „ეუბნება", „ეკითხება", „ლაპარაკობს", „მღერის" …). */
+const KA_SPEECH_VERB = /(?:ამბობ|ეუბნ|ეკითხ|ლაპარაკ|საუბრ|ყვირ|ჩურჩულ|მღერ|პასუხობ|უპასუხ|მიმართავ|იძახ|თქვა|ეტყვ|აცხად)/;
+
+/**
+ * The card's own reading, before the server's reader runs (it needs Vertex): a Georgian line in quote marks, or a Georgian
+ * prompt with a verb of speaking. The route reads the prompt again and, when its reader finds a Georgian line the card
+ * missed, refuses free with the Omni price (409 price_changed + speech: 'ka') — the card shows it and asks again.
+ */
+export function promptSpeaksGeorgian(prompt: string): boolean {
+  if (speaksGeorgian(quotedLines(prompt).lines)) return true;
+  return isGeorgianText(prompt) && KA_SPEECH_VERB.test(prompt);
+}
+
+/** A beat between two people's lines (a cut, a reaction): the words do not run into each other. */
+export const SPEAKER_TURN_SEC = 0.3;
+
+/** Seconds the lines take at a natural pace (lib/video/speechTiming), with a beat at every change of speaker. */
+export function clipSpeechSeconds(lines: readonly string[], speakers: readonly ClipSpeaker[] = []): number {
+  const said = lines.map((l) => l.trim()).filter(Boolean);
+  if (said.length === 0) return 0;
+  let turns = 0;
+  for (let i = 1; i < said.length; i += 1) {
+    const a = speakers[i - 1]?.who.toLowerCase() ?? '', b = speakers[i]?.who.toLowerCase() ?? '';
+    // Unnamed speakers count as a change: two lines are two people unless the reader said otherwise.
+    if (!a || !b || a !== b) turns += 1;
+  }
+  return said.reduce((s, l) => s + speechSeconds(l), 0) + turns * SPEAKER_TURN_SEC;
+}
+
+/** The most speech a clip of `clipSec` holds: its room for words (a beat in, a beat out) and the estimate's tolerance. */
+export function clipSpeechRoom(clipSec: number): number {
+  return Math.round(sceneSpeechCapacity(clipSec) * OVERFLOW_TOLERANCE * 10) / 10;
+}
+
+/**
+ * The card's floor for the words in quote marks, before the reader runs: their seconds with no beat between speakers (the
+ * reader may find the same person speaking twice). The card stops only what cannot fit; the route measures the rest.
+ */
+export function quotedSpeechSeconds(prompt: string): number {
+  return Math.round(quotedLines(prompt).lines.reduce((s, l) => s + speechSeconds(l), 0) * 10) / 10;
+}
+
+/** Whether the lines fit the clip; `seconds` is the estimate, rounded for the user (the route and the card say the same). */
+export function clipSpeechFits(lines: readonly string[], clipSec: number, speakers?: readonly ClipSpeaker[]): { fits: boolean; seconds: number } {
+  const seconds = Math.round(clipSpeechSeconds(lines, speakers) * 10) / 10;
+  return { fits: seconds <= clipSpeechRoom(clipSec), seconds };
 }
 
 /** The user asked for words on screen themselves — then the negative prompt does not forbid them. */
@@ -90,22 +159,47 @@ export function clipNegativePrompt(userPrompt: string): string {
 
 export interface ComposeClipPrompt {
   reading: ClipReading;
-  clipSec: number;
   /** 'frame' = one photo is the first frame; 'refs' = two or three photos are reference images; 'none' = text only. */
   photos: 'none' | 'frame' | 'refs';
-  /** A Georgian line's Cloud TTS length: Veo is told to take about as long, so the dub fits its mouth. */
-  voicedSec?: number;
   /** The engine: Veo (default) or Gemini Omni Flash, which speaks every language itself and takes no negative prompt. */
   engine?: 'veo' | 'omni';
   /** Omni only: the user asked for words on screen (asksForSubtitles), so the prompt does not forbid them. */
   subtitles?: boolean;
 }
 
-/** The prompt Veo renders. */
-export function composeClipPrompt({ reading, clipSec, photos, voicedSec, engine = 'veo', subtitles = false }: ComposeClipPrompt): string {
+/** „the man (male voice)" — a speaker as the prompt says them; null when the reader could not name them. */
+function speakerPhrase(s: ClipSpeaker | undefined): string | null {
+  if (!s?.who) return null;
+  return s.voice ? `${s.who} (${s.voice} voice)` : s.who;
+}
+
+/**
+ * Who says the lines, said once and without the words themselves (they are in the scene already): the order of the
+ * speakers, each in their own voice, and no narrator. Null when nobody speaks.
+ */
+function speechRule(reading: ClipReading): string | null {
+  if (reading.lines.length === 0) return null;
+  const georgian = speaksGeorgian(reading.lines) ? ', in natural Georgian' : '';
+  // The speakers in the order they speak, a run of lines by one person named once.
+  const order: string[] = [];
+  reading.lines.forEach((_, i) => {
+    const p = speakerPhrase(reading.speakers[i]);
+    if (p && order[order.length - 1] !== p) order.push(p);
+  });
+  const people = new Set(reading.speakers.map((s) => s.who.toLowerCase()).filter(Boolean)).size;
+  if (people >= 2) {
+    return `The lines are spoken in this order: ${order.join(', then ')}. Each person says only their own words, once, exactly as written${georgian}, in their own voice, with their own lips in sync; no two people share a voice. No narrator, no voice-over.`;
+  }
+  if (order.length === 1) {
+    return `${order[0]![0]!.toUpperCase()}${order[0]!.slice(1)} says the words on screen, once, exactly as written${georgian}, lips in sync. No narrator, no voice-over.`;
+  }
+  return `Each line is said once, exactly as written${georgian}, by the person on screen, lips in sync. No narrator, no voice-over.`;
+}
+
+/** The prompt the engine renders. */
+export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles = false }: ComposeClipPrompt): string {
   const omni = engine === 'omni';
-  const voiced = !omni && voicedSec !== undefined && clipVoicedByTts(reading.lines);
-  const said = (line: string): string => `"${(voiced ? georgianToLatin(line) : line).replace(/"/g, '')}"`;
+  const said = (line: string): string => `"${line.replace(/"/g, '')}"`;
 
   let body = reading.english;
   const placed = new Set<number>();
@@ -123,14 +217,9 @@ export function composeClipPrompt({ reading, clipSec, photos, voicedSec, engine 
   if (photos === 'frame') parts.push('Start exactly from the first frame: keep its people, faces, clothes and setting as they are.');
   if (photos === 'refs') parts.push('Keep the people and things from the reference images exactly as they look.');
   parts.push(body);
-  if (voiced) {
-    const talk = Math.max(1, Math.min(clipSec, Math.round((voicedSec as number) * 2) / 2));
-    parts.push(`The spoken words are Georgian, pronounced exactly as written, every vowel clear, lips moving in sync with them${talk >= clipSec - 0.5 ? ', at a calm natural pace that fills the clip' : `, at a calm natural pace taking about ${talk} seconds`}.`);
-  } else if (omni && reading.lines.length > 0) {
-    parts.push(`Each line is said once, exactly as written${clipVoicedByTts(reading.lines) ? ', in natural Georgian' : ''}, lips in sync, no narrator.`);
-  } else if (reading.silent) {
-    parts.push('No dialogue, no voices.');
-  }
+  const rule = speechRule(reading);
+  if (rule) parts.push(rule);
+  else if (reading.silent) parts.push('No dialogue, no voices.');
   if (omni && !subtitles) parts.push('No subtitles, captions or on-screen text.');
   return parts.join(' ');
 }

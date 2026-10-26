@@ -4,6 +4,8 @@
  * the 10 s clip shows its two resolutions with their prices; there is no switch for sound, music, subtitles or a narrator;
  * nothing can be changed once Create was pressed; a running card shows its percent by the job's milestones (10 while
  * Google renders, 90 once it is done, never 100) and the time since Create; a cancelled card says nothing was charged.
+ * A clip whose characters speak Georgian is Omni's at every length (GG card 2026-10-26 10:55Z): its resolutions and prices,
+ * who speaks, and — words longer than the clip, two photos — the reason above a Create that waits.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ClipAskCard } from './ClipAskCard';
@@ -11,7 +13,7 @@ import { clipOrder, type ClipAskState } from './clipOrder';
 
 const PHOTO = 'data:image/jpeg;base64,AAAA';
 const ask = (over: Partial<Parameters<typeof clipOrder>[0]> = {}): ClipAskState =>
-  clipOrder({ prompt: 'ბიჭი ამბობს: „გამარჯობა"', photos: [], seconds: 8, aspect: '9:16', tier: 'fast', ...over });
+  clipOrder({ prompt: 'ბიჭი ბუშტს უშვებს', photos: [], seconds: 8, aspect: '9:16', tier: 'fast', ...over });
 
 function mount(state: ClipAskState, locale = 'en') {
   const onChange = jest.fn(), onConfirm = jest.fn(), onCancel = jest.fn();
@@ -22,7 +24,7 @@ function mount(state: ClipAskState, locale = 'en') {
 test('shows the words as typed, the spec line and the price on Create', () => {
   const s = ask();
   mount(s);
-  expect(screen.getByTestId('clip-prompt').textContent).toBe('„ბიჭი ამბობს: „გამარჯობა"“');
+  expect(screen.getByTestId('clip-prompt').textContent).toBe('„ბიჭი ბუშტს უშვებს“');
   expect(screen.getByTestId('clip-spec').textContent).toBe('8 s · 9:16 · 1080p · 1080×1920 · Veo 3.1 Fast');
   const create = screen.getByTestId('clip-confirm');
   expect(create.getAttribute('data-price')).toBe(String(s.credits));
@@ -137,4 +139,32 @@ test('a cancelled card says nothing was charged, in Georgian by default', () => 
   mount({ ...ask(), phase: 'cancelled' }, 'ka');
   expect(screen.getByTestId('clip-cancelled').textContent).toBe('გაუქმდა. თანხა არ ჩამოგეჭრა.');
   expect(screen.queryByTestId('clip-confirm')).toBeNull();
+});
+
+test('a speaking clip (GG 2026-10-26): Omni at 8 s with its two resolutions, who speaks, and 1080p to start', () => {
+  const s = ask({ prompt: 'კაცი ამბობს: „აგენტ ჯი, ქართულად გესმის?“ ქალი პასუხობს: „ეს უკვე საინტერესოა!“', photos: [PHOTO] });
+  const { onChange } = mount(s, 'ka');
+  expect(screen.getByTestId('clip-card').getAttribute('data-speech')).toBe('ka');
+  expect(screen.getByTestId('clip-spec').textContent).toBe('8 წმ · 9:16 · 1080p · 1080×1920 · Gemini Omni Flash');
+  expect(screen.getByTestId('clip-speech').textContent).toBe('პერსონაჟები ქართულად თვითონ ილაპარაკებენ, თითოეული თავისი ხმით (Gemini Omni Flash).');
+  expect(screen.getByTestId('clip-res-720p').textContent).toContain('✦ 55');
+  expect(screen.getByTestId('clip-res-1080p').textContent).toContain('✦ 82');
+  expect(screen.getByTestId('clip-confirm').textContent).toContain('✦ 82');
+  expect(screen.queryByTestId('clip-hold')).toBeNull();
+  fireEvent.click(screen.getByTestId('clip-res-720p'));
+  expect(onChange.mock.calls[0][0]).toMatchObject({ resolution: '720p', credits: 55, speech: 'ka' });
+});
+
+test('words longer than the clip, or two photos for a speaking clip: the reason is said and Create waits', () => {
+  const long = ask({ prompt: 'კაცი ამბობს: „აგენტ ჯი გესმენია? ხმოვანი ბრძანებებით მართავ და ქართულადაც ესაუბრები!“', seconds: 4 });
+  const { onConfirm, unmount } = mount(long, 'ka');
+  expect(screen.getByTestId('clip-hold').textContent).toMatch(/^ნათქვამი ტექსტი ~\d+(\.\d)? წამია და 4 წამიან კლიპს არ ეტევა\. აირჩიე 8 წმ ან შეამოკლე\.$/);
+  const create = screen.getByTestId('clip-confirm') as HTMLButtonElement;
+  expect(create.disabled).toBe(true);
+  fireEvent.click(create);
+  expect(onConfirm).not.toHaveBeenCalled();
+  unmount();
+  mount(ask({ prompt: 'კაცი ამბობს: „გამარჯობა!“', photos: [PHOTO, PHOTO] }), 'ka');
+  expect(screen.getByTestId('clip-hold').textContent).toBe('ქართულად მოლაპარაკე კლიპი ერთ ფოტოს იღებს, პირველ კადრად. გამომიგზავნე ერთი ფოტოთი.');
+  expect((screen.getByTestId('clip-confirm') as HTMLButtonElement).disabled).toBe(true);
 });

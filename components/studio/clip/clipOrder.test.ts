@@ -6,18 +6,23 @@
  */
 import { directClipCredits } from '@/lib/video/directClip';
 import {
-  changeClip, clipAspectFor, clipEngineLabel, clipResolutionBlurb, clipTierBlurb, clipFailureText, clipLengthsFor, clipOrder, clipPhotoNote, clipRequestBody,
-  clipSecondsFromWords, clipSpecLine, clipTooLongText, openClipTier,
+  changeClip, clipAspectFor, clipEngineLabel, clipHold, clipHoldText, clipIsOmni, clipResolutionBlurb, clipTierBlurb, clipFailureText, clipLengthsFor,
+  clipOrder, clipPhotoNote, clipRepriced, clipRequestBody, clipSecondsFromWords, clipSpecLine, clipSpeechNote, clipTooLongText, openClipTier,
 } from './clipOrder';
 
 const PHOTO = 'data:image/jpeg;base64,AAAA';
-const base = { prompt: '  ბიჭი  ამბობს: „გამარჯობა"  ', photos: [] as string[], seconds: undefined, aspect: '9:16' as const, tier: 'fast' as const };
+/** Nobody speaks: a Veo clip. */
+const base = { prompt: '  ბიჭი  ბუშტს  უშვებს  ', photos: [] as string[], seconds: undefined, aspect: '9:16' as const, tier: 'fast' as const };
+/** GG's brief, verbatim (2026-10-26 10:31Z): three people, three Georgian lines. */
+const GG_BRIEF = '9:16. იგივე პოდკასტი. დასაწყისში 180° გლუვი orbit მრგვალ მაგიდაზე; დრამატული შუქი, სერიოზული ატმოსფერო. კამერა ჩერდება მამაკაცზე — თავდაჯერებული, ოდნავ აღფრთოვანებული, დამაჯერებელი მზერით: „აგენტ ჯი გესმენია? ხმოვანი ბრძანებებით მართავ და ქართულადაც ესაუბრები!“ სწრაფი ჭრა წამყვანზე — ირონიული ღიმილით, ცნობისმოყვარე და ოდნავ გაკვირვებული ტონით: „ანუ ქართულად ვეუბნები, რა გააკეთოს?“ შემდეგ ქალი — თბილი ინტერესით, თვალებში გაოცება და ჩართულობა: „ეს უკვე საინტერესოა!“ ბუნებრივი ჟესტები, ზუსტი lip-sync, ტექსტის გარეშე.';
+/** The same, cut to two short lines (as suggested to GG at 10:34Z). */
+const SHORT = 'კაცი ამბობს: „აგენტ ჯი, ქართულად გესმის?“ ქალი პასუხობს: „ეს უკვე საინტერესოა!“';
 
 describe('clipOrder', () => {
   test('keeps the words exactly as typed and starts at 8 s, Veo 3.1 Fast, priced by the route\'s own function', () => {
     const o = clipOrder(base);
     expect(o.prompt).toBe(base.prompt);
-    expect(o).toMatchObject({ seconds: 8, aspect: '9:16', tier: 'fast', resolution: '720p', phase: 'ask' });
+    expect(o).toMatchObject({ seconds: 8, aspect: '9:16', tier: 'fast', resolution: '720p', speech: null, phase: 'ask' });
     expect(o.credits).toBe(directClipCredits({ seconds: 8, tier: 'fast', photos: 0 }));
     expect(o.credits).toBe(75);
   });
@@ -72,6 +77,62 @@ describe('clipRequestBody', () => {
     expect(clipRequestBody(o)).toEqual({
       prompt: base.prompt, photos: [PHOTO], seconds: 8, aspect: '9:16', tier: 'fast', resolution: '720p', expectedCredits: o.credits,
     });
+    // A speaking clip says so, so the route prices it as Omni too.
+    expect(clipRequestBody(clipOrder({ ...base, prompt: SHORT }))).toMatchObject({ speech: 'ka', resolution: '1080p' });
+  });
+});
+
+describe('a clip whose characters speak Georgian (GG 2026-10-26 10:44Z; card 10:55Z)', () => {
+  test('is Gemini Omni Flash at every length, 1080p unless 720p is picked, at the price book\'s Omni row', () => {
+    const o = clipOrder({ ...base, prompt: SHORT, seconds: 8 });
+    expect(o).toMatchObject({ speech: 'ka', seconds: 8, resolution: '1080p', credits: 82 });
+    expect(clipIsOmni(o)).toBe(true);
+    expect(clipSpecLine(o, 'ka')).toBe('8 წმ · 9:16 · 1080p · 1080×1920 · Gemini Omni Flash');
+    expect(clipSpeechNote(o, 'ka')).toContain('თითოეული თავისი ხმით');
+    expect([4, 6, 8, 10].map((s) => changeClip(o, { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([42, 62, 82, 102]);
+    expect([4, 6, 8, 10].map((s) => changeClip(changeClip(o, { resolution: '720p' }), { seconds: s as 4 | 6 | 8 | 10 }).credits)).toEqual([28, 42, 55, 69]);
+    // A pick made on the panel is kept.
+    expect(clipOrder({ ...base, prompt: SHORT, resolution: '720p' }).resolution).toBe('720p');
+    // Lite is no Veo tier here: it is not moved to Fast, and does not count.
+    expect(clipOrder({ ...base, prompt: SHORT, tier: 'lite', photos: [PHOTO] }).credits).toBe(82);
+    // A clip nobody speaks in is Veo, as before.
+    expect(clipIsOmni(clipOrder(base))).toBe(false);
+    expect(clipSpeechNote(clipOrder(base), 'ka')).toBeNull();
+  });
+
+  test('GG\'s three lines are said not to fit 8 s or 10 s, before anything is sent; two short lines fit, from 6 s', () => {
+    const o = clipOrder({ ...base, prompt: GG_BRIEF, photos: [PHOTO] });
+    const hold = clipHold(o);
+    expect(hold).toMatchObject({ kind: 'long', max: 8, fitsAt: null });
+    expect(clipHoldText(hold!, 'ka')).toMatch(/^ნათქვამი ტექსტი ~11\.\d წამია და 8 წამიან კლიპს არ ეტევა\. შეამოკლე\.$/);
+    expect(clipHold(changeClip(o, { seconds: 10 }))).toMatchObject({ kind: 'long', max: 10, fitsAt: null });
+    const short = clipOrder({ ...base, prompt: SHORT, photos: [PHOTO] });
+    expect(clipHold(short)).toBeNull();
+    expect(clipHold(changeClip(short, { seconds: 6 }))).toBeNull();
+    const four = clipHold(changeClip(short, { seconds: 4 }));
+    expect(four).toMatchObject({ kind: 'long', max: 4, fitsAt: 6 });
+    expect(clipHoldText(four!, 'en')).toMatch(/^The spoken words take ~3\.\d s and do not fit a 4 s clip\. Pick 6 s or shorten them\.$/);
+    // A long quote in a clip nobody speaks Georgian in (a sign, a title) never holds Create: the route reads it.
+    const sign = 'A neon sign over a Tbilisi bakery reads "Fresh bread every morning from six, pastries and coffee all day long, closed Mondays"';
+    expect(clipOrder({ ...base, prompt: sign }).speech).toBeNull();
+    expect(clipHold(clipOrder({ ...base, prompt: sign, seconds: 4 }))).toBeNull();
+  });
+
+  test('takes one photo: two or three are held with the reason, not sent', () => {
+    const o = clipOrder({ ...base, prompt: SHORT, photos: [PHOTO, PHOTO] });
+    expect(clipHold(o)).toEqual({ kind: 'photos' });
+    expect(clipHoldText({ kind: 'photos' }, 'ka')).toBe('ქართულად მოლაპარაკე კლიპი ერთ ფოტოს იღებს, პირველ კადრად. გამომიგზავნე ერთი ფოტოთი.');
+    expect(clipFailureText({ error: 'speech_one_photo' }, 'en')).toBe('A clip where someone speaks Georgian takes one photo, as its first frame. Send it with one photo.');
+  });
+
+  test('the route\'s reader found a Georgian line the card missed: the same order, as Omni, at the route\'s price', () => {
+    const o = clipOrder({ ...base, prompt: 'ბიჭი მიესალმება მეგობრებს' });
+    expect(o.speech).toBeNull();
+    const next = clipRepriced({ ...o, phase: 'starting' }, { credits: 82, speech: 'ka' });
+    expect(next).toMatchObject({ speech: 'ka', credits: 82, phase: 'ask', prompt: o.prompt });
+    expect(clipEngineLabel(next)).toBe('Gemini Omni Flash');
+    // A plain price change keeps the order.
+    expect(clipRepriced({ ...o, phase: 'starting' }, { credits: 80 })).toMatchObject({ speech: null, credits: 80, phase: 'ask' });
   });
 });
 

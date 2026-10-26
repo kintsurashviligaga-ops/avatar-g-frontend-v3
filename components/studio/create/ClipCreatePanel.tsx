@@ -8,7 +8,8 @@
  *   header → Length 4 · 6 · 8 · 10 s (8 by default) → Format 9:16 · 16:9 → Quality → Photos (up to 3)
  *
  * Quality is said as a resolution and pixels with its price. 4 / 6 / 8 s are Veo 3.1 at its tier (Lite · Fast · Veo 3.1);
- * 10 s is Gemini Omni Flash at 720p or 1080p (GG's card 16:51Z). Two or three photos are Veo's reference images, which
+ * 10 s — or any length whose words have a character speak Georgian (GG's card 2026-10-26 10:55Z) — is Gemini Omni Flash at
+ * 720p or 1080p (GG's card 16:51Z). Two or three photos are Veo's reference images, which
  * render 8 s only and not on Lite. The prompt is typed in the chat box; its Send opens the clip's card with the price.
  *
  * ⚠️ EVERY PRICE HERE IS lib/video/directClip.directClipCredits, the function POST /api/video/clip charges by.
@@ -17,8 +18,8 @@ import { ImagePlus, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
 import {
-  DIRECT_CLIP_MAX_PHOTOS, directClipCredits, directClipQualityLabel, directClipTierAllowed,
-  type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds,
+  DIRECT_CLIP_MAX_PHOTOS, directClipCredits, directClipEngine, directClipQualityLabel, directClipTierAllowed,
+  type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech,
 } from '@/lib/video/directClip';
 import { clipEngineLabel, clipLengthsFor, clipPhotoNote, clipResolutionBlurb, clipTierBlurb } from '@/components/studio/clip/clipOrder';
 import { CARD, VideoCreateHeader } from './videoCreateParts';
@@ -37,8 +38,10 @@ export interface ClipCreatePanelProps {
   onAspect: (a: DirectClipAspect) => void;
   tier: VideoQuality;
   onTier: (t: VideoQuality) => void;
-  /** The 10 s clip's resolution. */
+  /** An Omni clip's resolution (10 s, or a Georgian line at any length). */
   resolution: DirectClipResolution;
+  /** 'ka' when the words in the chat box have a character speak Georgian: the clip is Omni's at every length. */
+  speech?: DirectClipSpeech;
   onResolution: (r: DirectClipResolution) => void;
   photos: { images: readonly string[]; onAdd: () => void; onRemove: (index: number) => void };
   /** The Veo tiers this deployment cannot render (GET /api/video/engine): shown as unavailable, never picked. */
@@ -126,11 +129,11 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
         </Chips>
         <div className="space-y-1 px-2 py-2" role="radiogroup" aria-label={w.quality}>
           <p className="px-1.5 pb-0.5 text-[14px] font-medium leading-tight text-app-text">{w.quality}</p>
-          {seconds === 10
+          {directClipEngine(seconds, p.speech) === 'omni'
             ? (['720p', '1080p'] as const).map((r) => (
               <QualityRow key={r} on={resolution === r} onClick={() => p.onResolution(r)} testId={`clip-panel-res-${r}`}
-                title={directClipQualityLabel(aspect, 10, r)} sub={`${clipResolutionBlurb(r, locale)} ${clipEngineLabel({ seconds: 10, tier })}.`}
-                credits={directClipCredits({ seconds: 10, tier, photos, resolution: r })} />
+                title={directClipQualityLabel(aspect, seconds, r, p.speech)} sub={`${clipResolutionBlurb(r, locale)} ${clipEngineLabel({ seconds, tier, speech: p.speech })}.`}
+                credits={directClipCredits({ seconds, tier, photos, resolution: r, speech: p.speech })} />
             ))
             : TIERS.map((t) => {
               const closed = p.closedTiers?.includes(t) ?? false;

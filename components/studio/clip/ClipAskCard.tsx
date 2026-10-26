@@ -5,12 +5,14 @@
  *
  *   „the user's words, exactly as typed"
  *   [photo] [photo]           the first frame, or the references
- *   4 s  6 s  [8 s]  10 s     9:16  16:9      (10 s: 720p ✦69 · 1080p ✦102)
+ *   4 s  6 s  [8 s]  10 s     9:16  16:9      (an Omni clip — 10 s, or a Georgian line — 720p · 1080p with their prices)
  *   8 s · 9:16 · 1080p · 1080×1920 · Veo 3.1 Fast
  *   [Create ✦ 75]  [Cancel]           then, once Create is accepted:  ⟳ 10% Making the clip (Veo 3.1 Fast)…  0:42
  *
  * The price is ON Create and moves with every chip (components/studio/clip/clipOrder → lib/video/directClip, the route's
- * own functions). No switch for sound, music, subtitles or a narrator: the engine's sound follows the prompt.
+ * own functions). No switch for sound, music, subtitles or a narrator: the engine's sound follows the prompt. A clip
+ * whose characters speak Georgian says so (Omni, each in their own voice); what cannot be made — two photos for a speaking
+ * clip, quoted words longer than the clip — is said above Create, which waits (clipOrder clipHold).
  */
 import type { ReactNode } from 'react';
 import { Loader2, Sparkle } from 'lucide-react';
@@ -19,7 +21,8 @@ import type { DirectClipAspect, DirectClipResolution } from '@/lib/video/directC
 import { ClipProgress } from './ClipProgress';
 import { PromptQuote } from './PromptQuote';
 import {
-  changeClip, clipCancelledText, clipFinishingText, clipLengthsFor, clipPhotoNote, clipRunningText, clipSpecLine, type ClipAskState, type ClipChange,
+  changeClip, clipCancelledText, clipFinishingText, clipHold, clipHoldText, clipIsOmni, clipLengthsFor, clipPhotoNote, clipRunningText,
+  clipSpecLine, clipSpeechNote, type ClipAskState, type ClipChange,
 } from './clipOrder';
 
 const ASPECTS: readonly DirectClipAspect[] = ['9:16', '16:9'];
@@ -71,11 +74,14 @@ export function ClipAskCard({
   const editable = ask.phase === 'ask';
   const set = (change: ClipChange) => { if (editable) onChange(changeClip(ask, change)); };
   const lengths = clipLengthsFor(ask.photos.length);
-  const note = clipPhotoNote(ask.photos.length, locale);
+  const hold = ask.phase === 'ask' ? clipHold(ask) : null;
+  // A speaking clip with two or three photos is the hold below, not the reference photos' note.
+  const note = hold?.kind === 'photos' ? null : clipPhotoNote(ask.photos.length, locale);
+  const speechNote = clipSpeechNote(ask, locale);
   const resPrice = (r: DirectClipResolution) => changeClip(ask, { resolution: r }).credits;
 
   return (
-    <div className="mt-2 space-y-2.5" data-testid="clip-card" data-phase={ask.phase} data-seconds={ask.seconds} data-aspect={ask.aspect}>
+    <div className="mt-2 space-y-2.5" data-testid="clip-card" data-phase={ask.phase} data-seconds={ask.seconds} data-aspect={ask.aspect} data-speech={ask.speech ?? undefined}>
       <PromptQuote text={ask.prompt} locale={locale} testId="clip-prompt" />
 
       {ask.photos.length > 0 && (
@@ -106,7 +112,7 @@ export function ClipAskCard({
               </Chip>
             ))}
           </div>
-          {ask.seconds === 10 && (
+          {clipIsOmni(ask) && (
             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.quality}>
               {RESOLUTIONS.map((r) => (
                 <Chip key={r} on={ask.resolution === r} disabled={!editable} onClick={() => set({ resolution: r })} testId={`clip-res-${r}`}>
@@ -117,7 +123,10 @@ export function ClipAskCard({
           )}
         </>)}
         <p data-testid="clip-spec" className="text-[12px] tabular-nums text-app-muted">{clipSpecLine(ask, locale)}</p>
+        {speechNote && <p data-testid="clip-speech" className="text-[11.5px] leading-snug text-app-muted">{speechNote}</p>}
       </div>
+
+      {hold && <p data-testid="clip-hold" role="status" className="text-[12px] leading-snug text-app-text">{clipHoldText(hold, locale)}</p>}
 
       {ask.phase === 'running' ? (
         <ClipProgress
@@ -129,7 +138,7 @@ export function ClipAskCard({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={!editable}
+            disabled={!editable || !!hold}
             data-testid="clip-confirm"
             data-price={ask.credits}
             data-live-guard="spend"

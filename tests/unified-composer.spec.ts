@@ -345,9 +345,21 @@ for (const vp of VIEWPORTS) {
       await expect(card.getByTestId('clip-photos').locator('img')).toHaveCount(1);
       await expect(page.locator('html')).not.toHaveAttribute('data-tool', 'montage');
       await expect(page.getByTestId('montage-preview')).toHaveCount(0);
+      // GG 2026-10-26 10:44Z / card 10:55Z: a Georgian line is Gemini Omni Flash, said by the woman herself in her own voice,
+      // never a narrator laid over Veo; a speaking clip starts at 1080p. Her line (~8.1 s) does not fit 8 s, so Create waits
+      // and the card says why and what fits — nothing is sent to be refused.
+      await expect(card).toHaveAttribute('data-speech', 'ka');
+      await expect(card.getByTestId('clip-spec')).toHaveText('8 s · 9:16 · 1080p · 1080×1920 · Gemini Omni Flash');
+      await expect(card.getByTestId('clip-speech')).toHaveText('The characters speak Georgian themselves, each in their own voice (Gemini Omni Flash).');
+      await expect(card.getByTestId('clip-hold')).toHaveText('The spoken words take ~8.1 s and do not fit an 8 s clip. Pick 10 s or shorten them.');
+      await expect(card.getByTestId('clip-confirm')).toBeDisabled();
+      await card.getByTestId('clip-len-10').click();
+      await expect(card.getByTestId('clip-hold')).toHaveCount(0);
+      await expect(card.getByTestId('clip-spec')).toHaveText('10 s · 9:16 · 1080p · 1080×1920 · Gemini Omni Flash');
+      await expect(card.getByTestId('clip-confirm')).toHaveAttribute('data-price', '102');
       await card.getByTestId('clip-confirm').click();
       await expect.poll(() => calls.clip.length, { timeout: 15_000 }).toBe(1);
-      expect(calls.clip[0]).toMatchObject({ prompt: words, seconds: 8, aspect: '9:16' });
+      expect(calls.clip[0]).toMatchObject({ prompt: words, seconds: 10, aspect: '9:16', resolution: '1080p', speech: 'ka', expectedCredits: 102 });
       // The photo rides in the body under the route's ceilings (it used to read 64 KB of body and refuse every photo).
       const photo = (calls.clip[0]!.photos as string[])[0]!;
       expect(Math.floor((photo.split(',')[1]!.length * 3) / 4)).toBeLessThanOrEqual(DIRECT_CLIP_PHOTO_MAX_BYTES);

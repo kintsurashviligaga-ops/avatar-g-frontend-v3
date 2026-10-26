@@ -7,7 +7,7 @@
  *
  * The SAME values as ClipCreatePanel (the „მეტი პარამეტრი" layer): the length is 4 · 6 · 8 · 10 s, the frame 9:16 or 16:9,
  * the quality said as a resolution with its engine and price — Veo 3.1's tiers for 4 / 6 / 8 s, Gemini Omni Flash at 720p
- * or 1080p for 10 s. Every price is lib/video/directClip.directClipCredits, the function POST /api/video/clip charges by.
+ * or 1080p for 10 s and for any length whose words have a character speak Georgian (GG's card 2026-10-26 10:55Z). Every price is lib/video/directClip.directClipCredits, the function POST /api/video/clip charges by.
  */
 import { useRef, useState } from 'react';
 import { Clock, Gauge, RectangleHorizontal, RectangleVertical } from 'lucide-react';
@@ -16,8 +16,8 @@ import { VIDEO_COPY, vc } from './videoCreateCopy';
 import { ServiceQuickSettings, type QuickChip } from '@/components/chat/composer/ServiceQuickSettings';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
 import {
-  directClipCredits, directClipQualityLabel, directClipTierAllowed,
-  type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds,
+  directClipCredits, directClipEngine, directClipQualityLabel, directClipTierAllowed,
+  type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech,
 } from '@/lib/video/directClip';
 import { clipEngineLabel, clipLengthsFor, clipResolutionBlurb, clipTierBlurb } from '@/components/studio/clip/clipOrder';
 
@@ -36,6 +36,8 @@ export function ClipQuickChips(p: {
   onTier: (t: VideoQuality) => void;
   resolution: DirectClipResolution;
   onResolution: (r: DirectClipResolution) => void;
+  /** 'ka' when the words in the box have a character speak Georgian: the clip is Omni's at every length. */
+  speech?: DirectClipSpeech;
   /** How many photos the clip carries (two or three are references: 8 s only, not on Lite). */
   photos: number;
   /** The Veo tiers this deployment cannot render (GET /api/video/engine): shown as unavailable, never picked. */
@@ -44,7 +46,7 @@ export function ClipQuickChips(p: {
   moreExpanded: boolean;
   moreLabel: string;
 }) {
-  const { locale, seconds, aspect, tier, resolution, photos } = p;
+  const { locale, seconds, aspect, tier, resolution, photos, speech } = p;
   const [sheet, setSheet] = useState<Sheet>(null);
   const formatRef = useRef<HTMLButtonElement>(null);
   const lengthRef = useRef<HTMLButtonElement>(null);
@@ -53,7 +55,7 @@ export function ClipQuickChips(p: {
   const en = locale === 'en', ru = locale === 'ru';
   const sec = (s: number) => (en ? `${s} s` : ru ? `${s} с` : `${s} წმ`);
   const lengths = clipLengthsFor(photos);
-  const omni = seconds === 10;
+  const omni = directClipEngine(seconds, speech) === 'omni';
   const AspectIcon = aspect === '16:9' ? RectangleHorizontal : RectangleVertical;
   const qualityValue = omni ? resolution : clipEngineLabel({ seconds, tier });
 
@@ -83,8 +85,8 @@ export function ClipQuickChips(p: {
         value={seconds} onSelect={p.onSeconds}
         options={LENGTHS.map((s) => ({
           value: s, label: sec(s), disabled: !lengths.includes(s),
-          hint: clipEngineLabel({ seconds: s, tier }),
-          trailing: `✦ ${directClipCredits({ seconds: s, tier, photos, resolution })}`,
+          hint: clipEngineLabel({ seconds: s, tier, speech }),
+          trailing: `✦ ${directClipCredits({ seconds: s, tier, photos, resolution, speech })}`,
         }))}
       />
       {omni ? (
@@ -93,8 +95,8 @@ export function ClipQuickChips(p: {
           title={vc(VIDEO_COPY.quality, locale)} closeLabel={closeLabel} testId="video-tier-picker"
           value={resolution} onSelect={p.onResolution}
           options={(['720p', '1080p'] as const).map((r) => ({
-            value: r, label: directClipQualityLabel(aspect, 10, r), hint: `${clipResolutionBlurb(r, locale)} ${clipEngineLabel({ seconds: 10, tier })}.`,
-            trailing: `✦ ${directClipCredits({ seconds: 10, tier, photos, resolution: r })}`,
+            value: r, label: directClipQualityLabel(aspect, seconds, r, speech), hint: `${clipResolutionBlurb(r, locale)} ${clipEngineLabel({ seconds, tier, speech })}.`,
+            trailing: `✦ ${directClipCredits({ seconds, tier, photos, resolution: r, speech })}`,
           }))}
         />
       ) : (

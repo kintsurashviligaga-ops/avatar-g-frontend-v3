@@ -52,7 +52,8 @@ test('the price is the composer\'s own quote for the same length and tier — no
 });
 
 test('10 s is the price book\'s Omni row for its resolution (GG card 16:51Z), whatever the tier', () => {
-  expect(PRICE_BOOK.omniClip).toEqual({ '720p': 69, '1080p': 102 });
+  expect(PRICE_BOOK.omniClip['720p'][10]).toBe(69);
+  expect(PRICE_BOOK.omniClip['1080p'][10]).toBe(102);
   for (const tier of ['lite', 'fast', 'standard'] as const) {
     expect(directClipCredits({ seconds: 10, tier, photos: 0 })).toBe(69);
     expect(directClipCredits({ seconds: 10, tier, photos: 1, resolution: '1080p' })).toBe(102);
@@ -60,6 +61,21 @@ test('10 s is the price book\'s Omni row for its resolution (GG card 16:51Z), wh
   // Two photos make it an 8 s Veo reference clip, billed as that.
   expect(directClipCredits({ seconds: 10, tier: 'fast', photos: 2, resolution: '1080p' })).toBe(quoteCredits({ tool: 'video', seconds: 8, quality: 'fast' }));
   expect(clipOmniPath('u-1')).toBe('video-clip/u-1/omni.mp4');
+});
+
+test('a Georgian line makes it Omni\'s at every length (GG card 2026-10-26 10:55Z): its own price, 1080p unless 720p is picked', () => {
+  expect([4, 6, 8, 10].map((s) => directClipEngine(s, 'ka'))).toEqual(['omni', 'omni', 'omni', 'omni']);
+  expect([4, 6, 8].map((s) => directClipEngine(s, null))).toEqual(['veo', 'veo', 'veo']);
+  for (const tier of ['lite', 'fast', 'standard'] as const) {
+    expect([4, 6, 8, 10].map((seconds) => directClipCredits({ seconds, tier, photos: 1, speech: 'ka' }))).toEqual([42, 62, 82, 102]);
+    expect([4, 6, 8, 10].map((seconds) => directClipCredits({ seconds, tier, photos: 0, speech: 'ka', resolution: '720p' }))).toEqual([28, 42, 55, 69]);
+  }
+  // Unpicked: a speaking clip is 1080p at every length; a 10 s clip without words keeps the 720p it had.
+  expect([4, 6, 8, 10].map((s) => directClipResolution(s, null, 'ka'))).toEqual(['1080p', '1080p', '1080p', '1080p']);
+  expect(directClipResolution(10, null, null)).toBe('720p');
+  expect(directClipResolution(4, '720p', 'ka')).toBe('720p');
+  expect(directClipQualityLabel('9:16', 6, null, 'ka')).toBe('1080p · 1080×1920');
+  expect(directClipQualityLabel('16:9', 4, '720p', 'ka')).toBe('720p · 1280×720');
 });
 
 test('Lite takes no reference images', () => {
@@ -70,7 +86,12 @@ test('Lite takes no reference images', () => {
 
 test('parse: defaults, the user\'s words kept, strict refusals', () => {
   const ok = parseDirectClipRequest({ prompt: '  ბავშვი   ბუშტს  უშვებს  ' });
-  expect(ok).toEqual({ ok: true, value: { prompt: 'ბავშვი ბუშტს უშვებს', aspect: '9:16', seconds: 8, tier: 'fast', resolution: '1080p', photos: [], expectedCredits: null } });
+  expect(ok).toEqual({ ok: true, value: { prompt: 'ბავშვი ბუშტს უშვებს', aspect: '9:16', seconds: 8, tier: 'fast', resolution: '1080p', photos: [], speech: null, picked: null, expectedCredits: null } });
+  // What the card read is carried; a speaking clip keeps its pick, and is 1080p without one.
+  expect(parseDirectClipRequest({ prompt: 'x', seconds: 4, speech: 'ka' })).toMatchObject({ ok: true, value: { seconds: 4, speech: 'ka', resolution: '1080p', picked: null } });
+  expect(parseDirectClipRequest({ prompt: 'x', seconds: 6, speech: 'ka', resolution: '720p' })).toMatchObject({ ok: true, value: { speech: 'ka', resolution: '720p', picked: '720p' } });
+  // Omni has no tier: Lite on a speaking clip with a photo is no refusal.
+  expect(parseDirectClipRequest({ prompt: 'x', seconds: 8, tier: 'lite', photos: [JPEG], speech: 'ka' }).ok).toBe(true);
   const withPhoto = parseDirectClipRequest({ prompt: 'x', photos: [JPEG], seconds: 6, aspect: '16:9', tier: 'standard', expectedCredits: 12 });
   expect(withPhoto.ok && withPhoto.value).toMatchObject({ seconds: 6, aspect: '16:9', tier: 'standard', resolution: '720p', expectedCredits: 12, photos: [{ mimeType: 'image/jpeg' }] });
   // 10 s keeps the resolution asked for (720p when none); Lite with photos is no refusal there, Omni has no tier.
@@ -97,6 +118,7 @@ test('parse: defaults, the user\'s words kept, strict refusals', () => {
     [{ prompt: 'x', photos: [`data:image/jpeg;base64,${'A'.repeat(Math.ceil((DIRECT_CLIP_PHOTO_MAX_BYTES + 10) * 4 / 3))}`] }, 'photos', 'too_large'],
     [{ prompt: 'x', tier: 'lite', photos: [JPEG, JPEG] }, 'tier', 'lite_photos'],
     [{ prompt: 'x', expectedCredits: -1 }, 'expectedCredits', 'invalid'],
+    [{ prompt: 'x', speech: 'en' }, 'speech', 'invalid'],
   ];
   for (const [body, field, code] of bad) expect(parseDirectClipRequest(body)).toEqual({ ok: false, field, code });
 });

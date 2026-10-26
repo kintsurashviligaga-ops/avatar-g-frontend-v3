@@ -6,7 +6,7 @@
 import { PRICE_TABLES, PRICING_VERSION, pricingVersionOf } from './pricingVersion';
 
 test('today\'s price book version (update this line, deliberately, when a price changes)', () => {
-  expect(PRICING_VERSION).toBe('p1-e3ecbaf70472');
+  expect(PRICING_VERSION).toBe('p1-a48381ac7697');
 });
 
 test('any changed number changes the version; key order does not', () => {

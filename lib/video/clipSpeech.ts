@@ -1,6 +1,7 @@
 /**
  * lib/video/clipSpeech.ts — read a direct clip's prompt (lib/video/clipPrompt): its faithful English, the words its
- * characters say, and who says them. Server-only; one Gemini Flash call on Vertex, JSON out.
+ * characters say, and who says each one in which voice (GG 2026-10-26: three people, one voice). Server-only; one Gemini
+ * Flash call on Vertex, JSON out.
  *
  * ⚠️ A READER, NOT A DIRECTOR. The film pipeline's director wrote new English scene scripts from the user's words, and
  * the clip came out a different story (GG, 2026-10-25 16:10Z). This call only translates and points at the spoken words:
@@ -16,8 +17,9 @@ import { generateWithGemini } from '@/lib/gemini/client';
 import { parseClipReading, quotedLines, type ClipReading } from './clipPrompt';
 
 const READER_SYSTEM = [
-  'You prepare a user\'s video prompt for Google Veo, which makes ONE short clip. Answer with JSON only:',
-  '{"english": string, "lines": string[], "speaker": "male" | "female" | "unknown", "silent": boolean}.',
+  'You prepare a user\'s video prompt for a video model that makes ONE short clip. Answer with JSON only:',
+  '{"english": string, "lines": string[], "speakers": [{"who": string, "voice": "male" | "female" | "unknown"}],',
+  '"speaker": "male" | "female" | "unknown", "silent": boolean}.',
   '"english": a faithful, literal English translation of the WHOLE prompt. Add nothing and remove nothing: no new story,',
   'characters, places, actions, camera moves, music or style the user did not write. Keep every detail the user gave.',
   'Wherever a character says something aloud, write the marker [LINE 1], [LINE 2] … in place of the spoken words, and keep',
@@ -25,7 +27,10 @@ const READER_SYSTEM = [
   '"lines": the exact words each character says aloud, in order, VERBATIM in the user\'s own language and spelling — never',
   'translated. If the user only reports speech (for example "he says that he is happy"), write the shortest natural',
   'first-person line in the user\'s language for it. Empty when nobody speaks.',
-  '"speaker": the gender of who speaks, from the prompt; "unknown" when it does not say.',
+  '"speakers": one entry per line, in the same order: "who" is the character who says that line, in a few English words',
+  'as the prompt names them (for example "the man", "the host", "the woman"; the same words every time the same person',
+  'speaks), and "voice" is that character\'s gender from the prompt, "unknown" when it does not say.',
+  '"speaker": the gender of who speaks first, from the prompt; "unknown" when it does not say.',
   '"silent": true only when nobody in the prompt speaks, talks, sings or chats.',
 ].join(' ');
 
@@ -39,7 +44,7 @@ async function viaGemini(prompt: string): Promise<ClipReading | null> {
   try {
     const r = await generateWithGemini({
       prompt: `Video prompt:\n${prompt}`, systemPrompt: READER_SYSTEM, tier: 'flash',
-      maxTokens: 700, temperature: 0, thinkingBudget: 0, timeoutMs: 12_000, responseMimeType: 'application/json',
+      maxTokens: 1_000, temperature: 0, thinkingBudget: 0, timeoutMs: 12_000, responseMimeType: 'application/json',
     });
     const reading = parseClipReading((r.text || '').trim());
     // eslint-disable-next-line no-console
@@ -56,5 +61,5 @@ async function viaGemini(prompt: string): Promise<ClipReading | null> {
 async function fallback(prompt: string): Promise<ClipReading> {
   const { marked, lines } = quotedLines(prompt);
   const english = await promptToEnglish(marked, 'video');
-  return { english: english.trim() || marked, lines, speaker: null, silent: false };
+  return { english: english.trim() || marked, lines, speakers: lines.map(() => ({ who: '', voice: null })), speaker: null, silent: false };
 }

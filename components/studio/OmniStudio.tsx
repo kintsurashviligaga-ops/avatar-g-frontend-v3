@@ -67,7 +67,7 @@ import { ClipCreatePanel } from './create/ClipCreatePanel';
 import { ClipAskCard } from './clip/ClipAskCard';
 import { clipStepFromState, type ClipStep } from './clip/ClipProgress';
 import {
-  clipAskText, clipAspectFor, clipFailureText, clipNeedsWordsText, clipOneClipNote, clipOrder, openClipTier, clipPhotoLostText, clipRequestBody,
+  clipAskText, clipAspectFor, clipFailureText, clipHold, clipNeedsWordsText, clipOneClipNote, clipOrder, openClipTier, clipPhotoLostText, clipRepriced, clipRequestBody,
   clipSecondsFromWords, clipStillRenderingText, clipTooLongText, type ClipAskState,
 } from './clip/clipOrder';
 import { toClipPhoto } from './clip/clipPhoto';
@@ -77,7 +77,8 @@ import {
   editUploadFailedText, type EditAskState,
 } from './clip/editOrder';
 import { OMNI_EDIT_PROMPT_MAX, omniEditCredits, omniEditInputCheck, omniEditOpFromWords } from '@/lib/video/omniEdit';
-import { DIRECT_CLIP_MAX_PHOTOS, DIRECT_CLIP_PROMPT_MAX, directClipCredits, snapDirectClipSeconds, type DirectClipAspect, type DirectClipResolution } from '@/lib/video/directClip';
+import { DIRECT_CLIP_MAX_PHOTOS, DIRECT_CLIP_PROMPT_MAX, OMNI_DEFAULT_RESOLUTION, OMNI_SPEECH_DEFAULT_RESOLUTION, directClipCredits, snapDirectClipSeconds, type DirectClipAspect, type DirectClipResolution, type DirectClipSpeech } from '@/lib/video/directClip';
+import { promptSpeaksGeorgian } from '@/lib/video/clipPrompt';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
 import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, veoSpeaksTypedLine, videoQuote } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
@@ -2619,8 +2620,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // the singer performance, for a full music-video edit.
   // PHASE 2 — 6s (single-clip path) · 30s · 60s. 6s → sceneCount 1 → no multi-clip stitch.
   const [videoDuration, setVideoDuration] = useState<number>(VIDEO_PANEL_DEFAULTS.duration);
-  // The 10 s clip's resolution (Gemini Omni Flash, GG's card 2026-10-25 16:51Z): 720p unless 1080p is picked.
-  const [clipResolution, setClipResolution] = useState<DirectClipResolution>('720p');
+  // An Omni clip's resolution (Gemini Omni Flash, GG's cards 2026-10-25 16:51Z and 2026-10-26 10:55Z), null until one is
+  // picked: then a clip whose characters speak Georgian is 1080p, a 10 s clip without words and an edit 720p.
+  const [clipResolution, setClipResolution] = useState<DirectClipResolution | null>(null);
   // Video Core v1.0 §4 — the length the user ASKED for, as said („29.7 წამი", „ერთი წუთი"), when it is off the grid:
   // videoDuration holds what is RENDERED (the grid), this holds what is DELIVERED (lib/video/durationContract). Null when
   // the request is on the grid or the user picked a length on the panel. The render sends it as finalDurationSec.
@@ -6477,7 +6479,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // as the server keeps it open (it refunds and closes it at GENJUTSU_HARD_CAP_MS), plus a minute for its own verdict.
   const confirmClip = useCallback(async (bubbleId: string) => {
     const ask = messagesRef.current.find((m) => m.id === bubbleId)?.clipAsk;
-    if (!ask || ask.phase !== 'ask' || clipRunsRef.current.has(bubbleId)) return;
+    // A card that says why it cannot run (two photos for a speaking clip, words longer than the clip) holds Create.
+    if (!ask || ask.phase !== 'ask' || clipRunsRef.current.has(bubbleId) || clipHold(ask)) return;
     // A visitor without an account is asked to sign in, as for any paid order; the card stays.
     if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
       window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
@@ -6495,10 +6498,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const res = await fetch('/api/video/clip', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(clipRequestBody(ask)),
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; jobId?: string; taskId?: string; error?: string; credits?: number };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; jobId?: string; taskId?: string; error?: string; credits?: number; speech?: string };
       if (res.status === 401) { setAsk('ask'); window.dispatchEvent(new CustomEvent('myavatar:auth-required')); return; }
-      // The server's price is no longer the card's: the new one goes on Create; nothing was charged.
-      if (res.status === 409 && j.error === 'price_changed' && typeof j.credits === 'number') { setAsk('ask', { credits: j.credits }); return; }
+      // The server's price is no longer the card's — or its reader found a Georgian line, so it is an Omni clip: the card
+      // shows that and the new price on Create; nothing was charged.
+      if (res.status === 409 && j.error === 'price_changed' && typeof j.credits === 'number') {
+        patchMsgById(bubbleId, (m) => (m.clipAsk ? { ...m, clipAsk: clipRepriced(m.clipAsk, j) } : m));
+        return;
+      }
       if (!res.ok || !j.jobId) {
         trackGenerationFailed(service, 'refused');
         end(`⚠️ ${clipFailureText(j, locale)}`, j.error === 'insufficient_credits' ? { topUp: true } : {});
@@ -8838,6 +8845,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // VIDEO (GG 2026-10-18): the prompt lives only in this box, so its Send is the clip's one button and carries the clip's
   // price — directClipCredits for the length, tier, photos and resolution on the panel (GG 2026-10-25).
   // One video attached in the Video tool is edited or extended (offerEdit in send): Send shows that card's price.
+  // Words in the box that have a character speak Georgian make it an Omni clip at every length (GG's card 2026-10-26
+  // 10:55Z): the chips, the panel and Send show Omni's price before the card does.
+  const composerSpeech: DirectClipSpeech = activeTool === 'video' && promptSpeaksGeorgian(input) ? 'ka' : null;
+  const composerClipResolution: DirectClipResolution = clipResolution ?? (composerSpeech ? OMNI_SPEECH_DEFAULT_RESOLUTION : OMNI_DEFAULT_RESOLUTION);
   const composerVideos = attachments.filter((a) => isVideo(a.mimeType));
   const composerEditVideo = composerVideos.length === 1 ? composerVideos[0]! : null;
   const composerQuote = activeTool === 'avatar' ? avatarCredits || null
@@ -8847,7 +8858,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ? omniEditCredits({ op: omniEditOpFromWords(input), inputSec: composerEditVideo.durationSec ?? 0, resolution: clipResolution }) || null
       : activeTool === 'video' && mode === 'video' && videoTab === 'cinema'
         // The clip the panel is set to (lib/video/directClip, the route's own price): its card shows the same on Create.
-        ? directClipCredits({ seconds: snapDirectClipSeconds(videoDuration), tier: openClipTier(veoPlan.tier, clipClosedTiers, Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length)), photos: Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length), resolution: clipResolution }) || null
+        ? directClipCredits({ seconds: snapDirectClipSeconds(videoDuration), tier: openClipTier(veoPlan.tier, clipClosedTiers, Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length)), photos: Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length), resolution: clipResolution, speech: composerSpeech }) || null
         : null;
   // The box's Send for a clip is the explicit press the panel's Generate was: same runTool path, same guest gate and
   // focus gate, and it opens the clip's card (its Create is the charge). A balance known to be short opens the top-up
@@ -11137,8 +11148,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               onAspect={(a) => setVideoOrientation(a === '16:9' ? 'landscape' : 'vertical')}
               tier={veoPlan.tier}
               onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
-              resolution={clipResolution}
+              resolution={composerClipResolution}
               onResolution={setClipResolution}
+              speech={composerSpeech}
               photos={{
                 images: videoCharacterRefs.slice(0, DIRECT_CLIP_MAX_PHOTOS),
                 onAdd: () => { charReplaceRef.current = false; charFileRef.current?.click(); },
@@ -11602,8 +11614,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           onAspect={(a) => setVideoOrientation(a === '16:9' ? 'landscape' : 'vertical')}
           tier={veoPlan.tier}
           onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
-          resolution={clipResolution}
+          resolution={composerClipResolution}
           onResolution={setClipResolution}
+          speech={composerSpeech}
           photos={Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length)}
           closedTiers={clipClosedTiers}
           onMore={openMoreSettings}

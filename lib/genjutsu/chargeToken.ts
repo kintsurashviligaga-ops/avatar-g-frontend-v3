@@ -47,11 +47,12 @@ export function composeVeoJobId(operation: string, aspect: '16:9' | '9:16', crea
 }
 
 /**
- * The video service's 10 s clip on Gemini Omni Flash (lib/video/omniClip): its interaction id, frame and start (`::o10`).
+ * The video service's clip on Gemini Omni Flash (lib/video/omniClip): its interaction id, frame, start and length — `::o10`,
+ * or `::o4` · `::o6` · `::o8` for a clip in which a character says a Georgian line (GG's card 2026-10-26 10:55Z).
  * An uploaded video Omni edits or extends (app/api/video/omni-edit) names its op and billed seconds: `::oe6`, `::ox8`.
  */
-export function composeOmniJobId(interactionId: string, aspect: '16:9' | '9:16', createdMs: number, edit?: { op: 'edit' | 'extend'; seconds: 4 | 6 | 8 | 10 }): string {
-  const tail = edit ? `o${edit.op === 'edit' ? 'e' : 'x'}${edit.seconds}` : 'o10';
+export function composeOmniJobId(interactionId: string, aspect: '16:9' | '9:16', createdMs: number, edit?: { op: 'edit' | 'extend'; seconds: 4 | 6 | 8 | 10 }, clipSec: 4 | 6 | 8 | 10 = 10): string {
+  const tail = edit ? `o${edit.op === 'edit' ? 'e' : 'x'}${edit.seconds}` : `o${clipSec}`;
   return `${interactionId}::${aspect}::${Math.round(createdMs)}::${tail}`;
 }
 
@@ -63,13 +64,13 @@ export interface VeoJobId {
   voiced: boolean;
   /** The direct clip's length (an Omni edit's or extend's billed seconds); null for a VFX scene or an avatar. */
   clipSec: 4 | 6 | 8 | 10 | null;
-  /** Who renders it: Veo (every id but the 10 s clip's and an uploaded video's edit) or Gemini Omni Flash. */
+  /** Who renders it: Veo (every id but an Omni clip's and an uploaded video's edit) or Gemini Omni Flash. */
   engine: 'veo' | 'omni';
-  /** What Omni was asked for: the 10 s clip, or an edit / extend of an uploaded video. Null on Veo. */
+  /** What Omni was asked for: a clip, or an edit / extend of an uploaded video. Null on Veo. */
   omniOp: 'clip' | 'edit' | 'extend' | null;
 }
 
-const TAIL = /^(?:v|c([468])(v?)|o(10)|o([ex])(4|6|8|10))$/;
+const TAIL = /^(?:v|c([468])(v?)|o(4|6|8|10)|o([ex])(4|6|8|10))$/;
 
 export function parseVeoJobId(jobId: string): VeoJobId | null {
   const parts = jobId.split('::');
@@ -78,7 +79,7 @@ export function parseVeoJobId(jobId: string): VeoJobId | null {
   const [operation, aspect, created] = parts as [string, string, string];
   const createdMs = Number(created);
   if (!operation || (aspect !== '16:9' && aspect !== '9:16') || !Number.isFinite(createdMs) || createdMs <= 0) return null;
-  if (tail?.[3]) return { operation, aspect, createdMs, voiced: false, clipSec: 10, engine: 'omni', omniOp: 'clip' };
+  if (tail?.[3]) return { operation, aspect, createdMs, voiced: false, clipSec: Number(tail[3]) as 4 | 6 | 8 | 10, engine: 'omni', omniOp: 'clip' };
   if (tail?.[4]) {
     return { operation, aspect, createdMs, voiced: false, clipSec: Number(tail[5]) as 4 | 6 | 8 | 10, engine: 'omni', omniOp: tail[4] === 'e' ? 'edit' : 'extend' };
   }

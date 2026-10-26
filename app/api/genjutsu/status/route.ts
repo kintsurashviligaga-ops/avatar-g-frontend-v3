@@ -89,7 +89,8 @@ async function veoScene(id: string, userId: string): Promise<NextResponse> {
     return NextResponse.json({ success: true, done: true, state: 'failed', error, refunded: !!back?.ok }, { headers: noStore });
   };
 
-  // A 10 s clip is an Omni interaction hosted at the clip's own path; without the job's uuid there is nowhere to host it.
+  // An Omni clip (10 s, or a Georgian line at any length) is an interaction hosted at the clip's own path; without the
+  // job's uuid there is nowhere to host it.
   const progress: OmniProgress | SceneProgress = job.engine === 'omni'
     ? uuid ? await pollOmniClip(job.operation, clipOmniPath(uuid)) : { state: 'failed', reason: 'generation_failed' }
     : await pollScene(job.operation, userId);

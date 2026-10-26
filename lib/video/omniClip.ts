@@ -1,8 +1,10 @@
 /**
- * lib/video/omniClip.ts — the video service's 10 s clip on Gemini Omni Flash (Vertex AI, the Interactions API). Server-only.
+ * lib/video/omniClip.ts — the video service's clip on Gemini Omni Flash (Vertex AI, the Interactions API): 10 s, or a
+ * Georgian line at any length. Server-only.
  *
- * ⚠️ WHY OMNI, AND ONLY FOR 10 s. Veo 3.1 renders 4, 6 or 8 s; GG asked for 10 (2026-10-25 16:22Z) and approved Omni Flash at
- * 720p ✦69 / 1080p ✦102 (card 16:51Z). The Vertex probe that day (one paid call, ~$1.02) settled the request shape below:
+ * ⚠️ WHY OMNI. Veo 3.1 renders 4, 6 or 8 s; GG asked for 10 (2026-10-25 16:22Z) and approved Omni Flash at 720p ✦69 /
+ * 1080p ✦102 (card 16:51Z). Veo cannot say Georgian, so a clip in which a character does is Omni's at every length (GG
+ * 2026-10-26 10:44Z: one TTS voice spoke for three people; card 10:55Z, the price book's omniClip rows). The Vertex probe that day (one paid call, ~$1.02) settled the request shape below:
  *   POST https://aiplatform.googleapis.com/v1beta1/projects/<P>/locations/global/interactions   (global only)
  *   { model, input: [image?, text], response_format: { type: 'video', aspect_ratio, resolution, duration: '10s' },
  *     generation_config: { video_config: { task: 'image_to_video' | 'text_to_video' } }, background: true, store: true }

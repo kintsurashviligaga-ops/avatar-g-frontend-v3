@@ -72,11 +72,16 @@ test('the job id composite round-trips, and rejects anything malformed', () => {
   // The 10 s clip is Gemini Omni Flash's: its interaction id, never voiced over (Omni speaks Georgian itself).
   expect(composeOmniJobId('ChBjAbC_d-123', '9:16', 1_760_000_000_000)).toBe('ChBjAbC_d-123::9:16::1760000000000::o10');
   expect(parseVeoJobId('ChBjAbC_d-123::9:16::5::o10')).toEqual({ operation: 'ChBjAbC_d-123', aspect: '9:16', createdMs: 5, voiced: false, clipSec: 10, engine: 'omni', omniOp: 'clip' });
+  // A shorter Omni clip (a Georgian line, GG's card 2026-10-26 10:55Z) names its own length.
+  expect(composeOmniJobId('ChBjAbC_d-123', '9:16', 5, undefined, 8)).toBe('ChBjAbC_d-123::9:16::5::o8');
+  for (const sec of [4, 6, 8] as const) {
+    expect(parseVeoJobId(`ChBjAbC_d-123::9:16::5::o${sec}`)).toEqual({ operation: 'ChBjAbC_d-123', aspect: '9:16', createdMs: 5, voiced: false, clipSec: sec, engine: 'omni', omniOp: 'clip' });
+  }
   // An uploaded video Omni edits or extends: its op and billed seconds ride in the signed id.
   expect(composeOmniJobId('ChBjAbC_d-123', '16:9', 7, { op: 'edit', seconds: 6 })).toBe('ChBjAbC_d-123::16:9::7::oe6');
   expect(parseVeoJobId('ChBjAbC_d-123::16:9::7::oe6')).toEqual({ operation: 'ChBjAbC_d-123', aspect: '16:9', createdMs: 7, voiced: false, clipSec: 6, engine: 'omni', omniOp: 'edit' });
   expect(parseVeoJobId(composeOmniJobId('ChBjAbC_d-123', '9:16', 7, { op: 'extend', seconds: 10 }))).toEqual({ operation: 'ChBjAbC_d-123', aspect: '9:16', createdMs: 7, voiced: false, clipSec: 10, engine: 'omni', omniOp: 'extend' });
   for (const bad of ['oe5', 'ox12', 'oe', 'ox', 'oy8', 'oe8v', 'oex8']) expect(parseVeoJobId(`ChBjAbC_d-123::9:16::5::${bad}`)).toBeNull();
   for (const bad of ['', OP, `${OP}::1:1::5`, `${OP}::16:9::nope`, `${OP}::16:9::0`, `::16:9::5`, `${OP}::16:9`, `${OP}::16:9::5::x`, `${OP}::16:9::5::v::v`,
-    `${OP}::16:9::5::c5`, `${OP}::16:9::5::c10`, `${OP}::16:9::5::c`, `${OP}::16:9::5::cv`, `${OP}::16:9::5::c8vv`, `${OP}::16:9::5::vc8`, `${OP}::16:9::5::o8`, `${OP}::16:9::5::o10v`, `${OP}::16:9::5::o`]) expect(parseVeoJobId(bad)).toBeNull();
+    `${OP}::16:9::5::c5`, `${OP}::16:9::5::c10`, `${OP}::16:9::5::c`, `${OP}::16:9::5::cv`, `${OP}::16:9::5::c8vv`, `${OP}::16:9::5::vc8`, `${OP}::16:9::5::o5`, `${OP}::16:9::5::o12`, `${OP}::16:9::5::o10v`, `${OP}::16:9::5::o`]) expect(parseVeoJobId(bad)).toBeNull();
 });

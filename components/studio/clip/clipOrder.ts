@@ -7,13 +7,21 @@
  * and POST /api/video/clip refuses a price that is no longer the one on the card (409 price_changed).
  *
  * Every number here comes from lib/video/directClip, the same functions the route charges by — no second price table.
+ *
+ * ⚠️ A GEORGIAN LINE MAKES IT AN OMNI CLIP, AT ANY LENGTH (GG 2026-10-26 10:44Z: three people in one narrator's voice; card
+ * 10:55Z). The card reads the words first (promptSpeaksGeorgian): Omni's price and its 720p / 1080p picks are on the card
+ * before Create, the speaking clip starts at 1080p, and the route corrects the card for free (409 price_changed + speech)
+ * when its own reader finds a line the card did not. A speaking clip takes one photo, and words in quote marks that cannot
+ * fit the length are said on the card, with Create held, before anything is sent.
  */
 import { describeGenerationFailure } from '@/components/studio/ui/serviceError';
 import type { ClipStep } from './ClipProgress';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
+import { clipSpeechRoom, promptSpeaksGeorgian, quotedSpeechSeconds } from '@/lib/video/clipPrompt';
 import {
-  DIRECT_CLIP_MAX_PHOTOS, directClipCredits, directClipQualityLabel, directClipSeconds, directClipTierAllowed,
-  type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds,
+  DIRECT_CLIP_MAX_PHOTOS, DIRECT_CLIP_SECONDS, OMNI_DEFAULT_RESOLUTION, OMNI_SPEECH_DEFAULT_RESOLUTION, directClipCredits, directClipEngine,
+  directClipQualityLabel, directClipSeconds, directClipTierAllowed,
+  type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds, type DirectClipSpeech,
 } from '@/lib/video/directClip';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -27,10 +35,12 @@ export interface ClipOrder {
   photos: string[];
   seconds: DirectClipSeconds;
   aspect: DirectClipAspect;
-  /** Veo's tier for 4 / 6 / 8 s; a 10 s clip keeps it but does not use it. */
+  /** Veo's tier for 4 / 6 / 8 s; an Omni clip keeps it but does not use it. */
   tier: VideoQuality;
-  /** The 10 s clip's resolution pick (kept while another length is chosen, so going back to 10 s restores it). */
+  /** An Omni clip's resolution pick (kept while a Veo length is chosen, so going back to Omni restores it). */
   resolution: DirectClipResolution;
+  /** 'ka' when a character says a Georgian line: the clip is Gemini Omni Flash's at every length (lib/video/directClip). */
+  speech: DirectClipSpeech;
 }
 
 /** Where the card is: asking, sending, the clip being made, or cancelled. A delivered or failed clip replaces the card. */
@@ -51,20 +61,81 @@ export function clipOrder(input: {
   seconds: unknown;
   aspect: DirectClipAspect;
   tier: VideoQuality;
+  /** The panel's resolution pick; none picked is 1080p for a speaking clip, 720p for a 10 s one without words. */
   resolution?: DirectClipResolution | null;
+  /** What the route read (409 price_changed + speech); otherwise the card reads the prompt itself. */
+  speech?: DirectClipSpeech;
 }): ClipAskState {
   const photos = input.photos.filter(Boolean).slice(0, DIRECT_CLIP_MAX_PHOTOS);
   const seconds = directClipSeconds(input.seconds, photos.length);
+  const speech: DirectClipSpeech = input.speech === 'ka' || promptSpeaksGeorgian(input.prompt) ? 'ka' : null;
   // Lite takes no reference images: two or three photos go to Fast (the panel offers Lite again without them).
-  const tier = seconds !== 10 && !directClipTierAllowed(input.tier, photos.length) ? 'fast' : input.tier;
-  const resolution: DirectClipResolution = input.resolution === '1080p' ? '1080p' : '720p';
+  const tier = directClipEngine(seconds, speech) === 'veo' && !directClipTierAllowed(input.tier, photos.length) ? 'fast' : input.tier;
+  const resolution: DirectClipResolution = input.resolution === '1080p' || input.resolution === '720p'
+    ? input.resolution
+    : speech === 'ka' ? OMNI_SPEECH_DEFAULT_RESOLUTION : OMNI_DEFAULT_RESOLUTION;
   return {
-    prompt: input.prompt, photos, seconds, aspect: input.aspect, tier, resolution, phase: 'ask',
-    credits: directClipCredits({ seconds, tier, photos: photos.length, resolution }),
+    prompt: input.prompt, photos, seconds, aspect: input.aspect, tier, resolution, speech, phase: 'ask',
+    credits: directClipCredits({ seconds, tier, photos: photos.length, resolution, speech }),
   };
 }
 
 export type ClipChange = { seconds: DirectClipSeconds } | { aspect: DirectClipAspect } | { resolution: DirectClipResolution };
+
+/** The clip's engine: Gemini Omni Flash at 10 s or with a Georgian line, else Veo. */
+export const clipIsOmni = (state: Pick<ClipOrder, 'seconds' | 'speech'>): boolean => directClipEngine(state.seconds, state.speech) === 'omni';
+
+/**
+ * The route found a Georgian line the card did not (409 price_changed with speech: 'ka'): the same order as an Omni clip, at
+ * the route's price. Any other 409 keeps the order and takes the route's price.
+ */
+export function clipRepriced(state: ClipAskState, body: { credits?: unknown; speech?: unknown }): ClipAskState {
+  const next = body.speech === 'ka' ? { ...clipOrder({ ...state, speech: 'ka' }), phase: 'ask' as const } : { ...state, phase: 'ask' as const };
+  return typeof body.credits === 'number' ? { ...next, credits: body.credits } : next;
+}
+
+/**
+ * What keeps Create from running, said on the card, for a clip that speaks Georgian: two or three photos (Omni takes one,
+ * as its first frame), or quoted words that cannot fit the length (`fitsAt`: the shortest length they fit, if any). A
+ * clip nobody speaks Georgian in is never held here: a quote in it may be a sign, and the route's reader tells lines from
+ * text and measures them itself.
+ */
+export type ClipHold = { kind: 'photos' } | { kind: 'long'; seconds: number; max: DirectClipSeconds; fitsAt: DirectClipSeconds | null };
+export function clipHold(state: Pick<ClipOrder, 'prompt' | 'photos' | 'seconds' | 'speech'>): ClipHold | null {
+  if (state.speech !== 'ka') return null;
+  if (state.photos.length >= 2) return { kind: 'photos' };
+  const said = quotedSpeechSeconds(state.prompt);
+  if (said <= clipSpeechRoom(state.seconds)) return null;
+  const fitsAt = DIRECT_CLIP_SECONDS.find((s) => s > state.seconds && said <= clipSpeechRoom(s)) ?? null;
+  return { kind: 'long', seconds: said, max: state.seconds, fitsAt };
+}
+
+export function clipHoldText(hold: ClipHold, locale: string): string {
+  if (hold.kind === 'photos') {
+    return tr(locale,
+      'ქართულად მოლაპარაკე კლიპი ერთ ფოტოს იღებს, პირველ კადრად. გამომიგზავნე ერთი ფოტოთი.',
+      'A clip where someone speaks Georgian takes one photo, as its first frame. Send it with one photo.',
+      'Клип, где говорят по-грузински, принимает одно фото, первым кадром. Отправьте его с одним фото.');
+  }
+  return hold.fitsAt
+    ? tr(locale,
+      `ნათქვამი ტექსტი ~${hold.seconds} წამია და ${hold.max} წამიან კლიპს არ ეტევა. აირჩიე ${hold.fitsAt} წმ ან შეამოკლე.`,
+      `The spoken words take ~${hold.seconds} s and do not fit ${hold.max === 8 ? 'an' : 'a'} ${hold.max} s clip. Pick ${hold.fitsAt} s or shorten them.`,
+      `Текст звучит ~${hold.seconds} с и не помещается в клип на ${hold.max} с. Выберите ${hold.fitsAt} с или сократите его.`)
+    : tr(locale,
+      `ნათქვამი ტექსტი ~${hold.seconds} წამია და ${hold.max} წამიან კლიპს არ ეტევა. შეამოკლე.`,
+      `The spoken words take ~${hold.seconds} s and do not fit ${hold.max === 8 ? 'an' : 'a'} ${hold.max} s clip. Shorten them.`,
+      `Текст звучит ~${hold.seconds} с и не помещается в клип на ${hold.max} с. Сократите его.`);
+}
+
+/** Under a speaking clip: who speaks it, and how. */
+export function clipSpeechNote(state: Pick<ClipOrder, 'speech'>, locale: string): string | null {
+  if (state.speech !== 'ka') return null;
+  return tr(locale,
+    'პერსონაჟები ქართულად თვითონ ილაპარაკებენ, თითოეული თავისი ხმით (Gemini Omni Flash).',
+    'The characters speak Georgian themselves, each in their own voice (Gemini Omni Flash).',
+    'Персонажи говорят по-грузински сами, каждый своим голосом (Gemini Omni Flash).');
+}
 
 /** A chip tapped on the card: the same order with that one thing changed, priced again. */
 export function changeClip(state: ClipAskState, change: ClipChange): ClipAskState {
@@ -89,13 +160,13 @@ export function clipLengthsFor(photos: number): readonly DirectClipSeconds[] {
 export function clipRequestBody(state: ClipAskState): Record<string, unknown> {
   return {
     prompt: state.prompt, photos: state.photos, seconds: state.seconds, aspect: state.aspect, tier: state.tier,
-    resolution: state.resolution, expectedCredits: state.credits,
+    resolution: state.resolution, ...(state.speech ? { speech: state.speech } : {}), expectedCredits: state.credits,
   };
 }
 
-/** The engine by its product name: Gemini Omni Flash for 10 s, else Veo 3.1 at its tier. */
-export function clipEngineLabel(state: Pick<ClipOrder, 'seconds' | 'tier'>): string {
-  if (state.seconds === 10) return 'Gemini Omni Flash';
+/** The engine by its product name: Gemini Omni Flash for 10 s or a Georgian line, else Veo 3.1 at its tier. */
+export function clipEngineLabel(state: Pick<ClipOrder, 'seconds' | 'tier'> & { speech?: DirectClipSpeech }): string {
+  if (directClipEngine(state.seconds, state.speech) === 'omni') return 'Gemini Omni Flash';
   return state.tier === 'lite' ? 'Veo 3.1 Lite' : state.tier === 'standard' ? 'Veo 3.1' : 'Veo 3.1 Fast';
 }
 
@@ -123,7 +194,7 @@ export function clipResolutionBlurb(resolution: DirectClipResolution, locale: st
 /** „8 წმ · 9:16 · 1080p · 1080×1920 · Veo 3.1 Fast" — what will be made, in one line. */
 export function clipSpecLine(state: ClipOrder, locale: string): string {
   const sec = tr(locale, `${state.seconds} წმ`, `${state.seconds} s`, `${state.seconds} с`);
-  return [sec, state.aspect, directClipQualityLabel(state.aspect, state.seconds, state.resolution), clipEngineLabel(state)].join(' · ');
+  return [sec, state.aspect, directClipQualityLabel(state.aspect, state.seconds, state.resolution, state.speech), clipEngineLabel(state)].join(' · ');
 }
 
 /** What the photos will be, said under them. */
@@ -153,14 +224,14 @@ export function clipOneClipNote(locale: string): string {
     'Делается один клип, до 10 секунд. Фильмы из нескольких сцен сейчас не делаются.');
 }
 
-export function clipRunningText(state: Pick<ClipOrder, 'seconds' | 'tier'>, locale: string): string {
+export function clipRunningText(state: Pick<ClipOrder, 'seconds' | 'tier'> & { speech?: DirectClipSpeech }, locale: string): string {
   return tr(locale,
     `კლიპი მზადდება (${clipEngineLabel(state)}). ჩვეულებრივ 1–2 წუთი სჭირდება.`,
     `Making the clip (${clipEngineLabel(state)}). It usually takes 1–2 minutes.`,
     `Клип создаётся (${clipEngineLabel(state)}). Обычно это 1–2 минуты.`);
 }
 
-/** The step after Google's render (./ClipProgress `finishing`): the Georgian line laid on, the clip saved for the chat. */
+/** The step after Google's render (./ClipProgress `finishing`): the clip saved for the chat. */
 export function clipFinishingText(locale: string): string {
   return tr(locale, 'კლიპი შეიქმნა. ვამატებ ჩატში…', 'The clip is made. Putting it in the chat…', 'Клип готов. Добавляю в чат…');
 }
@@ -196,6 +267,7 @@ export function clipFailureText(body: unknown, locale: string): string {
         `The spoken words are too long for a ${max} s clip. Shorten them. Nothing was charged.`,
         `Текст слишком длинный для клипа на ${max} с. Сократите его. Деньги не списаны.`);
   }
+  if (b.error === 'speech_one_photo') return clipHoldText({ kind: 'photos' }, locale);
   if (b.error === 'voice_off') {
     return tr(locale,
       'ქართული ხმა ახლა გამორთულია, ამიტომ ეს კლიპი ვერ გაკეთდება. თანხა არ ჩამოგეჭრა.',
