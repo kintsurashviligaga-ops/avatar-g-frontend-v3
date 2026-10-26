@@ -74,17 +74,38 @@ const LIVE_PERSONA: Record<VoiceLocale, string> = {
  * and a fresh session (a persona switch, a new call) started from them again. This line goes last, where the model weighs
  * it most, and it says to STAY in the speaker's language, not only to switch once. ⚠️ GG 2026-10-26: after a Georgian
  * price and a „კი" the transcription wrote in Arabic letters, the call answered the app's English [App] note in English.
+ * ⚠️ GG 2026-10-26 09:01Z: a call GG opened in Georgian answered in ENGLISH from its first reply. The chat it continued
+ * held the English turns of an earlier call, and this line said "if you cannot tell, keep the language of your last
+ * reply": the model, which often cannot place Georgian speech, took its last reply from that history. Only the user's
+ * words IN THIS CALL decide now, and before the call has a language the default the persona names (Georgian) holds.
  */
 export const LIVE_LANGUAGE_LOCK =
-  'LANGUAGE, EVERY TURN: reply in the language of the user\'s most recent words (Georgian, English or Russian) and keep '
-  + 'replying in it until the user speaks another one. Never go back to Georgian because the page, these instructions or '
-  + 'earlier turns are in Georgian. If you cannot tell, keep the language of your last reply. [App] notes are written in '
-  + 'English for you alone: answer one in the language you were speaking with the user, never in English because of it.';
+  'LANGUAGE, EVERY TURN: reply in the language of the user\'s most recent words in THIS call (Georgian, English or '
+  + 'Russian) and keep replying in it until the user speaks another one. Only what the user says in this call decides it, '
+  + 'never the language of the conversation history, of your replies before this call, of the page or of these '
+  + 'instructions: never go back to Georgian, or over to English, because of them. If you cannot tell from a short word '
+  + 'or a name, keep the language you have been speaking with the user in this call; before you have spoken with them, '
+  + 'use the language the instructions above name for when you cannot tell (Georgian unless they name another). [App] '
+  + 'notes are written in English for you alone: answer one in the language you were speaking with the user, never in '
+  + 'English because of it.';
 
 /** BCP-47 hints for the Live input transcription: the UI language first, then the other two the call follows. */
 export function liveTranscriptionLanguages(locale: VoiceLocale): string[] {
   const all: Record<VoiceLocale, string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' };
   return [all[locale], ...(['ka', 'en', 'ru'] as const).filter((l) => l !== locale).map((l) => all[l])];
+}
+
+/**
+ * The short Georgian answers a voice start is judged on (lib/voice/spokenYes), as custom vocabulary for the Live input
+ * transcription. ⚠️ GG 2026-10-26: a spoken „კი" or „დიახ" came back in Hindi, Arabic, Latin and Korean letters
+ * („क्रेटा", „كي?", „da-adasture.", „대자."), so the yes the user said never counted. The list biases the recognition toward
+ * these words; English and Russian answers come back right without it.
+ */
+export function liveTranscriptionVocabulary(): string[] {
+  return [
+    'კი', 'დიახ', 'ჰო', 'ხო', 'კარგი', 'კაი', 'დაიწყე', 'დავიწყოთ', 'გააკეთე', 'გაუშვი', 'შექმენი', 'დაადასტურე',
+    'თანახმა ვარ', 'არა', 'მოიცადე', 'გაჩერდი', 'გააუქმე',
+  ];
 }
 
 /**

@@ -8,7 +8,9 @@
  * start what the user agreed to. The product's calls are Georgian, English or Russian only: Devanagari, Arabic (and
  * Persian) and Armenian letters are always a mis-heard language, and the sounds they spell are put back in Georgian
  * letters. It is an approximation by sound, good for short words (की/كي/կի → კი, हो/هو/հո → ჰო, कारगी/كارگي → კარგი).
- * Pure and isomorphic; text in no such alphabet comes back unchanged.
+ * GG 2026-10-26 09:29Z: an answer came back in Korean letters („대자."), so Hangul is read the same way (끼/키 → კი, 호 → ჰო),
+ * and a letter of any other alphabet but Georgian, Latin or Cyrillic counts as mis-heard too (isMisheardScript), even
+ * where no table reads it back. Pure and isomorphic; text in no such alphabet comes back unchanged.
  */
 
 const VIRAMA = '्';
@@ -121,20 +123,54 @@ function armenianWord(run: string): string {
   return [...run.normalize('NFKC').toLowerCase().replace(/ու/gu, 'უ')].map((ch) => (ch === 'უ' ? ch : ARMENIAN[ch] ?? '')).join('');
 }
 
-const DEVANAGARI_RUN = /[\u0900-\u097F]+/gu;
-const ARABIC_RUN = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]+/gu;
-const ARMENIAN_RUN = /[\u0530-\u058F\uFB13-\uFB17]+/gu;
-const MISHEARD = /[\u0900-\u097F\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF\u0530-\u058F\uFB13-\uFB17]/u;
+/**
+ * Hangul by sound, from each syllable's parts. Korean writes a foreign voiced stop with its plain (lenis) letter, so ㄱ ㄷ ㅂ ㅈ
+ * read გ დ ბ ჯ; its tense ones are Georgian's ejectives (ㄲ კ, ㄸ ტ, ㅃ პ, ㅉ წ) and its aspirated ones ქ თ ფ ჩ. ㅡ is the
+ * vowel Korean adds after a lone consonant („디아흐" for „დიახ"), so it is not written; a closing ㄱ ㄷ ㅂ ㅅ is k t p t.
+ * lib/voice/spokenYes reads the result with plain and ejective stops as one, since Korean blurs them (기 or 끼 for „კი").
+ */
+const HANGUL_FIRST = ['გ', 'კ', 'ნ', 'დ', 'ტ', 'რ', 'მ', 'ბ', 'პ', 'ს', 'ს', '', 'ჯ', 'წ', 'ჩ', 'ქ', 'თ', 'ფ', 'ჰ'] as const;
+const HANGUL_VOWEL = [
+  'ა', 'ე', 'ია', 'იე', 'ო', 'ე', 'იო', 'იე', 'ო', 'ვა', 'ვე', 'ვე', 'იო', 'უ', 'ვო', 'ვე', 'ვი', 'იუ', '', 'ი', 'ი',
+] as const;
+const HANGUL_LAST = [
+  '', 'კ', 'კ', 'კს', 'ნ', 'ნჯ', 'ნ', 'ტ', 'ლ', 'ლკ', 'ლმ', 'ლბ', 'ლს', 'ლთ', 'ლფ', 'ლ', 'მ', 'პ', 'პს', 'ტ', 'ტ', 'ნ',
+  'ტ', 'ტ', 'კ', 'ტ', 'პ', 'ჰ',
+] as const;
+const HANGUL_BASE = 0xAC00;
+const HANGUL_END = 0xD7A3;
+
+/** One word of Hangul (no spaces) → Georgian letters. Loose jamo (not part of a syllable) are dropped. */
+function hangulWord(run: string): string {
+  let out = '';
+  for (const ch of run.normalize('NFC')) {
+    const code = ch.codePointAt(0)!;
+    if (code < HANGUL_BASE || code > HANGUL_END) continue;
+    const s = code - HANGUL_BASE;
+    out += HANGUL_FIRST[Math.floor(s / 588)]! + HANGUL_VOWEL[Math.floor((s % 588) / 28)]! + HANGUL_LAST[s % 28]!;
+  }
+  // A closing ㄹ before an opening ㄹ is one long l („빌리" bili): one ლ, not ლრ.
+  return out.replace(/ლრ/gu, 'ლ');
+}
+
+const DEVANAGARI_RUN = /[ऀ-ॿ]+/gu;
+const ARABIC_RUN = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]+/gu;
+const ARMENIAN_RUN = /[԰-֏ﬓ-ﬗ]+/gu;
+const HANGUL_RUN = /[ᄀ-ᇿ㄰-㆏ꥠ-꥿가-힣ힰ-퟿]+/gu;
+const MISHEARD = /[ऀ-ॿ؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿԰-֏ﬓ-ﬗ]/u;
+/** A letter of any alphabet but the call's own three (Hangul, Japanese, Chinese, Greek, Hebrew, Thai, …). */
+const OTHER_LETTER = /(?![\p{Script=Georgian}\p{Script=Latin}\p{Script=Cyrillic}])\p{L}/u;
 
 /** Whether the transcription wrote any of these words in an alphabet the call never speaks (its punctuation is a guess). */
 export function isMisheardScript(text: string): boolean {
-  return typeof text === 'string' && MISHEARD.test(text);
+  return typeof text === 'string' && (MISHEARD.test(text) || OTHER_LETTER.test(text));
 }
 
-/** The call's heard words with every Devanagari, Arabic or Armenian word in Georgian letters; the rest as it is. */
+/** The call's heard words with every Devanagari, Arabic, Armenian or Hangul word in Georgian letters; the rest as it is. */
 export function toCallScript(text: string): string {
   if (!isMisheardScript(text)) return typeof text === 'string' ? text : '';
-  return text.replace(DEVANAGARI_RUN, devanagariWord).replace(ARABIC_RUN, arabicWord).replace(ARMENIAN_RUN, armenianWord);
+  return text.replace(DEVANAGARI_RUN, devanagariWord).replace(ARABIC_RUN, arabicWord).replace(ARMENIAN_RUN, armenianWord)
+    .replace(HANGUL_RUN, hangulWord);
 }
 
 /**
