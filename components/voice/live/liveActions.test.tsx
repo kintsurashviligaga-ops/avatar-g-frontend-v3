@@ -238,6 +238,9 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
     expect(out.run).toEqual({ tool: 'image', priceCredits: 2, target: { kind: 'studio', tool: 'image' }, since: 1000 });
     expect(env.runGeneration).not.toHaveBeenCalled();
     expect(String(out.response.response.summary)).toMatch(/starts in 3 seconds unless the user taps Cancel or says wait/);
+    // GG 2026-10-26 12:58Z: the model said „it started, ready in 3 s" before the yes was judged.
+    expect(String(out.response.response.summary)).toMatch(/^Nothing has started yet:/);
+    expect(String(out.response.response.summary)).toMatch(/Do not say it has started or when it will be ready/);
   });
 
   test('get_screen_state answers with the studio\'s state; set_chat_model uses the global store; call_view asks the host', () => {
