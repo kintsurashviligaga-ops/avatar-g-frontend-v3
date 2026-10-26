@@ -152,6 +152,11 @@ export function asksForSubtitles(prompt: string): boolean {
   return /subtit|caption|სუბტიტრ|ტიტრ|субтитр|титр/i.test(prompt);
 }
 
+/** The user asked for cuts themselves — then the clip is not held to one continuous shot. */
+export function asksForCuts(prompt: string): boolean {
+  return /\b(?:quick|hard|jump|smash|fast) cuts?\b|\bcuts? (?:to|back|away|between)\b|\bscene cuts?\b|\bmulti-?shot\b|ჭრ(?:ა|ით|ები)(?![ა-ჰ])|მონტაჟ|კადრის ცვლ|კადრები იცვლ|монтаж|склейк|смена кадр/i.test(prompt);
+}
+
 /** The user asked for music themselves — then Omni is not told to leave it out under the lines. */
 export function asksForMusic(prompt: string): boolean {
   return /music|song|soundtrack|მუსიკ|სიმღერ|მელოდი|музык|песн|мелоди|саундтрек/i.test(prompt);
@@ -175,6 +180,8 @@ export interface ComposeClipPrompt {
   subtitles?: boolean;
   /** Omni only: the user asked for music (asksForMusic), so spoken lines are not kept clear of it. */
   music?: boolean;
+  /** The user asked for cuts (asksForCuts): otherwise the clip is one continuous shot, so nobody is redrawn. */
+  cuts?: boolean;
 }
 
 /** „the man (male voice)" — a speaker as the prompt says them; null when the reader could not name them. */
@@ -187,7 +194,7 @@ function speakerPhrase(s: ClipSpeaker | undefined): string | null {
  * Who says the lines, said once and without the words themselves (they are in the scene already): the order of the
  * speakers, each in their own voice, and no narrator. Null when nobody speaks.
  */
-function speechRule(reading: ClipReading): string | null {
+function speechRule(reading: ClipReading, oneShot: boolean): string | null {
   if (reading.lines.length === 0) return null;
   const georgian = speaksGeorgian(reading.lines) ? ', in natural Georgian' : '';
   // The speakers in the order they speak, a run of lines by one person named once.
@@ -198,7 +205,7 @@ function speechRule(reading: ClipReading): string | null {
   });
   const people = new Set(reading.speakers.map((s) => s.who.toLowerCase()).filter(Boolean)).size;
   if (people >= 2) {
-    return `The lines are spoken in this order: ${order.join(', then ')}. Each person says only their own words, once, exactly as written${georgian}, in their own voice, with their own lips in sync; no two people share a voice, and each voice fits that person's age and sex as seen on screen. The camera is on each person while they speak. No false starts, no narrator, no voice-over.`;
+    return `The lines are spoken in this order: ${order.join(', then ')}. Each person says only their own words, once, exactly as written${georgian}, in their own voice, with their own lips in sync; no two people share a voice, and each voice fits that person's age and sex as seen on screen. ${oneShot ? 'The camera turns or pushes in to each person while they speak, without cutting away.' : 'The camera is on each person while they speak.'} No false starts, no narrator, no voice-over.`;
   }
   if (order.length === 1) {
     return `${order[0]![0]!.toUpperCase()}${order[0]!.slice(1)} says the words on screen, once, exactly as written${georgian}, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.`;
@@ -207,8 +214,12 @@ function speechRule(reading: ClipReading): string | null {
 }
 
 /** The prompt the engine renders. */
-export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles = false, music = false }: ComposeClipPrompt): string {
+export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles = false, music = false, cuts = false }: ComposeClipPrompt): string {
   const omni = engine === 'omni';
+  // ⚠️ GG 2026-10-26 15:41Z „მსახიობს ვერ ინარჩუნებს": the first frame holds only frame 0, and at a cut the engine draws
+  // the people anew (another face, other hair, another set). The camera on whoever speaks made it cut. One continuous
+  // shot keeps them; cuts only when the user asks for them.
+  const oneShot = !cuts && !asksForCuts(reading.english);
   const said = (line: string): string => `"${line.replace(/"/g, '')}"`;
 
   let body = reading.english;
@@ -224,12 +235,17 @@ export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles =
   if (missing.length > 0) body = `${body.replace(/[.!?…]?$/, '.')} They say aloud: ${missing.map(said).join(' ')}`;
 
   const parts: string[] = [];
-  if (photos === 'frame') parts.push('Start exactly from the first frame: keep its people, faces, clothes and setting as they are.');
+  if (photos === 'frame') {
+    parts.push(oneShot
+      ? 'Start exactly from the first frame and keep one continuous shot with no cuts: the same people, faces, hair, clothes and setting as in the first frame throughout.'
+      : 'Start exactly from the first frame: keep its people, faces, clothes and setting as they are.');
+  }
   if (photos === 'refs') parts.push('Keep the people and things from the reference images exactly as they look.');
   parts.push(body);
-  const rule = speechRule(reading);
+  const rule = speechRule(reading, oneShot);
   if (rule) parts.push(rule);
   else if (reading.silent) parts.push('No dialogue, no voices.');
+  if (oneShot && photos !== 'frame' && (rule || photos === 'refs')) parts.push('One continuous shot with no cuts.');
   // ⚠️ GG's clip 2026-10-26 13:53Z (Omni 10 s 1080p): an upbeat track nobody asked for ran under the two voices, and a
   // bare „No background music." did not stop it (three clips at 15:07–15:14Z still had one). Omni picks its own audio
   // unless told what to play: a „Sound design:" line that names what is heard, with „no music, just room tone".

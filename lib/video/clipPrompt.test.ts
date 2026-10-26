@@ -4,7 +4,7 @@
  * people in one TTS voice); the words checked against the clip's length; nothing else added.
  */
 import {
-  SPEAKER_TURN_SEC, asksForMusic, asksForSubtitles, clipNegativePrompt, clipSpeechFits, clipSpeechRoom, clipSpeechSeconds, composeClipPrompt,
+  SPEAKER_TURN_SEC, asksForCuts, asksForMusic, asksForSubtitles, clipNegativePrompt, clipSpeechFits, clipSpeechRoom, clipSpeechSeconds, composeClipPrompt,
   parseClipReading, promptSpeaksGeorgian, quotedLines, quotedSpeechSeconds, speaksGeorgian, spokenText, type ClipReading, type ClipSpeaker,
 } from './clipPrompt';
 import { speechSeconds } from './speechTiming';
@@ -86,14 +86,33 @@ test('text only: the translation, unchanged; told there is no dialogue only when
 });
 
 test('a photo is kept: the first frame, or the reference images', () => {
-  expect(composeClipPrompt({ reading: reading({}), photos: 'frame' })).toMatch(/^Start exactly from the first frame: keep its people, faces, clothes and setting as they are\. A cat/);
-  expect(composeClipPrompt({ reading: reading({}), photos: 'refs' })).toMatch(/^Keep the people and things from the reference images exactly as they look\. A cat/);
+  expect(composeClipPrompt({ reading: reading({}), photos: 'frame' })).toMatch(/^Start exactly from the first frame and keep one continuous shot with no cuts: the same people, faces, hair, clothes and setting as in the first frame throughout\. A cat/);
+  expect(composeClipPrompt({ reading: reading({}), photos: 'refs' })).toMatch(/^Keep the people and things from the reference images exactly as they look\. A cat sleeps on a windowsill\. One continuous shot with no cuts\.$/);
+});
+
+test('one continuous shot keeps the people from the photo: a cut is made only when the user asks for one (GG 2026-10-26 15:41Z)', () => {
+  const r = reading({ english: 'The man says [LINE 1] The woman answers [LINE 2]', lines: ['გამარჯობა', 'გაგიმარჯოს'], speakers: [{ who: 'the man', voice: 'male' }, { who: 'the woman', voice: 'female' }] });
+  const held = composeClipPrompt({ reading: r, photos: 'frame', engine: 'omni' });
+  expect(held).toMatch(/^Start exactly from the first frame and keep one continuous shot with no cuts/);
+  expect(held).toContain('The camera turns or pushes in to each person while they speak, without cutting away.');
+  expect(held).not.toContain('The camera is on each person while they speak.');
+  // Asked for, in the user's words or in the reading: the cut stays, and the photo still leads.
+  for (const cut of [composeClipPrompt({ reading: r, photos: 'frame', engine: 'omni', cuts: true }), composeClipPrompt({ reading: { ...r, english: `${r.english} A quick cut to the woman.` }, photos: 'frame', engine: 'omni' })]) {
+    expect(cut).toMatch(/^Start exactly from the first frame: keep its people, faces, clothes and setting as they are\./);
+    expect(cut).toContain('The camera is on each person while they speak.');
+    expect(cut).not.toContain('continuous');
+  }
+  expect(asksForCuts('სწრაფი ჭრა წამყვანზე')).toBe(true);
+  expect(asksForCuts('Hard cut to a close-up')).toBe(true);
+  expect(asksForCuts('резкая склейка')).toBe(true);
+  expect(asksForCuts('იგივე პოდკასტი, კაცი ესალმება, ქალი პასუხობს')).toBe(false);
+  expect(asksForCuts('She cuts the cake and smiles')).toBe(false);
 });
 
 test('an English line is said verbatim by Veo, where the user put it, by the person on screen and no narrator', () => {
   const r = reading({ english: 'A barista hands over a cup and says [LINE 1], then waves.', lines: ['Here you go!'], speakers: [{ who: 'the barista', voice: 'female' }] });
   expect(composeClipPrompt({ reading: r, photos: 'none' })).toBe(
-    'A barista hands over a cup and says "Here you go!", then waves. The barista (female voice) says the words on screen, once, exactly as written, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.');
+    'A barista hands over a cup and says "Here you go!", then waves. The barista (female voice) says the words on screen, once, exactly as written, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over. One continuous shot with no cuts.');
 });
 
 test('GG\'s podcast (2026-10-26): each person says only their own line in their own voice — the order named, the words not repeated', () => {

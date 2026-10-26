@@ -259,7 +259,7 @@ test('GG\'s three lines (~11.8 s) do not fit 8 s or 10 s: refused with the estim
   const { prompt } = (submitOmniClip as jest.Mock).mock.calls[0][0];
   // Two people, each in their own voice, in the order they speak: never one narrator for both.
   expect(prompt).toContain('The lines are spoken in this order: the host (male voice), then the woman (female voice).');
-  expect(prompt).toContain('no two people share a voice, and each voice fits that person\'s age and sex as seen on screen. The camera is on each person while they speak. No false starts, no narrator, no voice-over.');
+  expect(prompt).toContain('no two people share a voice, and each voice fits that person\'s age and sex as seen on screen. The camera turns or pushes in to each person while they speak, without cutting away. No false starts, no narrator, no voice-over.');
   // GG's clip 2026-10-26 13:53Z: a track ran under the two voices that nobody asked for.
   expect(prompt).toContain('Sound design: the spoken lines and natural room tone only. No music, just room tone.');
   expect(prompt).toContain(`"${GG_LINES[1]}"`);
@@ -272,7 +272,7 @@ test('an English line keeps Veo\'s own voice, verbatim — no Omni, no voiced id
   expect(j).toMatchObject({ engine: 'Veo', seconds: 8 });
   expect(j.speech).toBeUndefined();
   expect(submitOmniClip).not.toHaveBeenCalled();
-  expect((submitScene as jest.Mock).mock.calls[0][0].prompt).toBe('A barista smiles and says "Your coffee is ready!" The barista (female voice) says the words on screen, once, exactly as written, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.');
+  expect((submitScene as jest.Mock).mock.calls[0][0].prompt).toBe('A barista smiles and says "Your coffee is ready!" The barista (female voice) says the words on screen, once, exactly as written, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over. One continuous shot with no cuts.');
   expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'veo', voiced: false });
 });
 
