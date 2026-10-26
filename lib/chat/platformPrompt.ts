@@ -94,6 +94,7 @@ export const START_QUESTION: Readonly<Record<PlatformPromptLocale, string>> = { 
 
 const gel = (credits: number): string => creditsToGel(credits).toFixed(2);
 const cr = (credits: number): string => `${credits} cr (${gel(credits)} ₾)`;
+const tetri = (credits: number): number => Math.round(creditsToGel(credits) * 100);
 /** The film lengths the price line gives as examples (the Video tool's presets). */
 const FILM_EXAMPLE_SECONDS = [8, 24, 48] as const;
 
@@ -188,7 +189,7 @@ function notYetLine(loc: PlatformPromptLocale, closed: readonly ToolId[]): strin
  * topupCredits), not CREDIT_PACKAGES — a pack list nothing sells, whose amounts disagree with it. Which list is the
  * product's is the owner's call (owner action 7); until then the assistant quotes the one a user can actually buy.
  */
-function priceBlock(topUp: string, closed: readonly ToolId[]): string {
+function priceBlock(topUp: string, closed: readonly ToolId[], spoken: boolean): string {
   const C = CREDIT_COSTS;
   const open = (id: ToolId) => !closed.includes(id);
   const chat = C.chat_message > 0 ? `chat ${cr(C.chat_message)} per message` : 'chat is free';
@@ -211,7 +212,9 @@ function priceBlock(topUp: string, closed: readonly ToolId[]): string {
     `product ad = a Fast film of its length; chat clip ${cr(C.video_30s)}; music ${cr(C.music_30s)} <60 s,`,
     `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip; ` : ''}touch-up: voice-over ${cr(PRICE_BOOK.remixVoiceover)}, own music ${cr(PRICE_BOOK.remixMusic)}; ${open('model3d') ? `3D model ${cr(C.model3d)}; ` : ''}${dubDeck}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote only these numbers, in credits and lari; never guess one.`,
-  ].join(' ');
+    // GG 2026-10-26 12:32Z, a Live call: „5 კრედიტი, ანუ 0.50 თეთრი" — the lari amount was said with the tetri's name.
+    spoken ? `₾ is lari; 100 tetri = 1 lari, so ${gel(C.image_generate)} ₾ is ${tetri(C.image_generate)} tetri, never "${gel(C.image_generate)} tetri".` : null,
+  ].filter(Boolean).join(' ');
 }
 
 /**
@@ -316,6 +319,6 @@ export function buildPlatformPrompt(opts: {
     // offers, so it named characters the app does not have. The list comes from the catalogue itself.
     `PERSONAS (user picks: "${PERSONA_MENU[loc].menu}" menu → "${PERSONA_MENU[loc].row}"): ${BUILT_IN_PERSONAS.map((p) => p.name[loc]).join(', ')}, plus own. Name no others; a PERSONA block below is active.`,
 
-    priceBlock(ui.topUp, closed),
+    priceBlock(ui.topUp, closed, opts?.spoken === true),
   ].join('\n\n');
 }

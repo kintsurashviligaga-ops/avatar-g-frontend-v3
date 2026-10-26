@@ -581,6 +581,9 @@ describe('failedNote — what the call is told when a generation fails', () => {
     const note = failedNote('ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.');
     expect(note).toContain('This is a test link');
     expect(note).toContain('do not offer to try again');
+    // GG 2026-10-26 13:24Z: „ამჟამად მიუწვდომელია" alone sounded like an outage.
+    expect(note).toContain('that this is a test link, that creation is off only here, and that it works on myavatar.ge');
+    expect(note).toContain('Do not say it is unavailable or broken');
   });
   test('any other failure is told plainly, with a retry', () => {
     expect(failedNote('Google timed out')).toBe('[App] A generation failed: "Google timed out". Tell the user plainly and offer to try again.');
@@ -591,7 +594,7 @@ describe('notStartedNote — what the call is told when a voice start counted do
   test('the answer came out in another alphabet: the model hears it, and that nothing broke (GG 2026-10-26 09:29Z)', () => {
     const note = notStartedNote('not_heard', '대자.');
     expect(note).toContain('the app heard only "대자." (in an alphabet the call never speaks');
-    expect(note).toContain('Do not say it started or that something broke');
+    expect(note).toContain('Tell the user you did not catch their answer. Do not say it started or that something broke or went wrong');
     expect(note).toContain('tap the button on the card');
   });
   test('an answer in the call\'s own letters that is no yes is quoted without the alphabet remark', () => {

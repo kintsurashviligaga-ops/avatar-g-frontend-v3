@@ -288,6 +288,18 @@ describe('buildPlatformPrompt — the persona list is the catalogue (GG 2026-10-
   });
 });
 
+describe('buildPlatformPrompt — saying a price in lari and tetri', () => {
+  it.each(LOCALES)('a spoken call names the image price in tetri the right way round (%s; GG 2026-10-26 12:32Z: „0.50 თეთრი")', (locale) => {
+    const lari = creditsToGel(CREDIT_COSTS.image_generate).toFixed(2);
+    const tetri = Math.round(creditsToGel(CREDIT_COSTS.image_generate) * 100);
+    const p = buildPlatformPrompt({ locale, now: NOW, spoken: true });
+    expect(p).toContain(`₾ is lari; 100 tetri = 1 lari, so ${lari} ₾ is ${tetri} tetri, never "${lari} tetri".`);
+    expect(p.length).toBeLessThanOrEqual(5000);
+    // The text chat shows prices on its cards; its prompt keeps its budget for the Veo avatar's line.
+    expect(build(locale)).not.toContain('100 tetri = 1 lari');
+  });
+});
+
 describe('buildPlatformPrompt — shape and size', () => {
   it.each(LOCALES)('stays within the 5,000-character budget (%s)', (locale) => {
     // September + Wednesday are the longest month/weekday names, so NOW is the worst case for the date line.
