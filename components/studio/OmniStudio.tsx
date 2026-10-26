@@ -6805,7 +6805,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // chat, which made up a price and a link. So the words continue THE CLIP ITSELF, by Omni's own interaction, on its edit
     // card (the price on Create; nothing attached, nothing uploaded). In the Video tool the thread's latest video; in the
     // chat only the clip just made, so „გააგრძელე" after a long answer still continues the answer (clipToContinue).
-    if (text && !opts?.confirmed && !opts?.explicit && !opts?.fromLive && attachments.length === 0 && (mode === 'chat' || mode === 'video')
+    // ⚠️ AN EXPLICIT SEND TOO (GG 2026-10-26 18:22Z „გაგრძელებამ სულ სხვა ვიდეო გააკეთა"): the Video tool's Send is always
+    // explicit (runComposer), so „გააგრძელე …" there skipped this and became a new 4 s clip at ✦28. The edit card is still
+    // the one that charges, on its Create.
+    if (text && !opts?.confirmed && !opts?.fromLive && attachments.length === 0 && (mode === 'chat' || mode === 'video')
       && omniEditOpFromWords(text) === 'extend') {
       const clip = clipToContinue(messages, mode === 'video' ? 'thread' : 'last');
       if (clip) {
@@ -8919,11 +8922,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   };
   const composerVideos = attachments.filter((a) => isVideo(a.mimeType));
   const composerEditVideo = composerVideos.length === 1 ? composerVideos[0]! : null;
+  // „გააგრძელე …" with nothing attached continues the thread's clip (send): Send carries that extend's price, not a new clip's.
+  const composerContinue = activeTool === 'video' && mode === 'video' && videoTab === 'cinema' && attachments.length === 0
+    && !!input.trim() && omniEditOpFromWords(input) === 'extend' ? clipToContinue(messages, 'thread') : null;
   const composerQuote = activeTool === 'avatar' ? avatarCredits || null
     : activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix'
       ? quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool }) || null
       : activeTool === 'video' && mode === 'video' && videoTab === 'cinema' && composerEditVideo
         ? omniEditCredits({ op: omniEditOpFromWords(input), inputSec: composerEditVideo.durationSec ?? 0, resolution: clipResolution }) || null
+      : composerContinue === 'extended' ? null
+      : composerContinue
+        ? omniEditCredits({ op: 'extend', inputSec: composerContinue.seconds, resolution: clipResolution }) || null
       : activeTool === 'video' && mode === 'video' && videoTab === 'cinema'
         // The clip the panel is set to (lib/video/directClip, the route's own price): its card shows the same on Create.
         ? directClipCredits({ seconds: snapDirectClipSeconds(videoDuration), tier: openClipTier(veoPlan.tier, clipClosedTiers, composerClipPhotos), photos: composerClipPhotos, resolution: clipResolution, speech: composerSpeech }) || null
