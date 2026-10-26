@@ -51,6 +51,7 @@ export interface StudioIntent {
  * lookarounds with the `u` flag instead, and `\w*` suffixes are `\p{L}*`.
  */
 import { mineDurationWords } from '@/lib/video/durationWords';
+import { withoutQuotedSpeech } from './quotedSpeech';
 
 const L = '\\p{L}';
 const B0 = `(?<![${L}\\p{N}])`; // start-of-token, any script
@@ -92,9 +93,10 @@ const IMPERATIVE_LEAD = new RegExp(
  * Georgian puts the verb LAST and marks „for me" inside it: „მუსიკა დამირემიქსე", „პრეზენტაცია გამიკეთე",
  * „კატა დამიხატე". A lead-only gate never sees these. Preverb + `მი` + stem + imperative `-ე/-ი` is a request
  * wherever it stands; the declaratives that share the shape („შემიძლია", „გამიხარდა") end in `-ა` and do not match.
+ * „48-წამიანი" (48-second) shares it too: a length, not a verb (GG's brief titled „სცენა 2 — 48-წამიანი ვლოგი", 2026-10-26).
  */
 const KA_FOR_ME_IMPERATIVE = new RegExp(
-  `${B0}(?:და|გა|შე|გადა|მო|ა|ჩა|ამო|გამო|წა)მი${L}{2,}[ეი]${B1}`,
+  `${B0}(?!წამიან)(?:და|გა|შე|გადა|მო|ა|ჩა|ამო|გამო|წა)მი${L}{2,}[ეი]${B1}`,
   'iu',
 );
 
@@ -248,11 +250,14 @@ export function detectStudioIntent(text: string | null | undefined): StudioInten
   const raw = String(text ?? '').trim();
   if (!raw) return null;
   const t = raw.slice(0, 400);
+  // What someone SAYS in the request („…“, a character's line or a title) names no tool: the words around it do. GG's
+  // 2026-10-25 clip brief opened the Montage editor because its Georgian line said „დამონტაჟებული ვიდეო" (lib/chat/quotedSpeech).
+  const ask = withoutQuotedSpeech(raw).slice(0, 400);
 
   // A question about a service is not a request for it.
-  if (QUESTION_LEAD.test(t)) return null;
+  if (QUESTION_LEAD.test(ask)) return null;
 
-  const hit = SERVICE_NOUNS.find(({ re }) => re.test(t));
+  const hit = SERVICE_NOUNS.find(({ re }) => re.test(ask));
   if (!hit) return null;
 
   // ⚠️ `озвучь` and `გახმოვანე` mean BOTH "dub this video" AND "read this aloud" — the same word covers
@@ -268,7 +273,7 @@ export function detectStudioIntent(text: string | null | undefined): StudioInten
 
   // Needs a reason to believe this is a REQUEST: an imperative lead, a deictic object ("dub THIS"), or a Georgian
   // verb-final „…გამიკეთე".
-  if (!looksLikeRequest(t)) return null;
+  if (!looksLikeRequest(ask)) return null;
 
   const params: StudioIntent['params'] = {};
   if (hit.service === 'dubbing') {

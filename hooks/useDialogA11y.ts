@@ -28,6 +28,9 @@ const openStack: { token: object; node: HTMLElement | null }[] = [];
 export function useDialogA11y<T extends HTMLElement = HTMLElement>(
   open: boolean,
   onClose: () => void,
+  /** false: a NON-modal layer (the studio's settings over the composer) — Escape, focus in and focus back, but Tab may
+   *  leave it, because the page around it (the composer, the chat) stays usable. */
+  { trap = true }: { trap?: boolean } = {},
 ) {
   const ref = useRef<T | null>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -63,7 +66,7 @@ export function useDialogA11y<T extends HTMLElement = HTMLElement>(
         onCloseRef.current();
         return;
       }
-      if (e.key === 'Tab' && node) {
+      if (e.key === 'Tab' && node && trap) {
         const items = Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
           (el) => el.offsetParent !== null || el === document.activeElement,
         );
@@ -89,7 +92,7 @@ export function useDialogA11y<T extends HTMLElement = HTMLElement>(
       const prev = restoreRef.current;
       if (prev && typeof prev.focus === 'function') prev.focus({ preventScroll: true });
     };
-  }, [open]);
+  }, [open, trap]);
 
   return ref;
 }

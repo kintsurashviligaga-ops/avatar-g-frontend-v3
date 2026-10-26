@@ -26,7 +26,7 @@ describe('one primary action', () => {
 
   test('no Send beside a desktop panel that holds the description, and none for a tool that runs from its panel', () => {
     expect(studio).toContain('{canRun && !composerRunAside && (');
-    expect(studio).toContain("const composerRunAside = composerTextHidden && isDesktop;");
+    expect(studio).toContain("const composerRunAside = composerTextHidden;");
     expect(studio).toMatch(/activeTool === 'vfx' \|\| shootActive \|\| mode === 'surgical' \? false/);
   });
 });

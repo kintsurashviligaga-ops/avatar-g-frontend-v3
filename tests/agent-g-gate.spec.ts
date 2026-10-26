@@ -98,12 +98,11 @@ test.describe('Agent G gates every message typed in Image mode', () => {
     const calls = await mockRoutes(page);
     await openImage(page);
     await type(page, 'აქ ხარ?');
-    await expect(page.getByTestId('agent-g-note-text')).toHaveText('Yes, I am here! What shall we create?', { timeout: 20_000 });
+    // The unified composer (GG 2026-10-25): the Image tool keeps the conversation on screen, so the reply is a bubble in it.
+    await expect(page.getByText('Yes, I am here! What shall we create?').last()).toBeVisible({ timeout: 20_000 });
     expect(calls.chat).toHaveLength(1);
     expect(calls.image).toHaveLength(0);
     await expect(page.getByTestId('agent-g-card')).toHaveCount(0);   // talk gets a reply, not a card
-    await page.getByTestId('agent-g-note-close').click();
-    await expect(page.getByTestId('agent-g-note')).toHaveCount(0);   // and the note can be dismissed
     // …and so for the English and Russian ways of saying it
     for (const hello of ['Are you here?', 'ты тут?', 'hello']) {
       await type(page, hello);
@@ -119,7 +118,7 @@ test.describe('Agent G gates every message typed in Image mode', () => {
     const card = page.getByTestId('agent-g-card');
     await expect(card).toBeVisible({ timeout: 10_000 });
     await expect(card).toHaveAttribute('data-kind', 'clarify');
-    await expect(page.getByTestId('agent-g-note-text')).toContainText(/What style/i);
+    await expect(page.getByText(/What style/i).last()).toBeVisible();
     expect(calls.image).toHaveLength(0);
     expect(calls.chat).toHaveLength(0);                             // asking is free: no model call, no charge
     await page.getByTestId('agent-g-confirm').click();
@@ -170,7 +169,8 @@ test.describe('Agent G gates every message typed in Image mode', () => {
     await openImage(page);
     await page.getByTestId('create-prompt').fill('hello');
     await page.getByTestId('create-generate').click();
-    await expect(page.getByTestId('agent-g-note-text')).toHaveText('Yes, I am here! What shall we create?', { timeout: 20_000 });
+    // The unified composer (GG 2026-10-25): the Image tool keeps the conversation on screen, so the reply is a bubble in it.
+    await expect(page.getByText('Yes, I am here! What shall we create?').last()).toBeVisible({ timeout: 20_000 });
     expect(calls.image).toHaveLength(0);
   });
 });
@@ -217,9 +217,9 @@ test.describe('the same door guards Music and Video', () => {
     expect(seen.spent).toEqual([]);
   });
 
-  test('Video: "hello" is answered in the thread — no storyboard is planned, nothing is rendered', async ({ page }) => {
+  test('Video: "hello" is answered in the thread — no clip is offered, nothing is made', async ({ page }) => {
     const seen = await mockSpendingRoutes(page);
-    await openTool(page, 'video', 'video-create-panel');
+    await openTool(page, 'video', 'clip-create-panel');
     // GG 2026-10-18: the video panel has no prompt; the chat box stays beside it, and Enter there still meets Agent G.
     await expect(page.getByTestId('composer-input')).toBeVisible();
     await type(page, 'hello');
@@ -228,11 +228,26 @@ test.describe('the same door guards Music and Video', () => {
     expect(seen.spent).toEqual([]);
   });
 
-  test('Video: a thin brief is clarified, with its card in the thread — and still nothing is planned', async ({ page }) => {
+  test('Video: a thin brief is clarified, with its card in the thread — and still nothing is made', async ({ page }) => {
     const seen = await mockSpendingRoutes(page);
-    await openTool(page, 'video', 'video-create-panel');
+    await openTool(page, 'video', 'clip-create-panel');
     await type(page, 'a dog running');
     await expect(page.getByTestId('agent-g-card')).toBeVisible({ timeout: 10_000 });
+    expect(seen.spent).toEqual([]);
+    expect(seen.chat).toBe(0);
+  });
+
+  test('Video: a real brief gets ONE clip\'s card with its price (GG 2026-10-25) — nothing is made before Create', async ({ page }) => {
+    const seen = await mockSpendingRoutes(page);
+    await openTool(page, 'video', 'clip-create-panel');
+    const words = 'a golden retriever runs along a beach at sunset, slow motion, cinematic';
+    await type(page, words);
+    const card = page.getByTestId('clip-card').last();
+    await expect(card).toHaveAttribute('data-phase', 'ask', { timeout: 15_000 });
+    await expect(card.getByTestId('clip-prompt')).toHaveText(`„${words}“`);
+    expect(Number(await card.getByTestId('clip-confirm').getAttribute('data-price'))).toBeGreaterThan(0);
+    // Agent G's own card would be a second „Create" for the same clip: there is one card.
+    await expect(page.getByTestId('agent-g-card')).toHaveCount(0);
     expect(seen.spent).toEqual([]);
     expect(seen.chat).toBe(0);
   });
@@ -251,7 +266,8 @@ test.describe('signed out', () => {
     const calls = await mockRoutes(page);
     await openImageAsGuest(page);
     await type(page, 'hello');
-    await expect(page.getByTestId('agent-g-note-text')).toHaveText('Yes, I am here! What shall we create?', { timeout: 20_000 });
+    // The unified composer (GG 2026-10-25): the Image tool keeps the conversation on screen, so the reply is a bubble in it.
+    await expect(page.getByText('Yes, I am here! What shall we create?').last()).toBeVisible({ timeout: 20_000 });
     expect(calls.image).toHaveLength(0);
     await expect(page.locator('input[type="email"]')).toHaveCount(0);
   });

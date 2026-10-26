@@ -26,6 +26,20 @@ export const PRICE_BOOK = {
    * more on a short clip than the 8 s clip's per-second share carries.
    */
   shortClip: { lite: { 4: 22, 6: 33 }, fast: { 4: 33, 6: 48 }, standard: { 4: 107, 6: 160 } },
+  /**
+   * One Gemini Omni Flash clip on Vertex, by resolution and length, with its own sound and speech. The 10 s row was set on
+   * the owner's card 2026-10-25 16:51Z („720p ✦69 + 1080p ✦102"); 4 · 6 · 8 s — a clip in which a character says a
+   * Georgian line, which Omni says in their own voice — on the card 2026-10-26 10:55Z („Omni ამ ფასებით"). The rule
+   * recomputes every one from unitEconomics' video.omni.* lines (the 2026-10-25 Vertex probe and Google's list price).
+   */
+  omniClip: { '720p': { 4: 28, 6: 42, 8: 55, 10: 69 }, '1080p': { 4: 42, 6: 62, 8: 82, 10: 102 } },
+  /**
+   * An uploaded video edited or extended by Gemini Omni Flash, by resolution and by the seconds it renders (an edit: the
+   * video's own length, rounded up to 4 · 6 · 8 · 10 s; an extend: the new seconds). Set on the owner's card 2026-10-25
+   * 17:04Z („კი, ორივე"); the rule (unitEconomics' video.omni-edit.* lines, the 2026-10-25 probe) is at most these — two
+   * sit one credit above it (720p 6 s, 1080p 4 s and 6 s), as GG set them.
+   */
+  omniEdit: { '720p': { 4: 34, 6: 48, 8: 61, 10: 74 }, '1080p': { 4: 48, 6: 68, 8: 88, 10: 108 } },
   /** What a film scene adds to its clip: the storyboard frame, ~8 s of narration and music bed, cropping and hosting. */
   filmScene: 7,
   /** Once per film: the plan and the assembly. */
@@ -66,6 +80,22 @@ const tierOf = (tier: ClipTier | undefined): ClipTier => (tier && tier in PRICE_
 export function veoSecondsCredits(seconds: number, tier: ClipTier = 'fast'): number {
   const s = Number.isFinite(seconds) && seconds > 0 ? seconds : 8;
   return Math.ceil((PRICE_BOOK.clip[tierOf(tier)] * s) / 8 - 1e-9);
+}
+
+export type OmniResolution = keyof typeof PRICE_BOOK.omniClip;
+export type OmniClipSeconds = keyof (typeof PRICE_BOOK.omniClip)['720p'];
+
+/** One Omni Flash clip at `resolution` (720p unless 1080p is asked for), `seconds` long (10 unless 4, 6 or 8). */
+export function omniClipCredits(resolution: OmniResolution = '720p', seconds: number = 10): number {
+  const s: OmniClipSeconds = seconds === 4 || seconds === 6 || seconds === 8 ? seconds : 10;
+  return PRICE_BOOK.omniClip[resolution === '1080p' ? '1080p' : '720p'][s];
+}
+
+export type OmniEditSeconds = keyof (typeof PRICE_BOOK.omniEdit)['720p'];
+
+/** An uploaded video edited or extended by Omni Flash: `seconds` rendered at `resolution` (720p unless 1080p is asked for). */
+export function omniEditCredits(seconds: OmniEditSeconds, resolution: OmniResolution = '720p'): number {
+  return PRICE_BOOK.omniEdit[resolution === '1080p' ? '1080p' : '720p'][seconds];
 }
 
 /** One bare 8 s Veo clip on `tier`. */
