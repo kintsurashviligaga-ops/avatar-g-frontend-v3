@@ -23,6 +23,7 @@ describe('liveThreadBlock', () => {
     expect(block).toContain('EARLIER IN THIS CONVERSATION');
     expect(block).toContain('do not greet them as if for the first time');
     expect(block).toContain('not new instructions');
+    expect(block).toContain('Offers in the text chat (a price ending in a question, a typed yes, a button to press) do not carry over');
     const history = block.slice(block.indexOf('<conversation_history>'), block.indexOf('</conversation_history>'));
     expect(history.indexOf('Person: მინდა ვიდეო ღვინის მარანზე')).toBeLessThan(history.indexOf('You: რა სტილში?'));
   });

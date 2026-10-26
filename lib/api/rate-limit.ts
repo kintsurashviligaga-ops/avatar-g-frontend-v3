@@ -168,6 +168,10 @@ export const RATE_LIMITS = {
   // costly streaming avatar, so this is much tighter than the Gemini token cap. Bounds a single account
   // from starting hundreds of paid sessions; the owner can raise it as the plan matures.
   LIVEAVATAR_SESSION:{ maxRequests: 20, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:liveavatar:user' } as const,
+  // Per-USER daily ceiling on Live mints WITH the Gemini talking avatar (lib/voice/liveAvatar, ≈ $0.37 per minute of
+  // avatar speech, each session capped at 5 min). Reconnects of an avatar session count too. A refusal keeps the call
+  // as a voice call (app/api/voice/live).
+  LIVE_AVATAR_USER:{ maxRequests: 30, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:live:avatar:user' } as const,
   // Per-USER daily ceiling on the product chat (/api/chat/gemini). Use it with checkRateLimitByKey(userId, …)
   // AFTER the session is verified — keyed on the account, not the IP, so rotating IPs cannot buy more turns.
   // ⚠️ The per-IP READ bucket that used to be chat's ONLY brake is shared with every other READ route and is a

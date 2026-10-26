@@ -116,7 +116,7 @@ const KEY_METHOD = '.v1beta.GenerativeService.BidiGenerateContent';
 /** Mic input format the Live API expects (16-bit LE PCM @ 16 kHz). */
 export const LIVE_INPUT_AUDIO_MIME = 'audio/pcm;rate=16000';
 
-export type LiveModality = 'AUDIO' | 'TEXT';
+export type LiveModality = 'AUDIO' | 'TEXT' | 'VIDEO';
 
 export interface GeminiLiveConfig {
   /** Ephemeral access token from /api/voice/live (preferred — never ship the raw API key to the client). */
@@ -261,6 +261,10 @@ export interface BuildLiveSetupOptions {
   functionDeclarations?: readonly LiveDeclaration[];
   /** Opt-in v2 turn detection; omitted by legacy clients. */
   turnEagerness?: 'eager' | 'normal' | 'patient';
+  /** A talking avatar (gemini-3.8-live on Vertex): the answer arrives as VIDEO with the voice muxed in, so
+   *  responseModalities becomes ['VIDEO']; speechConfig still picks that voice. VERIFIED 2026-10-25 (us-central1): avatarConfig
+   *  sits at the TOP level of setup (inside generationConfig → 1007 unknown field); Kira, Ben and Leo open. */
+  avatar?: { avatarName: string; videoBitrateBps?: number };
 }
 
 /** The BidiGenerateContentSetup payload (the value under `setup`, and the shape of the mint's
@@ -270,7 +274,8 @@ export interface LiveSetup {
   model: string;
   generationConfig: {
     responseModalities: LiveModality[];
-    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } };
+    /** Absent for an avatar, which speaks with its own voice. */
+    speechConfig?: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } };
     temperature?: number;
     thinkingConfig?: { thinkingBudget: number };
   };
@@ -280,6 +285,7 @@ export interface LiveSetup {
   sessionResumption?: { handle?: string };
   contextWindowCompression?: { triggerTokens?: number; slidingWindow: { targetTokens?: number } };
   tools?: LiveToolBlock[];
+  avatarConfig?: { avatarName: string; videoBitrateBps?: number };
 }
 
 /** The complete first client frame. */
@@ -292,6 +298,8 @@ const LIVE_MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const RETIRED_LIVE_RE = /^gemini-(?:1\.0|1\.5|2\.0)(?:-|$)/i;
 /** Prebuilt voice names are single words (Aoede, Charon, Kore, Puck, Zephyr, …); case is normalised. */
 const VOICE_NAME_RE = /^[A-Za-z]{2,32}$/;
+/** Prebuilt avatar names are single capitalised words (Kira, Ben, Leo). */
+const AVATAR_NAME_RE = /^[A-Z][a-z]{1,31}$/;
 /** BCP-47-ish: 'ka', 'ka-GE', 'zh-Hans', 'pt-BR'. */
 const BCP47_RE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}$/;
 /** Resumption handles are opaque server tokens: printable ASCII, no whitespace, bounded. */
@@ -342,6 +350,15 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
   if (takesThinkingBudget(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
 
   const setup: LiveSetup = { model, generationConfig };
+  const avatarName = typeof opts?.avatar?.avatarName === 'string' ? opts.avatar.avatarName.trim() : '';
+  if (AVATAR_NAME_RE.test(avatarName)) {
+    generationConfig.responseModalities = ['VIDEO'];
+    // ⚠️ speechConfig STAYS: without it the avatar speaks in the model's default voice, a man's for Kira too (GG,
+    // test link 2026-10-25 17:57Z: female voice chosen, Kira on screen, a male voice). Probe: Kira without a voice
+    // ~113 Hz, with Aoede ~178 Hz (female); Vertex accepts speechConfig next to VIDEO + avatarConfig.
+    const bitrate = Math.round(Number(opts.avatar?.videoBitrateBps));
+    setup.avatarConfig = { avatarName, ...(bitrate >= 300_000 && bitrate <= 8_000_000 ? { videoBitrateBps: bitrate } : {}) };
+  }
   if (opts.turnEagerness) {
     const detection = turnDetection(model, opts.turnEagerness);
     if (detection) setup.realtimeInputConfig = detection;
@@ -476,6 +493,9 @@ export function parseLiveServerEvents(raw: unknown): LegacyLiveServerEvent[] {
 export type LiveServerEvent =
   | { kind: 'setupComplete' }
   | { kind: 'audio'; data: string; mimeType: string }
+  /** A talking avatar's picture AND voice: a fragmented-MP4 piece (lib/voice/fmp4), base64. Avatars stream it
+   *  continuously, idle frames included, so a `video` event never means the model is speaking. */
+  | { kind: 'video'; data: string; mimeType: string }
   | { kind: 'inputTranscript'; text: string; final?: boolean }
   | { kind: 'outputTranscript'; text: string; final?: boolean }
   | { kind: 'turnComplete' }
@@ -593,6 +613,7 @@ function parseMessageObject(msg: Obj): LiveServerEvent[] {
       if (isObj(inline) && typeof inline.data === 'string' && inline.data.length > 0) {
         const mimeType = typeof inline.mimeType === 'string' ? inline.mimeType : '';
         if (mimeType.toLowerCase().startsWith('audio/')) events.push({ kind: 'audio', data: inline.data, mimeType });
+        else if (mimeType.toLowerCase().startsWith('video/')) events.push({ kind: 'video', data: inline.data, mimeType });
       }
       // ⚠️ Text parts are NOT surfaced: native-audio sessions answer in AUDIO only (the words arrive as
       // outputTranscription), and the text parts a thinking model does emit are thought summaries — a
