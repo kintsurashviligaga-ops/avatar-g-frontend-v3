@@ -23,7 +23,7 @@ import { PERSONA_STORAGE_KEY } from '@/components/studio/PersonaPicker';
 import { primeLive } from '@/lib/voice/livePrime';
 import { LIVE_ACTION_EVENT, LIVE_FUNCTION_DECLARATIONS, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail } from '@/lib/voice/liveTools';
 
-import GeminiLiveConversation from './GeminiLiveConversation';
+import GeminiLiveConversation, { failedNote } from './GeminiLiveConversation';
 import { LIVE_ACTION_STRINGS } from './live/LiveActionCards';
 import { LIVE_END_CALL_GRACE_MS, LIVE_END_CALL_MAX_WAIT_MS } from './live/liveActions';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
@@ -573,5 +573,16 @@ describe('the talking avatar', () => {
     render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
     await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
     expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+  });
+});
+
+describe('failedNote — what the call is told when a generation fails', () => {
+  test('the test link\'s refusal is said as what it is, never offered again (GG 2026-10-26)', () => {
+    const note = failedNote('ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.');
+    expect(note).toContain('This is a test link');
+    expect(note).toContain('do not offer to try again');
+  });
+  test('any other failure is told plainly, with a retry', () => {
+    expect(failedNote('Google timed out')).toBe('[App] A generation failed: "Google timed out". Tell the user plainly and offer to try again.');
   });
 });

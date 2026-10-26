@@ -205,6 +205,15 @@ export function describeServiceError(raw: unknown, locale: string, fallback: str
   return fallback;
 }
 
+/**
+ * Is this line the test link's own notice (any language)? A Live call told „a generation failed" offered to try again, on
+ * a link where nothing can ever be made (GG 2026-10-26): the call says what the link is instead.
+ */
+export function isTestLinkNotice(text: unknown): boolean {
+  const t = typeof text === 'string' ? text.trim() : '';
+  return !!t && (Object.keys(COPY) as ErrLang[]).some((l) => t.includes(COPY[l].preview_test_link.slice(0, 40)));
+}
+
 /** The known failure a string names, or null — no fallback, no logging. */
 function knownFor(text: string): Known | null {
   for (const [rx, key] of MATCHERS) {

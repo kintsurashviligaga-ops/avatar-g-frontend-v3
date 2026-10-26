@@ -34,6 +34,7 @@ import { LIVE_CALL_EVENT, LIVE_PLAN_KINDS, LIVE_RESULT_EVENT, type LivePlanKind,
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 import { AVATAR_FALLBACK_MIME } from '@/lib/voice/fmp4';
 import { avatarPlaybackSupported } from '@/lib/voice/fmp4Player';
+import { isTestLinkNotice } from '@/components/studio/ui/serviceError';
 import type { AvatarAudioOutput } from '@/lib/voice/avatarAudio';
 import { LIVE_AVATAR_MAX_MS, defaultLiveAvatar, liveAvatarEnabled } from '@/lib/voice/liveAvatar';
 
@@ -106,6 +107,16 @@ export function planNote(n: number, kind: LivePlanKind, what: string): string {
   return `[App] Agent G's ${which} is in the chat${what ? `: ${what}` : ''}. Tell the user in one or two sentences what it `
     + 'does and ask whether to start it; after a clear yes call agent_task with action "start"'
     + `${n ? ` and plan ${n}` : ''}. The app starts it only on the user's own yes.`;
+}
+
+/** The [App] note for a failed generation. The test link's refusal is no failure to retry: nothing can be made there. */
+export function failedNote(what: string): string {
+  if (isTestLinkNotice(what)) {
+    return '[App] This is a test link: paid creation is switched off here on purpose, so nothing can be made in this call '
+      + 'and no credits were spent. Tell the user exactly that in one sentence (real creation works on myavatar.ge); do not '
+      + 'offer to try again here.';
+  }
+  return `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`;
 }
 
 /** The [App] note when a voice start ran out its countdown and started nothing. */
@@ -320,8 +331,7 @@ export default function GeminiLiveConversation({
       const note = n.kind === 'plan' ? planNote(planNo, planKind ?? 'audio', what)
         : n.kind === 'not_started' ? notStartedNote(n.reason, what)
         : n.kind === 'music' ? `[App] Music Studio: ${what || 'the music card changed'}`
-        : n.kind === 'failed'
-        ? `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`
+        : n.kind === 'failed' ? failedNote(what)
         : `[App] A new ${n.kind === 'audio' ? 'music track' : n.kind} is ready on screen${what ? `: "${what}"` : ''} — it is now result 1. `
           + 'If the user asked for more steps, continue with the next one now; otherwise tell them in one short sentence.';
       notesRef.current = [...notesRef.current, { text: note, ...(planNo ? { planId: n.planId } : {}) }].slice(-4);

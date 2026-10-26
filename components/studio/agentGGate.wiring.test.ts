@@ -10,6 +10,16 @@ const src = readFileSync(join(process.cwd(), 'components/studio/OmniStudio.tsx')
 const sendBody = src.slice(src.indexOf('const send = useCallback(async (opts?:'), src.indexOf('// ── VIDEO REMIX — edit an uploaded video via /api/video/remix'));
 const at = (needle: string): number => sendBody.indexOf(needle);
 
+describe('a Live call\'s order (GG 2026-10-26: one word got questions, the call had no price, nothing was made)', () => {
+  test('its tool wins over an old question, it answers no card, and the gate is told it is a Live order', () => {
+    const order = sendBody.slice(at('const chatOrder: GateMode | null'), at('const gateMode: GateMode | null = focusGateMode ?? chatOrder;'));
+    expect(order.indexOf('if (opts?.liveOrder) return opts.liveOrder;')).toBeGreaterThan(0);
+    expect(order.indexOf('if (opts?.liveOrder) return opts.liveOrder;')).toBeLessThan(order.indexOf('if (chatPend) return chatPend.mode;'));
+    expect(sendBody).toContain('const pend = opts?.liveOrder ? null : inChat ? chatPend : gatePendingRef.current;');
+    expect(sendBody).toContain('classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine, liveOrder });');
+  });
+});
+
 describe('the gate runs before anything that spends', () => {
   test('it exists, and it classifies first', () => {
     expect(at('classifyFocusInput({ text, mode: gateMode')).toBeGreaterThan(0);
