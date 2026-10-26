@@ -200,7 +200,7 @@ test('8 s with a Georgian line: Omni says it itself at 1080p for ✦82 — no Cl
   // The line verbatim, in Georgian letters: Omni speaks Georgian, so nothing is spelled in Latin for its mouth.
   expect(sub.prompt).toContain(`"${KA_LINE}"`);
   expect(sub.prompt).not.toContain('gamarjoba');
-  expect(sub.prompt).toContain('The old man (male voice) says the words on screen, once, exactly as written, in natural Georgian, lips in sync. No narrator, no voice-over.');
+  expect(sub.prompt).toContain('The old man (male voice) says the words on screen, once, exactly as written, in natural Georgian, lips in sync. No false starts, no narrator, no voice-over.');
   expect((createJob as jest.Mock).mock.calls[0][0].params).toMatchObject({ engine: 'omni', seconds: 8, resolution: '1080p', speech: 'ka', _reserve: { credits: 82 } });
   expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'omni', clipSec: 8, voiced: false, omniOp: 'clip' });
 });
@@ -259,7 +259,9 @@ test('GG\'s three lines (~11.8 s) do not fit 8 s or 10 s: refused with the estim
   const { prompt } = (submitOmniClip as jest.Mock).mock.calls[0][0];
   // Two people, each in their own voice, in the order they speak: never one narrator for both.
   expect(prompt).toContain('The lines are spoken in this order: the host (male voice), then the woman (female voice).');
-  expect(prompt).toContain('no two people share a voice. No narrator, no voice-over.');
+  expect(prompt).toContain('no two people share a voice. The camera is on each person while they speak. No false starts, no narrator, no voice-over.');
+  // GG's clip 2026-10-26 13:53Z: a track ran under the two voices that nobody asked for.
+  expect(prompt).toContain('No background music.');
   expect(prompt).toContain(`"${GG_LINES[1]}"`);
   expect(prompt).toContain(`"${GG_LINES[2]}"`);
 });
@@ -270,7 +272,7 @@ test('an English line keeps Veo\'s own voice, verbatim — no Omni, no voiced id
   expect(j).toMatchObject({ engine: 'Veo', seconds: 8 });
   expect(j.speech).toBeUndefined();
   expect(submitOmniClip).not.toHaveBeenCalled();
-  expect((submitScene as jest.Mock).mock.calls[0][0].prompt).toBe('A barista smiles and says "Your coffee is ready!" The barista (female voice) says the words on screen, once, exactly as written, lips in sync. No narrator, no voice-over.');
+  expect((submitScene as jest.Mock).mock.calls[0][0].prompt).toBe('A barista smiles and says "Your coffee is ready!" The barista (female voice) says the words on screen, once, exactly as written, lips in sync. No false starts, no narrator, no voice-over.');
   expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'veo', voiced: false });
 });
 
@@ -360,7 +362,7 @@ test('10 s with a Georgian line the card did not flag starts at 1080p (✦102): 
   expect(prompt).toContain(`"${KA_LINE}"`);
   expect(prompt).not.toContain('gamarjoba');
   expect(prompt).toContain('in natural Georgian');
-  expect(prompt).toContain('No narrator, no voice-over.');
+  expect(prompt).toContain('No false starts, no narrator, no voice-over.');
   expect(prompt).toMatch(/No subtitles, captions or on-screen text\.$/);
   expect(parseVeoJobId(genjutsuChargeForPolledId(j.jobId).jobId)).toMatchObject({ engine: 'omni', clipSec: 10, voiced: false });
 });

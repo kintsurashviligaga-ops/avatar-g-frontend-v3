@@ -36,7 +36,7 @@ import { readJson } from '@/lib/studio/http';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { veoModelProblem } from '@/lib/veo/engine';
 import { serviceOffResponse } from '@/lib/server/serviceSwitches';
-import { CLIP_SPEECH_MAX_CHARS, asksForSubtitles, clipNegativePrompt, clipSpeechFits, composeClipPrompt, speaksGeorgian, spokenText } from '@/lib/video/clipPrompt';
+import { CLIP_SPEECH_MAX_CHARS, asksForMusic, asksForSubtitles, clipNegativePrompt, clipSpeechFits, composeClipPrompt, speaksGeorgian, spokenText } from '@/lib/video/clipPrompt';
 import { readClipPrompt } from '@/lib/video/clipSpeech';
 import { DIRECT_CLIP_BODY_MAX_BYTES, directClipCredits, directClipEngine, directClipResolution, parseDirectClipRequest, type DirectClipRequest, type DirectClipSpeech } from '@/lib/video/directClip';
 import { submitOmniClip } from '@/lib/video/omniClip';
@@ -159,7 +159,7 @@ async function startClip(userId: string, r: DirectClipRequest, locale: ReturnTyp
   const photos = r.photos.map((p) => ({ kind: 'bytes' as const, base64: p.base64, mimeType: p.mimeType }));
   const sub = engine === 'omni'
     ? await submitOmniClip({
-      prompt: composeClipPrompt({ reading, photos: photoMode, engine: 'omni', subtitles: asksForSubtitles(r.prompt) }),
+      prompt: composeClipPrompt({ reading, photos: photoMode, engine: 'omni', subtitles: asksForSubtitles(r.prompt), music: asksForMusic(r.prompt) }),
       aspect: r.aspect, resolution, seconds: r.seconds, userId,
       ...(r.photos[0] ? { firstFrame: r.photos[0] } : {}),
     }).then((o) => (o.ok ? { ok: true as const, operation: o.id, aspect: r.aspect } : o))

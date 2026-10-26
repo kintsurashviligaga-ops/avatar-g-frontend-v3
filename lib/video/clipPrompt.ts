@@ -17,7 +17,9 @@
  * keeps the clips with no Georgian line; an English or Russian line is said in Veo's own voice, verbatim.
  *
  * WHO SAYS WHAT. The reader names the character of each line and their voice (`speakers`), and the prompt says the order
- * and that no two people share a voice — WITHOUT writing the words a second time (Omni's probe said a line twice).
+ * and that no two people share a voice — WITHOUT writing the words a second time (Omni's probe said a line twice). GG's
+ * clip 2026-10-26 13:53Z (two voices, no narrator) still had a false start, the woman's line over a man's face and a
+ * track under the lines: the camera is put on whoever speaks, false starts are ruled out, and music unless asked for.
  *
  * THE WORDS MUST FIT THE CLIP, checked before any charge (clipSpeechFits): a line longer than the clip is rushed or cut,
  * never refused by the engine (lib/video/speechTiming).
@@ -149,6 +151,11 @@ export function asksForSubtitles(prompt: string): boolean {
   return /subtit|caption|სუბტიტრ|ტიტრ|субтитр|титр/i.test(prompt);
 }
 
+/** The user asked for music themselves — then Omni is not told to leave it out under the lines. */
+export function asksForMusic(prompt: string): boolean {
+  return /music|song|soundtrack|მუსიკ|სიმღერ|მელოდი|музык|песн|мелоди|саундтрек/i.test(prompt);
+}
+
 const NEGATIVE_BASE = 'blurry, low quality, watermark, distorted face, deformed hands, extra limbs';
 const NEGATIVE_TEXT = 'subtitles, captions, on-screen text';
 
@@ -165,6 +172,8 @@ export interface ComposeClipPrompt {
   engine?: 'veo' | 'omni';
   /** Omni only: the user asked for words on screen (asksForSubtitles), so the prompt does not forbid them. */
   subtitles?: boolean;
+  /** Omni only: the user asked for music (asksForMusic), so spoken lines are not kept clear of it. */
+  music?: boolean;
 }
 
 /** „the man (male voice)" — a speaker as the prompt says them; null when the reader could not name them. */
@@ -188,16 +197,16 @@ function speechRule(reading: ClipReading): string | null {
   });
   const people = new Set(reading.speakers.map((s) => s.who.toLowerCase()).filter(Boolean)).size;
   if (people >= 2) {
-    return `The lines are spoken in this order: ${order.join(', then ')}. Each person says only their own words, once, exactly as written${georgian}, in their own voice, with their own lips in sync; no two people share a voice. No narrator, no voice-over.`;
+    return `The lines are spoken in this order: ${order.join(', then ')}. Each person says only their own words, once, exactly as written${georgian}, in their own voice, with their own lips in sync; no two people share a voice. The camera is on each person while they speak. No false starts, no narrator, no voice-over.`;
   }
   if (order.length === 1) {
-    return `${order[0]![0]!.toUpperCase()}${order[0]!.slice(1)} says the words on screen, once, exactly as written${georgian}, lips in sync. No narrator, no voice-over.`;
+    return `${order[0]![0]!.toUpperCase()}${order[0]!.slice(1)} says the words on screen, once, exactly as written${georgian}, lips in sync. No false starts, no narrator, no voice-over.`;
   }
-  return `Each line is said once, exactly as written${georgian}, by the person on screen, lips in sync. No narrator, no voice-over.`;
+  return `Each line is said once, exactly as written${georgian}, by the person on screen, lips in sync. No false starts, no narrator, no voice-over.`;
 }
 
 /** The prompt the engine renders. */
-export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles = false }: ComposeClipPrompt): string {
+export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles = false, music = false }: ComposeClipPrompt): string {
   const omni = engine === 'omni';
   const said = (line: string): string => `"${line.replace(/"/g, '')}"`;
 
@@ -220,6 +229,8 @@ export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles =
   const rule = speechRule(reading);
   if (rule) parts.push(rule);
   else if (reading.silent) parts.push('No dialogue, no voices.');
+  // ⚠️ GG's clip 2026-10-26 13:53Z (Omni 10 s 1080p): an upbeat track nobody asked for ran under the two voices.
+  if (omni && rule && !music) parts.push('No background music.');
   if (omni && !subtitles) parts.push('No subtitles, captions or on-screen text.');
   return parts.join(' ');
 }
