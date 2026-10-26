@@ -71,6 +71,7 @@ import { acquireMic, browserMicDeps, type MicDeps, type MicFailure, type MicResu
 import { useVoicePreferencesContext } from '@/components/voice/experience/VoicePreferencesProvider';
 import { voiceStyleInstruction, VOICE_UI_APPROVAL_RULE, type VoicePreferences } from '@/lib/voice/experience/settings';
 import { offersUnpreparedStart, UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
+import { type CallLanguage, spokenLanguageOf, withReplyLanguage, withReplyLanguageField } from '@/lib/voice/replyLanguage';
 import { voiceStyleCommand } from '@/lib/voice/experience/commands';
 import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
 import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
@@ -703,6 +704,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   // Transcript
   const pendingUserRef = useRef('');
   const pendingModelRef = useRef('');
+  /** The language the user last spoke in this call, named in every answer the app gives the model (lib/voice/replyLanguage). */
+  const userLanguageRef = useRef<CallLanguage | null>(null);
   const finalCaptionsRef = useRef<LiveCaption[]>([]);
   const turnSeqRef = useRef(0);
   // Timers
@@ -750,6 +753,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     // ⚠️ The transcription's own text, not the caption's: lib/voice/spokenYes reads it back in Georgian letters itself and
     // must know which words came in another alphabet, whose question mark is a guess („كي?" for „კი", GG 2026-10-26).
+    if ('text' in e) { const lang = spokenLanguageOf(e.text); if (lang) userLanguageRef.current = lang; }
     try { optsRef.current.onHeard?.(e); } catch { /* a host bug must never kill the call */ }
   }, []);
 
@@ -1125,12 +1129,15 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       type: 'toolDone',
       results: responses.map((r) => ({ id: r.id, ok: !(r.response && typeof r.response === 'object' && 'error' in r.response) })),
     });
+    // ⚠️ GG 2026-10-26 11:34Z: an answer in English made the model reply in English (lib/voice/replyLanguage).
+    responses = withReplyLanguageField(responses, userLanguageRef.current);
     if (sessionRef.current === session) { session.sendToolResponse(responses); return; }
     // ⚠️ A LATE ANSWER WAS DROPPED. ask_agent_g / read_webpage answer after the network (up to a minute); when the
     // connection was renewed meanwhile (goAway, a network blip) the answer went to the dead socket and the model never
     // learned what Agent G found — it could only guess or say nothing. Now the new connection is told, as an [App] note.
-    const note = lateToolAnswerNote(responses);
-    if (!note) return;
+    const late = lateToolAnswerNote(responses);
+    if (!late) return;
+    const note = withReplyLanguage(late, userLanguageRef.current);
     if (readyRef.current && sessionRef.current) sessionRef.current.sendText(note);
     else lateAnswersRef.current.push(note);
   }, []);
@@ -1190,7 +1197,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           && offersUnpreparedStart(said) && readyRef.current && sessionRef.current === session) {
           unpreparedNotesRef.current += 1;
           toolSinceUserRef.current = true; // one note per thing the user said
-          session.sendText(UNPREPARED_START_NOTE);
+          session.sendText(withReplyLanguage(UNPREPARED_START_NOTE, userLanguageRef.current));
         }
         afterTurnBoundary();
         return;
@@ -1658,6 +1665,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     if (pendingModelRef.current) emitSaid({ end: true });
     pendingUserRef.current = '';
     pendingModelRef.current = '';
+    userLanguageRef.current = null;
     finalCaptionsRef.current = [];
     turnSeqRef.current = 0;
     setCaptions([]);
@@ -1842,7 +1850,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const sendNote = useCallback((text: string): boolean => {
     const t = typeof text === 'string' ? text.trim() : '';
     if (!t || !readyRef.current || !sessionRef.current) return false;
-    sessionRef.current.sendText(t);
+    sessionRef.current.sendText(withReplyLanguage(t, userLanguageRef.current));
     return true;
   }, []);
 
