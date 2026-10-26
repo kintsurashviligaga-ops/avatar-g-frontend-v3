@@ -581,6 +581,9 @@ describe('failedNote — what the call is told when a generation fails', () => {
     const note = failedNote('ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.');
     expect(note).toContain('This is a test link');
     expect(note).toContain('do not offer to try again');
+    // GG 2026-10-26 13:24Z: „ამჟამად მიუწვდომელია" alone sounded like an outage.
+    expect(note).toContain('that this is a test link, that creation is off only here, and that it works on myavatar.ge');
+    expect(note).toContain('Do not say it is unavailable or broken');
   });
   test('any other failure is told plainly, with a retry', () => {
     expect(failedNote('Google timed out')).toBe('[App] A generation failed: "Google timed out". Tell the user plainly and offer to try again.');
