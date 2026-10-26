@@ -1,4 +1,4 @@
-import { HEARD_MAX, HEARD_TEXT_MAX, createVoiceLedger } from './voiceLedger';
+import { HEARD_MAX, HEARD_TEXT_MAX, SPOKEN_PRICE_MAX_MS, TOLD_MAX, createVoiceLedger, creditAmounts } from './voiceLedger';
 
 const clockAt = (start = 1000) => {
   let t = start;
@@ -81,5 +81,101 @@ describe('plans: Agent G\'s cards by number', () => {
       { id: 'c', kind: 'montage', quoted: false },
     ]);
     expect(seen.map((p) => [p.id, p.n, p.at])).toEqual([['a', 1, 1000], ['b', 2, 2000], ['c', 3, 0]]);
+  });
+});
+
+describe('creditAmounts: the prices a sentence names', () => {
+  it.each([
+    ["It'll cost you 5 credits. Shall we proceed?", [5]],
+    ['That is 1 credit.', [1]],
+    ['That will be four credits, ok?', [4]],
+    ['ეს 5 კრედიტი ღირს. დავიწყო?', [5]],
+    ['ხუთი კრედიტი დაჯდება', [5]],
+    ['ეს 12 კრედიტიანია', [12]],
+    ['Это будет стоить 4 кредита.', [4]],
+    ['пять кредитов', [5]],
+    ['A 4-credit image, or 8 credits in HD.', [4, 8]],
+    ['5 credits now, 5 credits later', [5]],
+    ['Your balance is 1.5 credits short', []],
+    ['A car picture, red, at sunset.', []],
+    ['credits', []],
+  ])('%s → %j', (text, amounts) => {
+    expect(creditAmounts(text)).toEqual(amounts);
+  });
+
+  it('never throws on what is not text', () => {
+    expect(creditAmounts(undefined as unknown as string)).toEqual([]);
+  });
+});
+
+describe('told: the price the model named itself, just before the card', () => {
+  it('GG 2026-10-26 08:17Z: "It\'ll cost you 5 credits. Shall we proceed?" before the card → when it named 5', () => {
+    const c = clockAt();
+    const l = createVoiceLedger(c.now);
+    l.tell({ text: 'A car picture.' });
+    c.tick(300);
+    l.tell({ text: "A car picture. It'll cost you 5 credits." }); // first named the price here
+    c.tick(300);
+    l.tell({ text: "A car picture. It'll cost you 5 credits. Shall we proceed?" });
+    l.tell({ end: true });
+    c.tick(2000);
+    const card = c.now();
+    expect(l.pricedAt!(5, card)).toBe(1300);
+    expect(l.pricedAt!(4, card)).toBe(0); // the card's price is not the one said
+  });
+
+  it('only the newest price named before the card counts, and only when it names exactly one amount', () => {
+    const c = clockAt();
+    const l = createVoiceLedger(c.now);
+    l.tell({ text: 'That is 5 credits.' });
+    l.tell({ end: true });
+    c.tick(1000);
+    l.tell({ text: 'In HD it would be 8 credits.' });
+    l.tell({ end: true });
+    c.tick(1000);
+    expect(l.pricedAt!(5, c.now())).toBe(0);
+    expect(l.pricedAt!(8, c.now())).toBe(2000);
+    l.tell({ text: '4 credits, or 8 credits in HD?' });
+    l.tell({ end: true });
+    c.tick(1000);
+    expect(l.pricedAt!(8, c.now())).toBe(0);
+  });
+
+  it('words with no price in between do not hide it; a price said after the card is not before it', () => {
+    const c = clockAt();
+    const l = createVoiceLedger(c.now);
+    l.tell({ text: 'It costs 2 credits. Go?' });
+    l.tell({ end: true });
+    c.tick(500);
+    l.tell({ text: 'Great, preparing it now.' });
+    l.tell({ end: true });
+    c.tick(500);
+    const card = c.now();
+    c.tick(500);
+    l.tell({ text: 'It is 2 credits.' }); // the model reading the card back, after it came
+    expect(l.pricedAt!(2, card)).toBe(1000);
+  });
+
+  it('a price named longer ago than the window is not the one a yes just answered', () => {
+    const c = clockAt();
+    const l = createVoiceLedger(c.now);
+    l.tell({ text: 'It costs 2 credits.' });
+    l.tell({ end: true });
+    c.tick(SPOKEN_PRICE_MAX_MS + 1);
+    expect(l.pricedAt!(2, c.now())).toBe(0);
+  });
+
+  it('the open words count, nothing empty is kept, and only the last few are', () => {
+    const c = clockAt();
+    const l = createVoiceLedger(c.now);
+    l.tell({ text: '   ' });
+    l.tell({ end: true });
+    l.tell({ text: 'Three credits.' });
+    c.tick(100);
+    expect(l.pricedAt!(3, c.now())).toBe(1000);
+    l.tell({ end: true });
+    for (let i = 0; i < TOLD_MAX; i += 1) { c.tick(10); l.tell({ text: `fine ${i}` }); l.tell({ end: true }); }
+    c.tick(10);
+    expect(l.pricedAt!(3, c.now())).toBe(0); // pushed out
   });
 });

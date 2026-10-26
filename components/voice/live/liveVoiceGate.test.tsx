@@ -13,7 +13,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { LiveActionEventDetail, LiveRunDetail, LiveStudioReply } from '@/lib/voice/liveTools';
 import { createVoiceLedger } from '@/lib/voice/voiceLedger';
 
-import { executeLiveToolCall, fetchApproval, useLiveActions, type LiveActionEnv } from './liveActions';
+import { executeLiveToolCall, fetchApproval, judgeRun, useLiveActions, type LiveActionEnv } from './liveActions';
 
 const call = (id: string, name: string, args: unknown = {}) => ({ id, name, args });
 
@@ -29,7 +29,9 @@ function gateEnv(reply: (d: LiveActionEventDetail) => LiveStudioReply | undefine
     voice,
   };
   const say = (text: string) => { t += 100; voice.hear({ text }); voice.hear({ end: true }); };
-  return { env, actions, voice, say, tick: (ms = 100) => { t += ms; } };
+  /** The model's own words (the transcript of its voice). */
+  const tell = (text: string) => { t += 100; voice.tell({ text }); voice.tell({ end: true }); };
+  return { env, actions, voice, say, tell, now: () => t, tick: (ms = 100) => { t += ms; } };
 }
 
 describe('start_generation: the price was told, and the user has not said no since', () => {
@@ -91,6 +93,63 @@ describe('start_generation: the price was told, and the user has not said no sin
     executeLiveToolCall(call('g', 'get_screen_state'), g.env); // same screen: the quote time stands
     const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), g.env);
     expect(out.run?.since).toBe(told);
+  });
+});
+
+describe('start_generation: the model named the price itself before the card (GG 2026-10-26 08:17Z)', () => {
+  const studio = (d: LiveActionEventDetail): LiveStudioReply | undefined =>
+    (d.type === 'prepare_generation' || d.type === 'start_generation' || d.type === 'get_screen_state'
+      ? { ok: true, tool: 'image', priceCredits: 5, fingerprint: 'image|a car|5' } : undefined);
+
+  it('the run carries when the model named exactly the card\'s price', () => {
+    const g = gateEnv(studio);
+    g.tell("A car picture. It'll cost you 5 credits. Shall we proceed?");
+    const named = g.now();
+    g.say('Yes.');
+    g.tick();
+    executeLiveToolCall(call('p', 'prepare_generation', { tool: 'image', prompt: 'a car' }), g.env);
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(out.run).toMatchObject({ tool: 'image', priceCredits: 5, since: g.voice.studioQuote().at, spokenSince: named });
+  });
+
+  it('another price named, or none → the run is judged only on words after the card, as before', () => {
+    const g = gateEnv(studio);
+    g.tell('That would be 4 credits. Shall I?');
+    g.say('yes');
+    g.tick();
+    executeLiveToolCall(call('p', 'prepare_generation', { tool: 'image', prompt: 'a car' }), g.env);
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(out.run).toEqual({
+      tool: 'image', priceCredits: 5, target: { kind: 'studio', tool: 'image', fingerprint: 'image|a car|5' }, since: g.voice.studioQuote().at,
+    });
+  });
+
+  it('a no to the price the model named still refuses, when nothing was said since the card', () => {
+    const g = gateEnv(studio);
+    g.tell('It costs 5 credits. Go ahead?');
+    g.say('no, not now');
+    g.tick();
+    executeLiveToolCall(call('p', 'prepare_generation', { tool: 'image', prompt: 'a car' }), g.env);
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), g.env);
+    expect(out.response.response).toMatchObject({ ok: false, error: 'user_said_no' });
+    expect(out.run).toBeUndefined();
+  });
+});
+
+describe('judgeRun: the words that answer a start', () => {
+  const heard = [{ text: 'Yes.', at: 1200 }];
+  it('a yes after the spoken price, before the card, answers it', () => {
+    expect(judgeRun(heard, { since: 1500, spokenSince: 1100 })).toEqual({ verdict: 'yes', said: 'Yes.' });
+  });
+  it('without a spoken price the same yes is too early', () => {
+    expect(judgeRun(heard, { since: 1500 }).verdict).toBe('unclear');
+  });
+  it('a yes said before the model named the price is no answer to it', () => {
+    expect(judgeRun(heard, { since: 1500, spokenSince: 1300 }).verdict).toBe('unclear');
+  });
+  it('words after the card decide over anything said before it', () => {
+    expect(judgeRun([...heard, { text: 'wait', at: 1600 }], { since: 1500, spokenSince: 1100 }).verdict).toBe('no');
+    expect(judgeRun([{ text: 'no', at: 1200 }, { text: 'ok, go', at: 1600 }], { since: 1500, spokenSince: 1100 }).verdict).toBe('yes');
   });
 });
 
@@ -305,6 +364,57 @@ describe('useLiveActions: the countdown runs only on the user\'s own yes', () =>
     await flush();
     expect(result.current.pendingRun?.state).toBe('failed');
     expect(env.notify).toHaveBeenCalledWith({ kind: 'not_started', reason: 'refused', what: 'The prompt changed during the countdown.' });
+  });
+
+  const tell = (r: { current: ReturnType<typeof useLiveActions> }, text: string) => act(() => {
+    r.current.onSaid({ text: text.slice(0, 12) });
+    r.current.onSaid({ text });
+    r.current.onSaid({ end: true });
+    jest.advanceTimersByTime(400);
+  });
+
+  it('GG 08:17Z: the model said the card\'s price, the user said yes, THEN the card came → the yes counts', async () => {
+    const { env, runs } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    tell(result, "Lo-fi rain music. It'll cost you 4 credits. Shall we proceed?");
+    hear(result, 'Yes.');
+    act(() => { jest.advanceTimersByTime(500); });
+    prepare(result);
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    expect(result.current.pendingRun?.state).toBe('counting');
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    await flush();
+    expect(env.recordApproval).toHaveBeenCalledWith({ tool: 'music', said: 'Yes.', credits: 4 });
+    expect(runs).toEqual([{ target: { kind: 'studio', tool: 'music' }, approval: { channel: 'voice-transcript', said: 'Yes.' } }]);
+    expect(result.current.pendingRun?.state).toBe('started');
+  });
+
+  it('the model said another price than the card\'s → that early yes does not count', async () => {
+    const { env } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    tell(result, 'It will be 2 credits. Shall I?');
+    hear(result, 'Yes.');
+    act(() => { jest.advanceTimersByTime(500); });
+    prepare(result);
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    await flush();
+    expect(env.runGeneration).not.toHaveBeenCalled();
+    expect(result.current.pendingRun?.state).toBe('not_heard');
+  });
+
+  it('after an early yes, a "wait" during the countdown still stops it', async () => {
+    const { env } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    tell(result, 'That is 4 credits. Go?');
+    hear(result, 'yes');
+    act(() => { jest.advanceTimersByTime(500); });
+    prepare(result);
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    act(() => { jest.advanceTimersByTime(1000); result.current.onHeard({ text: 'wait' }); });
+    expect(result.current.pendingRun?.state).toBe('cancelled');
+    await act(async () => { jest.advanceTimersByTime(5000); });
+    expect(env.runGeneration).not.toHaveBeenCalled();
   });
 
   it('stop (generations) cancels a start still counting; hanging up mid-countdown runs nothing', async () => {

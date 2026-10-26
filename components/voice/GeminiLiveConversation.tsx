@@ -206,8 +206,10 @@ export default function GeminiLiveConversation({
     actions: true,
     onToolCall: liveActions.onToolCall,
     onToolCallCancellation: liveActions.onToolCallCancellation,
-    // The user's own words: a voice start runs only on these (liveActions, lib/voice/voiceLedger).
+    // The user's own words: a voice start runs only on these (liveActions, lib/voice/voiceLedger). The model's own words:
+    // a price it named just before the card is the price a yes said then answered.
     onHeard: liveActions.onHeard,
+    onSaid: liveActions.onSaid,
     avatar: desiredAvatar,
     onVideo: avatarPlayer.push,
     onAvatarInterrupted: avatarPlayer.jumpToLive,
