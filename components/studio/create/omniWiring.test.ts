@@ -119,7 +119,9 @@ describe('the phone: settings open on demand and the composer remains available 
     expect(src).toMatch(/const composerRunAside = composerTextHidden;/);
     // Its price is the clip's for the length, tier, photos and resolution on the panel (GG 2026-10-25: the card's Create
     // shows the same number, lib/video/directClip = the route's own price).
-    expect(src).toContain('? directClipCredits({ seconds: snapDirectClipSeconds(videoDuration), tier: openClipTier(veoPlan.tier, clipClosedTiers, Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length)), photos: Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length), resolution: clipResolution, speech: composerSpeech }) || null');
+    // Its photos are the panel's and the box's attached images, as send() hands them to the card.
+    expect(src).toContain('const composerClipPhotos = Math.min(DIRECT_CLIP_MAX_PHOTOS, videoCharacterRefs.length + attachments.filter((a) => isImage(a.mimeType)).length);');
+    expect(src).toContain('? directClipCredits({ seconds: snapDirectClipSeconds(videoDuration), tier: openClipTier(veoPlan.tier, clipClosedTiers, composerClipPhotos), photos: composerClipPhotos, resolution: clipResolution, speech: composerSpeech }) || null');
     expect(src).toContain('onClick={runComposer} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}');
     // A balance known to be short opens the top-up (never the clip); a guest (balance unknown) goes on to runTool's own
     // sign-in gate. There is no free slot for a clip: it is always priced.

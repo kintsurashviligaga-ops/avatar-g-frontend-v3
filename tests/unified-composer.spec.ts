@@ -325,6 +325,51 @@ for (const vp of VIEWPORTS) {
       expect(calls.clip).toHaveLength(0);
     });
 
+    test('2f · while a speaking clip\'s card waits for Create, the chips are ITS settings: Omni\'s prices, never Veo\'s, and a pick changes the card', async ({ page }) => {
+      // GG 2026-10-26 12:45Z: beside a Gemini Omni Flash card at ✦82 the quality chip still said „Veo 3.1 Fast" and its
+      // picker offered Veo 3.1 Lite / Fast / Veo 3.1 at ✦54 / 75 / 224 — the box was empty after Send, so the chips priced a
+      // clip with no words. They are the card's now: its words, its engine, its price.
+      const calls = await openStudio(page, { tool: null, closedTiers: [] });
+      await pickService(page, 'video', 'en');
+      await page.locator(FILE_INPUT).setInputFiles([{ name: 'cafe.jpg', mimeType: 'image/jpeg', buffer: POSTER }]);
+      await expect(page.getByTitle('cafe.jpg')).toBeVisible({ timeout: 10_000 });
+      const words = 'Two friends sit in a café. The boy says: „გამარჯობა, როგორ ხარ?" The girl answers: „კარგად, შენ?"';
+      await typeFilmPrompt(page, words);
+      await expect(page.getByTestId('run-button')).toHaveAttribute('data-price', '82');
+      await sendFilm(page);
+      const card = await waitForClipCard(page);
+      await expect(card).toHaveAttribute('data-speech', 'ka');
+      await expect(card.getByTestId('clip-confirm')).toHaveAttribute('data-price', '82');
+
+      await expect(page.getByTestId('quick-video-tier')).toContainText('1080p');
+      await page.getByTestId('quick-video-tier').click();
+      const quality = chipPicker(page, 'video-tier-picker');
+      await expect(quality).toBeVisible();
+      await expect(quality).not.toContainText('Veo');
+      await expect(quality.locator('[role="radio"][data-value="720p"]')).toContainText('✦ 55');
+      await expect(quality.locator('[role="radio"][data-value="1080p"]')).toContainText('✦ 82');
+      await quality.locator('[role="radio"][data-value="720p"]').click();
+      await expect(quality).toBeHidden();
+      await expect(card.getByTestId('clip-confirm')).toHaveAttribute('data-price', '55');
+      await expect(card.getByTestId('clip-spec')).toHaveText('8 s · 9:16 · 720p · 720×1280 · Gemini Omni Flash');
+
+      await page.getByTestId('quick-video-length').click();
+      const lengths = chipPicker(page, 'video-length-picker');
+      await expect(lengths).toBeVisible();
+      for (const [sec, credits] of [[4, 28], [6, 42], [8, 55], [10, 69]] as const) {
+        await expect(lengths.locator(`[role="radio"][data-value="${sec}"]`)).toContainText(`✦ ${credits}`);
+      }
+      await expect(lengths).not.toContainText('Veo');
+      await lengths.locator('[role="radio"][data-value="10"]').click();
+      await expect(lengths).toBeHidden();
+      await expect(card).toHaveAttribute('data-seconds', '10');
+      await expect(card.getByTestId('clip-confirm')).toHaveAttribute('data-price', '69');
+
+      await card.getByTestId('clip-confirm').click();
+      await expect.poll(() => calls.clip.length, { timeout: 15_000 }).toBe(1);
+      expect(calls.clip[0]).toMatchObject({ prompt: words, seconds: 10, resolution: '720p', speech: 'ka', expectedCredits: 69 });
+    });
+
     test('2e · in the chat, a photo + a Veo brief whose Georgian line says „დამონტაჟებული" is ONE clip\'s card, never the Montage editor', async ({ page }) => {
       // GG's E2E (2026-10-25 20:00Z): this brief opened the Montage editor — the quoted line's „დამონტაჟებული ვიდეო" was read
       // as a montage ask. A line someone says names no tool (lib/chat/quotedSpeech).

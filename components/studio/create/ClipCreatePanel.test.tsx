@@ -79,6 +79,13 @@ describe('ClipCreatePanel', () => {
     expect(screen.getByTestId('clip-panel-photos').textContent).toContain('first frame');
   });
 
+  test('a clip card waiting for Create: its photos are shown, not added to or removed here', () => {
+    panel({ photos: { images: [PHOTO] } });
+    expect(screen.getByTestId('clip-panel-photos').querySelectorAll('img')).toHaveLength(1);
+    expect(screen.queryByTestId('clip-panel-add-photo')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove photo 1' })).toBeNull();
+  });
+
   test('no switch for sound, music, subtitles, a narrator, lip-sync or a music video: the sound follows the prompt', () => {
     const { container } = panel();
     expect(container.querySelectorAll('[role="switch"], input[type="checkbox"]')).toHaveLength(0);

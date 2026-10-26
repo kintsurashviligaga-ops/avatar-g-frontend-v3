@@ -43,7 +43,8 @@ export interface ClipCreatePanelProps {
   /** 'ka' when the words in the chat box have a character speak Georgian: the clip is Omni's at every length. */
   speech?: DirectClipSpeech;
   onResolution: (r: DirectClipResolution) => void;
-  photos: { images: readonly string[]; onAdd: () => void; onRemove: (index: number) => void };
+  /** The clip's photos. Without onAdd / onRemove they are a waiting card's own (shown, not changed here). */
+  photos: { images: readonly string[]; onAdd?: () => void; onRemove?: (index: number) => void };
   /** The Veo tiers this deployment cannot render (GET /api/video/engine): shown as unavailable, never picked. */
   closedTiers?: readonly VideoQuality[];
 }
@@ -153,18 +154,18 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
               <li key={`${i}-${src.slice(-12)}`} className="relative h-11 w-11 shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element -- a data: URL the user just picked */}
                 <img src={src} alt="" className="h-full w-full rounded-xl object-cover ring-1 ring-app-border/20" />
-                <button type="button" onClick={() => p.photos.onRemove(i)} aria-label={`${w.remove} ${i + 1}`}
+                {p.photos.onRemove && <button type="button" onClick={() => p.photos.onRemove?.(i)} aria-label={`${w.remove} ${i + 1}`}
                   className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/20 hover:text-app-text before:absolute before:-inset-3 before:content-['']">
                   <X size={11} aria-hidden="true" />
-                </button>
+                </button>}
               </li>
             ))}
-            <li>
+            {p.photos.onAdd && <li>
               <button type="button" onClick={p.photos.onAdd} disabled={full} aria-label={w.add} title={w.add} data-testid="clip-panel-add-photo"
                 className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-dashed border-app-border/35 bg-app-bg/40 text-app-text/80 transition-colors hover:bg-app-bg/70 disabled:cursor-not-allowed disabled:opacity-40">
                 <ImagePlus size={18} aria-hidden="true" />
               </button>
-            </li>
+            </li>}
           </ul>
           {note && <p className="mt-1.5 text-[11.5px] leading-snug text-app-muted">{note}{photos >= 2 ? ` ${w.refsOnly8}` : ''}</p>}
         </div>

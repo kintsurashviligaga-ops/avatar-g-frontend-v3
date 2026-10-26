@@ -80,7 +80,8 @@ export function clipOrder(input: {
   };
 }
 
-export type ClipChange = { seconds: DirectClipSeconds } | { aspect: DirectClipAspect } | { resolution: DirectClipResolution };
+/** One pick on the card, or on the composer's chips while the card waits for Create (the tier only from those). */
+export type ClipChange = { seconds: DirectClipSeconds } | { aspect: DirectClipAspect } | { resolution: DirectClipResolution } | { tier: VideoQuality };
 
 /** The clip's engine: Gemini Omni Flash at 10 s or with a Georgian line, else Veo. */
 export const clipIsOmni = (state: Pick<ClipOrder, 'seconds' | 'speech'>): boolean => directClipEngine(state.seconds, state.speech) === 'omni';

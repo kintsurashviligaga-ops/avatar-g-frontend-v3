@@ -68,10 +68,13 @@ describe('chat → the Video tool, with the plan said (AC-01 · §3)', () => {
 
 describe('the panel says requested · rendered · final, and a pick on it drops the request', () => {
   test('OmniStudio binds the clip length to the panel and clears a stale request on a pick', () => {
-    expect(studio).toMatch(/onSeconds=\{\(s\) => \{ setVideoDuration\(s\); setVideoRequestedSec\(null\); \}\}/);
+    // The panel and the chips share clipSettings: a pick sets the length, drops a stale request, and changes a clip card
+    // waiting for Create (GG 2026-10-26 12:45Z), whose length they show while it waits.
+    expect(studio).toMatch(/onSeconds: \(sec: DirectClipSeconds\) => \{ setVideoDuration\(sec\); setVideoRequestedSec\(null\); toAskingClip\(\{ seconds: sec \}\); \},/);
+    expect(studio).toMatch(/seconds: askingClip \? askingClip\.ask\.seconds : snapDirectClipSeconds\(videoDuration\),/);
     // One clip is rendered at the length picked (4 · 6 · 8 · 10): there is no trim plan to show on its panel.
     const clipPanel = /<ClipCreatePanel([\s\S]*?)\n {12}\/>/.exec(studio)?.[1] ?? '';
-    expect(clipPanel).toMatch(/seconds=\{snapDirectClipSeconds\(videoDuration\)\}/);
+    expect(clipPanel).toMatch(/\{\.\.\.clipSettings\}/);
     expect(clipPanel).not.toMatch(/requestedSec=/);
   });
   test('the panel and the length sheet draw the plan line from the one contract', () => {
