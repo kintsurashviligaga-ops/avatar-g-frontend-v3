@@ -15,9 +15,10 @@
  *
  * Georgian the transcription wrote in another alphabet („की", „كي" for „კი") is judged in Georgian letters
  * (lib/voice/heardScript), and its question mark is not trusted: that transcription guessed the language, and its punctuation.
+ * Georgian it wrote in Latin letters („da-adasture" for „დაადასტურე") is read as Georgian once no English yes or no is found.
  */
 
-import { isMisheardScript, toCallScript } from './heardScript';
+import { isMisheardScript, latinAsGeorgian, toCallScript } from './heardScript';
 
 export type SpokenVerdict = 'yes' | 'no' | 'unclear';
 
@@ -95,19 +96,59 @@ function strip(tokens: string[], phrases: string[][]): [string[], number] {
   return [out, hits];
 }
 
+/** The verdict on an utterance's words: any refusal left after the agreement phrases is a no, a question never a yes. */
+function verdictOf(
+  tokens: string[], yes: string[][], no: string[][], fillers: ReadonlySet<string>, question: boolean,
+): SpokenVerdict {
+  if (!tokens.length) return 'unclear';
+  const [afterYes, yesHits] = strip(tokens, yes);
+  const [afterNo, noHits] = strip(afterYes, no);
+  if (noHits > 0) return 'no';
+  if (question) return 'unclear';
+  const content = afterNo.filter((t) => !fillers.has(t) && !/^\p{N}+$/u.test(t));
+  return yesHits > 0 && content.length === 0 ? 'yes' : 'unclear';
+}
+
+/**
+ * ⚠️ GG 2026-10-26 07:13Z, a call on myavatar.ge: the spoken „დაადასტურე" came back in Latin letters („da-adasture.") and
+ * was no yes, so the countdown ended and nothing started. Words with Latin letters that hold no English yes or no are read
+ * again as Georgian in Latin letters (lib/voice/heardScript latinAsGeorgian), with the letters a romanisation blurs read
+ * as one (ქ კ ყ, თ ტ, ფ პ, ჩ ჭ, ც წ, ჰ ხ; a doubled letter as one). The phrase lists are read the same way, so English
+ * and Russian ones still match only themselves. A word the transcription split by a hyphen or a space counts whole too.
+ */
+const FOLD: Readonly<Record<string, string>> = { 'ქ': 'კ', 'ყ': 'კ', 'თ': 'ტ', 'ფ': 'პ', 'ჩ': 'ჭ', 'ც': 'წ', 'ჰ': 'ხ' };
+const fold = (w: string): string => w.replace(/[ქყთფჩცჰ]/gu, (ch) => FOLD[ch]!).replace(/(\p{L})\1+/gu, '$1');
+const asGeorgian = (w: string): string => fold(latinAsGeorgian(w));
+const KA_YES = YES.map((p) => p.map(asGeorgian));
+const KA_NO = NO.map((p) => p.map(asGeorgian));
+const KA_FILLERS: ReadonlySet<string> = new Set([...FILLERS].map(asGeorgian));
+const KA_YES_WHOLE: ReadonlySet<string> = new Set(KA_YES.map((p) => fold(p.join(''))));
+const KA_NO_WHOLE: ReadonlySet<string> = new Set(KA_NO.map((p) => fold(p.join(''))));
+const LATIN_LETTER = /\p{Script=Latin}/u;
+
+/** Latin-letter words read as Georgian: a no in any reading is a no, else a yes in any reading is a yes. */
+function judgeAsGeorgian(text: string, question: boolean): SpokenVerdict {
+  const split = tokensOf(text).map(asGeorgian);
+  const joined = tokensOf(text.replace(/(\p{L})-(?=\p{L})/gu, '$1')).map(asGeorgian);
+  const whole = fold(split.join(''));
+  const verdicts: SpokenVerdict[] = [
+    verdictOf(split, KA_YES, KA_NO, KA_FILLERS, question),
+    verdictOf(joined, KA_YES, KA_NO, KA_FILLERS, question),
+    KA_NO_WHOLE.has(whole) ? 'no' : KA_YES_WHOLE.has(whole) && !question ? 'yes' : 'unclear',
+  ];
+  if (verdicts.includes('no')) return 'no';
+  return verdicts.includes('yes') ? 'yes' : 'unclear';
+}
+
 /** One utterance: a clear yes, a no (or a hesitation), or anything else. */
 export function judgeUtterance(text: string): SpokenVerdict {
   if (typeof text !== 'string') return 'unclear';
-  const tokens = tokensOf(toCallScript(text));
-  if (!tokens.length) return 'unclear';
-  const [afterYes, yesHits] = strip(tokens, YES);
-  const [afterNo, noHits] = strip(afterYes, NO);
-  if (noHits > 0) return 'no';
+  const heard = toCallScript(text);
   // A question is never a yes, however it starts ("ok, how long will it take?"). ⚠️ GG 2026-10-26: a spoken „კი" came
   // back as „كي?" — words heard in another alphabet carry that wrong language's punctuation, so their „?" decides nothing.
-  if (!isMisheardScript(text) && /[?？]\s*$/u.test(text.trim())) return 'unclear';
-  const content = afterNo.filter((t) => !FILLERS.has(t) && !/^\p{N}+$/u.test(t));
-  return yesHits > 0 && content.length === 0 ? 'yes' : 'unclear';
+  const question = !isMisheardScript(text) && /[?？]\s*$/u.test(text.trim());
+  const verdict = verdictOf(tokensOf(heard), YES, NO, FILLERS, question);
+  return verdict === 'unclear' && LATIN_LETTER.test(heard) ? judgeAsGeorgian(heard, question) : verdict;
 }
 
 /** The words kept as an approval's evidence: the utterance, whitespace collapsed, cut at SAID_MAX_CHARS. */
