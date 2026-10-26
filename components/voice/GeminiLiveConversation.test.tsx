@@ -23,7 +23,7 @@ import { PERSONA_STORAGE_KEY } from '@/components/studio/PersonaPicker';
 import { primeLive } from '@/lib/voice/livePrime';
 import { LIVE_ACTION_EVENT, LIVE_FUNCTION_DECLARATIONS, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail } from '@/lib/voice/liveTools';
 
-import GeminiLiveConversation from './GeminiLiveConversation';
+import GeminiLiveConversation, { failedNote } from './GeminiLiveConversation';
 import { LIVE_ACTION_STRINGS } from './live/LiveActionCards';
 import { LIVE_END_CALL_GRACE_MS, LIVE_END_CALL_MAX_WAIT_MS } from './live/liveActions';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
@@ -448,5 +448,141 @@ describe('voice-to-action', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('the talking avatar', () => {
+  class FakeMS {
+    static isTypeSupported() { return true; }
+    readyState = 'closed';
+    addEventListener() {}
+  }
+  const savedUrl = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+  const savedPlay = HTMLMediaElement.prototype.play;
+  const savedLoad = HTMLMediaElement.prototype.load;
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    saved.MediaSource = g.MediaSource;
+    g.MediaSource = FakeMS;
+    URL.createObjectURL = jest.fn(() => 'blob:avatar');
+    URL.revokeObjectURL = jest.fn();
+    HTMLMediaElement.prototype.play = jest.fn(() => Promise.resolve());
+    HTMLMediaElement.prototype.load = jest.fn();
+    g.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      if (url !== '/api/voice/live') return { ok: false, status: 404, json: async () => ({}) };
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      const avatar = body.avatar ?? null;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          token: 'tok',
+          model: avatar ? 'models/gemini-3.8-live' : 'models/gemini-2.5-flash-native-audio-latest',
+          expiresAt: new Date(Date.now() + 3e5).toISOString(),
+          avatar: avatar === 'Kira' ? 'Kira' : null,
+          ...(avatar === 'Ben' ? { avatarRefused: 'daily_limit' } : {}),
+        }),
+      };
+    });
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    URL.createObjectURL = savedUrl.create;
+    URL.revokeObjectURL = savedUrl.revoke;
+    HTMLMediaElement.prototype.play = savedPlay;
+    HTMLMediaElement.prototype.load = savedLoad;
+  });
+
+  const ready = async (ws: FakeSocket) => {
+    act(() => ws.open());
+    act(() => ws.receive({ setupComplete: {} }));
+    await screen.findByText(LIVE_OVERLAY_STRINGS.en.status.listening);
+  };
+  const mintBodies = () => (g.fetch as jest.Mock).mock.calls
+    .filter((c) => c[0] === '/api/voice/live')
+    .map((c) => JSON.parse(String((c[1] as RequestInit).body)));
+
+  test('the toggle renews the call with Kira; her stream shows on the screen; off goes back to a voice session', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    expect(mintBodies()[0]).not.toHaveProperty('avatar');
+
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Kira', why: 'renew' });
+    expect(screen.getByTestId('live-notice')).toHaveTextContent('Starting the avatar');
+    const ws = FakeSocket.all[1]!;
+    await ready(ws);
+    // An init segment (ftyp): the player opens its MediaSource and the picture takes the screen.
+    act(() => ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: Buffer.from([0, 0, 0, 8, 102, 116, 121, 112]).toString('base64') } }] } } }));
+    await waitFor(() => expect(screen.getByTestId('live-avatar-video')).toBeInTheDocument());
+    // The avatar's answer cannot be cut locally: no stop button while it speaks.
+    act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Hello there' } } }));
+    expect(screen.queryByTestId('live-stop-speaking')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(3));
+    expect(mintBodies()[2]).not.toHaveProperty('avatar');
+    await ready(FakeSocket.all[2]!);
+    expect(screen.queryByTestId('live-avatar-video')).toBeNull();
+  });
+
+  test('the avatar call docks when the agent acts on screen: the chat shows, the avatar goes on talking in a small picture', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Kira', actions: true }); // the avatar call can act on screen
+    const ws = FakeSocket.all[1]!;
+    await ready(ws);
+    act(() => ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: Buffer.from([0, 0, 0, 8, 102, 116, 121, 112]).toString('base64') } }] } } }));
+    await waitFor(() => expect(screen.getByTestId('live-avatar-video')).toBeInTheDocument());
+    act(() => ws.receive({ toolCall: { functionCalls: [{ id: 's1', name: 'open_studio', args: { tool: 'image' } }] } }));
+    expect(await screen.findByTestId('live-dock')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: LIVE_OVERLAY_STRINGS.en.title })).toBeNull(); // the full screen gave way
+    const pip = screen.getByTestId('live-avatar-pip');
+    expect(pip).toContainElement(screen.getByTestId('live-avatar-video'));
+    fireEvent.click(pip); // a tap brings the avatar back full screen
+    expect(await screen.findByRole('dialog', { name: LIVE_OVERLAY_STRINGS.en.title })).toBeTruthy();
+  });
+
+  test('a refused avatar turns the toggle off, says why, and does not ask again', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" gender="male" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Ben' });
+    await ready(FakeSocket.all[1]!);
+    await screen.findByText(/avatar limit is used up/);
+    expect(screen.getByTestId('live-avatar-switch')).toHaveAttribute('aria-pressed', 'false');
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
+  test('switched off for this build, or a browser without MSE: no toggle', async () => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    const { unmount } = render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+    unmount();
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    g.MediaSource = undefined;
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+  });
+});
+
+describe('failedNote — what the call is told when a generation fails', () => {
+  test('the test link\'s refusal is said as what it is, never offered again (GG 2026-10-26)', () => {
+    const note = failedNote('ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.');
+    expect(note).toContain('This is a test link');
+    expect(note).toContain('do not offer to try again');
+  });
+  test('any other failure is told plainly, with a retry', () => {
+    expect(failedNote('Google timed out')).toBe('[App] A generation failed: "Google timed out". Tell the user plainly and offer to try again.');
   });
 });

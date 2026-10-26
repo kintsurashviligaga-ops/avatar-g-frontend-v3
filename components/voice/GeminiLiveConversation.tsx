@@ -26,14 +26,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // Volume2, not AudioLines — this lucide version does not export the latter (verified against the installed package,
 // the same trap that once cost a build over `Waves` vs `AudioLines`).
-import { Volume2 } from 'lucide-react';
+import { ScanFace, Volume2 } from 'lucide-react';
 
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { LIVE_CALL_EVENT, LIVE_PLAN_KINDS, LIVE_RESULT_EVENT, type LivePlanKind, type LiveResultNote } from '@/lib/voice/liveTools';
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
+import { AVATAR_FALLBACK_MIME } from '@/lib/voice/fmp4';
+import { avatarPlaybackSupported } from '@/lib/voice/fmp4Player';
+import { isTestLinkNotice } from '@/components/studio/ui/serviceError';
+import type { AvatarAudioOutput } from '@/lib/voice/avatarAudio';
+import { LIVE_AVATAR_MAX_MS, defaultLiveAvatar, liveAvatarEnabled } from '@/lib/voice/liveAvatar';
 
 import LiveModeOverlay, { LiveControl } from './live/LiveModeOverlay';
+import { LIVE_AVATAR_STRINGS, useLiveAvatarPlayer } from './live/LiveAvatarStage';
 import type { LiveJobLine } from './live/LiveActivityFeed';
 import { useJobQueue } from '@/store/useJobQueue';
 import { mergeTrayJobs } from '@/lib/jobs/durableJobs';
@@ -103,6 +109,16 @@ export function planNote(n: number, kind: LivePlanKind, what: string): string {
     + `${n ? ` and plan ${n}` : ''}. The app starts it only on the user's own yes.`;
 }
 
+/** The [App] note for a failed generation. The test link's refusal is no failure to retry: nothing can be made there. */
+export function failedNote(what: string): string {
+  if (isTestLinkNotice(what)) {
+    return '[App] This is a test link: paid creation is switched off here on purpose, so nothing can be made in this call '
+      + 'and no credits were spent. Tell the user exactly that in one sentence (real creation works on myavatar.ge); do not '
+      + 'offer to try again here.';
+  }
+  return `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`;
+}
+
 /** The [App] note when a voice start ran out its countdown and started nothing. */
 export function notStartedNote(reason: LiveResultNote['reason'], what: string): string {
   switch (reason) {
@@ -160,6 +176,20 @@ export default function GeminiLiveConversation({
   const voiceGender: Gender = chosenGender ?? profileGender;
   const voiceName = voiceGender === profileGender ? instruction.voiceName : GEMINI_LIVE_VOICES[voiceGender];
 
+  // THE TALKING AVATAR (lib/voice/liveAvatar, GG 2026-10-25): Google's prebuilt face that speaks the call's answers. Off
+  // until the user turns it on; offered only where it can work (NEXT_PUBLIC_LIVE_AVATAR, and a browser that plays its
+  // MP4: on iPhone iOS 17.1+), because its voice is INSIDE the video: a browser that cannot play it would hear nothing.
+  // The avatar matches the voice switch (Kira female, Ben male).
+  // Its voice plays on the call's own output (as loud as a voice call; GG 18:17Z: the avatar was too quiet).
+  const audioOutputRef = useRef<(() => AvatarAudioOutput | null) | null>(null);
+  const avatarPlayer = useLiveAvatarPlayer(useCallback(() => audioOutputRef.current?.() ?? null, []));
+  const [avatarAvailable] = useState(() => liveAvatarEnabled() && avatarPlaybackSupported(AVATAR_FALLBACK_MIME));
+  const [avatarWanted, setAvatarWanted] = useState(false);
+  const [avatarNote, setAvatarNote] = useState<'capped' | 'dailyLimit' | 'disabled' | 'unsupported' | null>(null);
+  const desiredAvatar = avatarAvailable && avatarWanted ? defaultLiveAvatar(voiceGender) : null;
+  const desiredAvatarRef = useRef(desiredAvatar);
+  desiredAvatarRef.current = desiredAvatar;
+
   const session = useGeminiLiveSession({
     locale: loc,
     voiceName,
@@ -178,11 +208,15 @@ export default function GeminiLiveConversation({
     onToolCallCancellation: liveActions.onToolCallCancellation,
     // The user's own words: a voice start runs only on these (liveActions, lib/voice/voiceLedger).
     onHeard: liveActions.onHeard,
+    avatar: desiredAvatar,
+    onVideo: avatarPlayer.push,
+    onAvatarInterrupted: avatarPlayer.jumpToLive,
   });
   const { start, stop, sendVideoFrame, status, interrupt } = session;
 
   // set_persona: once the model's short line in the new role has played, a fresh session in that persona (the mic and
   // the screen stay; the chat so far rides along). Bounded like end_call's goodbye; a call that is not ready yet waits.
+  audioOutputRef.current = typeof session.audioOutput === 'function' ? session.audioOutput : null;
   const renewRef = useRef(session.renew);
   renewRef.current = session.renew;
   const renewedSeqRef = useRef(0);
@@ -199,6 +233,39 @@ export default function GeminiLiveConversation({
     }, answering ? LIVE_END_CALL_MAX_WAIT_MS : LIVE_END_CALL_GRACE_MS);
     return () => clearTimeout(timer);
   }, [personaRequest, status]);
+
+  // The avatar on/off: a FRESH session with or without it (the mic and the screen stay; the chat rides along), once the
+  // call is ready. Only when the wish differs from what was last ASKED, so a server that refuses the avatar (and opens a
+  // voice call) is never asked again in a loop.
+  const askedAvatarRef = useRef<string | null>(desiredAvatar);
+  const callReady = status === 'listening' || status === 'speaking' || status === 'thinking';
+  useEffect(() => {
+    if (!callReady || desiredAvatar === askedAvatarRef.current) return;
+    if (renewRef.current()) askedAvatarRef.current = desiredAvatar;
+  }, [callReady, desiredAvatar]);
+  const sessionAvatar = session.avatar;
+  const { avatarRefused } = session;
+  useEffect(() => {
+    if (!avatarRefused) return;
+    askedAvatarRef.current = null;
+    setAvatarWanted(false);
+    setAvatarNote(avatarRefused === 'daily_limit' ? 'dailyLimit' : 'disabled');
+  }, [avatarRefused]);
+  // Cost: one avatar session runs LIVE_AVATAR_MAX_MS at most, then the call goes on by voice.
+  useEffect(() => {
+    if (!sessionAvatar) return;
+    const timer = setTimeout(() => { setAvatarWanted(false); setAvatarNote('capped'); }, LIVE_AVATAR_MAX_MS);
+    return () => clearTimeout(timer);
+  }, [sessionAvatar]);
+  // A voice session (or the end of the call) clears the picture; a browser that turns out unable to play it goes back to voice.
+  const resetAvatar = avatarPlayer.reset;
+  useEffect(() => { if (!sessionAvatar) resetAvatar(); }, [sessionAvatar, resetAvatar]);
+  const avatarState = avatarPlayer.state;
+  useEffect(() => {
+    if (avatarState !== 'unsupported' && avatarState !== 'error') return;
+    setAvatarWanted(false);
+    setAvatarNote('unsupported');
+  }, [avatarState]);
 
   // ── THE CALL ON THE SCREEN ─────────────────────────────────────────────────────────────────────────────────────
   // Full screen while you only talk; DOCKED into a slim bar the moment the agent changes something on screen (a studio,
@@ -264,8 +331,7 @@ export default function GeminiLiveConversation({
       const note = n.kind === 'plan' ? planNote(planNo, planKind ?? 'audio', what)
         : n.kind === 'not_started' ? notStartedNote(n.reason, what)
         : n.kind === 'music' ? `[App] Music Studio: ${what || 'the music card changed'}`
-        : n.kind === 'failed'
-        ? `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`
+        : n.kind === 'failed' ? failedNote(what)
         : `[App] A new ${n.kind === 'audio' ? 'music track' : n.kind} is ready on screen${what ? `: "${what}"` : ''} — it is now result 1. `
           + 'If the user asked for more steps, continue with the next one now; otherwise tell them in one short sentence.';
       notesRef.current = [...notesRef.current, { text: note, ...(planNo ? { planId: n.planId } : {}) }].slice(-4);
@@ -294,6 +360,7 @@ export default function GeminiLiveConversation({
   // (lib/voice/livePrime) and the session adopts them; without a prime, a context that will not start shows
   // "tap to turn on sound" rather than a silent call.
   useEffect(() => {
+    askedAvatarRef.current = desiredAvatarRef.current; // this mint asks for the avatar wished now
     void start();
     return () => stop();
   }, [start, stop, userId, chosenGender]);
@@ -362,6 +429,32 @@ export default function GeminiLiveConversation({
     />
   );
 
+  const avatarCopy = LIVE_AVATAR_STRINGS[loc];
+  const primeAvatar = avatarPlayer.prime;
+  const avatarSwitch = avatarAvailable ? (
+    <LiveControl
+      label={avatarCopy.toggle}
+      ariaLabel={avatarWanted ? avatarCopy.turnOff : avatarCopy.turnOn}
+      pressed={avatarWanted}
+      icon={<ScanFace size={22} aria-hidden />}
+      onClick={() => {
+        if (!avatarWanted) primeAvatar(); // inside this tap: the avatar may speak aloud later (iPhone)
+        setAvatarNote(null);
+        setAvatarWanted(!avatarWanted);
+      }}
+      locale={loc}
+      testId="live-avatar-switch"
+    />
+  ) : null;
+  const avatarShown = !!sessionAvatar && avatarState !== 'idle' && avatarState !== 'unsupported' && avatarState !== 'error';
+  const avatarNeedsTap = !!sessionAvatar && (avatarState === 'muted' || avatarState === 'blocked');
+  const avatarNotice = avatarNote ? avatarCopy[avatarNote]
+    : desiredAvatar && (!sessionAvatar || avatarState === 'idle' || avatarState === 'buffering') ? avatarCopy.starting
+    : null;
+  const resumeSession = session.resumeAudio;
+  const unlockAvatar = avatarPlayer.unlock;
+  const resumeAudio = useCallback(() => { resumeSession(); unlockAvatar(); }, [resumeSession, unlockAvatar]);
+
   return (
     <LiveModeOverlay
       locale={loc}
@@ -379,9 +472,11 @@ export default function GeminiLiveConversation({
       onFlipCamera={onFlipCamera}
       onEnd={endCall}
       onRetry={session.retry}
-      audioBlocked={session.audioBlocked}
-      onResumeAudio={session.resumeAudio}
-      extraControls={voiceSwitch}
+      audioBlocked={session.audioBlocked || avatarNeedsTap}
+      onResumeAudio={resumeAudio}
+      extraControls={<>{voiceSwitch}{avatarSwitch}</>}
+      avatarVideo={avatarShown ? avatarPlayer.video : null}
+      notice={status === 'error' || status === 'closed' ? null : avatarNotice}
       showCaptions={!session.degraded}
       actions={liveActions.cards}
       onOpenAction={openAction}
@@ -389,7 +484,8 @@ export default function GeminiLiveConversation({
       jobs={jobLines}
       docked={docked}
       onToggleDock={toggleDock}
-      onStopSpeaking={interrupt}
+      // An avatar's answer is in its video and cannot be cut locally: the user just speaks, and the server stops it.
+      onStopSpeaking={sessionAvatar ? undefined : interrupt}
       pendingRun={liveActions.pendingRun}
       onCancelRun={liveActions.cancelRun}
     />

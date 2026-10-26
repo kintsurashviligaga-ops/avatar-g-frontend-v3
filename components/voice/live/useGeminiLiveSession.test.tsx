@@ -11,6 +11,7 @@ import { VoicePreferencesProvider, useVoicePreferencesContext } from '@/componen
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
+import { UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
 import { LIVE_SPOKEN_RULE } from '@/lib/agents/profile';
 import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
@@ -466,6 +467,20 @@ test('onHeard: the user\'s own words as they stream (spoken and typed), and each
   unmount();
 });
 
+test('Georgian heard in Hindi letters: the caption, the closed turn and the heard words are in Georgian ones (GG 2026-10-26)', async () => {
+  const h = harness();
+  const heard: unknown[] = [];
+  const turns: LiveTurn[] = [];
+  const { result, ws, unmount } = await connected({ deps: h.deps, onHeard: (e) => heard.push(e), onTurn: (t) => turns.push(t) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: ' क्रेटा' } } }));
+  expect(result.current.captions.at(-1)).toMatchObject({ role: 'user', text: 'კრეტა' });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: ' की' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(heard).toEqual([{ text: ' კრეტა' }, { text: ' კრეტა კი' }, { end: true }]);
+  expect(turns).toEqual([{ role: 'user', text: 'კრეტა კი' }]);
+  unmount();
+});
+
 test('without an onTurn prop, closed turns are dispatched as the window transcript event', async () => {
   const h = harness();
   const seen: LiveTurn[] = [];
@@ -633,7 +648,7 @@ test('through the relay a booting relay (socket still CONNECTING) gets the long 
   }
 });
 
-test('through the relay an OPEN socket with no setupComplete gives up after 6 s, says where it waited, and retries the same setup twice', async () => {
+test('through the relay an OPEN socket with no setupComplete gives up after 3 s, says where it waited, and retries the same setup', async () => {
   jest.useFakeTimers();
   try {
     const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
@@ -652,15 +667,42 @@ test('through the relay an OPEN socket with no setupComplete gives up after 6 s,
     expect(h.report).toHaveBeenCalledWith('handshake_timeout', null, expect.objectContaining({
       relay: true, msToOpen: expect.any(Number), msSinceOpen: LIVE_RELAY_READY_AFTER_OPEN_MS, bufferedBytes: 39124,
     }));
-    act(() => FakeSocket.last.open()); // the second socket is held too
-    await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
-    expect(FakeSocket.all).toHaveLength(3);
+    // GG's avatar call 18:47Z: four held sockets in a row, the fifth worked — and must still carry the UI actions.
+    for (const n of [3, 4, 5]) {
+      act(() => FakeSocket.last.open()); // held too
+      await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
+      expect(FakeSocket.all).toHaveLength(n);
+    }
     for (const body of h.mintBodies.slice(1)) expect(body).toMatchObject({ actions: true }); // same setup, not degraded
     act(() => FakeSocket.last.open());
     act(() => FakeSocket.last.receive({ setupComplete: {} }));
     expect(result.current.status).toBe('listening');
     expect(result.current.degraded).toBe(false);
-    expect(h.report).toHaveBeenCalledTimes(2);
+    expect(h.report).toHaveBeenCalledTimes(4);
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('through the relay a long run of held sockets never opens the call without its UI actions; the legacy wire is the last resort', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    for (let n = 2; n <= 8; n += 1) {
+      act(() => FakeSocket.last.open()); // every one held
+      await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
+      expect(FakeSocket.all).toHaveLength(n);
+      if (n <= 7) expect(result.current.degraded).toBe(false);
+    }
+    // 1 + 6 same-setup tries, then the legacy wire — never the parity wire stripped of its actions.
+    expect(result.current.degraded).toBe(true);
+    for (const body of h.mintBodies) if (body.transcribe === true) expect(body).toMatchObject({ actions: true });
     unmount();
   } finally {
     jest.useRealTimers();
@@ -744,6 +786,62 @@ test('actions: the mint asks for the declarations; the host answers each call by
 
   act(() => ws.receive({ toolCallCancellation: { ids: ['c1'] } }));
   expect(onToolCallCancellation).toHaveBeenCalledWith(['c1']);
+  unmount();
+});
+
+// ─── An offer to start with nothing prepared (lib/voice/liveUnprepared) ───────────
+
+const noteFrames = (ws: { sent: Frame[] }) => ws.sent.filter((f) => f.realtimeInput?.text === UNPREPARED_START_NOTE);
+const answer = (calls: Array<{ id: string; name: string }>) => calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true } }));
+
+test('GG 2026-10-25: "5 credits. Shall I start?" with no function called gets ONE [App] note per thing the user said', async () => {
+  const h = harness();
+  const { ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall: jest.fn(answer) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'სურათი გამიკეთე' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'ფასი 5 კრედიტი. დავიწყო?' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  // The model's next answer repeats itself before the user speaks: no second note.
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  // The note is the app's, never the user's words.
+  expect(noteFrames(ws)[0]).toEqual({ realtimeInput: { text: UNPREPARED_START_NOTE } });
+  unmount();
+});
+
+test('an offer after prepare_generation (in this exchange or one before) is the normal flow: no note', async () => {
+  const h = harness();
+  const { ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall: jest.fn(answer) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'make a picture of a race' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c1', name: 'prepare_generation', args: { tool: 'image' } }] } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'It is 5 credits. Shall I start?' }, turnComplete: true } }));
+  // The user asks again; the prepared order is still on screen.
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'how much?' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Five credits. Shall I start?' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(0);
+  // Once it started, a NEW offer with nothing prepared is caught again.
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c2', name: 'start_generation', args: {} }] } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'now a video' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Press the generate button.' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  unmount();
+});
+
+test(`a call without the functions is never told to call one; a call sends at most ${UNPREPARED_START_NOTES_MAX} notes`, async () => {
+  const h = harness();
+  const plain = await connected({ deps: h.deps });
+  act(() => plain.ws.receive({ serverContent: { inputTranscription: { text: 'make a picture' } } }));
+  act(() => plain.ws.receive({ serverContent: { outputTranscription: { text: 'Shall I start?' }, turnComplete: true } }));
+  expect(noteFrames(plain.ws)).toHaveLength(0);
+  plain.unmount();
+
+  const h2 = harness();
+  const { ws, unmount } = await connected({ deps: h2.deps, actions: true, onToolCall: jest.fn(answer) });
+  for (let i = 0; i < UNPREPARED_START_NOTES_MAX + 2; i++) {
+    act(() => ws.receive({ serverContent: { inputTranscription: { text: `picture ${i}` } } }));
+    act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
+  }
+  expect(noteFrames(ws)).toHaveLength(UNPREPARED_START_NOTES_MAX);
   unmount();
 });
 
@@ -1356,6 +1454,8 @@ test('small helpers', () => {
   expect(playbackRateFromMime('audio/pcm')).toBe(24000);
   expect(playbackRateFromMime('audio/pcm;rate=999999')).toBe(24000);
   expect(normalizeCaption('  a   b \n c ')).toBe('a b c');
+  expect(normalizeCaption(' की  हो ')).toBe('კი ჰო');
+  expect(normalizeCaption('كي?')).toBe('კი?');
 });
 
 describe('buildLiveInstruction', () => {
@@ -1426,4 +1526,54 @@ test('style changes at listening without replacing context; voice applies only o
   await act(async () => { await result.current.live.start(); });
   expect(h.mintBodies[1].voice).toBe('Charon');
   unmount(); localStorage.clear();
+});
+
+// ─── Talking avatar (lib/voice/liveAvatar) ─────────────────────────────────────
+
+test('avatar: the mint asks for it, its fMP4 goes to onVideo, its words mean speaking, an interruption jumps the player', async () => {
+  const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-3.8-live', expiresAt: future(), avatar: 'Kira' }));
+  const onVideo = jest.fn();
+  const onAvatarInterrupted = jest.fn();
+  const { result, ws, unmount } = await connected({ avatar: 'Kira', onVideo, onAvatarInterrupted, deps: h.deps });
+  expect(h.mintBodies[0]).toMatchObject({ avatar: 'Kira' });
+  expect(result.current.avatar).toBe('Kira');
+  expect(result.current.avatarRefused).toBeNull();
+
+  const piece = { serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: 'AAAA' } }] } } };
+  act(() => ws.receive(piece));
+  expect(onVideo).toHaveBeenCalledWith('AAAA', 'video/mp4');
+  expect(result.current.status).toBe('listening'); // idle frames are not speech
+  expect(h.playCtx.sources).toHaveLength(0); // nothing on the audio graph
+
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'გამარჯობა' } } }));
+  expect(result.current.status).toBe('speaking');
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(onAvatarInterrupted).toHaveBeenCalledTimes(1);
+  expect(result.current.status).toBe('listening');
+
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'კიდევ' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(result.current.status).toBe('listening');
+
+  act(() => result.current.stop());
+  expect(result.current.avatar).toBeNull();
+  unmount();
+});
+
+test('avatar refused by the server: a voice call, and the reason is surfaced', async () => {
+  const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), avatar: null, avatarRefused: 'daily_limit' }));
+  const onAvatarInterrupted = jest.fn();
+  const { result, ws, unmount } = await connected({ avatar: 'Kira', onAvatarInterrupted, deps: h.deps });
+  expect(result.current.avatar).toBeNull();
+  expect(result.current.avatarRefused).toBe('daily_limit');
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(onAvatarInterrupted).not.toHaveBeenCalled();
+  unmount();
+});
+
+test('no avatar asked: the mint body carries none', async () => {
+  const h = harness();
+  const { unmount } = await connected({ deps: h.deps });
+  expect(h.mintBodies[0]).not.toHaveProperty('avatar');
+  unmount();
 });

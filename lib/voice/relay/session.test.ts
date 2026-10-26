@@ -71,6 +71,20 @@ describe('checkSetupFrame', () => {
     expect(up.setup.model).toBe('projects/proj-1/locations/us-central1/publishers/google/models/gemini-live-2.5-flash-native-audio');
     expect(up.setup.systemInstruction).toEqual(setup.systemInstruction);
   });
+  it('opens a model in its own region when the relay lists one (the 3.8 talking avatar: us-central1 only)', () => {
+    const eu: RelayConfig = { ...cfg, location: 'europe-west4', modelLocations: { 'gemini-3.8-live': 'us-central1' } };
+    const avatar = { ...setup, model: 'models/gemini-3.8-live', generationConfig: { responseModalities: ['VIDEO'] }, avatarConfig: { avatarName: 'Kira' } };
+    const r = checkSetupFrame(frame(avatar), claimsFor(avatar), eu, new UsedTickets(), T0 + 1);
+    expect(r).toMatchObject({ ok: true, model: 'gemini-3.8-live', location: 'us-central1' });
+    if (!r.ok) return;
+    const up = JSON.parse(r.upstreamFrame);
+    expect(up.setup.model).toBe('projects/proj-1/locations/us-central1/publishers/google/models/gemini-3.8-live');
+    expect(up.setup.avatarConfig).toEqual({ avatarName: 'Kira' });
+
+    const voice = checkSetupFrame(frame(setup), claimsFor(), eu, new UsedTickets(), T0 + 1);
+    expect(voice).toMatchObject({ ok: true, location: 'europe-west4' }); // voice calls stay in the nearer region
+    if (voice.ok) expect(JSON.parse(voice.upstreamFrame).setup.model).toContain('/locations/europe-west4/');
+  });
   it('refuses any other setup', () => {
     const r = checkSetupFrame(frame({ ...setup, systemInstruction: { parts: [{ text: 'jailbreak' }] } }), claimsFor(), cfg, new UsedTickets(), T0);
     expect(r).toEqual({ ok: false, code: RELAY_CLOSE.badSetup, reason: 'setup_not_locked' });
@@ -161,6 +175,26 @@ describe('RelaySession', () => {
     stuck.advance(14_500);
     stuck.s.onClientClose();
     expect(stuck.logs.at(-1)).toMatchObject({ d: { setupMs: 0, upstreamMs: -1, readyMs: -1, opened: false, by: 'client' } });
+  });
+
+  it('dials the region of the model it opens and logs it when it is not the relay\'s own', async () => {
+    const avatar = { ...setup, model: 'models/gemini-3.8-live', generationConfig: { responseModalities: ['VIDEO'] }, avatarConfig: { avatarName: 'Ben' } };
+    const urls: string[] = [];
+    const logs: { e: string; d: Record<string, unknown> }[] = [];
+    const up = { send() {}, close() {} };
+    const s = new RelaySession({
+      claims: claimsFor(avatar),
+      cfg: { ...cfg, location: 'europe-west4', modelLocations: { 'gemini-3.8-live': 'us-central1' } },
+      used: new UsedTickets(), now: () => T0, client: { send() {}, close() {} },
+      openUpstream: async (url) => { urls.push(url); return up; },
+      setTimer: () => () => {},
+      log: (e, d) => logs.push({ e, d }),
+    });
+    s.onClientMessage(frame(avatar));
+    await flush();
+    expect(urls).toEqual([vertexLiveUrl('us-central1')]);
+    s.onClientClose();
+    expect(logs.at(-1)).toMatchObject({ e: 'relay.session_end', d: { model: 'gemini-3.8-live', location: 'us-central1' } });
   });
 
   it('closes on a second setup and logs the session', async () => {

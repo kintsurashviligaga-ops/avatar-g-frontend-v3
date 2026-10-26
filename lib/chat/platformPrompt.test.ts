@@ -361,6 +361,14 @@ describe('buildPlatformPrompt — locale variants', () => {
     expect(build(locale)).toContain('Switch only if the user asks for another language.');
   });
 
+  it.each(LOCALES)('a spoken call gets no text-chat offer recipe in HANDING OFF (%s)', (locale) => {
+    // GG 2026-10-25 (avatar call): the call quoted a price and asked "shall I start?" with nothing prepared.
+    const p = buildPlatformPrompt({ locale, now: NOW, spoken: true });
+    expect(p).toContain('HANDING OFF: in this voice call a render is ordered and started only the way the LIVE VOICE CALL rule below says');
+    expect(p).not.toContain('You cannot start, queue or finish a render yourself');
+    expect(build(locale)).toContain('You cannot start, queue or finish a render yourself');
+  });
+
   it('Georgian or Russian typed in Latin letters is answered in its own script', () => {
     expect(build('ka')).toContain('Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.');
     expect(build('ru')).toContain('Russian typed in Latin letters ("privet", "kak dela") is still Russian: answer it in Cyrillic.');

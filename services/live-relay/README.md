@@ -50,6 +50,7 @@ The used-ticket memory is per instance. Keep `--max-instances` small until the r
 | `VERTEX_LIVE_LOCATION` | Region, default `us-central1`. |
 | `LIVE_RELAY_MODELS` | Vertex model ids the relay opens, comma-separated. Required. |
 | `LIVE_RELAY_MODEL_MAP` | `appId=vertexId` pairs, comma-separated, for app ids that are named differently on Vertex. |
+| `LIVE_RELAY_MODEL_LOCATIONS` | `vertexId=region` pairs for models served outside `VERTEX_LIVE_LOCATION`. The talking avatar needs `gemini-3.8-live=us-central1` (europe-west4 closes with 1008 "publisher model not found"). |
 | `LIVE_RELAY_ALLOWED_ORIGINS` | e.g. `https://myavatar.ge,https://<preview>.vercel.app`. Empty means any origin. |
 | `LIVE_RELAY_MAX_SESSION_MS`, `LIVE_RELAY_IDLE_MS`, `LIVE_RELAY_MAX_FRAME_BYTES`, `LIVE_RELAY_MAX_CLIENT_BYTES` | Limits. Defaults: 15 min, 60 s, 512 KB, 64 MB. |
 
@@ -79,3 +80,22 @@ Moving region: deploy the same service in the new region (same secret, same env,
 
 Rollback: remove `LIVE_RELAY_URL` from Vercel. The app goes back to the REST voice loop at once. Then
 `gcloud run services delete live-relay`.
+
+## The talking avatar (`gemini-3.8-live`)
+
+The avatar model is served in us-central1 only. A Europe relay opens it there and keeps voice calls in Europe:
+
+```sh
+LIVE_RELAY_MODELS=gemini-live-2.5-flash-native-audio,gemini-3.8-live
+LIVE_RELAY_MODEL_LOCATIONS=gemini-3.8-live=us-central1
+```
+
+Try it on a tagged revision that takes no traffic, and point only a Preview branch's `LIVE_RELAY_URL` at the tag URL
+(`wss://<tag>---<service host>/v1/live`):
+
+```sh
+gcloud run deploy live-relay --source . --region europe-west4 --no-traffic --tag avatar \
+  --update-env-vars '^@^LIVE_RELAY_MODELS=gemini-live-2.5-flash-native-audio,gemini-3.8-live@LIVE_RELAY_MODEL_LOCATIONS=gemini-3.8-live=us-central1'
+```
+
+The app side is `NEXT_PUBLIC_LIVE_AVATAR=1` (a build-time switch: set it, then redeploy).
