@@ -6695,9 +6695,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (inChat && gatePendingRef.current?.inChat) gatePendingRef.current = null;
     const chatOrder: GateMode | null = (() => {
       if (!inChat || !text || opts?.confirmed) return null;
-      if (chatPend) return chatPend.mode;
       // A Live call named the tool (prepare_generation): its words are that order, whatever verb they lack.
       if (opts?.liveOrder) return opts.liveOrder;
+      if (chatPend) return chatPend.mode;
       // A catalog service with its own tool („make a product ad…") is not a picture: Agent G opens that tool below.
       if (!isGenerativeCommand(text) || detectStudioIntent(text) || routeAgentIntent(text)) return null;
       const lane = resolveGenerativeLane(text, detectIntent(text));
@@ -6708,7 +6708,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // A yes to Agent G's own offer (a quoted prompt) is read above, before Agent G's turn (consentRef).
     const gateMode: GateMode | null = focusGateMode ?? chatOrder;
     if (gateMode && text && !opts?.confirmed) {
-      const pend = inChat ? chatPend : gatePendingRef.current;
+      // A Live order is the whole prompt the call put together (its own questions were asked in speech): it answers no card.
+      const pend = opts?.liveOrder ? null : inChat ? chatPend : gatePendingRef.current;
       const pending = pend && pend.mode === gateMode && !!pend.inChat === inChat && Date.now() - pend.at < 10 * 60_000 ? pend : null;
       if (!pending && !inChat) gatePendingRef.current = null;
       // "yes / go ahead" to Agent G's question → create what was asked about, as it stands.
@@ -6724,10 +6725,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // Avatar (GG 2026-10-18): an attached voice track is the line; after Agent G asked for the line, this message IS it.
       const hasAudio = attachments.some((a) => isAudio(a.mimeType));
       const awaitingLine = gateMode === 'avatar' && !!pending && !splitAvatarScript(pending.base).speech;
-      const first = classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine });
+      const liveOrder = !!opts?.liveOrder;
+      const first = classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine, liveOrder });
       // An answer to Agent G's questions joins the thin prompt it was about; talk does not. An avatar's joins as a SCRIPT.
       const promptText = pending && first.kind !== 'chat' ? mergePrompt(pending.base, text, gateMode) : text;
-      const verdict = promptText === text ? first : classifyFocusInput({ text: promptText, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine });
+      const verdict = promptText === text ? first : classifyFocusInput({ text: promptText, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine, liveOrder });
       // Agent G answers in words only — no card, no price, nothing started.
       const agentSays = (say: string) => {
         setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: say }]);
@@ -8268,8 +8270,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         // ⚠️ GG 2026-10-18: „დავალებას ლაივ ჩატში რომ იღებს, ის უნდა ჩანდეს როგორ კეთდება … აღარ უნდა მჭირდებოდეს გადასვლა".
         // The order no longer opens the studio panel: it is written into the CHAT as the user's turn, and Agent G answers
-        // there exactly as for a typed order (its questions, or the price and Create; a film's storyboard). The panel's
-        // settings the call named still apply (the chat renders with them); the run starts on Create or the user's own yes.
+        // there as for a typed order (the price and Create; a film's storyboard; an avatar's request for its line) — but a
+        // thin one gets no questions: the call asks its own in speech (GG 2026-10-26, lib/chat/focusGate liveOrder). The
+        // panel's settings the call named still apply (the chat renders with them); the run starts on Create or the user's yes.
         const prompt = d.prompt.slice(0, 2000);
         const { applied, musicSec } = applyLiveSettings(d.tool, d);
         const order: GateMode = d.tool === 'image' || d.tool === 'music' || d.tool === 'avatar' ? d.tool : 'video';

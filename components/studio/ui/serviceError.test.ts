@@ -9,7 +9,8 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './serviceError';
+import { describeServiceError, describeGenerationFailure, isTestLinkNotice, refundNoticeOr } from './serviceError';
+import { previewTestLinkMessage } from '../../../lib/api/billingCopy';
 import { customAvatarBody } from '../../../lib/avatar/curated';
 import { budgetRefusalMessage } from '../../../lib/services/billing/budgetMessage';
 
@@ -249,5 +250,17 @@ describe('the avatar route’s refusals read as what happened (GG 2026-10-18)', 
       }
     }
     expect(describeGenerationFailure({ success: false, error: 'locked', op: 'avatar' }, 'en', 'FALLBACK')).toContain('isn’t available on your account');
+  });
+});
+
+describe('isTestLinkNotice — the test link\'s own notice, in every language (GG 2026-10-26)', () => {
+  test.each(['ka', 'en', 'ru'] as const)('%s: the studio\'s line and the route\'s line are both it', (l) => {
+    expect(isTestLinkNotice(describeServiceError('preview_not_isolated', l, 'x'))).toBe(true);
+    expect(isTestLinkNotice(previewTestLinkMessage(l))).toBe(true);
+  });
+  test('any other failure is not', () => {
+    expect(isTestLinkNotice(describeServiceError('insufficient_credits', 'ka', 'x'))).toBe(false);
+    expect(isTestLinkNotice('')).toBe(false);
+    expect(isTestLinkNotice(undefined)).toBe(false);
   });
 });
