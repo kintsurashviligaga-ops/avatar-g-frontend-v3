@@ -136,3 +136,34 @@ export function toCallScript(text: string): string {
   if (!isMisheardScript(text)) return typeof text === 'string' ? text : '';
   return text.replace(DEVANAGARI_RUN, devanagariWord).replace(ARABIC_RUN, arabicWord).replace(ARMENIAN_RUN, armenianWord);
 }
+
+/**
+ * Georgian written in Latin letters, read back by sound. ⚠️ GG 2026-10-26 07:13Z, a call on myavatar.ge: the spoken
+ * „დაადასტურე" came back as „da-adasture.". Latin is no mis-heard alphabet the way Hindi or Arabic is (the call may be in
+ * English), so captions keep it and toCallScript leaves it alone: only lib/voice/spokenYes reads a Latin word this way,
+ * after it found no English yes or no in it. Georgian's own romanisation (sh შ, ch ჩ, kh ხ, gh ღ, ts ც, dz ძ, q ყ, x ხ);
+ * the apostrophe of an ejective (k'i) and accents are dropped, š č ž read as sh ch zh. Anything not Latin is left as it is.
+ */
+const LATIN_PAIRS: Readonly<Record<string, string>> = {
+  sh: 'შ', ch: 'ჩ', zh: 'ჟ', kh: 'ხ', gh: 'ღ', ts: 'ც', dz: 'ძ', ph: 'ფ', th: 'თ',
+};
+
+const LATIN: Readonly<Record<string, string>> = {
+  a: 'ა', b: 'ბ', c: 'ც', d: 'დ', e: 'ე', f: 'ფ', g: 'გ', h: 'ჰ', i: 'ი', j: 'ჯ', k: 'კ', l: 'ლ', m: 'მ', n: 'ნ',
+  o: 'ო', p: 'პ', q: 'ყ', r: 'რ', s: 'ს', t: 'ტ', u: 'უ', v: 'ვ', w: 'ვ', x: 'ხ', y: 'ი', z: 'ზ',
+};
+
+const LATIN_ACCENTED: Readonly<Record<string, string>> = { 'š': 'sh', 'č': 'ch', 'ž': 'zh', 'ǯ': 'j', 'ġ': 'gh', 'ʒ': 'dz' };
+
+/** One word of Georgian in Latin letters → Georgian letters („daadasture" → „დაადასტურე", „k'i" → „კი"). */
+export function latinAsGeorgian(word: string): string {
+  if (typeof word !== 'string') return '';
+  const s = word.normalize('NFC').toLowerCase().replace(/[ščžǯġʒ]/gu, (ch) => LATIN_ACCENTED[ch]!)
+    .normalize('NFD').replace(/(\p{Script=Latin})\p{M}+/gu, '$1').normalize('NFC').replace(/['ʼʻ’`]/gu, '');
+  let out = '';
+  for (let i = 0; i < s.length;) {
+    const pair = LATIN_PAIRS[s.slice(i, i + 2)];
+    if (pair !== undefined) { out += pair; i += 2; } else { out += LATIN[s[i]!] ?? s[i]!; i += 1; }
+  }
+  return out;
+}

@@ -1,4 +1,4 @@
-import { isMisheardScript, toCallScript } from './heardScript';
+import { isMisheardScript, latinAsGeorgian, toCallScript } from './heardScript';
 import { judgeUtterance } from './spokenYes';
 
 describe('Georgian heard in Hindi letters is written back in Georgian ones (GG 2026-10-26)', () => {
@@ -69,5 +69,21 @@ describe('Georgian heard in Hindi letters is written back in Georgian ones (GG 2
     expect(judgeUtterance('آرا?')).toBe('no'); // „არა"
     expect(judgeUtterance('კი?')).toBe('unclear');
     expect(judgeUtterance('ok?')).toBe('unclear');
+  });
+
+  it('reads Georgian written in Latin letters by sound, and leaves captions in Latin (GG 2026-10-26 07:13Z: „da-adasture.")', () => {
+    expect(latinAsGeorgian('daadasture')).toBe('დაადასტურე');
+    expect(latinAsGeorgian('ki')).toBe('კი');
+    expect(latinAsGeorgian("k'i")).toBe('კი');
+    expect(latinAsGeorgian('Diakh')).toBe('დიახ');
+    expect(latinAsGeorgian('diax')).toBe('დიახ');
+    expect(latinAsGeorgian('gaushvi')).toBe('გაუშვი');
+    expect(latinAsGeorgian('tsavedit')).toBe('ცავედიტ');
+    expect(latinAsGeorgian('gaušvi')).toBe('გაუშვი');
+    expect(latinAsGeorgian('kʼargí')).toBe('კარგი');
+    for (const t of ['კი', 'да', '5', '']) expect(latinAsGeorgian(t)).toBe(t);
+    expect(latinAsGeorgian(undefined as unknown as string)).toBe('');
+    expect(toCallScript('da-adasture.')).toBe('da-adasture.');
+    expect(isMisheardScript('da-adasture.')).toBe(false);
   });
 });
