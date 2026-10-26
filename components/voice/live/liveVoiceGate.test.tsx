@@ -282,6 +282,33 @@ describe('useLiveActions: the countdown runs only on the user\'s own yes', () =>
     expect(env.notify).toHaveBeenCalledWith({ kind: 'not_started', reason: 'not_heard' });
   });
 
+  it('a „კი" the transcription wrote in Arabic letters with a question mark („كي?") starts it: the gate sees its own text', async () => {
+    const { env, runs } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    prepare(result);
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    hear(result, 'كي?');
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    await flush();
+    expect(env.recordApproval).toHaveBeenCalledWith({ tool: 'music', said: 'كي?', credits: 4 });
+    expect(runs).toHaveLength(1);
+    expect(result.current.pendingRun?.state).toBe('started');
+  });
+
+  it('an answer that came out as „대자." starts nothing, and the model hears what it came out as (GG 2026-10-26 09:29Z)', async () => {
+    const { env } = hookEnv();
+    const { result } = renderHook(() => useLiveActions(env));
+    prepare(result);
+    act(() => { result.current.onToolCall([call('s', 'start_generation', { confirmed: 'yes' })]); });
+    hear(result, '대자.');
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    await flush();
+    expect(env.recordApproval).not.toHaveBeenCalled();
+    expect(env.runGeneration).not.toHaveBeenCalled();
+    expect(result.current.pendingRun?.state).toBe('not_heard');
+    expect(env.notify).toHaveBeenCalledWith({ kind: 'not_started', reason: 'not_heard', what: '대자.' });
+  });
+
   it('a yes whose transcript arrives during the countdown still counts (the transcript lags the call)', async () => {
     const { env, runs } = hookEnv();
     const { result } = renderHook(() => useLiveActions(env));

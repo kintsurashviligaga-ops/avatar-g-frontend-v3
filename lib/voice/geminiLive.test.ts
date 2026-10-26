@@ -187,6 +187,16 @@ describe('geminiLive — buildLiveSetup', () => {
     expect(setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: ['??'] })).inputAudioTranscription).toEqual({});
   });
 
+  it('vocabulary → the input transcription\'s customVocabulary: trimmed, once each, capped; only with transcribe (GG 2026-10-26)', () => {
+    const s = setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: 'ka-GE', vocabulary: [' კი ', 'დიახ', 'კი', '', 'x'.repeat(41)] }));
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'], customVocabulary: ['კი', 'დიახ'] });
+    expect(s.outputAudioTranscription).toEqual({});
+    const many = Array.from({ length: 60 }, (_, i) => `w${i}`);
+    expect(setupOf(buildLiveSetup({ ...base, transcribe: true, vocabulary: many })).inputAudioTranscription?.customVocabulary).toHaveLength(50);
+    expect(setupOf(buildLiveSetup({ ...base, transcribe: true, vocabulary: [] })).inputAudioTranscription).toEqual({});
+    expect(setupOf(buildLiveSetup({ ...base, vocabulary: ['კი'] })).inputAudioTranscription).toBeUndefined();
+  });
+
   it('transcribe without / with a malformed languageCode → auto-detect ({}); languageCode without transcribe → ignored', () => {
     expect(setupOf(buildLiveSetup({ ...base, transcribe: true })).inputAudioTranscription).toEqual({});
     expect(setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: 'ka GE; drop' })).inputAudioTranscription).toEqual({});
