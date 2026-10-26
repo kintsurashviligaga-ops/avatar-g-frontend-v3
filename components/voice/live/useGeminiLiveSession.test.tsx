@@ -467,6 +467,20 @@ test('onHeard: the user\'s own words as they stream (spoken and typed), and each
   unmount();
 });
 
+test('Georgian heard in Hindi letters: the caption, the closed turn and the heard words are in Georgian ones (GG 2026-10-26)', async () => {
+  const h = harness();
+  const heard: unknown[] = [];
+  const turns: LiveTurn[] = [];
+  const { result, ws, unmount } = await connected({ deps: h.deps, onHeard: (e) => heard.push(e), onTurn: (t) => turns.push(t) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: ' क्रेटा' } } }));
+  expect(result.current.captions.at(-1)).toMatchObject({ role: 'user', text: 'კრეტა' });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: ' की' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(heard).toEqual([{ text: ' კრეტა' }, { text: ' კრეტა კი' }, { end: true }]);
+  expect(turns).toEqual([{ role: 'user', text: 'კრეტა კი' }]);
+  unmount();
+});
+
 test('without an onTurn prop, closed turns are dispatched as the window transcript event', async () => {
   const h = harness();
   const seen: LiveTurn[] = [];
@@ -1440,6 +1454,7 @@ test('small helpers', () => {
   expect(playbackRateFromMime('audio/pcm')).toBe(24000);
   expect(playbackRateFromMime('audio/pcm;rate=999999')).toBe(24000);
   expect(normalizeCaption('  a   b \n c ')).toBe('a b c');
+  expect(normalizeCaption(' की  हो ')).toBe('კი ჰო');
 });
 
 describe('buildLiveInstruction', () => {
