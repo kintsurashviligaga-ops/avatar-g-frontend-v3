@@ -252,6 +252,10 @@ function compositionStep(text: string, intent: AgentIntent, s: ChatSnapshot): Ch
   if (!comp.hit) return null;
   const kinds = s.attachments ?? [];
   if (kinds.some((k) => k !== 'video' && k !== 'image')) return null;
+  // Photos with a new video's brief („Veo 3.1, 8s … 0–2s: … 2–8s: … no captions") are its first frame, not pictures to
+  // edit: the shot times are not caption lines (GG's E2E 2026-10-26 answered „This file has no picture.").
+  if (kinds.length && kinds.every((k) => k === 'image') && intent.kind === 'act'
+    && (intent.capability === 'video.generate' || intent.capability === 'video.music-video')) return null;
   const locale = intent.lang;
   const videos = kinds.flatMap((k, i) => (k === 'video' ? [i] : []));
   const images = kinds.flatMap((k, i) => (k === 'image' ? [i] : []));

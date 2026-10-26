@@ -158,6 +158,12 @@ describe('what someone SAYS in a request („…") names no tool (GG\'s E2E, 202
     expect(detectStudioIntent('გააკეთე ვიდეო, სადაც კაცი ამბობს: „ეს ვიდეო დავამონტაჟე და ავტვირთე"')).toBeNull();
     expect(detectStudioIntent('Make a video where she says “I dubbed this whole film myself”')).toBeNull();
   });
+  test('the same brief under its title „სცენა 2 — 48-წამიანი ვლოგი" (GG, 2026-10-26): „48-წამიანი" is a length, not „…მიანი" asked for me', () => {
+    expect(detectStudioIntent(`სცენა 2 — 48-წამიანი ვლოგი\n369 სიმბოლო • 8 წამი\n${BRIEF}`)).toBeNull();
+    expect(detectStudioIntent('10-წამიანი ავატარის ვიდეო')).toBeNull();
+    // The verbs of the same shape still ask: „წამიყვანე" is a request, and so is an avatar asked for me.
+    expect(detectStudioIntent('ავატარი გამიკეთე, 10-წამიანი')).toMatchObject({ service: 'avatar' });
+  });
   test('the words around the quote still ask for the tool, and a quoted name of a word or two stays', () => {
     expect(detectStudioIntent('დაამონტაჟე ეს ვიდეოები, ბოლოს ის ამბობს: „მადლობა, რომ უყურეთ"')).toMatchObject({ service: 'montage' });
     expect(detectStudioIntent('გახსენი „მონტაჟი" და დაამონტაჟე ეს კლიპები')).toMatchObject({ service: 'montage' });

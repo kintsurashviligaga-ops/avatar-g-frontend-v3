@@ -314,8 +314,12 @@ for (const vp of VIEWPORTS) {
       const calls = await openStudio(page, { tool: null, closedTiers: [] });
       await page.locator(FILE_INPUT).setInputFiles([{ name: 'podcast.jpg', mimeType: 'image/jpeg', buffer: POSTER }]);
       await expect(page.getByTitle('podcast.jpg')).toBeVisible({ timeout: 10_000 });
-      const words = 'Veo 3.1, 8s, 9:16. Same actors, clothes and outdoor podcast terrace. She says in Georgian: „ჩემი ფოტო ავტვირთე, '
-        + 'Agent G-ს 48-წამიანი ვლოგი ვთხოვე და მზა, დამონტაჟებული ვიდეო მივიღე!" Host reacts with surprise. No captions.';
+      // GG's brief verbatim (2026-10-26 05:36Z): its shot times („0–2s: … 2–8s: …") with „no captions" were read as typed
+      // captions on the photo and answered „This file has no picture." (lib/agent/chatTurn).
+      const words = 'სცენა 2 — 48-წამიანი ვლოგი\n369 სიმბოლო • 8 წამი\nVeo 3.1, 8s, 9:16. Same actors, clothes and outdoor podcast terrace. '
+        + '0–2s: over-host-shoulder angle toward woman; 2–8s: smooth push-in to her close-up. She says in Georgian: „ჩემი ფოტო ავტვირთე, '
+        + 'Agent G-ს 48-წამიანი ვლოგი ვთხოვე და მზა, დამონტაჟებული ვიდეო მივიღე!" Host reacts with surprise. Photorealism, elegant gestures, '
+        + 'accurate lip-sync, clear voice, no captions.';
       await typeFilmPrompt(page, words);
       // The chat's own Send (no service picked, so not the priced run-button).
       await page.locator('button[data-primary="send"]').filter({ visible: true }).first().click();
