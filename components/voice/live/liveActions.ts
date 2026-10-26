@@ -66,7 +66,7 @@ import {
   type LiveStudioReply,
   type OpenArtifactDetail,
 } from '@/lib/voice/liveTools';
-import { judgeSince, judgeUtterance } from '@/lib/voice/spokenYes';
+import { judgeSince, judgeUtterance, type HeardUtterance, type SpokenVerdict } from '@/lib/voice/spokenYes';
 import { createVoiceLedger, type LiveHeardEvent, type LiveVoicePort, type VoiceLedger } from '@/lib/voice/voiceLedger';
 import {
   controlName,
@@ -421,6 +421,8 @@ export interface LiveRun {
   priceCredits?: number;
   target: LiveRunTarget;
   since: number;
+  /** A studio render: when the model itself named exactly this price, just before the card (see judgeRun). */
+  spokenSince?: number;
 }
 
 const PLAN_NAME: Record<LivePlanKind, string> = { audio: 'MP3', montage: 'montage', edit: 'video edit' };
@@ -431,6 +433,19 @@ const NO_EARS = 'This call has no transcript of the user\'s words here, so nothi
 function heardNo(voice: LiveVoicePort, since: number): string | null {
   const { verdict, said } = judgeSince(voice.heard(), since);
   return verdict === 'no' ? said : null;
+}
+
+/**
+ * The user's answer to a start: their newest deciding words since its price or plan was told (`since`). ⚠️ GG
+ * 2026-10-26 08:17Z: the model said "It'll cost you 5 credits. Shall we proceed?" BEFORE it prepared the card, the user
+ * said "Yes.", and the card came after — so the words since the card held no answer and nothing started. When nothing
+ * deciding was said since the card, the words said since the model named exactly the card's price (`spokenSince`) are
+ * the answer: a yes there is a yes to that price, and a no there is still a no.
+ */
+export function judgeRun(heard: readonly HeardUtterance[], run: Pick<LiveRun, 'since' | 'spokenSince'>): { verdict: SpokenVerdict; said: string } {
+  const after = judgeSince(heard, run.since);
+  if (after.verdict !== 'unclear' || !run.spokenSince || run.spokenSince >= run.since) return after;
+  return judgeSince(heard, run.spokenSince);
 }
 
 function saidNo(answer: (r: Record<string, unknown>) => LiveFunctionResponse, said: string, after: string): LiveCallOutcome {
@@ -774,8 +789,11 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
           }),
         };
       }
-      const no = heardNo(voice, quote.at);
-      if (no !== null) return saidNo(answer, no, 'the price');
+      // The price the model itself named just before the card, when it is exactly the card's (lib/voice/voiceLedger).
+      const spoken = typeof price === 'number' && price > 0 ? voice.pricedAt?.(price, quote.at) ?? 0 : 0;
+      const spokenSince = spoken > 0 && spoken < quote.at ? spoken : undefined;
+      const answered = judgeRun(voice.heard(), { since: quote.at, ...(spokenSince ? { spokenSince } : {}) });
+      if (answered.verdict === 'no') return saidNo(answer, answered.said, 'the price');
       return {
         response: answer({
           ok: true,
@@ -788,6 +806,7 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
           ...(typeof price === 'number' ? { priceCredits: price } : {}),
           target: { kind: 'studio', tool, ...(fingerprint ? { fingerprint } : {}) },
           since: quote.at,
+          ...(spokenSince ? { spokenSince } : {}),
         },
       };
     }
@@ -1143,6 +1162,8 @@ export interface UseLiveActionsResult {
   onToolCallCancellation: (ids: string[]) => void;
   /** useGeminiLiveSession `onHeard`: the user's own words as the call hears them (a "wait" during a countdown stops it). */
   onHeard: (e: LiveHeardEvent) => void;
+  /** useGeminiLiveSession `onSaid`: the model's own words as the call's transcript streams them (a price it named). */
+  onSaid: (e: LiveHeardEvent) => void;
   /** An Agent G plan card reached the call (its [App] note is queued): the number the model will start it by. */
   registerPlan: (id: string, kind: LivePlanKind, what?: string) => number;
   /** Its [App] note was sent to the model: from now on, a yes counts for it. */
@@ -1212,7 +1233,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   const fireRun = useCallback(async (entry: { id: string; run: LiveRun; cancelled: boolean }) => {
     if (!mountedRef.current || entry.cancelled || runRef.current !== entry) return;
     const e = envNow();
-    const { verdict, said } = judgeSince(e.voice!.heard(), entry.run.since);
+    const { verdict, said } = judgeRun(e.voice!.heard(), entry.run);
     if (verdict !== 'yes') {
       finishRun(entry, verdict === 'no' ? 'cancelled' : 'not_heard', verdict === 'no' ? 'said_no' : 'not_heard', said || undefined);
       return;
@@ -1272,6 +1293,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
     if (open && open.at >= entry.run.since && judgeUtterance(text) === 'no') stopRun('said_no');
   }, [stopRun]);
 
+  const onSaid = useCallback((e: LiveHeardEvent) => ledgerRef.current!.tell(e), []);
   const registerPlan = useCallback((id: string, kind: LivePlanKind, what?: string) => ledgerRef.current!.registerPlan(id, kind, what), []);
   const planTold = useCallback((id: string) => ledgerRef.current!.planTold(id), []);
 
@@ -1344,6 +1366,6 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
 
   return {
     cards, endRequested, screenSeq, viewRequest, personaRequest, pendingRun, cancelRun, onToolCall, onToolCallCancellation,
-    onHeard, registerPlan, planTold,
+    onHeard, onSaid, registerPlan, planTold,
   };
 }

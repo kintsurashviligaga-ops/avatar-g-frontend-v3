@@ -467,6 +467,24 @@ test('onHeard: the user\'s own words as they stream (spoken and typed), and each
   unmount();
 });
 
+test('onSaid: the model\'s own words as they stream, and its turn closing — never the user\'s (GG 2026-10-26 08:17Z)', async () => {
+  const h = harness();
+  const said: unknown[] = [];
+  const { ws, unmount } = await connected({ deps: h.deps, onSaid: (e) => said.push(e) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'a car picture' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: "It'll cost you" } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: ' 5 credits.' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(said).toEqual([{ text: "It'll cost you" }, { text: "It'll cost you 5 credits." }, { end: true }]);
+  // A user-only exchange closes nothing of the model's; a cut-off answer closes too.
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'Yes.' }, turnComplete: true } }));
+  expect(said).toHaveLength(3);
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Starting' } } }));
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(said.slice(3)).toEqual([{ text: 'Starting' }, { end: true }]);
+  unmount();
+});
+
 test('Georgian heard in Hindi letters: the caption, the closed turn and the heard words are in Georgian ones (GG 2026-10-26)', async () => {
   const h = harness();
   const heard: unknown[] = [];
