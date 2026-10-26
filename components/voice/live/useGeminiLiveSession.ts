@@ -280,6 +280,11 @@ export interface UseGeminiLiveSessionOptions {
    */
   onHeard?: (e: LiveHeardEvent) => void;
   /**
+   * The model's own words as the call's transcript of its voice streams them, in the same shape as onHeard. A price it
+   * named itself just before the card is the price a yes said then answered (lib/voice/voiceLedger pricedAt).
+   */
+  onSaid?: (e: LiveHeardEvent) => void;
+  /**
    * A talking avatar (lib/voice/liveAvatar): a prebuilt name asks the mint for a gemini-3.8-live VIDEO session. Read at
    * every mint, so a change takes effect with the next fresh session (renew()). The answer then arrives as fragmented-MP4
    * pieces through onVideo, the avatar's voice inside them: no audio events, nothing on the playback context.
@@ -747,6 +752,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     try { optsRef.current.onHeard?.(heard); } catch { /* a host bug must never kill the call */ }
   }, []);
 
+  const emitSaid = useCallback((e: LiveHeardEvent) => {
+    try { optsRef.current.onSaid?.(e); } catch { /* a host bug must never kill the call */ }
+  }, []);
+
   const emitTurn = useCallback((turn: LiveTurn) => {
     const sink = optsRef.current.onTurn;
     try { if (sink) sink(turn); else dispatchLiveTranscript(turn); } catch { /* a host bug must never kill the call */ }
@@ -757,6 +766,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     const u = normalizeCaption(pendingUserRef.current);
     const m = normalizeCaption(pendingModelRef.current);
     if (pendingUserRef.current) emitHeard({ end: true });
+    if (pendingModelRef.current) emitSaid({ end: true });
     pendingUserRef.current = '';
     pendingModelRef.current = '';
     if (!u && !m) return;
@@ -773,7 +783,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     if (finals.length > MAX_FINAL_CAPTIONS) finals.splice(0, finals.length - MAX_FINAL_CAPTIONS);
     publishCaptions();
-  }, [emitHeard, emitTurn, publishCaptions]);
+  }, [emitHeard, emitSaid, emitTurn, publishCaptions]);
 
   // ── Playback ──
   const isPlaying = useCallback(() => activeSourcesRef.current.size > 0, []);
@@ -1140,7 +1150,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       case 'outputTranscript':
         if (dropModelAudioRef.current) return; // the words of audio we dropped were never heard
         modelTurnOpenRef.current = true;
-        if (ev.text) { pendingModelRef.current += ev.text; publishCaptions(); }
+        if (ev.text) { pendingModelRef.current += ev.text; publishCaptions(); emitSaid({ text: pendingModelRef.current }); }
         // An avatar speaks inside its video, which never stops (idle frames): its words are the only sign it is talking.
         if (avatarSessionRef.current && readyRef.current && statusRef.current !== 'speaking') {
           clearThinkingTimer();
@@ -1219,7 +1229,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       default:
         return; // setupComplete arrives via onSetupComplete; 'error' frames are followed by a close
     }
-  }, [afterTurnBoundary, answerToolCall, clearThinkingTimer, emitHeard, enqueueAudio, flushPlayback, flushTurn, isPlaying, publishCaptions, setStatusSafe]);
+  }, [afterTurnBoundary, answerToolCall, clearThinkingTimer, emitHeard, emitSaid, enqueueAudio, flushPlayback, flushTurn, isPlaying, publishCaptions, setStatusSafe]);
 
   /** `timedOut`: the handshake ran out of time; it was never refused, so a step that drops what a refusal blamed (the
    *  UI-action declarations) does not follow it. */
@@ -1643,6 +1653,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     resumesRef.current = 0;
     phaseRef.current = 'initial';
     if (pendingUserRef.current) emitHeard({ end: true });
+    if (pendingModelRef.current) emitSaid({ end: true });
     pendingUserRef.current = '';
     pendingModelRef.current = '';
     finalCaptionsRef.current = [];
@@ -1759,7 +1770,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     stepRef.current = 0;
     timeoutRetriesRef.current = 0;
     openSession(planRef.current[0]!.handle);
-  }, [attachMic, deps, emitHeard, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
+  }, [attachMic, deps, emitHeard, emitSaid, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
 
   const stop = useCallback(() => {
     flushTurn(true);
