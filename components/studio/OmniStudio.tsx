@@ -1148,6 +1148,14 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
 function cardJobsOf(m: Msg): string[] {
   return [...[m.montage, m.audioJob, m.editJob].flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }), ...runCardJobs(m.runJob)];
 }
+
+/**
+ * A line the model SAID in a Live call, written into the chat as it was spoken (myavatar:live-transcript). It is no answer
+ * of the chat's own, so "what Agent G proposed last" looks past it. ⚠️ GG 2026-10-26 11:34Z and 12:04Z, the test link: the
+ * call prepared a picture, Agent G's price card came into the chat, the model said the price and that line was written
+ * under the card; the user's „კი" then found no card waiting and start_generation answered "nothing to start".
+ */
+const spokenInCall = (m: Msg): boolean => m.role === 'assistant' && m.inputMethod === 'voice';
 /** Where a card's run ended: the job's own end for a card taken back after the page was replaced, not the moment of the read. */
 const endOf = (r: { endedAt?: number }): number => Math.min(Date.now(), r.endedAt ?? Date.now());
 /** A row id for a card saved to the account's history, made here so the card can rewrite its own row later. */
@@ -8098,7 +8106,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const lip = directorRunsOn ? 0 : filmLipsyncCredits;
       return { tool: 'video', prompt: storyboard.filmPrompt, credits, ...(lip ? { lipsyncCredits: lip } : {}), kind: 'storyboard' };
     }
-    const last = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && !m.notice);
+    const last = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && !m.notice && !spokenInCall(m));
     const card = last?.agentG;
     if (!card || card.done || card.kind !== 'confirm' || card.madeIn !== 'chat' || activeTool !== 'chat') return null;
     return { tool: card.target as ToolId, prompt: card.prompt, ...(card.credits ? { credits: card.credits } : {}), kind: 'card' };
@@ -9286,7 +9294,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     let idx = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]!;
-      if (m.role === 'assistant' && !m.notice) { idx = i; break; }
+      if (m.role === 'assistant' && !m.notice && !spokenInCall(m)) { idx = i; break; }
     }
     const last = idx >= 0 ? messages[idx] : undefined;
     if (!last) return false;
