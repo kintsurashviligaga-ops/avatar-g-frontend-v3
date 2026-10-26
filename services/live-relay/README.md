@@ -36,6 +36,11 @@ Each `relay.session_end` line also says where the session waited: `setupMs` (con
    It then rewrites the model to `projects/<p>/locations/<l>/publishers/google/models/<m>` and opens Vertex.
 4. From the browser, only `realtimeInput`, `clientContent` and `toolResponse` frames pass. A second `setup` closes the
    session. Everything from Vertex goes back unchanged.
+   The relay also speaks three frames of its own (`lib/voice/relay/wire`): `{"relayHello":{"nudge":1}}` right after
+   the upgrade, `{"relaySetupAck":{}}` when the setup passes, and it drops the browser's `{"relayNudge":{}}`. An
+   iPhone behind iCloud Private Relay held the setup until the browser wrote again (2026-10-26), so a browser that
+   heard hello and has no ack writes a nudge, and gives the socket up at 1.8 s instead of 3 s. Deploy the relay
+   before the app: a browser nudges only a relay that said hello. `relay.session_end` logs `nudges`.
 5. The relay ends a session at its length limit, when idle, on a frame or byte limit, or when either side closes. It
    logs `relay.session_end` with the duration, bytes and the tokens Vertex reported.
 

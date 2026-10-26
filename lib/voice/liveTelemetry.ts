@@ -47,6 +47,12 @@ export interface LiveFailureContext {
   /** Handshake timeout only: WebSocket.bufferedAmount at the deadline. ≈ the setup frame's size = the browser never
    *  put it on the wire; 0 = it left the browser and was held further on. */
   bufferedBytes?: number;
+  /** Our relay said hello (it acks the setup and takes nudges, lib/voice/relay/wire). */
+  relayHello?: boolean;
+  /** Socket open → the relay's ack of the setup (absent = no ack came). */
+  msToAck?: number;
+  /** Nudges written while the setup was not acked. */
+  nudges?: number;
 }
 
 /** The whitelisted wire shape. */
@@ -71,6 +77,9 @@ export interface LiveTelemetryPayload {
   msToOpen?: number;
   msSinceOpen?: number;
   bufferedBytes?: number;
+  relayHello?: boolean;
+  msToAck?: number;
+  nudges?: number;
 }
 
 const str = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v ? v.slice(0, max) : undefined);
@@ -120,6 +129,9 @@ export function sanitizeLiveContext(raw: unknown): LiveTelemetryPayload | null {
     msToOpen: num(r.msToOpen),
     msSinceOpen: num(r.msSinceOpen),
     bufferedBytes: num(r.bufferedBytes),
+    relayHello: bool(r.relayHello),
+    msToAck: num(r.msToAck),
+    nudges: num(r.nudges),
   });
   if (byteLength(JSON.stringify(payload)) <= LIVE_TELEMETRY_MAX_BYTES) return payload;
   delete payload.attempts; // the only variable-length part
@@ -175,6 +187,9 @@ export function buildLiveFailurePayload(
     msToOpen: context.msToOpen,
     msSinceOpen: context.msSinceOpen,
     bufferedBytes: context.bufferedBytes,
+    relayHello: context.relayHello,
+    msToAck: context.msToAck,
+    nudges: context.nudges,
   });
 }
 
