@@ -72,12 +72,14 @@ const LIVE_PERSONA: Record<VoiceLocale, string> = {
  * Russian or English, the call answered once in that language and then went back to Georgian. The Georgian persona, the
  * platform prompt's "Reply in Georgian" and the chat thread all sat ABOVE the one line that said to follow the speaker,
  * and a fresh session (a persona switch, a new call) started from them again. This line goes last, where the model weighs
- * it most, and it says to STAY in the speaker's language, not only to switch once.
+ * it most, and it says to STAY in the speaker's language, not only to switch once. ⚠️ GG 2026-10-26: after a Georgian
+ * price and a „კი" the transcription wrote in Arabic letters, the call answered the app's English [App] note in English.
  */
 export const LIVE_LANGUAGE_LOCK =
   'LANGUAGE, EVERY TURN: reply in the language of the user\'s most recent words (Georgian, English or Russian) and keep '
   + 'replying in it until the user speaks another one. Never go back to Georgian because the page, these instructions or '
-  + 'earlier turns are in Georgian. If you cannot tell, keep the language of your last reply.';
+  + 'earlier turns are in Georgian. If you cannot tell, keep the language of your last reply. [App] notes are written in '
+  + 'English for you alone: answer one in the language you were speaking with the user, never in English because of it.';
 
 /** BCP-47 hints for the Live input transcription: the UI language first, then the other two the call follows. */
 export function liveTranscriptionLanguages(locale: VoiceLocale): string[] {

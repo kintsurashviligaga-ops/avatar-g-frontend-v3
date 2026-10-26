@@ -13,10 +13,11 @@
  * "wait", "არა", "მოიცა", "нет", "стоп") left after the agreement phrases makes it a no. Pure and isomorphic: the
  * browser (components/voice/live/liveActions) and the routes use the same function. KA / EN / RU.
  *
- * Georgian the transcription wrote in Hindi letters („की" for „კი") is judged in Georgian ones (lib/voice/heardScript).
+ * Georgian the transcription wrote in another alphabet („की", „كي" for „კი") is judged in Georgian letters
+ * (lib/voice/heardScript), and its question mark is not trusted: that transcription guessed the language, and its punctuation.
  */
 
-import { toCallScript } from './heardScript';
+import { isMisheardScript, toCallScript } from './heardScript';
 
 export type SpokenVerdict = 'yes' | 'no' | 'unclear';
 
@@ -102,8 +103,9 @@ export function judgeUtterance(text: string): SpokenVerdict {
   const [afterYes, yesHits] = strip(tokens, YES);
   const [afterNo, noHits] = strip(afterYes, NO);
   if (noHits > 0) return 'no';
-  // A question is never a yes, however it starts ("ok, how long will it take?").
-  if (/[?？]\s*$/u.test(text.trim())) return 'unclear';
+  // A question is never a yes, however it starts ("ok, how long will it take?"). ⚠️ GG 2026-10-26: a spoken „კი" came
+  // back as „كي?" — words heard in another alphabet carry that wrong language's punctuation, so their „?" decides nothing.
+  if (!isMisheardScript(text) && /[?？]\s*$/u.test(text.trim())) return 'unclear';
   const content = afterNo.filter((t) => !FILLERS.has(t) && !/^\p{N}+$/u.test(t));
   return yesHits > 0 && content.length === 0 ? 'yes' : 'unclear';
 }
