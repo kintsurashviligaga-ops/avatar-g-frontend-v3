@@ -76,7 +76,7 @@ import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
 import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
-import { LIVE_LANGUAGE_LOCK, liveCallPersona, liveTranscriptionLanguages } from '@/lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveCallPersona, liveTranscriptionLanguages, liveTranscriptionVocabulary } from '@/lib/voice/voicePrompt';
 import { toCallScript } from '@/lib/voice/heardScript';
 import type { LiveHeardEvent } from '@/lib/voice/voiceLedger';
 import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
@@ -276,7 +276,8 @@ export interface UseGeminiLiveSessionOptions {
   /**
    * The user's own words as the call hears them (the input transcription, and text typed into the call): `{ text }` is
    * the open exchange's words so far, `{ end: true }` closes it. A voice start runs only on these words
-   * (components/voice/live/liveActions, lib/voice/voiceLedger) — never on the model's word that it heard a yes.
+   * (components/voice/live/liveActions, lib/voice/voiceLedger) — never on the model's word that it heard a yes. They come
+   * as the transcription wrote them, in whatever alphabet: the captions show them in Georgian letters (normalizeCaption).
    */
   onHeard?: (e: LiveHeardEvent) => void;
   /**
@@ -747,9 +748,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       const next = voiceStyleCommand(toCallScript(pendingUserRef.current), experienceRef.current.preferences);
       if (next) experienceRef.current.update(next);
     }
-    // The words a yes is judged on are the words the caption shows (lib/voice/heardScript).
-    const heard = 'text' in e ? { text: toCallScript(e.text) } : e;
-    try { optsRef.current.onHeard?.(heard); } catch { /* a host bug must never kill the call */ }
+    // ⚠️ The transcription's own text, not the caption's: lib/voice/spokenYes reads it back in Georgian letters itself and
+    // must know which words came in another alphabet, whose question mark is a guess („كي?" for „კი", GG 2026-10-26).
+    try { optsRef.current.onHeard?.(e); } catch { /* a host bug must never kill the call */ }
   }, []);
 
   const emitSaid = useCallback((e: LiveHeardEvent) => {
@@ -1052,6 +1053,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       ...(parity
         ? {
           languageCode: liveTranscriptionLanguages(locale),
+          vocabulary: liveTranscriptionVocabulary(),
           resumptionHandle: handle ?? null,
           transcribe: true,
           compression: true,
