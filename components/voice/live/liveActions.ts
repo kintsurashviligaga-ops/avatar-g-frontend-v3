@@ -391,6 +391,12 @@ function refused(answer: (r: Record<string, unknown>) => LiveFunctionResponse, r
 
 const NO_STUDIO = 'No studio is open on this page, so nothing was prepared. Suggest the user opens the MyAvatar dashboard and asks again.';
 const NO_STUDIO_SHORT = 'No studio is open on this page, so nothing happened. Suggest the user opens the MyAvatar dashboard.';
+/**
+ * What the model says when a start's countdown opens. ⚠️ GG 2026-10-26 12:58Z: told "starts in 3 seconds", the model said
+ * „დაიწყო. 3 წამში მზად იქნება" (it started, ready in 3 s), and then the user's answer turned out to be no clear yes.
+ */
+const COUNTDOWN_SAY = 'Say in one short sentence that it starts in a moment. Do not say it has started or when it will be '
+  + 'ready: the app tells you if it did not start.';
 const NO_CANVAS = 'No code canvas is open on this page, so the code was not shown or saved. Do not read it aloud; '
   + 'suggest the user opens the MyAvatar dashboard and asks again.';
 
@@ -499,8 +505,9 @@ function startAgentPlan(
   return {
     response: answer({
       ok: true,
-      summary: `Plan ${plan.n} (${PLAN_NAME[plan.kind]}) starts in ${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds unless the `
-        + `user taps Cancel or says wait.${planPrice(detail.reply)} Say so in one sentence.`,
+      summary: `Nothing has started yet: plan ${plan.n} (${PLAN_NAME[plan.kind]}) starts in `
+        + `${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds unless the user taps Cancel or says wait, once the app has `
+        + `their yes.${planPrice(detail.reply)} ${COUNTDOWN_SAY}`,
     }),
     screen: true,
     run: {
@@ -797,8 +804,9 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
       return {
         response: answer({
           ok: true,
-          summary: `The ${STUDIO_NAME[tool] ?? 'studio'} generation starts in ${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds `
-            + `unless the user taps Cancel or says wait.${priceSentence(detail.reply, tool)} Say so in one sentence.`,
+          summary: `Nothing has started yet: the ${STUDIO_NAME[tool] ?? 'studio'} generation starts in `
+            + `${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds unless the user taps Cancel or says wait, once the app has `
+            + `their yes.${priceSentence(detail.reply, tool)} ${COUNTDOWN_SAY}`,
         }),
         screen: true,
         run: {
