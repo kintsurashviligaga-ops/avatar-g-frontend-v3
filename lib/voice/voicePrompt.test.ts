@@ -119,7 +119,17 @@ describe('Live call language (GG 2026-10-25: Russian once, then Georgian again)'
 
   it('the lock says to stay in the language, not only to switch once', () => {
     expect(LIVE_LANGUAGE_LOCK).toMatch(/keep replying in it until the user speaks another one/);
-    expect(LIVE_LANGUAGE_LOCK).toMatch(/Never go back to Georgian/);
+    expect(LIVE_LANGUAGE_LOCK).toMatch(/never go back to Georgian, or over to English, because of them/);
     expect(LIVE_LANGUAGE_LOCK).toMatch(/\[App\] notes are written in English for you alone/);
+  });
+
+  it('GG 2026-10-26 09:01Z: only this call\'s words decide; an unclear start falls to the persona\'s default, never the history', () => {
+    expect(LIVE_LANGUAGE_LOCK).toMatch(/most recent words in THIS call/);
+    expect(LIVE_LANGUAGE_LOCK).toMatch(/never the language of the conversation history, of your replies before this call/);
+    expect(LIVE_LANGUAGE_LOCK).toMatch(/keep the language you have been speaking with the user in this call/);
+    expect(LIVE_LANGUAGE_LOCK).toMatch(/\(Georgian unless they name another\)/);
+    expect(LIVE_LANGUAGE_LOCK).not.toMatch(/keep the language of your last reply/);
+    // The default the lock points to is the persona's, per UI locale.
+    expect(liveCallPersona('ka')).toMatch(/only when you cannot tell, use Georgian\.$/);
   });
 });
