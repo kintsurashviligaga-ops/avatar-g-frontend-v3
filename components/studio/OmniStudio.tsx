@@ -143,7 +143,9 @@ import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand, isVideoIntent, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, updateMessage, getMessages, getConversations } from '@/lib/chat-history';
-import { cardSignature, hasCard, mergeServerTurns, readTurnMeta, turnMetaOf } from '@/lib/chat/turnMeta';
+import {
+  cardSignature, hasCard, isResultTurn, mergeServerTurns, readTurnMeta, resultRowText, resultSignature, resultUrlOf, savedTurnText, turnMetaOf,
+} from '@/lib/chat/turnMeta';
 import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
@@ -1140,7 +1142,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A clip, an edit or an extend Omni made here: its signed job id, so „გააგრძელე" continues THAT clip by Omni's own interaction, speech and all (lib/video/omniEdit omniSourceOfJob). Never persisted. */ omniJob?: string; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A clip, an edit or an extend Omni made here: its signed job id, so „გააგრძელე" continues THAT clip by Omni's own interaction, speech and all (lib/video/omniEdit omniSourceOfJob). Persisted with the clip (here and in its saved row): the chat opened again continues it too. */ omniJob?: string; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1158,7 +1160,7 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   noRetry?: boolean;
   /** The reply failed mid-answer: its text ends with the chat's own „\n\n⚠️ …" line, which the model must not get. */
   errorTail?: boolean;
-  /** This card's row in the account's history (lib/chat/turnMeta): rewritten as the card moves, read by another device. */
+  /** This card's or result's row in the account's history (lib/chat/turnMeta): rewritten as it changes, read by another device. */
   cloudRowId?: string;
   inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; /** The shape and tier an in-flight image job was started with — the result pane draws its card in that shape. */ genAspect?: string; genQuality?: string; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; /** A failed film's scenes that DID render (paid and kept, R3 matrix) — handed over under the error card. */ sceneClips?: { ordinal: number; url: string }[]; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
@@ -1210,13 +1212,16 @@ function newRowId(): string {
 /** Is this card still reading its files (no plan yet)? Such a card lives in this page only and is not saved yet. */
 const cardReading = (m: Msg): boolean => m.montage?.phase === 'reading' || m.editJob?.phase === 'reading'
   || m.audioJob?.phase === 'checking' || m.runJob?.phase === 'reading';
-/** The account's saved turns of a chat as messages: the words, and what each held (lib/chat/turnMeta). */
+/** The account's saved turns of a chat as messages: the words, and what each held (lib/chat/turnMeta). A card or a result
+ *  keeps its row id, so a change to it here rewrites that row. */
 function serverTurns(rows: ReadonlyArray<{ id: string; role: string; content: string; metadata?: unknown }>): Msg[] {
   return rows
     .filter((r) => r.role === 'user' || r.role === 'assistant')
     .map((r) => {
       const meta = readTurnMeta(r.metadata) as Partial<Msg>;
-      return { ...meta, role: r.role as 'user' | 'assistant', text: r.content, ...(meta.id ? { cloudRowId: r.id } : {}) };
+      const role = r.role as 'user' | 'assistant';
+      const own = !!meta.id || isResultTurn({ ...meta, role });
+      return { ...meta, role, text: savedTurnText(r.content, meta), ...(own ? { cloudRowId: r.id } : {}) };
     });
 }
 /** An Agent G card whose work is running now (Stop has something to stop). */
@@ -1521,6 +1526,8 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.batch ? { batch: { tiles: m.batch.tiles, spec: dropRef(m.batch.spec) as ImageRegenSpec } } : {}),
       // A video result's shape, so its player keeps the right box after a reload.
       ...(m.orientation ? { orientation: m.orientation } : {}),
+      // An Omni clip's job id: „გააგრძელე" after a reload continues that clip, not a new one (components/studio/clip/editOrder).
+      ...(m.omniJob ? { omniJob: m.omniJob } : {}),
       // Agent G's cards, lean, and the id they are patched by: a card read back while its job runs is taken back to that
       // job, and the result lands in this bubble (lib/agent/media/cardPersist — the language switch of 2026-10-11).
       ...(m.id && (m.montage || m.audioJob || m.editJob || m.runJob) ? { id: m.id } : {}),
@@ -5721,8 +5728,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // For an AUTHENTICATED user, once on mount:
   //  • local view EMPTY (fresh device / cleared cache) → hydrate the text transcript from Supabase
   //    (getMessages) so chat history follows the ACCOUNT cross-device, not just this device's
-  //    localStorage. (Media / generation bubbles aren't server-persisted, so this restores the
-  //    conversation text — the durable transcript — not device-local media tiles.)
+  //    localStorage. (A delivered clip, picture or song is a saved row of its own since 2026-10-26, read back as the
+  //    same bubble; an image batch's tiles are still this device's only.)
   //  • local view NON-EMPTY (same device) → keep the rich local view and instead RECONCILE any
   //    still-pending image-batch tiles against the DB: a client-driven render can't resume after a
   //    reload, so restore a completed tile from its signed_url or clear the phantom spinner (→ failed).
@@ -9508,6 +9515,70 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       saveCardRow(m);
     }
   }, [messages, conversationId, saveCardRow]);
+  // THE RESULTS IN THE ACCOUNT'S HISTORY (GG 2026-10-26 20:14Z „გაასწორე", on „a chat opened again shows no videos, though the
+  // Library has them"). A clip, a picture or a song that lands here is a bubble with no words and no card, so nothing above
+  // saved it. It is now saved as one row of its own when it lands (lib/chat/turnMeta resultRowText: its words or a mark,
+  // its links and an Omni clip's job id in the metadata), and rewritten when it changes (a film's scene shot again). What a
+  // chat already showed when it was opened is not saved now: it was saved before, or was made before results were saved,
+  // and a row written today would sort after everything said since.
+  const resultRowsRef = useRef<{ cid: string; seen: Set<string>; sigs: Map<string, string> } | null>(null);
+  const resultWriteRef = useRef(new Map<string, Promise<unknown>>());
+  const saveResultRow = useCallback((m: Msg, url: string) => {
+    const lean = leanMessages([m])[0];
+    const meta = lean ? turnMetaOf(lean as Parameters<typeof turnMetaOf>[0]) : null;
+    if (!meta) return;
+    const sig = resultSignature(m);
+    void (async () => {
+      const sid = await ensureChatSession();
+      if (!sid) return;
+      const rowId = newRowId();
+      if (!(await saveMessage(sid, 'assistant', resultRowText(m), meta, rowId))) return;
+      resultRowsRef.current?.sigs.set(rowId, sig);
+      setMessages((prev) => {
+        const i = prev.findIndex((x) => !x.cloudRowId && isResultTurn(x) && resultUrlOf(x) === url);
+        if (i < 0) return prev;
+        const next = [...prev];
+        next[i] = { ...prev[i]!, cloudRowId: rowId };
+        return next;
+      });
+    })().catch(() => { /* fail-soft: the chat goes on, this device keeps its copy */ });
+  }, [ensureChatSession]);
+  const updateResultRow = useCallback((m: Msg) => {
+    const rowId = m.cloudRowId!;
+    const lean = leanMessages([m])[0];
+    const meta = lean ? turnMetaOf(lean as Parameters<typeof turnMetaOf>[0]) : null;
+    if (!meta) return;
+    const content = resultRowText(m);
+    const prev = resultWriteRef.current.get(rowId) ?? Promise.resolve();
+    resultWriteRef.current.set(rowId, prev.then(() => updateMessage(rowId, content, meta)).catch(() => { /* fail-soft */ }));
+  }, []);
+  useEffect(() => {
+    if (hydratingRef.current === conversationId) return;
+    const st = resultRowsRef.current;
+    if (!st || st.cid !== conversationId) {
+      resultRowsRef.current = {
+        cid: conversationId,
+        seen: new Set(messages.flatMap((m) => (isResultTurn(m) ? [resultUrlOf(m)!] : []))),
+        sigs: new Map(messages.flatMap((m) => (m.cloudRowId && isResultTurn(m) ? [[m.cloudRowId, resultSignature(m)] as const] : []))),
+      };
+      return;
+    }
+    for (const m of messages) {
+      if (!isResultTurn(m)) continue;
+      if (m.cloudRowId) {
+        // Read back, or saved here: rewritten only when it changes here.
+        const sig = resultSignature(m);
+        const was = st.sigs.get(m.cloudRowId);
+        st.sigs.set(m.cloudRowId, sig);
+        if (was !== undefined && was !== sig) updateResultRow(m);
+        continue;
+      }
+      const url = resultUrlOf(m)!;
+      if (st.seen.has(url)) continue;
+      st.seen.add(url);
+      saveResultRow(m, url);
+    }
+  }, [messages, conversationId, saveResultRow, updateResultRow]);
   // The user's yes to one step's own price, bound to the quote the card shows. The follow reads the run on from there.
   const approveAgentRun = useCallback(async (id: string, step: string, quoteId: string) => {
     const card = messagesRef.current.find((m) => m.id === id)?.runJob;
