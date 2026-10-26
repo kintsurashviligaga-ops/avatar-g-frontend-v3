@@ -591,6 +591,38 @@ describe('geminiLive — GeminiLiveSession', () => {
     expect(onError).toHaveBeenCalled();
     expect(FakeSocket.last).toBeNull();
   });
+
+  it('our relay: hello and the setup ack reach their own callbacks, never onEvent; a nudge only to a relay that said hello', async () => {
+    const onRelayHello = jest.fn(); const onRelaySetupAck = jest.fn(); const events: LiveServerEvent[] = [];
+    const s = new GeminiLiveSession({ token: 'ticket', relayUrl: 'wss://relay.example/v1/live' }, { onRelayHello, onRelaySetupAck, onEvent: (e) => events.push(e) });
+    expect(s.nudgeRelay()).toBe(false); // no socket
+    s.connect();
+    const ws = FakeSocket.last!;
+    ws.open();
+    expect(s.nudgeRelay()).toBe(false); // an older relay would close on an unknown frame
+    ws.receive({ relayHello: { nudge: 1 } });
+    await flush();
+    expect(onRelayHello).toHaveBeenCalledTimes(1);
+    expect(s.nudgeRelay()).toBe(true);
+    expect(ws.sent.slice(1)).toEqual([{ relayNudge: {} }]);
+    ws.receive({ relaySetupAck: {} });
+    ws.receive({ setupComplete: {} });
+    await flush();
+    expect(onRelaySetupAck).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([{ kind: 'setupComplete' }]);
+    expect(s.nudgeRelay()).toBe(false); // the setup is through
+  });
+
+  it('straight to Google a relay frame is just another unknown frame', async () => {
+    const onRelayHello = jest.fn();
+    const s = new GeminiLiveSession({ token: 't' }, { onRelayHello });
+    s.connect();
+    FakeSocket.last!.open();
+    FakeSocket.last!.receive({ relayHello: { nudge: 1 } });
+    await flush();
+    expect(onRelayHello).not.toHaveBeenCalled();
+    expect(s.nudgeRelay()).toBe(false);
+  });
 });
 
 describe('talking avatar (gemini-3.8-live)', () => {

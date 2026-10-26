@@ -24,6 +24,10 @@ import {
   LIVE_LANGUAGE_RULE,
   LIVE_MIC_BUSY_RETRY_PAUSE_MS,
   LIVE_MIC_MUTED_GRACE_MS,
+  LIVE_RELAY_ACK_DEADLINE_MS,
+  LIVE_RELAY_NUDGE_AFTER_MS,
+  LIVE_RELAY_NUDGE_EVERY_MS,
+  LIVE_RELAY_READY_AFTER_ACK_MS,
   LIVE_RELAY_READY_AFTER_OPEN_MS,
   LIVE_SETUP_TIMEOUT_MS,
   LIVE_TOKEN_FRESH_MS,
@@ -699,6 +703,8 @@ test('through the relay an OPEN socket with no setupComplete gives up after 3 s,
     expect(result.current.status).toBe('listening');
     expect(result.current.degraded).toBe(false);
     expect(h.report).toHaveBeenCalledTimes(4);
+    // A relay that never said hello (an older revision) never gets a nudge: it would close on the unknown frame.
+    for (const ws of FakeSocket.all) expect(ws.sent.some((f) => 'relayNudge' in f)).toBe(false);
     unmount();
   } finally {
     jest.useRealTimers();
@@ -723,6 +729,83 @@ test('through the relay a long run of held sockets never opens the call without 
     // 1 + 6 same-setup tries, then the legacy wire — never the parity wire stripped of its actions.
     expect(result.current.degraded).toBe(true);
     for (const body of h.mintBodies) if (body.transcribe === true) expect(body).toMatchObject({ actions: true });
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a relay that says hello: a held setup gets nudged, and its ack keeps the socket while Vertex answers (GG 14:37Z)', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-3.8-live', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    const ws = FakeSocket.last;
+    const nudges = () => ws.sent.filter((f) => 'relayNudge' in f).length;
+    act(() => ws.open());
+    act(() => ws.receive({ relayHello: { nudge: 1 } }));
+    await elapse(LIVE_RELAY_NUDGE_AFTER_MS - 1);
+    expect(nudges()).toBe(0); // a healthy setup is acked well before this
+    await elapse(1);
+    expect(nudges()).toBe(1);
+    await elapse(LIVE_RELAY_NUDGE_EVERY_MS);
+    expect(nudges()).toBe(2);
+    act(() => ws.receive({ relaySetupAck: {} })); // the nudge pushed the setup through
+    await elapse(LIVE_RELAY_NUDGE_EVERY_MS * 3);
+    expect(nudges()).toBe(2); // no more once acked
+    await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS); // the avatar's Vertex is slow today: past 3 s is no reason to retry now
+    expect(FakeSocket.all).toHaveLength(1);
+    act(() => ws.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    expect(ws.sent.filter((f) => !('relayNudge' in f)).map((f) => Object.keys(f)[0])).toEqual(['setup']);
+    expect(h.report).toHaveBeenCalledTimes(1);
+    expect(h.report).toHaveBeenCalledWith('handshake_nudged', null, expect.objectContaining({
+      relay: true, relayHello: true, nudges: 2, msToAck: LIVE_RELAY_NUDGE_AFTER_MS + LIVE_RELAY_NUDGE_EVERY_MS, bufferedBytes: 0,
+    }));
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a relay that says hello but never acks: a fresh socket at 1.8 s, not 3 s; a setup still leaving the browser keeps its socket', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-3.8-live', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    act(() => FakeSocket.last.open());
+    act(() => FakeSocket.last.receive({ relayHello: { nudge: 1 } }));
+    await elapse(LIVE_RELAY_ACK_DEADLINE_MS - 1);
+    expect(FakeSocket.all).toHaveLength(1);
+    await elapse(1);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(h.report).toHaveBeenCalledWith('handshake_timeout', null, expect.objectContaining({
+      relay: true, relayHello: true, nudges: 5, msSinceOpen: LIVE_RELAY_ACK_DEADLINE_MS, bufferedBytes: 0,
+    }));
+    expect(h.mintBodies[1]).toMatchObject({ actions: true }); // the same setup again
+
+    // A slow uplink: the setup is still leaving the browser — not held, so no nudge and no fresh socket yet.
+    const slow = FakeSocket.last as FakeSocket & { bufferedAmount?: number };
+    act(() => slow.open());
+    act(() => slow.receive({ relayHello: { nudge: 1 } }));
+    slow.bufferedAmount = 20_000;
+    await elapse(LIVE_RELAY_ACK_DEADLINE_MS + 1000);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(slow.sent.some((f) => 'relayNudge' in f)).toBe(false);
+    slow.bufferedAmount = 0;
+    act(() => slow.receive({ relaySetupAck: {} }));
+    await elapse(LIVE_RELAY_READY_AFTER_ACK_MS - 1);
+    act(() => slow.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    expect(FakeSocket.all).toHaveLength(2);
     unmount();
   } finally {
     jest.useRealTimers();
