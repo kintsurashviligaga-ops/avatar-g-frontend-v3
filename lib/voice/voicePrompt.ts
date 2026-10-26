@@ -96,6 +96,19 @@ export function liveTranscriptionLanguages(locale: VoiceLocale): string[] {
 }
 
 /**
+ * The short Georgian answers a voice start is judged on (lib/voice/spokenYes), as custom vocabulary for the Live input
+ * transcription. ⚠️ GG 2026-10-26: a spoken „კი" or „დიახ" came back in Hindi, Arabic, Latin and Korean letters
+ * („क्रेटा", „كي?", „da-adasture.", „대자."), so the yes the user said never counted. The list biases the recognition toward
+ * these words; English and Russian answers come back right without it.
+ */
+export function liveTranscriptionVocabulary(): string[] {
+  return [
+    'კი', 'დიახ', 'ჰო', 'ხო', 'კარგი', 'კაი', 'დაიწყე', 'დავიწყოთ', 'გააკეთე', 'გაუშვი', 'შექმენი', 'დაადასტურე',
+    'თანახმა ვარ', 'არა', 'მოიცადე', 'გაჩერდი', 'გააუქმე',
+  ];
+}
+
+/**
  * The persona for the real-time Gemini Live voice session — fuller and more natural than the terse TTS
  * persona (no artificial ≤20-word cap, since native streaming audio has no per-character latency cost).
  */

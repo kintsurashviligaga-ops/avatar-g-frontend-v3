@@ -17,7 +17,7 @@ import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { MIC_RELEASE_EVENT, type MicReleaseDetail } from '@/lib/voice/micBus';
 import { base64ToBytes, bytesToBase64 } from '@/lib/voice/pcm';
-import { liveCallPersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona, liveTranscriptionVocabulary } from '@/lib/voice/voicePrompt';
 
 import {
   LIVE_LANGUAGE_RULE,
@@ -247,7 +247,7 @@ test('setup is the FIRST frame: parity setup (transcription, resumption, compres
   expect(instruction).not.toMatch(/Georgian sentences/);
   expect(instruction.endsWith(LIVE_LANGUAGE_RULE)).toBe(true);
   expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
-  expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'] });
+  expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'], customVocabulary: liveTranscriptionVocabulary() });
   expect(setup.outputAudioTranscription).toEqual({});
   expect(setup.sessionResumption).toEqual({});
   expect(setup.contextWindowCompression).toEqual({ slidingWindow: {} });
@@ -485,7 +485,7 @@ test('onSaid: the model\'s own words as they stream, and its turn closing — ne
   unmount();
 });
 
-test('Georgian heard in Hindi letters: the caption, the closed turn and the heard words are in Georgian ones (GG 2026-10-26)', async () => {
+test('Georgian heard in Hindi letters: the caption and the closed turn are in Georgian ones; the heard words as written (GG 2026-10-26)', async () => {
   const h = harness();
   const heard: unknown[] = [];
   const turns: LiveTurn[] = [];
@@ -494,7 +494,8 @@ test('Georgian heard in Hindi letters: the caption, the closed turn and the hear
   expect(result.current.captions.at(-1)).toMatchObject({ role: 'user', text: 'კრეტა' });
   act(() => ws.receive({ serverContent: { inputTranscription: { text: ' की' } } }));
   act(() => ws.receive({ serverContent: { turnComplete: true } }));
-  expect(heard).toEqual([{ text: ' კრეტა' }, { text: ' კრეტა კი' }, { end: true }]);
+  // The yes check reads them back itself (lib/voice/spokenYes), knowing they came in another alphabet.
+  expect(heard).toEqual([{ text: ' क्रेटा' }, { text: ' क्रेटा की' }, { end: true }]);
   expect(turns).toEqual([{ role: 'user', text: 'კრეტა კი' }]);
   unmount();
 });

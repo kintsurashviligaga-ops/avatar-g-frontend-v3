@@ -33,6 +33,7 @@ import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { LIVE_CALL_EVENT, LIVE_PLAN_KINDS, LIVE_RESULT_EVENT, type LivePlanKind, type LiveResultNote } from '@/lib/voice/liveTools';
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 import { AVATAR_FALLBACK_MIME } from '@/lib/voice/fmp4';
+import { isMisheardScript } from '@/lib/voice/heardScript';
 import { avatarPlaybackSupported } from '@/lib/voice/fmp4Player';
 import { isTestLinkNotice } from '@/components/studio/ui/serviceError';
 import type { AvatarAudioOutput } from '@/lib/voice/avatarAudio';
@@ -132,6 +133,14 @@ export function notStartedNote(reason: LiveResultNote['reason'], what: string): 
     case 'refused':
       return `[App] Nothing was started${what ? `: ${what}` : ''}. Tell the user plainly.`;
     default:
+      if (what) {
+        // GG 2026-10-26 09:29Z: a Georgian answer came out as „대자.", in Korean letters, and the model told the user that
+        // „something went wrong". It hears what the answer came out as, and that it may say it again or tap the card.
+        return `[App] Nothing was started: after the price the app heard only "${what}"`
+          + `${isMisheardScript(what) ? ' (in an alphabet the call never speaks: the speech recognition missed the words)' : ''}, `
+          + 'and that is no clear yes. Do not say it started or that something broke. Ask the user to answer once more with a '
+          + 'short yes in their language, or to tap the button on the card; start again only after they say yes.';
+      }
       return '[App] Nothing was started: the countdown ended without a clear yes in the user\'s own words after the price or '
         + 'plan. Do not say it started. Ask the user plainly whether to start; start again only after they say yes.';
   }

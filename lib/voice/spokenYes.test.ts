@@ -1,11 +1,12 @@
-import { SAID_MAX_CHARS, judgeSince, judgeUtterance, saidOf } from './spokenYes';
+import { SAID_MAX_CHARS, judgeSince, judgeUtterance, lastSaidSince, saidOf } from './spokenYes';
+import { liveTranscriptionVocabulary } from './voicePrompt';
 
 describe('judgeUtterance', () => {
   it.each([
     'yes', 'Yes.', 'yeah, go ahead', 'ok', 'Okay, start it', 'sure', 'yes please', 'do it', 'let\'s go', 'sounds good',
     'why not', 'no problem, go ahead', 'yes, start the video now', 'yes, 4 credits is fine', 'alright then',
     'კი', 'კი.', 'Კი', 'ჰო', 'დიახ', 'კი, დაიწყე', 'ჰო, გააკეთე', 'კარგი, გაუშვი', 'კი, რა თქმა უნდა', 'რატომაც არა',
-    'თანახმა ვარ', 'აბა, დაიწყე', 'კი, მადლობა',
+    'თანახმა ვარ', 'აბა, დაიწყე', 'კი, მადლობა', 'დავიწყოთ', 'კი, დავიწყოთ', 'შექმენი', 'გავაკეთოთ',
     'да', 'Да.', 'да, давай', 'давай', 'конечно', 'хорошо, запускай', 'да, конечно, поехали', 'ок', 'почему бы и нет',
     'без проблем', 'согласен',
   ])('%s → yes', (s) => {
@@ -24,7 +25,7 @@ describe('judgeUtterance', () => {
   it.each([
     '', '   ', 'how much is it?', 'ok, how long will it take?', 'რა ღირს?', 'сколько стоит?',
     'yes, make it blue', 'yes, a video of cats', 'make a song about the sea', 'კი, ოღონდ ლურჯი', 'да, но синий',
-    'hmm', 'thanks', 'მადლობა', 'спасибо', 'the price', 'credits', 'video',
+    'hmm', 'thanks', 'მადლობა', 'спасибо', 'the price', 'credits', 'video', 'შექმენი ძაღლი', 'დავიწყოთ?',
   ])('%s → unclear', (s) => {
     expect(judgeUtterance(s)).toBe('unclear');
   });
@@ -94,5 +95,25 @@ describe('judgeSince', () => {
   it('nothing heard is unclear, never yes', () => {
     expect(judgeSince([], 0)).toEqual({ verdict: 'unclear', said: '' });
     expect(judgeSince([u('make a song', 300)], 200).verdict).toBe('unclear');
+  });
+
+  it('a yes heard in Korean letters counts; „대자." does not (GG 2026-10-26 09:29Z)', () => {
+    expect(judgeSince([u('끼', 300)], 200)).toEqual({ verdict: 'yes', said: '끼' });
+    expect(judgeSince([u('대자.', 300)], 200)).toEqual({ verdict: 'unclear', said: '' });
+  });
+});
+
+describe('lastSaidSince', () => {
+  const u = (text: string, at: number) => ({ text, at });
+  it('the newest words said since the price, for the note when nothing counted', () => {
+    expect(lastSaidSince([u('a cup', 100), u('대자.', 300), u('  ', 400)], 200)).toBe('대자.');
+    expect(lastSaidSince([u('a cup', 100)], 200)).toBe('');
+    expect(lastSaidSince([], 0)).toBe('');
+  });
+});
+
+describe('the Georgian answers the Live transcription is biased toward (lib/voice/voicePrompt)', () => {
+  it('are each a yes or a no to this judge, so the hint and the gate agree', () => {
+    for (const w of liveTranscriptionVocabulary()) expect(judgeUtterance(w)).not.toBe('unclear');
   });
 });
