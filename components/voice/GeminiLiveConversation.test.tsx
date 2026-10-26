@@ -591,7 +591,7 @@ describe('notStartedNote — what the call is told when a voice start counted do
   test('the answer came out in another alphabet: the model hears it, and that nothing broke (GG 2026-10-26 09:29Z)', () => {
     const note = notStartedNote('not_heard', '대자.');
     expect(note).toContain('the app heard only "대자." (in an alphabet the call never speaks');
-    expect(note).toContain('Do not say it started or that something broke');
+    expect(note).toContain('Tell the user you did not catch their answer. Do not say it started or that something broke or went wrong');
     expect(note).toContain('tap the button on the card');
   });
   test('an answer in the call\'s own letters that is no yes is quoted without the alphabet remark', () => {

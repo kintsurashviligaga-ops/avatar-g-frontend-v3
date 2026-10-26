@@ -71,8 +71,22 @@ describe('Georgian heard in Hindi letters is written back in Georgian ones (GG 2
     expect(toCallScript('ㅋ')).toBe(''); // a loose letter, not a syllable
   });
 
+  it('turns Amharic letters into Georgian ones (GG 2026-10-26 12:32Z: a „კი" came back as „ኪ.")', () => {
+    expect(toCallScript('ኪ.')).toBe('კი.');
+    expect(toCallScript('ሆ')).toBe('ჰო');
+    expect(toCallScript('ዲያኅ')).toBe('დიახ'); // ያ is y + a: one ი, not two
+    expect(toCallScript('ካርጊ')).toBe('კარგი'); // ር has the sixth vowel: no vowel at all
+    expect(toCallScript('አራ')).toBe('არა');
+    expect(toCallScript('እሺ')).toBe('იში'); // on a vowel-only row the sixth vowel is an i
+    expect(toCallScript('ቀ ጠ ጨ ጰ ጸ')).toBe('ყა ტა ჭა პა წა');
+    expect(toCallScript('ኳ')).toBe('კვა');
+    expect(toCallScript('ኪ፡ኪ።')).toBe('კი კი.');
+    expect(toCallScript('ok ኪ፧')).toBe('ok კი?');
+    expect(toCallScript('ኪ፩')).toBe('კი'); // a digit, not a sound
+  });
+
   it('knows which words came in an alphabet the call never speaks', () => {
-    for (const t of ['की', 'كي?', 'կի', 'ok كي', '대자.', 'キ', '是', 'כן', 'ναι', 'ใช่']) expect(isMisheardScript(t)).toBe(true);
+    for (const t of ['की', 'كي?', 'կի', 'ok كي', '대자.', 'ኪ.', 'キ', '是', 'כן', 'ναι', 'ใช่']) expect(isMisheardScript(t)).toBe(true);
     for (const t of ['კი?', 'yes?', 'да?', '', undefined as unknown as string]) expect(isMisheardScript(t)).toBe(false);
   });
 

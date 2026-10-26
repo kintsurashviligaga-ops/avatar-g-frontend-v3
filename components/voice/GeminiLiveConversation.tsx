@@ -136,10 +136,12 @@ export function notStartedNote(reason: LiveResultNote['reason'], what: string): 
       if (what) {
         // GG 2026-10-26 09:29Z: a Georgian answer came out as „대자.", in Korean letters, and the model told the user that
         // „something went wrong". It hears what the answer came out as, and that it may say it again or tap the card.
+        // GG 2026-10-26 12:32Z („ኪ."): the model still said „სამწუხაროდ, რაღაც შეფერხებაა", so it is told what to say first.
         return `[App] Nothing was started: after the price the app heard only "${what}"`
           + `${isMisheardScript(what) ? ' (in an alphabet the call never speaks: the speech recognition missed the words)' : ''}, `
-          + 'and that is no clear yes. Do not say it started or that something broke. Ask the user to answer once more with a '
-          + 'short yes in their language, or to tap the button on the card; start again only after they say yes.';
+          + 'and that is no clear yes. Tell the user you did not catch their answer. Do not say it started or that something '
+          + 'broke or went wrong: nothing did. Ask them to answer once more with a short yes in their language, or to tap the '
+          + 'button on the card; start again only after they say yes.';
       }
       return '[App] Nothing was started: the countdown ended without a clear yes in the user\'s own words after the price or '
         + 'plan. Do not say it started. Ask the user plainly whether to start; start again only after they say yes.';
