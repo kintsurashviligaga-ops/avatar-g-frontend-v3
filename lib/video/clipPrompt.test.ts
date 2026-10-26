@@ -93,7 +93,7 @@ test('a photo is kept: the first frame, or the reference images', () => {
 test('an English line is said verbatim by Veo, where the user put it, by the person on screen and no narrator', () => {
   const r = reading({ english: 'A barista hands over a cup and says [LINE 1], then waves.', lines: ['Here you go!'], speakers: [{ who: 'the barista', voice: 'female' }] });
   expect(composeClipPrompt({ reading: r, photos: 'none' })).toBe(
-    'A barista hands over a cup and says "Here you go!", then waves. The barista (female voice) says the words on screen, once, exactly as written, lips in sync. No false starts, no narrator, no voice-over.');
+    'A barista hands over a cup and says "Here you go!", then waves. The barista (female voice) says the words on screen, once, exactly as written, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.');
 });
 
 test('GG\'s podcast (2026-10-26): each person says only their own line in their own voice — the order named, the words not repeated', () => {
@@ -104,8 +104,8 @@ test('GG\'s podcast (2026-10-26): each person says only their own line in their 
   const p = composeClipPrompt({ reading: r, photos: 'frame', engine: 'omni' });
   for (const line of GG_LINES) expect(p.split(line).length - 1).toBe(1);
   expect(p).toContain('The lines are spoken in this order: the man (male voice), then the host (male voice), then the woman (female voice).');
-  expect(p).toContain('Each person says only their own words, once, exactly as written, in natural Georgian, in their own voice, with their own lips in sync; no two people share a voice. The camera is on each person while they speak. No false starts, no narrator, no voice-over.');
-  expect(p).toContain('No background music.');
+  expect(p).toContain('Each person says only their own words, once, exactly as written, in natural Georgian, in their own voice, with their own lips in sync; no two people share a voice, and each voice fits that person\'s age and sex as seen on screen. The camera is on each person while they speak. No false starts, no narrator, no voice-over.');
+  expect(p).toContain('Sound design: the spoken lines and natural room tone only. No music, just room tone.');
   // The Georgian stays Georgian: no Latin-letter version for a dub.
   expect(p).not.toContain('agent ji');
   expect(p).toMatch(/No subtitles, captions or on-screen text\.$/);
@@ -114,12 +114,12 @@ test('GG\'s podcast (2026-10-26): each person says only their own line in their 
 test('unnamed speakers: each line once, by the person on screen, no narrator', () => {
   const r = reading({ english: 'Two friends talk: [LINE 1] [LINE 2]', lines: ['გამარჯობა!', 'როგორ ხარ?'] });
   expect(composeClipPrompt({ reading: r, photos: 'none', engine: 'omni' }))
-    .toContain('Each line is said once, exactly as written, in natural Georgian, by the person on screen, lips in sync. No false starts, no narrator, no voice-over.');
+    .toContain('Each line is said once, exactly as written, in natural Georgian, by the person on screen, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.');
 });
 
 test('Omni keeps music out from under the lines unless the user asked for it (GG\'s clip 2026-10-26 13:53Z)', () => {
   const r = reading({ english: 'Two friends talk: [LINE 1] [LINE 2]', lines: ['გამარჯობა!', 'როგორ ხარ?'] });
-  expect(composeClipPrompt({ reading: r, photos: 'none', engine: 'omni' })).toContain('No background music.');
+  expect(composeClipPrompt({ reading: r, photos: 'none', engine: 'omni' })).toContain('Sound design: the spoken lines and natural room tone only. No music, just room tone.');
   expect(asksForMusic('ორი მეგობარი საუბრობს, ფონზე მსუბუქი მუსიკა')).toBe(true);
   expect(asksForMusic('Two friends talk in a café')).toBe(false);
   expect(composeClipPrompt({ reading: r, photos: 'none', engine: 'omni', music: true })).not.toContain('music');
@@ -144,7 +144,7 @@ test('Omni Flash: a Georgian line stays Georgian, said once by the character, an
   const p = composeClipPrompt({ reading: r, photos: 'frame', engine: 'omni' });
   expect(p).toContain('says "გამარჯობა, მე ვარ თქვენი ასისტენტი!"');
   expect(p).not.toContain('gamarjoba');
-  expect(p).toContain('The woman (female voice) says the words on screen, once, exactly as written, in natural Georgian, lips in sync. No false starts, no narrator, no voice-over.');
+  expect(p).toContain('The woman (female voice) says the words on screen, once, exactly as written, in natural Georgian, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.');
   expect(p).toMatch(/No subtitles, captions or on-screen text\.$/);
   // Words on screen the user asked for are not forbidden; a silent scene is still told so.
   expect(composeClipPrompt({ reading: reading({ silent: true }), photos: 'none', engine: 'omni', subtitles: true }))

@@ -19,7 +19,8 @@
  * WHO SAYS WHAT. The reader names the character of each line and their voice (`speakers`), and the prompt says the order
  * and that no two people share a voice — WITHOUT writing the words a second time (Omni's probe said a line twice). GG's
  * clip 2026-10-26 13:53Z (two voices, no narrator) still had a false start, the woman's line over a man's face and a
- * track under the lines: the camera is put on whoever speaks, false starts are ruled out, and music unless asked for.
+ * track under the lines: the camera is put on whoever speaks, false starts are ruled out, and music unless asked for
+ * (as a „Sound design:" line; a bare negative was ignored). Each voice fits the speaker's age and sex as seen on screen.
  *
  * THE WORDS MUST FIT THE CLIP, checked before any charge (clipSpeechFits): a line longer than the clip is rushed or cut,
  * never refused by the engine (lib/video/speechTiming).
@@ -197,12 +198,12 @@ function speechRule(reading: ClipReading): string | null {
   });
   const people = new Set(reading.speakers.map((s) => s.who.toLowerCase()).filter(Boolean)).size;
   if (people >= 2) {
-    return `The lines are spoken in this order: ${order.join(', then ')}. Each person says only their own words, once, exactly as written${georgian}, in their own voice, with their own lips in sync; no two people share a voice. The camera is on each person while they speak. No false starts, no narrator, no voice-over.`;
+    return `The lines are spoken in this order: ${order.join(', then ')}. Each person says only their own words, once, exactly as written${georgian}, in their own voice, with their own lips in sync; no two people share a voice, and each voice fits that person's age and sex as seen on screen. The camera is on each person while they speak. No false starts, no narrator, no voice-over.`;
   }
   if (order.length === 1) {
-    return `${order[0]![0]!.toUpperCase()}${order[0]!.slice(1)} says the words on screen, once, exactly as written${georgian}, lips in sync. No false starts, no narrator, no voice-over.`;
+    return `${order[0]![0]!.toUpperCase()}${order[0]!.slice(1)} says the words on screen, once, exactly as written${georgian}, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.`;
   }
-  return `Each line is said once, exactly as written${georgian}, by the person on screen, lips in sync. No false starts, no narrator, no voice-over.`;
+  return `Each line is said once, exactly as written${georgian}, by the person on screen, lips in sync, in a voice that fits their age and sex as seen on screen. No false starts, no narrator, no voice-over.`;
 }
 
 /** The prompt the engine renders. */
@@ -229,8 +230,10 @@ export function composeClipPrompt({ reading, photos, engine = 'veo', subtitles =
   const rule = speechRule(reading);
   if (rule) parts.push(rule);
   else if (reading.silent) parts.push('No dialogue, no voices.');
-  // ⚠️ GG's clip 2026-10-26 13:53Z (Omni 10 s 1080p): an upbeat track nobody asked for ran under the two voices.
-  if (omni && rule && !music) parts.push('No background music.');
+  // ⚠️ GG's clip 2026-10-26 13:53Z (Omni 10 s 1080p): an upbeat track nobody asked for ran under the two voices, and a
+  // bare „No background music." did not stop it (three clips at 15:07–15:14Z still had one). Omni picks its own audio
+  // unless told what to play: a „Sound design:" line that names what is heard, with „no music, just room tone".
+  if (omni && rule && !music) parts.push('Sound design: the spoken lines and natural room tone only. No music, just room tone.');
   if (omni && !subtitles) parts.push('No subtitles, captions or on-screen text.');
   return parts.join(' ');
 }
