@@ -436,16 +436,15 @@ function heardNo(voice: LiveVoicePort, since: number): string | null {
 }
 
 /**
- * The user's answer to a start: their newest deciding words since its price or plan was told (`since`). ⚠️ GG
- * 2026-10-26 08:17Z: the model said "It'll cost you 5 credits. Shall we proceed?" BEFORE it prepared the card, the user
- * said "Yes.", and the card came after — so the words since the card held no answer and nothing started. When nothing
- * deciding was said since the card, the words said since the model named exactly the card's price (`spokenSince`) are
- * the answer: a yes there is a yes to that price, and a no there is still a no.
+ * Approval must follow this prepared quote or plan. A matching model-spoken amount cannot bind an earlier yes to
+ * the current operation's prompt, settings or quote. An earlier refusal still fails closed; ask for a fresh yes once
+ * the prepared card is available.
  */
 export function judgeRun(heard: readonly HeardUtterance[], run: Pick<LiveRun, 'since' | 'spokenSince'>): { verdict: SpokenVerdict; said: string } {
   const after = judgeSince(heard, run.since);
   if (after.verdict !== 'unclear' || !run.spokenSince || run.spokenSince >= run.since) return after;
-  return judgeSince(heard, run.spokenSince);
+  const before = judgeSince(heard, run.spokenSince);
+  return before.verdict === 'no' ? before : after;
 }
 
 function saidNo(answer: (r: Record<string, unknown>) => LiveFunctionResponse, said: string, after: string): LiveCallOutcome {
