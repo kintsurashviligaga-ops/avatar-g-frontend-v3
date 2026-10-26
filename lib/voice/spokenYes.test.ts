@@ -101,6 +101,13 @@ describe('judgeSince', () => {
     expect(judgeSince([u('끼', 300)], 200)).toEqual({ verdict: 'yes', said: '끼' });
     expect(judgeSince([u('대자.', 300)], 200)).toEqual({ verdict: 'unclear', said: '' });
   });
+
+  it('a yes heard in Amharic letters counts; a no in them stays a no (GG 2026-10-26 12:32Z: „ኪ.")', () => {
+    expect(judgeSince([u('ኪ.', 300)], 200)).toEqual({ verdict: 'yes', said: 'ኪ.' });
+    for (const t of ['ኪ', 'ኪ፧', 'ሆ', 'ዲያኅ', 'ካርጊ']) expect(judgeUtterance(t)).toBe('yes');
+    expect(judgeUtterance('አራ')).toBe('no');
+    expect(judgeSince([u('ኪ.', 300), u('አራ', 400)], 200).verdict).toBe('no');
+  });
 });
 
 describe('lastSaidSince', () => {
