@@ -77,6 +77,7 @@ import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
 import { LIVE_LANGUAGE_LOCK, liveCallPersona, liveTranscriptionLanguages } from '@/lib/voice/voicePrompt';
+import { toCallScript } from '@/lib/voice/heardScript';
 import type { LiveHeardEvent } from '@/lib/voice/voiceLedger';
 import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
@@ -413,8 +414,9 @@ export function playbackRateFromMime(mimeType: string | undefined): number {
 }
 
 /** Collapse whitespace; transcript fragments arrive with their own spacing and sometimes doubled. */
+/** A caption as shown and kept: Georgian heard in Hindi letters written back in Georgian ones, whitespace collapsed. */
 export function normalizeCaption(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+  return toCallScript(text).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -737,10 +739,12 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
   const emitHeard = useCallback((e: LiveHeardEvent) => {
     if ('end' in e && e.end && experienceRef.current) {
-      const next = voiceStyleCommand(pendingUserRef.current, experienceRef.current.preferences);
+      const next = voiceStyleCommand(toCallScript(pendingUserRef.current), experienceRef.current.preferences);
       if (next) experienceRef.current.update(next);
     }
-    try { optsRef.current.onHeard?.(e); } catch { /* a host bug must never kill the call */ }
+    // The words a yes is judged on are the words the caption shows (lib/voice/heardScript).
+    const heard = 'text' in e ? { text: toCallScript(e.text) } : e;
+    try { optsRef.current.onHeard?.(heard); } catch { /* a host bug must never kill the call */ }
   }, []);
 
   const emitTurn = useCallback((turn: LiveTurn) => {

@@ -12,7 +12,11 @@
  * make it blue", "how much?", "yes for the cats video" are not a yes: the model asks again. Any refusal word ("no",
  * "wait", "არა", "მოიცა", "нет", "стоп") left after the agreement phrases makes it a no. Pure and isomorphic: the
  * browser (components/voice/live/liveActions) and the routes use the same function. KA / EN / RU.
+ *
+ * Georgian the transcription wrote in Hindi letters („की" for „კი") is judged in Georgian ones (lib/voice/heardScript).
  */
+
+import { toCallScript } from './heardScript';
 
 export type SpokenVerdict = 'yes' | 'no' | 'unclear';
 
@@ -93,7 +97,7 @@ function strip(tokens: string[], phrases: string[][]): [string[], number] {
 /** One utterance: a clear yes, a no (or a hesitation), or anything else. */
 export function judgeUtterance(text: string): SpokenVerdict {
   if (typeof text !== 'string') return 'unclear';
-  const tokens = tokensOf(text);
+  const tokens = tokensOf(toCallScript(text));
   if (!tokens.length) return 'unclear';
   const [afterYes, yesHits] = strip(tokens, YES);
   const [afterNo, noHits] = strip(afterYes, NO);
