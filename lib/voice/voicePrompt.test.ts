@@ -120,5 +120,6 @@ describe('Live call language (GG 2026-10-25: Russian once, then Georgian again)'
   it('the lock says to stay in the language, not only to switch once', () => {
     expect(LIVE_LANGUAGE_LOCK).toMatch(/keep replying in it until the user speaks another one/);
     expect(LIVE_LANGUAGE_LOCK).toMatch(/Never go back to Georgian/);
+    expect(LIVE_LANGUAGE_LOCK).toMatch(/\[App\] notes are written in English for you alone/);
   });
 });

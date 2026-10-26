@@ -1455,6 +1455,7 @@ test('small helpers', () => {
   expect(playbackRateFromMime('audio/pcm;rate=999999')).toBe(24000);
   expect(normalizeCaption('  a   b \n c ')).toBe('a b c');
   expect(normalizeCaption(' की  हो ')).toBe('კი ჰო');
+  expect(normalizeCaption('كي?')).toBe('კი?');
 });
 
 describe('buildLiveInstruction', () => {
