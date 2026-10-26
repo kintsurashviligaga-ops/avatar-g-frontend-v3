@@ -6,7 +6,7 @@
  */
 import { directClipCredits } from '@/lib/video/directClip';
 import {
-  changeClip, clipAspectFor, clipEngineLabel, clipFailureText, clipLengthsFor, clipOrder, clipPhotoNote, clipRequestBody,
+  changeClip, clipAspectFor, clipEngineLabel, clipResolutionBlurb, clipTierBlurb, clipFailureText, clipLengthsFor, clipOrder, clipPhotoNote, clipRequestBody,
   clipSecondsFromWords, clipSpecLine, clipTooLongText, openClipTier,
 } from './clipOrder';
 
@@ -131,5 +131,17 @@ describe('openClipTier', () => {
   });
   test('a closed tier refused by the route is said with what to do', () => {
     expect(clipFailureText({ error: 'tier_unavailable', tier: 'standard' }, 'en')).toBe('This quality is unavailable right now. Pick another one and try again. Nothing was charged.');
+  });
+});
+
+describe('what a quality pick changes (GG 2026-10-26 08:46Z: the three rows read the same)', () => {
+  test.each(['ka', 'en', 'ru'])('%s: the three Veo tiers and the two Omni resolutions are told apart in words', (locale) => {
+    const tiers = (['lite', 'fast', 'standard'] as const).map((t) => clipTierBlurb(t, locale));
+    expect(new Set(tiers).size).toBe(3);
+    expect(clipResolutionBlurb('720p', locale)).not.toBe(clipResolutionBlurb('1080p', locale));
+  });
+  test('Lite says it takes no reference photos (it is greyed out with 2–3)', () => {
+    expect(clipTierBlurb('lite', 'en')).toMatch(/Does not take 2–3 photos/);
+    expect(clipTierBlurb('lite', 'ka')).toContain('2–3 ფოტოს არ იღებს');
   });
 });

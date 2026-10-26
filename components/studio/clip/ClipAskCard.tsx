@@ -7,7 +7,7 @@
  *   [photo] [photo]           the first frame, or the references
  *   4 s  6 s  [8 s]  10 s     9:16  16:9      (10 s: 720p ✦69 · 1080p ✦102)
  *   8 s · 9:16 · 1080p · 1080×1920 · Veo 3.1 Fast
- *   [Create ✦ 75]  [Cancel]
+ *   [Create ✦ 75]  [Cancel]           then, once Create is accepted:  ⟳ 10% Making the clip (Veo 3.1 Fast)…  0:42
  *
  * The price is ON Create and moves with every chip (components/studio/clip/clipOrder → lib/video/directClip, the route's
  * own functions). No switch for sound, music, subtitles or a narrator: the engine's sound follows the prompt.
@@ -16,8 +16,10 @@ import type { ReactNode } from 'react';
 import { Loader2, Sparkle } from 'lucide-react';
 import { creditsLabel } from '@/lib/credits/quote';
 import type { DirectClipAspect, DirectClipResolution } from '@/lib/video/directClip';
+import { ClipProgress } from './ClipProgress';
+import { PromptQuote } from './PromptQuote';
 import {
-  changeClip, clipCancelledText, clipLengthsFor, clipPhotoNote, clipRunningText, clipSpecLine, type ClipAskState, type ClipChange,
+  changeClip, clipCancelledText, clipFinishingText, clipLengthsFor, clipPhotoNote, clipRunningText, clipSpecLine, type ClipAskState, type ClipChange,
 } from './clipOrder';
 
 const ASPECTS: readonly DirectClipAspect[] = ['9:16', '16:9'];
@@ -74,9 +76,7 @@ export function ClipAskCard({
 
   return (
     <div className="mt-2 space-y-2.5" data-testid="clip-card" data-phase={ask.phase} data-seconds={ask.seconds} data-aspect={ask.aspect}>
-      <blockquote data-testid="clip-prompt" className="whitespace-pre-wrap break-words rounded-2xl bg-app-elevated/70 px-3.5 py-2.5 text-[13.5px] leading-snug text-app-text">
-        „{ask.prompt}“
-      </blockquote>
+      <PromptQuote text={ask.prompt} locale={locale} testId="clip-prompt" />
 
       {ask.photos.length > 0 && (
         <div className="space-y-1">
@@ -91,36 +91,39 @@ export function ClipAskCard({
       )}
 
       <div className="space-y-1.5">
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.length}>
-          {([4, 6, 8, 10] as const).map((s) => (
-            <Chip key={s} on={ask.seconds === s} disabled={!editable || !lengths.includes(s)} onClick={() => set({ seconds: s })} testId={`clip-len-${s}`}>
-              {w.sec(s)}
-            </Chip>
-          ))}
-          <span className="mx-1 h-5 w-px bg-app-border/20" aria-hidden="true" />
-          {ASPECTS.map((a) => (
-            <Chip key={a} on={ask.aspect === a} disabled={!editable} onClick={() => set({ aspect: a })} testId={`clip-aspect-${a.replace(':', 'x')}`}>
-              {a}
-            </Chip>
-          ))}
-        </div>
-        {ask.seconds === 10 && (
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.quality}>
-            {RESOLUTIONS.map((r) => (
-              <Chip key={r} on={ask.resolution === r} disabled={!editable} onClick={() => set({ resolution: r })} testId={`clip-res-${r}`}>
-                {r} <span className="ml-1 opacity-70">✦ {resPrice(r)}</span>
+        {/* Once Create is accepted the chips go: what is being made is the spec line, not buttons that look pickable. */}
+        {ask.phase !== 'running' && (<>
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.length}>
+            {([4, 6, 8, 10] as const).map((s) => (
+              <Chip key={s} on={ask.seconds === s} disabled={!editable || !lengths.includes(s)} onClick={() => set({ seconds: s })} testId={`clip-len-${s}`}>
+                {w.sec(s)}
+              </Chip>
+            ))}
+            <span className="mx-1 h-5 w-px bg-app-border/20" aria-hidden="true" />
+            {ASPECTS.map((a) => (
+              <Chip key={a} on={ask.aspect === a} disabled={!editable} onClick={() => set({ aspect: a })} testId={`clip-aspect-${a.replace(':', 'x')}`}>
+                {a}
               </Chip>
             ))}
           </div>
-        )}
+          {ask.seconds === 10 && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.quality}>
+              {RESOLUTIONS.map((r) => (
+                <Chip key={r} on={ask.resolution === r} disabled={!editable} onClick={() => set({ resolution: r })} testId={`clip-res-${r}`}>
+                  {r} <span className="ml-1 opacity-70">✦ {resPrice(r)}</span>
+                </Chip>
+              ))}
+            </div>
+          )}
+        </>)}
         <p data-testid="clip-spec" className="text-[12px] tabular-nums text-app-muted">{clipSpecLine(ask, locale)}</p>
       </div>
 
       {ask.phase === 'running' ? (
-        <p data-testid="clip-running" className="inline-flex items-center gap-2 text-[12.5px] text-app-muted">
-          <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          {clipRunningText(ask, locale)}
-        </p>
+        <ClipProgress
+          testId="clip-running" step={ask.step ?? 'rendering'} since={ask.t0}
+          label={ask.step === 'finishing' ? clipFinishingText(locale) : clipRunningText(ask, locale)}
+        />
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <button

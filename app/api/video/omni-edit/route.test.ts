@@ -129,6 +129,7 @@ test('an edit of a 5 s portrait video: billed as 6 s at 720p (✦48), its own le
   expect(res.status).toBe(202);
   const j = await res.json();
   expect(j).toMatchObject({ success: true, op: 'edit', credits: 48, seconds: 6, outputSeconds: 5, inputSeconds: 5, resolution: '720p', aspect: '9:16', engine: 'Gemini Omni Flash' });
+  expect(j.taskId).toMatch(/^genjutsu:[0-9a-f-]{36}$/);
 
   const order = [(createJob as jest.Mock).mock.invocationCallOrder[0]!, (deductCredits as jest.Mock).mock.invocationCallOrder[0]!, (submitOmniEdit as jest.Mock).mock.invocationCallOrder[0]!];
   expect(order).toEqual([...order].sort((a, b) => a - b));

@@ -68,7 +68,12 @@ test('Create and Cancel; once Create was pressed nothing can change; running say
 
   rerender(<EditAskCard ask={{ ...ask({ op: 'extend' }), phase: 'running' }} locale="en" onChange={onChange} onConfirm={onConfirm} onCancel={onCancel} />);
   expect(screen.getByTestId('edit-running').textContent).toMatch(/Extending the video/);
+  expect(screen.getByTestId('edit-running-pct').textContent).toBe('10%');
   expect(screen.queryByTestId('edit-confirm')).toBeNull();
+
+  rerender(<EditAskCard ask={{ ...ask({ op: 'extend' }), phase: 'running', step: 'finishing' }} locale="en" onChange={onChange} onConfirm={onConfirm} onCancel={onCancel} />);
+  expect(screen.getByTestId('edit-running-pct').textContent).toBe('90%');
+  expect(screen.getByTestId('edit-running').textContent).toContain('The clip is made. Putting it in the chat…');
 });
 
 test('a cancelled card says nothing was charged', () => {

@@ -127,6 +127,8 @@ export interface StudioOptions {
 
 /** The signed job id POST /api/video/clip hands back, as the status route reads it. */
 export const CLIP_JOB_ID = 'gjt_e2e-clip-0001::c8';
+/** The job row it is filed under (the route's `taskId`): the Renders tray's id for it, which the chat's card claims. */
+export const CLIP_TASK_ID = 'genjutsu:00000000-0000-4000-8000-000000000209';
 export const CLIP_URL = 'https://e2e-media.supabase.co/renders/video-clip/e2e/clip.mp4';
 /** The signed job id POST /api/video/omni-edit hands back (an extend by 8 s), and the result its poll delivers. */
 export const OMNI_EDIT_JOB_ID = 'gjt_e2e-edit-0001::ox8';
@@ -337,7 +339,7 @@ export async function openStudio(page: Page, opts: StudioOptions = {}): Promise<
   await page.route('**/api/video/clip', async (r: Route) => {
     const body = (r.request().postDataJSON() ?? {}) as Record<string, unknown>;
     calls.clip.push(body);
-    const rep = opts.clip ?? { status: 202, body: { success: true, op: 'clip', jobId: CLIP_JOB_ID, credits: body.expectedCredits, seconds: body.seconds } };
+    const rep = opts.clip ?? { status: 202, body: { success: true, op: 'clip', jobId: CLIP_JOB_ID, taskId: CLIP_TASK_ID, credits: body.expectedCredits, seconds: body.seconds } };
     await r.fulfill(json(rep.status, rep.body));
   });
   const clipViews = opts.clipStatus ? [...opts.clipStatus] : [{ done: false, status: 'running' }, { done: true, videoUrl: CLIP_URL }];

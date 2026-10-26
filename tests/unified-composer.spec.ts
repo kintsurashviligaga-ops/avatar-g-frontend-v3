@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { test, expect, type Page, type Route } from '@playwright/test';
 import {
   openStudio, pinSignedIn, say, attachClipsAndTrack, typeFilmPrompt, sendFilm, waitForClipCard,
-  CLIP_JOB_ID, CLIP_URL, FILE_INPUT, JOB_ID, MASTER_URL, OMNI_EDIT_JOB_ID, OMNI_EDIT_URL, taskView, json, type Locale,
+  CLIP_JOB_ID, CLIP_TASK_ID, CLIP_URL, FILE_INPUT, JOB_ID, MASTER_URL, OMNI_EDIT_JOB_ID, OMNI_EDIT_URL, taskView, json, type Locale,
 } from './video-core/_shared';
 import { DIRECT_CLIP_BODY_MAX_BYTES, DIRECT_CLIP_PHOTO_MAX_BYTES, directClipCredits } from '@/lib/video/directClip';
 import { fakeMicrophone, signIn } from './fixtures/liveVoice';
@@ -256,7 +256,13 @@ for (const vp of VIEWPORTS) {
     });
 
     test('2 · signed in: Video with a reference — the price on Send, then ONE clip\'s card at that price; Create makes it from the words as typed', async ({ page }) => {
-      const calls = await openStudio(page, { tool: null, closedTiers: [] });
+      // The status route's own steps: Google rendering, then rendered (its line being laid on), then the clip.
+      const calls = await openStudio(page, {
+        tool: null, closedTiers: [],
+        // The server lists the clip's row as live (the Renders tray reads it); once its card runs, the card owns it.
+        others: [taskView({ id: CLIP_TASK_ID, kind: 'video', status: 'running', pct: 5, label: 'The woman in the photo walks' })],
+        clipStatus: [{ success: true, done: false, state: 'processing' }, { success: true, done: false, state: 'delivering' }, { success: true, done: true, state: 'ready', videoUrl: CLIP_URL }],
+      });
       const spend = watchSpend(page);
       await pickService(page, 'video', 'en');
       await pickVideoLength(page, 8);
@@ -279,11 +285,22 @@ for (const vp of VIEWPORTS) {
       expect(calls.storyboard).toHaveLength(0);
       expect(calls.clip).toHaveLength(0);
       expect(spend).toEqual([]);
+      // Before Create nothing claims the listed row, so the tray shows it (what makes the check after Create mean something).
+      await expect(page.getByTestId('job-tray')).toBeVisible({ timeout: 20_000 });
 
       await card.getByTestId('clip-confirm').click();
       await expect.poll(() => calls.clip.length, { timeout: 15_000 }).toBe(1);
       expect(calls.clip[0]).toMatchObject({ prompt: words, seconds: 8, aspect: '9:16', tier: 'fast', resolution: '720p', expectedCredits: Number(price) });
       expect(calls.clip[0]!.photos as unknown[]).toHaveLength(1);
+      // GG 2026-10-26 08:27Z: the card shows a percent while it runs — the job's milestones (§3.3), with the seconds beside.
+      await expect(card.getByTestId('clip-running-pct')).toHaveText('10%', { timeout: 15_000 });
+      await expect(card.getByTestId('clip-running-clock')).toHaveText(/^\d:\d\d$/);
+      // GG 2026-10-26 08:46Z: the Renders popup covered the card with a second percent for the same clip. The card owns its
+      // job now: no tray over it, and the length / frame chips fold into the spec line while it runs.
+      await expect(page.getByTestId('job-tray')).toHaveCount(0);
+      await expect(card.getByTestId('clip-len-8')).toHaveCount(0);
+      await expect(card.getByTestId('clip-spec')).toHaveText('8 s · 9:16 · 1080p · 1080×1920 · Veo 3.1 Fast');
+      await expect(card.getByTestId('clip-running-pct')).toHaveText('90%', { timeout: 20_000 });
       // The bubble becomes the clip once its signed job says done; no film route is ever called.
       await expect(page.locator(`video[src^="${CLIP_URL}"]`).first()).toBeAttached({ timeout: 40_000 });
       expect(calls.clipStatus[0]).toBe(CLIP_JOB_ID);
@@ -370,6 +387,7 @@ for (const vp of VIEWPORTS) {
 
       await expect.poll(() => calls.omniEdit.length, { timeout: 15_000 }).toBe(1);
       expect(calls.omniEdit[0]).toEqual({ op: 'extend', prompt: words, video: 'omni-uploads/u/file-1', seconds: 6, resolution: '1080p', expectedCredits: 68 });
+      await expect(card.getByTestId('edit-running-pct')).toHaveText('10%', { timeout: 15_000 });
       await expect(page.locator(`video[src^="${OMNI_EDIT_URL}"]`).first()).toBeAttached({ timeout: 40_000 });
       expect(calls.clipStatus[0]).toBe(OMNI_EDIT_JOB_ID);
       expect(spend).toEqual(['/api/video/omni-edit']);

@@ -65,6 +65,7 @@ import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
 import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
 import { ClipCreatePanel } from './create/ClipCreatePanel';
 import { ClipAskCard } from './clip/ClipAskCard';
+import { clipStepFromState, type ClipStep } from './clip/ClipProgress';
 import {
   clipAskText, clipAspectFor, clipFailureText, clipNeedsWordsText, clipOneClipNote, clipOrder, openClipTier, clipPhotoLostText, clipRequestBody,
   clipSecondsFromWords, clipStillRenderingText, clipTooLongText, type ClipAskState,
@@ -340,18 +341,20 @@ const chatUploads = new Map<string, Promise<string | null>>();
 /**
  * Follow one signed genjutsu job (the video service's clip, an edited or extended upload) to its end: every 6 s for as long
  * as the server keeps it open (it refunds and closes it at GENJUTSU_HARD_CAP_MS), plus a minute for its own verdict. null
- * when the studio went away meanwhile (nothing is patched then).
+ * when the studio went away meanwhile (nothing is patched then). `onStep` hears each poll's step while it runs (the card's
+ * percent, components/studio/clip/ClipProgress: its milestones, never the clock).
  */
 async function followVideoJob(
-  jobId: string, alive: () => boolean, failText: (body: unknown) => string,
+  jobId: string, alive: () => boolean, failText: (body: unknown) => string, onStep?: (step: ClipStep) => void,
 ): Promise<{ url: string } | { failed: string } | { timeout: true } | null> {
   const until = Date.now() + GENJUTSU_HARD_CAP_MS + 60_000;
   while (Date.now() < until) {
     if (!alive()) return null;
     await new Promise((r) => setTimeout(r, 6000));
     const pr = await fetch(`/api/genjutsu/status?id=${encodeURIComponent(jobId)}`, { credentials: 'include' }).catch(() => null);
-    const pj = (await pr?.json().catch(() => ({}))) as { done?: boolean; videoUrl?: string; error?: string; refunded?: boolean } | undefined;
+    const pj = (await pr?.json().catch(() => ({}))) as { done?: boolean; state?: string; videoUrl?: string; error?: string; refunded?: boolean } | undefined;
     if (pj?.done) return pj.videoUrl ? { url: pj.videoUrl } : { failed: failText(pj) };
+    if (pj?.state && onStep && alive()) onStep(clipStepFromState(pj.state));
   }
   return alive() ? { timeout: true } : null;
 }
@@ -1134,7 +1137,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1179,7 +1182,7 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
 
 /** The jobs an Agent G card narrates itself (its run's own and each run step's): the tray leaves them to the card. */
 function cardJobsOf(m: Msg): string[] {
-  return [...[m.montage, m.audioJob, m.editJob].flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }), ...runCardJobs(m.runJob)];
+  return [...[m.montage, m.audioJob, m.editJob].flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }), ...runCardJobs(m.runJob), ...(m.clipTask ? [m.clipTask] : [])];
 }
 /** Where a card's run ended: the job's own end for a card taken back after the page was replaced, not the moment of the read. */
 const endOf = (r: { endedAt?: number }): number => Math.min(Date.now(), r.endedAt ?? Date.now());
@@ -6485,13 +6488,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     trackGenerationConfirmed(service, 'agent-card', ask.credits || null);
     const setAsk = (phase: ClipAskState['phase'], over: Partial<ClipAskState> = {}) =>
       patchMsgById(bubbleId, (m) => (m.clipAsk ? { ...m, clipAsk: { ...m.clipAsk, ...over, phase } } : m));
-    const end = (text: string, extra: Partial<Msg> = {}) => patchMsgById(bubbleId, () => ({ role: 'assistant', id: bubbleId, text, ...extra }));
+    // The bubble keeps its tray row (clipTask) through the end, so the tray never shows the finished job over it.
+    const end = (text: string, extra: Partial<Msg> = {}) => patchMsgById(bubbleId, (m) => ({ role: 'assistant', id: bubbleId, text, ...(m.clipTask ? { clipTask: m.clipTask } : {}), ...extra }));
     setAsk('starting');
     try {
       const res = await fetch('/api/video/clip', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(clipRequestBody(ask)),
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; jobId?: string; error?: string; credits?: number };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; jobId?: string; taskId?: string; error?: string; credits?: number };
       if (res.status === 401) { setAsk('ask'); window.dispatchEvent(new CustomEvent('myavatar:auth-required')); return; }
       // The server's price is no longer the card's: the new one goes on Create; nothing was charged.
       if (res.status === 409 && j.error === 'price_changed' && typeof j.credits === 'number') { setAsk('ask', { credits: j.credits }); return; }
@@ -6500,9 +6504,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         end(`⚠️ ${clipFailureText(j, locale)}`, j.error === 'insufficient_credits' ? { topUp: true } : {});
         return;
       }
-      setAsk('running');
+      if (j.taskId) { const task = j.taskId; patchMsgById(bubbleId, (m) => ({ ...m, clipTask: task })); }
+      setAsk('running', { t0: Date.now(), step: 'rendering' });
       try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ }
-      const out = await followVideoJob(j.jobId, () => mountedRef.current, (b) => clipFailureText(b, locale));
+      let step: ClipStep = 'rendering';
+      const out = await followVideoJob(j.jobId, () => mountedRef.current, (b) => clipFailureText(b, locale), (next) => {
+        if (next !== step && next === 'finishing') { step = next; setAsk('running', { step }); }
+      });
       if (!out) return;
       if ('url' in out) {
         end('', {
@@ -6567,7 +6575,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     trackGenerationConfirmed(service, 'agent-card', ask.credits || null);
     const setAsk = (phase: EditAskState['phase'], over: Partial<EditAskState> = {}) =>
       patchMsgById(bubbleId, (m) => (m.editAsk ? { ...m, editAsk: { ...m.editAsk, ...over, phase } } : m));
-    const end = (text: string, extra: Partial<Msg> = {}) => patchMsgById(bubbleId, () => ({ role: 'assistant', id: bubbleId, text, ...extra }));
+    const end = (text: string, extra: Partial<Msg> = {}) => patchMsgById(bubbleId, (m) => ({ role: 'assistant', id: bubbleId, text, ...(m.clipTask ? { clipTask: m.clipTask } : {}), ...extra }));
     setAsk('starting');
     try {
       // The chat's one stored copy of the file (uploaded when it was picked); nothing is sent without it.
@@ -6577,7 +6585,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(editRequestBody(ask, path)),
       });
       const j = (await res.json().catch(() => ({}))) as {
-        success?: boolean; jobId?: string; error?: string; credits?: number; seconds?: number; outputSeconds?: number; inputSeconds?: number; aspect?: string;
+        success?: boolean; jobId?: string; taskId?: string; error?: string; credits?: number; seconds?: number; outputSeconds?: number; inputSeconds?: number; aspect?: string;
       };
       if (res.status === 401) { setAsk('ask', { video: { ...ask.video, path } }); window.dispatchEvent(new CustomEvent('myavatar:auth-required')); return; }
       // The server measured the video and its price is not the card's: the new one (and the length it read) goes on Create.
@@ -6590,9 +6598,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         end(`⚠️ ${editFailureText(j, locale)}`, j.error === 'insufficient_credits' ? { topUp: true } : {});
         return;
       }
-      setAsk('running');
+      if (j.taskId) { const task = j.taskId; patchMsgById(bubbleId, (m) => ({ ...m, clipTask: task })); }
+      setAsk('running', { t0: Date.now(), step: 'rendering' });
       try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ }
-      const out = await followVideoJob(j.jobId, () => mountedRef.current, (b) => editFailureText(b, locale));
+      let step: ClipStep = 'rendering';
+      const out = await followVideoJob(j.jobId, () => mountedRef.current, (b) => editFailureText(b, locale), (next) => {
+        if (next !== step && next === 'finishing') { step = next; setAsk('running', { step }); }
+      });
       if (!out) return;
       if ('url' in out) {
         end('', { videoUrl: out.url, genKind: 'video', orientation: j.aspect === '16:9' ? 'landscape' : 'vertical' });

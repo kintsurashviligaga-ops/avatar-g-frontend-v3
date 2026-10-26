@@ -2,9 +2,10 @@
  * components/studio/clip/ClipAskCard — the one clip, asked before it is made (GG 2026-10-25: „like Gemini's Veo").
  * Pinned: the words are shown as typed; the price is ON Create and follows every chip; two or three photos leave only 8 s;
  * the 10 s clip shows its two resolutions with their prices; there is no switch for sound, music, subtitles or a narrator;
- * nothing can be changed once Create was pressed; a cancelled card says nothing was charged.
+ * nothing can be changed once Create was pressed; a running card shows its percent by the job's milestones (10 while
+ * Google renders, 90 once it is done, never 100) and the time since Create; a cancelled card says nothing was charged.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ClipAskCard } from './ClipAskCard';
 import { clipOrder, type ClipAskState } from './clipOrder';
 
@@ -77,6 +78,59 @@ test('Create and Cancel call back; once Create is pressed nothing can change any
   rerender(<ClipAskCard ask={{ ...ask(), phase: 'running' }} locale="en" onChange={onChange} onConfirm={onConfirm} onCancel={onCancel} />);
   expect(screen.queryByTestId('clip-confirm')).toBeNull();
   expect(screen.getByTestId('clip-running').textContent).toContain('Veo 3.1 Fast');
+});
+
+test('a running card shows the percent of its step and the time since Create, never 100 (GG 2026-10-26 08:27Z)', () => {
+  jest.useFakeTimers();
+  try {
+    const t0 = Date.now();
+    const { rerender, onChange, onConfirm, onCancel } = mount({ ...ask(), phase: 'running', t0, step: 'rendering' }, 'ka');
+    const line = screen.getByTestId('clip-running');
+    expect(line.getAttribute('role')).toBe('progressbar');
+    expect(screen.getByTestId('clip-running-pct').textContent).toBe('10%');
+    expect(line.textContent).toContain('კლიპი მზადდება (Veo 3.1 Fast)');
+    expect(screen.getByTestId('clip-running-clock').textContent).toBe('0:00');
+    act(() => { jest.advanceTimersByTime(42_000); });
+    expect(screen.getByTestId('clip-running-clock').textContent).toBe('0:42');
+    // The clock moves; the percent does not: it is the step's, never paced by time (§3.3).
+    expect(screen.getByTestId('clip-running-pct').textContent).toBe('10%');
+    rerender(<ClipAskCard ask={{ ...ask(), phase: 'running', t0, step: 'finishing' }} locale="ka" onChange={onChange} onConfirm={onConfirm} onCancel={onCancel} />);
+    expect(screen.getByTestId('clip-running-pct').textContent).toBe('90%');
+    expect(screen.getByTestId('clip-running').getAttribute('aria-valuenow')).toBe('90');
+    expect(screen.getByTestId('clip-running').textContent).toContain('კლიპი შეიქმნა. ვამატებ ჩატში…');
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('once it runs, the chips fold into the spec line: nothing looks pickable any more', () => {
+  mount({ ...ask({ seconds: 10 }), phase: 'running', t0: Date.now(), step: 'rendering' });
+  for (const id of ['clip-len-4', 'clip-len-10', 'clip-aspect-9x16', 'clip-res-720p']) expect(screen.queryByTestId(id)).toBeNull();
+  expect(screen.getByTestId('clip-spec').textContent).toBe('10 s · 9:16 · 720p · 720×1280 · Gemini Omni Flash');
+});
+
+test('a long brief folds to three lines under the user\'s own bubble; its words are all there, and one tap shows them', () => {
+  const brief = `8-second 9:16 vertical video using the reference image. ${'The camera pushes in slowly. '.repeat(8)}`;
+  mount(ask({ prompt: brief }), 'ka');
+  const quote = screen.getByTestId('clip-prompt');
+  expect(quote.getAttribute('data-folded')).toBe('true');
+  expect(quote.className).toContain('line-clamp-3');
+  expect(quote.textContent).toBe(`„${brief}“`);
+  fireEvent.click(screen.getByTestId('clip-prompt-toggle'));
+  expect(screen.getByTestId('clip-prompt').getAttribute('data-folded')).toBe('false');
+  expect(screen.getByTestId('clip-prompt-toggle').textContent).toBe('შეკეცვა');
+});
+
+test('a short prompt is not folded and has no toggle', () => {
+  mount(ask());
+  expect(screen.getByTestId('clip-prompt').getAttribute('data-folded')).toBe('false');
+  expect(screen.queryByTestId('clip-prompt-toggle')).toBeNull();
+});
+
+test('two or three photos say why 10 s is not offered: it takes one photo, as its first frame', () => {
+  mount(ask({ photos: [PHOTO, PHOTO] }), 'ka');
+  expect((screen.getByTestId('clip-len-10') as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByTestId('clip-card').textContent).toContain('10 წამიანი კლიპი მხოლოდ ერთ ფოტოს იღებს, პირველ კადრად');
 });
 
 test('a cancelled card says nothing was charged, in Georgian by default', () => {

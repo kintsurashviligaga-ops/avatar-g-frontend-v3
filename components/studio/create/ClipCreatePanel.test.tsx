@@ -36,6 +36,10 @@ describe('ClipCreatePanel', () => {
     }
     expect(screen.getByTestId('clip-panel-tier-fast').textContent).toContain('Veo 3.1 Fast');
     expect(screen.getByTestId('clip-panel-tier-fast').textContent).toContain('1080p · 1080×1920');
+    // Each row says what it changes, not only its price: the pixels are the same for all three.
+    const subs = ['lite', 'fast', 'standard'].map((t) => screen.getByTestId(`clip-panel-tier-${t}`).textContent);
+    expect(new Set(subs).size).toBe(3);
+    expect(screen.getByTestId('clip-panel-tier-standard').textContent).toContain('The best detail and motion');
     fireEvent.click(screen.getByTestId('clip-panel-len-6'));
     fireEvent.click(screen.getByTestId('clip-panel-aspect-16x9'));
     fireEvent.click(screen.getByTestId('clip-panel-tier-standard'));

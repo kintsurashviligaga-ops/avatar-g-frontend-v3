@@ -14,6 +14,7 @@
  */
 import { describeGenerationFailure } from '@/components/studio/ui/serviceError';
 import type { DirectClipResolution } from '@/lib/video/directClip';
+import type { ClipStep } from './ClipProgress';
 import {
   OMNI_EDIT_INPUT_MAX_SEC, OMNI_EDIT_MIN_INPUT_SEC, OMNI_EXTEND_DEFAULT_SECONDS, omniEditBilledSeconds, omniEditCredits, omniEditInputCheck,
   omniEditOutputSeconds, snapOmniExtendSeconds, type OmniEditOp, type OmniEditSeconds,
@@ -51,6 +52,9 @@ export interface EditAskState extends EditOrder {
   phase: EditAskPhase;
   /** The price on Create: lib/video/omniEdit omniEditCredits for this order. */
   credits: number;
+  /** While running: when Create was accepted, and the step the status poll last reported (./ClipProgress). */
+  t0?: number;
+  step?: ClipStep;
 }
 
 const known = (sec: number | null | undefined): number | null => (typeof sec === 'number' && Number.isFinite(sec) && sec > 0 ? sec : null);

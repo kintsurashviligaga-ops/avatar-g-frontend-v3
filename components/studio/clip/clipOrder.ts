@@ -9,6 +9,7 @@
  * Every number here comes from lib/video/directClip, the same functions the route charges by — no second price table.
  */
 import { describeGenerationFailure } from '@/components/studio/ui/serviceError';
+import type { ClipStep } from './ClipProgress';
 import type { VideoQuality } from '@/lib/credits/videoPricing';
 import {
   DIRECT_CLIP_MAX_PHOTOS, directClipCredits, directClipQualityLabel, directClipSeconds, directClipTierAllowed,
@@ -38,6 +39,9 @@ export interface ClipAskState extends ClipOrder {
   phase: ClipAskPhase;
   /** The price on Create: directClipCredits for this order. */
   credits: number;
+  /** While running: when Create was accepted, and the step the status poll last reported (./ClipProgress). */
+  t0?: number;
+  step?: ClipStep;
 }
 
 /** An order from what the chat and the panel hold: the length snapped to the grid, the photos capped, the price computed. */
@@ -95,6 +99,27 @@ export function clipEngineLabel(state: Pick<ClipOrder, 'seconds' | 'tier'>): str
   return state.tier === 'lite' ? 'Veo 3.1 Lite' : state.tier === 'standard' ? 'Veo 3.1' : 'Veo 3.1 Fast';
 }
 
+/**
+ * What a quality pick changes, said in words (GG 2026-10-26 08:46Z: the three Veo rows read „1080p · 1080×1920" alike, so
+ * only the price told them apart). The three Veo tiers render the same pixels; they differ in detail, motion and wait.
+ * Lite takes no reference photos (directClipTierAllowed). The 10 s clip's two picks differ in pixels only.
+ */
+export function clipTierBlurb(tier: VideoQuality, locale: string): string {
+  if (tier === 'lite') {
+    return tr(locale, 'ყველაზე იაფი, სწრაფი მონახაზისთვის. 2–3 ფოტოს არ იღებს.', 'Cheapest, for a quick draft. Does not take 2–3 photos.', 'Самый дешёвый, для быстрого черновика. Не принимает 2–3 фото.');
+  }
+  if (tier === 'fast') {
+    return tr(locale, 'კარგი ხარისხი, სწრაფად მზადდება. ბალანსი ფასსა და ხარისხს შორის.', 'Good quality, made quickly. The balance of price and quality.', 'Хорошее качество, делается быстро. Баланс цены и качества.');
+  }
+  return tr(locale, 'საუკეთესო დეტალი და მოძრაობა. უფრო დიდხანს მზადდება.', 'The best detail and motion. Takes longer to make.', 'Лучшая детализация и движение. Делается дольше.');
+}
+
+export function clipResolutionBlurb(resolution: DirectClipResolution, locale: string): string {
+  return resolution === '1080p'
+    ? tr(locale, 'უფრო მკვეთრი, დიდი ეკრანისთვის.', 'Sharper, for a big screen.', 'Чётче, для большого экрана.')
+    : tr(locale, 'ტელეფონისთვის საკმარისი, უფრო იაფი.', 'Enough for a phone, and cheaper.', 'Достаточно для телефона, дешевле.');
+}
+
 /** „8 წმ · 9:16 · 1080p · 1080×1920 · Veo 3.1 Fast" — what will be made, in one line. */
 export function clipSpecLine(state: ClipOrder, locale: string): string {
   const sec = tr(locale, `${state.seconds} წმ`, `${state.seconds} s`, `${state.seconds} с`);
@@ -105,7 +130,11 @@ export function clipSpecLine(state: ClipOrder, locale: string): string {
 export function clipPhotoNote(photos: number, locale: string): string | null {
   if (photos <= 0) return null;
   if (photos === 1) return tr(locale, 'ფოტო იქნება კლიპის პირველი კადრი.', 'The photo is the clip\'s first frame.', 'Фото станет первым кадром клипа.');
-  return tr(locale, 'ფოტოებიდან პერსონაჟები და საგნები შენარჩუნდება (8 წმ).', 'The people and things in the photos are kept (8 s).', 'Люди и предметы с фото сохранятся (8 с).');
+  // Two or three photos are Veo's references, which render 8 s only: said here, or a greyed-out 10 s reads as broken.
+  return tr(locale,
+    'ფოტოებიდან პერსონაჟები და საგნები შენარჩუნდება (8 წმ). 10 წამიანი კლიპი მხოლოდ ერთ ფოტოს იღებს, პირველ კადრად: ამისთვის ერთი ფოტოთი გამომიგზავნე.',
+    'The people and things in the photos are kept (8 s). A 10 s clip takes one photo only, as its first frame: send it with one photo for that.',
+    'Люди и предметы с фото сохранятся (8 с). Клип на 10 с принимает только одно фото, первым кадром: для него отправьте одно фото.');
 }
 
 /** The card's own words above the prompt. */
@@ -129,6 +158,11 @@ export function clipRunningText(state: Pick<ClipOrder, 'seconds' | 'tier'>, loca
     `კლიპი მზადდება (${clipEngineLabel(state)}). ჩვეულებრივ 1–2 წუთი სჭირდება.`,
     `Making the clip (${clipEngineLabel(state)}). It usually takes 1–2 minutes.`,
     `Клип создаётся (${clipEngineLabel(state)}). Обычно это 1–2 минуты.`);
+}
+
+/** The step after Google's render (./ClipProgress `finishing`): the Georgian line laid on, the clip saved for the chat. */
+export function clipFinishingText(locale: string): string {
+  return tr(locale, 'კლიპი შეიქმნა. ვამატებ ჩატში…', 'The clip is made. Putting it in the chat…', 'Клип готов. Добавляю в чат…');
 }
 
 export function clipCancelledText(locale: string): string {

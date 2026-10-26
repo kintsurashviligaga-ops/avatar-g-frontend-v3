@@ -20,7 +20,7 @@ import {
   DIRECT_CLIP_MAX_PHOTOS, directClipCredits, directClipQualityLabel, directClipTierAllowed,
   type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds,
 } from '@/lib/video/directClip';
-import { clipEngineLabel, clipLengthsFor, clipPhotoNote } from '@/components/studio/clip/clipOrder';
+import { clipEngineLabel, clipLengthsFor, clipPhotoNote, clipResolutionBlurb, clipTierBlurb } from '@/components/studio/clip/clipOrder';
 import { CARD, VideoCreateHeader } from './videoCreateParts';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
 
@@ -129,14 +129,14 @@ export function ClipCreatePanel(p: ClipCreatePanelProps) {
           {seconds === 10
             ? (['720p', '1080p'] as const).map((r) => (
               <QualityRow key={r} on={resolution === r} onClick={() => p.onResolution(r)} testId={`clip-panel-res-${r}`}
-                title={directClipQualityLabel(aspect, 10, r)} sub={clipEngineLabel({ seconds: 10, tier })}
+                title={directClipQualityLabel(aspect, 10, r)} sub={`${clipResolutionBlurb(r, locale)} ${clipEngineLabel({ seconds: 10, tier })}.`}
                 credits={directClipCredits({ seconds: 10, tier, photos, resolution: r })} />
             ))
             : TIERS.map((t) => {
               const closed = p.closedTiers?.includes(t) ?? false;
               return (
                 <QualityRow key={t} on={tier === t} disabled={closed || !directClipTierAllowed(t, photos)} onClick={() => p.onTier(t)} testId={`clip-panel-tier-${t}`}
-                  title={clipEngineLabel({ seconds, tier: t })} sub={directClipQualityLabel(aspect, seconds)}
+                  title={clipEngineLabel({ seconds, tier: t })} sub={`${clipTierBlurb(t, locale)} ${directClipQualityLabel(aspect, seconds)}.`}
                   credits={directClipCredits({ seconds, tier: t, photos })} {...(closed ? { unavailable: vc(VIDEO_COPY.tierUnavailable, locale) } : {})} />
               );
             })}

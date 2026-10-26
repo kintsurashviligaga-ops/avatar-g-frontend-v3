@@ -19,7 +19,7 @@ import {
   directClipCredits, directClipQualityLabel, directClipTierAllowed,
   type DirectClipAspect, type DirectClipResolution, type DirectClipSeconds,
 } from '@/lib/video/directClip';
-import { clipEngineLabel, clipLengthsFor } from '@/components/studio/clip/clipOrder';
+import { clipEngineLabel, clipLengthsFor, clipResolutionBlurb, clipTierBlurb } from '@/components/studio/clip/clipOrder';
 
 type Sheet = 'format' | 'length' | 'quality' | null;
 const TIERS: readonly VideoQuality[] = ['lite', 'fast', 'standard'];
@@ -93,7 +93,7 @@ export function ClipQuickChips(p: {
           title={vc(VIDEO_COPY.quality, locale)} closeLabel={closeLabel} testId="video-tier-picker"
           value={resolution} onSelect={p.onResolution}
           options={(['720p', '1080p'] as const).map((r) => ({
-            value: r, label: directClipQualityLabel(aspect, 10, r), hint: clipEngineLabel({ seconds: 10, tier }),
+            value: r, label: directClipQualityLabel(aspect, 10, r), hint: `${clipResolutionBlurb(r, locale)} ${clipEngineLabel({ seconds: 10, tier })}.`,
             trailing: `✦ ${directClipCredits({ seconds: 10, tier, photos, resolution: r })}`,
           }))}
         />
@@ -105,7 +105,8 @@ export function ClipQuickChips(p: {
           options={TIERS.map((t) => {
             const closed = p.closedTiers?.includes(t) ?? false;
             return {
-              value: t, label: clipEngineLabel({ seconds, tier: t }), hint: directClipQualityLabel(aspect, seconds),
+              // What the tier changes, then its pixels (the same for all three, so not what tells them apart).
+              value: t, label: clipEngineLabel({ seconds, tier: t }), hint: `${clipTierBlurb(t, locale)} ${directClipQualityLabel(aspect, seconds)}.`,
               disabled: closed || !directClipTierAllowed(t, photos),
               trailing: closed ? vc(VIDEO_COPY.tierUnavailable, locale) : `✦ ${directClipCredits({ seconds, tier: t, photos })}`,
             };

@@ -105,6 +105,9 @@ test('text only, defaults: ONE 8 s Fast clip at the composer\'s own price; row w
   expect(res.status).toBe(202);
   const j = await res.json();
   expect(j).toMatchObject({ success: true, op: 'clip', seconds: 8, resolution: '1080p', engine: 'Veo' });
+  // The Renders tray's row for it, which the chat's card claims (the row the job was filed under).
+  expect(j.taskId).toMatch(/^genjutsu:[0-9a-f-]{36}$/);
+  expect(j.taskId).toBe((createJob as jest.Mock).mock.calls[0][0].id);
   expect(j.credits).toBe(quoteCredits({ tool: 'video', seconds: 8, quality: 'fast' }));
   const order = [(createJob as jest.Mock).mock.invocationCallOrder[0]!, (deductCredits as jest.Mock).mock.invocationCallOrder[0]!, (submitScene as jest.Mock).mock.invocationCallOrder[0]!];
   expect(order).toEqual([...order].sort((a, b) => a - b));

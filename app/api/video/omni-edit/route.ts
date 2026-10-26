@@ -164,8 +164,9 @@ async function startEdit(userId: string, r: OmniEditRequest, locale: ReturnType<
     const refunded = await refund('no charge token');
     return fail(503, 'billing_unavailable', { refunded });
   }
+  // `taskId`: the job row the Renders tray lists it under, claimed by the chat's card (as in app/api/video/clip).
   return NextResponse.json({
-    success: true, op: r.op, jobId: withGenjutsuCharge(jobId, token), credits, seconds: billed, outputSeconds: outputSec,
+    success: true, op: r.op, jobId: withGenjutsuCharge(jobId, token), taskId: rowId, credits, seconds: billed, outputSeconds: outputSec,
     inputSeconds: Math.round(input.seconds * 10) / 10, resolution: r.resolution, aspect, engine: 'Gemini Omni Flash',
   }, { status: 202 });
 }

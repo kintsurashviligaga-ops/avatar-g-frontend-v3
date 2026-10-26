@@ -19,7 +19,9 @@ import { Loader2, Sparkle } from 'lucide-react';
 import { creditsLabel } from '@/lib/credits/quote';
 import type { DirectClipResolution } from '@/lib/video/directClip';
 import { OMNI_EDIT_SECONDS, type OmniEditOp } from '@/lib/video/omniEdit';
-import { clipCancelledText } from './clipOrder';
+import { ClipProgress } from './ClipProgress';
+import { PromptQuote } from './PromptQuote';
+import { clipCancelledText, clipFinishingText } from './clipOrder';
 import { changeEdit, editOpAllowed, editPriceNote, editRunningText, editSpecLine, type EditAskState, type EditChange } from './editOrder';
 
 const RESOLUTIONS: readonly DirectClipResolution[] = ['720p', '1080p'];
@@ -75,9 +77,7 @@ export function EditAskCard({
 
   return (
     <div className="mt-2 space-y-2.5" data-testid="edit-card" data-phase={ask.phase} data-op={ask.op} data-seconds={ask.seconds}>
-      <blockquote data-testid="edit-prompt" className="whitespace-pre-wrap break-words rounded-2xl bg-app-elevated/70 px-3.5 py-2.5 text-[13.5px] leading-snug text-app-text">
-        „{ask.prompt}“
-      </blockquote>
+      <PromptQuote text={ask.prompt} locale={locale} testId="edit-prompt" />
 
       <video
         data-testid="edit-video"
@@ -91,38 +91,41 @@ export function EditAskCard({
       />
 
       <div className="space-y-1.5">
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.what}>
-          {OPS.map((op) => (
-            <Chip key={op} on={ask.op === op} disabled={!editable || !editOpAllowed(op, ask.inputSec)} onClick={() => set({ op })} testId={`edit-op-${op}`}>
-              {w.op(op)}
-            </Chip>
-          ))}
-        </div>
-        {ask.op === 'extend' && (
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.length}>
-            {OMNI_EDIT_SECONDS.map((s) => (
-              <Chip key={s} on={ask.seconds === s} disabled={!editable} onClick={() => set({ seconds: s })} testId={`edit-len-${s}`}>
-                {w.sec(s)}
+        {/* Once Create is accepted the chips go: the spec line says what is being made. */}
+        {ask.phase !== 'running' && (<>
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.what}>
+            {OPS.map((op) => (
+              <Chip key={op} on={ask.op === op} disabled={!editable || !editOpAllowed(op, ask.inputSec)} onClick={() => set({ op })} testId={`edit-op-${op}`}>
+                {w.op(op)}
               </Chip>
             ))}
           </div>
-        )}
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.quality}>
-          {RESOLUTIONS.map((r) => (
-            <Chip key={r} on={ask.resolution === r} disabled={!editable} onClick={() => set({ resolution: r })} testId={`edit-res-${r}`}>
-              {r} <span className="ml-1 opacity-70">✦ {resPrice(r)}</span>
-            </Chip>
-          ))}
-        </div>
+          {ask.op === 'extend' && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.length}>
+              {OMNI_EDIT_SECONDS.map((s) => (
+                <Chip key={s} on={ask.seconds === s} disabled={!editable} onClick={() => set({ seconds: s })} testId={`edit-len-${s}`}>
+                  {w.sec(s)}
+                </Chip>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={w.quality}>
+            {RESOLUTIONS.map((r) => (
+              <Chip key={r} on={ask.resolution === r} disabled={!editable} onClick={() => set({ resolution: r })} testId={`edit-res-${r}`}>
+                {r} <span className="ml-1 opacity-70">✦ {resPrice(r)}</span>
+              </Chip>
+            ))}
+          </div>
+        </>)}
         <p data-testid="edit-spec" className="text-[12px] tabular-nums text-app-muted">{editSpecLine(ask, locale)}</p>
         <p data-testid="edit-price-note" className="text-[11.5px] leading-snug text-app-muted">{editPriceNote(ask, locale)}</p>
       </div>
 
       {ask.phase === 'running' ? (
-        <p data-testid="edit-running" className="inline-flex items-center gap-2 text-[12.5px] text-app-muted">
-          <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          {editRunningText(ask.op, locale)}
-        </p>
+        <ClipProgress
+          testId="edit-running" step={ask.step ?? 'rendering'} since={ask.t0}
+          label={ask.step === 'finishing' ? clipFinishingText(locale) : editRunningText(ask.op, locale)}
+        />
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <button

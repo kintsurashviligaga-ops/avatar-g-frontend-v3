@@ -178,8 +178,10 @@ async function startClip(userId: string, r: DirectClipRequest, locale: ReturnTyp
     const refunded = await refund('no charge token');
     return fail(503, 'billing_unavailable', { refunded });
   }
+  // `taskId` is the job row the Renders tray lists this clip under: the chat's card claims it, so the tray does not show
+  // the same render a second time over the card (GG 2026-10-26 08:46Z).
   return NextResponse.json({
-    success: true, op: 'clip', jobId: withGenjutsuCharge(jobId, token), credits, seconds: r.seconds,
+    success: true, op: 'clip', jobId: withGenjutsuCharge(jobId, token), taskId: rowId, credits, seconds: r.seconds,
     resolution: r.resolution, engine: engine === 'omni' ? 'Gemini Omni Flash' : 'Veo', ...(voiced ? { voice: 'Google Cloud TTS' } : {}),
   }, { status: 202 });
 }
