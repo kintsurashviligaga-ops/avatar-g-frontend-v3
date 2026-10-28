@@ -12,7 +12,7 @@
  * crossOrigin=anonymous, leaving ordinary browser playback unchanged elsewhere.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Info, Music2, Pause, Play, RotateCcw, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
+import { Music2, Pause, Play, RotateCcw, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
 
 interface MusicPreviewPlayerProps {
   src: string;
@@ -276,7 +276,7 @@ export function MusicPreviewPlayer({
       </div>
 
       <div className="mt-2.5 flex min-h-11 items-center gap-2.5 border-t border-white/[0.06] pt-2.5">
-        <button type="button" aria-label={wasMuted ? copy.unmute : copy.mute} onClick={() => setLevel(wasMuted ? previousVolumeRef.current : 0)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">
+        <button type="button" disabled={mode === 'device'} aria-label={wasMuted ? copy.unmute : copy.mute} onClick={() => setLevel(wasMuted ? previousVolumeRef.current : 0)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
           {wasMuted ? <VolumeX aria-hidden className="h-[19px] w-[19px]" /> : <Volume2 aria-hidden className="h-[19px] w-[19px]" />}
         </button>
         {mode === 'device' ? (
