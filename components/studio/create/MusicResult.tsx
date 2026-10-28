@@ -34,8 +34,8 @@ export function MusicResult({
   const cc = musicCreateCopy(locale);
   const pane = variant === 'pane';
   return (
-    <section data-testid={testId} aria-label={pane ? cc.result : cc.lastTrack} className="min-w-0 rounded-[26px] bg-app-elevated/45 p-4 ring-1 ring-app-border/10">
-      <h3 className="mb-2 text-[16px] font-medium text-app-text">{pane ? cc.result : cc.lastTrack}</h3>
+    <section data-testid={testId} aria-label={pane ? cc.result : cc.lastTrack} className={track ? 'min-w-0' : 'min-w-0 rounded-[26px] bg-app-elevated/45 p-4 ring-1 ring-app-border/10'}>
+      {!track && <h3 className="mb-2 text-[16px] font-medium text-app-text">{pane ? cc.result : cc.lastTrack}</h3>}
       {track ? (
         <div className="flex min-w-0 flex-col gap-4">
           <div className="mx-auto w-full min-w-0 max-w-[480px]">
