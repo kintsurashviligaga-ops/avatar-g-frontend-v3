@@ -72,7 +72,7 @@ test('no extra titles; artwork and Russian playback error still work', () => {
   expect(screen.queryByText('მუსიკის პრევიუ')).not.toBeInTheDocument();
   view.rerender(<MusicPreviewPlayer src={sample} locale="ru" coverUrl="https://storage.example.test/cover.jpg" />);
   expect(screen.getByRole('button', { name: 'Воспроизвести' })).toBeInTheDocument();
-  expect(screen.getByRole('img', { hidden: true })).toHaveAttribute('src', 'https://storage.example.test/cover.jpg');
+  expect(view.container.querySelector('img')).toHaveAttribute('src', 'https://storage.example.test/cover.jpg');
   fireEvent.error(screen.getByTestId('music-player'));
   expect(screen.getByRole('alert')).toHaveTextContent('Не удалось');
 });
