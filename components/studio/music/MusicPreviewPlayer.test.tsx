@@ -76,3 +76,18 @@ test('no extra titles; artwork and Russian playback error still work', () => {
   fireEvent.error(screen.getByTestId('music-player'));
   expect(screen.getByRole('alert')).toHaveTextContent('Не удалось');
 });
+
+
+test('premium equalizer has two layers, reflected bars and only animates during playback', () => {
+  render(<MusicPreviewPlayer src={sample} locale="en" />);
+  const visual = screen.getByTestId('music-equalizer');
+  expect(visual).toHaveAttribute('data-playing', 'false');
+  expect(visual.querySelectorAll('.music-eq-bar')).toHaveLength(86);
+  expect((visual.querySelector('.music-eq-bar') as HTMLElement).style.animationPlayState).toBe('paused');
+  fireEvent.play(screen.getByTestId('music-player'));
+  expect(visual).toHaveAttribute('data-playing', 'true');
+  expect((visual.querySelector('.music-eq-bar') as HTMLElement).style.animationPlayState).toBe('running');
+  fireEvent.pause(screen.getByTestId('music-player'));
+  expect((visual.querySelector('.music-eq-bar') as HTMLElement).style.animationPlayState).toBe('paused');
+  expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
+});
