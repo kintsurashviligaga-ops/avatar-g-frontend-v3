@@ -172,7 +172,7 @@ export function MusicPreviewPlayer({
         </button>
       </div>
       {error && <p role="alert" className="mt-1 text-xs text-amber-200">{t.failed}</p>}
-      <style jsx>{'
+      <style jsx>{`
         @keyframes preview-wave { 0%, 100% { transform:scaleY(.6) } 50% { transform:scaleY(1) } }
         @keyframes preview-spin { to { transform:rotate(360deg) } }
         .music-preview-bar { transform-origin: center; animation: preview-wave 1.4s ease-in-out infinite; }
@@ -180,7 +180,7 @@ export function MusicPreviewPlayer({
         .music-seek::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:13px; height:13px; border-radius:50%; background:#e0faff; box-shadow:0 0 0 3px rgba(103,220,233,.13); }
         .music-seek::-moz-range-thumb { width:13px; height:13px; border:0; border-radius:50%; background:#e0faff; }
         @media (prefers-reduced-motion: reduce) { .music-preview-bar, .music-disc-spin { animation:none!important; } }
-      '}</style>
+      `}</style>
     </section>
   );
 }
