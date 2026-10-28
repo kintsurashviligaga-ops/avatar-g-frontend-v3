@@ -37,7 +37,7 @@ test('playback state, rewind, seek, repeat and volume are connected to the media
   fireEvent.change(screen.getByRole('slider', { name: 'Seek' }), { target: { value: '21' } });
   expect(audio.currentTime).toBe(21);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Loop' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Repeat' }));
   expect(audio.loop).toBe(true);
   fireEvent.change(screen.getByRole('slider', { name: 'Volume' }), { target: { value: '0.35' } });
   expect(audio.volume).toBeCloseTo(0.35);
