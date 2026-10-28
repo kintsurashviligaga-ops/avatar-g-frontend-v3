@@ -37,7 +37,8 @@ test('primary Music Create player renders the new preview card, not the retired 
   expect(screen.getByTestId('music-preview-card')).toBeTruthy();
   expect(screen.getByTestId('music-player').getAttribute('src')).toBe('https://storage.example/new-music.mp3');
   expect(screen.getByRole('button', { name: 'დაკვრა' })).toBeTruthy();
-  expect(screen.getByRole('slider', { name: 'ხმის დონე' })).toBeTruthy();
+  expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
+  expect(screen.getByRole('slider', { name: 'გადახვევა' })).toBeTruthy();
   expect(screen.getByText('Generated with Lyria')).toBeTruthy();
 });
 
