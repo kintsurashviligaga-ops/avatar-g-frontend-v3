@@ -4,6 +4,7 @@
  * TrackPlayer's provenance line carries the music route's `controls.mode` as a note (components/studio/ui/
  * musicControlsCopy `musicControlsNote`): a Lyria track whose sliders were moved says they were approximate.
  */
+import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
 import { TrackPlayer } from './TrackPlayer';
 import { musicControlsNote } from './ui/musicControlsCopy';
@@ -11,6 +12,7 @@ import { musicControlsNote } from './ui/musicControlsCopy';
 beforeEach(() => {
   // jsdom has no canvas; the visualiser bails out when getContext returns null.
   jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  jest.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());
 
