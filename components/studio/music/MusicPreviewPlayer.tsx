@@ -18,9 +18,19 @@ interface MusicPreviewPlayerProps {
   compact?: boolean;
 }
 
-const BARS = Array.from({ length: 35 }, (_, i) =>
-  Math.round(18 + Math.abs(Math.sin(i * 0.47 + 0.2) * Math.cos(i * 0.17 - 0.8)) * 75),
-);
+// An art-directed, layered animation. These are procedural motion graphics,
+// not fabricated claims of audio-frequency analysis of private signed media.
+const WAVEFORM = Array.from({ length: 43 }, (_, index) => {
+  const x = index / 42;
+  const envelope = 0.24 + 0.69 * Math.pow(Math.sin(Math.PI * x), 1.3);
+  const ripple = 0.4 + 0.6 * Math.abs(Math.sin(index * 0.76 + 0.45) * Math.cos(index * 0.23));
+  return {
+    height: Math.round(14 + 80 * envelope * ripple),
+    duration: (1.05 + (index % 7) * 0.14).toFixed(2) + 's',
+    delay: (-((index * 0.13) % 2.6)).toFixed(2) + 's',
+    emphasis: index % 11 === 0,
+  };
+});
 
 const copy = {
   ka: { label: 'მუსიკის პრევიუ', play: 'დაკვრა', pause: 'პაუზა', back: '10 წამით უკან', forward: '10 წამით წინ', seek: 'გადახვევა', repeat: 'გამეორება', failed: 'აუდიოს დაკვრა ვერ მოხერხდა.' },
@@ -141,19 +151,54 @@ export function MusicPreviewPlayer({
         </div>
       </div>
 
-      <div aria-hidden="true" className="mt-4 flex h-7 items-center justify-center gap-[3px] overflow-hidden">
-        {BARS.map((bar, index) => (
-          <span
-            key={index}
-            className="music-preview-bar min-w-0 flex-1 rounded-full bg-gradient-to-t from-[#14677b] to-[#68d5e3]"
-            style={{
-              height: bar + '%',
-              opacity: index / BARS.length <= played / 100 ? 0.92 : 0.37,
-              animationPlayState: playing ? 'running' : 'paused',
-              animationDelay: '-' + (index % 11) * 0.11 + 's',
-            }}
-          />
-        ))}
+      {/* Cinematic dual-layer pulse: luminous organic bars + restrained reflection.
+          It uses transform/opacity for smooth playback animation without Web Audio
+          or heavy per-frame JavaScript, preserving signed music playback on iOS. */}
+      <div
+        data-testid="music-equalizer"
+        data-playing={playing ? 'true' : 'false'}
+        aria-hidden="true"
+        className="relative mt-3.5 h-[72px] w-full overflow-hidden rounded-[13px] border border-white/[0.045] bg-[linear-gradient(180deg,rgba(15,39,52,0.34),rgba(7,18,28,0.12)_54%,rgba(7,18,28,0.4))]"
+      >
+        <div className="absolute inset-x-3 top-[38px] h-px bg-gradient-to-r from-transparent via-cyan-300/20 to-transparent" />
+        <div
+          className="music-eq-halo pointer-events-none absolute inset-x-[12%] top-[12px] h-11 rounded-full bg-[radial-gradient(ellipse,rgba(28,181,209,0.16),transparent_68%)] blur-lg"
+          style={{ animationPlayState: playing ? 'running' : 'paused' }}
+        />
+        <div className="absolute inset-x-2 top-[7px] flex h-[31px] items-end justify-center gap-[2.5px] sm:gap-[3px]">
+          {WAVEFORM.map((bar, index) => (
+            <span
+              key={index}
+              className="music-eq-bar relative min-w-0 flex-1 rounded-[3px] bg-gradient-to-t from-[#116074] via-[#32bfd0] to-[#9af0f5]"
+              style={{
+                height: bar.height + '%',
+                opacity: index / WAVEFORM.length <= played / 100 ? 1 : 0.62,
+                animationDelay: bar.delay,
+                animationDuration: bar.duration,
+                animationPlayState: playing ? 'running' : 'paused',
+                boxShadow: playing && bar.emphasis ? '0 0 11px rgba(72,224,240,0.32)' : undefined,
+              }}
+            />
+          ))}
+        </div>
+        <div className="pointer-events-none absolute inset-x-2 top-[39px] flex h-[22px] items-start justify-center gap-[2.5px] opacity-20 [mask-image:linear-gradient(to_bottom,black,transparent)] sm:gap-[3px]">
+          {WAVEFORM.map((bar, index) => (
+            <span
+              key={index}
+              className="music-eq-bar min-w-0 flex-1 rounded-[2px] bg-gradient-to-b from-[#5ad9e9] to-[#16546a]"
+              style={{
+                height: Math.max(15, bar.height * 0.82) + '%',
+                animationDelay: bar.delay,
+                animationDuration: bar.duration,
+                animationPlayState: playing ? 'running' : 'paused',
+              }}
+            />
+          ))}
+        </div>
+        <div
+          className="music-eq-glint pointer-events-none absolute inset-y-0 left-[-30%] w-[38%] bg-gradient-to-r from-transparent via-cyan-200/[0.05] to-transparent"
+          style={{ animationPlayState: playing ? 'running' : 'paused' }}
+        />
       </div>
 
       <div className="mt-2.5 flex min-h-11 items-center gap-2.5">
@@ -173,13 +218,22 @@ export function MusicPreviewPlayer({
       </div>
       {error && <p role="alert" className="mt-1 text-xs text-amber-200">{t.failed}</p>}
       <style jsx>{`
-        @keyframes preview-wave { 0%, 100% { transform:scaleY(.6) } 50% { transform:scaleY(1) } }
+        @keyframes eq-dance {
+          0%,100% { transform:scaleY(.55); filter:brightness(.84); }
+          22% { transform:scaleY(1); filter:brightness(1.1); }
+          48% { transform:scaleY(.68); filter:brightness(.95); }
+          73% { transform:scaleY(.92); filter:brightness(1.08); }
+        }
+        @keyframes eq-halo { 0%,100% { transform:scaleX(.82); opacity:.45; } 50% { transform:scaleX(1.08); opacity:1; } }
+        @keyframes eq-glint { 0% { transform:translateX(0); opacity:0; } 30% { opacity:.65; } 72% { opacity:.5; } 100% { transform:translateX(360%); opacity:0; } }
         @keyframes preview-spin { to { transform:rotate(360deg) } }
-        .music-preview-bar { transform-origin: center; animation: preview-wave 1.4s ease-in-out infinite; }
-        .music-disc-spin { animation: preview-spin 11s linear infinite; }
+        .music-eq-bar { transform-origin:bottom center; animation:eq-dance ease-in-out infinite; will-change:transform; }
+        .music-eq-halo { animation:eq-halo 3.6s ease-in-out infinite; }
+        .music-eq-glint { animation:eq-glint 5.8s ease-in-out infinite; }
+        .music-disc-spin { animation:preview-spin 11s linear infinite; }
         .music-seek::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:13px; height:13px; border-radius:50%; background:#e0faff; box-shadow:0 0 0 3px rgba(103,220,233,.13); }
         .music-seek::-moz-range-thumb { width:13px; height:13px; border:0; border-radius:50%; background:#e0faff; }
-        @media (prefers-reduced-motion: reduce) { .music-preview-bar, .music-disc-spin { animation:none!important; } }
+        @media (prefers-reduced-motion: reduce) { .music-eq-bar, .music-eq-halo, .music-eq-glint, .music-disc-spin { animation:none!important; will-change:auto!important; } }
       `}</style>
     </section>
   );
