@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { X, Download, AlertCircle, Maximize2, CheckCircle2, Loader2, CircleSlash } from 'lucide-react';
 import type { PreviewItem, PreviewLeg, PreviewLegs, PreviewLegStatus, ServiceChatConfig } from './types';
+import { MusicPreviewPlayer } from '@/components/studio/music/MusicPreviewPlayer';
 
 interface Props {
   config: ServiceChatConfig;
@@ -122,7 +123,7 @@ export function ServicePreviewPanel({ config, previews, language, onClearPreview
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
             >
-              <PreviewContent item={latest} accentColor={config.accentColor} copy={copy} />
+              <PreviewContent item={latest} accentColor={config.accentColor} copy={copy} language={language} />
             </motion.div>
           </AnimatePresence>
 
@@ -326,7 +327,7 @@ function FailedState({ accentColor, message }: { accentColor: string; message: s
   );
 }
 
-function PreviewContent({ item, accentColor, copy }: { item: PreviewItem; accentColor: string; copy: PreviewCopy }) {
+function PreviewContent({ item, accentColor, copy, language }: { item: PreviewItem; accentColor: string; copy: PreviewCopy; language: string }) {
   // Show the waveform if the music leg is ready but the video leg is still
   // running. This is the "post-beat, pre-cinematic-clip" interlude that the
   // blueprint specifically called for.
@@ -376,9 +377,7 @@ function PreviewContent({ item, accentColor, copy }: { item: PreviewItem; accent
       return (
         <div className="rounded-2xl p-3 border bg-zinc-950" style={{ borderColor: 'rgba(63,63,70,0.6)' }}>
           {item.url ? (
-            <audio controls className="w-full" style={{ height: 36 }}>
-              <source src={item.url} />
-            </audio>
+            <MusicPreviewPlayer src={item.url} title={item.title} coverUrl={item.thumbnail} locale={language} compact />
           ) : (
             <div className="flex items-center justify-center py-4 text-zinc-500">
               {copy.audioPreview}
