@@ -80,3 +80,42 @@ test('generic labels are not repeated; playback errors are shown and localized',
   expect(screen.getByRole('alert')).toHaveTextContent('Не удалось');
   expect(screen.getByRole('button', { name: 'Воспроизвести' })).toBeInTheDocument();
 });
+
+
+test('owner reference replaces the diamond with muted, looping, inline smoke video', () => {
+  render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
+  const clip = screen.getByTestId('music-smoke-video') as HTMLVideoElement;
+  expect(clip).toHaveAttribute('src', '/media/smoke-orb-preview.mp4');
+  expect(clip.muted).toBe(true);
+  expect(clip.loop).toBe(true);
+  expect(clip).toHaveAttribute('playsinline');
+  expect(clip).not.toHaveAttribute('controls');
+  expect(screen.getByTestId('music-player')).toHaveAttribute('src', src);
+  expect(screen.getByTestId('music-smoke-orb')).toBeInTheDocument();
+  expect(screen.getByTestId('music-particle-canvas')).toBeInTheDocument();
+});
+
+test('decoration follows real audio play and pause but never overrides the signed audio source', () => {
+  render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
+  const audio = screen.getByTestId('music-player');
+  const video = screen.getByTestId('music-smoke-video') as HTMLVideoElement;
+  expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-playing', 'false');
+  fireEvent.play(audio);
+  expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-playing', 'true');
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+  fireEvent.pause(audio);
+  expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-playing', 'false');
+  expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+  expect(video.muted).toBe(true);
+  expect(audio).toHaveAttribute('src', src);
+});
+
+test('seeking changes the real song and retains a single progress slider', () => {
+  render(<MusicPreviewPlayer src={src} locale="ka" durationSec={62} />);
+  const audio = screen.getByTestId('music-player') as HTMLAudioElement;
+  fireEvent.change(screen.getByRole('slider', { name: 'გადახვევა' }), { target: { value: '42' } });
+  expect(audio.currentTime).toBe(42);
+  expect(screen.getByTestId('music-time-pill')).toHaveTextContent('00:42 / 01:02');
+  expect(screen.getAllByRole('slider')).toHaveLength(1);
+  expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
+});
