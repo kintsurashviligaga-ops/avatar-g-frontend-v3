@@ -149,7 +149,9 @@ export async function loadBeatTrack(
 ): Promise<BeatTrack> {
   const MAX_BYTES = 24 * 1024 * 1024;
   const url = new URL(src, window.location.href);
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && url.origin === window.location.origin)) {
+  const safeBlob = url.protocol === 'blob:' && url.origin === window.location.origin;
+  const safeData = url.protocol === 'data:' && /^data:audio\//i.test(url.href) && url.href.length < MAX_BYTES * 1.5;
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && url.origin === window.location.origin) && !safeBlob && !safeData) {
     throw new Error('media_scheme_unsupported');
   }
   const response = await fetch(url.href, {
