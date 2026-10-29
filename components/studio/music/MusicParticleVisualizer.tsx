@@ -145,7 +145,8 @@ export function MusicParticleVisualizer({ playing, compact = false }: MusicParti
         visible = entries[0]?.isIntersecting ?? true;
         if (visible) {
           draw(0);
-          if (playing && !reducedMotion) raf = requestAnimationFrame(animate);
+          cancelAnimationFrame(raf);
+          if (playing && !reducedMotion && !document.hidden) raf = requestAnimationFrame(animate);
         } else {
           cancelAnimationFrame(raf);
         }
@@ -153,7 +154,10 @@ export function MusicParticleVisualizer({ playing, compact = false }: MusicParti
     intersection?.observe(canvas);
     const onVisibility = () => {
       if (document.hidden) cancelAnimationFrame(raf);
-      else if (playing && visible && !reducedMotion) raf = requestAnimationFrame(animate);
+      else if (playing && visible && !reducedMotion) {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(animate);
+      }
     };
     document.addEventListener('visibilitychange', onVisibility);
     if (playing && !reducedMotion) raf = requestAnimationFrame(animate);
