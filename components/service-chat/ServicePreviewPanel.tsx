@@ -100,12 +100,28 @@ export function ServicePreviewPanel({ config, previews, language, onClearPreview
               {previews.length > 1 && ` (${previews.length})`}
             </span>
             <div className="flex items-center gap-1">
-              <button className="p-1 rounded-lg hover:bg-zinc-900" style={{ color: 'var(--color-text-tertiary)' }}>
-                <Maximize2 className="w-3.5 h-3.5" />
-              </button>
-              <button className="p-1 rounded-lg hover:bg-zinc-900" style={{ color: 'var(--color-text-tertiary)' }}>
-                <Download className="w-3.5 h-3.5" />
-              </button>
+              {latest.type !== 'audio' && (
+                <>
+                  <button className="p-1 rounded-lg hover:bg-zinc-900" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button className="p-1 rounded-lg hover:bg-zinc-900" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+              {latest.type === 'audio' && latest.status === 'ready' && latest.url && (
+                <a
+                  href={latest.url}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={language === 'ka' ? 'მუსიკის ჩამოტვირთვა' : language === 'ru' ? 'Скачать музыку' : 'Download music'}
+                  className="grid h-9 w-9 place-items-center rounded-full text-zinc-300 hover:bg-zinc-900 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
+                >
+                  <Download className="h-4 w-4" aria-hidden />
+                </a>
+              )}
               <button onClick={onClearPreviews} className="p-1 rounded-lg hover:bg-zinc-900" style={{ color: 'var(--color-text-tertiary)' }}>
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -375,7 +391,7 @@ function PreviewContent({ item, accentColor, copy, language }: { item: PreviewIt
 
     case 'audio':
       return (
-        <div className="rounded-2xl p-3 border bg-zinc-950" style={{ borderColor: 'rgba(63,63,70,0.6)' }}>
+        <div className="w-full min-w-0 bg-transparent">
           {item.url ? (
             <MusicPreviewPlayer src={item.url} title={item.title} coverUrl={item.thumbnail} locale={language} compact />
           ) : (
@@ -390,9 +406,7 @@ function PreviewContent({ item, accentColor, copy, language }: { item: PreviewIt
               <source src={item.secondaryUrl} />
             </video>
           ) : null}
-          {item.title ? (
-            <p className="text-[11px] mt-2 truncate text-zinc-400">{item.title}</p>
-          ) : null}
+
         </div>
       );
 
