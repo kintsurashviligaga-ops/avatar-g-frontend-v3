@@ -3,91 +3,80 @@ import '@testing-library/jest-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MusicPreviewPlayer } from './MusicPreviewPlayer';
 
-const sample = 'https://storage.example.test/signed/music.mp3?token=example';
+const src = 'https://storage.example.test/track.mp3?signature=private';
+
 beforeEach(() => {
   jest.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   jest.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  // jsdom doesn't implement 2D canvas; the canvas visualizer safely no-ops.
+  jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });
 afterEach(() => jest.restoreAllMocks());
 
-test('the real signed audio URL loads without crossOrigin, autoplay or any Web Audio setup', () => {
-  render(<MusicPreviewPlayer src={sample} locale="ka" title="ჩემი მუსიკა" durationSec={30} />);
-  const audio = screen.getByTestId('music-player');
-  expect(audio).toHaveAttribute('src', sample);
-  expect(audio).not.toHaveAttribute('crossorigin');
+test('inline borderless preview uses the REAL signed URL, without autoplay/CORS or provider calls', () => {
+  render(<MusicPreviewPlayer src={src} locale="ka" title="ჩემი სიმღერა" durationSec={30} />);
+  expect(screen.getByTestId('music-player')).toHaveAttribute('src', src);
+  expect(screen.getByTestId('music-player')).not.toHaveAttribute('crossorigin');
   expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
-  expect(screen.getByText('ჩემი მუსიკა')).toBeInTheDocument();
+  expect(screen.getByText('ჩემი სიმღერა')).toBeInTheDocument();
+  expect(screen.getByTestId('music-preview-card')).not.toHaveClass('rounded-[22px]');
+  expect(screen.getByTestId('music-particle-canvas')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'დაკვრა' })).toBeInTheDocument();
 });
 
-test('volume and mute UI are completely absent on every locale and layout', () => {
-  for (const locale of ['ka', 'en', 'ru']) {
-    const view = render(<MusicPreviewPlayer src={sample} locale={locale} compact />);
-    expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('music-device-volume')).not.toBeInTheDocument();
-    expect(screen.queryByRole('slider', { name: /volume|ხმის|громкость/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /mute|unmute|ხმის|звук/i })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('slider')).toHaveLength(1); // seek, not volume
-    view.unmount();
-  }
-});
-
-test('play, pause, seek, skip and repeat remain connected to the real media element', () => {
-  render(<MusicPreviewPlayer src={sample} locale="en" durationSec={40} />);
-  const audio = screen.getByTestId('music-player') as HTMLAudioElement;
+test('hero particle diamond pauses and resumes with the actual audio element', () => {
+  render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
+  const audio = screen.getByTestId('music-player');
+  const visual = screen.getByTestId('music-equalizer');
+  expect(visual).toHaveAttribute('data-playing', 'false');
   fireEvent.click(screen.getByRole('button', { name: 'Play' }));
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
   fireEvent.play(audio);
+  expect(visual).toHaveAttribute('data-playing', 'true');
   expect(screen.getByRole('button', { name: 'Pause' })).toHaveAttribute('aria-pressed', 'true');
-  audio.currentTime = 16;
-  fireEvent.timeUpdate(audio);
-  expect(screen.getByText('0:16')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Back 10 seconds' }));
-  expect(audio.currentTime).toBe(6);
-  fireEvent.change(screen.getByRole('slider', { name: 'Seek' }), { target: { value: '21' } });
-  expect(audio.currentTime).toBe(21);
-  fireEvent.click(screen.getByRole('button', { name: 'Repeat' }));
-  expect(audio.loop).toBe(true);
-  expect(screen.getByRole('button', { name: 'Repeat' })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.pause(audio);
-  expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+  expect(visual).toHaveAttribute('data-playing', 'false');
 });
 
-test('switching tracks resets the player instead of carrying over progress', () => {
-  const view = render(<MusicPreviewPlayer src={sample} locale="en" durationSec={30} />);
+test('time pill and seek control work on generated tracks', () => {
+  render(<MusicPreviewPlayer src={src} locale="en" durationSec={62} />);
   const audio = screen.getByTestId('music-player') as HTMLAudioElement;
-  audio.currentTime = 12;
+  expect(screen.getByTestId('music-time-pill')).toHaveTextContent('00:00 / 01:02');
+  audio.currentTime = 13;
   fireEvent.timeUpdate(audio);
-  expect(screen.getByText('0:12')).toBeInTheDocument();
-  view.rerender(<MusicPreviewPlayer src={sample + '2'} locale="en" durationSec={30} />);
-  expect(audio).toHaveAttribute('src', sample + '2');
-  expect(screen.getByText('0:00')).toBeInTheDocument();
+  expect(screen.getByTestId('music-time-pill')).toHaveTextContent('00:13 / 01:02');
+  fireEvent.change(screen.getByRole('slider', { name: 'Seek' }), { target: { value: '24' } });
+  expect(audio.currentTime).toBe(24);
+});
+
+test('all languages and compact mode have exactly one slider, never fake volume or repeat controls', () => {
+  for (const locale of ['ka', 'en', 'ru']) {
+    const rendered = render(<MusicPreviewPlayer src={src} locale={locale} compact />);
+    expect(screen.getAllByRole('slider')).toHaveLength(1);
+    expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('music-repeat-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /mute|unmute|volume|ხმა|звук|repeat|გამეორება|повтор/i })).not.toBeInTheDocument();
+    rendered.unmount();
+  }
+});
+
+test('switching track URL resets play state and progress', () => {
+  const view = render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
+  const audio = screen.getByTestId('music-player') as HTMLAudioElement;
+  audio.currentTime = 18;
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByTestId('music-time-pill')).toHaveTextContent('00:18');
+  view.rerender(<MusicPreviewPlayer src={src + '2'} locale="en" durationSec={30} />);
+  expect(audio).toHaveAttribute('src', src + '2');
+  expect(screen.getByTestId('music-time-pill')).toHaveTextContent('00:00 / 00:30');
   expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
 });
 
-test('no extra titles; artwork and Russian playback error still work', () => {
-  const view = render(<MusicPreviewPlayer src={sample} locale="ka" title="მუსიკა" />);
-  expect(screen.queryByText('MyAvatar Music Studio')).not.toBeInTheDocument();
+test('generic labels are not repeated; playback errors are shown and localized', () => {
+  const view = render(<MusicPreviewPlayer src={src} locale="ka" title="მუსიკა" />);
   expect(screen.queryByText('მუსიკა')).not.toBeInTheDocument();
-  expect(screen.queryByText('მუსიკის პრევიუ')).not.toBeInTheDocument();
-  view.rerender(<MusicPreviewPlayer src={sample} locale="ru" coverUrl="https://storage.example.test/cover.jpg" />);
-  expect(screen.getByRole('button', { name: 'Воспроизвести' })).toBeInTheDocument();
-  expect(view.container.querySelector('img')).toHaveAttribute('src', 'https://storage.example.test/cover.jpg');
+  view.rerender(<MusicPreviewPlayer src={src} locale="ru" />);
   fireEvent.error(screen.getByTestId('music-player'));
   expect(screen.getByRole('alert')).toHaveTextContent('Не удалось');
-});
-
-
-test('premium equalizer has two layers, reflected bars and only animates during playback', () => {
-  render(<MusicPreviewPlayer src={sample} locale="en" />);
-  const visual = screen.getByTestId('music-equalizer');
-  expect(visual).toHaveAttribute('data-playing', 'false');
-  expect(visual.querySelectorAll('.music-eq-bar')).toHaveLength(86);
-  expect((visual.querySelector('.music-eq-bar') as HTMLElement).style.animationPlayState).toBe('paused');
-  fireEvent.play(screen.getByTestId('music-player'));
-  expect(visual).toHaveAttribute('data-playing', 'true');
-  expect((visual.querySelector('.music-eq-bar') as HTMLElement).style.animationPlayState).toBe('running');
-  fireEvent.pause(screen.getByTestId('music-player'));
-  expect((visual.querySelector('.music-eq-bar') as HTMLElement).style.animationPlayState).toBe('paused');
-  expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Воспроизвести' })).toBeInTheDocument();
 });
