@@ -39,6 +39,7 @@ test('primary Music Create player renders the new preview card, not the retired 
   expect(screen.getByRole('button', { name: 'დაკვრა' })).toBeTruthy();
   expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
   expect(screen.getByRole('slider', { name: 'გადახვევა' })).toBeTruthy();
+  expect(screen.getByTestId('music-equalizer')).toBeInTheDocument();
   expect(screen.getByText('Generated with Lyria')).toBeTruthy();
 });
 
@@ -47,7 +48,8 @@ test('English labels, supplied cover and real signed URL survive primary-player 
   const { container } = render(<TrackPlayer url={url} label="Music" locale="en" coverUrl="https://storage.example/art.jpg" />);
   expect(screen.getByTestId('music-player')).toHaveAttribute('src', url);
   expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
-  expect(container.querySelector('img')).toHaveAttribute('src', 'https://storage.example/art.jpg');
+  expect(screen.getByTestId('music-particle-canvas')).toBeInTheDocument();
+  expect(container.querySelector('img')).toBeNull(); // no album art: particle diamond is the hero
 });
 
 
