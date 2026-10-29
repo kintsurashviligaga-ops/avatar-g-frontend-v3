@@ -93,7 +93,7 @@ export function MusicPreviewPlayer({
     if (!audio || !Number.isFinite(seconds)) return;
     const max = Number.isFinite(audio.duration) ? audio.duration : duration;
     const value = Math.max(0, Math.min(Math.max(0, max), seconds));
-    try { audio.currentTime = value; setPosition(value); }
+    try { audio.currentTime = value; setPosition(value); setSeekVersion((x) => x + 1); }
     catch { /* metadata unavailable */ }
   };
 
