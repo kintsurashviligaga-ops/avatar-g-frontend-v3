@@ -188,7 +188,7 @@ export async function loadBeatTrack(
     (window as Window & { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext;
   if (!OfflineCtx) throw new Error('decoder_not_supported');
   const decoder = new OfflineCtx(1, 1, 44_100);
-  const decoded = await decoder.decodeAudioData(bytes.buffer);
+  const decoded = await decoder.decodeAudioData(raw);
   if (signal.aborted) throw new Error('audio_aborted');
   return analyzePcm(decoded);
 }
