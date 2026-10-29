@@ -177,7 +177,8 @@ export async function loadBeatTrack(
     reader.releaseLock();
   }
   if (!total || signal.aborted) throw new Error('audio_not_readable');
-  const bytes = new Uint8Array(total);
+  const raw = new ArrayBuffer(total);
+  const bytes = new Uint8Array(raw);
   let offset = 0;
   for (const chunk of buffers) { bytes.set(chunk, offset); offset += chunk.byteLength; }
 
