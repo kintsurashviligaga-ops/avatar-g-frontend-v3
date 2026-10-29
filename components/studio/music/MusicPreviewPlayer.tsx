@@ -102,7 +102,7 @@ export function MusicPreviewPlayer({
   const accessibleTitle = title && !/^(music|მუსიკა|музыка)$/i.test(title.trim()) ? title.trim() : null;
 
   return (
-    <section data-testid="music-preview-card" aria-label={t.label} className="relative mx-auto w-full min-w-0 max-w-[520px] overflow-hidden rounded-[24px] border border-[#1b3050]/60 bg-[radial-gradient(ellipse_at_50%_32%,#0d1b32_0%,#090e19_66%,#070b13_100%)] px-3 pb-5 pt-2 text-slate-100 shadow-[0_12px_36px_rgba(0,0,0,0.22)] sm:px-5">
+    <section data-testid="music-preview-card" aria-label={t.label} className="relative mx-auto w-full min-w-0 max-w-[520px] overflow-hidden rounded-[24px] border border-[#263044]/70 bg-[radial-gradient(ellipse_at_50%_32%,#101725_0%,#0a0f19_66%,#080c13_100%)] px-3 pb-4 pt-2 text-slate-100 shadow-[0_12px_36px_rgba(0,0,0,0.22)] sm:px-5">
       {accessibleTitle && <span className="sr-only">{accessibleTitle}</span>}
       <audio
         ref={audioRef}
@@ -148,18 +148,37 @@ export function MusicPreviewPlayer({
             {formatTime(position)} / {formatTime(total)}
           </span>
         </div>
-        <input
-          data-testid="music-seek-slider"
-          type="range"
-          aria-label={t.seek}
-          min="0"
-          max={Math.max(1, total)}
-          step="0.1"
-          value={Math.min(position, Math.max(1, total))}
-          onChange={(event) => seek(Number(event.target.value))}
-          className="music-preview-seek block h-[5px] w-full cursor-pointer appearance-none rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300"
-          style={{ background: 'linear-gradient(to right, #228bff ' + progress + '%, #343b49 ' + progress + '%)' }}
-        />
+        {/* One hairline and one dot only. The invisible native range retains
+            keyboard, touch, screen-reader and iPhone drag support without any
+            global/browser range styling creating thick blue/green stripes. */}
+        <div data-testid="music-seek-track" className="group relative flex h-9 w-full items-center">
+          <div className="pointer-events-none relative h-[2px] w-full overflow-hidden rounded-full bg-[#3a4150]">
+            <div
+              data-testid="music-seek-fill"
+              className="h-full rounded-full bg-[#b6bfcc]"
+              style={{ width: progress + '%' }}
+            />
+          </div>
+          <div
+            aria-hidden="true"
+            data-testid="music-seek-thumb"
+            className="pointer-events-none absolute top-1/2 h-[11px] w-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#d5dce6] bg-[#f0f3f8] shadow-[0_1px_5px_rgba(0,0,0,0.3)]"
+            style={{ left: progress + '%' }}
+          />
+          <input
+            data-testid="music-seek-slider"
+            type="range"
+            aria-label={t.seek}
+            aria-valuetext={formatTime(position) + ' / ' + formatTime(total)}
+            min="0"
+            max={Math.max(1, total)}
+            step="0.1"
+            value={Math.min(position, Math.max(1, total))}
+            onChange={(event) => seek(Number(event.target.value))}
+            className="absolute inset-0 z-10 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-200"
+            style={{ WebkitAppearance: 'none', appearance: 'none' }}
+          />
+        </div>
       </div>
       {error && <p role="alert" className="mt-3 text-center text-xs text-amber-200">{t.failed}</p>}
       {!error && analysisState === 'unavailable' && (
@@ -168,7 +187,7 @@ export function MusicPreviewPlayer({
         </p>
       )}
       <span className="sr-only" data-testid="beat-sync-state">{analysisState}</span>
-      <style jsx>{'.music-preview-seek::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%; border:2px solid #fff; background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.2); } .music-preview-seek::-moz-range-thumb { width:14px; height:14px; border:2px solid #fff; border-radius:50%; background:#fff; }'}</style>
+
     </section>
   );
 }
