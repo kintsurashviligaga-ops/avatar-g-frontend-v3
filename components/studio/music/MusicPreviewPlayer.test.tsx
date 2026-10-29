@@ -24,7 +24,7 @@ test('inline borderless preview uses the REAL signed URL, without autoplay/CORS 
   expect(screen.getByRole('button', { name: 'დაკვრა' })).toBeInTheDocument();
 });
 
-test('hero particle diamond pauses and resumes with the actual audio element', () => {
+test('organic smoke visual pauses and resumes with the actual audio element', () => {
   render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
   const audio = screen.getByTestId('music-player');
   const visual = screen.getByTestId('music-equalizer');
@@ -82,32 +82,39 @@ test('generic labels are not repeated; playback errors are shown and localized',
 });
 
 
-test('owner reference replaces the diamond with muted, looping, inline smoke video', () => {
+test('organic renderer replaces the MP4 and mechanical diamond with pure canvas', () => {
   render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
-  const clip = screen.getByTestId('music-smoke-video') as HTMLVideoElement;
-  expect(clip).toHaveAttribute('src', '/media/smoke-orb-preview.mp4');
-  expect(clip.muted).toBe(true);
-  expect(clip.loop).toBe(true);
-  expect(clip).toHaveAttribute('playsinline');
-  expect(clip).not.toHaveAttribute('controls');
-  expect(screen.getByTestId('music-player')).toHaveAttribute('src', src);
-  expect(screen.getByTestId('music-smoke-orb')).toBeInTheDocument();
+  const orb = screen.getByTestId('music-smoke-orb');
+  expect(orb).toBeInTheDocument();
+  expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-renderer', 'organic-canvas');
   expect(screen.getByTestId('music-particle-canvas')).toBeInTheDocument();
+  expect(screen.queryByTestId('music-smoke-video')).not.toBeInTheDocument();
+  expect(document.querySelector('video')).toBeNull();
+  expect(screen.getByTestId('music-player')).toHaveAttribute('src', src);
 });
 
-test('decoration follows real audio play and pause but never overrides the signed audio source', () => {
+test('the progress rail contains only one neutral hairline, no blue stripes', () => {
+  render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
+  const track = screen.getByTestId('music-seek-track');
+  expect(track).toBeInTheDocument();
+  expect(screen.getByTestId('music-seek-fill')).toHaveClass('bg-[#b6bfcc]');
+  expect(screen.getByTestId('music-seek-thumb')).toHaveClass('bg-[#f0f3f8]');
+  expect(track.querySelectorAll('input[type="range"]')).toHaveLength(1);
+  expect(track.querySelectorAll('div')).toHaveLength(3);
+  expect(screen.getByRole('slider', { name: 'Seek' })).toBeInTheDocument();
+  expect(screen.getByTestId('music-seek-slider')).not.toHaveClass('music-preview-seek');
+});
+
+test('organic canvas listens to the real audio play/pause, never changes the signed source', () => {
   render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
   const audio = screen.getByTestId('music-player');
-  const video = screen.getByTestId('music-smoke-video') as HTMLVideoElement;
   expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-playing', 'false');
   fireEvent.play(audio);
   expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-playing', 'true');
-  expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
   fireEvent.pause(audio);
   expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-playing', 'false');
-  expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
-  expect(video.muted).toBe(true);
   expect(audio).toHaveAttribute('src', src);
+  expect(audio).not.toHaveAttribute('crossorigin');
 });
 
 test('seeking changes the real song and retains a single progress slider', () => {
