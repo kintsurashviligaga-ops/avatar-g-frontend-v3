@@ -153,7 +153,7 @@ export function MusicParticleVisualizer({ playing, compact = false, audioRef, be
       ? new IntersectionObserver((entries) => {
         visible = entries[0]?.isIntersecting ?? true;
         if (visible) {
-          draw(0);
+          draw();
           cancelAnimationFrame(raf);
           if (playing && reactive && !reducedMotion && !document.hidden) raf = requestAnimationFrame(animate);
         } else {
