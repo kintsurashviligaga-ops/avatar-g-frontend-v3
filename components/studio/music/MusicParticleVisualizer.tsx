@@ -1,13 +1,16 @@
 'use client';
 
 /**
- * The owner's smoke-orb animation, optimized as a seamless locally hosted MP4.
- * It replaces the old four-point diamond. The MP4 contains NO sound.
+ * Lightweight, code-rendered organic smoke sphere for Music Studio.
  *
- * Visual reaction is tied to the real decoded track (bass/beat/energy) at
- * audio.currentTime. The video itself is pre-rendered and does not encode
- * the track's frequency content; only the glow/scale/particle response is
- * truly beat-driven. No fake BPM and no createMediaElementSource CORS risks.
+ * Inspired by the owner's smoky orb reference: volumetric specks, floating
+ * wisps, soft blue-white bloom and organic turbulence (not a star, equalizer,
+ * pre-recorded MP4, or fake percussive loop).
+ *
+ * Movement follows the HTMLAudioElement.currentTime clock, so pause, seek,
+ * background stalls and resumed playback cannot desynchronize the illustration.
+ * Real PCM beats/bass modulate its brightness and breathing radius only when
+ * beatTrack is available. Native signed audio playback remains untouched.
  */
 import { useEffect, useRef, type RefObject } from 'react';
 import { beatAtTime, type BeatTrack } from './beatAnalysis';
@@ -20,171 +23,237 @@ export interface MusicParticleVisualizerProps {
   seekVersion?: number;
 }
 
-const VISUAL_PATH = '/media/smoke-orb-preview.mp4';
+type Speck = {
+  a: number;
+  r: number;
+  depth: number;
+  speed: number;
+  seed: number;
+  size: number;
+  tone: number;
+};
+
+function seededRandom(seed: number) {
+  let x = seed >>> 0;
+  return () => ((x = (1664525 * x + 1013904223) >>> 0) / 4294967296);
+}
+
+const rand = seededRandom(0x452aceaf);
+// Radial randomization puts a dense luminous cloud in the middle and tapered
+// filaments outside, rather than a symmetrical diamond or a mechanical ring.
+const SPECKS: Speck[] = Array.from({ length: 680 }, () => ({
+  a: rand() * Math.PI * 2,
+  r: Math.pow(rand(), 0.67),
+  depth: rand() * 2 - 1,
+  speed: 0.45 + rand() * 0.75,
+  seed: rand() * Math.PI * 2,
+  size: 0.6 + Math.pow(rand(), 2.8) * 1.6,
+  tone: Math.floor(rand() * 4),
+})).sort((a, b) => a.depth - b.depth);
+
+const COLORS = [
+  [31, 103, 193],   // deep cobalt
+  [82, 158, 218],   // muted azure
+  [162, 208, 238],  // ice
+  [218, 226, 242],  // cool off-white
+] as const;
 
 export function MusicParticleVisualizer({
   playing, compact = false, audioRef, beatTrack = null, seekVersion = 0,
 }: MusicParticleVisualizerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const orbRef = useRef<HTMLDivElement>(null);
-  const haloRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Video is a lightweight decor layer, never the source of audio.
-  // It is muted and playsInline to keep native iPhone music playback intact.
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    if (playing && !reduce) {
-      const result = video.play();
-      if (result && typeof result.catch === 'function') {
-        void result.catch(() => { /* leave the last painted frame visible */ });
-      }
-    } else {
-      video.pause();
-    }
-    return () => { video.pause(); };
-  }, [playing]);
-
-  // Deterministic seek behavior. The orb and audio use the same timeline,
-  // even when the user drags the scrubber while the music is paused.
-  useEffect(() => {
-    const video = videoRef.current;
-    const audio = audioRef?.current;
-    if (!video || !audio || !Number.isFinite(video.duration) || video.duration <= 0) return;
-    const desired = audio.currentTime % video.duration;
-    if (Math.abs(desired - video.currentTime) > 0.1) {
-      try { video.currentTime = desired; } catch { /* seekable metadata not ready */ }
-    }
-  }, [seekVersion, audioRef]);
-
-  useEffect(() => {
-    const visual = canvasRef.current;
-    const orb = orbRef.current;
-    const halo = haloRef.current;
-    if (!visual || !orb || !halo) return;
-    const ctx = visual.getContext('2d', { alpha: true });
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) return;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     const reactive = !!beatTrack?.frames.length;
     let width = 1;
     let height = 1;
     let visible = true;
     let raf = 0;
-    let last = -1000;
+    let lastFrame = -1000;
 
-    const resize = () => {
-      const rect = visual.getBoundingClientRect();
-      width = Math.max(1, rect.width);
-      height = Math.max(1, rect.height);
-      if (ctx) {
-        const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
-        visual.width = Math.round(width * ratio);
-        visual.height = Math.round(height * ratio);
-        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    // The sprite atlas gives each particle a soft optical falloff, with
+    // fewer expensive shadows/gradients during actual animation.
+    const sprites = COLORS.map(([r, g, b]) => {
+      const sprite = document.createElement('canvas');
+      sprite.width = 32;
+      sprite.height = 32;
+      const brush = sprite.getContext('2d');
+      if (brush) {
+        const glow = brush.createRadialGradient(16, 16, 0, 16, 16, 15);
+        glow.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',0.95)');
+        glow.addColorStop(0.17, 'rgba(' + r + ',' + g + ',' + b + ',0.48)');
+        glow.addColorStop(0.50, 'rgba(' + r + ',' + g + ',' + b + ',0.15)');
+        glow.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0)');
+        brush.fillStyle = glow;
+        brush.fillRect(0, 0, 32, 32);
       }
-      renderBeat();
-    };
+      return sprite;
+    });
 
-    const renderBeat = () => {
-      const time = audioRef?.current?.currentTime ?? 0;
-      const { energy, bass, beat } = beatAtTime(beatTrack, time);
-      // No predetermined fake beat for an unanalyzable signed track.
-      const scale = reactive && !reduce ? 1 + 0.035 * bass + 0.065 * beat : 1;
-      const brightness = reactive ? 0.76 + 0.12 * energy + 0.18 * beat : 0.83;
-      const glow = reactive ? 0.05 + 0.08 * bass + 0.13 * beat : 0.035;
-      orb.style.transform = 'translateZ(0) scale(' + scale.toFixed(3) + ')';
-      orb.style.filter = 'hue-rotate(191deg) saturate(1.15) contrast(1.15) brightness(' + brightness.toFixed(3) + ')';
-      halo.style.opacity = Math.min(0.7, glow * 3).toFixed(3);
-      halo.style.transform = 'scale(' + (1 + bass * 0.09 + beat * 0.16).toFixed(3) + ')';
-
+    function paint() {
       if (!ctx) return;
+      const t = audioRef?.current?.currentTime ?? 0;
+      const meter = beatAtTime(beatTrack, t);
+      const bass = reactive ? meter.bass : 0;
+      const beat = reactive ? meter.beat : 0;
+      const energy = reactive ? meter.energy : 0;
+      const cx = width / 2;
+      const cy = height / 2;
+      const base = Math.min(width, height) * 0.355;
+      const swell = 1 + 0.045 * bass + 0.085 * beat;
+
       ctx.clearRect(0, 0, width, height);
-      if (!reactive || reduce) return;
-      // A restrained ring of micro-glints, driven by authentic transients.
-      const power = Math.max(0, beat * 0.72 + bass * 0.12);
-      if (power < 0.03) return;
-      const radius = Math.min(width, height) * (0.275 + power * 0.08);
-      for (let i = 0; i < 56; i++) {
-        const a = (Math.PI * 2 * i / 56) + 0.035 * Math.sin(time + i);
-        const d = radius * (0.78 + 0.24 * Math.sin(i * 24.17 + time * 0.6));
-        const x = width / 2 + d * Math.cos(a);
-        const y = height / 2 + d * Math.sin(a);
-        ctx.fillStyle = 'rgba(71,180,255,' + (power * (0.07 + (i % 5) * 0.016)).toFixed(3) + ')';
+
+      // Underpainting: multiple transparent, overlapping washes yield a smoky
+      // shape without bright turquoise bars, harsh borders or a solid disc.
+      const cloud = ctx.createRadialGradient(cx, cy, base * 0.05, cx, cy, base * 1.4);
+      cloud.addColorStop(0, 'rgba(29,47,85,0.29)');
+      cloud.addColorStop(0.36, 'rgba(13,39,81,0.15)');
+      cloud.addColorStop(0.66, 'rgba(16,45,91,' + (0.07 + 0.08 * bass).toFixed(3) + ')');
+      cloud.addColorStop(1, 'rgba(9,25,56,0)');
+      ctx.fillStyle = cloud;
+      ctx.beginPath();
+      ctx.arc(cx, cy, base * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Transparent threads with continuously varying curvature make the orb
+      // resemble swirling smoke instead of a rigid audio frequency diagram.
+      for (let k = 0; k < 22; k++) {
+        const phase = k * 2.39996323;
+        const u = t * (0.09 + (k % 5) * 0.016) + phase;
+        const rr = base * (0.28 + 0.54 * ((k * 13 % 23) / 23)) * swell;
+        const x = cx + rr * Math.cos(u);
+        const y = cy + rr * Math.sin(u) * 0.82;
+        const curl = base * (0.25 + (k % 3) * 0.075);
+        ctx.strokeStyle = k % 4 === 0
+          ? 'rgba(183,210,234,' + (0.043 + beat * 0.018).toFixed(3) + ')'
+          : 'rgba(61,126,203,' + (0.049 + energy * 0.035).toFixed(3) + ')';
+        ctx.lineWidth = k % 5 === 0 ? 1.05 : 0.72;
         ctx.beginPath();
-        ctx.arc(x, y, i % 7 === 0 ? 1.4 : 0.75, 0, Math.PI * 2);
+        ctx.moveTo(x, y);
+        ctx.bezierCurveTo(
+          x + curl * Math.cos(u + 1.2),
+          y + curl * Math.sin(u + 1.2),
+          cx + rr * Math.cos(u + 2.8) * 0.5,
+          cy + rr * Math.sin(u + 2.8) * 0.62,
+          cx + rr * Math.cos(u + 3.9) * 0.74,
+          cy + rr * Math.sin(u + 3.9) * 0.64,
+        );
+        ctx.stroke();
+      }
+
+      // Depth-sorted cloud, gently twisting with multiple non-commensurate
+      // rates. Size & opacity vary with depth and distance, not random flicker.
+      for (const p of SPECKS) {
+        const twist = t * 0.085 * p.speed * (p.depth > 0 ? 1 : -0.5);
+        const angle = p.a + twist
+          + Math.sin(p.seed + t * 0.17 + p.r * 3.5) * 0.16;
+        const turbulence = 1
+          + 0.105 * Math.sin(p.seed + t * 0.28 + p.depth * 3)
+          + 0.055 * Math.sin(2 * angle + t * 0.13);
+        const r = base * (0.13 + 0.94 * p.r) * turbulence * swell;
+        const x = cx + Math.cos(angle) * r + p.depth * base * 0.15;
+        const y = cy + Math.sin(angle) * r * (0.79 + 0.12 * Math.cos(p.seed + t * 0.10));
+        const perspective = 0.75 + (p.depth + 1) * 0.25;
+        const alpha = Math.min(0.75, (0.16 + 0.42 * p.r) * perspective * (0.82 + energy * 0.18 + beat * 0.18));
+        const px = p.size * (1.1 + 0.7 * perspective);
+        const sprite = sprites[p.tone]!;
+        if (sprite.width && sprite.height) {
+          ctx.globalAlpha = alpha;
+          ctx.drawImage(sprite, x - px * 4, y - px * 4, px * 8, px * 8);
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // A few fine highlights create spatial depth without strobing.
+      for (let k = 0; k < 28; k++) {
+        const p = SPECKS[(k * 23 + 7) % SPECKS.length]!;
+        const a = p.a + t * 0.11 * p.speed;
+        const r = base * (0.27 + p.r * 0.7) * swell;
+        const x = cx + r * Math.cos(a);
+        const y = cy + r * Math.sin(a) * 0.8;
+        ctx.beginPath();
+        ctx.arc(x, y, k % 7 === 0 ? 0.9 : 0.55, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(228,237,250,' + (0.17 + beat * 0.08).toFixed(3) + ')';
         ctx.fill();
       }
+    }
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      width = Math.max(1, rect.width);
+      height = Math.max(1, rect.height);
+      const ratio = Math.min(window.devicePixelRatio || 1, 1.65);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      paint();
     };
 
     const frame = (stamp: number) => {
-      if (!visible || document.hidden || !playing || reduce || !reactive) return;
-      if (stamp - last >= 32) { renderBeat(); last = stamp; }
+      if (!visible || document.hidden || !playing || reduce) return;
+      // ~25 FPS on mobile: the cloud changes slowly, so 60 FPS is unnecessary.
+      if (stamp - lastFrame >= 39) {
+        paint();
+        lastFrame = stamp;
+      }
       raf = requestAnimationFrame(frame);
     };
+
+    const requestNext = () => {
+      cancelAnimationFrame(raf);
+      if (playing && visible && !document.hidden && !reduce) {
+        raf = requestAnimationFrame(frame);
+      }
+    };
+
     resize();
-    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
-    resizeObserver?.observe(visual);
-    const intersection = typeof IntersectionObserver !== 'undefined'
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
+    observer?.observe(canvas);
+    const intersection = typeof IntersectionObserver === 'function'
       ? new IntersectionObserver(entries => {
         visible = entries[0]?.isIntersecting ?? true;
-        cancelAnimationFrame(raf);
-        if (visible) {
-          renderBeat();
-          if (playing && reactive && !reduce && !document.hidden) raf = requestAnimationFrame(frame);
-        }
-      }, { threshold: 0.01 }) : null;
-    intersection?.observe(visual);
+        if (visible) paint();
+        requestNext();
+      }, { threshold: 0.01 })
+      : null;
+    intersection?.observe(canvas);
     const visibility = () => {
-      cancelAnimationFrame(raf);
-      if (!document.hidden && visible && playing && reactive && !reduce) raf = requestAnimationFrame(frame);
+      if (!document.hidden) paint();
+      requestNext();
     };
     document.addEventListener('visibilitychange', visibility);
-    if (playing && reactive && !reduce) raf = requestAnimationFrame(frame);
+    requestNext();
 
     return () => {
       cancelAnimationFrame(raf);
-      resizeObserver?.disconnect();
+      observer?.disconnect();
       intersection?.disconnect();
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [playing, beatTrack, audioRef, seekVersion]);
+  }, [playing, audioRef, beatTrack, seekVersion]);
 
   return (
     <div
       data-testid="music-equalizer"
       data-playing={playing ? 'true' : 'false'}
+      data-renderer="organic-canvas"
       aria-hidden="true"
-      className={'pointer-events-none relative mx-auto w-full overflow-hidden ' + (compact ? 'max-w-[268px]' : 'max-w-[318px] sm:max-w-[348px]')}
+      className={'pointer-events-none relative mx-auto w-full overflow-hidden ' +
+        (compact ? 'max-w-[268px]' : 'max-w-[318px] sm:max-w-[348px]')}
     >
-      <div
-        ref={haloRef}
-        className="absolute inset-[22%] rounded-full bg-[radial-gradient(ellipse,rgba(17,108,231,0.25)_0%,rgba(12,57,132,0.06)_48%,transparent_74%)] blur-[25px]"
-      />
-      <div
-        ref={orbRef}
-        data-testid="music-smoke-orb"
-        className="relative aspect-square w-full will-change-transform"
-      >
-        <div className="absolute inset-[6%] rounded-full bg-[radial-gradient(ellipse,rgba(18,50,101,0.13)_0%,transparent_65%)]" />
-        <video
-          data-testid="music-smoke-video"
-          ref={videoRef}
-          src={VISUAL_PATH}
-          muted
-          loop
-          playsInline
-          preload="auto"
-          disablePictureInPicture
-          tabIndex={-1}
-          className="absolute inset-0 h-full w-full object-contain"
+      <div data-testid="music-smoke-orb" className="relative aspect-square w-full">
+        <canvas
+          data-testid="music-particle-canvas"
+          ref={canvasRef}
+          className="absolute inset-0 block h-full w-full"
         />
       </div>
-      <canvas
-        ref={canvasRef}
-        data-testid="music-particle-canvas"
-        className="absolute inset-0 h-full w-full"
-      />
     </div>
   );
 }
