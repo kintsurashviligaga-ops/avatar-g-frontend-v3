@@ -375,7 +375,7 @@ function PreviewContent({ item, accentColor, copy, language }: { item: PreviewIt
 
     case 'audio':
       return (
-        <div className="rounded-2xl p-3 border bg-zinc-950" style={{ borderColor: 'rgba(63,63,70,0.6)' }}>
+        <div className="w-full min-w-0 bg-transparent">
           {item.url ? (
             <MusicPreviewPlayer src={item.url} title={item.title} coverUrl={item.thumbnail} locale={language} compact />
           ) : (
@@ -390,9 +390,7 @@ function PreviewContent({ item, accentColor, copy, language }: { item: PreviewIt
               <source src={item.secondaryUrl} />
             </video>
           ) : null}
-          {item.title ? (
-            <p className="text-[11px] mt-2 truncate text-zinc-400">{item.title}</p>
-          ) : null}
+
         </div>
       );
 
