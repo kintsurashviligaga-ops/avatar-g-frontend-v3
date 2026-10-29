@@ -13,6 +13,7 @@ export interface MusicParticleVisualizerProps {
   compact?: boolean;
   audioRef?: RefObject<HTMLAudioElement>;
   beatTrack?: BeatTrack | null;
+  seekVersion?: number;
 }
 
 type Particle = {
@@ -47,7 +48,7 @@ const PARTICLES: Particle[] = Array.from({ length: 1050 }, () => {
   };
 });
 
-export function MusicParticleVisualizer({ playing, compact = false, audioRef, beatTrack = null }: MusicParticleVisualizerProps) {
+export function MusicParticleVisualizer({ playing, compact = false, audioRef, beatTrack = null, seekVersion = 0 }: MusicParticleVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -176,7 +177,7 @@ export function MusicParticleVisualizer({ playing, compact = false, audioRef, be
       observer?.disconnect();
       intersection?.disconnect();
     };
-  }, [playing, beatTrack, audioRef]);
+  }, [playing, beatTrack, audioRef, seekVersion]);
 
   return (
     <div
