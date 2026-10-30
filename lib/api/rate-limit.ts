@@ -186,6 +186,9 @@ export const RATE_LIMITS = {
   // turn to Fast (with a notice) instead of refusing it. Read it through `chatProUserLimit()`, which applies the
   // operator's CHAT_PRO_DAILY_LIMIT; this entry is the default and the namespace.
   CHAT_PRO_USER: { maxRequests: 20, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:chat:pro:user' } as const,
+  // Agent G documents (/api/documents/create), per verified account. Each is one or two Gemini Flash calls of up to
+  // ~16k output tokens (a 20-page document), about $0.12 at the most. Free until the owner prices it, so it is capped.
+  DOCUMENT_DAILY: { maxRequests: 20, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:doc:user' } as const,
   // Read-aloud (/api/tts/gemini), IP-keyed, before the session check. Its OWN namespace on purpose.
   // ⚠️ IT USED TO DRAW ON WRITE (20/min, shared with every other WRITE route). The studio reads a reply in ~600-char
   // chunks and prefetches the next one, so ONE long answer is ~14 requests. Two long replies in a minute — or one
