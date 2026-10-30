@@ -49,8 +49,8 @@ test('silence does not invent drum beats; malformed audio returns neutral values
     getChannelData: () => silence,
   });
   expect(Math.max(...track.frames.map(frame => frame.beat))).toBe(0);
-  expect(beatAtTime(track, 0.4)).toEqual({ energy: 0, bass: 0, beat: 0 });
-  expect(beatAtTime(null, 2)).toEqual({ energy: 0, bass: 0, beat: 0 });
+  expect(beatAtTime(track, 0.4)).toEqual({ energy: 0, bass: 0, mid: 0, high: 0, beat: 0 });
+  expect(beatAtTime(null, 2)).toEqual({ energy: 0, bass: 0, mid: 0, high: 0, beat: 0 });
   expect(analyzePcm({ sampleRate: 0, length: 0, numberOfChannels: 0, getChannelData: () => silence }).frames).toHaveLength(0);
 });
 
@@ -59,4 +59,25 @@ test('duration and sample collection are bounded to three minutes', () => {
   const track = analyzePcm({ sampleRate: 24000, length: data.length, numberOfChannels: 1, getChannelData: () => data });
   expect(track.frames).toHaveLength(180 * BEAT_FPS);
   expect(track.duration).toBe(180);
+});
+
+
+test('fluid envelopes follow actual low, mid and high frequency PCM sections', () => {
+  const sampleRate = 24000;
+  const length = sampleRate * 3;
+  const data = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    const hz = t < 1 ? 85 : t < 2 ? 840 : 6200;
+    data[i] = 0.48 * Math.sin(2 * Math.PI * hz * t);
+  }
+  const track = analyzePcm({ sampleRate, length, numberOfChannels: 1, getChannelData: () => data });
+  const low = beatAtTime(track, 0.5);
+  const middle = beatAtTime(track, 1.5);
+  const top = beatAtTime(track, 2.5);
+  expect(low.bass).toBeGreaterThan(middle.bass);
+  expect(middle.mid).toBeGreaterThan(low.mid);
+  expect(top.high).toBeGreaterThan(middle.high);
+  expect([low, middle, top].every(frame => [frame.bass, frame.mid, frame.high].every(v => v >= 0 && v <= 1))).toBe(true);
+  expect(beatAtTime(track, 1.5)).toEqual(middle); // seek stays deterministic
 });

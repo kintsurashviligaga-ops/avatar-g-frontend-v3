@@ -13,6 +13,10 @@ export interface BeatFrame {
   energy: number;
   /** normalized sub-180Hz bass power (0–1), for center/radius response */
   bass: number;
+  /** 170–2300Hz musical mids (0–1), for liquid membrane motion */
+  mid: number;
+  /** >2300Hz upper harmonics (0–1), for restrained shimmer */
+  high: number;
   /** detected percussive transient (0–1), with a short post-hit decay */
   beat: number;
 }
@@ -50,15 +54,19 @@ export function analyzePcm(audio: PcmSource): BeatTrack {
   const channelA = audio.getChannelData(0);
   const channelB = audio.numberOfChannels > 1 ? audio.getChannelData(1) : channelA;
   const bass: number[] = [];
+  const mid: number[] = [];
   const high: number[] = [];
   const energy: number[] = [];
 
-  // One-pole LP isolates bass and kick; high frequencies help distinguish
-  // snare/hi-hat transients. Work on both channels, without any FFT allocation.
+  // Two inexpensive one-pole low-pass filters produce actual bass, mid and
+  // high band envelopes. No AudioContext rerouting of private signed playback.
   const a = 1 - Math.exp(-2 * Math.PI * 170 / rate);
+  const aMid = 1 - Math.exp(-2 * Math.PI * 2300 / rate);
   let lp = 0;
+  let lpMid = 0;
   for (let i = 0; i < n; i++) {
     let b = 0;
+    let m = 0;
     let h = 0;
     let e = 0;
     const start = i * hop;
@@ -66,21 +74,27 @@ export function analyzePcm(audio: PcmSource): BeatTrack {
     for (let j = start; j < end; j++) {
       const s = 0.5 * ((channelA[j] ?? 0) + (channelB[j] ?? 0));
       lp += a * (s - lp);
+      lpMid += aMid * (s - lpMid);
       b += lp * lp;
-      const hp = s - lp;
-      h += hp * hp;
+      const middle = lpMid - lp;
+      m += middle * middle;
+      const upper = s - lpMid;
+      h += upper * upper;
       e += s * s;
     }
     const count = Math.max(1, end - start);
     bass.push(Math.sqrt(b / count));
+    mid.push(Math.sqrt(m / count));
     high.push(Math.sqrt(h / count));
     energy.push(Math.sqrt(e / count));
   }
   const bRef = Math.max(0.002, percentile(bass, 0.95));
+  const mRef = Math.max(0.002, percentile(mid, 0.95));
   const hRef = Math.max(0.002, percentile(high, 0.95));
   const eRef = Math.max(0.002, percentile(energy, 0.95));
 
   const bNorm = bass.map(v => clamp(v / bRef));
+  const mNorm = mid.map(v => clamp(v / mRef));
   const hNorm = high.map(v => clamp(v / hRef));
   const eNorm = energy.map(v => clamp(v / eRef));
 
@@ -89,9 +103,11 @@ export function analyzePcm(audio: PcmSource): BeatTrack {
   const novelty = bNorm.map((b, i) => {
     if (!i) return 0;
     const bassBefore = (bNorm[i - 1]! + (bNorm[Math.max(0, i - 2)] ?? 0)) * 0.5;
+    const midBefore = (mNorm[i - 1]! + (mNorm[Math.max(0, i - 2)] ?? 0)) * 0.5;
     const highBefore = (hNorm[i - 1]! + (hNorm[Math.max(0, i - 2)] ?? 0)) * 0.5;
-    return Math.max(0, b - bassBefore) * 0.8
-      + Math.max(0, hNorm[i]! - highBefore) * 0.3;
+    return Math.max(0, b - bassBefore) * 0.75
+      + Math.max(0, mNorm[i]! - midBefore) * 0.16
+      + Math.max(0, hNorm[i]! - highBefore) * 0.20;
   });
   const floor = Math.max(0.018, percentile(novelty, 0.68) * 1.5);
   const peak = Math.max(floor + 0.045, percentile(novelty, 0.98));
@@ -112,6 +128,8 @@ export function analyzePcm(audio: PcmSource): BeatTrack {
     duration: samples / rate,
     frames: beat.map((hit, i) => ({
       bass: bNorm[i]!,
+      mid: mNorm[i]!,
+      high: hNorm[i]!,
       energy: eNorm[i]!,
       beat: hit,
     })),
@@ -120,7 +138,7 @@ export function analyzePcm(audio: PcmSource): BeatTrack {
 
 export function beatAtTime(track: BeatTrack | null, seconds: number): BeatFrame {
   if (!track || !track.frames.length || !Number.isFinite(seconds) || seconds < 0) {
-    return { energy: 0, bass: 0, beat: 0 };
+    return { energy: 0, bass: 0, mid: 0, high: 0, beat: 0 };
   }
   // Linear interpolation avoids visual jumps at the 20ms analysis frame boundary.
   const time = Math.min(seconds * track.fps, track.frames.length - 1);
@@ -131,6 +149,8 @@ export function beatAtTime(track: BeatTrack | null, seconds: number): BeatFrame 
   return {
     energy: x.energy + (y.energy - x.energy) * mix,
     bass: x.bass + (y.bass - x.bass) * mix,
+    mid: x.mid + (y.mid - x.mid) * mix,
+    high: x.high + (y.high - x.high) * mix,
     beat: x.beat + (y.beat - x.beat) * mix,
   };
 }
