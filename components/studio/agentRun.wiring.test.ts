@@ -15,7 +15,7 @@ const between = (a: string, b: string): string => {
 };
 
 describe('the run card in the studio', () => {
-  const turn = between('agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {', '// Agent G\'s note belongs to the tool it was made in');
+  const turn = between('agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {', '/** A Montage export is running / the editor was closed while it ran');
 
   test('the chat turn is told when runs are open and which ended run „continue" carries on', () => {
     expect(turn).toContain('runOn: agentMontageOn');
@@ -86,7 +86,7 @@ describe('Retry on the one-job cards', () => {
 });
 
 describe('„what is in my video?" on Agent G\'s analysis card (behind AGENT_G_FILE_ANALYSIS)', () => {
-  const turn = between('agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {', '// Agent G\'s note belongs to the tool it was made in');
+  const turn = between('agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {', '/** A Montage export is running / the editor was closed while it ran');
 
   test('the chat turn hears it only where the route opens it; the one attached file goes with it', () => {
     expect(src).toContain('void analyzeEnabled((u, init) => fetch(u, init)).then((on) => { if (live) setAgentAnalyzeOn(on); });');

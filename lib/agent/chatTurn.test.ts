@@ -448,4 +448,18 @@ describe('Media Studio v2.1: text, logos, masks and captions in words (owner, 20
     // A trim is a video's: on a picture it is not planned.
     expect(planChatTurn('პირველი 3 წამი დატოვე', on({ attachments: ['image'] })).kind).not.toBe('edit');
   });
+
+  test('a photo with a new video\'s brief: its shot times are not caption lines, the Video path takes it (GG\'s E2E 2026-10-26)', () => {
+    // GG's brief, verbatim: „0–2s: … 2–8s: …" and „no captions" read as typed captions on the photo, answered „This file has no picture."
+    const brief = 'სცენა 2 — 48-წამიანი ვლოგი\n369 სიმბოლო • 8 წამი\nVeo 3.1, 8s, 9:16. Same actors, clothes and outdoor podcast terrace. '
+      + '0–2s: over-host-shoulder angle toward woman; 2–8s: smooth push-in to her close-up. She says in Georgian: „ჩემი ფოტო ავტვირთე, '
+      + 'Agent G-ს 48-წამიანი ვლოგი ვთხოვე და მზა, დამონტაჟებული ვიდეო მივიღე!" Host reacts with surprise. Photorealism, elegant gestures, '
+      + 'accurate lip-sync, clear voice, no captions.';
+    expect(planChatTurn(brief, on({ attachments: ['image'] })).kind).toBe('pass');
+    expect(planChatTurn(brief, on({ attachments: ['image'], runOn: true })).kind).toBe('pass');
+    // Typed captions with times on an attached video are still a caption track.
+    expect(planChatTurn('დაამატე სუბტიტრები: 0-2 წმ: გამარჯობა; 2-5 წმ: მოგესალმებით', on({ attachments: ['video'] }))).toMatchObject({
+      kind: 'edit', source: 'file', edits: [{ op: 'captions', track: { source: 'typed' } }],
+    });
+  });
 });

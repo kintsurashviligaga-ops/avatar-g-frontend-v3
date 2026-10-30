@@ -177,29 +177,24 @@ async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
   await page.goto(path);
   // The composer is what every path has: the video tool's Create screen replaces the greeting on a desktop.
   await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 30_000 });
-  const desktop = (page.viewportSize()?.width ?? 1280) >= 1024;
-  // On a phone a link to a tool whose input lives in its Create screen opens that screen as a sheet over the composer
-  // (OmniStudio applyTool). A production build does; `next dev` hid it until StrictMode stopped closing it (2026-10-09).
-  // Hold that here, then put the sheet away so each test starts at the composer.
-  if (!desktop && /[?&]tool=(video|product|swap|remix|motion|image|vfx)\b/.test(path)) {
-    const sheet = page.getByTestId('options-sheet');
-    await expect(sheet).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(sheet).toBeHidden();
-  }
-  // On a desktop the Image or Music panel opens with its tool and holds the description, so the composer's box steps
-  // aside (GG, 2026-10-18). The Video panel opens too, but holds no prompt: the box stays beside it (GG, 2026-10-18,
-  // „პრომპტი ჩატის ველში"). Hold that, then put the panel away (the tool chip toggles it) so each test starts the same.
-  if (desktop && /[?&]tool=(video|image|music)\b/.test(path)) {
-    if (/[?&]tool=video\b/.test(path)) {
-      await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
-      await expect(page.getByTestId('composer-input')).toBeVisible();
-    } else {
-      await expect(page.getByTestId('composer-input')).toBeHidden();
-    }
-    await page.getByTestId('options-toggle').click();
+  // The unified composer (GG 2026-10-25): a link to a tool opens the TOOL — its chip and quick settings in the chat box —
+  // and leaves its full settings closed (⋯ opens them as a layer above the box), on a phone and on a desktop alike.
+  if (/[?&]tool=(video|product|swap|remix|motion|image|vfx|music)\b/.test(path)) {
+    await expect(page.getByTestId('active-service-chip')).toBeVisible();
+    await expect(page.locator('#studio-settings').filter({ visible: true })).toHaveCount(0);
   }
   await expect(page.getByTestId('composer-input')).toBeVisible();
+}
+
+/** GET /api/video/engine: every Veo tier open, so the prices are what this test reads (a closed tier is never offered). */
+async function openTiers(page: Page) {
+  await page.route('**/api/video/engine', (r) => r.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      transport: 'vertex', googleOnly: true, audioToggle: true, enhancePrompt: true, nativeCameraControl: false,
+      tiers: Object.fromEntries(['lite', 'fast', 'standard'].map((t) => [t, { available: true, referenceImages: 3, audioToggle: true }])),
+    }),
+  }));
 }
 
 /**
@@ -271,8 +266,10 @@ for (const vp of VIEWPORTS) {
 
     test('the video tool: the tool chip names what you make, and the composer asks for a shot', async ({ page }) => {
       await openDashboard(page);
-      // The tool chip names what you make and its shape — its text is its accessible name.
-      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
+      // The unified composer (GG 2026-10-25): the chip names the service, the quick settings its shape — one 8 s clip.
+      await expect(page.getByTestId('active-service-switch')).toContainText('ვიდეო');
+      await expect(page.getByTestId('quick-video-format')).toContainText('9:16');
+      await expect(page.getByTestId('quick-video-length')).toContainText('8');
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
@@ -284,19 +281,18 @@ for (const vp of VIEWPORTS) {
       const sheet = page.getByTestId('tool-sheet');
       await expect(sheet).toBeVisible();
       await expect(sheet.getByTestId('attach')).toHaveCount(0);
-      // The sheet reads the service catalog (§60 step 11): Agent G's chat leads, then one list per category.
-      const group = (name: string) => sheet.getByRole('list', { name, exact: true }).getByRole('button');
-      await expect(sheet.getByRole('list').first()).toHaveAccessibleName('Agent G');
-      await expect(group('Agent G').first()).toContainText('ჩატი');
-      await expect(group('ვიდეო').first()).toContainText('ვიდეო');
-      await expect(group('ვიდეო').first()).toHaveAttribute('aria-pressed', 'true');
-      await expect(group('სურათი და ფოტო').nth(0)).toContainText('სურათი');
-      await expect(group('სურათი და ფოტო').nth(1)).toContainText('ფოტოგრაფი');
-      await expect(group('სურათი და ფოტო').nth(2)).toContainText('ინტერიერის დიზაინერი');
-      await expect(group('მუსიკა').first()).toContainText('მუსიკა');
-      await expect(group('ავატარი').first()).toContainText('ავატარი');
-      // Nothing is lost: the product ad, the swap and motion sit in Video's own list.
-      await expect(group('ვიდეო').nth(1)).toContainText('პროდუქტის რეკლამა');
+      // The unified composer (GG 2026-10-25): the catalog's usable services in three groups — the chat, then the five
+      // makers in GG's order, then everything else; GG's hidden tools stay out.
+      const group = (id: string) => sheet.getByTestId(`service-group-${id}`).getByRole('button');
+      await expect(group('main')).toHaveCount(1);
+      await expect(group('main').first()).toContainText('ჩატი');
+      const create = await group('create').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
+      expect(create).toEqual(['service-video', 'service-image', 'service-music', 'service-avatar', 'service-interior']);
+      await expect(sheet.getByTestId('service-video')).toHaveAttribute('aria-pressed', 'true');
+      await expect(group('extra').first()).toContainText('პროდუქტის რეკლამა');
+      for (const hidden of ['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation']) {
+        await expect(sheet.getByTestId(`service-${hidden}`)).toHaveCount(0);
+      }
     });
 
     test('a service in the sidebar switches the studio and is marked as the active one', async ({ page }) => {
@@ -337,21 +333,25 @@ for (const vp of VIEWPORTS) {
       await openSettings(page);
       await page.getByRole('button', { name: 'დახურვა' }).filter({ visible: true }).first().click();
       await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      await expect(toggle).toHaveText('ვიდეო · 9:16 · 24წმ');
+      await expect(page.getByTestId('active-service-switch')).toContainText('ვიდეო');
+      await expect(page.getByTestId('quick-video-length')).toContainText('8');
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
     test('picking the tool that is already on keeps it', async ({ page }) => {
       await openDashboard(page);
       await page.getByTestId('plus').click();
-      const video = page.getByTestId('tool-sheet').getByRole('list', { name: 'ვიდეო', exact: true }).getByRole('button').first();
+      const video = page.getByTestId('tool-sheet').getByTestId('service-video');
       await expect(video).toHaveAttribute('aria-pressed', 'true');
       await video.click();
       await expect(page.getByTestId('tool-sheet')).toHaveCount(0); // the sheet closed
-      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
-      // Picking it again opens its settings again (a desktop's panel, a phone's sheet). GG 2026-10-18: the panel holds no
-      // description of its own — the words stay in the chat box.
-      await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
+      // The unified composer (GG 2026-10-25): the chip names the service and the quick settings show its values.
+      await expect(page.getByTestId('active-service-switch')).toContainText('ვიდეო');
+      await expect(page.getByTestId('quick-video-format')).toContainText('9:16');
+      // One clip, 8 s by default (GG 2026-10-25 16:21Z): nothing grows it on its own.
+      await expect(page.getByTestId('quick-video-length')).toContainText('8');
+      // The words stay in the chat box: the panel holds no description of its own (GG 2026-10-18).
+      await expect(page.getByTestId('composer-input')).toBeVisible();
       await expect(page.getByTestId('video-prompt-input')).toHaveCount(0);
     });
 
@@ -420,44 +420,42 @@ for (const vp of VIEWPORTS) {
     });
 
     test('the video price is on the chat box\'s Send — it follows quality and length — and nothing sits under the composer', async ({ page }) => {
+      await openTiers(page);
       await openDashboard(page);
-      // Owner, 2026-10-02: no „25 კრედიტი · ~5 წთ“ caption under the box — a tool's price is ON its button. GG 2026-10-18:
-      // the film's words are typed in the chat box, so its Send is the film's one button and carries the quote.
+      // Owner, 2026-10-02: no „25 კრედიტი · ~5 წთ“ caption under the box — a tool's price is ON its button. GG 2026-10-25:
+      // one clip, so Send carries that clip's price (lib/video/directClip, the route's own function).
       await expect(page.getByTestId('price-tag')).toHaveCount(0);
       const pill = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
-      const chip = (await page.getByTestId('options-toggle').boundingBox())!;
-      expect(chip.y).toBeGreaterThanOrEqual(pill.y); // the tool chip is IN the composer
+      const chip = (await page.getByTestId('active-service-switch').boundingBox())!;
+      expect(chip.y).toBeGreaterThanOrEqual(pill.y - 1); // the service chip is IN the composer
       expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
       await page.getByTestId('composer-input').fill('A quiet harbour at dawn');
       const send = page.getByTestId('run-button');
       const settings = await openSettings(page);
-      const quality = settings.getByTestId('video-quality');
-      // 24 s on the default tier (Fast) = 24 × 3.125 credits; Best is ×3.3 (rounded up), Economy ×0.6 — lib/credits/videoPricing.
+      // 8 s: Fast ✦75, Veo 3.1 ✦224, Lite ✦54 (lib/credits/priceBook); 4 s Fast ✦43.
       await expect(send).toHaveAttribute('data-price', '75');
-      await quality.selectOption('standard');
-      await expect(send).toHaveAttribute('data-price', '248');
-      await quality.selectOption('lite');
-      await expect(send).toHaveAttribute('data-price', '45');
-      await quality.selectOption('fast');
+      await settings.getByTestId('clip-panel-tier-standard').click();
+      await expect(send).toHaveAttribute('data-price', '224');
+      await settings.getByTestId('clip-panel-tier-lite').click();
+      await expect(send).toHaveAttribute('data-price', '54');
+      await settings.getByTestId('clip-panel-tier-fast').click();
       await expect(send).toHaveAttribute('data-price', '75');
-      // The length is chosen in its own picker (4 s – 4 min); the price and the composer's chip follow it.
-      await settings.getByTestId('video-tile-length').click();
-      await page.getByTestId('video-preset-8').click();
-      await expect(page.getByTestId('video-duration-price')).toHaveAttribute('data-price', '25');
+      await settings.getByTestId('clip-panel-len-4').click();
+      await expect(send).toHaveAttribute('data-price', '43');
       await page.keyboard.press('Escape');
-      await expect(send).toHaveAttribute('data-price', '25');
-      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 8წმ');
+      await expect(page.getByTestId('quick-video-length')).toContainText('4');
       // The panel has no Generate of its own: one button.
       await expect(settings.getByTestId('video-generate')).toHaveCount(0);
     });
 
     test('the video tool opens on Fast, and Economy / Best are one pick away, each with its price', async ({ page }) => {
+      await openTiers(page);
       await openDashboard(page);
       const settings = await openSettings(page);
-      const quality = settings.getByTestId('video-quality');
-      await expect(quality).toHaveValue('fast');
-      await expect(quality.locator('option[value="standard"]')).toContainText('248');
-      await expect(quality.locator('option[value="lite"]')).toContainText('45');
+      await expect(settings.getByTestId('clip-panel-tier-fast')).toHaveAttribute('aria-checked', 'true');
+      await expect(settings.getByTestId('clip-panel-tier-standard')).toHaveAttribute('data-price', '224');
+      await expect(settings.getByTestId('clip-panel-tier-lite')).toHaveAttribute('data-price', '54');
+      await expect(settings.getByTestId('clip-panel-tier-standard')).toContainText('224');
     });
 
     test('"შესვლა" opens the sign-in', async ({ page }) => {

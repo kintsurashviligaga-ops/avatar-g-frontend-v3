@@ -71,21 +71,30 @@ export interface SceneSubmitInput {
    * 2026-10-17 10:22Z: Veo says the line so its mouth matches, and its voice is replaced on delivery (lib/avatar/speechMatch).
    */
   audio?: boolean;
+  /**
+   * The video service's direct clip (app/api/video/clip): its own tier, Lite included, over `quality`'s fast/standard,
+   * and its own length — 4, 6 or 8 s with a first frame or none (reference images stay 8 s, the engine snaps them).
+   */
+  tier?: VeoTier;
+  durationSec?: number;
+  /** The direct clip's two or three photos, as their bytes (the browser sent them; nothing of ours to sign). */
+  referenceImages?: (VeoMedia & { kind: 'bytes' })[];
 }
 
 export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit> {
   const transport = veoTransport();
   if (!transport) return { ok: false, reason: 'not_configured', retryable: false };
-  const tier: VeoTier = input.quality === 'standard' ? 'standard' : 'fast';
+  const tier: VeoTier = input.tier ?? (input.quality === 'standard' ? 'standard' : 'fast');
   const model = resolveModel(transport, tier);
   const audio = input.audio !== false;
+  const seconds = input.durationSec ?? SCENE_SECONDS;
   try {
     const created = await guardedCall(
       {
         service: 'video',
         model,
-        units: SCENE_SECONDS,
-        unitCostUsd: costPerSecondUsd(model, resolutionFor(SCENE_SECONDS), audio, transport),
+        units: seconds,
+        unitCostUsd: costPerSecondUsd(model, resolutionFor(seconds), audio, transport),
         userId: input.userId,
         promptSummary: input.prompt.slice(0, 200),
         actualCost: submitActualCost,
@@ -96,11 +105,15 @@ export async function submitScene(input: SceneSubmitInput): Promise<SceneSubmit>
             prompt: input.prompt.slice(0, PROMPT_MAX_CHARS),
             aspect: input.aspect,
             // Reference mode pins the clip to 8 s (the engine would snap to it anyway); say so, so the price is the length.
-            durationSec: SCENE_SECONDS,
+            durationSec: seconds,
             generateAudio: audio,
             negativePrompt: input.negativePrompt ?? SCENE_NEGATIVE_PROMPT,
             ...(input.startImage && input.resizeMode ? { resizeMode: input.resizeMode } : {}),
-            ...(input.startImage ? { startImage: input.startImage } : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
+            ...(input.startImage
+              ? { startImage: input.startImage }
+              : input.referenceImages && input.referenceImages.length > 0
+                ? { referenceImages: input.referenceImages }
+                : input.referenceUrls.length > 0 ? { referenceImages: input.referenceUrls.map((url) => ({ kind: 'url' as const, url })) } : {}),
           },
           tier,
           sessionId: input.sessionId,

@@ -10,6 +10,12 @@
  * A user turn now saves its files' records, and an Agent G card is saved as one row that follows the card from its plan
  * to its result; a device opening the chat reads them back, and a card still running is followed to its job by id.
  *
+ * ⚠️ AND THE RESULTS THEMSELVES (GG 2026-10-26 20:14Z „გაასწორე", on „a chat opened again shows no videos, though the Library
+ * has them all"). A delivered clip, picture or song is a bubble with no words and no card, so neither the words nor the
+ * card rows ever carried it: the chat opened from History or on another device showed the question and nothing after it.
+ * Such a bubble is now one row of its own (resultRowText, its links in the metadata), read back as the same bubble, and a
+ * clip Omni made keeps its job id, so „გააგრძელე" in the chat opened again continues THAT clip instead of making a new one.
+ *
  * What is read back is the owner's own data, but it is still checked shape by shape: anything malformed is dropped.
  */
 import { readAttachedFiles, type AttachedFile } from './attachedFiles';
@@ -47,15 +53,56 @@ export interface TurnLike {
   editName?: string;
   orientation?: string;
   noRetry?: boolean;
+  /** A clip Omni made: its signed job id (lib/video/omniEdit omniSourceOfJob). The server checks it on every use. */
+  omniJob?: string;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isHttps = (v: unknown): v is string => typeof v === 'string' && v.length <= 4_000 && /^https:\/\/[^\s"'<>]+$/i.test(v);
 const isId = (v: unknown): v is string => typeof v === 'string' && /^[\w-]{1,80}$/.test(v);
+const isJobId = (v: unknown): v is string => typeof v === 'string' && v.length <= 4_000 && /^[^\s"'<>\\]+$/.test(v);
 
 /** Does this message carry an Agent G card? */
 export function hasCard(m: TurnLike): boolean {
   return CARD_KEYS.some((k) => m[k] !== undefined);
+}
+
+const RESULT_KEYS = ['videoUrl', 'imageUrl', 'audioUrl', 'glbUrl'] as const;
+const resultKeyOf = (m: TurnLike) => RESULT_KEYS.find((k) => isHttps(m[k]));
+/** A delivered result's link (the clip, the picture, the song, the 3D model), or null. Its cover is not one: it goes with its song. */
+export function resultUrlOf(m: TurnLike): string | null {
+  const k = resultKeyOf(m);
+  return k ? (m[k] as string) : null;
+}
+
+/** A reply that IS a result (no Agent G card): saved as its own row when it lands, read back as the same bubble. */
+export function isResultTurn(m: TurnLike & { role?: string }): boolean {
+  return m.role === 'assistant' && !hasCard(m) && resultUrlOf(m) !== null;
+}
+
+/**
+ * The words a result's row is saved with: the bubble's own, or a short mark of what it is. A row needs words, and these
+ * are what a voice call opened from the chat reads (lib/voice/liveThread): „You: [video]" tells it a clip was made.
+ */
+const RESULT_MARK: Record<(typeof RESULT_KEYS)[number], string> = {
+  videoUrl: '[video]', imageUrl: '[image]', audioUrl: '[audio]', glbUrl: '[3D model]',
+};
+export function resultRowText(m: TurnLike & { text?: string }): string {
+  const k = resultKeyOf(m);
+  return (m.text ?? '').trim() || (k ? RESULT_MARK[k] : '…');
+}
+
+/** A saved row's words as its bubble shows them: the mark a wordless result or card was saved with is no words at all. */
+export function savedTurnText(content: string, meta: TurnLike): string {
+  const card = hasCard(meta);
+  const k = resultKeyOf(meta);
+  if (content === '…' && (card || k)) return '';
+  return !card && k && content === RESULT_MARK[k] ? '' : content;
+}
+
+/** When a result's saved row must be rewritten: its words or what it holds changed (a film's scene shot again, a cover). */
+export function resultSignature(m: TurnLike & { text?: string }): string {
+  return `${resultRowText(m)}\n${JSON.stringify(turnMetaOf(m))}`;
 }
 
 /**
@@ -70,6 +117,7 @@ export function turnMetaOf(m: TurnLike): Record<string, unknown> | null {
   for (const k of CARD_KEYS) if (m[k] !== undefined) out[k] = m[k];
   for (const k of URL_KEYS) if (isHttps(m[k])) out[k] = m[k];
   for (const k of TEXT_KEYS) if (typeof m[k] === 'string' && m[k]) out[k] = (m[k] as string).slice(0, 300);
+  if (isJobId(m.omniJob)) out.omniJob = m.omniJob;
   if (m.noRetry) out.noRetry = true;
   if (Object.keys(out).length === 1) return null;
   if (JSON.stringify(out).length <= TURN_META_MAX_CHARS) return out;
@@ -98,6 +146,7 @@ export function readTurnMeta(raw: unknown): TurnLike {
   if (card && !out.id) for (const k of CARD_KEYS) delete out[k];
   for (const k of URL_KEYS) if (isHttps(raw[k])) out[k] = raw[k] as string;
   for (const k of TEXT_KEYS) if (typeof raw[k] === 'string' && raw[k]) out[k] = (raw[k] as string).slice(0, 300);
+  if (isJobId(raw.omniJob)) out.omniJob = raw.omniJob;
   if (raw.noRetry === true) out.noRetry = true;
   return out;
 }
@@ -134,14 +183,16 @@ const phaseOf = (m: TurnLike): string | undefined => {
   }
   return undefined;
 };
-const keyOf = (m: MergeTurn): string => (hasCard(m) && m.id ? `card:${m.id}` : `${m.role}:${m.text.trim()}`);
+const keyOf = (m: MergeTurn): string => (hasCard(m) && m.id ? `card:${m.id}`
+  : isResultTurn(m) ? `result:${resultUrlOf(m)}` : `${m.role}:${m.text.trim()}`);
 
 /**
  * A chat this device already holds, brought up to date with the account's saved copy (`server`, oldest first): a card
  * that ended elsewhere takes its end, and what another device added after the last turn both copies share is put at the
  * end. Nothing this device holds is dropped (its own results, notices and files stay).
  *
- * The copies are lined up on what is saved word for word: the user's turns and the cards (by id). A reply's saved words
+ * The copies are lined up on what is saved word for word: the user's turns, the cards (by id) and the results (by their
+ * link: a wordless clip would otherwise read as every other wordless clip). A reply's saved words
  * can differ from its bubble (a routing block is saved cleaned), so replies are never what the copies are lined up on:
  * the replies after the last shared turn come in only when this device has no reply there yet. Copies that share no
  * turn at all are left as this device has them (there is no telling where the saved one belongs); an empty one takes
@@ -158,6 +209,12 @@ export function mergeServerTurns<M extends MergeTurn>(local: M[], server: M[]): 
     out[i] = m;
   };
   for (const s of server) {
+    if (isResultTurn(s)) {
+      // The same result here: it takes its row, so a change to it here rewrites that row instead of saving another.
+      const r = at.get(keyOf(s));
+      if (r !== undefined && !out[r]!.cloudRowId && s.cloudRowId) edit(r, { ...out[r]!, cloudRowId: s.cloudRowId });
+      continue;
+    }
     if (!hasCard(s) || !s.id) continue;
     const i = at.get(`card:${s.id}`);
     if (i === undefined) continue;
@@ -167,7 +224,7 @@ export function mergeServerTurns<M extends MergeTurn>(local: M[], server: M[]): 
     if (sp && ENDED.has(sp) && !(lp && ENDED.has(lp))) edit(i, { ...l, ...s });
     else if (!l.cloudRowId && s.cloudRowId) edit(i, { ...l, cloudRowId: s.cloudRowId });
   }
-  const stable = (m: MergeTurn) => m.role === 'user' || (hasCard(m) && !!m.id);
+  const stable = (m: MergeTurn) => m.role === 'user' || (hasCard(m) && !!m.id) || isResultTurn(m);
   let j = -1;
   server.forEach((s, k) => { if (stable(s) && at.has(keyOf(s))) j = k; });
   if (j < 0) return out;

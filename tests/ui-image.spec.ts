@@ -121,15 +121,24 @@ test.describe('phone 375×812 — ref3', () => {
     await shot(page, 'phone-create');
   });
 
-  test('the sheet is a real dialog: focus moves INTO it, Tab stays inside, and the header names the tool switcher', async ({ page }) => {
+  test('the settings are a non-modal layer: focus moves INTO it, Tab may leave it, Escape puts it away and focus comes back', async ({ page }) => {
     await openImage(page);
     const sheet = page.getByTestId('options-sheet');
     await expect(sheet).toHaveAttribute('role', 'dialog');
+    // The unified composer (GG 2026-10-25): the layer sits above the chat box, which stays usable — so no focus trap.
+    await expect(sheet).toHaveAttribute('aria-modal', 'false');
     await expect.poll(() => sheet.evaluate((el) => el.contains(document.activeElement))).toBe(true);
-    for (let i = 0; i < 40; i++) {
+    let left = false;
+    for (let i = 0; i < 80 && !left; i++) {
       await page.keyboard.press('Tab');
-      expect(await sheet.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+      left = !(await sheet.evaluate((el) => el.contains(document.activeElement)));
     }
+    expect(left).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await expect(page.getByTestId('options-toggle')).toBeFocused();
+    await page.getByTestId('options-toggle').click();
+    await expect(sheet).toBeVisible();
     // The header's chevron opens the tool switcher (the same sheet as the "+"), and choosing a tool there changes the screen.
     await page.getByTestId('create-tool-switch').click();
     const tools = page.getByTestId('tool-sheet');
@@ -343,27 +352,23 @@ test.describe('desktop 1280×800 — ref6', () => {
 
   test.beforeEach(async ({ page }) => { await seed(page); });
 
-  test('three panes: the navigation, the Result pane with Models & prices in the centre, the same panel in the right column', async ({ page }) => {
+  test('one conversation: the settings open as a layer above the chat box in the centre — no desk, no right column', async ({ page }) => {
+    // The unified composer (GG 2026-10-25): the Image tool keeps the conversation and the chat box; its full settings are
+    // a layer attached to the box, inside the centre column, and the old Result/Models desk is gone.
     await openImage(page);
-    const right = page.getByTestId('settings-panel');
-    await expect(right.getByTestId('image-create-panel')).toBeVisible();
-    const centre = page.getByTestId('image-desk');
-    await expect(centre).toBeVisible();
-    await expect(centre.getByTestId('image-result-pane')).toBeVisible();
-    await expect(centre.getByTestId('models-prices')).toBeAttached();
-
-    // Left → right on the screen: the navigation column (the centre starts after it), then the centre, then the settings column.
-    const [centreBox, rightBox] = await Promise.all([centre, right].map((l) => l.evaluate((n) => { const r = n.getBoundingClientRect(); return { left: r.left, right: r.right }; })));
-    expect(centreBox!.left).toBeGreaterThan(250);
-    expect(centreBox!.right).toBeLessThanOrEqual(rightBox!.left + 1);
-
-    // The thread's greeting and chips are not drawn behind it, and the page does not scroll sideways.
-    await expect(page.getByText('How can I help?')).toHaveCount(0);
+    const layer = page.getByTestId('settings-panel');
+    await expect(layer.getByTestId('image-create-panel')).toBeVisible();
+    await expect(page.getByTestId('image-desk')).toHaveCount(0);
+    const [layerBox, barBox] = await Promise.all([layer, page.getByTestId('composer-bar')].map((l) => l.evaluate((n) => { const r = n.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; })));
+    expect(layerBox!.left).toBeGreaterThan(250);                         // after the navigation column
+    expect(Math.abs(layerBox!.left - barBox!.left)).toBeLessThanOrEqual(2); // the same column as the chat box
+    expect(Math.abs(layerBox!.right - barBox!.right)).toBeLessThanOrEqual(2);
+    expect(layerBox!.bottom).toBeLessThanOrEqual(barBox!.top + 1);       // above it, never over it
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
     await shot(page, 'desktop-create');
   });
 
-  test('the right column: templates open by default (every card), pickers are popovers, the footer holds chips and Generate', async ({ page }) => {
+  test('the layer: templates open by default (every card), pickers are popovers, the footer holds chips and Generate', async ({ page }) => {
     await openImage(page);
     const panel = page.getByTestId('settings-panel').getByTestId('image-create-panel');
     await expect(panel.getByTestId('templates-toggle')).toHaveAttribute('aria-expanded', 'true');
@@ -387,24 +392,21 @@ test.describe('desktop 1280×800 — ref6', () => {
     await expect(panel.getByTestId('create-generate')).toBeVisible();
   });
 
-  test('Models & prices: one Google row priced by the quote, no size and nothing to pick there', async ({ page }) => {
+  test('prices: every image count carries its quote, and there is no model, size or quality to pick', async ({ page }) => {
+    // The Models & prices table lived on the removed desk; the same numbers are on the count picker and on Generate.
     await openImage(page);
-    const table = page.getByTestId('models-prices');
-    await table.scrollIntoViewIfNeeded();
-    await expect(table.getByRole('radio')).toHaveCount(0); // the model is picked in one place: the panel's model row
-    const row = table.locator('[data-model]');
-    await expect(row).toHaveCount(1);
-    await expect(row).toHaveAttribute('data-model', 'nb/auto');
-    await expect(row).toContainText('Google Gemini');
-    await expect(row).toContainText(`${quoteCredits({ tool: 'image', count: 1 })} credits / image`);
-    await expect(table).not.toContainText('Nano Banana');
-    await expect(table).not.toContainText(/\b[124]K\b/);
+    const panel = page.getByTestId('settings-panel').getByTestId('image-create-panel');
+    await expect(panel.getByTestId('create-generate')).toContainText(String(quoteCredits({ tool: 'image', count: 1 })));
+    await expect(panel).not.toContainText('Nano Banana');
+    await expect(panel).not.toContainText(/\b[124]K\b/);
     await openAdvanced(page.getByTestId('settings-panel'));
     await expect(page.getByTestId('settings-panel').getByTestId('chip-quality')).toHaveCount(0);
     await shot(page, 'desktop-models');
   });
 
-  test('the result lands in the centre with the studio\'s actions; the conversation is one tap away', async ({ page }) => {
+  test('the result lands in the conversation with the studio\'s actions; the settings step aside so it is seen', async ({ page }) => {
+    // The unified composer (GG 2026-10-25): one conversation — the picture is a bubble in the thread (the removed desk's
+    // Result pane carried the same actions), and Generate puts the settings layer away, as on a phone.
     const calls: ImageRequest[] = [];
     await mockImageRoute(page, calls);
     await openImage(page);
@@ -413,25 +415,15 @@ test.describe('desktop 1280×800 — ref6', () => {
     await panel.getByTestId('create-prompt').fill('A lighthouse on a cliff at sunset');
     await panel.getByTestId('create-generate').click();
 
-    const pane = page.getByTestId('image-result-pane');
-    const picture = pane.getByTestId('result-image');
+    await expect(page.getByTestId('settings-panel')).toBeHidden();
+    const picture = page.locator('img[src*="/templates/image/product.jpg"]').filter({ visible: true }).last();
     await expect(picture).toBeVisible({ timeout: 20_000 });
-    for (const name of ['Download', 'Share', 'Upscale', 'Generate again', 'Edit this image', 'Send to video']) {
-      await expect(pane.getByRole('toolbar').getByRole('button', { name })).toBeVisible();
+    expect(await picture.evaluate((el) => !el.closest('#studio-settings'))).toBe(true);
+    for (const name of ['Download', 'Share', 'HD upscale', 'Regenerate', 'Edit', 'Save to library', 'Send to video']) {
+      await expect(page.getByRole('button', { name, exact: true }).filter({ visible: true }).first()).toBeVisible();
     }
+    await expect(page.getByText('A lighthouse on a cliff at sunset').filter({ visible: true }).first()).toBeVisible();
     expect(calls[0]).toMatchObject({ prompt: 'A lighthouse on a cliff at sunset', aspectRatio: '1:1', quality: 'high' });
-
-    // The thread is inside a disclosure — nothing was deleted.
-    const conversation = page.getByTestId('image-conversation');
-    await expect(conversation).toBeVisible();
-    await expect(conversation.getByRole('button')).toHaveAttribute('aria-expanded', 'false');
-    await conversation.getByRole('button').click();
-    await expect(conversation.getByText('A lighthouse on a cliff at sunset')).toBeVisible();
     await shot(page, 'desktop-result');
-
-    // "Edit this image" loads it as the reference in the right column's upload card.
-    await pane.getByRole('button', { name: 'Edit this image' }).click();
-    await expect(panel.locator('[data-create-row="upload"] img')).toBeVisible();
-    await expect(panel.getByTestId('create-prompt')).toBeFocused();
   });
 });
