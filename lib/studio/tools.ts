@@ -30,8 +30,10 @@ export type ToolLang = 'ka' | 'en' | 'ru';
 // video" lane (subtitles, colour, music, text, trim, speed: /api/video/remix), which names itself by TOOL_META below.
 // Not in ALL_TOOLS, so no menu, deep link, sidebar event, Live voice or panel command can open its panel.
 export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'interior', 'music', 'avatar'];
-/** Tools that live one level down: the product ad and VFX video variants, the montage editor and 3D. */
-export const MORE_TOOLS: readonly ToolId[] = ['product', 'vfx', 'montage', 'model3d'];
+// ⚠️ `product` IS REMOVED (GG 2026-10-27: „პროდუქტის რეკლამა საერთოდ ამოვიღოთ სერვისებიდან"): a ToolId with its TOOL_META
+// line, but not in ALL_TOOLS, so nothing opens it; /api/video/remix refuses `productad` before any charge.
+/** Tools that live one level down: the VFX video variant, the montage editor and 3D. */
+export const MORE_TOOLS: readonly ToolId[] = ['vfx', 'montage', 'model3d'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
 
 export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n }> = {

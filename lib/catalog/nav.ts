@@ -19,7 +19,7 @@ export interface ToolGroup {
 
 const AGENT_TOOL: ToolId = 'chat';
 /** Tools GG took out of every menu (2026-10-21). They stay ToolIds, but no picker, sidebar or sheet lists them. */
-export const HIDDEN_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation']);
+export const HIDDEN_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation', 'product']);
 const HIDE = HIDDEN_TOOLS;
 
 export function toolGroups(): ToolGroup[] {
