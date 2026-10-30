@@ -18,13 +18,14 @@ import {
   hasGeminiSttKey,
   isTranslated,
   splitSpokenTag,
+  isTranscribeModel,
   STT_FALLBACK_RESERVE_MS,
   sniffAudioContainer,
   sttPrompt,
   transcribeWithGemini,
   transcribeWithGeminiDetailed,
 } from './geminiStt';
-import { DEFAULT_CHAT_MODELS } from '../ai/google/models';
+import { DEFAULT_CHAT_MODELS, TRANSCRIBE_MODEL } from '../ai/google/models';
 
 const bytes = (...parts: Array<string | number[]>): Uint8Array => {
   const out: number[] = [];
@@ -115,6 +116,8 @@ describe('geminiSttModelChain', () => {
     delete process.env.VOICE_V2V_GEMINI_MODEL;
     expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash']);
     expect(geminiSttModelChain().some((m) => m.startsWith('gemini-2.'))).toBe(false);
+    // The transcribe model is the owner's trial only, never a step-down.
+    expect(geminiSttModelChain()).not.toContain(TRANSCRIBE_MODEL);
   });
 
   it('an allowlisted override leads and the default stays behind it; a retired / unknown one is ignored', () => {
@@ -343,6 +346,26 @@ describe('transcribeWithGeminiDetailed', () => {
       .mockImplementationOnce(async () => new Response('bad', { status: 400 }));
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ru-RU', { models: ['gemini-3.6-flash'] });
     expect(r).toMatchObject({ text: 'can you make a prompt', spoken: 'ru' });
+  });
+
+  it('the dedicated transcribe model (owner trial only) gets the audio alone: no prompt, no temperature, no thinking', async () => {
+    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE', { models: [TRANSCRIBE_MODEL] });
+    expect(r.model).toBe('gemini-3.5-transcribe-preview');
+    const [url] = fetchSpy.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe(
+      'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-3.5-transcribe-preview:generateContent',
+    );
+    const b = sentBody() as unknown as Record<string, unknown> & { contents: Array<{ parts: unknown[] }> };
+    expect(b.contents[0]!.parts).toEqual([{ inlineData: { mimeType: 'audio/wav', data: 'QUJD' } }]);
+    expect(b.generationConfig).toBeUndefined();
+  });
+
+  it('isTranscribeModel: the recorded-audio transcribe model only, never its Live variant or a chat model', () => {
+    expect(isTranscribeModel('gemini-3.5-transcribe-preview')).toBe(true);
+    expect(isTranscribeModel('gemini-3.5-transcribe')).toBe(true);
+    expect(isTranscribeModel('gemini-3.5-transcribe-live')).toBe(false);
+    expect(isTranscribeModel('gemini-3.5-transcribe-live-preview')).toBe(false);
+    expect(isTranscribeModel('gemini-3.6-flash')).toBe(false);
   });
 
   it('returns Google-reported usage', async () => {
