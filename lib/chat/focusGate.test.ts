@@ -1,9 +1,9 @@
 /** @jest-environment node */
 import { classifyFocusInput, gateButtons, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from './focusGate';
 
-const verdict = (text: string, mode: GateMode = 'image', extra: { hasAttachments?: boolean; explicit?: boolean } = {}) =>
+const verdict = (text: string, mode: GateMode = 'image', extra: { hasAttachments?: boolean; explicit?: boolean; liveOrder?: boolean } = {}) =>
   classifyFocusInput({ text, mode, ...extra });
-const kind = (text: string, mode: GateMode = 'image', extra: { hasAttachments?: boolean; explicit?: boolean } = {}) =>
+const kind = (text: string, mode: GateMode = 'image', extra: { hasAttachments?: boolean; explicit?: boolean; liveOrder?: boolean } = {}) =>
   verdict(text, mode, extra).kind;
 
 describe('THE BUG: talking to Agent G in a focus mode must never become a paid generation', () => {
@@ -68,6 +68,30 @@ describe('a thin prompt gets questions, not a render', () => {
   });
   test('a reference file means the words are an instruction about it — thin is fine', () => {
     expect(kind('make it vintage', 'image', { hasAttachments: true })).toBe('confirm');
+  });
+});
+
+describe('a Live call\'s order (prepare_generation) gets its price card, not questions (GG 2026-10-26)', () => {
+  const live = { liveOrder: true };
+  test.each(['ცხენი', 'ცხენზე სურათი', 'cat', 'кот'])('%p → confirm (image)', (text) => {
+    expect(kind(text, 'image', live)).toBe('confirm');
+  });
+  test('a thin track too', () => {
+    expect(kind('ჯაზი', 'music', live)).toBe('confirm');
+  });
+  test('the words are the order, never talk or a question', () => {
+    expect(kind('thanks', 'image', live)).toBe('confirm');
+    expect(kind('რა ლამაზი ცხენი', 'image', live)).toBe('confirm');
+  });
+  test('a film still asks (its storyboard is its approval); an avatar with no line still asks for it', () => {
+    expect(kind('a dog running', 'video', live)).toBe('clarify');
+    expect(kind('შემიქმენი ავატარი', 'avatar', live)).toBe('clarify');
+  });
+  test('an empty order is still nothing', () => {
+    expect(kind('  ', 'image', live)).toBe('chat');
+  });
+  test('without the call the same thin words still get questions', () => {
+    expect(kind('ცხენი', 'image')).toBe('clarify');
   });
 });
 

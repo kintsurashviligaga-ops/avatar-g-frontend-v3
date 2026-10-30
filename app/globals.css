@@ -110,7 +110,7 @@
   --app-elevated: 244 244 248;
   --app-border: 15 23 42;        /* dark borders over light surfaces (used w/ alpha) */
   --app-text: 15 23 42;          /* slate-900 */
-  --app-muted: 100 116 139;      /* slate-500 */
+  --app-muted: 88 102 124;       /* between slate-500 and -600: slate-500 measured 4.3 : 1 on --app-elevated (a chosen row, a tag) — under AA */
   --app-accent: 24 115 202;      /* rocket body #1873CA — 4.8:1 on white */
   --app-accent-deep: 2 83 167;   /* #0253A7 */
   --app-neon: 51 143 232;

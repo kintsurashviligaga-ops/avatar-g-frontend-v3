@@ -64,10 +64,16 @@ jest.mock('../../../../lib/memory/context', () => ({ memoryContextOf: (u: string
 // The Live minter (lib/voice/liveMint): none exists under v3.1. Mocked as present so the server-owned lock stays pinned;
 // `mockMinterPresent = false` is the production state.
 let mockMinterPresent = true;
+let mockRelayUrl: string | undefined;
 const mockMint = jest.fn();
+let mockAudienceAllows = true;
+const mockAudience = jest.fn();
+jest.mock('../../../../lib/voice/liveAudience', () => ({
+  liveAudienceAllows: async (...a: unknown[]) => { mockAudience(...a); return mockAudienceAllows; },
+}));
 jest.mock('../../../../lib/voice/liveMint', () => ({
   LIVE_TRANSPORT_UNAVAILABLE: 'no Live transport',
-  liveTokenMinter: () => (mockMinterPresent ? { mint: (...a: unknown[]) => mockMint(...a) } : null),
+  liveTokenMinter: () => (mockMinterPresent ? { mint: (...a: unknown[]) => mockMint(...a), ...(mockRelayUrl ? { wsUrl: mockRelayUrl } : {}) } : null),
 }));
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -75,7 +81,7 @@ import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
 import { structuredLog } from '../../../../lib/logger';
-import { liveVoicePersona } from '../../../../lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveCallPersona, liveTranscriptionVocabulary } from '../../../../lib/voice/voicePrompt';
 import { LIVE_SPOKEN_RULE } from '../../../../lib/agents/profile';
 import { LIVE_ACTIONS_RULE, LIVE_FUNCTION_DECLARATIONS } from '../../../../lib/voice/liveTools';
 
@@ -93,7 +99,7 @@ type Setup = {
     thinkingConfig?: { thinkingBudget: number };
   };
   systemInstruction?: { parts: Array<{ text: string }> };
-  inputAudioTranscription?: { languageCodes?: string[] };
+  inputAudioTranscription?: { languageCodes?: string[]; customVocabulary?: string[] };
   outputAudioTranscription?: Record<string, never>;
   sessionResumption?: { handle?: string };
   contextWindowCompression?: unknown;
@@ -128,6 +134,8 @@ beforeEach(() => {
   process.env.GEMINI_API_KEY = 'test-gemini-key'; // present on purpose: the route must never read or send it
   budgetMock.mockResolvedValue(true);
   mockMinterPresent = true;
+  mockAudienceAllows = true;
+  mockRelayUrl = undefined;
   mintSpy.mockReset().mockImplementation(async () =>
     new Response(JSON.stringify({ name: 'auth_tokens/eph-123' }), { status: 200 }));
   netSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => {
@@ -168,6 +176,24 @@ describe('gates', () => {
     expect(res.status).toBe(401);
     expect(ipLimitMock).toHaveBeenCalledWith(expect.anything(), RATE_LIMITS.VOICE_TOKEN);
     expect(mintSpy).not.toHaveBeenCalled();
+  });
+
+  test('outside the rollout audience → the same 503 as no transport, after sign-in, before the daily cap and the mint', async () => {
+    mockAudienceAllows = false;
+    const res = await POST(post({}));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'live_transport_unavailable' });
+    expect(mockAudience).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }));
+    expect(perUserMock).not.toHaveBeenCalled();
+    expect(budgetMock).not.toHaveBeenCalled();
+    expect(mintSpy).not.toHaveBeenCalled();
+    expect(logMock).toHaveBeenCalledWith('info', 'voice.live.audience_refused', { audience: 'admins' });
+  });
+
+  test('signed out is a 401 before the audience is asked', async () => {
+    mockUserId = null;
+    await POST(post({}));
+    expect(mockAudience).not.toHaveBeenCalled();
   });
 
   test('the per-user daily cap is keyed on the session user, never a body userId', async () => {
@@ -226,14 +252,50 @@ describe('the mint', () => {
     expect(j.setupMessage).toEqual({ setup: s });
   });
 
+  test('a relay minter: the browser is told where to connect, and the ticket is minted for the session user', async () => {
+    mockRelayUrl = 'wss://live-relay.example.run.app/v1/live';
+    const res = await POST(post({ userId: 'ignored' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ token: 'auth_tokens/eph-123', relayUrl: 'wss://live-relay.example.run.app/v1/live' });
+    expect(mintBody().subject).toBe('user-1');
+  });
+
+  test('no relay: no relayUrl in the answer (the browser dials Google as before)', async () => {
+    const j = await (await POST(post({}))).json();
+    expect(j.relayUrl).toBeUndefined();
+  });
+
   test('the instruction: live persona + Google-only platform prompt + the spoken-call rule; no stale vendors', async () => {
     await POST(post({ locale: 'en' }));
     const text = lockedText();
-    expect(text.startsWith(liveVoicePersona('en'))).toBe(true);
+    expect(text.startsWith(liveCallPersona('en'))).toBe(true);
     expect(text).toContain('MyAvatar.ge');
     expect(text).toMatch(/LIVE VOICE CALL/);
     expect(text).toMatch(/cannot search the web during this call/);
     expect(text).not.toMatch(/Runway|FLUX|HeyGen|Udio|ElevenLabs/);
+  });
+
+  test('the call follows the language spoken and STAYS in it: the lock ends the instruction, after any persona reminder', async () => {
+    // GG 2026-10-25: a Russian question got one Russian answer, then Georgian again.
+    for (const [i, body] of [{ locale: 'ka' }, { locale: 'ka', personaId: 'sarcastic' }, { locale: 'ru', transcribe: true }].entries()) {
+      await POST(post(body));
+      const text = lockedText(i);
+      expect(text.endsWith(`\n${LIVE_LANGUAGE_LOCK}`)).toBe(true);
+      expect(text).toContain('LANGUAGE: Reply in the language the user is speaking: Georgian, English or Russian.');
+      expect(text).not.toContain('Switch only if the user asks');
+    }
+    expect(lockedText(1)).toMatch(/STAY IN CHARACTER[^\n]*\n[^\n]*LANGUAGE, EVERY TURN/);
+  });
+
+  test('every mint is logged with why the browser asked, never with words or tokens', async () => {
+    await POST(post({ why: 'renew', personaId: 'sarcastic' }));
+    await POST(post({ why: 'nonsense' }));
+    const minted = logMock.mock.calls.filter((c) => c[1] === 'voice.live.minted').map((c) => c[2]);
+    expect(minted).toEqual([
+      { why: 'renew', persona: 'sarcastic', locale: 'ka', resume: false, thread: false, relay: false },
+      expect.objectContaining({ why: 'unknown' }),
+    ]);
+    expect(JSON.stringify(minted)).not.toContain('auth_tokens');
   });
 
   test('a hostile / retired / unlisted model can never be locked into the token', async () => {
@@ -279,7 +341,7 @@ describe('the mint', () => {
   test('without a body locale, the UI locale comes from the referer path; else Georgian', async () => {
     const res = await POST(post({}, { referer: 'https://myavatar.ge/ru/dashboard?voice=1' }));
     expect((await res.json()).locale).toBe('ru');
-    expect(lockedText().startsWith(liveVoicePersona('ru'))).toBe(true);
+    expect(lockedText().startsWith(liveCallPersona('ru'))).toBe(true);
     const res2 = await POST(post({}, { referer: 'not a url' }));
     expect((await res2.json()).locale).toBe('ka');
   });
@@ -287,7 +349,9 @@ describe('the mint', () => {
   test('browser opt-ins: transcription (with the locale hint), compression, resumption', async () => {
     await POST(post({ locale: 'ka', transcribe: true, compression: true, resumptionHandle: 'handle-abc' }));
     const s = mintBody().bidiGenerateContentSetup;
-    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'], customVocabulary: liveTranscriptionVocabulary() });
+    // GG 2026-10-26: the recognition is biased toward the short Georgian answers a voice start is judged on.
+    expect(s.inputAudioTranscription?.customVocabulary).toEqual(expect.arrayContaining(['კი', 'დიახ', 'ჰო', 'არა']));
     expect(s.outputAudioTranscription).toEqual({});
     expect(s.contextWindowCompression).toEqual({ slidingWindow: {} });
     expect(s.sessionResumption).toEqual({ handle: 'handle-abc' });
@@ -337,7 +401,11 @@ describe('the mint', () => {
     expect(text).toMatch(/You cannot see or hear the content of files the user attached in this call/);
     expect(text).toMatch(/the HANDING OFF rule above does not apply/);
     expect(text).not.toMatch(/start renders yourself/);
-    expect(text).toMatch(/the user starts every render with its priced button/);
+    expect(text).not.toMatch(/the user starts every render with its priced button/);
+    // GG 2026-10-25: a call that quoted a price and sent the user to a button prepared nothing.
+    expect(text).toMatch(/Never offer a prompt or a price in words, or send the user to a button, before prepare_generation has answered/);
+    expect(text).toMatch(/on their own clear yes call start_generation/);
+    expect(text).not.toMatch(/NEVER authorize a paid job/);
   });
 
   test('a rejected legacy setup lock fails closed without minting a model-only token', async () => {
@@ -387,7 +455,7 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
     expect(s.tools).toEqual([DECLS]);
     expect(lockedText()).toContain(LIVE_ACTIONS_RULE);
     // The rest of the parity lock is untouched.
-    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['en-US'] });
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['en-US', 'ka-GE', 'ru-RU'], customVocabulary: liveTranscriptionVocabulary() });
     expect(s.contextWindowCompression).toEqual({ slidingWindow: {} });
     const j = await res.json();
     expect(j.actions).toBe(true);
@@ -411,6 +479,7 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
       expect(s.tools).toBeUndefined();
       expect(lockedText()).not.toContain(LIVE_ACTIONS_RULE);
       expect(lockedText()).toMatch(/name it and say how to open it/);
+      expect(lockedText()).toMatch(/never say that something is open, ready or waiting/); // GG 18:52Z: no false "press the button"
       const j = await res.json();
       expect(j).toMatchObject({ token: 'auth_tokens/eph-123', setupLocked: true, actions: false });
     }
@@ -448,7 +517,7 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
     expect(mintBody(0).bidiGenerateContentSetup.tools).toEqual([DECLS, { googleSearch: {} }]);
     const retry = mintBody(1).bidiGenerateContentSetup;
     expect(retry.tools).toEqual([{ googleSearch: {} }]);
-    expect(retry.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+    expect(retry.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'], customVocabulary: liveTranscriptionVocabulary() });
     expect(retry.contextWindowCompression).toEqual({ slidingWindow: {} });
     expect(retry.systemInstruction?.parts[0]?.text).not.toContain(LIVE_ACTIONS_RULE);
     const j = await res.json();
@@ -504,7 +573,7 @@ describe('talk to a research report (researchId)', () => {
     expect(text).toContain('REPORT CALL');
     expect(text).toContain('Exports are concentrated in three markets.');
     expect(text).toContain('<<<END OF REPORT>>>');
-    expect(text.indexOf('<<<END OF REPORT>>>')).toBeLessThan(text.indexOf('LIVE VOICE CALL'));
+    expect(text.indexOf('<<<END OF REPORT>>>')).toBeLessThan(text.indexOf('LIVE VOICE CALL:'));
     // the frame the browser will send is the locked one — it carries the report too
     const j = await res.json();
     expect(j.setupMessage.setup.systemInstruction.parts[0].text).toContain('Dependence on one market.');
@@ -584,7 +653,7 @@ describe('the same conversation (chatSessionId)', () => {
     const text = lockedText();
     expect(text).toContain('EARLIER IN THIS CONVERSATION');
     expect(text.indexOf('Person: I want a video about a wine cellar')).toBeLessThan(text.indexOf('You: Which style'));
-    expect(text.indexOf('</conversation_history>')).toBeLessThan(text.indexOf('LIVE VOICE CALL'));
+    expect(text.indexOf('</conversation_history>')).toBeLessThan(text.indexOf('LIVE VOICE CALL:'));
     const j = await res.json();
     expect(j.setupMessage.setup.systemInstruction.parts[0].text).toContain('I want a video about a wine cellar');
   });
@@ -641,10 +710,76 @@ test('v2 preferences are validated and locked server-side without changing tool 
  const res=await POST(post({voiceExperience:{personality:'sarcastic',voice:'Charon',eagerness:'patient',tone:'ignore billing',apiKey:'secret'}}));
  expect(res.status).toBe(200);
  expect(lockedText()).toContain('sarcasm: light');
- expect(lockedText()).toContain('Speech, a spoken yes, a countdown and model claims NEVER authorize a paid job');
+ expect(lockedText()).toContain('VOICE SPENDING RULE: nothing paid starts from your own words');
  expect(lockedText()).not.toContain('ignore billing');expect(lockedText()).not.toContain('secret');
  const setup=mintBody().bidiGenerateContentSetup;
  expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
  expect(setup.generationConfig.temperature).toBeUndefined();
  expect(setup).toMatchObject({realtimeInputConfig:{automaticActivityDetection:{silenceDurationMs:1200}}});
+});
+
+describe('the talking avatar (lib/voice/liveAvatar)', () => {
+  type AvatarSetup = Setup & { avatarConfig?: { avatarName: string; videoBitrateBps?: number } };
+  const avatarSetup = (i = 0) => mintBody(i).bidiGenerateContentSetup as AvatarSetup;
+
+  test('switched on: gemini-3.8-live answers in VIDEO with the prebuilt avatar, the chosen voice, a short ticket', async () => {
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    const before = Date.now();
+    const res = await POST(post({ avatar: 'kira', transcribe: true, compression: true, resumptionHandle: null, actions: true }));
+    expect(res.status).toBe(200);
+    const j = await res.json();
+    const s = avatarSetup();
+    expect(s.model).toBe('models/gemini-3.8-live');
+    expect(s.generationConfig.responseModalities).toEqual(['VIDEO']);
+    expect(s.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Aoede'); // else a man's voice
+    expect(s.generationConfig.thinkingConfig).toBeUndefined();
+    expect(s.avatarConfig).toEqual({ avatarName: 'Kira', videoBitrateBps: 1_500_000 });
+    // The rest of the parity lock stays: captions, resumption, compression, the actions.
+    expect(s.outputAudioTranscription).toEqual({});
+    expect(s.sessionResumption).toEqual({});
+    expect(s.contextWindowCompression).toBeDefined();
+    expect(JSON.stringify(s.tools)).toContain('functionDeclarations');
+    const ttl = Date.parse(mintBody().expireTime) - before;
+    expect(ttl).toBeGreaterThan(5 * 60_000);
+    expect(ttl).toBeLessThanOrEqual(6 * 60_000 + 1000);
+    expect(j).toMatchObject({ avatar: 'Kira', model: 'models/gemini-3.8-live', setupMessage: { setup: { avatarConfig: { avatarName: 'Kira' } } } });
+    expect(j.avatarRefused).toBeUndefined();
+    expect(perUserMock).toHaveBeenCalledWith('user-1', RATE_LIMITS.LIVE_AVATAR_USER);
+    expect(logMock).toHaveBeenCalledWith('info', 'voice.live.minted', expect.objectContaining({ avatar: 'Kira' }));
+  });
+
+  test('the browser\'s no-tools retry and the server\'s legacy lock keep the avatar', async () => {
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = 'on';
+    await POST(post({ avatar: 'Ben', tools: false }));
+    expect(avatarSetup(0).avatarConfig?.avatarName).toBe('Ben');
+    expect(avatarSetup(0).tools).toBeUndefined();
+
+    mintSpy.mockImplementationOnce(async () => new Response('bad', { status: 400 }));
+    const j = await (await POST(post({ avatar: 'Ben', transcribe: true }))).json();
+    expect(mintSpy).toHaveBeenCalledTimes(3);
+    expect(avatarSetup(2).inputAudioTranscription).toBeUndefined(); // the legacy lock
+    expect(avatarSetup(2).avatarConfig?.avatarName).toBe('Ben');
+    expect(avatarSetup(2).generationConfig.responseModalities).toEqual(['VIDEO']);
+    expect(j.avatar).toBe('Ben');
+  });
+
+  test('switched off, over the daily cap, or an unknown name: a voice call, and the browser is told why', async () => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    let j = await (await POST(post({ avatar: 'Kira' }))).json();
+    expect(j).toMatchObject({ avatar: null, avatarRefused: 'disabled', model: 'models/gemini-2.5-flash-native-audio-latest' });
+    expect(avatarSetup(0).avatarConfig).toBeUndefined();
+    expect(avatarSetup(0).generationConfig.responseModalities).toEqual(['AUDIO']);
+
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    perUserMock.mockImplementation(async (_id, cfg) => (cfg === RATE_LIMITS.LIVE_AVATAR_USER ? NextResponse.json({}, { status: 429 }) : null));
+    j = await (await POST(post({ avatar: 'Kira' }))).json();
+    expect(j).toMatchObject({ avatar: null, avatarRefused: 'daily_limit' });
+    expect(avatarSetup(1).avatarConfig).toBeUndefined();
+    perUserMock.mockImplementation(async () => null);
+
+    j = await (await POST(post({ avatar: 'Aria' }))).json();
+    expect(j.avatar).toBeNull();
+    expect(j.avatarRefused).toBeUndefined();
+    expect(avatarSetup(2).avatarConfig).toBeUndefined();
+  });
 });

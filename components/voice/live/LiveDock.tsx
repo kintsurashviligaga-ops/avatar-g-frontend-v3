@@ -12,7 +12,7 @@
  * ⚠️ IT MUST READ AS "A CALL WITH THE AGENT, AND IT IS WORKING" (the owner's iPhone screenshot, 2026-10-03). The old dock
  * was a full-width black bar with the user's avatar photo, a status, a mic, an expand icon and a big RED FILLED CIRCLE
  * WITH AN ✕ — alarming, cheap, and easy to mistake for "close this panel". Now: a glass capsule with a soft blue ring,
- * the rocket orb (the agent), „ცოცხალი ზარი · Agent G" with a live dot, the status beside a compact waveform, and one
+ * the blue voice orb (no rocket since 2026-10-24), „ცოცხალი ზარი · Agent G" with a live dot, the status beside a compact waveform, and one
  * line that says what is happening — the step the agent is on (a spinner, then a check), else the last caption. End is
  * a calm dark-red pill with a phone-down icon and its word („დასრულება", from 360 px), never a red ✕.
  *

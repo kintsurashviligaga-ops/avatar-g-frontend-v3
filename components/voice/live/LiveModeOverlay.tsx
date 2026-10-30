@@ -19,7 +19,7 @@ import {
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { copyLiveText, liveBrowserIntent, liveRecoveryLink } from '@/lib/voice/liveBrowserRecovery';
 import { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './liveOverlayCopy';
-import { LiveErrorPanel } from './LiveCallChrome';
+import { LiveAmbientGlow, LiveErrorPanel, LiveVoicePill } from './LiveCallChrome';
 import type {
   LiveCaption,
   LiveErrorCode,
@@ -29,11 +29,12 @@ import type {
 } from './useGeminiLiveSession';
 import { isMicErrorCode } from "./useGeminiLiveSession";
 import LiveDock, { LIVE_DOCK_STRINGS } from "./LiveDock";
-import { LiveWaveform, orbStateFor } from "./LiveOrb";
+import { orbStateFor } from "./LiveOrb";
 import { liveCurrentStep, type LiveJobLine } from "./LiveActivityFeed";
 import type { LiveActivityItem } from './liveActivity';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
 import LiveActionCards from './LiveActionCards';
+import { LIVE_AVATAR_STRINGS, LiveAvatarCaption, LiveAvatarSlot } from './LiveAvatarStage';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -70,6 +71,11 @@ export interface LiveModeOverlayProps {
   onToggleDock?: () => void;
   activity?: readonly LiveActivityItem[];
   jobs?: readonly LiveJobLine[];
+  /** The talking avatar's element while an avatar session runs (LiveAvatarStage): the full screen's picture, a small
+   *  one beside the docked bar. The camera then becomes a picture-in-picture. */
+  avatarVideo?: HTMLVideoElement | null;
+  /** One line under the status (the avatar starting, refused or capped). */
+  notice?: string | null;
 }
 
 function useCopyFeedback() {
@@ -116,6 +122,8 @@ export function LiveModeOverlay({
   onOpenAction,
   extraControls,
   showCaptions = true,
+  avatarVideo = null,
+  notice = null,
 }: LiveModeOverlayProps) {
   const transcriptCopy = useCopyFeedback();
   const linkCopy = useCopyFeedback();
@@ -163,29 +171,42 @@ export function LiveModeOverlay({
         onDismissLink={(id) => setDismissedLinks((previous) => new Set(previous).add(id))}
       />
     );
-    return typeof document === "undefined" ? dock : createPortal(dock, document.body);
+    // The avatar keeps talking while docked (its voice is in its video): a small picture, a tap brings the call back.
+    const dockedView = avatarVideo ? (
+      <>
+        {dock}
+        <button type="button" onClick={onToggleDock} aria-label={LIVE_AVATAR_STRINGS[locale].openCall} data-testid="live-avatar-pip"
+          className="fixed bottom-24 right-3 z-[130] h-[150px] w-[84px] overflow-hidden rounded-2xl bg-black shadow-lg ring-1 ring-white/20">
+          <LiveAvatarSlot video={avatarVideo} className="h-full w-full" />
+        </button>
+      </>
+    ) : dock;
+    return typeof document === "undefined" ? dockedView : createPortal(dockedView, document.body);
   }
+
+  const avatarOn = !!avatarVideo && !error;
 
   const overlay = (
     <div ref={dialogRef} role="dialog" aria-modal="true" data-live-call-ui data-live-status={status} aria-label={t.title} tabIndex={-1} data-theme="dark"
       className="fixed inset-0 z-[130] flex select-none flex-col justify-between overflow-hidden bg-black text-white">
-      {/* 1. კამერის ფონი (თუ კამერა ჩართულია) */}
+      {/* 1. The talking avatar fills the screen; the camera then sits in a corner. */}
+      {avatarOn && avatarVideo && <>
+        <LiveAvatarSlot video={avatarVideo} className="absolute inset-0 z-0 bg-black sm:[&>video]:object-contain" />
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-black/50 via-transparent to-black/80" />
+      </>}
+
+      {/* კამერის ფონი (თუ კამერა ჩართულია) */}
       <video
         ref={videoRef}
         playsInline
         muted
-        className={cameraOn && !error ? 'absolute inset-0 z-0 h-full w-full object-cover' : 'hidden'}
+        className={!cameraOn || error ? 'hidden'
+          : avatarOn ? 'absolute right-4 top-28 z-20 h-36 w-24 rounded-2xl object-cover shadow-lg ring-1 ring-white/20'
+          : 'absolute inset-0 z-0 h-full w-full object-cover'}
       />
 
       {/* 2. ქვემოდან ამომავალი რბილი ცისფერი ნათება (Gemini Live Ambient Nebula) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[65vh] opacity-90 transition-opacity duration-700"
-        style={{
-          background:
-            'radial-gradient(ellipse 95% 60% at 50% 100%, rgba(26, 115, 232, 0.42) 0%, rgba(13, 37, 89, 0.22) 45%, rgba(0, 0, 0, 0) 80%)',
-        }}
-      />
+      {!avatarOn && <LiveAmbientGlow />}
 
       {/* Screen docking and secondary call controls. */}
       {!error && <div className="relative z-20 flex items-center justify-between px-5 pb-4 pt-12">
@@ -224,7 +245,7 @@ export function LiveModeOverlay({
       </div>}
 
       {/* 4. ცენტრალური სუბტიტრები (მოტივტივე რეალურ დროში) */}
-      <div data-testid="live-content" className="relative z-10 mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col justify-start overflow-y-auto overscroll-contain px-6 pb-3 pt-10">
+      <div data-testid="live-content" className={`relative z-10 mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col overflow-y-auto overscroll-contain px-6 pb-3 pt-10 ${avatarOn ? 'justify-end' : 'justify-start'}`}>
         {error ? (
           <LiveErrorPanel
             icon={isMicErrorCode(error) ? <MicOff size={32} /> : <WifiOff size={32} />}
@@ -255,8 +276,9 @@ export function LiveModeOverlay({
             )}
           </LiveErrorPanel>
         ) : (
-          <div className="space-y-4 animate-fade-in">
-            <p data-testid="live-status" aria-live="polite" className="text-[16px] leading-relaxed text-white/70">{t.status[status]}</p>
+          <div className={`animate-fade-in ${avatarOn ? 'space-y-2' : 'space-y-4'}`}>
+            <p data-testid="live-status" aria-live="polite" className={`leading-relaxed text-white/70 ${avatarOn ? 'text-[14px]' : 'text-[16px]'}`}>{t.status[status]}</p>
+            {notice && <p role="status" data-testid="live-notice" className="text-[14px] leading-relaxed text-white/80">{notice}</p>}
             {audioBlocked && onResumeAudio && (
               <button type="button" onClick={onResumeAudio}
                 className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[16px] font-semibold text-black">
@@ -264,15 +286,22 @@ export function LiveModeOverlay({
               </button>
             )}
             {/* დიდი რეალურ დროში გამომავალი ქართული ტექსტი */}
-            {showCaptions && captionsOn && <div role="log" aria-live="polite" aria-relevant="additions" aria-label={t.captions} className="space-y-3">
-              {lastUserLine && <p aria-hidden={lastUserLine.final ? undefined : true} className="text-[16px] leading-relaxed text-white/60">{lastUserLine.text}</p>}
-              {lastAgentLine && <p aria-hidden={lastAgentLine.final ? undefined : true} className="text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]">
-                {lastAgentCaption}
-              </p>}
+            {/* Over the avatar the words keep to a low band (LiveAvatarCaption): the face stays clear. */}
+            {showCaptions && captionsOn && <div role="log" aria-live="polite" aria-relevant="additions" aria-label={t.captions} className={avatarOn ? 'space-y-2' : 'space-y-3'}>
+              {lastUserLine && <p aria-hidden={lastUserLine.final ? undefined : true} className={avatarOn ? 'line-clamp-1 text-[14px] leading-snug text-white/70 drop-shadow' : 'text-[16px] leading-relaxed text-white/60'}>{lastUserLine.text}</p>}
+              {lastAgentLine && (avatarOn
+                ? <LiveAvatarCaption text={lastAgentCaption} hidden={!lastAgentLine.final} />
+                : <p aria-hidden={lastAgentLine.final ? undefined : true} className="text-[26px] font-semibold leading-relaxed tracking-tight text-white drop-shadow-md sm:text-[32px]">
+                  {lastAgentCaption}
+                </p>)}
             </div>}
 
+            {/* Over the avatar: only the one-line AI notice (the copy button would push the words up into the face). */}
+            {showCaptions && captionsOn && lastAgentCaption && avatarOn && (
+              <p className="text-[11px] tracking-wide text-white/60 drop-shadow">{t.aiNotice}</p>
+            )}
             {/* AI მინიშნება და მოქმედებების ღილაკები */}
-            {showCaptions && captionsOn && lastAgentCaption && (
+            {showCaptions && captionsOn && lastAgentCaption && !avatarOn && (
               <div className="flex flex-col gap-2 pt-2">
                 <div className="flex items-center gap-4 text-xs text-white/50">
                   <button
@@ -328,14 +357,9 @@ export function LiveModeOverlay({
           </button>
 
           {/* The audio meter is decorative; the separate native button interrupts speech. */}
-          <div
-            data-testid="live-waveform"
-            aria-hidden="true"
-            className="relative flex h-14 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-sky-300/40 shadow-[0_0_42px_rgba(37,99,235,0.65),inset_0_1px_2px_rgba(255,255,255,0.35)] min-[360px]:w-28 min-[390px]:w-36 sm:w-40"
-            style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #38bdf8 100%)' }}
-          >
-            <LiveWaveform state={waveformState} getLevels={getLevels} className="[&_span]:bg-white" />
-          </div>
+          <span data-testid="live-waveform" aria-hidden="true" className="flex">
+            <LiveVoicePill state={waveformState} getLevels={getLevels} />
+          </span>
 
           {/* 4. მიკროფონის ღილაკი */}
           <button

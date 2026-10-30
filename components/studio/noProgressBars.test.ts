@@ -31,7 +31,7 @@ const files = tsx(studio).map((p) => ({ path: relative(root, p), src: readFileSy
 /** Playback position and buffer, drawn as a fill: not progress. `path` and the expression inside `width: `${…}%``. */
 const SCRUBBERS: { path: string; value: string }[] = [
   { path: 'components/studio/SurgicalEditor.tsx', value: 'progress * 100' }, // the clip's playhead on the timeline
-  { path: 'components/studio/TrackPlayer.tsx', value: 'pct' }, // the track's playhead
+  // The Music preview now uses a native range slider (MusicPreviewPlayer), not a width fill.
   { path: 'components/studio/ChatVideoPlayer.tsx', value: 'buffered' }, // how much of the video has loaded
   { path: 'components/studio/ChatVideoPlayer.tsx', value: 'pct' }, // the video's playhead
 ];

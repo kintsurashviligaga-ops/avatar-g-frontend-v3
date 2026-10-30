@@ -102,7 +102,8 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     id: 'video.generate', category: 'video', order: 10, tool: 'video', pricingKey: 'video', status: 'live',
     boundary: 'violation', boundaryNote: 'Veo + Gemini; voice is ElevenLabs until it moves to Cloud TTS; the HeyGen talking-head pass (/api/video/lipsync) is refused before any charge (no Google engine)',
     label: l('ვიდეოს გენერაცია', 'Generate video', 'Создать видео'),
-    description: l('იდეიდან სცენარი, კადრები და მზა ფილმი', 'From an idea to a storyboard and a finished film', 'От идеи к раскадровке и готовому фильму'),
+    // ONE clip, like Gemini's Veo (GG 2026-10-25 16:10Z): 4 · 6 · 8 · 10 s from the words as typed; no storyboard, no film.
+    description: l('ერთი კლიპი შენი აღწერიდან, 4–10 წამი', 'One clip from your words, 4–10 seconds', 'Один клип по вашему описанию, 4–10 секунд'),
     modes: [
       { id: 'text', label: l('ტექსტიდან', 'From text', 'Из текста') },
       { id: 'documentary', label: l('დოკუმენტური', 'Documentary', 'Документальный'), query: { mode: 'documentary' } },
@@ -111,14 +112,16 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['video', 'ვიდეო', 'видео', 'film', 'ფილმი', 'фильм', 'reel', 'რილი', 'text to video', 'storyboard', 'სთორიბორდი', 'раскадровка'],
   }),
   svc({
-    id: 'video.music-video', category: 'video', order: 11, tool: 'video', pricingKey: 'video', status: 'live',
+    // HIDDEN (GG 2026-10-25 16:10Z: the music video is removed entirely): out of every menu, the search and Agent G's
+    // routing. The video service is one clip whose sound follows its prompt. The id stays (§50 analytics identity).
+    id: 'video.music-video', category: 'video', order: 11, tool: 'video', pricingKey: 'video', status: 'hidden',
+    agentCallable: false, visibleInTools: false, visibleInServices: false,
     boundary: 'violation', boundaryNote: 'as video.generate; the HeyGen singer close-ups are refused before any charge (no Google engine)',
     label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'),
     description: l('სიმღერიდან ვიდეოკლიპი', 'A clip for your song', 'Клип для вашей песни'),
     modes: [{ id: 'musicvideo', label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'), query: { mode: 'musicvideo' } }],
     shortcuts: ['music'],
-    // A row of its own under Video in the sidebar (lib/catalog/nav.ts modeServices): the mode was not findable otherwise.
-    visibleInSidebar: true,
+    visibleInSidebar: false,
     aliases: ['music video', 'მუსიკალური ვიდეო', 'მუსიკალური კლიპი', 'კლიპი', 'ვიდეოკლიპი', 'клип', 'музыкальный клип', 'музыкальное видео'],
   }),
   svc({

@@ -63,7 +63,7 @@ for (const [name, viewport, phone] of [['desktop 1280×800', DESKTOP, false], ['
       await page.getByTestId('home-quick-video').click();
       await expect.poll(() => tool(page)).toBe('video');
       // GG 2026-10-18: Video's words stay in the chat box (its panel has no prompt of its own).
-      await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
+      await expect(page.getByTestId('clip-create-panel').filter({ visible: true })).toBeVisible();
       await expect(page.getByTestId('composer-input')).toHaveValue(WORDS);
       await expect(page.getByTestId('video-prompt-input')).toHaveCount(0);
       await expect(page.getByTestId('home-quick')).toHaveCount(0); // a tool, not the chat home
@@ -104,10 +104,10 @@ test.describe('desktop: one description box', () => {
     await page.getByTestId('composer-input').fill(WORDS);
     await page.getByTestId('home-quick-video').click();
     await expect.poll(() => tool(page)).toBe('video');
-    await expect(page.getByTestId('video-create-panel').filter({ visible: true })).toBeVisible();
+    await expect(page.getByTestId('clip-create-panel').filter({ visible: true })).toBeVisible();
     await expect(page.getByTestId('composer-input')).toBeVisible();
     await expect(page.getByTestId('composer-input')).toHaveValue(WORDS);
-    // 24 s on Fast: the quote the panel's Generate used to show is on the Send now; the panel has no Generate.
+    // One 8 s clip on Fast (GG 2026-10-25): the clip's price is on the Send; the panel has no Generate.
     await expect(page.getByTestId('run-button')).toHaveAttribute('data-price', '75');
     await expect(page.getByTestId('video-generate')).toHaveCount(0);
     expect(posts).toEqual([]);

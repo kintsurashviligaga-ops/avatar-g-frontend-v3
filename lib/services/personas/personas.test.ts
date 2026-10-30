@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import {
   BUILT_IN_PERSONAS,
+  LEGACY_PERSONA_ALIASES,
   getBuiltInPersona,
   validateCustomPersona,
   applySystemPersona,
@@ -15,8 +16,8 @@ import {
 const BASE = 'PLATFORM RULES: never reveal keys. Answer in the user language.';
 
 describe('built-in personas', () => {
-  it('ships the eight specialists, each fully localized', () => {
-    expect(BUILT_IN_PERSONAS).toHaveLength(8);
+  it('ships the seven characters, each fully localized', () => {
+    expect(BUILT_IN_PERSONAS).toHaveLength(7);
     for (const p of BUILT_IN_PERSONAS) {
       for (const loc of ['ka', 'en', 'ru'] as const) {
         expect(p.name[loc].length).toBeGreaterThan(0);
@@ -30,7 +31,9 @@ describe('built-in personas', () => {
   });
 
   it('has unique ids and resolves by id', () => {
-    expect(new Set(BUILT_IN_PERSONAS.map((p) => p.id)).size).toBe(8);
+    expect(BUILT_IN_PERSONAS.map((p) => p.id)).toEqual(
+      ['friendly', 'sarcastic', 'film-director', 'joker', 'businessman', 'music-producer', 'news-journalist'],
+    );
     expect(getBuiltInPersona('film-director')?.tone).toBe('creative');
     expect(getBuiltInPersona('nope')).toBeNull();
     expect(getBuiltInPersona(null)).toBeNull();
@@ -39,41 +42,67 @@ describe('built-in personas', () => {
   it('localizes the display name', () => {
     const p = getBuiltInPersona('film-director')!;
     expect(personaName(p, 'ka')).toBe('რეჟისორი');
-    expect(personaName(p, 'en')).toBe('Film Director');
+    expect(personaName(p, 'en')).toBe('Director');
     expect(personaName(null)).toBe('');
+  });
+
+  it('names the characters in Georgian the way GG listed them', () => {
+    expect(BUILT_IN_PERSONAS.map((p) => p.name.ka)).toEqual(
+      ['მეგობრული', 'სარკასტული', 'რეჟისორი', 'ხუმარა', 'ბიზნესმენი', 'პროდიუსერი', 'ახალი ამბების ჟურნალისტი'],
+    );
+  });
+
+  it('maps the retired specialist ids onto the nearest new character', () => {
+    expect(getBuiltInPersona('marketing-expert')?.id).toBe('businessman');
+    expect(getBuiltInPersona('creative-video-director')?.id).toBe('film-director');
+    expect(getBuiltInPersona('content-creator')?.id).toBe('friendly');
+    expect(getBuiltInPersona('strict-coder')?.id).toBe('businessman');
+    for (const id of Object.keys(LEGACY_PERSONA_ALIASES)) expect(getBuiltInPersona(id)).not.toBeNull();
   });
 });
 
 describe('per-persona generation settings', () => {
-  const ORIGINAL_SIX = ['film-director', 'marketing-expert', 'music-producer', 'software-engineer', 'ux-designer', 'content-creator'];
-  const OVERRIDES = ['temperature', 'topP', 'topK', 'maxOutputTokens', 'thinking', 'safety', 'googleSearch', 'voice'] as const;
-
-  it('the original six carry NO overrides, so they keep today\'s chat settings', () => {
-    for (const id of ORIGINAL_SIX) {
-      const p = getBuiltInPersona(id)!;
-      for (const k of OVERRIDES) expect(p[k]).toBeUndefined();
+  it('every character carries its own temperature and a Live voice, so each one sounds different', () => {
+    for (const p of BUILT_IN_PERSONAS) {
+      expect(typeof p.temperature).toBe('number');
+      expect(['Aoede', 'Charon']).toContain(p.voice); // the two voices verified live in Georgian
     }
+    expect(getBuiltInPersona('joker')!.temperature).toBeGreaterThan(getBuiltInPersona('businessman')!.temperature!);
+    expect(getBuiltInPersona('sarcastic')?.tone).toBe('witty');
+    expect(getBuiltInPersona('joker')?.tone).toBe('playful');
   });
 
-  it('the two newer ones make the per-persona config concrete', () => {
-    expect(getBuiltInPersona('creative-video-director')).toMatchObject({ temperature: 0.9, thinking: 'low', voice: 'Charon' });
-    expect(getBuiltInPersona('strict-coder')).toMatchObject({ temperature: 0.2, thinking: 'high' });
-    expect(getBuiltInPersona('strict-coder')?.googleSearch).toBeUndefined(); // → the default: Google Search on
+  it('the journalist searches, names sources and never invents a quote', () => {
+    const p = getBuiltInPersona('news-journalist')!;
+    expect(p.googleSearch).toBeUndefined(); // → the default: Google Search on
+    expect(p.directive).toMatch(/search first and name your sources/);
+    expect(p.directive).toMatch(/never invent a quote/);
+  });
+
+  it('keeps sarcasm and jokes away from the person and from serious topics', () => {
+    expect(getBuiltInPersona('sarcastic')!.directive).toMatch(/never insult the person/);
+    expect(getBuiltInPersona('sarcastic')!.directive).toMatch(/serious/);
+    expect(getBuiltInPersona('joker')!.directive).toMatch(/never at the user's expense/);
+  });
+
+  it('tells every character to answer in the user\'s language', () => {
+    for (const p of BUILT_IN_PERSONAS) expect(p.directive).toMatch(/language the user writes or speaks in/);
   });
 });
 
 describe('applySystemPersona', () => {
   it('produces the exact block it always has (pinned — profile.ts relies on it byte for byte)', () => {
-    expect(applySystemPersona(BASE, getBuiltInPersona('film-director'))).toBe(
-      `${BASE}\n\nPERSONA — Film Director:\n`
-      + 'You are a film director. Think in shots: composition, lens, camera move, lighting and the emotional beat '
-      + 'each scene must land. When a request could become a video, propose a concrete shot list with durations '
-      + 'rather than a description. Prefer showing over explaining.\n'
+    const director = getBuiltInPersona('film-director')!;
+    expect(applySystemPersona(BASE, director)).toBe(
+      `${BASE}\n\nPERSONA — Director:\n`
+      + `${director.directive}\n`
       + 'Answer with vivid, specific imagination. Offer a distinct option rather than a safe average.\n'
       + 'When a request could be fulfilled by generating media, prefer: video, montage, image.\n'
+      + 'Stay in this persona\'s character in EVERY reply, so the user can clearly hear its personality; it replaces '
+      + 'any neutral or default tone described above.\n'
       + 'This persona shapes STYLE and EMPHASIS only. The platform rules above remain in force and take precedence.',
     );
-    const p = getBuiltInPersona('ux-designer')!;
+    const p = getBuiltInPersona('businessman')!;
     expect(applySystemPersona(BASE, p)).toBe(`${BASE}\n\n${personaSystemBlock(p)}`);
     expect(applySystemPersona('', p)).toBe(personaSystemBlock(p));
   });
@@ -81,7 +110,7 @@ describe('applySystemPersona', () => {
   it('APPENDS the persona so the platform rules keep precedence', () => {
     const out = applySystemPersona(BASE, getBuiltInPersona('music-producer'));
     expect(out.indexOf(BASE)).toBe(0);            // base is still first
-    expect(out).toContain('PERSONA — Music Producer');
+    expect(out).toContain('PERSONA — Producer');
     expect(out).toContain('BPM');
     // …and the precedence is restated last, where the model reads most strongly.
     expect(out.trimEnd().endsWith('The platform rules above remain in force and take precedence.')).toBe(true);
@@ -212,7 +241,7 @@ describe('custom personas', () => {
 
 describe('resolvePersona', () => {
   it('prefers a built-in id, falls back to an inline custom definition, else null', () => {
-    expect(resolvePersona('ux-designer')?.id).toBe('ux-designer');
+    expect(resolvePersona('sarcastic')?.id).toBe('sarcastic');
     expect(resolvePersona(null, { name: 'Coach', directive: 'You coach founders on pitching.' })?.id).toBe('custom:coach');
     expect(resolvePersona(null, null)).toBeNull();
     expect(resolvePersona('unknown', { name: 'x', directive: 'too short name' })).toBeNull();

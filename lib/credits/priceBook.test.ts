@@ -14,6 +14,8 @@ import {
   filmScenes,
   FULL_SONG_SEC,
   musicCredits,
+  omniClipCredits,
+  omniEditCredits,
   remixSceneCredits,
   sceneCredits,
   veoRenderedSeconds,
@@ -71,6 +73,35 @@ describe('every literal is the rule price of its cost', () => {
     expect(musicCredits(FULL_SONG_SEC)).toBe(PRICE_BOOK.music.fullSong);
   });
 
+  it('an Omni Flash clip at 720p and at 1080p, 4 · 6 · 8 · 10 s, is the rule (cards 2026-10-25 16:51Z and 2026-10-26 10:55Z)', () => {
+    for (const res of ['720p', '1080p'] as const) {
+      for (const sec of [4, 6, 8, 10] as const) {
+        expect(PRICE_BOOK.omniClip[res][sec]).toBe(rule(`video.omni.${res}.${sec}`));
+        expect(omniClipCredits(res, sec)).toBe(PRICE_BOOK.omniClip[res][sec]);
+      }
+    }
+    expect(PRICE_BOOK.omniClip).toEqual({ '720p': { 4: 28, 6: 42, 8: 55, 10: 69 }, '1080p': { 4: 42, 6: 62, 8: 82, 10: 102 } });
+    // The 10 s row the owner set first is unchanged, and a length off the grid is the 10 s clip's.
+    expect(omniClipCredits()).toBe(69);
+    expect(omniClipCredits('1080p')).toBe(102);
+    expect(omniClipCredits('720p', 9)).toBe(69);
+  });
+
+  it('an uploaded video edited or extended by Omni Flash: GG\'s card (17:04Z) is the rule or one credit above it, never below', () => {
+    for (const res of ['720p', '1080p'] as const) {
+      for (const sec of [4, 6, 8, 10] as const) {
+        const card = PRICE_BOOK.omniEdit[res][sec];
+        expect(card).toBe(omniEditCredits(sec, res));
+        expect(card - rule(`video.omni-edit.${res}.${sec}`)).toBeGreaterThanOrEqual(0);
+        expect(card - rule(`video.omni-edit.${res}.${sec}`)).toBeLessThanOrEqual(1);
+      }
+    }
+    // Where GG's number is above the rule, it is exactly where the card put it.
+    const above = (['720p', '1080p'] as const).flatMap((res) => ([4, 6, 8, 10] as const)
+      .filter((sec) => PRICE_BOOK.omniEdit[res][sec] > rule(`video.omni-edit.${res}.${sec}`)).map((sec) => `${res} ${sec}`));
+    expect(above).toEqual(['720p 6', '1080p 4', '1080p 6']);
+  });
+
   it('a deck of up to 12 illustrated slides', () => {
     expect(PRICE_BOOK.presentationDeck).toBe(ruleCreditsForCost(deckCostGel(12)));
   });
@@ -86,10 +117,20 @@ describe('no price earns less than 100 % over its cost', () => {
       [PRICE_BOOK.music.fullSong, opCostGel(unitOp('music.track.180'))],
       [PRICE_BOOK.research, opCostGel(unitOp('research.deep'))],
       [PRICE_BOOK.presentationDeck, deckCostGel(12)],
+      ...(['720p', '1080p'] as const).flatMap((res) => ([4, 6, 8, 10] as const)
+        .map((sec): [number, number] => [PRICE_BOOK.omniClip[res][sec], opCostGel(unitOp(`video.omni.${res}.${sec}`))])),
     ];
     for (const [credits, cost] of lines) {
       expect(profitOverCostOf(credits, cost)).toBeGreaterThanOrEqual(1);
       expect(profitOverCostOf(credits - 1, cost)).toBeLessThan(1);
+    }
+  });
+
+  it('every Omni edit / extend row earns at least 100 % (GG set three of them one credit above the rule)', () => {
+    for (const res of ['720p', '1080p'] as const) {
+      for (const sec of [4, 6, 8, 10] as const) {
+        expect(profitOverCostOf(PRICE_BOOK.omniEdit[res][sec], opCostGel(unitOp(`video.omni-edit.${res}.${sec}`)))).toBeGreaterThanOrEqual(1);
+      }
     }
   });
 

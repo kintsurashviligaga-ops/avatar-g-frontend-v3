@@ -10,7 +10,11 @@
  *  · The language is the one the user SPEAKS (lib/voice/speechLang): their typed native script, else the language the
  *    server heard last time, else Georgian for a Georgian UI, else 'auto' — the recorder, where Gemini identifies it
  *    (Web Speech cannot) and the answer is remembered for the next dictation. Never a translation.
- *  · Apple's engine (iOS and macOS Safari) has no Georgian, so `ka` there goes straight to the recorder.
+ *  · Apple's engine (iOS and macOS Safari) always records: Gemini hears Georgian, English and Russian in one clip, and
+ *    the language guessed above is only its hint. ⚠️ IT USED TO RECORD ONLY FOR GEORGIAN (Apple's engine has none) and
+ *    use Web Speech in the guessed language otherwise. On an iPhone that had typed Russian once, Georgian and English
+ *    speech came out as Russian-engine nonsense ("Akino Gett Батуми"; GG, production 2026-10-24): Web Speech hears
+ *    only the one language it is set to, and the guess is a guess.
  *  · Otherwise, record and POST to /api/voice/transcribe, streaming interim passes into the box on the
  *    `lib/voice/interimCadence` back-off, then one final pass on Stop.
  *  · NO AUTO-SEND. Dictation fills the box and waits for the user to tap Send (product decision; the
@@ -80,6 +84,8 @@
  * made Live's getUserMedia fail with NotReadableError. The hook now listens on lib/voice/micBus: a release request
  * stops the recognizer and the recorder's tracks SYNCHRONOUSLY, keeping what was already dictated (the final pass
  * still runs on the audio captured so far).
+ * The other way round, a tap on this mic asks the other holders to let go first (reason 'dictation'): on an iPhone
+ * the newer capture silently mutes the older one, so a Live call left running would keep "listening" to silence.
  *
  * METRICS (lib/voice/dictationMetrics): one summary per dictation — tap → listening, listening → first text,
  * Stop → final text, every pass's latency, error / abort / deferral / restart counts, engine and language. Timings
@@ -99,7 +105,8 @@ import {
   type DictationOutcome,
 } from '@/lib/voice/dictationMetrics';
 import { MAX_INTERIM_MS, shouldRunInterimAt } from '@/lib/voice/interimCadence';
-import { useMicRelease } from '@/lib/voice/micBus';
+import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
+import { sttTrialModel } from '@/lib/voice/sttTrial';
 import {
   isSpeechLang,
   loadLearnedSpeechLang,
@@ -174,6 +181,8 @@ export interface DictationDeps {
   /** The language the server heard on an earlier clip (lib/voice/speechLang; localStorage by default). */
   loadSpeechLang(): SpeechLang | null;
   saveSpeechLang(lang: SpeechLang): void;
+  /** The owner's `?stt=` model trial (lib/voice/sttTrial), or null; the route honours it for an admin only. */
+  sttTrialModel(): string | null;
 }
 
 export interface UseDictationOptions {
@@ -234,7 +243,16 @@ export const TICK_MS = 300;
 /** See the file header: 120 s of 16 kHz WAV ≈ 3.8 MB, under the ~4.5 MB request ceiling. */
 export const MAX_RECORD_SEC = 120;
 export const SILENCE_RMS = 0.035;
-export const SILENCE_HOLD_MS = 1300;
+/**
+ * How long the user must stay quiet, after speaking, before the recorder stops by itself (no auto-send; Stop and the
+ * mic button still stop at once).
+ *
+ * ⚠️ 1.3 s CUT THE OWNER OFF MID-THOUGHT. On Production (GG, iPhone, 2026-10-25 09:44Z) a long Georgian dictation
+ * stopped in the middle and the spinner started: a pause to think between two sentences is longer than 1.3 s, and
+ * the recorder took it for the end. A dictation that stops too early loses the rest of what the user meant to say;
+ * one that stops late only costs a tap or a few seconds. UNVERIFIED that 4 s covers every thinking pause.
+ */
+export const SILENCE_HOLD_MS = 4000;
 export const TRANSCRIBE_TIMEOUT_MS = 30_000;
 export const WEB_SPEECH_START_WATCHDOG_MS = 8000;
 export const WEB_SPEECH_AFTER_SPEECH_WATCHDOG_MS = 2500;
@@ -765,6 +783,7 @@ const defaultDeps = (): DictationDeps => ({
   isGuest: () => typeof document !== 'undefined' && document.documentElement?.dataset?.authed === '0',
   loadSpeechLang: loadLearnedSpeechLang,
   saveSpeechLang: saveLearnedSpeechLang,
+  sttTrialModel: () => sttTrialModel(),
 });
 
 // ─── The hook ────────────────────────────────────────────────────────────────────────────────────────────
@@ -969,6 +988,9 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       // The extension must match the bytes — Whisper-class legs dispatch on it (lib/voice/audioExt).
       fd.append('audio', blob, `clip.${audioExtFor(blob.type || r.session?.mimeType)}`);
       fd.append('language', r.lang);
+      let trial: string | null = null;
+      try { trial = d.sttTrialModel(); } catch { /* no trial */ }
+      if (trial) fd.append('model', trial);
       const res = await d.fetch(transcribeUrlFor(o.transcribeUrl ?? '/api/voice/transcribe', kind), { method: 'POST', body: fd, credentials: 'same-origin', signal: ctrl.signal });
       // Re-check AFTER the await: a send() while this was in flight already emptied the box.
       if (stale()) return;
@@ -1241,14 +1263,16 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     }
     micStopRequestedRef.current = false;
     setWarn(null);
+    // Synchronously, before any capture starts: a Live call (or another recorder) on this page lets go of the mic.
+    requestMicRelease('dictation');
     // The language the user SPEAKS, not merely the UI's (lib/voice/speechLang): typed native script → heard before →
     // Georgian UI → 'auto'. Web Speech cannot detect a language, so 'auto' goes to the recorder, where Gemini does.
     let learned: SpeechLang | null = null;
     try { learned = d.loadSpeechLang(); } catch { /* unknown */ }
     const want = resolveSpeechLang({ locale: o.locale, typed: o.speechLang ?? null, learned });
-    const SR = want === 'auto' ? undefined : d.speechRecognition();
-    const webSpeech = want !== 'auto' && !!SR && !(isAppleSpeechEngine(d.userAgent()) && want.startsWith('ka'))
-      && !unsupportedLangsRef.current.has(want);
+    // Apple's engine records every language: it hears only the one it is set to, and the language here is a guess.
+    const SR = want === 'auto' || isAppleSpeechEngine(d.userAgent()) ? undefined : d.speechRecognition();
+    const webSpeech = want !== 'auto' && !!SR && !unsupportedLangsRef.current.has(want);
     // The tap shows 'starting' at once; 'listening' only once capture really runs.
     const run = beginRun(want, webSpeech ? 'webspeech' : 'recorder');
     if (want === 'auto' || !SR || !webSpeech) { await startRecorder(want, run); return; }

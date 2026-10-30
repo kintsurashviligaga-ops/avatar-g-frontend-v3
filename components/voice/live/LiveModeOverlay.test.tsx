@@ -7,6 +7,7 @@
 import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
+import { LiveAvatarCaption } from './LiveAvatarStage';
 import LiveCaptions, { tailText } from './LiveCaptions';
 import { LIVE_DOCK_STRINGS } from './LiveDock';
 import LiveModeOverlay, { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './LiveModeOverlay';
@@ -55,6 +56,46 @@ describe('LiveModeOverlay', () => {
     expect(screen.getByTestId('live-status')).toHaveTextContent(connecting);
     expect(screen.getByTestId('live-waveform').querySelector('[data-state]')).toHaveAttribute('data-state', 'connecting');
     expect(screen.getByRole('log', { name: LIVE_OVERLAY_STRINGS[locale].captions })).toBeEmptyDOMElement();
+  });
+
+  it('over the avatar the words keep to a low band under the face; the copy row gives way to a one-line AI notice', () => {
+    const s = LIVE_OVERLAY_STRINGS.ka;
+    const captions: LiveCaption[] = [
+      { id: 'u1', role: 'user', text: 'გამარჯობა', final: true },
+      { id: 'a1', role: 'assistant', text: 'გამარჯობა, რით შემიძლია დაგეხმაროთ?', final: false },
+    ];
+    const props = { locale: 'ka' as const, status: 'speaking' as const, captions, muted: false, cameraOn: false, ...handlers() };
+    const { rerender } = render(<LiveModeOverlay {...props} avatarVideo={document.createElement('video')} />);
+    expect(screen.getByTestId('live-content').className).toContain('justify-end');
+    const band = screen.getByTestId('live-avatar-caption');
+    expect(band).toHaveTextContent('გამარჯობა, რით შემიძლია დაგეხმაროთ?');
+    expect(band.className).toContain('max-h-[3.5rem]'); // 2 lines of 28 px on a short phone
+    expect(band.querySelector('p')).toHaveAttribute('aria-hidden', 'true'); // still being written: not read out yet
+    expect(screen.queryByRole('button', { name: s.copyText })).toBeNull();
+    expect(screen.getByText(s.aiNotice)).toBeTruthy();
+    // Without the avatar: the big caption and the copy row as before.
+    rerender(<LiveModeOverlay {...props} />);
+    expect(screen.queryByTestId('live-avatar-caption')).toBeNull();
+    expect(screen.getByRole('button', { name: s.copyText })).toBeTruthy();
+  });
+
+  it('the avatar caption fades its older lines only when the text is taller than the band', () => {
+    const height = jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get');
+    const client = jest.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(56);
+    try {
+      height.mockReturnValue(56);
+      const { rerender } = render(<LiveAvatarCaption text="მოკლე პასუხი" />);
+      const band = screen.getByTestId('live-avatar-caption');
+      expect(band).not.toHaveAttribute('data-clipped');
+      expect(band.style.maskImage).toBe('');
+      height.mockReturnValue(112);
+      rerender(<LiveAvatarCaption text={'გრძელი პასუხი '.repeat(12)} />);
+      expect(band).toHaveAttribute('data-clipped');
+      expect(band.style.maskImage).toContain('linear-gradient');
+    } finally {
+      height.mockRestore();
+      client.mockRestore();
+    }
   });
 
   it('stop-speaking joins the row only while the agent speaks', () => {
@@ -329,28 +370,22 @@ describe('LiveOrb', () => {
     expect(raf).not.toHaveBeenCalled();
   });
 
-  it('one hue, one glow: the core has no shadow; the single halo is the blurred accent; the disc is lit by the accent', () => {
+  it('one hue, one glow: the core has no shadow; the single halo is the blurred accent; the disc is the voice pill\'s blue', () => {
     mockReducedMotion(true);
     const { container } = render(<LiveOrb state="speaking" label="Speaking" />);
     const layers = Array.from(container.querySelectorAll<HTMLDivElement>('[aria-hidden]'));
     expect(layers.filter((l) => /\bblur-3xl\b/.test(l.className))).toHaveLength(1);
     expect(layers.some((l) => /shadow-/.test(l.className))).toBe(false);
-    expect(container.innerHTML).toMatch(/rgb\(var\(--app-accent\)\/0\.42\)/);
+    expect(screen.getByTestId('live-orb-core').className).toMatch(/#1d4ed8.*#38bdf8/);
   });
 
-  it.each([36, 40, 88, 136, 168, 208])('the rocket sits whole on the disc at %i px, and asks for the raster it needs', (size) => {
+  it.each([36, 40, 88, 136, 168, 208])('no rocket and no picture at %i px: the waveform sits in the disc (P0 correction, 2026-10-24)', (size) => {
     mockReducedMotion(true);
     const { container } = render(<LiveOrb state="listening" size={size} label="Listening" />);
-    const rocket = container.querySelector<HTMLImageElement>('[data-testid="live-orb-rocket"]')!;
-    expect(rocket.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(rocket.getAttribute('alt')).toBe('');
-    // 70 % of the core, centred, object-contain: the corner-to-corner mark stays inside the circle at every size.
-    expect(rocket.className).toMatch(/\bobject-contain\b/);
-    expect(rocket.className).toMatch(/inset-\[15%\]/);
-    expect(rocket.getAttribute('sizes')).toBe(`${Math.max(16, Math.round(size * 0.76 * 0.7))}px`);
-    expect(rocket.closest('[aria-hidden]')!.className).toMatch(/\boverflow-hidden\b.*\brounded-full\b/);
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    expect(container.innerHTML).not.toMatch(/rocket/i);
+    expect(screen.getByTestId('live-orb-core').querySelector('[data-state="listening"]')).not.toBeNull();
     expect((container.firstElementChild as HTMLElement).style.width).toBe(`${size}px`);
-    // No backdrop unless asked (the dock has none).
     expect(container.querySelector('[data-testid="live-orb-backdrop"]')).toBeNull();
   });
 
@@ -388,7 +423,7 @@ describe('LiveOrb', () => {
     const { container, rerender, unmount } = render(<LiveOrb state="connecting" label="Connecting" />);
     const arc = () => container.querySelector('[data-testid="live-orb-arc"] circle:last-child')!;
     const arcLength = () => Number(arc().getAttribute('stroke-dasharray')!.split(' ')[0]);
-    const core = () => container.querySelector('[data-testid="live-orb-rocket"]')!.parentElement as HTMLElement;
+    const core = () => container.querySelector('[data-testid="live-orb-core"]') as HTMLElement;
     const scales: number[] = [];
     const opacities: number[] = [];
     act(() => {
@@ -424,20 +459,20 @@ describe('LiveOrb', () => {
     const ring = container.querySelector('[data-testid="live-orb-arc"]')!;
     expect(ring.className).toMatch(/\bopacity-100\b/);
     expect(ring.querySelector('circle:last-child')!.getAttribute('stroke-dasharray')).toBe('25.0 100');
-    expect((container.querySelector('[data-testid="live-orb-rocket"]')!.parentElement as HTMLElement).style.opacity).toBe('');
+    expect((container.querySelector('[data-testid="live-orb-core"]') as HTMLElement).style.opacity).toBe('');
   });
 
-  it('idle dims the rocket and an error greys it; live states show it in full', () => {
+  it('idle goes neutral and an error goes red; live states show the blue disc', () => {
     mockReducedMotion(true);
-    const rocketCls = (state: 'idle' | 'error' | 'speaking') => {
-      const { container, unmount } = render(<LiveOrb state={state} label={state} />);
-      const cls = container.querySelector('[data-testid="live-orb-rocket"]')!.className;
+    const coreCls = (state: 'idle' | 'error' | 'speaking') => {
+      const { unmount } = render(<LiveOrb state={state} label={state} />);
+      const cls = screen.getByTestId('live-orb-core').className;
       unmount();
       return cls;
     };
-    expect(rocketCls('idle')).toMatch(/opacity-60/);
-    expect(rocketCls('error')).toMatch(/\bgrayscale\b/);
-    expect(rocketCls('speaking')).not.toMatch(/opacity-|grayscale/);
+    expect(coreCls('idle')).toMatch(/bg-app-elevated/);
+    expect(coreCls('error')).toMatch(/app-danger/);
+    expect(coreCls('speaking')).toMatch(/#2563eb/);
   });
 });
 

@@ -1,7 +1,8 @@
 /**
- * The turn-by-turn voice call (tier 3 of ChatChrome's voice cascade) wears the Gemini Live call's screen: the rocket orb
- * with the large faint rocket behind it, „ცოცხალი ზარი“, the status line with the waveform, the captions, and the round
- * glass row (Mute · End) — portalled, pinned dark, a dialog. The session underneath is unchanged: auto-start on a
+ * The turn-by-turn voice call (tier 3 of ChatChrome's voice cascade, and since #119 the call every user gets) wears the
+ * owner's APPROVED Live screen (P0 correction task, 2026-10-24): true black, the blue glow from below, the status and the
+ * words at the top left, and one row at the bottom (the voice pill · Mute · End). No rocket and no picture anywhere —
+ * portalled, pinned dark, a dialog. The session underneath is unchanged: auto-start on a
  * running context (else one tap), tap-to-end-turn, transcribe → chat → TTS through the context, hands-free re-arm.
  * Mute switches the mic track off. The reply's audio goes through the speech contract: a WAV is decoded, other bytes are
  * a failed reply, and the call has the speakers while it is open (no read-aloud plays under it).
@@ -135,21 +136,23 @@ describe('VoiceConversation — the Live call screen', () => {
     expect(dialog.className).toMatch(/\bz-\[130\]/);
   });
 
-  it.each(['ka', 'en', 'ru'] as const)('%s: the rocket is the agent — in the orb and large and faint behind it; „Live call“ top-left', async (locale) => {
+  it.each(['ka', 'en', 'ru'] as const)('%s: the approved screen — no rocket, no picture, no orb; the glow from below and the voice pill', async (locale) => {
     await renderVoice(locale);
     const dialog = screen.getByRole('dialog');
-    expect(screen.getByTestId('live-call-label').textContent).toBe(LIVE_OVERLAY_STRINGS[locale].live);
-    expect(dialog.querySelector('[data-testid="live-orb-rocket"]')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    expect(dialog.querySelector('[data-testid="live-orb-backdrop"] img')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
-    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/rocket-mark/);
+    expect(dialog.querySelectorAll('img')).toHaveLength(0);
+    expect(dialog.innerHTML).not.toMatch(/rocket/i);
+    expect(dialog.querySelector('[data-testid="live-orb-backdrop"], [data-testid="live-orb-rocket"]')).toBeNull();
+    expect(dialog.className).toMatch(/\bbg-black\b/);
+    expect(dialog.querySelector('[data-testid="live-ambient"]')).not.toBeNull();
+    expect(screen.getByTestId('voice-orb').querySelector('[data-testid="live-voice-pill"]')).not.toBeNull();
   });
 
-  it('the metaball canvas and its crimson / violet are gone: one hue, one halo', async () => {
+  it('the metaball canvas and its violet are gone; no halo behind an orb', async () => {
     await renderVoice('en');
     const dialog = screen.getByRole('dialog');
     expect(dialog.querySelector('canvas')).toBeNull();
-    expect(dialog.innerHTML).not.toMatch(/rose-|violet|purple|fuchsia|crimson|255,\s*0,\s*60|209,\s*0,\s*209/);
-    expect(dialog.querySelectorAll('.blur-3xl')).toHaveLength(1);
+    expect(dialog.innerHTML).not.toMatch(/violet|purple|fuchsia|crimson|255,\s*0,\s*60|209,\s*0,\s*209/);
+    expect(dialog.querySelectorAll('.blur-3xl')).toHaveLength(0);
   });
 
   it('auto-starts on a running context and listens: the status line, the waveform, Mute · End', async () => {
@@ -160,15 +163,15 @@ describe('VoiceConversation — the Live call screen', () => {
     expect(screen.getByTestId('live-status').textContent).toBe(live.status.listening);
     expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('listening');
     const row = screen.getByTestId('live-controls');
-    const controls = Array.from(row.querySelectorAll<HTMLButtonElement>('button[data-control]'));
-    expect(controls.map((b) => b.getAttribute('aria-label'))).toEqual([live.mute, live.end]);
-    for (const b of controls) expect(b.querySelector('[data-circle]')!.className).toMatch(/\bh-\[56px\] w-\[56px\]/);
-    expect(screen.getByRole('button', { name: live.end }).querySelector('[data-circle]')!.className).toMatch(/\bbg-app-danger\b/);
+    // The approved row: the voice pill (the end-of-turn control while listening) · Mute · End, 48 px round glass.
+    const controls = Array.from(row.querySelectorAll<HTMLButtonElement>(':scope > button'));
+    expect(controls.map((b) => b.getAttribute('aria-label'))).toEqual([VOICE_CONVERSATION_STRINGS.ka.endTurn, live.mute, live.end]);
+    for (const b of controls.slice(1)) expect(b.className).toMatch(/\bh-12 w-12\b/);
     // The hands-free hint, until the first turn — Georgian at its 16 px floor.
     expect(screen.getByText(VOICE_CONVERSATION_STRINGS.ka.hint).className).toMatch(/text-\[16px\]/);
   });
 
-  it('connecting: „უკავშირდება…“ under the breathing rocket while the context comes up', async () => {
+  it('connecting: „უკავშირდება…“ above the voice pill while the context comes up', async () => {
     ctxState = 'suspended';
     const pending = new Promise<void>(() => {});
     const Ctx = class extends FakeAudioContext { resume = jest.fn(() => pending); };
@@ -176,9 +179,10 @@ describe('VoiceConversation — the Live call screen', () => {
     render(<VoiceConversation locale="ka" onClose={jest.fn()} />);
     await flush();
     expect(screen.getByTestId('live-status').textContent).toBe('უკავშირდება…');
-    // The orb is decoration while connecting (the status line speaks); it carries the state and the breath.
-    expect(screen.getByTestId('voice-orb').querySelector('[role="img"]')!.getAttribute('data-state')).toBe('connecting');
-    expect(screen.getByTestId('live-orb-arc').className).toMatch(/\bopacity-100\b/);
+    // The pill is decoration while connecting (the status line speaks); it carries the state.
+    expect(screen.getByTestId('voice-orb').getAttribute('data-state')).toBe('connecting');
+    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('connecting');
+    expect(screen.getByRole('dialog').innerHTML).not.toMatch(/rocket/i);
   });
 
   it('a suspended context (iOS) waits for one tap: Ready + „Tap to start“, and the tap starts the session', async () => {
@@ -205,7 +209,7 @@ describe('VoiceConversation — the Live call screen', () => {
     fireEvent.click(mute);
     expect(track.enabled).toBe(false);
     expect(mute.getAttribute('aria-pressed')).toBe('true');
-    expect(mute.querySelector('[data-circle]')!.className).toMatch(/\bbg-app-text\b.*\btext-app-bg\b/);
+    expect(mute.className).toMatch(/\bbg-rose-500\/20\b/);
     expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('idle');
     fireEvent.click(mute);
     expect(track.enabled).toBe(true);
@@ -228,7 +232,8 @@ describe('VoiceConversation — the Live call screen', () => {
     expect(screen.getByRole('alert').textContent).toBe(t.micDenied);
     expect(screen.queryByText(live.status.error)).toBeNull(); // never „კავშირი შეწყდა“ for a mic
     const row = screen.getByTestId('live-controls');
-    expect(Array.from(row.querySelectorAll('button[data-control]')).map((b) => b.getAttribute('aria-label'))).toEqual([live.end]);
+    expect(Array.from(row.querySelectorAll(':scope > button')).map((b) => b.getAttribute('aria-label'))).toEqual([live.end]);
+    expect(screen.getByRole('dialog').innerHTML).not.toMatch(/rocket/i);
     getUserMedia.mockImplementation(async () => stream as unknown as MediaStream);
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: t.retry })); });
     await flush();
@@ -251,7 +256,7 @@ describe('VoiceConversation — the Live call screen', () => {
     const log = screen.getByRole('log');
     expect(log).toHaveTextContent('გამარჯობა');
     expect(log).toHaveTextContent('სალამი, რით დაგეხმარო?');
-    expect(log.querySelector('[data-role="assistant"]')!.className).toMatch(/text-\[20px\]/);
+    expect(log.querySelector('[data-role="assistant"]')!.className).toMatch(/text-\[26px\]/);
     // While the reply plays, the orb is not a control (barge-in is the voice, not a tap).
     expect(screen.getByTestId('voice-orb')).toBeDisabled();
     // The reply ends → hands-free: listening again.

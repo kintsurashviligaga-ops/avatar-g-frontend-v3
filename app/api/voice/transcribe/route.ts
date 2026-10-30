@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { acceptTranscript } from '@/lib/voice/sttAccept';
-import { transcriptSpeechLang } from '@/lib/voice/speechLang';
+import { heardSpeechLang } from '@/lib/voice/speechLang';
 import {
   geminiAudioInput,
-  hasGeminiSttKey,
+  geminiSttBlocker,
   transcribeWithGeminiDetailed,
   GeminiSttError,
   type GeminiSttResult,
@@ -13,6 +13,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { effectiveAdminAllowlist } from '@/lib/auth/adminGuard';
 import { bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { STT_MODELS } from '@/lib/ai/google/models';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -29,6 +30,8 @@ export const maxDuration = 30;
  *   - audio:    Blob (WAV / OGG / FLAC / MP3 / AAC / AIFF preferred; WebM / MP4 best effort — see geminiStt.ts)
  *   - language: optional 'ka-GE' | 'en-US' | 'ru-RU' | 'auto' (default 'ka-GE'). A HINT: the transcript is written in
  *               the language actually spoken, never translated (geminiStt.sttPrompt). 'auto' = no hint at all.
+ *   - model:    optional, the owner's `?stt=` trial (lib/voice/sttTrial): a model from STT_MODELS, honoured for an
+ *               ADMIN only and alone (no step-downs), so its timing is its own. Ignored for anyone else.
  *
  * Response: { text: string, provider: string, language?: 'ka-GE' | 'en-US' | 'ru-RU', code?: 'unsupported_format' |
  * 'stt_unavailable' }. `language` is the script the transcript came back in — the browser remembers it for the next
@@ -117,6 +120,11 @@ export async function POST(req: NextRequest) {
     const audio = form.get('audio');
     const langInput = String(form.get('language') || 'ka-GE');
     const language: SttLanguage = langInput === 'en-US' || langInput === 'ru-RU' || langInput === 'auto' ? langInput : 'ka-GE';
+    // The admin list is read only when a trial model is named (the owner's link), so no one else's dictation waits on it.
+    const requestedModel = String(form.get('model') || '').trim().toLowerCase();
+    const trialModel = requestedModel && STT_MODELS.includes(requestedModel) && (await isAdminUser(user?.email))
+      ? requestedModel
+      : null;
 
     if (!audio || typeof audio === 'string') {
       return NextResponse.json({ error: 'audio is required' }, { status: 400 });
@@ -140,17 +148,21 @@ export async function POST(req: NextRequest) {
     const gem = geminiAudioInput(declaredMime, new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 64)));
 
     let text = '';
+    /** The language code the model named for the speech (`[ru] …`), when it named one. */
+    let spoken: string | null = null;
     let provider = 'none';
     let code: 'unsupported_format' | 'stt_unavailable' | undefined;
     let geminiErrMsg: string | null = null;
-    const geminiKeyPresent = hasGeminiSttKey();
+    // Why Vertex AI cannot serve (variable names only), or null. It is the owner's reason when no call is made at all.
+    const blocker = geminiSttBlocker();
+    const geminiKeyPresent = !blocker;
 
     const runGemini = async (): Promise<void> => {
       if (!gem.mimeType) { code = 'unsupported_format'; return; }
       try {
-        const result = await transcribeWithGeminiDetailed(audioBase64, gem.mimeType, language);
+        const result = await transcribeWithGeminiDetailed(audioBase64, gem.mimeType, language, trialModel ? { models: [trialModel] } : {});
         await bookStt(result, user?.id);
-        if (acceptTranscript(result.text, language)) { text = result.text; provider = 'gemini'; }
+        if (acceptTranscript(result.text, language)) { text = result.text; spoken = result.spoken ?? null; provider = 'gemini'; }
       } catch (geminiErr) {
         geminiErrMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
         // A 400 on a container Gemini does not document as audio is a FORMAT miss, not an outage.
@@ -168,14 +180,14 @@ export async function POST(req: NextRequest) {
     const timing = () => ({ 'Server-Timing': `stt;dur=${Date.now() - sttStartedAt}` });
     // Gemini is the whole engine.
     if (geminiKeyPresent) await runGemini();
-    else code = 'stt_unavailable';
+    else { code = 'stt_unavailable'; geminiErrMsg = blocker; }
 
     if (text) code = undefined;
     const headers = timing();
     // Only a miss has anything to diagnose, so the admin list is read for a miss only: the dictation's final pass
     // always asks (components/chat/composer/useDictation transcribeUrlFor), and a transcript must not wait on the check.
     const diagAllowed = wantDiag && !text && (await isAdminUser(user?.email));
-    const heard = text ? transcriptSpeechLang(text) : null;
+    const heard = text ? heardSpeechLang(text, spoken) : null;
     const payload = { text, provider, ...(heard ? { language: heard } : {}), ...(code ? { code } : {}) };
     if (diagAllowed) {
       return NextResponse.json({
@@ -189,6 +201,7 @@ export async function POST(req: NextRequest) {
           audioBytes: bytes.byteLength,
           geminiKeyPresent,
           geminiError: geminiErrMsg,
+          ...(trialModel ? { trialModel } : {}),
         },
       }, { headers });
     }

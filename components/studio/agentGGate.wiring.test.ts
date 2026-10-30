@@ -10,6 +10,16 @@ const src = readFileSync(join(process.cwd(), 'components/studio/OmniStudio.tsx')
 const sendBody = src.slice(src.indexOf('const send = useCallback(async (opts?:'), src.indexOf('// ── VIDEO REMIX — edit an uploaded video via /api/video/remix'));
 const at = (needle: string): number => sendBody.indexOf(needle);
 
+describe('a Live call\'s order (GG 2026-10-26: one word got questions, the call had no price, nothing was made)', () => {
+  test('its tool wins over an old question, it answers no card, and the gate is told it is a Live order', () => {
+    const order = sendBody.slice(at('const chatOrder: GateMode | null'), at('const gateMode: GateMode | null = focusGateMode ?? chatOrder;'));
+    expect(order.indexOf('if (opts?.liveOrder) return opts.liveOrder;')).toBeGreaterThan(0);
+    expect(order.indexOf('if (opts?.liveOrder) return opts.liveOrder;')).toBeLessThan(order.indexOf('if (chatPend) return chatPend.mode;'));
+    expect(sendBody).toContain('const pend = opts?.liveOrder ? null : inChat ? chatPend : gatePendingRef.current;');
+    expect(sendBody).toContain('classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit, hasAudio, awaitingLine, liveOrder });');
+  });
+});
+
 describe('the gate runs before anything that spends', () => {
   test('it exists, and it classifies first', () => {
     expect(at('classifyFocusInput({ text, mode: gateMode')).toBeGreaterThan(0);
@@ -42,14 +52,21 @@ describe('the gate runs before anything that spends', () => {
 
 describe('what the gate does with each verdict', () => {
   test('talk goes to the chat stream — never to a tool, never charged', () => {
-    const chat = sendBody.slice(at("verdict.kind === 'chat'"), at("verdict.kind === 'clarify' || verdict.kind === 'confirm'"));
+    const chat = sendBody.slice(at("verdict.kind === 'chat'"), at("verdict.kind === 'clarify' || (verdict.kind === 'confirm' && gateMode !== 'video')"));
     expect(chat).toContain('await streamChat([...messages, chatTurn])');
     expect(chat).not.toMatch(/runImageJob|runImageBatch|runMusicJob|createStoryboard|\/api\/video|nanobanana/);
   });
   test('a card makes NO request: it only posts Agent G\'s message', () => {
-    const card = sendBody.slice(at("verdict.kind === 'clarify' || verdict.kind === 'confirm'"), at("gatePendingRef.current = null;\n      setGateFrom(null);\n      if (promptText !== text)"));
+    const card = sendBody.slice(at("verdict.kind === 'clarify' || (verdict.kind === 'confirm' && gateMode !== 'video')"), at("gatePendingRef.current = null;\n      if (promptText !== text)"));
     expect(card).toContain('gateMessage(');
     expect(card).not.toMatch(/fetch\(|runImageJob|runMusicJob|createStoryboard/);
+  });
+  test('a clear video order skips Agent G\'s card for the clip\'s own (GG 2026-10-25): it still spends nothing before Create', () => {
+    // A second „Create" for the same clip would be a double confirmation; the clip's card (proposeClip) is the one.
+    expect(sendBody).toContain("if (" + "verdict.kind === 'clarify' || (verdict.kind === 'confirm' && gateMode !== 'video')) {");
+    const video = sendBody.slice(at("if (effMode === 'video' && (text ||"), at("if (effMode === 'lipsync')"));
+    expect(video).toContain('await proposeClip({');
+    expect(video).not.toMatch(/fetch\(|createStoryboard|\/api\/video\/clip/);
   });
   test('only a decision lets a prompt through: a confirmed card, or the panel\'s own Generate button', () => {
     // The card's Create, and a typed yes under it (consentRef, GG 2026-10-16), send its prompt with the frame and photo it holds.
