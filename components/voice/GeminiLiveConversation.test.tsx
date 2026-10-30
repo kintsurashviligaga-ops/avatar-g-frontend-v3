@@ -19,10 +19,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MotionGlobalConfig } from 'framer-motion';
 
 import { __resetLiveTelemetryBudget } from '@/lib/voice/liveTelemetry';
+import { PERSONA_STORAGE_KEY } from '@/components/studio/PersonaPicker';
 import { primeLive } from '@/lib/voice/livePrime';
 import { LIVE_ACTION_EVENT, LIVE_FUNCTION_DECLARATIONS, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail } from '@/lib/voice/liveTools';
 
-import GeminiLiveConversation from './GeminiLiveConversation';
+import GeminiLiveConversation, { failedNote, notStartedNote } from './GeminiLiveConversation';
 import { LIVE_ACTION_STRINGS } from './live/LiveActionCards';
 import { LIVE_END_CALL_GRACE_MS, LIVE_END_CALL_MAX_WAIT_MS } from './live/liveActions';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
@@ -224,7 +225,7 @@ describe('voice-to-action', () => {
   test('the call asks for the actions and its frame declares them', async () => {
     const { ws } = await connectedCall();
     const mint = (g.fetch as jest.Mock).mock.calls.find((c) => c[0] === '/api/voice/live')!;
-    expect(JSON.parse(String((mint[1] as RequestInit).body))).toMatchObject({ actions: true, transcribe: true });
+    expect(JSON.parse(String((mint[1] as RequestInit).body))).toMatchObject({ actions: true, transcribe: true, why: 'start' });
     // (This mint mock returns no server setup, so the hook builds the frame: declarations first, then the persona's search.)
     const tools = (ws.sent[0]!.setup as { tools?: unknown[] }).tools;
     expect(tools?.[0]).toEqual({ functionDeclarations: LIVE_FUNCTION_DECLARATIONS });
@@ -383,6 +384,57 @@ describe('voice-to-action', () => {
     }
   });
 
+  test('set_persona switches the persona and, after the answer, reconnects the call in that role', async () => {
+    const { ws, onClose } = await connectedCall();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    try {
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'p1', name: 'set_persona', args: { persona: 'news-journalist' } }] } }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(lastToolResponse(ws)!.toolResponse.functionResponses[0]).toMatchObject({ id: 'p1', response: { ok: true } });
+      expect(window.localStorage.getItem(PERSONA_STORAGE_KEY)).toBe('news-journalist'); // the text chat follows
+      expect(FakeSocket.all).toHaveLength(1);
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_GRACE_MS + 100); });
+    } finally {
+      jest.useRealTimers();
+    }
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(ws.readyState).toBe(FakeSocket.CLOSED);
+    expect(onClose).not.toHaveBeenCalled();
+    const mints = (g.fetch as jest.Mock).mock.calls.filter((c) => c[0] === '/api/voice/live');
+    const body = JSON.parse(String((mints[mints.length - 1]![1] as RequestInit).body));
+    expect(body).toMatchObject({ personaId: 'news-journalist', why: 'renew' });
+    expect(body.resumptionHandle ?? null).toBeNull();
+    window.localStorage.clear();
+  });
+
+  test('set_persona for the persona the call already runs renews nothing (no fresh session per answer)', async () => {
+    const { ws } = await connectedCall();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    try {
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'p1', name: 'set_persona', args: { persona: 'news-journalist' } }] } }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_GRACE_MS + 100); });
+    } finally {
+      jest.useRealTimers();
+    }
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    const renewed = FakeSocket.all[1]!;
+    act(() => renewed.open());
+    act(() => renewed.receive({ setupComplete: {} }));
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    try {
+      act(() => renewed.receive({ toolCall: { functionCalls: [{ id: 'p2', name: 'set_persona', args: { persona: 'news-journalist' } }] } }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_MAX_WAIT_MS * 2); });
+    } finally {
+      jest.useRealTimers();
+    }
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(renewed.readyState).not.toBe(FakeSocket.CLOSED);
+    window.localStorage.clear();
+  });
+
   test('end_call with nothing playing → hangs up after the short grace', async () => {
     const { ws, onClose } = await connectedCall();
     jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
@@ -396,5 +448,163 @@ describe('voice-to-action', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('the talking avatar', () => {
+  class FakeMS {
+    static isTypeSupported() { return true; }
+    readyState = 'closed';
+    addEventListener() {}
+  }
+  const savedUrl = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+  const savedPlay = HTMLMediaElement.prototype.play;
+  const savedLoad = HTMLMediaElement.prototype.load;
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    saved.MediaSource = g.MediaSource;
+    g.MediaSource = FakeMS;
+    URL.createObjectURL = jest.fn(() => 'blob:avatar');
+    URL.revokeObjectURL = jest.fn();
+    HTMLMediaElement.prototype.play = jest.fn(() => Promise.resolve());
+    HTMLMediaElement.prototype.load = jest.fn();
+    g.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      if (url !== '/api/voice/live') return { ok: false, status: 404, json: async () => ({}) };
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      const avatar = body.avatar ?? null;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          token: 'tok',
+          model: avatar ? 'models/gemini-3.8-live' : 'models/gemini-2.5-flash-native-audio-latest',
+          expiresAt: new Date(Date.now() + 3e5).toISOString(),
+          avatar: avatar === 'Kira' ? 'Kira' : null,
+          ...(avatar === 'Ben' ? { avatarRefused: 'daily_limit' } : {}),
+        }),
+      };
+    });
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    URL.createObjectURL = savedUrl.create;
+    URL.revokeObjectURL = savedUrl.revoke;
+    HTMLMediaElement.prototype.play = savedPlay;
+    HTMLMediaElement.prototype.load = savedLoad;
+  });
+
+  const ready = async (ws: FakeSocket) => {
+    act(() => ws.open());
+    act(() => ws.receive({ setupComplete: {} }));
+    await screen.findByText(LIVE_OVERLAY_STRINGS.en.status.listening);
+  };
+  const mintBodies = () => (g.fetch as jest.Mock).mock.calls
+    .filter((c) => c[0] === '/api/voice/live')
+    .map((c) => JSON.parse(String((c[1] as RequestInit).body)));
+
+  test('the toggle renews the call with Kira; her stream shows on the screen; off goes back to a voice session', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    expect(mintBodies()[0]).not.toHaveProperty('avatar');
+
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Kira', why: 'renew' });
+    expect(screen.getByTestId('live-notice')).toHaveTextContent('Starting the avatar');
+    const ws = FakeSocket.all[1]!;
+    await ready(ws);
+    // An init segment (ftyp): the player opens its MediaSource and the picture takes the screen.
+    act(() => ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: Buffer.from([0, 0, 0, 8, 102, 116, 121, 112]).toString('base64') } }] } } }));
+    await waitFor(() => expect(screen.getByTestId('live-avatar-video')).toBeInTheDocument());
+    // The avatar's answer cannot be cut locally: no stop button while it speaks.
+    act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Hello there' } } }));
+    expect(screen.queryByTestId('live-stop-speaking')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(3));
+    expect(mintBodies()[2]).not.toHaveProperty('avatar');
+    await ready(FakeSocket.all[2]!);
+    expect(screen.queryByTestId('live-avatar-video')).toBeNull();
+  });
+
+  test('the avatar call docks when the agent acts on screen: the chat shows, the avatar goes on talking in a small picture', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Kira', actions: true }); // the avatar call can act on screen
+    const ws = FakeSocket.all[1]!;
+    await ready(ws);
+    act(() => ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: Buffer.from([0, 0, 0, 8, 102, 116, 121, 112]).toString('base64') } }] } } }));
+    await waitFor(() => expect(screen.getByTestId('live-avatar-video')).toBeInTheDocument());
+    act(() => ws.receive({ toolCall: { functionCalls: [{ id: 's1', name: 'open_studio', args: { tool: 'image' } }] } }));
+    expect(await screen.findByTestId('live-dock')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: LIVE_OVERLAY_STRINGS.en.title })).toBeNull(); // the full screen gave way
+    const pip = screen.getByTestId('live-avatar-pip');
+    expect(pip).toContainElement(screen.getByTestId('live-avatar-video'));
+    fireEvent.click(pip); // a tap brings the avatar back full screen
+    expect(await screen.findByRole('dialog', { name: LIVE_OVERLAY_STRINGS.en.title })).toBeTruthy();
+  });
+
+  test('a refused avatar turns the toggle off, says why, and does not ask again', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" gender="male" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Ben' });
+    await ready(FakeSocket.all[1]!);
+    await screen.findByText(/avatar limit is used up/);
+    expect(screen.getByTestId('live-avatar-switch')).toHaveAttribute('aria-pressed', 'false');
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
+  test('switched off for this build, or a browser without MSE: no toggle', async () => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    const { unmount } = render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+    unmount();
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    g.MediaSource = undefined;
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+  });
+});
+
+describe('failedNote — what the call is told when a generation fails', () => {
+  test('the test link\'s refusal is said as what it is, never offered again (GG 2026-10-26)', () => {
+    const note = failedNote('ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.');
+    expect(note).toContain('This is a test link');
+    expect(note).toContain('do not offer to try again');
+    // GG 2026-10-26 13:24Z: „ამჟამად მიუწვდომელია" alone sounded like an outage.
+    expect(note).toContain('that this is a test link, that creation is off only here, and that it works on myavatar.ge');
+    expect(note).toContain('Do not say it is unavailable or broken');
+  });
+  test('any other failure is told plainly, with a retry', () => {
+    expect(failedNote('Google timed out')).toBe('[App] A generation failed: "Google timed out". Tell the user plainly and offer to try again.');
+  });
+});
+
+describe('notStartedNote — what the call is told when a voice start counted down and started nothing', () => {
+  test('the answer came out in another alphabet: the model hears it, and that nothing broke (GG 2026-10-26 09:29Z)', () => {
+    const note = notStartedNote('not_heard', '대자.');
+    expect(note).toContain('the app heard only "대자." (in an alphabet the call never speaks');
+    expect(note).toContain('Tell the user you did not catch their answer. Do not say it started or that something broke or went wrong');
+    expect(note).toContain('tap the button on the card');
+  });
+  test('an answer in the call\'s own letters that is no yes is quoted without the alphabet remark', () => {
+    const note = notStartedNote('not_heard', 'make it red');
+    expect(note).toContain('the app heard only "make it red", and that is no clear yes');
+    expect(note).not.toContain('alphabet');
+  });
+  test('nothing heard at all keeps the plain note', () => {
+    expect(notStartedNote('not_heard', '')).toBe('[App] Nothing was started: the countdown ended without a clear yes in the user\'s '
+      + 'own words after the price or plan. Do not say it started. Ask the user plainly whether to start; start again only '
+      + 'after they say yes.');
   });
 });

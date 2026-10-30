@@ -84,6 +84,8 @@
  * made Live's getUserMedia fail with NotReadableError. The hook now listens on lib/voice/micBus: a release request
  * stops the recognizer and the recorder's tracks SYNCHRONOUSLY, keeping what was already dictated (the final pass
  * still runs on the audio captured so far).
+ * The other way round, a tap on this mic asks the other holders to let go first (reason 'dictation'): on an iPhone
+ * the newer capture silently mutes the older one, so a Live call left running would keep "listening" to silence.
  *
  * METRICS (lib/voice/dictationMetrics): one summary per dictation — tap → listening, listening → first text,
  * Stop → final text, every pass's latency, error / abort / deferral / restart counts, engine and language. Timings
@@ -103,7 +105,7 @@ import {
   type DictationOutcome,
 } from '@/lib/voice/dictationMetrics';
 import { MAX_INTERIM_MS, shouldRunInterimAt } from '@/lib/voice/interimCadence';
-import { useMicRelease } from '@/lib/voice/micBus';
+import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
 import { sttTrialModel } from '@/lib/voice/sttTrial';
 import {
   isSpeechLang,
@@ -1261,6 +1263,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     }
     micStopRequestedRef.current = false;
     setWarn(null);
+    // Synchronously, before any capture starts: a Live call (or another recorder) on this page lets go of the mic.
+    requestMicRelease('dictation');
     // The language the user SPEAKS, not merely the UI's (lib/voice/speechLang): typed native script → heard before →
     // Georgian UI → 'auto'. Web Speech cannot detect a language, so 'auto' goes to the recorder, where Gemini does.
     let learned: SpeechLang | null = null;

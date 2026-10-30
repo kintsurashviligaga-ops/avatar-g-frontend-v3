@@ -16,6 +16,7 @@ import { BOG_TOPUP_PACKS_GEL, topupCredits } from '@/lib/billing/bogCatalog';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { PRICE_BOOK } from '@/lib/credits/priceBook';
 import { MUSIC_VIDEO_SURCHARGE_PCT, tierPriceEffect } from '@/lib/video/createPanel';
+import { BUILT_IN_PERSONAS } from '@/lib/services/personas/personas';
 
 const LOCALES: PlatformPromptLocale[] = ['ka', 'en', 'ru'];
 const NOW = new Date('2026-09-30T08:00:00Z'); // 12:00 in Tbilisi (UTC+4)
@@ -274,6 +275,31 @@ describe('buildPlatformPrompt — what it cannot do, it says (GG 2026-10-11 PART
   });
 });
 
+describe('buildPlatformPrompt — the persona list is the catalogue (GG 2026-10-25: asked, it named a list the app does not have)', () => {
+  it.each(LOCALES)('names exactly the built-in personas in the reply language, and where the user switches them (%s)', (locale) => {
+    const line = build(locale).split('\n\n').find((b) => b.startsWith('PERSONAS'))!;
+    expect(line).toContain(BUILT_IN_PERSONAS.map((p) => p.name[locale]).join(', '));
+    expect(line).toContain({ ka: '"მოდელი" menu → "პერსონა"', en: '"Model" menu → "Persona"', ru: '"Модель" menu → "Персона"' }[locale]);
+    expect(line).toContain('Name no others;');
+  });
+
+  it('lists GG\'s characters in Georgian', () => {
+    expect(build('ka')).toContain('მეგობრული, სარკასტული, რეჟისორი, ხუმარა, ბიზნესმენი, პროდიუსერი, ახალი ამბების ჟურნალისტი');
+  });
+});
+
+describe('buildPlatformPrompt — saying a price in lari and tetri', () => {
+  it.each(LOCALES)('a spoken call names the image price in tetri the right way round (%s; GG 2026-10-26 12:32Z: „0.50 თეთრი")', (locale) => {
+    const lari = creditsToGel(CREDIT_COSTS.image_generate).toFixed(2);
+    const tetri = Math.round(creditsToGel(CREDIT_COSTS.image_generate) * 100);
+    const p = buildPlatformPrompt({ locale, now: NOW, spoken: true });
+    expect(p).toContain(`₾ is lari; 100 tetri = 1 lari, so ${lari} ₾ is ${tetri} tetri, never "${lari} tetri".`);
+    expect(p.length).toBeLessThanOrEqual(5000);
+    // The text chat shows prices on its cards; its prompt keeps its budget for the Veo avatar's line.
+    expect(build(locale)).not.toContain('100 tetri = 1 lari');
+  });
+});
+
 describe('buildPlatformPrompt — shape and size', () => {
   it.each(LOCALES)('stays within the 5,000-character budget (%s)', (locale) => {
     // September + Wednesday are the longest month/weekday names, so NOW is the worst case for the date line.
@@ -333,6 +359,26 @@ describe('buildPlatformPrompt — locale variants', () => {
     for (const other of LOCALES.filter((l) => l !== locale)) {
       expect(p).not.toContain(`Reply in ${PLATFORM_UI_LABELS[other].language}.`);
     }
+  });
+
+  it.each(LOCALES)('a spoken call follows the language the user speaks, not "switch only if asked" (%s)', (locale) => {
+    // GG 2026-10-25: in a Live call, English and Russian speech got Georgian answers; the text chat's line won.
+    const p = buildPlatformPrompt({ locale, now: NOW, spoken: true });
+    expect(p).toContain('LANGUAGE: Reply in the language the user is speaking: Georgian, English or Russian.');
+    expect(p).toContain('your very next reply is in the new language, without being asked');
+    expect(p).toContain(`Only when you cannot tell, use ${PLATFORM_UI_LABELS[locale].language}.`);
+    expect(p).not.toContain('Switch only if the user asks');
+    expect(p.length).toBeLessThanOrEqual(5000);
+    // The text chat keeps its own rule.
+    expect(build(locale)).toContain('Switch only if the user asks for another language.');
+  });
+
+  it.each(LOCALES)('a spoken call gets no text-chat offer recipe in HANDING OFF (%s)', (locale) => {
+    // GG 2026-10-25 (avatar call): the call quoted a price and asked "shall I start?" with nothing prepared.
+    const p = buildPlatformPrompt({ locale, now: NOW, spoken: true });
+    expect(p).toContain('HANDING OFF: in this voice call a render is ordered and started only the way the LIVE VOICE CALL rule below says');
+    expect(p).not.toContain('You cannot start, queue or finish a render yourself');
+    expect(build(locale)).toContain('You cannot start, queue or finish a render yourself');
   });
 
   it('Georgian or Russian typed in Latin letters is answered in its own script', () => {

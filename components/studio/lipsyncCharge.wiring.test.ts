@@ -20,8 +20,9 @@ describe('the lip-sync charge is shown where the film is confirmed', () => {
     expect(code).toContain("const wantsLipsync = filmLipsyncRuns({ mode: isMusicVideo ? 'musicvideo' : 'documentary', lipsyncOn: videoLipsync, hasDialogue, veoSpeaks });");
   });
 
-  test('the create screen\'s Generate and the storyboard\'s Generate both carry it; a director run (no pass) carries none', () => {
-    expect(code).toContain('generate={{ lipsyncCredits: filmLipsyncCredits }}');
+  test('a restored storyboard\'s Generate carries it; a director run (no pass) carries none', () => {
+    // The Video tool's create screen is ONE clip now (GG 2026-10-25 16:10Z): no lip-sync pass, so no add-on on it.
+    expect(code).not.toContain('generate={{ lipsyncCredits: filmLipsyncCredits }}');
     expect(code).toContain('lipsyncCredits={directorRunsOn ? 0 : filmLipsyncCredits}');
     expect(code).toContain('data-testid="storyboard-lipsync-addon"');
   });

@@ -18,7 +18,9 @@ export interface ToolGroup {
 }
 
 const AGENT_TOOL: ToolId = 'chat';
-const HIDE = new Set<ToolId>(['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation']);
+/** Tools GG took out of every menu (2026-10-21). They stay ToolIds, but no picker, sidebar or sheet lists them. */
+export const HIDDEN_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation']);
+const HIDE = HIDDEN_TOOLS;
 
 export function toolGroups(): ToolGroup[] {
   const ownerOf = new Map<ToolId, ServiceCategory>();
@@ -41,4 +43,32 @@ export function toolGroups(): ToolGroup[] {
 
 export function groupOfTool(tool: ToolId): ToolGroup | undefined {
   return toolGroups().find((g) => g.tools.includes(tool));
+}
+
+/** The composer's „+" (GG's unified composer, 2026-10-25): the same usable tools as toolGroups(), in three groups. */
+export type ComposerGroup = 'main' | 'create' | 'extra';
+
+export const COMPOSER_GROUP_LABEL: Readonly<Record<ComposerGroup, L10n>> = {
+  main: { ka: 'მთავარი', en: 'Main', ru: 'Главное' },
+  create: { ka: 'შექმნა', en: 'Create', ru: 'Создание' },
+  extra: { ka: 'დამატებითი', en: 'More', ru: 'Дополнительно' },
+};
+
+/** შექმნა, in GG's order; every other usable tool but the chat is დამატებითი. */
+const CREATE_TOOLS: readonly ToolId[] = ['video', 'image', 'music', 'avatar', 'interior'];
+
+export function composerToolGroups(): { id: ComposerGroup; label: L10n; tools: ToolId[] }[] {
+  const usable = toolGroups().flatMap((g) => g.tools);
+  const create = CREATE_TOOLS.filter((t) => usable.includes(t));
+  return [
+    { id: 'main', label: COMPOSER_GROUP_LABEL.main, tools: usable.includes(AGENT_TOOL) ? [AGENT_TOOL] : [] },
+    { id: 'create', label: COMPOSER_GROUP_LABEL.create, tools: create },
+    { id: 'extra', label: COMPOSER_GROUP_LABEL.extra, tools: usable.filter((t) => t !== AGENT_TOOL && !create.includes(t)) },
+  ];
+}
+
+/** A tool whose every usable service is still beta (3D today): the picker tags it instead of drawing it as finished. */
+export function toolIsBeta(tool: ToolId): boolean {
+  const own = usableServices().filter((s) => s.tool === tool);
+  return own.length > 0 && own.every((s) => s.status === 'beta');
 }

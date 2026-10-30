@@ -8,7 +8,7 @@ const custom = {
 };
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
-  for (const choice of [{ id: 'film-director', name: 'Film Director', custom: false }, { id: custom.id, name: custom.name.en, custom: true }]) {
+  for (const choice of [{ id: 'film-director', name: 'Director', custom: false }, { id: custom.id, name: custom.name.en, custom: true }]) {
     test(`persona ${choice.id} ${viewport.width}px: named selection, reload, request payload and clearing`, async ({ page }, info) => {
       await page.setViewportSize(viewport);
       await page.addInitScript((definition) => {

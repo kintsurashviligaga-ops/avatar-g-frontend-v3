@@ -75,6 +75,14 @@ describe('geminiLive — pure wire-format builders/parser', () => {
       .toBe('wss://x.v1beta.GenerativeService.BidiGenerateContent?key=k');
   });
 
+  it('buildLiveUrl opens our Live relay with the ticket when /api/voice/live named one', () => {
+    expect(buildLiveUrl({ token: 'v1.p.s+/', relayUrl: 'wss://relay.example/v1/live', wsBase: 'wss://x' }))
+      .toBe('wss://relay.example/v1/live?ticket=v1.p.s%2B%2F');
+    // A relay without a ticket is not a credential: the old forms are unchanged.
+    expect(buildLiveUrl({ apiKey: 'k', relayUrl: 'wss://relay.example/v1/live', wsBase: 'wss://x' }))
+      .toBe('wss://x.v1beta.GenerativeService.BidiGenerateContent?key=k');
+  });
+
   it('parseLiveServerEvents maps setupComplete', () => {
     expect(parseLiveServerEvents({ setupComplete: {} })).toEqual([{ type: 'setupComplete' }]);
   });
@@ -171,6 +179,22 @@ describe('geminiLive — buildLiveSetup', () => {
     expect(s.outputAudioTranscription).toEqual({});
     // ⚠️ native-audio models do not support speechConfig.languageCode (docs 2026-09) — never emitted here.
     expect('languageCode' in s.generationConfig.speechConfig).toBe(false);
+  });
+
+  it('several languageCodes go out in order, once each, malformed ones dropped', () => {
+    const s = setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: ['ru-RU', 'ka-GE', 'ru-RU', 'not a code', 'en-US'] }));
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['ru-RU', 'ka-GE', 'en-US'] });
+    expect(setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: ['??'] })).inputAudioTranscription).toEqual({});
+  });
+
+  it('vocabulary → the input transcription\'s customVocabulary: trimmed, once each, capped; only with transcribe (GG 2026-10-26)', () => {
+    const s = setupOf(buildLiveSetup({ ...base, transcribe: true, languageCode: 'ka-GE', vocabulary: [' კი ', 'დიახ', 'კი', '', 'x'.repeat(41)] }));
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'], customVocabulary: ['კი', 'დიახ'] });
+    expect(s.outputAudioTranscription).toEqual({});
+    const many = Array.from({ length: 60 }, (_, i) => `w${i}`);
+    expect(setupOf(buildLiveSetup({ ...base, transcribe: true, vocabulary: many })).inputAudioTranscription?.customVocabulary).toHaveLength(50);
+    expect(setupOf(buildLiveSetup({ ...base, transcribe: true, vocabulary: [] })).inputAudioTranscription).toEqual({});
+    expect(setupOf(buildLiveSetup({ ...base, vocabulary: ['კი'] })).inputAudioTranscription).toBeUndefined();
   });
 
   it('transcribe without / with a malformed languageCode → auto-detect ({}); languageCode without transcribe → ignored', () => {
@@ -566,5 +590,31 @@ describe('geminiLive — GeminiLiveSession', () => {
     new GeminiLiveSession({}, { onError }).connect();
     expect(onError).toHaveBeenCalled();
     expect(FakeSocket.last).toBeNull();
+  });
+});
+
+describe('talking avatar (gemini-3.8-live)', () => {
+  const base = { model: 'gemini-3.8-live', systemInstruction: 'hi', voiceName: 'Aoede' };
+
+  it('answers in VIDEO with the chosen voice, puts avatarConfig at the top of setup', () => {
+    const { setup } = buildLiveSetup({ ...base, transcribe: true, avatar: { avatarName: 'Kira', videoBitrateBps: 1_500_000 } });
+    expect(setup.generationConfig.responseModalities).toEqual(['VIDEO']);
+    // Without it the avatar speaks in the model's default (male) voice.
+    expect(setup.generationConfig.speechConfig).toEqual({ voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } });
+    expect(setup.avatarConfig).toEqual({ avatarName: 'Kira', videoBitrateBps: 1_500_000 });
+    expect(setup.outputAudioTranscription).toEqual({});
+    expect(JSON.stringify(setup.generationConfig)).not.toContain('avatar');
+  });
+
+  it('ignores a malformed name and an out-of-range bitrate', () => {
+    expect(buildLiveSetup({ ...base, avatar: { avatarName: 'kira; drop' } }).setup.avatarConfig).toBeUndefined();
+    expect(buildLiveSetup({ ...base, avatar: { avatarName: '' } }).setup.generationConfig.responseModalities).toEqual(['AUDIO']);
+    expect(buildLiveSetup({ ...base, avatar: { avatarName: 'Ben', videoBitrateBps: 50_000_000 } }).setup.avatarConfig).toEqual({ avatarName: 'Ben' });
+  });
+
+  it('parses the avatar\'s fMP4 pieces as video events, never as audio', () => {
+    expect(parseLiveServerMessage({
+      serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: 'AAAA' } }] } },
+    })).toEqual([{ kind: 'video', data: 'AAAA', mimeType: 'video/mp4' }]);
   });
 });

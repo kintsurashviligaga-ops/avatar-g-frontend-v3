@@ -28,6 +28,8 @@
  * public http(s) address through (no javascript:/data:/file:, no credentials, no localhost or private IP literals).
  */
 
+import { BUILT_IN_PERSONAS } from '@/lib/services/personas/personas';
+
 // ─── Catalogue constants ─────────────────────────────────────────────────────
 
 /** Window event the browser executor dispatches for every validated action (detail = LiveActionEventDetail). */
@@ -50,6 +52,8 @@ export const LIVE_ACTION_NAMES = [
   // 2026-10-17 (GG: „ჩაკეტე პანელი" — open, close … the panels by voice at any moment, in one chat): the close that was
   // missing. The same command a typed „close the panel" is (lib/chat/panelCommand); the conversation stays the same.
   'close_panel',
+  // 2026-10-25 (GG, in a call: „აირჩიე პერსონა" — it could only open the picker): switch the persona by voice.
+  'set_persona',
   'call_view',
   'show_code',
   'open_url',
@@ -100,6 +104,8 @@ export type LiveChatModel = (typeof LIVE_CHAT_MODELS)[number];
 
 /** Panels a call may open. `settings` = the open studio's own settings panel. */
 export const LIVE_PANELS = ['settings', 'credits', 'persona', 'search', 'history'] as const;
+/** set_persona: the built-in personas by id (lib/services/personas), and `default` for Agent G's own voice. */
+export const LIVE_PERSONAS: readonly string[] = [...BUILT_IN_PERSONAS.map((p) => p.id), 'default'];
 export type LivePanel = (typeof LIVE_PANELS)[number];
 
 /** What close_panel closes: `settings` = the open studio's settings (the studio stays); `tool` = the studio, back to the chat. */
@@ -410,6 +416,18 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
     },
   },
   {
+    name: 'set_persona',
+    description: 'Switch the assistant\'s persona — its character and voice — when the user asks for one: '
+      + BUILT_IN_PERSONAS.map((p) => `${p.id} (${p.name.en}, ${p.name.ka})`).join(', ')
+      + ', or default (Agent G\'s own voice). The text chat uses it too. Right after your answer the call reconnects in that '
+      + 'role (a few seconds; the conversation so far is kept).',
+    parameters: {
+      type: 'OBJECT',
+      properties: { persona: { type: 'STRING', enum: [...LIVE_PERSONAS], description: 'The persona id.' } },
+      required: ['persona'],
+    },
+  },
+  {
     name: 'call_view',
     description: 'Change how this call is shown: "screen" shrinks the call into a slim bar so the user sees the app while you '
       + 'talk; "full" brings the full call screen back. The call itself continues either way.',
@@ -670,6 +688,8 @@ export const LIVE_ACTIONS_RULE = [
   'https://www.google.com/search?q=... or https://www.youtube.com/results?search_query=...; it shows a link the user taps.',
   'open_studio, new_chat, set_chat_model, stop, scroll_chat,',
   'open_panel, close_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
+  'When the user asks you to be, become or switch to a persona or role, call set_persona (never only open the persona',
+  'panel), then say one short line in the new role: the call reconnects in it.',
   'You also have hands on the screen: when the user says click, press, open, choose, switch or type, do it with click and',
   'type_text, using the control ids get_screen_state lists (call it first; ids change when the screen changes). They never',
   'spend credits, pay, delete or sign out — those are refused, and a generation is prepared with prepare_generation and',
@@ -731,6 +751,8 @@ export interface ScrollChatAction { type: 'scroll_chat'; to: LiveScrollTarget }
 export interface OpenPanelAction { type: 'open_panel'; panel: LivePanel }
 export interface ClosePanelAction { type: 'close_panel'; what: LiveCloseTarget }
 export interface CallViewAction { type: 'call_view'; view: LiveCallView }
+/** `persona`: a built-in persona id, or `default` (no persona). */
+export interface SetPersonaAction { type: 'set_persona'; persona: string }
 /** A link the user taps to open in a new tab: `url` is a normalised public http(s) address (see validateLiveUrl). */
 export interface OpenUrlAction { type: 'open_url'; url: string; title?: string }
 export interface EndCallAction { type: 'end_call' }
@@ -789,7 +811,7 @@ export interface MusicStudioAction {
 export type LiveAction =
   | GetScreenStateAction | PrepareGenerationAction | UpdateSettingsAction | StartGenerationAction | OpenStudioAction
   | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | ClosePanelAction | CallViewAction
-  | ShowCodeAction | OpenUrlAction | EndCallAction
+  | ShowCodeAction | OpenUrlAction | EndCallAction | SetPersonaAction
   | ClickAction | TypeTextAction | DownloadAction | UseResultAction | MontageAction | ReadWebpageAction | AskAgentGAction
   | ExtractAudioAction | AgentTaskAction | MusicStudioAction;
 
@@ -1250,6 +1272,12 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     const panel = isObj(args) ? asEnum(own(args, 'panel'), LIVE_PANELS) : null;
     if (!panel) return fail('invalid_args', 'Unknown panel.', 'panel', LIVE_PANELS);
     return { ok: true, action: { type: 'open_panel', panel } };
+  },
+
+  set_persona(args) {
+    const persona = isObj(args) ? asEnum(own(args, 'persona'), LIVE_PERSONAS) : null;
+    if (!persona) return fail('invalid_args', 'Unknown persona.', 'persona', LIVE_PERSONAS);
+    return { ok: true, action: { type: 'set_persona', persona } };
   },
 
   close_panel(args) {

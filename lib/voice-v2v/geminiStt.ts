@@ -188,6 +188,9 @@ export function sttPrompt(language: string, firm?: string | null): string {
     'Transcribe this audio verbatim, in the language the speaker actually uses. NEVER translate, not even into the language of these instructions.',
     hint,
     'Georgian speech is written in the Georgian (Mkhedruli) alphabet, never in Latin letters; Russian in Cyrillic.',
+    // Dictation, not a court record (owner's test 2026-10-25: "Please check the weather uh in Batumi uh"). Only sounds
+    // that are never words: Georgian "ამ" is "this" and Russian "ну" is a word, so neither is listed.
+    'Leave out hesitation sounds that are not words (uh, um, er, hmm, э-э, мм, ე-ე, მმ); keep every real word.',
     'First write the ISO 639-1 code of the language actually spoken in square brackets ([ka], [ru], [en] …), then a space, then ONLY the exact spoken words — no commentary, no quotes, no other labels. If silent, output nothing.',
   ].join(' ');
 }

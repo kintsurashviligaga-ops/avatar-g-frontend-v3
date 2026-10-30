@@ -7,6 +7,7 @@
 import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
+import { LiveAvatarCaption } from './LiveAvatarStage';
 import LiveCaptions, { tailText } from './LiveCaptions';
 import { LIVE_DOCK_STRINGS } from './LiveDock';
 import LiveModeOverlay, { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './LiveModeOverlay';
@@ -55,6 +56,46 @@ describe('LiveModeOverlay', () => {
     expect(screen.getByTestId('live-status')).toHaveTextContent(connecting);
     expect(screen.getByTestId('live-waveform').querySelector('[data-state]')).toHaveAttribute('data-state', 'connecting');
     expect(screen.getByRole('log', { name: LIVE_OVERLAY_STRINGS[locale].captions })).toBeEmptyDOMElement();
+  });
+
+  it('over the avatar the words keep to a low band under the face; the copy row gives way to a one-line AI notice', () => {
+    const s = LIVE_OVERLAY_STRINGS.ka;
+    const captions: LiveCaption[] = [
+      { id: 'u1', role: 'user', text: 'გამარჯობა', final: true },
+      { id: 'a1', role: 'assistant', text: 'გამარჯობა, რით შემიძლია დაგეხმაროთ?', final: false },
+    ];
+    const props = { locale: 'ka' as const, status: 'speaking' as const, captions, muted: false, cameraOn: false, ...handlers() };
+    const { rerender } = render(<LiveModeOverlay {...props} avatarVideo={document.createElement('video')} />);
+    expect(screen.getByTestId('live-content').className).toContain('justify-end');
+    const band = screen.getByTestId('live-avatar-caption');
+    expect(band).toHaveTextContent('გამარჯობა, რით შემიძლია დაგეხმაროთ?');
+    expect(band.className).toContain('max-h-[3.5rem]'); // 2 lines of 28 px on a short phone
+    expect(band.querySelector('p')).toHaveAttribute('aria-hidden', 'true'); // still being written: not read out yet
+    expect(screen.queryByRole('button', { name: s.copyText })).toBeNull();
+    expect(screen.getByText(s.aiNotice)).toBeTruthy();
+    // Without the avatar: the big caption and the copy row as before.
+    rerender(<LiveModeOverlay {...props} />);
+    expect(screen.queryByTestId('live-avatar-caption')).toBeNull();
+    expect(screen.getByRole('button', { name: s.copyText })).toBeTruthy();
+  });
+
+  it('the avatar caption fades its older lines only when the text is taller than the band', () => {
+    const height = jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get');
+    const client = jest.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(56);
+    try {
+      height.mockReturnValue(56);
+      const { rerender } = render(<LiveAvatarCaption text="მოკლე პასუხი" />);
+      const band = screen.getByTestId('live-avatar-caption');
+      expect(band).not.toHaveAttribute('data-clipped');
+      expect(band.style.maskImage).toBe('');
+      height.mockReturnValue(112);
+      rerender(<LiveAvatarCaption text={'გრძელი პასუხი '.repeat(12)} />);
+      expect(band).toHaveAttribute('data-clipped');
+      expect(band.style.maskImage).toContain('linear-gradient');
+    } finally {
+      height.mockRestore();
+      client.mockRestore();
+    }
   });
 
   it('stop-speaking joins the row only while the agent speaks', () => {

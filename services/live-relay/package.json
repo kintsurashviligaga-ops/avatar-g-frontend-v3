@@ -1,0 +1,18 @@
+{
+  "name": "live-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vertex AI Gemini Live relay: browsers connect with a ticket from the app, the relay opens Vertex AI with its Cloud Run service account. Holds no key.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/main.cjs --tsconfig=tsconfig.json --external:bufferutil --external:utf-8-validate",
+    "start": "node dist/main.cjs",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "ws": "8.19.0"
+  }
+}

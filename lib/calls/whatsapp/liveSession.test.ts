@@ -75,3 +75,11 @@ test('a refused lock is a failed call, never a weaker token', async () => {
   expect(warn).toHaveBeenCalledWith('[WhatsApp.Calls] live_mint_refused', { status: 400 });
   warn.mockRestore();
 });
+
+test('a Live relay minter: the bridge cannot open the relay yet, so the call fails closed without minting', async () => {
+  const mint = jest.fn();
+  const { d } = deps({ minter: () => ({ mint, wsUrl: 'wss://relay.example/v1/live' }) });
+  expect(await mintCallSession(d, ticket, null)).toEqual({ ok: false, error: 'live_transport_unavailable' });
+  expect(d.memory).not.toHaveBeenCalled();
+  expect(mint).not.toHaveBeenCalled();
+});

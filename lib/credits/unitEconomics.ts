@@ -194,6 +194,47 @@ export const UNIT_OPS: readonly UnitOp[] = [
     status: tier === 'lite' ? 'ESTIMATED' : 'PROVEN',
     currentCredits: tier === 'lite' ? 15 : tier === 'fast' ? 25 : 83,
   })),
+  // One Gemini Omni Flash clip: the video service's 10 s length (owner's card 2026-10-25 16:51Z), and a 4 · 6 · 8 s clip in
+  // which a character says a Georgian line (card 2026-10-26 10:55Z). Vertex bills its video output by the token: 5,792
+  // tokens a second at 720p, 8,688 at 1080p, $17.50 per 1M (Vertex pricing page, read 2026-10-25). The photo, the prompt
+  // and the model's thinking were measured on the 2026-10-25 probe (1,204 in, 488 thought); they do not shrink with the clip.
+  ...([['720p', 5_792], ['1080p', 8_688]] as const).flatMap(([res, tokPerSec]) => ([4, 6, 8, 10] as const).map((sec): UnitOp => ({
+    id: `video.omni.${res}.${sec}`,
+    service: 'video.generate',
+    unit: `one ${sec} s Omni Flash clip at ${res}`,
+    provider: 'Google (Vertex Interactions API)',
+    model: 'gemini-omni-1.1-flash-preview',
+    lines: [
+      { what: `Omni Flash video out, ${sec} s ${res} (${tokPerSec} tok/s, $17.50 / 1M)`, usd: (sec * tokPerSec * 17.5) / 1e6, source: 'official' },
+      { what: 'Omni input + thinking (photo, prompt, ~490 thought tokens)', usd: 0.0062, source: 'measured' },
+      flash(700, 300, 'prompt reader to English'),
+      compute(15, 'host'),
+      storage(12),
+    ],
+    retryShare: 0.1,
+    status: 'ESTIMATED',
+    currentCredits: null,
+  }))),
+  // An uploaded video edited or extended by Gemini Omni Flash (GG 2026-10-25 16:58Z; card 17:04Z). The output is billed as
+  // the 10 s clip's; the input video, sent at 720p or less, was measured on the 2026-10-25 probe at ~5,826 tok/s at $1.50 per
+  // 1M (≤10 s: $0.088), its thinking at ~369 tokens. An extend bills only the new seconds, so one row serves both.
+  ...(['720p', '1080p'] as const).flatMap((res) => ([4, 6, 8, 10] as const).map((sec): UnitOp => ({
+    id: `video.omni-edit.${res}.${sec}`,
+    service: 'video.generate',
+    unit: `one uploaded video edited or extended by ${sec} s at ${res}`,
+    provider: 'Google (Vertex Interactions API)',
+    model: 'gemini-omni-1.1-flash-preview',
+    lines: [
+      { what: `Omni Flash video out, ${sec} s ${res} (${res === '1080p' ? 8_688 : 5_792} tok/s, $17.50 / 1M)`, usd: (sec * (res === '1080p' ? 8_688 : 5_792) * 17.5) / 1e6, source: 'official' },
+      { what: 'Omni video in, up to 10 s at 720p (~5,826 tok/s, $1.50 / 1M)', usd: (10 * 5_826 * 1.5) / 1e6, source: 'measured' },
+      { what: 'Omni thinking (~400 tokens)', usd: 0.0036, source: 'measured' },
+      compute(30, 'download + transcode + host'),
+      storage(20),
+    ],
+    retryShare: 0.1,
+    status: 'ESTIMATED',
+    currentCredits: null,
+  }))),
   {
     id: 'video.film.scene',
     service: 'video.generate',

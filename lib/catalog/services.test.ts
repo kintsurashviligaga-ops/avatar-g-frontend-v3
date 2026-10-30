@@ -90,8 +90,11 @@ describe('service catalog — counts come from the catalog', () => {
 
   it('lists a category\'s own services before the shortcuts it borrows', () => {
     const music = servicesInCategory('music');
-    expect(music.map((x) => x.service.id)).toEqual(['music.generate', 'video.music-video']);
-    expect(music[1].shortcut).toBe(true);
+    // The music video shortcut is gone with the music video itself (GG 2026-10-25 16:10Z).
+    expect(music.map((x) => x.service.id)).toEqual(['music.generate']);
+    const video = servicesInCategory('video');
+    expect(video[0].service.id).toBe('video.generate');
+    expect(video.filter((x) => x.shortcut).every((x) => x.service.category !== 'video')).toBe(true);
     // music.remix is coming-soon: it is not offered as a usable card.
     expect(music.some((x) => x.service.id === 'music.remix')).toBe(false);
   });
@@ -120,8 +123,6 @@ describe('serviceHref — one studio link per service', () => {
 
 describe('resolveService — Agent G intent and search', () => {
   const cases: [string, string][] = [
-    ['make a music video for my song', 'video.music-video'],
-    ['მუსიკალური ვიდეო გამიკეთე', 'video.music-video'],
     ['ამ ვიდეოს ხმა ქართულად გადამითარგმნე', 'voice.dubbing'],
     ['переведи это видео, нужен дубляж', 'voice.dubbing'],
     ['მუსიკა დამირემიქსე', 'music.remix'],
@@ -137,6 +138,14 @@ describe('resolveService — Agent G intent and search', () => {
   ];
   it.each(cases)('%s → %s', (text, id) => {
     expect(resolveService(text)?.id).toBe(id);
+  });
+
+  it('never resolves to the music video, which is gone (GG 2026-10-25 16:10Z): a music video ask is a clip or a song', () => {
+    expect(resolveService('მუსიკალური ვიდეო გამიკეთე')?.id).toBe('video.generate');
+    for (const t of ['make a music video for my song', 'მუსიკალური ვიდეო გამიკეთე', 'сделай музыкальный клип']) {
+      expect(resolveService(t)?.id).not.toBe('video.music-video');
+      expect(searchServices(t).map((s) => s.id)).not.toContain('video.music-video');
+    }
   });
 
   it('never resolves to the video remix, which left every menu (GG 2026-10-18); Agent G sends these words to the touch-up', () => {
@@ -223,7 +232,7 @@ describe('searchServices — the §51 search box', () => {
     expect(video[0]).toBe('video.generate');
     expect(video.length).toBeLessThanOrEqual(6);
     expect(searchServices('video', 3)).toHaveLength(3);
-    for (const id of video.slice(0, 4)) expect(getService(id)?.category).toBe('video');
+    for (const id of video.slice(0, 3)) expect(getService(id)?.category).toBe('video');
   });
 
   it('shows a coming-soon service for what it is, after the usable ones — never a hidden or deprecated one', () => {

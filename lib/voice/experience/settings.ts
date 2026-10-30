@@ -55,7 +55,10 @@ export function validateVoicePreferences(raw: unknown): VoicePreferences {
 export function selectPersonality(p: VoicePreferences, personality: Personality): VoicePreferences {
   return validateVoicePreferences({ ...p, personality, sarcasm: personality === 'sarcastic' ? 'light' : 'off' });
 }
-export const VOICE_UI_APPROVAL_RULE = 'VOICE FINANCIAL RULE: Speech, a spoken yes, a countdown and model claims NEVER authorize a paid job. Prepare or explain the quote and direct the user to the authenticated UI confirmation. Never claim a job started without a successful backend result. Barge-in stops speech only, never a durable Studio job.';
+// ⚠️ GG 2026-10-18 (card „ხმით დაიწყოს") superseded the button-only rule this used to state ("a spoken yes NEVER authorizes…
+// direct the user to the UI confirmation"). Left in every Live prompt, it fought LIVE_ACTIONS_RULE: on 2026-10-25 the
+// avatar call quoted a price and sent GG to a button it never prepared, so nothing reached the screen.
+export const VOICE_UI_APPROVAL_RULE = 'VOICE SPENDING RULE: nothing paid starts from your own words. With your functions a paid job starts only through start_generation (or agent_task start), after the user THEMSELVES clearly said yes to the price you told them; the app checks their own words and shows a cancelable countdown. Without those functions nothing can start from this call. Never claim a job started, or that a button is ready, without a successful result. Barge-in stops speech only, never a durable Studio job.';
 export interface VoiceStyle {
   tone: string; energy: 'low' | 'normal' | 'lively'; pace: VoicePreferences['pace'];
   emphasis: 'meaningful-only'; pauseIntent: 'thought-boundaries'; humorIntent: VoicePreferences['humor'];

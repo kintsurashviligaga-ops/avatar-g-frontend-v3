@@ -46,6 +46,12 @@ export interface GateInput {
   hasAudio?: boolean;
   /** Avatar: Agent G just asked for the line, so this message IS the line — a „hello everyone" is not a greeting to Agent G. */
   awaitingLine?: boolean;
+  /**
+   * A Live call's order (prepare_generation named the tool): the words are the prompt, never talk, and a thin one is not
+   * sent back for questions — the call asks its own in speech. (A film still goes to its storyboard; an avatar still needs
+   * its line.)
+   */
+  liveOrder?: boolean;
 }
 
 // ─── Text helpers ───────────────────────────────────────────────────────────────
@@ -257,13 +263,14 @@ export function classifyFocusInput(input: GateInput): GateVerdict {
   if (!words(raw).length) return { kind: 'chat', reason: 'empty' };
 
   const avatarLineAsked = input.mode === 'avatar' && !!input.awaitingLine;
+  const live = !!input.liveOrder;
   // 1) Talking to Agent G — greeting, "are you there?", how are you, thanks, who are you. (Not when Agent G asked for the
-  // avatar's line: „გამარჯობა ყველას" is then the line itself.)
-  const talk = avatarLineAsked ? null : talkReason(raw);
+  // avatar's line: „გამარჯობა ყველას" is then the line itself. Not a Live call's order: the call already named the tool.)
+  const talk = avatarLineAsked || live ? null : talkReason(raw);
   if (talk) return { kind: 'chat', reason: talk };
 
   // 2) A question that is not an order to make something ("can you draw a fox?" IS an order: isGenerativeCommand sees it).
-  if (!isGenerativeCommand(raw) && looksLikeQuestion(raw)) return { kind: 'chat', reason: 'question' };
+  if (!live && !isGenerativeCommand(raw) && looksLikeQuestion(raw)) return { kind: 'chat', reason: 'question' };
 
   // 3) It is a prompt. Is there enough of it?
   const need = ENOUGH[input.mode];
@@ -276,7 +283,9 @@ export function classifyFocusInput(input: GateInput): GateVerdict {
   if (input.explicit) return { kind: 'go' };      // the panel's Generate button, price on it
   // The line Agent G asked for is the line, however short („გამარჯობა ყველას"): its card, not a second question.
   if (avatarLineAsked) return { kind: 'confirm' };
-  if (!enough) return { kind: 'clarify' };
+  // ⚠️ GG 2026-10-26, a voice call: „a horse picture" reached the chat as a one-word order, Agent G answered with its
+  // questions, and the call had no price to tell — nothing was made. A Live order gets its price card as it stands.
+  if (!enough && !(live && input.mode !== 'video')) return { kind: 'clarify' };
   return input.mode === 'video' ? { kind: 'go' } : { kind: 'confirm' }; // a film already has its storyboard approval
 }
 
@@ -319,9 +328,9 @@ const CLARIFY: Record<GateMode, Record<Lang, string>> = {
     ru: 'Чтобы получилось точно, уточни 🎨\n• В каком стиле — фотореализм, иллюстрация, мультфильм?\n• Где всё происходит и какое настроение (свет, цвета)?\nОтветь одним сообщением — или нажми кнопку, и я сделаю как есть.',
   },
   video: {
-    ka: 'რომ კადრი კარგი გამოვიდეს, დამიზუსტე 🎬\n• ვინ ან რა ჩანს კადრში და რას აკეთებს?\n• როგორია კამერა და განწყობა (ახლო/შორი, ნელი/დინამიური)?\nმიპასუხე ერთ შეტყობინებაში — ან დააჭირე ღილაკს და სცენარს ახლავე დავგეგმავ, როგორც არის.',
-    en: 'To make the shot work, tell me more 🎬\n• Who or what is in frame, and what are they doing?\n• How is the camera and mood (close/wide, slow/dynamic)?\nAnswer in one message — or tap the button and I will plan the scenes as it is.',
-    ru: 'Чтобы кадр получился, уточни 🎬\n• Кто или что в кадре и что делает?\n• Какая камера и настроение (крупно/широко, медленно/динамично)?\nОтветь одним сообщением — или нажми кнопку, и я спланирую сцены как есть.',
+    ka: 'რომ კადრი კარგი გამოვიდეს, დამიზუსტე 🎬\n• ვინ ან რა ჩანს კადრში და რას აკეთებს?\n• როგორია კამერა და განწყობა (ახლო/შორი, ნელი/დინამიური)?\nმიპასუხე ერთ შეტყობინებაში — ან დააჭირე ღილაკს და კლიპს ფასით ახლავე შემოგთავაზებ, როგორც არის.',
+    en: 'To make the shot work, tell me more 🎬\n• Who or what is in frame, and what are they doing?\n• How is the camera and mood (close/wide, slow/dynamic)?\nAnswer in one message — or tap the button and I will offer the clip with its price as it is.',
+    ru: 'Чтобы кадр получился, уточни 🎬\n• Кто или что в кадре и что делает?\n• Какая камера и настроение (крупно/широко, медленно/динамично)?\nОтветь одним сообщением — или нажми кнопку, и я предложу клип с ценой как есть.',
   },
   music: {
     ka: 'რომ სწორი ტრეკი გამოვიდეს, დამიზუსტე 🎵\n• რა ჟანრი და განწყობა გინდა?\n• ინსტრუმენტული იყოს თუ ხმით/ტექსტით (რა ენაზე)?\nმიპასუხე ერთ შეტყობინებაში — ან დააჭირე ღილაკს და ახლავე შევქმნი, როგორც არის.',

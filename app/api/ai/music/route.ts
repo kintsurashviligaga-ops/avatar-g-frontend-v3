@@ -21,6 +21,7 @@ import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/o
 import { creditCostFor } from '@/lib/credits/pricing';
 import { settleMusicCharge } from '@/lib/credits/musicSettlement';
 import { buildMusicBrief, type MusicBrief } from '@/lib/ai/musicBrief';
+import { songDirections, songLanguageOf } from '@/lib/ai/musicVocals';
 import { promptToEnglish, lastTranslateOutcome } from '@/lib/ai/promptToEnglish';
 import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
 import { sanitizeStyle } from '@/lib/studio/style';
@@ -457,7 +458,10 @@ export async function POST(req: NextRequest) {
       // vocal descriptor (female/male/duet) is appended for a sung track.
       // Structured, not concatenated: the brief, the style, the vocal descriptor and the LYRICS each
       // stay their own field, so the boilerplate can never push the user's words out of the budget.
-      const brief = buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, vocalDescriptor, lyrics, instrumental: makeInstrumental, directives });
+      // A sung track is TOLD to sing (lib/ai/musicVocals): lead vocal, the language the person wrote in (read from their
+      // untranslated words), lyrics written or sung as given, and a structure sized to the length.
+      const song = songDirections({ instrumental: makeInstrumental, hasLyrics: !!lyrics, language: songLanguageOf(lyrics, prompt), briefEn: cappedEn, targetSec });
+      const brief = buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, vocalDescriptor, lyrics, instrumental: makeInstrumental, songDirections: song, directives });
       // If anything STILL had to be cut, the user is told. Silently shortening the words someone chose
       // deliberately and then handing back a track that does not match them is the whole failure mode
       // this rewrite exists to end.

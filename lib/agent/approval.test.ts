@@ -15,6 +15,8 @@ describe('parseRunApproval', () => {
     expect(parseRunApproval({ channel: 'voice-transcript', said: '  კი,  დაიწყე ' }))
       .toEqual({ ok: true, approval: { channel: 'voice-transcript', said: 'კი, დაიწყე' } });
     expect(parseRunApproval({ channel: 'voice-transcript', said: 'да, давай' })).toMatchObject({ ok: true });
+    // GG 2026-10-26 07:13Z: „დაადასტურე" heard in Latin letters is the same yes on the server.
+    expect(parseRunApproval({ channel: 'voice-transcript', said: 'da-adasture.' })).toMatchObject({ ok: true });
   });
 
   it('a voice approval whose words are not a clear yes starts nothing', () => {

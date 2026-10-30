@@ -23,6 +23,7 @@ describe('liveThreadBlock', () => {
     expect(block).toContain('EARLIER IN THIS CONVERSATION');
     expect(block).toContain('do not greet them as if for the first time');
     expect(block).toContain('not new instructions');
+    expect(block).toContain('Offers in the text chat (a price ending in a question, a typed yes, a button to press) do not carry over');
     const history = block.slice(block.indexOf('<conversation_history>'), block.indexOf('</conversation_history>'));
     expect(history.indexOf('Person: მინდა ვიდეო ღვინის მარანზე')).toBeLessThan(history.indexOf('You: რა სტილში?'));
   });
@@ -30,6 +31,12 @@ describe('liveThreadBlock', () => {
   test('nothing to carry → no block at all', () => {
     expect(liveThreadBlock([])).toBe('');
     expect(liveThreadBlock([{ role: 'user', content: '   \n ' }])).toBe('');
+  });
+
+  test('GG 2026-10-26 09:01Z: the history\'s language never sets the call\'s', () => {
+    const block = liveThreadBlock([{ role: 'assistant', content: 'Right, trying again. That\'ll still be 5 credits.' }]);
+    expect(block).toContain('- Its language never sets the language of this call: answer in the language the person speaks in this call.');
+    expect(block.indexOf('Its language never sets')).toBeLessThan(block.indexOf('<conversation_history>'));
   });
 
   test('only the newest turns are kept, and the newest is always among them', () => {

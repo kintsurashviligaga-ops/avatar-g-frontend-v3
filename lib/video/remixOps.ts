@@ -187,6 +187,7 @@ export async function muxVoiceOntoClip(
   voiceUrl: string,
   seconds: number,
   dest: { bucket: string; path: string },
+  opts: { keepBed?: boolean } = {},
 ): Promise<string | null> {
   if (!BIN || !videoUrl || !voiceUrl || !(seconds > 0)) return null;
   let dir: string | null = null;
@@ -202,12 +203,25 @@ export async function muxVoiceOntoClip(
     const pieces = planDub(lineSpans, veoSpans, seconds);
     // eslint-disable-next-line no-console
     console.warn('[avatar.voice] dub:', describeDub(lineSpans, veoSpans, pieces), '| veo dB/0.5s', veo ? levelProfile(veo) : 'none');
-    await exec(BIN, [
+    const voiceGraph = pieces ? dubFilter(pieces, '1:a', seconds) : `[1:a]apad=whole_dur=${sec}[voice]`;
+    const run = (graph: string, label: string) => exec(BIN!, [
       '-y', '-i', videoUrl, '-i', voiceUrl,
-      '-filter_complex', pieces ? dubFilter(pieces, '1:a', seconds) : `[1:a]apad=whole_dur=${sec}[voice]`,
-      '-map', '0:v:0', '-map', '[voice]',
+      '-filter_complex', graph,
+      '-map', '0:v:0', '-map', `[${label}]`,
       ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-t', sec, '-movflags', '+faststart', out,
     ], { maxBuffer: 1 << 26, timeout: 90_000 });
+    // The direct clip keeps Veo's own sound (the scene the prompt asked for) with only its speech taken out — when the
+    // line was matched to where Veo spoke. Unmatched, Veo's voice could be anywhere, so it goes whole, as for the avatar.
+    const bed = opts.keepBed && pieces ? bedWithoutSpeech(veoSpans, seconds) : null;
+    if (bed) {
+      try {
+        await run(`${voiceGraph};${bed}`, 'aout');
+      } catch {
+        await run(voiceGraph, 'voice'); // no audio track of its own to keep
+      }
+    } else {
+      await run(voiceGraph, 'voice');
+    }
     const buf = await readFile(out);
     if (buf.byteLength < 1_024) return null;
     return await uploadBufferAndSign(dest.bucket, dest.path, buf, 'video/mp4', 604_800);
@@ -218,6 +232,18 @@ export async function muxVoiceOntoClip(
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+/**
+ * Veo's own track with its speech spans silenced (a little either side, so no syllable's edge is left), mixed under the
+ * dubbed line `[voice]`, as `[aout]`. Null when Veo said nothing we could find.
+ */
+function bedWithoutSpeech(veoSpans: readonly { start: number; end: number }[], seconds: number): string | null {
+  if (veoSpans.length === 0) return null;
+  const PAD = 0.08;
+  const sec = String(Number(seconds.toFixed(3)));
+  const spans = veoSpans.map((s) => `between(t,${Math.max(0, s.start - PAD).toFixed(3)},${(s.end + PAD).toFixed(3)})`).join('+');
+  return `[0:a]volume=volume=0:enable='${spans}',volume=0.8[bed];[bed][voice]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,apad=whole_dur=${sec}[aout]`;
 }
 
 /**

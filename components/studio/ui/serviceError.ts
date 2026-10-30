@@ -43,7 +43,9 @@ type Known =
   | 'locked'
   // 422 `capability_unavailable`: no verified Google engine does this (MASTER TASK v3.1; the custom avatar, lib/avatar/
   // curated) — refused before any charge. The route's own sentence names the gap and wins; this line is its fallback.
-  | 'capability_unavailable';
+  | 'capability_unavailable'
+  // 503 `preview_not_isolated` (lib/api/billingCopy): a test link that shares Production's wallet never charges.
+  | 'preview_test_link';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -76,6 +78,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     voice_off: 'ქართული ხმა ახლა გამორთულია, ამიტომ ავატარი ვერ გაკეთდება. თანხა არ ჩამოგეჭრა.',
     locked: 'ეს ხელსაწყო შენს ანგარიშზე ჯერ ხელმისაწვდომი არ არის. თანხა არ ჩამოგეჭრა.',
     capability_unavailable: 'ეს შესაძლებლობა Google-ზე ჯერ ხელმისაწვდომი არ არის. თანხა არ ჩამოგეჭრა.',
+    preview_test_link: 'ეს სატესტო ბმულია: აქ ფასიანი გენერაცია გამორთულია და კრედიტი არ იხარჯება. ნამდვილად შექმნა myavatar.ge-ზე შეიძლება.',
   },
   en: {
     insufficient_credits: 'Not enough credits. Top up your balance and try again.',
@@ -107,6 +110,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     voice_off: 'The Georgian voice is switched off right now, so the avatar cannot be made. You were not charged.',
     locked: 'This tool isn’t available on your account yet. You were not charged.',
     capability_unavailable: 'This isn’t available on Google yet. You were not charged.',
+    preview_test_link: 'This is a test link: paid generation is off here and no credits are spent. Real creation works on myavatar.ge.',
   },
   ru: {
     insufficient_credits: 'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
@@ -138,6 +142,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     voice_off: 'Грузинский голос сейчас отключён, поэтому аватар не получится. Списания не было.',
     locked: 'Этот инструмент пока недоступен для вашего аккаунта. Списания не было.',
     capability_unavailable: 'Эта возможность пока недоступна в Google. Списания не было.',
+    preview_test_link: 'Это тестовая ссылка: платная генерация здесь выключена, кредиты не списываются. Создавать можно на myavatar.ge.',
   },
 };
 
@@ -168,6 +173,7 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^voice_off$/, 'voice_off'],
   [/^locked$/, 'locked'],
   [/^capability_unavailable$/, 'capability_unavailable'],
+  [/^preview_not_isolated$/, 'preview_test_link'],
   [/^not_configured$/, 'provider_not_configured'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often
   // as "not enough". A false positive here is a slightly-wrong-but-actionable message; a miss is a
@@ -197,6 +203,15 @@ export function describeServiceError(raw: unknown, locale: string, fallback: str
   // eslint-disable-next-line no-console
   console.warn('[service] unmapped error shown as generic copy:', text.slice(0, 200));
   return fallback;
+}
+
+/**
+ * Is this line the test link's own notice (any language)? A Live call told „a generation failed" offered to try again, on
+ * a link where nothing can ever be made (GG 2026-10-26): the call says what the link is instead.
+ */
+export function isTestLinkNotice(text: unknown): boolean {
+  const t = typeof text === 'string' ? text.trim() : '';
+  return !!t && (Object.keys(COPY) as ErrLang[]).some((l) => t.includes(COPY[l].preview_test_link.slice(0, 40)));
 }
 
 /** The known failure a string names, or null — no fallback, no logging. */
