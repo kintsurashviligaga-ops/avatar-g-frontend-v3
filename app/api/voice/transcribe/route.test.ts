@@ -39,7 +39,12 @@ jest.mock('../../../../lib/api/rate-limit', () => {
 
 jest.mock('../../../../lib/services/billing/chatBudget', () => {
   const actual = jest.requireActual('../../../../lib/services/billing/chatBudget');
-  return { ...actual, chatBudgetAllows: jest.fn(async () => true), bookChatUsage: jest.fn(async () => undefined) };
+  return {
+    ...actual,
+    chatBudgetAllows: jest.fn(async () => true),
+    bookChatUsage: jest.fn(async () => undefined),
+    bookSpeechUsage: jest.fn(async () => undefined),
+  };
 });
 
 jest.mock('../../../../lib/auth/adminGuard', () => ({
@@ -55,13 +60,14 @@ jest.mock('../../../../lib/voice-v2v/providers', () => ({
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
 import { checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
-import { bookChatUsage } from '../../../../lib/services/billing/chatBudget';
+import { bookChatUsage, bookSpeechUsage } from '../../../../lib/services/billing/chatBudget';
 import { transcribeRealtimePcmChunk } from '../../../../lib/voice-v2v/providers';
 import { effectiveAdminAllowlist } from '../../../../lib/auth/adminGuard';
 
 const USER_ID = '11111111-2222-4333-8444-555555555555';
 const perUserMock = checkRateLimitByKey as jest.MockedFunction<typeof checkRateLimitByKey>;
 const bookMock = bookChatUsage as jest.MockedFunction<typeof bookChatUsage>;
+const bookSpeechMock = bookSpeechUsage as jest.MockedFunction<typeof bookSpeechUsage>;
 const openaiMock = transcribeRealtimePcmChunk as jest.MockedFunction<typeof transcribeRealtimePcmChunk>;
 const adminListMock = effectiveAdminAllowlist as jest.MockedFunction<typeof effectiveAdminAllowlist>;
 
@@ -305,6 +311,55 @@ test("a trial model from anyone but an admin, or one outside STT_MODELS, is igno
   res = await POST(upload({ language: 'ka-GE', model: 'gemini-3.1-flash-lite' }));
   expect(await res.json()).toMatchObject({ text: 'გამარჯობა', provider: 'gemini' });
   expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+});
+
+const CHIRP_URL = 'https://us-speech.googleapis.com/v2/projects/gen-lang-client-0671348730/locations/us/recognizers/_:recognize';
+const chirpOk = (transcript: string, languageCode: string) =>
+  new Response(JSON.stringify({ results: [{ alternatives: [{ transcript }], languageCode }], metadata: { totalBilledDuration: '3s' } }), { status: 200 });
+
+test("the owner's `?stt=chirp_3` trial: Cloud Speech-to-Text alone, booked by the audio billed, the language heard named", async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  fetchSpy.mockImplementation(async () => chirpOk('Привет, как дела?', 'ru-ru'));
+  const res = await POST(upload({ language: 'ka-GE', model: 'chirp_3' }));
+  expect(await res.json()).toEqual({ text: 'Привет, как дела?', provider: 'chirp', language: 'ru-RU' });
+  expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([CHIRP_URL]);
+  const sent = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as { config: unknown };
+  expect(sent.config).toEqual({ autoDecodingConfig: {}, model: 'chirp_3', languageCodes: ['ka-GE', 'ru-RU', 'en-US'] });
+  // $0.016 a minute: 3 s billed.
+  expect(bookSpeechMock).toHaveBeenCalledWith({ model: 'chirp_3', usd: 0.0008, userId: USER_ID });
+  expect(bookMock).not.toHaveBeenCalled();
+});
+
+test('Chirp 3 from anyone but an admin is ignored: the usual Gemini chain answers', async () => {
+  const res = await POST(upload({ language: 'ka-GE', model: 'chirp_3' }));
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+  expect(modelsCalled()).toEqual(['gemini-3.6-flash']);
+  expect(bookSpeechMock).not.toHaveBeenCalled();
+});
+
+test("Chirp 3 refused (the API off on the project): no Gemini stands in, and the owner's diag gives Google's reason", async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  fetchSpy.mockImplementation(async () => new Response(JSON.stringify({
+    error: { code: 403, message: 'Cloud Speech-to-Text API has not been used in project 467145118875 before or it is disabled.' },
+  }), { status: 403 }));
+  const res = await POST(upload({ language: 'ka-GE', model: 'chirp_3', diag: true }));
+  const j = (await res.json()) as { text: string; code: string; diag: { geminiError: string; trialModel: string } };
+  expect(j.text).toBe('');
+  expect(j.code).toBe('stt_unavailable');
+  expect(j.diag.trialModel).toBe('chirp_3');
+  expect(j.diag.geminiError).toBe('Chirp 3 STT failed (403): Cloud Speech-to-Text API has not been used in project 467145118875 before or it is disabled.');
+  expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([CHIRP_URL]);
+  expect(bookSpeechMock).not.toHaveBeenCalled();
+});
+
+test('Chirp 3 on an unconfigured Vertex AI: no call at all, the same reason as for Gemini', async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
+  const res = await POST(upload({ language: 'ka-GE', model: 'chirp_3', diag: true }));
+  const j = (await res.json()) as { code: string; diag: Record<string, unknown> };
+  expect(j.code).toBe('stt_unavailable');
+  expect(j.diag).toMatchObject({ geminiKeyPresent: false, geminiError: 'Vertex AI is not configured', trialModel: 'chirp_3' });
+  expect(fetchSpy).not.toHaveBeenCalled();
 });
 
 test('?diag=1 from the owner on an unconfigured Vertex AI names why (variable names only), with no call', async () => {
