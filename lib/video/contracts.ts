@@ -94,12 +94,13 @@ export const VIDEO_LANES: readonly VideoLaneContract[] = [
     note: 'Same lane as the film with the song-master mix; the music source offset is kept exactly (lib/agent/params mineMusicStart).',
   },
   {
-    id: 'product-ad', service: null, tools: ['product'], capabilities: ['video.product-ad'],
+    // REMOVED (GG 2026-10-27): no studio tool; /api/video/remix refuses `productad` (410 service_removed) before any charge.
+    id: 'product-ad', service: null, tools: [], capabilities: ['video.product-ad'],
     entry: 'the Product tool: a product photo → an i2v clip (remix step) → assemble with the ad’s single billing token',
     routes: ['app/api/video/remix/route.ts', 'app/api/video/assemble/route.ts'], modules: ['lib/video/productAdCharge.ts', 'lib/video/finalCut.ts'],
     duration: 'native', approval: 'panel', qc: 'none', billing: 'single-charge-saga',
-    refusals: ['duplicate_request', 'media_not_yours', 'insufficient_credits'], status: 'UNVERIFIED', tier: 'T1',
-    note: 'The i2v leg is a non-Google provider (B6, not changed here); the assemble leg waives its charge on the ad’s billingToken.',
+    refusals: ['duplicate_request', 'media_not_yours', 'insufficient_credits'], status: 'DISABLED', tier: 'T1',
+    note: 'Removed from the services (GG 2026-10-27); an ad ask is an ordinary video (lib/agent/intent step 11d). The code stays unreachable so a revert is one commit.',
   },
   {
     id: 'longform', service: 'video', tools: ['video'], capabilities: ['video.generate'],
