@@ -44,7 +44,7 @@ Rule: B builds **on** the existing Agent G code (section 4). No second orchestra
 
 | # | Item | State | Blocked on | Next step |
 |---|---|---|---|---|
-| A1 | **Remove the product-ad service** (GG 2026-10-27) | Not started (thread hit a usage limit) | — | Branch + draft PR: catalog entry `video.product-ad`, picker chips, routes. No merge without GG |
+| A1 | **Remove the product-ad service** (GG 2026-10-27) | Draft PR #235: hidden from every menu, search, Agent G and Live; `/api/video/remix productad` → 410 before any charge | GG merge card (from the "Remove product ad service" thread) | Merge on GG's OK, check prod health |
 | A2 | #220 iPhone relay hello/ack/nudge | Draft, mergeable | GG's iPhone test result on the test link; relay tag `iphone` (0 % traffic, min-instances 1) still costs money until removed | GG tests → relay deploy first, then app merge, each on a card |
 | A3 | #195 test branch (personas + relay) | Draft, **do not merge** | — | Close after A2 lands; remove relay tag `iphone` |
 | A4 | Own-photo Live avatar (#190) | BLOCKED_EXTERNAL; PR conflicts with main | Google allowlist for `gen-lang-client-0671348730` (GG sent the request 2026-10-27) | Wait for Google; then rebase #190 |
