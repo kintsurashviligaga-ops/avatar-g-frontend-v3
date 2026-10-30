@@ -18,6 +18,7 @@
  *     (the remix's add_music), not the clip chopped into shots — and a trim („cut the first 10 seconds") stays a trim.
  */
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
+import { withoutQuotedSpeech } from '@/lib/chat/quotedSpeech';
 import { isVideoQuestion } from '@/lib/chat/videoIntent';
 import type { MontageAspect } from '@/lib/services/montage/montagePlan';
 import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/services/montage/beatPlan';
@@ -55,7 +56,8 @@ const TRIM = /\btrim\b|\bcut\s+(?:the\s+)?(?:first|last|off|out|beginning|end)\b
 
 /** Does the message ask for a cut / montage („დაამონტაჟე", „cut these together", „склей")? Shapes aside. */
 export function hasMontageWords(text: string): boolean {
-  const t = (text || '').trim();
+  // A line someone says („…დამონტაჟებული ვიდეო…“) asks for no cut (lib/chat/quotedSpeech).
+  const t = withoutQuotedSpeech((text || '').trim()).trim();
   return !!t && (CUT.test(t) || MAKE_CLIP.test(t) || detectStudioIntent(t)?.service === 'montage');
 }
 

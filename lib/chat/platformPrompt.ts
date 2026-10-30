@@ -28,6 +28,7 @@
  */
 import { ownerApprovedPrice } from '@/lib/billing/pricingApproval';
 import { TOOL_META, type ToolId } from '@/lib/studio/tools';
+import { BUILT_IN_PERSONAS } from '@/lib/services/personas/personas';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { SERVICE_CATALOG } from '@/lib/catalog/services';
 import { CREDIT_COSTS, CREDIT_VALUE_GEL, creditsToGel } from '@/lib/credits/pricing';
@@ -93,6 +94,7 @@ export const START_QUESTION: Readonly<Record<PlatformPromptLocale, string>> = { 
 
 const gel = (credits: number): string => creditsToGel(credits).toFixed(2);
 const cr = (credits: number): string => `${credits} cr (${gel(credits)} ₾)`;
+const tetri = (credits: number): number => Math.round(creditsToGel(credits) * 100);
 /** The film lengths the price line gives as examples (the Video tool's presets). */
 const FILM_EXAMPLE_SECONDS = [8, 24, 48] as const;
 
@@ -187,7 +189,7 @@ function notYetLine(loc: PlatformPromptLocale, closed: readonly ToolId[]): strin
  * topupCredits), not CREDIT_PACKAGES — a pack list nothing sells, whose amounts disagree with it. Which list is the
  * product's is the owner's call (owner action 7); until then the assistant quotes the one a user can actually buy.
  */
-function priceBlock(topUp: string, closed: readonly ToolId[]): string {
+function priceBlock(topUp: string, closed: readonly ToolId[], spoken: boolean): string {
   const C = CREDIT_COSTS;
   const open = (id: ToolId) => !closed.includes(id);
   const chat = C.chat_message > 0 ? `chat ${cr(C.chat_message)} per message` : 'chat is free';
@@ -210,7 +212,9 @@ function priceBlock(topUp: string, closed: readonly ToolId[]): string {
     `product ad = a Fast film of its length; chat clip ${cr(C.video_30s)}; music ${cr(C.music_30s)} <60 s,`,
     `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip; ` : ''}touch-up: voice-over ${cr(PRICE_BOOK.remixVoiceover)}, own music ${cr(PRICE_BOOK.remixMusic)}; ${open('model3d') ? `3D model ${cr(C.model3d)}; ` : ''}${dubDeck}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote only these numbers, in credits and lari; never guess one.`,
-  ].join(' ');
+    // GG 2026-10-26 12:32Z, a Live call: „5 კრედიტი, ანუ 0.50 თეთრი" — the lari amount was said with the tetri's name.
+    spoken ? `₾ is lari; 100 tetri = 1 lari, so ${gel(C.image_generate)} ₾ is ${tetri(C.image_generate)} tetri, never "${gel(C.image_generate)} tetri".` : null,
+  ].filter(Boolean).join(' ');
 }
 
 /**
@@ -224,6 +228,13 @@ const SELF_INTRO: Readonly<Record<PlatformPromptLocale, string>> = {
   ka: 'მე ვარ Agent G, MyAvatar.ge-ს AI ასისტენტი.',
   en: "I'm Agent G, MyAvatar.ge's AI assistant.",
   ru: 'Я Agent G, ИИ-ассистент MyAvatar.ge.',
+};
+
+/** Where the persona is switched (components/chat/ModelSwitcher: the „Persona" row of the model menu), per reply language. */
+const PERSONA_MENU: Readonly<Record<PlatformPromptLocale, { menu: string; row: string }>> = {
+  ka: { menu: 'მოდელი', row: 'პერსონა' },
+  en: { menu: 'Model', row: 'Persona' },
+  ru: { menu: 'Модель', row: 'Персона' },
 };
 
 export function buildPlatformPrompt(opts: {
@@ -242,6 +253,12 @@ export function buildPlatformPrompt(opts: {
    * the prompt cannot see who asks, and an avatar the route refuses must not be offered.
    */
   veoAvatar?: boolean;
+  /**
+   * A spoken Live call: the reply follows the language the user SPEAKS, switching at once. The text chat keeps "switch
+   * only if asked" (a typed message's language is plain to see); in a call that line won over the call's own rule and
+   * English speech got Georgian answers (GG, 2026-10-25).
+   */
+  spoken?: boolean;
 }): string {
   const loc: PlatformPromptLocale = opts?.locale === 'en' || opts?.locale === 'ru' ? opts.locale : 'ka';
   const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
@@ -256,7 +273,9 @@ export function buildPlatformPrompt(opts: {
 
     `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${tbilisiNow(now)}. Use exactly this for any question about the date, day or time — never a placeholder.`,
 
-    `LANGUAGE: Reply in ${ui.language}. Switch only if the user asks for another language. Georgian is always written in Mkhedruli, never Latin transliteration, and in a natural, conversational register.${loc === 'ka' ? ' Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.' : loc === 'ru' ? ' Russian typed in Latin letters ("privet", "kak dela") is still Russian: answer it in Cyrillic.' : ''}`,
+    opts?.spoken === true
+      ? `LANGUAGE: Reply in the language the user is speaking: Georgian, English or Russian. When they switch, your very next reply is in the new language, without being asked. Only when you cannot tell, use ${ui.language}. Georgian is natural and conversational.`
+      : `LANGUAGE: Reply in ${ui.language}. Switch only if the user asks for another language. Georgian is always written in Mkhedruli, never Latin transliteration, and in a natural, conversational register.${loc === 'ka' ? ' Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.' : loc === 'ru' ? ' Russian typed in Latin letters ("privet", "kak dela") is still Russian: answer it in Cyrillic.' : ''}`,
 
     // ⚠️ THE PROMPT MUST NOT PROMISE A TOOL THE REQUEST DOES NOT CARRY. A persona with googleSearch:false (Strict Coder,
     // or a custom one) gets no google_search tool; telling that turn to "search first" invited a stale answer from
@@ -288,8 +307,18 @@ export function buildPlatformPrompt(opts: {
     // GG's rule (18:20Z): every service runs in the chat, and once Agent G has clarified and the user agrees, it starts. The
     // studio starts an image or a song on the yes to a quoted, priced offer (lib/chat/offeredPrompt + chatConsent), and a film
     // opens its storyboard; so the model offers in exactly that shape and never points at a menu for those three.
-    `HANDING OFF: You cannot start, queue or finish a render yourself; the studio starts it in this chat once the user agrees. For an image, song or film never send them to a tool, a menu or the + button, and never ask them to attach again a file that is already in this chat. Missing key details? Ask up to two short questions. Otherwise offer once: format or length, one prompt in quotes (English for an image or film; "the reference image" when it uses their photo), its price from PRICES (one image is ${CREDIT_COSTS.image_generate} credits), ending with exactly this question: "${START_QUESTION[loc]}". A film opens its priced storyboard first. Other tools open from "${ui.toolsSheet}" (+) or "${NAV_GROUP_LABEL.create[loc]}" / "${NAV_GROUP_LABEL.work[loc]}" in the side menu; files attach with "${ui.attach}". The result shows here: never claim anything is processing, or a result you have not seen. Never reply with JSON, commands or routing payloads.`,
+    // ⚠️ A CALL TOOK THE TEXT CHAT'S OFFER AS ITS OWN (GG 2026-10-25, the avatar call): the recipe below — quote a prompt and
+    // its price from PRICES, ask "დავიწყო?", the studio starts on the typed yes — was in every Live prompt too. A call that
+    // followed it said the price and "shall I start?" with nothing prepared, so nothing reached the screen. A spoken call
+    // gets no recipe here: the LIVE VOICE CALL rule (app/api/voice/live) says how a call orders and starts a render.
+    opts?.spoken === true
+      ? `HANDING OFF: in this voice call a render is ordered and started only the way the LIVE VOICE CALL rule below says — never by quoting a prompt and a price from PRICES and asking "${START_QUESTION[loc]}" on your own. Never claim anything is processing, or a result you have not seen.`
+      : `HANDING OFF: You cannot start, queue or finish a render yourself; the studio starts it in this chat once the user agrees. For an image, song or film never send them to a tool, a menu or the + button, and never ask them to attach again a file that is already in this chat. Missing key details? Ask up to two short questions. Otherwise offer once: format or length, one prompt in quotes (English for an image or film; "the reference image" when it uses their photo), its price from PRICES (one image is ${CREDIT_COSTS.image_generate} credits), ending with exactly this question: "${START_QUESTION[loc]}". A film opens its priced storyboard first. Other tools open from "${ui.toolsSheet}" (+) or "${NAV_GROUP_LABEL.create[loc]}" / "${NAV_GROUP_LABEL.work[loc]}" in the side menu; files attach with "${ui.attach}". The result shows here: never claim anything is processing, or a result you have not seen. Never reply with JSON, commands or routing payloads.`,
 
-    priceBlock(ui.topUp, closed),
+    // ⚠️ ASKED WHICH PERSONAS EXIST, IT INVENTED A LIST (GG 2026-10-25, Preview). Nothing told the model what the picker
+    // offers, so it named characters the app does not have. The list comes from the catalogue itself.
+    `PERSONAS (user picks: "${PERSONA_MENU[loc].menu}" menu → "${PERSONA_MENU[loc].row}"): ${BUILT_IN_PERSONAS.map((p) => p.name[loc]).join(', ')}, plus own. Name no others; a PERSONA block below is active.`,
+
+    priceBlock(ui.topUp, closed, opts?.spoken === true),
   ].join('\n\n');
 }

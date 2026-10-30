@@ -35,6 +35,8 @@
  *     AudioTranscriptionConfig.languageCodes[] (BCP-47 hints for the input transcription).
  *   - inputAudioTranscription / outputAudioTranscription: AudioTranscriptionConfig {languageCodes[],
  *     customVocabulary[], wordTimestamp, diarization, mode: VERBATIM|SMART}; `{}` enables with defaults.
+ *     customVocabulary "biases the ASR model to improve recognition of these specific terms": the input transcription
+ *     gets the short Georgian answers (GG 2026-10-26: „კი" came back in Hindi, Arabic, Latin and Korean letters).
  *   - sessionResumption: SessionResumptionConfig {handle?, transparent?}. Present ⇒ the server sends
  *     sessionResumptionUpdate {newHandle, resumable}. Handles stay valid 2 h after the session ends.
  *   - contextWindowCompression: {slidingWindow: {targetTokens?}, triggerTokens?}; `{slidingWindow:{}}` =
@@ -116,7 +118,7 @@ const KEY_METHOD = '.v1beta.GenerativeService.BidiGenerateContent';
 /** Mic input format the Live API expects (16-bit LE PCM @ 16 kHz). */
 export const LIVE_INPUT_AUDIO_MIME = 'audio/pcm;rate=16000';
 
-export type LiveModality = 'AUDIO' | 'TEXT';
+export type LiveModality = 'AUDIO' | 'TEXT' | 'VIDEO';
 
 export interface GeminiLiveConfig {
   /** Ephemeral access token from /api/voice/live (preferred — never ship the raw API key to the client). */
@@ -135,6 +137,9 @@ export interface GeminiLiveConfig {
   languageCode?: string;
   /** Override the WS base (tests / future version bumps). */
   wsBase?: string;
+  /** Our Live relay (services/live-relay) from /api/voice/live: when set, `token` is a relay ticket and the socket opens
+   *  `${relayUrl}?ticket=…` instead of Google. The relay holds the Vertex credential. */
+  relayUrl?: string;
   /**
    * A complete first frame to send instead of buildSetupMessage(config) — e.g. buildLiveSetup(...) or a setup
    * the server built. A bare BidiGenerateContentSetup (no `setup` key) is wrapped as `{ setup }`.
@@ -236,9 +241,14 @@ export interface BuildLiveSetupOptions {
   systemInstruction: string;
   /** Prebuilt voice (Aoede / Charon verified in Georgian). A malformed name falls back to Aoede. */
   voiceName: string;
-  /** BCP-47 (e.g. 'ka-GE'). Sent ONLY as inputAudioTranscription.languageCodes (needs transcribe:true) —
-   *  never as speechConfig.languageCode, which native-audio models do not support (see header). */
-  languageCode?: string;
+  /** BCP-47 (e.g. 'ka-GE'), or several. Sent ONLY as inputAudioTranscription.languageCodes (needs transcribe:true) —
+   *  never as speechConfig.languageCode, which native-audio models do not support (see header). A call that follows
+   *  Georgian, English and Russian sends all three (Vertex accepted it, us-central1, 2026-10-25): with Georgian alone,
+   *  Russian speech came back in the transcript — and in the chat thread a fresh session reads — as Georgian. */
+  languageCode?: string | readonly string[];
+  /** Words the input transcription is biased toward (AudioTranscriptionConfig.customVocabulary; needs transcribe:true):
+   *  the short Georgian answers a voice start is judged on (lib/voice/voicePrompt liveTranscriptionVocabulary). */
+  vocabulary?: readonly string[];
   /** 0..2; omitted when not a finite number. */
   temperature?: number;
   /** undefined → no sessionResumption field (no resumption updates, today's wire);
@@ -256,6 +266,10 @@ export interface BuildLiveSetupOptions {
   functionDeclarations?: readonly LiveDeclaration[];
   /** Opt-in v2 turn detection; omitted by legacy clients. */
   turnEagerness?: 'eager' | 'normal' | 'patient';
+  /** A talking avatar (gemini-3.8-live on Vertex): the answer arrives as VIDEO with the voice muxed in, so
+   *  responseModalities becomes ['VIDEO']; speechConfig still picks that voice. VERIFIED 2026-10-25 (us-central1): avatarConfig
+   *  sits at the TOP level of setup (inside generationConfig → 1007 unknown field); Kira, Ben and Leo open. */
+  avatar?: { avatarName: string; videoBitrateBps?: number };
 }
 
 /** The BidiGenerateContentSetup payload (the value under `setup`, and the shape of the mint's
@@ -265,16 +279,18 @@ export interface LiveSetup {
   model: string;
   generationConfig: {
     responseModalities: LiveModality[];
-    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } };
+    /** Absent for an avatar, which speaks with its own voice. */
+    speechConfig?: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } };
     temperature?: number;
     thinkingConfig?: { thinkingBudget: number };
   };
   systemInstruction?: { parts: Array<{ text: string }> };
-  inputAudioTranscription?: { languageCodes?: string[] };
+  inputAudioTranscription?: { languageCodes?: string[]; customVocabulary?: string[] };
   outputAudioTranscription?: Record<string, never>;
   sessionResumption?: { handle?: string };
   contextWindowCompression?: { triggerTokens?: number; slidingWindow: { targetTokens?: number } };
   tools?: LiveToolBlock[];
+  avatarConfig?: { avatarName: string; videoBitrateBps?: number };
 }
 
 /** The complete first client frame. */
@@ -287,8 +303,13 @@ const LIVE_MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const RETIRED_LIVE_RE = /^gemini-(?:1\.0|1\.5|2\.0)(?:-|$)/i;
 /** Prebuilt voice names are single words (Aoede, Charon, Kore, Puck, Zephyr, …); case is normalised. */
 const VOICE_NAME_RE = /^[A-Za-z]{2,32}$/;
+/** Prebuilt avatar names are single capitalised words (Kira, Ben, Leo). */
+const AVATAR_NAME_RE = /^[A-Z][a-z]{1,31}$/;
 /** BCP-47-ish: 'ka', 'ka-GE', 'zh-Hans', 'pt-BR'. */
 const BCP47_RE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}$/;
+/** customVocabulary: at most this many phrases, each at most this long (a hint list, not a dictionary). */
+const VOCABULARY_MAX = 50;
+const VOCABULARY_WORD_MAX = 40;
 /** Resumption handles are opaque server tokens: printable ASCII, no whitespace, bounded. */
 const RESUMPTION_HANDLE_RE = /^[\x21-\x7E]{1,4096}$/;
 
@@ -337,6 +358,15 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
   if (takesThinkingBudget(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
 
   const setup: LiveSetup = { model, generationConfig };
+  const avatarName = typeof opts?.avatar?.avatarName === 'string' ? opts.avatar.avatarName.trim() : '';
+  if (AVATAR_NAME_RE.test(avatarName)) {
+    generationConfig.responseModalities = ['VIDEO'];
+    // ⚠️ speechConfig STAYS: without it the avatar speaks in the model's default voice, a man's for Kira too (GG,
+    // test link 2026-10-25 17:57Z: female voice chosen, Kira on screen, a male voice). Probe: Kira without a voice
+    // ~113 Hz, with Aoede ~178 Hz (female); Vertex accepts speechConfig next to VIDEO + avatarConfig.
+    const bitrate = Math.round(Number(opts.avatar?.videoBitrateBps));
+    setup.avatarConfig = { avatarName, ...(bitrate >= 300_000 && bitrate <= 8_000_000 ? { videoBitrateBps: bitrate } : {}) };
+  }
   if (opts.turnEagerness) {
     const detection = turnDetection(model, opts.turnEagerness);
     if (detection) setup.realtimeInputConfig = detection;
@@ -346,10 +376,17 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
   if (instruction.trim()) setup.systemInstruction = { parts: [{ text: instruction }] };
 
   if (opts?.transcribe === true) {
-    const lang = typeof opts.languageCode === 'string' ? opts.languageCode.trim() : '';
-    // UNCERTAIN (2026-09-30): languageCodes is in the API reference but not yet exercised live on the
-    // v1alpha Constrained endpoint. It is only a HINT; omit languageCode to fall back to auto-detect.
-    setup.inputAudioTranscription = BCP47_RE.test(lang) ? { languageCodes: [lang] } : {};
+    const raw = typeof opts.languageCode === 'string' ? [opts.languageCode] : Array.isArray(opts.languageCode) ? opts.languageCode : [];
+    const langs = [...new Set(raw.map((l) => (typeof l === 'string' ? l.trim() : '')).filter((l) => BCP47_RE.test(l)))];
+    const words = Array.isArray(opts.vocabulary)
+      ? [...new Set(opts.vocabulary.map((w) => (typeof w === 'string' ? w.trim() : '')).filter((w) => w && w.length <= VOCABULARY_WORD_MAX))]
+        .slice(0, VOCABULARY_MAX)
+      : [];
+    // Both are only HINTS; omit languageCode to fall back to auto-detect.
+    setup.inputAudioTranscription = {
+      ...(langs.length ? { languageCodes: langs } : {}),
+      ...(words.length ? { customVocabulary: words } : {}),
+    };
     setup.outputAudioTranscription = {};
   }
 
@@ -471,6 +508,9 @@ export function parseLiveServerEvents(raw: unknown): LegacyLiveServerEvent[] {
 export type LiveServerEvent =
   | { kind: 'setupComplete' }
   | { kind: 'audio'; data: string; mimeType: string }
+  /** A talking avatar's picture AND voice: a fragmented-MP4 piece (lib/voice/fmp4), base64. Avatars stream it
+   *  continuously, idle frames included, so a `video` event never means the model is speaking. */
+  | { kind: 'video'; data: string; mimeType: string }
   | { kind: 'inputTranscript'; text: string; final?: boolean }
   | { kind: 'outputTranscript'; text: string; final?: boolean }
   | { kind: 'turnComplete' }
@@ -588,6 +628,7 @@ function parseMessageObject(msg: Obj): LiveServerEvent[] {
       if (isObj(inline) && typeof inline.data === 'string' && inline.data.length > 0) {
         const mimeType = typeof inline.mimeType === 'string' ? inline.mimeType : '';
         if (mimeType.toLowerCase().startsWith('audio/')) events.push({ kind: 'audio', data: inline.data, mimeType });
+        else if (mimeType.toLowerCase().startsWith('video/')) events.push({ kind: 'video', data: inline.data, mimeType });
       }
       // ⚠️ Text parts are NOT surfaced: native-audio sessions answer in AUDIO only (the words arrive as
       // outputTranscription), and the text parts a thinking model does emit are thought summaries — a
@@ -684,9 +725,11 @@ export function parseLiveServerMessage(raw: unknown): LiveServerEvent[] {
 /**
  * Build the authenticated WS URL. The credential dictates BOTH the query param AND the version+method:
  * ephemeral token → v1alpha/BidiGenerateContentConstrained + ?access_token; api key (dev-only) →
- * v1beta/BidiGenerateContent + ?key. `wsBase` overrides only the host (tests / future host changes).
+ * v1beta/BidiGenerateContent + ?key. `wsBase` overrides only the host (tests / future host changes). A relay ticket
+ * (config.relayUrl) opens our Live relay instead, which speaks the same wire to the browser.
  */
 export function buildLiveUrl(config: GeminiLiveConfig): string {
+  if (config.relayUrl && config.token) return `${config.relayUrl}?ticket=${encodeURIComponent(config.token)}`;
   const host = config.wsBase || LIVE_WS_HOST;
   if (config.token) return `${host}${TOKEN_METHOD}?access_token=${encodeURIComponent(config.token)}`;
   if (config.apiKey) return `${host}${KEY_METHOD}?key=${encodeURIComponent(config.apiKey)}`;
@@ -714,6 +757,9 @@ export class GeminiLiveSession {
   /** The latest RESUMABLE handle from sessionResumptionUpdate (null until one arrives). Pass it as
    *  buildLiveSetup({resumptionHandle}) on the reconnect after a goAway / dropped socket. */
   get resumptionHandle(): string | null { return this.lastResumptionHandle; }
+
+  /** Bytes sent but not yet handed to the network (WebSocket.bufferedAmount); 0 without a socket. */
+  get bufferedAmount(): number { return this.ws?.bufferedAmount ?? 0; }
 
   connect(): void {
     if (this.ws) return;

@@ -32,7 +32,7 @@ import {
   type PersonaThinking,
   type PersonaVoice,
 } from '@/lib/services/personas/personas';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona } from '@/lib/voice/voicePrompt';
 // Type-only, so it is erased at build time: this module stays isomorphic even though chatStream.ts is
 // `server-only`.
 import type { GeminiChatConfig } from '@/lib/ai/google/chatStream';
@@ -285,6 +285,18 @@ export const LIVE_SPOKEN_RULE =
   + 'lists, code blocks or emoji. Describe code, tables and shot lists in words.';
 
 /**
+ * The LAST line of a Live instruction while a persona is active ('' without one). ⚠️ THE CHARACTER FADED MID-CALL
+ * (GG, 2026-10-25, Preview): the persona block sits in the middle of a long instruction, and after a few minutes or a
+ * tool call the voice drifted back to the neutral assistant. The routes append this after every other rule, where the
+ * model weighs it most. A user-authored name is reduced to plain letters before it is quoted.
+ */
+export function livePersonaReminder(profile: AgentProfile): string {
+  if (!profile || profile.id === DEFAULT_AGENT_PROFILE_ID) return '';
+  const name = String(profile.label ?? '').replace(/["\s]+/g, ' ').trim().slice(0, 40);
+  return `STAY IN CHARACTER${name ? ` as "${name}"` : ''} for the whole call: every reply, also after a long talk or a function call, keeps this persona's personality and speaking style.`;
+}
+
+/**
  * ⚠️ ONLY AOEDE AND CHARON ARE VERIFIED LIVE IN GEORGIAN. Kore and Puck are valid Gemini voices but nobody
  * has listened to them speak Georgian yet, so a Georgian session maps them onto the verified voice of the
  * same register (Kore → Aoede, Puck → Charon). en/ru sessions get the voice as asked.
@@ -319,7 +331,7 @@ export function toGeminiLiveSetup(
   const p = clampAgentProfile(profile);
   const locale = opts?.locale === 'en' || opts?.locale === 'ru' ? opts.locale : 'ka';
   const platform = typeof opts?.platformSystem === 'string' && opts.platformSystem.trim() ? opts.platformSystem : '';
-  const base = [liveVoicePersona(locale), platform].filter(Boolean).join('\n\n');
+  const base = [liveCallPersona(locale), platform].filter(Boolean).join('\n\n');
   const systemInstruction = p.directive ? `${base}\n\n${p.directive}\n${LIVE_SPOKEN_RULE}` : base;
   return {
     systemInstruction,

@@ -108,6 +108,23 @@ describe('executeLiveToolCall', () => {
     expect(out.card).toBeUndefined();
   });
 
+  test('set_persona → the picker\'s choice changes (default = none), the answer names it, the host gets the persona', () => {
+    const setPersona = jest.fn();
+    const env: LiveActionEnv = { ...spyEnv(true).env, setPersona };
+    const out = executeLiveToolCall(call('p', 'set_persona', { persona: 'news-journalist' }), env);
+    expect(setPersona).toHaveBeenCalledWith('news-journalist');
+    expect(out.response.response).toMatchObject({ ok: true });
+    expect(String(out.response.response.summary)).toMatch(/News Journalist.*reconnects in that role/);
+    expect(out.persona).toBe('news-journalist');
+    const back = executeLiveToolCall(call('q', 'set_persona', { persona: 'default' }), env);
+    expect(setPersona).toHaveBeenLastCalledWith('');
+    expect(back.persona).toBe('');
+    const bad = executeLiveToolCall(call('r', 'set_persona', { persona: 'pirate' }), env);
+    expect(bad.response.response).toMatchObject({ ok: false });
+    expect(setPersona).toHaveBeenCalledTimes(2);
+    expect(bad.persona).toBeUndefined();
+  });
+
   test('invalid args / unknown tool → a structured ok:false the model can act on; nothing is dispatched', () => {
     const { env, actions, artifacts } = spyEnv(true);
     const bad = executeLiveToolCall(call('b', 'prepare_generation', { tool: 'video', prompt: 'x', aspectRatio: '7:3' }), env);
@@ -221,6 +238,9 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
     expect(out.run).toEqual({ tool: 'image', priceCredits: 2, target: { kind: 'studio', tool: 'image' }, since: 1000 });
     expect(env.runGeneration).not.toHaveBeenCalled();
     expect(String(out.response.response.summary)).toMatch(/starts in 3 seconds unless the user taps Cancel or says wait/);
+    // GG 2026-10-26 12:58Z: the model said „it started, ready in 3 s" before the yes was judged.
+    expect(String(out.response.response.summary)).toMatch(/^Nothing has started yet:/);
+    expect(String(out.response.response.summary)).toMatch(/Do not say it has started or when it will be ready/);
   });
 
   test('get_screen_state answers with the studio\'s state; set_chat_model uses the global store; call_view asks the host', () => {
@@ -337,6 +357,16 @@ describe('useLiveActions', () => {
     expect(result.current.endRequested).toBe(false);
     act(() => { result.current.onToolCall([call('e', 'end_call')]); });
     expect(result.current.endRequested).toBe(true);
+  });
+
+  test('set_persona → personaRequest, numbered so the same persona asked twice still counts', () => {
+    const env: LiveActionEnv = { ...spyEnv(true).env, setPersona: jest.fn() };
+    const { result } = renderHook(() => useLiveActions(env));
+    expect(result.current.personaRequest).toBeNull();
+    act(() => { result.current.onToolCall([call('p', 'set_persona', { persona: 'joker' })]); });
+    expect(result.current.personaRequest).toEqual({ id: 'joker', seq: 1 });
+    act(() => { result.current.onToolCall([call('q', 'set_persona', { persona: 'joker' })]); });
+    expect(result.current.personaRequest).toEqual({ id: 'joker', seq: 2 });
   });
 
   test('a confirmed start counts down, then runs on the user\'s yes — unless the user cancels; a cancelled call-id stops it too', async () => {

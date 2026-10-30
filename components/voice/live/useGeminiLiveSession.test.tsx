@@ -11,16 +11,21 @@ import { VoicePreferencesProvider, useVoicePreferencesContext } from '@/componen
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
+import { UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
+import { replyLanguageNote } from '@/lib/voice/replyLanguage';
 import { LIVE_SPOKEN_RULE } from '@/lib/agents/profile';
 import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { MIC_RELEASE_EVENT, type MicReleaseDetail } from '@/lib/voice/micBus';
 import { base64ToBytes, bytesToBase64 } from '@/lib/voice/pcm';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona, liveTranscriptionVocabulary } from '@/lib/voice/voicePrompt';
 
 import {
   LIVE_LANGUAGE_RULE,
   LIVE_MIC_BUSY_RETRY_PAUSE_MS,
+  LIVE_MIC_MUTED_GRACE_MS,
+  LIVE_RELAY_READY_AFTER_OPEN_MS,
+  LIVE_SETUP_TIMEOUT_MS,
   LIVE_TOKEN_FRESH_MS,
   LIVE_TRANSCRIPT_EVENT,
   buildLiveInstruction,
@@ -239,8 +244,11 @@ test('setup is the FIRST frame: parity setup (transcription, resumption, compres
   expect(instruction.startsWith('SYS\n' + VOICE_UI_APPROVAL_RULE + '\n')).toBe(true);
   expect(instruction).toContain('[FAST LIVE VOICE RULE]');
   expect(instruction).toContain('prepare_generation');
+  // It said "1-2 short, natural Georgian sentences" — the call then answered English and Russian in Georgian.
+  expect(instruction).not.toMatch(/Georgian sentences/);
+  expect(instruction.endsWith(LIVE_LANGUAGE_RULE)).toBe(true);
   expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Charon');
-  expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+  expect(setup.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE', 'en-US', 'ru-RU'], customVocabulary: liveTranscriptionVocabulary() });
   expect(setup.outputAudioTranscription).toEqual({});
   expect(setup.sessionResumption).toEqual({});
   expect(setup.contextWindowCompression).toEqual({ slidingWindow: {} });
@@ -460,6 +468,39 @@ test('onHeard: the user\'s own words as they stream (spoken and typed), and each
   unmount();
 });
 
+test('onSaid: the model\'s own words as they stream, and its turn closing — never the user\'s (GG 2026-10-26 08:17Z)', async () => {
+  const h = harness();
+  const said: unknown[] = [];
+  const { ws, unmount } = await connected({ deps: h.deps, onSaid: (e) => said.push(e) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'a car picture' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: "It'll cost you" } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: ' 5 credits.' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(said).toEqual([{ text: "It'll cost you" }, { text: "It'll cost you 5 credits." }, { end: true }]);
+  // A user-only exchange closes nothing of the model's; a cut-off answer closes too.
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'Yes.' }, turnComplete: true } }));
+  expect(said).toHaveLength(3);
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Starting' } } }));
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(said.slice(3)).toEqual([{ text: 'Starting' }, { end: true }]);
+  unmount();
+});
+
+test('Georgian heard in Hindi letters: the caption and the closed turn are in Georgian ones; the heard words as written (GG 2026-10-26)', async () => {
+  const h = harness();
+  const heard: unknown[] = [];
+  const turns: LiveTurn[] = [];
+  const { result, ws, unmount } = await connected({ deps: h.deps, onHeard: (e) => heard.push(e), onTurn: (t) => turns.push(t) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: ' क्रेटा' } } }));
+  expect(result.current.captions.at(-1)).toMatchObject({ role: 'user', text: 'კრეტა' });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: ' की' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  // The yes check reads them back itself (lib/voice/spokenYes), knowing they came in another alphabet.
+  expect(heard).toEqual([{ text: ' क्रेटा' }, { text: ' क्रेटा की' }, { end: true }]);
+  expect(turns).toEqual([{ role: 'user', text: 'კრეტა კი' }]);
+  unmount();
+});
+
 test('without an onTurn prop, closed turns are dispatched as the window transcript event', async () => {
   const h = harness();
   const seen: LiveTurn[] = [];
@@ -528,7 +569,7 @@ test('reentrancy: a double start is one call; End during the mint releases the m
   unmount();
 });
 
-test('a handshake with no setupComplete times out and retries ONCE on the legacy wire; a second miss is an error', async () => {
+test('a handshake with no setupComplete times out, retries the SAME setup once, then the legacy wire; a third miss is an error', async () => {
   // Fake time: each socket's deadline runs from its construction, so on a loaded machine real time could spend the
   // retry's whole 30 ms before the test opens it, and the retry would never send its setup.
   jest.useFakeTimers();
@@ -545,12 +586,21 @@ test('a handshake with no setupComplete times out and retries ONCE on the legacy
     expect(FakeSocket.all).toHaveLength(1); // not before the deadline
     await elapse(1);
     expect(FakeSocket.all).toHaveLength(2);
-    expect(h.fetchImpl).toHaveBeenCalledTimes(2); // fresh token for the retry
-    expect(result.current.degraded).toBe(true);
+    expect(h.fetchImpl).toHaveBeenCalledTimes(2); // fresh token: a ticket opens one new session
+    // Ran out of time ≠ refused: the same parity setup again, nothing given up.
+    expect(result.current.degraded).toBe(false);
     const ws2 = FakeSocket.last;
     expect(ws2.url).toContain('access_token=tok2');
     act(() => ws2.open());
-    const legacy = ws2.sent[0]!.setup;
+    expect(ws2.sent[0]!.setup.inputAudioTranscription).toBeDefined();
+
+    await elapse(30);
+    expect(FakeSocket.all).toHaveLength(3);
+    expect(result.current.degraded).toBe(true);
+    const ws3 = FakeSocket.last;
+    expect(ws3.url).toContain('access_token=tok3');
+    act(() => ws3.open());
+    const legacy = ws3.sent[0]!.setup;
     expect(legacy.systemInstruction).toBeDefined();
     expect(legacy).not.toHaveProperty('inputAudioTranscription');
     expect(legacy).not.toHaveProperty('sessionResumption');
@@ -559,8 +609,120 @@ test('a handshake with no setupComplete times out and retries ONCE on the legacy
     await elapse(30);
     expect(result.current.status).toBe('error');
     expect(result.current.error).toBe('setup_failed');
-    expect(FakeSocket.all).toHaveLength(2); // ONCE: no third socket
+    expect(FakeSocket.all).toHaveLength(3); // one same-setup retry per plan: no fourth socket
     expect(h.track.stop).toHaveBeenCalled();
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a handshake that TIMES OUT keeps the actions (GG: „ვიდეო პანელი გახსენი“); a later refusal still drops them', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness();
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true, setupTimeoutMs: 30 });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    act(() => FakeSocket.last.open()); // a cold relay: open, no answer in time
+    await elapse(30);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(h.mintBodies[1]).toMatchObject({ transcribe: true, actions: true }); // the voice commands survive
+
+    act(() => FakeSocket.last.close(1007, 'Invalid argument: function_declarations')); // now a REAL refusal
+    await elapse(0);
+    expect(FakeSocket.all).toHaveLength(3);
+    expect(h.mintBodies[2]).toMatchObject({ transcribe: true });
+    expect(h.mintBodies[2]).not.toHaveProperty('actions');
+    expect(result.current.degraded).toBe(false);
+    act(() => FakeSocket.last.open());
+    act(() => FakeSocket.last.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('through the relay a booting relay (socket still CONNECTING) gets the long deadline', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    expect(FakeSocket.last.url).toContain('wss://relay.example/v1/live');
+    await elapse(LIVE_SETUP_TIMEOUT_MS);
+    expect(FakeSocket.all).toHaveLength(1); // the direct-to-Google deadline would have given up here
+    act(() => FakeSocket.last.open()); // booted late: the open socket now has LIVE_RELAY_READY_AFTER_OPEN_MS
+    act(() => FakeSocket.last.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    expect(h.report).not.toHaveBeenCalled();
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('through the relay an OPEN socket with no setupComplete gives up after 3 s, says where it waited, and retries the same setup', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    // GG 2026-10-25: the setup frame sat between browser and relay until the browser closed the socket.
+    act(() => FakeSocket.last.open());
+    (FakeSocket.last as unknown as { bufferedAmount: number }).bufferedAmount = 39124;
+    await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS - 1);
+    expect(FakeSocket.all).toHaveLength(1);
+    await elapse(1);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(h.report).toHaveBeenCalledWith('handshake_timeout', null, expect.objectContaining({
+      relay: true, msToOpen: expect.any(Number), msSinceOpen: LIVE_RELAY_READY_AFTER_OPEN_MS, bufferedBytes: 39124,
+    }));
+    // GG's avatar call 18:47Z: four held sockets in a row, the fifth worked — and must still carry the UI actions.
+    for (const n of [3, 4, 5]) {
+      act(() => FakeSocket.last.open()); // held too
+      await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
+      expect(FakeSocket.all).toHaveLength(n);
+    }
+    for (const body of h.mintBodies.slice(1)) expect(body).toMatchObject({ actions: true }); // same setup, not degraded
+    act(() => FakeSocket.last.open());
+    act(() => FakeSocket.last.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    expect(result.current.degraded).toBe(false);
+    expect(h.report).toHaveBeenCalledTimes(4);
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('through the relay a long run of held sockets never opens the call without its UI actions; the legacy wire is the last resort', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-live-2.5-flash-native-audio', expiresAt: future(), relayUrl: 'wss://relay.example/v1/live' }));
+    const { result, unmount } = await startCall({ deps: h.deps, actions: true });
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    for (let n = 2; n <= 8; n += 1) {
+      act(() => FakeSocket.last.open()); // every one held
+      await elapse(LIVE_RELAY_READY_AFTER_OPEN_MS);
+      expect(FakeSocket.all).toHaveLength(n);
+      if (n <= 7) expect(result.current.degraded).toBe(false);
+    }
+    // 1 + 6 same-setup tries, then the legacy wire — never the parity wire stripped of its actions.
+    expect(result.current.degraded).toBe(true);
+    for (const body of h.mintBodies) if (body.transcribe === true) expect(body).toMatchObject({ actions: true });
     unmount();
   } finally {
     jest.useRealTimers();
@@ -644,6 +806,98 @@ test('actions: the mint asks for the declarations; the host answers each call by
 
   act(() => ws.receive({ toolCallCancellation: { ids: ['c1'] } }));
   expect(onToolCallCancellation).toHaveBeenCalledWith(['c1']);
+  unmount();
+});
+
+// ─── An offer to start with nothing prepared (lib/voice/liveUnprepared) ───────────
+
+const noteFrames = (ws: { sent: Frame[] }) => ws.sent.filter((f) => String(f.realtimeInput?.text ?? '').startsWith(UNPREPARED_START_NOTE));
+const answer = (calls: Array<{ id: string; name: string }>) => calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true } }));
+
+test('GG 2026-10-25: "5 credits. Shall I start?" with no function called gets ONE [App] note per thing the user said', async () => {
+  const h = harness();
+  const { ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall: jest.fn(answer) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'სურათი გამიკეთე' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'ფასი 5 კრედიტი. დავიწყო?' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  // The model's next answer repeats itself before the user speaks: no second note.
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  // The note is the app's, never the user's words — and it names the language the user spoke (lib/voice/replyLanguage).
+  expect(noteFrames(ws)[0]).toEqual({ realtimeInput: { text: `${UNPREPARED_START_NOTE}\n${replyLanguageNote('Georgian')}` } });
+  unmount();
+});
+
+test('an offer after prepare_generation (in this exchange or one before) is the normal flow: no note', async () => {
+  const h = harness();
+  const { ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall: jest.fn(answer) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'make a picture of a race' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c1', name: 'prepare_generation', args: { tool: 'image' } }] } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'It is 5 credits. Shall I start?' }, turnComplete: true } }));
+  // The user asks again; the prepared order is still on screen.
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'how much?' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Five credits. Shall I start?' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(0);
+  // Once it started, a NEW offer with nothing prepared is caught again.
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c2', name: 'start_generation', args: {} }] } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'now a video' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Press the generate button.' }, turnComplete: true } }));
+  expect(noteFrames(ws)).toHaveLength(1);
+  unmount();
+});
+
+test(`a call without the functions is never told to call one; a call sends at most ${UNPREPARED_START_NOTES_MAX} notes`, async () => {
+  const h = harness();
+  const plain = await connected({ deps: h.deps });
+  act(() => plain.ws.receive({ serverContent: { inputTranscription: { text: 'make a picture' } } }));
+  act(() => plain.ws.receive({ serverContent: { outputTranscription: { text: 'Shall I start?' }, turnComplete: true } }));
+  expect(noteFrames(plain.ws)).toHaveLength(0);
+  plain.unmount();
+
+  const h2 = harness();
+  const { ws, unmount } = await connected({ deps: h2.deps, actions: true, onToolCall: jest.fn(answer) });
+  for (let i = 0; i < UNPREPARED_START_NOTES_MAX + 2; i++) {
+    act(() => ws.receive({ serverContent: { inputTranscription: { text: `picture ${i}` } } }));
+    act(() => ws.receive({ serverContent: { outputTranscription: { text: 'დავიწყო?' }, turnComplete: true } }));
+  }
+  expect(noteFrames(ws)).toHaveLength(UNPREPARED_START_NOTES_MAX);
+  unmount();
+});
+
+// ─── The user's language in every app answer (lib/voice/replyLanguage) ──────────
+
+test('GG 2026-10-26 11:34Z: once the user spoke Georgian, each function answer and [App] note says to reply in Georgian', async () => {
+  const h = harness();
+  const onToolCall = jest.fn((calls: Array<{ id: string; name: string }>) =>
+    calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true, summary: 'The price is waiting for approval.' } })));
+  const { result, ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall });
+  const lastAnswer = () => [...ws.sent].reverse().find((f) => f.toolResponse)?.toolResponse.functionResponses[0].response;
+  const lastNote = () => [...ws.sent].reverse().find((f) => typeof f.realtimeInput?.text === 'string')?.realtimeInput.text;
+
+  // Before the user says anything, nothing is added.
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c0', name: 'open_studio', args: {} }] } }));
+  await waitFor(() => expect(lastAnswer()).toEqual({ ok: true, summary: 'The price is waiting for approval.' }));
+
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: '9,16 ფორმატის სურათი' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c1', name: 'prepare_generation', args: { tool: 'image' } }] } }));
+  await waitFor(() => expect(lastAnswer()).toEqual({
+    ok: true, summary: 'The price is waiting for approval.', reply_in: replyLanguageNote('Georgian'),
+  }));
+  act(() => { result.current.sendNote('[App] Nothing was started. Tell the user plainly.'); });
+  expect(lastNote()).toBe(`[App] Nothing was started. Tell the user plainly.\n${replyLanguageNote('Georgian')}`);
+
+  // Georgian heard in Latin letters is no English: the language stays.
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'ფასი 5 კრედიტია.' }, turnComplete: true } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'Da-adasture.' } } }));
+  act(() => { result.current.sendNote('[App] A new image is ready on screen.'); });
+  expect(lastNote()).toBe(`[App] A new image is ready on screen.\n${replyLanguageNote('Georgian')}`);
+
+  // The user switches to English: so do the answers.
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: 'now make it a video please' } } }));
+  act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c2', name: 'prepare_generation', args: { tool: 'video' } }] } }));
+  await waitFor(() => expect(lastAnswer()).toMatchObject({ reply_in: replyLanguageNote('English') }));
   unmount();
 });
 
@@ -791,6 +1045,36 @@ test('the no-actions retry that connects keeps the parity wire: captions on, res
   act(() => ws2.receive({ setupComplete: {} }));
   expect(result.current.status).toBe('listening');
   expect(result.current.degraded).toBe(false);
+  unmount();
+});
+
+test('renew: a FRESH session in the same call — new mint in the persona as it is now, no old handle, same mic', async () => {
+  const h = harness();
+  const { result, ws, rerender, unmount } = await connected({ deps: h.deps, personaId: 'friendly' });
+  act(() => ws.receive({ sessionResumptionUpdate: { newHandle: 'old-handle', resumable: true } }));
+  expect(h.mintBodies[0]).toMatchObject({ personaId: 'friendly' });
+  rerender({ deps: h.deps, personaId: 'joker' }); // set_persona: the host now passes the new persona
+  let renewed = false;
+  act(() => { renewed = result.current.renew(); });
+  expect(renewed).toBe(true);
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+  expect(ws.readyState).toBe(FakeSocket.CLOSED);
+  expect(h.mintBodies[1]).toMatchObject({ personaId: 'joker', resumptionHandle: null });
+  act(() => FakeSocket.last.open());
+  expect(FakeSocket.last.sent[0]!.setup.sessionResumption).toEqual({}); // a new session, not the old one resumed
+  act(() => FakeSocket.last.receive({ setupComplete: {} }));
+  expect(result.current.status).toBe('listening');
+  expect(h.getUserMedia).toHaveBeenCalledTimes(1); // the mic was kept
+  unmount();
+});
+
+test('renew does nothing while the call is not ready', async () => {
+  const h = harness();
+  const { result, unmount } = await startCall({ deps: h.deps, setupTimeoutMs: 5000 });
+  let renewed = true;
+  act(() => { renewed = result.current.renew(); });
+  expect(renewed).toBe(false);
+  expect(FakeSocket.all).toHaveLength(1);
   unmount();
 });
 
@@ -1000,6 +1284,61 @@ describe('microphone', () => {
     unmount();
   });
 
+  test('a track the browser mutes (another capture took the mic) is re-acquired after the grace; an unmute in time keeps it', async () => {
+    const h = harness();
+    const track2 = makeTrack();
+    const { result, ws, unmount } = await connected({ deps: h.deps });
+    jest.useFakeTimers();
+    try {
+      // A passing mute: unmuted within the grace, nothing happens.
+      act(() => h.track.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS - 100); });
+      act(() => h.track.fire('unmute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+
+      // A mute that stays: the old track is released and a new one is acquired, as for an ended track.
+      h.getUserMedia.mockResolvedValueOnce(streamOf(track2));
+      act(() => h.track.fire('mute'));
+      await act(async () => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); await flushMicrotasks(); });
+      expect(h.track.stop).toHaveBeenCalled();
+      expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+      expect(result.current.status).toBe('listening');
+      const before = ws.sent.filter(isAudioFrame).length;
+      act(() => h.worklets[1]!.emit(pcm(640, 3), 0.01));
+      expect(ws.sent.filter(isAudioFrame)).toHaveLength(before + 1);
+
+      // The re-acquire is once per call: a second lasting mute ends the call instead of listening to silence.
+      act(() => track2.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); });
+      expect(result.current.error).toBe('mic_lost');
+    } finally {
+      jest.useRealTimers();
+      unmount();
+    }
+  });
+
+  test('a mute while the page is hidden waits for the page to come back before re-acquiring', async () => {
+    const h = harness();
+    const { unmount } = await connected({ deps: h.deps });
+    const vis = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    jest.useFakeTimers();
+    try {
+      act(() => h.track.fire('mute'));
+      act(() => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS * 4); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(1); // hidden: the browser mutes by design
+
+      vis.mockReturnValue('visible');
+      h.getUserMedia.mockResolvedValueOnce(streamOf(makeTrack()));
+      await act(async () => { jest.advanceTimersByTime(LIVE_MIC_MUTED_GRACE_MS); await flushMicrotasks(); });
+      expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+    } finally {
+      vis.mockRestore();
+      jest.useRealTimers();
+      unmount();
+    }
+  });
+
   test('a lost track whose re-acquire fails → mic_lost with the browser\'s reason', async () => {
     const h = harness();
     const { result, unmount } = await connected({ deps: h.deps });
@@ -1171,6 +1510,8 @@ test('small helpers', () => {
   expect(playbackRateFromMime('audio/pcm')).toBe(24000);
   expect(playbackRateFromMime('audio/pcm;rate=999999')).toBe(24000);
   expect(normalizeCaption('  a   b \n c ')).toBe('a b c');
+  expect(normalizeCaption(' की  हो ')).toBe('კი ჰო');
+  expect(normalizeCaption('كي?')).toBe('კი?');
 });
 
 describe('buildLiveInstruction', () => {
@@ -1178,7 +1519,7 @@ describe('buildLiveInstruction', () => {
 
   it('default call: live persona + Google-only platform prompt + spoken-call rules, model-default temperature', () => {
     const r = buildLiveInstruction({ locale: 'ka', now });
-    expect(r.systemInstruction.startsWith(liveVoicePersona('ka'))).toBe(true);
+    expect(r.systemInstruction.startsWith(liveCallPersona('ka'))).toBe(true);
     expect(r.systemInstruction).toContain('Veo');
     expect(r.systemInstruction).toContain(LIVE_SPOKEN_RULE);
     expect(r.systemInstruction).toContain(LIVE_LANGUAGE_RULE);
@@ -1187,6 +1528,14 @@ describe('buildLiveInstruction', () => {
     expect(r.voiceName).toBe('Aoede');
     expect(r.googleSearch).toBe(true);
     expect(r.personaActive).toBe(false);
+  });
+
+  it('the language rule ends the instruction, after the persona reminder too (GG 2026-10-25)', () => {
+    for (const personaId of [undefined, 'film-director']) {
+      const r = buildLiveInstruction({ locale: 'ka', personaId, now });
+      expect(r.systemInstruction.endsWith(`\n${LIVE_LANGUAGE_RULE}`)).toBe(true);
+      expect(r.systemInstruction).not.toContain('Switch only if the user asks');
+    }
   });
 
   it('an active persona adds its block once and sends its temperature', () => {
@@ -1233,4 +1582,54 @@ test('style changes at listening without replacing context; voice applies only o
   await act(async () => { await result.current.live.start(); });
   expect(h.mintBodies[1].voice).toBe('Charon');
   unmount(); localStorage.clear();
+});
+
+// ─── Talking avatar (lib/voice/liveAvatar) ─────────────────────────────────────
+
+test('avatar: the mint asks for it, its fMP4 goes to onVideo, its words mean speaking, an interruption jumps the player', async () => {
+  const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-3.8-live', expiresAt: future(), avatar: 'Kira' }));
+  const onVideo = jest.fn();
+  const onAvatarInterrupted = jest.fn();
+  const { result, ws, unmount } = await connected({ avatar: 'Kira', onVideo, onAvatarInterrupted, deps: h.deps });
+  expect(h.mintBodies[0]).toMatchObject({ avatar: 'Kira' });
+  expect(result.current.avatar).toBe('Kira');
+  expect(result.current.avatarRefused).toBeNull();
+
+  const piece = { serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'video/mp4', data: 'AAAA' } }] } } };
+  act(() => ws.receive(piece));
+  expect(onVideo).toHaveBeenCalledWith('AAAA', 'video/mp4');
+  expect(result.current.status).toBe('listening'); // idle frames are not speech
+  expect(h.playCtx.sources).toHaveLength(0); // nothing on the audio graph
+
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'გამარჯობა' } } }));
+  expect(result.current.status).toBe('speaking');
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(onAvatarInterrupted).toHaveBeenCalledTimes(1);
+  expect(result.current.status).toBe('listening');
+
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'კიდევ' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(result.current.status).toBe('listening');
+
+  act(() => result.current.stop());
+  expect(result.current.avatar).toBeNull();
+  unmount();
+});
+
+test('avatar refused by the server: a voice call, and the reason is surfaced', async () => {
+  const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), avatar: null, avatarRefused: 'daily_limit' }));
+  const onAvatarInterrupted = jest.fn();
+  const { result, ws, unmount } = await connected({ avatar: 'Kira', onAvatarInterrupted, deps: h.deps });
+  expect(result.current.avatar).toBeNull();
+  expect(result.current.avatarRefused).toBe('daily_limit');
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(onAvatarInterrupted).not.toHaveBeenCalled();
+  unmount();
+});
+
+test('no avatar asked: the mint body carries none', async () => {
+  const h = harness();
+  const { unmount } = await connected({ deps: h.deps });
+  expect(h.mintBodies[0]).not.toHaveProperty('avatar');
+  unmount();
 });

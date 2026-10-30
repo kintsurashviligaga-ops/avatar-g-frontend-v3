@@ -19,10 +19,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Check, Clapperboard, Code2, Palette, Plus, Sparkles, TrendingUp, Trash2, Wand2, X, type LucideIcon } from 'lucide-react';
+import { Annoyed, Bot, Briefcase, Check, Clapperboard, Headphones, Laugh, Newspaper, Plus, Smile, Sparkles, Trash2, X, type LucideIcon } from 'lucide-react';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import {
   BUILT_IN_PERSONAS,
+  LEGACY_PERSONA_ALIASES,
   personaName,
   type Persona,
 } from '@/lib/services/personas/personas';
@@ -81,7 +82,9 @@ export function loadCustomPersonas(): Persona[] {
 export function loadSelectedPersonaId(): string {
   if (typeof window === 'undefined') return '';
   try {
-    return window.localStorage.getItem(PERSONA_STORAGE_KEY) ?? '';
+    const id = window.localStorage.getItem(PERSONA_STORAGE_KEY) ?? '';
+    // A choice saved from the retired specialist list is shown and sent as the character it now maps to.
+    return LEGACY_PERSONA_ALIASES[id] ?? id;
   } catch {
     return '';
   }
@@ -110,12 +113,13 @@ export interface PersonaPickerProps {
  */
 const PERSONA_ICON: Record<string, LucideIcon> = {
   default: Bot,
+  friendly: Smile,
+  sarcastic: Annoyed,
   'film-director': Clapperboard,
-  'marketing-expert': TrendingUp,
-  'music-producer': Sparkles,
-  'software-engineer': Code2,
-  'ux-designer': Palette,
-  'content-creator': Wand2,
+  joker: Laugh,
+  businessman: Briefcase,
+  'music-producer': Headphones,
+  'news-journalist': Newspaper,
 };
 
 /** The line icon when we have one, the persona's own emoji when we do not. */

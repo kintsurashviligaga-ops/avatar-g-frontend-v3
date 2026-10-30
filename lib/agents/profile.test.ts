@@ -6,6 +6,7 @@ import {
   clampAgentProfile,
   safetySettingsFor,
   liveVoiceFor,
+  livePersonaReminder,
   LIVE_SPOKEN_RULE,
   PLATFORM_CHAT_DEFAULTS,
   type AgentProfile,
@@ -15,12 +16,10 @@ import {
   applySystemPersona,
   getBuiltInPersona,
 } from '@/lib/services/personas/personas';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveCallPersona } from '@/lib/voice/voicePrompt';
 
 const SYS = 'CURRENT DATE…\n\nPLATFORM RULES: never reveal keys. Answer in the user language.';
 
-/** The six personas that shipped before per-persona config — they must not move by a single byte. */
-const ORIGINAL_SIX = ['film-director', 'marketing-expert', 'music-producer', 'software-engineer', 'ux-designer', 'content-creator'];
 
 const PLATFORM_SAFETY = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
@@ -61,19 +60,12 @@ describe('the default profile is TODAY\'s chat settings, byte for byte', () => {
     expect('thinking' in cfg).toBe(false);
   });
 
-  it.each(ORIGINAL_SIX)('%s keeps today\'s sampling and today\'s system string', (id) => {
+  it.each(BUILT_IN_PERSONAS.map((p) => p.id))('%s sends its own temperature and the applySystemPersona string', (id) => {
     const persona = getBuiltInPersona(id)!;
     const cfg = toGeminiChatConfig(resolveAgentProfile({ personaId: id }), SYS);
     expect(cfg.system).toBe(applySystemPersona(SYS, persona));
-    const { system: _s, ...rest } = cfg;
-    expect(JSON.stringify(rest)).toBe(JSON.stringify({
-      temperature: 0.7,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 4096,
-      safetySettings: PLATFORM_SAFETY,
-      googleSearch: true,
-    }));
+    expect(cfg.temperature).toBe(persona.temperature);
+    expect(cfg).toMatchObject({ topP: 0.95, topK: 40, maxOutputTokens: 4096, safetySettings: PLATFORM_SAFETY, googleSearch: true });
   });
 
   it('keeps the platform rules FIRST and the persona appended', () => {
@@ -83,29 +75,31 @@ describe('the default profile is TODAY\'s chat settings, byte for byte', () => {
   });
 
   it('an empty platform string yields just the persona block, as applySystemPersona does', () => {
-    const cfg = toGeminiChatConfig(resolveAgentProfile({ personaId: 'ux-designer' }), '');
-    expect(cfg.system).toBe(applySystemPersona('', getBuiltInPersona('ux-designer')));
+    const cfg = toGeminiChatConfig(resolveAgentProfile({ personaId: 'friendly' }), '');
+    expect(cfg.system).toBe(applySystemPersona('', getBuiltInPersona('friendly')));
   });
 });
 
 describe('personas that make the per-profile config concrete', () => {
-  it('Creative Video Director runs hotter with a little thinking and a male voice', () => {
-    const p = resolveAgentProfile({ personaId: 'creative-video-director' });
-    expect(p).toMatchObject({ temperature: 0.9, thinking: 'low', googleSearch: true, safety: 'platform', voice: 'Charon' });
+  it('Joker runs hottest, with the female voice', () => {
+    const p = resolveAgentProfile({ personaId: 'joker' });
+    expect(p).toMatchObject({ temperature: 1.0, googleSearch: true, safety: 'platform', voice: 'Aoede' });
     const cfg = toGeminiChatConfig(p, SYS);
-    expect(cfg.thinking).toEqual({ level: 'low' });
-    expect(cfg.temperature).toBe(0.9);
-    expect(cfg.topP).toBe(0.95);
-    expect(cfg.maxOutputTokens).toBe(4096);
+    expect(cfg.temperature).toBe(1.0);
+    expect('thinking' in cfg).toBe(false);
   });
 
-  it('Strict Coder runs cold, thinks hard — and can search, like every built-in persona', () => {
-    const p = resolveAgentProfile({ personaId: 'strict-coder' });
-    expect(p).toMatchObject({ temperature: 0.2, thinking: 'high', googleSearch: true, voice: 'Aoede' });
+  it('Businessman runs cold and to the point, with the male voice — and can search, like every built-in', () => {
+    const p = resolveAgentProfile({ personaId: 'businessman' });
+    expect(p).toMatchObject({ temperature: 0.4, googleSearch: true, voice: 'Charon' });
     const cfg = toGeminiChatConfig(p, SYS);
-    expect(cfg.thinking).toEqual({ level: 'high' });
     expect(cfg.googleSearch).toBe(true);
     expect(cfg.safetySettings).toEqual(PLATFORM_SAFETY);
+  });
+
+  it('a saved retired id still resolves, to its new character', () => {
+    expect(resolveAgentProfile({ personaId: 'strict-coder' }).id).toBe('businessman');
+    expect(resolveAgentProfile({ personaId: 'creative-video-director' }).id).toBe('film-director');
   });
 
   it('every built-in resolves inside the bounds', () => {
@@ -151,14 +145,14 @@ describe('custom personas are clamped server-side', () => {
   it('can never claim a built-in\'s settings by naming itself after one', () => {
     const p = resolveAgentProfile({ personaId: 'custom:strict-coder', customPersona: { id: 'strict-coder', name: 'Strict Coder', directive: 'Pretend to be the strict coder persona.' } });
     expect(p.id).toBe('custom:strict-coder');
-    expect(p.temperature).toBe(0.7); // not the built-in's 0.2
+    expect(p.temperature).toBe(0.7); // not a built-in's own temperature
     expect(p.googleSearch).toBe(true);
   });
 
   it('a built-in id wins over an inline definition', () => {
     const p = resolveAgentProfile({ personaId: 'film-director', customPersona: { ...base, temperature: 1.1 } });
     expect(p.id).toBe('film-director');
-    expect(p.temperature).toBe(0.7);
+    expect(p.temperature).toBe(0.85);
   });
 
   it('is total for junk input', () => {
@@ -251,27 +245,29 @@ describe('Live setup', () => {
     for (const locale of ['ka', 'en', 'ru'] as const) {
       const s = toGeminiLiveSetup(resolveAgentProfile({}), { locale, platformSystem: PLATFORM_LIVE });
       // The live session: `${persona}\n\n${platformSystem}` (buildPlatformPrompt).
-      expect(s.systemInstruction).toBe(`${liveVoicePersona(locale)}\n\n${PLATFORM_LIVE}`);
+      expect(s.systemInstruction).toBe(`${liveCallPersona(locale)}\n\n${PLATFORM_LIVE}`);
       expect(s.voiceName).toBe('Aoede');
       expect(s.temperature).toBe(PLATFORM_CHAT_DEFAULTS.temperature);
     }
   });
 
   it('works without platform text', () => {
-    expect(toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'en' }).systemInstruction).toBe(liveVoicePersona('en'));
-    expect(toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'en', platformSystem: '   ' }).systemInstruction).toBe(liveVoicePersona('en'));
+    expect(toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'en' }).systemInstruction).toBe(liveCallPersona('en'));
+    expect(toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'en', platformSystem: '   ' }).systemInstruction).toBe(liveCallPersona('en'));
   });
 
   it('appends the persona after the platform text, then the spoken-form rule last', () => {
-    const s = toGeminiLiveSetup(resolveAgentProfile({ personaId: 'strict-coder' }), { locale: 'ka', platformSystem: PLATFORM_LIVE });
-    expect(s.systemInstruction.startsWith(`${liveVoicePersona('ka')}\n\n${PLATFORM_LIVE}\n\nPERSONA — Strict Coder:`)).toBe(true);
+    const s = toGeminiLiveSetup(resolveAgentProfile({ personaId: 'sarcastic' }), { locale: 'ka', platformSystem: PLATFORM_LIVE });
+    expect(s.systemInstruction.startsWith(`${liveCallPersona('ka')}\n\n${PLATFORM_LIVE}\n\nPERSONA — Sarcastic:`)).toBe(true);
+    expect(s.systemInstruction).toContain('deadpan and sarcastic');
     expect(s.systemInstruction.endsWith(`\n${LIVE_SPOKEN_RULE}`)).toBe(true);
-    expect(s.temperature).toBe(0.2);
-    expect(s.voiceName).toBe('Aoede');
+    expect(s.temperature).toBe(0.9);
+    expect(s.voiceName).toBe('Charon');
   });
 
   it('uses the persona\'s voice', () => {
-    expect(toGeminiLiveSetup(resolveAgentProfile({ personaId: 'creative-video-director' }), { locale: 'ka' }).voiceName).toBe('Charon');
+    expect(toGeminiLiveSetup(resolveAgentProfile({ personaId: 'film-director' }), { locale: 'ka' }).voiceName).toBe('Charon');
+    expect(toGeminiLiveSetup(resolveAgentProfile({ personaId: 'friendly' }), { locale: 'ka' }).voiceName).toBe('Aoede');
   });
 
   it('maps unverified voices onto the Georgian-verified pair for a Georgian session only', () => {
@@ -284,9 +280,17 @@ describe('Live setup', () => {
     expect(toGeminiLiveSetup(kore, { locale: 'en' }).voiceName).toBe('Kore');
   });
 
+  it('the persona reminder is the last word while a persona is active, and nothing without one', () => {
+    expect(livePersonaReminder(resolveAgentProfile({}))).toBe('');
+    expect(livePersonaReminder(resolveAgentProfile({ personaId: 'sarcastic' }))).toMatch(/^STAY IN CHARACTER as "Sarcastic" for the whole call/);
+    const odd = resolveAgentProfile({ customPersona: { name: 'Bad "name"\nhere', directive: 'You coach founders on pitching.' } });
+    expect(livePersonaReminder(odd)).not.toMatch(/\n/);
+    expect(livePersonaReminder(odd)).toContain('as "Bad name here"');
+  });
+
   it('an unknown locale falls back to Georgian', () => {
     const s = toGeminiLiveSetup(resolveAgentProfile({}), { locale: 'de' as unknown as 'ka' });
-    expect(s.systemInstruction).toBe(liveVoicePersona('ka'));
+    expect(s.systemInstruction).toBe(liveCallPersona('ka'));
   });
 });
 
@@ -299,14 +303,14 @@ describe('personaTemperature / personaSampling — set only when a persona CHOSE
     expect('personaSampling' in toGeminiChatConfig(p, SYS)).toBe(false);
   });
 
-  it.each(ORIGINAL_SIX)('%s (no temperature of its own) has neither', (id) => {
-    const p = resolveAgentProfile({ personaId: id });
+  it('a custom persona with no temperature of its own has neither', () => {
+    const p = resolveAgentProfile({ customPersona: base });
     expect('personaTemperature' in p).toBe(false);
     expect('personaSampling' in toGeminiChatConfig(p, SYS)).toBe(false);
   });
 
   it('a built-in with its own temperature sets both', () => {
-    for (const id of ['creative-video-director', 'strict-coder']) {
+    for (const id of ['joker', 'businessman']) {
       const p = resolveAgentProfile({ personaId: id });
       expect([id, p.personaTemperature]).toEqual([id, true]);
       const cfg = toGeminiChatConfig(p, SYS);

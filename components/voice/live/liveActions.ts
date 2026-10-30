@@ -39,6 +39,8 @@ import { LIVE_AGENT_FILES_MAX, liveAttachedRefs } from '@/lib/voice/liveAttached
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { setChatMode } from '@/lib/chat/chatModeStore';
+import { selectPersona } from '@/components/chat/ModelSwitcher';
+import { BUILT_IN_PERSONAS } from '@/lib/services/personas/personas';
 import type { LiveFunctionResponse } from '@/lib/voice/geminiLive';
 import {
   LIVE_ACTION_EVENT,
@@ -64,7 +66,7 @@ import {
   type LiveStudioReply,
   type OpenArtifactDetail,
 } from '@/lib/voice/liveTools';
-import { judgeSince, judgeUtterance } from '@/lib/voice/spokenYes';
+import { judgeSince, judgeUtterance, lastSaidSince, type HeardUtterance, type SpokenVerdict } from '@/lib/voice/spokenYes';
 import { createVoiceLedger, type LiveHeardEvent, type LiveVoicePort, type VoiceLedger } from '@/lib/voice/voiceLedger';
 import {
   controlName,
@@ -122,6 +124,8 @@ export interface LiveActionEnv {
   openArtifact: (detail: OpenArtifactDetail) => boolean;
   /** The chat model picker (a global store, so it works on any page). Defaults to lib/chat/chatModeStore. */
   setChatModel?: (model: LiveChatModel) => void;
+  /** set_persona: the persona the chat and the call use ('' = none). Defaults to the picker's own store and event. */
+  setPersona?: (id: string) => void;
   /**
    * The countdown ran out and the user's own words were a yes: the studio runs `detail.target` (a prepared render, or
    * one Agent G card) with `detail.approval`. True when a studio took it; it may refuse through `detail.reply`.
@@ -387,6 +391,12 @@ function refused(answer: (r: Record<string, unknown>) => LiveFunctionResponse, r
 
 const NO_STUDIO = 'No studio is open on this page, so nothing was prepared. Suggest the user opens the MyAvatar dashboard and asks again.';
 const NO_STUDIO_SHORT = 'No studio is open on this page, so nothing happened. Suggest the user opens the MyAvatar dashboard.';
+/**
+ * What the model says when a start's countdown opens. ⚠️ GG 2026-10-26 12:58Z: told "starts in 3 seconds", the model said
+ * „დაიწყო. 3 წამში მზად იქნება" (it started, ready in 3 s), and then the user's answer turned out to be no clear yes.
+ */
+const COUNTDOWN_SAY = 'Say in one short sentence that it starts in a moment. Do not say it has started or when it will be '
+  + 'ready: the app tells you if it did not start.';
 const NO_CANVAS = 'No code canvas is open on this page, so the code was not shown or saved. Do not read it aloud; '
   + 'suggest the user opens the MyAvatar dashboard and asks again.';
 
@@ -398,6 +408,8 @@ export interface LiveCallOutcome {
   screen?: true;
   /** call_view: the model asked for this view. */
   view?: LiveCallView;
+  /** set_persona: the persona now chosen ('' = none) — the host reconnects the call in it. */
+  persona?: string;
   /**
    * A start was accepted: the countdown to run it (the host shows it with Cancel). `since`: when the price or the plan
    * was told — only the user's words after it can be the yes that runs it.
@@ -415,6 +427,8 @@ export interface LiveRun {
   priceCredits?: number;
   target: LiveRunTarget;
   since: number;
+  /** A studio render: when the model itself named exactly this price, just before the card (see judgeRun). */
+  spokenSince?: number;
 }
 
 const PLAN_NAME: Record<LivePlanKind, string> = { audio: 'MP3', montage: 'montage', edit: 'video edit' };
@@ -425,6 +439,19 @@ const NO_EARS = 'This call has no transcript of the user\'s words here, so nothi
 function heardNo(voice: LiveVoicePort, since: number): string | null {
   const { verdict, said } = judgeSince(voice.heard(), since);
   return verdict === 'no' ? said : null;
+}
+
+/**
+ * The user's answer to a start: their newest deciding words since its price or plan was told (`since`). ⚠️ GG
+ * 2026-10-26 08:17Z: the model said "It'll cost you 5 credits. Shall we proceed?" BEFORE it prepared the card, the user
+ * said "Yes.", and the card came after — so the words since the card held no answer and nothing started. When nothing
+ * deciding was said since the card, the words said since the model named exactly the card's price (`spokenSince`) are
+ * the answer: a yes there is a yes to that price, and a no there is still a no.
+ */
+export function judgeRun(heard: readonly HeardUtterance[], run: Pick<LiveRun, 'since' | 'spokenSince'>): { verdict: SpokenVerdict; said: string } {
+  const after = judgeSince(heard, run.since);
+  if (after.verdict !== 'unclear' || !run.spokenSince || run.spokenSince >= run.since) return after;
+  return judgeSince(heard, run.spokenSince);
 }
 
 function saidNo(answer: (r: Record<string, unknown>) => LiveFunctionResponse, said: string, after: string): LiveCallOutcome {
@@ -478,8 +505,9 @@ function startAgentPlan(
   return {
     response: answer({
       ok: true,
-      summary: `Plan ${plan.n} (${PLAN_NAME[plan.kind]}) starts in ${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds unless the `
-        + `user taps Cancel or says wait.${planPrice(detail.reply)} Say so in one sentence.`,
+      summary: `Nothing has started yet: plan ${plan.n} (${PLAN_NAME[plan.kind]}) starts in `
+        + `${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds unless the user taps Cancel or says wait, once the app has `
+        + `their yes.${planPrice(detail.reply)} ${COUNTDOWN_SAY}`,
     }),
     screen: true,
     run: {
@@ -768,13 +796,17 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
           }),
         };
       }
-      const no = heardNo(voice, quote.at);
-      if (no !== null) return saidNo(answer, no, 'the price');
+      // The price the model itself named just before the card, when it is exactly the card's (lib/voice/voiceLedger).
+      const spoken = typeof price === 'number' && price > 0 ? voice.pricedAt?.(price, quote.at) ?? 0 : 0;
+      const spokenSince = spoken > 0 && spoken < quote.at ? spoken : undefined;
+      const answered = judgeRun(voice.heard(), { since: quote.at, ...(spokenSince ? { spokenSince } : {}) });
+      if (answered.verdict === 'no') return saidNo(answer, answered.said, 'the price');
       return {
         response: answer({
           ok: true,
-          summary: `The ${STUDIO_NAME[tool] ?? 'studio'} generation starts in ${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds `
-            + `unless the user taps Cancel or says wait.${priceSentence(detail.reply, tool)} Say so in one sentence.`,
+          summary: `Nothing has started yet: the ${STUDIO_NAME[tool] ?? 'studio'} generation starts in `
+            + `${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds unless the user taps Cancel or says wait, once the app has `
+            + `their yes.${priceSentence(detail.reply, tool)} ${COUNTDOWN_SAY}`,
         }),
         screen: true,
         run: {
@@ -782,6 +814,7 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
           ...(typeof price === 'number' ? { priceCredits: price } : {}),
           target: { kind: 'studio', tool, ...(fingerprint ? { fingerprint } : {}) },
           since: quote.at,
+          ...(spokenSince ? { spokenSince } : {}),
         },
       };
     }
@@ -824,6 +857,19 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
       // A global store: works on any page, and the studio's header follows its event.
       (env.setChatModel ?? ((m: LiveChatModel) => setChatMode(m)))(action.model);
       return { response: answer({ ok: true, summary: `The text chat now answers with ${MODEL_NAME[action.model]}.` }) };
+    }
+    case 'set_persona': {
+      const id = action.persona === 'default' ? '' : action.persona;
+      (env.setPersona ?? selectPersona)(id);
+      const name = BUILT_IN_PERSONAS.find((p) => p.id === id)?.name.en ?? 'Agent G (no persona)';
+      return {
+        response: answer({
+          ok: true,
+          summary: `The persona is now ${name}, in the text chat too. The call reconnects in that role right after your reply: `
+            + 'say one short line now, already in the new role.',
+        }),
+        persona: id,
+      };
     }
     case 'call_view':
       return {
@@ -1112,6 +1158,8 @@ export interface UseLiveActionsResult {
   screenSeq: number;
   /** The last call_view the model asked for (with a sequence number, so asking twice still applies). */
   viewRequest: { view: LiveCallView; seq: number } | null;
+  /** The last persona set_persona chose ('' = none), numbered like viewRequest: the host reconnects the call in it. */
+  personaRequest: { id: string; seq: number } | null;
   /** A confirmed generation counting down, or how the last one ended. */
   pendingRun: LivePendingRun | null;
   /** The user's Cancel on the countdown. */
@@ -1122,6 +1170,8 @@ export interface UseLiveActionsResult {
   onToolCallCancellation: (ids: string[]) => void;
   /** useGeminiLiveSession `onHeard`: the user's own words as the call hears them (a "wait" during a countdown stops it). */
   onHeard: (e: LiveHeardEvent) => void;
+  /** useGeminiLiveSession `onSaid`: the model's own words as the call's transcript streams them (a price it named). */
+  onSaid: (e: LiveHeardEvent) => void;
   /** An Agent G plan card reached the call (its [App] note is queued): the number the model will start it by. */
   registerPlan: (id: string, kind: LivePlanKind, what?: string) => number;
   /** Its [App] note was sent to the model: from now on, a yes counts for it. */
@@ -1134,6 +1184,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   const [endRequested, setEndRequested] = useState(false);
   const [screenSeq, setScreenSeq] = useState(0);
   const [viewRequest, setViewRequest] = useState<{ view: LiveCallView; seq: number } | null>(null);
+  const [personaRequest, setPersonaRequest] = useState<{ id: string; seq: number } | null>(null);
   const [pendingRun, setPendingRun] = useState<LivePendingRun | null>(null);
   const envRef = useRef(env);
   envRef.current = env;
@@ -1190,9 +1241,12 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   const fireRun = useCallback(async (entry: { id: string; run: LiveRun; cancelled: boolean }) => {
     if (!mountedRef.current || entry.cancelled || runRef.current !== entry) return;
     const e = envNow();
-    const { verdict, said } = judgeSince(e.voice!.heard(), entry.run.since);
+    const heard = e.voice!.heard();
+    const { verdict, said } = judgeRun(heard, entry.run);
     if (verdict !== 'yes') {
-      finishRun(entry, verdict === 'no' ? 'cancelled' : 'not_heard', verdict === 'no' ? 'said_no' : 'not_heard', said || undefined);
+      // Not heard: the model is told what the user's answer came out as (GG 2026-10-26 09:29Z: „대자.", in Korean letters).
+      const only = verdict === 'no' ? '' : lastSaidSince(heard, entry.run.spokenSince ?? entry.run.since);
+      finishRun(entry, verdict === 'no' ? 'cancelled' : 'not_heard', verdict === 'no' ? 'said_no' : 'not_heard', said || only || undefined);
       return;
     }
     const { target } = entry.run;
@@ -1250,6 +1304,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
     if (open && open.at >= entry.run.since && judgeUtterance(text) === 'no') stopRun('said_no');
   }, [stopRun]);
 
+  const onSaid = useCallback((e: LiveHeardEvent) => ledgerRef.current!.tell(e), []);
   const registerPlan = useCallback((id: string, kind: LivePlanKind, what?: string) => ledgerRef.current!.registerPlan(id, kind, what), []);
   const planTold = useCallback((id: string) => ledgerRef.current!.planTold(id), []);
 
@@ -1259,6 +1314,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
     let end = false;
     let screen = false;
     let view: LiveCallView | null = null;
+    let persona: string | undefined;
     let run: { id: string; run: LiveRun } | null = null;
     let cancel = false;
     const pendings: Array<{ index: number; promise: Promise<LiveFunctionResponse> }> = [];
@@ -1284,6 +1340,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
       if (out.endCall) end = true;
       if (out.screen) screen = true;
       if (out.view) view = out.view;
+      if (out.persona !== undefined) persona = out.persona;
       if (out.cancelRun) { cancel = true; run = null; }
       if (out.run) run = { id: typeof call?.id === 'string' && call.id ? call.id : localId, run: out.run };
     }
@@ -1297,6 +1354,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
       if (end) setEndRequested(true);
       if (screen) setScreenSeq((n) => n + 1);
       if (view) { const v = view; setViewRequest((p) => ({ view: v, seq: (p?.seq ?? 0) + 1 })); }
+      if (persona !== undefined) { const id = persona; setPersonaRequest((p) => ({ id, seq: (p?.seq ?? 0) + 1 })); }
       if (cancel) stopRun();
       if (run) armRun(run.id, run.run);
     }
@@ -1318,7 +1376,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   }, [stopRun]);
 
   return {
-    cards, endRequested, screenSeq, viewRequest, pendingRun, cancelRun, onToolCall, onToolCallCancellation, onHeard,
-    registerPlan, planTold,
+    cards, endRequested, screenSeq, viewRequest, personaRequest, pendingRun, cancelRun, onToolCall, onToolCallCancellation,
+    onHeard, onSaid, registerPlan, planTold,
   };
 }

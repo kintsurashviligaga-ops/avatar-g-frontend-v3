@@ -14,6 +14,7 @@ import {
   LIVE_DURATION_MAX_SEC,
   LIVE_FUNCTION_DECLARATIONS,
   LIVE_OPEN_TOOLS,
+  LIVE_PERSONAS,
   LIVE_PROMPT_MAX_CHARS,
   LIVE_STUDIO_TOOLS,
   LIVE_STYLE_MAX_CHARS,
@@ -28,6 +29,7 @@ import {
 } from './liveTools';
 import { isPreviewable, normalizeArtifactLanguage } from '@/components/chat/artifacts/artifactSpec';
 import { ALL_TOOLS } from '@/lib/studio/tools';
+import { BUILT_IN_PERSONAS } from '@/lib/services/personas/personas';
 
 const ALLOWED_SCHEMA_KEYS = new Set(['type', 'description', 'enum', 'properties', 'required']);
 
@@ -52,8 +54,8 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(LIVE_FUNCTION_DECLARATIONS.map((d) => d.name)).toEqual([...LIVE_ACTION_NAMES]);
     expect(LIVE_ACTION_NAMES).toEqual([
       'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
-      'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'close_panel', 'call_view', 'show_code', 'open_url', 'end_call',
-      'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g', 'extract_audio', 'agent_task',
+      'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'close_panel', 'set_persona', 'call_view', 'show_code', 'open_url',
+      'end_call', 'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g', 'extract_audio', 'agent_task',
       'music_studio',
     ]);
     for (const d of LIVE_FUNCTION_DECLARATIONS) {
@@ -345,6 +347,18 @@ describe('validateLiveToolCall — the screen-control functions', () => {
     expect(err('close_panel', { what: 'credits' })).toMatchObject({ field: 'what', allowed: ['settings', 'tool'] });
     expect(ok('call_view', { view: 'screen' })).toEqual({ type: 'call_view', view: 'screen' });
     expect(err('call_view', { view: 'tiny' })).toMatchObject({ field: 'view' });
+  });
+
+  it('set_persona takes every built-in persona and default, nothing else (GG: „აირჩიე პერსონა" by voice)', () => {
+    for (const p of BUILT_IN_PERSONAS) expect(ok('set_persona', { persona: p.id })).toEqual({ type: 'set_persona', persona: p.id });
+    expect(ok('set_persona', { persona: 'News-Journalist' })).toEqual({ type: 'set_persona', persona: 'news-journalist' });
+    expect(ok('set_persona', { persona: 'default' })).toEqual({ type: 'set_persona', persona: 'default' });
+    expect(err('set_persona', { persona: 'pirate' })).toMatchObject({ field: 'persona', allowed: [...LIVE_PERSONAS] });
+    expect(err('set_persona', {})).toMatchObject({ field: 'persona' });
+    const decl = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'set_persona')!;
+    expect(decl.parameters?.properties.persona?.enum).toEqual([...BUILT_IN_PERSONAS.map((p) => p.id), 'default']);
+    for (const p of BUILT_IN_PERSONAS) expect(decl.description).toContain(p.name.ka); // the model hears the Georgian names
+    expect(LIVE_ACTIONS_RULE).toMatch(/call set_persona \(never only open the persona/);
   });
 });
 

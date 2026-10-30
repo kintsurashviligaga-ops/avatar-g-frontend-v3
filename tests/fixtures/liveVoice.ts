@@ -84,6 +84,12 @@ export class FakeLive {
     this.ws?.send(JSON.stringify({ serverContent: { outputTranscription: { text } } }));
   }
 
+  /** The model's whole answer: its words, then the end of its turn — the call writes the line into the chat. */
+  answer(text: string): void {
+    this.say(text);
+    this.ws?.send(JSON.stringify({ serverContent: { turnComplete: true } }));
+  }
+
   /**
    * The user speaking: Google's input transcription of their words, then the end of that exchange.
    * A clear yes said after a told price may start that run (GG 2026-10-18), after the countdown and a server record.

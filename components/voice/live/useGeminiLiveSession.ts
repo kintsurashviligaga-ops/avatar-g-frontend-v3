@@ -41,6 +41,10 @@
  *  • The status said 'listening' while getUserMedia was still pending. It stays 'connecting' until the mic AND
  *    setupComplete both exist, and a track that ends mid-call (Bluetooth drop, a phone call) is re-acquired once
  *    before the call fails as `mic_lost` — it no longer sits on "listening" hearing nothing.
+ *  • ⚠️ A MUTED TRACK IS NOT AN ENDED ONE. iOS mutes an earlier capture when another starts (the chat's dictation, a
+ *    second tab): the track stays 'live' and keeps delivering frames, all silence, so the call streamed nothing to
+ *    Google and never answered (GG's iPhone, 2026-10-25). A track muted for LIVE_MIC_MUTED_GRACE_MS while the page is
+ *    visible now goes through the same one-time re-acquire as an ended one.
  *  • The capture worklet had no outputs and was never connected; WebKit may never pull such a node, so the user
  *    was never heard. It now runs worklet → zero gain → destination (the dictation recorder's pattern).
  *  • VOICE-TO-ACTION (lib/voice/liveTools.ts): `actions: true` asks the mint to lock the UI-action declarations. They
@@ -51,7 +55,7 @@
  */
 import { useCallback, useEffect, useReducer, useRef, useState, type MutableRefObject } from 'react';
 
-import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
+import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, livePersonaReminder, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import {
   GeminiLiveSession,
@@ -66,12 +70,15 @@ import { requestLiveThreadId } from '@/lib/voice/liveThread';
 import { acquireMic, browserMicDeps, type MicDeps, type MicFailure, type MicResult } from '@/lib/voice/micAcquire';
 import { useVoicePreferencesContext } from '@/components/voice/experience/VoicePreferencesProvider';
 import { voiceStyleInstruction, VOICE_UI_APPROVAL_RULE, type VoicePreferences } from '@/lib/voice/experience/settings';
+import { offersUnpreparedStart, UNPREPARED_START_NOTE, UNPREPARED_START_NOTES_MAX } from '@/lib/voice/liveUnprepared';
+import { type CallLanguage, spokenLanguageOf, withReplyLanguage, withReplyLanguageField } from '@/lib/voice/replyLanguage';
 import { voiceStyleCommand } from '@/lib/voice/experience/commands';
 import { executeVoiceCalls } from '@/lib/voice/experience/toolSafety';
 import { requestMicRelease, useMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
-import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { LIVE_LANGUAGE_LOCK, liveCallPersona, liveTranscriptionLanguages, liveTranscriptionVocabulary } from '@/lib/voice/voicePrompt';
+import { toCallScript } from '@/lib/voice/heardScript';
 import type { LiveHeardEvent } from '@/lib/voice/voiceLedger';
 import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
@@ -79,6 +86,28 @@ import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
 /** setupComplete deadline per handshake. A hung handshake then retries once instead of spinning forever. */
 export const LIVE_SETUP_TIMEOUT_MS = 8000;
+/**
+ * The same deadline through our Live relay. A relay scaled to zero boots first (GG's call 2026-10-25: upstream not
+ * open after 6.5 s), and the relay's own upstream handshake may take 10 s — 8 s gave up on a call about to open.
+ */
+export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
+/**
+ * Through the relay, once the socket is OPEN the deadline shrinks to this. A warm relay reaches Vertex's setupComplete
+ * in 0.2–1.3 s. ⚠️ GG 2026-10-25 16:11–16:31: 6 of 21 call attempts sat 11–14 s and the relay logged the setup frame
+ * arriving 1–2 ms before the browser closed the socket at the 15 s deadline — the frame was held between browser and
+ * relay until the close, and Vertex was never asked. Waiting longer never helps such a socket; a fresh one does.
+ * 6 s → 3 s after GG's avatar calls 17:54–18:03Z: 7 of 14 iPhone sockets held the setup until their own close (every
+ * one through iCloud Private Relay), while a healthy one delivers it 0.1–0.45 s after open and gets setupComplete
+ * ~1 s later (the avatar model in us-central1; voice in 0.1–0.3 s). 3 s is still twice the slowest healthy handshake.
+ */
+export const LIVE_RELAY_READY_AFTER_OPEN_MS = 3000;
+/** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. Through the
+ *  relay a held frame struck 2 attempts in a row (16:28Z), 3 in a row twice (17:54Z, 17:56Z) and 4 in a row (18:47Z,
+ *  GG's avatar call: the 5th socket opened WITHOUT the UI actions, so „make a picture" had no button and the call never
+ *  docked). Six retries at 3 s each keep the call's full setup through such a run; a timeout never drops the actions
+ *  (onSessionClosed skips that step), only the legacy wire after the last retry does. */
+const MAX_TIMEOUT_RETRIES = 1;
+const MAX_RELAY_TIMEOUT_RETRIES = 6;
 /** Window event the default transcript sink dispatches (detail: LiveTurn) when the host passes no onTurn. */
 export const LIVE_TRANSCRIPT_EVENT = 'myavatar:live-transcript';
 
@@ -128,12 +157,15 @@ const BARGE_CFG = bargeConfig(DEFAULT_VAD_CONFIG);
 export const LIVE_TOKEN_FRESH_MS = 90_000;
 /** Retry after `mic_busy` waits this long (after asking other holders to release) before asking for the device. */
 export const LIVE_MIC_BUSY_RETRY_PAUSE_MS = 500;
+/**
+ * A mic track the browser muted (not the user's mute, which only disables it) for this long while the page is visible
+ * is treated as lost. Short enough to recover before the user gives up; long enough for a passing interruption.
+ */
+export const LIVE_MIC_MUTED_GRACE_MS = 1500;
 /** How long a freshly created 16 kHz capture context may take to reach 'running' before capture falls back. */
 const CAPTURE_START_WAIT_MS = 300;
 /** A playback context still 'suspended' this long after resume() had no user activation: offer "tap to start". */
 const AUDIO_BLOCK_CHECK_MS = 1200;
-
-const LANGUAGE_CODES: Record<'ka' | 'en' | 'ru', string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,7 +228,7 @@ export interface LiveSessionDeps {
   /** The context + mic the Live button primed inside its tap (lib/voice/livePrime). */
   takePrimed: () => PrimedLive | null;
   /** Failure telemetry (lib/voice/liveTelemetry). */
-  report: (code: LiveErrorCode, detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
+  report: (code: LiveErrorCode | 'handshake_timeout', detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
 }
 
 export interface UseGeminiLiveSessionOptions {
@@ -245,9 +277,25 @@ export interface UseGeminiLiveSessionOptions {
   /**
    * The user's own words as the call hears them (the input transcription, and text typed into the call): `{ text }` is
    * the open exchange's words so far, `{ end: true }` closes it. A voice start runs only on these words
-   * (components/voice/live/liveActions, lib/voice/voiceLedger) — never on the model's word that it heard a yes.
+   * (components/voice/live/liveActions, lib/voice/voiceLedger) — never on the model's word that it heard a yes. They come
+   * as the transcription wrote them, in whatever alphabet: the captions show them in Georgian letters (normalizeCaption).
    */
   onHeard?: (e: LiveHeardEvent) => void;
+  /**
+   * The model's own words as the call's transcript of its voice streams them, in the same shape as onHeard. A price it
+   * named itself just before the card is the price a yes said then answered (lib/voice/voiceLedger pricedAt).
+   */
+  onSaid?: (e: LiveHeardEvent) => void;
+  /**
+   * A talking avatar (lib/voice/liveAvatar): a prebuilt name asks the mint for a gemini-3.8-live VIDEO session. Read at
+   * every mint, so a change takes effect with the next fresh session (renew()). The answer then arrives as fragmented-MP4
+   * pieces through onVideo, the avatar's voice inside them: no audio events, nothing on the playback context.
+   */
+  avatar?: string | null;
+  /** One fMP4 piece of the avatar (base64): the init segment first, then fragments, idle frames included. */
+  onVideo?: (data: string, mimeType: string) => void;
+  /** The server cut the avatar's answer off (the user spoke): the player jumps to its live edge. */
+  onAvatarInterrupted?: () => void;
   deps?: Partial<LiveSessionDeps>;
 }
 
@@ -271,6 +319,12 @@ export interface UseGeminiLiveSessionResult {
   retry: () => void;
   /** Local barge-in: stop playback now and drop the rest of the answer. */
   interrupt: () => void;
+  /**
+   * A FRESH session inside the same call (mic and screen kept): the next mint reads the options as they are now — a
+   * persona chosen by voice (set_persona) takes over. The chat so far rides along as for any fresh session. False when
+   * there is no ready call to renew.
+   */
+  renew: () => boolean;
   setMuted: (muted: boolean) => void;
   toggleMute: () => void;
   sendVideoFrame: (frameBase64: string, mimeType?: string) => void;
@@ -282,12 +336,21 @@ export interface UseGeminiLiveSessionResult {
   sendNote: (text: string) => boolean;
   /** 0..1 levels for visuals; cheap enough to call every animation frame. */
   getLevels: () => LiveLevels;
+  /** The call's speaker path (its AudioContext and the node voice answers play into, before the level meter); null
+   *  until the call has one. The talking avatar's voice plays into it (lib/voice/avatarAudio). */
+  audioOutput: () => { ctx: AudioContext; node: AudioNode } | null;
   /**
    * What the agent is doing right now, oldest first (components/voice/live/liveActivity): a Google Search (queries,
    * then the pages it used) and each tool step, running → done / failed / cancelled. Reset when a call starts.
    */
   activity: LiveActivityItem[];
+  /** The avatar the running session was minted with; null = a voice call (none asked, or the server refused it). */
+  avatar: string | null;
+  /** Why the server opened a voice call instead of the avatar that was asked for. */
+  avatarRefused: LiveAvatarRefusal | null;
 }
+
+export type LiveAvatarRefusal = 'disabled' | 'daily_limit';
 
 // ─── Pure helpers (exported for tests) ────────────────────────────────────────
 
@@ -358,18 +421,16 @@ export function playbackRateFromMime(mimeType: string | undefined): number {
 }
 
 /** Collapse whitespace; transcript fragments arrive with their own spacing and sometimes doubled. */
+/** A caption as shown and kept: Georgian heard in Hindi letters written back in Georgian ones, whitespace collapsed. */
 export function normalizeCaption(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+  return toCallScript(text).replace(/\s+/g, ' ').trim();
 }
 
 /**
- * Spoken-call rule appended to every Live instruction. The platform prompt is written for chat and pins the reply
- * language to the UI locale — but a call must follow the language actually being SPOKEN (the reported "spoke
- * Russian, answered in Georgian" leak that lib/voice/voicePrompt.ts detectSpokenLocale fixed for the REST voice).
+ * Spoken-call rule that ENDS every Live instruction: a call follows the language actually being SPOKEN and stays in it
+ * (lib/voice/voicePrompt.ts LIVE_LANGUAGE_LOCK, the same last line the server-locked setup carries).
  */
-export const LIVE_LANGUAGE_RULE =
-  'LIVE CALL LANGUAGE: answer in the language the user is speaking right now (Georgian, English or Russian), '
-  + 'even when it differs from the LANGUAGE line above.';
+export const LIVE_LANGUAGE_RULE = LIVE_LANGUAGE_LOCK;
 
 /**
  * The client-built Live instruction, used when the mint returns no server-locked setup: the profile's live persona,
@@ -387,13 +448,14 @@ export function buildLiveInstruction(opts: {
 }): { systemInstruction: string; voiceName: string; temperature?: number; googleSearch: boolean; personaActive: boolean } {
   const locale = opts.locale === 'en' || opts.locale === 'ru' ? opts.locale : 'ka';
   const profile = resolveAgentProfile({ personaId: opts.personaId ?? null, customPersona: opts.customPersona });
-  const platformSystem = buildPlatformPrompt({ locale, ...(opts.now ? { now: opts.now } : {}) });
+  const platformSystem = buildPlatformPrompt({ locale, spoken: true, ...(opts.now ? { now: opts.now } : {}) });
   const live = toGeminiLiveSetup(profile, { locale, platformSystem });
   const override = typeof opts.personaOverride === 'string' ? opts.personaOverride.trim() : '';
   let text = override ? `${override}\n\n${platformSystem}` : live.systemInstruction;
   if (!text.includes(LIVE_SPOKEN_RULE)) text = `${text}\n\n${LIVE_SPOKEN_RULE}`;
-  text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
+  if (personaActive && !override) text = `${text}\n${livePersonaReminder(profile)}`;
+  text = `${text}\n${LIVE_LANGUAGE_RULE}`;
   return {
     systemInstruction: text,
     voiceName: live.voiceName,
@@ -567,6 +629,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const [captions, setCaptions] = useState<LiveCaption[]>([]);
   const [muted, setMutedState] = useState(false);
   const [degraded, setDegraded] = useState(false);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarRefused, setAvatarRefused] = useState<LiveAvatarRefusal | null>(null);
   const [activity, dispatchActivity] = useReducer(liveActivityReducer, [] as LiveActivityItem[]);
 
   // Lifecycle
@@ -596,6 +660,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const lastMicRef = useRef<MicResult | null>(null);
   const primedRef = useRef(false);
   const mintsRef = useRef(0);
+  // Why the next token is minted (the route logs it): the call opening, a persona renew, a resume, or a later plan step.
+  const mintWhyRef = useRef<'start' | 'renew' | 'resume' | 'step'>('start');
   const startedAtRef = useRef(0);
   const micResultMsRef = useRef<number | undefined>(undefined);
   const mintedAtRef = useRef(0);
@@ -609,14 +675,21 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const readyRef = useRef(false);
   /** Tool answers that came back after the connection was renewed: told to the new connection as [App] notes. */
   const lateAnswersRef = useRef<string[]>([]);
-  const tokenRef = useRef<{ token: string; expiresAtMs: number | null } | null>(null);
+  const tokenRef = useRef<{ token: string; expiresAtMs: number | null; relayUrl?: string } | null>(null);
   const modelRef = useRef<string | null>(null);
   const serverSetupRef = useRef<Obj | null>(null);
+  const avatarSessionRef = useRef<string | null>(null); // the avatar the current mint locked (null = voice call)
   const handleRef = useRef<string | null>(null);
   const degradedRef = useRef(false);
   const actionsOffRef = useRef(false); // this call gave up the UI-action declarations after a failed handshake
+  // An answer that offers to start with nothing prepared (lib/voice/liveUnprepared): a function called since the user's
+  // last words, an order prepared and not yet started, and the notes this call sent about it.
+  const toolSinceUserRef = useRef(false);
+  const preparedRef = useRef(false);
+  const unpreparedNotesRef = useRef(0);
   const planRef = useRef<PlanStep[]>([]);
   const stepRef = useRef(0);
+  const timeoutRetriesRef = useRef(0); // same-setup retries the current plan spent on handshakes that timed out
   const phaseRef = useRef<'initial' | 'resume'>('initial');
   const reconnectingRef = useRef(false);
   const resumesRef = useRef(0);
@@ -631,6 +704,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   // Transcript
   const pendingUserRef = useRef('');
   const pendingModelRef = useRef('');
+  /** The language the user last spoke in this call, named in every answer the app gives the model (lib/voice/replyLanguage). */
+  const userLanguageRef = useRef<CallLanguage | null>(null);
   const finalCaptionsRef = useRef<LiveCaption[]>([]);
   const turnSeqRef = useRef(0);
   // Timers
@@ -673,10 +748,17 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
   const emitHeard = useCallback((e: LiveHeardEvent) => {
     if ('end' in e && e.end && experienceRef.current) {
-      const next = voiceStyleCommand(pendingUserRef.current, experienceRef.current.preferences);
+      const next = voiceStyleCommand(toCallScript(pendingUserRef.current), experienceRef.current.preferences);
       if (next) experienceRef.current.update(next);
     }
+    // ⚠️ The transcription's own text, not the caption's: lib/voice/spokenYes reads it back in Georgian letters itself and
+    // must know which words came in another alphabet, whose question mark is a guess („كي?" for „კი", GG 2026-10-26).
+    if ('text' in e) { const lang = spokenLanguageOf(e.text); if (lang) userLanguageRef.current = lang; }
     try { optsRef.current.onHeard?.(e); } catch { /* a host bug must never kill the call */ }
+  }, []);
+
+  const emitSaid = useCallback((e: LiveHeardEvent) => {
+    try { optsRef.current.onSaid?.(e); } catch { /* a host bug must never kill the call */ }
   }, []);
 
   const emitTurn = useCallback((turn: LiveTurn) => {
@@ -689,6 +771,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     const u = normalizeCaption(pendingUserRef.current);
     const m = normalizeCaption(pendingModelRef.current);
     if (pendingUserRef.current) emitHeard({ end: true });
+    if (pendingModelRef.current) emitSaid({ end: true });
     pendingUserRef.current = '';
     pendingModelRef.current = '';
     if (!u && !m) return;
@@ -705,7 +788,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     if (finals.length > MAX_FINAL_CAPTIONS) finals.splice(0, finals.length - MAX_FINAL_CAPTIONS);
     publishCaptions();
-  }, [emitHeard, emitTurn, publishCaptions]);
+  }, [emitHeard, emitSaid, emitTurn, publishCaptions]);
 
   // ── Playback ──
   const isPlaying = useCallback(() => activeSourcesRef.current.size > 0, []);
@@ -878,6 +961,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       appliedStyleRef.current = sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : '';
     }
     mintsRef.current += 1;
+    const why = mintWhyRef.current;
+    mintWhyRef.current = 'step';
     const threadId = typeof handle === 'string' ? null : o.chatSessionId !== undefined ? o.chatSessionId : requestLiveThreadId();
     let res: Response;
     // ⚠️ THE MINT HAD NO TIMEOUT. The route retries Google for up to ~28 s; a request that never answered (a captive
@@ -892,6 +977,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         credentials: 'include',
         body: JSON.stringify({
           locale: o.locale || 'ka',
+          why,
           voice: sessionPreferencesRef.current?.voice ?? o.voiceName,
           ...(sessionPreferencesRef.current ? { voiceExperience: sessionPreferencesRef.current } : {}),
           personaId: o.personaId ?? null,
@@ -906,6 +992,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           // ⚠️ The legacy wire strips `tools` from the FRAME (PARITY_FIELDS); the LOCK must lose them too, or the token
           // is minted for a setup the browser never sends.
           ...(!parity ? { tools: false } : {}),
+          // On every wire: the legacy retry keeps the avatar too (the route locks it into each of its setups).
+          ...(typeof o.avatar === 'string' && o.avatar ? { avatar: o.avatar } : {}),
         }),
       }), timeout]);
     } catch {
@@ -913,7 +1001,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     } finally {
       if (mintTimer) clearTimeout(mintTimer);
     }
-    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown };
+    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown; avatar?: unknown; avatarRefused?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
     if (!res.ok || !token) {
       if (res.status === 401) return { ok: false, code: 'auth' };
@@ -923,7 +1011,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     if (gen !== genRef.current) return { ok: true }; // a later call owns the refs now; its caller bails on gen anyway
     const exp = typeof j.expiresAt === 'string' ? Date.parse(j.expiresAt) : NaN;
-    tokenRef.current = { token, expiresAtMs: Number.isFinite(exp) ? exp : null };
+    // A relay ticket opens our Live relay (lib/voice/liveMint); only a wss:// URL is taken.
+    const relayUrl = typeof j.relayUrl === 'string' && j.relayUrl.startsWith('wss://') ? j.relayUrl : undefined;
+    tokenRef.current = { token, expiresAtMs: Number.isFinite(exp) ? exp : null, ...(relayUrl ? { relayUrl } : {}) };
     mintedAtRef.current = deps().now();
     modelRef.current = typeof j.model === 'string' ? j.model : null;
     // /api/voice/live answers `setupMessage` (the frame it locked into the token); `setup` is accepted for older routes.
@@ -931,6 +1021,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     // The server locked no declarations (GEMINI_LIVE_ACTIONS off, or it dropped them after a 400): nothing left to drop,
     // so a refused handshake goes straight to the legacy retry instead of repeating this same setup.
     if (j.actions === false) actionsOffRef.current = true;
+    avatarSessionRef.current = typeof j.avatar === 'string' && j.avatar ? j.avatar : null;
+    setAvatar(avatarSessionRef.current);
+    setAvatarRefused(j.avatarRefused === 'disabled' || j.avatarRefused === 'daily_limit' ? j.avatarRefused : null);
     return { ok: true };
   }, [deps]);
 
@@ -957,13 +1050,14 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     ];
     return buildLiveSetup({
       model: modelRef.current ?? '',
-      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural Georgian sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.",
+      systemInstruction: (o.systemInstruction?.trim() ? o.systemInstruction : liveCallPersona(locale)) + "\n" + (sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : VOICE_UI_APPROVAL_RULE) + "\n[FAST LIVE VOICE RULE]: Answer IMMEDIATELY with zero delay in 1-2 short, natural sentences. When the user asks to create an image, music, video, or avatar, immediately invoke prepare_generation and briefly confirm.\n" + LIVE_LANGUAGE_LOCK,
       voiceName: sessionPreferencesRef.current?.voice ?? o.voiceName ?? 'Aoede',
       turnEagerness: sessionPreferencesRef.current?.eagerness ?? "eager",
       ...(typeof o.temperature === 'number' ? { temperature: o.temperature } : {}),
       ...(parity
         ? {
-          languageCode: LANGUAGE_CODES[locale],
+          languageCode: liveTranscriptionLanguages(locale),
+          vocabulary: liveTranscriptionVocabulary(),
           resumptionHandle: handle ?? null,
           transcribe: true,
           compression: true,
@@ -1035,12 +1129,15 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       type: 'toolDone',
       results: responses.map((r) => ({ id: r.id, ok: !(r.response && typeof r.response === 'object' && 'error' in r.response) })),
     });
+    // ⚠️ GG 2026-10-26 11:34Z: an answer in English made the model reply in English (lib/voice/replyLanguage).
+    responses = withReplyLanguageField(responses, userLanguageRef.current);
     if (sessionRef.current === session) { session.sendToolResponse(responses); return; }
     // ⚠️ A LATE ANSWER WAS DROPPED. ask_agent_g / read_webpage answer after the network (up to a minute); when the
     // connection was renewed meanwhile (goAway, a network blip) the answer went to the dead socket and the model never
     // learned what Agent G found — it could only guess or say nothing. Now the new connection is told, as an [App] note.
-    const note = lateToolAnswerNote(responses);
-    if (!note) return;
+    const late = lateToolAnswerNote(responses);
+    if (!late) return;
+    const note = withReplyLanguage(late, userLanguageRef.current);
     if (readyRef.current && sessionRef.current) sessionRef.current.sendText(note);
     else lateAnswersRef.current.push(note);
   }, []);
@@ -1057,16 +1154,25 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         enqueueAudio(ev.data, ev.mimeType);
         return;
       case 'inputTranscript':
-        if (ev.text) { pendingUserRef.current += ev.text; publishCaptions(); emitHeard({ text: pendingUserRef.current }); }
+        if (ev.text) { pendingUserRef.current += ev.text; toolSinceUserRef.current = false; publishCaptions(); emitHeard({ text: pendingUserRef.current }); }
         return;
       case 'outputTranscript':
         if (dropModelAudioRef.current) return; // the words of audio we dropped were never heard
         modelTurnOpenRef.current = true;
-        if (ev.text) { pendingModelRef.current += ev.text; publishCaptions(); }
+        if (ev.text) { pendingModelRef.current += ev.text; publishCaptions(); emitSaid({ text: pendingModelRef.current }); }
+        // An avatar speaks inside its video, which never stops (idle frames): its words are the only sign it is talking.
+        if (avatarSessionRef.current && readyRef.current && statusRef.current !== 'speaking') {
+          clearThinkingTimer();
+          setStatusSafe('speaking');
+        }
+        return;
+      case 'video':
+        try { optsRef.current.onVideo?.(ev.data, ev.mimeType); } catch { /* a host bug must never kill the call */ }
         return;
       case 'interrupted':
         dispatchActivity({ type: 'turnEnd' });
         flushPlayback();
+        if (avatarSessionRef.current) { try { optsRef.current.onAvatarInterrupted?.(); } catch { /* noop */ } }
         // A local barge-in already closed this exchange; closing it again would split the user's next utterance.
         if (!dropModelAudioRef.current) flushTurn(true);
         dropModelAudioRef.current = false;
@@ -1075,15 +1181,27 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         if (readyRef.current) setStatusSafe('listening');
         afterTurnBoundary();
         return;
-      case 'turnComplete':
+      case 'turnComplete': {
+        const said = pendingModelRef.current;
         dispatchActivity({ type: 'turnEnd' });
         flushTurn(false);
         dropModelAudioRef.current = false;
         modelTurnOpenRef.current = false;
         clearThinkingTimer();
         if (!isPlaying() && readyRef.current && statusRef.current !== 'listening') setStatusSafe('listening');
+        // ⚠️ GG 2026-10-25: "5 credits. Shall I start?" / "press the button" with no function called left nothing on
+        // screen. Only a call that HAS the functions is told (without them the note would name one it cannot call).
+        const o = optsRef.current;
+        const hasActions = o.actions === true && !actionsOffRef.current && o.parity !== false && !degradedRef.current;
+        if (hasActions && !toolSinceUserRef.current && !preparedRef.current && unpreparedNotesRef.current < UNPREPARED_START_NOTES_MAX
+          && offersUnpreparedStart(said) && readyRef.current && sessionRef.current === session) {
+          unpreparedNotesRef.current += 1;
+          toolSinceUserRef.current = true; // one note per thing the user said
+          session.sendText(withReplyLanguage(UNPREPARED_START_NOTE, userLanguageRef.current));
+        }
         afterTurnBoundary();
         return;
+      }
       case 'goAway': {
         // The old connection keeps working for timeLeft: let an in-flight answer finish there, then resume.
         if (!modelTurnOpenRef.current) { reconnectRef.current('goAway'); return; }
@@ -1100,6 +1218,11 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         try { optsRef.current.onUsage?.(ev.totalTokens === undefined ? {} : { totalTokens: ev.totalTokens }); } catch { /* noop */ }
         return;
       case 'toolCall':
+        toolSinceUserRef.current = true;
+        for (const c of ev.calls) {
+          if (c.name === 'prepare_generation') preparedRef.current = true;
+          else if (c.name === 'start_generation') preparedRef.current = false;
+        }
         void answerToolCall(ev.calls, session);
         return;
       case 'toolCallCancellation':
@@ -1115,9 +1238,11 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       default:
         return; // setupComplete arrives via onSetupComplete; 'error' frames are followed by a close
     }
-  }, [afterTurnBoundary, answerToolCall, clearThinkingTimer, emitHeard, enqueueAudio, flushPlayback, flushTurn, isPlaying, publishCaptions, setStatusSafe]);
+  }, [afterTurnBoundary, answerToolCall, clearThinkingTimer, emitHeard, emitSaid, enqueueAudio, flushPlayback, flushTurn, isPlaying, publishCaptions, setStatusSafe]);
 
-  const onSessionClosed = useCallback(() => {
+  /** `timedOut`: the handshake ran out of time; it was never refused, so a step that drops what a refusal blamed (the
+   *  UI-action declarations) does not follow it. */
+  const onSessionClosed = useCallback((timedOut = false) => {
     clearHandshakeTimer();
     const wasReady = readyRef.current;
     sessionRef.current = null;
@@ -1130,6 +1255,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     // The handshake never completed → next step of the plan (retry / degrade / fresh token / fresh session).
     stepRef.current += 1;
+    if (timedOut) while (planRef.current[stepRef.current]?.dropActions) stepRef.current += 1;
     void runStepRef.current();
   }, [clearHandshakeTimer]);
 
@@ -1138,22 +1264,53 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     if (!tok) return;
     const gen = genRef.current;
     let opened = false;
+    const startedAt = Date.now();
+    let openedAt = 0;
     const current = () => sessionRef.current === session && gen === genRef.current;
     // The deadline runs from CONSTRUCTION, not from socket open (GeminiLiveSession's own setupTimeoutMs only arms
     // on open, so a socket stuck in CONNECTING would never time out). Expiry = a close before setupComplete.
     clearHandshakeTimer();
-    const timeoutMs = optsRef.current.setupTimeoutMs ?? LIVE_SETUP_TIMEOUT_MS;
-    handshakeTimerRef.current = setTimeout(() => {
+    const explicitTimeout = optsRef.current.setupTimeoutMs;
+    const timeoutMs = explicitTimeout ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
+    const onDeadline = () => {
       handshakeTimerRef.current = null;
       if (!current() || readyRef.current) return;
+      // Where it waited, read before the close below drops the socket (lib/voice/liveTelemetry).
+      const now = Date.now();
+      const context: LiveFailureContext = {
+        locale: optsRef.current.locale || 'ka',
+        mints: mintsRef.current,
+        degraded: degradedRef.current,
+        relay: !!tok.relayUrl,
+        ...(openedAt ? { msToOpen: openedAt - startedAt, msSinceOpen: now - openedAt, bufferedBytes: session.bufferedAmount } : {}),
+      };
       sessionRef.current = null; // detach first: the close below must not be handled twice
       try { session.close(); } catch { /* noop */ }
-      onSessionClosed();
-    }, timeoutMs);
+      try { deps().report('handshake_timeout', null, context); } catch { /* telemetry never breaks the call */ }
+      // ⚠️ GG 2026-10-25: „ვიდეო პანელი გახსენი“ did nothing. A cold relay ran out the clock, the plan's next step
+      // dropped the UI actions, and the call that opened could not open a panel. A handshake that ran out of time
+      // was never REFUSED: it retries the same setup on a fresh ticket (a ticket opens one new session) first.
+      const step = planRef.current[stepRef.current];
+      if (step && timeoutRetriesRef.current < (tok.relayUrl ? MAX_RELAY_TIMEOUT_RETRIES : MAX_TIMEOUT_RETRIES)) {
+        timeoutRetriesRef.current += 1;
+        planRef.current.splice(stepRef.current + 1, 0, { freshToken: true, handle: step.handle, ...(step.degrade ? { degrade: true } : {}) });
+      }
+      onSessionClosed(true);
+    };
+    handshakeTimerRef.current = setTimeout(onDeadline, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(
-      { token: tok.token, setupMessage: buildSetupMessage(handle) },
+      { token: tok.token, ...(tok.relayUrl ? { relayUrl: tok.relayUrl } : {}), setupMessage: buildSetupMessage(handle) },
       {
-        onOpen: () => { opened = true; },
+        onOpen: () => {
+          opened = true;
+          openedAt = Date.now();
+          // Through the relay an open socket gets the short deadline (LIVE_RELAY_READY_AFTER_OPEN_MS); the long one
+          // only covers a relay that is still booting, which holds the socket in CONNECTING.
+          if (tok.relayUrl && explicitTimeout === undefined && current() && handshakeTimerRef.current) {
+            clearTimeout(handshakeTimerRef.current);
+            handshakeTimerRef.current = setTimeout(onDeadline, LIVE_RELAY_READY_AFTER_OPEN_MS);
+          }
+        },
         onSetupComplete: () => { if (current()) onReady(session); },
         onEvent: (ev) => { if (current()) onServerEvent(ev, session); },
         onError: () => {
@@ -1166,7 +1323,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     sessionRef.current = session;
     readyRef.current = false;
     session.connect();
-  }, [buildSetupMessage, clearHandshakeTimer, onReady, onServerEvent, onSessionClosed]);
+  }, [buildSetupMessage, clearHandshakeTimer, deps, onReady, onServerEvent, onSessionClosed]);
 
   runStepRef.current = async () => {
     const gen = genRef.current;
@@ -1218,6 +1375,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     resumesRef.current += 1;
     reconnectingRef.current = true;
+    mintWhyRef.current = 'resume';
     clearGoAwayTimer();
     const old = sessionRef.current;
     sessionRef.current = null; // first, so the old socket's close is ignored
@@ -1232,9 +1390,30 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       { freshToken: true, handle: null },
     ];
     stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
     phaseRef.current = 'resume';
     void runStepRef.current();
   };
+
+  const renew = useCallback((): boolean => {
+    if (!activeRef.current || reconnectingRef.current || !readyRef.current) return false;
+    reconnectingRef.current = true;
+    mintWhyRef.current = 'renew';
+    clearGoAwayTimer();
+    const old = sessionRef.current;
+    sessionRef.current = null; // first, so the old socket's close is ignored
+    readyRef.current = false;
+    try { old?.close(); } catch { /* noop */ }
+    // The old handle resumes the OLD setup (the relay and Google refuse a changed one): a new session, then once more.
+    handleRef.current = null;
+    if (!isPlaying()) setStatusSafe('reconnecting');
+    planRef.current = [{ freshToken: true, handle: null }, { freshToken: true, handle: null }];
+    stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
+    phaseRef.current = 'resume';
+    void runStepRef.current();
+    return true;
+  }, [clearGoAwayTimer, isPlaying, setStatusSafe]);
 
   // ── Mic ingest (worklet / ScriptProcessor → VAD → socket or pre-setup buffer) ──
   const ingest = useCallback((pcm: Int16Array, rms: number) => {
@@ -1384,8 +1563,31 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     const track = stream.getAudioTracks()[0] as (MediaStreamTrack & Partial<EventTarget>) | undefined;
     if (track && typeof track.addEventListener === 'function') {
       const onEnded = () => onMicEndedRef.current(stream);
+      // The browser muting the track (another capture took the device) silences the call just as surely. A hidden
+      // page is muted by design and unmutes on return, so the check waits for the page to be visible again.
+      let mutedTimer: ReturnType<typeof setTimeout> | null = null;
+      const clearMuted = () => { if (mutedTimer !== null) { clearTimeout(mutedTimer); mutedTimer = null; } };
+      const checkMuted = () => {
+        mutedTimer = null;
+        if (track.muted === false) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          mutedTimer = setTimeout(checkMuted, LIVE_MIC_MUTED_GRACE_MS);
+          return;
+        }
+        onMicEndedRef.current(stream);
+      };
+      const onMute = () => { clearMuted(); mutedTimer = setTimeout(checkMuted, LIVE_MIC_MUTED_GRACE_MS); };
       track.addEventListener('ended', onEnded);
-      micEndedCleanupRef.current = () => { try { track.removeEventListener?.('ended', onEnded); } catch { /* noop */ } };
+      track.addEventListener('mute', onMute);
+      track.addEventListener('unmute', clearMuted);
+      micEndedCleanupRef.current = () => {
+        clearMuted();
+        try {
+          track.removeEventListener?.('ended', onEnded);
+          track.removeEventListener?.('mute', onMute);
+          track.removeEventListener?.('unmute', clearMuted);
+        } catch { /* noop */ }
+      };
     }
   }, []);
 
@@ -1437,6 +1639,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const start = useCallback(async (): Promise<void> => {
     if (activeRef.current) return; // a call is already running or starting (double tap, double effect)
     activeRef.current = true;
+    mintWhyRef.current = 'start';
     sessionPreferencesRef.current = experienceRef.current?.preferences ?? null;
     appliedStyleRef.current = sessionPreferencesRef.current ? voiceStyleInstruction(sessionPreferencesRef.current) : '';
     const gen = ++genRef.current;
@@ -1446,15 +1649,23 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     degradedRef.current = false;
     setDegraded(false);
     actionsOffRef.current = false;
+    toolSinceUserRef.current = false;
+    preparedRef.current = false;
+    unpreparedNotesRef.current = 0;
     tokenRef.current = null;
     modelRef.current = null;
     serverSetupRef.current = null;
+    avatarSessionRef.current = null;
+    setAvatar(null);
+    setAvatarRefused(null);
     handleRef.current = null;
     resumesRef.current = 0;
     phaseRef.current = 'initial';
     if (pendingUserRef.current) emitHeard({ end: true });
+    if (pendingModelRef.current) emitSaid({ end: true });
     pendingUserRef.current = '';
     pendingModelRef.current = '';
+    userLanguageRef.current = null;
     finalCaptionsRef.current = [];
     turnSeqRef.current = 0;
     setCaptions([]);
@@ -1567,12 +1778,15 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       { freshToken: true, handle: undefined, degrade: true },
     ];
     stepRef.current = 0;
+    timeoutRetriesRef.current = 0;
     openSession(planRef.current[0]!.handle);
-  }, [attachMic, deps, emitHeard, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
+  }, [attachMic, deps, emitHeard, emitSaid, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
 
   const stop = useCallback(() => {
     flushTurn(true);
     teardown();
+    avatarSessionRef.current = null;
+    setAvatar(null);
     setStatusSafe('closed');
   }, [flushTurn, setStatusSafe, teardown]);
 
@@ -1636,7 +1850,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const sendNote = useCallback((text: string): boolean => {
     const t = typeof text === 'string' ? text.trim() : '';
     if (!t || !readyRef.current || !sessionRef.current) return false;
-    sessionRef.current.sendText(t);
+    sessionRef.current.sendText(withReplyLanguage(t, userLanguageRef.current));
     return true;
   }, []);
 
@@ -1670,9 +1884,16 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     teardown();
   }, [flushTurn, teardown]);
 
+  const audioOutput = useCallback(() => {
+    const ctx = playCtxRef.current;
+    const node = gainRef.current;
+    return ctx && node ? { ctx, node } : null;
+  }, []);
+
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
-    start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
+    start, stop, retry, interrupt, renew, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
+    avatar, avatarRefused, audioOutput,
   };
 }
 

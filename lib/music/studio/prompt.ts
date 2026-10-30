@@ -6,6 +6,7 @@
 import { musicLengthDirection } from '@/lib/studio/musicEngines';
 import type { MusicPlan, MusicRequest } from './contracts';
 import { styleForBrief } from '@/lib/ai/musicGenreWords';
+import { songDirections, songLanguageOf } from '@/lib/ai/musicVocals';
 
 const LANG_NAME = { ka: 'Georgian', en: 'English', ru: 'Russian' } as const;
 const TEMPO = { slow: 'slow tempo', medium: 'medium tempo', fast: 'fast, upbeat tempo' } as const;
@@ -24,6 +25,14 @@ export function directions(r: MusicRequest): string[] {
     const v = VOCAL[r.vocalGender ?? 'auto'];
     if (v) out.push(v);
     if (r.lyricsLanguage) out.push(`Sung in ${LANG_NAME[r.lyricsLanguage]}`);
+    // Lead vocal, written-or-given lyrics, structure (lib/ai/musicVocals). The language is the picked one above, else
+    // the script the person wrote in; the prompt here is verbatim, so a language it names is left to it.
+    out.push(...songDirections({
+      instrumental: false,
+      hasLyrics: !!r.lyrics?.trim(),
+      language: r.lyricsLanguage ? null : songLanguageOf(r.lyrics, r.prompt),
+      targetSec: r.durationSec,
+    }));
   }
   // Lyria 3 Pro has no length field: a track over 30 s is steered to its length here (empty for the clip's 30 s).
   const length = musicLengthDirection(r.durationSec);

@@ -1,13 +1,13 @@
 import { test, expect, type Route } from '@playwright/test';
-import { openStudio, openVideoTool, waitForBoard, json, ROUTE_CHECK_MS, typeFilmPrompt, sendFilm, say } from './video-core/_shared';
+import { openStudio, openVideoTool, json, ROUTE_CHECK_MS, typeFilmPrompt, sendFilm, say, waitForClipCard, CLIP_URL } from './video-core/_shared';
 
 /**
  * GG's two reports from Production, 2026-10-17 07:39Z, in a real browser with every route mocked (nothing is generated,
  * nothing is charged):
  *
  *   · a 4-second film was delivered, then „უკეთესად გააკეთე" („make it better") started a different film: the two words
- *     were planned as a brief of their own. Now the SAME brief is planned again, improved, at the same length; the board
- *     is free and nothing renders before its Generate;
+ *     were planned as a brief of their own. Now the SAME brief is asked again, improved, at the same length — since GG's
+ *     „like Gemini's Veo" (2026-10-25) as one clip's card, and nothing renders before its Create;
  *   · „შექმენი ავატარი რომელიც ამბობს ქართულად: გადადი მაი ავატარ ჯიზე და დაიწყე" ended on „ეს ხელსაწყო დროებით
  *     შეჩერებულია…": with no photo it went to the HeyGen presenter, which the Google-only boundary refuses. Now Agent G's
  *     card names the line, the Cloud TTS voice, a ready presenter and Veo's price (25); its yes NAMES that presenter's
@@ -16,40 +16,34 @@ import { openStudio, openVideoTool, waitForBoard, json, ROUTE_CHECK_MS, typeFilm
  *     avatarVoiceGender's default). HeyGen is never called.
  */
 
-const FILM_URL = 'https://e2e-media.supabase.co/films/final-master.mp4';
 const BRIEF = 'A quiet harbour at dawn, three fishing boats';
 const GG_ORDER = 'შექმენი ავატარი რომელიც ამბობს ქართულად: გადადი მაი ავატარ ჯიზე და დაიწყე';
 const GG_LINE = 'გადადი მაი ავატარ ჯიზე და დაიწყე';
 const AVATAR_URL = 'https://e2e-media.supabase.co/renders/avatar-veo/voiced.mp4';
 
 test.describe('make it better, and the talking avatar in the chat (GG, 2026-10-17)', () => {
-  test('„უკეთესად გააკეთე" after a delivered 4 s film plans the same film again, improved and 4 s long — nothing renders', async ({ page }) => {
-    const calls = await openStudio(page, { assemble: { status: 200, body: { url: FILM_URL, qa: null } } });
+  test('„უკეთესად გააკეთე" after a delivered 4 s clip asks for the same clip again, improved and 4 s long — nothing renders', async ({ page }) => {
+    const calls = await openStudio(page);
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await openVideoTool(page, false);
     await typeFilmPrompt(page, BRIEF);
-    await page.getByTestId('video-tile-length').click();
-    await page.getByTestId('video-preset-4').click();
-    await page.keyboard.press('Escape');
     await sendFilm(page);
-    await waitForBoard(page, 'en', 1);
-    await page.getByTestId('storyboard-generate').click();
-    await expect.poll(() => calls.assemble.length, { timeout: 30_000 }).toBe(1);
-    await expect(page.locator(`video[src^="${FILM_URL}"]`).first()).toBeAttached({ timeout: 30_000 });
-    await page.keyboard.press('Escape').catch(() => undefined);
+    const card = await waitForClipCard(page);
+    await card.getByTestId('clip-len-4').click();
+    await card.getByTestId('clip-confirm').click();
+    await expect(page.locator(`video[src^="${CLIP_URL}"]`).first()).toBeAttached({ timeout: 40_000 });
     const chatBefore = calls.chat.length;
 
     await say(page, 'უკეთესად გააკეთე');
 
-    await expect.poll(() => calls.storyboard.filter((b) => b.planOnly).length, { timeout: 20_000 }).toBe(2);
-    const [first, again] = calls.storyboard.filter((b) => b.planOnly);
-    expect(String(again!.prompt).startsWith(String(first!.prompt))).toBe(true);
-    expect(String(again!.prompt)).toContain('Improve on the previous version: the same story');
-    expect(again!.sceneCount).toBe(first!.sceneCount);
-    await expect(page.getByText('Improving the video above', { exact: false }).first()).toBeVisible({ timeout: 10_000 });
-    await waitForBoard(page, 'en', 1);
-    // A plan only: no second render, no model reply, no Agent G question about the words.
-    expect(calls.orchestrate).toHaveLength(1);
+    const again = await waitForClipCard(page);
+    await expect(again).toHaveAttribute('data-seconds', '4');
+    const words = String(await again.getByTestId('clip-prompt').textContent());
+    expect(words).toContain(BRIEF);
+    expect(words).toContain('Improve on the previous version: the same story');
+    // A card only: no second render, no model reply, no Agent G question about the words.
+    expect(calls.clip).toHaveLength(1);
+    expect(calls.storyboard).toHaveLength(0);
     expect(calls.chat.length).toBe(chatBefore);
     await expect(page.getByTestId('agent-g-card')).toHaveCount(0);
   });

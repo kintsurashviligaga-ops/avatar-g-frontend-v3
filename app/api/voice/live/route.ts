@@ -14,18 +14,23 @@
  * principal is the AUTHENTICATED CALLER (requireUser → session cookie), never a userId from the request
  * body — otherwise anyone could mint a cost-bearing token against another account (IDOR). Voice is
  * intentionally FREE (no credit gate); cost is bounded instead by requireUser + an IP burst limit +
- * a per-USER daily ceiling (defeats IP rotation across throwaway signups) + the platform budget guard.
+ * a per-USER daily ceiling (defeats IP rotation across throwaway signups) + the platform budget guard. While Live rolls
+ * out, only admins get past Gate 4b unless LIVE_AUDIENCE=everyone (lib/voice/liveAudience).
  *
  * Body (all optional): { model, locale: 'ka'|'en'|'ru', personaId, customPersona, gender: 'male'|'female',
  *   voice: 'Aoede'|'Charon'|'Kore'|'Puck', transcribe: boolean, compression: boolean, resumptionHandle: string|null,
- *   actions: boolean, tools: false, researchId: string, chatSessionId: string }
+ *   actions: boolean, tools: false, researchId: string, chatSessionId: string, avatar: 'Kira'|'Ben'|'Leo' }
+ *   `avatar` = A TALKING AVATAR (lib/voice/liveAvatar): with NEXT_PUBLIC_LIVE_AVATAR on, an allowlisted prebuilt name turns
+ *   the session into gemini-3.8-live answering in VIDEO (the avatar's own voice inside), on every wire this route locks.
+ *   Its ticket lives LIVE_AVATAR_TICKET_MS (the relay ends the session there) and it has its own per-user daily cap; a
+ *   refused avatar never refuses the call: it opens as a voice call and `avatar: null` (+ `avatarRefused`) says why.
  *   `researchId` = TALK TO A RESEARCH REPORT: the server loads that finished report for the signed-in OWNER (never text from
  *   the browser), squeezes it to the engine's limit (lib/research/liveContext.ts) and appends it to the locked instruction.
  *   A report that is not the caller's / not finished / not found → 404 `report_unavailable`, no mint.
  *   `chatSessionId` = THE SAME CONVERSATION: the id of the text-chat session the call was opened from. The server loads that
  *   session's newest turns for the signed-in OWNER (lib/voice/liveThread) and appends them to the locked instruction, so the
  *   call continues the chat instead of starting cold. Not the caller's / trashed / malformed → simply no history block.
- * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions }.
+ * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions, avatar, avatarRefused? }.
  *   `setupMessage` is the complete first WS frame ({ setup }) — pass it as GeminiLiveConfig.setupMessage so the
  *   browser sends exactly what the token was minted for.
  *
@@ -67,18 +72,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
+import type { User } from '@supabase/supabase-js';
 import { requireUser } from '@/lib/supabase/server';
 import { buildLiveSetup, type LiveSetupMessage, type LiveTool } from '@/lib/voice/geminiLive';
 import { validateVoicePreferences, voiceStyleInstruction, VOICE_UI_APPROVAL_RULE } from '@/lib/voice/experience/settings';
 import { LIVE_ACTIONS_RULE } from '@/lib/voice/liveTools';
 import { resolveLiveModel, toModelResource } from '@/lib/ai/google/models';
-import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
+import { resolveAgentProfile, toGeminiLiveSetup, livePersonaReminder, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { loadLiveReportBlock } from '@/lib/research/liveContext';
 import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
+import { LIVE_LANGUAGE_LOCK, liveTranscriptionLanguages, liveTranscriptionVocabulary } from '@/lib/voice/voicePrompt';
 import { LIVE_TRANSPORT_UNAVAILABLE, liveTokenMinter } from '@/lib/voice/liveMint';
+import { liveAudienceAllows } from '@/lib/voice/liveAudience';
+import { LIVE_AVATAR_BITRATE_BPS, LIVE_AVATAR_MODEL, LIVE_AVATAR_TICKET_MS, liveAvatarEnabled, normalizeLiveAvatar } from '@/lib/voice/liveAvatar';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -89,8 +98,9 @@ const NEW_SESSION_WINDOW_MS = 2 * 60 * 1000; // must OPEN the session within ~2 
 
 type LiveLocale = 'ka' | 'en' | 'ru';
 
-/** BCP-47 hint for the INPUT transcription (native-audio models take no speech languageCode — see geminiLive.ts). */
-const TRANSCRIPTION_LANGUAGE: Record<LiveLocale, string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' };
+/** Why the browser asks for a token (it says so in `why`): logged with every mint, so a call that keeps opening
+ *  fresh sessions shows which path opens them (GG, 2026-10-25: one fresh session per answer). */
+const MINT_WHY = ['start', 'renew', 'resume', 'step'] as const;
 
 const MALE_VOICES: ReadonlySet<LiveVoice> = new Set<LiveVoice>(['Charon', 'Puck']);
 
@@ -145,15 +155,21 @@ function liveCallRule(search: boolean, actions: boolean): string {
   return [
     'LIVE VOICE CALL: everything you say is spoken aloud in real time. The FORMAT guidance above does not apply here —',
     'speak natural sentences with no Markdown, lists, headings, tables, code blocks, LaTeX or emoji; describe structure',
-    'in words. If the user speaks another language, answer in that language.',
+    'in words. Answer in the language of the user\'s latest words; when they switch between Georgian, English and',
+    'Russian, switch with your very next reply.',
     // ⚠️ THE TEXT CHAT'S RULES CONTRADICTED THE CALL'S. Above, HANDING OFF says no reply can start a render and ANSWERING
     // says attached files are read in full — true for the text chat, false here: with actions the call DOES open and fill
     // tools, and it never sees a file's content, only its name. ⚠️ It said "you start renders yourself" until 2026-10-16,
     // against LIVE_ACTIONS_RULE (a spoken yes starts nothing) — and the model told GG an image was "already processing"
     // when nothing ran.
     actions
-      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you fill and open tools yourself with your functions, and the user starts every render with its priced button on screen.`
-      : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud.',
+      // ⚠️ GG 2026-10-25 19:04Z (avatar call): "…and the user starts every render with its priced button on screen" sat
+      // here against LIVE_ACTIONS_RULE's spoken yes (GG 2026-10-18). The call took the button half, quoted a price, sent
+      // GG to a button and called no function at all — nothing was prepared, so the chat never docked to show it.
+      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you fill and open tools yourself with your functions. Never offer a prompt or a price in words, or send the user to a button, before prepare_generation has answered: call it as soon as they ask for a render, say the price its answer gives, and on their own clear yes call start_generation.`
+      // ⚠️ GG 2026-10-25 18:52Z: a call that opened without its actions said "the generate button is ready, press it"
+      // when nothing was on screen. Without the functions it changes nothing, and must not say otherwise.
+      : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud. In this call you cannot open, fill or start anything on screen: never say that something is open, ready or waiting for the user\'s tap.',
     'You cannot see or hear the content of files the user attached in this call (a photo, a video, a track): you know them only by name (get_screen_state). Never describe what is in them; offer what you can do with them, or ask the user to type the question in the chat, where the files are read.',
     actions
       ? ''
@@ -192,11 +208,19 @@ export async function POST(request: NextRequest) {
     if (limited) return limited;
 
     // ── Gate 4: authenticate the CALLER via their session (never a body userId) ──
-    let userId: string;
+    let user: User;
     try {
-      userId = (await requireUser()).id;
+      user = await requireUser();
     } catch {
       return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+    }
+    const userId = user.id;
+
+    // ── Gate 4b: the rollout audience (lib/voice/liveAudience): admins only unless LIVE_AUDIENCE=everyone. Anyone else
+    // gets the same 503 as a missing transport, so the browser falls back to the REST voice loop. ──
+    if (!(await liveAudienceAllows(user))) {
+      structuredLog('info', 'voice.live.audience_refused', { audience: 'admins' });
+      return NextResponse.json({ error: 'live_transport_unavailable' }, { status: 503 });
     }
 
     // Voice mode is intentionally FREE for every signed-in user (no balance required). There is NO credit gate.
@@ -210,8 +234,14 @@ export async function POST(request: NextRequest) {
     const body: Body = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Body) : {};
 
     // ── The session, built server-side ──
+    // A talking avatar: switched on, an allowlisted prebuilt name, and the account's avatar sessions for today not used up.
+    let avatarName = normalizeLiveAvatar(body.avatar);
+    let avatarRefused: 'disabled' | 'daily_limit' | null = null;
+    if (avatarName && !liveAvatarEnabled()) { avatarName = null; avatarRefused = 'disabled'; }
+    if (avatarName && (await checkRateLimitByKey(userId, RATE_LIMITS.LIVE_AVATAR_USER))) { avatarName = null; avatarRefused = 'daily_limit'; }
+    const avatar = avatarName ? { avatarName, videoBitrateBps: LIVE_AVATAR_BITRATE_BPS } : null;
     // Allowlisted model: anything malformed, retired or unlisted resolves to the default (never an error).
-    const model = resolveLiveModel(typeof body.model === 'string' ? body.model : null);
+    const model = avatar ? LIVE_AVATAR_MODEL : resolveLiveModel(typeof body.model === 'string' ? body.model : null);
     const modelResource = toModelResource(model);
     const locale = resolveLocale(body, request.headers.get('referer'));
     const profile = resolveAgentProfile({
@@ -249,11 +279,13 @@ export async function POST(request: NextRequest) {
     const actionsWanted = toolsAllowed && body.actions === true && isEnabledByDefault(process.env.GEMINI_LIVE_ACTIONS);
     const voice = voiceFor(profile, experience?.voice ?? body.voice, body.gender);
     const promptNow = new Date();
+    // Last of all, after the UI rule: the persona stays the voice of the whole call (lib/agents/profile).
+    const reminder = livePersonaReminder(profile) ? `\n${livePersonaReminder(profile)}` : '';
     // The instruction names the action functions ONLY when the lock carries them, so it is built per attempt.
     const liveFor = (withActions: boolean, withSearch: boolean = search) => toGeminiLiveSetup(
       { ...profile, voice },
       // The report (when there is one) goes BEFORE the call rule: that rule stays the last block, where the model weighs it most.
-      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: withSearch })}${memoryBlock ? `\n\n${memoryBlock}` : ''}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(withSearch, withActions)}` },
+      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: withSearch, spoken: true })}${memoryBlock ? `\n\n${memoryBlock}` : ''}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(withSearch, withActions)}` },
     );
     const live = liveFor(actionsWanted);
     const transcribe = body.transcribe === true;
@@ -262,17 +294,18 @@ export async function POST(request: NextRequest) {
       const tools: LiveTool[] = [...(withActions ? ['live_actions' as const] : []), ...(search ? ['google_search' as const] : [])];
       return buildLiveSetup({
         model,
-        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE),
+        systemInstruction: l.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder + '\n' + LIVE_LANGUAGE_LOCK,
         ...(experience ? { turnEagerness: experience.eagerness } : {}),
         voiceName: l.voiceName,
         // The Live session has always run at the model's default temperature; only an active persona changes that.
         ...(personaActive ? { temperature: l.temperature } : {}),
-        ...(transcribe ? { transcribe: true, languageCode: TRANSCRIPTION_LANGUAGE[locale] } : {}),
+        ...(transcribe ? { transcribe: true, languageCode: liveTranscriptionLanguages(locale), vocabulary: liveTranscriptionVocabulary() } : {}),
         ...(body.compression === true ? { compression: true } : {}),
         ...('resumptionHandle' in body
           ? { resumptionHandle: typeof body.resumptionHandle === 'string' ? body.resumptionHandle : null }
           : {}),
         ...(tools.length ? { tools } : {}),
+        ...(avatar ? { avatar } : {}),
       });
     };
     const setupMessage = parityFor(actionsWanted);
@@ -285,14 +318,14 @@ export async function POST(request: NextRequest) {
     }
 
     const now = Date.now();
-    const expireTime = new Date(now + SESSION_TTL_MS).toISOString();
+    const expireTime = new Date(now + (avatar ? LIVE_AVATAR_TICKET_MS : SESSION_TTL_MS)).toISOString();
     const newSessionExpireTime = new Date(now + NEW_SESSION_WINDOW_MS).toISOString();
 
     // The lock field is `bidiGenerateContentSetup` — verified live: the earlier `liveConnectConstraints` name is
     // rejected by the auth_tokens API with HTTP 400 ("Unknown name … Cannot find field"). The minter owns its own
     // transport and credential; the timeout turns a hung mint into the already-handled 503 path.
     const mint = (lock: object, timeoutMs: number) =>
-      minter.mint({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: lock }, timeoutMs);
+      minter.mint({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: lock, subject: userId }, timeoutMs);
 
     // The frame the browser will send — always the one the token was minted for.
     let frame: LiveSetupMessage = setupMessage;
@@ -313,9 +346,10 @@ export async function POST(request: NextRequest) {
       const plain = liveFor(false, false);
       const legacy = buildLiveSetup({
         model,
-        systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE),
+        systemInstruction: plain.systemInstruction + '\n' + (experience ? voiceStyleInstruction(experience) : VOICE_UI_APPROVAL_RULE) + reminder + '\n' + LIVE_LANGUAGE_LOCK,
         voiceName: plain.voiceName,
         ...(personaActive ? { temperature: plain.temperature } : {}),
+        ...(avatar ? { avatar } : {}),
       });
       res = await mint(legacy.setup, 8_000);
       if (res.ok) {
@@ -338,6 +372,16 @@ export async function POST(request: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: 'live_token_empty' }, { status: 503 });
     }
+    structuredLog('info', 'voice.live.minted', {
+      why: (MINT_WHY as readonly unknown[]).includes(body.why) ? String(body.why) : 'unknown',
+      persona: profile.id,
+      locale,
+      resume: typeof body.resumptionHandle === 'string' && body.resumptionHandle !== '',
+      thread: threadBlock !== '',
+      relay: !!minter.wsUrl,
+      ...(avatarName ? { avatar: avatarName } : {}),
+      ...(avatarRefused ? { avatarRefused } : {}),
+    });
 
     return NextResponse.json({
       token,
@@ -348,6 +392,10 @@ export async function POST(request: NextRequest) {
       voice: live.voiceName,
       locale,
       actions,
+      avatar: avatarName,
+      ...(avatarRefused ? { avatarRefused } : {}),
+      // The Live relay the token opens (lib/voice/liveMint); absent = Google directly, as before.
+      ...(minter.wsUrl ? { relayUrl: minter.wsUrl } : {}),
     });
   } catch (error) {
     structuredLog('error', 'voice.live.failed', { error: error instanceof Error ? error.message : 'unknown' });

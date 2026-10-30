@@ -22,10 +22,14 @@ describe('refine wiring', () => {
     expect(at).toBeLessThan(send.indexOf('agentTurnRef.current(text, viaVoice)'));
     expect(at).toBeLessThan(send.indexOf('classifyFocusInput({ text, mode: gateMode'));
   });
-  it('a film is planned again from its own brief, improved, at its own length; nothing renders before Generate', () => {
-    expect(send).toContain('const brief = improvedBrief(spec.prompt, refine.change, locale);');
-    expect(send).toContain('void createStoryboard(brief, refs, spec.orientation, { nativeSec: spec.seconds, musicVideoMode: spec.musicVideo });');
-    expect(send).toContain('setVideoDuration(spec.seconds);');
+  it('a clip is asked again from its own words, improved, with its photos, length and frame; nothing renders before Create', () => {
+    // GG 2026-10-25 16:10Z: a video is ONE clip; „make it better" is a new clip card, never a storyboard planned again.
+    expect(send).toContain('const prompt = improvedBrief(clipAgain.prompt, refine.change, locale);');
+    expect(send).toContain('await proposeClip({ prompt, photos: clipAgain.photos, userText: text, seconds: clipAgain.seconds, aspect: clipAgain.aspect, viaVoice });');
+    // A film made before the clip is asked again as one 8 s clip from its brief.
+    expect(send).toMatch(/last\.clipSpec \?\? \(last\.filmSpec \? \{[\s\S]*?seconds: 8,/);
+    const branch = send.slice(send.indexOf('if (clipAgain) {'), send.indexOf("const imageSpec = last?.imageUrl && last.regen?.kind === 'image' ? last.regen : null;"));
+    expect(branch).not.toMatch(/createStoryboard|setVideoDuration|fetch\(/);
   });
   it('a picture and an avatar get Agent G’s card at their price', () => {
     expect(send).toContain("const imageSpec = last?.imageUrl && last.regen?.kind === 'image' ? last.regen : null;");

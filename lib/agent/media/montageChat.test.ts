@@ -1,6 +1,6 @@
 /** The studio chat's side of Agent G's montage: which messages it claims, and what it says (ka · en · ru). */
 import type { MontageQuote } from './montageExec';
-import { beatMontageAsk, codeOf, errorText, followUpUnsupportedText, montageFollowUpAsk, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, transitionAskText, transitionsText, unsupportedNotes, type AttachmentKind } from './montageChat';
+import { beatMontageAsk, codeOf, errorText, followUpUnsupportedText, hasMontageWords, montageFollowUpAsk, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, transitionAskText, transitionsText, unsupportedNotes, type AttachmentKind } from './montageChat';
 import { MIXED_STYLES, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
 
 const V: AttachmentKind = 'video';
@@ -284,5 +284,13 @@ describe('round 3 (AC-23): what this version cannot do is SAID, never applied as
     }
     expect(followUpUnsupportedText('add_clips', 'en')).toMatch(/^Adding clips to a finished edit/);
     expect(followUpUnsupportedText('replace_music', 'en')).toMatch(/^Replacing the music in a finished edit/);
+  });
+});
+
+describe('a line someone says is not a montage ask (GG\'s E2E, 2026-10-25 20:00Z)', () => {
+  test('„…დამონტაჟებული ვიდეო მივიღე!" inside a clip brief asks for no cut; the same words outside the quote do', () => {
+    expect(hasMontageWords('She says in Georgian: „ჩემი ფოტო ავტვირთე და მზა, დამონტაჟებული ვიდეო მივიღე!" Host reacts.')).toBe(false);
+    expect(hasMontageWords('ეს ვიდეოები დაამონტაჟე')).toBe(true);
+    expect(hasMontageWords('დაამონტაჟე, ბოლოს კი ის ამბობს: „მადლობა, რომ უყურეთ"')).toBe(true);
   });
 });
