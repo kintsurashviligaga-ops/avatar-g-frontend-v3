@@ -153,7 +153,7 @@ test.describe('voice mode, end to end', () => {
     // 2 — follow the visible composer Tools menu; studios no longer live in the thread sidebar.
     expect(await live.call('click', { target: 'ხელსაწყოები' })).toMatchObject({ ok: true });
     // The user reveals the lower row in the scrollable sheet; the agent only operates visible controls.
-    await page.getByRole('dialog', { name: 'ხელსაწყოები' }).getByRole('button', { name: /^მუსიკა / }).scrollIntoViewIfNeeded();
+    await page.getByRole('dialog', { name: 'სერვისები' }).getByRole('button', { name: /^მუსიკა / }).scrollIntoViewIfNeeded();
     await expect.poll(async () => (await screen()).controls.some(c => c.name.startsWith('მუსიკა'))).toBe(true);
     const clicked = await live.call('click', { target: 'მუსიკა' });
     expect(clicked).toMatchObject({ ok: true, summary: expect.stringMatching(/Pressed/) });

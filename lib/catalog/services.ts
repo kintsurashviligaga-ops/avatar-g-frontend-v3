@@ -125,7 +125,10 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['music video', 'მუსიკალური ვიდეო', 'მუსიკალური კლიპი', 'კლიპი', 'ვიდეოკლიპი', 'клип', 'музыкальный клип', 'музыкальное видео'],
   }),
   svc({
-    id: 'video.product-ad', category: 'video', order: 12, tool: 'product', pricingKey: 'product', status: 'live',
+    // HIDDEN (GG 2026-10-27 05:33Z: „პროდუქტის რეკლამა საერთოდ ამოვიღოთ სერვისებიდან"): out of every menu, the search and
+    // Agent G's routing, and /api/video/remix refuses `productad` before any charge. The id stays (§50 analytics identity).
+    id: 'video.product-ad', category: 'video', order: 12, tool: 'product', pricingKey: 'product', status: 'hidden',
+    agentCallable: false, visibleInTools: false, visibleInServices: false, visibleInSidebar: false,
     boundary: 'google', boundaryNote: 'Veo, then a Ken Burns still (/api/video/remix productad); no other engine',
     label: l('პროდუქტის რეკლამა', 'Product ad', 'Реклама продукта'),
     description: l('პროდუქტის ფოტოდან სარეკლამო რილი', 'An ad reel from a product photo', 'Рекламный ролик из фото продукта'),

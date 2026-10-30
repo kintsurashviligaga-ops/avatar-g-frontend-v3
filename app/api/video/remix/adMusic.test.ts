@@ -1,6 +1,7 @@
 /** @jest-environment node */
 /**
- * POST /api/video/remix op=productad — the single-clip ad's music bed is Lyria on Vertex and NOTHING else (MASTER TASK
+ * POST /api/video/remix op=productad — REMOVED (GG 2026-10-27 „პროდუქტის რეკლამა საერთოდ ამოვიღოთ სერვისებიდან"): the route
+ * refuses it before any charge or provider call. History: the single-clip ad's music bed was Lyria on Vertex only (MASTER TASK
  * v3.1; ElevenLabs Music left in PR 6): an instrumental on the clip model, the one Lyria capability proven here.
  *
  * ⚠️ PROJECT_MASTER R7 (no silent fallback): a score miss used to drop to Replicate MusicGen, so the ad
@@ -92,44 +93,22 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-test('Lyria scores the clip (the baseline): an 8 s instrumental on the clip model, music: true', async () => {
+test('the product ad is removed (GG 2026-10-27): 410 service_removed before the auth, the charge, Veo or Lyria', async () => {
   const res = await POST(post(AD));
-  expect(res.status).toBe(200);
-  expect(await res.json()).toMatchObject({ url: 'https://storage.example/scored.mp4', music: true, charged: true });
-  expect(composeLyriaBed).toHaveBeenCalledTimes(1);
-  expect(composeLyriaBed).toHaveBeenCalledWith(expect.objectContaining({
-    instrumental: true, folder: 'productad-music', plan: { model: 'lyria-3-clip-preview', sec: 8 },
-  }));
-  expect(muxAudioOntoVideo).toHaveBeenCalledWith('https://storage.example/veo-ad.mp4', 'https://storage.example/ad-music.mp3', 'under', 12);
-  expect(replicateCalls()).toEqual([]);
-});
-
-test('a Lyria miss ships the clip without music, says so — and MusicGen is never asked', async () => {
-  (composeLyriaBed as jest.Mock).mockResolvedValue(null);
-  const res = await POST(post(AD));
-  expect(res.status).toBe(200);
-  expect(await res.json()).toMatchObject({ url: 'https://storage.example/veo-ad.mp4', music: false, charged: true });
-  expect(replicateCalls()).toEqual([]);
-  expect(muxAudioOntoVideo).not.toHaveBeenCalled();
-  // The ad itself was delivered, so its charge stands — exactly as before when no bed could be made.
-  expect(deductCreditsOnce).toHaveBeenCalledTimes(1);
-  expect(refundCredits).not.toHaveBeenCalled();
-});
-
-test('Lyria not configured: the same — no music, no MusicGen', async () => {
-  (lyriaBedReady as jest.Mock).mockReturnValue(false);
-  const json = await (await POST(post(AD))).json();
-  expect(json).toMatchObject({ url: 'https://storage.example/veo-ad.mp4', music: false });
-  expect(composeLyriaBed).not.toHaveBeenCalled();
-  expect(replicateCalls()).toEqual([]);
-});
-
-test('a replayed charge (same jobId and body, already charged) is refused with 409 before anything renders (C5)', async () => {
-  (deductCreditsOnce as jest.Mock).mockResolvedValueOnce({ ok: false, reason: 'replay', balance: 75 });
-  const res = await POST(post(AD));
-  expect(res.status).toBe(409);
-  expect(await res.json()).toMatchObject({ url: null, success: false, code: 'duplicate_request' });
+  expect(res.status).toBe(410);
+  expect(res.headers.get('cache-control')).toBe('no-store');
+  const json = await res.json();
+  expect(json).toMatchObject({ code: 'service_removed', tool: 'product' });
+  expect(json.messages.ka).toContain('პროდუქტის რეკლამა');
+  expect(deductCreditsOnce).not.toHaveBeenCalled();
   expect(composeLyriaBed).not.toHaveBeenCalled();
   expect(muxAudioOntoVideo).not.toHaveBeenCalled();
+  expect(replicateCalls()).toEqual([]);
+});
+
+test('a secondary clip of an old multi-clip ad is refused the same way', async () => {
+  const res = await POST(post({ ...AD, sceneIndex: 1 }));
+  expect(res.status).toBe(410);
+  expect(deductCreditsOnce).not.toHaveBeenCalled();
   expect(refundCredits).not.toHaveBeenCalled();
 });

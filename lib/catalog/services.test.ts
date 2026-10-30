@@ -126,7 +126,6 @@ describe('resolveService — Agent G intent and search', () => {
     ['ამ ვიდეოს ხმა ქართულად გადამითარგმნე', 'voice.dubbing'],
     ['переведи это видео, нужен дубляж', 'voice.dubbing'],
     ['მუსიკა დამირემიქსე', 'music.remix'],
-    ['create a product ad for my sneakers', 'video.product-ad'],
     ['lip sync this photo to my voice', 'avatar.talking'],
     ['swap the character in this clip', 'video.character-swap'],
     ['write a podcast script about Tbilisi', 'text.write'],
@@ -148,6 +147,13 @@ describe('resolveService — Agent G intent and search', () => {
     }
   });
 
+  it('never resolves to the product ad, which GG removed (2026-10-27)', () => {
+    for (const t of ['create a product ad for my sneakers', 'პროდუქტის რეკლამა გამიკეთე', 'сделай рекламу для кафе']) {
+      expect(resolveService(t)?.id).not.toBe('video.product-ad');
+      expect(searchServices(t).map((s) => s.id)).not.toContain('video.product-ad');
+    }
+  });
+
   it('never resolves to the video remix, which left every menu (GG 2026-10-18); Agent G sends these words to the touch-up', () => {
     for (const t of ['remix this video with captions', 'ეს ვიდეო დამირემიქსე', 'сделай ремикс видео']) {
       expect(resolveService(t)?.id).not.toBe('video.remix');
@@ -155,7 +161,7 @@ describe('resolveService — Agent G intent and search', () => {
   });
 
   it('does not let a short alias match inside a longer word', () => {
-    // "ad" is the product-ad alias; "admin" must not resolve to it.
+    // "admin" must not resolve to a service through a short alias inside it.
     expect(resolveService('admin panel')).toBeNull();
   });
 
@@ -167,7 +173,6 @@ describe('resolveService — Agent G intent and search', () => {
   it('matches Georgian and Russian aliases in any case, not only the nominative', () => {
     expect(resolveService('ინტერიერის დიზაინი გამიკეთე')?.id).toBe('image.interior');
     expect(resolveService('сделай фотосессию')?.id).toBe('image.photoshoot');
-    expect(resolveService('сделай рекламу для кафе')?.id).toBe('video.product-ad');
   });
 
   it('a medium word („video") never outranks the service the sentence names', () => {
@@ -208,8 +213,8 @@ describe('searchServices — the §51 search box', () => {
     expect(ids('მუს')[0]).toBe('music.generate');
     expect(ids('mus')[0]).toBe('music.generate');
     expect(ids('муз')[0]).toBe('music.generate');
-    expect(ids('რეკლ')).toEqual(['video.product-ad']);
-    expect(ids('реклам')).toEqual(['video.product-ad']);
+    expect(ids('რეკლ')).not.toContain('video.product-ad');
+    expect(ids('реклам')).not.toContain('video.product-ad');
     expect(ids('ავატ')).toEqual(['avatar.talking']);
     expect(ids('lip')).toEqual(['avatar.talking']);
     expect(ids('dub')).toEqual(['voice.dubbing']);
@@ -222,7 +227,7 @@ describe('searchServices — the §51 search box', () => {
   });
 
   it("puts Agent G's pick for the same text first, so the box and the chat agree", () => {
-    for (const q of ['music video', 'მუსიკალური ვიდეო', 'create a product ad', 'ამ ვიდეოს ხმა გადამითარგმნე', 'swap the character in this video']) {
+    for (const q of ['music video', 'მუსიკალური ვიდეო', 'ამ ვიდეოს ხმა გადამითარგმნე', 'swap the character in this video']) {
       expect(searchServices(q)[0]?.id).toBe(resolveService(q)?.id);
     }
   });
@@ -232,7 +237,8 @@ describe('searchServices — the §51 search box', () => {
     expect(video[0]).toBe('video.generate');
     expect(video.length).toBeLessThanOrEqual(6);
     expect(searchServices('video', 3)).toHaveLength(3);
-    for (const id of video.slice(0, 3)) expect(getService(id)?.category).toBe('video');
+    // The video category leads (video.generate, video.editing since the product ad left, GG 2026-10-27).
+    for (const id of video.slice(0, 2)) expect(getService(id)?.category).toBe('video');
   });
 
   it('shows a coming-soon service for what it is, after the usable ones — never a hidden or deprecated one', () => {
