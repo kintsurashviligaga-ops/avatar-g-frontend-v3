@@ -94,7 +94,7 @@ export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
  */
 export const LIVE_OPEN_TOOLS = [
   'chat', 'video', 'image', 'interior', 'music', 'avatar',
-  'product', 'vfx', 'montage', 'model3d',
+  'vfx', 'montage', 'model3d',
 ] as const;
 export type LiveOpenTool = (typeof LIVE_OPEN_TOOLS)[number];
 
@@ -344,7 +344,7 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'open_studio',
     description: 'Switch the app to a current menu tool without preparing anything in it: chat, video, image, '
-      + 'interior, music, avatar, product (product ad), vfx, montage (video editor), model3d.',
+      + 'interior, music, avatar, vfx, montage (video editor), model3d.',
     parameters: {
       type: 'OBJECT',
       properties: { tool: { type: 'STRING', enum: [...LIVE_OPEN_TOOLS], description: 'The tool to open.' } },

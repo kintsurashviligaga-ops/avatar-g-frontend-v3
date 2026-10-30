@@ -136,8 +136,8 @@ describe('the other sentences', () => {
     expect(planChatTurn('ამ ვიდეოდან ამოიღე ხმა MP3-ად.', snap({ attachments: ['video'] })).kind).toBe('pass');
     expect(planChatTurn('ამ ვიდეოდან ამოიღე ხმა MP3-ად.', snap()).kind).toBe('say');
   });
-  test('„გააკეთე 20-წამიანი რეკლამა", „ეს ფოტო გააცოცხლე" (with a photo), „ეს ვიდეო რუსულად გაახმოვანე" go on to their doors', () => {
-    expect(planChatTurn('გააკეთე 20-წამიანი რეკლამა.', snap()).kind).toBe('pass');
+  test('„გააკეთე 20-წამიანი რეკლამა" opens the Video tool at 20 s (the Product ad is removed, GG 2026-10-27); „ეს ფოტო გააცოცხლე" (with a photo), „ეს ვიდეო რუსულად გაახმოვანე" go on to their doors', () => {
+    expect(planChatTurn('გააკეთე 20-წამიანი რეკლამა.', snap())).toMatchObject({ kind: 'open', tool: 'video', durationSec: 20 });
     expect(planChatTurn('ეს ფოტო გააცოცხლე.', snap({ attachments: ['image'] })).kind).toBe('pass');
     expect(planChatTurn('ეს ვიდეო რუსულად გაახმოვანე.', snap({ attachments: ['video'] })).kind).toBe('pass');
   });
