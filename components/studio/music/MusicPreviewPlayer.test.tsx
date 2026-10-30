@@ -24,7 +24,7 @@ test('inline borderless preview uses the REAL signed URL, without autoplay/CORS 
   expect(screen.getByRole('button', { name: 'დაკვრა' })).toBeInTheDocument();
 });
 
-test('organic smoke visual pauses and resumes with the actual audio element', () => {
+test('premium fluid canvas pauses and resumes with the actual audio element', () => {
   render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
   const audio = screen.getByTestId('music-player');
   const visual = screen.getByTestId('music-equalizer');
@@ -82,11 +82,11 @@ test('generic labels are not repeated; playback errors are shown and localized',
 });
 
 
-test('organic renderer replaces the MP4 and mechanical diamond with pure canvas', () => {
+test('premium fluid renderer replaces the MP4 and mechanical diamond with pure canvas', () => {
   render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
   const orb = screen.getByTestId('music-smoke-orb');
   expect(orb).toBeInTheDocument();
-  expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-renderer', 'organic-canvas');
+  expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-renderer', 'fluid-silk-canvas');
   expect(screen.getByTestId('music-particle-canvas')).toBeInTheDocument();
   expect(screen.queryByTestId('music-smoke-video')).not.toBeInTheDocument();
   expect(document.querySelector('video')).toBeNull();
@@ -105,7 +105,7 @@ test('the progress rail contains only one neutral hairline, no blue stripes', ()
   expect(screen.getByTestId('music-seek-slider')).not.toHaveClass('music-preview-seek');
 });
 
-test('organic canvas listens to the real audio play/pause, never changes the signed source', () => {
+test('fluid canvas listens to the real audio play/pause, never changes the signed source', () => {
   render(<MusicPreviewPlayer src={src} locale="en" durationSec={30} />);
   const audio = screen.getByTestId('music-player');
   expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-playing', 'false');
@@ -125,4 +125,16 @@ test('seeking changes the real song and retains a single progress slider', () =>
   expect(screen.getByTestId('music-time-pill')).toHaveTextContent('00:42 / 01:02');
   expect(screen.getAllByRole('slider')).toHaveLength(1);
   expect(screen.queryByTestId('music-volume-slider')).not.toBeInTheDocument();
+});
+
+
+test('fluid preview stays ambient-only without accessible PCM, and has no bar or video widgets', () => {
+  render(<MusicPreviewPlayer src={src} locale="ka" compact durationSec={30} />);
+  const canvas = screen.getByTestId('music-particle-canvas');
+  expect(canvas).toBeInTheDocument();
+  expect(screen.getByTestId('music-equalizer')).toHaveAttribute('data-audio-reactive', 'ambient-only');
+  expect(screen.queryByTestId('music-smoke-video')).not.toBeInTheDocument();
+  expect(document.querySelector('video')).not.toBeInTheDocument();
+  expect(document.querySelector('svg[data-equalizer-bar]')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('slider')).toHaveLength(1);
 });
