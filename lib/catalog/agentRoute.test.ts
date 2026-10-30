@@ -7,8 +7,6 @@ const open = (text: string) => {
 
 describe('routeAgentIntent — chat requests for a panel tool open that tool', () => {
   it.each([
-    ['make a product ad for my sneakers', 'video.product-ad', 'product'],
-    ['გამიკეთე რეკლამა ჩემი პროდუქტისთვის', 'video.product-ad', 'product'],
     ['swap the character in this video', 'video.character-swap', 'swap'],
     ['ამ ბიჭით იგივე ვიდეო გააკეთე', 'video.character-swap', 'swap'],
     ['add vfx explosion to my photo', 'video.vfx', 'vfx'],
@@ -25,6 +23,12 @@ describe('routeAgentIntent — a service that is not there yet is said, never su
     for (const t of ['remix this video with captions', 'ეს ვიდეო დამირემიქსე', 'сделай ремикс видео']) {
       const r = routeAgentIntent(t);
       expect(r?.kind === 'open' ? r.tool : null).not.toBe('remix');
+    }
+  });
+  it('a product-ad request opens no panel: GG removed the product ad (2026-10-27)', () => {
+    for (const t of ['make a product ad for my sneakers', 'გამიკეთე რეკლამა ჩემი პროდუქტისთვის', 'сделай рекламу товара']) {
+      const r = routeAgentIntent(t);
+      expect(r?.kind === 'open' ? r.tool : null).not.toBe('product');
     }
   });
   it('a motion-transfer request opens no panel: Motion is hidden (Phase 2 PR 7)', () => {

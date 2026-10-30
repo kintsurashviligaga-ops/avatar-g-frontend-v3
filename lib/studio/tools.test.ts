@@ -8,7 +8,7 @@ describe('studio tools', () => {
   it('chat first (the hub), video leading the generators, and exactly the services GG kept in the menu', () => {
     expect(PRIMARY_TOOLS[0]).toBe('chat');
     expect(PRIMARY_TOOLS[1]).toBe('video');
-    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'image', 'interior', 'model3d', 'montage', 'music', 'product', 'vfx', 'video'].sort());
+    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'image', 'interior', 'model3d', 'montage', 'music', 'vfx', 'video'].sort());
     expect(isToolId('remix')).toBe(false); // retired from every menu (GG 2026-10-18); the chat's touch-up lane keeps the id
     // GG's menu clean-up (2026-10-21): these left every menu, deep link and panel command; their ids and lines stay.
     for (const id of ['photoshoot', 'swap', 'motion', 'dubbing', 'presentation', 'photo'] as const) {
@@ -32,7 +32,7 @@ describe('studio tools', () => {
   it('VFX sits one level down beside the other video variants, in all three languages, and its line promises nothing that is not open', () => {
     expect(MORE_TOOLS).toContain('vfx');
     expect(PRIMARY_TOOLS).not.toContain('vfx');
-    expect(MORE_TOOLS.indexOf('vfx')).toBe(MORE_TOOLS.indexOf('product') + 1); // next to product ad, the other video tab
+    expect(MORE_TOOLS[0]).toBe('vfx'); // the product ad beside it is removed (GG 2026-10-27)
     expect(isToolId('vfx')).toBe(true);
     expect(toolName('vfx', 'en')).toBe('VFX');
     for (const l of ['ka', 'en', 'ru'] as const) expect(toolSub('vfx', l)).not.toMatch(/motion transfer|მოძრაობის გადატანა|перенос движения/i);
@@ -66,7 +66,8 @@ describe('studio tools', () => {
   });
 
   it('isToolId accepts the ids and nothing else (it guards window events and ?tool=)', () => {
-    expect(isToolId('product')).toBe(true);
+    expect(isToolId('vfx')).toBe(true);
+    expect(isToolId('product')).toBe(false); // removed (GG 2026-10-27): ?tool=product opens nothing
     expect(isToolId('surgical')).toBe(false);
     expect(isToolId(null)).toBe(false);
     expect(isToolId({})).toBe(false);

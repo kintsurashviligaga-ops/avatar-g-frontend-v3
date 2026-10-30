@@ -8,6 +8,7 @@ import {
   LIVE_MODELS,
   STT_MODELS,
   TRANSCRIBE_LIVE_MODEL,
+  TRANSCRIBE_MODEL,
   TTS_MODELS,
   chatModelChain,
   chatModelClass,
@@ -80,6 +81,11 @@ describe('catalogue self-check', () => {
 
   it('the Live-style transcription model is not offered to the generateContent STT path', () => {
     expect(STT_MODELS).not.toContain(TRANSCRIBE_LIVE_MODEL);
+  });
+
+  it('the recorded-audio transcribe model is an owner trial in STT_MODELS, never the default', () => {
+    expect(STT_MODELS).toContain(TRANSCRIBE_MODEL);
+    expect(DEFAULT_STT_MODEL).not.toBe(TRANSCRIBE_MODEL);
   });
 });
 
