@@ -1,16 +1,16 @@
 'use client';
 
 /**
- * Lightweight, code-rendered organic smoke sphere for Music Studio.
+ * MYAVATAR fluid-silk visualizer.
  *
- * Inspired by the owner's smoky orb reference: volumetric specks, floating
- * wisps, soft blue-white bloom and organic turbulence (not a star, equalizer,
- * pre-recorded MP4, or fake percussive loop).
+ * Three real PCM band envelopes modulate a softly illuminated liquid membrane:
+ * low = volume/depth, mid = membrane turbulence, high = fine shimmer.
+ * Beat peaks add a restrained expansion, never a fake timed pulse. The audio
+ * element stays native and untouched (especially important for signed iOS URLs).
  *
- * Movement follows the HTMLAudioElement.currentTime clock, so pause, seek,
- * background stalls and resumed playback cannot desynchronize the illustration.
- * Real PCM beats/bass modulate its brightness and breathing radius only when
- * beatTrack is available. Native signed audio playback remains untouched.
+ * A slow NON-beat ambient drift is decorative even before playback; when the
+ * storage origin disallows PCM decoding it continues without claiming beat sync.
+ * No MP4, WebAudio routing, WebGL dependency or equalizer bars.
  */
 import { useEffect, useRef, type RefObject } from 'react';
 import { beatAtTime, type BeatTrack } from './beatAnalysis';
@@ -23,40 +23,29 @@ export interface MusicParticleVisualizerProps {
   seekVersion?: number;
 }
 
-type Speck = {
-  a: number;
-  r: number;
-  depth: number;
-  speed: number;
-  seed: number;
-  size: number;
-  tone: number;
-};
+type Particle = { a: number; radius: number; depth: number; size: number; seed: number; tone: number };
+const TAU = Math.PI * 2;
 
-function seededRandom(seed: number) {
-  let x = seed >>> 0;
-  return () => ((x = (1664525 * x + 1013904223) >>> 0) / 4294967296);
+function rng(seed: number) {
+  let state = seed >>> 0;
+  return () => ((state = (1664525 * state + 1013904223) >>> 0) / 4294967296);
 }
 
-const rand = seededRandom(0x452aceaf);
-// Radial randomization puts a dense luminous cloud in the middle and tapered
-// filaments outside, rather than a symmetrical diamond or a mechanical ring.
-const SPECKS: Speck[] = Array.from({ length: 680 }, () => ({
-  a: rand() * Math.PI * 2,
-  r: Math.pow(rand(), 0.67),
-  depth: rand() * 2 - 1,
-  speed: 0.45 + rand() * 0.75,
-  seed: rand() * Math.PI * 2,
-  size: 0.6 + Math.pow(rand(), 2.8) * 1.6,
-  tone: Math.floor(rand() * 4),
-})).sort((a, b) => a.depth - b.depth);
+const random = rng(0x3fa67321);
+const PARTICLES: Particle[] = Array.from({ length: 170 }, () => ({
+  a: random() * TAU,
+  radius: Math.sqrt(random()),
+  depth: random() * 2 - 1,
+  size: 0.4 + random() * 1.1,
+  seed: random() * TAU,
+  tone: Math.floor(random() * 3),
+}));
 
-const COLORS = [
-  [31, 103, 193],   // deep cobalt
-  [82, 158, 218],   // muted azure
-  [162, 208, 238],  // ice
-  [218, 226, 242],  // cool off-white
-] as const;
+function smooth(from: number, target: number, delta: number) {
+  // Fast attack, calm release. Frame-rate independent and bounded for tab resume.
+  const speed = target > from ? 15 : 5.8;
+  return from + (target - from) * (1 - Math.exp(-speed * Math.min(delta, 0.10)));
+}
 
 export function MusicParticleVisualizer({
   playing, compact = false, audioRef, beatTrack = null, seekVersion = 0,
@@ -68,173 +57,215 @@ export function MusicParticleVisualizer({
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     const reactive = !!beatTrack?.frames.length;
     let width = 1;
     let height = 1;
     let visible = true;
     let raf = 0;
-    let lastFrame = -1000;
+    let lastTick = 0;
+    let lastPaint = 0;
+    let drift = 0;
+    const level = { bass: 0, mid: 0, high: 0, beat: 0, energy: 0 };
 
-    // The sprite atlas gives each particle a soft optical falloff, with
-    // fewer expensive shadows/gradients during actual animation.
-    const sprites = COLORS.map(([r, g, b]) => {
-      const sprite = document.createElement('canvas');
-      sprite.width = 32;
-      sprite.height = 32;
-      const brush = sprite.getContext('2d');
-      if (brush) {
-        const glow = brush.createRadialGradient(16, 16, 0, 16, 16, 15);
-        glow.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',0.95)');
-        glow.addColorStop(0.17, 'rgba(' + r + ',' + g + ',' + b + ',0.48)');
-        glow.addColorStop(0.50, 'rgba(' + r + ',' + g + ',' + b + ',0.15)');
-        glow.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0)');
-        brush.fillStyle = glow;
-        brush.fillRect(0, 0, 32, 32);
-      }
-      return sprite;
-    });
-
-    function paint() {
+    function draw() {
       if (!ctx) return;
-      const t = audioRef?.current?.currentTime ?? 0;
-      const meter = beatAtTime(beatTrack, t);
-      const bass = reactive ? meter.bass : 0;
-      const beat = reactive ? meter.beat : 0;
-      const energy = reactive ? meter.energy : 0;
-      const cx = width / 2;
-      const cy = height / 2;
-      const base = Math.min(width, height) * 0.355;
-      const swell = 1 + 0.045 * bass + 0.085 * beat;
-
+      const audioTime = audioRef?.current?.currentTime ?? 0;
+      const t = audioTime * 0.38 + drift * 0.18;
+      const cx = width * 0.5;
+      const cy = height * 0.49;
+      const size = Math.min(width, height);
+      const r = size * 0.317;
+      const inhale = 1 + 0.060 * level.bass + 0.072 * level.beat;
+      const turbulence = 0.018 + 0.043 * level.mid;
+      const high = level.high;
       ctx.clearRect(0, 0, width, height);
 
-      // Underpainting: multiple transparent, overlapping washes yield a smoky
-      // shape without bright turquoise bars, harsh borders or a solid disc.
-      const cloud = ctx.createRadialGradient(cx, cy, base * 0.05, cx, cy, base * 1.4);
-      cloud.addColorStop(0, 'rgba(29,47,85,0.29)');
-      cloud.addColorStop(0.36, 'rgba(13,39,81,0.15)');
-      cloud.addColorStop(0.66, 'rgba(16,45,91,' + (0.07 + 0.08 * bass).toFixed(3) + ')');
-      cloud.addColorStop(1, 'rgba(9,25,56,0)');
-      ctx.fillStyle = cloud;
+      // A near-invisible atmospheric halo instead of an opaque circular badge.
+      const haze = ctx.createRadialGradient(cx, cy, r * 0.1, cx, cy, r * 1.55);
+      haze.addColorStop(0, 'rgba(57,71,130,' + (0.12 + level.bass * 0.08).toFixed(3) + ')');
+      haze.addColorStop(0.45, 'rgba(34,65,118,0.075)');
+      haze.addColorStop(1, 'rgba(15,30,60,0)');
+      ctx.fillStyle = haze;
       ctx.beginPath();
-      ctx.arc(cx, cy, base * 1.4, 0, Math.PI * 2);
+      ctx.arc(cx, cy, r * 1.55, 0, TAU);
       ctx.fill();
 
-      // Transparent threads with continuously varying curvature make the orb
-      // resemble swirling smoke instead of a rigid audio frequency diagram.
-      for (let k = 0; k < 22; k++) {
-        const phase = k * 2.39996323;
-        const u = t * (0.09 + (k % 5) * 0.016) + phase;
-        const rr = base * (0.28 + 0.54 * ((k * 13 % 23) / 23)) * swell;
-        const x = cx + rr * Math.cos(u);
-        const y = cy + rr * Math.sin(u) * 0.82;
-        const curl = base * (0.25 + (k % 3) * 0.075);
-        ctx.strokeStyle = k % 4 === 0
-          ? 'rgba(183,210,234,' + (0.043 + beat * 0.018).toFixed(3) + ')'
-          : 'rgba(61,126,203,' + (0.049 + energy * 0.035).toFixed(3) + ')';
-        ctx.lineWidth = k % 5 === 0 ? 1.05 : 0.72;
+      // Three offset translucent membranes form a silky, iridescent body.
+      // Each contour is continuously curved through many close samples, not bars.
+      for (let layer = 2; layer >= 0; layer--) {
+        const phase = t * (0.28 + layer * 0.08) + layer * 2.15;
+        const radius = r * (1.02 - layer * 0.115) * inhale;
         ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.bezierCurveTo(
-          x + curl * Math.cos(u + 1.2),
-          y + curl * Math.sin(u + 1.2),
-          cx + rr * Math.cos(u + 2.8) * 0.5,
-          cy + rr * Math.sin(u + 2.8) * 0.62,
-          cx + rr * Math.cos(u + 3.9) * 0.74,
-          cy + rr * Math.sin(u + 3.9) * 0.64,
+        for (let i = 0; i <= 96; i++) {
+          const a = i / 96 * TAU;
+          const wave =
+            Math.sin(a * 3 + phase) * (0.048 + turbulence) +
+            Math.sin(a * 5 - phase * 0.66 + layer * 1.5) * (0.026 + level.mid * 0.025) +
+            Math.cos(a * 2 + phase * 0.45) * 0.028;
+          const rr = radius * (1 + wave);
+          const x = cx + Math.cos(a + phase * 0.02) * rr;
+          const y = cy + Math.sin(a) * rr * (0.89 + layer * 0.025);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        const light = ctx.createRadialGradient(
+          cx - radius * 0.32, cy - radius * 0.41, radius * 0.04,
+          cx + radius * 0.10, cy + radius * 0.10, radius * 1.35,
         );
+        if (layer === 2) {
+          light.addColorStop(0, 'rgba(159,153,218,0.29)');
+          light.addColorStop(0.43, 'rgba(61,77,156,0.23)');
+          light.addColorStop(1, 'rgba(36,45,91,0.015)');
+        } else if (layer === 1) {
+          light.addColorStop(0, 'rgba(185,208,241,0.28)');
+          light.addColorStop(0.48, 'rgba(75,119,179,0.17)');
+          light.addColorStop(1, 'rgba(35,63,104,0.025)');
+        } else {
+          light.addColorStop(0, 'rgba(218,226,241,0.22)');
+          light.addColorStop(0.43, 'rgba(132,151,217,0.14)');
+          light.addColorStop(1, 'rgba(46,69,133,0.025)');
+        }
+        ctx.fillStyle = light;
+        ctx.fill();
+      }
+
+      // Floating silk ribbons: partial orbital paths with tapering opacity.
+      // Highlights follow real mids/highs but never jitter or strobe.
+      for (let ribbon = 0; ribbon < 7; ribbon++) {
+        const phase = t * (0.26 + ribbon * 0.017) + ribbon * 1.91;
+        const opacity = 0.055 + (ribbon % 3) * 0.027 + level.mid * 0.055;
+        const gradient = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+        gradient.addColorStop(0, 'rgba(167,156,228,0)');
+        gradient.addColorStop(0.32, 'rgba(178,167,232,' + opacity.toFixed(3) + ')');
+        gradient.addColorStop(0.64, 'rgba(188,218,243,' + Math.min(0.25, opacity * 1.3).toFixed(3) + ')');
+        gradient.addColorStop(1, 'rgba(99,142,220,0)');
+        ctx.beginPath();
+        for (let i = 0; i <= 100; i++) {
+          const a = (i / 100 * 1.67 + ribbon * 0.31) * Math.PI;
+          const flow = Math.sin(a * 3.5 + phase) * (0.055 + level.mid * 0.055);
+          const rr = r * (0.58 + ribbon * 0.063 + flow) * inhale;
+          const x = cx + Math.cos(a + phase * 0.16) * rr;
+          const y = cy + Math.sin(a + phase * 0.10) * rr * (0.68 + ribbon * 0.038);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = ribbon % 3 === 0 ? 1.65 : 0.9;
+        ctx.lineCap = 'round';
         ctx.stroke();
       }
 
-      // Depth-sorted cloud, gently twisting with multiple non-commensurate
-      // rates. Size & opacity vary with depth and distance, not random flicker.
-      for (const p of SPECKS) {
-        const twist = t * 0.085 * p.speed * (p.depth > 0 ? 1 : -0.5);
-        const angle = p.a + twist
-          + Math.sin(p.seed + t * 0.17 + p.r * 3.5) * 0.16;
-        const turbulence = 1
-          + 0.105 * Math.sin(p.seed + t * 0.28 + p.depth * 3)
-          + 0.055 * Math.sin(2 * angle + t * 0.13);
-        const r = base * (0.13 + 0.94 * p.r) * turbulence * swell;
-        const x = cx + Math.cos(angle) * r + p.depth * base * 0.15;
-        const y = cy + Math.sin(angle) * r * (0.79 + 0.12 * Math.cos(p.seed + t * 0.10));
-        const perspective = 0.75 + (p.depth + 1) * 0.25;
-        const alpha = Math.min(0.75, (0.16 + 0.42 * p.r) * perspective * (0.82 + energy * 0.18 + beat * 0.18));
-        const px = p.size * (1.1 + 0.7 * perspective);
-        const sprite = sprites[p.tone]!;
-        if (sprite.width && sprite.height) {
-          ctx.globalAlpha = alpha;
-          ctx.drawImage(sprite, x - px * 4, y - px * 4, px * 8, px * 8);
-        }
-      }
-      ctx.globalAlpha = 1;
-
-      // A few fine highlights create spatial depth without strobing.
-      for (let k = 0; k < 28; k++) {
-        const p = SPECKS[(k * 23 + 7) % SPECKS.length]!;
-        const a = p.a + t * 0.11 * p.speed;
-        const r = base * (0.27 + p.r * 0.7) * swell;
-        const x = cx + r * Math.cos(a);
-        const y = cy + r * Math.sin(a) * 0.8;
+      // Two understated energy contours, subtly lifted by actual bass/onsets.
+      for (let band = 0; band < 2; band++) {
+        const outline = ctx.createLinearGradient(cx - r, cy + r, cx + r, cy - r);
+        outline.addColorStop(0, 'rgba(141,129,214,0)');
+        outline.addColorStop(0.36, 'rgba(146,171,228,' + (0.10 + level.beat * 0.11).toFixed(3) + ')');
+        outline.addColorStop(0.7, 'rgba(220,232,248,' + (0.11 + level.bass * 0.08).toFixed(3) + ')');
+        outline.addColorStop(1, 'rgba(88,113,190,0)');
+        ctx.strokeStyle = outline;
+        ctx.lineWidth = band === 0 ? 1.4 : 0.75;
         ctx.beginPath();
-        ctx.arc(x, y, k % 7 === 0 ? 0.9 : 0.55, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(228,237,250,' + (0.17 + beat * 0.08).toFixed(3) + ')';
+        for (let i = 0; i <= 120; i++) {
+          const a = i / 120 * TAU;
+          const ripple = Math.sin(a * 4 - t * 0.57 + band * 2.3) * (0.016 + level.mid * 0.025);
+          const rr = r * (0.96 + band * 0.17 + ripple) * inhale;
+          const x = cx + Math.cos(a) * rr;
+          const y = cy + Math.sin(a) * rr * 0.89;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      // Delicate floating dust, brighter only when the actual upper band rises.
+      for (const p of PARTICLES) {
+        const a = p.a + t * (0.022 + p.depth * 0.012);
+        const radius = r * (0.24 + p.radius * 1.10) * inhale;
+        const x = cx + Math.cos(a) * radius + Math.sin(t * 0.32 + p.seed) * r * 0.025;
+        const y = cy + Math.sin(a) * radius * 0.84 + Math.cos(t * 0.18 + p.seed) * r * 0.02;
+        const alpha = Math.min(0.42, (0.07 + p.radius * 0.13) * (0.65 + (p.depth + 1) * 0.22) + high * 0.09);
+        ctx.fillStyle = p.tone === 0
+          ? 'rgba(177,170,227,' + alpha.toFixed(3) + ')'
+          : p.tone === 1
+            ? 'rgba(191,216,239,' + alpha.toFixed(3) + ')'
+            : 'rgba(236,238,248,' + alpha.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(x, y, p.size * (0.8 + p.depth * 0.19), 0, TAU);
         ctx.fill();
       }
+
+      // A small restrained bloom centered behind Play/Pause.
+      const pearl = ctx.createRadialGradient(cx - r * 0.04, cy - r * 0.12, 0, cx, cy, r * 0.54);
+      pearl.addColorStop(0, 'rgba(194,212,252,' + (0.13 + level.energy * 0.08).toFixed(3) + ')');
+      pearl.addColorStop(1, 'rgba(120,141,211,0)');
+      ctx.fillStyle = pearl;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.54, 0, TAU);
+      ctx.fill();
     }
 
-    const resize = () => {
-      const rect = canvas.getBoundingClientRect();
+    function resize() {
+      const rect = canvas!.getBoundingClientRect();
       width = Math.max(1, rect.width);
       height = Math.max(1, rect.height);
-      const ratio = Math.min(window.devicePixelRatio || 1, 1.65);
-      canvas.width = Math.round(width * ratio);
-      canvas.height = Math.round(height * ratio);
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      paint();
-    };
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      canvas!.width = Math.round(width * dpr);
+      canvas!.height = Math.round(height * dpr);
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
 
-    const frame = (stamp: number) => {
-      if (!visible || document.hidden || !playing || reduce) return;
-      // ~25 FPS on mobile: the cloud changes slowly, so 60 FPS is unnecessary.
-      if (stamp - lastFrame >= 39) {
-        paint();
-        lastFrame = stamp;
+    function frame(timestamp: number) {
+      if (!visible || document.hidden || reducedMotion) return;
+      const delta = lastTick ? Math.min(0.10, (timestamp - lastTick) / 1000) : 0.033;
+      lastTick = timestamp;
+      drift += delta * (playing ? 1 : 0.23);
+      const meter = reactive && playing
+        ? beatAtTime(beatTrack, audioRef?.current?.currentTime ?? 0)
+        : { bass: 0, mid: 0, high: 0, beat: 0, energy: 0 };
+      level.bass = smooth(level.bass, meter.bass, delta);
+      level.mid = smooth(level.mid, meter.mid, delta);
+      level.high = smooth(level.high, meter.high, delta);
+      level.beat = smooth(level.beat, meter.beat, delta);
+      level.energy = smooth(level.energy, meter.energy, delta);
+      // 28 FPS active, 10 FPS ambient: intentionally capped on mobile.
+      if (timestamp - lastPaint >= (playing ? 35 : 100)) {
+        draw();
+        lastPaint = timestamp;
       }
       raf = requestAnimationFrame(frame);
-    };
+    }
 
-    const requestNext = () => {
+    function restart() {
       cancelAnimationFrame(raf);
-      if (playing && visible && !document.hidden && !reduce) {
-        raf = requestAnimationFrame(frame);
-      }
-    };
+      lastTick = 0; // avoid a large delta when returning to a backgrounded tab
+      if (visible && !document.hidden && !reducedMotion) raf = requestAnimationFrame(frame);
+    }
 
     resize();
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
-    observer?.observe(canvas);
-    const intersection = typeof IntersectionObserver === 'function'
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+    ro?.observe(canvas);
+    const io = typeof IntersectionObserver !== 'undefined'
       ? new IntersectionObserver(entries => {
         visible = entries[0]?.isIntersecting ?? true;
-        if (visible) paint();
-        requestNext();
+        if (visible) draw();
+        restart();
       }, { threshold: 0.01 })
       : null;
-    intersection?.observe(canvas);
-    const visibility = () => {
-      if (!document.hidden) paint();
-      requestNext();
-    };
-    document.addEventListener('visibilitychange', visibility);
-    requestNext();
+    io?.observe(canvas);
+    const onVisibility = () => { if (!document.hidden) draw(); restart(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    restart();
 
     return () => {
       cancelAnimationFrame(raf);
-      observer?.disconnect();
-      intersection?.disconnect();
-      document.removeEventListener('visibilitychange', visibility);
+      ro?.disconnect();
+      io?.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [playing, audioRef, beatTrack, seekVersion]);
 
@@ -242,7 +273,8 @@ export function MusicParticleVisualizer({
     <div
       data-testid="music-equalizer"
       data-playing={playing ? 'true' : 'false'}
-      data-renderer="organic-canvas"
+      data-renderer="fluid-silk-canvas"
+      data-audio-reactive={beatTrack?.frames.length ? 'ready' : 'ambient-only'}
       aria-hidden="true"
       className={'pointer-events-none relative mx-auto w-full overflow-hidden ' +
         (compact ? 'max-w-[268px]' : 'max-w-[318px] sm:max-w-[348px]')}
