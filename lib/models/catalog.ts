@@ -221,6 +221,20 @@ export const MODEL_CATALOG: ModelCatalog = {
       notes: `Allowlisted by GEMINI_TTS_MODEL. ${NEW_KEY} Georgian not checked.`,
     })),
     {
+      id: 'gemini-3.5-transcribe-preview',
+      label: 'Gemini 3.5 Transcribe Preview',
+      provider: 'google',
+      family: 'gemini',
+      capabilities: ['transcribe'],
+      focusModes: ['stt'],
+      transport: 'either',
+      enabled: true,
+      notes:
+        'Owner-only mic trial (`?stt=`, lib/voice/sttTrial; lib/ai/google/models STT_MODELS), never the default or a step-down. ' +
+        'Sent audio only, no prompt (lib/voice-v2v/geminiStt isTranscribeModel). The id comes from public model listings: ' +
+        'no runtime record here, not checked on Vertex AI or in Georgian.',
+    },
+    {
       id: 'gemini-2.5-flash-native-audio-latest',
       label: 'Gemini 2.5 Flash Native Audio (Live)',
       provider: 'google',
