@@ -246,6 +246,9 @@ export function MusicParticleVisualizer({
       if (visible && !document.hidden && !reducedMotion) raf = requestAnimationFrame(frame);
     }
 
+    // A seek while paused should still reveal the exact decoded-track moment
+    // rather than a fabricated clock-based beat. Idle drift remains decorative.
+    if (reactive) Object.assign(level, beatAtTime(beatTrack, audioRef?.current?.currentTime ?? 0));
     resize();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
     ro?.observe(canvas);
