@@ -65,7 +65,7 @@ export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export interface GenerationJobRow {
   id: string;
   user_id: string;
-  service_type: ProduceKind;
+  service_type: LibraryKind;
   status: JobStatus;
   current_stage: string | null;
   pct: number;
@@ -381,10 +381,16 @@ export async function recordCompletedFilm(input: {
  * upsert-by-id idempotency + service-role write (user_id is set explicitly).
  * Best-effort: returns false on any miss, never throws.
  */
+/**
+ * What a finished Library row can be: every produced kind, plus a PDF Agent G wrote in the chat (Master Task v2.0, DOC-01;
+ * generation_jobs_service_check allows it since 20261031a). A document is never produced, priced or queued.
+ */
+export type LibraryKind = ProduceKind | 'document';
+
 export async function recordCompletedAsset(input: {
   id: string;
   userId: string;
-  serviceType: ProduceKind;
+  serviceType: LibraryKind;
   url: string;
   prompt?: string | null;
   source?: string;
@@ -418,7 +424,8 @@ export async function recordCompletedAsset(input: {
       },
       { onConflict: 'id' },
     );
-    if (!error) await fireCompletionNotification(sb, input.userId, input.serviceType, input.source, input.id);
+    // A document is made while the person watches the chat, so it is never news on the bell or push.
+    if (!error && input.serviceType !== 'document') await fireCompletionNotification(sb, input.userId, input.serviceType, input.source, input.id);
     return !error;
   } catch (e) {
     reportError(e, { fn: 'recordCompletedAsset', userId: input.userId });
