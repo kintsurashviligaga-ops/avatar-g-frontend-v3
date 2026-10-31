@@ -51,6 +51,10 @@ describe('sanitizeLiveContext', () => {
     const p = sanitizeLiveContext({ code: 'handshake_timeout', relay: true, msToOpen: 212.6, msSinceOpen: 6000, bufferedBytes: 39124 });
     expect(p).toMatchObject({ code: 'handshake_timeout', relay: true, msToOpen: 213, msSinceOpen: 6000, bufferedBytes: 39124 });
     expect(sanitizeLiveContext({ code: 'handshake_timeout', relay: 'yes', bufferedBytes: -5 })).toMatchObject({ bufferedBytes: 0 });
+    // Our relay's ack and the nudges (lib/voice/relay/wire): did a nudge get a held setup through?
+    expect(sanitizeLiveContext({ code: 'handshake_nudged', relayHello: true, nudges: 2, msToAck: 801.4 }))
+      .toMatchObject({ code: 'handshake_nudged', relayHello: true, nudges: 2, msToAck: 801 });
+    expect(sanitizeLiveContext({ code: 'handshake_timeout', relayHello: 'yes', nudges: 'many' })).not.toHaveProperty('relayHello');
     expect(sanitizeLiveContext({ code: 'handshake_timeout', relay: 'yes' })).not.toHaveProperty('relay');
   });
 });

@@ -101,6 +101,20 @@ export const LIVE_RELAY_SETUP_TIMEOUT_MS = 15000;
  * ~1 s later (the avatar model in us-central1; voice in 0.1–0.3 s). 3 s is still twice the slowest healthy handshake.
  */
 export const LIVE_RELAY_READY_AFTER_OPEN_MS = 3000;
+/**
+ * A relay that says hello (lib/voice/relay/wire) acks the setup frame the moment it arrives; that deadline then replaces
+ * the one above. ⚠️ GG's avatar call 2026-10-26 14:37Z: 7 of 8 iPhone sockets opened, handed the 35 KB setup to the
+ * network (bufferedAmount 0 at the deadline) and the relay got it only with the browser's own close 3 s later: ~38 s
+ * before the avatar came up. The close frame, the next write, was what let the setup through, so without an ack by
+ * NUDGE_AFTER the browser writes a nudge (again every NUDGE_EVERY); still no ack by ACK_DEADLINE → a fresh socket at
+ * 1.8 s instead of 3 s. A setup still leaving the browser (bufferedAmount > 0: a slow uplink, not a held frame) keeps
+ * its socket up to LIVE_RELAY_SETUP_TIMEOUT_MS. Once acked the setup is with Vertex, which answers ~1.7 s later for the
+ * avatar (us-central1, via the EU relay): READY_AFTER_ACK, so a slow Vertex is no longer cut at 3 s and retried.
+ */
+export const LIVE_RELAY_NUDGE_AFTER_MS = 500;
+export const LIVE_RELAY_NUDGE_EVERY_MS = 300;
+export const LIVE_RELAY_ACK_DEADLINE_MS = 1800;
+export const LIVE_RELAY_READY_AFTER_ACK_MS = 10_000;
 /** Handshakes that ran OUT OF TIME (never refused) retried with the same setup before the plan's next step. Through the
  *  relay a held frame struck 2 attempts in a row (16:28Z), 3 in a row twice (17:54Z, 17:56Z) and 4 in a row (18:47Z,
  *  GG's avatar call: the 5th socket opened WITHOUT the UI actions, so „make a picture" had no button and the call never
@@ -228,7 +242,7 @@ export interface LiveSessionDeps {
   /** The context + mic the Live button primed inside its tap (lib/voice/livePrime). */
   takePrimed: () => PrimedLive | null;
   /** Failure telemetry (lib/voice/liveTelemetry). */
-  report: (code: LiveErrorCode | 'handshake_timeout', detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
+  report: (code: LiveErrorCode | 'handshake_timeout' | 'handshake_nudged', detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
 }
 
 export interface UseGeminiLiveSessionOptions {
@@ -1272,18 +1286,34 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     clearHandshakeTimer();
     const explicitTimeout = optsRef.current.setupTimeoutMs;
     const timeoutMs = explicitTimeout ?? (tok.relayUrl ? LIVE_RELAY_SETUP_TIMEOUT_MS : LIVE_SETUP_TIMEOUT_MS);
-    const onDeadline = () => {
-      handshakeTimerRef.current = null;
-      if (!current() || readyRef.current) return;
-      // Where it waited, read before the close below drops the socket (lib/voice/liveTelemetry).
+    // Our relay's acks and the nudges (lib/voice/relay/wire): see LIVE_RELAY_NUDGE_AFTER_MS.
+    let relayHello = false;
+    let ackedAt = 0;
+    let nudges = 0;
+    let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+    const stopNudges = () => { if (nudgeTimer) { clearTimeout(nudgeTimer); nudgeTimer = null; } };
+    const rearm = (fn: () => void, ms: number) => {
+      if (handshakeTimerRef.current) clearTimeout(handshakeTimerRef.current);
+      handshakeTimerRef.current = setTimeout(fn, Math.max(0, ms));
+    };
+    // Where it waited, read before a close drops the socket (lib/voice/liveTelemetry).
+    const handshakeContext = (): LiveFailureContext => {
       const now = Date.now();
-      const context: LiveFailureContext = {
+      return {
         locale: optsRef.current.locale || 'ka',
         mints: mintsRef.current,
         degraded: degradedRef.current,
         relay: !!tok.relayUrl,
         ...(openedAt ? { msToOpen: openedAt - startedAt, msSinceOpen: now - openedAt, bufferedBytes: session.bufferedAmount } : {}),
+        ...(relayHello ? { relayHello: true, nudges } : {}),
+        ...(ackedAt && openedAt ? { msToAck: ackedAt - openedAt } : {}),
       };
+    };
+    const onDeadline = () => {
+      handshakeTimerRef.current = null;
+      stopNudges();
+      if (!current() || readyRef.current) return;
+      const context = handshakeContext();
       sessionRef.current = null; // detach first: the close below must not be handled twice
       try { session.close(); } catch { /* noop */ }
       try { deps().report('handshake_timeout', null, context); } catch { /* telemetry never breaks the call */ }
@@ -1297,6 +1327,19 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       }
       onSessionClosed(true);
     };
+    const onAckDeadline = () => {
+      handshakeTimerRef.current = null;
+      if (!current() || readyRef.current || ackedAt) return;
+      // Still leaving the browser: a slow uplink, not a held frame. Give it the long deadline, not a fresh socket.
+      if (session.bufferedAmount > 0 && Date.now() - startedAt < timeoutMs) { rearm(onAckDeadline, 500); return; }
+      onDeadline();
+    };
+    const nudge = () => {
+      nudgeTimer = null;
+      if (!current() || readyRef.current || ackedAt) return;
+      if (session.bufferedAmount === 0 && session.nudgeRelay()) nudges += 1;
+      nudgeTimer = setTimeout(nudge, LIVE_RELAY_NUDGE_EVERY_MS);
+    };
     handshakeTimerRef.current = setTimeout(onDeadline, timeoutMs);
     const session: GeminiLiveSession = new GeminiLiveSession(
       { token: tok.token, ...(tok.relayUrl ? { relayUrl: tok.relayUrl } : {}), setupMessage: buildSetupMessage(handle) },
@@ -1307,17 +1350,35 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           // Through the relay an open socket gets the short deadline (LIVE_RELAY_READY_AFTER_OPEN_MS); the long one
           // only covers a relay that is still booting, which holds the socket in CONNECTING.
           if (tok.relayUrl && explicitTimeout === undefined && current() && handshakeTimerRef.current) {
-            clearTimeout(handshakeTimerRef.current);
-            handshakeTimerRef.current = setTimeout(onDeadline, LIVE_RELAY_READY_AFTER_OPEN_MS);
+            rearm(onDeadline, LIVE_RELAY_READY_AFTER_OPEN_MS);
           }
         },
-        onSetupComplete: () => { if (current()) onReady(session); },
+        onRelayHello: () => {
+          if (!current() || readyRef.current || ackedAt) return;
+          relayHello = true;
+          const base = openedAt || Date.now();
+          if (!nudgeTimer) nudgeTimer = setTimeout(nudge, Math.max(0, base + LIVE_RELAY_NUDGE_AFTER_MS - Date.now()));
+          if (explicitTimeout === undefined && handshakeTimerRef.current) rearm(onAckDeadline, base + LIVE_RELAY_ACK_DEADLINE_MS - Date.now());
+        },
+        onRelaySetupAck: () => {
+          if (!current() || readyRef.current || ackedAt) return;
+          ackedAt = Date.now();
+          stopNudges();
+          if (explicitTimeout === undefined && handshakeTimerRef.current) rearm(onDeadline, LIVE_RELAY_READY_AFTER_ACK_MS);
+        },
+        onSetupComplete: () => {
+          stopNudges();
+          if (!current()) return;
+          // Did a nudge get a held setup through? Every such call says so (and how long the ack took).
+          if (nudges > 0) try { deps().report('handshake_nudged', null, handshakeContext()); } catch { /* telemetry never breaks the call */ }
+          onReady(session);
+        },
         onEvent: (ev) => { if (current()) onServerEvent(ev, session); },
         onError: () => {
           // A socket that could not even be constructed reports onError with no close event to follow.
           if (!opened && current()) queueMicrotask(() => { if (current() && !opened) onSessionClosed(); });
         },
-        onClose: () => { if (current()) onSessionClosed(); },
+        onClose: () => { stopNudges(); if (current()) onSessionClosed(); },
       },
     );
     sessionRef.current = session;
