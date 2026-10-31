@@ -235,6 +235,20 @@ export const MODEL_CATALOG: ModelCatalog = {
         'no runtime record here, not checked on Vertex AI or in Georgian.',
     },
     {
+      id: 'chirp_3',
+      label: 'Chirp 3 (Cloud Speech-to-Text)',
+      provider: 'google',
+      family: 'specialty',
+      capabilities: ['transcribe'],
+      focusModes: ['stt'],
+      transport: 'vertex',
+      enabled: true,
+      notes:
+        'Owner-only mic trial (`?stt=chirp_3`, lib/voice/sttTrial; lib/ai/google/models CHIRP_STT_MODEL), never the default or a step-down. ' +
+        'Speech-to-Text V2 recognize at `us` on the Vertex project and Workload Identity token (lib/voice-v2v/chirpStt), told to expect ' +
+        'ka-GE (Preview), ru-RU and en-US; $0.016 per audio minute. No runtime record here: the API may still be off on the project.',
+    },
+    {
       id: 'gemini-2.5-flash-native-audio-latest',
       label: 'Gemini 2.5 Flash Native Audio (Live)',
       provider: 'google',

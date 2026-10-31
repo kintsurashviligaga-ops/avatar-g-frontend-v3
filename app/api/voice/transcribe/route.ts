@@ -8,12 +8,13 @@ import {
   GeminiSttError,
   type GeminiSttResult,
 } from '@/lib/voice-v2v/geminiStt';
+import { chirpCostUsd, transcribeWithChirp, type ChirpSttResult } from '@/lib/voice-v2v/chirpStt';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { effectiveAdminAllowlist } from '@/lib/auth/adminGuard';
-import { bookChatUsage } from '@/lib/services/billing/chatBudget';
-import { STT_MODELS } from '@/lib/ai/google/models';
+import { bookChatUsage, bookSpeechUsage } from '@/lib/services/billing/chatBudget';
+import { CHIRP_STT_MODEL, STT_TRIAL_MODELS } from '@/lib/ai/google/models';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,8 +31,9 @@ export const maxDuration = 30;
  *   - audio:    Blob (WAV / OGG / FLAC / MP3 / AAC / AIFF preferred; WebM / MP4 best effort — see geminiStt.ts)
  *   - language: optional 'ka-GE' | 'en-US' | 'ru-RU' | 'auto' (default 'ka-GE'). A HINT: the transcript is written in
  *               the language actually spoken, never translated (geminiStt.sttPrompt). 'auto' = no hint at all.
- *   - model:    optional, the owner's `?stt=` trial (lib/voice/sttTrial): a model from STT_MODELS, honoured for an
- *               ADMIN only and alone (no step-downs), so its timing is its own. Ignored for anyone else.
+ *   - model:    optional, the owner's `?stt=` trial (lib/voice/sttTrial): a model from STT_TRIAL_MODELS, honoured for
+ *               an ADMIN only and alone (no step-downs), so its timing is its own. Ignored for anyone else. `chirp_3` is
+ *               Cloud Speech-to-Text's Chirp 3 (lib/voice-v2v/chirpStt), told to expect Georgian, Russian and English.
  *
  * Response: { text: string, provider: string, language?: 'ka-GE' | 'en-US' | 'ru-RU', code?: 'unsupported_format' |
  * 'stt_unavailable' }. `language` is the script the transcript came back in — the browser remembers it for the next
@@ -44,7 +46,8 @@ export const maxDuration = 30;
  * and diagnostics for admins only. NOTE: the studio's dictation mic has no guest check of its own yet, so a guest's
  * recorder pass now gets this 401 — the composer should raise `myavatar:auth-required` before recording instead.
  *
- * ENGINE: Gemini on Vertex AI only (sttModel() + step-downs). A Google miss is an empty transcript, never a silent vendor
+ * ENGINE: Gemini on Vertex AI only (sttModel() + step-downs); the owner's Chirp 3 trial is Google's Speech-to-Text on
+ * the same project and token. A Google miss is an empty transcript, never a silent vendor
  * swap. The legacy Replicate / OpenAI / Deepgram cascade that AI_GOOGLE_ONLY=0 used to restore is gone (MASTER TASK v3.1,
  * audit F-04): no env value reaches it.
  */
@@ -99,6 +102,11 @@ async function bookStt(result: GeminiSttResult, userId: string | null | undefine
   await settleWithin(booking, 1_500);
 }
 
+/** Book a Chirp 3 transcription by the audio Google billed (it is not priced by tokens). Bounded like bookStt. */
+async function bookChirp(result: ChirpSttResult, userId: string | null | undefined): Promise<void> {
+  await settleWithin(bookSpeechUsage({ model: result.model, usd: chirpCostUsd(result.billedSeconds), userId: userId ?? null }), 1_500);
+}
+
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.READ);
   if (rl) return rl;
@@ -122,7 +130,7 @@ export async function POST(req: NextRequest) {
     const language: SttLanguage = langInput === 'en-US' || langInput === 'ru-RU' || langInput === 'auto' ? langInput : 'ka-GE';
     // The admin list is read only when a trial model is named (the owner's link), so no one else's dictation waits on it.
     const requestedModel = String(form.get('model') || '').trim().toLowerCase();
-    const trialModel = requestedModel && STT_MODELS.includes(requestedModel) && (await isAdminUser(user?.email))
+    const trialModel = requestedModel && STT_TRIAL_MODELS.includes(requestedModel) && (await isAdminUser(user?.email))
       ? requestedModel
       : null;
 
@@ -174,12 +182,28 @@ export async function POST(req: NextRequest) {
       }
     };
 
+    // The owner's Chirp 3 trial: Cloud Speech-to-Text decodes the container itself (WAV, FLAC, MP3, Ogg/WebM Opus …),
+    // so only a clip no one can name is refused before the call.
+    const runChirp = async (): Promise<void> => {
+      if (!gem.container) { code = 'unsupported_format'; return; }
+      try {
+        const result = await transcribeWithChirp(new Uint8Array(bytes), language);
+        await bookChirp(result, user?.id);
+        if (acceptTranscript(result.text, language)) { text = result.text; spoken = result.spoken ?? null; provider = 'chirp'; }
+      } catch (chirpErr) {
+        geminiErrMsg = chirpErr instanceof Error ? chirpErr.message : String(chirpErr);
+        code = 'stt_unavailable';
+        // eslint-disable-next-line no-console
+        console.warn('[transcribe] chirp STT failed:', chirpErr instanceof GeminiSttError ? `${chirpErr.code} ${chirpErr.status ?? ''}` : 'error');
+      }
+    };
+
     // How long the engines took, as `Server-Timing: stt;dur=…`: the composer's dictation metrics (lib/voice/
     // dictationMetrics) split each pass's round-trip into the engine's share and the network's.
     const sttStartedAt = Date.now();
     const timing = () => ({ 'Server-Timing': `stt;dur=${Date.now() - sttStartedAt}` });
-    // Gemini is the whole engine.
-    if (geminiKeyPresent) await runGemini();
+    // Gemini is the whole engine, but for the owner's Chirp 3 trial. Both need Vertex AI's project and token.
+    if (geminiKeyPresent) await (trialModel === CHIRP_STT_MODEL ? runChirp() : runGemini());
     else { code = 'stt_unavailable'; geminiErrMsg = blocker; }
 
     if (text) code = undefined;
