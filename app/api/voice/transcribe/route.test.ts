@@ -322,11 +322,13 @@ test("the owner's `?stt=chirp_3` trial: Cloud Speech-to-Text alone, booked by th
   fetchSpy.mockImplementation(async () => chirpOk('Привет, как дела?', 'ru-ru'));
   const res = await POST(upload({ language: 'ka-GE', model: 'chirp_3' }));
   expect(await res.json()).toEqual({ text: 'Привет, как дела?', provider: 'chirp', language: 'ru-RU' });
-  expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([CHIRP_URL]);
-  const sent = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as { config: unknown };
-  expect(sent.config).toEqual({ autoDecodingConfig: {}, model: 'chirp_3', languageCodes: ['ka-GE', 'ru-RU', 'en-US'] });
-  // $0.016 a minute: 3 s billed.
-  expect(bookSpeechMock).toHaveBeenCalledWith({ model: 'chirp_3', usd: 0.0008, userId: USER_ID });
+  // The site's three languages, and Georgian alone at the same time (lib/voice-v2v/chirpStt pickChirpLeg).
+  expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([CHIRP_URL, CHIRP_URL]);
+  const sent = (i: number) => (JSON.parse(String((fetchSpy.mock.calls[i]![1] as RequestInit).body)) as { config: unknown }).config;
+  expect(sent(0)).toEqual({ autoDecodingConfig: {}, model: 'chirp_3', languageCodes: ['ka-GE', 'ru-RU', 'en-US'] });
+  expect(sent(1)).toEqual({ autoDecodingConfig: {}, model: 'chirp_3', languageCodes: ['ka-GE'] });
+  // $0.016 a minute: 3 s billed on each request.
+  expect(bookSpeechMock).toHaveBeenCalledWith({ model: 'chirp_3', usd: 0.0016, userId: USER_ID });
   expect(bookMock).not.toHaveBeenCalled();
 });
 
@@ -348,8 +350,26 @@ test("Chirp 3 refused (the API off on the project): no Gemini stands in, and the
   expect(j.code).toBe('stt_unavailable');
   expect(j.diag.trialModel).toBe('chirp_3');
   expect(j.diag.geminiError).toBe('Chirp 3 STT failed (403): Cloud Speech-to-Text API has not been used in project 467145118875 before or it is disabled.');
-  expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([CHIRP_URL]);
+  expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([CHIRP_URL, CHIRP_URL]);
   expect(bookSpeechMock).not.toHaveBeenCalled();
+});
+
+test('Chirp 3 hearing Georgian as Hindi (GG 2026-10-31): the Georgian-only answer is written; with none, nothing is, and the owner is told', async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  const georgianOnly = (init?: RequestInit) =>
+    (JSON.parse(String(init?.body)) as { config: { languageCodes: string[] } }).config.languageCodes.length === 1;
+  fetchSpy.mockImplementation(async (_url: unknown, init?: RequestInit) =>
+    georgianOnly(init) ? chirpOk('გესმის ჩემი?', 'ka-GE') : chirpOk('चमेली के इसमें', 'hi-IN'));
+  let res = await POST(upload({ language: 'en-US', model: 'chirp_3' }));
+  expect(await res.json()).toEqual({ text: 'გესმის ჩემი?', provider: 'chirp', language: 'ka-GE' });
+
+  fetchSpy.mockImplementation(async (_url: unknown, init?: RequestInit) =>
+    georgianOnly(init) ? new Response('{}', { status: 500 }) : chirpOk('चमेली के इसमें', 'hi-IN'));
+  res = await POST(upload({ language: 'en-US', model: 'chirp_3', diag: true }));
+  const j = (await res.json()) as { text: string; provider: string; diag: { geminiError: string } };
+  expect(j.text).toBe('');
+  expect(j.provider).toBe('none');
+  expect(j.diag.geminiError).toBe('Chirp 3 heard hi-IN, not Georgian, Russian or English: nothing written');
 });
 
 test('Chirp 3 on an unconfigured Vertex AI: no call at all, the same reason as for Gemini', async () => {

@@ -190,6 +190,9 @@ export async function POST(req: NextRequest) {
         const result = await transcribeWithChirp(new Uint8Array(bytes), language);
         await bookChirp(result, user?.id);
         if (acceptTranscript(result.text, language)) { text = result.text; spoken = result.spoken ?? null; provider = 'chirp'; }
+        // Letters outside Georgian, Cyrillic and Latin (Georgian once came back in Devanagari) are never written; the
+        // owner's diag says what Chirp heard instead.
+        else if (result.foreign) geminiErrMsg = `Chirp 3 heard ${result.foreign}, not Georgian, Russian or English: nothing written`;
       } catch (chirpErr) {
         geminiErrMsg = chirpErr instanceof Error ? chirpErr.message : String(chirpErr);
         code = 'stt_unavailable';
