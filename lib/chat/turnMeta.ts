@@ -32,8 +32,8 @@ const CARD_PHASES = {
 } as const;
 type CardKey = keyof typeof CARD_PHASES;
 const CARD_KEYS = Object.keys(CARD_PHASES) as CardKey[];
-const URL_KEYS = ['imageUrl', 'videoUrl', 'audioUrl', 'coverUrl', 'glbUrl'] as const;
-const TEXT_KEYS = ['audioName', 'audioInfo', 'editName', 'orientation'] as const;
+const URL_KEYS = ['imageUrl', 'videoUrl', 'audioUrl', 'coverUrl', 'glbUrl', 'docUrl'] as const;
+const TEXT_KEYS = ['audioName', 'audioInfo', 'editName', 'orientation', 'docName', 'docInfo', 'docPath'] as const;
 
 /** The fields of a (lean) chat message this module saves and restores. */
 export interface TurnLike {
@@ -48,6 +48,12 @@ export interface TurnLike {
   audioUrl?: string;
   coverUrl?: string;
   glbUrl?: string;
+  /** A PDF Agent G wrote (app/api/documents/create): its signed link, its file name, its facts (pages · size). */
+  docUrl?: string;
+  docName?: string;
+  docInfo?: string;
+  /** Its storage path: the card opens it through /api/documents/file, which checks the owner and signs a fresh link. */
+  docPath?: string;
   audioName?: string;
   audioInfo?: string;
   editName?: string;
@@ -67,9 +73,9 @@ export function hasCard(m: TurnLike): boolean {
   return CARD_KEYS.some((k) => m[k] !== undefined);
 }
 
-const RESULT_KEYS = ['videoUrl', 'imageUrl', 'audioUrl', 'glbUrl'] as const;
+const RESULT_KEYS = ['videoUrl', 'imageUrl', 'audioUrl', 'glbUrl', 'docUrl'] as const;
 const resultKeyOf = (m: TurnLike) => RESULT_KEYS.find((k) => isHttps(m[k]));
-/** A delivered result's link (the clip, the picture, the song, the 3D model), or null. Its cover is not one: it goes with its song. */
+/** A delivered result's link (the clip, the picture, the song, the 3D model, the PDF), or null. Its cover is not one: it goes with its song. */
 export function resultUrlOf(m: TurnLike): string | null {
   const k = resultKeyOf(m);
   return k ? (m[k] as string) : null;
@@ -85,7 +91,7 @@ export function isResultTurn(m: TurnLike & { role?: string }): boolean {
  * are what a voice call opened from the chat reads (lib/voice/liveThread): „You: [video]" tells it a clip was made.
  */
 const RESULT_MARK: Record<(typeof RESULT_KEYS)[number], string> = {
-  videoUrl: '[video]', imageUrl: '[image]', audioUrl: '[audio]', glbUrl: '[3D model]',
+  videoUrl: '[video]', imageUrl: '[image]', audioUrl: '[audio]', glbUrl: '[3D model]', docUrl: '[PDF]',
 };
 export function resultRowText(m: TurnLike & { text?: string }): string {
   const k = resultKeyOf(m);

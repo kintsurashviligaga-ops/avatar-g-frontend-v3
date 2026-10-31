@@ -120,6 +120,18 @@ describe('a delivered result in the history (GG 2026-10-26 20:14Z: a chat opened
     expect(savedTurnText('…', {})).toBe('…');
   });
 
+  test('a PDF Agent G wrote is a result too: its link, name and facts survive a reopen', () => {
+    const PDF = 'https://x.supabase.co/storage/v1/object/sign/renders/documents/u1/2026-10-30-a.pdf?token=t';
+    const m = { role: 'assistant' as const, text: '', docUrl: PDF, docName: 'ანგარიში.pdf', docInfo: '5 გვერდი · 120 KB' };
+    expect(isResultTurn(m)).toBe(true);
+    expect(resultRowText(m)).toBe('[PDF]');
+    const back = readTurnMeta(JSON.parse(JSON.stringify(turnMetaOf(m))));
+    expect(back).toEqual({ docUrl: PDF, docName: 'ანგარიში.pdf', docInfo: '5 გვერდი · 120 KB' });
+    expect(savedTurnText('[PDF]', back)).toBe('');
+    // A blob: copy (Storage refused the file) lives on this device only and is never saved as a result.
+    expect(isResultTurn({ role: 'assistant', docUrl: 'blob:https://myavatar.ge/1' })).toBe(false);
+  });
+
   test('an Omni clip keeps its job id, so „გააგრძელე" in the chat opened again continues it; a malformed one is dropped', () => {
     expect(turnMetaOf({ videoUrl: CLIP, omniJob: JOB })).toMatchObject({ omniJob: JOB });
     expect(readTurnMeta({ v: 1, videoUrl: CLIP, omniJob: 'a b' })).toEqual({ videoUrl: CLIP });

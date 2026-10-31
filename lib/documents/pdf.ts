@@ -185,7 +185,7 @@ class Writer {
       const vl = `${fmt(v)}${c.unit ? ` ${c.unit}` : ''}`;
       const vw = this.regular.widthOfTextAtSize(vl, SIZE.chartLabel);
       this.page.drawText(vl, { x: x + barW / 2 - vw / 2, y: v >= 0 ? y + h + 3 : y - SIZE.chartLabel - 3, size: SIZE.chartLabel, font: this.regular, color: INK });
-      wrapText(c.labels[i], this.regular, SIZE.chartLabel, slot - 4).slice(0, 2).forEach((l, j) => {
+      wrapText(c.labels[i] ?? '', this.regular, SIZE.chartLabel, slot - 4).slice(0, 2).forEach((l, j) => {
         const lw = this.regular.widthOfTextAtSize(l, SIZE.chartLabel);
         this.page.drawText(l, { x: axisX + slot * i + slot / 2 - lw / 2, y: base - 12 - j * SIZE.chartLabel * LEADING, size: SIZE.chartLabel, font: this.regular, color: MUTED });
       });

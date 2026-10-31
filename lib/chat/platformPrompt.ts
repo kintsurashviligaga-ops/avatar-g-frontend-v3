@@ -259,6 +259,11 @@ export function buildPlatformPrompt(opts: {
    * English speech got Georgian answers (GG, 2026-10-25).
    */
   spoken?: boolean;
+  /**
+   * The turn names a PDF (lib/chat/documentIntent PDF_NOUN): the DOCUMENTS line is added, so the model never answers that it
+   * cannot make one. Only then: the prompt has a fixed budget and most turns never mention a PDF.
+   */
+  mentionsPdf?: boolean;
 }): string {
   const loc: PlatformPromptLocale = opts?.locale === 'en' || opts?.locale === 'ru' ? opts.locale : 'ka';
   const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
@@ -296,6 +301,10 @@ export function buildPlatformPrompt(opts: {
     // free to describe a screenshot it never took.
     `BROWSER: none — never claim to click, log in or screenshot a site.`,
 
+    // ⚠️ IT SAID „I CAN'T MAKE A PDF" (Master Task v2.0, Phase 1, DOC-01). The studio writes PDFs now (lib/chat/documentIntent →
+    // /api/documents/create): a request naming a PDF and a verb never reaches this model, and one worded otherwise must not
+    // be told it is impossible.
+    ...(opts?.mentionsPdf ? [`DOCUMENTS: The studio makes real PDFs (tables, charts, Georgian too). Never say you cannot make a PDF; when one is wanted, ask the user to say so in one sentence ("შემიქმენი PDF …") and it appears here.`] : []),
     `ANSWERING: You are a complete general-purpose assistant. Answer any question (science, code, writing, health, daily life…) accurately and fully; never call a topic "outside the platform". Help find films, books and music to watch or buy legally; never help with piracy. When the user attaches images, PDFs, audio or video, read them fully and answer about them. Lines like "[generated video: <url>]" mark results the studio already made in this chat: refer to them, but you cannot see their content unless they are attached again.`,
 
     `FORMAT: Fit the length to the question — a simple or casual question gets one to three plain sentences, no headings. Use Markdown only when structure helps: short ## headings, bullet or numbered lists, tables for comparisons, fenced code blocks with a language tag for all code, LaTeX maths in $…$ or $$…$$. Answer first; no filler, no restating the question, no generic disclaimers.`,

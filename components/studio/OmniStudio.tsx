@@ -242,6 +242,9 @@ import { DictationMetricsReadout } from '@/components/chat/composer/DictationMet
 import { typedSpeechLang } from '@/lib/voice/speechLang';
 import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 import { documentToText } from '@/lib/chat/documentText';
+import { detectDocumentIntent } from '@/lib/chat/documentIntent';
+import { documentInfo, documentReadyText, documentText, requestDocument } from '@/lib/documents/client';
+import { DocumentCard } from '@/components/studio/DocumentCard';
 import { captureVideoDigest, digestToMedia, fitDigest } from '@/lib/chat/videoDigest';
 import { defaultVideoQuestion, isVideoEditRequest } from '@/lib/chat/videoIntent';
 import { montageEditorOpenedText, multiVideoRoute, pickOneVideoText } from '@/lib/chat/chatMediaRoute';
@@ -1142,7 +1145,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A clip, an edit or an extend Omni made here: its signed job id, so „გააგრძელე" continues THAT clip by Omni's own interaction, speech and all (lib/video/omniEdit omniSourceOfJob). Persisted with the clip (here and in its saved row): the chat opened again continues it too. */ omniJob?: string; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A clip, an edit or an extend Omni made here: its signed job id, so „გააგრძელე" continues THAT clip by Omni's own interaction, speech and all (lib/video/omniEdit omniSourceOfJob). Persisted with the clip (here and in its saved row): the chat opened again continues it too. */ omniJob?: string; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; /** A PDF Agent G wrote (app/api/documents/create): its link, storage path, file name and facts (pages · size). Persisted when the link is https (a device-only blob: copy is not). */ docUrl?: string; docPath?: string; docName?: string; docInfo?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1494,7 +1497,7 @@ function dropRef(spec: RegenSpec): RegenSpec {
 }
 function leanMessages(messages: Msg[]): Msg[] {
   return messages
-    .filter((m, i) => !(i === messages.length - 1 && m.role === 'assistant' && !m.text && !m.imageUrl && !m.audioUrl && !m.videoUrl))
+    .filter((m, i) => !(i === messages.length - 1 && m.role === 'assistant' && !m.text && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.docUrl))
     .slice(-HISTORY_MAX)
     .map((m) => ({
       role: m.role,
@@ -1507,6 +1510,8 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.filmQa ? { filmQa: m.filmQa } : {}),
       ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
+      // A PDF's card: kept only when its link outlives this page (a blob: copy is gone after a reload).
+      ...(m.docUrl?.startsWith('https://') ? { docUrl: m.docUrl, ...(m.docPath ? { docPath: m.docPath } : {}), ...(m.docName ? { docName: m.docName } : {}), ...(m.docInfo ? { docInfo: m.docInfo } : {}) } : {}),
       ...(m.researchId ? { researchId: m.researchId } : {}),
       ...(m.musicDraft ? { musicDraft: m.musicDraft } : {}),
       ...(m.notice ? { notice: true } : {}),
@@ -6734,6 +6739,35 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (!montage && !remix && !extract && !run && !analyze) { toast.error(trackTooBigText(locale)); return; }
       }
     }
+    // ── A PDF (Master Task v2.0, Phase 1, DOC-01) ── „შემიქმენი 5-გვერდიანი ქართული PDF ანგარიში…" is a FILE: the chat model
+    // has no file tool and used to answer that it cannot make PDFs. /api/documents/create writes it (Gemini writes, pdf-lib
+    // draws it with a Georgian font) and the bubble is its card: Open, Download, Share, saved with the chat. A turn with
+    // files attached is left to the chat: those files are material to read, which this route does not see.
+    // Read before every other route: „შემიქმენი" and „გრაფიკით" in it would otherwise read as an order for a picture.
+    const docAsk = mode === 'chat' && text && !opts?.confirmed && !opts?.target && !opts?.fromLive && !attachments.length ? detectDocumentIntent(text) : null;
+    if (docAsk) {
+      const docLocale = locale === 'en' || locale === 'ru' ? locale : 'ka';
+      const lastReply = docAsk.fromLastReply
+        ? [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && !m.notice && m.text.trim().length > 40)?.text
+        : undefined;
+      gatePendingRef.current = null;
+      const docId = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', id: docId, text: documentText('working', docLocale), notice: true }]);
+      setInput(''); stopDictationEcho();
+      persistChatTurn('user', text);
+      setBusy(true);
+      const made = await requestDocument({ prompt: text, locale: docLocale, ...(lastReply ? { source: lastReply } : {}) });
+      setBusy(false);
+      if (made.ok) {
+        updateBubble(docId, {
+          text: documentReadyText(made, docLocale), notice: false, docUrl: made.url, docName: made.fileName,
+          docInfo: documentInfo(made.pages, made.bytes, docLocale), ...(made.path ? { docPath: made.path } : {}),
+        });
+      } else {
+        updateBubble(docId, { text: made.message ?? documentText(made.reason, docLocale), notice: true });
+      }
+      return;
+    }
     // THE STUDIO'S OWN CONTROLS, IN ANY TOOL (GG's plan 2026-10-17 11:28Z, item 1; lib/chat/panelCommand). „გახსენი ვიდეო",
     // „გავაკეთოთ ავატარი", „ჩაკეტე პანელი", „დაბრუნდი ჩატში", typed or dictated: read before anything takes the words as a
     // prompt. The composer stays in the last result's tool and every open-route below runs in plain chat only, so after a
@@ -6999,7 +7033,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (opts?.liveOrder) return opts.liveOrder;
       if (chatPend) return chatPend.mode;
       // A catalog service with its own tool („make a product ad…") is not a picture: Agent G opens that tool below.
-      if (!isGenerativeCommand(text) || detectStudioIntent(text) || routeAgentIntent(text)) return null;
+      // A PDF („…ცხრილით და ერთი გრაფიკით") is a file, not a picture of a chart: the document branch below makes it.
+      if (!isGenerativeCommand(text) || detectStudioIntent(text) || routeAgentIntent(text) || detectDocumentIntent(text)) return null;
       const lane = resolveGenerativeLane(text, detectIntent(text));
       if (lane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) return 'image';
       if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
@@ -7847,7 +7882,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     inputSourceRef.current = 'text'; // reset for the next turn (the box is now empty)
     persistChatTurn('user', text, attachments); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     await streamChat([...messages, userMsg]);
-  }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, proposeClip, proposeEdit, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
+  }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, proposeClip, proposeEdit, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith, updateBubble]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -10620,6 +10655,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       );
                     })()}
                   </div>
+                )}
+                {m.role === 'assistant' && m.docUrl && m.docName && (
+                  <DocumentCard url={m.docUrl} name={m.docName} locale={locale === 'en' || locale === 'ru' ? locale : 'ka'}
+                    {...(m.docPath ? { path: m.docPath } : {})} {...(m.docInfo ? { info: m.docInfo } : {})}
+                    {...(m.docUrl.startsWith('https://') ? { onShare: () => void share(m.docUrl!, m.docName!) } : {})} />
                 )}
                 {m.role === 'assistant' && m.audioJob && m.audioUrl && (
                   <div className="mt-3 space-y-2" data-testid="agent-audio-result">

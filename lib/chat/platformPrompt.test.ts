@@ -472,3 +472,16 @@ describe('buildPlatformPrompt — the self-introduction is in the reply language
     if (locale !== 'en') expect(p).not.toContain("I'm Agent G");
   });
 });
+
+describe('buildPlatformPrompt — PDFs (Master Task v2.0, DOC-01)', () => {
+  it.each(LOCALES)('%s: a turn that names a PDF is told the studio makes PDFs, never to claim it cannot', (loc) => {
+    expect(build(loc)).not.toMatch(/^DOCUMENTS:/m);
+    const p = buildPlatformPrompt({ locale: loc, now: NOW, mentionsPdf: true, veoAvatar: true });
+    expect(p.length).toBeLessThanOrEqual(5300);
+    expect(p).toMatch(/^DOCUMENTS: The studio makes real PDFs/m);
+    expect(p).toMatch(/Never say you cannot make a PDF/);
+    // No line may tell the model PDFs or files are beyond it.
+    const others = p.split('\n').filter((l) => !l.startsWith('DOCUMENTS:')).join('\n');
+    expect(others).not.toMatch(/(?:cannot|can't|unable to)\s+(?:create|make|generate|export)\s+(?:a\s+)?(?:pdf|file|document)s?/i);
+  });
+});

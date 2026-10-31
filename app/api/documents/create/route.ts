@@ -1,7 +1,7 @@
 /**
  * POST /api/documents/create — Agent G writes a document and returns it as a real PDF file (Master Task v2.0, Phase 1).
  *
- *   body  { prompt: string, locale?: 'ka' | 'en' | 'ru' }
+ *   body  { prompt: string, locale?: 'ka' | 'en' | 'ru', source?: string }   source: the chat reply that „make THIS a PDF" means
  *   200   { ok: true, url, fileName, title, pages, bytes, expiresAt }      the PDF is in Storage behind a signed link
  *   200   { ok: true, url: null, data: <base64>, … }                      Storage refused it: the bytes come back inline
  *   400 invalid · 401 signed out · 429 limit · 502 not_written (Gemini gave no valid document)
@@ -34,6 +34,7 @@ const WEEK_SEC = 604_800;
 const bodySchema = z.object({
   prompt: z.string().trim().min(3).max(4000),
   locale: z.enum(DOCUMENT_LOCALES).optional(),
+  source: z.string().trim().max(20_000).optional(),
 });
 
 const MESSAGES = {
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'invalid', issues: parsed.error.issues.slice(0, 3) }, { status: 400 });
-  const { prompt } = parsed.data;
+  const { prompt, source } = parsed.data;
   const locale = parsed.data.locale ?? 'ka';
 
   // Counted up front so two requests at once cannot both slip under the daily cap; given back when nothing was made.
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (daily) return daily;
 
   try {
-    const spec = await composeDocument(prompt, locale, req.signal);
+    const spec = await composeDocument(prompt, locale, req.signal, source || undefined);
     if (!spec) {
       await refundRateLimitByKey(user.id, RATE_LIMITS.DOCUMENT_DAILY);
       return NextResponse.json({ error: 'not_written', message: MESSAGES.not_written[locale] }, { status: 502 });
