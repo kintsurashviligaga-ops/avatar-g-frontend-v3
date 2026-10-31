@@ -362,9 +362,15 @@ export interface UseGeminiLiveSessionResult {
   avatar: string | null;
   /** Why the server opened a voice call instead of the avatar that was asked for. */
   avatarRefused: LiveAvatarRefusal | null;
+  /**
+   * Whether this account may turn the avatar on at all (the server's answer; lib/voice/liveAudience): false = keep its
+   * switch hidden; null = no answer yet (an older route, or before the first mint).
+   */
+  avatarAllowed: boolean | null;
 }
 
-export type LiveAvatarRefusal = 'disabled' | 'daily_limit';
+export type LiveAvatarRefusal = 'disabled' | 'audience' | 'daily_limit';
+const AVATAR_REFUSALS: readonly LiveAvatarRefusal[] = ['disabled', 'audience', 'daily_limit'];
 
 // ─── Pure helpers (exported for tests) ────────────────────────────────────────
 
@@ -645,6 +651,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const [degraded, setDegraded] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [avatarRefused, setAvatarRefused] = useState<LiveAvatarRefusal | null>(null);
+  const [avatarAllowed, setAvatarAllowed] = useState<boolean | null>(null);
   const [activity, dispatchActivity] = useReducer(liveActivityReducer, [] as LiveActivityItem[]);
 
   // Lifecycle
@@ -1015,7 +1022,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     } finally {
       if (mintTimer) clearTimeout(mintTimer);
     }
-    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown; avatar?: unknown; avatarRefused?: unknown };
+    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown; relayUrl?: unknown; avatar?: unknown; avatarRefused?: unknown; avatarAllowed?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
     if (!res.ok || !token) {
       if (res.status === 401) return { ok: false, code: 'auth' };
@@ -1037,7 +1044,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     if (j.actions === false) actionsOffRef.current = true;
     avatarSessionRef.current = typeof j.avatar === 'string' && j.avatar ? j.avatar : null;
     setAvatar(avatarSessionRef.current);
-    setAvatarRefused(j.avatarRefused === 'disabled' || j.avatarRefused === 'daily_limit' ? j.avatarRefused : null);
+    setAvatarRefused((AVATAR_REFUSALS as readonly unknown[]).includes(j.avatarRefused) ? (j.avatarRefused as LiveAvatarRefusal) : null);
+    if (typeof j.avatarAllowed === 'boolean') setAvatarAllowed(j.avatarAllowed);
     return { ok: true };
   }, [deps]);
 
@@ -1954,7 +1962,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
     start, stop, retry, interrupt, renew, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
-    avatar, avatarRefused, audioOutput,
+    avatar, avatarRefused, avatarAllowed, audioOutput,
   };
 }
 

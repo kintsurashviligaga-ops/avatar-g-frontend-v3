@@ -1699,6 +1699,19 @@ test('avatar: the mint asks for it, its fMP4 goes to onVideo, its words mean spe
   unmount();
 });
 
+test('the server says whether this account may turn the avatar on; an older route says nothing (null)', async () => {
+  let h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), avatar: null, avatarRefused: 'audience', avatarAllowed: false }));
+  let c = await connected({ avatar: 'Kira', deps: h.deps });
+  expect(c.result.current.avatarRefused).toBe('audience');
+  expect(c.result.current.avatarAllowed).toBe(false);
+  c.unmount();
+  h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), avatar: null }));
+  c = await connected({ deps: h.deps });
+  expect(c.result.current.avatarAllowed).toBeNull();
+  expect(c.result.current.avatarRefused).toBeNull();
+  c.unmount();
+});
+
 test('avatar refused by the server: a voice call, and the reason is surfaced', async () => {
   const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), avatar: null, avatarRefused: 'daily_limit' }));
   const onAvatarInterrupted = jest.fn();

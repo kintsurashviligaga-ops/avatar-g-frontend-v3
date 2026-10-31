@@ -5,8 +5,8 @@ opens Vertex AI with its own Cloud Run service account and pipes frames both way
 The rules live in `lib/voice/relay` (ticket, setup lock, allowed frames, limits, one log line per session) and are
 unit-tested there.
 
-Status: deployed as `live-relay` in us-central1 (2026-10-25), min-instances 1, behind `LIVE_RELAY_URL` (Live is open to
-admins only, `LIVE_AUDIENCE`).
+Status: deployed as `live-relay` in us-central1 (2026-10-25), min-instances 1, behind `LIVE_RELAY_URL` (who may open Live:
+`LIVE_AUDIENCE`; who may turn the talking avatar on: `LIVE_AVATAR_AUDIENCE`, see `lib/voice/liveAudience`).
 
 ## Region
 

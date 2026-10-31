@@ -68,8 +68,11 @@ let mockRelayUrl: string | undefined;
 const mockMint = jest.fn();
 let mockAudienceAllows = true;
 const mockAudience = jest.fn();
+let mockAvatarAccess = { allowed: true, dailySessions: 30 };
+const mockAvatarAudience = jest.fn();
 jest.mock('../../../../lib/voice/liveAudience', () => ({
   liveAudienceAllows: async (...a: unknown[]) => { mockAudience(...a); return mockAudienceAllows; },
+  liveAvatarAccess: async (...a: unknown[]) => { mockAvatarAudience(...a); return mockAvatarAccess; },
 }));
 jest.mock('../../../../lib/voice/liveMint', () => ({
   LIVE_TRANSPORT_UNAVAILABLE: 'no Live transport',
@@ -135,6 +138,7 @@ beforeEach(() => {
   budgetMock.mockResolvedValue(true);
   mockMinterPresent = true;
   mockAudienceAllows = true;
+  mockAvatarAccess = { allowed: true, dailySessions: 30 };
   mockRelayUrl = undefined;
   mintSpy.mockReset().mockImplementation(async () =>
     new Response(JSON.stringify({ name: 'auth_tokens/eph-123' }), { status: 200 }));
@@ -744,7 +748,8 @@ describe('the talking avatar (lib/voice/liveAvatar)', () => {
     expect(ttl).toBeLessThanOrEqual(6 * 60_000 + 1000);
     expect(j).toMatchObject({ avatar: 'Kira', model: 'models/gemini-3.8-live', setupMessage: { setup: { avatarConfig: { avatarName: 'Kira' } } } });
     expect(j.avatarRefused).toBeUndefined();
-    expect(perUserMock).toHaveBeenCalledWith('user-1', RATE_LIMITS.LIVE_AVATAR_USER);
+    expect(perUserMock).toHaveBeenCalledWith('user-1', { ...RATE_LIMITS.LIVE_AVATAR_USER, maxRequests: 30 });
+    expect(j.avatarAllowed).toBe(true);
     expect(logMock).toHaveBeenCalledWith('info', 'voice.live.minted', expect.objectContaining({ avatar: 'Kira' }));
   });
 
@@ -771,7 +776,7 @@ describe('the talking avatar (lib/voice/liveAvatar)', () => {
     expect(avatarSetup(0).generationConfig.responseModalities).toEqual(['AUDIO']);
 
     process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
-    perUserMock.mockImplementation(async (_id, cfg) => (cfg === RATE_LIMITS.LIVE_AVATAR_USER ? NextResponse.json({}, { status: 429 }) : null));
+    perUserMock.mockImplementation(async (_id, cfg) => (cfg.keyPrefix === RATE_LIMITS.LIVE_AVATAR_USER.keyPrefix ? NextResponse.json({}, { status: 429 }) : null));
     j = await (await POST(post({ avatar: 'Kira' }))).json();
     expect(j).toMatchObject({ avatar: null, avatarRefused: 'daily_limit' });
     expect(avatarSetup(1).avatarConfig).toBeUndefined();
@@ -781,5 +786,33 @@ describe('the talking avatar (lib/voice/liveAvatar)', () => {
     expect(j.avatar).toBeNull();
     expect(j.avatarRefused).toBeUndefined();
     expect(avatarSetup(2).avatarConfig).toBeUndefined();
+  });
+
+  test('its own audience (GG 2026-10-31): a call open to everyone does not open the avatar; refused quietly, switch hidden', async () => {
+    process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
+    mockAvatarAccess = { allowed: false, dailySessions: 0 };
+    let j = await (await POST(post({ avatar: 'Kira' }))).json();
+    expect(mockAvatarAudience).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }));
+    expect(j).toMatchObject({ avatar: null, avatarRefused: 'audience', avatarAllowed: false, model: 'models/gemini-2.5-flash-native-audio-latest' });
+    expect(avatarSetup(0).avatarConfig).toBeUndefined();
+    expect(perUserMock).not.toHaveBeenCalledWith('user-1', expect.objectContaining({ keyPrefix: RATE_LIMITS.LIVE_AVATAR_USER.keyPrefix }));
+
+    // A voice call that asked for nothing still learns whether the switch may show.
+    j = await (await POST(post({}))).json();
+    expect(j).toMatchObject({ avatar: null, avatarAllowed: false });
+    expect(j.avatarRefused).toBeUndefined();
+
+    // Opened to everyone: that account's own daily allowance is the cap.
+    mockAvatarAccess = { allowed: true, dailySessions: 1 };
+    j = await (await POST(post({ avatar: 'Kira' }))).json();
+    expect(j).toMatchObject({ avatar: 'Kira', avatarAllowed: true });
+    expect(perUserMock).toHaveBeenCalledWith('user-1', { ...RATE_LIMITS.LIVE_AVATAR_USER, maxRequests: 1 });
+  });
+
+  test('switched off for the build: the audience is not even asked, and no switch', async () => {
+    delete process.env.NEXT_PUBLIC_LIVE_AVATAR;
+    const j = await (await POST(post({}))).json();
+    expect(mockAvatarAudience).not.toHaveBeenCalled();
+    expect(j.avatarAllowed).toBe(false);
   });
 });
