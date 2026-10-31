@@ -17,8 +17,15 @@ import 'server-only';
  * and the service account may call it (`speech.recognizers.recognize`, in the Cloud Speech Client role): the owner sees
  * Google's reason in the mic's warning (the route's admin diagnostics).
  *
+ * ⚠️ GEORGIAN CAME BACK IN HINDI LETTERS (GG, iPhone, 2026-10-31 06:49Z): with the three languages listed, Russian and
+ * English were right but Georgian speech came back as Devanagari („चमेली के इसमें“). The list is a preference, not a
+ * fence (the Chirp 3 page: "focus the model's resources on the most probable languages"), and Georgian is Preview. So
+ * every clip is ALSO sent with Georgian alone, at the same time (no extra wait): Cyrillic or Latin from the listed
+ * request is Russian or English and wins; otherwise the Georgian-only answer wins when it is in Georgian letters. A
+ * script outside the three is never written into the box (see pickChirpLeg). Both requests are billed and booked.
+ *
  * Price: $0.016 per minute of audio, counted in one-second steps (Speech-to-Text pricing, V2 standard models, read
- * 2026-10-30); the route books it from the duration Google says it billed.
+ * 2026-10-30); the route books it from the duration Google says it billed, summed over both requests.
  */
 import { getVertexAccessToken, vertexAiConfig } from '@/lib/veo/vertexAuth';
 import { CHIRP_STT_MODEL } from '@/lib/ai/google/models';
@@ -38,6 +45,7 @@ const CHIRP_TIMEOUT_MS = 20_000;
 
 /** The site's three dictation languages, the one asked for first. 'auto' and anything unknown start with Georgian. */
 const SITE_LANGUAGES = ['ka-GE', 'ru-RU', 'en-US'] as const;
+const GEORGIAN = 'ka-GE';
 
 export function chirpLanguageCodes(language: string): string[] {
   const first = (SITE_LANGUAGES as readonly string[]).includes(language) ? language : 'ka-GE';
@@ -71,8 +79,61 @@ export interface ChirpSttResult {
   model: string;
   /** ISO 639-1 code of the language Chirp heard (`ka`, `ru`, `en`), when it named one. */
   spoken?: string;
-  /** Seconds Google billed; the clip's own length when Google said nothing, a full minute when that is unknown too. */
+  /** Seconds Google billed over both requests; a request's own clip length when Google said nothing, a full minute when that is unknown too. */
   billedSeconds: number;
+  /** Which request's answer this is: the site's three languages listed, or Georgian alone. */
+  leg: ChirpLeg;
+  /** The language Chirp named (or `other script`) when its only answer was in letters outside ka/ru/en and was dropped. */
+  foreign?: string;
+}
+
+export type ChirpLeg = 'listed' | 'georgian';
+
+/** The writing system a transcript is in: one of the site's three, another (Devanagari, Armenian …), or no letters. */
+export type ChirpScript = 'georgian' | 'cyrillic' | 'latin' | 'other' | 'none';
+
+export function chirpScript(text: string): ChirpScript {
+  const n = (re: RegExp) => (text.match(re) || []).length;
+  const georgian = n(/[\u10A0-\u10FF\u1C90-\u1CBF\u2D00-\u2D2F]/g);
+  const cyrillic = n(/[\u0400-\u04FF]/g);
+  const latin = n(/[A-Za-z\u00C0-\u024F]/g);
+  const other = n(/\p{L}/gu) - georgian - cyrillic - latin;
+  const top = Math.max(georgian, cyrillic, latin, other);
+  if (top === 0) return 'none';
+  if (other === top) return 'other';
+  if (georgian === top) return 'georgian';
+  return cyrillic === top ? 'cyrillic' : 'latin';
+}
+
+/** One request's parsed answer. */
+interface LegAnswer {
+  text: string;
+  spoken?: string;
+  /** Google's languageCode as given (`ka-ge`, `hi-in` …). */
+  heard?: string;
+  billedSeconds: number;
+}
+
+/**
+ * Which answer goes into the box. `listed` = the request with the site's three languages, `georgian` = Georgian alone;
+ * either may have failed (undefined).
+ *   1. Cyrillic or Latin from the listed request: Russian or English speech, written as spoken.
+ *   2. Georgian letters from the Georgian-only request: Georgian speech (preferred over the listed request's Georgian,
+ *      since that request was told to expect Georgian only).
+ *   3. The listed request in Georgian, or silence, when the Georgian-only request has nothing better.
+ *   4. The Georgian-only request when the listed one failed, unless it is in a foreign script too.
+ * Otherwise nothing is written (the Hindi letters above): `foreign` says what was dropped. null = both failed.
+ */
+export function pickChirpLeg(listed: LegAnswer | undefined, georgian: LegAnswer | undefined): { answer: LegAnswer; leg: ChirpLeg; foreign?: string } | null {
+  const ls = listed ? chirpScript(listed.text) : null;
+  const gs = georgian ? chirpScript(georgian.text) : null;
+  if (listed && (ls === 'cyrillic' || ls === 'latin')) return { answer: listed, leg: 'listed' };
+  if (georgian && gs === 'georgian') return { answer: georgian, leg: 'georgian' };
+  if (listed && ls !== 'other') return { answer: listed, leg: 'listed' };
+  if (!listed && georgian && gs !== 'other') return { answer: georgian, leg: 'georgian' };
+  const dropped = listed ?? georgian;
+  if (!dropped) return null;
+  return { answer: { ...dropped, text: '', spoken: undefined }, leg: listed ? 'listed' : 'georgian', foreign: dropped.heard || 'other script' };
 }
 
 type RecognizeResponse = {
@@ -125,31 +186,55 @@ export async function transcribeWithChirp(audio: Uint8Array, language: string): 
       signal: AbortSignal.timeout(CHIRP_TIMEOUT_MS),
     });
 
-  let res: Response;
-  try {
-    const codes = chirpLanguageCodes(language);
-    res = await recognize(codes);
-    // Several languages in one request is documented for chirp_3, but not whether a Preview one (ka-GE) may sit with
-    // GA ones: a 400 is asked once more with the first language alone. Google bills only audio it processed.
-    if (res.status === 400) res = await recognize(codes.slice(0, 1));
-  } catch (err) {
-    throw fail(`Chirp 3 network error: ${err instanceof Error ? err.name : 'error'}`, 'network');
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw fail(`Chirp 3 STT failed (${res.status}): ${googleReason(body)}`, classifySttStatus(res.status, body), res.status);
-  }
+  const ask = async (languageCodes: string[]): Promise<LegAnswer> => {
+    let res: Response;
+    try {
+      res = await recognize(languageCodes);
+    } catch (err) {
+      throw fail(`Chirp 3 network error: ${err instanceof Error ? err.name : 'error'}`, 'network');
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw fail(`Chirp 3 STT failed (${res.status}): ${googleReason(body)}`, classifySttStatus(res.status, body), res.status);
+    }
+    const data = (await res.json().catch(() => ({}))) as RecognizeResponse;
+    const results = Array.isArray(data.results) ? data.results : [];
+    const text = results
+      .map((r) => r.alternatives?.[0]?.transcript?.trim() ?? '')
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const heard = results.find((r) => typeof r.languageCode === 'string' && r.languageCode)?.languageCode;
+    // Each request is billed in whole seconds, so each is rounded up before the two are added.
+    const billedSeconds = Math.ceil(durationSeconds(data.metadata?.totalBilledDuration) ?? clipSeconds ?? CHIRP_SYNC_MAX_SECONDS);
+    return { text, ...(heard ? { spoken: heard.slice(0, 2).toLowerCase(), heard } : {}), billedSeconds };
+  };
 
-  const data = (await res.json().catch(() => ({}))) as RecognizeResponse;
-  const results = Array.isArray(data.results) ? data.results : [];
-  const text = results
-    .map((r) => r.alternatives?.[0]?.transcript?.trim() ?? '')
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const heard = results.find((r) => typeof r.languageCode === 'string' && r.languageCode)?.languageCode;
-  const spoken = heard ? heard.slice(0, 2).toLowerCase() : null;
-  const billedSeconds = durationSeconds(data.metadata?.totalBilledDuration) ?? clipSeconds ?? CHIRP_SYNC_MAX_SECONDS;
-  return { text, model: CHIRP_STT_MODEL, ...(spoken ? { spoken } : {}), billedSeconds };
+  const codes = chirpLanguageCodes(language);
+  const askListed = async (): Promise<LegAnswer> => {
+    try {
+      return await ask(codes);
+    } catch (err) {
+      // Several languages in one request is documented for chirp_3, but not whether a Preview one (ka-GE) may sit with
+      // GA ones: a 400 is asked once more with the first language alone (Georgian first: the other request is that).
+      // Google bills only audio it processed.
+      if (err instanceof GeminiSttError && err.status === 400 && codes[0] !== GEORGIAN) return ask(codes.slice(0, 1));
+      throw err;
+    }
+  };
+  const [listed, georgian] = await Promise.allSettled([askListed(), ask([GEORGIAN])]);
+  const ok = (r: PromiseSettledResult<LegAnswer>) => (r.status === 'fulfilled' ? r.value : undefined);
+  const picked = pickChirpLeg(ok(listed), ok(georgian));
+  if (!picked) throw listed.status === 'rejected' ? listed.reason : (georgian as PromiseRejectedResult).reason;
+  const billedSeconds = [listed, georgian].reduce((sum, r) => sum + (ok(r)?.billedSeconds ?? 0), 0);
+  const { text, spoken } = picked.answer;
+  return {
+    text,
+    model: CHIRP_STT_MODEL,
+    ...(spoken ? { spoken } : {}),
+    billedSeconds,
+    leg: picked.leg,
+    ...(picked.foreign ? { foreign: picked.foreign } : {}),
+  };
 }

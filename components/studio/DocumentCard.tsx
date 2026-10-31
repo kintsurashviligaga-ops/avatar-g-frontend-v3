@@ -4,7 +4,8 @@
  * A PDF Agent G wrote, in the chat (Master Task v2.0, Phase 1, DOC-01): its name, its facts, Open, Download and Share.
  * Open shows the file in the browser's own PDF viewer in a new tab; Download saves it under its own name.
  */
-import { Download, ExternalLink, FileText, Share2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Download, ExternalLink, FileText, Loader2, Share2 } from 'lucide-react';
 import { documentLinks } from '@/lib/documents/client';
 
 const WORDS = {
@@ -51,6 +52,29 @@ export function DocumentCard({ url, path, name, info, locale, onShare }: {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+const SECONDS = { ka: 'წმ', en: 's', ru: 'с' } as const;
+
+/**
+ * The bubble while Agent G writes the PDF (GG 2026-10-31 11:23Z: after sending, nothing showed the work had started).
+ * A spinner, the working line and the seconds so far, announced politely to screen readers; no reply buttons under it.
+ */
+export function DocumentWorking({ text, locale, startedAt }: { text: string; locale: 'ka' | 'en' | 'ru'; startedAt?: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  const [start] = useState(() => startedAt ?? Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.max(0, Math.floor((now - start) / 1000));
+  return (
+    <div className="flex items-center gap-2.5 text-app-text" role="status" aria-live="polite" data-testid="document-working">
+      <Loader2 size={18} aria-hidden="true" className="shrink-0 animate-spin text-app-accent motion-reduce:animate-none" />
+      <span className="text-[15px]">{text}</span>
+      <span className="text-xs tabular-nums text-app-muted" data-testid="document-working-secs">{secs} {SECONDS[locale] ?? SECONDS.ka}</span>
     </div>
   );
 }
