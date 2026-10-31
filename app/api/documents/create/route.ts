@@ -2,7 +2,8 @@
  * POST /api/documents/create — Agent G writes a document and returns it as a real PDF file (Master Task v2.0, Phase 1).
  *
  *   body  { prompt: string, locale?: 'ka' | 'en' | 'ru', source?: string }   source: the chat reply that „make THIS a PDF" means
- *   200   { ok: true, url, fileName, title, pages, bytes, expiresAt }      the PDF is in Storage behind a signed link
+ *   200   { ok: true, url, path, filed, fileName, title, pages, bytes, expiresAt }   in Storage behind a signed link;
+ *                                                                        filed: it is also in the Library
  *   200   { ok: true, url: null, data: <base64>, … }                      Storage refused it: the bytes come back inline
  *   400 invalid · 401 signed out · 429 limit · 502 not_written (Gemini gave no valid document)
  *
@@ -19,6 +20,7 @@ import { z } from 'zod';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { checkRateLimit, checkRateLimitByKey, refundRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { composeDocument } from '@/lib/documents/compose';
 import { renderDocumentPdf } from '@/lib/documents/pdf';
 import { DOCUMENT_LOCALES, documentFileName } from '@/lib/documents/spec';
@@ -73,8 +75,13 @@ export async function POST(req: NextRequest) {
     const url = await uploadBufferAndSign(DOCUMENT_BUCKET, path, buf, 'application/pdf', WEEK_SEC);
     const meta = { ok: true, fileName, title: spec.title, pages: pdf.pages, bytes: buf.byteLength, locale: spec.locale };
     if (!url) return NextResponse.json({ ...meta, url: null, data: buf.toString('base64') }, { headers: { 'Cache-Control': 'no-store' } });
+    // Filed in the Library (DOC-01: it survives a refresh and is found again there). The Library re-signs this link on
+    // every read. A refused write (the 20261031a CHECK not applied yet, or the database down) leaves the PDF in the chat.
+    const filed = await recordCompletedAsset({
+      id: randomUUID(), userId: user.id, serviceType: 'document', url, prompt: spec.title, source: 'agent-g-documents', storageVerified: true,
+    }).catch(() => false);
     return NextResponse.json(
-      { ...meta, url, path, expiresAt: new Date(Date.now() + WEEK_SEC * 1000).toISOString() },
+      { ...meta, url, path, filed, expiresAt: new Date(Date.now() + WEEK_SEC * 1000).toISOString() },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (e) {

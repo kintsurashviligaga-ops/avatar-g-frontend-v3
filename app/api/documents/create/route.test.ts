@@ -16,6 +16,8 @@ jest.mock('../../../../lib/documents/compose', () => ({ composeDocument: (...a: 
 const upload = jest.fn();
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadBufferAndSign: (...a: unknown[]) => upload(...a) }));
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
+const record = jest.fn();
+jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedAsset: (...a: unknown[]) => record(...a) }));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
@@ -35,6 +37,7 @@ beforeEach(() => {
   getUser.mockResolvedValue({ id: 'user-1' });
   compose.mockResolvedValue(SPEC);
   upload.mockResolvedValue('https://storage.example/signed.pdf');
+  record.mockResolvedValue(true);
 });
 
 describe('POST /api/documents/create', () => {
@@ -69,10 +72,27 @@ describe('POST /api/documents/create', () => {
     expect(refund).not.toHaveBeenCalled();
   });
 
+  it('files the PDF in the Library as the caller\'s document', async () => {
+    const body = await (await POST(req({ prompt: 'შემიქმენი PDF' }))).json();
+    expect(body.filed).toBe(true);
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user-1', serviceType: 'document', url: 'https://storage.example/signed.pdf', prompt: 'ქართული ანგარიში',
+      source: 'agent-g-documents', storageVerified: true,
+    }));
+  });
+
+  it('still answers with the PDF when the Library refuses the row', async () => {
+    record.mockRejectedValue(new Error('generation_jobs_service_check'));
+    const res = await POST(req({ prompt: 'შემიქმენი PDF' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, url: 'https://storage.example/signed.pdf', filed: false });
+  });
+
   it('hands the bytes back inline when Storage refuses them', async () => {
     upload.mockResolvedValue(null);
     const body = await (await POST(req({ prompt: 'შემიქმენი PDF' }))).json();
     expect(body.url).toBeNull();
+    expect(record).not.toHaveBeenCalled();
     expect(Buffer.from(body.data, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
