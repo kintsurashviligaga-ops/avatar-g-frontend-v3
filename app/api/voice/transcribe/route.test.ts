@@ -369,7 +369,17 @@ test('Chirp 3 hearing Georgian as Hindi (GG 2026-10-31): the Georgian-only answe
   const j = (await res.json()) as { text: string; provider: string; diag: { geminiError: string } };
   expect(j.text).toBe('');
   expect(j.provider).toBe('none');
-  expect(j.diag.geminiError).toBe('Chirp 3 heard hi-IN, not Georgian, Russian or English: nothing written');
+  expect(j.diag.geminiError).toBe('Chirp 3 gave no readable Georgian, Russian or English (heard hi-IN): nothing written');
+});
+
+test('Chirp 3 hearing Georgian as Latin noise (GG 2026-10-31 11:58Z, „G 7 6 0 0 0 0 0“): the Georgian-only answer is written', async () => {
+  mockUser = { id: USER_ID, email: 'admin@example.com' };
+  const georgianOnly = (init?: RequestInit) =>
+    (JSON.parse(String(init?.body)) as { config: { languageCodes: string[] } }).config.languageCodes.length === 1;
+  fetchSpy.mockImplementation(async (_url: unknown, init?: RequestInit) =>
+    georgianOnly(init) ? chirpOk('გესმის ჩემი?', 'ka-GE') : chirpOk('G 7 6 0 0 0 0 0', 'en-US'));
+  const res = await POST(upload({ language: 'ka-GE', model: 'chirp_3' }));
+  expect(await res.json()).toEqual({ text: 'გესმის ჩემი?', provider: 'chirp', language: 'ka-GE' });
 });
 
 test('Chirp 3 on an unconfigured Vertex AI: no call at all, the same reason as for Gemini', async () => {
