@@ -24,6 +24,13 @@ import 'server-only';
  * request is Russian or English and wins; otherwise the Georgian-only answer wins when it is in Georgian letters. A
  * script outside the three is never written into the box (see pickChirpLeg). Both requests are billed and booked.
  *
+ * ⚠️ AND THEN IN LATIN NOISE (GG, iPhone, 2026-10-31 11:58Z, after the fix above): Russian and English right, but the
+ * Georgian sentence came out as „G 7 6 0 0 0 0 0“ — the listed request's Latin, taken as English before the Georgian-only
+ * answer was even looked at. Latin now counts as English only when it reads as words (chirpWordLike) and Chirp did not
+ * say it heard Georgian. And a clear Russian or English answer is written as soon as it arrives: the Georgian-only
+ * request cannot change it, so it is not waited for (11:58Z: first text p50 5.5 s with the wait, 4.1 s before it). It
+ * carries the same clip, so Google bills it the same seconds, and it is booked as such without waiting.
+ *
  * Price: $0.016 per minute of audio, counted in one-second steps (Speech-to-Text pricing, V2 standard models, read
  * 2026-10-30); the route books it from the duration Google says it billed, summed over both requests.
  */
@@ -83,7 +90,7 @@ export interface ChirpSttResult {
   billedSeconds: number;
   /** Which request's answer this is: the site's three languages listed, or Georgian alone. */
   leg: ChirpLeg;
-  /** The language Chirp named (or `other script`) when its only answer was in letters outside ka/ru/en and was dropped. */
+  /** The language Chirp named (or `other script`) when its only answer was unreadable (letters outside ka/ru/en, Latin noise) and was dropped. */
   foreign?: string;
 }
 
@@ -105,6 +112,18 @@ export function chirpScript(text: string): ChirpScript {
   return cyrillic === top ? 'cyrillic' : 'latin';
 }
 
+/**
+ * Latin that reads as words: more letters than digits, and at least half the words two letters or longer. „Can you
+ * hear me?“ and „Meet at 5“ are; the noise Georgian speech once came back as („G 7 6 0 0 0 0 0“, GG 2026-10-31) is not.
+ */
+export function chirpWordLike(text: string): boolean {
+  const letters = (text.match(/\p{L}/gu) || []).length;
+  const digits = (text.match(/\p{N}/gu) || []).length;
+  const words = text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
+  const real = words.filter((w) => (w.match(/\p{L}/gu) || []).length >= 2).length;
+  return letters > digits && real > 0 && real * 2 >= words.length;
+}
+
 /** One request's parsed answer. */
 interface LegAnswer {
   text: string;
@@ -114,23 +133,34 @@ interface LegAnswer {
   billedSeconds: number;
 }
 
+/** Russian or English from the listed request: final, whatever the Georgian-only request says (pickChirpLeg rule 1). */
+export function chirpListedDecisive(listed: LegAnswer): boolean {
+  const script = chirpScript(listed.text);
+  if (script === 'cyrillic') return true;
+  return script === 'latin' && chirpWordLike(listed.text) && !(listed.heard ?? '').toLowerCase().startsWith('ka');
+}
+
 /**
  * Which answer goes into the box. `listed` = the request with the site's three languages, `georgian` = Georgian alone;
  * either may have failed (undefined).
- *   1. Cyrillic or Latin from the listed request: Russian or English speech, written as spoken.
+ *   1. Cyrillic, or Latin words Chirp did not call Georgian, from the listed request: Russian or English speech,
+ *      written as spoken (chirpListedDecisive; Latin noise is not English).
  *   2. Georgian letters from the Georgian-only request: Georgian speech (preferred over the listed request's Georgian,
  *      since that request was told to expect Georgian only).
  *   3. The listed request in Georgian, or silence, when the Georgian-only request has nothing better.
- *   4. The Georgian-only request when the listed one failed, unless it is in a foreign script too.
- * Otherwise nothing is written (the Hindi letters above): `foreign` says what was dropped. null = both failed.
+ *   4. The Georgian-only request when the listed one failed, unless it is in a foreign script or Latin noise too.
+ * Otherwise nothing is written (the Hindi letters, the Latin noise above): `foreign` says what Chirp said it heard.
+ * null = both failed.
  */
 export function pickChirpLeg(listed: LegAnswer | undefined, georgian: LegAnswer | undefined): { answer: LegAnswer; leg: ChirpLeg; foreign?: string } | null {
   const ls = listed ? chirpScript(listed.text) : null;
   const gs = georgian ? chirpScript(georgian.text) : null;
-  if (listed && (ls === 'cyrillic' || ls === 'latin')) return { answer: listed, leg: 'listed' };
+  if (listed && chirpListedDecisive(listed)) return { answer: listed, leg: 'listed' };
   if (georgian && gs === 'georgian') return { answer: georgian, leg: 'georgian' };
-  if (listed && ls !== 'other') return { answer: listed, leg: 'listed' };
-  if (!listed && georgian && gs !== 'other') return { answer: georgian, leg: 'georgian' };
+  // Latin that does not read as words is noise, never written (GG 2026-10-31 11:58Z).
+  const readable = (a: LegAnswer, script: ChirpScript | null) => script !== 'other' && (script !== 'latin' || chirpWordLike(a.text));
+  if (listed && readable(listed, ls)) return { answer: listed, leg: 'listed' };
+  if (!listed && georgian && readable(georgian, gs)) return { answer: georgian, leg: 'georgian' };
   const dropped = listed ?? georgian;
   if (!dropped) return null;
   return { answer: { ...dropped, text: '', spoken: undefined }, leg: listed ? 'listed' : 'georgian', foreign: dropped.heard || 'other script' };
@@ -223,18 +253,31 @@ export async function transcribeWithChirp(audio: Uint8Array, language: string): 
       throw err;
     }
   };
-  const [listed, georgian] = await Promise.allSettled([askListed(), ask([GEORGIAN])]);
+  const listedP = askListed();
+  const georgianP = ask([GEORGIAN]);
+  // Its answer is not waited for when the listed one is final; a refusal then must not surface as unhandled.
+  georgianP.catch(() => undefined);
+  const done = (picked: NonNullable<ReturnType<typeof pickChirpLeg>>, billedSeconds: number): ChirpSttResult => {
+    const { text, spoken } = picked.answer;
+    return {
+      text,
+      model: CHIRP_STT_MODEL,
+      ...(spoken ? { spoken } : {}),
+      billedSeconds,
+      leg: picked.leg,
+      ...(picked.foreign ? { foreign: picked.foreign } : {}),
+    };
+  };
+
+  const [listed] = await Promise.allSettled([listedP]);
+  // Russian or English: written now. The Georgian-only request sent the same clip, so it is booked at the same seconds
+  // (one clip over-booked if it then fails: the safe direction).
+  if (listed.status === 'fulfilled' && chirpListedDecisive(listed.value)) {
+    return done({ answer: listed.value, leg: 'listed' }, listed.value.billedSeconds * 2);
+  }
+  const [georgian] = await Promise.allSettled([georgianP]);
   const ok = (r: PromiseSettledResult<LegAnswer>) => (r.status === 'fulfilled' ? r.value : undefined);
   const picked = pickChirpLeg(ok(listed), ok(georgian));
   if (!picked) throw listed.status === 'rejected' ? listed.reason : (georgian as PromiseRejectedResult).reason;
-  const billedSeconds = [listed, georgian].reduce((sum, r) => sum + (ok(r)?.billedSeconds ?? 0), 0);
-  const { text, spoken } = picked.answer;
-  return {
-    text,
-    model: CHIRP_STT_MODEL,
-    ...(spoken ? { spoken } : {}),
-    billedSeconds,
-    leg: picked.leg,
-    ...(picked.foreign ? { foreign: picked.foreign } : {}),
-  };
+  return done(picked, [listed, georgian].reduce((sum, r) => sum + (ok(r)?.billedSeconds ?? 0), 0));
 }

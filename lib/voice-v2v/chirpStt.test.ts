@@ -4,7 +4,9 @@
  *   · Speech-to-Text V2 recognize at `us`, the Vertex project, a Workload Identity bearer token and no API key;
  *   · told to expect the site's three languages, the one asked for first, and at the same time Georgian alone: Cyrillic
  *     or Latin from the first is kept, else Georgian letters from the second; a script outside the three is dropped
- *     (Georgian once came back in Devanagari, GG 2026-10-31); a refused list is asked once with its first language;
+ *     (Georgian once came back in Devanagari, GG 2026-10-31), and Latin that is not words is not English (once
+ *     „G 7 6 0 0 0 0 0“); a clear Russian or English answer does not wait for Georgian alone; a refused list is asked
+ *     once with its first language;
  *   · an unconfigured Vertex AI, or a clip over a minute, fails before any request;
  *   · the transcript, the language Chirp heard and the billed seconds come back; Google's reason on a refusal.
  */
@@ -19,7 +21,9 @@ import {
   CHIRP_SYNC_MAX_SECONDS,
   chirpCostUsd,
   chirpLanguageCodes,
+  chirpListedDecisive,
   chirpScript,
+  chirpWordLike,
   durationSeconds,
   pickChirpLeg,
   transcribeWithChirp,
@@ -165,6 +169,46 @@ test('GG 2026-10-31: Georgian speech came back in Devanagari on the listed reque
   expect(r).toEqual({ text: 'გესმის ჩემი?', model: 'chirp_3', spoken: 'ka', billedSeconds: 6, leg: 'georgian' });
 });
 
+test('GG 2026-10-31 11:58Z: Georgian speech came back as Latin noise on the listed request; the Georgian-only answer is written', async () => {
+  byCodes((codes) => same(codes, GEORGIAN_ONLY)
+    ? recognized([{ alternatives: [{ transcript: 'გესმის ჩემი?' }], languageCode: 'ka-GE' }])
+    : recognized([{ alternatives: [{ transcript: 'G 7 6 0 0 0 0 0' }], languageCode: 'en-US' }]));
+  const r = await transcribeWithChirp(wav(2), 'ka-GE');
+  expect(r).toEqual({ text: 'გესმის ჩემი?', model: 'chirp_3', spoken: 'ka', billedSeconds: 6, leg: 'georgian' });
+});
+
+test('Latin noise with nothing better is never written; English words Chirp calls Georgian wait for Georgian alone', async () => {
+  byCodes((codes) => same(codes, GEORGIAN_ONLY)
+    ? refused(500, 'Internal error')
+    : recognized([{ alternatives: [{ transcript: 'G 7 6 0 0 0 0 0' }], languageCode: 'en-US' }]));
+  let r = await transcribeWithChirp(wav(2), 'ka-GE');
+  expect(r).toEqual({ text: '', model: 'chirp_3', billedSeconds: 3, leg: 'listed', foreign: 'en-US' });
+
+  byCodes((codes) => same(codes, GEORGIAN_ONLY)
+    ? recognized([{ alternatives: [{ transcript: 'გამარჯობა' }], languageCode: 'ka-GE' }])
+    : recognized([{ alternatives: [{ transcript: 'Gamarjoba' }], languageCode: 'ka-GE' }]));
+  r = await transcribeWithChirp(wav(1), 'ka-GE');
+  expect(r).toMatchObject({ text: 'გამარჯობა', leg: 'georgian', billedSeconds: 6 });
+});
+
+test('a clear Russian or English answer is written without waiting for Georgian alone, booked as both requests', async () => {
+  let fetchedGeorgianOnly = false;
+  byCodes((codes) => {
+    if (!same(codes, GEORGIAN_ONLY)) return recognized([{ alternatives: [{ transcript: 'Can you hear me?' }], languageCode: 'en-US' }], '2s');
+    fetchedGeorgianOnly = true;
+    return new Promise<Response>(() => undefined); // never answers
+  });
+  const r = await transcribeWithChirp(wav(2), 'en-US');
+  expect(r).toEqual({ text: 'Can you hear me?', model: 'chirp_3', spoken: 'en', billedSeconds: 4, leg: 'listed' });
+  expect(fetchedGeorgianOnly).toBe(true);
+
+  // A refusal of the Georgian-only request that is no longer waited for is not an unhandled rejection.
+  byCodes((codes) => same(codes, GEORGIAN_ONLY)
+    ? refused(503, 'Service unavailable')
+    : recognized([{ alternatives: [{ transcript: 'Ты меня слышишь?' }], languageCode: 'ru-RU' }]));
+  await expect(transcribeWithChirp(wav(1), 'ru-RU')).resolves.toMatchObject({ text: 'Ты меня слышишь?', leg: 'listed', billedSeconds: 6 });
+});
+
 test('a foreign script with no Georgian answer to stand in is never written; what was heard is named', async () => {
   byCodes((codes) => same(codes, GEORGIAN_ONLY)
     ? refused(500, 'Internal error')
@@ -241,6 +285,23 @@ test('which script a transcript is in', () => {
   expect(chirpScript('')).toBe('none');
 });
 
+test('Latin that reads as words, and when the listed answer is final', () => {
+  expect(chirpWordLike('Can you hear me?')).toBe(true);
+  expect(chirpWordLike('Meet at 5')).toBe(true);
+  expect(chirpWordLike('OK')).toBe(true);
+  expect(chirpWordLike('G 7 6 0 0 0 0 0')).toBe(false);
+  expect(chirpWordLike('a b c d')).toBe(false);
+  expect(chirpWordLike('')).toBe(false);
+  const a = (text: string, heard?: string) => ({ text, billedSeconds: 1, ...(heard ? { heard } : {}) });
+  expect(chirpListedDecisive(a('Привет', 'ka-GE'))).toBe(true);
+  expect(chirpListedDecisive(a('Hello there', 'en-US'))).toBe(true);
+  expect(chirpListedDecisive(a('Hello there'))).toBe(true);
+  expect(chirpListedDecisive(a('Gamarjoba', 'ka-ge'))).toBe(false);
+  expect(chirpListedDecisive(a('G 7 6 0 0 0 0 0', 'en-US'))).toBe(false);
+  expect(chirpListedDecisive(a('გამარჯობა'))).toBe(false);
+  expect(chirpListedDecisive(a(''))).toBe(false);
+});
+
 test('pickChirpLeg: Russian/English from the list, else Georgian letters from Georgian alone, never a foreign script', () => {
   const a = (text: string, heard?: string) => ({ text, billedSeconds: 1, ...(heard ? { heard, spoken: heard.slice(0, 2) } : {}) });
   expect(pickChirpLeg(a('Привет'), a('პრივეტ'))).toMatchObject({ leg: 'listed', answer: { text: 'Привет' } });
@@ -255,5 +316,9 @@ test('pickChirpLeg: Russian/English from the list, else Georgian letters from Ge
     leg: 'listed', answer: { text: '', billedSeconds: 1, heard: 'hi-IN', spoken: undefined }, foreign: 'hi-IN',
   });
   expect(pickChirpLeg(a('चमेली'), a(''))).toMatchObject({ answer: { text: '' }, foreign: 'other script' });
+  // Latin noise: the Georgian answer when there is one, else nothing (GG 2026-10-31 11:58Z).
+  expect(pickChirpLeg(a('G 7 6 0 0 0 0 0', 'en-US'), a('გესმის ჩემი?'))).toMatchObject({ leg: 'georgian', answer: { text: 'გესმის ჩემი?' } });
+  expect(pickChirpLeg(a('G 7 6 0 0 0 0 0', 'en-US'), a('7 6'))).toMatchObject({ answer: { text: '' }, foreign: 'en-US' });
+  expect(pickChirpLeg(undefined, a('G 7 6 0 0 0 0 0'))).toMatchObject({ answer: { text: '' }, foreign: 'other script' });
   expect(pickChirpLeg(undefined, undefined)).toBeNull();
 });
