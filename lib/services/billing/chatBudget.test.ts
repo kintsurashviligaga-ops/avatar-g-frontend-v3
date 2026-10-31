@@ -14,7 +14,7 @@ jest.mock('./BillingGuard', () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { chatBudgetAllows, chatBudgetRefusal, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE, GUARD_UNAVAILABLE, UNSPECIFIED_CHAT_MODEL } from './chatBudget';
+import { chatBudgetAllows, chatBudgetRefusal, bookChatUsage, bookSpeechUsage, BUDGET_EXHAUSTED_MESSAGE, GUARD_UNAVAILABLE, UNSPECIFIED_CHAT_MODEL } from './chatBudget';
 
 beforeEach(() => { canProceed.mockReset(); recordUsage.mockReset().mockResolvedValue(undefined); });
 
@@ -222,6 +222,29 @@ describe('bookChatUsage — the legacy (inputText, outputChars, model) shape kee
       await bookChatUsage('x'.repeat(400), 1600, label);
       expect((recordUsage.mock.calls[0]![0] as { estimatedCost: number }).estimatedCost).toBeCloseTo((100 * 1.5 + 400 * 9) / 1e6, 6);
     }
+  });
+});
+
+describe('bookSpeechUsage — speech priced by audio (Chirp 3), on the chat line', () => {
+  it('books the USD it is given, rounded to micro-dollars, with the user id', async () => {
+    await bookSpeechUsage({ model: 'chirp_3', usd: 0.0026666666, userId: '11111111-2222-4333-8444-555555555555' });
+    expect(recordUsage).toHaveBeenCalledWith(
+      { service: 'chat', model: 'chirp_3', estimatedCost: 0.002667, currency: 'USD' },
+      { userId: '11111111-2222-4333-8444-555555555555' },
+    );
+  });
+
+  it('a malformed user id is not forwarded, and a garbage amount books zero rather than NaN', async () => {
+    await bookSpeechUsage({ model: 'chirp_3', usd: Number.NaN, userId: 'guest' });
+    expect(recordUsage).toHaveBeenCalledWith(expect.objectContaining({ estimatedCost: 0 }), { userId: null });
+  });
+
+  it('never throws into a delivered transcript', async () => {
+    recordUsage.mockRejectedValueOnce(new Error('ledger down'));
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(bookSpeechUsage({ model: 'chirp_3', usd: 0.01 })).resolves.toBeUndefined();
+    expect(String(err.mock.calls[0]![0])).toContain('billing.booking_failed');
+    err.mockRestore();
   });
 });
 
