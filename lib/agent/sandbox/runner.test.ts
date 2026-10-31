@@ -37,9 +37,9 @@ describe('sandbox budget', () => {
 
   it('refuses a reservation that would cross the cap', async () => {
     const store = memorySpendStore(19.99);
-    expect(await store.reserve(0.02, 20)).toBe(false);
+    expect(await store.reserve(0.02, 20)).toBeNull();
     expect(await store.total()).toBeCloseTo(19.99);
-    expect(await store.reserve(0.01, 20)).toBe(true);
+    expect(await store.reserve(0.01, 20)).toBeTruthy();
   });
 });
 

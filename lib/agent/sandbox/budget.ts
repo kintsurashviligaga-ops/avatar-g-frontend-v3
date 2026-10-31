@@ -38,23 +38,27 @@ function round(usd: number): number {
 
 /** Where the running total lives. The store must make reserve atomic (check and add in one step). */
 export interface SandboxSpendStore {
-  /** Add `usd` to the total only if the total stays at or under `cap`. Returns false (and adds nothing) otherwise. */
-  reserve(usd: number, cap: number): Promise<boolean>;
-  /** Replace a reservation of `reserved` with the real `used` amount. */
-  settle(reserved: number, used: number): Promise<void>;
+  /**
+   * Add `usd` to the total only if the total stays at or under `cap`. Returns a ticket for the reservation, or null
+   * (and adds nothing) when the cap would be passed or the store cannot answer: fail closed.
+   */
+  reserve(usd: number, cap: number): Promise<string | null>;
+  /** Replace the reservation `ticket` (of `reserved`) with the real `used` amount. */
+  settle(ticket: string, reserved: number, used: number): Promise<void>;
   total(): Promise<number>;
 }
 
 /** In-process store: tests and the fake host. Not shared between instances, so never the production store. */
 export function memorySpendStore(start = 0): SandboxSpendStore {
   let spent = start;
+  let seq = 0;
   return {
     async reserve(usd, cap) {
-      if (spent + usd > cap + 1e-9) return false;
+      if (spent + usd > cap + 1e-9) return null;
       spent += usd;
-      return true;
+      return `mem-${++seq}`;
     },
-    async settle(reserved, used) {
+    async settle(_ticket, reserved, used) {
       spent = Math.max(0, spent - reserved + used);
     },
     async total() {

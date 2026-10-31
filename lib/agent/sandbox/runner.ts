@@ -46,7 +46,8 @@ export function hostRunner(host: SandboxHost, spend: SandboxSpendStore, opts: { 
     async run(plan: SandboxPlan, signal: AbortSignal): Promise<SandboxResult> {
       if (signal.aborted) return { ok: false, error: 'cancelled', message: 'Cancelled before start.' };
       const reserved = worstCaseUsd(plan.limits);
-      if (!(await spend.reserve(reserved, cap))) {
+      const ticket = await spend.reserve(reserved, cap).catch(() => null);
+      if (!ticket) {
         return { ok: false, error: 'refused', message: `Sandbox budget of $${cap} is used up.` };
       }
       const started = now();
@@ -89,7 +90,8 @@ export function hostRunner(host: SandboxHost, spend: SandboxSpendStore, opts: { 
         if (handle) await handle.stop().catch(() => undefined);
         // A host that was never created cost nothing; otherwise charge the time it lived, never more than reserved.
         const used = handle ? Math.min(reserved, usedUsd(plan.limits, now() - started)) : 0;
-        await spend.settle(reserved, used);
+        // If settling fails the worst case stays booked: the cap over-counts, never under-counts.
+        await spend.settle(ticket, reserved, used).catch(() => undefined);
       }
     },
   };
