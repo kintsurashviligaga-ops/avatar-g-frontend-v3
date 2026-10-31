@@ -4,6 +4,7 @@ import {
   bareModelId, checkSetupFrame, clientFrameAllowed, closeReason, forwardableCloseCode, RELAY_CLOSE, RelaySession,
   UsedTickets, vertexLiveUrl, type RelayConfig, type RelaySocket,
 } from './session';
+import { RELAY_HELLO_FRAME, RELAY_NUDGE_FRAME, RELAY_SETUP_ACK_FRAME, relayControlOf } from './wire';
 
 const SECRET = 's'.repeat(40);
 const T0 = 1_800_000_000_000;
@@ -50,6 +51,16 @@ describe('helpers', () => {
     expect(clientFrameAllowed('{"setup":{}}')).toBe(false);
     expect(clientFrameAllowed('{"realtimeInput":{},"setup":{}}')).toBe(false);
     expect(clientFrameAllowed('nope')).toBe(false);
+  });
+  it('tells the relay\'s own frames from every other frame', () => {
+    expect(relayControlOf(JSON.parse(RELAY_HELLO_FRAME))).toBe('hello');
+    expect(relayControlOf(JSON.parse(RELAY_SETUP_ACK_FRAME))).toBe('setupAck');
+    expect(relayControlOf(JSON.parse(RELAY_NUDGE_FRAME))).toBe('nudge');
+    expect(relayControlOf({ relayHello: {}, setupComplete: {} })).toBeNull();
+    expect(relayControlOf({ setupComplete: {} })).toBeNull();
+    expect(relayControlOf([])).toBeNull();
+    expect(relayControlOf(null)).toBeNull();
+    expect(clientFrameAllowed(RELAY_NUDGE_FRAME)).toBe(false); // dropped before the forwarding rule, never forwarded
   });
   it('maps reserved close codes and caps reasons', () => {
     expect(forwardableCloseCode(1007)).toBe(1007);
@@ -152,7 +163,32 @@ describe('RelaySession', () => {
     h.s.onClientMessage('{"toolResponse":{"functionResponses":[]}}');
     expect(h.upstream.sent[2]).toBe('{"toolResponse":{"functionResponses":[]}}');
     h.s.onUpstreamMessage(Buffer.from('{"setupComplete":{}}'), true);
-    expect(h.client.sent).toHaveLength(1);
+    expect(h.client.sent).toEqual([RELAY_SETUP_ACK_FRAME, Buffer.from('{"setupComplete":{}}')]);
+  });
+
+  it('says hello on connect, acks the setup at once and drops nudges (an iPhone held the setup until it wrote again)', async () => {
+    let release: (s: RelaySocket) => void = () => {};
+    const h = harness(() => new Promise((r) => { release = r; }));
+    h.s.onClientOpen();
+    expect(h.client.sent).toEqual([RELAY_HELLO_FRAME]);
+    h.s.onClientMessage(RELAY_NUDGE_FRAME); // never taken for the setup
+    expect(h.s.isClosed).toBe(false);
+    h.advance(900);
+    h.s.onClientMessage(frame(setup));
+    expect(h.client.sent).toEqual([RELAY_HELLO_FRAME, RELAY_SETUP_ACK_FRAME]); // before Vertex opens
+    h.s.onClientMessage(RELAY_NUDGE_FRAME);
+    release(h.upstream);
+    await flush();
+    h.s.onClientMessage(Buffer.from(RELAY_NUDGE_FRAME));
+    expect(h.upstream.sent).toHaveLength(1); // the setup only
+    h.s.onClientClose();
+    expect(h.logs.at(-1)).toMatchObject({ e: 'relay.session_end', d: { nudges: 3, setupMs: 900, framesDropped: 0 } });
+  });
+
+  it('acks nothing for a refused setup', () => {
+    const h = harness();
+    h.s.onClientMessage(frame({ ...setup, model: 'models/gemini-3.8-live' }));
+    expect(h.client.sent).toEqual([]);
   });
 
   it('logs where a session waited: setup frame, Vertex open, setupComplete (-1 = never)', async () => {
