@@ -1,7 +1,8 @@
 /**
- * The "MyAvatar.ge" wordmark as the brand sheet sets it (docs/brand/BRAND.md): Montserrat, "MyAvatar" in the
- * text colour (a white → ice-blue fade on dark), ".ge" in the rocket blue, and optionally the letter-spaced
- * "AI CREATIVE STUDIO" tagline underneath.
+ * The "MyAvatar" wordmark (docs/brand/BRAND.md): Montserrat, "MyAvatar" in the text colour (a white → ice-blue
+ * fade on dark), and optionally the letter-spaced "AI CREATIVE STUDIO" tagline underneath.
+ * GG 2026-10-31: the logo reads only "MyAvatar" — the ".ge" accent span was removed everywhere the wordmark shows
+ * (navbar top-left on desktop and mobile, auth, landing, share page).
  *
  * It is typeset, not an image: the sheet specifies the face and the colours, and live text stays sharp at any
  * size. `mark` puts the rocket in front of the name — the TRANSPARENT cut-out (public/brand/rocket-mark.*, made by
@@ -45,10 +46,6 @@ const NAME: Record<NonNullable<WordmarkProps['tone']>, string> = {
   theme: 'text-[color:var(--color-text)] dark:bg-gradient-to-b dark:from-white dark:to-[#D6E8FB] dark:bg-clip-text dark:text-transparent',
   onDark: 'bg-gradient-to-b from-white to-[#D6E8FB] bg-clip-text text-transparent',
 };
-const DOT_GE: Record<NonNullable<WordmarkProps['tone']>, string> = {
-  theme: 'text-app-accent',
-  onDark: 'text-[#338FE8]',
-};
 const TAG: Record<NonNullable<WordmarkProps['tone']>, string> = {
   theme: 'text-app-muted',
   onDark: 'text-white/60',
@@ -58,13 +55,12 @@ export function Wordmark({ size = 'md', tagline = false, tone = 'theme', mark = 
   const name = (
     <span className="font-display font-bold tracking-[-0.02em]" aria-hidden="true">
       <span className={NAME[tone]}>MyAvatar</span>
-      <span className={DOT_GE[tone]}>.ge</span>
     </span>
   );
   return (
     <span
       className={`inline-flex shrink-0 flex-col whitespace-nowrap leading-none ${SIZE[size]} ${className}`}
-      aria-label="MyAvatar.ge"
+      aria-label="MyAvatar"
       role="img"
     >
       {mark ? (

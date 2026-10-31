@@ -26,7 +26,7 @@ describe('ModelSwitcher — the trigger', () => {
   it('desktop: the rocket, current mode and a localized closed menu button', () => {
     render(<ModelSwitcher variant="desktop" locale="ka" />);
     const t = trigger();
-    expect(t.textContent).toBe('MyAvatar.ge3.8 Flash');
+    expect(t.textContent).toBe('MyAvatar3.8 Flash');
     expect(t.getAttribute('aria-haspopup')).toBe('menu');
     expect(t.getAttribute('aria-expanded')).toBe('false');
     expect(t.getAttribute('aria-label')).toBe('მოდელის არჩევა, ამჟამად: 3.8 Flash');
@@ -36,7 +36,7 @@ describe('ModelSwitcher — the trigger', () => {
   it('phone: a decorative rocket and readable mode, without the removed provider wordmark', () => {
     render(<ModelSwitcher variant="phone" locale="ka" />);
     const t = trigger();
-    expect(t.textContent).toBe('MyAvatar.ge3.8 Flash');
+    expect(t.textContent).toBe('MyAvatar3.8 Flash');
     expect(within(t).getByTestId('rocket-mark').getAttribute('src')).toBe('/brand/rocket-mark.png');
     expect(t.getAttribute('aria-label')).toBe('მოდელის არჩევა, ამჟამად: 3.8 Flash');
     expect(within(t).queryByRole('img')).toBeNull();
@@ -46,7 +46,7 @@ describe('ModelSwitcher — the trigger', () => {
   it('shows the saved mode on first paint', () => {
     window.localStorage.setItem(CHAT_MODE_STORAGE_KEY, 'pro');
     render(<ModelSwitcher variant="desktop" locale="en" />);
-    expect(trigger().textContent).toBe('MyAvatar.ge3.1 Pro');
+    expect(trigger().textContent).toBe('MyAvatar3.1 Pro');
     expect(trigger().getAttribute('aria-label')).toBe('Choose a model, current: 3.1 Pro');
   });
 });
@@ -70,7 +70,7 @@ describe('ModelSwitcher — choosing a model', () => {
     expect(getChatMode()).toBe('pro');
     expect(window.localStorage.getItem(CHAT_MODE_STORAGE_KEY)).toBe('pro');
     expect(menu()).toBeNull();
-    expect(trigger().textContent).toBe('MyAvatar.ge3.1 Pro');
+    expect(trigger().textContent).toBe('MyAvatar3.1 Pro');
     expect(document.activeElement).toBe(trigger());
   });
 
