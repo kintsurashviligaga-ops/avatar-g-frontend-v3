@@ -1,11 +1,11 @@
 /**
- * lib/agent/sandbox/policy.ts — what any runner for code Agent G writes (Python or Node) must enforce. A CONTRACT, NOT
- * A RUNTIME: no such code runs today, and the only runner is `disabledSandbox`, which refuses every job.
+ * lib/agent/sandbox/policy.ts — what any runner for code Agent G writes (Python or Node) must enforce. The contract
+ * every runner is held to.
  *
- * Why no runner yet: isolation means a separate host (a microVM or a gVisor container), never this function's own
- * process, and every such host is paid infrastructure (Vercel Sandbox, a Cloud Run job, E2B). That is the owner's
- * decision first (docs/handoffs/2026-10-09-agent-g-execution-foundation.md, phase 2). What is fixed here is the policy,
- * so the choice of host cannot loosen it:
+ * Runners: `disabledSandbox` refuses every job (the default everywhere). The real one is a Vercel Sandbox microVM
+ * (GG chose it 2026-10-30, $20 cap 2026-10-31): lib/agent/sandbox/runner.ts (rules) + vercelHost.ts (the host) +
+ * dbSpend.ts (the shared $20 ledger), reached only through getSandboxRunner (index.ts), and only with SANDBOX_ENABLED=1.
+ * What is fixed here is the policy, so the choice of host cannot loosen it:
  *
  *   language  python or node, nothing else; the code is at most 64 KB.
  *   limits    at most 2 vCPU, 2 GB memory, 300 s wall clock, 1 MB of stdout/stderr, 10 output files of 50 MB each.
