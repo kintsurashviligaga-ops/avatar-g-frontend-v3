@@ -20,7 +20,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   simulated-browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # ubuntu-24.04, not ubuntu-latest: ubuntu-latest moved to Ubuntu 26.04, where Playwright 1.58 cannot install its browsers.
     timeout-minutes: 20
     env:
       PLAYWRIGHT_SUPABASE_URL: https://example.supabase.co

@@ -8,7 +8,8 @@ on:
 
 jobs:
   preview-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # ubuntu-24.04, not ubuntu-latest: ubuntu-latest moved to Ubuntu 26.04, where Playwright 1.58 cannot install its browsers.
     # 25, not 15: on a slow runner `playwright install --with-deps` alone takes 10-12 minutes (its apt step), which
     # cancelled this job on #152, #153 and #154 with no test failed. The tests themselves take about 4 minutes.
     timeout-minutes: 25
@@ -46,7 +47,7 @@ jobs:
   # Agent G's door in front of every paid tool (tests/agent-g-gate.spec.ts): talk is answered, a thin prompt is asked
   # about, a real one waits for a priced card. Its own job so the two suites do not share one time budget.
   agent-g-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25 # the same slow-runner Playwright install as preview-e2e
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
