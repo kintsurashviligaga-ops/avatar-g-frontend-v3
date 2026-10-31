@@ -1,4 +1,4 @@
--- 20261031b_sandbox_spend.sql — NOT APPLIED. Needs GG's explicit OK before anyone runs it in Production.
+-- 20261031b_sandbox_spend.sql — APPLIED to Production on 2026-10-31 ~16:38Z by GG in the Supabase SQL Editor (GG 16:34Z „ჩაწერე კი“, 16:38Z „ჩავსვი და რანს დავაჭირე“). Not verified read-only by Claude: Supabase MCP denied.
 --
 -- Agent G Phase 2 (Vercel Sandbox, GG 2026-10-31 16:17Z: "ლიმიტი 20$"). Every sandbox run books its worst-case cost
 -- here BEFORE the sandbox is created, and replaces it with the real cost when the sandbox stops. A run that would take

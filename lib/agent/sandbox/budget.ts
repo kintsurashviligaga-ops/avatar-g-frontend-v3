@@ -21,10 +21,14 @@ export const SANDBOX_PRICE = {
   creation: 0.000_001,
 } as const;
 
+/** Vercel gives every vCPU 2048 MB whatever is asked, so memory is billed at no less than that. */
+export const SANDBOX_MB_PER_VCPU = 2048;
+
 /** Worst case for a job: every vCPU busy and all memory held for the whole wall clock. */
 export function worstCaseUsd(limits: Pick<SandboxLimits, 'cpus' | 'memoryMb' | 'wallSec'>): number {
   const hours = limits.wallSec / 3600;
-  return round(hours * (limits.cpus * SANDBOX_PRICE.cpuHour + (limits.memoryMb / 1024) * SANDBOX_PRICE.memGbHour) + SANDBOX_PRICE.creation);
+  const memGb = Math.max(limits.memoryMb, limits.cpus * SANDBOX_MB_PER_VCPU) / 1024;
+  return round(hours * (limits.cpus * SANDBOX_PRICE.cpuHour + memGb * SANDBOX_PRICE.memGbHour) + SANDBOX_PRICE.creation);
 }
 
 /** What a finished job cost, from the time it actually ran. */

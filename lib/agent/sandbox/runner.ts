@@ -11,9 +11,10 @@
  *   5. the host is ALWAYS stopped (finally), and the reservation settled to what was really used.
  */
 import { SANDBOX_CAP_USD, usedUsd, worstCaseUsd, type SandboxSpendStore } from './budget';
-import type { SandboxPlan, SandboxResult, SandboxRunner } from './policy';
+import type { SandboxLanguage, SandboxPlan, SandboxResult, SandboxRunner } from './policy';
 
 export interface SandboxHostSpec {
+  language: SandboxLanguage;
   vcpus: number;
   memoryMb: number;
   timeoutMs: number;
@@ -58,6 +59,7 @@ export function hostRunner(host: SandboxHost, spend: SandboxSpendStore, opts: { 
       signal.addEventListener('abort', onAbort, { once: true });
       try {
         handle = await host.create({
+          language: plan.language,
           vcpus: plan.limits.cpus,
           memoryMb: plan.limits.memoryMb,
           timeoutMs: plan.limits.wallSec * 1000,

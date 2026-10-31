@@ -49,7 +49,7 @@ describe('hostRunner', () => {
     const spend = memorySpendStore();
     const res = await hostRunner(host, spend).run(plan(), new AbortController().signal);
     expect(res).toMatchObject({ ok: true, exitCode: 0, stdout: '1\n' });
-    expect(log.specs[0]).toEqual({ vcpus: 2, memoryMb: 2048, timeoutMs: 300_000, allowedDomains: [], env: {} });
+    expect(log.specs[0]).toEqual({ language: 'python', vcpus: 2, memoryMb: 2048, timeoutMs: 300_000, allowedDomains: [], env: {} });
     expect(log.files).toEqual([['main.py', 'print(1)']]);
     expect(log.cmds).toEqual([['python3', 'main.py']]);
     expect(log.stopped).toBe(1);
