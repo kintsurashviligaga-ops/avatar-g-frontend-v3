@@ -162,6 +162,17 @@ export const STT_MODELS: readonly string[] = [
   TRANSCRIBE_MODEL,
 ];
 
+/**
+ * Cloud Speech-to-Text's Chirp 3 (V2 API `recognize`, lib/voice-v2v/chirpStt): a speech model told which languages to
+ * expect, not a prompted LLM, so it cannot write Georgian in another alphabet (Google's transcribe model above wrote it
+ * in Armenian letters on the owner's iPhone, 2026-10-30). The owner's `?stt=chirp_3` trial ONLY (GG card 2026-10-30
+ * 18:00Z): never the default or a step-down, and not in STT_MODELS, which are generateContent models.
+ */
+export const CHIRP_STT_MODEL = 'chirp_3';
+
+/** What the owner's `?stt=` link may name (lib/voice/sttTrial; app/api/voice/transcribe honours it for an admin only). */
+export const STT_TRIAL_MODELS: readonly string[] = [...STT_MODELS, CHIRP_STT_MODEL];
+
 /** Streaming transcription model on the key (Live-style). Not used by any path yet. */
 export const TRANSCRIBE_LIVE_MODEL = 'gemini-3.5-transcribe-live';
 

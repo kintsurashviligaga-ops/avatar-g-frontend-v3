@@ -127,7 +127,8 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     expect(p).toContain('Lite −30%, Max +210%, music video +3%');
     // The lip-sync pass ran on the old avatar engine, which is always refused, so it is never priced.
     expect(p).not.toContain('film lip-sync');
-    expect(p).toContain('product ad = a Fast film of its length');
+    // The product ad is removed (GG 2026-10-27): never priced.
+    expect(p).not.toContain('product ad = a Fast film of its length');
   });
 
   it('states what creditCostFor actually charges: music by its length bands, a chat clip at 8 s, a video by its length', () => {

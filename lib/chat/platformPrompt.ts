@@ -105,6 +105,9 @@ const FILM_EXAMPLE_SECONDS = [8, 24, 48] as const;
  */
 export const OUTSIDE_ENGINE_TOOLS: readonly ToolId[] = ['avatar', 'swap', 'motion', 'model3d'];
 
+/** Tools GG removed from the services (the product ad, 2026-10-27): their routes refuse, so the chat names them as closed. */
+export const REMOVED_TOOLS: readonly ToolId[] = ['product'];
+
 /**
  * The Veo talking avatar (/api/avatar/veo, lib/avatar/veoAvatar): one 8 s Fast Veo clip, priced as one. It reopens the
  * Avatar tool for whoever may run it — the admin, or everyone once AVATAR_VEO_PUBLIC=1 (GG's word).
@@ -137,6 +140,7 @@ const touchUpLine = (loc: PlatformPromptLocale): string =>
 function closedTools({ veoAvatar }: Gates): ToolId[] {
   return [
     ...OUTSIDE_ENGINE_TOOLS.filter((id) => !(id === 'avatar' && veoAvatar)),
+    ...REMOVED_TOOLS,
     ...(ownerApprovedPrice('dubbing', CREDIT_COSTS.dubbing_per_minute) ? [] : ['dubbing' as const]),
     ...(ownerApprovedPrice('presentation', CREDIT_COSTS.presentation_deck) ? [] : ['presentation' as const]),
   ];
@@ -209,7 +213,7 @@ function priceBlock(topUp: string, closed: readonly ToolId[], spoken: boolean): 
     `film: Fast ${fast} cr; Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)};`,
     // The film's lip-sync pass was the old avatar engine (/api/video/lipsync), which is always refused, so it is not
     // priced; the Veo avatar is its own 8 s clip at the Veo price.
-    `product ad = a Fast film of its length; chat clip ${cr(C.video_30s)}; music ${cr(C.music_30s)} <60 s,`,
+    `${open('product') ? 'product ad = a Fast film of its length; ' : ''}chat clip ${cr(C.video_30s)}; music ${cr(C.music_30s)} <60 s,`,
     `${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s; ${open('avatar') ? `talking avatar ${cr(VEO_AVATAR_PROMPT_CREDITS)} per 8 s clip; ` : ''}touch-up: voice-over ${cr(PRICE_BOOK.remixVoiceover)}, own music ${cr(PRICE_BOOK.remixMusic)}; ${open('model3d') ? `3D model ${cr(C.model3d)}; ` : ''}${dubDeck}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote only these numbers, in credits and lari; never guess one.`,
     // GG 2026-10-26 12:32Z, a Live call: „5 კრედიტი, ანუ 0.50 თეთრი" — the lari amount was said with the tetri's name.

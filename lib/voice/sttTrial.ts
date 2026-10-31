@@ -8,9 +8,10 @@
  * at once. The recorder's request then names that model (components/chat/composer/useDictation), and the route
  * honours it for an ADMIN account only, with no step-downs, so the timing is that model's alone
  * (app/api/voice/transcribe); for anyone else the request is transcribed as usual. `?micstats=1` on the same link
- * shows the timings, and the line names the model under trial.
+ * shows the timings, and the line names the model under trial. `?stt=chirp_3` tries Cloud Speech-to-Text's Chirp 3
+ * instead (lib/voice-v2v/chirpStt, 2026-10-30).
  */
-import { STT_MODELS } from '@/lib/ai/google/models';
+import { STT_TRIAL_MODELS } from '@/lib/ai/google/models';
 
 export const STT_TRIAL_PARAM = 'stt';
 export const STT_TRIAL_KEY = 'myavatar:stt-trial';
@@ -32,10 +33,10 @@ function browserEnv(): SttTrialEnv | null {
   return { search: window.location?.search ?? '', storage };
 }
 
-/** Only a model the route would honour (lib/ai/google/models STT_MODELS); anything else is "no trial". */
+/** Only a model the route would honour (lib/ai/google/models STT_TRIAL_MODELS); anything else is "no trial". */
 const allowed = (raw: string | null | undefined): string | null => {
   const id = (raw ?? '').trim().toLowerCase();
-  return STT_MODELS.includes(id) ? id : null;
+  return STT_TRIAL_MODELS.includes(id) ? id : null;
 };
 
 /** The model the trial asks for, or null when no trial is on (the normal case, and always on the server). */

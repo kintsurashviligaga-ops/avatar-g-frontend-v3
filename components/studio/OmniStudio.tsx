@@ -3366,7 +3366,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const applyTool = useCallback((id: ToolId) => {
     switch (id) {
       case 'video': setMode('video'); setVideoTab('cinema'); break;
-      case 'product': setMode('video'); setVideoTab('product'); break;
+      // THE PRODUCT AD IS REMOVED (GG 2026-10-27): no menu, link or Agent G route names it (lib/catalog/services
+      // `video.product-ad` is hidden) and the server refuses it; a stray call opens nothing.
+      case 'product': break;
       case 'swap': setMode('video'); setVideoTab('videoswap'); break;
       case 'vfx': setMode('video'); setVideoTab('vfx'); break;
       case 'avatar': setMode('lipsync'); break;

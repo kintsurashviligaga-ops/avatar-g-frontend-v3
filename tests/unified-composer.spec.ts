@@ -729,7 +729,7 @@ for (const vp of VIEWPORTS) {
       test.skip(!desktop, 'a desktop check (≥ 1024 px); phones are scenario 10');
       await openStudio(page, { tool: null });
       await expect(page.getByTestId('settings-panel-toggle')).toHaveCount(0);
-      for (const id of ['video', 'image', 'music', 'avatar', 'interior', 'product']) {
+      for (const id of ['video', 'image', 'music', 'avatar', 'interior']) {
         await page.getByTestId('plus').click();
         await page.getByTestId('service-picker').getByTestId(`service-${id}`).click();
         await expect(page.getByTestId('tool-sheet')).toHaveCount(0);
@@ -845,7 +845,7 @@ for (const vp of VIEWPORTS) {
     test('the empty chat\'s line about the chosen service stays inside the screen, for every service', async ({ page }) => {
       // Interior's line ran 20 px past a 390 px screen's left edge once it showed the greeting (the greeting's column had no width).
       await openStudio(page, { tool: null });
-      for (const id of ['video', 'image', 'music', 'avatar', 'interior', 'product', 'vfx', 'model3d']) {
+      for (const id of ['video', 'image', 'music', 'avatar', 'interior', 'vfx', 'model3d']) {
         await pickService(page, id, 'en');
         const hint = page.getByTestId('tool-hint');
         await expect(hint).toBeVisible();
