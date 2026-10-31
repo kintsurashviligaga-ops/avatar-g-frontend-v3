@@ -258,12 +258,13 @@ export default function GeminiLiveConversation({
     if (renewRef.current()) askedAvatarRef.current = desiredAvatar;
   }, [callReady, desiredAvatar]);
   const sessionAvatar = session.avatar;
-  const { avatarRefused } = session;
+  const { avatarRefused, avatarAllowed } = session;
   useEffect(() => {
     if (!avatarRefused) return;
     askedAvatarRef.current = null;
     setAvatarWanted(false);
-    setAvatarNote(avatarRefused === 'daily_limit' ? 'dailyLimit' : 'disabled');
+    // Not open to this account (lib/voice/liveAudience): the switch goes away, no notice; the call simply stays voice.
+    if (avatarRefused !== 'audience') setAvatarNote(avatarRefused === 'daily_limit' ? 'dailyLimit' : 'disabled');
   }, [avatarRefused]);
   // Cost: one avatar session runs LIVE_AVATAR_MAX_MS at most, then the call goes on by voice.
   useEffect(() => {
@@ -445,7 +446,9 @@ export default function GeminiLiveConversation({
 
   const avatarCopy = LIVE_AVATAR_STRINGS[loc];
   const primeAvatar = avatarPlayer.prime;
-  const avatarSwitch = avatarAvailable ? (
+  // The switch only where the avatar can play AND the server says this account may use it (admins, or everyone once
+  // LIVE_AVATAR_AUDIENCE=everyone). Before the first answer it stays hidden, so it never flashes for a user who can't.
+  const avatarSwitch = avatarAvailable && avatarAllowed === true ? (
     <LiveControl
       label={avatarCopy.toggle}
       ariaLabel={avatarWanted ? avatarCopy.turnOff : avatarCopy.turnOn}
