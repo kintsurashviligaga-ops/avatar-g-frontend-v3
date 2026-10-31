@@ -42,3 +42,21 @@ export function agentAnalyzeOpenTo(user: User | null, env: NodeJS.ProcessEnv = p
   const access = agentAnalyzeAccess(env);
   return access === 'all' || (access === 'admin' && isAdminUser(user));
 }
+
+/**
+ * Who may have Agent G run code in the sandbox (AGENT_G_SANDBOX; lib/agent/sandbox/codeQuote). Every run spends real
+ * money on Vercel Sandbox (inside the $20 ledger), so it is OFF everywhere until set, a Preview included: `admin` opens
+ * it to admins, `1` / `true` / `on` to every signed-in user. The host itself is a second switch (SANDBOX_ENABLED=1).
+ */
+export function agentSandboxAccess(env: NodeJS.ProcessEnv = process.env): AgentMediaAccess {
+  const raw = (env.AGENT_G_SANDBOX ?? '').trim().toLowerCase();
+  if (raw === 'admin') return 'admin';
+  if (raw === '1' || raw === 'true' || raw === 'on') return 'all';
+  return 'off';
+}
+
+export function agentSandboxOpenTo(user: User | null, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!user) return false;
+  const access = agentSandboxAccess(env);
+  return access === 'all' || (access === 'admin' && isAdminUser(user));
+}

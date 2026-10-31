@@ -17,7 +17,8 @@
  * and plans, nothing more; its signed plan comes back as `audioQuote` and the extraction runs only on the
  * user's Start (/api/agent/media/audio `run`). With files and the flag open it also has quote_media_edit (trim,
  * reframe, colour, sound, caption, a still of one attached video): plan only, back as `editQuote`, run on Start
- * (/api/agent/media/edit `run`).
+ * (/api/agent/media/edit `run`). With AGENT_G_SANDBOX open to the user it has quote_code_run: the program is checked
+ * and signed, back as `codeQuote`, and runs only on Start (/api/agent/sandbox/run `run`).
  *
  * Auth required (the userId attributes the booked LLM/search spend and scopes the per-user rate
  * limit). Publishing to social is prepare-only by construction — this route can never post on the
@@ -33,7 +34,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
 import { runLiveAgent, type AgentContext } from '@/lib/agent/react/bindLiveAgent';
-import { agentAnalyzeOpenTo, agentMediaOpenTo } from '@/lib/agent/media/access';
+import { agentAnalyzeOpenTo, agentMediaOpenTo, agentSandboxOpenTo } from '@/lib/agent/media/access';
 import { MAX_FILES } from '@/lib/agent/media/montageAsk';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { reportError } from '@/lib/observability/report-error';
@@ -99,11 +100,14 @@ export async function POST(req: NextRequest) {
   let mediaQuote: Parameters<NonNullable<AgentContext['onMediaQuote']>>[0] | undefined;
   let audioQuote: Parameters<NonNullable<AgentContext['onAudioQuote']>>[0] | undefined;
   let editQuote: Parameters<NonNullable<AgentContext['onEditQuote']>>[0] | undefined;
+  let codeQuote: Parameters<NonNullable<AgentContext['onCodeQuote']>>[0] | undefined;
   const ctx: AgentContext = {
     userId: user.id,
     media: agentMediaOpenTo(user),
     analyze: agentAnalyzeOpenTo(user),
     onAudioQuote: (q) => { audioQuote = q; },
+    // The code tool only where AGENT_G_SANDBOX is open to this user: closed, the agent never hears of it.
+    ...(agentSandboxOpenTo(user) ? { sandbox: true, onCodeQuote: (q: NonNullable<typeof codeQuote>) => { codeQuote = q; } } : {}),
     ...(files?.length ? {
       files,
       onMediaQuote: (q: NonNullable<typeof mediaQuote>) => { mediaQuote = q; },
@@ -123,5 +127,6 @@ export async function POST(req: NextRequest) {
   // The last plan of each kind the agent made, signed, for the confirm card: nothing has run and nothing is charged yet.
   return NextResponse.json({
     ...result, ...(mediaQuote ? { mediaQuote } : {}), ...(audioQuote ? { audioQuote } : {}), ...(editQuote ? { editQuote } : {}),
+    ...(codeQuote ? { codeQuote } : {}),
   }, { status });
 }

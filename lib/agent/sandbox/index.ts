@@ -17,3 +17,20 @@ export function getSandboxRunner(userId: string | null, env: NodeJS.ProcessEnv =
   if (!sandboxEnabled(env)) return disabledSandbox;
   return hostRunner(vercelHost(), dbSpendStore({ userId }));
 }
+
+/** The live effects of a code run (./codeQuote): the quote key, the shared duplicate guard, this runner. */
+export async function liveCodeDeps(): Promise<import('./codeQuote').CodeDeps> {
+  const [{ storeClaim }, { randomUUID }] = await Promise.all([
+    import('@/lib/orchestrator/idempotencyStore'),
+    import('node:crypto'),
+  ]);
+  return {
+    // The same key as every Agent G quote (lib/agent/media/montageLive quoteKey), read here so ffmpeg stays out.
+    key: () => process.env.AGENT_G_QUOTE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    now: () => Date.now(),
+    newId: () => randomUUID(),
+    claim: storeClaim,
+    enabled: () => sandboxEnabled(),
+    runner: (userId) => getSandboxRunner(userId),
+  };
+}

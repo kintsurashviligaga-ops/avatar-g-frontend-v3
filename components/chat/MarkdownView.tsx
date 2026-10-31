@@ -74,6 +74,7 @@ import ReactMarkdown, { type Components, type Options as ReactMarkdownOptions } 
 import remarkGfm from 'remark-gfm';
 import { Check, Copy, Eye, PanelRightOpen } from 'lucide-react';
 import { useArtifactStore } from '@/components/chat/artifacts/artifactStore';
+import { sandboxLanguageOf, useCodeRun, useCodeRunEnabled } from '@/components/chat/CodeRun';
 import { ARTIFACT_LANGUAGES, fitsArtifactBound, isPreviewable, normalizeArtifactLanguage } from '@/components/chat/artifacts/artifactSpec';
 
 type MdLocale = 'ka' | 'en' | 'ru';
@@ -600,6 +601,12 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
+  // „გაშვება“ (components/chat/CodeRun): a finished Python / JavaScript block, for a user the server lets run code.
+  const runLang = sandboxLanguageOf(lang);
+  const runOpen = useCodeRunEnabled(!streaming && runLang !== null);
+  const readCode = useCallback(() => nodeToText(childrenRef.current).replace(/\n$/, ''), []);
+  const run = useCodeRun(runOpen && !streaming ? runLang : null, readCode, locale);
+
   const copy = useCallback(async () => {
     const ok = await copyText(nodeToText(childrenRef.current).replace(/\n$/, ''));
     if (!ok) return;
@@ -616,6 +623,7 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
           {lang || 'code'}
         </span>
         <span className="flex shrink-0 items-center">
+          {run.button}
           {canOpen && (
             <button
               type="button"
@@ -648,6 +656,7 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
           {children}
         </code>
       </pre>
+      {run.card}
     </div>
   );
 }
