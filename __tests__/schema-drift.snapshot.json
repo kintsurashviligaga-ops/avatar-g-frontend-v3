@@ -142,6 +142,7 @@
       "business_items",
       "business_profiles",
       "business_projects",
+      "connector_accounts",
       "conversations",
       "credits",
       "credits_ledger",

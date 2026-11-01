@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { LIVE_TOOL_SPECS } from '../react/bindLiveAgent';
 import { CONFIRMED_ACTIONS, allowlistOf, bindTools, defineTool, type ToolEffect } from './registry';
 
-test('the live allowlist, exactly: three that read or prepare, one that inspects a file, five that quote and lead to a user-confirmed run', () => {
+test('the live allowlist, exactly: three that read or prepare, three that inspect (a file, the picked Drive files), five that quote and lead to a user-confirmed run', () => {
   // Changing this list is a review decision: a new tool lands here with its effect, or not at all.
   expect(allowlistOf(LIVE_TOOL_SPECS)).toEqual({
     quote_image: 'quote',
@@ -24,8 +24,11 @@ test('the live allowlist, exactly: three that read or prepare, one that inspects
     quote_media_edit: 'quote',
     quote_code_run: 'quote',
     analyze_media: 'inspect',
+    drive_list_files: 'inspect',
+    drive_read_file: 'inspect',
   });
   expect(LIVE_TOOL_SPECS.find((s) => s.name === 'analyze_media')?.confirms).toBeUndefined();
+  expect(LIVE_TOOL_SPECS.filter((s) => s.name.startsWith('drive_')).map((s) => s.confirms)).toEqual([undefined, undefined]);
   expect(LIVE_TOOL_SPECS.filter((s) => s.effect === 'quote').map((s) => s.confirms)).toEqual(['image_run', 'montage_run', 'audio_extract_run', 'media_edit_run', 'code_run']);
   expect(CONFIRMED_ACTIONS.montage_run).toMatchObject({ route: '/api/agent/media/montage', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });
   expect(CONFIRMED_ACTIONS.audio_extract_run).toMatchObject({ route: '/api/agent/media/audio', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });
@@ -90,4 +93,15 @@ describe('bindTools: parse, count, never throw', () => {
     const [b] = bindTools([echo], { on: true });
     await expect(b!.run({ n: 1 })).resolves.toEqual({ n: 1 });
   });
+});
+
+test('the Drive tools are offered only when the route hands Drive deps with a config (CONNECTORS_DRIVE open + configured)', () => {
+  const drive = LIVE_TOOL_SPECS.filter((s) => s.name.startsWith('drive_'));
+  expect(drive.map((s) => s.name)).toEqual(['drive_list_files', 'drive_read_file']);
+  const base = { userId: 'u' } as never;
+  for (const s of drive) {
+    expect(s.offered?.(base)).toBe(false);
+    expect(s.offered?.({ userId: 'u', driveDeps: { cfg: null, store: null, tableReady: false } } as never)).toBe(false);
+    expect(s.offered?.({ userId: 'u', driveDeps: { cfg: {}, store: null, tableReady: false } } as never)).toBe(true);
+  }
 });
