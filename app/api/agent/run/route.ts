@@ -31,6 +31,8 @@
  * Live voice call's ask_agent_g (components/voice/live/liveActions.ts) asks ~45 s and ~4 steps so the
  * call never waits two minutes. Optional `source: 'live'` only labels the run's error report.
  */
+import { driveOpenTo } from '@/lib/connectors/google/access';
+import { liveDriveDeps } from '@/lib/connectors/google';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
 import { runLiveAgent, type AgentContext } from '@/lib/agent/react/bindLiveAgent';
@@ -101,8 +103,11 @@ export async function POST(req: NextRequest) {
   let audioQuote: Parameters<NonNullable<AgentContext['onAudioQuote']>>[0] | undefined;
   let editQuote: Parameters<NonNullable<AgentContext['onEditQuote']>>[0] | undefined;
   let codeQuote: Parameters<NonNullable<AgentContext['onCodeQuote']>>[0] | undefined;
+  // Google Drive (Phase 4): only where CONNECTORS_DRIVE opens it and it is configured; closed, the agent never hears of it.
+  const driveDeps = driveOpenTo(user) ? await liveDriveDeps(user) : null;
   const ctx: AgentContext = {
     userId: user.id,
+    ...(driveDeps?.cfg ? { driveDeps } : {}),
     media: agentMediaOpenTo(user),
     analyze: agentAnalyzeOpenTo(user),
     onAudioQuote: (q) => { audioQuote = q; },

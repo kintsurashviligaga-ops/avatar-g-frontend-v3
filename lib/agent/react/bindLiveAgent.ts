@@ -62,6 +62,7 @@ import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 import type { EditQuoteResult } from '@/lib/agent/media/editExec';
 import type { CodeQuoteResult } from '@/lib/agent/sandbox/codeQuote';
+import type { DriveDeps } from '@/lib/connectors/google/drive';
 import {
   ASPECTS, FITS, GRADES, MAX_ADJUST, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS,
 } from '@/lib/agent/media/editPlan';
@@ -89,6 +90,8 @@ export interface AgentContext extends ImageToolContext {
   sandbox?: boolean;
   /** Receives every signed code-run plan; the route hands the last one to the client's Start card. */
   onCodeQuote?: (quote: Extract<CodeQuoteResult, { ok: true }>) => void;
+  /** Google Drive is linked-able for this user (CONNECTORS_DRIVE + configured), wired by the route. Read only. */
+  driveDeps?: DriveDeps;
 }
 
 /** Appended to the system prompt when the agent has no media tool: it cannot render, so it must not promise a render. */
@@ -139,6 +142,14 @@ export const AGENT_CODE_NOTE =
   'sandbox with no internet, no files of theirs and no keys, for at most 60 seconds. Never say the program already ran ' +
   'and never invent its output.';
 
+/** Added when Google Drive is open to this user: only the files they picked, read only. */
+export const AGENT_DRIVE_NOTE =
+  'The user can link their Google Drive. You see ONLY the files they picked in Google\'s picker, nothing else in their ' +
+  'Drive. To know which files those are, call drive_list_files; to read one, call drive_read_file with its id. Both ' +
+  'are read only and free. If the answer is not_connected, tell them to link Google Drive in Deep Research → ' +
+  'Connectors and pick the file there. Answer from the file\'s text and say which file you used; never invent ' +
+  'content, and never claim you can see or change other files.';
+
 export const AGENT_ANALYZE_NOTE =
   'To know what is in a video, a sound file, a PDF or a picture the user attached (what happens, the scenes, the best ' +
   'moments, what is said and by whom), or in a public YouTube video they linked, call analyze_media. It reads the whole ' +
@@ -166,6 +177,10 @@ export const MAX_ANALYSES_PER_RUN = 2;
 export const codeToolOn = (ctx: AgentContext): boolean => ctx.sandbox === true && typeof ctx.onCodeQuote === 'function';
 /** A code quote is a policy check and a signature: two per request (a fixed second try) is plenty. */
 export const MAX_CODE_QUOTES_PER_RUN = 2;
+/** The Drive tools need the connector configured and open to this user (the route hands the deps). */
+export const driveToolOn = (ctx: AgentContext): boolean => !!ctx.driveDeps?.cfg;
+/** Each read downloads one file (≤ 10 MB): four per request, one list. */
+export const MAX_DRIVE_READS_PER_RUN = 4;
 
 type RunMeter = ReturnType<typeof newRunMeter>;
 
@@ -567,6 +582,39 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       };
     },
   }),
+  // drive_list_files / drive_read_file: the Drive files the user PICKED (scope drive.file, GG 2026-11-01), read only.
+  defineTool({
+    name: 'drive_list_files',
+    effect: 'inspect',
+    description:
+      'READ ONLY — the Google Drive files the user picked for MyAvatar (nothing else in their Drive is visible). Input {}. ' +
+      'Returns {files: [{id, name, mimeType}]} or {error: not_connected}. Changes nothing; free.',
+    input: z.object({}).passthrough(),
+    offered: (ctx) => driveToolOn(ctx),
+    limit: 1,
+    run: async (_args, ctx) => {
+      const { driveProvider } = await import('@/lib/connectors/google/drive');
+      const r = await driveProvider(ctx.driveDeps!).listFiles(ctx.userId);
+      if (!r.ok) return { error: r.reason, message: r.reason === 'not_connected' ? 'Google Drive is not linked.' : 'Google Drive did not answer.' };
+      return { files: r.files.map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType })) };
+    },
+  }),
+  defineTool({
+    name: 'drive_read_file',
+    effect: 'inspect',
+    description:
+      'READ ONLY — the text of one Google Drive file the user picked (Docs, Sheets as CSV, Slides, PDF, DOCX, TXT, MD). Input {id} from drive_list_files. ' +
+      'Returns {name, text} (long files are cut) or {error}. Changes nothing; free.',
+    input: z.object({ id: z.string().trim().regex(/^[A-Za-z0-9_-]{10,200}$/) }),
+    offered: (ctx) => driveToolOn(ctx),
+    limit: MAX_DRIVE_READS_PER_RUN,
+    run: async ({ id }, ctx) => {
+      const { driveProvider } = await import('@/lib/connectors/google/drive');
+      const r = await driveProvider(ctx.driveDeps!).read(ctx.userId, id);
+      if (!r.ok) return { error: r.reason, message: r.reason === 'not_connected' ? 'Google Drive is not linked.' : r.reason === 'not_found' ? 'That file was not picked or does not exist.' : 'The file could not be read.' };
+      return { name: r.name, text: r.text };
+    },
+  }),
   // analyze_media: describe one attached file (or a public YouTube video) with Gemini, by reference. The model names the
   // file by its number, never a path; the answer is a description and starts nothing.
   defineTool({
@@ -645,7 +693,8 @@ export async function runLiveAgent(
   const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
   const systemExtra = [
     mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
-    analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', codeToolOn(ctx) ? AGENT_CODE_NOTE : '', opts?.systemExtra?.trim(),
+    analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', codeToolOn(ctx) ? AGENT_CODE_NOTE : '', driveToolOn(ctx) ? AGENT_DRIVE_NOTE : '',
+    opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({
     llm: llmAdapterFor(meter, opts?.deadlineMs, opts?.deadlineMs !== undefined && opts.deadlineMs - Date.now() <= QUICK_RUN_MS),

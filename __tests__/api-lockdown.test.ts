@@ -142,7 +142,6 @@ const PROVIDER_ROUTE_ALLOWLIST: Record<string, string> = {
   'app/api/support/route.ts': 'public support form (Resend e-mail to our own inbox) — per-IP SUPPORT bucket',
   'app/api/video/engine/route.ts': 'Veo capability flags (env reads only), no provider call',
   'app/api/research/capabilities/route.ts': 'Deep Research availability probe — env flags + a table probe + the price; no provider call, no user data (IP READ bucket)',
-  'app/api/connectors/route.ts': 'Connectors states — static registry + a table probe; no provider call; a guest sees statuses only (IP READ bucket)',
   'app/api/genjutsu/capabilities/route.ts': 'VFX open/soon flags (env + credential-PRESENCE reads only: it builds no request and calls no provider); coarse open|soon on the wire',
   'app/api/ai/music/engines/route.ts': 'music engine availability (env presence checks + the circuit-breaker flags), booleans only, no provider call — IP READ bucket',
   'app/api/studio/catalogue/route.ts': 'model-picker availability: ids + yes/no + a reason word from the Veo transport PRESENCE and the music breakers (Higgsfield rows are always google_only); no provider call — IP READ bucket',

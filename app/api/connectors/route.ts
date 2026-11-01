@@ -2,7 +2,7 @@
  * GET /api/connectors → { connectors: ConnectorState[], limits }
  *
  * The honest state of every connector (lib/connectors/registry.ts): Local files WORKS (`ready`, with the signed-in user's file
- * count), and Google Drive, OneDrive, Notion and Dropbox are `soon` — prepared on the server, NOT connectable: no OAuth flow, no
+ * count); Google Drive is `connectable` (+ `linked`) for a user CONNECTORS_DRIVE opens it to when it is configured; OneDrive, Notion and Dropbox are `soon` — prepared on the server, NOT connectable: no OAuth flow, no
  * token store, nothing to authorize. A guest gets the list too (statuses are public facts; there is no file count to leak).
  * `limits` are the numbers the Connectors view shows: documents per account, characters per document, documents per run.
  */
@@ -13,6 +13,8 @@ import { tableReady } from '@/lib/research/capabilities';
 import { RESEARCH_ATTACH_MAX, RESEARCH_CONTEXT_MAX_CHARS, RESEARCH_FILES_MAX, RESEARCH_FILE_MAX_CHARS } from '@/lib/research/context';
 import { callerId, json } from '@/lib/research/http';
 import { getResearchRuntime } from '@/lib/research/runtime';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { liveDriveDeps } from '@/lib/connectors/google';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,7 +26,9 @@ export async function GET(req: NextRequest) {
   const userId = await callerId(req);
   const rt = getResearchRuntime();
   const filesTableReady = !!rt && (await tableReady(rt.db as never, 'research_context_files'));
-  const providers = connectorRegistry({ localFiles: rt?.files ?? null, filesTableReady });
+  // Google Drive only for a signed-in user CONNECTORS_DRIVE opens it to; everyone else still sees the honest 'soon'.
+  const drive = userId ? await liveDriveDeps((await authedClientFromRequest(req)).user ?? null) : undefined;
+  const providers = connectorRegistry({ localFiles: rt?.files ?? null, filesTableReady, drive });
   const connectors = await connectorStates(userId, providers);
   return json({
     connectors,

@@ -6,7 +6,8 @@
  *
  *   Local files   WORKS: pick a PDF / DOCX / TXT / MD → the text is extracted (txt/md in the browser, PDF and DOCX by
  *                 /api/utils/extract-text) → /api/connectors/files stores the TEXT only → a research run can attach it.
- *   Google Drive · OneDrive · Notion · Dropbox   NOT drawn. The server still lists them as „soon" (lib/connectors/registry.ts)
+ *   Google Drive  drawn (DriveConnector) only when the server answers `connectable` for this user (Phase 4).
+ *   OneDrive · Notion · Dropbox   NOT drawn. The server still lists them as „soon" (lib/connectors/registry.ts)
  *                 but there is no OAuth flow and no token store, so they cannot connect. The „Soon" rows were removed
  *                 2026-10-10 (Omnichannel A2: a cloud integration without real access is not shown). They come back
  *                 only with a working connect flow.
@@ -17,6 +18,7 @@ import type { ConnectorFile, ConnectorState } from '@/lib/connectors/types';
 import { RESEARCH_FILES_MAX } from '@/lib/research/context';
 import { addFile, extractFileText, fetchConnectors, fetchFiles, removeFile, TEXT_FILE_RE, type ConnectorLimits } from './api';
 import { researchCopy, researchLang } from './copy';
+import { DriveConnector } from './DriveConnector';
 
 /** The route's JSON body must stay under Vercel's ~4.5 MB: a binary document is sent as base64 (×1.37). */
 const MAX_BINARY_BYTES = 3 * 1024 * 1024;
@@ -49,6 +51,7 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
   useEffect(() => { void load(); }, [load]);
 
   const localState = states?.find((s) => s.id === 'local_files');
+  const driveState = states?.find((s) => s.id === 'google_drive');
   const localReady = localState?.status === 'ready' && !filesUnavailable;
   const maxFiles = limits?.maxFiles ?? RESEARCH_FILES_MAX;
   const full = (files?.length ?? 0) >= maxFiles;
@@ -141,6 +144,11 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
 
         {message && <p role="alert" className="mt-2 text-[12.5px] leading-snug text-app-text">{message}</p>}
       </section>
+
+      {/* Google Drive — only when the server says it is connectable for this user (configured + CONNECTORS_DRIVE). */}
+      {authed && driveState?.status === 'connectable' && (
+        <DriveConnector lang={lang} linked={driveState.linked === true} onChanged={() => void load()} />
+      )}
     </div>
   );
 }
