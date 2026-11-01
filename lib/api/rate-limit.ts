@@ -232,6 +232,9 @@ export const RATE_LIMITS = {
   // CODE_RUN_USER — Agent G sandbox runs (lib/agent/sandbox/codeQuote), per account per day: each run spends Vercel
   // Sandbox money inside the $20 ledger, so one person can never drain it in an afternoon.
   CODE_RUN_USER:     { maxRequests: 50,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:coderun:user' } as const,
+  // CODE_RUN_BURST — the code-run route's own per-minute bucket (quote + run = 2 calls a block). Not EXPENSIVE: that
+  // bucket is shared with the chat turn and 20 other routes, so a second block in the same minute was refused.
+  CODE_RUN_BURST:    { maxRequests: 20,  windowMs: 60_000,           keyPrefix: 'rl:coderun:min' } as const,
   // The public support form (/api/support), per IP. Each accepted post can send an email through Resend to the support
   // inbox; with no limit at all, one script could fill the inbox and burn the sending quota. 5 per 15 minutes is more
   // than any person writes to support.

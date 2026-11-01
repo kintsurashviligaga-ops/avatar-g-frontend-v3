@@ -11,10 +11,11 @@ jest.mock('../../../../../lib/supabase/server', () => ({
   authedClientFromRequest: jest.fn(async () => ({ user: mockUser })),
 }));
 const mockDaily = jest.fn(async (): Promise<Response | null> => null);
+const mockBurst = jest.fn(async (): Promise<Response | null> => null);
 jest.mock('../../../../../lib/api/rate-limit', () => ({
-  checkRateLimit: jest.fn(async () => null),
+  checkRateLimit: (...a: unknown[]) => (mockBurst as (...x: unknown[]) => Promise<Response | null>)(...a),
   checkRateLimitByKey: (...a: unknown[]) => (mockDaily as (...x: unknown[]) => Promise<Response | null>)(...a),
-  RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 }, CODE_RUN_USER: { maxRequests: 50, windowMs: 86_400_000 } },
+  RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 }, CODE_RUN_BURST: { maxRequests: 20, windowMs: 60_000, keyPrefix: 'rl:coderun:min' }, CODE_RUN_USER: { maxRequests: 50, windowMs: 86_400_000 } },
 }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: (u: { email?: string } | null) => u?.email === 'admin@example.com' }));
 jest.mock('../../../../../lib/agent/sandbox', () => ({ liveCodeDeps: async () => ({}) }));
@@ -67,6 +68,8 @@ test('a run is behind the daily ceiling, and a used quote is a 409', async () =>
   const res = await POST(req({ action: 'run', request: {}, token: 't' }));
   expect(res.status).toBe(409);
   expect(mockDaily).toHaveBeenCalledWith('u-1', { maxRequests: 50, windowMs: 86_400_000 });
+  // Its own per-minute bucket, not the EXPENSIVE one the chat turn also spends.
+  expect(mockBurst).toHaveBeenCalledWith(expect.anything(), { maxRequests: 20, windowMs: 60_000, keyPrefix: 'rl:coderun:min' }, 'u-1');
   mockDaily.mockResolvedValueOnce(NextResponse.json({ error: 'rate_limited' }, { status: 429 }));
   expect((await POST(req({ action: 'run', request: {}, token: 't' }))).status).toBe(429);
   expect(runCodeQuote).toHaveBeenCalledTimes(1);

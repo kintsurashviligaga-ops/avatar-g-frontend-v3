@@ -57,7 +57,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   if (!agentSandboxOpenTo(user)) return notFound();
-  const limited = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE, user.id);
+  const limited = await checkRateLimit(req, RATE_LIMITS.CODE_RUN_BURST, user.id);
   if (limited) return limited;
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
