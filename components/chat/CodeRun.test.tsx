@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { __resetCodeRunForTests, codeRunErrorText, sandboxLanguageOf, useCodeRun, useCodeRunEnabled, type SandboxLang } from './CodeRun';
+import { __resetCodeRunForTests, codeRunErrorText, errorOf, sandboxLanguageOf, useCodeRun, useCodeRunEnabled, type SandboxLang } from './CodeRun';
 
 function Block({ lang, code = 'print(2+2)' }: { lang: SandboxLang | null; code?: string }) {
   const open = useCodeRunEnabled(lang !== null);
@@ -59,4 +59,12 @@ describe('CodeRun', () => {
     expect(await screen.findByText(codeRunErrorText('quote_used', 'en'))).toBeTruthy();
     expect(codeRunErrorText('nonsense', 'ka')).toBe('გაშვება ვერ მოხერხდა.');
   });
+});
+
+test('a per-minute 429 is "too fast", only a wait past an hour is the daily cap', () => {
+  expect(errorOf(429, { retryAfter: 42 })).toBe('too_fast');
+  expect(errorOf(429, {})).toBe('too_fast');
+  expect(errorOf(429, { retryAfter: 80_000 })).toBe('rate_limited');
+  expect(errorOf(409, { error: 'quote_used' })).toBe('quote_used');
+  expect(codeRunErrorText('too_fast', 'ka')).toBe('ძალიან სწრაფად, ცადე ერთ წუთში.');
 });

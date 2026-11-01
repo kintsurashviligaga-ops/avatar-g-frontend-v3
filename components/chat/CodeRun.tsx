@@ -89,21 +89,21 @@ const ERR: Record<Lang, Record<string, string>> = {
     quote_expired: 'გეგმას ვადა გაუვიდა, დააჭირე „გაშვებას“ თავიდან.', quote_changed: 'კოდი შეიცვალა, დააჭირე „გაშვებას“ თავიდან.',
     timeout: 'პროგრამამ 60 წამს გადააჭარბა და გაჩერდა.', refused: 'სენდბოქსის ბიუჯეტი ამოიწურა.',
     sandbox_disabled: 'კოდის გაშვება ახლა გამორთულია.', guard_unavailable: 'ახლა ვერ ვამოწმებ განმეორებას, ცადე ერთ წუთში.',
-    rate_limited: 'დღის ლიმიტი ამოიწურა, ცადე ხვალ.', other: 'გაშვება ვერ მოხერხდა.',
+    rate_limited: 'დღის ლიმიტი ამოიწურა, ცადე ხვალ.', too_fast: 'ძალიან სწრაფად, ცადე ერთ წუთში.', other: 'გაშვება ვერ მოხერხდა.',
   },
   en: {
     bad_input: 'This code cannot be run (Python or JavaScript, up to 64 KB).', quote_used: 'This plan already ran.',
     quote_expired: 'The plan expired; press Run again.', quote_changed: 'The code changed; press Run again.',
     timeout: 'The program ran past 60 seconds and was stopped.', refused: 'The sandbox budget is used up.',
     sandbox_disabled: 'Running code is switched off right now.', guard_unavailable: 'The duplicate check is unavailable; try again in a minute.',
-    rate_limited: 'Today\'s limit is reached; try again tomorrow.', other: 'The run failed.',
+    rate_limited: 'Today\'s limit is reached; try again tomorrow.', too_fast: 'Too many runs at once; try again in a minute.', other: 'The run failed.',
   },
   ru: {
     bad_input: 'Этот код нельзя запустить (Python или JavaScript, до 64 КБ).', quote_used: 'Этот план уже выполнен.',
     quote_expired: 'План устарел, нажмите «Запустить» ещё раз.', quote_changed: 'Код изменился, нажмите «Запустить» ещё раз.',
     timeout: 'Программа работала дольше 60 секунд и остановлена.', refused: 'Бюджет песочницы исчерпан.',
     sandbox_disabled: 'Запуск кода сейчас выключен.', guard_unavailable: 'Проверка повторов недоступна, попробуйте через минуту.',
-    rate_limited: 'Дневной лимит исчерпан, попробуйте завтра.', other: 'Запуск не удался.',
+    rate_limited: 'Дневной лимит исчерпан, попробуйте завтра.', too_fast: 'Слишком часто, попробуйте через минуту.', other: 'Запуск не удался.',
   },
 };
 
@@ -121,8 +121,11 @@ async function post(body: unknown, signal?: AbortSignal): Promise<{ status: numb
   return { status: r.status, json };
 }
 
-const errorOf = (status: number, json: Record<string, unknown>) =>
-  status === 429 ? 'rate_limited' : typeof json.error === 'string' ? json.error : 'other';
+/** A 429 is the daily cap only when it says to wait more than an hour; a per-minute refusal is "too fast". */
+export const errorOf = (status: number, json: Record<string, unknown>) =>
+  status === 429
+    ? (typeof json.retryAfter === 'number' && json.retryAfter > 3600 ? 'rate_limited' : 'too_fast')
+    : typeof json.error === 'string' ? json.error : 'other';
 
 const BTN = 'flex h-11 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-app-muted transition-colors hover:bg-app-border/10 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 disabled:opacity-50 [@media(pointer:fine)]:h-8';
 
