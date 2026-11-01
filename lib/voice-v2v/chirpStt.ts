@@ -1,14 +1,18 @@
 import 'server-only';
 
 /**
- * Cloud Speech-to-Text Chirp 3: the owner's `?stt=chirp_3` dictation trial (GG card 2026-10-30 18:00Z, "კი, Chirp 3
- * სცადე"). Never the default, never a step-down, honoured for an admin only (app/api/voice/transcribe).
+ * Cloud Speech-to-Text Chirp 3: the mic's engine for EVERYONE since GG's card of 2026-11-01 05:33Z ("Chirp
+ * ყველასთვის"), after the owner's `?stt=chirp_3` trial (GG card 2026-10-30 18:00Z, "კი, Chirp 3 სცადე") wrote Georgian,
+ * Russian and English right on the owner's iPhone (2026-11-01 05:30Z: „გესმის ჩემი ხმა? Can you hear me? Ты меня
+ * слышишь?“, Stop→final p50 2.8 s against Gemini 3.6 Flash's 3.4–4.7 s). Gemini on the same Vertex project takes
+ * the clip when Chirp cannot answer it: over a minute (CHIRP_SYNC_MAX_SECONDS), an error or a timeout, or an answer
+ * that cannot be written (app/api/voice/transcribe). `STT_ENGINE=gemini` turns Chirp off for everyone
+ * (chirpIsDefaultEngine). `?stt=chirp_3` still runs Chirp alone, with no Gemini after it, for the owner's timings.
  *
- * Why it is tried: 3.6 Flash's first text comes 5–7 s after the tap on the owner's iPhone, and Google's transcribe
+ * Why it was tried: 3.6 Flash's first text came 5–7 s after the tap on the owner's iPhone, and Google's transcribe
  * model wrote Georgian in Armenian letters (2026-10-30). Chirp 3 is a speech model, not a prompted LLM, and it is told
- * the languages to expect (`languageCodes`: Georgian, Russian, English), so it has no other alphabet to wander into.
- * Its Georgian is Preview (Chirp 3 language table, read 2026-10-30). Whether it is faster, and right, on the owner's
- * phone is UNVERIFIED until the owner dictates.
+ * the languages to expect (`languageCodes`: Georgian, Russian, English). Its Georgian is Preview (Chirp 3 language
+ * table, read 2026-10-30), and the owner's three-language sentence above is one sample per language.
  *
  * The call: Speech-to-Text V2 `recognize` on the default recognizer (`recognizers/_`) at the `us` multi-region (Vercel
  * runs in iad1), with the same Workload Identity token as Vertex AI (lib/veo/vertexAuth), billed to the same project.
@@ -32,7 +36,10 @@ import 'server-only';
  * carries the same clip, so Google bills it the same seconds, and it is booked as such without waiting.
  *
  * Price: $0.016 per minute of audio, counted in one-second steps (Speech-to-Text pricing, V2 standard models, read
- * 2026-10-30); the route books it from the duration Google says it billed, summed over both requests.
+ * 2026-10-30); the route books it from the duration Google says it billed, summed over both requests. Both requests
+ * carry the clip, and every interim pass re-sends the clip so far (lib/voice/interimCadence), so a dictation costs
+ * about $0.005 at 3 s, $0.02 at 10 s and $0.11 at a minute (passes at 0.9, 1.8, 2.7, 4.2, 6.3, 9.6 … 48.6 s, each
+ * rounded up to whole seconds, plus the final pass, all twice). Estimates from the schedule, not a Google bill.
  */
 import { getVertexAccessToken, vertexAiConfig } from '@/lib/veo/vertexAuth';
 import { CHIRP_STT_MODEL } from '@/lib/ai/google/models';
@@ -49,6 +56,21 @@ export const CHIRP_SYNC_MAX_SECONDS = 60;
 
 /** Inside the route's 30 s: an answer later than this would be useless to the mic anyway. */
 const CHIRP_TIMEOUT_MS = 20_000;
+
+/**
+ * Chirp's share when Gemini stands behind it (the default engine): a clip Chirp has not answered by then goes to
+ * Gemini, which still has the rest of the route's 30 s. Chirp answered the owner's clips in 2.8 s (p50) and 4.4 s (p95)
+ * from Stop, network included (2026-11-01 05:30Z).
+ */
+export const CHIRP_FIRST_TIMEOUT_MS = 10_000;
+
+/**
+ * Whether the mic's default engine is Chirp 3 (GG card 2026-11-01 05:33Z). `STT_ENGINE=gemini` (any case) turns it off
+ * for everyone and the mic is Gemini alone again, as before; unset, or any other value, keeps Chirp.
+ */
+export function chirpIsDefaultEngine(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  return (env.STT_ENGINE ?? '').trim().toLowerCase() !== 'gemini';
+}
 
 /** The site's three dictation languages, the one asked for first. 'auto' and anything unknown start with Georgian. */
 const SITE_LANGUAGES = ['ka-GE', 'ru-RU', 'en-US'] as const;
@@ -187,7 +209,12 @@ function googleReason(body: string): string {
  * Transcribe one clip with Chirp 3. Throws GeminiSttError (the route's one STT error type; the codes are the same)
  * on a miss, so the route answers it as it answers a Gemini miss: an empty transcript and `stt_unavailable`.
  */
-export async function transcribeWithChirp(audio: Uint8Array, language: string): Promise<ChirpSttResult> {
+export async function transcribeWithChirp(
+  audio: Uint8Array,
+  language: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<ChirpSttResult> {
+  const timeoutMs = Math.max(1_000, opts.timeoutMs ?? CHIRP_TIMEOUT_MS);
   const fail = (message: string, code: ConstructorParameters<typeof GeminiSttError>[1], status?: number) =>
     new GeminiSttError(message, code, status, CHIRP_STT_MODEL);
   const config = vertexAiConfig();
@@ -213,7 +240,7 @@ export async function transcribeWithChirp(audio: Uint8Array, language: string): 
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       redirect: 'manual',
       body: JSON.stringify({ config: { autoDecodingConfig: {}, model: CHIRP_STT_MODEL, languageCodes }, content }),
-      signal: AbortSignal.timeout(CHIRP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
   const ask = async (languageCodes: string[]): Promise<LegAnswer> => {

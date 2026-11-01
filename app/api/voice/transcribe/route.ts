@@ -8,7 +8,13 @@ import {
   GeminiSttError,
   type GeminiSttResult,
 } from '@/lib/voice-v2v/geminiStt';
-import { chirpCostUsd, transcribeWithChirp, type ChirpSttResult } from '@/lib/voice-v2v/chirpStt';
+import {
+  CHIRP_FIRST_TIMEOUT_MS,
+  chirpCostUsd,
+  chirpIsDefaultEngine,
+  transcribeWithChirp,
+  type ChirpSttResult,
+} from '@/lib/voice-v2v/chirpStt';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
@@ -19,6 +25,12 @@ import { CHIRP_STT_MODEL, STT_TRIAL_MODELS } from '@/lib/ai/google/models';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
+
+/** What the engines may spend together, inside maxDuration: Chirp's share first, Gemini the rest when it stands in. */
+const STT_BUDGET_MS = 27_000;
+/** Gemini's own default deadline (lib/voice-v2v/geminiStt), and the least it is given after Chirp. */
+const GEMINI_MAX_MS = 22_000;
+const GEMINI_MIN_MS = 5_000;
 
 /**
  * /api/voice/transcribe — short-utterance speech-to-text for the chat mic and the voice-call loop.
@@ -32,8 +44,8 @@ export const maxDuration = 30;
  *   - language: optional 'ka-GE' | 'en-US' | 'ru-RU' | 'auto' (default 'ka-GE'). A HINT: the transcript is written in
  *               the language actually spoken, never translated (geminiStt.sttPrompt). 'auto' = no hint at all.
  *   - model:    optional, the owner's `?stt=` trial (lib/voice/sttTrial): a model from STT_TRIAL_MODELS, honoured for
- *               an ADMIN only and alone (no step-downs), so its timing is its own. Ignored for anyone else. `chirp_3` is
- *               Cloud Speech-to-Text's Chirp 3 (lib/voice-v2v/chirpStt), told to expect Georgian, Russian and English.
+ *               an ADMIN only and alone (no step-downs, no Gemini after Chirp), so its timing is its own. Ignored for
+ *               anyone else. `chirp_3` is Chirp 3 alone; a Gemini model is that model alone.
  *
  * Response: { text: string, provider: string, language?: 'ka-GE' | 'en-US' | 'ru-RU', code?: 'unsupported_format' |
  * 'stt_unavailable' }. `language` is the script the transcript came back in — the browser remembers it for the next
@@ -46,9 +58,12 @@ export const maxDuration = 30;
  * and diagnostics for admins only. NOTE: the studio's dictation mic has no guest check of its own yet, so a guest's
  * recorder pass now gets this 401 — the composer should raise `myavatar:auth-required` before recording instead.
  *
- * ENGINE: Gemini on Vertex AI only (sttModel() + step-downs); the owner's Chirp 3 trial is Google's Speech-to-Text on
- * the same project and token. A Google miss is an empty transcript, never a silent vendor
- * swap. The legacy Replicate / OpenAI / Deepgram cascade that AI_GOOGLE_ONLY=0 used to restore is gone (MASTER TASK v3.1,
+ * ENGINE: Cloud Speech-to-Text's Chirp 3 for everyone (GG card 2026-11-01 05:33Z, lib/voice-v2v/chirpStt), told to
+ * expect Georgian, Russian and English. Gemini on Vertex AI (sttModel() + step-downs) takes the clip when Chirp cannot
+ * answer it: a clip over a minute, an error or no answer within CHIRP_FIRST_TIMEOUT_MS, or letters that cannot be
+ * written (another alphabet, Latin noise, a transcript sttAccept refuses). Silence from Chirp is an answer: Gemini is
+ * not asked again. `STT_ENGINE=gemini` makes Gemini the whole engine again. Both are Google, on the same project,
+ * token and bill. A Google miss is an empty transcript, never a silent vendor swap. The legacy Replicate / OpenAI / Deepgram cascade that AI_GOOGLE_ONLY=0 used to restore is gone (MASTER TASK v3.1,
  * audit F-04): no env value reaches it.
  */
 
@@ -165,10 +180,13 @@ export async function POST(req: NextRequest) {
     const blocker = geminiSttBlocker();
     const geminiKeyPresent = !blocker;
 
-    const runGemini = async (): Promise<void> => {
+    const runGemini = async (timeoutMs?: number): Promise<void> => {
       if (!gem.mimeType) { code = 'unsupported_format'; return; }
       try {
-        const result = await transcribeWithGeminiDetailed(audioBase64, gem.mimeType, language, trialModel ? { models: [trialModel] } : {});
+        const result = await transcribeWithGeminiDetailed(audioBase64, gem.mimeType, language, {
+          ...(trialModel ? { models: [trialModel] } : {}),
+          ...(timeoutMs ? { timeoutMs } : {}),
+        });
         await bookStt(result, user?.id);
         if (acceptTranscript(result.text, language)) { text = result.text; spoken = result.spoken ?? null; provider = 'gemini'; }
       } catch (geminiErr) {
@@ -182,22 +200,30 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    // The owner's Chirp 3 trial: Cloud Speech-to-Text decodes the container itself (WAV, FLAC, MP3, Ogg/WebM Opus …),
-    // so only a clip no one can name is refused before the call.
-    const runChirp = async (): Promise<void> => {
-      if (!gem.container) { code = 'unsupported_format'; return; }
+    /** Why Chirp gave no answer to write, for the owner's diag; null when it answered (silence is an answer). */
+    let chirpErrMsg: string | null = null;
+    // Chirp 3: Cloud Speech-to-Text decodes the container itself (WAV, FLAC, MP3, Ogg/WebM Opus …), so only a clip no
+    // one can name is refused before the call (Gemini could not name it either). Returns false when Chirp gave nothing
+    // to write that it HEARD: an error, a clip over its minute, or letters that cannot be written. That is when Gemini
+    // takes the clip, unless Chirp runs alone (the owner's `?stt=chirp_3`).
+    const runChirp = async (timeoutMs?: number): Promise<boolean> => {
+      if (!gem.container) { code = 'unsupported_format'; return true; }
       try {
-        const result = await transcribeWithChirp(new Uint8Array(bytes), language);
+        const result = await transcribeWithChirp(new Uint8Array(bytes), language, timeoutMs ? { timeoutMs } : {});
         await bookChirp(result, user?.id);
-        if (acceptTranscript(result.text, language)) { text = result.text; spoken = result.spoken ?? null; provider = 'chirp'; }
+        if (acceptTranscript(result.text, language)) { text = result.text; spoken = result.spoken ?? null; provider = 'chirp'; return true; }
         // Letters outside Georgian, Cyrillic and Latin (Georgian once came back in Devanagari) or Latin noise (once
         // „G 7 6 0 0 0 0 0“) are never written; the owner's diag says what Chirp said it heard instead.
-        else if (result.foreign) geminiErrMsg = `Chirp 3 gave no readable Georgian, Russian or English (heard ${result.foreign}): nothing written`;
+        if (result.foreign) { chirpErrMsg = `Chirp 3 gave no readable Georgian, Russian or English (heard ${result.foreign}): nothing written`; return false; }
+        // Words sttAccept refuses (Georgian in Latin letters under a Georgian hint, a silence label): not written either.
+        if (result.text.trim()) { chirpErrMsg = 'Chirp 3 gave a transcript the mic does not write (sttAccept)'; return false; }
+        return true;
       } catch (chirpErr) {
-        geminiErrMsg = chirpErr instanceof Error ? chirpErr.message : String(chirpErr);
+        chirpErrMsg = chirpErr instanceof Error ? chirpErr.message : String(chirpErr);
         code = 'stt_unavailable';
         // eslint-disable-next-line no-console
         console.warn('[transcribe] chirp STT failed:', chirpErr instanceof GeminiSttError ? `${chirpErr.code} ${chirpErr.status ?? ''}` : 'error');
+        return false;
       }
     };
 
@@ -205,9 +231,23 @@ export async function POST(req: NextRequest) {
     // dictationMetrics) split each pass's round-trip into the engine's share and the network's.
     const sttStartedAt = Date.now();
     const timing = () => ({ 'Server-Timing': `stt;dur=${Date.now() - sttStartedAt}` });
-    // Gemini is the whole engine, but for the owner's Chirp 3 trial. Both need Vertex AI's project and token.
-    if (geminiKeyPresent) await (trialModel === CHIRP_STT_MODEL ? runChirp() : runGemini());
-    else { code = 'stt_unavailable'; geminiErrMsg = blocker; }
+    // Chirp first, Gemini when Chirp has no answer; the owner's trial model alone; Gemini alone under STT_ENGINE=gemini.
+    // Both engines need Vertex AI's project and token.
+    let engine: 'chirp' | 'gemini' | 'chirp+gemini' = 'gemini';
+    if (!geminiKeyPresent) { code = 'stt_unavailable'; geminiErrMsg = blocker; }
+    else if (trialModel === CHIRP_STT_MODEL) {
+      engine = 'chirp';
+      if (!(await runChirp())) geminiErrMsg = chirpErrMsg;
+    } else if (trialModel || !chirpIsDefaultEngine()) await runGemini();
+    else {
+      engine = 'chirp';
+      if (!(await runChirp(CHIRP_FIRST_TIMEOUT_MS))) {
+        engine = 'chirp+gemini';
+        code = undefined;
+        await runGemini(Math.min(GEMINI_MAX_MS, Math.max(GEMINI_MIN_MS, STT_BUDGET_MS - (Date.now() - sttStartedAt))));
+        if (!text) geminiErrMsg = [chirpErrMsg, geminiErrMsg && `Gemini: ${geminiErrMsg}`].filter(Boolean).join('; ') || null;
+      }
+    }
 
     if (text) code = undefined;
     const headers = timing();
@@ -228,6 +268,7 @@ export async function POST(req: NextRequest) {
           audioBytes: bytes.byteLength,
           geminiKeyPresent,
           geminiError: geminiErrMsg,
+          engine,
           ...(trialModel ? { trialModel } : {}),
         },
       }, { headers });
