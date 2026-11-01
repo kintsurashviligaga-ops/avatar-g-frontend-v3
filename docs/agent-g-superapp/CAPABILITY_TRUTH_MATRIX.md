@@ -9,7 +9,7 @@ nothing against Preview or Production. Where a PROVEN status appears, the eviden
 existing creative services (video, image, music, avatar, voice) keep their labels in `lib/agent/capabilities.ts`
 and in `docs/ENGINEERING_REGISTRY.md`; this matrix covers what v2.0 adds.
 
-**Updated 2026-11-01** (`main` = `32cc096`) after Phases 1–3. Rows D1, D2, D5, D6, W1, B3 and the new W4 carry the
+**Updated 2026-11-01** (`main` = `bff4388`) after Phases 1–3. Rows D1, D2, D5, D6, W1, B3 and the new W4 carry the
 new status and evidence; each changed row says what proved it. The rest is still the 2026-10-30 audit.
 
 ## Phase 1 — documents (P0)
@@ -28,7 +28,7 @@ new status and evidence; each changed row says what proved it. The rest is still
 | # | Feature | Existing code | Runtime | Provider | Flag | Evidence | Status | Gap | Proposed action |
 |---|---|---|---|---|---|---|---|---|---|
 | W1 | Code sandbox (Python, Node) | `lib/agent/sandbox/{policy,runner,budget,dbSpend,vercelHost,index}.ts` (#248), ledger migration 20261031b (GG) | via W4 | Vercel Sandbox (GG 2026-10-30), $20 cap in code | `SANDBOX_ENABLED=1` (Production since 2026-11-01) | First run 2026-10-31 16:47Z (4, egress blocked); CODE-01 in production 2026-11-01 | **PROVEN_PRODUCTION** | No terminal, no files in/out | Files and workspace with W2/W3 |
-| W4 | Run a chat code block (quote → Start → result) | `lib/agent/sandbox/codeQuote.ts`, `components/chat/CodeRun.tsx`, tool `quote_code_run` (#249, #251); Library PDF of each result `codeFiling.ts` (#252, in review) | `/api/agent/sandbox/run` | Vercel Sandbox | `AGENT_G_SANDBOX=admin` | CODE-01 by GG on myavatar.ge 2026-11-01 ~05:50Z: 5050, exit 0, 0.5 s (iPhone) | **PROVEN_PRODUCTION** (admins); Library filing **BUILT_NOT_PROVEN** until #252 ships | Open to everyone needs GG's OK | Phase 3 report: `phase3-report-ka.md` |
+| W4 | Run a chat code block (quote → Start → result) | `lib/agent/sandbox/codeQuote.ts`, `components/chat/CodeRun.tsx`, tool `quote_code_run` (#249, #251); Library PDF of each result `codeFiling.ts` (#252) | `/api/agent/sandbox/run` | Vercel Sandbox | `AGENT_G_SANDBOX=admin` | CODE-01 by GG on myavatar.ge 2026-11-01 ~05:50Z: 5050, exit 0, 0.5 s (iPhone); Library PDF confirmed by GG 06:58Z (bff4388) | **PROVEN_PRODUCTION** (admins), incl. Library filing | Open to everyone needs GG's OK | Phase 3 report: `phase3-report-ka.md` |
 | W2 | Workspace manager (ids, versions, TTL, quota) | Storage + Library, `generation_jobs` | — | — | — | — | **MISSING** | No workspace model | Design on the existing storage; a table would need a migration (GG) |
 | W3 | Workspace tools (`workspace_read/write/list/export/delete`) | — | — | — | — | — | **MISSING** | — | After W1/W2 |
 
