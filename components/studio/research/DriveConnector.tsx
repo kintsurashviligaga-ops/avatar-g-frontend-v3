@@ -16,7 +16,7 @@ import { loadGooglePicker } from './googlePicker';
 
 type Lang = 'ka' | 'en' | 'ru';
 
-type Copy = { title: string; sub: string; connect: string; pick: string; disconnect: string; empty: string; linked: string; failed: string; disconnected: string; denied: string; hint: string };
+type Copy = { title: string; sub: string; connect: string; pick: string; disconnect: string; empty: string; linked: string; failed: string; disconnected: string; denied: string; account: string; hint: string };
 
 const COPY: Record<Lang, Copy> = {
   ka: {
@@ -30,6 +30,7 @@ const COPY: Record<Lang, Copy> = {
     failed: 'Google Drive-მა არ უპასუხა. სცადე თავიდან.',
     disconnected: 'Google Drive გაითიშა.',
     denied: 'დაკავშირება გაუქმდა.',
+    account: 'არჩეული ფაილები დაკავშირებულ Google ანგარიშში მიუწვდომელია. სცადე იმავე ანგარიშით.',
     hint: 'ჰკითხე Agent G-ს, მაგალითად: „რა წერია ჩემს Drive-ის დოკუმენტში?“',
   },
   en: {
@@ -43,6 +44,7 @@ const COPY: Record<Lang, Copy> = {
     failed: 'Google Drive did not answer. Try again.',
     disconnected: 'Google Drive is disconnected.',
     denied: 'The connection was cancelled.',
+    account: 'The selected files are unavailable in your connected Google account. Try again with that account.',
     hint: 'Ask Agent G, for example: "What does my Drive document say?"',
   },
   ru: {
@@ -56,6 +58,7 @@ const COPY: Record<Lang, Copy> = {
     failed: 'Google Drive не ответил. Попробуйте ещё раз.',
     disconnected: 'Google Drive отключён.',
     denied: 'Подключение отменено.',
+    account: 'Выбранные файлы недоступны в подключённом аккаунте Google. Попробуйте снова с этим аккаунтом.',
     hint: 'Спросите Agent G, например: «Что написано в моём документе на Drive?»',
   },
 };
@@ -90,7 +93,7 @@ export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang
       const u = new URL(window.location.href);
       const r = u.searchParams.get('drive');
       if (!r) return;
-      setMessage(r === 'linked' ? t.linked : u.searchParams.get('reason') === 'denied' ? t.denied : t.failed);
+      setMessage(r === 'linked' ? t.linked : u.searchParams.get('reason') === 'denied' ? t.denied : u.searchParams.get('reason') === 'account' ? t.account : t.failed);
       u.searchParams.delete('drive');
       u.searchParams.delete('reason');
       window.history.replaceState(null, '', u.toString());
@@ -117,6 +120,12 @@ export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang
 
   const pick = async () => {
     setMessage(null);
+    // The embedded web Picker has a documented 566×350 minimum. On narrower
+    // screens use Google's redirect-based Picker rather than clipping it.
+    if (window.innerWidth < 590 || window.innerHeight < 382) {
+      window.location.assign(`/api/connectors/google_drive/connect?locale=${lang}&picker=1`);
+      return;
+    }
     setBusy(true);
     try {
       const r = await fetch('/api/connectors/google_drive/picker', { credentials: 'same-origin', cache: 'no-store' });
@@ -126,7 +135,8 @@ export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang
       await loadGooglePicker();
       const g = window.google.picker;
       pickerRef.current?.dispose();
-      const view = new g.DocsView(g.ViewId.DOCS).setMimeTypes(SUPPORTED_MIME).setIncludeFolders(false).setSelectFolderEnabled(false);
+      // drive.file does not grant thumbnail access for files the user has not picked yet.
+      const view = new g.DocsView(g.ViewId.DOCS).setMode(g.DocsViewMode.LIST).setMimeTypes(SUPPORTED_MIME).setIncludeFolders(false).setSelectFolderEnabled(false);
       const picker = new g.PickerBuilder()
         .addView(view)
         .enableFeature(g.Feature.MULTISELECT_ENABLED)

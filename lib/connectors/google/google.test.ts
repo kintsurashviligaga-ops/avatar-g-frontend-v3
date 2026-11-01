@@ -92,6 +92,22 @@ describe('OAuth calls', () => {
     expect(u.searchParams.get('client_id')).toBe(CLIENT_ID);
   });
 
+  test('redirect-based Picker requests only drive.file and preserves PKCE', () => {
+    const u = new URL(authorizationUrl(cfg, { redirectUri: 'https://myavatar.ge/api/connectors/google_drive/callback', state: 's', challenge: 'c', onePick: true }));
+    expect(u.searchParams.get('scope')).toBe(DRIVE_SCOPE);
+    expect(u.searchParams.get('trigger_onepick')).toBe('true');
+    expect(u.searchParams.get('allow_multiple')).toBe('true');
+    expect(u.searchParams.get('prompt')).toBe('consent');
+    expect(u.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(u.searchParams.get('state')).toBe('s');
+  });
+
+  test('redirect-based Picker may exchange a code without replacing an existing refresh token', async () => {
+    const f = (async () => res(200, { access_token: 'at', scope: DRIVE_SCOPE })) as unknown as typeof fetch;
+    expect(await exchangeCode(cfg, { code: 'c', verifier: 'v', redirectUri: 'r', refreshOptional: true }, f)).toMatchObject({ ok: true, accessToken: 'at', refreshToken: '' });
+    expect(await exchangeCode(cfg, { code: 'c', verifier: 'v', redirectUri: 'r' }, f)).toEqual({ ok: false, reason: 'no_refresh_token' });
+  });
+
   test('code exchange: refresh token + email; missing scope or refresh token refused', async () => {
     const idt = `x.${Buffer.from(JSON.stringify({ email: 'gg@x.ge' })).toString('base64url')}.y`;
     const f = jest.fn(async () => res(200, { access_token: 'at', refresh_token: 'rt', scope: `openid ${DRIVE_SCOPE}`, id_token: idt }));
