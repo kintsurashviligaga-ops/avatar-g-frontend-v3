@@ -24,6 +24,8 @@ import {
   CHIRP_FIRST_TIMEOUT_MS,
   CHIRP_SYNC_MAX_SECONDS,
   chirpCostUsd,
+  chirpEnglishLike,
+  chirpHeardSiteLanguage,
   chirpIsDefaultEngine,
   chirpLanguageCodes,
   chirpListedDecisive,
@@ -182,6 +184,22 @@ test('GG 2026-10-31 11:58Z: Georgian speech came back as Latin noise on the list
   expect(r).toEqual({ text: 'გესმის ჩემი?', model: 'chirp_3', spoken: 'ka', billedSeconds: 6, leg: 'georgian' });
 });
 
+test('GG 2026-11-01 06:38Z: Georgian speech came back as Spanish-looking Latin on the listed request; the Georgian-only answer is written', async () => {
+  for (const tag of ['en-US', 'es-ES']) {
+    byCodes((codes) => same(codes, GEORGIAN_ONLY)
+      ? recognized([{ alternatives: [{ transcript: 'გესმის ჩემი ხმა?' }], languageCode: 'ka-GE' }])
+      : recognized([{ alternatives: [{ transcript: '¿Qué es mi chemijo?' }], languageCode: tag }]));
+    const r = await transcribeWithChirp(wav(2), 'en-US');
+    expect(r).toEqual({ text: 'გესმის ჩემი ხმა?', model: 'chirp_3', spoken: 'ka', billedSeconds: 6, leg: 'georgian' });
+  }
+  // With no Georgian answer to stand in, it is not written at all (the route then asks Gemini).
+  byCodes((codes) => same(codes, GEORGIAN_ONLY)
+    ? refused(500, 'Internal error')
+    : recognized([{ alternatives: [{ transcript: '¿Qué es mi chemijo?' }], languageCode: 'es-ES' }]));
+  const r = await transcribeWithChirp(wav(2), 'ka-GE');
+  expect(r).toEqual({ text: '', model: 'chirp_3', billedSeconds: 3, leg: 'listed', foreign: 'es-ES' });
+});
+
 test('Latin noise with nothing better is never written; English words Chirp calls Georgian wait for Georgian alone', async () => {
   byCodes((codes) => same(codes, GEORGIAN_ONLY)
     ? refused(500, 'Internal error')
@@ -329,6 +347,24 @@ test('Latin that reads as words, and when the listed answer is final', () => {
   expect(chirpListedDecisive(a('G 7 6 0 0 0 0 0', 'en-US'))).toBe(false);
   expect(chirpListedDecisive(a('გამარჯობა'))).toBe(false);
   expect(chirpListedDecisive(a(''))).toBe(false);
+  // GG 2026-11-01 06:38Z: Spanish-looking Latin is not English, and a fourth language's tag is never final.
+  expect(chirpListedDecisive(a('¿Qué es mi chemijo?', 'en-US'))).toBe(false);
+  expect(chirpListedDecisive(a('Can you hear me?', 'es-ES'))).toBe(false);
+  expect(chirpListedDecisive(a('Ты меня слышишь?', 'uk-UA'))).toBe(false);
+  expect(chirpListedDecisive(a('Ты меня слышишь?', 'ru-RU'))).toBe(true);
+});
+
+test('English as Chirp writes it, and the three languages its tag may name', () => {
+  expect(chirpEnglishLike('Can you hear me?')).toBe(true);
+  expect(chirpEnglishLike("It's 5 o'clock, OK?")).toBe(true);
+  expect(chirpEnglishLike('¿Qué es mi chemijo?')).toBe(false);
+  expect(chirpEnglishLike('Qué es mi chemijo')).toBe(false);
+  expect(chirpEnglishLike('Hola amigo!')).toBe(true); // plain letters: only the tag or the Georgian-only answer can tell
+  expect(chirpEnglishLike('¡Hola amigo!')).toBe(false);
+  expect(chirpEnglishLike('Größe')).toBe(false);
+  expect(chirpEnglishLike('G 7 6 0 0 0 0 0')).toBe(false);
+  for (const tag of [undefined, '', 'ka-GE', 'ka-ge', 'ru-RU', 'en-US', 'en-gb']) expect(chirpHeardSiteLanguage(tag)).toBe(true);
+  for (const tag of ['es-ES', 'es-us', 'hi-IN', 'hy-AM', 'uk-UA', 'kk-KZ']) expect(chirpHeardSiteLanguage(tag)).toBe(false);
 });
 
 test('pickChirpLeg: Russian/English from the list, else Georgian letters from Georgian alone, never a foreign script', () => {
@@ -349,5 +385,13 @@ test('pickChirpLeg: Russian/English from the list, else Georgian letters from Ge
   expect(pickChirpLeg(a('G 7 6 0 0 0 0 0', 'en-US'), a('გესმის ჩემი?'))).toMatchObject({ leg: 'georgian', answer: { text: 'გესმის ჩემი?' } });
   expect(pickChirpLeg(a('G 7 6 0 0 0 0 0', 'en-US'), a('7 6'))).toMatchObject({ answer: { text: '' }, foreign: 'en-US' });
   expect(pickChirpLeg(undefined, a('G 7 6 0 0 0 0 0'))).toMatchObject({ answer: { text: '' }, foreign: 'other script' });
+  // Spanish-looking Latin, or anything tagged with a fourth language: the Georgian answer, else nothing (GG 2026-11-01).
+  expect(pickChirpLeg(a('¿Qué es mi chemijo?', 'en-US'), a('გესმის ჩემი ხმა?'))).toMatchObject({ leg: 'georgian', answer: { text: 'გესმის ჩემი ხმა?' } });
+  expect(pickChirpLeg(a('¿Qué es mi chemijo?', 'es-ES'), a(''))).toMatchObject({ answer: { text: '' }, foreign: 'es-ES' });
+  expect(pickChirpLeg(a('Hola amigo', 'es-ES'), a('ჰოლა'))).toMatchObject({ leg: 'georgian' });
+  expect(pickChirpLeg(a('Hola amigo', 'es-ES'), undefined)).toMatchObject({ answer: { text: '' }, foreign: 'es-ES' });
+  // Silence stays silence, whatever the tag.
+  expect(pickChirpLeg(a('', 'es-ES'), a(''))).toMatchObject({ leg: 'listed', answer: { text: '' } });
+  expect(pickChirpLeg(a('', 'es-ES'), a(''))!.foreign).toBeUndefined();
   expect(pickChirpLeg(undefined, undefined)).toBeNull();
 });

@@ -35,6 +35,14 @@ import 'server-only';
  * request cannot change it, so it is not waited for (11:58Z: first text p50 5.5 s with the wait, 4.1 s before it). It
  * carries the same clip, so Google bills it the same seconds, and it is booked as such without waiting.
  *
+ * ⚠️ AND THEN IN SPANISH (GG, iPhone, myavatar.ge, 2026-11-01 06:38Z, the first test with Chirp as everyone's engine):
+ * Russian and English right, the Georgian sentence came out as „¿Qué es mi chemijo?“. Those are words, so they passed
+ * as English. English is now plain English letters (chirpEnglishLike: no ¿ ¡, no accented letters), and an answer
+ * Chirp tags with a language outside the three (chirpHeardSiteLanguage) is never final or written. Such an answer waits
+ * for the Georgian-only one; with nothing better it is dropped, and the route hands the clip to Gemini. The cost of the
+ * rule: English with an accented loanword („café“) also waits for Georgian alone, and loses to it when that answer is in
+ * Georgian letters.
+ *
  * Price: $0.016 per minute of audio, counted in one-second steps (Speech-to-Text pricing, V2 standard models, read
  * 2026-10-30); the route books it from the duration Google says it billed, summed over both requests. Both requests
  * carry the clip, and every interim pass re-sends the clip so far (lib/voice/interimCadence), so a dictation costs
@@ -146,6 +154,24 @@ export function chirpWordLike(text: string): boolean {
   return letters > digits && real > 0 && real * 2 >= words.length;
 }
 
+/**
+ * English as Chirp writes it: words (chirpWordLike) in plain English letters, with no Spanish ¿ ¡ and no accented
+ * letter. „Can you hear me?“ is; „¿Qué es mi chemijo?“ (GG's Georgian sentence, 2026-11-01 06:38Z) is not.
+ */
+export function chirpEnglishLike(text: string): boolean {
+  if (!chirpWordLike(text) || /[¿¡]/.test(text)) return false;
+  return (text.match(/\p{Script=Latin}/gu) || []).every((c) => /[A-Za-z]/.test(c));
+}
+
+/**
+ * Whether the language Chirp tagged an answer with is one of the site's three (Georgian, Russian, English), or it named
+ * none. The listed request is told to expect those three, so another tag (Spanish, Hindi …) means it went astray.
+ */
+export function chirpHeardSiteLanguage(heard: string | undefined): boolean {
+  const h = (heard ?? '').trim().toLowerCase();
+  return !h || h.startsWith('ka') || h.startsWith('ru') || h.startsWith('en');
+}
+
 /** One request's parsed answer. */
 interface LegAnswer {
   text: string;
@@ -155,23 +181,30 @@ interface LegAnswer {
   billedSeconds: number;
 }
 
-/** Russian or English from the listed request: final, whatever the Georgian-only request says (pickChirpLeg rule 1). */
+/**
+ * Russian or English from the listed request: final, whatever the Georgian-only request says (pickChirpLeg rule 1).
+ * Never when Chirp tagged it with a language outside the three; Latin only when it is English (chirpEnglishLike) and
+ * Chirp did not say it heard Georgian.
+ */
 export function chirpListedDecisive(listed: LegAnswer): boolean {
+  if (!chirpHeardSiteLanguage(listed.heard)) return false;
   const script = chirpScript(listed.text);
   if (script === 'cyrillic') return true;
-  return script === 'latin' && chirpWordLike(listed.text) && !(listed.heard ?? '').toLowerCase().startsWith('ka');
+  return script === 'latin' && chirpEnglishLike(listed.text) && !(listed.heard ?? '').toLowerCase().startsWith('ka');
 }
 
 /**
  * Which answer goes into the box. `listed` = the request with the site's three languages, `georgian` = Georgian alone;
  * either may have failed (undefined).
- *   1. Cyrillic, or Latin words Chirp did not call Georgian, from the listed request: Russian or English speech,
- *      written as spoken (chirpListedDecisive; Latin noise is not English).
+ *   1. Cyrillic, or English Chirp did not call Georgian, from the listed request: Russian or English speech, written
+ *      as spoken (chirpListedDecisive; Latin noise and Spanish-looking Latin are not English, and nothing Chirp tagged
+ *      with a fourth language is final).
  *   2. Georgian letters from the Georgian-only request: Georgian speech (preferred over the listed request's Georgian,
  *      since that request was told to expect Georgian only).
  *   3. The listed request in Georgian, or silence, when the Georgian-only request has nothing better.
  *   4. The Georgian-only request when the listed one failed, unless it is in a foreign script or Latin noise too.
- * Otherwise nothing is written (the Hindi letters, the Latin noise above): `foreign` says what Chirp said it heard.
+ * Otherwise nothing is written (the Hindi letters, the Latin noise, the Spanish above, anything tagged with a fourth
+ * language): `foreign` says what Chirp said it heard.
  * null = both failed.
  */
 export function pickChirpLeg(listed: LegAnswer | undefined, georgian: LegAnswer | undefined): { answer: LegAnswer; leg: ChirpLeg; foreign?: string } | null {
@@ -179,8 +212,11 @@ export function pickChirpLeg(listed: LegAnswer | undefined, georgian: LegAnswer 
   const gs = georgian ? chirpScript(georgian.text) : null;
   if (listed && chirpListedDecisive(listed)) return { answer: listed, leg: 'listed' };
   if (georgian && gs === 'georgian') return { answer: georgian, leg: 'georgian' };
-  // Latin that does not read as words is noise, never written (GG 2026-10-31 11:58Z).
-  const readable = (a: LegAnswer, script: ChirpScript | null) => script !== 'other' && (script !== 'latin' || chirpWordLike(a.text));
+  // Silence is always readable. Otherwise: a language tag among the three, no foreign letters, and Latin only as English
+  // (Latin noise, GG 2026-10-31 11:58Z; Spanish-looking Latin, GG 2026-11-01 06:38Z).
+  const readable = (a: LegAnswer, script: ChirpScript | null) =>
+    script === 'none' ||
+    (chirpHeardSiteLanguage(a.heard) && script !== 'other' && (script !== 'latin' || chirpEnglishLike(a.text)));
   if (listed && readable(listed, ls)) return { answer: listed, leg: 'listed' };
   if (!listed && georgian && readable(georgian, gs)) return { answer: georgian, leg: 'georgian' };
   const dropped = listed ?? georgian;
