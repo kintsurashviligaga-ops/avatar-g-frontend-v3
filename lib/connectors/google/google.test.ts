@@ -16,7 +16,8 @@ import { connectorRegistry, connectorStates } from '../registry';
 import { RESEARCH_FILE_MAX_CHARS } from '@/lib/research/context';
 
 const KEY = randomBytes(32).toString('base64');
-const env = { CONNECTOR_TOKEN_KEY: KEY, GOOGLE_OAUTH_CLIENT_ID: 'cid', GOOGLE_OAUTH_CLIENT_SECRET: 'sec', GOOGLE_PICKER_API_KEY: 'pk', GOOGLE_CLOUD_PROJECT_NUMBER: '467145118875' } as unknown as NodeJS.ProcessEnv;
+const CLIENT_ID = '467145118875-example.apps.googleusercontent.com';
+const env = { CONNECTOR_TOKEN_KEY: KEY, GOOGLE_OAUTH_CLIENT_ID: CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET: 'sec', GOOGLE_PICKER_API_KEY: 'pk', GOOGLE_CLOUD_PROJECT_NUMBER: '467145118875' } as unknown as NodeJS.ProcessEnv;
 const keys = connectorKeys(env)!;
 const cfg = driveOAuthConfig(env)!;
 const U1 = '11111111-1111-1111-1111-111111111111';
@@ -40,6 +41,8 @@ describe('keys', () => {
     expect(connectorKeys({ CONNECTOR_TOKEN_KEY: randomBytes(16).toString('base64') } as unknown as NodeJS.ProcessEnv)).toBeNull();
     expect(driveOAuthConfig({ ...env, GOOGLE_OAUTH_CLIENT_SECRET: '' } as NodeJS.ProcessEnv)).toBeNull();
     expect(driveOAuthConfig({ ...env, CONNECTOR_TOKEN_KEY: '' } as NodeJS.ProcessEnv)).toBeNull();
+    expect(driveOAuthConfig({ ...env, GOOGLE_OAUTH_CLIENT_ID: 'Client ID' })).toBeNull();
+    expect(driveOAuthConfig({ ...env, GOOGLE_CLOUD_PROJECT_NUMBER: '123456789' })).toBeNull();
   });
 });
 
@@ -86,7 +89,7 @@ describe('OAuth calls', () => {
     expect(u.searchParams.get('scope')).not.toContain('drive.readonly');
     expect(u.searchParams.get('code_challenge_method')).toBe('S256');
     expect(u.searchParams.get('access_type')).toBe('offline');
-    expect(u.searchParams.get('client_id')).toBe('cid');
+    expect(u.searchParams.get('client_id')).toBe(CLIENT_ID);
   });
 
   test('code exchange: refresh token + email; missing scope or refresh token refused', async () => {
