@@ -38,17 +38,18 @@ describe('CodeRun', () => {
       if (body.action === 'quote') {
         return json(200, { ok: true, quote: { language: 'python', wallSec: 60, credits: 0 }, request: { language: 'python', code: 'print(2+2)' }, token: 'tok' });
       }
-      return json(200, { ok: true, exitCode: 0, stdout: '<b>4</b>\n', stderr: '', wallMs: 1200 });
+      return json(200, { ok: true, exitCode: 0, stdout: '<b>4</b>\n', stderr: '', wallMs: 1200, filed: true });
     }) as unknown as typeof fetch;
     render(<Block lang="python" />);
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Run' })); });
     expect(await screen.findByText(/Python · at most 60 s · no internet · free/)).toBeTruthy();
     expect(calls).toEqual([{ action: 'quote', request: { language: 'python', code: 'print(2+2)' } }]);
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Start/ })); });
-    expect(calls[1]).toEqual({ action: 'run', request: { language: 'python', code: 'print(2+2)' }, token: 'tok' });
+    expect(calls[1]).toEqual({ action: 'run', request: { language: 'python', code: 'print(2+2)' }, token: 'tok', locale: 'en' });
     const out = await screen.findByText('<b>4</b>', { exact: false });
     expect(out.tagName).toBe('PRE');
     expect(screen.getByText(/exit code 0 · 1.2 s/)).toBeTruthy();
+    expect(screen.getByText('Saved in the Library (Docs).')).toBeTruthy();
   });
 
   it('a refusal is said in words', async () => {
