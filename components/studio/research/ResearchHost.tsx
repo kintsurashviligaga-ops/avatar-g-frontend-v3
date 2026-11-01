@@ -102,6 +102,9 @@ export function ResearchHost({ locale, authed: authedProp, userId: userIdProp }:
   const available = state.caps?.available === true;
 
   useEffect(() => { void researchActions.ensureCapabilities(); }, []);
+  useEffect(() => {
+    if (authed && new URLSearchParams(window.location.search).has('drive')) researchActions.openConnectors();
+  }, [authed]);
 
   // A different account (or sign-out) must not see the previous one's research.
   const lastUser = useRef<string | null | undefined>(undefined);

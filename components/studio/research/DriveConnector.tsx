@@ -9,9 +9,10 @@
  *
  * Drawn only when the server says the connector is `connectable` for this user (configured + CONNECTORS_DRIVE).
  */
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Cloud, FileText, Loader2, Plus, Unlink } from 'lucide-react';
 import type { ConnectorFile } from '@/lib/connectors/types';
+import { loadGooglePicker } from './googlePicker';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -71,26 +72,6 @@ const SUPPORTED_MIME = [
 ].join(',');
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-declare global {
-  interface Window { gapi?: any; google?: any }
-}
-
-let gapiLoad: Promise<void> | null = null;
-function loadPicker(): Promise<void> {
-  if (gapiLoad) return gapiLoad;
-  gapiLoad = new Promise<void>((resolve, reject) => {
-    const done = () => window.gapi.load('picker', { callback: () => resolve(), onerror: () => reject(new Error('picker')) });
-    if (window.gapi) return done();
-    const s = document.createElement('script');
-    s.src = 'https://apis.google.com/js/api.js';
-    s.async = true;
-    s.onload = done;
-    s.onerror = () => { gapiLoad = null; reject(new Error('gapi')); };
-    document.head.appendChild(s);
-  });
-  return gapiLoad;
-}
-
 export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang: Lang; linked: boolean; onChanged: () => void }) {
   const t = COPY[lang];
   const h = `${useId()}-drive-h`;
@@ -98,6 +79,8 @@ export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang
   const [files, setFiles] = useState<ConnectorFile[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const pickerRef = useRef<any>(null);
+  useEffect(() => () => { pickerRef.current?.dispose(); }, []);
 
   useEffect(() => setLinked(linkedAtLoad), [linkedAtLoad]);
 
@@ -139,9 +122,10 @@ export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang
       const r = await fetch('/api/connectors/google_drive/picker', { credentials: 'same-origin', cache: 'no-store' });
       if (r.status === 409) { setLinked(false); return; }
       const cfg = (await r.json().catch(() => null)) as { accessToken?: string; apiKey?: string; appId?: string } | null;
-      if (!r.ok || !cfg?.accessToken) { setMessage(t.failed); return; }
-      await loadPicker();
+      if (!r.ok || !cfg?.accessToken || !cfg.apiKey || !cfg.appId) { setMessage(t.failed); return; }
+      await loadGooglePicker();
       const g = window.google.picker;
+      pickerRef.current?.dispose();
       const view = new g.DocsView(g.ViewId.DOCS).setMimeTypes(SUPPORTED_MIME).setIncludeFolders(false).setSelectFolderEnabled(false);
       const picker = new g.PickerBuilder()
         .addView(view)
@@ -149,11 +133,18 @@ export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang
         .setOAuthToken(cfg.accessToken)
         .setDeveloperKey(cfg.apiKey)
         .setAppId(cfg.appId)
+        .setOrigin(window.location.origin)
+        .setSize(Math.min(1051, window.innerWidth - 24), Math.min(650, window.innerHeight - 32))
         .setLocale(lang)
         .setCallback((data: any) => {
+          if (data?.action === g.Action.PICKED || data?.action === g.Action.CANCEL) {
+            pickerRef.current?.dispose();
+            pickerRef.current = null;
+          }
           if (data?.action === g.Action.PICKED) void loadFiles();
         })
         .build();
+      pickerRef.current = picker;
       picker.setVisible(true);
     } catch {
       setMessage(t.failed);

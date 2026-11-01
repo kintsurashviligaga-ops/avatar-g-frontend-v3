@@ -29,13 +29,18 @@ export function driveOAuthConfig(env: NodeJS.ProcessEnv = process.env): DriveOAu
   const clientId = (env.GOOGLE_OAUTH_CLIENT_ID ?? '').trim();
   const clientSecret = (env.GOOGLE_OAUTH_CLIENT_SECRET ?? '').trim();
   const keys = connectorKeys(env);
-  if (!clientId || !clientSecret || !keys) return null;
+  // A copied field label must never open an unusable OAuth flow in Production.
+  const clientProject = /^(\d+)-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.exec(clientId)?.[1];
+  const projectNumber = (env.GOOGLE_CLOUD_PROJECT_NUMBER ?? '').trim() || null;
+  if (!clientProject || !clientSecret || !keys) return null;
+  // drive.file grants from Picker must belong to the OAuth application's project.
+  if (projectNumber && projectNumber !== clientProject) return null;
   return {
     clientId,
     clientSecret,
     keys,
     pickerApiKey: (env.GOOGLE_PICKER_API_KEY ?? '').trim() || null,
-    projectNumber: (env.GOOGLE_CLOUD_PROJECT_NUMBER ?? '').trim() || null,
+    projectNumber,
   };
 }
 
