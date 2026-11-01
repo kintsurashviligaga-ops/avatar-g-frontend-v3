@@ -44,12 +44,12 @@ export function driveOAuthConfig(env: NodeJS.ProcessEnv = process.env): DriveOAu
   };
 }
 
-export function authorizationUrl(cfg: DriveOAuthConfig, o: { redirectUri: string; state: string; challenge: string; loginHint?: string }): string {
+export function authorizationUrl(cfg: DriveOAuthConfig, o: { redirectUri: string; state: string; challenge: string; loginHint?: string; onePick?: boolean }): string {
   const q = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: o.redirectUri,
     response_type: 'code',
-    scope: DRIVE_SCOPES.join(' '),
+    scope: o.onePick ? DRIVE_SCOPE : DRIVE_SCOPES.join(' '),
     state: o.state,
     code_challenge: o.challenge,
     code_challenge_method: 'S256',
@@ -58,6 +58,11 @@ export function authorizationUrl(cfg: DriveOAuthConfig, o: { redirectUri: string
     prompt: 'consent',
     include_granted_scopes: 'false',
   });
+  // Google’s redirect-based Picker accepts only drive.file, without openid/email.
+  if (o.onePick) {
+    q.set('trigger_onepick', 'true');
+    q.set('allow_multiple', 'true');
+  }
   if (o.loginHint) q.set('login_hint', o.loginHint);
   return `${AUTH_URL}?${q.toString()}`;
 }
@@ -81,7 +86,7 @@ export function emailFromIdToken(idToken: unknown): string | null {
   }
 }
 
-export async function exchangeCode(cfg: DriveOAuthConfig, o: { code: string; verifier: string; redirectUri: string }, f: Fetch = fetch): Promise<ExchangeResult> {
+export async function exchangeCode(cfg: DriveOAuthConfig, o: { code: string; verifier: string; redirectUri: string; refreshOptional?: boolean }, f: Fetch = fetch): Promise<ExchangeResult> {
   let res: Response;
   try {
     res = await f(TOKEN_URL, {
@@ -103,9 +108,9 @@ export async function exchangeCode(cfg: DriveOAuthConfig, o: { code: string; ver
   if (!res.ok || !body) return { ok: false, reason: body?.error === 'invalid_grant' ? 'denied' : 'failed' };
   const scope = typeof body.scope === 'string' ? body.scope : '';
   if (!scope.split(' ').includes(DRIVE_SCOPE)) return { ok: false, reason: 'scope_missing' };
-  if (typeof body.refresh_token !== 'string' || !body.refresh_token) return { ok: false, reason: 'no_refresh_token' };
+  if (!o.refreshOptional && (typeof body.refresh_token !== 'string' || !body.refresh_token)) return { ok: false, reason: 'no_refresh_token' };
   if (typeof body.access_token !== 'string') return { ok: false, reason: 'failed' };
-  return { ok: true, refreshToken: body.refresh_token, accessToken: body.access_token, scope, email: emailFromIdToken(body.id_token) };
+  return { ok: true, refreshToken: typeof body.refresh_token === 'string' ? body.refresh_token : '', accessToken: body.access_token, scope, email: emailFromIdToken(body.id_token) };
 }
 
 export type RefreshResult =
