@@ -540,6 +540,14 @@ describe('the default engine: Chirp 3 for everyone, Gemini when Chirp has no ans
     expect(bookMock).toHaveBeenCalledTimes(1);
   });
 
+  test("Georgian as Spanish-looking Latin with no Georgian-only answer (GG, myavatar.ge 2026-11-01 06:38Z): Gemini answers", async () => {
+    fetchSpy.mockImplementation(async (url: unknown, init?: RequestInit) =>
+      !isChirp(url) ? geminiOk('გესმის ჩემი ხმა?') : georgianOnly(init) ? new Response('{}', { status: 500 }) : chirpOk('¿Qué es mi chemijo?', 'en-US'));
+    const res = await POST(upload({ language: 'en-US' }));
+    expect(await res.json()).toEqual({ text: 'გესმის ჩემი ხმა?', provider: 'gemini', language: 'ka-GE' });
+    expect(urls()).toEqual(['chirp', 'chirp', 'gemini-3.6-flash']);
+  });
+
   test('Georgian in Latin letters under a Georgian hint (refused by sttAccept): Gemini answers', async () => {
     fetchSpy.mockImplementation(async (url: unknown) => (isChirp(url) ? chirpOk('gamarjoba rogor xar', 'ka-GE') : geminiOk('გამარჯობა, როგორ ხარ')));
     const res = await POST(upload({ language: 'ka-GE' }));
