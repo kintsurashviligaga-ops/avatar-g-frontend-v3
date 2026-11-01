@@ -460,6 +460,8 @@ describe('the talking avatar', () => {
   const savedUrl = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
   const savedPlay = HTMLMediaElement.prototype.play;
   const savedLoad = HTMLMediaElement.prototype.load;
+  // Whether the server lets this account turn the avatar on (lib/voice/liveAudience; GG 2026-10-31).
+  let allowAvatar = true;
   beforeEach(() => {
     process.env.NEXT_PUBLIC_LIVE_AVATAR = '1';
     saved.MediaSource = g.MediaSource;
@@ -468,10 +470,11 @@ describe('the talking avatar', () => {
     URL.revokeObjectURL = jest.fn();
     HTMLMediaElement.prototype.play = jest.fn(() => Promise.resolve());
     HTMLMediaElement.prototype.load = jest.fn();
+    allowAvatar = true;
     g.fetch = jest.fn(async (url: string, init?: RequestInit) => {
       if (url !== '/api/voice/live') return { ok: false, status: 404, json: async () => ({}) };
       const body = JSON.parse(String(init?.body ?? '{}'));
-      const avatar = body.avatar ?? null;
+      const avatar = allowAvatar ? body.avatar ?? null : null;
       return {
         ok: true,
         status: 200,
@@ -481,6 +484,8 @@ describe('the talking avatar', () => {
           expiresAt: new Date(Date.now() + 3e5).toISOString(),
           avatar: avatar === 'Kira' ? 'Kira' : null,
           ...(avatar === 'Ben' ? { avatarRefused: 'daily_limit' } : {}),
+          ...(!allowAvatar && body.avatar ? { avatarRefused: 'audience' } : {}),
+          avatarAllowed: allowAvatar,
         }),
       };
     });
@@ -558,6 +563,31 @@ describe('the talking avatar', () => {
     await ready(FakeSocket.all[1]!);
     await screen.findByText(/avatar limit is used up/);
     expect(screen.getByTestId('live-avatar-switch')).toHaveAttribute('aria-pressed', 'false');
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
+  test('an account the avatar is not open to (GG 2026-10-31): no toggle, a plain voice call', async () => {
+    allowAvatar = false;
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    expect(mintBodies()[0]).not.toHaveProperty('avatar');
+    expect(screen.queryByTestId('live-avatar-switch')).toBeNull();
+    expect(screen.queryByTestId('live-notice')).toBeNull();
+  });
+
+  test('closed to this account after the switch showed: it goes away, quietly, and is not asked again', async () => {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={() => {}} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    await ready(FakeSocket.all[0]!);
+    allowAvatar = false;
+    fireEvent.click(screen.getByTestId('live-avatar-switch'));
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+    expect(mintBodies()[1]).toMatchObject({ avatar: 'Kira' });
+    await ready(FakeSocket.all[1]!);
+    await waitFor(() => expect(screen.queryByTestId('live-avatar-switch')).toBeNull());
+    expect(screen.queryByTestId('live-notice')).toBeNull();
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
     expect(FakeSocket.all).toHaveLength(2);
   });

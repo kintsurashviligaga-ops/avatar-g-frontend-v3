@@ -1,5 +1,5 @@
 /**
- * The wordmark as the 2026-09-29 brand sheet sets it: "MyAvatar" + ".ge" (cyan), Montserrat, optional
+ * The wordmark as the 2026-09-29 brand sheet sets it: "MyAvatar" (no ".ge" since 2026-10-31), Montserrat, optional
  * letter-spaced tagline — and never allowed to shrink, which is how it used to be cut to "MyAvata".
  */
 import { readFileSync } from 'node:fs';
@@ -8,24 +8,23 @@ import { render, screen } from '@testing-library/react';
 import { Wordmark } from './Wordmark';
 
 describe('Wordmark', () => {
-  test('reads as one name to assistive tech, with ".ge" as its own accent span', () => {
+  test('reads "MyAvatar" only — no ".ge" (GG 2026-10-31)', () => {
     render(<Wordmark />);
-    const mark = screen.getByRole('img', { name: 'MyAvatar.ge' });
-    expect(mark.textContent).toBe('MyAvatar.ge');
-    const ge = [...mark.querySelectorAll('span')].find((s) => s.textContent === '.ge')!;
-    expect(ge.className).toContain('text-app-accent');
+    const mark = screen.getByRole('img', { name: 'MyAvatar' });
+    expect(mark.textContent).toBe('MyAvatar');
+    expect(mark.textContent).not.toContain('.ge');
   });
 
   test('set in the display face, bold', () => {
     render(<Wordmark />);
-    const name = screen.getByRole('img', { name: 'MyAvatar.ge' }).firstElementChild!;
+    const name = screen.getByRole('img', { name: 'MyAvatar' }).firstElementChild!;
     expect(name.className).toContain('font-display');
     expect(name.className).toContain('font-bold');
   });
 
   test('never shrinks or wraps — the "MyAvata" bug was a flex child allowed to', () => {
     render(<Wordmark size="sm" />);
-    const cls = screen.getByRole('img', { name: 'MyAvatar.ge' }).className;
+    const cls = screen.getByRole('img', { name: 'MyAvatar' }).className;
     expect(cls).toContain('shrink-0');
     expect(cls).toContain('whitespace-nowrap');
     expect(cls).not.toMatch(/\btruncate\b/);
@@ -33,22 +32,22 @@ describe('Wordmark', () => {
 
   test('the tagline is opt-in', () => {
     const { rerender } = render(<Wordmark />);
-    expect(screen.getByRole('img', { name: 'MyAvatar.ge' }).textContent).not.toContain('AI Creative Studio');
+    expect(screen.getByRole('img', { name: 'MyAvatar' }).textContent).not.toContain('AI Creative Studio');
     rerender(<Wordmark tagline />);
-    expect(screen.getByRole('img', { name: 'MyAvatar.ge' }).textContent).toContain('AI Creative Studio');
+    expect(screen.getByRole('img', { name: 'MyAvatar' }).textContent).toContain('AI Creative Studio');
   });
 
   test('`mark` puts the transparent rocket inside the one lockup — decorative, never a second name', () => {
     const { rerender } = render(<Wordmark />);
     expect(screen.queryByTestId('rocket-mark')).toBeNull();
     rerender(<Wordmark mark />);
-    const lockup = screen.getByRole('img', { name: 'MyAvatar.ge' });
+    const lockup = screen.getByRole('img', { name: 'MyAvatar' });
     const img = screen.getByTestId('rocket-mark') as HTMLImageElement;
     expect(lockup.contains(img)).toBe(true);
     expect(img.getAttribute('alt')).toBe('');
     expect(img.getAttribute('src')).toBe('/brand/rocket-mark.png');
     expect(lockup.querySelector('source')?.getAttribute('srcset')).toBe('/brand/rocket-mark.webp');
-    expect(screen.getAllByRole('img', { name: 'MyAvatar.ge' })).toHaveLength(1);
+    expect(screen.getAllByRole('img', { name: 'MyAvatar' })).toHaveLength(1);
   });
 
   test('the rocket mark files are real cut-outs: PNG with an alpha channel (colour type 6), WebP present', () => {
@@ -58,11 +57,10 @@ describe('Wordmark', () => {
     expect(readFileSync(join(process.cwd(), 'public/brand/rocket-mark.webp')).subarray(8, 12).toString('latin1')).toBe('WEBP');
   });
 
-  test('onDark keeps a light name and the rocket blue whatever the theme', () => {
+  test('onDark keeps a light name whatever the theme', () => {
     render(<Wordmark tone="onDark" />);
-    const mark = screen.getByRole('img', { name: 'MyAvatar.ge' });
-    const ge = [...mark.querySelectorAll('span')].find((s) => s.textContent === '.ge')!;
-    expect(ge.className).toContain('text-[#338FE8]');
+    const mark = screen.getByRole('img', { name: 'MyAvatar' });
+    expect(mark.textContent).toBe('MyAvatar');
     expect(mark.innerHTML).not.toContain('var(--color-text)');
   });
 });
