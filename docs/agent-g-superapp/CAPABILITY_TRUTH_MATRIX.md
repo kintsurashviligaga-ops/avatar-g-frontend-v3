@@ -9,22 +9,26 @@ nothing against Preview or Production. Where a PROVEN status appears, the eviden
 existing creative services (video, image, music, avatar, voice) keep their labels in `lib/agent/capabilities.ts`
 and in `docs/ENGINEERING_REGISTRY.md`; this matrix covers what v2.0 adds.
 
+**Updated 2026-11-01** (`main` = `32cc096`) after Phases 1–3. Rows D1, D2, D5, D6, W1, B3 and the new W4 carry the
+new status and evidence; each changed row says what proved it. The rest is still the 2026-10-30 audit.
+
 ## Phase 1 — documents (P0)
 
 | # | Feature | Existing code | Runtime route | Provider | Flag | Evidence | Status | Gap | Proposed action |
 |---|---|---|---|---|---|---|---|---|---|
-| D1 | Create a PDF from chat | `lib/agent-g/orchestrator/formatter.renderPdf` (dead stack), invoice PDF writers | `/api/agent-g/output?format=pdf` (dead: reads `agent_g_tasks`, which nothing live writes) | none (pdfkit, local) | — | Code reading. The chat model declares no file tool | **MISSING** (in the live path) | No tool, no worker, no Georgian font, pdfkit not traced | `create_document` tool (effect `prepare`) + a document worker on pdf-lib with embedded FiraGO |
-| D2 | Georgian text in PDFs | FiraGO bundled for resvg (`lib/pipeline/compositing/font-data-firago.ts`) | — | — | — | All 3 pdfkit writers use Helvetica | **MISSING** | Mkhedruli is dropped | Embed FiraGO through pdf-lib + fontkit; check every glyph in a test |
+| D1 | Create a PDF from chat | `lib/documents/{compose,pdf,spec,client}.ts`, `lib/chat/documentIntent.ts` (#240) | `/api/documents/create`, `/api/documents/file` | Gemini (content) + pdf-lib (local) | — | DOC-01 by GG on myavatar.ge 2026-10-31 11:23Z (PDF works); spinner #243 confirmed 16:08Z | **PROVEN_PRODUCTION** | — | Done (Phase 1 report: `phase1-report-ka.md`) |
+| D2 | Georgian text in PDFs | FiraGO embedded through pdf-lib + fontkit (`lib/documents/pdf.ts`) | `/api/documents/create` | — | — | `pdf.test.ts` glyph checks; DOC-01 Georgian 5-page PDF in production | **PROVEN_PRODUCTION** | Old pdfkit invoice writers still use Helvetica (not on the Agent G path) | — |
 | D3 | DOCX / XLSX / PPTX / CSV / ZIP / MD create | `jszip` (dep), `deckPipeline` (PNG slides) | `/api/v2/presentation/build` (slides as PNG) | Gemini for the outline | — | `design.presentation` is BLOCKED_OWNER in capabilities.ts | **MISSING** (DOCX/XLSX/PPTX), PARTIAL (ZIP, MD) | No writers | One worker, one format at a time, after the PDF passes |
 | D4 | Read PDF / DOCX / TXT | `/api/utils/extract-text` (`mammoth`, `pdf-parse`/`unpdf`), Gemini file read (`analyze_media`) | `/api/utils/extract-text`, chat attachments | Gemini | `AGENT_G_FILE_ANALYSIS` (Agent G read only) | Chat answers about attached PDFs (platform prompt) | **BUILT_NOT_PROVEN** | No recorded E2E evidence | Cover it in DOC-01's test set |
-| D5 | File card in chat: Preview / Download / Library / survives refresh | Artifacts (code languages only), Library (`/api/studio/library`), saved result bubbles (#223) | chat artifacts, `chat_messages` rows | — | — | #223 keeps video results after reopen (in prod 2026-10-27) | **PARTIAL** | No document kind in the artifact allowlist or the result bubble | Add a `document` result bubble on the #223 pattern, with a signed link and a Library row |
-| D6 | Regression: Agent G does not say "I can't make a PDF" | `platformPrompt` | — | — | — | — | **MISSING** | Nothing pins the claim | A prompt test + an E2E check on the DOC-01 reply |
+| D5 | File card in chat: Preview / Download / Library / survives refresh | `components/studio/DocumentCard.tsx`, Library Docs tab (`LibraryGallery`), `generation_jobs` kind `document` (migration 20261031a, GG) | chat card, `/api/studio/library` | — | — | DOC-01 (2026-10-31): card in the chat, file in the Library | **PROVEN_PRODUCTION** | — | — |
+| D6 | Regression: Agent G does not say "I can't make a PDF" | `platformPrompt` documents line (#240) | — | — | — | `platformPrompt.test.ts` pins it; DOC-01 reply made the PDF | **PROVEN_PRODUCTION** | — | — |
 
 ## Phase 2 — execution workspace (P0)
 
 | # | Feature | Existing code | Runtime | Provider | Flag | Evidence | Status | Gap | Proposed action |
 |---|---|---|---|---|---|---|---|---|---|
-| W1 | Code sandbox (`execute_python`, `execute_node`, `terminal_run`) | `lib/agent/sandbox/policy.ts` (rules + `disabledSandbox`) | none | — | — | policy.test.ts | **BLOCKED_OWNER** | Paid isolated host not chosen (2026-10-10 brief) | GG picks a host and a spend cap; then build a runner behind `checkSandboxJob` |
+| W1 | Code sandbox (Python, Node) | `lib/agent/sandbox/{policy,runner,budget,dbSpend,vercelHost,index}.ts` (#248), ledger migration 20261031b (GG) | via W4 | Vercel Sandbox (GG 2026-10-30), $20 cap in code | `SANDBOX_ENABLED=1` (Production since 2026-11-01) | First run 2026-10-31 16:47Z (4, egress blocked); CODE-01 in production 2026-11-01 | **PROVEN_PRODUCTION** | No terminal, no files in/out | Files and workspace with W2/W3 |
+| W4 | Run a chat code block (quote → Start → result) | `lib/agent/sandbox/codeQuote.ts`, `components/chat/CodeRun.tsx`, tool `quote_code_run` (#249, #251); Library PDF of each result `codeFiling.ts` (#252, in review) | `/api/agent/sandbox/run` | Vercel Sandbox | `AGENT_G_SANDBOX=admin` | CODE-01 by GG on myavatar.ge 2026-11-01 ~05:50Z: 5050, exit 0, 0.5 s (iPhone) | **PROVEN_PRODUCTION** (admins); Library filing **BUILT_NOT_PROVEN** until #252 ships | Open to everyone needs GG's OK | Phase 3 report: `phase3-report-ka.md` |
 | W2 | Workspace manager (ids, versions, TTL, quota) | Storage + Library, `generation_jobs` | — | — | — | — | **MISSING** | No workspace model | Design on the existing storage; a table would need a migration (GG) |
 | W3 | Workspace tools (`workspace_read/write/list/export/delete`) | — | — | — | — | — | **MISSING** | — | After W1/W2 |
 
@@ -34,7 +38,7 @@ and in `docs/ENGINEERING_REGISTRY.md`; this matrix covers what v2.0 adds.
 |---|---|---|---|---|---|---|---|---|---|
 | B1 | Read a public page | `lib/agent/tools/scrapeWebpage.ts` (SSRF-safe, redirect re-check, hidden text dropped) | `scrape_webpage` in `/api/agent/run`, voice `read_webpage` | none (fetch) | — | Tests; voice row wording (#55 era) | **BUILT_NOT_PROVEN** | No browser runtime, no JS rendering | Keep as the read-only level |
 | B2 | Web search | `web_search` (Gemini + Google grounding) | `/api/chat/gemini`, `/api/agent/run` | Gemini | — | In daily use in the chat | **BUILT_NOT_PROVEN** (no recorded E2E) | — | Record one E2E |
-| B3 | Real browser (navigate, click, type, screenshot, tabs) | — | — | — | — | Prompt says `BROWSER: none` | **BLOCKED_OWNER** | Paid host (same decision as W1) | Playwright/Chromium in Vercel Sandbox after GG's yes |
+| B3 | Real browser (navigate, click, type, screenshot, tabs) | — | — | — | — | Prompt says `BROWSER: none` | **MISSING** (host now chosen: Vercel Sandbox, W1) | No browser runtime yet | Playwright/Chromium in Vercel Sandbox under the same $20 ledger, after GG's OK for the spend |
 | B4 | Gemini Computer Use | — | — | Gemini Computer Use model | — | — | **MISSING** (and model availability unverified) | v2.0 §1: only with real model support | Check model access before any design |
 
 ## Phase 4 — MCP client and connectors (P0/P1)
