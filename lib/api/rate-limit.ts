@@ -229,6 +229,9 @@ export const RATE_LIMITS = {
   UPSCALE_USER:      { maxRequests: 30,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:upscale:user' } as const,
   MONTAGE_USER:      { maxRequests: 40,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:montage:user' } as const,
   ANALYZE_USER:      { maxRequests: 100, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:analyze:user' } as const,
+  // CODE_RUN_USER — Agent G sandbox runs (lib/agent/sandbox/codeQuote), per account per day: each run spends Vercel
+  // Sandbox money inside the $20 ledger, so one person can never drain it in an afternoon.
+  CODE_RUN_USER:     { maxRequests: 50,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:coderun:user' } as const,
   // The public support form (/api/support), per IP. Each accepted post can send an email through Resend to the support
   // inbox; with no limit at all, one script could fill the inbox and burn the sending quota. 5 per 15 minutes is more
   // than any person writes to support.

@@ -231,6 +231,15 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
     qc: 'the planned frame and codecs, sound exactly when planned, length within 0.5 s or 3 % of the plan; every layer and caption measured on the rendered file (lib/agent/media/layerQc: present when and where planned, the drawn pixels, nothing else changed)', artifact: 'video', library: 'filed',
     label: 'BUILT_NOT_PROVEN', liveTool: { name: 'quote_media_edit', confirms: 'media_edit_run' }, flag: 'AGENT_G_MEDIA_EXEC',
   }),
+  'agent.code-run': c({
+    id: 'agent.code-run', serviceId: null,
+    does: 'Run a short Python or JavaScript program Agent G wrote and show what it printed, in an isolated sandbox with no network and no keys',
+    routes: ['/api/agent/sandbox/run'], engine: 'Vercel Sandbox microVM, 1 vCPU, 60 s, deny-all network (lib/agent/sandbox)',
+    pricing: { key: null, charge: 'free' }, approval: 'plan-start', timeoutSec: 120, retry: 'none',
+    idempotency: 'one run per signed quote (jobId claimed in request_idempotency; fails closed)', cancel: 'client-abort',
+    qc: null, artifact: 'text', library: 'chat-history', label: 'BUILT_NOT_PROVEN',
+    liveTool: { name: 'quote_code_run', confirms: 'code_run' }, flag: 'AGENT_G_SANDBOX',
+  }),
   'media.analyze': c({
     id: 'media.analyze', serviceId: null,
     does: 'Read one of the user\'s files (video, sound, PDF, picture) or a public YouTube video and say what is in it: scenes, moments, what is said, an answer to a question. It cuts nothing: ffmpeg still decides every cut',

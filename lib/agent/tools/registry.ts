@@ -58,6 +58,12 @@ export const CONFIRMED_ACTIONS = {
     access: 'AGENT_G_MEDIA_EXEC',
     does: 'queues the quoted edit once per quote; a worker edits the user\'s video with ffmpeg under a lease (lib/agent/media/editWorker)',
   },
+  code_run: {
+    route: '/api/agent/sandbox/run',
+    action: 'run',
+    access: 'AGENT_G_SANDBOX',
+    does: 'runs the quoted Python or JavaScript once per quote in an isolated Vercel Sandbox (no network, no keys, 60 s), booked in the $20 ledger first (lib/agent/sandbox/codeQuote)',
+  },
 } as const;
 export type ConfirmedAction = keyof typeof CONFIRMED_ACTIONS;
 

@@ -61,6 +61,7 @@ import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 import type { EditQuoteResult } from '@/lib/agent/media/editExec';
+import type { CodeQuoteResult } from '@/lib/agent/sandbox/codeQuote';
 import {
   ASPECTS, FITS, GRADES, MAX_ADJUST, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS,
 } from '@/lib/agent/media/editPlan';
@@ -84,6 +85,10 @@ export interface AgentContext extends ImageToolContext {
   onEditQuote?: (quote: Extract<EditQuoteResult, { ok: true }>) => void;
   /** Agent G's whole-file analysis is open to this user (AGENT_G_FILE_ANALYSIS, decided from the session by the route). */
   analyze?: boolean;
+  /** Running code in the sandbox is open to this user (AGENT_G_SANDBOX, decided from the session by the route). */
+  sandbox?: boolean;
+  /** Receives every signed code-run plan; the route hands the last one to the client's Start card. */
+  onCodeQuote?: (quote: Extract<CodeQuoteResult, { ok: true }>) => void;
 }
 
 /** Appended to the system prompt when the agent has no media tool: it cannot render, so it must not promise a render. */
@@ -126,6 +131,14 @@ export const AGENT_EDIT_NOTE =
   'on the plan in the MyAvatar chat, and it is free; never say it is done.';
 
 /** Added when the analysis tool is on: what it is for, and that its times are a reading, not a cut. */
+/** Added when the code tool is on: the agent plans a run and never claims it ran. */
+export const AGENT_CODE_NOTE =
+  'When working something out needs a program (a calculation, a data transformation, a check of an algorithm), write a ' +
+  'short Python or JavaScript program that prints its result and call quote_code_run with it. It checks the program and ' +
+  'returns the plan; it runs nothing. The program runs only when the user presses Start on the plan, in an isolated ' +
+  'sandbox with no internet, no files of theirs and no keys, for at most 60 seconds. Never say the program already ran ' +
+  'and never invent its output.';
+
 export const AGENT_ANALYZE_NOTE =
   'To know what is in a video, a sound file, a PDF or a picture the user attached (what happens, the scenes, the best ' +
   'moments, what is said and by whom), or in a public YouTube video they linked, call analyze_media. It reads the whole ' +
@@ -149,6 +162,10 @@ export const MAX_EDIT_QUOTES_PER_RUN = 3;
 export const analyzeToolOn = (ctx: AgentContext): boolean => ctx.analyze === true;
 /** Each analysis is a paid model call over a whole file: two per request. */
 export const MAX_ANALYSES_PER_RUN = 2;
+/** The code tool needs only the sandbox flag open to this user (and a route that hands the plan back). */
+export const codeToolOn = (ctx: AgentContext): boolean => ctx.sandbox === true && typeof ctx.onCodeQuote === 'function';
+/** A code quote is a policy check and a signature: two per request (a fixed second try) is plenty. */
+export const MAX_CODE_QUOTES_PER_RUN = 2;
 
 type RunMeter = ReturnType<typeof newRunMeter>;
 
@@ -519,6 +536,37 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       };
     },
   }),
+  // quote_code_run: plan only (see AGENT_CODE_NOTE). The program the model wrote is checked and signed; the token goes
+  // to the user's Start card, never back to the model, and the run happens only on that Start (/api/agent/sandbox/run).
+  defineTool({
+    name: 'quote_code_run',
+    effect: 'quote',
+    confirms: 'code_run',
+    description:
+      "PLAN ONLY — run a short program in an isolated sandbox (no internet, no files, no keys, 1 CPU, 60 s). Input {language: 'python'|'node', code}. " +
+      'The program must print its result to stdout. Returns the plan; runs nothing until the user presses Start; free for the user.',
+    input: z.object({ language: z.enum(['python', 'node']), code: z.string().min(1).max(64 * 1024) }),
+    offered: (ctx) => codeToolOn(ctx),
+    limit: MAX_CODE_QUOTES_PER_RUN,
+    run: async ({ language, code }, ctx) => {
+      const [{ quoteCodeRun }, { liveCodeDeps }] = await Promise.all([
+        import('@/lib/agent/sandbox/codeQuote'),
+        import('@/lib/agent/sandbox'),
+      ]);
+      const r = quoteCodeRun(await liveCodeDeps(), { userId: ctx.userId, request: { language, code } });
+      if (!r.ok) return { error: r.error, message: r.message };
+      ctx.onCodeQuote?.(r);
+      return {
+        planned: true,
+        ran: false,
+        language: r.quote.language,
+        maxSeconds: r.quote.wallSec,
+        network: 'none',
+        credits: 0,
+        next: 'The user presses Start on the plan; nothing runs before that. Do not state any output.',
+      };
+    },
+  }),
   // analyze_media: describe one attached file (or a public YouTube video) with Gemini, by reference. The model names the
   // file by its number, never a path; the answer is a description and starts nothing.
   defineTool({
@@ -597,7 +645,7 @@ export async function runLiveAgent(
   const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
   const systemExtra = [
     mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
-    analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', opts?.systemExtra?.trim(),
+    analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', codeToolOn(ctx) ? AGENT_CODE_NOTE : '', opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({
     llm: llmAdapterFor(meter, opts?.deadlineMs, opts?.deadlineMs !== undefined && opts.deadlineMs - Date.now() <= QUICK_RUN_MS),

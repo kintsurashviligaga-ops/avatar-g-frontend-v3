@@ -208,6 +208,8 @@ const DEBUG_GUARDS: RegExp[] = [
 const DEBUG_NAMED_USER_FEATURES: Record<string, string> = {
   'app/api/push/test/route.ts':
     '"Send me a test notification" on the push opt-in card — session required, reaches only the caller\'s own devices, per-account limit (PUSH_TEST_USER)',
+  'app/api/agent/sandbox/run/route.ts':
+    'Agent G runs the code the signed-in user pressed Start on (Master Task v2.0 Phase 3) — 404 unless AGENT_G_SANDBOX opens it, session required, one run per signed quote, per-account limit (CODE_RUN_USER), $20 ledger',
 };
 const SESSION_GATE = /\b(getAuthenticatedUser|requireAuthenticatedUser|requireUser|authedClientFromRequest)\s*\(/;
 
