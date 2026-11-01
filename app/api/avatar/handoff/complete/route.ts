@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     const { userId, jti } = consumed.claims;
     release = () => store.release(jti);
 
-    const result = await enrollSelfieAvatar(userId, body?.dataUrl ?? '');
+    const result = await enrollSelfieAvatar(userId, body?.dataUrl ?? '', 'handoff');
     if (!result.ok) {
       await release();
       return NextResponse.json({ error: result.error }, { status: result.status });

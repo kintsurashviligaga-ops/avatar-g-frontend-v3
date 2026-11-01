@@ -3,31 +3,30 @@
  * from the caller's session (POST /api/avatar/enroll) OR from a verified cross-device handoff token (POST
  * /api/avatar/handoff/complete). Service-role throughout — the CALLER authorizes the userId.
  *
- * STORAGE-FIRST (robust to a missing schema): the selfie is written to a DETERMINISTIC object in the public
- * `avatars` bucket — that object IS the source of truth. The `avatar_assets` table + `profiles.core_avatar_id`
- * columns are only a best-effort richness layer: prod does NOT have them (the 20260224 migration isn't
- * applied — the DDL channel is unavailable), so those writes are wrapped and their failure NEVER fails
- * enrollment. avatar/core reads the poster back from the same storage path. This is exactly why the earlier
- * version hung on "save failed": it hard-depended on a table that doesn't exist.
+ * ⚠️ PRIVATE SINCE 2026-10-24 (the owner's P0 correction task, phase 2): the selfie used to be the PUBLIC
+ * `avatars/live-avatars/<uid>/poster.jpg` — a face anyone could fetch from the user id alone. It is now saved by
+ * lib/avatar/liveAvatar.ts into the private `twins` bucket with a stable avatar id, signed URLs only. No database write:
+ * production has no `avatar_assets` table or `profiles.core_avatar_id` (schema-drift snapshot), and the old best-effort
+ * insert there always failed.
  *
- * ⚠️ BIOMETRICS ARE SPLIT BY READER, NOT BY FOLDER: only the POSTER stays in the public `avatars` bucket
- * (the Live orb + /api/avatar/core read it by public URL — moves private in Wave 3). The VOICE SAMPLE is a
- * voiceprint nothing renders, so it goes to the dedicated PRIVATE `twins` bucket at `twins/<uid>/voice.<ext>`
- * — NOT `uploads`, whose bare paths many routes sign for any caller (see lib/avatar/twinStorage.ts). Legacy
- * public samples (`avatars/live-avatars/<uid>/voice.*`) are moved by scripts/avatar/migrate-live-avatar-voice.mjs.
+ * The VOICE SAMPLE is a voiceprint nothing renders, so it goes to the same PRIVATE `twins` bucket at
+ * `twins/<uid>/voice.<ext>` — NOT `uploads`, whose bare paths many routes sign for any caller (see
+ * lib/avatar/twinStorage.ts). Legacy public samples (`avatars/live-avatars/<uid>/voice.*`) are moved by
+ * scripts/avatar/migrate-live-avatar-voice.mjs.
  */
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { ensureBucket } from '@/lib/orchestrator/storage-adapter';
 import { TWIN_PRIVATE_BUCKET, TWIN_VOICE_EXTS, twinVoicePath } from '@/lib/avatar/twinStorage';
+import { twinStorageClient, type TwinStorageClient } from '@/lib/twin/store';
+import { describeLiveAvatar, saveLiveAvatar, type LiveAvatarSource, type LiveAvatarView } from './liveAvatar';
+import { decodeImageDataUrl } from './livePhoto';
 
 export { TWIN_PRIVATE_BUCKET, twinVoicePath };
 
-const MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const MAX_BYTES = 8 * 1024 * 1024;
-
+/** The LEGACY public bucket of the pre-2026-10-24 poster — only read to move it private, and removed by a save. */
 export const LIVE_AVATAR_BUCKET = 'avatars';
-/** Deterministic per-user poster object — one file, overwritten on re-enroll (upsert). */
+/** The legacy public poster object (lib/avatar/liveAvatar.ts moves it into private storage). */
 export function liveAvatarPath(userId: string): string {
   return `live-avatars/${userId}/poster.jpg`;
 }
@@ -106,69 +105,30 @@ export async function storeLiveAvatarVoice(userId: string, voiceDataUrl: string)
 }
 
 export type EnrollResult =
-  | { ok: true; url: string; avatarAssetId: string | null }
+  | { ok: true; url: string; avatarAssetId: string | null; avatar: LiveAvatarView }
   | { ok: false; status: number; error: string };
 
-export async function enrollSelfieAvatar(userId: string, dataUrl: string): Promise<EnrollResult> {
-  const m = typeof dataUrl === 'string' ? dataUrl.match(/^data:([^;]+);base64,(.+)$/) : null;
-  const mime = m?.[1];
-  const b64 = m?.[2];
-  if (!mime || !b64) return { ok: false, status: 400, error: 'no image' };
-  if (!MIMES.has(mime)) return { ok: false, status: 415, error: 'unsupported type' };
-  const buf = Buffer.from(b64, 'base64');
-  if (buf.byteLength < 256) return { ok: false, status: 400, error: 'empty image' };
-  if (buf.byteLength > MAX_BYTES) return { ok: false, status: 413, error: 'too large (max 8MB)' };
-
-  let svc: ReturnType<typeof createServiceRoleClient>;
+/**
+ * Save the selfie as the user's active Live Avatar — PRIVATE (lib/avatar/liveAvatar.ts): checked by its bytes, upright,
+ * metadata stripped, a stable avatar id, a short-lived signed URL back. `avatarAssetId` stays for older callers and is
+ * now the avatar id. The old public poster is removed by the save.
+ */
+export async function enrollSelfieAvatar(userId: string, dataUrl: string, source: LiveAvatarSource = 'camera'): Promise<EnrollResult> {
+  const decoded = decodeImageDataUrl(dataUrl);
+  if (!decoded) return { ok: false, status: 400, error: 'no_image' };
+  let sb: TwinStorageClient;
   try {
-    svc = createServiceRoleClient();
+    sb = twinStorageClient();
   } catch (e) {
     console.error('[avatar/enroll] service client unavailable:', e instanceof Error ? e.message : e);
-    return { ok: false, status: 503, error: 'storage unavailable' };
+    return { ok: false, status: 503, error: 'storage_unavailable' };
   }
-
-  // 1) SOURCE OF TRUTH — write the selfie to the deterministic public path. contentType drives playback, so
-  //    a fixed `.jpg` name is fine even for png/webp. upsert overwrites the previous poster on re-enroll.
-  const ts = Date.now();
-  const path = liveAvatarPath(userId);
-  const { error: upErr } = await svc.storage.from(LIVE_AVATAR_BUCKET).upload(path, buf, { contentType: mime, upsert: true });
-  if (upErr) {
-    console.error('[avatar/enroll] storage upload FAILED:', upErr.message);
-    return { ok: false, status: 502, error: `upload failed: ${upErr.message}` };
-  }
-  const publicUrl = `${svc.storage.from(LIVE_AVATAR_BUCKET).getPublicUrl(path).data.publicUrl}?v=${ts}`;
-
-  // 2) BEST-EFFORT DB richness — record in avatar_assets + link profiles.core_avatar_id IF that schema
-  //    exists. In prod it does not, so these are expected no-ops; the storage object above already carries
-  //    the enrollment. A failure here is logged (for observability) but never fails the save.
-  let avatarAssetId: string | null = null;
+  const saved = await saveLiveAvatar(sb, userId, { mime: decoded.mime, bytes: decoded.bytes, source });
+  if (!saved.ok) return { ok: false, status: saved.status, error: saved.error };
   try {
-    const { data: asset, error: insErr } = await svc
-      .from('avatar_assets')
-      .insert({
-        user_id: userId,
-        avatar_goal: 'personal',
-        avatar_type: 'fast',
-        input_method: 'selfie_pack',
-        status: 'ready',
-        input_urls: [publicUrl],
-        poster_url: publicUrl,
-        meta: { source: 'live-avatar-enroll' },
-      })
-      .select('id')
-      .single();
-    if (insErr) {
-      console.warn('[avatar/enroll] avatar_assets insert skipped (schema not provisioned?):', insErr.message);
-    } else if (asset) {
-      avatarAssetId = asset.id;
-      const { error: linkErr } = await svc
-        .from('profiles')
-        .upsert({ id: userId, core_avatar_id: asset.id, avatar_status: 'ready', avatar_updated_at: new Date().toISOString() }, { onConflict: 'id' });
-      if (linkErr) console.warn('[avatar/enroll] profiles core_avatar_id link skipped:', linkErr.message);
-    }
-  } catch (e) {
-    console.warn('[avatar/enroll] DB enrich skipped:', e instanceof Error ? e.message : e);
+    const avatar = await describeLiveAvatar(sb, saved.manifest);
+    return { ok: true, url: avatar.photoUrl, avatarAssetId: avatar.id, avatar };
+  } catch {
+    return { ok: false, status: 503, error: 'storage_unavailable' };
   }
-
-  return { ok: true, url: publicUrl, avatarAssetId };
 }
