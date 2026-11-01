@@ -62,24 +62,24 @@ type State =
   | { phase: 'quoting' }
   | { phase: 'quoted'; quote: Quote; request: unknown; token: string }
   | { phase: 'running'; t0: number }
-  | { phase: 'done'; exitCode: number; stdout: string; stderr: string; wallMs: number }
+  | { phase: 'done'; exitCode: number; stdout: string; stderr: string; wallMs: number; filed?: boolean }
   | { phase: 'failed'; error: string };
 
 const L: Record<Lang, Record<string, string>> = {
   ka: {
     run: 'გაშვება', start: 'დაწყება', cancel: 'გაუქმება', checking: 'ვამოწმებ კოდს…', running: 'მუშაობს',
     plan: '{lang} · მაქსიმუმ {sec} წამი · ინტერნეტის გარეშე · უფასო', exit: 'დასრულდა, კოდი {code} · {sec} წმ',
-    noOutput: 'პროგრამამ არაფერი დაბეჭდა.', again: 'ხელახლა',
+    noOutput: 'პროგრამამ არაფერი დაბეჭდა.', again: 'ხელახლა', filed: 'შენახულია Library-ში (დოკუმენტები).',
   },
   en: {
     run: 'Run', start: 'Start', cancel: 'Cancel', checking: 'Checking the code…', running: 'Running',
     plan: '{lang} · at most {sec} s · no internet · free', exit: 'Finished, exit code {code} · {sec} s',
-    noOutput: 'The program printed nothing.', again: 'Run again',
+    noOutput: 'The program printed nothing.', again: 'Run again', filed: 'Saved in the Library (Docs).',
   },
   ru: {
     run: 'Запустить', start: 'Старт', cancel: 'Отмена', checking: 'Проверяю код…', running: 'Выполняется',
     plan: '{lang} · не больше {sec} с · без интернета · бесплатно', exit: 'Готово, код выхода {code} · {sec} с',
-    noOutput: 'Программа ничего не вывела.', again: 'Ещё раз',
+    noOutput: 'Программа ничего не вывела.', again: 'Ещё раз', filed: 'Сохранено в библиотеке (Документы).',
   },
 };
 
@@ -161,16 +161,16 @@ export function useCodeRun(language: SandboxLang | null, readCode: () => string,
     abort.current = ac;
     setState({ phase: 'running', t0: Date.now() });
     try {
-      const { status, json } = await post({ action: 'run', request, token }, ac.signal);
+      const { status, json } = await post({ action: 'run', request, token, locale }, ac.signal);
       if (json.ok === true) {
         setState({
-          phase: 'done', exitCode: Number(json.exitCode), stdout: String(json.stdout ?? ''), stderr: String(json.stderr ?? ''), wallMs: Number(json.wallMs) || 0,
+          phase: 'done', exitCode: Number(json.exitCode), stdout: String(json.stdout ?? ''), stderr: String(json.stderr ?? ''), wallMs: Number(json.wallMs) || 0, filed: json.filed === true,
         });
       } else setState({ phase: 'failed', error: errorOf(status, json) });
     } catch {
       setState({ phase: 'failed', error: ac.signal.aborted ? 'cancelled' : 'other' });
     }
-  }, [state]);
+  }, [state, locale]);
 
   if (!language) return { button: null, card: null };
   const t = L[locale];
@@ -208,6 +208,7 @@ export function useCodeRun(language: SandboxLang | null, readCode: () => string,
           {state.stdout && <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 text-[13px] text-app-text" data-code-run-stdout="">{state.stdout}</pre>}
           {state.stderr && <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/30 p-3 text-[13px] text-app-danger" data-code-run-stderr="">{state.stderr}</pre>}
           {!state.stdout && !state.stderr && <p className="text-app-muted">{t.noOutput}</p>}
+          {state.filed && <p className="text-[12px] text-app-muted" data-code-run-filed="">{t.filed}</p>}
         </div>
       )}
       {state.phase === 'failed' && <p className="text-app-danger">{codeRunErrorText(state.error, locale)}</p>}

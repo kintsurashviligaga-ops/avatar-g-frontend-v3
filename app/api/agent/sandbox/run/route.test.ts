@@ -18,8 +18,11 @@ jest.mock('../../../../../lib/api/rate-limit', () => ({
   RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000 }, CODE_RUN_BURST: { maxRequests: 20, windowMs: 60_000, keyPrefix: 'rl:coderun:min' }, CODE_RUN_USER: { maxRequests: 50, windowMs: 86_400_000 } },
 }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: (u: { email?: string } | null) => u?.email === 'admin@example.com' }));
-jest.mock('../../../../../lib/agent/sandbox', () => ({ liveCodeDeps: async () => ({}) }));
+jest.mock('../../../../../lib/agent/sandbox', () => ({ liveCodeDeps: async () => ({}), liveFilingDeps: async () => ({}) }));
+const mockFile = jest.fn(async (..._a: unknown[]) => true);
+jest.mock('../../../../../lib/agent/sandbox/codeFiling', () => ({ fileCodeRun: (...a: unknown[]) => mockFile(...a) }));
 jest.mock('../../../../../lib/agent/sandbox/codeQuote', () => ({
+  codeRequestOf: (v: { language: string; code: string }) => v,
   quoteCodeRun: jest.fn((_d: unknown, input: { userId: string }) => ({ ok: true, quote: { jobId: 'c1' }, request: {}, token: 't', who: input.userId })),
   runCodeQuote: jest.fn(async () => ({ ok: false, error: 'quote_used', message: 'This plan already ran.' })),
 }));
@@ -78,4 +81,22 @@ test('a run is behind the daily ceiling, and a used quote is a 409', async () =>
 test('an unknown action is a 400', async () => {
   process.env.AGENT_G_SANDBOX = 'on';
   expect((await POST(req({ action: 'delete' }))).status).toBe(400);
+});
+
+test('a finished run is filed in the Library for the session user, in the chat language, and says so', async () => {
+  process.env.AGENT_G_SANDBOX = 'admin';
+  (runCodeQuote as jest.Mock).mockResolvedValueOnce({ ok: true, exitCode: 0, stdout: '5050\n', stderr: '', wallMs: 500 });
+  const r = await POST(req({ action: 'run', request: { language: 'python', code: 'print(5050)' }, token: 't', locale: 'en', userId: 'evil' }));
+  expect(r.status).toBe(200);
+  expect(await r.json()).toMatchObject({ ok: true, stdout: '5050\n', filed: true });
+  expect(mockFile).toHaveBeenCalledWith({}, {
+    userId: 'u-1', locale: 'en', run: expect.objectContaining({ language: 'python', code: 'print(5050)', exitCode: 0, stdout: '5050\n' }),
+  });
+});
+
+test('a failed run is not filed', async () => {
+  process.env.AGENT_G_SANDBOX = 'admin';
+  const r = await POST(req({ action: 'run', request: { language: 'python', code: 'x' }, token: 't' }));
+  expect(r.status).toBe(409);
+  expect(mockFile).not.toHaveBeenCalled();
 });

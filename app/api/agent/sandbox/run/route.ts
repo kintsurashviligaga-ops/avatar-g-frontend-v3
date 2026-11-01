@@ -6,7 +6,7 @@
  *        checks the code against the sandbox policy with this server's limits (1 vCPU, 60 s, no network, no keys) and
  *        signs the plan → { ok, quote, request, token }. Nothing runs; free.
  *   POST { action: 'run', request, token }   the plan the user pressed Start on, once → { ok, exitCode, stdout, stderr,
- *        wallMs }. Synchronous: a run is at most 60 s.
+ *        wallMs, filed }. Synchronous: a run is at most 60 s. filed: also saved in the Library as a PDF (Docs tab).
  *
  * ⚠️ CLOSED UNLESS AGENT_G_SANDBOX OPENS IT (lib/agent/media/access agentSandboxAccess), and nothing runs unless
  * SANDBOX_ENABLED=1 too. A closed POST answers 404 before the session is read. Every run is booked in the shared $20
@@ -17,8 +17,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { agentSandboxAccess, agentSandboxOpenTo } from '@/lib/agent/media/access';
-import { quoteCodeRun, runCodeQuote, type CodeErrorCode } from '@/lib/agent/sandbox/codeQuote';
-import { liveCodeDeps } from '@/lib/agent/sandbox';
+import { codeRequestOf, quoteCodeRun, runCodeQuote, type CodeErrorCode } from '@/lib/agent/sandbox/codeQuote';
+import { fileCodeRun } from '@/lib/agent/sandbox/codeFiling';
+import { liveCodeDeps, liveFilingDeps } from '@/lib/agent/sandbox';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,7 +71,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.CODE_RUN_USER);
     if (capped) return capped;
     const r = await runCodeQuote(deps, { userId: user.id, request: body.request, token: body.token }, req.signal);
-    return NextResponse.json(r, { status: r.ok ? 200 : STATUS[r.error], headers: NO_STORE });
+    if (!r.ok) return NextResponse.json(r, { status: STATUS[r.error], headers: NO_STORE });
+    // Filed in the Library as a PDF (Docs tab). Fail-soft: the result is already here, `filed` only says where else it is.
+    const request = codeRequestOf(body.request)!;
+    const locale = body.locale === 'en' || body.locale === 'ru' ? body.locale : 'ka';
+    const filed = await fileCodeRun(await liveFilingDeps(), { userId: user.id, locale, run: { language: request.language, code: request.code, ...r } });
+    return NextResponse.json({ ...r, filed }, { status: 200, headers: NO_STORE });
   }
   return NextResponse.json({ ok: false, error: 'bad_input', message: "action: 'quote' or 'run'" }, { status: 400 });
 }
