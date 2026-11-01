@@ -34,3 +34,23 @@ export async function liveCodeDeps(): Promise<import('./codeQuote').CodeDeps> {
     runner: (userId) => getSandboxRunner(userId),
   };
 }
+
+/** The live effects of filing a finished run in the Library (./codeFiling): the PDF renderer, Storage, generation_jobs. */
+export async function liveFilingDeps(): Promise<import('./codeFiling').FilingDeps> {
+  const [{ renderDocumentPdf }, { uploadBufferAndSign }, { recordCompletedAsset }, { randomUUID }] = await Promise.all([
+    import('@/lib/documents/pdf'),
+    import('@/lib/orchestrator/storage-adapter'),
+    import('@/lib/orchestrator/jobs'),
+    import('node:crypto'),
+  ]);
+  return {
+    render: async (spec) => (await renderDocumentPdf(spec)).bytes,
+    // The same bucket and link life as Agent G's PDFs (app/api/documents/create); the Library re-signs on every read.
+    upload: (path, bytes) => uploadBufferAndSign('renders', path, bytes, 'application/pdf', 604_800),
+    record: ({ id, userId, url, title }) => recordCompletedAsset({
+      id, userId, serviceType: 'document', url, prompt: title, source: 'agent-g-code-run', storageVerified: true,
+    }),
+    newId: () => randomUUID(),
+    now: () => new Date(),
+  };
+}
