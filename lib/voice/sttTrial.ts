@@ -8,8 +8,9 @@
  * at once. The recorder's request then names that model (components/chat/composer/useDictation), and the route
  * honours it for an ADMIN account only, with no step-downs, so the timing is that model's alone
  * (app/api/voice/transcribe); for anyone else the request is transcribed as usual. `?micstats=1` on the same link
- * shows the timings, and the line names the model under trial. `?stt=chirp_3` tries Cloud Speech-to-Text's Chirp 3
- * instead (lib/voice-v2v/chirpStt, 2026-10-30).
+ * shows the timings, and the line names the model under trial. `?stt=chirp_3` runs Cloud Speech-to-Text's Chirp 3
+ * alone (lib/voice-v2v/chirpStt, 2026-10-30). Since 2026-11-01 Chirp 3 is everyone's engine, with Gemini behind it, so
+ * a Gemini model named here is how the owner hears Gemini alone again.
  */
 import { STT_TRIAL_MODELS } from '@/lib/ai/google/models';
 

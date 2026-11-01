@@ -3,8 +3,9 @@ import 'server-only';
 /**
  * Gemini speech-to-text: a multimodal generateContent model given a short "transcribe this audio" prompt.
  *
- * The ONLY engine of /api/voice/transcribe (MASTER TASK v3.1): no Replicate, OpenAI or Deepgram leg runs, whatever
- * AI_GOOGLE_ONLY says.
+ * The Gemini engine of /api/voice/transcribe (MASTER TASK v3.1): no Replicate, OpenAI or Deepgram leg runs, whatever
+ * AI_GOOGLE_ONLY says. Since 2026-11-01 (GG's card) Cloud Speech-to-Text's Chirp 3 answers a clip first
+ * (lib/voice-v2v/chirpStt), and this takes the clips Chirp cannot answer; STT_ENGINE=gemini makes it the whole engine.
  *
  * ⚠️ THE CONTAINER DECIDES WHETHER THIS WORKS AT ALL. Gemini's documented AUDIO inputs are WAV, MP3, AIFF, AAC,
  * OGG and FLAC. The browser's MediaRecorder produces WebM/Opus (Chrome, Firefox) or MP4/AAC (Safari) — neither is

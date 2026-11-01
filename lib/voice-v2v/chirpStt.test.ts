@@ -1,6 +1,7 @@
 /** @jest-environment node */
 /**
- * lib/voice-v2v/chirpStt — the owner's Chirp 3 dictation trial, with fetch mocked (no network, no spend):
+ * lib/voice-v2v/chirpStt — Chirp 3, the mic's engine for everyone since 2026-11-01 (the owner's trial before), with
+ * fetch mocked (no network, no spend):
  *   · Speech-to-Text V2 recognize at `us`, the Vertex project, a Workload Identity bearer token and no API key;
  *   · told to expect the site's three languages, the one asked for first, and at the same time Georgian alone: Cyrillic
  *     or Latin from the first is kept, else Georgian letters from the second; a script outside the three is dropped
@@ -8,7 +9,9 @@
  *     „G 7 6 0 0 0 0 0“); a clear Russian or English answer does not wait for Georgian alone; a refused list is asked
  *     once with its first language;
  *   · an unconfigured Vertex AI, or a clip over a minute, fails before any request;
- *   · the transcript, the language Chirp heard and the billed seconds come back; Google's reason on a refusal.
+ *   · the transcript, the language Chirp heard and the billed seconds come back; Google's reason on a refusal;
+ *   · its deadline is the caller's (the route's default engine gives it CHIRP_FIRST_TIMEOUT_MS), and STT_ENGINE=gemini
+ *     is the one value that turns the default off.
  */
 jest.mock('server-only', () => ({}));
 
@@ -18,8 +21,10 @@ jest.mock('../veo/vertexAuth', () => ({
 }));
 
 import {
+  CHIRP_FIRST_TIMEOUT_MS,
   CHIRP_SYNC_MAX_SECONDS,
   chirpCostUsd,
+  chirpIsDefaultEngine,
   chirpLanguageCodes,
   chirpListedDecisive,
   chirpScript,
@@ -265,6 +270,30 @@ test("a refusal carries Google's reason and the status; the API off on the proje
 test('a timeout is a network miss', async () => {
   fetchSpy.mockImplementation(async () => { throw Object.assign(new Error('aborted'), { name: 'TimeoutError' }); });
   await expect(transcribeWithChirp(wav(1), 'ka-GE')).rejects.toMatchObject({ code: 'network', message: 'Chirp 3 network error: TimeoutError' });
+});
+
+test("each request's deadline: 20 s alone (the owner's trial), the caller's when given, never under a second", async () => {
+  const timeouts = jest.spyOn(AbortSignal, 'timeout');
+  try {
+    await transcribeWithChirp(wav(1), 'ka-GE');
+    expect(timeouts.mock.calls.map(([ms]) => ms)).toEqual([20_000, 20_000]);
+    timeouts.mockClear();
+    await transcribeWithChirp(wav(1), 'ka-GE', { timeoutMs: CHIRP_FIRST_TIMEOUT_MS });
+    expect(timeouts.mock.calls.map(([ms]) => ms)).toEqual([10_000, 10_000]);
+    timeouts.mockClear();
+    await transcribeWithChirp(wav(1), 'ka-GE', { timeoutMs: 5 });
+    expect(timeouts.mock.calls.map(([ms]) => ms)).toEqual([1_000, 1_000]);
+  } finally {
+    timeouts.mockRestore();
+  }
+});
+
+test('Chirp is the default engine unless STT_ENGINE says gemini (GG card 2026-11-01 05:33Z)', () => {
+  expect(chirpIsDefaultEngine({})).toBe(true);
+  expect(chirpIsDefaultEngine({ STT_ENGINE: '' })).toBe(true);
+  expect(chirpIsDefaultEngine({ STT_ENGINE: 'chirp' })).toBe(true);
+  expect(chirpIsDefaultEngine({ STT_ENGINE: 'whisper' })).toBe(true);
+  for (const v of ['gemini', 'GEMINI', ' Gemini\n']) expect(chirpIsDefaultEngine({ STT_ENGINE: v })).toBe(false);
 });
 
 test('no request at all: Vertex AI unconfigured, or a clip over a minute', async () => {
