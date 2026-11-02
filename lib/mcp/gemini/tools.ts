@@ -1,12 +1,13 @@
 import 'server-only';
 
-import { createClient } from '@supabase/supabase-js';
 import { generateAgentGPersonalityReply } from '../../agentg/personality';
 import { checkRateLimitByKey, RATE_LIMITS } from '../../api/rate-limit';
-import { publicEnv } from '../../env/public';
+import { readRecentWorks } from './works';
+import { requestOrExecuteVideo } from './videoApproval';
+import type { McpPrincipal } from './auth';
 
 /** The endpoint authenticates this token with Supabase before calling an adapter. */
-export type McpPrincipal = { userId: string; token: string };
+export type { McpPrincipal } from './auth';
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
 const answer = (value: unknown): ToolResult => ({ content: [{ type: 'text', text: JSON.stringify(value) }] });
@@ -20,10 +21,8 @@ const failure = (code: string, message: string): ToolResult => ({
  */
 export async function executeMcpTool(name: string, args: Record<string, unknown>, principal: McpPrincipal): Promise<ToolResult> {
   if (name === 'create_generation_task') {
-    // An MCP client-provided boolean (or annotation) is not evidence of a user's approval.
-    // A first-party, one-time server-verified confirmation and the paid generation path
-    // must be wired before this can safely create or charge for a job.
-    return failure('approval_required', 'Generation is not available through this connector until first-party user confirmation is implemented. No task was created.');
+    if (args.kind === 'audio') return failure('generation_unavailable', 'Audio generation is not available through this connector. No task was created.');
+    return requestOrExecuteVideo(args, principal);
   }
 
   if (name === 'chat_with_agent') {
@@ -46,29 +45,8 @@ export async function executeMcpTool(name: string, args: Record<string, unknown>
     if (typeof rawLimit !== 'number' || !Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 20) {
       return failure('invalid_arguments', 'limit must be an integer between 1 and 20.');
     }
-    const { NEXT_PUBLIC_SUPABASE_URL: url, NEXT_PUBLIC_SUPABASE_ANON_KEY: anon } = publicEnv;
-    if (!url || !anon) return failure('library_unavailable', 'The works library is unavailable.');
     try {
-      // The caller's JWT, never the service role, enforces database RLS. Limit the
-      // fields and filter user_id again before returning; no arbitrary URLs or tokens.
-      const supabase = createClient(url, anon, {
-        auth: { autoRefreshToken: false, persistSession: false },
-        global: { headers: { Authorization: `Bearer ${principal.token}` } },
-      });
-      const { data, error } = await supabase.from('generation_jobs')
-        .select('id,user_id,service_type,created_at,signed_url,result,params')
-        .eq('user_id', principal.userId).eq('status', 'completed').neq('service_type', 'voice')
-        .order('created_at', { ascending: false }).limit(rawLimit);
-      if (error || !Array.isArray(data)) return failure('library_unavailable', 'The works library is unavailable.');
-      const items = data.filter((row) => row.user_id === principal.userId && (
-        (typeof row.signed_url === 'string' && row.signed_url) ||
-        (row.result && typeof row.result === 'object' && typeof row.result.url === 'string' && row.result.url)
-      )).map((row) => ({
-        id: row.id, kind: row.service_type, createdAt: row.created_at,
-        prompt: row.params && typeof row.params === 'object' && typeof row.params.prompt === 'string' ? row.params.prompt : null,
-      }));
-      // The product library performs ownership checks and mints fresh signed URLs.
-      // Do not expose potentially expired stored URLs or reimplement its signing path.
+      const items = await readRecentWorks(principal, rawLimit);
       return answer({ items, libraryUrl: 'https://myavatar.ge/ka/library' });
     } catch {
       return failure('library_unavailable', 'The works library is unavailable.');

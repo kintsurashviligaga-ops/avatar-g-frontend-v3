@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import { checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
-import { authenticateMcp } from '../../../../lib/mcp/gemini/auth';
+import { authenticateMcp, mcpOAuthConfig } from '../../../../lib/mcp/gemini/auth';
 import { executeMcpTool } from '../../../../lib/mcp/gemini/tools';
 
 export const runtime = 'nodejs';
@@ -22,8 +22,13 @@ function allowedOrigin(req: Request): boolean {
 export async function POST(req: Request): Promise<Response> {
   if (process.env.MCP_GEMINI_ENABLED !== 'true') return new Response('Not found', { status: 404 });
   if (!allowedOrigin(req)) return new Response('Forbidden', { status: 403 });
+  const oauth = mcpOAuthConfig();
+  if (!oauth) return new Response('OAuth not configured', { status: 503, headers: { 'Cache-Control': 'no-store' } });
   const principal = await authenticateMcp(req);
-  if (!principal) return new Response('Unauthorized', { status: 401, headers: { 'WWW-Authenticate': 'Bearer realm="myavatar-mcp"', 'Cache-Control': 'no-store' } });
+  if (!principal) {
+    const metadata = new URL('/.well-known/oauth-protected-resource/api/mcp/gemini', oauth.resource).href;
+    return new Response('Unauthorized', { status: 401, headers: { 'WWW-Authenticate': `Bearer realm="myavatar-mcp", resource_metadata="${metadata}"`, 'Cache-Control': 'no-store' } });
+  }
 
   const limited = await checkRateLimitByKey(principal.userId, { ...RATE_LIMITS.READ, keyPrefix: 'rl:mcp-gemini' });
   if (limited) return limited;
@@ -44,7 +49,7 @@ export async function POST(req: Request): Promise<Response> {
   }, (args) => executeMcpTool('get_recent_works', args, principal));
   server.registerTool('create_generation_task', {
     description: 'Request a video or audio generation. Requires first-party manual user approval and is unavailable until that flow is configured.',
-    inputSchema: { kind: z.enum(['video', 'audio']), script: z.string().trim().min(1).max(5000), avatarId: z.string().min(1).max(128).optional(), aspectRatio: z.enum(['9:16', '16:9', '1:1']).optional() },
+    inputSchema: { kind: z.enum(['video', 'audio']), script: z.string().trim().min(1).max(2000), avatarId: z.string().uuid().optional(), aspectRatio: z.enum(['9:16', '16:9', '1:1']).optional(), approvalId: z.string().uuid().optional() },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   }, (args) => executeMcpTool('create_generation_task', args, principal));
 

@@ -1,49 +1,52 @@
-# Gemini MCP bootstrap
+# Gemini MCP integration — not yet production-ready
 
-`POST /api/mcp/gemini` is a stateless MCP Streamable HTTP endpoint for a
-Vercel Node.js function. It is disabled unless `MCP_GEMINI_ENABLED=true`.
-It uses the official MCP TypeScript SDK; no `@google/genai` dependency is
-needed for this endpoint. If a browser sends an `Origin`, it must match
-`MCP_ALLOWED_ORIGINS` (comma-separated; defaults to the two MyAvatar origins).
+`POST /api/mcp/gemini` uses stateless MCP Streamable HTTP on Vercel Node.js.
+The official MCP SDK is required; no `@google/genai` dependency is needed.
+The endpoint remains disabled unless `MCP_GEMINI_ENABLED=true`.
 
-This is a **bootstrap, not a complete Gemini Connected Apps integration**.
-Its temporary token mode accepts a Supabase user access token in an explicit
-Bearer header, validates it using Supabase Auth, and uses the user's token and
-RLS for library data. It does not provide OAuth authorization-server discovery,
-consent, authorization code/PKCE, or MCP-specific token audience and scopes.
-Do not enable it for external clients until a resource-bound delegated OAuth
-flow and appropriate access policies are implemented and independently tested.
-Never use a service-role token or a shared API key as a user's bearer token.
+## Delegated authentication
 
-The tools are:
+The endpoint validates a bearer JWT through Supabase Auth and requires its
+issuer, expiration, resource audience, allowed OAuth client ID, and `mcp:read`
+scope to match trusted configuration. It publishes protected-resource metadata
+at `/.well-known/oauth-protected-resource/api/mcp/gemini`. Required settings:
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`MCP_GEMINI_RESOURCE_URL`, and `MCP_GEMINI_ALLOWED_CLIENT_IDS`.
 
-* `chat_with_agent`: authenticated Agent G personality response; subject to
-  the existing per-user chat rate limit and model availability.
-* `get_recent_works`: returns owner-filtered metadata for recent completed
-  generation jobs. Asset URLs, pagination and the full library normalization
-  are not yet provided.
-* `create_generation_task`: exposes the intended schema but **always fails
-  closed**. A model-supplied confirmation flag is not evidence of a user's
-  approval. Before enabling paid generation, implement a first-party user
-  confirmation flow and durable, one-time, principal-and-arguments-bound
-  approval, then invoke the existing ownership, billing and job pipeline.
+**The authorization server and user-consent flow are not implemented or
+configured by this branch.** Supabase's default OAuth tokens use the ordinary
+`authenticated` audience and do not issue `mcp:read` or `mcp:write` scopes.
+They will be rejected. A separately configured, audited authorization server
+or token hook, client registration, consent screen, PKCE, refresh and revocation
+tests are required before connecting Gemini. Do not weaken validation to accept
+normal login JWTs. Avoid enabling dynamic client registration until RLS and the
+OAuth client's privileges are audited.
 
-## Production work remaining
+## Tools
 
-1. Configure a trusted OAuth authorization server, consent and a registered
-   Google client, publish protected-resource metadata, validate issuer, expiry,
-   audience, client, scopes and principal, and test revocation and isolation.
-   Supabase OAuth Server is a possible option, but its documented scopes and
-   ordinary user-token audience need a deliberate resource-server design.
-2. Build and test the first-party approval flow and call the existing video and
-   audio generation services only after an atomic one-time approval is consumed.
-3. Return the user's actual accessible assets through the canonical library
-   logic and test account isolation and signed URL behavior.
-4. Connect and test with Gemini's development tools and actual users before
-   enabling or claiming production compatibility.
+* `chat_with_agent` uses the existing Agent G personality response with a
+  per-user rate limit.
+* `get_recent_works` reads owner-filtered rows using the user's RLS bearer,
+  returning metadata and HTTPS asset links. Owned storage links are freshly
+  signed for 15 minutes; other provider links may expire according to issuer.
+* `create_generation_task` offers a preliminary first-party, one-time approval
+  design for video. `MCP_VIDEO_GENERATION_ENABLED` must remain off until the
+  migration, OAuth delegation, approval security, billing atomicity, and real
+  end-to-end tests are verified. Audio remains unavailable. The existing video
+  endpoint does not atomically queue a job and charge credits; interrupted calls
+  may have ambiguous results. Never trust a model-supplied confirmation flag.
 
-No QuotaGuard configuration or proxy routing is present in the existing app.
-These adapters call existing application code and Supabase, not an arbitrary
-outbound microservice. If a specific provider later requires a static IP, route
-only that allowlisted provider through the existing approved proxy arrangement;
-do not forward bearer credentials to arbitrary hosts.
+No configured QuotaGuard endpoint or outbound internal microservice was found
+in the existing app. No generic proxy was added: forwarding user tokens to an
+arbitrary proxy or host would be unsafe. If a specific outbound microservice
+requires QuotaGuard, configure a trusted allowlisted destination and dedicated
+proxy credentials for that service, and verify its egress IP before release.
+
+## Before deployment
+
+Implement and configure OAuth authorization and consent; verify issuer,
+audience, scopes, revocation, redirect registration and user isolation against
+Google's Connected Apps client. Complete the video and audio billing paths and
+atomic approval/charge/queue behavior; apply and test the approval migration in
+an isolated database. Test real read and explicitly confirmed write actions with
+Gemini, then perform security review before enabling either feature flag.

@@ -1,9 +1,9 @@
 /** @jest-environment node */
 import { POST } from './route';
-import { authenticateMcp } from '../../../../lib/mcp/gemini/auth';
+import { authenticateMcp, mcpOAuthConfig } from '../../../../lib/mcp/gemini/auth';
 import { executeMcpTool } from '../../../../lib/mcp/gemini/tools';
 
-jest.mock('../../../../lib/mcp/gemini/auth', () => ({ authenticateMcp: jest.fn() }));
+jest.mock('../../../../lib/mcp/gemini/auth', () => ({ authenticateMcp: jest.fn(), mcpOAuthConfig: jest.fn() }));
 jest.mock('../../../../lib/mcp/gemini/tools', () => ({ executeMcpTool: jest.fn() }));
 const auth = authenticateMcp as jest.MockedFunction<typeof authenticateMcp>;
 const run = executeMcpTool as jest.MockedFunction<typeof executeMcpTool>;
@@ -18,7 +18,8 @@ const call = (method: string, params?: unknown) => ({ jsonrpc: '2.0', id: 1, met
 beforeEach(() => {
   process.env.MCP_GEMINI_ENABLED = 'true';
   delete process.env.MCP_ALLOWED_ORIGINS;
-  auth.mockResolvedValue({ userId: 'user-1', token: 'test-token' });
+  (mcpOAuthConfig as jest.Mock).mockReturnValue({ resource: 'https://myavatar.ge/api/mcp/gemini' });
+  auth.mockResolvedValue({ userId: 'user-1', token: 'test-token', clientId: 'gemini-client', scopes: ['mcp:read'] });
   run.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] });
 });
 afterEach(() => { delete process.env.MCP_GEMINI_ENABLED; jest.clearAllMocks(); });
@@ -31,7 +32,7 @@ test('disabled by default and rejects unauthenticated and untrusted origin reque
   auth.mockResolvedValue(null);
   const res = await POST(request(call('tools/list')));
   expect(res.status).toBe(401);
-  expect(res.headers.get('www-authenticate')).toContain('Bearer');
+  expect(res.headers.get('www-authenticate')).toContain('resource_metadata="https://myavatar.ge/.well-known/oauth-protected-resource/api/mcp/gemini"');
   expect(run).not.toHaveBeenCalled();
 });
 
@@ -45,7 +46,7 @@ test('SDK advertises tools with correct names and write annotation', async () =>
 test('valid tool call uses authenticated principal and malformed arguments never reach handler', async () => {
   const res = await POST(request(call('tools/call', { name: 'chat_with_agent', arguments: { message: 'Hello' } })));
   expect(res.status).toBe(200);
-  expect(run).toHaveBeenCalledWith('chat_with_agent', { message: 'Hello' }, { userId: 'user-1', token: 'test-token' });
+  expect(run).toHaveBeenCalledWith('chat_with_agent', { message: 'Hello' }, { userId: 'user-1', token: 'test-token', clientId: 'gemini-client', scopes: ['mcp:read'] });
   run.mockClear();
   const invalid = await POST(request(call('tools/call', { name: 'chat_with_agent', arguments: { message: '' } })));
   expect((await invalid.json()).result.isError).toBe(true);
