@@ -20,6 +20,7 @@
  *     SQL file in the repo (docs/handoffs/**\/proposals/) and be absent from Production, and its caller must treat
  *     "not provisioned" as an answer (lib/orchestrator/idempotencyStore.ts). Once applied, it moves to `production`.
  *
+ * Proposed MCP tables are separately checked for a migration, absence from Production, and gated callers.
  * When a migration lands in Production, re-read the schema and move the names from `missing` to `production`
  * (the queries are in the snapshot's `note`).
  */
@@ -104,7 +105,7 @@ function scan() {
 const SNAPSHOT: {
   production: { tables: string[]; functions: string[] };
   missing: { tables: string[]; functions: string[] };
-  proposed: { functions: string[] };
+  proposed: { functions: string[]; tables: string[] };
   dynamic: string[];
 } = JSON.parse(readFileSync(join(ROOT, '__tests__/schema-drift.snapshot.json'), 'utf8'));
 
@@ -139,7 +140,7 @@ describe('schema drift (code vs the Production schema snapshot)', () => {
   });
 
   test.each(['tables', 'functions'] as const)('no new %s missing in Production', (kind) => {
-    const known = new Set([...SNAPSHOT.production[kind], ...SNAPSHOT.missing[kind], ...(kind === 'functions' ? SNAPSHOT.proposed.functions : [])]);
+    const known = new Set([...SNAPSHOT.production[kind], ...SNAPSHOT.missing[kind], ...SNAPSHOT.proposed[kind]]);
     const added = [...actual[kind]].filter((n) => !known.has(n)).sort();
     // A name here is called by the code but absent from Production. Ship the migration with the owner's approval
     // (then move the name into `production`), or don't call it.
@@ -166,6 +167,21 @@ describe('schema drift (code vs the Production schema snapshot)', () => {
       expect({ name, created: sql.some((t) => new RegExp(`create (or replace )?function public\\.${name}\\(`, 'i').test(t)) }).toEqual({ name, created: true });
       expect({ name, inProduction: SNAPSHOT.production.functions.includes(name) || SNAPSHOT.missing.functions.includes(name) }).toEqual({ name, inProduction: false });
       expect({ name, called: actual.functions.has(name) }).toEqual({ name, called: true });
+    }
+  });
+
+  test('a proposed MCP table has a migration, is not reported as production, and is only used by gated callers', () => {
+    const migration = readFileSync(join(ROOT, 'supabase/migrations/20261102a_mcp_generation_approvals.sql'), 'utf8');
+    for (const name of SNAPSHOT.proposed.tables) {
+      expect(name).toBe('mcp_generation_approvals');
+      expect(migration).toMatch(/create table if not exists public\.mcp_generation_approvals/i);
+      expect(SNAPSHOT.production.tables).not.toContain(name);
+      expect(SNAPSHOT.missing.tables).not.toContain(name);
+      const callers = SOURCES.flatMap((s) => walk(join(ROOT, s), [])).filter((f) => callsIn(f, readFileSync(f, 'utf8')).tables.has(name));
+      expect(callers.length).toBeGreaterThan(0);
+      for (const f of callers) {
+        expect(readFileSync(f, 'utf8')).toMatch(/MCP_(AUDIO|VIDEO)_GENERATION_ENABLED/);
+      }
     }
   });
 

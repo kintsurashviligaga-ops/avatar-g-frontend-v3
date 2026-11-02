@@ -24,7 +24,7 @@ async function signedInUser() {
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
-  if (process.env.MCP_VIDEO_GENERATION_ENABLED !== 'true') return page('<h1>Approval unavailable</h1>', 404);
+  if (process.env.MCP_VIDEO_GENERATION_ENABLED !== 'true' && process.env.MCP_AUDIO_GENERATION_ENABLED !== 'true') return page('<h1>Approval unavailable</h1>', 404);
   const user = await signedInUser();
   if (!user) return page('<h1>Sign in to MyAvatar</h1><p>Sign in to the account that requested this task, then reopen this link.</p>', 401);
   const parsed = UUID.safeParse(req.nextUrl.searchParams.get('id'));
@@ -35,13 +35,19 @@ export async function GET(req: NextRequest): Promise<Response> {
       .eq('state', 'pending').gt('expires_at', new Date().toISOString()).maybeSingle();
     if (error || !data) return page('<h1>Approval unavailable or expired</h1>', 404);
     const r = data.request as Record<string, unknown>;
-    if (!r || r.kind !== 'video' || typeof r.script !== 'string' || typeof r.avatarId !== 'string' || typeof r.aspectRatio !== 'string' || !Number.isInteger(data.quoted_credits)) return page('<h1>Approval unavailable</h1>', 404);
-    return page(`<h1>Approve video generation?</h1><p>This will allow one generation attempt and may charge <strong>${data.quoted_credits} credits</strong>. Review the exact request:</p><p>Avatar: <code>${escape(r.avatarId)}</code><br>Aspect ratio: ${escape(r.aspectRatio)}</p><pre>${escape(r.script)}</pre><p>The approval expires at ${escape(data.expires_at)}.</p><form method="post" action="/api/mcp/consent"><input type="hidden" name="id" value="${escape(data.id)}"><button type="submit" name="decision" value="approve">Approve one attempt</button><button type="submit" name="decision" value="deny">Deny</button></form>`);
+    if (!r || typeof r.script !== 'string' || !Number.isInteger(data.quoted_credits)) return page('<h1>Approval unavailable</h1>', 404);
+    let details: string;
+    if (r.kind === 'video' && process.env.MCP_VIDEO_GENERATION_ENABLED === 'true' && typeof r.avatarId === 'string' && typeof r.aspectRatio === 'string') {
+      details = `<p>Avatar: <code>${escape(r.avatarId)}</code><br>Aspect ratio: ${escape(r.aspectRatio)}</p>`;
+    } else if (r.kind === 'audio' && process.env.MCP_AUDIO_GENERATION_ENABLED === 'true' && typeof r.model === 'string' && r.durationSec === 30 && r.mode === 'instrumental') {
+      details = `<p>Model: ${escape(r.model)}<br>Duration: ${r.durationSec} seconds<br>Mode: instrumental</p>`;
+    } else return page('<h1>Approval unavailable</h1>', 404);
+    return page(`<h1>Approve ${escape(r.kind as string)} generation?</h1><p>This will allow one generation attempt and may charge <strong>${data.quoted_credits} credits</strong>. Review the exact request:</p>${details}<pre>${escape(r.script)}</pre><p>The approval expires at ${escape(data.expires_at)}.</p><form method="post" action="/api/mcp/consent"><input type="hidden" name="id" value="${escape(data.id)}"><button type="submit" name="decision" value="approve">Approve one attempt</button><button type="submit" name="decision" value="deny">Deny</button></form>`);
   } catch { return page('<h1>Approval unavailable</h1>', 503); }
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
-  if (process.env.MCP_VIDEO_GENERATION_ENABLED !== 'true') return page('<h1>Approval unavailable</h1>', 404);
+  if (process.env.MCP_VIDEO_GENERATION_ENABLED !== 'true' && process.env.MCP_AUDIO_GENERATION_ENABLED !== 'true') return page('<h1>Approval unavailable</h1>', 404);
   // Cross-site or missing Origin is rejected; an MCP request cannot use this
   // endpoint as a substitute for the user's first-party browser action.
   if (!origins.has(req.headers.get('origin') ?? '')) return page('<h1>Forbidden</h1>', 403);

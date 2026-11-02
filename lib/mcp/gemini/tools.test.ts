@@ -1,13 +1,14 @@
 import { executeMcpTool } from './tools';
 import { readRecentWorks } from './works';
-import { generateAgentGPersonalityReply } from '../../agentg/personality';
+import { runLiveAgent } from '../../agent/react/bindLiveAgent';
 import { checkRateLimitByKey } from '../../api/rate-limit';
 import { requestOrExecuteVideo } from './videoApproval';
 
 jest.mock('server-only', () => ({}));
 jest.mock('./works', () => ({ readRecentWorks: jest.fn() }));
 jest.mock('./videoApproval', () => ({ requestOrExecuteVideo: jest.fn() }));
-jest.mock('../../agentg/personality', () => ({ generateAgentGPersonalityReply: jest.fn() }));
+jest.mock('./audioApproval', () => ({ requestOrExecuteAudio: jest.fn() }));
+jest.mock('../../agent/react/bindLiveAgent', () => ({ runLiveAgent: jest.fn() }));
 jest.mock('../../api/rate-limit', () => ({ checkRateLimitByKey: jest.fn(), RATE_LIMITS: { CHAT_USER: {} } }));
 jest.mock('../../env/public', () => ({ publicEnv: { NEXT_PUBLIC_SUPABASE_URL: 'https://db.example.test', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'public-key' } }));
 
@@ -18,14 +19,14 @@ beforeEach(() => jest.resetAllMocks());
 
 test('charges chat to the authenticated user and honors the account limit', async () => {
   (checkRateLimitByKey as jest.Mock).mockResolvedValue(null);
-  (generateAgentGPersonalityReply as jest.Mock).mockResolvedValue({ replyText: 'Hello' });
+  (runLiveAgent as jest.Mock).mockResolvedValue({ answer: 'Hello', stopReason: 'final' });
   const result = await executeMcpTool('chat_with_agent', { message: ' hi ', locale: 'en', userId: 'other' }, principal);
   expect(content(result)).toEqual({ reply: 'Hello' });
   expect(checkRateLimitByKey).toHaveBeenCalledWith('user-a', expect.anything());
-  expect(generateAgentGPersonalityReply).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-a', userText: 'hi' }));
+  expect(runLiveAgent).toHaveBeenCalledWith('hi', { userId: 'user-a' }, expect.objectContaining({ maxSteps: 4, systemExtra: 'Respond in English.' }));
   (checkRateLimitByKey as jest.Mock).mockResolvedValue({ status: 429 });
   expect((await executeMcpTool('chat_with_agent', { message: 'hi' }, principal)).isError).toBe(true);
-  expect(generateAgentGPersonalityReply).toHaveBeenCalledTimes(1);
+  expect(runLiveAgent).toHaveBeenCalledTimes(1);
 });
 
 test('works query uses the user bearer token and filters rows to the principal', async () => {

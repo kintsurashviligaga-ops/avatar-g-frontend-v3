@@ -11,7 +11,7 @@ beforeEach(() => {
   process.env.MCP_VIDEO_GENERATION_ENABLED = 'true';
   (createServerClient as jest.Mock).mockReturnValue({ auth: { getUser: async () => ({ data: { user: { id: 'user-a' } }, error: null }) } });
 });
-afterEach(() => { delete process.env.MCP_VIDEO_GENERATION_ENABLED; jest.resetAllMocks(); });
+afterEach(() => { delete process.env.MCP_VIDEO_GENERATION_ENABLED; delete process.env.MCP_AUDIO_GENERATION_ENABLED; jest.resetAllMocks(); });
 
 test('rejects cross-origin approval without touching the database', async () => {
   const req = new NextRequest('https://myavatar.ge/api/mcp/consent', { method: 'POST', headers: { origin: 'https://evil.example' }, body: new URLSearchParams({ id, decision: 'approve' }) });
@@ -33,4 +33,18 @@ test('renders the requested script escaped and scopes the approval lookup to the
   expect(await res.text()).toContain('&lt;script&gt;');
   expect(query.eq).toHaveBeenCalledWith('user_id', 'user-a');
   expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+});
+
+test('audio approval shows the precise quote without exposing its server-held token', async () => {
+  delete process.env.MCP_VIDEO_GENERATION_ENABLED;
+  process.env.MCP_AUDIO_GENERATION_ENABLED = 'true';
+  const query = { select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis(), gt: jest.fn().mockReturnThis(), maybeSingle: jest.fn(async () => ({ data: { id, quoted_credits: 7, expires_at: '2099-01-01', request: { kind: 'audio', script: '<x>', model: 'model-a', durationSec: 30, mode: 'instrumental', quoteToken: 'SECRET-QUOTE' } }, error: null })) };
+  (createServiceRoleClient as jest.Mock).mockReturnValue({ from: () => query });
+  const res = await GET(new NextRequest(`https://myavatar.ge/api/mcp/consent?id=${id}`));
+  const html = await res.text();
+  expect(res.status).toBe(200);
+  expect(html).toContain('7 credits');
+  expect(html).toContain('model-a');
+  expect(html).toContain('&lt;x&gt;');
+  expect(html).not.toContain('SECRET-QUOTE');
 });

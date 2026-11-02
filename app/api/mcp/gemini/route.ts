@@ -35,7 +35,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const server = new McpServer({ name: 'myavatar-agent-ge', version: '0.1.0' }, {
     maxToolInputElements: 100,
-    instructions: 'Use chat_with_agent to message Agent.ge and get_recent_works to list the authenticated user’s assets. Paid generation requires explicit first-party user approval; create_generation_task is currently disabled and will not create or charge for a task.',
+    instructions: 'Use chat_with_agent to message Agent.ge and get_recent_works for the authenticated user’s assets. Audio generation is available only when enabled and requires first-party user approval: show the returned approval URL and retry the same request with its approvalId after the user approves. Never infer or provide approval on the user’s behalf. Video generation is unavailable.',
   });
   server.registerTool('chat_with_agent', {
     description: 'Send a message to Agent.ge and return its response.',
@@ -48,7 +48,7 @@ export async function POST(req: Request): Promise<Response> {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, (args) => executeMcpTool('get_recent_works', args, principal));
   server.registerTool('create_generation_task', {
-    description: 'Request a video or audio generation. Requires first-party manual user approval and is unavailable until that flow is configured.',
+    description: 'Request an instrumental audio task when enabled. First request returns an approval URL; after the user approves, retry the same arguments with approvalId. Video is unavailable.',
     inputSchema: { kind: z.enum(['video', 'audio']), script: z.string().trim().min(1).max(2000), avatarId: z.string().uuid().optional(), aspectRatio: z.enum(['9:16', '16:9', '1:1']).optional(), approvalId: z.string().uuid().optional() },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   }, (args) => executeMcpTool('create_generation_task', args, principal));

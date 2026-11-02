@@ -13,8 +13,12 @@ at `/.well-known/oauth-protected-resource/api/mcp/gemini`. Required settings:
 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `MCP_GEMINI_RESOURCE_URL`, and `MCP_GEMINI_ALLOWED_CLIENT_IDS`.
 
-**The authorization server and user-consent flow are not implemented or
-configured by this branch.** Supabase's default OAuth tokens use the ordinary
+**A working authorization server is not configured by this branch.** The
+prototype first-party consent endpoint `/api/mcp/oauth/consent` is disabled by
+default (`MCP_OAUTH_CONSENT_ENABLED`); it requires exact
+`MCP_GEMINI_ALLOWED_CLIENT_IDS` and `MCP_GEMINI_ALLOWED_REDIRECT_URIS` values.
+It must not be enabled until the token-claim, client and RLS design is audited.
+Supabase's default OAuth tokens use the ordinary
 `authenticated` audience and do not issue `mcp:read` or `mcp:write` scopes.
 They will be rejected. A separately configured, audited authorization server
 or token hook, client registration, consent screen, PKCE, refresh and revocation
@@ -24,17 +28,17 @@ OAuth client's privileges are audited.
 
 ## Tools
 
-* `chat_with_agent` uses the existing Agent G personality response with a
-  per-user rate limit.
+* `chat_with_agent` uses the active Agent G runtime with a bounded deadline,
+  step count and per-user rate limit.
 * `get_recent_works` reads owner-filtered rows using the user's RLS bearer,
   returning metadata and HTTPS asset links. Owned storage links are freshly
   signed for 15 minutes; other provider links may expire according to issuer.
-* `create_generation_task` offers a preliminary first-party, one-time approval
-  design for video. `MCP_VIDEO_GENERATION_ENABLED` must remain off until the
-  migration, OAuth delegation, approval security, billing atomicity, and real
-  end-to-end tests are verified. Audio remains unavailable. The existing video
-  endpoint does not atomically queue a job and charge credits; interrupted calls
-  may have ambiguous results. Never trust a model-supplied confirmation flag.
+* `create_generation_task` offers a first-party, one-time approval prototype.
+  Audio uses the existing Music Studio quote/reservation and recovery saga and
+  remains gated by `MCP_AUDIO_GENERATION_ENABLED`; it has not been validated
+  against Gemini or deployed. The legacy video path does not provide a verified
+  runnable queue and must remain disabled. Never trust a model-supplied
+  confirmation flag.
 
 No configured QuotaGuard endpoint or outbound internal microservice was found
 in the existing app. No generic proxy was added: forwarding user tokens to an
