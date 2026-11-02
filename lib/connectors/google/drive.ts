@@ -17,25 +17,12 @@ import type { ConnectorFile, ConnectorProvider, ListResult, ReadResult } from '.
 import { decryptToken } from './crypto';
 import { refreshAccessToken, type DriveOAuthConfig } from './oauth';
 import type { ConnectorAccountStore } from './store';
+import { DRIVE_EXPORT, DRIVE_SUPPORTED_MIME } from './fileTypes';
+export { DRIVE_DOWNLOAD, DRIVE_EXPORT, DRIVE_SUPPORTED_MIME } from './fileTypes';
 
 const API = 'https://www.googleapis.com/drive/v3/files';
 export const DRIVE_MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
 export const DRIVE_LIST_MAX = 50;
-
-/** The Drive types the connector reads, and how. */
-export const DRIVE_EXPORT: Record<string, string> = {
-  'application/vnd.google-apps.document': 'text/plain',
-  'application/vnd.google-apps.presentation': 'text/plain',
-  'application/vnd.google-apps.spreadsheet': 'text/csv',
-};
-export const DRIVE_DOWNLOAD = new Set([
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-  'text/markdown',
-  'text/csv',
-]);
-export const DRIVE_SUPPORTED_MIME = [...Object.keys(DRIVE_EXPORT), ...DRIVE_DOWNLOAD];
 
 /** Drive file ids are URL-safe base64-ish, 10–200 chars. Anything else never reaches a URL. */
 export const DRIVE_ID_RE = /^[A-Za-z0-9_-]{10,200}$/;

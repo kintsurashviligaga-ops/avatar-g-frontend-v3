@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { connectorKeys, decryptToken, encryptToken, pkceChallenge, pkcePair, signState, STATE_TTL_MS, verifyState } from './crypto';
 import { authorizationUrl, DRIVE_SCOPE, driveOAuthConfig, emailFromIdToken, exchangeCode, refreshAccessToken, revokeToken } from './oauth';
 import { capText, driveAccessToken, driveProvider, readDriveFile, type DriveDeps } from './drive';
+import { DRIVE_SUPPORTED_MIME } from './fileTypes';
 import type { ConnectorAccountRow, ConnectorAccountStore } from './store';
 import { driveAccess, driveOpenTo } from './access';
 import { connectorRegistry, connectorStates } from '../registry';
@@ -98,6 +99,8 @@ describe('OAuth calls', () => {
     expect(u.searchParams.get('trigger_onepick')).toBe('true');
     expect(u.searchParams.get('allow_multiple')).toBe('true');
     expect(u.searchParams.get('prompt')).toBe('consent');
+    expect(u.searchParams.get('access_type')).toBe('online');
+    expect(u.searchParams.get('mimetypes')).toBe(DRIVE_SUPPORTED_MIME.join(','));
     expect(u.searchParams.get('code_challenge_method')).toBe('S256');
     expect(u.searchParams.get('state')).toBe('s');
   });

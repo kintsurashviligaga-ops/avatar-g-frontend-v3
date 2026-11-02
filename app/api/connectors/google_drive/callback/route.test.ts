@@ -31,7 +31,7 @@ beforeEach(() => {
   mockVerify.mockReturnValue({ ok: true });
   mockExchange.mockResolvedValue({ ok: true, accessToken: 'new', refreshToken: '', scope: 'drive.file', email: null });
   mockAccess.mockResolvedValue({ ok: true, accessToken: 'original' });
-  global.fetch = jest.fn(async () => new Response('{}', { status: 200 })) as jest.Mock;
+  global.fetch = jest.fn(async () => new Response('{"mimeType":"application/pdf"}', { status: 200 })) as jest.Mock;
 });
 
 test('cancelled or malformed Picker selections preserve the existing account', async () => {
@@ -54,5 +54,12 @@ test('a selection inaccessible to the existing account fails without replacing i
   (global.fetch as jest.Mock).mockResolvedValue(new Response('{}', { status: 404 }));
   const res = await GET(callback('&picked_file_ids=abcdefghij'));
   expect(res.headers.get('location')).toContain('drive=error');
+  expect(mockPut).not.toHaveBeenCalled();
+});
+
+test('an unsupported file is rejected rather than reported as selected', async () => {
+  (global.fetch as jest.Mock).mockResolvedValue(new Response('{"mimeType":"image/png"}', { status: 200 }));
+  const res = await GET(callback('&picked_file_ids=abcdefghij'));
+  expect(res.headers.get('location')).toContain('reason=unsupported');
   expect(mockPut).not.toHaveBeenCalled();
 });

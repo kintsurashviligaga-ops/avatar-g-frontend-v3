@@ -12,6 +12,7 @@ import { liveDriveDeps, driveRedirectUri } from '@/lib/connectors/google';
 import { encryptToken, verifyState } from '@/lib/connectors/google/crypto';
 import { exchangeCode, revokeToken } from '@/lib/connectors/google/oauth';
 import { DRIVE_ID_RE, driveAccessToken } from '@/lib/connectors/google/drive';
+import { DRIVE_SUPPORTED_MIME } from '@/lib/connectors/google/fileTypes';
 import { COOKIE, backTo, notFound } from '../shared';
 
 export const runtime = 'nodejs';
@@ -52,11 +53,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const existing = await driveAccessToken(deps, user.id);
     if (!existing.ok) return backTo(origin, locale, 'error', 'unavailable');
     try {
-      const checks = await Promise.all(ids.map((id) => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id`, {
+      const checks = await Promise.all(ids.map((id) => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,mimeType`, {
         headers: { Authorization: `Bearer ${existing.accessToken}` }, cache: 'no-store',
       })));
       if (checks.some((r) => r.status === 403 || r.status === 404)) return backTo(origin, locale, 'error', 'account');
       if (checks.some((r) => !r.ok)) return backTo(origin, locale, 'error', 'unavailable');
+      const metadata = await Promise.all(checks.map((r) => r.json()));
+      if (metadata.some((file) => !DRIVE_SUPPORTED_MIME.includes(file.mimeType))) return backTo(origin, locale, 'error', 'unsupported');
     } catch { return backTo(origin, locale, 'error', 'unavailable'); }
     return backTo(origin, locale, 'linked');
   }

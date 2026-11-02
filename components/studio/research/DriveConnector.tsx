@@ -12,11 +12,12 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Cloud, FileText, Loader2, Plus, Unlink } from 'lucide-react';
 import type { ConnectorFile } from '@/lib/connectors/types';
+import { DRIVE_SUPPORTED_MIME } from '@/lib/connectors/google/fileTypes';
 import { loadGooglePicker } from './googlePicker';
 
 type Lang = 'ka' | 'en' | 'ru';
 
-type Copy = { title: string; sub: string; connect: string; pick: string; disconnect: string; empty: string; linked: string; failed: string; disconnected: string; denied: string; account: string; hint: string };
+type Copy = { title: string; sub: string; connect: string; pick: string; disconnect: string; empty: string; linked: string; failed: string; disconnected: string; denied: string; account: string; unsupported: string; hint: string };
 
 const COPY: Record<Lang, Copy> = {
   ka: {
@@ -31,6 +32,7 @@ const COPY: Record<Lang, Copy> = {
     disconnected: 'Google Drive გაითიშა.',
     denied: 'დაკავშირება გაუქმდა.',
     account: 'არჩეული ფაილები დაკავშირებულ Google ანგარიშში მიუწვდომელია. სცადე იმავე ანგარიშით.',
+    unsupported: 'არჩეული ფაილის ტიპი არ არის მხარდაჭერილი.',
     hint: 'ჰკითხე Agent G-ს, მაგალითად: „რა წერია ჩემს Drive-ის დოკუმენტში?“',
   },
   en: {
@@ -45,6 +47,7 @@ const COPY: Record<Lang, Copy> = {
     disconnected: 'Google Drive is disconnected.',
     denied: 'The connection was cancelled.',
     account: 'The selected files are unavailable in your connected Google account. Try again with that account.',
+    unsupported: 'The selected file type is not supported.',
     hint: 'Ask Agent G, for example: "What does my Drive document say?"',
   },
   ru: {
@@ -59,20 +62,12 @@ const COPY: Record<Lang, Copy> = {
     disconnected: 'Google Drive отключён.',
     denied: 'Подключение отменено.',
     account: 'Выбранные файлы недоступны в подключённом аккаунте Google. Попробуйте снова с этим аккаунтом.',
+    unsupported: 'Этот тип файла не поддерживается.',
     hint: 'Спросите Agent G, например: «Что написано в моём документе на Drive?»',
   },
 };
 
-const SUPPORTED_MIME = [
-  'application/vnd.google-apps.document',
-  'application/vnd.google-apps.spreadsheet',
-  'application/vnd.google-apps.presentation',
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-  'text/markdown',
-  'text/csv',
-].join(',');
+const SUPPORTED_MIME = DRIVE_SUPPORTED_MIME.join(',');
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang: Lang; linked: boolean; onChanged: () => void }) {
@@ -93,7 +88,7 @@ export function DriveConnector({ lang, linked: linkedAtLoad, onChanged }: { lang
       const u = new URL(window.location.href);
       const r = u.searchParams.get('drive');
       if (!r) return;
-      setMessage(r === 'linked' ? t.linked : u.searchParams.get('reason') === 'denied' ? t.denied : u.searchParams.get('reason') === 'account' ? t.account : t.failed);
+      setMessage(r === 'linked' ? t.linked : u.searchParams.get('reason') === 'denied' ? t.denied : u.searchParams.get('reason') === 'account' ? t.account : u.searchParams.get('reason') === 'unsupported' ? t.unsupported : t.failed);
       u.searchParams.delete('drive');
       u.searchParams.delete('reason');
       window.history.replaceState(null, '', u.toString());

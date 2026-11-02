@@ -7,6 +7,7 @@
  * (encrypted) refresh token for a fresh one.
  */
 import { connectorKeys, type ConnectorKeys } from './crypto';
+import { DRIVE_SUPPORTED_MIME } from './fileTypes';
 
 export const DRIVE_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/drive.file'] as const;
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -53,8 +54,8 @@ export function authorizationUrl(cfg: DriveOAuthConfig, o: { redirectUri: string
     state: o.state,
     code_challenge: o.challenge,
     code_challenge_method: 'S256',
-    // offline + consent: Google returns a refresh token even on a second link.
-    access_type: 'offline',
+    // OnePick keeps the existing refresh token; do not create unused tokens.
+    access_type: o.onePick ? 'online' : 'offline',
     prompt: 'consent',
     include_granted_scopes: 'false',
   });
@@ -62,6 +63,7 @@ export function authorizationUrl(cfg: DriveOAuthConfig, o: { redirectUri: string
   if (o.onePick) {
     q.set('trigger_onepick', 'true');
     q.set('allow_multiple', 'true');
+    q.set('mimetypes', DRIVE_SUPPORTED_MIME.join(','));
   }
   if (o.loginHint) q.set('login_hint', o.loginHint);
   return `${AUTH_URL}?${q.toString()}`;
