@@ -62,9 +62,7 @@
     "xai": [],
     "deepseek": [],
     "atlascloud": [],
-    "nanobananaapi": [
-      "lib/models/catalog.ts"
-    ],
+    "nanobananaapi": [],
     "udio": [
       "lib/system/provider-health.ts",
       "lib/udio/client.ts"
