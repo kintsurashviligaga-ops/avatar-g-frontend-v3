@@ -6,7 +6,7 @@ create table if not exists public.mcp_oauth_grants (
   user_id uuid not null references auth.users(id) on delete cascade,
   client_id text not null check (length(client_id) between 1 and 256),
   resource text not null check (length(resource) between 1 and 2048),
-  scopes text[] not null check (scopes <@ array['mcp:read','mcp:write']::text[] and 'mcp:read' = any(scopes)),
+  scopes text[] not null check (array_position(scopes,null) is null and scopes <@ array['mcp:read','mcp:write']::text[] and 'mcp:read' = any(scopes)),
   upstream_refresh_ciphertext text not null check (length(upstream_refresh_ciphertext) between 1 and 16384),
   upstream_access_ciphertext text check (upstream_access_ciphertext is null or length(upstream_access_ciphertext) between 1 and 16384),
   upstream_access_expires_at timestamptz,
@@ -34,11 +34,89 @@ create table if not exists public.mcp_oauth_tokens (
 );
 create index if not exists mcp_oauth_tokens_grant_idx on public.mcp_oauth_tokens(grant_id);
 
+-- Pending requests are written only after the authenticated first-party user
+-- and the exact registered client, redirect, resource, scopes and PKCE have
+-- been validated by the server. OAuth state is opaque; never log it.
+create table if not exists public.mcp_oauth_pending (
+  id uuid primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  client_id text not null check (length(client_id) between 1 and 256),
+  redirect_uri text not null check (length(redirect_uri) between 1 and 2048),
+  resource text not null check (length(resource) between 1 and 2048),
+  scopes text[] not null check (array_position(scopes,null) is null and scopes <@ array['mcp:read','mcp:write']::text[] and 'mcp:read' = any(scopes)),
+  code_challenge text not null check (code_challenge ~ '^[A-Za-z0-9_-]{43}$'),
+  oauth_state text not null check (length(oauth_state) between 1 and 1024),
+  status text not null default 'pending' check (status in ('pending','approved','denied','consumed')),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
 alter table public.mcp_oauth_grants enable row level security;
 alter table public.mcp_oauth_codes enable row level security;
 alter table public.mcp_oauth_tokens enable row level security;
-revoke all on public.mcp_oauth_grants, public.mcp_oauth_codes, public.mcp_oauth_tokens from public, anon, authenticated;
-grant select, insert, update, delete on public.mcp_oauth_grants, public.mcp_oauth_codes, public.mcp_oauth_tokens to service_role;
+alter table public.mcp_oauth_pending enable row level security;
+revoke all on public.mcp_oauth_grants, public.mcp_oauth_codes, public.mcp_oauth_tokens, public.mcp_oauth_pending from public, anon, authenticated;
+grant select, insert, update, delete on public.mcp_oauth_grants, public.mcp_oauth_codes, public.mcp_oauth_tokens, public.mcp_oauth_pending to service_role;
+
+-- Called only after authenticating the browser user and validating the exact
+-- registered OAuth client, redirect, resource, scopes and S256 challenge.
+-- A hard expiry is imposed here so the caller cannot create durable requests.
+create or replace function public.mcp_oauth_begin_pending(
+  p_id uuid, p_user_id uuid, p_client_id text, p_redirect_uri text,
+  p_resource text, p_scopes text[], p_code_challenge text, p_oauth_state text
+) returns boolean language plpgsql security invoker set search_path = '' as $$
+begin
+  if p_id is null or p_user_id is null or p_client_id is null or p_redirect_uri is null or p_resource is null
+    or p_scopes is null or p_code_challenge is null or p_oauth_state is null
+    or length(p_client_id) not between 1 and 256 or length(p_redirect_uri) not between 1 and 2048
+    or length(p_resource) not between 1 and 2048 or length(p_oauth_state) not between 1 and 1024
+    or p_code_challenge !~ '^[A-Za-z0-9_-]{43}$' or p_oauth_state ~ '[[:cntrl:]]'
+    or array_position(p_scopes,null) is not null
+    or not (p_scopes <@ array['mcp:read','mcp:write']::text[]) or not ('mcp:read' = any(p_scopes)) then return false; end if;
+  insert into public.mcp_oauth_pending(id,user_id,client_id,redirect_uri,resource,scopes,code_challenge,oauth_state,expires_at)
+    values (p_id,p_user_id,p_client_id,p_redirect_uri,p_resource,p_scopes,p_code_challenge,p_oauth_state,clock_timestamp()+interval '10 minutes');
+  return true;
+end $$;
+
+-- Called after the actual signed-in user explicitly approves or denies the
+-- first-party consent page. No MCP client input can assert this decision.
+create or replace function public.mcp_oauth_decide_pending(
+  p_id uuid, p_user_id uuid, p_approve boolean
+) returns boolean language plpgsql security invoker set search_path = '' as $$
+begin
+  if p_id is null or p_user_id is null or p_approve is null then return false; end if;
+  update public.mcp_oauth_pending set status = case when p_approve then 'approved' else 'denied' end
+    where id = p_id and user_id = p_user_id and status = 'pending' and expires_at > clock_timestamp();
+  return found;
+end $$;
+
+-- Caller MUST authenticate the browser user, validate current client config,
+-- verify the independent upstream OAuth JWT's signature, issuer, audience,
+-- client and subject, then encrypt its refresh token bound to this new grant.
+-- SQL cannot verify those upstream claims. This operation atomically creates
+-- the grant and single-use code only for an approved, same-user request.
+create or replace function public.mcp_oauth_finalize_pending(
+  p_id uuid, p_user_id uuid, p_verified_upstream_user_id uuid,
+  p_client_id text, p_redirect_uri text, p_resource text,
+  p_grant_id uuid, p_code_hash text, p_upstream_refresh_ciphertext text
+) returns boolean language plpgsql security invoker set search_path = '' as $$
+declare pending public.mcp_oauth_pending%rowtype;
+begin
+  if p_id is null or p_user_id is null or p_verified_upstream_user_id is distinct from p_user_id
+    or p_grant_id is null or p_code_hash is null or p_code_hash !~ '^[0-9a-f]{64}$'
+    or p_upstream_refresh_ciphertext is null or length(p_upstream_refresh_ciphertext) not between 1 and 16384 then return false; end if;
+  select * into pending from public.mcp_oauth_pending where id = p_id for update;
+  if not found or pending.user_id is distinct from p_user_id or pending.status <> 'approved'
+    or pending.expires_at <= clock_timestamp() or pending.client_id is distinct from p_client_id
+    or pending.redirect_uri is distinct from p_redirect_uri or pending.resource is distinct from p_resource then return false; end if;
+  insert into public.mcp_oauth_grants(id,user_id,client_id,resource,scopes,upstream_refresh_ciphertext)
+    values (p_grant_id,pending.user_id,pending.client_id,pending.resource,pending.scopes,p_upstream_refresh_ciphertext);
+  insert into public.mcp_oauth_codes(code_hash,grant_id,redirect_uri,code_challenge,expires_at)
+    values (p_code_hash,p_grant_id,pending.redirect_uri,pending.code_challenge,
+      least(pending.expires_at,clock_timestamp()+interval '2 minutes'));
+  update public.mcp_oauth_pending set status = 'consumed' where id = p_id;
+  return true;
+end $$;
 
 -- An upstream OAuth refresh can rotate the stored credential. Claiming changes
 -- ready -> refreshing before the network call. No lease timeout or retry is
@@ -168,10 +246,16 @@ revoke all on function public.mcp_oauth_redeem_code(text,text,text,text,text,tex
 revoke all on function public.mcp_oauth_rotate_refresh(text,text,text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_revoke_token(text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_access_scopes(text,text,text) from public, anon, authenticated;
+revoke all on function public.mcp_oauth_decide_pending(uuid,uuid,boolean) from public, anon, authenticated;
+revoke all on function public.mcp_oauth_begin_pending(uuid,uuid,text,text,text,text[],text,text) from public, anon, authenticated;
+revoke all on function public.mcp_oauth_finalize_pending(uuid,uuid,uuid,text,text,text,uuid,text,text) from public, anon, authenticated;
 grant execute on function public.mcp_oauth_redeem_code(text,text,text,text,text,text,text) to service_role;
 grant execute on function public.mcp_oauth_rotate_refresh(text,text,text,text,text) to service_role;
 grant execute on function public.mcp_oauth_revoke_token(text,text,text) to service_role;
 grant execute on function public.mcp_oauth_access_scopes(text,text,text) to service_role;
+grant execute on function public.mcp_oauth_decide_pending(uuid,uuid,boolean) to service_role;
+grant execute on function public.mcp_oauth_begin_pending(uuid,uuid,text,text,text,text[],text,text) to service_role;
+grant execute on function public.mcp_oauth_finalize_pending(uuid,uuid,uuid,text,text,text,uuid,text,text) to service_role;
 revoke all on function public.mcp_oauth_claim_upstream_refresh(uuid,uuid,text,text,uuid) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_complete_upstream_refresh(uuid,uuid,text,text,uuid,text,text,timestamptz) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_uncertain_upstream_refresh(uuid,uuid,text,text,uuid) from public, anon, authenticated;
