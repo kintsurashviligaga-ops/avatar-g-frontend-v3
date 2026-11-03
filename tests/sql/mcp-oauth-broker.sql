@@ -16,7 +16,7 @@ insert into public.mcp_oauth_tokens(token_hash,grant_id,kind,expires_at)
 values (repeat('9',64),'00000000-0000-4000-8000-000000000003','refresh',clock_timestamp()+interval '1 day');
 
 do $$
-declare ok boolean;
+declare ok boolean; granted_scopes text[];
 begin
   if has_function_privilege('anon','public.mcp_oauth_redeem_code(text,text,text,text,text,text,text)','execute') then
     raise exception 'anonymous client can redeem codes';
@@ -36,6 +36,10 @@ begin
   select public.mcp_oauth_redeem_code(repeat('a',64),'test-client','https://client.example.test/callback',
     'https://mcp.example.test/api/mcp/gemini',repeat('c',43),repeat('b',64),repeat('d',64)) into ok;
   if not ok then raise exception 'valid code rejected'; end if;
+  select public.mcp_oauth_access_scopes(repeat('b',64),'test-client','https://mcp.example.test/api/mcp/gemini') into granted_scopes;
+  if granted_scopes is distinct from array['mcp:read']::text[] then raise exception 'live access scopes unavailable'; end if;
+  select public.mcp_oauth_access_scopes(repeat('b',64),'wrong-client','https://mcp.example.test/api/mcp/gemini') into granted_scopes;
+  if granted_scopes is not null then raise exception 'wrong client obtained scopes'; end if;
   select public.mcp_oauth_redeem_code(repeat('a',64),'test-client','https://client.example.test/callback',
     'https://mcp.example.test/api/mcp/gemini',repeat('c',43),repeat('e',64),repeat('f',64)) into ok;
   if ok then raise exception 'authorization code replay accepted'; end if;
@@ -51,6 +55,8 @@ begin
   if not exists(select 1 from public.mcp_oauth_grants where id='00000000-0000-4000-8000-000000000002' and revoked_at is not null) then
     raise exception 'replay did not revoke grant';
   end if;
+  select public.mcp_oauth_access_scopes(repeat('b',64),'test-client','https://mcp.example.test/api/mcp/gemini') into granted_scopes;
+  if granted_scopes is not null then raise exception 'revoked access token retained scopes'; end if;
   select public.mcp_oauth_revoke_token(repeat('9',64),'wrong-client','https://mcp.example.test/api/mcp/gemini') into ok;
   if not ok or exists(select 1 from public.mcp_oauth_grants where id='00000000-0000-4000-8000-000000000003' and revoked_at is not null) then
     raise exception 'wrong client revoked a grant';

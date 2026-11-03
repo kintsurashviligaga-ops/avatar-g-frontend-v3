@@ -26,6 +26,13 @@ tests are required before connecting Gemini. Do not weaken validation to accept
 normal login JWTs. Avoid enabling dynamic client registration until RLS and the
 OAuth client's privileges are audited.
 
+Experimental token and revocation route prototypes are separately disabled by
+default (`MCP_BROKER_EXPERIMENTAL`). Their SQL is a proposal under
+`docs/handoffs/mcp/proposals/`, not an applied production migration. Authorization
+request and grant creation, upstream Supabase OAuth delegation, token-to-RLS
+resolution, discovery wiring, upstream revocation, rate limiting and real Gemini
+testing are not complete. Never enable the experimental flag in production.
+
 ## Tools
 
 * `chat_with_agent` uses the active Agent G runtime with a bounded deadline,

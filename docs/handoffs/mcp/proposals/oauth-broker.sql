@@ -100,9 +100,23 @@ begin
   return true;
 end $$;
 
+-- Return granted scopes only for a live access token issued to this client and
+-- resource. No user identity or upstream credential is returned to the caller.
+create or replace function public.mcp_oauth_access_scopes(
+  p_access_hash text, p_client_id text, p_resource text
+) returns text[] language sql stable security invoker set search_path = '' as $$
+  select g.scopes from public.mcp_oauth_tokens t
+  join public.mcp_oauth_grants g on g.id = t.grant_id
+  where t.token_hash = p_access_hash and t.kind = 'access' and t.expires_at > statement_timestamp()
+    and g.revoked_at is null and g.client_id = p_client_id and g.resource = p_resource
+  limit 1
+$$;
+
 revoke all on function public.mcp_oauth_redeem_code(text,text,text,text,text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_rotate_refresh(text,text,text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_revoke_token(text,text,text) from public, anon, authenticated;
+revoke all on function public.mcp_oauth_access_scopes(text,text,text) from public, anon, authenticated;
 grant execute on function public.mcp_oauth_redeem_code(text,text,text,text,text,text,text) to service_role;
 grant execute on function public.mcp_oauth_rotate_refresh(text,text,text,text,text) to service_role;
 grant execute on function public.mcp_oauth_revoke_token(text,text,text) to service_role;
+grant execute on function public.mcp_oauth_access_scopes(text,text,text) to service_role;
