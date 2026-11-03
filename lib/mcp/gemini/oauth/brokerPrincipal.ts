@@ -64,9 +64,9 @@ export async function resolveBrokerPrincipal(token: string): Promise<McpPrincipa
         const encryptedAccess = sealUpstreamToken(next.accessToken, binding, 'access', key);
         const encryptedRefresh = sealUpstreamToken(next.refreshToken, binding, 'refresh', key);
         if (!encryptedAccess || !encryptedRefresh) return null;
-        const saved = await db.rpc('mcp_oauth_complete_upstream_refresh', {
+        const saved = await db.rpc('mcp_oauth_complete_upstream_refresh_v2', {
           ...args, p_access_ciphertext: encryptedAccess, p_refresh_ciphertext: encryptedRefresh,
-          p_access_expires_at: new Date(next.expiresAt).toISOString(),
+          p_access_expires_at: new Date(next.expiresAt).toISOString(), p_verified_session_id: next.sessionId,
         });
         if (saved.error || saved.data !== true) return null;
         completed = true;

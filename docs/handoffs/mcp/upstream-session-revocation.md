@@ -19,13 +19,17 @@ Before wiring any upstream logout, the implementation needs all of the following
    absent, malformed, equal or unverifiable session IDs, persists the upstream
    ID atomically with the grant, and checks the same ID after refresh. A unique
    immutable binding prevents different grants sharing one upstream session.
-   This has not yet been applied or verified against the live staging service;
-   the separate staging update refuses to migrate any pre-existing grants.
-2. Add a durable per-grant revoke state that prevents new uses immediately and
-   coordinates with in-flight refresh. A refresh already in progress must be
-   able to persist its result encrypted for the revoke worker without reviving
-   the grant. A crash or ambiguous rotation stays blocked and must be surfaced
-   as upstream revocation unconfirmed; never replay the old refresh token.
+   The separate staging update was applied to the empty test project, and its
+   access controls were checked; a live OAuth link has not yet been verified.
+   The update refuses to migrate any pre-existing grants.
+2. The local SQL proposal has a durable per-grant revoke state: new refreshes
+   are blocked, and an already-claimed refresh can persist encrypted results
+   without restoring access. A revoke task is reclaimable only before entering
+   `sending`; uncertain network outcomes are never retried automatically.
+   Missing/expired access is `no_access`, and ambiguous refresh is `unconfirmed`.
+   A crashed refresh may stay `waiting_refresh` until explicitly investigated;
+   the schema deliberately does not assume a timed-out refresh was harmless.
+   This proposal has not been applied to staging.
 3. Establish, through isolated integration tests against the deployed Supabase
    Auth version, that a verified OAuth JWT's local logout targets only its
    session, including a missing/deleted session, concurrent refresh, timeout,
@@ -37,5 +41,9 @@ Before wiring any upstream logout, the implementation needs all of the following
 
 `verifyUpstreamIdentity` verifies the upstream signature, issuer, audience,
 OAuth client, subject, expiry and a syntactically valid `session_id`. This is
-still a foundation only: remote session revocation, its race coordination, and
-the required provider-specific integration evidence are not implemented.
+still a foundation only: no logout worker, outbound remote logout, recovery
+monitoring, or required provider-specific integration evidence is implemented.
+The proposed initial exchange stores the separately encrypted, verified access
+JWT and its verified expiry with the refresh token and session binding. An
+immediate local revocation can queue the cached access token for a future worker;
+an expired or missing access token still leaves upstream logout unconfirmed.

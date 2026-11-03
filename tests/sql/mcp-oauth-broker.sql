@@ -68,7 +68,7 @@ begin
   end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '10 minutes') into ok;
   if ok then raise exception 'grant created before user approval'; end if;
   select public.mcp_oauth_decide_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000099',true) into ok;
   if ok then raise exception 'wrong user approved request'; end if;
@@ -116,30 +116,55 @@ begin
     raise exception 'upstream state replay accepted'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000031','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000031','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '10 minutes') into ok;
   if ok then raise exception 'wrong upstream claim finalized'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000099','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '10 minutes') into ok;
   if ok then raise exception 'wrong upstream identity accepted'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://evil.example/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '10 minutes') into ok;
   if ok then raise exception 'changed redirect accepted'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030',null,'00000000-0000-4000-8000-000000000041') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030',null,'00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '10 minutes') into ok;
   if ok then raise exception 'missing upstream session accepted'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
     '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030',
-    '00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000040') into ok;
+    '00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000040','encrypted-access',clock_timestamp()+interval '10 minutes') into ok;
   if ok then raise exception 'identical browser and upstream sessions accepted'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030',
+    '00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041',null,clock_timestamp()+interval '10 minutes') into ok;
+  if ok then raise exception 'missing initial access credential accepted'; end if;
+  select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030',
+    '00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()-interval '1 second') into ok;
+  if ok then raise exception 'expired initial access credential accepted'; end if;
+  select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030',
+    '00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '2 days') into ok;
+  if ok then raise exception 'excessive initial access lifetime accepted'; end if;
+  begin
+    perform public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
+      '00000000-0000-4000-8000-000000000024',repeat('a',64),'ciphertext','00000000-0000-4000-8000-000000000030',
+      '00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '10 minutes');
+    raise exception 'duplicate code accepted';
+  exception when unique_violation then null; end;
+  if exists(select 1 from public.mcp_oauth_grants where id='00000000-0000-4000-8000-000000000024') or
+     not exists(select 1 from public.mcp_oauth_pending where id='00000000-0000-4000-8000-000000000020' and status='exchanging') then
+    raise exception 'failed code insert did not roll back grant and pending'; end if;
+  select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '10 minutes') into ok;
   if not ok then raise exception 'valid consent could not create grant'; end if;
-  if not exists (select 1 from public.mcp_oauth_grants where id='00000000-0000-4000-8000-000000000024' and scopes=array['mcp:read','mcp:write'] and upstream_session_id='00000000-0000-4000-8000-000000000040') or
+  if not exists (select 1 from public.mcp_oauth_grants where id='00000000-0000-4000-8000-000000000024' and scopes=array['mcp:read','mcp:write'] and upstream_session_id='00000000-0000-4000-8000-000000000040' and upstream_access_ciphertext='encrypted-access' and upstream_access_expires_at>clock_timestamp()+interval '9 minutes') or
      not exists (select 1 from public.mcp_oauth_codes where code_hash=repeat('7',64) and code_challenge=repeat('c',43)) then
     raise exception 'grant or PKCE code binding missing';
   end if;
@@ -157,8 +182,12 @@ begin
   exception when unique_violation then null; end;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000025',repeat('8',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041') into ok;
+    '00000000-0000-4000-8000-000000000025',repeat('8',64),'ciphertext','00000000-0000-4000-8000-000000000030','00000000-0000-4000-8000-000000000040','00000000-0000-4000-8000-000000000041','encrypted-access',clock_timestamp()+interval '10 minutes') into ok;
   if ok then raise exception 'consent reused to create another grant'; end if;
+  select public.mcp_oauth_mark_revoked('00000000-0000-4000-8000-000000000024') into ok;
+  if not ok or not exists(select 1 from public.mcp_oauth_grants where id='00000000-0000-4000-8000-000000000024'
+      and revoked_at is not null and upstream_logout_state='queued' and upstream_access_ciphertext='encrypted-access') then
+    raise exception 'immediate revocation did not retain initial verified access for the logout task'; end if;
   if has_function_privilege('anon','public.mcp_oauth_claim_upstream_refresh(uuid,uuid,text,text,uuid)','execute') then
     raise exception 'anonymous user can claim upstream refresh';
   end if;
@@ -171,9 +200,9 @@ begin
   select public.mcp_oauth_claim_upstream_refresh('00000000-0000-4000-8000-000000000005','00000000-0000-4000-8000-000000000001',
     'test-client','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000007') into claimed;
   if claimed is not null then raise exception 'second refresh claimant accepted'; end if;
-  select public.mcp_oauth_complete_upstream_refresh('00000000-0000-4000-8000-000000000005','00000000-0000-4000-8000-000000000001',
+  select public.mcp_oauth_complete_upstream_refresh_v2('00000000-0000-4000-8000-000000000005','00000000-0000-4000-8000-000000000001',
     'test-client','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000007',
-    'access-ciphertext','next-refresh-ciphertext',clock_timestamp()+interval '1 minute') into ok;
+    'access-ciphertext','next-refresh-ciphertext',clock_timestamp()+interval '1 minute','00000000-0000-4000-8000-000000000044') into ok;
   if ok then raise exception 'wrong claim completed upstream refresh'; end if;
   select public.mcp_oauth_uncertain_upstream_refresh('00000000-0000-4000-8000-000000000005','00000000-0000-4000-8000-000000000001',
     'test-client','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000006') into ok;
@@ -184,9 +213,9 @@ begin
   select public.mcp_oauth_claim_upstream_refresh('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001',
     'test-client','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000006') into claimed;
   if claimed is distinct from 'old-ciphertext' then raise exception 'new grant claim rejected'; end if;
-  select public.mcp_oauth_complete_upstream_refresh('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001',
+  select public.mcp_oauth_complete_upstream_refresh_v2('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001',
     'test-client','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000006',
-    'access-ciphertext','next-refresh-ciphertext',clock_timestamp()+interval '1 minute') into ok;
+    'access-ciphertext','next-refresh-ciphertext',clock_timestamp()+interval '1 minute','00000000-0000-4000-8000-000000000045') into ok;
   if not ok then raise exception 'valid upstream refresh not completed'; end if;
   select public.mcp_oauth_claim_upstream_refresh('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001',
     'test-client','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000007') into claimed;

@@ -54,17 +54,21 @@ export async function GET(req: NextRequest): Promise<Response> {
     // This helper verifies signature, issuer, audience, client and exact subject
     // and checks the user remains active before returning tokens.
     const tokens = await exchangeUpstreamCode(upstream, code, verifier, user.id);
-    if (!tokens || !uuid.test(tokens.sessionId) || tokens.sessionId.toLowerCase() === browserSession.toLowerCase()) return fail();
+    if (!tokens || !uuid.test(tokens.sessionId) || tokens.sessionId.toLowerCase() === browserSession.toLowerCase() ||
+        !Number.isFinite(tokens.expiresAt) || tokens.expiresAt <= Date.now() + 10_000) return fail();
     const grantId = randomUUID();
-    const encrypted = sealUpstreamToken(tokens.refreshToken, { grantId, userId: user.id, clientId: config.clientId }, 'refresh', key);
+    const grantBinding = { grantId, userId: user.id, clientId: config.clientId };
+    const encrypted = sealUpstreamToken(tokens.refreshToken, grantBinding, 'refresh', key);
+    const encryptedAccess = sealUpstreamToken(tokens.accessToken, grantBinding, 'access', key);
     const downstreamCode = newOpaqueToken('code');
     const codeHash = opaqueTokenDigest('code', downstreamCode);
-    if (!encrypted || !codeHash) return fail(503);
+    if (!encrypted || !encryptedAccess || !codeHash) return fail(503);
     const finalized = await db.rpc('mcp_oauth_finalize_pending', {
       p_id: row.pending_id, p_user_id: user.id, p_verified_upstream_user_id: user.id,
       p_client_id: config.clientId, p_redirect_uri: config.redirectUri, p_resource: config.resource,
       p_grant_id: grantId, p_code_hash: codeHash, p_upstream_refresh_ciphertext: encrypted, p_claim: claim,
       p_upstream_session_id: tokens.sessionId, p_browser_session_id: browserSession,
+      p_upstream_access_ciphertext: encryptedAccess, p_upstream_access_expires_at: new Date(tokens.expiresAt).toISOString(),
     });
     if (finalized.error || finalized.data !== true) return fail(503);
     const destination = new URL(config.redirectUri);

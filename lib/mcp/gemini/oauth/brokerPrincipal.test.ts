@@ -74,7 +74,7 @@ test('serializes refresh, persists both encrypted credentials and rechecks the g
   (refreshUpstreamToken as jest.Mock).mockResolvedValue({accessToken:'new-user-token',refreshToken:'rotated-refresh',expiresAt:Date.now()+300_000,sessionId:upstreamSession});
   expect(await resolveBrokerPrincipal(token)).toMatchObject({userId,token:'new-user-token'});
   const claim = rpc.mock.calls.find(([n]) => n === 'mcp_oauth_claim_upstream_refresh')![1];
-  const saved = rpc.mock.calls.find(([n]) => n === 'mcp_oauth_complete_upstream_refresh')![1];
+  const saved = rpc.mock.calls.find(([n]) => n === 'mcp_oauth_complete_upstream_refresh_v2')![1];
   expect(saved.p_claim_id).toBe(claim.p_claim_id);
   expect(openUpstreamToken(saved.p_access_ciphertext,binding,'access',key)).toBe('new-user-token');
   expect(openUpstreamToken(saved.p_refresh_ciphertext,binding,'refresh',key)).toBe('rotated-refresh');
@@ -91,7 +91,7 @@ test('contention does not retry and ambiguous refresh becomes uncertain', async 
   (refreshUpstreamToken as jest.Mock).mockResolvedValue(null);
   expect(await resolveBrokerPrincipal(token)).toBeNull();
   expect(rpc.mock.calls.filter(([n]) => n === 'mcp_oauth_uncertain_upstream_refresh')).toHaveLength(1);
-  expect(rpc.mock.calls.filter(([n]) => n === 'mcp_oauth_complete_upstream_refresh')).toHaveLength(0);
+  expect(rpc.mock.calls.filter(([n]) => n === 'mcp_oauth_complete_upstream_refresh_v2')).toHaveLength(0);
 });
 
 test('rejects a cached or refreshed token from another upstream session', async () => {
@@ -102,5 +102,5 @@ test('rejects a cached or refreshed token from another upstream session', async 
   (refreshUpstreamToken as jest.Mock).mockResolvedValue({accessToken:'access',refreshToken:'new-refresh',expiresAt:Date.now()+300_000,sessionId:'00000000-0000-4000-8000-000000000099'});
   expect(await resolveBrokerPrincipal(token)).toBeNull();
   expect(rpc.mock.calls.filter(([name]) => name === 'mcp_oauth_uncertain_upstream_refresh')).toHaveLength(1);
-  expect(rpc.mock.calls.filter(([name]) => name === 'mcp_oauth_complete_upstream_refresh')).toHaveLength(0);
+  expect(rpc.mock.calls.filter(([name]) => name === 'mcp_oauth_complete_upstream_refresh_v2')).toHaveLength(0);
 });

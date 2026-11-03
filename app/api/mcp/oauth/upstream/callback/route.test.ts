@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { GET } from './route';
 import { createServerClient, createServiceRoleClient } from '../../../../../../lib/supabase/server';
 import { exchangeUpstreamCode } from '../../../../../../lib/mcp/gemini/oauth/upstreamOAuth';
-import { sealUpstreamToken } from '../../../../../../lib/mcp/gemini/oauth/upstreamSecrets';
+import { openUpstreamToken, sealUpstreamToken } from '../../../../../../lib/mcp/gemini/oauth/upstreamSecrets';
 import { upstreamStateDigest } from '../../../../../../lib/mcp/gemini/oauth/upstreamState';
 
 jest.mock('server-only', () => ({}));
@@ -36,6 +36,12 @@ beforeEach(() => {
 
 test.each([undefined, '', 'bad', browserSession])('refuses missing, invalid or shared upstream session (%s)', async (sessionId) => {
   (exchangeUpstreamCode as jest.Mock).mockResolvedValueOnce({accessToken:'access',refreshToken:'refresh',expiresAt:Date.now()+60000,sessionId});
+  expect((await GET(request())).status).toBe(400);
+  expect(rpc.mock.calls.filter(([name]) => name === 'mcp_oauth_finalize_pending')).toHaveLength(0);
+});
+
+test.each([Number.NaN, 0, Date.now() + 5_000])('refuses an expired or unusable upstream access token (%s)', async (expiresAt) => {
+  (exchangeUpstreamCode as jest.Mock).mockResolvedValueOnce({accessToken:'access',refreshToken:'refresh',expiresAt,sessionId:upstreamSession});
   expect((await GET(request())).status).toBe(400);
   expect(rpc.mock.calls.filter(([name]) => name === 'mcp_oauth_finalize_pending')).toHaveLength(0);
 });
@@ -83,5 +89,13 @@ test('claims once, exchanges using encrypted PKCE and redirects only after atomi
   expect(url.origin+url.pathname).toBe('https://client.example/callback');
   expect(url.searchParams.get('code')).toMatch(/^ma_code_/);
   expect(url.searchParams.get('state')).toBe('client-state');
-  expect(rpc.mock.calls[1]![1].p_upstream_refresh_ciphertext).not.toBe('refresh');
+  const finalized = rpc.mock.calls[1]![1];
+  const binding = { grantId:finalized.p_grant_id, userId:user, clientId:'client' };
+  const key = Buffer.alloc(32,7);
+  expect(finalized.p_upstream_refresh_ciphertext).not.toBe('refresh');
+  expect(finalized.p_upstream_access_ciphertext).not.toBe('access');
+  expect(openUpstreamToken(finalized.p_upstream_refresh_ciphertext,binding,'refresh',key)).toBe('refresh');
+  expect(openUpstreamToken(finalized.p_upstream_access_ciphertext,binding,'access',key)).toBe('access');
+  expect(openUpstreamToken(finalized.p_upstream_access_ciphertext,binding,'refresh',key)).toBeNull();
+  expect(Date.parse(finalized.p_upstream_access_expires_at)).toBeGreaterThan(Date.now());
 });
