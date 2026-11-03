@@ -1,17 +1,18 @@
 /** @jest-environment node */
 import { createClient } from '@supabase/supabase-js';
-import { exchangeUpstreamCode, refreshUpstreamToken, upstreamAuthorizationUrl, upstreamConfig, verifyUpstreamAccess } from './upstreamOAuth';
+import { exchangeUpstreamCode, refreshUpstreamToken, upstreamAuthorizationUrl, upstreamConfig, verifyUpstreamAccess, verifyUpstreamIdentity } from './upstreamOAuth';
 jest.mock('server-only', () => ({}));
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 
 const env = { NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon', MCP_BROKER_UPSTREAM_CLIENT_ID: 'client', MCP_BROKER_UPSTREAM_CLIENT_SECRET: 's'.repeat(32), MCP_BROKER_UPSTREAM_REDIRECT_URI: 'https://myavatar.ge/api/mcp/oauth/upstream/callback', MCP_GEMINI_RESOURCE_URL: 'https://myavatar.ge/api/mcp/gemini' };
 const config = upstreamConfig(env)!;
 const verifier = 'v'.repeat(43);
+const sessionId = '00000000-0000-4000-8000-000000000001';
 const exp = () => Math.floor(Date.now() / 1000) + 300;
 
 beforeEach(() => {
   (createClient as jest.Mock).mockReturnValue({ auth: {
-    getClaims: async () => ({ data: { claims: { iss: config.issuer, sub: 'user-a', client_id: config.clientId, aud: 'authenticated', exp: exp() } }, error: null }),
+    getClaims: async () => ({ data: { claims: { iss: config.issuer, sub: 'user-a', client_id: config.clientId, aud: 'authenticated', exp: exp(), session_id:sessionId } }, error: null }),
     getUser: async () => ({ data: { user: { id: 'user-a' } }, error: null }),
   } });
 });
@@ -35,10 +36,10 @@ test('builds a fixed upstream authorization URL with independent PKCE', () => {
 test('validates the returned signed OAuth identity before exposing tokens to its caller', async () => {
   const request = jest.fn(async () => Response.json({ access_token: 'access', refresh_token: 'refresh', expires_in: 300 }));
   const tokens = await exchangeUpstreamCode(config, 'one-time-code', verifier, 'user-a', request as unknown as typeof fetch);
-  expect(tokens).toMatchObject({ accessToken: 'access', refreshToken: 'refresh' });
+  expect(tokens).toMatchObject({ accessToken: 'access', refreshToken: 'refresh', sessionId });
   expect(request).toHaveBeenCalledWith(`${config.issuer}/oauth/token`, expect.objectContaining({ redirect: 'error', cache: 'no-store' }));
   (createClient as jest.Mock).mockReturnValue({ auth: {
-    getClaims: async () => ({ data: { claims: { iss: config.issuer, sub: 'other', client_id: config.clientId, aud: 'authenticated', exp: exp() } }, error: null }),
+    getClaims: async () => ({ data: { claims: { iss: config.issuer, sub: 'other', client_id: config.clientId, aud: 'authenticated', exp: exp(), session_id:sessionId } }, error: null }),
     getUser: jest.fn(),
   } });
   expect(await exchangeUpstreamCode(config, 'one-time-code', verifier, 'user-a', request as unknown as typeof fetch)).toBeNull();
@@ -74,8 +75,20 @@ test.each([
   ['wrong client', { client_id: 'other' }], ['wrong subject', { sub: 'other' }], ['expired', { exp: 1 }],
 ])('cached upstream token rejects %s', async (_label, overrides) => {
   (createClient as jest.Mock).mockReturnValue({ auth: {
-    getClaims: async () => ({ data: { claims: { iss: config.issuer, sub: 'user-a', client_id: config.clientId, aud: 'authenticated', exp: exp(), ...overrides } }, error: null }),
+    getClaims: async () => ({ data: { claims: { iss: config.issuer, sub: 'user-a', client_id: config.clientId, aud: 'authenticated', exp: exp(), session_id:sessionId, ...overrides } }, error: null }),
     getUser: jest.fn(),
   } });
   expect(await verifyUpstreamAccess(config, 'cached-token', 'user-a')).toBeNull();
+});
+
+test.each([undefined, null, '', 'not-a-uuid'])('rejects a missing or malformed upstream session ID (%s)', async (badSession) => {
+  (createClient as jest.Mock).mockReturnValue({ auth: {
+    getClaims: async () => ({ data: { claims: { iss: config.issuer, sub:'user-a', client_id:config.clientId, aud:'authenticated', exp:exp(), session_id:badSession } }, error:null }),
+    getUser: jest.fn(),
+  } });
+  expect(await verifyUpstreamIdentity(config,'access','user-a')).toBeNull();
+});
+
+test('returns only a signature-verified, user-bound session ID', async () => {
+  expect(await verifyUpstreamIdentity(config,'access','user-a')).toMatchObject({sessionId});
 });
