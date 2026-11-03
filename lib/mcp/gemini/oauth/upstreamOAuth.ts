@@ -62,8 +62,27 @@ export async function exchangeUpstreamCode(
 ): Promise<UpstreamTokens | null> {
   if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code) ||
       !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || !expectedUserId || expectedUserId.length > 256) return null;
+  const form = new URLSearchParams({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: config.redirectUri });
+  return exchangeUpstream(config, form, expectedUserId, null, request);
+}
+
+/** Refresh only under a durable per-grant lock. A null result is ambiguous:
+ * Supabase may already have rotated the token, so the caller must mark the
+ * grant uncertain and require re-linking; it must not retry the old token.
+ * This helper is not a lock, a persistence layer, or a production flow. */
+export async function refreshUpstreamToken(
+  config: UpstreamConfig, refreshToken: string, expectedUserId: string, request: typeof fetch = fetch,
+): Promise<UpstreamTokens | null> {
+  if (!refreshToken || refreshToken.length > 8192 || /[\u0000-\u001f\u007f]/.test(refreshToken) ||
+      !expectedUserId || expectedUserId.length > 256) return null;
+  const form = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken });
+  return exchangeUpstream(config, form, expectedUserId, refreshToken, request);
+}
+
+async function exchangeUpstream(
+  config: UpstreamConfig, form: URLSearchParams, expectedUserId: string, previousRefresh: string | null, request: typeof fetch,
+): Promise<UpstreamTokens | null> {
   try {
-    const form = new URLSearchParams({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: config.redirectUri });
     // Supabase confidential clients default to client_secret_basic. RFC 6749
     // requires form-encoding each credential before joining it with a colon.
     const encodeCredential = (value: string) => new URLSearchParams([['', value]]).toString().slice(1);
@@ -72,7 +91,7 @@ export async function exchangeUpstreamCode(
     if (!response.ok) return null;
     const data = await boundedJson(response);
     const accessToken = data?.access_token;
-    const refreshToken = data?.refresh_token;
+    const refreshToken = data?.refresh_token === undefined ? previousRefresh : data.refresh_token;
     const expiresIn = data?.expires_in;
     if (typeof accessToken !== 'string' || !accessToken || accessToken.length > 8192 || typeof refreshToken !== 'string' || !refreshToken || refreshToken.length > 8192 ||
         typeof expiresIn !== 'number' || !Number.isFinite(expiresIn) || expiresIn <= 0 || expiresIn > 86400) return null;

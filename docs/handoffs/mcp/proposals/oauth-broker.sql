@@ -8,6 +8,10 @@ create table if not exists public.mcp_oauth_grants (
   resource text not null check (length(resource) between 1 and 2048),
   scopes text[] not null check (scopes <@ array['mcp:read','mcp:write']::text[] and 'mcp:read' = any(scopes)),
   upstream_refresh_ciphertext text not null check (length(upstream_refresh_ciphertext) between 1 and 16384),
+  upstream_access_ciphertext text check (upstream_access_ciphertext is null or length(upstream_access_ciphertext) between 1 and 16384),
+  upstream_access_expires_at timestamptz,
+  upstream_refresh_state text not null default 'ready' check (upstream_refresh_state in ('ready','refreshing','uncertain')),
+  upstream_refresh_claim uuid,
   created_at timestamptz not null default now(),
   revoked_at timestamptz
 );
@@ -35,6 +39,54 @@ alter table public.mcp_oauth_codes enable row level security;
 alter table public.mcp_oauth_tokens enable row level security;
 revoke all on public.mcp_oauth_grants, public.mcp_oauth_codes, public.mcp_oauth_tokens from public, anon, authenticated;
 grant select, insert, update, delete on public.mcp_oauth_grants, public.mcp_oauth_codes, public.mcp_oauth_tokens to service_role;
+
+-- An upstream OAuth refresh can rotate the stored credential. Claiming changes
+-- ready -> refreshing before the network call. No lease timeout or retry is
+-- allowed: after a crash the grant remains unusable until explicitly re-linked.
+-- The caller supplies an unpredictable claim UUID and encrypts all credentials.
+create or replace function public.mcp_oauth_claim_upstream_refresh(
+  p_grant_id uuid, p_user_id uuid, p_client_id text, p_resource text, p_claim_id uuid
+) returns text language plpgsql security invoker set search_path = '' as $$
+declare previous text;
+begin
+  if p_claim_id is null then return null; end if;
+  update public.mcp_oauth_grants set upstream_refresh_state = 'refreshing', upstream_refresh_claim = p_claim_id
+    where id = p_grant_id and user_id = p_user_id and client_id = p_client_id and resource = p_resource
+      and revoked_at is null and upstream_refresh_state = 'ready'
+    returning upstream_refresh_ciphertext into previous;
+  return previous;
+end $$;
+
+-- Only the claimant can commit the complete encrypted result. If persistence
+-- fails after the upstream service rotated its token, do not retry: the row
+-- remains refreshing and requires re-linking.
+create or replace function public.mcp_oauth_complete_upstream_refresh(
+  p_grant_id uuid, p_user_id uuid, p_client_id text, p_resource text, p_claim_id uuid,
+  p_access_ciphertext text, p_refresh_ciphertext text, p_access_expires_at timestamptz
+) returns boolean language plpgsql security invoker set search_path = '' as $$
+begin
+  if p_claim_id is null or p_access_ciphertext is null or p_refresh_ciphertext is null
+    or length(p_access_ciphertext) not between 1 and 16384 or length(p_refresh_ciphertext) not between 1 and 16384
+    or p_access_expires_at is null or p_access_expires_at <= clock_timestamp() then return false; end if;
+  update public.mcp_oauth_grants set upstream_refresh_state = 'ready', upstream_refresh_claim = null,
+    upstream_access_ciphertext = p_access_ciphertext, upstream_refresh_ciphertext = p_refresh_ciphertext,
+    upstream_access_expires_at = p_access_expires_at
+    where id = p_grant_id and user_id = p_user_id and client_id = p_client_id and resource = p_resource
+      and revoked_at is null and upstream_refresh_state = 'refreshing' and upstream_refresh_claim = p_claim_id;
+  return found;
+end $$;
+
+-- Failure is terminal for this upstream credential: no stale refresh retry.
+create or replace function public.mcp_oauth_uncertain_upstream_refresh(
+  p_grant_id uuid, p_user_id uuid, p_client_id text, p_resource text, p_claim_id uuid
+) returns boolean language plpgsql security invoker set search_path = '' as $$
+begin
+  update public.mcp_oauth_grants set upstream_refresh_state = 'uncertain', upstream_refresh_claim = null,
+    upstream_access_ciphertext = null, upstream_access_expires_at = null
+    where id = p_grant_id and user_id = p_user_id and client_id = p_client_id and resource = p_resource
+      and upstream_refresh_state = 'refreshing' and upstream_refresh_claim = p_claim_id;
+  return found;
+end $$;
 
 -- Called only after the token endpoint authenticates the confidential client
 -- and computes the S256 challenge from its verifier. The locked code and grant
@@ -120,3 +172,9 @@ grant execute on function public.mcp_oauth_redeem_code(text,text,text,text,text,
 grant execute on function public.mcp_oauth_rotate_refresh(text,text,text,text,text) to service_role;
 grant execute on function public.mcp_oauth_revoke_token(text,text,text) to service_role;
 grant execute on function public.mcp_oauth_access_scopes(text,text,text) to service_role;
+revoke all on function public.mcp_oauth_claim_upstream_refresh(uuid,uuid,text,text,uuid) from public, anon, authenticated;
+revoke all on function public.mcp_oauth_complete_upstream_refresh(uuid,uuid,text,text,uuid,text,text,timestamptz) from public, anon, authenticated;
+revoke all on function public.mcp_oauth_uncertain_upstream_refresh(uuid,uuid,text,text,uuid) from public, anon, authenticated;
+grant execute on function public.mcp_oauth_claim_upstream_refresh(uuid,uuid,text,text,uuid) to service_role;
+grant execute on function public.mcp_oauth_complete_upstream_refresh(uuid,uuid,text,text,uuid,text,text,timestamptz) to service_role;
+grant execute on function public.mcp_oauth_uncertain_upstream_refresh(uuid,uuid,text,text,uuid) to service_role;

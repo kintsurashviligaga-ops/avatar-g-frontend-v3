@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import { createClient } from '@supabase/supabase-js';
-import { exchangeUpstreamCode, upstreamAuthorizationUrl, upstreamConfig } from './upstreamOAuth';
+import { exchangeUpstreamCode, refreshUpstreamToken, upstreamAuthorizationUrl, upstreamConfig } from './upstreamOAuth';
 jest.mock('server-only', () => ({}));
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 
@@ -49,4 +49,22 @@ test('rejects non-success, missing refresh token and malformed verifier', async 
   expect(await exchangeUpstreamCode(config, 'code', verifier, 'user-a', request as unknown as typeof fetch)).toBeNull();
   expect(await exchangeUpstreamCode(config, 'code', 'short', 'user-a', request as unknown as typeof fetch)).toBeNull();
   expect(request).toHaveBeenCalledTimes(1);
+});
+
+test('refresh returns the rotated token or keeps the previous token when rotation is omitted', async () => {
+  const rotated = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 300 }));
+  expect(await refreshUpstreamToken(config, 'old-refresh', 'user-a', rotated as unknown as typeof fetch)).toMatchObject({ accessToken: 'new-access', refreshToken: 'new-refresh' });
+  const options = rotated.mock.calls[0]?.[1] as unknown as RequestInit;
+  expect(options.body).toBeInstanceOf(URLSearchParams);
+  expect((options.body as URLSearchParams).get('grant_type')).toBe('refresh_token');
+  const unchanged = jest.fn(async () => Response.json({ access_token: 'new-access', expires_in: 300 }));
+  expect(await refreshUpstreamToken(config, 'old-refresh', 'user-a', unchanged as unknown as typeof fetch)).toMatchObject({ refreshToken: 'old-refresh' });
+});
+
+test('refresh fails closed on subject mismatch or an uncertain network result', async () => {
+  const request = jest.fn(async () => Response.json({ access_token: 'access', refresh_token: 'rotated', expires_in: 300 }));
+  expect(await refreshUpstreamToken(config, 'old-refresh', 'different-user', request as unknown as typeof fetch)).toBeNull();
+  const failure = jest.fn(async () => { throw new Error('network'); });
+  expect(await refreshUpstreamToken(config, 'old-refresh', 'user-a', failure as unknown as typeof fetch)).toBeNull();
+  expect(failure).toHaveBeenCalledTimes(1);
 });
