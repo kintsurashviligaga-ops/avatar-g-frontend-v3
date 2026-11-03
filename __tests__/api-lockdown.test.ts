@@ -113,6 +113,7 @@ function providerChain(start: string): string[] | null {
 
 /** A gate in the route's own code: a session, an admin check, a signature / shared-secret / cron / ops check. */
 const GATE_SIGNALS: RegExp[] = [
+  /\bauthenticateMcp\s*\(/, // Explicit bearer verification and resource-bound claims, tested in MCP route tests.
   /\b(requireUser|requireAuthenticatedUser|getAuthenticatedUser|authedClientFromRequest|guardGeneration|getAuthContext|requireAuthContext|sessionUserId|resolveTwinCaller)\s*\(/,
   /auth\.getUser\s*\(/,
   /\b(mustSignInToGenerate|mustSignInToChat|requireAuthForGeneration)\s*\(/,

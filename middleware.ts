@@ -26,6 +26,7 @@ export async function middleware(request: NextRequest) {
 
   const isSkipped =
     pathname.startsWith('/api/') ||
+    pathname === '/.well-known/oauth-protected-resource/api/mcp/gemini' || // OAuth discovery must not be locale-redirected.
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/favicon') ||
     pathname.startsWith('/brand/') ||

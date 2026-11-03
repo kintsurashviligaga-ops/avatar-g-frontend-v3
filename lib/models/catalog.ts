@@ -124,7 +124,7 @@ export const MODEL_CATALOG: ModelCatalog = {
       transport: 'either',
       enabled: true,
       verifiedAt: VERTEX_T2_2026_10_08,
-      notes: `Storyboard frames (lib/ai/geminiImage geminiFrameModel). ${VERTEX_T2} The studio's "Nano Banana" rows are a different provider (api.nanobananaapi.ai).`,
+      notes: `Storyboard frames (lib/ai/geminiImage geminiFrameModel). ${VERTEX_T2} The studio's "Nano Banana" rows use a different provider.`,
     },
     {
       id: 'imagen-4.0-generate-001',
