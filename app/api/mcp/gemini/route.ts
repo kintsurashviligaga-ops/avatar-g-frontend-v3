@@ -33,11 +33,14 @@ export async function POST(req: Request): Promise<Response> {
   const limited = await checkRateLimitByKey(principal.userId, { ...RATE_LIMITS.READ, keyPrefix: 'rl:mcp-gemini' });
   if (limited) return limited;
 
+  // Preview is intentionally read-only even if other generation flags or
+  // provider credentials were accidentally inherited from production.
+  const preview = process.env.VERCEL_ENV === 'preview';
   const server = new McpServer({ name: 'myavatar-agent-ge', version: '0.1.0' }, {
     maxToolInputElements: 100,
-    instructions: 'Use chat_with_agent to message Agent.ge and get_recent_works for the authenticated user’s assets. Audio generation is available only when enabled and requires first-party user approval: show the returned approval URL and retry the same request with its approvalId after the user approves. Never infer or provide approval on the user’s behalf. Video generation is unavailable.',
+    instructions: preview ? 'Use get_recent_works to list the authenticated test user’s assets. This preview is read-only.' : 'Use chat_with_agent to message Agent.ge and get_recent_works for the authenticated user’s assets. Audio generation is available only when enabled and requires first-party user approval: show the returned approval URL and retry the same request with its approvalId after the user approves. Never infer or provide approval on the user’s behalf. Video generation is unavailable.',
   });
-  server.registerTool('chat_with_agent', {
+  if (!preview) server.registerTool('chat_with_agent', {
     description: 'Send a message to Agent.ge and return its response.',
     inputSchema: { message: z.string().trim().min(1).max(4000), locale: z.enum(['ka', 'en', 'ru']).optional() },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -47,7 +50,7 @@ export async function POST(req: Request): Promise<Response> {
     inputSchema: { limit: z.number().int().min(1).max(20).optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, (args) => executeMcpTool('get_recent_works', args, principal));
-  server.registerTool('create_generation_task', {
+  if (!preview) server.registerTool('create_generation_task', {
     description: 'Request an instrumental audio task when enabled. First request returns an approval URL; after the user approves, retry the same arguments with approvalId. Video is unavailable.',
     inputSchema: { kind: z.enum(['video', 'audio']), script: z.string().trim().min(1).max(2000), avatarId: z.string().uuid().optional(), aspectRatio: z.enum(['9:16', '16:9', '1:1']).optional(), approvalId: z.string().uuid().optional() },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },

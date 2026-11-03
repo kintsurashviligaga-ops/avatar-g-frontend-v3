@@ -8,7 +8,7 @@ export type AuthorizationRequest = {
 
 /** Validate a broker authorization request before any consent or grant exists.
  * This parser does not authenticate a user or issue an authorization code. */
-export function parseAuthorizationRequest(params: URLSearchParams, config: BrokerConfig): AuthorizationRequest | null {
+export function parseAuthorizationRequest(params: URLSearchParams, config: BrokerConfig, readOnly = false): AuthorizationRequest | null {
   const one = (name: string): string | null => {
     const values = params.getAll(name);
     return values.length === 1 && values[0] ? values[0] : null;
@@ -26,6 +26,6 @@ export function parseAuthorizationRequest(params: URLSearchParams, config: Broke
       !challenge || !/^[A-Za-z0-9_-]{43}$/.test(challenge) || method !== 'S256' || !rawScope) return null;
   const scopes = rawScope.split(/\s+/).filter(Boolean);
   if (!scopes.includes('mcp:read') || new Set(scopes).size !== scopes.length ||
-      scopes.some((scope) => scope !== 'mcp:read' && scope !== 'mcp:write')) return null;
+      scopes.some((scope) => scope !== 'mcp:read' && scope !== 'mcp:write') || (readOnly && scopes.includes('mcp:write'))) return null;
   return { state, challenge, scopes };
 }

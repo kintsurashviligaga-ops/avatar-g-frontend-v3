@@ -33,7 +33,7 @@ async function userId(): Promise<string | null> {
 export async function GET(req: NextRequest): Promise<Response> {
   const config = brokerConfig();
   if (!config) return unavailable();
-  const request = parseAuthorizationRequest(req.nextUrl.searchParams, config);
+  const request = parseAuthorizationRequest(req.nextUrl.searchParams, config, process.env.VERCEL_ENV === 'preview');
   if (!request) return invalid();
   try {
     const user = await userId();

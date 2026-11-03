@@ -4,10 +4,16 @@ import { brokerConfig } from '../../../lib/mcp/gemini/oauth/config';
 jest.mock('server-only', () => ({}));
 jest.mock('../../../lib/mcp/gemini/oauth/config', () => ({ brokerConfig: jest.fn() }));
 
-afterEach(() => jest.resetAllMocks());
+afterEach(() => { delete process.env.VERCEL_ENV; jest.resetAllMocks(); });
 test('metadata is unavailable without the preview broker', async () => {
   (brokerConfig as jest.Mock).mockReturnValue(null);
   expect((await GET()).status).toBe(404);
+});
+
+test('advertises read scope only in preview', async () => {
+  process.env.VERCEL_ENV = 'preview';
+  (brokerConfig as jest.Mock).mockReturnValue({ resource: 'https://preview.vercel.app/api/mcp/gemini' });
+  expect((await (await GET()).json()).scopes_supported).toEqual(['mcp:read']);
 });
 test('advertises pre-registered client capabilities with no invented registration endpoint', async () => {
   (brokerConfig as jest.Mock).mockReturnValue({ resource: 'https://preview.vercel.app/api/mcp/gemini' });

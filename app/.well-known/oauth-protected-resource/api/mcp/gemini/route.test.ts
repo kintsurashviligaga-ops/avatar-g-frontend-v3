@@ -5,7 +5,7 @@ import { brokerConfig } from '../../../../../../lib/mcp/gemini/oauth/config';
 
 jest.mock('../../../../../../lib/mcp/gemini/auth', () => ({ mcpOAuthConfig: jest.fn() }));
 jest.mock('../../../../../../lib/mcp/gemini/oauth/config', () => ({ brokerConfig: jest.fn() }));
-afterEach(() => jest.resetAllMocks());
+afterEach(() => { delete process.env.VERCEL_ENV; jest.resetAllMocks(); });
 
 test('does not publish misleading metadata without a configured issuer', async () => {
   (mcpOAuthConfig as jest.Mock).mockReturnValue(null);
@@ -13,10 +13,12 @@ test('does not publish misleading metadata without a configured issuer', async (
 });
 
 test('points the protected resource to its broker issuer when explicitly configured', async () => {
+  process.env.VERCEL_ENV = 'preview';
   (mcpOAuthConfig as jest.Mock).mockReturnValue({ resource: 'https://preview.vercel.app/api/mcp/gemini', issuer: 'https://auth.example.test/auth/v1' });
   (brokerConfig as jest.Mock).mockReturnValue({ resource: 'https://preview.vercel.app/api/mcp/gemini' });
   const data = await (await GET()).json();
   expect(data.authorization_servers).toEqual(['https://preview.vercel.app']);
+  expect(data.scopes_supported).toEqual(['mcp:read']);
 });
 
 test('publishes the configured resource and issuer without request-derived URLs', async () => {

@@ -22,7 +22,7 @@ beforeEach(() => {
   auth.mockResolvedValue({ userId: 'user-1', token: 'test-token', clientId: 'gemini-client', scopes: ['mcp:read'] });
   run.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] });
 });
-afterEach(() => { delete process.env.MCP_GEMINI_ENABLED; jest.clearAllMocks(); });
+afterEach(() => { delete process.env.MCP_GEMINI_ENABLED; delete process.env.VERCEL_ENV; jest.clearAllMocks(); });
 
 test('disabled by default and rejects unauthenticated and untrusted origin requests', async () => {
   delete process.env.MCP_GEMINI_ENABLED;
@@ -41,6 +41,20 @@ test('SDK advertises tools with correct names and write annotation', async () =>
   const body = await res.json();
   expect(body.result.tools.map((tool: {name:string}) => tool.name)).toEqual(['chat_with_agent', 'get_recent_works', 'create_generation_task']);
   expect(body.result.tools[2].annotations.readOnlyHint).toBe(false);
+});
+
+test('preview advertises and executes only the read-only works tool', async () => {
+  process.env.VERCEL_ENV = 'preview';
+  const listed = await (await POST(request(call('tools/list')))).json();
+  expect(listed.result.tools.map((tool: {name:string}) => tool.name)).toEqual(['get_recent_works']);
+  for (const name of ['chat_with_agent', 'create_generation_task']) {
+    run.mockClear();
+    const denied = await (await POST(request(call('tools/call', { name, arguments: { message:'hello', kind:'audio', script:'test' } })))).json();
+    expect(denied.error || denied.result?.isError).toBeTruthy();
+    expect(run).not.toHaveBeenCalled();
+  }
+  await POST(request(call('tools/call', { name:'get_recent_works', arguments: { limit:2 } })));
+  expect(run).toHaveBeenCalledWith('get_recent_works', { limit:2 }, expect.objectContaining({userId:'user-1'}));
 });
 
 test('valid tool call uses authenticated principal and malformed arguments never reach handler', async () => {

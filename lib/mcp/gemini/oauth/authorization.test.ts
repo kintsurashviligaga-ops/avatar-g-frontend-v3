@@ -17,3 +17,9 @@ test('rejects duplicated security-sensitive parameters', () => {
   const params = valid(); params.append('redirect_uri', config.redirectUri);
   expect(parseAuthorizationRequest(params, config)).toBeNull();
 });
+
+test('preview requires read-only scope', () => {
+  expect(parseAuthorizationRequest(valid(), config, true)).toBeNull();
+  const read = valid(); read.set('scope', 'mcp:read');
+  expect(parseAuthorizationRequest(read, config, true)?.scopes).toEqual(['mcp:read']);
+});

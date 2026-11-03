@@ -39,6 +39,7 @@ export async function resolveBrokerPrincipal(token: string): Promise<McpPrincipa
     };
     const row = await lookup();
     if (!row) return null;
+    if (process.env.VERCEL_ENV === 'preview' && row.scopes.includes('mcp:write')) return null;
     const binding = { grantId: row.grant_id, userId: row.user_id, clientId: config.clientId };
     let access: string;
     const cachedExpiry = row.access_expires_at ? Date.parse(row.access_expires_at) : 0;

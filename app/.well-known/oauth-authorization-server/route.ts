@@ -18,6 +18,6 @@ export async function GET(): Promise<Response> {
     grant_types_supported: ['authorization_code', 'refresh_token'],
     token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
     code_challenge_methods_supported: ['S256'],
-    scopes_supported: ['mcp:read', 'mcp:write'],
+    scopes_supported: process.env.VERCEL_ENV === 'preview' ? ['mcp:read'] : ['mcp:read', 'mcp:write'],
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

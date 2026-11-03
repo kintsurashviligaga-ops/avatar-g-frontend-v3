@@ -13,6 +13,6 @@ export async function GET(): Promise<Response> {
     resource: config.resource,
     authorization_servers: [broker ? new URL(broker.resource).origin : config.issuer],
     bearer_methods_supported: ['header'],
-    scopes_supported: ['mcp:read', 'mcp:write'],
+    scopes_supported: broker && process.env.VERCEL_ENV === 'preview' ? ['mcp:read'] : ['mcp:read', 'mcp:write'],
   }, { headers: { 'Cache-Control': broker ? 'no-store' : 'public, max-age=300' } });
 }

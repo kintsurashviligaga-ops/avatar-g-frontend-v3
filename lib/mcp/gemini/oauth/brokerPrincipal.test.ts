@@ -28,7 +28,7 @@ beforeEach(() => {
   rpc.mockResolvedValue({data:[row()],error:null});
   (verifyUpstreamAccess as jest.Mock).mockResolvedValue(Date.now()+300_000);
 });
-afterEach(() => { for (const k of ['MCP_BROKER_EXPERIMENTAL','MCP_BROKER_CLIENT_ID','MCP_BROKER_CLIENT_SECRET','MCP_BROKER_REDIRECT_URI','MCP_GEMINI_RESOURCE_URL','MCP_BROKER_ENCRYPTION_KEY']) delete process.env[k]; jest.resetAllMocks(); });
+afterEach(() => { for (const k of ['MCP_BROKER_EXPERIMENTAL','MCP_BROKER_CLIENT_ID','MCP_BROKER_CLIENT_SECRET','MCP_BROKER_REDIRECT_URI','MCP_GEMINI_RESOURCE_URL','MCP_BROKER_ENCRYPTION_KEY','VERCEL_ENV','VERCEL_URL','MCP_BROKER_PREVIEW_ENABLED','MCP_BROKER_PREVIEW_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_URL']) delete process.env[k]; jest.resetAllMocks(); });
 
 test('default off, malformed bearer, missing grant and invalid scopes all fail closed', async () => {
   delete process.env.MCP_BROKER_EXPERIMENTAL;
@@ -53,6 +53,14 @@ test('returns only a verified user RLS token and rechecks the grant after verifi
   expect(await resolveBrokerPrincipal(token)).toBeNull();
   rpc.mockResolvedValueOnce({data:[row()],error:null}).mockResolvedValueOnce({data:[],error:null});
   expect(await resolveBrokerPrincipal(token)).toBeNull(); // revoked during verification
+});
+
+test('preview rejects previously issued write grants even if the lookup is otherwise valid', async () => {
+  process.env.VERCEL_ENV='preview'; process.env.VERCEL_URL='test.vercel.app'; process.env.MCP_BROKER_PREVIEW_ENABLED='true';
+  process.env.MCP_GEMINI_RESOURCE_URL='https://test.vercel.app/api/mcp/gemini';
+  process.env.MCP_BROKER_PREVIEW_SUPABASE_URL='https://test.supabase.co'; process.env.NEXT_PUBLIC_SUPABASE_URL='https://test.supabase.co';
+  expect(await resolveBrokerPrincipal(token)).toBeNull();
+  expect(verifyUpstreamAccess).not.toHaveBeenCalled();
 });
 
 test('serializes refresh, persists both encrypted credentials and rechecks the grant', async () => {

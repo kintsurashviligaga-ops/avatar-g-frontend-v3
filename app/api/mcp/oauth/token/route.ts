@@ -55,6 +55,7 @@ export async function POST(req: Request): Promise<Response> {
     const scopeResult = await createServiceRoleClient().rpc('mcp_oauth_access_scopes', { p_access_hash: accessHash, p_client_id: config.clientId, p_resource: config.resource });
     const scopes = scopeResult.data;
     if (scopeResult.error || !Array.isArray(scopes) || !scopes.includes('mcp:read') || scopes.some((s) => s !== 'mcp:read' && s !== 'mcp:write')) return oauthError('server_error', 500);
+    if (process.env.VERCEL_ENV === 'preview' && scopes.includes('mcp:write')) return oauthError('invalid_scope');
     return Response.json({ access_token: access, token_type: 'Bearer', expires_in: 600, refresh_token: refresh, scope: scopes.join(' ') }, { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
   } catch { return oauthError('server_error', 500); }
 }
