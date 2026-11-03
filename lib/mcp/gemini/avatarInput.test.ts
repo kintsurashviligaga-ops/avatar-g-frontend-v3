@@ -18,6 +18,21 @@ test('accepts only an own-project, owner-prefixed upload and returns no URL toke
   expect(await resolve(row({ owner_id: undefined, user_id: userId }))).toEqual({ bucket: 'uploads', path: `${userId}/avatar.png` });
 });
 
+test('accepts the production user_id and image_url schema without exposing URL tokens', async () => {
+  expect(await resolve({ id: avatarId, user_id: userId, image_url: media(`${userId}/avatar.png`) }))
+    .toEqual({ bucket: 'uploads', path: `${userId}/avatar.png` });
+  expect(await resolve(row({ image_url: media(`${userId}/avatar.png`).replace('do-not-return', 'another-token') })))
+    .toEqual({ bucket: 'uploads', path: `${userId}/avatar.png` });
+});
+
+test('rejects mismatched, invalid, or unowned image_url even if preview_image_url is safe', async () => {
+  expect(await resolve(row({ image_url: media(`${userId}/other.png`) }))).toBeNull();
+  expect(await resolve(row({ image_url: media(`${otherId}/avatar.png`) }))).toBeNull();
+  expect(await resolve(row({ image_url: 'https://example.com/elsewhere.png' }))).toBeNull();
+  expect(await resolve(row({ image_url: 123 }))).toBeNull();
+  expect(await resolve({ id: avatarId, user_id: userId, image_url: media(`${otherId}/avatar.png`) })).toBeNull();
+});
+
 test('requires verified matching identity and rejects contradictory owner columns', async () => {
   expect(await resolve(row({ owner_id: otherId }))).toBeNull();
   expect(await resolve(row({ user_id: otherId }))).toBeNull();

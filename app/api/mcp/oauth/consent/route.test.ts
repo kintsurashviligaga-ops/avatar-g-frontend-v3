@@ -2,8 +2,10 @@
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
 import { createServerClient } from '../../../../../lib/supabase/server';
+import { brokerConfig } from '../../../../../lib/mcp/gemini/oauth/config';
 
 jest.mock('../../../../../lib/supabase/server', () => ({ createServerClient: jest.fn() }));
+jest.mock('../../../../../lib/mcp/gemini/oauth/config', () => ({ brokerConfig: jest.fn() }));
 const details = { authorization_id: 'auth-id', client: { id: 'client-1', name: '<unsafe app>', uri: '', logo_uri: '' }, user: { id: 'user-1', email: 'test@example.test' }, redirect_uri: 'https://oauth-redirect.googleusercontent.com/r/app', scope: 'openid email' };
 const getDetails = jest.fn();
 const approve = jest.fn();
@@ -47,4 +49,13 @@ test('only redirects to the registered destination after approval', async () => 
   const res = await POST(req('https://myavatar.ge'));
   expect(res.status).toBe(303);
   expect(res.headers.get('location')).toContain('oauth-redirect.googleusercontent.com/r/app?');
+});
+
+test('preview consent accepts only the configured preview origin', async () => {
+  process.env.VERCEL_ENV = 'preview';
+  (brokerConfig as jest.Mock).mockReturnValue({ resource: 'https://preview.vercel.app/api/mcp/gemini' });
+  expect((await POST(req('https://myavatar.ge'))).status).toBe(403);
+  approve.mockResolvedValue({ data: { redirect_url: 'https://oauth-redirect.googleusercontent.com/r/app?code=code' }, error: null });
+  expect((await POST(req('https://preview.vercel.app'))).status).toBe(303);
+  delete process.env.VERCEL_ENV;
 });

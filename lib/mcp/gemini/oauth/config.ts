@@ -7,9 +7,14 @@ export type BrokerConfig = { clientId: string; clientSecret: string; redirectUri
 /** The prototype stays closed until explicitly configured. All trust anchors are
  * server settings, never headers or URLs supplied by the caller. */
 export function brokerConfig(env: NodeJS.ProcessEnv = process.env): BrokerConfig | null {
-  // These token endpoints are not wired to upstream authorization or RLS.
-  // A single environment flag must never expose this prototype in production.
-  if (env.NODE_ENV === 'production' || env.MCP_BROKER_EXPERIMENTAL !== 'true') return null;
+  // Vercel Preview uses NODE_ENV=production too. Permit only an explicit,
+  // double-gated preview tied to its own deployment hostname; production and
+  // non-Vercel production environments remain closed regardless of flags.
+  if (env.MCP_BROKER_EXPERIMENTAL !== 'true') return null;
+  if (env.VERCEL_ENV === 'production') return null;
+  const isVercelPreview = env.VERCEL_ENV === 'preview';
+  if (isVercelPreview && env.MCP_BROKER_PREVIEW_ENABLED !== 'true') return null;
+  if (env.NODE_ENV === 'production' && !isVercelPreview) return null;
   const clientId = env.MCP_BROKER_CLIENT_ID ?? '';
   const clientSecret = env.MCP_BROKER_CLIENT_SECRET ?? '';
   const redirectUri = env.MCP_BROKER_REDIRECT_URI ?? '';
@@ -18,6 +23,17 @@ export function brokerConfig(env: NodeJS.ProcessEnv = process.env): BrokerConfig
   try {
     const redirect = new URL(redirectUri);
     const target = new URL(resource);
+    if (isVercelPreview) {
+      if (!env.VERCEL_URL || !/^[a-z0-9-]+\.vercel\.app$/.test(env.VERCEL_URL) || target.origin !== `https://${env.VERCEL_URL}`) return null;
+      const staged = env.MCP_BROKER_PREVIEW_SUPABASE_URL;
+      if (!staged || staged !== env.NEXT_PUBLIC_SUPABASE_URL || (env.SUPABASE_URL && env.SUPABASE_URL !== staged)) return null;
+      const stagingUrl = new URL(staged);
+      // Use the canonical project hostname, avoiding unverifiable aliases of
+      // the known production project and any service-role URL override.
+      if (stagingUrl.protocol !== 'https:' || stagingUrl.port || staged !== stagingUrl.origin ||
+          !/^[a-z0-9-]+\.supabase\.co$/.test(stagingUrl.hostname) ||
+          stagingUrl.hostname === 'zwksnayknzggdcenqqxy.supabase.co') return null;
+    }
     if (redirect.protocol !== 'https:' || redirect.username || redirect.password || redirect.hash || redirect.href !== redirectUri ||
         target.protocol !== 'https:' || target.username || target.password || target.hash || target.search ||
         target.pathname !== '/api/mcp/gemini' || target.href !== resource) return null;

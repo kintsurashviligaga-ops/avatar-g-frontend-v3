@@ -32,15 +32,24 @@ export async function resolveOwnedAvatarInput(
     if (ownerValues.some((x) => x !== undefined && x !== null && (typeof x !== 'string' || !x))) return null;
     const owners = ownerValues.filter((x): x is string => typeof x === 'string');
     if (owners.length === 0 || owners.some((x) => x !== user.data)) return null;
-    if (typeof row.preview_image_url !== 'string' || row.preview_image_url.length > 4096) return null;
-
-    const url = new URL(row.preview_image_url);
-    if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash ||
-        !/^\/storage\/v1\/object\/(?:sign|public)\//.test(url.pathname)) return null;
-    const ref = describeSupabaseObjectUrl(row.preview_image_url, env);
-    if (!ref || isTwinBucket(ref.bucket) || !ownStorageHosts(env).has(ref.host) || ref.bucket !== uploadBucket(env) ||
-        !ownsUploadObject(ref.path, user.data)) return null;
-    return { bucket: ref.bucket, path: ref.path };
+    // Production uses image_url; some older schemas use preview_image_url.
+    // If both exist, require them to identify the same object. Signed URL
+    // tokens may differ and are never returned or used as authorization.
+    const images = [row.image_url, row.preview_image_url].filter((x) => x !== undefined && x !== null);
+    if (!images.length) return null;
+    let resolved: OwnedAvatarInput | null = null;
+    for (const image of images) {
+      if (typeof image !== 'string' || image.length > 4096) return null;
+      const url = new URL(image);
+      if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash ||
+          !/^\/storage\/v1\/object\/(?:sign|public)\//.test(url.pathname)) return null;
+      const ref = describeSupabaseObjectUrl(image, env);
+      if (!ref || isTwinBucket(ref.bucket) || !ownStorageHosts(env).has(ref.host) || ref.bucket !== uploadBucket(env) ||
+          !ownsUploadObject(ref.path, user.data)) return null;
+      if (resolved && (resolved.bucket !== ref.bucket || resolved.path !== ref.path)) return null;
+      resolved = { bucket: ref.bucket, path: ref.path };
+    }
+    return resolved;
   } catch {
     // A failed lookup or malformed URL is never a reason to broaden access.
     return null;

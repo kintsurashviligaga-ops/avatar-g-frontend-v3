@@ -1,6 +1,8 @@
 -- DESIGN PROTOTYPE ONLY. Do not apply to any shared database or enable a route.
--- The real production project is not accessible through the present connector;
--- the ledger assumptions below come from 20261002d, not live verification.
+-- Read-only production inspection confirmed deduct_credits_once(uuid, integer,
+-- text) returns JSONB, locks the balance row, and inserts the ledger debit;
+-- a trigger updates the balance. The synthetic fixture cannot establish all
+-- deployment prerequisites, schema compatibility, or economic correctness.
 -- This does not implement a worker, media authorization, provider policy,
 -- completion, retries, or refunds; therefore it is NOT a deployable migration.
 -- It demonstrates the transaction boundary with a synthetic ledger fixture.

@@ -57,6 +57,11 @@ test('requires a first-party signed-in user and stores validated bindings withou
   expect(rpc).toHaveBeenCalledTimes(1);
 });
 
+test('a database limit rejects excess authorization requests', async () => {
+  rpc.mockResolvedValueOnce({ data: false, error: null });
+  expect((await GET(get())).status).toBe(429);
+});
+
 test('consent requires same-origin form and authenticates user again', async () => {
   const values = new URLSearchParams({ id: pending, decision: 'approve' });
   expect((await POST(post(values,'https://evil.example'))).status).toBe(403);

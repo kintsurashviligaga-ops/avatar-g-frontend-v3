@@ -50,7 +50,19 @@ def main():
                 claims = list(pool.map(claim, range(10, 18)))
             if claims.count('ciphertext') != 1 or sum(bool(value) for value in claims) != 1:
                 raise RuntimeError('concurrent upstream refresh was claimed more than once')
-            print('PASS: isolated OAuth broker SQL proposal and concurrent upstream refresh claim')
+
+            def begin(index):
+                pending = f'10000000-0000-4000-8000-{index:012d}'
+                sql = ("set role service_role; select public.mcp_oauth_begin_pending("
+                       f"'{pending}','{user}','client','https://client.test/cb','https://example.test/api/mcp/gemini',"
+                       "array['mcp:read'],repeat('c',43),'state')")
+                return run(psql + ['-c', sql]).stdout.strip()
+
+            with ThreadPoolExecutor(max_workers=20) as pool:
+                requests = list(pool.map(begin, range(1, 21)))
+            if requests.count('t') != 10 or requests.count('f') != 10:
+                raise RuntimeError('concurrent pending authorization limit failed')
+            print('PASS: isolated OAuth broker SQL proposal, concurrent refresh claim and authorization limit')
         finally:
             if started:
                 run(['pg_ctl', '-D', str(cluster), '-m', 'fast', '-w', 'stop'])

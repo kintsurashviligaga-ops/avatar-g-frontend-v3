@@ -3,6 +3,7 @@
 \set ON_ERROR_STOP on
 begin;
 insert into auth.users(id) values ('00000000-0000-4000-8000-000000000001');
+insert into auth.users(id) values ('00000000-0000-4000-8000-000000000050');
 insert into public.mcp_oauth_grants(id,user_id,client_id,resource,scopes,upstream_refresh_ciphertext)
 values ('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000001',
         'test-client','https://mcp.example.test/api/mcp/gemini',array['mcp:read'], 'test-ciphertext');
@@ -27,8 +28,14 @@ values
   ('00000000-0000-4000-8000-000000000022','00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',array['mcp:read'],repeat('c',43),'opaque-state',clock_timestamp()-interval '1 minute');
 
 do $$
-declare ok boolean; granted_scopes text[]; claimed text;
+declare ok boolean; granted_scopes text[]; claimed text; i integer;
 begin
+  for i in 1..11 loop
+    select public.mcp_oauth_begin_pending(('10000000-0000-4000-8000-' || lpad(to_hex(i),12,'0'))::uuid,
+      '00000000-0000-4000-8000-000000000050','test-client','https://client.example.test/callback',
+      'https://mcp.example.test/api/mcp/gemini',array['mcp:read'],repeat('c',43),'opaque-state') into ok;
+    if ok is distinct from (i <= 10) then raise exception 'per-user pending limit failed'; end if;
+  end loop;
   if has_function_privilege('anon','public.mcp_oauth_redeem_code(text,text,text,text,text,text,text)','execute') then
     raise exception 'anonymous client can redeem codes';
   end if;

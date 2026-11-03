@@ -53,6 +53,7 @@ create table if not exists public.mcp_oauth_pending (
   created_at timestamptz not null default now(),
   expires_at timestamptz not null
 );
+create index if not exists mcp_oauth_pending_user_created_idx on public.mcp_oauth_pending(user_id,created_at);
 
 alter table public.mcp_oauth_grants enable row level security;
 alter table public.mcp_oauth_codes enable row level security;
@@ -76,6 +77,10 @@ begin
     or p_code_challenge !~ '^[A-Za-z0-9_-]{43}$' or p_oauth_state ~ '[[:cntrl:]]'
     or array_position(p_scopes,null) is not null
     or not (p_scopes <@ array['mcp:read','mcp:write']::text[]) or not ('mcp:read' = any(p_scopes)) then return false; end if;
+  -- Database-backed per-user limit, serialized across serverless instances.
+  -- This is not a substitute for ingress IP/rate controls on token endpoints.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('mcp-pending:' || p_user_id::text,0));
+  if (select count(*) from public.mcp_oauth_pending where user_id=p_user_id and created_at>clock_timestamp()-interval '10 minutes') >= 10 then return false; end if;
   insert into public.mcp_oauth_pending(id,user_id,client_id,redirect_uri,resource,scopes,code_challenge,oauth_state,expires_at)
     values (p_id,p_user_id,p_client_id,p_redirect_uri,p_resource,p_scopes,p_code_challenge,p_oauth_state,clock_timestamp()+interval '10 minutes');
   return true;

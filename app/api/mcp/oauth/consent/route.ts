@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase/server';
+import { brokerConfig } from '../../../../../lib/mcp/gemini/oauth/config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,7 +53,10 @@ export async function GET(req: NextRequest): Promise<Response> {
 
 export async function POST(req: NextRequest): Promise<Response> {
   if (!enabled()) return page('<h1>Authorization unavailable</h1>', 404);
-  if (!['https://myavatar.ge', 'https://www.myavatar.ge'].includes(req.headers.get('origin') ?? '')) return page('<h1>Forbidden</h1>', 403);
+  const origin = req.headers.get('origin') ?? '';
+  const broker = brokerConfig();
+  const previewOrigin = broker && process.env.VERCEL_ENV === 'preview' ? new URL(broker.resource).origin : null;
+  if (previewOrigin ? origin !== previewOrigin : !['https://myavatar.ge', 'https://www.myavatar.ge'].includes(origin)) return page('<h1>Forbidden</h1>', 403);
   const form = await req.formData().catch(() => null);
   const id = form?.get('authorization_id');
   const decision = form?.get('decision');

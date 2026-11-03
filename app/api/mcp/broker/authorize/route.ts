@@ -43,7 +43,8 @@ export async function GET(req: NextRequest): Promise<Response> {
       p_id: id, p_user_id: user, p_client_id: config.clientId, p_redirect_uri: config.redirectUri,
       p_resource: config.resource, p_scopes: request.scopes, p_code_challenge: request.challenge, p_oauth_state: request.state,
     });
-    if (error || data !== true) return page('<h1>Authorization unavailable</h1>', 503);
+    if (error) return page('<h1>Authorization unavailable</h1>', 503);
+    if (data !== true) return page('<h1>Too many authorization requests</h1><p>Try again later.</p>', 429);
     const write = request.scopes.includes('mcp:write') ? '<li>Request generations, which may use credits after separate approval.</li>' : '';
     return page(`<h1>Connect ${escape(config.clientId)} to MyAvatar?</h1><p>The client requests these permissions:</p><ul><li>Send messages to Agent G and view your recent works.</li>${write}</ul><p>This experimental feature is being tested and is not available in production.</p><form method="post" action="/api/mcp/broker/authorize"><input type="hidden" name="id" value="${id}"><button name="decision" value="approve">Approve</button><button name="decision" value="deny">Deny</button></form>`);
   } catch { return page('<h1>Authorization unavailable</h1>', 503); }
