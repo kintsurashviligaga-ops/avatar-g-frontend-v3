@@ -3,7 +3,8 @@ import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { publicEnv } from '../../env/public';
 import { isPublicHttpUrl } from '../../security/allowlistedAudioFetch';
-import { createSignedAssetUrls, describeSupabaseObjectUrl, libraryMediaBuckets, ownStorageHosts, provenOwnSignedLink } from '../../orchestrator/storage-adapter';
+import { createSignedAssetUrls, describeSupabaseObjectUrl, libraryMediaBuckets, ownStorageHosts, verifyFileableUrl } from '../../orchestrator/storage-adapter';
+import { ownsUploadObject, uploadBucket } from '../../security/callerMedia';
 
 type Principal = { userId: string; token: string };
 type Work = { id: string; kind: string; createdAt: string; prompt: string | null; url: string; expiresAt?: string };
@@ -34,12 +35,20 @@ export async function readRecentWorks(principal: Principal, limit: number): Prom
     const params = row.params && typeof row.params === 'object' ? row.params : {};
     const item: Work = { id: row.id, kind: row.service_type, createdAt: row.created_at, prompt: typeof params.prompt === 'string' ? params.prompt : null, url: raw };
     if (ref && hosts.has(ref.host)) {
-      // Mirror the Library's protections before its service-role signer is used.
+      // A user's row is not sufficient proof of ownership: client progress
+      // routes can write rows and older rows predate the write restrictions.
       if (!buckets.has(ref.bucket)) continue;
       if (ref.access === 'sign') {
-        if (params.source === 'manual-save' && params.storage_verified !== true && !(await provenOwnSignedLink(raw))) continue;
-        item.url = '';
-        sign.push({ work: item, bucket: ref.bucket, path: ref.path });
+        if (ref.bucket === uploadBucket() && ownsUploadObject(ref.path, principal.userId)) {
+          item.url = '';
+          sign.push({ work: item, bucket: ref.bucket, path: ref.path });
+        } else {
+          // Keep a currently valid bearer link without extending its lifetime.
+          // An expired token, row metadata, or a forged path does not authorize
+          // a service-role signer to grant access to someone else's object.
+          const verdict = await verifyFileableUrl(raw, { isPublicUrl: () => false }).catch(() => null);
+          if (!verdict?.ok || verdict.kind !== 'own-signed' || verdict.bucket !== ref.bucket || verdict.path !== ref.path) continue;
+        }
       }
     }
     works.push(item);

@@ -1,15 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
-import { createSignedAssetUrls, provenOwnSignedLink } from '../../orchestrator/storage-adapter';
+import { createSignedAssetUrls, verifyFileableUrl } from '../../orchestrator/storage-adapter';
 import { readRecentWorks } from './works';
 
 jest.mock('server-only', () => ({}));
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 jest.mock('../../env/public', () => ({ publicEnv: { NEXT_PUBLIC_SUPABASE_URL: 'https://own.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon' } }));
+jest.mock('../../security/callerMedia', () => ({
+  uploadBucket: () => 'uploads',
+  ownsUploadObject: (path: string, user: string) => path.startsWith(`${user}/`) && !path.includes('..'),
+}));
 jest.mock('../../orchestrator/storage-adapter', () => ({
-  createSignedAssetUrls: jest.fn(),
-  provenOwnSignedLink: jest.fn(),
+  createSignedAssetUrls: jest.fn(), verifyFileableUrl: jest.fn(),
   ownStorageHosts: () => new Set(['own.supabase.co']),
-  libraryMediaBuckets: () => new Set(['media']),
+  libraryMediaBuckets: () => new Set(['media', 'uploads']),
   describeSupabaseObjectUrl: (raw: string) => {
     const u = new URL(raw);
     const m = u.pathname.match(/^\/storage\/v1\/object\/(sign|public)\/([^/]+)\/(.+)$/);
@@ -21,42 +24,57 @@ const principal = { userId: 'owner', token: 'user-token' };
 const row = (id: string, signed_url: string, params: object = {}, user_id = 'owner') => ({
   id, signed_url, params, user_id, service_type: 'film', created_at: '2026-01-01', result: null,
 });
-
+const link = (bucket: string, path: string, token = 'old') => `https://own.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=${token}`;
+function rows(data: ReturnType<typeof row>[]) {
+  const q = { select: jest.fn(), eq: jest.fn(), neq: jest.fn(), order: jest.fn(), limit: jest.fn() };
+  q.select.mockReturnValue(q); q.eq.mockReturnValue(q); q.neq.mockReturnValue(q); q.order.mockReturnValue(q);
+  q.limit.mockResolvedValue({ data, error: null });
+  (createClient as jest.Mock).mockReturnValue({ from: () => q });
+  return q;
+}
 beforeEach(() => jest.resetAllMocks());
 
-test('owner-scoped rows return freshly signed links, with no stale or unowned links', async () => {
-  const q = { select: jest.fn(), eq: jest.fn(), neq: jest.fn(), order: jest.fn(), limit: jest.fn() };
-  q.select.mockReturnValue(q); q.eq.mockReturnValue(q); q.neq.mockReturnValue(q); q.order.mockReturnValue(q);
-  q.limit.mockResolvedValue({ data: [
-    row('owned', 'https://own.supabase.co/storage/v1/object/sign/media/owned.mp4?token=old'),
-    row('failed', 'https://own.supabase.co/storage/v1/object/sign/media/missing.mp4?token=old'),
-    row('other', 'https://own.supabase.co/storage/v1/object/sign/media/other.mp4?token=old', {}, 'other'),
-    row('manual', 'https://own.supabase.co/storage/v1/object/sign/media/manual.mp4?token=forged', { source: 'manual-save' }),
-    row('private-bucket', 'https://own.supabase.co/storage/v1/object/sign/twins/private.mp4?token=old'),
-    row('private-ip', 'http://127.0.0.1/secret'),
+test('signs only a user-owned upload path, retains live generated links without extending them', async () => {
+  const live = link('media', 'outputs/video.mp4', 'valid');
+  const q = rows([
+    row('owned-upload', link('uploads', 'owner/avatar.png')),
+    row('live-generated', live),
+    row('other-user', link('uploads', 'other/private.png'), {}, 'other'),
     row('public', 'https://cdn.example.com/asset.mp4'),
-  ], error: null });
-  (createClient as jest.Mock).mockReturnValue({ from: () => q });
-  (provenOwnSignedLink as jest.Mock).mockResolvedValue(false);
-  (createSignedAssetUrls as jest.Mock).mockResolvedValue(['https://own.supabase.co/storage/v1/object/sign/media/owned.mp4?token=fresh', null]);
+  ]);
+  (verifyFileableUrl as jest.Mock).mockResolvedValue({ ok: true, kind: 'own-signed', bucket: 'media', path: 'outputs/video.mp4' });
+  (createSignedAssetUrls as jest.Mock).mockResolvedValue([link('uploads', 'owner/avatar.png', 'fresh')]);
   const items = await readRecentWorks(principal, 10);
-  expect(createClient).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ global: { headers: { Authorization: 'Bearer user-token' } } }));
   expect(q.eq).toHaveBeenCalledWith('user_id', 'owner');
-  expect(createSignedAssetUrls).toHaveBeenCalledWith('media', ['owned.mp4', 'missing.mp4'], 900);
-  expect(items.map((x) => x.id)).toEqual(['owned', 'public']);
+  expect(createSignedAssetUrls).toHaveBeenCalledWith('uploads', ['owner/avatar.png'], 900);
+  expect(items.map((x) => x.id)).toEqual(['owned-upload', 'live-generated', 'public']);
   expect(items[0].url).toContain('token=fresh');
   expect(items[0].expiresAt).toBeDefined();
-  expect(JSON.stringify(items)).not.toContain('token=old');
+  expect(items[1].url).toBe(live);
+  expect(items[1].expiresAt).toBeUndefined();
 });
 
-test('legacy manual saves are signed only after proof of the original link', async () => {
-  const q = { select: jest.fn(), eq: jest.fn(), neq: jest.fn(), order: jest.fn(), limit: jest.fn() };
-  q.select.mockReturnValue(q); q.eq.mockReturnValue(q); q.neq.mockReturnValue(q); q.order.mockReturnValue(q);
-  q.limit.mockResolvedValue({ data: [row('manual', 'https://own.supabase.co/storage/v1/object/sign/media/verified.mp4?token=valid', { source: 'manual-save' })], error: null });
-  (createClient as jest.Mock).mockReturnValue({ from: () => q });
-  (provenOwnSignedLink as jest.Mock).mockResolvedValue(true);
-  (createSignedAssetUrls as jest.Mock).mockResolvedValue(['https://own.supabase.co/storage/v1/object/sign/media/verified.mp4?token=fresh']);
-  const items = await readRecentWorks(principal, 1);
-  expect(provenOwnSignedLink).toHaveBeenCalledTimes(1);
-  expect(items[0].url).toContain('token=fresh');
+test('does not sign a forged, expired or other-user path even with trusted-looking row metadata', async () => {
+  rows([
+    row('forged-server', link('media', 'victim/secret.mp4', 'forged'), { source: 'server', storage_verified: true }),
+    row('expired-manual', link('media', 'victim/old.mp4', 'expired'), { source: 'manual-save', storage_verified: true }),
+    row('foreign-upload', link('uploads', 'other/private.png', 'forged')),
+    row('private-bucket', link('twins', 'secret.wav', 'forged')),
+  ]);
+  (verifyFileableUrl as jest.Mock).mockResolvedValue({ ok: false, reason: 'not_readable' });
+  expect(await readRecentWorks(principal, 10)).toEqual([]);
+  expect(createSignedAssetUrls).not.toHaveBeenCalled();
+});
+
+test('rejects a purportedly valid grant when verification identifies a different object', async () => {
+  rows([row('repointed', link('media', 'victim/secret.mp4', 'valid'))]);
+  (verifyFileableUrl as jest.Mock).mockResolvedValue({ ok: true, kind: 'own-signed', bucket: 'media', path: 'owner/own.mp4' });
+  expect(await readRecentWorks(principal, 10)).toEqual([]);
+  expect(createSignedAssetUrls).not.toHaveBeenCalled();
+});
+
+test('does not return a stale link when signing an owned upload fails', async () => {
+  rows([row('owned-upload', link('uploads', 'owner/avatar.png'))]);
+  (createSignedAssetUrls as jest.Mock).mockResolvedValue([]);
+  expect(await readRecentWorks(principal, 10)).toEqual([]);
 });
