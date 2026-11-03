@@ -30,3 +30,11 @@ test('preview requires an explicit isolated canonical staging project for all Su
   expect(brokerConfig({ ...preview, MCP_BROKER_PREVIEW_SUPABASE_URL: 'https://alias.example.com', NEXT_PUBLIC_SUPABASE_URL: 'https://alias.example.com' })).toBeNull();
   expect(brokerConfig({ ...preview, SUPABASE_URL: preview.NEXT_PUBLIC_SUPABASE_URL })?.resource).toBe(base.MCP_GEMINI_RESOURCE_URL);
 });
+
+test('registered redirects cannot pre-populate OAuth response parameters', () => {
+  const preview = { ...base, VERCEL_ENV:'preview' };
+  for (const key of ['code','state','error','error_description','error_uri']) {
+    expect(brokerConfig({ ...preview, MCP_BROKER_REDIRECT_URI:`https://client.example/callback?${key}=bad` })).toBeNull();
+  }
+  expect(brokerConfig({ ...preview, MCP_BROKER_REDIRECT_URI:'https://client.example/callback?source=gemini' })).not.toBeNull();
+});

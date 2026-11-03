@@ -65,16 +65,26 @@ export async function POST(req: NextRequest): Promise<Response> {
     const decision = decisions[0];
     if (ids.length !== 1 || decisions.length !== 1 || typeof id !== 'string' || !uuid.test(id) ||
         (decision !== 'approve' && decision !== 'deny')) return invalid();
-    const upstream = decision === 'approve' ? upstreamConfig() : null;
-    const key = decision === 'approve' ? brokerEncryptionKey() : null;
-    if (decision === 'approve' && (!upstream || !key)) return page('<h1>Authorization unavailable</h1>', 503);
+    if (decision === 'deny') {
+      const denied = await createServiceRoleClient().rpc('mcp_oauth_deny_pending', {
+        p_id: id, p_user_id: user, p_client_id: config.clientId, p_redirect_uri: config.redirectUri, p_resource: config.resource,
+      });
+      if (denied.error) return page('<h1>Authorization unavailable</h1>', 503);
+      const state: unknown = Array.isArray(denied.data) && denied.data.length === 1 ? denied.data[0]?.oauth_state : null;
+      if (typeof state !== 'string' || !state || state.length > 1024 || /[\u0000-\u001f\u007f]/.test(state)) return invalid();
+      const redirect = new URL(config.redirectUri);
+      redirect.searchParams.set('error', 'access_denied');
+      redirect.searchParams.set('state', state);
+      return new Response(null, { status: 303, headers: { Location: redirect.href, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
+    }
+    const upstream = upstreamConfig();
+    const key = brokerEncryptionKey();
+    if (!upstream || !key) return page('<h1>Authorization unavailable</h1>', 503);
     const { data, error } = await createServiceRoleClient().rpc('mcp_oauth_decide_pending', {
-      p_id: id, p_user_id: user, p_approve: decision === 'approve',
+      p_id: id, p_user_id: user, p_approve: true,
     });
     if (error) return page('<h1>Authorization unavailable</h1>', 503);
     if (data !== true) return invalid();
-    if (decision === 'deny') return page('<h1>Access denied</h1><p>No access was issued.</p>');
-    if (!upstream || !key) return page('<h1>Authorization unavailable</h1>', 503);
     const link = newUpstreamRequest();
     const stateHash = upstreamStateDigest(link.state);
     const verifier = sealUpstreamToken(link.verifier, { grantId: id, userId: user, clientId: config.clientId }, 'pkce', key);

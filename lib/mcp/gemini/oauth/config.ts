@@ -35,6 +35,7 @@ export function brokerConfig(env: NodeJS.ProcessEnv = process.env): BrokerConfig
           stagingUrl.hostname === 'zwksnayknzggdcenqqxy.supabase.co') return null;
     }
     if (redirect.protocol !== 'https:' || redirect.username || redirect.password || redirect.hash || redirect.href !== redirectUri ||
+        ['code','state','error','error_description','error_uri'].some((name) => redirect.searchParams.has(name)) ||
         target.protocol !== 'https:' || target.username || target.password || target.hash || target.search ||
         target.pathname !== '/api/mcp/gemini' || target.href !== resource) return null;
     return { clientId, clientSecret, redirectUri, resource };

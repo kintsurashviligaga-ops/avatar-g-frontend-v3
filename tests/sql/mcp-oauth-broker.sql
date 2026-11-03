@@ -47,6 +47,7 @@ begin
   end if;
   if has_table_privilege('authenticated','public.mcp_oauth_pending','select') or
      has_function_privilege('authenticated','public.mcp_oauth_decide_pending(uuid,uuid,boolean)','execute') or
+     has_function_privilege('authenticated','public.mcp_oauth_deny_pending(uuid,uuid,text,text,text)','execute') or
      has_function_privilege('authenticated','public.mcp_oauth_begin_pending(uuid,uuid,text,text,text,text[],text,text)','execute') then
     raise exception 'authenticated user can access broker consent storage directly';
   end if;
@@ -71,8 +72,23 @@ begin
   if ok then raise exception 'grant created before user approval'; end if;
   select public.mcp_oauth_decide_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000099',true) into ok;
   if ok then raise exception 'wrong user approved request'; end if;
-  select public.mcp_oauth_decide_pending('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001',false) into ok;
-  if not ok then raise exception 'valid denial rejected'; end if;
+  if exists(select 1 from public.mcp_oauth_deny_pending('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000099',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini')) or
+     exists(select 1 from public.mcp_oauth_deny_pending('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001',
+    'wrong-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini')) or
+     exists(select 1 from public.mcp_oauth_deny_pending('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001',
+    'test-client','https://evil.example/callback','https://mcp.example.test/api/mcp/gemini')) or
+     exists(select 1 from public.mcp_oauth_deny_pending('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001',
+    'test-client','https://client.example.test/callback','https://evil.example/api/mcp/gemini')) or
+     exists(select 1 from public.mcp_oauth_deny_pending('00000000-0000-4000-8000-000000000022','00000000-0000-4000-8000-000000000001',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini')) then
+    raise exception 'unauthorized or expired denial returned state'; end if;
+  if not exists(select 1 from public.mcp_oauth_deny_pending('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini') where oauth_state='opaque-state') then
+    raise exception 'valid denial did not return bound state'; end if;
+  if exists(select 1 from public.mcp_oauth_deny_pending('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini')) then
+    raise exception 'denial state replay accepted'; end if;
   select public.mcp_oauth_decide_pending('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001',true) into ok;
   if ok then raise exception 'denied request approved on replay'; end if;
   select public.mcp_oauth_decide_pending('00000000-0000-4000-8000-000000000022','00000000-0000-4000-8000-000000000001',true) into ok;

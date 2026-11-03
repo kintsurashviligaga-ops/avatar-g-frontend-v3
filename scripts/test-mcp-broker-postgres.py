@@ -33,6 +33,7 @@ def main():
                         'create role service_role bypassrls', 'create table auth.users (id uuid primary key)'):
                 run(psql + ['-c', sql])
             run(psql + ['-f', str(ROOT / 'docs/handoffs/mcp/proposals/oauth-broker.sql')])
+            run(psql + ['-f', str(ROOT / 'docs/handoffs/mcp/proposals/oauth-denial-staging-update.sql')])
             run(psql + ['-f', str(ROOT / 'tests/sql/mcp-oauth-broker.sql')])
             user = '00000000-0000-4000-8000-000000000001'
             grant = '00000000-0000-4000-8000-000000000002'
@@ -75,7 +76,22 @@ def main():
                 requests = list(pool.map(begin, range(1, 21)))
             if requests.count('t') != 10 or requests.count('f') != 10:
                 raise RuntimeError('concurrent pending authorization limit failed')
-            print('PASS: isolated broker SQL, preview fixture/RLS, concurrent refresh claim and authorization limit')
+            race_user = '00000000-0000-4000-8000-000000000008'
+            race_id = '10000000-0000-4000-8000-000000000099'
+            run(psql + ['-c', f"insert into auth.users values ('{race_user}')"])
+            run(psql + ['-c', "set role service_role; select public.mcp_oauth_begin_pending("
+                f"'{race_id}','{race_user}','client','https://client.test/cb','https://example.test/api/mcp/gemini',"
+                "array['mcp:read'],repeat('c',43),'race-state')"])
+            def decide(approve):
+                params = f"'{race_id}','{race_user}'"
+                call = (f"public.mcp_oauth_decide_pending({params},true)" if approve else
+                    f"oauth_state from public.mcp_oauth_deny_pending({params},'client','https://client.test/cb','https://example.test/api/mcp/gemini')")
+                return run(psql + ['-c', f'set role service_role; select {call}']).stdout.strip()
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                approval, denial = list(pool.map(decide, [True, False]))
+            if not ((approval == 't' and denial == '') or (approval == 'f' and denial == 'race-state')):
+                raise RuntimeError('approval and denial were not mutually exclusive')
+            print('PASS: isolated broker SQL, preview fixture/RLS, concurrent refresh, authorization limit and denial race')
         finally:
             if started:
                 run(['pg_ctl', '-D', str(cluster), '-m', 'fast', '-w', 'stop'])

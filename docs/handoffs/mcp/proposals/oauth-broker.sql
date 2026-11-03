@@ -98,6 +98,18 @@ begin
   return found;
 end $$;
 
+-- Denial and state retrieval are one atomic owner/client/redirect/resource-bound
+-- operation. No state is returned for stale, changed or replayed requests.
+create or replace function public.mcp_oauth_deny_pending(
+  p_id uuid, p_user_id uuid, p_client_id text, p_redirect_uri text, p_resource text
+) returns table(oauth_state text) language plpgsql security invoker set search_path = '' as $$
+begin
+  return query update public.mcp_oauth_pending p set status='denied'
+    where p.id=p_id and p.user_id=p_user_id and p.client_id=p_client_id and p.redirect_uri=p_redirect_uri
+      and p.resource=p_resource and p.status='pending' and p.expires_at>clock_timestamp()
+    returning p.oauth_state;
+end $$;
+
 -- State and PKCE verifier are independently generated for the upstream
 -- provider. Store only the hash of state and an authenticated encrypted
 -- verifier; require this exact approved user and current registered client.
@@ -302,6 +314,7 @@ revoke all on function public.mcp_oauth_revoke_token(text,text,text) from public
 revoke all on function public.mcp_oauth_access_scopes(text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_resolve_access(text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_decide_pending(uuid,uuid,boolean) from public, anon, authenticated;
+revoke all on function public.mcp_oauth_deny_pending(uuid,uuid,text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_begin_pending(uuid,uuid,text,text,text,text[],text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_start_upstream(uuid,uuid,text,text,text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_claim_upstream_code(text,uuid,text,text,text,uuid) from public, anon, authenticated;
@@ -312,6 +325,7 @@ grant execute on function public.mcp_oauth_revoke_token(text,text,text) to servi
 grant execute on function public.mcp_oauth_access_scopes(text,text,text) to service_role;
 grant execute on function public.mcp_oauth_resolve_access(text,text,text) to service_role;
 grant execute on function public.mcp_oauth_decide_pending(uuid,uuid,boolean) to service_role;
+grant execute on function public.mcp_oauth_deny_pending(uuid,uuid,text,text,text) to service_role;
 grant execute on function public.mcp_oauth_begin_pending(uuid,uuid,text,text,text,text[],text,text) to service_role;
 grant execute on function public.mcp_oauth_start_upstream(uuid,uuid,text,text,text,text,text) to service_role;
 grant execute on function public.mcp_oauth_claim_upstream_code(text,uuid,text,text,text,uuid) to service_role;

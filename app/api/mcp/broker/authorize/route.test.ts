@@ -88,3 +88,30 @@ test('rejects oversized consent forms before updating a grant', async () => {
   expect((await POST(large)).status).toBe(400);
   expect(rpc).not.toHaveBeenCalled();
 });
+
+test('denial atomically retrieves state and redirects only to the registered client once', async () => {
+  rpc.mockResolvedValueOnce({ data:[{oauth_state:'opaque+client state'}], error:null });
+  const values = new URLSearchParams({ id:pending, decision:'deny' });
+  const response = await POST(post(values));
+  expect(response.status).toBe(303);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+  const redirect = new URL(response.headers.get('location')!);
+  expect(`${redirect.origin}${redirect.pathname}`).toBe('https://client.example/callback');
+  expect(redirect.searchParams.get('error')).toBe('access_denied');
+  expect(redirect.searchParams.get('state')).toBe('opaque+client state');
+  expect(rpc).toHaveBeenCalledWith('mcp_oauth_deny_pending', {p_id:pending,p_user_id:id,p_client_id:'client',p_redirect_uri:'https://client.example/callback',p_resource:resource});
+  expect(rpc).toHaveBeenCalledTimes(1);
+  rpc.mockResolvedValueOnce({data:[],error:null});
+  expect((await POST(post(values))).status).toBe(400);
+  rpc.mockResolvedValueOnce({data:null,error:{message:'not provisioned'}});
+  expect((await POST(post(values))).status).toBe(503);
+});
+
+test('denial fails closed on malformed returned state', async () => {
+  const values = new URLSearchParams({ id:pending, decision:'deny' });
+  for (const state of ['', 'x'.repeat(1025), 'line\nbreak', 4]) {
+    rpc.mockResolvedValueOnce({data:[{oauth_state:state}],error:null});
+    expect((await POST(post(values))).status).toBe(400);
+  }
+});
