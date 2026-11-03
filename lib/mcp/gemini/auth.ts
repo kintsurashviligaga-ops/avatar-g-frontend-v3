@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { mcpResourceUrl } from './previewResource';
 
 export type McpPrincipal = { userId: string; token: string; clientId: string; scopes: string[] };
 
@@ -6,7 +7,7 @@ export type McpPrincipal = { userId: string; token: string; clientId: string; sc
 export function mcpOAuthConfig(): { issuer: string; resource: string; clients: string[]; supabaseUrl: string; anonKey: string } | null {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const resource = process.env.MCP_GEMINI_RESOURCE_URL;
+  const resource = mcpResourceUrl();
   const clients = (process.env.MCP_GEMINI_ALLOWED_CLIENT_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!supabaseUrl || !anonKey || !resource || clients.length === 0) return null;
   try {

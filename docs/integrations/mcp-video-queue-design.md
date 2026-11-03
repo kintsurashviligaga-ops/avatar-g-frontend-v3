@@ -70,6 +70,12 @@ The non-deployable `docs/handoffs/mcp/proposals/video-transaction.sql` and its
 isolated Postgres harness demonstrate this boundary with synthetic records.
 They do not provide a worker, production migration or provider integration.
 
+The separate `docs/handoffs/mcp/proposals/video-worker-state-prototype.sql`
+models claims and the irreversible provider-submit boundary. Its isolated test
+checks parallel claims, stale workers, pre-submit lease expiry and ambiguous
+submissions. It is not a deployable worker: provider reconciliation, terminal
+job states, refunds, policy checks and execution scheduling remain to be built.
+
 Only after commit may a worker claim a job. A lease/CAS must allow one submit,
 record provider operation IDs, and handle expiry, cancellation and refunds.
 On ambiguous provider submission, never submit again without a provider-side

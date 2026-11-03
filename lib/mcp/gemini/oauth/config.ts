@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { mcpResourceUrl } from '../previewResource';
 
 export type BrokerConfig = { clientId: string; clientSecret: string; redirectUri: string; resource: string };
 
@@ -18,7 +19,7 @@ export function brokerConfig(env: NodeJS.ProcessEnv = process.env): BrokerConfig
   const clientId = env.MCP_BROKER_CLIENT_ID ?? '';
   const clientSecret = env.MCP_BROKER_CLIENT_SECRET ?? '';
   const redirectUri = env.MCP_BROKER_REDIRECT_URI ?? '';
-  const resource = env.MCP_GEMINI_RESOURCE_URL ?? '';
+  const resource = mcpResourceUrl(env) ?? '';
   if (!clientId || clientId.length > 256 || Buffer.byteLength(clientSecret) < 32 || clientSecret.length > 4096) return null;
   try {
     const redirect = new URL(redirectUri);

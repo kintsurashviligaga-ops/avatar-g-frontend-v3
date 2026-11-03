@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase/server';
 import { brokerConfig } from '../../../../../lib/mcp/gemini/oauth/config';
+import { upstreamConfig } from '../../../../../lib/mcp/gemini/oauth/upstreamOAuth';
 import { formBody } from '../../../../../lib/mcp/gemini/oauth/http';
 
 export const runtime = 'nodejs';
@@ -24,7 +25,11 @@ function trustedRedirect(value: string): boolean {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.username || url.password || url.hash) return false;
-    return configList('MCP_GEMINI_ALLOWED_REDIRECT_URIS').includes(`${url.origin}${url.pathname}`);
+    const redirectBase = `${url.origin}${url.pathname}`;
+    const broker = brokerConfig();
+    const previewUpstream = process.env.VERCEL_ENV === 'preview' && broker ? upstreamConfig() : null;
+    return configList('MCP_GEMINI_ALLOWED_REDIRECT_URIS').includes(redirectBase) ||
+      Boolean(previewUpstream && redirectBase === previewUpstream.redirectUri);
   } catch { return false; }
 }
 

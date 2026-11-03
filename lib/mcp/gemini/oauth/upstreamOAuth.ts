@@ -1,5 +1,6 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
+import { mcpResourceUrl } from '../previewResource';
 
 /** Isolated, unconnected broker helper. The calling flow must authenticate the
  * browser user and bind state and the verifier to a durable one-time request. */
@@ -35,12 +36,14 @@ export function upstreamConfig(env: NodeJS.ProcessEnv = process.env): UpstreamCo
   const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
   const clientId = env.MCP_BROKER_UPSTREAM_CLIENT_ID ?? '';
   const clientSecret = env.MCP_BROKER_UPSTREAM_CLIENT_SECRET ?? '';
-  const redirectUri = env.MCP_BROKER_UPSTREAM_REDIRECT_URI ?? '';
-  const resource = env.MCP_GEMINI_RESOURCE_URL ?? '';
+  const resource = mcpResourceUrl(env) ?? '';
   try {
     const url = new URL(root);
-    const redirect = new URL(redirectUri);
     const target = new URL(resource);
+    const derivedPreviewRedirect = env.VERCEL_ENV === 'preview' && resource
+      ? `${target.origin}/api/mcp/oauth/upstream/callback` : '';
+    const redirectUri = env.MCP_BROKER_UPSTREAM_REDIRECT_URI || derivedPreviewRedirect;
+    const redirect = new URL(redirectUri);
     if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash || root !== url.origin ||
         target.protocol !== 'https:' || target.pathname !== '/api/mcp/gemini' || target.username || target.password || target.search || target.hash ||
         redirect.protocol !== 'https:' || redirect.origin !== target.origin || redirect.pathname !== '/api/mcp/oauth/upstream/callback' ||

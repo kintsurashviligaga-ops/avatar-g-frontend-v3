@@ -25,6 +25,16 @@ test('accepts only a trusted exact callback origin and strong client secret', ()
   expect(upstreamConfig({ ...env, NEXT_PUBLIC_SUPABASE_URL: 'http://project.supabase.co' })).toBeNull();
 });
 
+test('derives the upstream callback for a preview deployment without trusting request headers', () => {
+  const preview = { ...env, VERCEL_ENV: 'preview', VERCEL_URL: 'stage-project.vercel.app',
+    MCP_BROKER_EXPERIMENTAL: 'true', MCP_BROKER_PREVIEW_ENABLED: 'true',
+    MCP_GEMINI_RESOURCE_URL: '', MCP_BROKER_UPSTREAM_REDIRECT_URI: '' };
+  expect(upstreamConfig(preview)?.redirectUri).toBe('https://stage-project.vercel.app/api/mcp/oauth/upstream/callback');
+  expect(upstreamConfig({ ...preview, VERCEL_ENV: 'production' })).toBeNull();
+  expect(upstreamConfig({ ...preview, VERCEL_URL: 'stage-project.vercel.app.evil.test' })).toBeNull();
+  expect(upstreamConfig({ ...preview, MCP_BROKER_UPSTREAM_REDIRECT_URI: 'https://other.vercel.app/api/mcp/oauth/upstream/callback' })).toBeNull();
+});
+
 test('builds a fixed upstream authorization URL with independent PKCE', () => {
   const url = new URL(upstreamAuthorizationUrl(config, 's'.repeat(43), 'c'.repeat(43))!);
   expect(url.origin).toBe('https://project.supabase.co');

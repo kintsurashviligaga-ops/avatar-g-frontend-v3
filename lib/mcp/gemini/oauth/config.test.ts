@@ -19,6 +19,16 @@ test('production stays closed even with preview flag; preview is deployment-host
   expect(brokerConfig({ ...base, VERCEL_ENV: 'preview' })?.resource).toBe(base.MCP_GEMINI_RESOURCE_URL);
 });
 
+test('preview can derive its resource from the unique Vercel deployment without a circular env setting', () => {
+  const preview = { ...base, VERCEL_ENV: 'preview', MCP_GEMINI_RESOURCE_URL: '' };
+  expect(brokerConfig(preview)?.resource).toBe('https://build-project.vercel.app/api/mcp/gemini');
+  expect(brokerConfig({ ...preview, VERCEL_URL: 'evil.example' })).toBeNull();
+  expect(brokerConfig({ ...preview, VERCEL_URL: 'name.vercel.app.attacker.test' })).toBeNull();
+  expect(brokerConfig({ ...preview, VERCEL_ENV: 'production' })).toBeNull();
+  expect(brokerConfig({ ...preview, MCP_BROKER_PREVIEW_ENABLED: 'false' })).toBeNull();
+  expect(brokerConfig({ ...preview, MCP_BROKER_PREVIEW_SUPABASE_URL: 'https://zwksnayknzggdcenqqxy.supabase.co', NEXT_PUBLIC_SUPABASE_URL: 'https://zwksnayknzggdcenqqxy.supabase.co' })).toBeNull();
+});
+
 test('preview requires an explicit isolated canonical staging project for all Supabase clients', () => {
   const preview = { ...base, VERCEL_ENV: 'preview' };
   expect(brokerConfig({ ...preview, MCP_BROKER_PREVIEW_SUPABASE_URL: '' })).toBeNull();

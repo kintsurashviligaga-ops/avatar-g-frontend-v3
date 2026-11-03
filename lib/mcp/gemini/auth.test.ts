@@ -16,7 +16,18 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.NEXT_PUBLIC_SUPABASE_URL; delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   delete process.env.MCP_GEMINI_RESOURCE_URL; delete process.env.MCP_GEMINI_ALLOWED_CLIENT_IDS;
+  delete process.env.MCP_BROKER_EXPERIMENTAL; delete process.env.MCP_BROKER_PREVIEW_ENABLED;
+  delete process.env.VERCEL_ENV; delete process.env.VERCEL_URL;
   jest.resetAllMocks();
+});
+
+test('preview discovery uses its deployment resource when no explicit resource is configured', () => {
+  delete process.env.MCP_GEMINI_RESOURCE_URL;
+  process.env.VERCEL_ENV = 'preview'; process.env.VERCEL_URL = 'stage-project.vercel.app';
+  process.env.MCP_BROKER_EXPERIMENTAL = 'true'; process.env.MCP_BROKER_PREVIEW_ENABLED = 'true';
+  expect(mcpOAuthConfig()?.resource).toBe('https://stage-project.vercel.app/api/mcp/gemini');
+  process.env.VERCEL_ENV = 'production';
+  expect(mcpOAuthConfig()).toBeNull();
 });
 test('requires explicit bearer and configured trusted issuer, resource and client', async () => {
   expect(await authenticateMcp(req())).toBeNull();
