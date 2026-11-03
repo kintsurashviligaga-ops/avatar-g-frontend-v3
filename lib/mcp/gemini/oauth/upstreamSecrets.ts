@@ -10,7 +10,7 @@ export function brokerEncryptionKey(env: NodeJS.ProcessEnv = process.env): Buffe
 }
 
 export type UpstreamBinding = { grantId: string; userId: string; clientId: string };
-export type UpstreamTokenKind = 'access' | 'refresh';
+export type UpstreamTokenKind = 'access' | 'refresh' | 'pkce';
 
 function associatedData(binding: UpstreamBinding, kind: UpstreamTokenKind): Buffer | null {
   const fields = [binding.grantId, binding.userId, binding.clientId];

@@ -257,7 +257,7 @@
   },
   "proposed": {
     "note": "Functions the code calls before their proposal is applied: each is created by a reviewed SQL file under docs/handoffs/**/proposals/, and its caller treats 'not provisioned' as an answer (fails open, as before) instead of failing silently. Applying a proposal to Production is the owner's word; then the SQL moves to supabase/migrations/ and the name moves to production (as 20261013a did on 2026-10-13 and 20261014a on 2026-10-15).",
-    "functions": ["mcp_oauth_access_scopes", "mcp_oauth_begin_pending", "mcp_oauth_decide_pending", "mcp_oauth_redeem_code", "mcp_oauth_revoke_token", "mcp_oauth_rotate_refresh"],
+    "functions": ["mcp_oauth_access_scopes", "mcp_oauth_begin_pending", "mcp_oauth_claim_upstream_code", "mcp_oauth_decide_pending", "mcp_oauth_finalize_pending", "mcp_oauth_redeem_code", "mcp_oauth_revoke_token", "mcp_oauth_rotate_refresh", "mcp_oauth_start_upstream"],
     "tables": ["mcp_generation_approvals"]
   },
   "dynamic": [

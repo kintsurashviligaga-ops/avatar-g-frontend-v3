@@ -2,6 +2,8 @@
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
 import { createServerClient, createServiceRoleClient } from '../../../../../lib/supabase/server';
+import { openUpstreamToken } from '../../../../../lib/mcp/gemini/oauth/upstreamSecrets';
+import { verifyS256Pkce } from '../../../../../lib/mcp/gemini/oauth/tokens';
 
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../../lib/supabase/server', () => ({ createServerClient: jest.fn(), createServiceRoleClient: jest.fn() }));
@@ -18,12 +20,18 @@ beforeEach(() => {
   process.env.MCP_BROKER_CLIENT_SECRET = 'synthetic-secret-for-broker-tests-0123456789';
   process.env.MCP_BROKER_REDIRECT_URI = 'https://client.example/callback';
   process.env.MCP_GEMINI_RESOURCE_URL = resource;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co';
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon';
+  process.env.MCP_BROKER_UPSTREAM_CLIENT_ID = 'upstream-client';
+  process.env.MCP_BROKER_UPSTREAM_CLIENT_SECRET = 'synthetic-upstream-secret-0123456789';
+  process.env.MCP_BROKER_UPSTREAM_REDIRECT_URI = 'https://myavatar.ge/api/mcp/oauth/upstream/callback';
+  process.env.MCP_BROKER_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
   (createServerClient as jest.Mock).mockReturnValue({ auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id } }, error: null }) } });
   rpc.mockResolvedValue({ data: true, error: null });
   (createServiceRoleClient as jest.Mock).mockReturnValue({ rpc });
 });
 afterEach(() => {
-  for (const key of ['MCP_BROKER_EXPERIMENTAL','MCP_BROKER_CLIENT_ID','MCP_BROKER_CLIENT_SECRET','MCP_BROKER_REDIRECT_URI','MCP_GEMINI_RESOURCE_URL']) delete process.env[key];
+  for (const key of ['MCP_BROKER_EXPERIMENTAL','MCP_BROKER_CLIENT_ID','MCP_BROKER_CLIENT_SECRET','MCP_BROKER_REDIRECT_URI','MCP_GEMINI_RESOURCE_URL','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','MCP_BROKER_UPSTREAM_CLIENT_ID','MCP_BROKER_UPSTREAM_CLIENT_SECRET','MCP_BROKER_UPSTREAM_REDIRECT_URI','MCP_BROKER_ENCRYPTION_KEY']) delete process.env[key];
   jest.resetAllMocks();
 });
 
@@ -44,7 +52,7 @@ test('requires a first-party signed-in user and stores validated bindings withou
   const response = await GET(get());
   expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toBe('no-store');
-  expect(await response.text()).toContain('does not yet link your account');
+  expect(await response.text()).toContain('not available in production');
   expect(rpc).toHaveBeenCalledWith('mcp_oauth_begin_pending', expect.objectContaining({ p_user_id: id, p_client_id: 'client', p_resource: resource, p_scopes: ['mcp:read','mcp:write'], p_code_challenge: 'x'.repeat(43), p_oauth_state: 'state' }));
   expect(rpc).toHaveBeenCalledTimes(1);
 });
@@ -58,9 +66,13 @@ test('consent requires same-origin form and authenticates user again', async () 
   expect((await POST(post(values))).status).toBe(401);
   expect(rpc).not.toHaveBeenCalled();
   const response = await POST(post(values));
-  expect(response.status).toBe(200);
-  expect(await response.text()).toContain('No access was issued');
+  expect(response.status).toBe(303);
   expect(rpc).toHaveBeenCalledWith('mcp_oauth_decide_pending', { p_id: pending, p_user_id: id, p_approve: true });
+  const location = new URL(response.headers.get('location')!);
+  const start = rpc.mock.calls.find(([name]) => name === 'mcp_oauth_start_upstream')?.[1];
+  const verifier = openUpstreamToken(start.p_verifier_ciphertext, { grantId: pending, userId: id, clientId: 'client' }, 'pkce', Buffer.alloc(32, 7));
+  expect(verifier && verifyS256Pkce(verifier, location.searchParams.get('code_challenge') ?? '')).toBe(true);
+  expect(start.p_state_hash).not.toContain(location.searchParams.get('state'));
   rpc.mockResolvedValueOnce({ data: false, error: null });
   expect((await POST(post(values))).status).toBe(400);
 });

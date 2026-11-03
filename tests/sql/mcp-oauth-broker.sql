@@ -60,7 +60,7 @@ begin
   end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030') into ok;
   if ok then raise exception 'grant created before user approval'; end if;
   select public.mcp_oauth_decide_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000099',true) into ok;
   if ok then raise exception 'wrong user approved request'; end if;
@@ -72,17 +72,40 @@ begin
   if ok then raise exception 'expired request approved'; end if;
   select public.mcp_oauth_decide_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',true) into ok;
   if not ok then raise exception 'valid consent rejected'; end if;
+  select public.mcp_oauth_start_upstream('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000099',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',repeat('a',64),'encrypted-verifier') into ok;
+  if ok then raise exception 'wrong user started upstream'; end if;
+  select public.mcp_oauth_start_upstream('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',repeat('a',64),'encrypted-verifier') into ok;
+  if not ok then raise exception 'approved user could not start upstream'; end if;
+  if exists(select 1 from public.mcp_oauth_claim_upstream_code(repeat('b',64),'00000000-0000-4000-8000-000000000001',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000030')) then
+    raise exception 'wrong state accepted'; end if;
+  if exists(select 1 from public.mcp_oauth_claim_upstream_code(repeat('a',64),'00000000-0000-4000-8000-000000000099',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000030')) then
+    raise exception 'wrong user claimed upstream code'; end if;
+  if not exists(select 1 from public.mcp_oauth_claim_upstream_code(repeat('a',64),'00000000-0000-4000-8000-000000000001',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000030')
+    where verifier_ciphertext='encrypted-verifier' and downstream_state='opaque-state') then
+    raise exception 'valid upstream claim rejected'; end if;
+  if exists(select 1 from public.mcp_oauth_claim_upstream_code(repeat('a',64),'00000000-0000-4000-8000-000000000001',
+    'test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini','00000000-0000-4000-8000-000000000031')) then
+    raise exception 'upstream state replay accepted'; end if;
+  select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000031') into ok;
+  if ok then raise exception 'wrong upstream claim finalized'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000099','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030') into ok;
   if ok then raise exception 'wrong upstream identity accepted'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://evil.example/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030') into ok;
   if ok then raise exception 'changed redirect accepted'; end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext') into ok;
+    '00000000-0000-4000-8000-000000000024',repeat('7',64),'ciphertext','00000000-0000-4000-8000-000000000030') into ok;
   if not ok then raise exception 'valid consent could not create grant'; end if;
   if not exists (select 1 from public.mcp_oauth_grants where id='00000000-0000-4000-8000-000000000024' and scopes=array['mcp:read','mcp:write']) or
      not exists (select 1 from public.mcp_oauth_codes where code_hash=repeat('7',64) and code_challenge=repeat('c',43)) then
@@ -90,7 +113,7 @@ begin
   end if;
   select public.mcp_oauth_finalize_pending('00000000-0000-4000-8000-000000000020','00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001','test-client','https://client.example.test/callback','https://mcp.example.test/api/mcp/gemini',
-    '00000000-0000-4000-8000-000000000025',repeat('8',64),'ciphertext') into ok;
+    '00000000-0000-4000-8000-000000000025',repeat('8',64),'ciphertext','00000000-0000-4000-8000-000000000030') into ok;
   if ok then raise exception 'consent reused to create another grant'; end if;
   if has_function_privilege('anon','public.mcp_oauth_claim_upstream_refresh(uuid,uuid,text,text,uuid)','execute') then
     raise exception 'anonymous user can claim upstream refresh';
