@@ -14,21 +14,36 @@ jest.mock('../../../../../../lib/mcp/gemini/oauth/upstreamOAuth', () => ({
 }));
 const user = '00000000-0000-4000-8000-000000000001';
 const pending = '00000000-0000-4000-8000-000000000002';
+const browserSession = '00000000-0000-4000-8000-000000000003';
+const upstreamSession = '00000000-0000-4000-8000-000000000004';
 const state = 's'.repeat(43);
 const verifier = 'v'.repeat(43);
 const rpc = jest.fn();
+const browserClaims = () => ({iss:'https://project.supabase.co/auth/v1',sub:user,aud:'authenticated',exp:Math.floor(Date.now()/1000)+300,session_id:browserSession});
 const request = (query = new URLSearchParams({ state, code: 'upstream-code' })) => new NextRequest(`https://myavatar.ge/api/mcp/oauth/upstream/callback?${query}`);
 beforeEach(() => {
   process.env.MCP_BROKER_EXPERIMENTAL='true'; process.env.MCP_BROKER_CLIENT_ID='client';
   process.env.MCP_BROKER_CLIENT_SECRET='synthetic-client-secret-for-tests-only';
   process.env.MCP_BROKER_REDIRECT_URI='https://client.example/callback'; process.env.MCP_GEMINI_RESOURCE_URL='https://myavatar.ge/api/mcp/gemini';
   process.env.MCP_BROKER_ENCRYPTION_KEY=Buffer.alloc(32,7).toString('base64');
-  (createServerClient as jest.Mock).mockReturnValue({ auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: user } }, error: null }) } });
+  (createServerClient as jest.Mock).mockReturnValue({ auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: user } }, error: null }), getClaims:jest.fn().mockResolvedValue({data:{claims:browserClaims()},error:null}) } });
   (createServiceRoleClient as jest.Mock).mockReturnValue({ rpc });
   rpc.mockImplementation(async (name: string) => name === 'mcp_oauth_claim_upstream_code'
     ? { data: [{ pending_id: pending, verifier_ciphertext: sealUpstreamToken(verifier,{grantId: pending,userId: user,clientId:'client'},'pkce',Buffer.alloc(32,7)), downstream_state: 'client-state' }], error: null }
     : { data: true, error: null });
-  (exchangeUpstreamCode as jest.Mock).mockResolvedValue({ accessToken:'access',refreshToken:'refresh',expiresAt:Date.now()+60000 });
+  (exchangeUpstreamCode as jest.Mock).mockResolvedValue({ accessToken:'access',refreshToken:'refresh',expiresAt:Date.now()+60000,sessionId:upstreamSession });
+});
+
+test.each([undefined, '', 'bad', browserSession])('refuses missing, invalid or shared upstream session (%s)', async (sessionId) => {
+  (exchangeUpstreamCode as jest.Mock).mockResolvedValueOnce({accessToken:'access',refreshToken:'refresh',expiresAt:Date.now()+60000,sessionId});
+  expect((await GET(request())).status).toBe(400);
+  expect(rpc.mock.calls.filter(([name]) => name === 'mcp_oauth_finalize_pending')).toHaveLength(0);
+});
+
+test.each([{session_id:undefined},{session_id:'bad'},{sub:'other'},{iss:'https://evil.example'},{aud:'other'},{exp:1}])('rejects invalid signed first-party claims', async (overrides) => {
+  (createServerClient as jest.Mock).mockReturnValueOnce({auth:{getUser:jest.fn().mockResolvedValue({data:{user:{id:user}},error:null}),getClaims:jest.fn().mockResolvedValue({data:{claims:{...browserClaims(),...overrides}},error:null})}});
+  expect((await GET(request())).status).toBe(401);
+  expect(rpc).not.toHaveBeenCalled();
 });
 afterEach(() => { for (const key of ['MCP_BROKER_EXPERIMENTAL','MCP_BROKER_CLIENT_ID','MCP_BROKER_CLIENT_SECRET','MCP_BROKER_REDIRECT_URI','MCP_GEMINI_RESOURCE_URL','MCP_BROKER_ENCRYPTION_KEY']) delete process.env[key]; jest.resetAllMocks(); });
 
@@ -63,7 +78,7 @@ test('claims once, exchanges using encrypted PKCE and redirects only after atomi
   expect(rpc).toHaveBeenCalledWith('mcp_oauth_claim_upstream_code', expect.objectContaining({p_state_hash:upstreamStateDigest(state),p_user_id:user}));
   expect(exchangeUpstreamCode).toHaveBeenCalledWith(expect.anything(),'upstream-code',verifier,user);
   const claim = rpc.mock.calls[0]![1].p_claim;
-  expect(rpc).toHaveBeenCalledWith('mcp_oauth_finalize_pending',expect.objectContaining({p_id:pending,p_user_id:user,p_verified_upstream_user_id:user,p_claim:claim}));
+  expect(rpc).toHaveBeenCalledWith('mcp_oauth_finalize_pending',expect.objectContaining({p_id:pending,p_user_id:user,p_verified_upstream_user_id:user,p_claim:claim,p_upstream_session_id:upstreamSession,p_browser_session_id:browserSession}));
   const url = new URL(response.headers.get('location')!);
   expect(url.origin+url.pathname).toBe('https://client.example/callback');
   expect(url.searchParams.get('code')).toMatch(/^ma_code_/);

@@ -51,8 +51,8 @@ def main():
             duplicate = subprocess.run(psql + ['-c', fixture_settings, '-f', fixture], text=True, capture_output=True, check=False)
             if duplicate.returncode == 0:
                 raise RuntimeError('preview fixture accepted an existing generation_jobs table')
-            run(psql + ['-c', "insert into public.mcp_oauth_grants(id,user_id,client_id,resource,scopes,upstream_refresh_ciphertext) "
-                f"values ('{grant}','{user}','client','https://example.test/api/mcp/gemini',array['mcp:read'],'ciphertext')"])
+            run(psql + ['-c', "insert into public.mcp_oauth_grants(id,user_id,client_id,resource,scopes,upstream_refresh_ciphertext,upstream_session_id) "
+                f"values ('{grant}','{user}','client','https://example.test/api/mcp/gemini',array['mcp:read'],'ciphertext','00000000-0000-4000-8000-000000000040')"])
 
             def claim(index):
                 claim_id = f'00000000-0000-4000-8000-{index:012d}'

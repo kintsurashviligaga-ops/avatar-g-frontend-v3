@@ -4,16 +4,17 @@ import { createServiceRoleClient } from '../../../supabase/server';
 import type { McpPrincipal } from '../auth';
 import { brokerConfig } from './config';
 import { opaqueTokenDigest } from './tokens';
-import { upstreamConfig, verifyUpstreamAccess, refreshUpstreamToken } from './upstreamOAuth';
+import { upstreamConfig, verifyUpstreamIdentity, refreshUpstreamToken } from './upstreamOAuth';
 import { brokerEncryptionKey, openUpstreamToken, sealUpstreamToken } from './upstreamSecrets';
 
-type Grant = { grant_id: string; user_id: string; scopes: string[]; access_ciphertext: string | null; access_expires_at: string | null };
+type Grant = { grant_id: string; user_id: string; scopes: string[]; access_ciphertext: string | null; access_expires_at: string | null; upstream_session_id: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function grantRow(value: unknown): Grant | null {
   if (!Array.isArray(value) || value.length !== 1 || !value[0] || typeof value[0] !== 'object') return null;
   const row = value[0] as Record<string, unknown>;
   if (typeof row.grant_id !== 'string' || !uuid.test(row.grant_id) || typeof row.user_id !== 'string' || !uuid.test(row.user_id) ||
+      typeof row.upstream_session_id !== 'string' || !uuid.test(row.upstream_session_id) ||
       !Array.isArray(row.scopes) || !row.scopes.includes('mcp:read') || row.scopes.some((s) => s !== 'mcp:read' && s !== 'mcp:write') ||
       new Set(row.scopes).size !== row.scopes.length ||
       (row.access_ciphertext !== null && typeof row.access_ciphertext !== 'string') ||
@@ -34,7 +35,7 @@ export async function resolveBrokerPrincipal(token: string): Promise<McpPrincipa
     const db = createServiceRoleClient();
     const lookupArgs = { p_access_hash: hash, p_client_id: config.clientId, p_resource: config.resource };
     const lookup = async () => {
-      const result = await db.rpc('mcp_oauth_resolve_access', lookupArgs);
+      const result = await db.rpc('mcp_oauth_resolve_access_v2', lookupArgs);
       return result.error ? null : grantRow(result.data);
     };
     const row = await lookup();
@@ -46,8 +47,8 @@ export async function resolveBrokerPrincipal(token: string): Promise<McpPrincipa
     if (row.access_ciphertext && Number.isFinite(cachedExpiry) && cachedExpiry > Date.now() + 60_000) {
       const cached = openUpstreamToken(row.access_ciphertext, binding, 'access', key);
       if (!cached) return null;
-      const verifiedExpiry = await verifyUpstreamAccess(upstream, cached, row.user_id);
-      if (!verifiedExpiry || verifiedExpiry <= Date.now() + 60_000) return null;
+      const identity = await verifyUpstreamIdentity(upstream, cached, row.user_id);
+      if (!identity || identity.expiresAt <= Date.now() + 60_000 || identity.sessionId.toLowerCase() !== row.upstream_session_id.toLowerCase()) return null;
       access = cached;
     } else {
       const claim = randomUUID();
@@ -59,7 +60,7 @@ export async function resolveBrokerPrincipal(token: string): Promise<McpPrincipa
         const refresh = openUpstreamToken(claimed.data, binding, 'refresh', key);
         if (!refresh) return null;
         const next = await refreshUpstreamToken(upstream, refresh, row.user_id);
-        if (!next || next.expiresAt <= Date.now() + 5_000) return null;
+        if (!next || next.expiresAt <= Date.now() + 5_000 || typeof next.sessionId !== 'string' || next.sessionId.toLowerCase() !== row.upstream_session_id.toLowerCase()) return null;
         const encryptedAccess = sealUpstreamToken(next.accessToken, binding, 'access', key);
         const encryptedRefresh = sealUpstreamToken(next.refreshToken, binding, 'refresh', key);
         if (!encryptedAccess || !encryptedRefresh) return null;
@@ -78,7 +79,7 @@ export async function resolveBrokerPrincipal(token: string): Promise<McpPrincipa
       }
     }
     const current = await lookup();
-    if (!current || current.grant_id !== row.grant_id || current.user_id !== row.user_id ||
+    if (!current || current.grant_id !== row.grant_id || current.user_id !== row.user_id || current.upstream_session_id !== row.upstream_session_id ||
         JSON.stringify(current.scopes) !== JSON.stringify(row.scopes)) return null;
     return { userId: row.user_id, token: access, clientId: config.clientId, scopes: current.scopes };
   } catch { return null; }

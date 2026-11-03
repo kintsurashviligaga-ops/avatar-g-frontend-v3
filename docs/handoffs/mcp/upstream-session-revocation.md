@@ -15,11 +15,12 @@ treated as a safe candidate for logout. References: [Supabase sign-out scopes](h
 
 Before wiring any upstream logout, the implementation needs all of the following:
 
-1. Verify signed upstream and first-party browser JWTs and bind their distinct
-   `session_id` values to the same authenticated user during linking. Persist
-   the upstream session ID in the grant transaction. Reject absent, malformed,
-   matching or unverifiable IDs, and verify the same upstream ID after refresh.
-   A separately issued OAuth credential is not, by itself, proof of independence.
+1. The local proposal now verifies signed upstream and browser JWTs, rejects
+   absent, malformed, equal or unverifiable session IDs, persists the upstream
+   ID atomically with the grant, and checks the same ID after refresh. A unique
+   immutable binding prevents different grants sharing one upstream session.
+   This has not yet been applied or verified against the live staging service;
+   the separate staging update refuses to migrate any pre-existing grants.
 2. Add a durable per-grant revoke state that prevents new uses immediately and
    coordinates with in-flight refresh. A refresh already in progress must be
    able to persist its result encrypted for the revoke worker without reviving
@@ -34,7 +35,7 @@ Before wiring any upstream logout, the implementation needs all of the following
    active; independently prove the target refresh token cannot be reused. Mark
    unconfirmed outcomes honestly rather than reporting upstream revocation.
 
-`verifyUpstreamIdentity` currently verifies the upstream signature, issuer,
-audience, OAuth client, subject, expiry and a syntactically valid `session_id`.
-This is a foundation only: the session is not yet persisted or compared with
-the first-party session, and no upstream logout is implemented or enabled.
+`verifyUpstreamIdentity` verifies the upstream signature, issuer, audience,
+OAuth client, subject, expiry and a syntactically valid `session_id`. This is
+still a foundation only: remote session revocation, its race coordination, and
+the required provider-specific integration evidence are not implemented.
