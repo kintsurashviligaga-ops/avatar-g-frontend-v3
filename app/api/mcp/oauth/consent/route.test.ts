@@ -6,6 +6,7 @@ import { brokerConfig } from '../../../../../lib/mcp/gemini/oauth/config';
 
 jest.mock('../../../../../lib/supabase/server', () => ({ createServerClient: jest.fn() }));
 jest.mock('../../../../../lib/mcp/gemini/oauth/config', () => ({ brokerConfig: jest.fn() }));
+jest.mock('server-only', () => ({}));
 const details = { authorization_id: 'auth-id', client: { id: 'client-1', name: '<unsafe app>', uri: '', logo_uri: '' }, user: { id: 'user-1', email: 'test@example.test' }, redirect_uri: 'https://oauth-redirect.googleusercontent.com/r/app', scope: 'openid email' };
 const getDetails = jest.fn();
 const approve = jest.fn();
@@ -42,6 +43,17 @@ test('rejects a different client and an untrusted redirect', async () => {
   getDetails.mockResolvedValueOnce({ data: { ...details, redirect_uri: 'https://evil.test/callback' }, error: null });
   expect((await POST(req('https://myavatar.ge'))).status).toBe(400);
   expect(approve).not.toHaveBeenCalled();
+});
+
+test('rejects oversized or ambiguous forms before authorization', async () => {
+  const large = new NextRequest('https://myavatar.ge/api/mcp/oauth/consent', {
+    method: 'POST', headers: { origin:'https://myavatar.ge', 'content-type':'application/x-www-form-urlencoded' }, body:'a='.padEnd(17000,'x'),
+  });
+  expect((await POST(large)).status).toBe(400);
+  const ambiguous = new URLSearchParams({ authorization_id:'auth-id', decision:'approve' }); ambiguous.append('decision','deny');
+  const duplicate = new NextRequest('https://myavatar.ge/api/mcp/oauth/consent', { method:'POST', headers:{origin:'https://myavatar.ge'}, body:ambiguous });
+  expect((await POST(duplicate)).status).toBe(400);
+  expect(getDetails).not.toHaveBeenCalled();
 });
 
 test('only redirects to the registered destination after approval', async () => {

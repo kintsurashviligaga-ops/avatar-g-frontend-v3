@@ -6,6 +6,7 @@ import { parseAuthorizationRequest } from '../../../../../lib/mcp/gemini/oauth/a
 import { upstreamAuthorizationUrl, upstreamConfig } from '../../../../../lib/mcp/gemini/oauth/upstreamOAuth';
 import { brokerEncryptionKey, sealUpstreamToken } from '../../../../../lib/mcp/gemini/oauth/upstreamSecrets';
 import { newUpstreamRequest, upstreamStateDigest } from '../../../../../lib/mcp/gemini/oauth/upstreamState';
+import { formBody } from '../../../../../lib/mcp/gemini/oauth/http';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     const user = await userId();
     if (!user) return signIn();
-    const form = await req.formData().catch(() => null);
+    const form = await formBody(req);
     const ids = form?.getAll('id') ?? [];
     const decisions = form?.getAll('decision') ?? [];
     const id = ids[0];

@@ -81,3 +81,10 @@ test('consent requires same-origin form and authenticates user again', async () 
   rpc.mockResolvedValueOnce({ data: false, error: null });
   expect((await POST(post(values))).status).toBe(400);
 });
+
+test('rejects oversized consent forms before updating a grant', async () => {
+  const large = new NextRequest('https://myavatar.ge/api/mcp/broker/authorize', { method:'POST',
+    headers:{origin:'https://myavatar.ge','content-type':'application/x-www-form-urlencoded'}, body:'a='.padEnd(17000,'x') });
+  expect((await POST(large)).status).toBe(400);
+  expect(rpc).not.toHaveBeenCalled();
+});

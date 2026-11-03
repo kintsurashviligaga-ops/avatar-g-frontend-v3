@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase/server';
 import { brokerConfig } from '../../../../../lib/mcp/gemini/oauth/config';
+import { formBody } from '../../../../../lib/mcp/gemini/oauth/http';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,10 +58,12 @@ export async function POST(req: NextRequest): Promise<Response> {
   const broker = brokerConfig();
   const previewOrigin = broker && process.env.VERCEL_ENV === 'preview' ? new URL(broker.resource).origin : null;
   if (previewOrigin ? origin !== previewOrigin : !['https://myavatar.ge', 'https://www.myavatar.ge'].includes(origin)) return page('<h1>Forbidden</h1>', 403);
-  const form = await req.formData().catch(() => null);
-  const id = form?.get('authorization_id');
-  const decision = form?.get('decision');
-  if (typeof id !== 'string' || (decision !== 'approve' && decision !== 'deny')) return invalid();
+  const form = await formBody(req);
+  const ids = form?.getAll('authorization_id') ?? [];
+  const decisions = form?.getAll('decision') ?? [];
+  const id = ids[0];
+  const decision = decisions[0];
+  if (ids.length !== 1 || decisions.length !== 1 || typeof id !== 'string' || (decision !== 'approve' && decision !== 'deny')) return invalid();
   try {
     const auth = await authorize(id);
     if (!auth) return invalid();
