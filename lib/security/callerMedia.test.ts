@@ -175,6 +175,22 @@ describe('resolveCallerMedia: URLs', () => {
     await expect(resolveCallerMedia(signedUrl('renders', 'edits/b.mp4', 'old'), ME, 900, deps({ recordedFor: undefined }))).resolves.toMatchObject({ ok: true });
   });
 
+  test.each(['signed_url', 'result.url'])('a public-form Library %s never grants a fresh signature for a private-path guess', async (field) => {
+    const publicUrl = `${HOST}/storage/v1/object/public/renders/private/victim.mp4`;
+    jobRows.push({ user_id: ME, ...(field === 'signed_url' ? { signed_url: publicUrl } : { result: { url: publicUrl } }), params: { source: 'manual-save', storage_verified: true } });
+    await expect(resolveCallerMedia(signedUrl('renders', 'private/victim.mp4', 'forged'), ME, 900, deps({ recordedFor: undefined })))
+      .resolves.toEqual({ ok: false, reason: 'not_owner' });
+    expect(signs).toEqual([]);
+  });
+
+  test('a public-form Library URL remains usable as a public URL without being signed', async () => {
+    const publicUrl = `${HOST}/storage/v1/object/public/renders/actually-public.mp4`;
+    jobRows.push({ user_id: ME, signed_url: publicUrl, params: { source: 'manual-save' } });
+    await expect(resolveCallerMedia(publicUrl, ME, 900, deps({ recordedFor: undefined })))
+      .resolves.toEqual({ ok: true, url: publicUrl, own: true });
+    expect(signs).toEqual([]);
+  });
+
   test('the twin bucket is never signed, whatever vouches for it', async () => {
     const u = signedUrl('twins', `${ME}/voice.webm`, 'live');
     await expect(resolveCallerMedia(u, ME, 60, deps({ liveToken: async () => true, recordedFor: async () => true }))).resolves.toEqual({ ok: false, reason: 'not_owner' });

@@ -15,8 +15,18 @@ public-form own-storage URL. `callerMedia.recordedForCaller` considers an
 owner row with the same bucket/path as evidence, including a public-form URL.
 The latter could make a later signed-form URL eligible for signing despite the
 first row not proving access. This is a code-level finding; reachability and
-impact must be validated safely outside production. The shared Library and
-editor behavior is outside this MCP patch and still requires separate review.
+impact have not been tested in production. The shared `callerMedia` resolver
+now requires the matching Library reference itself to be signed-form; a
+public-form row cannot vouch for a service-role signature. Public URLs continue
+to be returned unchanged, including public manual saves. Signed-form rows and
+live signed-token grants retain their pre-existing behavior.
+
+Compatibility boundary: a client that changes an existing public URL into a
+signed-form URL and expects its public Library row alone to authorize a fresh
+signature will now be denied. It can use the public URL unchanged. This
+targeted fix does not establish trustworthy provenance for old signed-form rows
+created under historic permissive write policies, and it does not resolve the
+separate client table privileges finding.
 
 For MCP, service-role signing now requires an actual owner-prefixed upload
 object. Other signed storage assets are returned only if storage currently
@@ -32,3 +42,8 @@ tokens or client-influenced rows.
 generated link, forged and expired links with trusted-looking metadata,
 another user's path, an object mismatch, and failed signing. It uses mocks;
 it is not a live storage or production test.
+
+`lib/security/callerMedia.test.ts` additionally covers both `signed_url` and
+`result.url` public-form rows attempting to vouch for a private signed path,
+and confirms direct public URL use remains unchanged. The shared resolver,
+progress route, Library route, and MCP works test suites pass locally.

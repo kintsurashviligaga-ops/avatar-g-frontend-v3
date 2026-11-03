@@ -108,7 +108,10 @@ async function recordedForCaller(userId: string, bucket: string, path: string, e
         if (row.user_id !== userId || !rowMayVouch(row)) continue;
         for (const url of rowUrls(row)) {
           const ref = describeSupabaseObjectUrl(url, env);
-          if (ref && hosts.has(ref.host) && ref.bucket === bucket && ref.path === path) return true;
+          // A public-form URL can be filed as a progress note without proving
+          // that its bucket is public or that the caller can read the object.
+          // It must never bootstrap a service-role signature for the same path.
+          if (ref && ref.access === 'sign' && hosts.has(ref.host) && ref.bucket === bucket && ref.path === path) return true;
         }
       }
     }
