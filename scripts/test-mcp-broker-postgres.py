@@ -37,6 +37,19 @@ def main():
             user = '00000000-0000-4000-8000-000000000001'
             grant = '00000000-0000-4000-8000-000000000002'
             run(psql + ['-c', f"insert into auth.users values ('{user}')"])
+            run(psql + ['-c', "create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$"])
+            run(psql + ['-c', 'grant usage on schema auth to authenticated'])
+            fixture = str(ROOT / 'docs/handoffs/mcp/proposals/gemini-readonly-preview-fixture.sql')
+            bad_guard = subprocess.run(psql + ['-c', "set mcp.preview_project_ref='wrong'", '-f', fixture], text=True, capture_output=True, check=False)
+            if bad_guard.returncode == 0:
+                raise RuntimeError('preview fixture accepted a wrong project attestation')
+            fixture_settings = ("set mcp.preview_project_ref='lejrrdeffeswrdzjqthm'; "
+                f"set mcp.synthetic_user_id='{user}'; "
+                "set mcp.preview_asset_url='https://lejrrdeffeswrdzjqthm.supabase.co/storage/v1/object/public/renders/mcp-preview/test.png'")
+            run(psql + ['-c', fixture_settings, '-f', fixture, '-f', str(ROOT / 'tests/sql/mcp-preview-readonly.sql')])
+            duplicate = subprocess.run(psql + ['-c', fixture_settings, '-f', fixture], text=True, capture_output=True, check=False)
+            if duplicate.returncode == 0:
+                raise RuntimeError('preview fixture accepted an existing generation_jobs table')
             run(psql + ['-c', "insert into public.mcp_oauth_grants(id,user_id,client_id,resource,scopes,upstream_refresh_ciphertext) "
                 f"values ('{grant}','{user}','client','https://example.test/api/mcp/gemini',array['mcp:read'],'ciphertext')"])
 
@@ -62,7 +75,7 @@ def main():
                 requests = list(pool.map(begin, range(1, 21)))
             if requests.count('t') != 10 or requests.count('f') != 10:
                 raise RuntimeError('concurrent pending authorization limit failed')
-            print('PASS: isolated OAuth broker SQL proposal, concurrent refresh claim and authorization limit')
+            print('PASS: isolated broker SQL, preview fixture/RLS, concurrent refresh claim and authorization limit')
         finally:
             if started:
                 run(['pg_ctl', '-D', str(cluster), '-m', 'fast', '-w', 'stop'])

@@ -9,6 +9,41 @@ import { ownsUploadObject, uploadBucket } from '../../security/callerMedia';
 type Principal = { userId: string; token: string };
 type Work = { id: string; kind: string; createdAt: string; prompt: string | null; url: string; expiresAt?: string };
 const TTL_SECONDS = 900;
+const PROBE_CONCURRENCY = 4;
+const PROBE_BUDGET_MS = 3000;
+
+type Probe = { work: Work; raw: string; bucket: string; path: string };
+
+/** The deadline covers the whole batch, not each link in turn. On timeout the
+ * still-unverified work items remain empty and are omitted from the response. */
+async function validateExistingLinks(probes: Probe[]): Promise<void> {
+  if (!probes.length) return;
+  const deadline = Date.now() + PROBE_BUDGET_MS;
+  let next = 0;
+  let done = false;
+  const worker = async () => {
+    while (!done && Date.now() < deadline) {
+      const probe = probes[next++];
+      if (!probe) return;
+      const verdict = await verifyFileableUrl(probe.raw, {
+        isPublicUrl: () => false,
+        timeoutMs: Math.max(1, deadline - Date.now()),
+      }).catch(() => null);
+      if (!done && Date.now() < deadline && verdict?.ok && verdict.kind === 'own-signed' &&
+          verdict.bucket === probe.bucket && verdict.path === probe.path) probe.work.url = probe.raw;
+    }
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.all(Array.from({ length: Math.min(PROBE_CONCURRENCY, probes.length) }, worker)),
+      new Promise<void>((resolve) => { timer = setTimeout(resolve, PROBE_BUDGET_MS); }),
+    ]);
+  } finally {
+    done = true;
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /** Read only the owner's rows via their own RLS client. Never send their bearer
  * token to an arbitrary API or sign an object on an untrusted host/bucket. */
@@ -26,6 +61,7 @@ export async function readRecentWorks(principal: Principal, limit: number): Prom
   const buckets = libraryMediaBuckets();
   const works: Work[] = [];
   const sign: Array<{ work: Work; bucket: string; path: string }> = [];
+  const probes: Probe[] = [];
   for (const row of data) {
     if (row.user_id !== principal.userId) continue;
     const raw = typeof row.signed_url === 'string' && row.signed_url ? row.signed_url :
@@ -46,8 +82,8 @@ export async function readRecentWorks(principal: Principal, limit: number): Prom
           // Keep a currently valid bearer link without extending its lifetime.
           // An expired token, row metadata, or a forged path does not authorize
           // a service-role signer to grant access to someone else's object.
-          const verdict = await verifyFileableUrl(raw, { isPublicUrl: () => false }).catch(() => null);
-          if (!verdict?.ok || verdict.kind !== 'own-signed' || verdict.bucket !== ref.bucket || verdict.path !== ref.path) continue;
+          item.url = '';
+          probes.push({ work: item, raw, bucket: ref.bucket, path: ref.path });
         }
       }
     }
@@ -57,10 +93,10 @@ export async function readRecentWorks(principal: Principal, limit: number): Prom
   const grouped = new Map<string, Array<{ work: Work; path: string }>>();
   for (const item of sign) grouped.set(item.bucket, [...(grouped.get(item.bucket) ?? []), item]);
   const expiresAt = new Date(Date.now() + TTL_SECONDS * 1000).toISOString();
-  await Promise.all([...grouped.entries()].map(async ([bucket, entries]) => {
+  await Promise.all([validateExistingLinks(probes), ...[...grouped.entries()].map(async ([bucket, entries]) => {
     const signed = await createSignedAssetUrls(bucket, entries.map((entry) => entry.path), TTL_SECONDS).catch(() => []);
     entries.forEach(({ work }, i) => { if (signed[i] && /^https:\/\//i.test(signed[i]!) && isPublicHttpUrl(signed[i]!)) { work.url = signed[i]!; work.expiresAt = expiresAt; } });
-  }));
+  })]);
   // A failed re-sign must never return the expired stored URL as a fresh asset.
   return works.filter((work) => Boolean(work.url));
 }

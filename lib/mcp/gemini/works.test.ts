@@ -78,3 +78,39 @@ test('does not return a stale link when signing an owned upload fails', async ()
   (createSignedAssetUrls as jest.Mock).mockResolvedValue([]);
   expect(await readRecentWorks(principal, 10)).toEqual([]);
 });
+
+test('bounds parallel storage probes and preserves row order when they finish out of order', async () => {
+  rows(Array.from({ length: 6 }, (_, i) => row(String(i), link('media', `output/${i}.mp4`, 'valid'))));
+  const finish: Array<(v: unknown) => void> = [];
+  (verifyFileableUrl as jest.Mock).mockImplementation(() => new Promise((resolve) => { finish.push(resolve); }));
+  const result = readRecentWorks(principal, 10);
+  await Promise.resolve(); await Promise.resolve();
+  expect(finish).toHaveLength(4);
+  const ok = (i: number) => ({ ok: true, kind: 'own-signed', bucket: 'media', path: `output/${i}.mp4` });
+  finish[3]!(ok(3)); finish[1]!(ok(1));
+  await Promise.resolve(); await Promise.resolve();
+  expect(finish).toHaveLength(6);
+  finish[5]!(ok(5)); finish[0]!(ok(0)); finish[4]!(ok(4)); finish[2]!(ok(2));
+  expect((await result).map((work) => work.id)).toEqual(['0', '1', '2', '3', '4', '5']);
+});
+
+test('a probe rejection fails closed while other verified items survive', async () => {
+  rows([row('bad', link('media', 'bad.mp4')), row('good', link('media', 'good.mp4'))]);
+  (verifyFileableUrl as jest.Mock).mockRejectedValueOnce(new Error('storage down'))
+    .mockResolvedValueOnce({ ok: true, kind: 'own-signed', bucket: 'media', path: 'good.mp4' });
+  expect((await readRecentWorks(principal, 10)).map((work) => work.id)).toEqual(['good']);
+});
+
+test('the shared deadline omits stalled probes and does not start the remaining queue', async () => {
+  jest.useFakeTimers();
+  try {
+    rows(Array.from({ length: 6 }, (_, i) => row(String(i), link('media', `output/${i}.mp4`))));
+    (verifyFileableUrl as jest.Mock).mockImplementation(() => new Promise(() => {}));
+    const result = readRecentWorks(principal, 10);
+    await Promise.resolve(); await Promise.resolve();
+    expect(verifyFileableUrl).toHaveBeenCalledTimes(4);
+    jest.advanceTimersByTime(3000);
+    expect(await result).toEqual([]);
+    expect(verifyFileableUrl).toHaveBeenCalledTimes(4);
+  } finally { jest.useRealTimers(); }
+});
