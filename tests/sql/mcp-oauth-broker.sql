@@ -158,6 +158,18 @@ begin
   if not ok then raise exception 'valid code rejected'; end if;
   select public.mcp_oauth_access_scopes(repeat('b',64),'test-client','https://mcp.example.test/api/mcp/gemini') into granted_scopes;
   if granted_scopes is distinct from array['mcp:read']::text[] then raise exception 'live access scopes unavailable'; end if;
+  if has_function_privilege('authenticated','public.mcp_oauth_resolve_access(text,text,text)','execute') then
+    raise exception 'authenticated user can resolve broker grant'; end if;
+  if not exists(select 1 from public.mcp_oauth_resolve_access(repeat('b',64),'test-client','https://mcp.example.test/api/mcp/gemini')
+    where user_id='00000000-0000-4000-8000-000000000001' and grant_id='00000000-0000-4000-8000-000000000002') then
+    raise exception 'valid access did not resolve expected user and grant'; end if;
+  if exists(select 1 from public.mcp_oauth_resolve_access(repeat('b',64),'wrong-client','https://mcp.example.test/api/mcp/gemini')) or
+     exists(select 1 from public.mcp_oauth_resolve_access(repeat('b',64),'test-client','https://evil.example/api/mcp/gemini')) then
+    raise exception 'wrong client or resource resolved grant'; end if;
+  update public.mcp_oauth_tokens set expires_at=clock_timestamp()-interval '1 second' where token_hash=repeat('b',64);
+  if exists(select 1 from public.mcp_oauth_resolve_access(repeat('b',64),'test-client','https://mcp.example.test/api/mcp/gemini')) then
+    raise exception 'expired bearer resolved grant'; end if;
+  update public.mcp_oauth_tokens set expires_at=clock_timestamp()+interval '1 minute' where token_hash=repeat('b',64);
   select public.mcp_oauth_access_scopes(repeat('b',64),'wrong-client','https://mcp.example.test/api/mcp/gemini') into granted_scopes;
   if granted_scopes is not null then raise exception 'wrong client obtained scopes'; end if;
   select public.mcp_oauth_redeem_code(repeat('a',64),'test-client','https://client.example.test/callback',
@@ -177,6 +189,8 @@ begin
   end if;
   select public.mcp_oauth_access_scopes(repeat('b',64),'test-client','https://mcp.example.test/api/mcp/gemini') into granted_scopes;
   if granted_scopes is not null then raise exception 'revoked access token retained scopes'; end if;
+  if exists(select 1 from public.mcp_oauth_resolve_access(repeat('b',64),'test-client','https://mcp.example.test/api/mcp/gemini')) then
+    raise exception 'revoked bearer resolved grant'; end if;
   select public.mcp_oauth_revoke_token(repeat('9',64),'wrong-client','https://mcp.example.test/api/mcp/gemini') into ok;
   if not ok or exists(select 1 from public.mcp_oauth_grants where id='00000000-0000-4000-8000-000000000003' and revoked_at is not null) then
     raise exception 'wrong client revoked a grant';

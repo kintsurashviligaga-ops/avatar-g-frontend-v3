@@ -27,6 +27,11 @@ export function mcpOAuthConfig(): { issuer: string; resource: string; clients: s
 export async function authenticateMcp(request: Request): Promise<McpPrincipal | null> {
   const match = /^Bearer ([^\s,]+)$/i.exec(request.headers.get('authorization') ?? '');
   const token = match?.[1];
+  if (token?.startsWith('ma_at_')) {
+    // The broker configuration itself prevents this path in production.
+    const { resolveBrokerPrincipal } = await import('./oauth/brokerPrincipal');
+    return resolveBrokerPrincipal(token);
+  }
   const cfg = mcpOAuthConfig();
   if (!token || token.length > 16384 || !cfg) return null;
   try {

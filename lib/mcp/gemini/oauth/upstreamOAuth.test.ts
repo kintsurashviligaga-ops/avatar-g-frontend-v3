@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import { createClient } from '@supabase/supabase-js';
-import { exchangeUpstreamCode, refreshUpstreamToken, upstreamAuthorizationUrl, upstreamConfig } from './upstreamOAuth';
+import { exchangeUpstreamCode, refreshUpstreamToken, upstreamAuthorizationUrl, upstreamConfig, verifyUpstreamAccess } from './upstreamOAuth';
 jest.mock('server-only', () => ({}));
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 
@@ -67,4 +67,15 @@ test('refresh fails closed on subject mismatch or an uncertain network result', 
   const failure = jest.fn(async () => { throw new Error('network'); });
   expect(await refreshUpstreamToken(config, 'old-refresh', 'user-a', failure as unknown as typeof fetch)).toBeNull();
   expect(failure).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ['wrong audience', { aud: 'other' }], ['wrong issuer', { iss: 'https://evil.example' }],
+  ['wrong client', { client_id: 'other' }], ['wrong subject', { sub: 'other' }], ['expired', { exp: 1 }],
+])('cached upstream token rejects %s', async (_label, overrides) => {
+  (createClient as jest.Mock).mockReturnValue({ auth: {
+    getClaims: async () => ({ data: { claims: { iss: config.issuer, sub: 'user-a', client_id: config.clientId, aud: 'authenticated', exp: exp(), ...overrides } }, error: null }),
+    getUser: jest.fn(),
+  } });
+  expect(await verifyUpstreamAccess(config, 'cached-token', 'user-a')).toBeNull();
 });

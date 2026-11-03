@@ -6,6 +6,22 @@ import { createClient } from '@supabase/supabase-js';
 export type UpstreamConfig = { issuer: string; clientId: string; clientSecret: string; redirectUri: string; anonKey: string };
 export type UpstreamTokens = { accessToken: string; refreshToken: string; expiresAt: number };
 
+/** Verify cached or newly issued upstream credentials independently of the
+ * downstream bearer. Return the signed expiry only for the expected user. */
+export async function verifyUpstreamAccess(config: UpstreamConfig, accessToken: string, expectedUserId: string): Promise<number | null> {
+  if (!accessToken || accessToken.length > 8192 || !expectedUserId || expectedUserId.length > 256) return null;
+  try {
+    const supabase = createClient(new URL(config.issuer).origin, config.anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
+    const claimsResult = await supabase.auth.getClaims(accessToken);
+    const claims = claimsResult.data?.claims;
+    const audience = Array.isArray(claims?.aud) ? claims.aud : [claims?.aud];
+    if (claimsResult.error || !claims || claims.iss !== config.issuer || claims.sub !== expectedUserId || claims.client_id !== config.clientId ||
+        !audience.includes('authenticated') || typeof claims.exp !== 'number' || claims.exp <= Math.floor(Date.now() / 1000)) return null;
+    const user = await supabase.auth.getUser(accessToken);
+    return !user.error && user.data.user?.id === expectedUserId ? claims.exp * 1000 : null;
+  } catch { return null; }
+}
+
 /** All values must come from server settings, never model or browser input. */
 export function upstreamConfig(env: NodeJS.ProcessEnv = process.env): UpstreamConfig | null {
   const root = env.NEXT_PUBLIC_SUPABASE_URL ?? '';
@@ -95,15 +111,8 @@ async function exchangeUpstream(
     const expiresIn = data?.expires_in;
     if (typeof accessToken !== 'string' || !accessToken || accessToken.length > 8192 || typeof refreshToken !== 'string' || !refreshToken || refreshToken.length > 8192 ||
         typeof expiresIn !== 'number' || !Number.isFinite(expiresIn) || expiresIn <= 0 || expiresIn > 86400) return null;
-    const supabaseUrl = new URL(config.issuer).origin;
-    const supabase = createClient(supabaseUrl, config.anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
-    const claimsResult = await supabase.auth.getClaims(accessToken);
-    const claims = claimsResult.data?.claims;
-    const audience = Array.isArray(claims?.aud) ? claims.aud : [claims?.aud];
-    if (claimsResult.error || !claims || claims.iss !== config.issuer || claims.sub !== expectedUserId || claims.client_id !== config.clientId ||
-        !audience.includes('authenticated') || typeof claims.exp !== 'number' || claims.exp <= Math.floor(Date.now() / 1000)) return null;
-    const user = await supabase.auth.getUser(accessToken);
-    if (user.error || user.data.user?.id !== expectedUserId) return null;
-    return { accessToken, refreshToken, expiresAt: Math.min(claims.exp * 1000, Date.now() + expiresIn * 1000) };
+    const signedExpiry = await verifyUpstreamAccess(config, accessToken, expectedUserId);
+    if (!signedExpiry) return null;
+    return { accessToken, refreshToken, expiresAt: Math.min(signedExpiry, Date.now() + expiresIn * 1000) };
   } catch { return null; }
 }

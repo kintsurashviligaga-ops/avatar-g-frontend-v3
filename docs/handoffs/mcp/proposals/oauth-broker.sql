@@ -276,10 +276,26 @@ create or replace function public.mcp_oauth_access_scopes(
   limit 1
 $$;
 
+-- Service-only lookup; the bearer itself is never stored. A caller must verify
+-- the returned upstream credential cryptographically before using it for RLS.
+-- Recheck this lookup after any network refresh to observe expiry/revocation.
+create or replace function public.mcp_oauth_resolve_access(
+  p_access_hash text, p_client_id text, p_resource text
+) returns table(grant_id uuid, user_id uuid, scopes text[], access_ciphertext text, access_expires_at timestamptz)
+language sql stable security invoker set search_path = '' as $$
+  select g.id,g.user_id,g.scopes,g.upstream_access_ciphertext,g.upstream_access_expires_at
+  from public.mcp_oauth_tokens t join public.mcp_oauth_grants g on g.id=t.grant_id
+  where t.token_hash=p_access_hash and t.kind='access' and t.expires_at>statement_timestamp()
+    and t.used_at is null and g.revoked_at is null and g.client_id=p_client_id and g.resource=p_resource
+    and g.upstream_refresh_state='ready' and 'mcp:read'=any(g.scopes)
+  limit 1
+$$;
+
 revoke all on function public.mcp_oauth_redeem_code(text,text,text,text,text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_rotate_refresh(text,text,text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_revoke_token(text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_access_scopes(text,text,text) from public, anon, authenticated;
+revoke all on function public.mcp_oauth_resolve_access(text,text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_decide_pending(uuid,uuid,boolean) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_begin_pending(uuid,uuid,text,text,text,text[],text,text) from public, anon, authenticated;
 revoke all on function public.mcp_oauth_start_upstream(uuid,uuid,text,text,text,text,text) from public, anon, authenticated;
@@ -289,6 +305,7 @@ grant execute on function public.mcp_oauth_redeem_code(text,text,text,text,text,
 grant execute on function public.mcp_oauth_rotate_refresh(text,text,text,text,text) to service_role;
 grant execute on function public.mcp_oauth_revoke_token(text,text,text) to service_role;
 grant execute on function public.mcp_oauth_access_scopes(text,text,text) to service_role;
+grant execute on function public.mcp_oauth_resolve_access(text,text,text) to service_role;
 grant execute on function public.mcp_oauth_decide_pending(uuid,uuid,boolean) to service_role;
 grant execute on function public.mcp_oauth_begin_pending(uuid,uuid,text,text,text,text[],text,text) to service_role;
 grant execute on function public.mcp_oauth_start_upstream(uuid,uuid,text,text,text,text,text) to service_role;
