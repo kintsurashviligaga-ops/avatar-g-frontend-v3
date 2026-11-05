@@ -244,3 +244,15 @@ These are still read by routes the stack keeps, so they stay until jobs from bef
 - ~~The Music panel's cover and voice copy names MusicGen and MiniMax, and a file attached through the paperclip reads as if it would be used~~ Done in row 33: the notes and the engine sheet name the path ("Cover", "Your voice"), not an engine; with the path off (today both) the file's note says it cannot be used, Create is disabled rather than sent to be refused, a refused cover is not quoted as a flat 30 s, and a trained voice no longer keeps "+ Voice" or its switch on screen (the route refuses it with the sample). `/api/system/film-readiness` (operators only) no longer reads `REPLICATE_API_TOKEN` or tells operators to set it for "clip failover + the MusicGen silent-film score rescue": the assemble route has had neither since PROJECT_MASTER R7.
 - ~~The two operator film reports still describe the old film chain: `/api/system/film-readiness` lists Nano Banana, LTX, Udio and ElevenLabs as the four film agents, and `/api/system/film-selftest` marks Replicate and LTX as critical providers (so a Google-only deploy reads `DEGRADED`), lists RunPod as "MusicGen fallback", and with `?udio=1` reads Udio's credit balance~~ Done in row 34: both read the four legs from `lib/chat/filmEngines` (names-only, no I/O): Gemini `<GEMINI_FRAME_MODEL>` for the storyboard, Veo, Lyria (off when `LYRIA_ENABLED` is), and Cloud TTS, each with the Vertex variable names it lacks. The self-test's critical rows are Gemini and Veo; Lyria, Cloud TTS and the GPU stitch (RunPod's render webhook, the same check as the editor leg) are optional. `?udio=1` is gone, so the reachability baseline loses the self-test's `udio` line. The report keys a monitor reads (`score`, `verdict`, `healthy`, `recommendations`, `summary`) keep their names; the `providers` rows carry `engine` and `missing` in place of the old key-alias fields.
 - Agent G's clarifier (`lib/agent-g-clarifier.ts`) and the service-chat configs (`lib/service-chat/service-configs.ts`), used by `/api/pipeline` (the older chat screens that also used them, `ChatInterface` and `CommandCenterChat`, are deleted in row 41), still list NanoBanana endpoints (V2 1K … Pro 4K) with per-tier credit figures (8–24) that nothing charges.
+
+## Phase 6 (integrated verification, 2026-11-05)
+
+Phase 6 adds documentation, a browser test (`tests/phase6-matrix.spec.ts`, now part of `npm run test:e2e:preview`) and
+a read-only scan script (`scripts/audit/route_reach.py`). It changes no application code, no migration and no
+environment variable, so merging it changes nothing users see and needs no database step. Rolling it back is a revert
+of its squash commit.
+
+The release candidate it verifies, `d8420a5d`, is already Production (`dpl_DtJovLX46bzABHqMBB29rZv4QxPe`, READY,
+`/api/health` commit `d8420a5`, checked 2026-11-05 19:20Z). If a defect is found there, the fast path is still Vercel
+Instant Rollback to the previous Production deployment, and the durable path a revert on `main`, as described above.
+The owner's open Production decisions are listed in `HANDOFF.md`.
