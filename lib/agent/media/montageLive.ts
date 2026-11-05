@@ -11,7 +11,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
-import { analyzeTrack, grabFrames, probeMedia, streamDurations } from '@/lib/services/montage/beatAnalysis';
+import { analyzeTrack, detectSegments, grabFrames, probeMedia, streamDurations } from '@/lib/services/montage/beatAnalysis';
 import { runMontage } from '@/lib/services/montage/montagePipeline';
 import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { withFfmpegSignal } from '@/lib/video/ffmpegExec';
@@ -64,6 +64,7 @@ export function liveMontageDeps(): MontageExecDeps {
     },
     probe: (url) => probeMedia(url),
     analyzeTrack: (url) => analyzeTrack(url),
+    detectSegments: (url, probe) => detectSegments(url, probe),
     async render(req, opts) {
       try {
         // No model is called (both tiers are 'ffmpeg-local'); the guard books the compute with the provider spend.
