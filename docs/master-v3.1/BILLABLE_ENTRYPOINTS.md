@@ -45,15 +45,18 @@ state on the release candidate `d8420a5d`, which is also what Production runs.
 | `POST /api/avatar/veo` | Veo on Vertex, built-in avatars | sign-in (guest 401) + reserve | none | custom avatar `BLOCKED_EXTERNAL` (Google allowlist) |
 | `POST /api/voice/live` + relay | Vertex Live via relay | signed ticket; non-admins 1 avatar session of 5 min a day | REST voice loop on Vertex | |
 | `POST /api/agent/run` code-run | Vercel Sandbox microVM | per-run quote, $20 sandbox cap | none | |
-| `POST /api/agent-g/calls/tts` (telephony worker) | Cloud TTS | **worker token only; no platform budget check** | none | see risk below |
+| `POST /api/agent-g/calls/tts` (telephony worker) | Cloud TTS | **worker token only; no platform budget check** on `d8420a5d`; fixed in #268 | none | see risk below |
 | Montage (`/api/agent/media/montage`, #265) | Vertex Gemini for spotting; Pexels search for cutaways | quote + reserve for the Google part; Pexels is a free API | none | a non-Google, non-generative external source the owner asked for; listed so it is a conscious choice |
 
 ## Risks this inventory leaves open
 
-1. **`POST /api/agent-g/calls/tts` bills Cloud TTS with no platform budget check.** It is gated by
+1. **`POST /api/agent-g/calls/tts` bills Cloud TTS with no platform budget check** (on `d8420a5d`). It is gated by
    `WORKER_INTERNAL_TOKEN` (fails closed when unset) and called only by the telephony worker
    (`services/voice-v2v-node`), so it is not reachable by a user. But a leaked token or a looping worker would spend
-   outside the daily AI budget. Fix: ask `platformBudgetRefusal` before `synthesizeSpeechChunk` (a small follow-up PR).
+   outside the daily AI budget. It also outlived its pipeline: no phone call can be placed (`lib/calls/availability.ts`)
+   and its STT sibling is retired. **Fix: draft PR #268** refuses it with the named `phone_calls_unavailable` 503 while
+   phone calls are off (before the body is read), and asks `chatBudgetAllows` (fails closed) before Cloud TTS once they
+   open. It needs the owner's merge.
 2. **Third-party credentials are still in the Production environment.** The Vercel project's environment listing
    (names only, values never read) shows `OPENAI_API_KEY`, `REPLICATE_API_TOKEN`, `HEYGEN_API_KEY` and `UDIO_API_KEY`
    in Production (the listing returned 100 variables). The code refuses those vendors, but the keys are the last line:

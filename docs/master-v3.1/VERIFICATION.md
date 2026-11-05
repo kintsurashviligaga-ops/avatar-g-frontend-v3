@@ -122,26 +122,33 @@ are the "after" state; the "before" state of the same screens is in `unified-com
 
 ## 3. CI and Preview on the exact final commit
 
-The PR head contains `d8420a5d` plus documentation and tests only. Results are filled in from the GitHub check runs of
-that head; nothing is re-run more than once.
+The PR head `4c5cd2d1` is `d8420a5d` plus documentation and tests only. Every result below is the first and only run
+on that head (run attempt 1 everywhere; nothing was re-run). The final head of this PR adds only the document edits
+that wrote this table (CI results, the telephony risk now pointing at #268); its own `pull_request` checks are on the
+PR, and the path-filtered workflows (BOG, speech, voice) do not trigger on a documentation-only change.
 
-| Workflow / job | Runs on this PR because | Result on PR head |
+| Workflow / job | Runs on this PR because | Result on `4c5cd2d1` (2026-11-05, UTC) |
 |---|---|---|
-| CI / verify | every PR | _pending_ |
-| E2E - Preview Contract / preview-e2e (now includes the Phase 6 matrix) | every PR | _pending_ |
-| E2E - Preview Contract / agent-g-gate | every PR | _pending_ |
-| Image Studio Acceptance / image-browser | every PR | _pending_ |
-| Image Studio Acceptance / isolated-db (real Postgres) | every PR | _pending_ |
-| Music Studio E2E (isolated local Supabase) | every PR | _pending_ |
-| Video Core E2E (isolated local Supabase), incl. billing-pg | every PR | _pending_ |
-| ADK pilot | path filter (`package.json`) | _pending_ |
-| BOG payments E2E | dispatched on this branch (path-filtered) | _pending_ |
-| Speech acceptance | dispatched on this branch (path-filtered) | _pending_ |
-| Voice Experience acceptance | dispatched on this branch (path-filtered) | _pending_ |
-| Vercel Preview | every push | _pending_ |
+| CI / verify | every PR | **pass** (19:28–19:41) |
+| E2E - Preview Contract / preview-e2e (now includes the Phase 6 matrix) | every PR | **pass** (19:28–19:38) |
+| E2E - Preview Contract / agent-g-gate | every PR | **pass** |
+| Image Studio Acceptance / image-browser | every PR | **pass** |
+| Image Studio Acceptance / isolated-db (real Postgres) | every PR | **pass** |
+| Music Studio E2E / live E2E (local Supabase, desktop + phone) | every PR | **pass** (19:28–19:37) |
+| Video Core E2E / billing on real Postgres | every PR | **pass** |
+| Video Core E2E / live E2E (local Supabase, desktop + phone) | every PR | **pass** (19:28–19:51) |
+| ADK pilot / adk-pilot | path filter (`package.json`) | **pass** |
+| BOG payments E2E / isolated (local Postgres, fake BOG) | dispatched on this branch (path-filtered) | **pass** |
+| BOG payments E2E / BOG sandbox (real api-sandbox.bog.ge) | dispatched on this branch | **skipped by its own guard**: the sandbox credential pair is not in this repository, so every step after the check was skipped. Not a pass |
+| Speech acceptance / read-aloud (chromium, firefox, webkit) | dispatched on this branch (path-filtered) | **pass** (all three) |
+| Voice Experience acceptance / simulated-browser | dispatched on this branch (path-filtered) | **pass** |
+| Vercel Preview | every push | **Ready**; `/api/health` on the Preview answered `healthy` with `commit: 4c5cd2d` (19:43) |
 
 Already green on `d8420a5d` itself (push to `main`): `verify`, `adk-pilot`, `preview-e2e`, `agent-g-gate`, and the
 Vercel Production deployment.
+
+The follow-up fix found by this phase, #268 (`/api/agent-g/calls/tts`), carries its own CI and Preview; its result is
+on that PR.
 
 ## 4. What was not verified, and why
 
@@ -154,6 +161,7 @@ Vercel Production deployment.
 | Signed-in browser flows | **partly**: CI's isolated local Supabase jobs sign in a test user; this phase's own matrix covers the guest boundary only | the shared Production database must not get test users without the owner's OK |
 | Interrupted and reloaded tasks | covered by existing suites (Music cancel mid-render, Video Core lease takeover, chat result persistence after reopen, #223), **not** re-tested by hand here | |
 | Production error logs | **unverified** | the Vercel runtime-error tool is not available to this session |
+| BOG payments against BOG's real sandbox (S1–S7) | **unverified** on this PR | the job's credential pair is not in this repository, so it skips itself; the isolated fake-BOG suite on real Postgres passes |
 | Speech samples | none new | no paid speech call was authorised for Phase 6; `PHASE4_EVIDENCE.md` holds the Phase 4 evidence |
 
 ## 5. How to reproduce

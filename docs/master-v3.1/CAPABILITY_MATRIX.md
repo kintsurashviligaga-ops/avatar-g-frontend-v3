@@ -105,7 +105,8 @@ and the ADK pilot's `capability_lookup` read. On `d8420a5d` some of their text i
 
 None of these lets a refused path spend (each refusal sits in the route, before any charge). They make the app's own
 description of itself wrong, which matters for the catalog UI and for any agent that reads the registry. Correcting
-them is a focused follow-up PR with tests.
+them is a focused follow-up PR with tests. Hiding the three refused services (as `video.motion` was hidden in Phase 2)
+takes them out of menus and search, a visible change, so it is offered to the owner rather than done here.
 
 ## How a row becomes "verified" (unchanged from v1)
 

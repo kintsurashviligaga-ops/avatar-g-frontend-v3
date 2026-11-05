@@ -23,7 +23,7 @@ every commit since #113 with its PR.
 | 4. Speech | #175–#199 (with the Live work interleaved), Chirp 3 trial #238, #242, #245, then mic #250, #253 | `d4a712a7` (#253) | read-aloud contract, mic dictation on Chirp 3 (owner-verified ka/ru/en 2026-11-01) |
 | Owner requests during the phases | Live and talking avatar (#188, #191, #194, #198, #203, #205–#208, #210–#215, #217–#220, #247), video like Veo with Omni (#209, #221, #223) and video assembly (#258), music vocals (#222) and music card visuals (#232, #233), product ad removed (#235), avatar preset (#244), logo (#246), Agent G PDF, sandbox, code-run and Drive (#240, #243, #248, #249, #251, #252, #254, #255), uploads and montage (#261–#263, #265), local E2E config (#260) | | each was approved by the owner on its own card |
 | 5. Google ADK read-only pilot | #259 | `31372fbf` (2026-11-05) | isolated pilot, $0, no route |
-| 6. Integrated verification and handoff | this PR | | the documents above, the browser matrix, the route scan |
+| 6. Integrated verification and handoff | this PR (#267); follow-up fix #268 (draft) | | the documents above, the browser matrix, the route scan; #268 closes the one billable route without a budget check |
 
 Eight commits reached `main` as direct pushes without a PR (music card visuals, 2026-10-28 and 10-29; marked in the
 appendix). They passed the gates that ran on `main` after them; they had no PR review.
@@ -38,13 +38,14 @@ appendix). They passed the gates that ran on `main` after them; they had no PR r
 | ADK pilot (own lockfile, own CI) | **pass**: 26 tests |
 | Browser matrix: ka/en/ru × desktop/phone, keyboard and touch, reduced motion, guest boundary, fast navigation | **pass**: 15/15 on the production build and 15/15 on `next dev` |
 | Guest boundary of paid routes | **pass**: image, speech, Nano Banana, Veo avatar answer 401; music refuses before auth and is 401 past its gates (code read) |
-| CI on the PR head (incl. real Postgres, Music and Video Core E2E, BOG, speech, voice) | see `VERIFICATION.md` §3 |
+| CI on the PR head (incl. real Postgres, Music and Video Core E2E, BOG, speech, voice) | **pass**: every job on `4c5cd2d1`, first run; the one exception is BOG's real-sandbox job, skipped by its own guard (no sandbox credentials in the repository). Preview healthy on that commit. `VERIFICATION.md` §3 |
 | Live paid certification (one contract call per model) | **unverified**: needs the owner's budget |
 | Live chat first-token benchmark | **unverified**: Phase 3 decision 3 open |
 | Preview, warm, seeded account | **unverified**: Phase 3 decision 4 open |
 | Real hardware | **unverified** by this phase (owner hand checks exist for Live on iPhone and mic dictation) |
 | Speech quality judged by the owner after the 2026-10-24 "not fixed" | **unverified**: no new listening since the later changes |
 | Production error logs | **unverified**: not readable from this session |
+| BOG payments against BOG's real sandbox | **unverified** on this PR: the job's credentials are not in the repository; the local fake-BOG suite passes |
 
 ## 3. Unresolved risks
 
@@ -52,10 +53,12 @@ appendix). They passed the gates that ran on `main` after them; they had no PR r
    `HEYGEN_API_KEY`, `UDIO_API_KEY`). The code refuses those vendors; the keys are the last line of defence if a path
    was missed. Removing them is the owner's action in Vercel.
 2. **The telephony TTS route bills Cloud TTS without the platform budget check** (`/api/agent-g/calls/tts`, worker
-   token only). Small follow-up fix.
+   token only). Fixed in draft PR #268 (refused while phone calls are unavailable, budget-checked when they open);
+   needs the owner's merge.
 3. **The app describes some refused services as live and some engines by their old vendor** (catalog and capability
    registry, `CAPABILITY_MATRIX.md` last section). No spend risk; wrong self-description in the UI and for agents.
-   Small follow-up fix with tests.
+   Offered as a follow-up: hiding the three refused services (as `video.motion` was hidden in Phase 2) removes them
+   from menus and search, a visible change, so it waits for the owner's OK.
 4. **60 routes still import a forbidden vendor client in their closure**, refused at run time and frozen by the
    ratchet. Cleanup, not an exposure.
 5. **Uncertified models in use**: `gemini-3.1-flash-image`, Lyria Pro, Gemini TTS, Cloud TTS, embeddings. They work
@@ -70,8 +73,8 @@ appendix). They passed the gates that ran on `main` after them; they had no PR r
 
 ## 4. The Production decision required
 
-Production already runs the release candidate, so there is nothing to deploy. What is left is the owner's choice on
-how v3.1 is closed:
+Production already runs the release candidate; the only code left to deploy is the small fix in #268. What is left
+is the owner's choice on how v3.1 is closed:
 
 - **A. Certify** (recommended): approve one budgeted contract call per uncertified model on the Production Vertex
   project, capped at **$5** in total (estimate about $3: Lyria Pro, `gemini-3.1-flash-image`, Veo 3.1 fast and
@@ -80,8 +83,9 @@ how v3.1 is closed:
   Preview account) open.
 - **B. Accept as it is**: close v3.1 with the rows above marked uncertified.
 
-Independent of A or B, the owner is asked to remove the four third-party keys from the Production environment (risk 1)
-and to answer Phase 3 decisions 3 and 4 when convenient.
+Independent of A or B, the owner is asked to approve merging #267 (documents and tests) and #268 (the telephony TTS
+fix), to remove the four third-party keys from the Production environment (risk 1), and to answer Phase 3 decisions 3
+and 4 when convenient.
 
 ## Appendix: every commit on `main` since #113
 
