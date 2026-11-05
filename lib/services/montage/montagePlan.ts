@@ -84,6 +84,71 @@ export interface MontageRequest {
   voiceStartSec?: number;
   /** Optional colour grade over the whole master. Absent when neutral, so an ungraded edit encodes as before. */
   grade?: MontageGrade;
+  /**
+   * Cutaway footage laid over the master in a split screen (./insertPlan, ./insertCompose): footage in the top half, the
+   * speaker in the bottom half, his sound untouched. Times are on the master's timeline. Absent = no cutaways.
+   */
+  inserts?: MontageInsert[];
+}
+
+export interface MontageInsert {
+  /** The footage: a Pexels file (videos.pexels.com) or a file in our own storage (a generated shot, the user's clip). */
+  url: string;
+  startSec: number;
+  endSec: number;
+  /** Where in the footage the cutaway starts. */
+  clipStartSec: number;
+  source: 'pexels' | 'veo' | 'own';
+  /** The line it covers (for the card). */
+  text?: string;
+  query?: string;
+  pageUrl?: string;
+  author?: string;
+}
+
+export const MAX_INSERTS = 12;
+
+/** Hosts a cutaway's footage may come from (the render fetches it): Pexels' file host and Supabase storage. */
+export function insertHostAllowed(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    const h = u.hostname.toLowerCase();
+    return h === 'videos.pexels.com' || h.endsWith('.supabase.co');
+  } catch {
+    return false;
+  }
+}
+
+/** Cutaways from untrusted input: inside the montage, in order, apart, each 0.5–8 s, from an allowed host. */
+export function coerceInserts(raw: unknown, totalSec: number): { ok: true; value: MontageInsert[] } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: [] };
+  if (!Array.isArray(raw)) return { ok: false, error: 'inserts must be an array' };
+  if (raw.length > MAX_INSERTS) return { ok: false, error: `a montage takes at most ${MAX_INSERTS} cutaways` };
+  const out: MontageInsert[] = [];
+  const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+  const str = (x: unknown, max: number) => (typeof x === 'string' ? x.slice(0, max) : undefined);
+  let last = -1;
+  for (let i = 0; i < raw.length; i += 1) {
+    const r = raw[i] as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object') return { ok: false, error: `cutaway ${i + 1} is invalid` };
+    const url = typeof r.url === 'string' ? r.url.trim() : '';
+    if (!insertHostAllowed(url)) return { ok: false, error: `cutaway ${i + 1}: the footage must be a Pexels or storage file` };
+    if (!num(r.startSec) || !num(r.endSec) || !num(r.clipStartSec)) return { ok: false, error: `cutaway ${i + 1}: times must be numbers` };
+    const len = r.endSec - r.startSec;
+    if (r.startSec < 0 || r.endSec > totalSec + 1e-3 || len < 0.5 || len > 8 || r.clipStartSec < 0 || r.startSec < last - 1e-6) {
+      return { ok: false, error: `cutaway ${i + 1}: its time is not inside the montage, in order` };
+    }
+    const source = r.source === 'pexels' || r.source === 'veo' || r.source === 'own' ? r.source : null;
+    if (!source) return { ok: false, error: `cutaway ${i + 1}: unknown source` };
+    last = r.endSec;
+    const text = str(r.text, 400), query = str(r.query, 80), pageUrl = str(r.pageUrl, 300), author = str(r.author, 120);
+    out.push({
+      url, startSec: Number(r.startSec.toFixed(3)), endSec: Number(r.endSec.toFixed(3)), clipStartSec: Number(r.clipStartSec.toFixed(3)), source,
+      ...(text ? { text } : {}), ...(query ? { query } : {}), ...(pageUrl ? { pageUrl } : {}), ...(author ? { author } : {}),
+    });
+  }
+  return { ok: true, value: out };
 }
 
 export interface ValidationResult {
@@ -364,6 +429,8 @@ export function validateMontageRequest(body: unknown): ValidationResult {
   }
   const voiceUrl = typeof b.voiceUrl === 'string' ? b.voiceUrl.trim() : '';
   if (voiceUrl && !/^https?:\/\//i.test(voiceUrl)) return { ok: false, error: 'voiceUrl must be an http(s) url' };
+  const inserts = coerceInserts(b.inserts, total);
+  if (!inserts.ok) return { ok: false, error: inserts.error };
   let voiceStartSec = 0;
   if (b.voiceStartSec !== undefined && b.voiceStartSec !== null) {
     if (typeof b.voiceStartSec !== 'number' || !Number.isFinite(b.voiceStartSec) || b.voiceStartSec < 0 || b.voiceStartSec >= total) {
@@ -386,6 +453,7 @@ export function validateMontageRequest(body: unknown): ValidationResult {
       ...(musicGainDb !== undefined ? { musicGainDb } : {}),
       ...(voiceUrl ? { voiceUrl, ...(voiceStartSec > 0 ? { voiceStartSec } : {}) } : {}),
       ...(grade ? { grade } : {}),
+      ...(inserts.value.length ? { inserts: inserts.value } : {}),
     },
   };
 }

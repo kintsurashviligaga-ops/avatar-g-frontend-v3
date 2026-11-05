@@ -41,6 +41,11 @@ import {
 import { planBeatCuts, type BeatGrid, type CutPlan, type CutProblem, type EnergyEnvelope, type RampResult } from '@/lib/services/montage/beatPlan';
 import { planJoin, type JoinPlan } from '@/lib/services/montage/joinPlan';
 import { assemblyRoles, assemblyWords } from './assemblyAsk';
+import { cutawayWords } from './cutawayAsk';
+import { planCutaways, speakerOf, type CutawaySummary } from './cutawayPlan';
+import type { SpotResult } from './cutawaySpot';
+import type { StockPick } from '@/lib/services/stock/pexels';
+import { ASPECT_DIMS, coerceInserts } from '@/lib/services/montage/montagePlan';
 import { planAssembly, type AssemblyPart, type AssemblyPlan, type AssemblyProblem, type AssemblyRole, type AskedWindow } from '@/lib/services/montage/assemblyPlan';
 import type { ClipSignals } from '@/lib/services/montage/segmentDetect';
 import { DEFAULT_TRANSITION_SEC, planTransitions, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
@@ -151,6 +156,12 @@ export interface MontageExecDeps {
    * role's times). Null = the clip could not be analysed.
    */
   detectSegments?(url: string, probe: BannerProbe): Promise<ClipSignals | null>;
+  /**
+   * Cutaways (GG 2026-11-05 14:32Z): the speaker's lines read from his clip (./cutawaySpot, one Gemini call), and one
+   * stock search per line (lib/services/stock/pexels). Absent = this server lays no cutaways; the card says so.
+   */
+  spotCutaways?(input: { url: string; durationSec: number; userId: string; topic: string }): Promise<SpotResult>;
+  searchStock?(query: string, o: { minSec: number; minWidth: number; orientation: 'landscape' | 'portrait' | 'square'; skip: ReadonlySet<number> }): Promise<StockPick | null>;
 }
 
 export type MontageErrorCode =
@@ -243,6 +254,11 @@ export interface MontageQuote {
   cutting: 'beat' | 'whole' | 'assembly';
   /** The assembly's parts in master order, with the file (manifest index) and what decided each bound. */
   assembly?: { parts: Array<Omit<AssemblyPart, 'clip'> & { file: number }> };
+  /**
+   * Cutaway footage over the speaker in a split screen: what goes where and why (the line it shows), the lines that found
+   * nothing, and — when none could be laid — why (`unavailable`). Absent = not asked.
+   */
+  cutaways?: CutawaySummary & { speakerFile: number; unavailable?: 'not_configured' | 'analysis_failed' | 'nothing_found' };
   /** The manifest index of the music track; null = a montage without music. */
   musicFile: number | null;
   /** The music ends before the edit does (own sound leads, so it is not refused): the master second it stops at. */
@@ -662,6 +678,32 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   }
   const request = parsed.request;
 
+  // ── cutaways: real footage of what the speaker says, in the top half of a split screen (GG 2026-11-05 14:32Z) ────
+  let cutaways: MontageQuote['cutaways'];
+  if (prompt && cutawayWords(prompt)) {
+    const speaker = speakerOf(request.shots, assemblyPlan ? sorted.clips[assemblyPlan.parts.find((p) => p.role === 'body')!.clip] : undefined);
+    const masterSec = timelineDuration(request.shots);
+    if (speaker !== null) {
+      if (!deps.spotCutaways || !deps.searchStock) {
+        cutaways = { items: [], missed: [], speakerFile: speaker, unavailable: 'not_configured' };
+      } else {
+        const spot = await deps.spotCutaways({ url: urls[speaker]!, durationSec: probes[speaker]?.durationSec ?? masterSec, userId, topic: prompt });
+        if (!spot.ok) {
+          cutaways = { items: [], missed: [], speakerFile: speaker, unavailable: 'analysis_failed' };
+        } else {
+          const { w, h } = ASPECT_DIMS[aspect];
+          const c = await planCutaways({
+            shots: request.shots, speaker, masterSec, lines: spot.lines, minWidth: w, orientation: w / (h / 2) >= 1 ? 'landscape' : 'portrait',
+            search: (q, o) => deps.searchStock!(q, o),
+          });
+          const checked = coerceInserts(c.inserts, masterSec);
+          if (checked.ok && checked.value.length) request.inserts = checked.value;
+          cutaways = { ...c.summary, speakerFile: speaker, ...(request.inserts?.length ? {} : { unavailable: 'nothing_found' as const }) };
+        }
+      }
+    }
+  }
+
   // ── price + sign ───────────────────────────────────────────────────────────────────────────────────────────────
   const jobId = deps.newId();
   const credits = montagePrice(deps);
@@ -683,6 +725,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     sound,
     cutting: assemblyPlan ? 'assembly' : onBeat ? 'beat' : 'whole',
     ...(assemblyPlan ? { assembly: { parts: assemblyPlan.parts.map(({ clip, ...p }) => ({ ...p, file: sorted.clips[clip]! })) } } : {}),
+    ...(cutaways ? { cutaways } : {}),
     musicFile: picked.music,
     ...(musicEndsSec !== undefined ? { musicEndsSec } : {}),
     ...(voice ? { voice: { file: picked.voice!, durationSec: r3(voice.probe.durationSec), startSec: 0, ...(voiceCutSec ? { cutSec: voiceCutSec } : {}) } } : {}),

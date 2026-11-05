@@ -9,6 +9,7 @@
  * so a client cannot forge one. Best-effort like every other persistence here, but a lost row is reported.
  */
 import 'server-only';
+import { pexelsConfigured, searchPexels } from '@/lib/services/stock/pexels';
 import { randomUUID } from 'node:crypto';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { analyzeTrack, detectSegments, grabFrames, probeMedia, streamDurations } from '@/lib/services/montage/beatAnalysis';
@@ -65,6 +66,13 @@ export function liveMontageDeps(): MontageExecDeps {
     probe: (url) => probeMedia(url),
     analyzeTrack: (url) => analyzeTrack(url),
     detectSegments: (url, probe) => detectSegments(url, probe),
+    async spotCutaways({ url, durationSec, userId, topic }) {
+      const { liveCutawayDeps } = await import('./cutawayLive');
+      const { spotCutaways } = await import('./cutawaySpot');
+      const mime = /\.mov(?:\?|$)/i.test(url) ? 'video/quicktime' : /\.webm(?:\?|$)/i.test(url) ? 'video/webm' : 'video/mp4';
+      return spotCutaways(liveCutawayDeps(), { url, mime, durationSec, userId, topic });
+    },
+    ...(pexelsConfigured() ? { searchStock: (q: string, o: Parameters<typeof searchPexels>[1]) => searchPexels(q, o) } : {}),
     async render(req, opts) {
       try {
         // No model is called (both tiers are 'ffmpeg-local'); the guard books the compute with the provider spend.

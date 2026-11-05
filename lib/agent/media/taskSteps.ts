@@ -150,7 +150,7 @@ const clamp = (n: number | undefined) => (typeof n === 'number' && isFinite(n) ?
 
 export const MONTAGE_STEPS = ['upload', 'analyse', 'plan', 'prepare', 'normalize', 'stitch', 'music', 'clipqc', 'finish'] as const;
 /** The job's stage → the step it belongs to (lib/agent/media/montageWorker's stages; 'qc' = every clip checked in the master). */
-const MONTAGE_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, music: 6, qc: 7, completed: 8 };
+const MONTAGE_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, inserts: 5, music: 6, qc: 7, completed: 8 };
 
 const AUDIO_NAME = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|weba)$/i;
 const IMAGE_NAME = /\.(jpe?g|png|webp|heic|heif|gif|bmp|avif)$/i;
@@ -185,7 +185,7 @@ function musicFrom(sec: number, lang: Lang): string {
 }
 
 export const ASSEMBLY_STEPS = ['upload', 'find', 'plan', 'prepare', 'cutParts', 'joinParts', 'syncqc', 'finish'] as const;
-const ASSEMBLY_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, music: 5, qc: 6, completed: 7 };
+const ASSEMBLY_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, inserts: 5, music: 5, qc: 6, completed: 7 };
 
 /** Is this card an intro + body + outro edit? From the quote once it is back, before it from the words and the files. */
 export function isAssemblyCard(s: Pick<AgentMontageState, 'quote' | 'names' | 'prompt'>): boolean {
