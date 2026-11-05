@@ -192,3 +192,125 @@ test('cutaways asked but no stock found: the speaker stays full screen and the c
   expect(q.quote.cutaways?.unavailable).toBe('nothing_found');
   expect(quoteText(q.quote, ['speaker2.mp4'], 'ka')).toMatch(/გაყოფილი ეკრანი: არა, შესაფერისი კადრი ვერ ვიპოვე/);
 });
+
+test('GG 2026-11-05 17:29Z: presenter, intro and logo scene sent in that order → intro first, presenter with a split screen, logo last', async () => {
+  // GG's three files: the presenter (green, his voice), a short intro (yellow) and a logo end scene (magenta), uploaded
+  // presenter first. His words name no roles and no file; the thinking step (stubbed here) watched them and decided.
+  const tone = (name: string, c: string, sec: number, f: number) => {
+    const out = join(dir, name);
+    ff(['-f', 'lavfi', '-i', `color=${c}:s=720x1280:r=30:d=${sec}`, '-f', 'lavfi', '-i', `sine=f=${f}:d=${sec}:sample_rate=48000`,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', out]);
+    return out;
+  };
+  const P = file('gemini_generated_video.mp4', tone('presenter3.mp4', '0x30a030', 8, 300));
+  const I = file('intro.mov', tone('intro3.mp4', 'yellow', 2, 500));
+  const L = file('logo_final.mov', tone('logo3.mp4', 'magenta', 2, 700));
+  const red = color('red3.mp4', 'red', 5);
+  mockFiles.set('https://videos.pexels.com/video-files/9/red.mp4', red);
+  const words = 'დაამონტაჟე და ეკრანი შუაში უნდა იყოს გაყოფილი რომ წამყვანმა ქვევით ილაპარაკოს და ზედა ეკრანზე რეალური ფაქტობრივი და მიზნობრივი ვიდეო გაუშვი.';
+  const seen: Array<{ words: string; files: number[] }> = [];
+  const store = memoryLeaseStore();
+  const d = deps(store, {
+    direct: async ({ words: w, videos }) => {
+      seen.push({ words: w, files: videos.map((v) => v.file) });
+      return { ok: true, decision: {
+        files: [
+          { file: 0, kind: 'presenter', summary: 'წამყვანი სტუდიაში ლაპარაკობს' },
+          { file: 1, kind: 'intro', summary: 'არხის გახსნის ანიმაცია' },
+          { file: 2, kind: 'logo', summary: 'ლოგოს ფინალური სცენა' },
+        ],
+        roles: { intro: 1, body: 0, outro: 2 }, splitScreen: true, speaker: 0,
+        reasoning: ['ინტროს ვიდეოს ვსვამ დასაწყისში, მერე წამყვანს, ბოლოს ლოგოს სცენას.'],
+        filled: ['თანმიმდევრობა არ გითქვამს: ინტრო პირველია, ლოგო ბოლოს.'],
+        model: 'stub',
+      } };
+    },
+    spotCutaways: async () => ({ ok: true, model: 'stub', lines: [
+      { startSec: 0.2, endSec: 1.0, text: 'გამარჯობა', visual: false, query: '', prompt: '' },
+      { startSec: 1.5, endSec: 5.5, text: 'ხელოვნური ინტელექტი საავადმყოფოებში', visual: true, query: 'hospital ai technology', prompt: '' },
+    ] }),
+    searchStock: async () => ({ url: 'https://videos.pexels.com/video-files/9/red.mp4', durationSec: 5, width: 1280, height: 720, pageUrl: 'https://www.pexels.com/video/9/', author: 'Author 9', source: 'pexels', id: 9 }),
+  });
+  const q = await quoteMontage(d, { userId: 'u', files: [P, I, L], names: ['gemini_generated_video.mp4', 'intro.mov', 'logo_final.mov'], prompt: words, aspect: '9:16' });
+  if (!q.ok) throw new Error(`quote: ${q.error} ${q.message}`);
+  expect(seen).toEqual([{ words, files: [0, 1, 2] }]);
+  expect(q.quote.cutting).toBe('assembly');
+  expect(q.quote.assembly!.parts.map((p) => [p.role, p.file])).toEqual([['intro', 1], ['body', 0], ['outro', 2]]);
+  expect(q.quote.cutaways?.speakerFile).toBe(0);
+  const ins = q.request.inserts!;
+  expect(ins).toHaveLength(1);
+  // The presenter starts after the 2 s intro: his line at 1.5–5.5 s is at ~3.5–7.5 s of the edit.
+  expect(ins[0]!.startSec).toBeGreaterThanOrEqual(3.4);
+  const text = quoteText(q.quote, ['gemini_generated_video.mp4', 'intro.mov', 'logo_final.mov'], 'ka');
+  expect(text).toMatch(/^🧠 რა დავინახე და რა გადავწყვიტე:\n· ვიდეო 1 — წამყვანი: წამყვანი სტუდიაში ლაპარაკობს/);
+  expect(text).toMatch(/ეს არ გითქვამს, ამიტომ მე გადავწყვიტე:\n· თანმიმდევრობა არ გითქვამს/);
+  expect(text).toMatch(/ინტრო \(ვიდეო 2\): .*ძირითადი \(ვიდეო 1\): .*აუტრო \(ვიდეო 3\)/);
+  expect(text).toMatch(/გაყოფილი ეკრანი: ზემოთ 1 რეალური კადრი \(Pexels\)/);
+
+  const queued = await enqueueMontageJob(d, { userId: 'u', request: q.request, token: q.token });
+  if (!queued.ok) throw new Error(`run: ${queued.error} ${queued.message}`);
+  const r = await workMontageJob(d, { jobId: queued.jobId, worker: 'w-gg' });
+  if (r.ran !== true || r.outcome !== 'delivered') throw new Error(`work: ${JSON.stringify(r)} ${store.rows.get(queued.jobId)?.error ?? ''}`);
+  const master = mockFiles.get(r.videoUrl.split('?')[0]!)!;
+  const full = '720:1280:0:0', top = '720:600:0:0', bottom = '720:600:0:680';
+  const isYellow = ([r, g, b]: number[]) => r! > 180 && g! > 180 && b! < 80;
+  const isMagenta = ([r, g, b]: number[]) => r! > 180 && b! > 180 && g! < 80;
+  const isRed = ([r, g, b]: number[]) => r! > 180 && g! < 60 && b! < 60;
+  const isGreen = ([r, g, b]: number[]) => g! > 120 && r! < 90 && b! < 90;
+  expect(isYellow(mean(master, 0.5, full))).toBe(true);
+  expect(isGreen(mean(master, 2.6, full))).toBe(true);
+  const mid = (ins[0]!.startSec + ins[0]!.endSec) / 2;
+  expect(isRed(mean(master, mid, top))).toBe(true);
+  expect(isGreen(mean(master, mid, bottom))).toBe(true);
+  expect(isMagenta(mean(master, q.quote.totalSec - 0.4, full))).toBe(true);
+  const sd = await streamDurations(r.videoUrl);
+  expect(Math.abs(sd!.audioSec! - sd!.videoSec!)).toBeLessThanOrEqual(0.05);
+});
+
+test('no stock for a line: a generated Veo shot is priced, laid, and one Veo could not make is paid back', async () => {
+  const spk = join(dir, 'speaker4.mp4');
+  ff(['-f', 'lavfi', '-i', 'color=0x30a030:s=720x1280:r=30:d=8', '-f', 'lavfi', '-i', 'sine=f=300:d=8:sample_rate=48000',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', spk]);
+  const S = file('speaker4.mp4', spk);
+  const veo = color('veo-red.mp4', 'red', 4);
+  mockFiles.set('https://media.test/montage/veo/a.mp4', veo);
+  const prompts: string[] = [];
+  const reserved: number[] = [];
+  const refunds: number[] = [];
+  const store = memoryLeaseStore();
+  const d = deps(store, {
+    spotCutaways: async () => ({ ok: true, model: 'stub', lines: [
+      { startSec: 0.5, endSec: 3.5, text: 'მზის სისტემა', visual: true, query: 'solar system orbit', prompt: 'Planets orbiting the sun in deep space.' },
+      { startSec: 4.5, endSec: 7.5, text: 'ოკეანის სიღრმე', visual: true, query: 'deep ocean trench', prompt: 'A dark deep ocean trench, light rays.' },
+    ] }),
+    searchStock: async () => null,
+    veoAvailable: () => true,
+    billing: {
+      reserve: async (_u, c) => { reserved.push(c); return { proceed: true, charged: true, reason: 'ok' }; },
+      refund: async (_u, _r, c) => { refunds.push(c); return 'refunded'; },
+    },
+    render: (req, o) => runMontage(req, {
+      jobId: o.jobId, signal: o.signal, onStage: async (step, pct) => o.onStage(step, pct),
+      makeCutaway: async (p) => { prompts.push(p); return prompts.length === 1 ? 'https://media.test/montage/veo/a.mp4' : null; },
+    }),
+  });
+  const q = await quoteMontage(d, { userId: 'u', files: [S], prompt: 'split screen with real footage', aspect: '9:16' });
+  if (!q.ok) throw new Error(`quote: ${q.error} ${q.message}`);
+  expect(q.request.inserts!.map((x) => x.source)).toEqual(['veo', 'veo']);
+  expect(q.quote.credits).toBe(66);
+  expect(quoteText(q.quote, ['speaker4.mp4'], 'ka')).toMatch(/ზემოთ 2 შექმნილი კადრი \(Veo, თითო ✦ 33\)/);
+  const queued = await enqueueMontageJob(d, { userId: 'u', request: q.request, token: q.token });
+  if (!queued.ok) throw new Error(`run: ${queued.error} ${queued.message}`);
+  expect(reserved).toEqual([66]);
+  const r = await workMontageJob(d, { jobId: queued.jobId, worker: 'w-veo' });
+  if (r.ran !== true || r.outcome !== 'delivered') throw new Error(`work: ${JSON.stringify(r)} ${store.rows.get(queued.jobId)?.error ?? ''}`);
+  expect(prompts).toEqual(['Planets orbiting the sun in deep space.', 'A dark deep ocean trench, light rays.']);
+  expect(refunds).toEqual([33]);
+  const master = mockFiles.get(r.videoUrl.split('?')[0]!)!;
+  const ins = q.request.inserts!;
+  const isRed = ([r, g, b]: number[]) => r! > 180 && g! < 60 && b! < 60;
+  const isGreen = ([r, g, b]: number[]) => g! > 120 && r! < 90 && b! < 90;
+  expect(isRed(mean(master, (ins[0]!.startSec + ins[0]!.endSec) / 2, '720:600:0:0'))).toBe(true);
+  // The shot Veo did not make: the speaker stays full screen there.
+  expect(isGreen(mean(master, (ins[1]!.startSec + ins[1]!.endSec) / 2, '720:600:0:0'))).toBe(true);
+});

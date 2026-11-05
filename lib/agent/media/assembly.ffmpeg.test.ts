@@ -150,7 +150,7 @@ test('A + B + A: the parts cut where they really start and end, frame-exact, the
   expect([parts[1]!.startBy, parts[1]!.endBy]).toEqual(['speech', 'speech']);
   expect(q.request.shots.map((s) => [s.source, s.muted])).toEqual([[0, false], [1, false], [0, false]]);
   // The card says what was found, in Georgian by default.
-  expect(quoteText(q.quote, ['A.mp4', 'B.mp4'], 'ka')).toMatch(/ინტრო: 0–2 წმ \(.*შავი კადრით\).*ძირითადი:.*ხმით.*აუტრო:/);
+  expect(quoteText(q.quote, ['A.mp4', 'B.mp4'], 'ka')).toMatch(/ინტრო \(ვიდეო 1\): 0–2 წმ \(.*შავი კადრით\).*ძირითადი \(ვიდეო 2\):.*ხმით.*აუტრო \(ვიდეო 1\):/);
 
   const queued = await enqueueMontageJob(d, { userId: 'u', request: q.request, token: q.token });
   if (!queued.ok) throw new Error(`run: ${queued.error} ${queued.message}`);

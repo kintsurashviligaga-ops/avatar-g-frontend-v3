@@ -52,6 +52,8 @@ export interface MontageResult {
   /** The narration was laid over the master (only ever true when the request had one). */
   hasVoice: boolean;
   stepsRun: MontageStep[];
+  /** Generated cutaways the render could not make (the edit kept the speaker there; the worker pays their price back). */
+  veoMissed?: number;
 }
 
 export type MontageOutcome =
@@ -69,6 +71,12 @@ export interface MontageRunOptions {
   signal?: AbortSignal;
   /** Reports each leg instead of writing the job row directly (a queued job writes only while it holds its lease). */
   onStage?: (step: MontageStep, pct: number) => Promise<unknown>;
+  /**
+   * Makes a generated (`veo`) cutaway from its prompt: a playable URL in our storage, or null when it could not be
+   * made. Started when the render starts, so the clips render while the shots are cut. Absent = no generated cutaway
+   * is laid (each counts as missed).
+   */
+  makeCutaway?: (prompt: string, k: number) => Promise<string | null>;
 }
 
 async function stage(opts: MontageRunOptions, step: MontageStep): Promise<void> {
@@ -96,6 +104,14 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
   const { w, h } = ASPECT_DIMS[req.aspect];
   const halted = async (): Promise<boolean> =>
     opts.signal?.aborted === true || (opts.shouldContinue ? !(await opts.shouldContinue().catch(() => true)) : false);
+
+  // Generated cutaways take a minute or two each: they start now, in parallel, and are awaited at their leg.
+  const generated = new Map<number, Promise<string | null>>();
+  (req.inserts ?? []).forEach((x, k) => {
+    if (x.source !== 'veo') return;
+    generated.set(k, opts.makeCutaway && x.prompt ? opts.makeCutaway(x.prompt, k).catch(() => null) : Promise.resolve(null));
+  });
+  let veoMissed = 0;
 
   try {
     // ── LEG 1 · resolve ────────────────────────────────────────────────────────────────────────────
@@ -194,14 +210,23 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
       if (await halted()) return { ok: false, step: 'inserts', error: 'cancelled' };
       await stage(opts, 'inserts');
       const ins = [];
-      for (const x of req.inserts) {
+      for (const [k, x] of req.inserts.entries()) {
+        if (x.source === 'veo') {
+          // A shot Veo could not make (refused, filtered, timed out) leaves the speaker on that line, not a failed edit.
+          const made = await generated.get(k)!;
+          if (made) ins.push({ ...x, url: made });
+          else veoMissed += 1;
+          continue;
+        }
         const url = (await reSignIfInternal(x.url, WEEK_SEC).catch(() => x.url)) || x.url;
         ins.push({ ...x, url });
       }
-      const laid = await overlayInserts(master, ins, { w, h });
-      if (!laid) return { ok: false, step: 'inserts', error: 'the cutaway footage could not be laid over the edit' };
-      videoUrl = laid;
-      stepsRun.push('inserts');
+      if (ins.length) {
+        const laid = await overlayInserts(master, ins, { w, h });
+        if (!laid) return { ok: false, step: 'inserts', error: 'the cutaway footage could not be laid over the edit' };
+        videoUrl = laid;
+        stepsRun.push('inserts');
+      }
     }
 
     // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────
@@ -254,6 +279,7 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
         hasMusic: Boolean(musicUrl) && stepsRun.includes('music'),
         hasVoice,
         stepsRun,
+        ...(veoMissed ? { veoMissed } : {}),
       },
     };
   } catch (err) {

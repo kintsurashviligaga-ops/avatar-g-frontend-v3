@@ -36,3 +36,14 @@ test.each([
 ])('not an intro/outro edit: %s (%i videos)', (text, n) => {
   expect(assemblyWords(text, n)).toBeNull();
 });
+
+describe('three videos: intro, body and outro as three files (GG 2026-11-05 17:29Z)', () => {
+  test('both bumpers asked: the body is the longest, the other two keep the order sent', () => {
+    const w = assemblyWords('ჯერ ინტრო, მერე წამყვანი და ბოლოს ლოგოს სცენა', 3);
+    expect(w).toEqual({ intro: true, outro: true, three: true });
+    expect(assemblyRoles(w!, [0, 1, 2], [10, 1.9, 2.1])).toEqual({ intro: 1, body: 0, outro: 2 });
+  });
+  test('only one bumper of three is not readable', () => {
+    expect(assemblyWords('ინტრო დაამატე', 3)).toBeNull();
+  });
+});

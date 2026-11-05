@@ -289,3 +289,34 @@ describe('an intro + body + outro edit has its own card (GG 2026-11-05 10:21Z)',
     expect(m.steps[0]!.detail).toBe('2 კლიპი');
   });
 });
+
+describe('the card lists only the steps this edit really has (GG 2026-11-05 17:29Z)', () => {
+  const names = ['gemini_generated_video.mp4', 'intro.mov', 'logo.mov'];
+  test('videos alone: no music step, the second step is the agent thinking, not the beat', () => {
+    const m = montageTask({ phase: 'reading', names, uploaded: 3 }, 'ka');
+    expect(m.steps.map((s) => s.key)).not.toContain('music');
+    expect(m.steps[1]).toMatchObject({ label: 'ვიდეოების ნახვა და დავალების გააზრება', state: 'active', note: 'ვუყურებ ყველა ვიდეოს და ვფიქრობ, როგორ ჯობს' });
+    expect(m.title).toBe('ვიდეოს მონტაჟი');
+  });
+  test('the plan with the agent thinking, three parts and a split screen', () => {
+    const q = {
+      ...MQ, shots: 3, clips: 3, totalSec: 12, beatSynced: false, bpm: null, cutting: 'assembly', musicFile: null,
+      assembly: { parts: [
+        { role: 'intro', file: 1, startSec: 0, endSec: 1.9, startBy: 'whole', endBy: 'whole' },
+        { role: 'body', file: 0, startSec: 0, endSec: 8, startBy: 'speech', endBy: 'speech' },
+        { role: 'outro', file: 2, startSec: 0, endSec: 2.1, startBy: 'whole', endBy: 'whole' },
+      ] },
+      cutaways: { items: [{ startSec: 3, endSec: 6, text: 'x', query: 'hospital', source: 'pexels' }], missed: [], generated: 0, speakerFile: 0 },
+      director: { files: [{ file: 0, kind: 'presenter', summary: '' }, { file: 1, kind: 'intro', summary: '' }, { file: 2, kind: 'logo', summary: '' }], reasoning: ['ინტრო პირველია.'], filled: [] },
+    } as unknown as MontageQuote;
+    const m = montageTask({ phase: 'quoted', names, quote: q }, 'ka');
+    expect(m.title).toBe('ინტრო + ვიდეო + აუტრო · გაყოფილი ეკრანი');
+    expect(m.steps.map((s) => s.key)).toEqual(['upload', 'find', 'plan', 'prepare', 'cutParts', 'joinParts', 'inserts', 'syncqc', 'finish']);
+    expect(m.steps[1]!.detail).toMatch(/^ვიდეო 1: წამყვანი · ვიდეო 2: ინტრო · ვიდეო 3: ლოგოს სცენა\n🧠 ინტრო პირველია\.\nინტრო · ვიდეო 2/);
+    expect(m.steps[6]!.detail).toBe('1 რეალური კადრი (Pexels) · ქვემოთ წამყვანი');
+    const run = montageTask({ phase: 'running', names, quote: q, stage: 'inserts' }, 'ka');
+    expect(states(run)).toBe('done done done done done done active pending pending');
+    const qc = montageTask({ phase: 'running', names, quote: q, stage: 'qc' }, 'ka');
+    expect(qc.steps[7]!.state).toBe('active');
+  });
+});

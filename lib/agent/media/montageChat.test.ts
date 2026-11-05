@@ -304,11 +304,11 @@ describe('the bubble narrates the work under the plan (GG 2026-11-05 10:21Z)', (
   } as unknown as import('./montageExec').MontageQuote;
   test('running: the plan stays and the step is added; no „press Start"', () => {
     const t = runningText(q, ['a.mp4', 'b.mp4'], 'normalize', 'ka');
-    expect(t).toMatch(/ინტრო: 0–2\.1 წმ/);
+    expect(t).toMatch(/ინტრო \(ვიდეო 2\): 0–2\.1 წმ/);
     expect(t).toMatch(/⏳ ინტროს, ძირითად ნაწილს და აუტროს ზუსტად კადრზე ვჭრი…$/);
     expect(t).not.toMatch(/დაწყებას/);
   });
   test('done: the plan stays and „ready" is added', () => {
-    expect(readyText(q, undefined, 9.4, 'en')).toMatch(/Intro: 0–2\.1 s[\s\S]*\n\n✓ Ready: 9\.4 s/);
+    expect(readyText(q, undefined, 9.4, 'en')).toMatch(/Intro \(video 2\): 0–2\.1 s[\s\S]*\n\n✓ Ready: 9\.4 s/);
   });
 });

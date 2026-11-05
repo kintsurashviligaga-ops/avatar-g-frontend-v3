@@ -6103,7 +6103,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return () => { mountedRef.current = false; };
   }, []);
   const newAgentMontageBubble = useCallback((text: string, files: Media[]): Msg => ({
-    role: 'assistant', id: `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: readingText(locale),
+    role: 'assistant', id: `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: readingText(locale, files.map((f) => f.name ?? '')),
     montage: { phase: 'reading', prompt: text, names: files.map((f) => f.name ?? ''), uploaded: 0, t0: Date.now() },
   }), [locale]);
   // A plan changed in the chat is quoted again with the same files: each one already uploaded is not sent twice.
@@ -9799,7 +9799,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (m.montage) {
         const c = m.montage;
         const own = cardOwnsJob(c); if (own) owned.add(own);
-        const stage = c.phase === 'running' ? stageText(c.stage ?? null, locale) : c.phase === 'reading' ? readingText(locale) : null;
+        const stage = c.phase === 'running' ? stageText(c.stage ?? null, locale) : c.phase === 'reading' ? readingText(locale, c.names) : null;
         cards.push({ id: m.id, kind: 'montage', phase: c.phase, stage, pct: c.pct ?? null, stopping: !!c.stopping, prompt: c.prompt });
       } else if (m.audioJob) {
         const c = m.audioJob;

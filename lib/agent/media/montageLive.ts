@@ -10,6 +10,8 @@
  */
 import 'server-only';
 import { pexelsConfigured, searchPexels } from '@/lib/services/stock/pexels';
+import { veoTransport } from '@/lib/veo/engine';
+import { VEO_INSERT_SEC } from '@/lib/services/montage/montagePlan';
 import { randomUUID } from 'node:crypto';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { analyzeTrack, detectSegments, grabFrames, probeMedia, streamDurations } from '@/lib/services/montage/beatAnalysis';
@@ -72,12 +74,32 @@ export function liveMontageDeps(): MontageExecDeps {
       const mime = /\.mov(?:\?|$)/i.test(url) ? 'video/quicktime' : /\.webm(?:\?|$)/i.test(url) ? 'video/webm' : 'video/mp4';
       return spotCutaways(liveCutawayDeps(), { url, mime, durationSec, userId, topic });
     },
+    // The thinking step: the same Vertex-only Gemini transport, budget gate and booking as the cutaway read.
+    async direct({ words, videos, userId }) {
+      const { liveCutawayDeps } = await import('./cutawayLive');
+      const { directMontage } = await import('./montageDirector');
+      return directMontage(liveCutawayDeps(), { words, videos, userId });
+    },
+    veoAvailable: () => veoTransport() !== null,
     ...(pexelsConfigured() ? { searchStock: (q: string, o: Parameters<typeof searchPexels>[1]) => searchPexels(q, o) } : {}),
     async render(req, opts) {
       try {
         // No model is called (both tiers are 'ffmpeg-local'); the guard books the compute with the provider spend.
         return await guardedCall({ service: 'montage', model: 'ffmpeg-local', units: montageUnits() }, () =>
-          runMontage(req, { jobId: opts.jobId, signal: opts.signal, onStage: (step, pct) => opts.onStage(step, pct) }));
+          runMontage(req, {
+            jobId: opts.jobId, signal: opts.signal, onStage: (step, pct) => opts.onStage(step, pct),
+            // A generated cutaway: one 4 s Veo clip on Vertex, inside the platform's budget guard and Veo's daily cap
+            // (lib/ai/veoClipSync), hosted in our storage. Landscape: the top half of the frame is wider than tall.
+            makeCutaway: async (prompt, k) => {
+              const { renderVeoClipSync } = await import('@/lib/ai/veoClipSync');
+              const made = await renderVeoClipSync({
+                promptText: `${prompt} Cinematic b-roll, no people talking to camera, no text, no captions.`,
+                aspect: '16:9', durationSec: VEO_INSERT_SEC, folder: `montage/veo/${opts.jobId}-${k}`, budgetMs: 240_000,
+                ...(opts.userId ? { userId: opts.userId } : {}),
+              });
+              return made?.url ?? null;
+            },
+          }));
       } catch (e) {
         // The guard's reason rides along, so the card can say which limit it is and when it lifts (./montageWorker).
         if (e instanceof BudgetExceededError) return { ok: false, step: 'resolve', error: `${BUDGET_ERROR_PREFIX}${e.reason}` };
