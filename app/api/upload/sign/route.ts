@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient, authedClientFromRequest } from '@/lib/supabase/server';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { UPLOAD_MAX_BYTES, allowedUploadMime, uploadExtFor } from '@/lib/uploads/policy';
 
 /**
@@ -35,11 +35,17 @@ export async function POST(req: NextRequest) {
   // Two of them now. Auth first, so every object written is attributable to a real account. Then a
   // rate limit, because a signed-in user can still loop: WRITE (20/min) is ample for a twelve-clip
   // montage and useless for filling a bucket.
-  const rl = await checkRateLimit(req, RATE_LIMITS.WRITE);
-  if (rl) return rl;
+  //
+  // The limit is PER ACCOUNT (RATE_LIMITS.UPLOAD) and no longer the per-IP WRITE bucket: that one is shared with every
+  // other write route and, on a phone's carrier network, with everyone behind the same address, so a user's FIRST upload
+  // could already be refused. The IP guard in front only keeps an unauthenticated flood off the auth lookup.
+  const ipRl = await checkRateLimit(req, RATE_LIMITS.UPLOAD_IP);
+  if (ipRl) return ipRl;
 
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'auth required' }, { status: 401 });
+  const rl = await checkRateLimitByKey(user.id, RATE_LIMITS.UPLOAD);
+  if (rl) return rl;
 
   // ⚠️ ANY CONTENT TYPE USED TO GET A TOKEN, AT ANY SIZE. Held to the shared upload policy now: images, video and
   // audio only (415), and a declared size over the 50 MB cap is refused here (413) rather than after a long upload.

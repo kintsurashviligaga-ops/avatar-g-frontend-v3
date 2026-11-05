@@ -147,6 +147,13 @@ export const RATE_LIMITS = {
   READ:      { maxRequests: 100, windowMs: 60_000,       keyPrefix: 'rl:read'  } as const,
   WRITE:     { maxRequests: 20,  windowMs: 60_000,       keyPrefix: 'rl:write' } as const,
   EXPENSIVE: { maxRequests: 5,   windowMs: 60_000,       keyPrefix: 'rl:exp'   } as const,
+  // Uploads (/api/upload/sign, /api/upload/verify), PER ACCOUNT after auth. They used to draw on WRITE / READ per IP, which
+  // every other route also spends, and a phone on a carrier network shares its IP with strangers: GG's two montage clips
+  // (2026-11-05) were both refused "too many uploads" with nothing uploaded. 60/min per user is a twelve-clip montage
+  // five times over; the IP guard only stops a flood of unauthenticated calls from reaching the auth lookup.
+  UPLOAD:    { maxRequests: 60,  windowMs: 60_000,       keyPrefix: 'rl:upload' } as const,
+  UPLOAD_VERIFY: { maxRequests: 60, windowMs: 60_000,   keyPrefix: 'rl:upload-vf' } as const,
+  UPLOAD_IP: { maxRequests: 300, windowMs: 60_000,       keyPrefix: 'rl:upload-ip' } as const,
   // Music Studio edits (free ffmpeg trim / fade / volume / convert / join): per user, apart from paid starts.
   MUSIC_EDIT: { maxRequests: 20, windowMs: 60_000,       keyPrefix: 'rl:mus-ed' } as const,
   // Stopping a paid job: its own bucket, so quotes, commands and other WRITE routes can never use up the allowance a
