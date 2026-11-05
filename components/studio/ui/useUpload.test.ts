@@ -7,22 +7,27 @@ jest.mock('../../../lib/supabase/browser', () => ({
   createBrowserClient: () => ({ storage: { from: () => ({ uploadToSignedUrl: (...a: unknown[]) => mockPut(...a) }) } }),
 }));
 
-import { uploadErrorText, uploadFileToStorage } from './useUpload';
+import { retryAfterMs, uploadErrorText, uploadFileToStorage } from './useUpload';
 
 const realFetch = global.fetch;
 let signCalls: Array<Record<string, unknown>> = [];
 let signStatus = 200;
+/** Statuses the sign route answers first, one per call, before falling back to signStatus. */
+let signQueue: number[] = [];
 
 beforeEach(() => {
   signCalls = [];
   signStatus = 200;
+  signQueue = [];
   mockPut.mockReset().mockResolvedValue({ error: null });
   global.fetch = jest.fn(async (_url: unknown, init?: { body?: string }) => {
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     signCalls.push(body);
+    const status = signQueue.length ? signQueue.shift()! : signStatus;
     return {
-      status: signStatus,
-      ok: signStatus === 200,
+      status,
+      ok: status === 200,
+      headers: new Headers(status === 429 ? { 'retry-after': '0' } : {}),
       json: async () => ({ bucket: 'uploads', path: 'omni-uploads/u1/1-a.mov', token: 'tok', contentType: body.contentType }),
     } as unknown as Response;
   }) as unknown as typeof fetch;
@@ -57,4 +62,23 @@ test('the route’s 413 / 415 read as too-large / type, not as a broken file', a
   await expect(uploadFileToStorage(file('a.mp4', 'video/mp4'))).resolves.toEqual({ error: 'too-large' });
   signStatus = 415;
   await expect(uploadFileToStorage(file('a.mp4', 'video/mp4'))).resolves.toEqual({ error: 'type' });
+});
+
+test('a busy minute (429) is waited out and asked again: the clip uploads instead of failing', async () => {
+  signQueue = [429, 429];
+  await expect(uploadFileToStorage(file('a.mov', 'video/quicktime'))).resolves.toEqual({ path: 'omni-uploads/u1/1-a.mov' });
+  expect(signCalls).toHaveLength(3);
+});
+
+test('429 every time → „too many uploads" only after the retries', async () => {
+  signStatus = 429;
+  await expect(uploadFileToStorage(file('a.mov', 'video/quicktime'))).resolves.toEqual({ error: 'rate' });
+  expect(signCalls).toHaveLength(4);
+});
+
+test('the retry wait follows Retry-After, capped at 15 s, else 1 s / 2 s / 4 s', () => {
+  expect(retryAfterMs('3', 0)).toBe(3000);
+  expect(retryAfterMs('120', 0)).toBe(15_000);
+  expect(retryAfterMs(null, 0)).toBe(1000);
+  expect(retryAfterMs(null, 2)).toBe(4000);
 });
