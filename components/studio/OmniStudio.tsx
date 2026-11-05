@@ -186,13 +186,13 @@ import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
 import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
 import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import type { RunApproval } from '@/lib/agent/approval';
-import { beatMontageAsk, doneText, errorText, followUpUnsupportedText, montageFollowUpAsk, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
+import { beatMontageAsk, errorText, readyText, runningText, followUpUnsupportedText, montageFollowUpAsk, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, resumeAgentMontage, runAgentMontage, type ClientRun as MontageRun } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { AgentEditCard } from '@/components/studio/AgentEditCard';
 import { AgentRunCard } from '@/components/studio/AgentRunCard';
 import { AgentAnalyzeCard } from '@/components/studio/AgentAnalyzeCard';
-import { unplannedAsks, unplannedText } from '@/lib/agent/media/askCoverage';
+import { montageUnplanned, unplannedText } from '@/lib/agent/media/askCoverage';
 import { chainSpec, runChainAsk, runDoneText, runErrorText, runPartialText, runPlanText, runReadingText, type RunChain } from '@/lib/agent/run/runChat';
 import { approveRunStep, cancelRun, followRun, planRunClient, resumeRunClient, startRunClient, uploadAll } from '@/lib/agent/run/runClient';
 import { canRetry, chainEditsText, runCardJobs, runCardPhase, runTask, stepErrorText, type AgentRunState } from '@/lib/agent/run/runCard';
@@ -6137,7 +6137,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // A card stopped while it read its files (the composer's Stop) stays stopped: the plan that came back is dropped.
     patchMsgById(id, (m) => (m.montage?.phase !== 'reading' ? m : r.ok
       // The plan in words, and what the words asked that it leaves out, by name (lib/agent/media/askCoverage).
-      ? { ...m, text: [quoteText(r.quote, names, locale), unplannedText(unplannedAsks(text), locale)].filter(Boolean).join('\n'), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
+      ? { ...m, text: [quoteText(r.quote, names, locale), unplannedText(montageUnplanned(text, r.quote.cutting === 'assembly'), locale)].filter(Boolean).join('\n'), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
       : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names, r.detail)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, patchMsgById, uploaderOnce]);
   const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
@@ -9232,13 +9232,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }), []);
   const montageProgress = useCallback((id: string): FollowDeps['onProgress'] => (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running'
     // The stage is kept even while a Stop is on its way: the card marks the step the edit stops on.
-    ? { ...m, montage: { ...m.montage, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
-    : m)), [patchMsgById]);
+    ? {
+      ...m,
+      // The bubble narrates the step it is on under the plan (lib/agent/media/montageChat runningText).
+      ...(stage && stage !== m.montage.stage ? { text: runningText(m.montage.quote, m.montage.names, stage, locale) } : {}),
+      montage: { ...m.montage, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) },
+    }
+    : m)), [locale, patchMsgById]);
   // The run's end in this bubble: the master and its shape, or why it stopped. `resumed`: the card was taken back after
   // a reload, so a job the server never saw means its run never got through (nothing was charged).
   const settleAgentMontage = useCallback((id: string, r: MontageRun & { endedAt?: number }, resumed = false) => {
     if (r.ok) {
-      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || m.montage?.quote?.totalSec || 0, locale, m.montage?.quote?.sound), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || m.montage?.quote?.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
+      patchMsgById(id, (m) => ({ ...m, text: readyText(m.montage?.quote, m.montage?.names, r.durationSec || m.montage?.quote?.totalSec || 0, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || m.montage?.quote?.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
       try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
     } else {
       const stopped = r.code === 'cancelled';
@@ -9251,7 +9256,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || montageRunsRef.current.has(id)) return;
     montageRunsRef.current.add(id);
     cardFollowsRef.current.add(id);
-    patchMsgById(id, (m) => ({ ...m, text: stageText(null, locale), montage: { ...m.montage!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
+    patchMsgById(id, (m) => ({ ...m, text: runningText(m.montage?.quote, m.montage?.names, null, locale), montage: { ...m.montage!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
     try {
       const r = await runAgentMontage(followDeps(montageProgress(id)), { request: card.request, token: card.token, prompt: card.prompt, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
       settleAgentMontage(id, r);

@@ -40,6 +40,7 @@ import {
 } from '@/lib/services/montage/montagePlan';
 import { planBeatCuts, type BeatGrid, type CutPlan, type CutProblem, type EnergyEnvelope, type RampResult } from '@/lib/services/montage/beatPlan';
 import { planJoin, type JoinPlan } from '@/lib/services/montage/joinPlan';
+import { assemblyRoles, assemblyWords } from './assemblyAsk';
 import { planAssembly, type AssemblyPart, type AssemblyPlan, type AssemblyProblem, type AssemblyRole, type AskedWindow } from '@/lib/services/montage/assemblyPlan';
 import type { ClipSignals } from '@/lib/services/montage/segmentDetect';
 import { DEFAULT_TRANSITION_SEC, planTransitions, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
@@ -467,7 +468,9 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   let selectionInfo: MontageQuote['selection'];
   const all = sortInputs(probes, Number.POSITIVE_INFINITY);
   // An assembly names its files by role: the words never subset them (a number in „ინტრო 2 წამამდე" is a time).
-  if (all.ok && !input.assembly) {
+  // Nor do an intro/outro edit's words („პირველი ვიდეო დაამონტაჟე, მეორე ვიდეოდან ინტრო…"): „პირველი ვიდეო" names its body.
+  const assemblySaid = all.ok && !all.audios.length && !all.stills.length && !!prompt && assemblyWords(prompt, all.clips.length) !== null;
+  if (all.ok && !input.assembly && !assemblySaid) {
     const sel = selectSources(prompt, all.clips.length);
     if (sel.mode === 'invalid') {
       return refuse(err('selection_invalid', sel.reason === 'out_of_range'
@@ -502,6 +505,17 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     return refuse(asSent(err(sorted.error, message[sorted.error], sorted.files ? { files: sorted.files } : {})));
   }
 
+  // ── an intro + body + outro said in words (./assemblyAsk): the chat sends the message itself, with no roles. GG
+  // 2026-11-05 10:21Z: „პირველი ვიდეო დაამონტაჟე, მეორე ვიდეოდან ინტრო და ბოლო ლოგოს სცენა ამოიღე" was joined whole.
+  // Only two videos and no sound file: anything else keeps the edit it always got. ──────────────────────────────────
+  let assembly: AssemblyAsk | undefined = input.assembly;
+  if (!assembly && prompt && !sorted.audios.length && !sorted.stills.length) {
+    const videoFiles = sorted.clips;
+    const w = assemblyWords(prompt, videoFiles.length);
+    const roles = w ? assemblyRoles(w, videoFiles, videoFiles.map((i) => probes[i]?.durationSec ?? 0)) : null;
+    if (roles) assembly = roles;
+  }
+
   // ── the sound: which file is the music, which the narration, and what the edit sounds like ────────────────────
   // GG 2026-10-11 17:38Z: no music sent is a montage with the clips' own sound, never a refusal; „თავისი ხმაც" keeps
   // that sound under a track; a recording of the user's voice is laid over the edit (./montageAsk pickTracks, soundOf).
@@ -520,7 +534,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const music = picked.music !== null ? analysed.get(picked.music)! : null;
   const voice = picked.voice !== null ? analysed.get(picked.voice)! : null;
   // An assembly is the clips' own sound (an intro's jingle, the body's voice), with any music sent laid beneath it.
-  const sound = input.assembly ? (music ? 'own+music' : 'own') : soundOf(prompt, music !== null);
+  const sound = assembly ? (music ? 'own+music' : 'own') : soundOf(prompt, music !== null);
 
   // ── the manifest: every file sent, in the order sent; files = manifest = pictures + at most a track and a narration
   const soundProbe = new Map(tracks.map((t) => [t.index, { durationSec: t.durationSec }]));
@@ -552,7 +566,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   // With the music alone the cuts follow its beat (the montage as it always was). Where the clips' own sound plays, a
   // clip is one stretch in the order sent (./joinPlan: a beat-long slice of speech is noise), unless the words ask
   // for the beat or for speed ramps, which follow the music.
-  const onBeat = !input.assembly && music !== null && (sound === 'music' || rampMode !== null || wantsBeatCuts(prompt));
+  const onBeat = !assembly && music !== null && (sound === 'music' || rampMode !== null || wantsBeatCuts(prompt));
   // Transitions asked („zoom transitions", „მდოვრე გადასვლებით"): on the beat, every shot leaves its roll free (./beatPlan
   // rollSec), so the transition into it plays from footage no shot uses and the cut stays on its beat.
   const tAsk = prompt ? transitionAsk(prompt) : null;
@@ -584,8 +598,8 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   };
   // ── an assembly: intro + body + outro, each cut where it really starts and ends (no beat, no shares) ──────────────
   let assemblyPlan: AssemblyPlan | null = null;
-  if (input.assembly) {
-    const a = await planAssemblyOf(deps, input.assembly, sorted, urls, probes as BannerProbe[], limits);
+  if (assembly) {
+    const a = await planAssemblyOf(deps, assembly, sorted, urls, probes as BannerProbe[], limits);
     if (!a.ok) return refuse(a.error);
     assemblyPlan = a.plan;
   }

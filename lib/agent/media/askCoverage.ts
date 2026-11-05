@@ -193,3 +193,13 @@ export function unplannedText(list: readonly Unplanned[] | undefined, locale: st
   const head = lang === 'en' ? 'Not in this plan' : lang === 'ru' ? 'Не входит в этот план' : 'ამ გეგმაში არ შედის';
   return `${head}: ${list.map((u) => unplannedLine(u, locale)).join(' · ')}.`;
 }
+
+/**
+ * What a montage's words ask that its plan leaves out. An intro + body + outro edit (`assembly`) is itself the cut those
+ * words describe: „ბოლო ლოგოს სცენა" is the outro, not a logo to draw, and „ამოიღე" is the cut, not a trim (GG
+ * 2026-11-05 10:21Z, whose card said a logo change was not in the plan).
+ */
+export function montageUnplanned(text: string | undefined, assembly: boolean): Unplanned[] {
+  const all = unplannedAsks(text);
+  return assembly ? all.filter((u) => u.kind !== 'logo' && u.kind !== 'layer_change' && u.kind !== 'trim') : all;
+}
