@@ -98,6 +98,9 @@ import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { setLiveAttachedRefs } from '@/lib/voice/liveAttached';
 import { agentAudioPlanOf, liveFingerprint, livePlanOf, livePlansOf, quotedPlanNote } from '@/lib/voice/livePlans';
+import { isDriveAsk, driveAgentGoal } from '@/lib/connectors/google/driveAsk';
+import { fetchConnectors } from '@/components/studio/research/api';
+import { fetchAgentRun } from '@/components/voice/live/liveActions';
 import { LIVE_ACTION_EVENT, LIVE_AGENT_ANSWER_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveAgentAnswerDetail, type LiveResultNote, type LiveResultRef, type LiveRunDetail, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
@@ -2161,6 +2164,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [agentEditOn, setAgentEditOn] = useState(false);
   // Agent G's whole-file analysis (lib/agent/media/analyzeExec): open only where AGENT_G_FILE_ANALYSIS opens its route.
   const [agentAnalyzeOn, setAgentAnalyzeOn] = useState(false);
+  // Google Drive (Phase 4) is open to this user (GET /api/connectors says google_drive is connectable): a question about
+  // „my Drive" goes to Agent G's loop, which alone has the Drive tools (lib/connectors/google/driveAsk).
+  const [driveOn, setDriveOn] = useState(false);
   // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image;
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
@@ -3528,6 +3534,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (guest) { setAgentAnalyzeOn(false); return; }
     let live = true;
     void analyzeEnabled((u, init) => fetch(u, init)).then((on) => { if (live) setAgentAnalyzeOn(on); });
+    return () => { live = false; };
+  }, [guest]);
+  useEffect(() => {
+    if (guest) { setDriveOn(false); return; }
+    let live = true;
+    void fetchConnectors().then((r) => { if (live) setDriveOn(r.ok && r.connectors.some((c) => c.id === 'google_drive' && c.status === 'connectable')); });
     return () => { live = false; };
   }, [guest]);
   // The video create screen's server facts — which lengths are open today, the first-video slot, the balance. Read only
@@ -6770,6 +6782,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       return;
     }
+    // ── GOOGLE DRIVE (Phase 4, DRIVE-01) ── „რა წერია ჩემ დრაივზე?" typed in the chat: the chat model has no Drive tool and
+    // answered „I cannot see your Drive" (GG, myavatar.ge 2026-11-05 14:17Z). Agent G's loop (POST /api/agent/run) lists and
+    // reads ONLY the files the user picked (drive.file), read only and free; its answer is the reply. Only while the
+    // server opens Drive to this user; a turn with files attached stays with the chat.
+    if (mode === 'chat' && driveOn && text && !opts?.confirmed && !opts?.target && !opts?.fromLive && !attachments.length && isDriveAsk(text)) {
+      gatePendingRef.current = null;
+      const driveId = `drv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const working = locale === 'en' ? 'Agent G is reading your Google Drive files…' : locale === 'ru' ? 'Agent G читает ваши файлы Google Drive…' : 'Agent G კითხულობს შენს Google Drive-ის ფაილებს…';
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', id: driveId, text: working, notice: true, docWorking: Date.now() }]);
+      setInput(''); stopDictationEcho();
+      persistChatTurn('user', text);
+      setBusy(true);
+      const r = await fetchAgentRun(driveAgentGoal(text), { maxSteps: 6, budgetMs: 60_000, timeoutMs: 75_000, source: 'chat' });
+      setBusy(false);
+      if (r.ok && r.answer) {
+        updateBubble(driveId, { text: r.answer, notice: false, docWorking: undefined });
+        persistChatTurn('assistant', r.answer);
+      } else {
+        const failed = locale === 'en' ? 'Agent G could not read your Google Drive just now. Try again in a moment.'
+          : locale === 'ru' ? 'Agent G сейчас не смог прочитать ваш Google Drive. Попробуйте ещё раз.'
+            : 'Agent G-მა ახლა ვერ წაიკითხა შენი Google Drive. ცოტა ხანში სცადე თავიდან.';
+        updateBubble(driveId, { text: failed, notice: true, docWorking: undefined });
+      }
+      return;
+    }
     // THE STUDIO'S OWN CONTROLS, IN ANY TOOL (GG's plan 2026-10-17 11:28Z, item 1; lib/chat/panelCommand). „გახსენი ვიდეო",
     // „გავაკეთოთ ავატარი", „ჩაკეტე პანელი", „დაბრუნდი ჩატში", typed or dictated: read before anything takes the words as a
     // prompt. The composer stays in the last result's tool and every open-route below runs in plain chat only, so after a
@@ -7884,7 +7921,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     inputSourceRef.current = 'text'; // reset for the next turn (the box is now empty)
     persistChatTurn('user', text, attachments); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     await streamChat([...messages, userMsg]);
-  }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, proposeClip, proposeEdit, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith, updateBubble]);
+  }, [askSceneRedo, productDuration, productAspect, productPreset, inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, readVeoAvatarDoor, createStoryboard, proposeClip, proposeEdit, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, driveOn, patchMsgById, runChatRemix, seedMontageWith, updateBubble]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
