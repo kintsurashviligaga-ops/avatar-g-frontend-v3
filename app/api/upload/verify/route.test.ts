@@ -6,7 +6,7 @@
 let mockUser: { id: string } | null = { id: 'u1' };
 const mockRemoved: string[][] = [];
 let mockSignError: unknown = null;
-jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), RATE_LIMITS: { READ: {} } }));
+jest.mock('../../../../lib/api/rate-limit', () => ({ checkRateLimit: jest.fn(async () => null), checkRateLimitByKey: jest.fn(async () => null), RATE_LIMITS: { UPLOAD: {}, UPLOAD_VERIFY: {}, UPLOAD_IP: {} } }));
 jest.mock('../../../../lib/supabase/server', () => ({
   authedClientFromRequest: async () => ({ user: mockUser }),
   createServiceRoleClient: () => ({
