@@ -53,6 +53,9 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
   const localState = states?.find((s) => s.id === 'local_files');
   const driveState = states?.find((s) => s.id === 'google_drive');
   const localReady = localState?.status === 'ready' && !filesUnavailable;
+  const driveOpen = authed && driveState?.status === 'connectable';
+  // With Drive open, an unavailable Local files row only reads as "uploads are off" above the working Drive row.
+  const hideLocal = driveOpen && !!states && !localReady && !loadFailed;
   const maxFiles = limits?.maxFiles ?? RESEARCH_FILES_MAX;
   const full = (files?.length ?? 0) >= maxFiles;
 
@@ -86,7 +89,7 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
       <p className="text-[13.5px] leading-relaxed text-app-muted">{c.connLead}</p>
 
       {/* Local files — the one connector that works. */}
-      <section aria-labelledby={localH} data-testid="connector-local" className="rounded-2xl bg-app-elevated/50 p-3">
+      {!hideLocal && <section aria-labelledby={localH} data-testid="connector-local" className="rounded-2xl bg-app-elevated/50 p-3">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-app-accent" aria-hidden="true"><HardDrive size={17} /></span>
           <div className="min-w-0 flex-1">
@@ -143,10 +146,10 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
         ) : null}
 
         {message && <p role="alert" className="mt-2 text-[12.5px] leading-snug text-app-text">{message}</p>}
-      </section>
+      </section>}
 
       {/* Google Drive — only when the server says it is connectable for this user (configured + CONNECTORS_DRIVE). */}
-      {authed && driveState?.status === 'connectable' && (
+      {driveOpen && driveState && (
         <DriveConnector lang={lang} linked={driveState.linked === true} onChanged={() => void load()} />
       )}
     </div>

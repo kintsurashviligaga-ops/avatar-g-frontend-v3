@@ -286,6 +286,21 @@ describe('ConnectorsSheet', () => {
     expect(screen.queryByTestId('connector-add')).toBeNull();
   });
 
+  test('storage not switched on but Drive open: the Local files row is hidden, Drive shows', async () => {
+    network((url) => {
+      if (url.includes('/api/connectors/files')) return { status: 503, body: { error: 'unavailable' } };
+      if (url.includes('/api/connectors')) return { body: { ...states, connectors: [
+        { id: 'local_files', label: 'Local files', status: 'unavailable' },
+        { id: 'google_drive', label: 'Google Drive', status: 'connectable', linked: false },
+      ] } };
+      return undefined;
+    });
+    render(<ConnectorsSheet locale="en" authed />);
+    await waitFor(() => expect(screen.getByText('Google Drive')).toBeTruthy());
+    expect(screen.queryByTestId('connector-local')).toBeNull();
+    expect(screen.queryByTestId('connector-local-unavailable')).toBeNull();
+  });
+
   test('a guest is asked to sign in', async () => {
     network((url) => (url.includes('/api/connectors') ? { body: states } : undefined));
     render(<ConnectorsSheet locale="en" authed={false} />);
