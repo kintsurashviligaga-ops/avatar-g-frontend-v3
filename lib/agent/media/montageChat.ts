@@ -17,6 +17,7 @@
  *   · with ONE clip and nothing else, only a cut / montage word: „add music to this video" wants the whole clip with a song under it
  *     (the remix's add_music), not the clip chopped into shots — and a trim („cut the first 10 seconds") stays a trim.
  */
+import { cutawayWords } from './cutawayAsk';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { withoutQuotedSpeech } from '@/lib/chat/quotedSpeech';
 import { isVideoQuestion } from '@/lib/chat/videoIntent';
@@ -93,6 +94,9 @@ export function beatMontageAsk(text: string, kinds: AttachmentKind[]): boolean {
   const pictures = videos + photos;
   if (pictures < 1 || pictures > MAX_CLIPS || audios > MAX_SOUNDS || pictures + audios !== kinds.length) return false;
   const montageWords = CUT.test(t) || MAKE_CLIP.test(t) || detectStudioIntent(t)?.service === 'montage' || (photos > 0 && SLIDESHOW.test(t));
+  // Footage of what the speaker says over his video, in a split screen (./cutawayAsk, GG 2026-11-05 14:32Z): a montage
+  // of his clip(s) with the cutaways laid on, even from one video and with no montage word.
+  if (videos >= 1 && cutawayWords(t) && !asksNarration(t)) return true;
   if (!audios) {
     // A narration asked with no recording sent is not this edit as sent: the chat asks for the file (lib/agent/intent).
     if (pictures < 2 || !montageWords || TRIM.test(t) || asksNarration(t)) return false;
@@ -555,12 +559,13 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     : '';
   const ramp = q.ramp ? `\n${rampText(q.ramp, locale)}` : '';
   const trans = q.transitions ? `\n${transitionsText(q.transitions, locale)}` : '';
+  const cuts = q.cutaways ? `\n${cutawaysText(q.cutaways, lang)}` : '';
   const engine = lang === 'en' ? 'Engine: FFmpeg montage.' : lang === 'ru' ? 'Движок: FFmpeg-монтаж.' : 'ძრავი: FFmpeg მონტაჟი.';
   const price = q.credits > 0
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${noted}${ramp}${trans}${files}${left}\n${engine} ${price}${withGo ? ` ${go}` : ''}`;
+  return `${found}\n${plan}${from}${noted}${ramp}${trans}${cuts}${files}${left}\n${engine} ${price}${withGo ? ` ${go}` : ''}`;
 }
 
 /**
@@ -578,6 +583,34 @@ export function runningText(q: MontageQuote | undefined, names: string[] | undef
 export function readyText(q: MontageQuote | undefined, names: string[] | undefined, durationSec: number, locale: string): string {
   const done = `✓ ${doneText(durationSec, locale, q?.sound)}`;
   return q ? `${quoteText(q, names, locale, false)}\n\n${done}` : done;
+}
+
+/**
+ * The cutaways, line by line: at which second, which footage (the search it came from, its Pexels author), and what
+ * the speaker says there — so the user sees WHY each shot is where it is. Lines that found nothing are said too.
+ */
+export function cutawaysText(c: NonNullable<MontageQuote['cutaways']>, lang: Lang): string {
+  const clip = (t: string) => (t.length > 60 ? `${t.slice(0, 57)}…` : t);
+  if (c.unavailable && !c.items.length) {
+    const why = c.unavailable === 'not_configured'
+      ? { ka: 'კადრების ძებნა ამ სერვერზე ჩართული არ არის', en: 'footage search is not switched on here', ru: 'поиск кадров здесь не включён' }
+      : c.unavailable === 'analysis_failed'
+        ? { ka: 'ვერ წავიკითხე, რას ამბობს წამყვანი', en: 'I could not read what the speaker says', ru: 'не удалось разобрать, что говорит ведущий' }
+        : { ka: 'შესაფერისი კადრი ვერ ვიპოვე', en: 'no matching footage was found', ru: 'подходящих кадров не нашлось' };
+    return lang === 'en' ? `Split screen: none, ${why.en}; the speaker stays full screen.`
+      : lang === 'ru' ? `Разделённый экран: нет, ${why.ru}; ведущий остаётся на весь экран.`
+        : `გაყოფილი ეკრანი: არა, ${why.ka}; წამყვანი მთელ ეკრანზე რჩება.`;
+  }
+  const head = lang === 'en' ? `Split screen: ${c.items.length} real shot${c.items.length === 1 ? '' : 's'} (Pexels) on top, the speaker below, his voice throughout:`
+    : lang === 'ru' ? `Разделённый экран: ${c.items.length} реальных кадров (Pexels) сверху, ведущий снизу, его голос без перерыва:`
+      : `გაყოფილი ეკრანი: ზემოთ ${c.items.length} რეალური კადრი (Pexels), ქვემოთ წამყვანი, მისი ხმა არ წყდება:`;
+  const rows = c.items.map((x) => `· ${clockOf(x.startSec)}–${clockOf(x.endSec)} „${x.query}“ — ${quoted(lang, clip(x.text))}${x.author ? ` (${x.author})` : ''}`);
+  const miss = c.missed.length
+    ? [lang === 'en' ? `No footage found for ${c.missed.length} line${c.missed.length === 1 ? '' : 's'}: ${c.missed.map((m) => `„${m.query}“`).join(', ')}; the speaker stays there.`
+      : lang === 'ru' ? `Не нашлось кадров для ${c.missed.length}: ${c.missed.map((m) => `„${m.query}“`).join(', ')}; там остаётся ведущий.`
+        : `${c.missed.length} ფრაზაზე კადრი ვერ ვიპოვე (${c.missed.map((m) => `„${m.query}“`).join(', ')}); იქ წამყვანი რჩება.`]
+    : [];
+  return [head, ...rows, ...miss].join('\n');
 }
 
 /** An intro + body + outro edit says its own steps: there are no shots or music to speak of. */
@@ -623,6 +656,7 @@ const STAGE: Record<string, Record<Lang, string>> = {
   bridge: { ka: 'ფაილებს ვამზადებ', en: 'Preparing the files', ru: 'Готовлю файлы' },
   normalize: { ka: 'კადრებს ვჭრი და ერთ ფორმატში მოვყავარ', en: 'Cutting the shots to one format', ru: 'Нарезаю кадры в один формат' },
   stitch: { ka: 'კადრებს ვაერთებ', en: 'Joining the shots', ru: 'Склеиваю кадры' },
+  inserts: { ka: 'კადრებს ვსვამ ზედა ნახევარში, წამყვანი ქვემოთ', en: 'Laying the footage in the top half, the speaker below', ru: 'Ставлю кадры в верхнюю половину, ведущий снизу' },
   music: { ka: 'ხმას ვამატებ: მუსიკას და ნარაციას', en: 'Mixing the sound: the music and the narration', ru: 'Свожу звук: музыку и озвучку' },
   qc: { ka: 'ვამოწმებ, რომ ყველა კლიპი შედეგშია', en: 'Checking every clip is in the output', ru: 'Проверяю, что все клипы в итоге' },
   completed: { ka: 'ვამოწმებ შედეგს', en: 'Checking the result', ru: 'Проверяю результат' },

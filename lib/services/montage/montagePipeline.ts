@@ -23,6 +23,7 @@ import { fitAspect, kenBurnsClip, mixMontageSound, muxAudioOntoVideo } from '@/l
 import { uploadBufferAndSign, reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { updateJobStage } from '@/lib/orchestrator/jobs';
 import { withFfmpegSignal } from '@/lib/video/ffmpegExec';
+import { overlayInserts } from '@/lib/video/insertOps';
 import { reportError } from '@/lib/observability/report-error';
 import {
   ASPECT_DIMS,
@@ -36,9 +37,9 @@ import {
 
 const WEEK_SEC = 604_800;
 
-export type MontageStep = 'resolve' | 'bridge' | 'normalize' | 'stitch' | 'music';
+export type MontageStep = 'resolve' | 'bridge' | 'normalize' | 'stitch' | 'inserts' | 'music';
 
-const PCT: Record<MontageStep, number> = { resolve: 6, bridge: 26, normalize: 58, stitch: 88, music: 96 };
+const PCT: Record<MontageStep, number> = { resolve: 6, bridge: 26, normalize: 58, stitch: 84, inserts: 92, music: 96 };
 
 export interface MontageResult {
   videoUrl: string;
@@ -185,15 +186,32 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
     if (!master) return { ok: false, step: 'stitch', error: 'the shots could not be stitched together' };
     stepsRun.push('stitch');
 
-    // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────
+    // ── LEG 4b · cutaways ──────────────────────────────────────────────────────────────────────────
+    // The footage over the speaker in a split screen (./insertCompose). Like a shot, a cutaway the render cannot lay is
+    // a wrong edit (FAIL POLICY): the job fails rather than delivering the speaker alone.
     let videoUrl = master;
+    if (req.inserts?.length) {
+      if (await halted()) return { ok: false, step: 'inserts', error: 'cancelled' };
+      await stage(opts, 'inserts');
+      const ins = [];
+      for (const x of req.inserts) {
+        const url = (await reSignIfInternal(x.url, WEEK_SEC).catch(() => x.url)) || x.url;
+        ins.push({ ...x, url });
+      }
+      const laid = await overlayInserts(master, ins, { w, h });
+      if (!laid) return { ok: false, step: 'inserts', error: 'the cutaway footage could not be laid over the edit' };
+      videoUrl = laid;
+      stepsRun.push('inserts');
+    }
+
+    // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────
     let hasVoice = false;
     if (voiceUrl || (musicUrl && req.musicGainDb !== undefined)) {
       // Agent G's own mix (lib/services/montage/montageSound): music at the quoted level, the narration over it. Unlike
       // the editor's bed below, a mix that fails fails the job: the user started an edit with this sound.
       if (await halted()) return { ok: false, step: 'music', error: 'cancelled' };
       await stage(opts, 'music');
-      const mixed = await mixMontageSound(master, {
+      const mixed = await mixMontageSound(videoUrl, {
         ...(musicUrl ? { musicUrl, musicStartSec: req.musicStartSec ?? 0, musicGainDb: req.musicGainDb ?? 0 } : {}),
         ...(voiceUrl ? { voiceUrl, voiceStartSec: req.voiceStartSec ?? 0 } : {}),
       });
@@ -211,7 +229,7 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
       // `musicStartSec` is where in the song the first frame lands (the editor's „start at"); it seeks the song's input
       // in whichever branch runs, so the picture's length still decides the end.
       const mixed = await muxAudioOntoVideo(
-        master,
+        videoUrl,
         musicUrl,
         req.musicOnly ? 'bed' : 'under',
         Math.abs(req.musicDuckDb),
