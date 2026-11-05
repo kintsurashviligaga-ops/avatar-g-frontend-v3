@@ -126,6 +126,67 @@ describe('quote_audio_from_link (Agent G audio extraction, quote only)', () => {
   });
 });
 
+describe('quote_video_assembly (intro + body + outro, quote only)', () => {
+  const QUOTE = {
+    ok: true,
+    quote: {
+      jobId: 'j-2', credits: 0, totalSec: 8.7, shots: 3, clips: 2, aspect: '16:9', cutting: 'assembly', expiresAt: 9,
+      assembly: { parts: [
+        { role: 'intro', file: 0, startSec: 0, endSec: 2, startBy: 'whole', endBy: 'black' },
+        { role: 'body', file: 1, startSec: 0.867, endSec: 5.633, startBy: 'speech', endBy: 'speech' },
+        { role: 'outro', file: 0, startSec: 2.5, endSec: 4.433, startBy: 'black', endBy: 'whole' },
+      ] },
+    },
+    request: { shots: [{ url: 'https://signed/a' }] },
+    token: 'secret-token',
+  };
+  const media = (onMediaQuote = jest.fn()): AgentContext => ({ ...CTX, files: ['u/a.mp4', 'u/b.mp4'], media: true, onMediaQuote });
+  const tool = (ctx: AgentContext) => buildLiveToolRegistry(ctx, { goal: 'intro, my video, outro' }).find((x) => x.name === 'quote_video_assembly')!;
+
+  test('the roles by file number (1-based → 0-based) and the times the user said; the model sees each part, never the token', async () => {
+    mockQuote.mockResolvedValueOnce(QUOTE);
+    const onMediaQuote = jest.fn();
+    const obs = await tool(media(onMediaQuote)).run({
+      intro_source: 1, body_source: '2', outro_source: 1, cut_timestamps: { intro: { end_sec: 2 }, body: { start_sec: '1', end_sec: 6 } },
+    });
+    expect(mockQuote).toHaveBeenCalledWith({ live: true }, {
+      userId: CTX.userId, files: ['u/a.mp4', 'u/b.mp4'], prompt: 'intro, my video, outro', aspect: undefined,
+      assembly: { intro: 0, body: 1, outro: 0, cuts: { intro: { endSec: 2 }, body: { startSec: 1, endSec: 6 } } },
+    });
+    expect(obs).toEqual({
+      planned: true, rendered: false, credits: 0, lengthSec: 8.7, aspect: '16:9',
+      parts: [
+        { role: 'intro', file: 1, start_sec: 0, end_sec: 2, start_by: 'whole', end_by: 'black' },
+        { role: 'body', file: 2, start_sec: 0.867, end_sec: 5.633, start_by: 'speech', end_by: 'speech' },
+        { role: 'outro', file: 1, start_sec: 2.5, end_sec: 4.433, start_by: 'black', end_by: 'whole' },
+      ],
+      next: 'The user confirms the plan on its card; nothing starts before that.',
+    });
+    expect(JSON.stringify(obs)).not.toMatch(/secret-token|signed/);
+    expect(onMediaQuote).toHaveBeenCalledWith(QUOTE);
+  });
+
+  test('body only: no intro/outro keys reach the quote', async () => {
+    mockQuote.mockResolvedValueOnce(QUOTE);
+    await tool(media()).run({ body_source: 1 });
+    expect(mockQuote.mock.calls[0][1].assembly).toEqual({ body: 0 });
+  });
+
+  test('a bad file number or time is an observation and quotes nothing; a refusal names files 1-based', async () => {
+    await expect(tool(media()).run({})).resolves.toMatchObject({ error: 'invalid_input' });
+    await expect(tool(media()).run({ body_source: 0 })).resolves.toMatchObject({ error: 'invalid_input' });
+    await expect(tool(media()).run({ body_source: 1, cut_timestamps: { body: { start_sec: -1 } } })).resolves.toMatchObject({ error: 'invalid_input' });
+    expect(mockQuote).not.toHaveBeenCalled();
+    mockQuote.mockResolvedValueOnce({ ok: false, error: 'assembly_no_boundary', message: 'No break.', files: [0] });
+    await expect(tool(media()).run({ intro_source: 1, body_source: 2, outro_source: 1 })).resolves.toEqual({ error: 'assembly_no_boundary', message: 'No break.', files: [1] });
+  });
+
+  test('offered only with files and media execution, like the montage', () => {
+    expect(buildLiveToolRegistry({ ...CTX, files: ['u/a.mp4'], media: false }).map((t) => t.name)).not.toContain('quote_video_assembly');
+    expect(buildLiveToolRegistry({ ...CTX, files: ['u/a.mp4'], media: true }).map((t) => t.name)).toContain('quote_video_assembly');
+  });
+});
+
 describe('quote_montage_to_music (Agent G media execution, quote only)', () => {
   const QUOTE = {
     ok: true,
