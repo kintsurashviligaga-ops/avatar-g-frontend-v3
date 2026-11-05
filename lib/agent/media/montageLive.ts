@@ -67,10 +67,10 @@ export function liveMontageDeps(): MontageExecDeps {
     analyzeTrack: (url) => analyzeTrack(url),
     detectSegments: (url, probe) => detectSegments(url, probe),
     async spotCutaways({ url, durationSec, userId, topic }) {
-      const { liveAnalyzeDeps } = await import('./analyzeLive');
+      const { liveCutawayDeps } = await import('./cutawayLive');
       const { spotCutaways } = await import('./cutawaySpot');
       const mime = /\.mov(?:\?|$)/i.test(url) ? 'video/quicktime' : /\.webm(?:\?|$)/i.test(url) ? 'video/webm' : 'video/mp4';
-      return spotCutaways(liveAnalyzeDeps(), { url, mime, durationSec, userId, topic });
+      return spotCutaways(liveCutawayDeps(), { url, mime, durationSec, userId, topic });
     },
     ...(pexelsConfigured() ? { searchStock: (q: string, o: Parameters<typeof searchPexels>[1]) => searchPexels(q, o) } : {}),
     async render(req, opts) {
