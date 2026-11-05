@@ -21,7 +21,7 @@ import { cutawayWords } from './cutawayAsk';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { withoutQuotedSpeech } from '@/lib/chat/quotedSpeech';
 import { isVideoQuestion } from '@/lib/chat/videoIntent';
-import type { MontageAspect } from '@/lib/services/montage/montagePlan';
+import { VEO_CUTAWAY_CREDITS, type MontageAspect } from '@/lib/services/montage/montagePlan';
 import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/services/montage/beatPlan';
 import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
 import { budgetRefusalMessage } from '@/lib/services/billing/budgetMessage';
@@ -154,8 +154,14 @@ export function priceLabel(credits: number, locale: string): string {
 }
 
 /** What Agent G says while it uploads and reads the files. */
-export function readingText(locale: string): string {
+export function readingText(locale: string, names?: readonly string[]): string {
   const lang = pick(locale);
+  // Videos alone: there is no beat to read; the agent watches them and thinks the edit through (./montageDirector).
+  if (names?.length && !names.some((n) => /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|weba)$/i.test(n))) {
+    return lang === 'en' ? 'Watching your videos and thinking the edit through: what each one is, the order, and anything the request leaves out…'
+      : lang === 'ru' ? 'Смотрю ваши видео и продумываю монтаж: что в каждом, в каком порядке и что в задаче не уточнено…'
+        : 'ვუყურებ შენს ვიდეოებს და ვფიქრობ მონტაჟზე: რა არის თითოეულში, რა თანმიმდევრობით და რა გამოგრჩა დავალებაში…';
+  }
   return lang === 'en' ? 'Reading your files: lengths, format, the sound and the beat…'
     : lang === 'ru' ? 'Читаю файлы: длительность, формат, звук и бит…'
       : 'ვკითხულობ ფაილებს: ხანგრძლივობას, ფორმატს, ხმას და ბითს…';
@@ -490,7 +496,8 @@ function assemblyText(parts: NonNullable<MontageQuote['assembly']>['parts'], lan
   const by = (a: string, b: string) => [...new Set([a, b])].filter((k) => BY[k]).map((k) => BY[k]![lang]).join(', ');
   const lines = parts.map((p) => {
     const how = by(p.startBy, p.endBy);
-    return `${ROLE[p.role]![lang]}: ${sec(p.startSec)}–${sec(p.endSec)} ${u}${how ? ` (${how})` : ''}`;
+    const vid = lang === 'en' ? `video ${p.file + 1}` : lang === 'ru' ? `видео ${p.file + 1}` : `ვიდეო ${p.file + 1}`;
+    return `${ROLE[p.role]![lang]} (${vid}): ${sec(p.startSec)}–${sec(p.endSec)} ${u}${how ? ` (${how})` : ''}`;
   });
   const head = lang === 'en' ? 'Each part is cut where it really starts and ends, picture and sound on the same frame:'
     : lang === 'ru' ? 'Каждая часть обрезана там, где она реально начинается и кончается, картинка и звук — на одном кадре:'
@@ -525,9 +532,34 @@ function cuttingText(q: MontageQuote, lang: Lang): string {
         : 'მკაფიო ბითი ვერ ვიპოვე, ამიტომ კადრებს თანაბარ, ნახევარწამიან ბადეზე ვჭრი.');
 }
 
+const KIND_WORD: Record<string, Record<Lang, string>> = {
+  presenter: { ka: 'წამყვანი', en: 'presenter', ru: 'ведущий' },
+  intro: { ka: 'ინტრო', en: 'intro', ru: 'интро' },
+  outro: { ka: 'აუტრო', en: 'outro', ru: 'аутро' },
+  logo: { ka: 'ლოგოს სცენა', en: 'logo scene', ru: 'сцена с логотипом' },
+  broll: { ka: 'კადრები წამყვანის გარეშე', en: 'footage, no speaker', ru: 'кадры без ведущего' },
+  other: { ka: 'სხვა', en: 'other', ru: 'другое' },
+};
+
+/**
+ * The agent's thinking, before its plan (./montageDirector): what it saw in each video, why it plans the edit this way,
+ * and what it decided that the words did not say — the way a chat agent shows its reasoning (GG 2026-11-05 17:29Z).
+ */
+export function directorText(d: NonNullable<MontageQuote['director']>, lang: Lang): string {
+  const head = lang === 'en' ? '🧠 What I saw and decided:' : lang === 'ru' ? '🧠 Что я увидел и решил:' : '🧠 რა დავინახე და რა გადავწყვიტე:';
+  const vid = lang === 'en' ? 'Video' : lang === 'ru' ? 'Видео' : 'ვიდეო';
+  const seen = d.files.map((f) => `· ${vid} ${f.file + 1} — ${KIND_WORD[f.kind]?.[lang] ?? f.kind}${f.summary ? `: ${f.summary}` : ''}`);
+  const why = d.reasoning.map((r) => `· ${r}`);
+  const filled = d.filled.length
+    ? [(lang === 'en' ? 'You did not say it, so I decided:' : lang === 'ru' ? 'Вы этого не уточнили, поэтому я решил:' : 'ეს არ გითქვამს, ამიტომ მე გადავწყვიტე:'), ...d.filled.map((r) => `· ${r}`)]
+    : [];
+  return [head, ...seen, ...why, ...filled].join('\n');
+}
+
 /** Agent G's plan, in words: what it found, what it will make, what it costs, and that nothing starts before Confirm. */
 export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string, withGo = true): string {
   const lang = pick(locale);
+  const thought = q.director ? `${directorText(q.director, lang)}\n\n` : '';
   const found = cuttingText(q, lang);
   const st = q.stills ?? 0;
   const what = lang === 'en'
@@ -565,7 +597,7 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${noted}${ramp}${trans}${cuts}${files}${left}\n${engine} ${price}${withGo ? ` ${go}` : ''}`;
+  return `${thought}${found}\n${plan}${from}${noted}${ramp}${trans}${cuts}${files}${left}\n${engine} ${price}${withGo ? ` ${go}` : ''}`;
 }
 
 /**
@@ -601,16 +633,29 @@ export function cutawaysText(c: NonNullable<MontageQuote['cutaways']>, lang: Lan
       : lang === 'ru' ? `Разделённый экран: нет, ${why.ru}; ведущий остаётся на весь экран.`
         : `გაყოფილი ეკრანი: არა, ${why.ka}; წამყვანი მთელ ეკრანზე რჩება.`;
   }
-  const head = lang === 'en' ? `Split screen: ${c.items.length} real shot${c.items.length === 1 ? '' : 's'} (Pexels) on top, the speaker below, his voice throughout:`
-    : lang === 'ru' ? `Разделённый экран: ${c.items.length} реальных кадров (Pexels) сверху, ведущий снизу, его голос без перерыва:`
-      : `გაყოფილი ეკრანი: ზემოთ ${c.items.length} რეალური კადრი (Pexels), ქვემოთ წამყვანი, მისი ხმა არ წყდება:`;
-  const rows = c.items.map((x) => `· ${clockOf(x.startSec)}–${clockOf(x.endSec)} „${x.query}“ — ${quoted(lang, clip(x.text))}${x.author ? ` (${x.author})` : ''}`);
+  const gen = c.items.filter((x) => x.source === 'veo').length;
+  const real = c.items.length - gen;
+  const parts = {
+    en: [real ? `${real} real shot${real === 1 ? '' : 's'} (Pexels)` : '', gen ? `${gen} generated (Veo, ✦ ${VEO_CUTAWAY_CREDITS} each)` : ''].filter(Boolean).join(' + '),
+    ru: [real ? `${real} реальных кадров (Pexels)` : '', gen ? `${gen} сгенерированных (Veo, ✦ ${VEO_CUTAWAY_CREDITS} каждый)` : ''].filter(Boolean).join(' + '),
+    ka: [real ? `${real} რეალური კადრი (Pexels)` : '', gen ? `${gen} შექმნილი კადრი (Veo, თითო ✦ ${VEO_CUTAWAY_CREDITS})` : ''].filter(Boolean).join(' + '),
+  };
+  const head = lang === 'en' ? `Split screen: ${parts.en} on top, the speaker below, his voice throughout:`
+    : lang === 'ru' ? `Разделённый экран: ${parts.ru} сверху, ведущий снизу, его голос без перерыва:`
+      : `გაყოფილი ეკრანი: ზემოთ ${parts.ka}, ქვემოთ წამყვანი, მისი ხმა არ წყდება:`;
+  const veoTag = { en: ' [Veo]', ru: ' [Veo]', ka: ' [Veo]' }[lang];
+  const rows = c.items.map((x) => `· ${clockOf(x.startSec)}–${clockOf(x.endSec)} „${x.query}“ — ${quoted(lang, clip(x.text))}${x.source === 'veo' ? veoTag : x.author ? ` (${x.author})` : ''}`);
+  const genNote = gen
+    ? [lang === 'en' ? 'A generated shot Veo cannot make leaves the speaker on that line, and its credits come back.'
+      : lang === 'ru' ? 'Если Veo не сможет сделать кадр, там останется ведущий, а кредиты вернутся.'
+        : 'თუ Veo რომელიმე კადრს ვერ შექმნის, იქ წამყვანი დარჩება და იმ კადრის კრედიტი დაგიბრუნდება.']
+    : [];
   const miss = c.missed.length
     ? [lang === 'en' ? `No footage found for ${c.missed.length} line${c.missed.length === 1 ? '' : 's'}: ${c.missed.map((m) => `„${m.query}“`).join(', ')}; the speaker stays there.`
       : lang === 'ru' ? `Не нашлось кадров для ${c.missed.length}: ${c.missed.map((m) => `„${m.query}“`).join(', ')}; там остаётся ведущий.`
         : `${c.missed.length} ფრაზაზე კადრი ვერ ვიპოვე (${c.missed.map((m) => `„${m.query}“`).join(', ')}); იქ წამყვანი რჩება.`]
     : [];
-  return [head, ...rows, ...miss].join('\n');
+  return [head, ...rows, ...genNote, ...miss].join('\n');
 }
 
 /** An intro + body + outro edit says its own steps: there are no shots or music to speak of. */

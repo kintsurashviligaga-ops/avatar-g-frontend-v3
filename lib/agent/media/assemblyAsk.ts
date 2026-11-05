@@ -10,7 +10,10 @@
  *
  *   · an INTRO word („ინტრო", „შესავალი", „intro", „opening", „интро", „заставка") and/or an OUTRO word („აუტრო",
  *     „ბოლო … სცენა", „ლოგოს სცენა", „outro", „end card", „ending", „концовка", „финальная заставка");
- *   · exactly two videos (an assembly gives every clip a role; with three or more the roles cannot be read safely);
+ *   · two videos, or three with BOTH an intro and an outro word (GG 2026-11-05 17:29Z: intro, presenter, logo scene as
+ *     three files): the body is the video the words name, else the longest; the other two keep the order sent, the
+ *     first opening the edit and the last closing it (the server's thinking step, ./montageDirector, looks at the
+ *     pictures and decides first; this is the reading of the words alone);
  *   · the SOURCE of the intro/outro is the video named with „-დან" / „from" / „из" („მეორე ვიდეოდან", „from the second
  *     video", „из второго видео") or named right before the intro/outro word; the BODY is the other one. With no number
  *     at all the source is decided by length on the server (a bumper is the shorter clip): `source` is then absent.
@@ -21,8 +24,10 @@ export interface AssemblyWords {
   outro: boolean;
   /** 0-based among the VIDEOS in the order sent; absent = not named (the shorter clip is the bumper). */
   source?: number;
-  /** 0-based among the videos; absent = the other video. */
+  /** 0-based among the videos; absent = the other video (of three: the longest). */
   body?: number;
+  /** Three videos: intro, body and outro are three files (`source` is then unused). */
+  three?: boolean;
 }
 
 const INTRO = new RegExp([
@@ -92,11 +97,18 @@ function isFrom(text: string, at: number, mediaWord: string): boolean {
  */
 export function assemblyWords(text: string, videos: number): AssemblyWords | null {
   const t = (text || '').slice(0, 2000);
-  if (videos !== 2) return null;
+  if (videos !== 2 && videos !== 3) return null;
   const intro = INTRO.test(t);
   const outro = OUTRO.test(t);
   if (!intro && !outro) return null;
   const ms = mentions(t).filter((m) => m.video < videos);
+  if (videos === 3) {
+    // Three files are three roles: both bumpers must be asked for, and only the body can be named.
+    if (!intro || !outro) return null;
+    const roleWord = new RegExp(`${INTRO.source}|${OUTRO.source}`, 'iu');
+    const bodyMention = ms.find((m) => !m.from && !roleWord.test(t.slice(m.end, m.end + 25)));
+    return { intro, outro, three: true, ...(bodyMention ? { body: bodyMention.video } : {}) };
+  }
   const roleWord = new RegExp(`${INTRO.source}|${OUTRO.source}`, 'iu');
   // A video named just before the intro/outro word („მეორე ვიდეოს ინტრო", „the second video intro") is its source too.
   const sourceMention = ms.find((m) => m.from) ?? ms.find((m) => roleWord.test(t.slice(m.end, m.end + 25)));
@@ -111,6 +123,16 @@ export function assemblyWords(text: string, videos: number): AssemblyWords | nul
 
 /** The roles as file positions: `videoFiles` are the 0-based file indices of the videos, `videoSec` their lengths. */
 export function assemblyRoles(w: AssemblyWords, videoFiles: readonly number[], videoSec: readonly number[]): { intro?: number; body: number; outro?: number } | null {
+  if (w.three) {
+    if (videoFiles.length !== 3) return null;
+    let body = w.body;
+    if (body === undefined) {
+      body = 0;
+      for (let k = 1; k < 3; k += 1) if ((videoSec[k] ?? 0) > (videoSec[body] ?? 0)) body = k;
+    }
+    const rest = [0, 1, 2].filter((k) => k !== body);
+    return { intro: videoFiles[rest[0]!]!, body: videoFiles[body]!, outro: videoFiles[rest[1]!]! };
+  }
   if (videoFiles.length !== 2) return null;
   // Not named: the bumper is the shorter clip (the body is what the edit is about).
   const source = w.source ?? (w.body !== undefined ? 1 - w.body : (videoSec[0] ?? 0) <= (videoSec[1] ?? 0) ? 0 : 1);

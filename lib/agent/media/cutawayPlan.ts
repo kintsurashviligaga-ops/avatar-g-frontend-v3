@@ -10,7 +10,7 @@ import { outputTimeline } from './montageAsk';
 import type { SpottedLine } from './cutawaySpot';
 import type { StockPick } from '@/lib/services/stock/pexels';
 import { planInserts, type InsertLine } from '@/lib/services/montage/insertPlan';
-import type { MontageInsert, MontageShot } from '@/lib/services/montage/montagePlan';
+import { MAX_VEO_INSERTS, VEO_INSERT_SEC, type MontageInsert, type MontageShot } from '@/lib/services/montage/montagePlan';
 
 /** A source second of `source` on the master, or null when no shot plays it. */
 export function toMaster(shots: ReadonlyArray<MontageShot & { source: number }>, source: number, srcSec: number): number | null {
@@ -36,6 +36,8 @@ export interface CutawaySummary {
   items: Array<{ startSec: number; endSec: number; text: string; query: string; source: MontageInsert['source']; author?: string; pageUrl?: string }>;
   /** Lines a picture would help that found no footage (they stay on the speaker). */
   missed: Array<{ startSec: number; text: string; query: string }>;
+  /** Generated (Veo) cutaways in `items`: each is priced in the quote. */
+  generated: number;
 }
 
 export async function planCutaways(input: {
@@ -49,6 +51,11 @@ export async function planCutaways(input: {
   search: (query: string, o: { minSec: number; minWidth: number; orientation: 'landscape' | 'portrait' | 'square'; skip: ReadonlySet<number> }) => Promise<StockPick | null>;
   /** Searches at most this many lines (a stock call each). */
   maxSearches?: number;
+  /**
+   * Lines the stock has nothing for get a generated shot (Veo, from the line's prompt), at most this many (0 = none:
+   * Veo is not configured, or the edit must stay free). Never more than MAX_VEO_INSERTS.
+   */
+  maxGenerated?: number;
 }): Promise<{ inserts: MontageInsert[]; summary: CutawaySummary }> {
   const onMaster = input.lines
     .filter((l) => l.visual)
@@ -58,22 +65,40 @@ export async function planCutaways(input: {
       return a !== null && b !== null && b > a ? { ...l, startSec: a, endSec: b } : null;
     })
     .filter((l): l is SpottedLine => l !== null);
-  const picks: StockPick[] = [];
+  const picks: Array<StockPick | { veo: true; prompt: string }> = [];
+  let genLeft = Math.max(0, Math.min(MAX_VEO_INSERTS, input.maxGenerated ?? 0));
   const lines: InsertLine[] = [];
   const missed: CutawaySummary['missed'] = [];
   const skip = new Set<number>();
   const queries: string[] = [];
   for (const l of onMaster.slice(0, input.maxSearches ?? 10)) {
     const pick = await input.search(l.query, { minSec: 1.5, minWidth: input.minWidth, orientation: input.orientation, skip }).catch(() => null);
-    if (!pick) { missed.push({ startSec: Number(l.startSec.toFixed(2)), text: l.text, query: l.query }); continue; }
+    if (!pick) {
+      if (genLeft > 0 && l.prompt.length >= 8) {
+        genLeft -= 1;
+        lines.push({ startSec: l.startSec, endSec: l.endSec, text: l.text, clip: picks.length });
+        queries.push(l.query);
+        picks.push({ veo: true, prompt: l.prompt });
+        continue;
+      }
+      missed.push({ startSec: Number(l.startSec.toFixed(2)), text: l.text, query: l.query });
+      continue;
+    }
     skip.add(pick.id);
     lines.push({ startSec: l.startSec, endSec: l.endSec, text: l.text, clip: picks.length });
     queries.push(l.query);
     picks.push(pick);
   }
-  const planned = planInserts({ masterSec: input.masterSec, lines, clips: picks.map((p) => ({ durationSec: p.durationSec })) });
+  // A generated shot is VEO_INSERT_SEC long and played from its start (it is made for this line alone).
+  const planned = planInserts({
+    masterSec: input.masterSec, lines,
+    clips: picks.map((p) => ('veo' in p ? { durationSec: VEO_INSERT_SEC, fromSec: 0 } : { durationSec: p.durationSec })),
+  });
   const inserts: MontageInsert[] = planned.map((p) => {
     const pick = picks[p.clip]!;
+    if ('veo' in pick) {
+      return { url: '', prompt: pick.prompt, startSec: p.startSec, endSec: p.endSec, clipStartSec: 0, source: 'veo', text: p.text, query: queries[p.line] ?? '' };
+    }
     return {
       url: pick.url, startSec: p.startSec, endSec: p.endSec, clipStartSec: p.clipStartSec, source: 'pexels',
       text: p.text, query: queries[p.line] ?? '', pageUrl: pick.pageUrl, ...(pick.author ? { author: pick.author } : {}),
@@ -84,6 +109,7 @@ export async function planCutaways(input: {
     summary: {
       items: inserts.map((x) => ({ startSec: x.startSec, endSec: x.endSec, text: x.text ?? '', query: x.query ?? '', source: x.source, ...(x.author ? { author: x.author } : {}), ...(x.pageUrl ? { pageUrl: x.pageUrl } : {}) })),
       missed,
+      generated: inserts.filter((x) => x.source === 'veo').length,
     },
   };
 }

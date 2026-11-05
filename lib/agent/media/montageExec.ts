@@ -42,10 +42,11 @@ import { planBeatCuts, type BeatGrid, type CutPlan, type CutProblem, type Energy
 import { planJoin, type JoinPlan } from '@/lib/services/montage/joinPlan';
 import { assemblyRoles, assemblyWords } from './assemblyAsk';
 import { cutawayWords } from './cutawayAsk';
+import { videoMime, type DirectorDecision, type DirectorResult, type DirectorVideo } from './montageDirector';
 import { planCutaways, speakerOf, type CutawaySummary } from './cutawayPlan';
 import type { SpotResult } from './cutawaySpot';
 import type { StockPick } from '@/lib/services/stock/pexels';
-import { ASPECT_DIMS, coerceInserts } from '@/lib/services/montage/montagePlan';
+import { ASPECT_DIMS, MAX_VEO_INSERTS, VEO_CUTAWAY_CREDITS, coerceInserts } from '@/lib/services/montage/montagePlan';
 import { planAssembly, type AssemblyPart, type AssemblyPlan, type AssemblyProblem, type AssemblyRole, type AskedWindow } from '@/lib/services/montage/assemblyPlan';
 import type { ClipSignals } from '@/lib/services/montage/segmentDetect';
 import { DEFAULT_TRANSITION_SEC, planTransitions, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
@@ -86,10 +87,16 @@ import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/app
  * function's own ffmpeg. A non-zero price turns on the reserve → refund path below, which is tested with one.
  */
 export const MONTAGE_PRICE_CREDITS = 0;
+/** The thinking step watches at most this many videos (each is ~300 tokens a second); more = the word readers alone. */
+export const MAX_DIRECTED = 6;
 
 /** What the quote binds a montage to (lib/agent/media/quoteToken v2): this server's ffmpeg, a flat price. */
 export const montageQuoteBinding = () => quoteBinding({ cap: 'media.montage', model: MONTAGE_ENGINE.id, transport: 'local', units: 1 });
-const montagePrice = (deps: Pick<MontageExecDeps, 'price'>) => deps.price?.() ?? MONTAGE_PRICE_CREDITS;
+/** A generated cutaway's price (lib/services/montage/montagePlan): the price book's own 4 s Veo Fast clip. Stock stays free. */
+export { VEO_CUTAWAY_CREDITS };
+/** The edit's price: the montage's own (free) plus each generated cutaway it lays. The quote signs it, the run re-derives it. */
+const montagePrice = (deps: Pick<MontageExecDeps, 'price'>, request?: Pick<MontageRequest, 'inserts'>) =>
+  (deps.price?.() ?? MONTAGE_PRICE_CREDITS) + VEO_CUTAWAY_CREDITS * (request?.inserts ?? []).filter((x) => x.source === 'veo').length;
 
 export type FileRef = { ok: true; url: string } | { ok: false; reason: 'not_yours' | 'unreadable' };
 
@@ -125,7 +132,7 @@ export interface MontageExecDeps {
   /** The track's length, beat and (for speed ramps) how strong the music is along it; `energy` absent = no ramp by it. */
   analyzeTrack(url: string): Promise<{ probe: BannerProbe; grid: BeatGrid | null; energy?: EnergyEnvelope } | null>;
   /** The montage lane. Aborting `signal` kills the ffmpeg of the leg that is running; `onStage` reports each leg. */
-  render(req: MontageRequest, opts: { jobId: string; signal: AbortSignal; onStage: (step: string, pct: number) => Promise<unknown> }): Promise<MontageOutcome>;
+  render(req: MontageRequest, opts: { jobId: string; userId?: string; signal: AbortSignal; onStage: (step: string, pct: number) => Promise<unknown> }): Promise<MontageOutcome>;
   /**
    * The per-clip QC's eyes: tiny grey frames (`size`² bytes each) of `url` at each of `timesSec`, null where none was
    * read; `fit` conforms each frame to the master's frame first, as the lane conformed the clip. Null = unreadable.
@@ -161,6 +168,14 @@ export interface MontageExecDeps {
    * stock search per line (lib/services/stock/pexels). Absent = this server lays no cutaways; the card says so.
    */
   spotCutaways?(input: { url: string; durationSec: number; userId: string; topic: string }): Promise<SpotResult>;
+  /**
+   * The montage's thinking step (./montageDirector, GG 2026-11-05 17:29Z): one Gemini call watches the videos and reads
+   * the words, and decides the roles (intro → presenter → logo scene, whatever order they were sent in), whether a split
+   * screen is meant, and says why. Absent or failed = the word readers decide alone.
+   */
+  direct?(input: { words: string; videos: DirectorVideo[]; userId: string }): Promise<DirectorResult>;
+  /** True when generated cutaways can be made here (Veo on Vertex): lines the stock has nothing for get one. */
+  veoAvailable?(): boolean;
   searchStock?(query: string, o: { minSec: number; minWidth: number; orientation: 'landscape' | 'portrait' | 'square'; skip: ReadonlySet<number> }): Promise<StockPick | null>;
 }
 
@@ -259,6 +274,12 @@ export interface MontageQuote {
    * nothing, and — when none could be laid — why (`unavailable`). Absent = not asked.
    */
   cutaways?: CutawaySummary & { speakerFile: number; unavailable?: 'not_configured' | 'analysis_failed' | 'nothing_found' };
+  /**
+   * What the agent saw and decided before planning (./montageDirector), in the user's language: each video's kind and
+   * one line on it (file = position in the files sent), its reasoning, and what it decided that the words did not say.
+   * Absent = no thinking step ran (sound files or photos sent, or the call failed).
+   */
+  director?: { files: DirectorDecision['files']; reasoning: string[]; filled: string[] };
   /** The manifest index of the music track; null = a montage without music. */
   musicFile: number | null;
   /** The music ends before the edit does (own sound leads, so it is not refused): the master second it stops at. */
@@ -485,7 +506,19 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const all = sortInputs(probes, Number.POSITIVE_INFINITY);
   // An assembly names its files by role: the words never subset them (a number in „ინტრო 2 წამამდე" is a time).
   // Nor do an intro/outro edit's words („პირველი ვიდეო დაამონტაჟე, მეორე ვიდეოდან ინტრო…"): „პირველი ვიდეო" names its body.
-  const assemblySaid = all.ok && !all.audios.length && !all.stills.length && !!prompt && assemblyWords(prompt, all.clips.length) !== null;
+  // ── think: watch the videos and read the words before any plan (./montageDirector). Videos alone: a sound file or a
+  // photo keeps the edits it always got. ──────────────────────────────────────────────────────────────────────────────
+  let director: DirectorDecision | null = null;
+  if (deps.direct && prompt && all.ok && !input.assembly && !all.audios.length && !all.stills.length && all.clips.length >= 1 && all.clips.length <= MAX_DIRECTED) {
+    const videos: DirectorVideo[] = all.clips.map((i) => {
+      const name = names.names?.[i] ? cleanName(names.names[i], (files[i] as string).trim()) : '';
+      return { file: i, url: urls[i]!, mime: videoMime(urls[i]!), durationSec: probes[i]?.durationSec ?? 0, ...(name ? { name } : {}) };
+    });
+    const r = await deps.direct({ words: prompt, videos, userId }).catch(() => null);
+    if (r?.ok) director = r.decision;
+  }
+  const assemblySaid = all.ok && !all.audios.length && !all.stills.length && !!prompt
+    && (assemblyWords(prompt, all.clips.length) !== null || !!director?.roles);
   if (all.ok && !input.assembly && !assemblySaid) {
     const sel = selectSources(prompt, all.clips.length);
     if (sel.mode === 'invalid') {
@@ -529,7 +562,12 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     const videoFiles = sorted.clips;
     const w = assemblyWords(prompt, videoFiles.length);
     const roles = w ? assemblyRoles(w, videoFiles, videoFiles.map((i) => probes[i]?.durationSec ?? 0)) : null;
-    if (roles) assembly = roles;
+    // Words that NAME the files („მეორე ვიდეოდან ინტრო") win; otherwise what the director saw in them; otherwise the
+    // words' guess by length.
+    const named = !!w && (w.source !== undefined || w.body !== undefined);
+    if (roles && named) assembly = roles;
+    else if (director?.roles) assembly = director.roles;
+    else if (roles) assembly = roles;
   }
 
   // ── the sound: which file is the music, which the narration, and what the edit sounds like ────────────────────
@@ -680,21 +718,24 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
 
   // ── cutaways: real footage of what the speaker says, in the top half of a split screen (GG 2026-11-05 14:32Z) ────
   let cutaways: MontageQuote['cutaways'];
-  if (prompt && cutawayWords(prompt)) {
-    const speaker = speakerOf(request.shots, assemblyPlan ? sorted.clips[assemblyPlan.parts.find((p) => p.role === 'body')!.clip] : undefined);
+  if (prompt && (cutawayWords(prompt) || director?.splitScreen === true)) {
+    const bodyFile = assemblyPlan ? sorted.clips[assemblyPlan.parts.find((p) => p.role === 'body')!.clip] : !selectionInfo ? director?.speaker : undefined;
+    const speaker = speakerOf(request.shots, bodyFile);
     const masterSec = timelineDuration(request.shots);
     if (speaker !== null) {
-      if (!deps.spotCutaways || !deps.searchStock) {
-        cutaways = { items: [], missed: [], speakerFile: speaker, unavailable: 'not_configured' };
+      const maxGenerated = deps.veoAvailable?.() ? MAX_VEO_INSERTS : 0;
+      if (!deps.spotCutaways || (!deps.searchStock && !maxGenerated)) {
+        cutaways = { items: [], missed: [], generated: 0, speakerFile: speaker, unavailable: 'not_configured' };
       } else {
         const spot = await deps.spotCutaways({ url: urls[speaker]!, durationSec: probes[speaker]?.durationSec ?? masterSec, userId, topic: prompt });
         if (!spot.ok) {
-          cutaways = { items: [], missed: [], speakerFile: speaker, unavailable: 'analysis_failed' };
+          cutaways = { items: [], missed: [], generated: 0, speakerFile: speaker, unavailable: 'analysis_failed' };
         } else {
           const { w, h } = ASPECT_DIMS[aspect];
           const c = await planCutaways({
             shots: request.shots, speaker, masterSec, lines: spot.lines, minWidth: w, orientation: w / (h / 2) >= 1 ? 'landscape' : 'portrait',
-            search: (q, o) => deps.searchStock!(q, o),
+            search: (q, o) => (deps.searchStock ? deps.searchStock(q, o) : Promise.resolve(null)),
+            maxGenerated,
           });
           const checked = coerceInserts(c.inserts, masterSec);
           if (checked.ok && checked.value.length) request.inserts = checked.value;
@@ -706,7 +747,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
 
   // ── price + sign ───────────────────────────────────────────────────────────────────────────────────────────────
   const jobId = deps.newId();
-  const credits = montagePrice(deps);
+  const credits = montagePrice(deps, request);
   const expiresAt = deps.now() + QUOTE_TTL_MS;
   const token = signQuote({ u: userId, j: jobId, f: bodyFingerprint(request), c: credits, x: expiresAt }, deps.key(), montageQuoteBinding());
   if (!token) return refuse(err('not_configured', 'Quotes cannot be signed on this server.'));
@@ -726,6 +767,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     cutting: assemblyPlan ? 'assembly' : onBeat ? 'beat' : 'whole',
     ...(assemblyPlan ? { assembly: { parts: assemblyPlan.parts.map(({ clip, ...p }) => ({ ...p, file: sorted.clips[clip]! })) } } : {}),
     ...(cutaways ? { cutaways } : {}),
+    ...(director && !selectionInfo ? { director: { files: director.files, reasoning: director.reasoning, filled: director.filled } } : {}),
     musicFile: picked.music,
     ...(musicEndsSec !== undefined ? { musicEndsSec } : {}),
     ...(voice ? { voice: { file: picked.voice!, durationSec: r3(voice.probe.durationSec), startSec: 0, ...(voiceCutSec ? { cutSec: voiceCutSec } : {}) } } : {}),
@@ -843,7 +885,7 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
   const { request, manifest } = parsed;
 
   const check = verifyQuote(input.token, deps.key(), {
-    userId, fingerprint: bodyFingerprint(request), now: deps.now(), credits: montagePrice(deps), binding: montageQuoteBinding(),
+    userId, fingerprint: bodyFingerprint(request), now: deps.now(), credits: montagePrice(deps, request), binding: montageQuoteBinding(),
   });
   if (!check.ok) {
     await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'refused', detail: `quote_${check.reason}${check.reason === 'changed' ? `:${check.field}` : ''}` });

@@ -92,3 +92,12 @@ test('the graph: footage top, speaker bottom, the line, the sound copied', () =>
   expect(args).toEqual(expect.arrayContaining(['-map', '0:a?', '-c:a', 'copy']));
   expect(enableExpr([])).toBe('');
 });
+
+describe('the split-screen words GG wrote on 2026-11-05 17:29Z', () => {
+  test('words far apart still ask for it', () => {
+    expect(cutawayWords('დაამონტაჟე და ეკრანი შუაში უნდა იყოს გაყოფილი რომ წამყვანმა ქვევით ილაპარაკოს და ზედა ეკრანზე რეალური ფაქტობრივი და მიზნობრივი ვიდეო გაუშვი.')).toBe(true);
+    expect(cutawayWords('ეკრანი შუაში უნდა იყოს გაყოფილი')).toBe(true);
+    expect(cutawayWords('split the whole screen in two')).toBe(true);
+    expect(cutawayWords('დაამონტაჟე ეს ვიდეოები')).toBe(false);
+  });
+});

@@ -68,6 +68,11 @@ export interface TaskInputs { text: string; files: TaskInputFile[] }
 
 const T = {
   agentMontage: { ka: 'მონტაჟი მუსიკის რიტმზე', en: 'Montage to the beat', ru: 'Монтаж под бит' },
+  agentJoin: { ka: 'ვიდეოს მონტაჟი', en: 'Video montage', ru: 'Монтаж видео' },
+  agentSplit: { ka: 'მონტაჟი · გაყოფილი ეკრანი', en: 'Montage · split screen', ru: 'Монтаж · разделённый экран' },
+  think: { ka: 'ვიდეოების ნახვა და დავალების გააზრება', en: 'Watch the videos and think the task through', ru: 'Просмотр видео и разбор задачи' },
+  thinkNote: { ka: 'ვუყურებ ყველა ვიდეოს და ვფიქრობ, როგორ ჯობს', en: 'Watching every video and working out the best edit', ru: 'Смотрю все видео и думаю, как лучше' },
+  inserts: { ka: 'რეალური კადრების ჩასმა ზედა ეკრანზე', en: 'Lay the real footage in the top half', ru: 'Кадры по теме в верхнюю половину' },
   agentAudio: { ka: 'MP3-ის ამოღება', en: 'MP3 extraction', ru: 'Извлечение MP3' },
   working: { ka: 'მუშაობს', en: 'Working', ru: 'В работе' },
   stopping: { ka: 'ვაჩერებ…', en: 'Stopping…', ru: 'Останавливаю…' },
@@ -149,8 +154,38 @@ const clamp = (n: number | undefined) => (typeof n === 'number' && isFinite(n) ?
 // ── The montage ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export const MONTAGE_STEPS = ['upload', 'analyse', 'plan', 'prepare', 'normalize', 'stitch', 'music', 'clipqc', 'finish'] as const;
-/** The job's stage → the step it belongs to (lib/agent/media/montageWorker's stages; 'qc' = every clip checked in the master). */
-const MONTAGE_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, inserts: 5, music: 6, qc: 7, completed: 8 };
+
+/**
+ * Only the steps this edit really has (GG 2026-11-05 17:29Z: a card of two videos listed „მუსიკის დადება" with no music
+ * and nothing about the split screen): no music step without a track or a narration, a footage step when cutaways are
+ * planned. Before the quote is back, the files sent decide the music step.
+ */
+function stepsFor(base: readonly string[], s: Pick<AgentMontageState, 'quote' | 'names'>): string[] {
+  const q = s.quote;
+  const sound = q ? !(q.musicFile === null && !q.voice) : (s.names ?? []).some((n) => AUDIO_NAME.test(n));
+  const inserts = !!q?.cutaways?.items.length;
+  const out: string[] = [];
+  for (const k of base) {
+    if (k === 'music' && !sound) continue;
+    // The footage goes over the joined edit, before the music and the check.
+    if (inserts && (k === 'music' || k === 'clipqc' || k === 'syncqc') && !out.includes('inserts')) out.push('inserts');
+    out.push(k);
+  }
+  return out;
+}
+
+/** The job's stage → the step it is on, among the steps this card has (the first one present wins). */
+const STAGE_KEYS: Record<string, string[]> = {
+  queued: ['prepare'], starting: ['prepare'], retrying: ['prepare'], resolve: ['prepare'], bridge: ['prepare'],
+  normalize: ['normalize', 'cutParts'], stitch: ['stitch', 'joinParts'],
+  inserts: ['inserts', 'stitch', 'joinParts'], music: ['music', 'inserts', 'stitch', 'joinParts'],
+  qc: ['clipqc', 'syncqc'], completed: ['finish'],
+};
+function stageAt(keys: readonly string[], stage: string | null | undefined): number {
+  const want = stage ? STAGE_KEYS[stage] : undefined;
+  for (const k of want ?? []) { const i = keys.indexOf(k); if (i >= 0) return i; }
+  return keys.indexOf('prepare');
+}
 
 const AUDIO_NAME = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|weba)$/i;
 const IMAGE_NAME = /\.(jpe?g|png|webp|heic|heif|gif|bmp|avif)$/i;
@@ -185,7 +220,6 @@ function musicFrom(sec: number, lang: Lang): string {
 }
 
 export const ASSEMBLY_STEPS = ['upload', 'find', 'plan', 'prepare', 'cutParts', 'joinParts', 'syncqc', 'finish'] as const;
-const ASSEMBLY_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, inserts: 5, music: 5, qc: 6, completed: 7 };
 
 /** Is this card an intro + body + outro edit? From the quote once it is back, before it from the words and the files. */
 export function isAssemblyCard(s: Pick<AgentMontageState, 'quote' | 'names' | 'prompt'>): boolean {
@@ -224,11 +258,39 @@ function partsLines(q: NonNullable<AgentMontageState['quote']>, lang: Lang): str
   }).join('\n');
 }
 
+const KIND: Record<string, Record<Lang, string>> = {
+  presenter: { ka: 'წამყვანი', en: 'presenter', ru: 'ведущий' },
+  intro: { ka: 'ინტრო', en: 'intro', ru: 'интро' },
+  outro: { ka: 'აუტრო', en: 'outro', ru: 'аутро' },
+  logo: { ka: 'ლოგოს სცენა', en: 'logo scene', ru: 'сцена с логотипом' },
+  broll: { ka: 'კადრები', en: 'footage', ru: 'кадры' },
+  other: { ka: 'სხვა', en: 'other', ru: 'другое' },
+};
+
+/** The agent's thinking on the card: what each video is, then its reasoning (./montageDirector). */
+function thoughtLines(d: NonNullable<NonNullable<AgentMontageState['quote']>['director']>, lang: Lang): string {
+  const vid = lang === 'en' ? 'video' : lang === 'ru' ? 'видео' : 'ვიდეო';
+  const seen = d.files.length ? [d.files.map((f) => `${vid} ${f.file + 1}: ${KIND[f.kind]?.[lang] ?? f.kind}`).join(' · ')] : [];
+  return [...seen, ...d.reasoning.slice(0, 3).map((r) => `🧠 ${r}`), ...d.filled.slice(0, 2).map((r) => `＋ ${r}`)].join('\n');
+}
+
+/** „3 real shots (Pexels) + 1 generated (Veo)" for the footage step. */
+function insertsDetail(c: NonNullable<NonNullable<AgentMontageState['quote']>['cutaways']>, lang: Lang): string {
+  const gen = c.items.filter((x) => x.source === 'veo').length;
+  const real = c.items.length - gen;
+  return lang === 'en'
+    ? [real ? `${real} real shot${real === 1 ? '' : 's'} (Pexels)` : '', gen ? `${gen} generated (Veo)` : ''].filter(Boolean).join(' + ') + ' · the speaker below'
+    : lang === 'ru'
+      ? [real ? `реальных кадров: ${real} (Pexels)` : '', gen ? `сгенерированных: ${gen} (Veo)` : ''].filter(Boolean).join(' + ') + ' · ведущий снизу'
+      : [real ? `${real} რეალური კადრი (Pexels)` : '', gen ? `${gen} შექმნილი კადრი (Veo)` : ''].filter(Boolean).join(' + ') + ' · ქვემოთ წამყვანი';
+}
+
 function assemblyTask(s: AgentMontageState, locale: string): TaskCardModel {
   const lang = pick(locale);
   const q = s.quote;
   const total = s.names?.length ?? 0;
-  const ranAt = s.stage ? (ASSEMBLY_STAGE_AT[s.stage] ?? 3) : 3;
+  const keys = stepsFor(ASSEMBLY_STEPS, s);
+  const ranAt = stageAt(keys, s.stage);
   let at: number;
   let mode: 'active' | 'waiting' | 'done' | End;
   let status: TaskStatus;
@@ -241,7 +303,7 @@ function assemblyTask(s: AgentMontageState, locale: string): TaskCardModel {
     case 'running':
       at = ranAt; mode = 'active'; status = 'working'; statusText = say(s.stopping ? 'stopping' : 'working', lang); break;
     case 'done':
-      at = ASSEMBLY_STEPS.length; mode = 'done'; status = 'done'; statusText = say('done', lang); break;
+      at = keys.length; mode = 'done'; status = 'done'; statusText = say('done', lang); break;
     case 'cancelled':
       at = ranAt; mode = 'stopped'; status = 'stopped'; statusText = say('stopped', lang); break;
     case 'dismissed':
@@ -250,17 +312,19 @@ function assemblyTask(s: AgentMontageState, locale: string): TaskCardModel {
     default:
       at = q ? ranAt : s.error === 'upload_failed' ? 0 : 1; mode = 'failed'; status = 'failed'; statusText = say('failed', lang); break;
   }
-  const states = lay(ASSEMBLY_STEPS, at, mode);
-  const found = q ? partsLines(q, lang) : undefined;
+  const states = lay(keys, at, mode);
+  const thought = q?.director ? thoughtLines(q.director, lang) : '';
+  const parts = q ? partsLines(q, lang) : undefined;
+  const found = [thought, parts].filter(Boolean).join('\n') || undefined;
   const n = q?.assembly?.parts.length ?? 0;
   const planDetail = q
     ? (lang === 'en' ? `${n} part${n === 1 ? '' : 's'} · ${sec(q.totalSec)} s · ${q.aspect} · ${priceLabel(q.credits, locale)}`
       : lang === 'ru' ? `частей: ${n} · ${sec(q.totalSec)} с · ${q.aspect} · ${priceLabel(q.credits, locale)}`
         : `${n} ნაწილი · ${sec(q.totalSec)} წმ · ${q.aspect} · ${priceLabel(q.credits, locale)}`)
     : undefined;
-  const steps: TaskStep[] = ASSEMBLY_STEPS.map((key, i) => {
+  const steps: TaskStep[] = keys.map((key, i) => {
     const state = states[i]!;
-    const step: TaskStep = { key, label: say(key, lang), state };
+    const step: TaskStep = { key, label: say(key as keyof typeof T, lang), state };
     if (key === 'upload') {
       if (state === 'active' && total > 0) step.note = `${Math.min(s.uploaded ?? 0, total)}/${total}`;
       else if (state === 'done' && total) step.detail = lang === 'en' ? `${total} videos` : lang === 'ru' ? `${total} видео` : `${total} ვიდეო`;
@@ -275,6 +339,7 @@ function assemblyTask(s: AgentMontageState, locale: string): TaskCardModel {
       if (state === 'stopped') step.note = say('dismissed', lang);
     }
     if (state === 'active' && s.stopping) step.note = say('stopping', lang);
+    if (key === 'inserts' && q?.cutaways && state !== 'skipped') step.detail = insertsDetail(q.cutaways, lang);
     if (key === 'syncqc' && state === 'done') {
       step.detail = lang === 'en' ? `every part found in the output · sound in sync` : lang === 'ru' ? 'все части в итоге · звук синхронен' : 'ყველა ნაწილი შედეგშია · ხმა სინქრონშია';
     }
@@ -282,7 +347,7 @@ function assemblyTask(s: AgentMontageState, locale: string): TaskCardModel {
     return step;
   });
   const clock = clockOf(s.phase, s.t0, s.t1);
-  const model = finish(say('agentAssembly', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
+  const model = finish(q?.cutaways?.items.length ? `${say('agentAssembly', lang)} · ${lang === 'en' ? 'split screen' : lang === 'ru' ? 'разделённый экран' : 'გაყოფილი ეკრანი'}` : say('agentAssembly', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
   const inputs = montageInputs(s, locale);
   const notice = unplannedText(montageUnplanned(s.prompt, true), locale);
   return { ...model, ...(inputs ? { inputs } : {}), ...(notice ? { notice } : {}) };
@@ -293,7 +358,10 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
   const lang = pick(locale);
   const q = s.quote;
   const total = s.names?.length ?? 0;
-  const ranAt = s.stage ? (MONTAGE_STAGE_AT[s.stage] ?? 3) : 3;
+  const keys = stepsFor(MONTAGE_STEPS, s);
+  const ranAt = stageAt(keys, s.stage);
+  // No track sent: there is no beat to read; the step is the agent watching the videos and thinking the task through.
+  const thinking = q ? q.musicFile === null : !(s.names ?? []).some((n) => AUDIO_NAME.test(n));
 
   let at: number;
   let mode: 'active' | 'waiting' | 'done' | End;
@@ -307,7 +375,7 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
     case 'running':
       at = ranAt; mode = 'active'; status = 'working'; statusText = say(s.stopping ? 'stopping' : 'working', lang); break;
     case 'done':
-      at = MONTAGE_STEPS.length; mode = 'done'; status = 'done'; statusText = say('done', lang); break;
+      at = keys.length; mode = 'done'; status = 'done'; statusText = say('done', lang); break;
     case 'cancelled':
       at = ranAt; mode = 'stopped'; status = 'stopped'; statusText = say('stopped', lang); break;
     case 'dismissed':
@@ -317,7 +385,7 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
       // No plan yet: it broke on the upload or on reading the files; with a plan, on the step its stage names.
       at = q ? ranAt : s.error === 'upload_failed' ? 0 : 1; mode = 'failed'; status = 'failed'; statusText = say('failed', lang); break;
   }
-  const states = lay(MONTAGE_STEPS, at, mode);
+  const states = lay(keys, at, mode);
 
   // Photos are named apart once the quote knows them; before it every picture counts as a clip.
   const stills = q?.stills ?? 0;
@@ -343,14 +411,20 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
       + (q.ramp ? ` · ${rampShort(q.ramp, locale)}` : '')
     : undefined;
 
-  const steps: TaskStep[] = MONTAGE_STEPS.map((key, i) => {
+  const thought = q?.director ? thoughtLines(q.director, lang) : '';
+  const steps: TaskStep[] = keys.map((key, i) => {
     const state = states[i]!;
-    const step: TaskStep = { key, label: say(key, lang), state };
+    const step: TaskStep = { key, label: say((key === 'analyse' && thinking ? 'think' : key) as keyof typeof T, lang), state };
     if (key === 'upload') {
       if (state === 'active' && total > 0) step.note = `${Math.min(s.uploaded ?? 0, total)}/${total}`;
       else if (state === 'done' && filesDetail) step.detail = filesDetail;
     }
-    if (key === 'analyse' && state === 'done' && beatDetail) step.detail = beatDetail;
+    if (key === 'analyse') {
+      if (state === 'active' && thinking) step.note = say('thinkNote', lang);
+      const d = [thought, thinking ? '' : beatDetail].filter(Boolean).join('\n');
+      if (state === 'done' && d) step.detail = d;
+    }
+    if (key === 'inserts' && q?.cutaways && state !== 'skipped') step.detail = insertsDetail(q.cutaways, lang);
     if (key === 'plan') {
       if (planDetail && state !== 'pending' && state !== 'skipped') step.detail = planDetail;
       if (state === 'waiting') step.note = say('waitStart', lang);
@@ -370,7 +444,8 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
   });
 
   const clock = clockOf(s.phase, s.t0, s.t1);
-  const model = finish(say('agentMontage', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
+  const title = q?.cutaways?.items.length ? say('agentSplit', lang) : (q ? q.cutting === 'beat' : !thinking) ? say('agentMontage', lang) : say('agentJoin', lang);
+  const model = finish(title, steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
   const inputs = montageInputs(s, locale);
   // Every part of the words is in the plan or named here: an edit the montage does not make itself, a transition, zoom.
   const notice = unplannedText(unplannedAsks(s.prompt), locale);

@@ -1,13 +1,15 @@
 /**
  * lib/services/montage/montagePlan.ts — the pure core of the Montage studio.
  *
- * PURE + TOTAL: no imports, no I/O, never throws. Everything here is timeline arithmetic, so it can be
+ * PURE + TOTAL: no I/O, never throws; the only import is the (pure) price book, for a generated cutaway's price. Everything here is timeline arithmetic, so it can be
  * unit-tested without ffmpeg, a network or a key.
  *
  * WHAT MONTAGE IS: several existing clips (and/or stills) cut into ONE edited master — ordering, per-shot
  * trims, transitions between shots, an optional music bed. It is deliberately NOT generative: no model is
  * called, which is why both billing tiers for this service are literally 'ffmpeg-local'.
  */
+
+import { PRICE_BOOK } from '@/lib/credits/priceBook';
 
 export type MontageAspect = '16:9' | '9:16' | '1:1';
 /**
@@ -92,8 +94,13 @@ export interface MontageRequest {
 }
 
 export interface MontageInsert {
-  /** The footage: a Pexels file (videos.pexels.com) or a file in our own storage (a generated shot, the user's clip). */
+  /**
+   * The footage: a Pexels file (videos.pexels.com) or a file in our own storage (the user's clip). A `veo` cutaway has
+   * none yet: the render generates it from `prompt` (lib/services/montage/montagePipeline) and lays it like the others.
+   */
   url: string;
+  /** A `veo` cutaway's shot, one English sentence (its price is in the quote: VEO_CUTAWAY_CREDITS each). */
+  prompt?: string;
   startSec: number;
   endSec: number;
   /** Where in the footage the cutaway starts. */
@@ -107,6 +114,15 @@ export interface MontageInsert {
 }
 
 export const MAX_INSERTS = 12;
+/** Generated cutaways per edit, at most (each is a paid Veo clip). */
+export const MAX_VEO_INSERTS = 3;
+/** A generated cutaway's length: Veo's shortest clip, longer than any cutaway (insertPlan caps them at 3 s). */
+export const VEO_INSERT_SEC = 4;
+/**
+ * A generated cutaway's price (GG's „Pexels + Veo", 2026-11-05 14:35Z): the price book's own 4 s Veo Fast clip, the
+ * same as any 4 s Veo clip on the site. Stock footage stays free.
+ */
+export const VEO_CUTAWAY_CREDITS = PRICE_BOOK.shortClip.fast[VEO_INSERT_SEC];
 
 /** Hosts a cutaway's footage may come from (the render fetches it): Pexels' file host and Supabase storage. */
 export function insertHostAllowed(url: string): boolean {
@@ -129,11 +145,18 @@ export function coerceInserts(raw: unknown, totalSec: number): { ok: true; value
   const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
   const str = (x: unknown, max: number) => (typeof x === 'string' ? x.slice(0, max) : undefined);
   let last = -1;
+  let veo = 0;
   for (let i = 0; i < raw.length; i += 1) {
     const r = raw[i] as Record<string, unknown> | null;
     if (!r || typeof r !== 'object') return { ok: false, error: `cutaway ${i + 1} is invalid` };
     const url = typeof r.url === 'string' ? r.url.trim() : '';
-    if (!insertHostAllowed(url)) return { ok: false, error: `cutaway ${i + 1}: the footage must be a Pexels or storage file` };
+    const prompt = typeof r.prompt === 'string' ? r.prompt.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    if (r.source === 'veo') {
+      // Generated at render time: a shot to make, no footage yet, and never more than the quote can price.
+      if (url || prompt.length < 8) return { ok: false, error: `cutaway ${i + 1}: a generated shot needs its description and no file` };
+      veo += 1;
+      if (veo > MAX_VEO_INSERTS) return { ok: false, error: `a montage takes at most ${MAX_VEO_INSERTS} generated cutaways` };
+    } else if (!insertHostAllowed(url)) return { ok: false, error: `cutaway ${i + 1}: the footage must be a Pexels or storage file` };
     if (!num(r.startSec) || !num(r.endSec) || !num(r.clipStartSec)) return { ok: false, error: `cutaway ${i + 1}: times must be numbers` };
     const len = r.endSec - r.startSec;
     if (r.startSec < 0 || r.endSec > totalSec + 1e-3 || len < 0.5 || len > 8 || r.clipStartSec < 0 || r.startSec < last - 1e-6) {
@@ -145,6 +168,7 @@ export function coerceInserts(raw: unknown, totalSec: number): { ok: true; value
     const text = str(r.text, 400), query = str(r.query, 80), pageUrl = str(r.pageUrl, 300), author = str(r.author, 120);
     out.push({
       url, startSec: Number(r.startSec.toFixed(3)), endSec: Number(r.endSec.toFixed(3)), clipStartSec: Number(r.clipStartSec.toFixed(3)), source,
+      ...(source === 'veo' ? { prompt } : {}),
       ...(text ? { text } : {}), ...(query ? { query } : {}), ...(pageUrl ? { pageUrl } : {}), ...(author ? { author } : {}),
     });
   }
