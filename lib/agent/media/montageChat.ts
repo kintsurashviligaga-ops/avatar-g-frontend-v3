@@ -468,9 +468,36 @@ function soundNotes(q: MontageQuote, lang: Lang): string[] {
   return notes;
 }
 
+/** The assembly's parts, each with the window it plays and what found its bounds (./montageExec MontageQuote.assembly). */
+function assemblyText(parts: NonNullable<MontageQuote['assembly']>['parts'], lang: Lang): string {
+  const ROLE: Record<string, Record<Lang, string>> = {
+    intro: { ka: 'ინტრო', en: 'Intro', ru: 'Интро' },
+    body: { ka: 'ძირითადი', en: 'Body', ru: 'Основная часть' },
+    outro: { ka: 'აუტრო', en: 'Outro', ru: 'Аутро' },
+  };
+  const BY: Record<string, Record<Lang, string>> = {
+    black: { ka: 'შავი კადრით', en: 'by the black frames', ru: 'по чёрным кадрам' },
+    scene: { ka: 'ჭრით', en: 'by the cut', ru: 'по склейке' },
+    silence: { ka: 'პაუზით', en: 'by the pause', ru: 'по паузе' },
+    speech: { ka: 'ხმით', en: 'by the voice', ru: 'по голосу' },
+    asked: { ka: 'შენი დროით', en: 'at your time', ru: 'по вашему времени' },
+  };
+  const u = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ';
+  const by = (a: string, b: string) => [...new Set([a, b])].filter((k) => BY[k]).map((k) => BY[k]![lang]).join(', ');
+  const lines = parts.map((p) => {
+    const how = by(p.startBy, p.endBy);
+    return `${ROLE[p.role]![lang]}: ${sec(p.startSec)}–${sec(p.endSec)} ${u}${how ? ` (${how})` : ''}`;
+  });
+  const head = lang === 'en' ? 'Each part is cut where it really starts and ends, picture and sound on the same frame:'
+    : lang === 'ru' ? 'Каждая часть обрезана там, где она реально начинается и кончается, картинка и звук — на одном кадре:'
+      : 'ყოველი ნაწილი იქ ვჭერი, სადაც რეალურად იწყება და მთავრდება, სურათი და ხმა ერთ კადრზე:';
+  return `${head} ${lines.join('; ')}.`;
+}
+
 /** How the pictures are cut: on the beat (what the track's tempo allowed), or each clip whole in the user's order. */
 function cuttingText(q: MontageQuote, lang: Lang): string {
   const st = q.stills ?? 0;
+  if (q.cutting === 'assembly' && q.assembly?.parts.length) return assemblyText(q.assembly.parts, lang);
   if (q.cutting === 'whole') {
     if (q.shortened) {
       const pct = Math.round(q.shortened.share * 100);
@@ -622,6 +649,8 @@ const ERR: Record<Exclude<ChatErrorCode, `budget_${string}`>, Record<Lang, strin
   music_too_short: { ka: 'მუსიკა ({f}) ძალიან მოკლეა, რომ ყველა კლიპს თითო კადრი მაინც ერგოს, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. დაიწყე მუსიკა უფრო ადრე, მიამაგრე უფრო გრძელი მუსიკა, ან გამოიყენე ნაკლები კლიპი.', en: 'The music ({f}) is too short to give every clip one shot, so I am not starting the edit: I will not leave a clip out. Start the music earlier, attach a longer track, or use fewer clips.', ru: 'Музыка ({f}) слишком короткая, чтобы каждому клипу досталось хотя бы по кадру, поэтому монтаж не начинаю: ни один клип я не пропущу. Начните музыку раньше, прикрепите трек подлиннее или используйте меньше клипов.' },
   target_too_short: { ka: 'ამ სიგრძეში ყველა კლიპი ({f}) ვერ ეტევა, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. მთხოვე უფრო გრძელი მონტაჟი, ან გამოიყენე ნაკლები კლიპი.', en: 'Not every clip ({f}) fits in the length you asked for, so I am not starting the edit: I will not leave a clip out. Ask for a longer edit, or use fewer clips.', ru: 'В заданную длину помещаются не все клипы ({f}), поэтому монтаж не начинаю: ни один клип я не пропущу. Попросите монтаж подлиннее или используйте меньше клипов.' },
   footage_too_short: { ka: 'კლიპები ერთად ({f}) შენს მიერ თხოვნილ სიგრძეზე მოკლეა, ამიტომ მონტაჟს არ ვიწყებ: კადრებს არ გავიმეორებ და მონტაჟს ჩუმად არ შევამოკლებ. დაამატე კლიპები, ან მთხოვე უფრო მოკლე მონტაჟი.', en: 'Your clips ({f}) together are shorter than the length you asked for, so I am not starting the edit: I will not repeat shots or quietly make it shorter. Add clips, or ask for a shorter edit.', ru: 'Ваши клипы ({f}) вместе короче заданной длины, поэтому монтаж не начинаю: повторять кадры или молча укорачивать я не буду. Добавьте клипы или попросите монтаж короче.' },
+  assembly_invalid: { ka: 'ინტრო, ძირითადი ნაწილი და აუტრო ამ ფაილებით ვერ დავგეგმე, ამიტომ არაფერი დამიწყია: {f}. თქვი, რომელი კლიპია ინტრო, რომელი ძირითადი და რომელი აუტრო (ყოველ კლიპს თავისი როლი უნდა ჰქონდეს).', en: 'I could not plan the intro, body and outro from these files, so I started nothing: {f}. Say which clip is the intro, which the body and which the outro (every clip needs a role).', ru: 'Не получилось спланировать интро, основную часть и аутро из этих файлов, поэтому я ничего не начал: {f}. Скажите, какой клип интро, какой основной и какой аутро (у каждого клипа должна быть роль).' },
+  assembly_no_boundary: { ka: '{f}-ში ინტროსა და აუტროს შორის საზღვარი (შავი კადრი, ჭრა ან პაუზა) ვერ ვიპოვე, ამიტომ არაფერი დამიწყია. მითხარი, რომელ წამზე მთავრდება ინტრო და საიდან იწყება აუტრო.', en: 'I found no break (a black frame, a cut or a pause) between the intro and the outro in {f}, so I started nothing. Tell me the second the intro ends and the second the outro starts.', ru: 'В {f} не нашлось границы (чёрного кадра, склейки или паузы) между интро и аутро, поэтому я ничего не начал. Скажите, на какой секунде кончается интро и с какой начинается аутро.' },
   selection_invalid: { ka: 'შენს სიტყვებში დასახელებული ვიდეო არ არის მიმაგრებულ ფაილებში, ამიტომ არაფერი დამიწყია. თქვი ზუსტად, რომელი კლიპები გამოვიყენო.', en: 'Your words name a clip that is not among the attached files, so I started nothing. Say exactly which clips to use.', ru: 'В ваших словах указан клип, которого нет среди файлов, поэтому я ничего не начал. Скажите точно, какие клипы использовать.' },
   target_too_long: { ka: 'ერთი მონტაჟი მაქსიმუმ 5 წუთია. მთხოვე უფრო მოკლე.', en: 'One edit is at most 5 minutes. Ask for a shorter one.', ru: 'Один монтаж — не длиннее 5 минут. Попросите покороче.' },
   manifest_invalid: { ka: 'გეგმაში აღარ ჩანს ყველა ფაილი, რაც გამომიგზავნე, ამიტომ არ დავიწყე. გამომიგზავნე ფაილები თავიდან.', en: 'The plan no longer lists every file you sent, so I did not start it. Send the files again.', ru: 'В плане больше нет всех отправленных файлов, поэтому я не начал. Отправьте файлы снова.' },

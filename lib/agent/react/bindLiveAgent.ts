@@ -106,7 +106,9 @@ export const AGENT_MONTAGE_NOTE =
   'quote_montage_to_music: it analyses the files, finds the beat and returns the plan and its price. It renders ' +
   'nothing: the user sees the plan with a Confirm button and the edit starts only when they press it. Tell them what ' +
   'the plan is (shots, length, beat, format, any clip left out and why) and that it starts on Confirm; never say it is ' +
-  'already made. For any other video, image or music render, put a ready-to-use brief in your final answer and tell ' +
+  'already made. When they want an intro, the main video and an outro put together (an intro/outro bumper around their ' +
+  'content, the dead start and end cut off), call quote_video_assembly with the file numbers by role and only the times ' +
+  'they said; it finds where each part starts and ends itself. For any other video, image or music render, put a ready-to-use brief in your final answer and tell ' +
   'them to run it in the MyAvatar Studio, where it is created and billed.';
 
 /** Added to either note when the audio tool is on: the agent plans the extraction and never claims it ran. */
@@ -263,6 +265,10 @@ type LiveCtx = AgentContext & { goal: string };
 
 /** Numbers a model sends as text ("30") are read as numbers; anything else is left for the schema to refuse. */
 const num = (schema: z.ZodNumber) => z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), schema);
+/** The highest file number a role may name (montageAsk MAX_FILES; the quote refuses one that is not attached). */
+const ASSEMBLY_MAX_FILE = 14;
+/** One part's times in its own clip (quote_video_assembly cut_timestamps): either bound may be left to detection. */
+const cutWindow = z.object({ start_sec: num(z.number().min(0).max(3600)).optional(), end_sec: num(z.number().positive().max(3600)).optional() });
 
 /** A point in a video, in seconds (a 10-hour cap; the quote checks it against the file). */
 const at = () => num(z.number().min(0).max(36_000));
@@ -457,6 +463,67 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
         beatSynced: q.beatSynced,
         bpm: q.bpm,
         unusedFiles: q.unusedFiles.map((f) => f + 1),
+        next: 'The user confirms the plan on its card; nothing starts before that.',
+      };
+    },
+  }),
+  // quote_video_assembly: an intro + body + outro edit of the request's own clips (GG 2026-11-05 09:03Z), plan and price
+  // only. The model names the files by number and may give the times; whatever it leaves out is found in the clips
+  // themselves (black frames, cuts, silences: lib/services/montage/segmentDetect). Confirmed and rendered exactly like a
+  // montage (the same card, run route, worker and QC), so it adds no new way to start a job.
+  defineTool({
+    name: 'quote_video_assembly',
+    effect: 'quote',
+    confirms: 'montage_run',
+    description:
+      'PLAN ONLY — assemble the attached clips as [intro] + [body] + [outro], each cut where it really starts and ends ' +
+      '(dead black frames and silence trimmed, picture and sound cut on the same frame). Input {intro_source?: number, ' +
+      'body_source: number, outro_source?: number (1 = the first attached file; intro_source and outro_source may be the ' +
+      'same clip, whose first part is the intro and last part the outro), cut_timestamps?: {intro?|body?|outro?: ' +
+      '{start_sec?, end_sec?}} (seconds in that clip; the times the user said, never invented), aspect?}. Every attached ' +
+      'clip needs a role. Returns each part\'s window and what found it; renders nothing until the user confirms.',
+    input: z.object({
+      intro_source: num(z.number().int().min(1).max(ASSEMBLY_MAX_FILE)).optional(),
+      body_source: num(z.number().int().min(1).max(ASSEMBLY_MAX_FILE)),
+      outro_source: num(z.number().int().min(1).max(ASSEMBLY_MAX_FILE)).optional(),
+      cut_timestamps: z.object({
+        intro: cutWindow.optional(),
+        body: cutWindow.optional(),
+        outro: cutWindow.optional(),
+      }).optional(),
+      aspect: z.enum(['9:16', '16:9', '1:1']).optional(),
+    }),
+    offered: (ctx) => montageToolOn(ctx),
+    limit: MAX_QUOTES_PER_RUN,
+    run: async ({ intro_source, body_source, outro_source, cut_timestamps, aspect }, ctx) => {
+      const [{ quoteMontage }, { liveMontageDeps }] = await Promise.all([
+        import('@/lib/agent/media/montageExec'),
+        import('@/lib/agent/media/montageLive'),
+      ]);
+      const win = (w: { start_sec?: number; end_sec?: number } | undefined) =>
+        (w ? { ...(w.start_sec !== undefined ? { startSec: w.start_sec } : {}), ...(w.end_sec !== undefined ? { endSec: w.end_sec } : {}) } : undefined);
+      const cuts = cut_timestamps
+        ? Object.fromEntries((['intro', 'body', 'outro'] as const).flatMap((k) => (cut_timestamps[k] ? [[k, win(cut_timestamps[k])]] : [])))
+        : undefined;
+      const r = await quoteMontage(liveMontageDeps(), {
+        userId: ctx.userId, files: ctx.files, prompt: ctx.goal, aspect,
+        assembly: {
+          body: body_source - 1,
+          ...(intro_source !== undefined ? { intro: intro_source - 1 } : {}),
+          ...(outro_source !== undefined ? { outro: outro_source - 1 } : {}),
+          ...(cuts && Object.keys(cuts).length ? { cuts } : {}),
+        },
+      });
+      if (!r.ok) return { error: r.error, message: r.message, ...(r.files ? { files: r.files.map((f) => f + 1) } : {}) };
+      ctx.onMediaQuote?.(r);
+      const q = r.quote;
+      return {
+        planned: true,
+        rendered: false,
+        credits: q.credits,
+        lengthSec: q.totalSec,
+        aspect: q.aspect,
+        parts: (q.assembly?.parts ?? []).map((p) => ({ role: p.role, file: p.file + 1, start_sec: p.startSec, end_sec: p.endSec, start_by: p.startBy, end_by: p.endBy })),
         next: 'The user confirms the plan on its card; nothing starts before that.',
       };
     },

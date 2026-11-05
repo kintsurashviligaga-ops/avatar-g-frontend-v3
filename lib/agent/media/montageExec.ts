@@ -40,6 +40,8 @@ import {
 } from '@/lib/services/montage/montagePlan';
 import { planBeatCuts, type BeatGrid, type CutPlan, type CutProblem, type EnergyEnvelope, type RampResult } from '@/lib/services/montage/beatPlan';
 import { planJoin, type JoinPlan } from '@/lib/services/montage/joinPlan';
+import { planAssembly, type AssemblyPart, type AssemblyPlan, type AssemblyProblem, type AssemblyRole, type AskedWindow } from '@/lib/services/montage/assemblyPlan';
+import type { ClipSignals } from '@/lib/services/montage/segmentDetect';
 import { DEFAULT_TRANSITION_SEC, planTransitions, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
 import { minePlanParams } from '@/lib/agent/params';
 import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
@@ -142,6 +144,12 @@ export interface MontageExecDeps {
   every(ms: number, tick: () => Promise<void>): () => void;
   /** The price in credits, MONTAGE_PRICE_CREDITS when absent. The quote signs it and the run requires it again. */
   price?(): number;
+  /**
+   * Where a clip's black runs, hard cuts and silences are (lib/services/montage/beatAnalysis detectSegments): what an
+   * assembly cuts its intro, body and outro by. Absent = no detection on this server (an assembly then needs every
+   * role's times). Null = the clip could not be analysed.
+   */
+  detectSegments?(url: string, probe: BannerProbe): Promise<ClipSignals | null>;
 }
 
 export type MontageErrorCode =
@@ -162,7 +170,10 @@ export type MontageErrorCode =
   // The finished master does not show every clip (per-clip QC): not delivered.
   | 'clip_missing'
   // The user's words name a picture that is not there („ბოლო შვიდი" of five), or leave none (./sourceSelect).
-  | 'selection_invalid';
+  | 'selection_invalid'
+  // An intro + body + outro assembly (lib/services/montage/assemblyPlan): the roles or times do not fit the files,
+  // or no break was found inside the clip that holds both the intro and the outro (the times are then needed).
+  | 'assembly_invalid' | 'assembly_no_boundary';
 
 /** The numbers behind a refusal, so the chat can say the cause and the way out (./montageChat errorText). */
 export interface MontageRefusalDetail {
@@ -224,8 +235,13 @@ export interface MontageQuote {
    * the clips' own sound alone (no music sent), or nothing. A narration, when there is one, is laid over any of them.
    */
   sound: SoundMode;
-  /** How the cuts are made: on the music's beat, or each clip WHOLE as one stretch in the order sent (./joinPlan). */
-  cutting: 'beat' | 'whole';
+  /**
+   * How the cuts are made: on the music's beat, each clip WHOLE as one stretch in the order sent (./joinPlan), or an
+   * intro + body + outro assembly, each part cut where it really starts and ends (lib/services/montage/assemblyPlan).
+   */
+  cutting: 'beat' | 'whole' | 'assembly';
+  /** The assembly's parts in master order, with the file (manifest index) and what decided each bound. */
+  assembly?: { parts: Array<Omit<AssemblyPart, 'clip'> & { file: number }> };
   /** The manifest index of the music track; null = a montage without music. */
   musicFile: number | null;
   /** The music ends before the edit does (own sound leads, so it is not refused): the master second it stops at. */
@@ -304,10 +320,68 @@ export interface QuoteInput {
   maxSec?: unknown;
   /** The files' original names, parallel to `files` (optional; a name falls back to the file reference's base name). */
   names?: unknown;
+  /**
+   * An intro + body + outro assembly instead of a montage (Agent G's quote_video_assembly): the files by their 0-based
+   * index in `files`, and per role the times that override detection. Every picture sent must have a role.
+   */
+  assembly?: AssemblyAsk;
+}
+
+export interface AssemblyAsk {
+  intro?: number;
+  body: number;
+  outro?: number;
+  cuts?: Partial<Record<AssemblyRole, AskedWindow>>;
 }
 
 const positive = (x: unknown): number | undefined => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : undefined);
 const r3 = (n: number) => Number(n.toFixed(3));
+
+/**
+ * The assembly's plan from the files the roles name (0-based, as sent): every picture sent has a role, each is a video,
+ * and the clips whose windows are not all given are analysed (deps.detectSegments) before ./assemblyPlan cuts them.
+ */
+async function planAssemblyOf(
+  deps: MontageExecDeps,
+  ask: AssemblyAsk,
+  sorted: { clips: number[]; stills: number[] },
+  urls: readonly string[],
+  probes: readonly BannerProbe[],
+  limits: typeof LIMITS,
+): Promise<{ ok: true; plan: AssemblyPlan } | { ok: false; error: MontageError }> {
+  const bad = (message: string, files?: number[]) => ({ ok: false as const, error: err('assembly_invalid', message, files?.length ? { files } : {}) });
+  const roleFiles = [ask.intro, ask.body, ask.outro].filter((f): f is number => f !== undefined);
+  if (roleFiles.some((f) => !Number.isInteger(f) || f < 0 || f >= urls.length)) return bad('A role names a file that is not attached.');
+  const notClip = roleFiles.filter((f) => !sorted.clips.includes(f) || sorted.stills.includes(f));
+  if (notClip.length) return bad(`File ${notClip.map((f) => f + 1).join(', ')} is not a video clip; the intro, body and outro are cut from clips.`, notClip);
+  const unused = sorted.clips.filter((f) => !roleFiles.includes(f));
+  if (unused.length) return bad(`File ${unused.map((f) => f + 1).join(', ')} has no role (intro, body or outro); every clip sent is in the edit, or nothing starts.`, unused);
+  const clipOf = (f: number | undefined) => (f === undefined ? undefined : sorted.clips.indexOf(f));
+  const fully = (w: AskedWindow | undefined) => !!w && Number.isFinite(w.startSec) && Number.isFinite(w.endSec);
+  const needs = new Set<number>();
+  if (ask.intro !== undefined && !fully(ask.cuts?.intro)) needs.add(ask.intro);
+  if (!fully(ask.cuts?.body)) needs.add(ask.body);
+  if (ask.outro !== undefined && !fully(ask.cuts?.outro)) needs.add(ask.outro);
+  const signals = new Map<number, ClipSignals | null>();
+  for (const f of needs) signals.set(f, deps.detectSegments ? await deps.detectSegments(urls[f]!, probes[f]!) : null);
+  const plan = planAssembly({
+    clips: sorted.clips.map((f) => ({ durationSec: probes[f]!.durationSec, signals: signals.get(f) ?? null })),
+    intro: clipOf(ask.intro),
+    body: clipOf(ask.body)!,
+    outro: clipOf(ask.outro),
+    ...(ask.cuts ? { cuts: ask.cuts } : {}),
+    ...limits,
+  });
+  if (plan.ok) return { ok: true, plan };
+  const pb: AssemblyProblem | undefined = plan.assemblyProblem;
+  const fileOf = (c: number) => sorted.clips[c]!;
+  if (pb?.kind === 'no_boundary') {
+    return { ok: false, error: err('assembly_no_boundary', `No break (black, cut or pause) was found inside file ${fileOf(pb.clip) + 1} between its intro and its outro. Give their times (cut_timestamps).`, { files: [fileOf(pb.clip)] }) };
+  }
+  if (pb?.kind === 'too_long') return { ok: false, error: err('target_too_long', plan.error ?? 'too long', { detail: { targetSec: pb.totalSec, maxSec: pb.maxSec } }) };
+  const files = pb && 'clip' in pb ? [fileOf(pb.clip)] : undefined;
+  return bad(`The assembly cannot be planned: ${plan.error ?? 'unknown'}.`, files);
+}
 
 /** A plan that cannot give every clip a shot → the refusal that names the files and the cause (never a plan without them). */
 function refusalOf(problem: CutProblem | undefined, error: string | undefined, clips: readonly number[], track: number | null, clipSec: readonly number[]): MontageError {
@@ -392,7 +466,8 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   let sentNames = names.names;
   let selectionInfo: MontageQuote['selection'];
   const all = sortInputs(probes, Number.POSITIVE_INFINITY);
-  if (all.ok) {
+  // An assembly names its files by role: the words never subset them (a number in „ინტრო 2 წამამდე" is a time).
+  if (all.ok && !input.assembly) {
     const sel = selectSources(prompt, all.clips.length);
     if (sel.mode === 'invalid') {
       return refuse(err('selection_invalid', sel.reason === 'out_of_range'
@@ -444,7 +519,8 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const picked = pickTracks(prompt, tracks);
   const music = picked.music !== null ? analysed.get(picked.music)! : null;
   const voice = picked.voice !== null ? analysed.get(picked.voice)! : null;
-  const sound = soundOf(prompt, music !== null);
+  // An assembly is the clips' own sound (an intro's jingle, the body's voice), with any music sent laid beneath it.
+  const sound = input.assembly ? (music ? 'own+music' : 'own') : soundOf(prompt, music !== null);
 
   // ── the manifest: every file sent, in the order sent; files = manifest = pictures + at most a track and a narration
   const soundProbe = new Map(tracks.map((t) => [t.index, { durationSec: t.durationSec }]));
@@ -476,7 +552,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   // With the music alone the cuts follow its beat (the montage as it always was). Where the clips' own sound plays, a
   // clip is one stretch in the order sent (./joinPlan: a beat-long slice of speech is noise), unless the words ask
   // for the beat or for speed ramps, which follow the music.
-  const onBeat = music !== null && (sound === 'music' || rampMode !== null || wantsBeatCuts(prompt));
+  const onBeat = !input.assembly && music !== null && (sound === 'music' || rampMode !== null || wantsBeatCuts(prompt));
   // Transitions asked („zoom transitions", „მდოვრე გადასვლებით"): on the beat, every shot leaves its roll free (./beatPlan
   // rollSec), so the transition into it plays from footage no shot uses and the cut stays on its beat.
   const tAsk = prompt ? transitionAsk(prompt) : null;
@@ -506,12 +582,19 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     const p = planFor(targetSec);
     return p.ok || !rollSec ? p : planFor(targetSec, false);
   };
-  let plan = planned(target);
+  // ── an assembly: intro + body + outro, each cut where it really starts and ends (no beat, no shares) ──────────────
+  let assemblyPlan: AssemblyPlan | null = null;
+  if (input.assembly) {
+    const a = await planAssemblyOf(deps, input.assembly, sorted, urls, probes as BannerProbe[], limits);
+    if (!a.ok) return refuse(a.error);
+    assemblyPlan = a.plan;
+  }
+  let plan = assemblyPlan ?? planned(target);
   // A narration longer than the edit: with no length asked, the edit grows to hold it when the pictures can fill it
   // (photos stretch, clips play longer); otherwise the card says how much of its end is not heard.
   const voiceEnd = voice ? voice.probe.durationSec : 0;
   let heldForVoice = false;
-  if (plan.ok && voice && !target && plan.totalSec + 0.25 < voiceEnd) {
+  if (plan.ok && !assemblyPlan && voice && !target && plan.totalSec + 0.25 < voiceEnd) {
     const longer = planned(Math.min(voiceEnd, limits.maxTotalSec));
     if (longer.ok) { plan = longer; heldForVoice = true; }
   }
@@ -520,7 +603,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   // Transitions between the shots (./montageAsk transitionAsk, lib/services/montage/transitionPlan): paid for with
   // footage the shots did not use, so cuts on the beat and an asked length stay exactly where they were; only an edit
   // whose length is free gets shorter for an overlap no footage covers. Whatever stays a cut, the card says why.
-  const transitions = tAsk ? planTransitions({
+  const transitions = tAsk && !assemblyPlan ? planTransitions({
     cuts: plan.cuts,
     clipDurationsSec: clipProbes.map((p) => p.durationSec),
     stills: stillOf,
@@ -584,11 +667,12 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     bpm: plan.bpm,
     musicStartSec: music ? musicStartSec : 0,
     sound,
-    cutting: onBeat ? 'beat' : 'whole',
+    cutting: assemblyPlan ? 'assembly' : onBeat ? 'beat' : 'whole',
+    ...(assemblyPlan ? { assembly: { parts: assemblyPlan.parts.map(({ clip, ...p }) => ({ ...p, file: sorted.clips[clip]! })) } } : {}),
     musicFile: picked.music,
     ...(musicEndsSec !== undefined ? { musicEndsSec } : {}),
     ...(voice ? { voice: { file: picked.voice!, durationSec: r3(voice.probe.durationSec), startSec: 0, ...(voiceCutSec ? { cutSec: voiceCutSec } : {}) } } : {}),
-    ...('shortened' in plan && plan.shortened ? { shortened: plan.shortened } : {}),
+    ...('shortened' in plan && (plan as JoinPlan).shortened ? { shortened: (plan as JoinPlan).shortened! } : {}),
     ...(rampMode && !music ? { rampWithoutMusic: true } : {}),
     ...(delayAsked && music ? { unsupported: ['music_delay' as const] } : {}),
     ...(plan.ramp ? { ramp: plan.ramp } : {}),
