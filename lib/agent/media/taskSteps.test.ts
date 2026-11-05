@@ -253,3 +253,39 @@ describe('the montage card holds every part of the words (owner 2026-10-11)', ()
     expect(montageTask({ phase: 'quoted', names: NAMES4, quote: MQ, prompt: 'cut these to the music, 9:16' }, 'en').notice).toBeUndefined();
   });
 });
+
+describe('an intro + body + outro edit has its own card (GG 2026-11-05 10:21Z)', () => {
+  const GG = 'პირველი ვიდეო დაამონტაჟე, მეორე ვიდეოდან ინტრო და ბოლო ლოგოს სცენა ამოიღე';
+  const names = ['gemini_generated_video.mp4', 'MyAvatar_News.mp4'];
+  const AQ2: MontageQuote = {
+    ...MQ, shots: 3, clips: 2, totalSec: 9.4, beatSynced: false, bpm: null, cutting: 'assembly',
+    assembly: { parts: [
+      { role: 'intro', file: 1, startSec: 0, endSec: 2.1, startBy: 'whole', endBy: 'black' },
+      { role: 'body', file: 0, startSec: 0.4, endSec: 6.2, startBy: 'speech', endBy: 'speech' },
+      { role: 'outro', file: 1, startSec: 9.5, endSec: 11.9, startBy: 'scene', endBy: 'whole' },
+    ] },
+  } as MontageQuote;
+
+  test('from the words, before the plan is back: its steps, no beat, no music', () => {
+    const m = montageTask({ phase: 'reading', names, uploaded: 2, prompt: GG }, 'ka');
+    expect(m.title).toBe('ინტრო + ვიდეო + აუტრო');
+    expect(m.steps.map((s) => s.key)).toEqual(['upload', 'find', 'plan', 'prepare', 'cutParts', 'joinParts', 'syncqc', 'finish']);
+    expect(m.steps[1]).toMatchObject({ state: 'active', note: 'ვეძებ შავ კადრებს, სცენის ჭრებს და პაუზებს' });
+    expect(m.steps[0]!.detail).toBe('2 ვიდეო');
+    // „ბოლო ლოგოს სცენა" is the outro, not a logo the plan leaves out.
+    expect(m.notice).toBeUndefined();
+  });
+
+  test('the plan says what was found in each video, and the stages are its own', () => {
+    const q = montageTask({ phase: 'quoted', names, prompt: GG, quote: AQ2 }, 'ka');
+    expect(q.steps[1]!.detail).toBe('ინტრო · ვიდეო 2 · 0:00–0:02.1 (შავი კადრი)\nძირითადი · ვიდეო 1 · 0:00.4–0:06.2 (ხმა)\nაუტრო · ვიდეო 2 · 0:09.5–0:11.9 (სცენის ჭრა)');
+    expect(q.steps[2]!.detail).toContain('3 ნაწილი · 9.4 წმ');
+    const run = montageTask({ phase: 'running', names, prompt: GG, quote: AQ2, stage: 'stitch', pct: 60 }, 'ka');
+    expect(states(run)).toBe('done done done done done active pending pending');
+  });
+
+  test('a plain montage of two videos no longer says „1 მუსიკა"', () => {
+    const m = montageTask({ phase: 'reading', names, uploaded: 2, prompt: 'დაამონტაჟე' }, 'ka');
+    expect(m.steps[0]!.detail).toBe('2 კლიპი');
+  });
+});

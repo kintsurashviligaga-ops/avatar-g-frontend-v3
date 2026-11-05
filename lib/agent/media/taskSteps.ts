@@ -14,7 +14,8 @@ import { formatBytes } from './audioChat';
 import type { AgentMontageState } from './montageChat';
 import { priceLabel, rampShort } from './montageChat';
 import { editsLine, outputLine, type AgentEditState } from './editChat';
-import { unplannedAsks, unplannedText } from './askCoverage';
+import { montageUnplanned, unplannedAsks, unplannedText } from './askCoverage';
+import { assemblyWords } from './assemblyAsk';
 
 type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
@@ -89,6 +90,13 @@ const T = {
   savedLib: { ka: 'ბიბლიოთეკაშიც შევინახე', en: 'Also saved to your Library', ru: 'Сохранено и в Библиотеку' },
   noBeat: { ka: 'მკაფიო ბითი არ არის · ნახევარწამიანი ბადე', en: 'No steady beat · an even half-second grid', ru: 'Чёткого бита нет · ровная сетка в полсекунды' },
   onBeat: { ka: 'ყოველი ჭრა ბითზე', en: 'every cut on a beat', ru: 'каждая склейка в бит' },
+  // Intro + body + outro steps (an assembly: ./assemblyAsk, lib/services/montage/assemblyPlan).
+  agentAssembly: { ka: 'ინტრო + ვიდეო + აუტრო', en: 'Intro + video + outro', ru: 'Интро + видео + аутро' },
+  find: { ka: 'ინტროს, ძირითადი ნაწილის და აუტროს პოვნა', en: 'Find the intro, the body and the outro', ru: 'Поиск интро, основной части и аутро' },
+  findNote: { ka: 'ვეძებ შავ კადრებს, სცენის ჭრებს და პაუზებს', en: 'Looking for black frames, scene cuts and pauses', ru: 'Ищу чёрные кадры, склейки и паузы' },
+  cutParts: { ka: 'ნაწილების ამოჭრა ზუსტად კადრზე', en: 'Cut each part on the exact frame', ru: 'Вырезка частей точно по кадру' },
+  joinParts: { ka: 'ნაწილების გადაბმა ერთ ვიდეოდ', en: 'Join the parts into one video', ru: 'Склейка частей в одно видео' },
+  syncqc: { ka: 'ხმა-სურათის სინქრონის შემოწმება', en: 'Check sound and picture are in sync', ru: 'Проверка синхрона звука и картинки' },
   // MP3 steps.
   checkLink: { ka: 'ბმულის შემოწმება', en: 'Check the link', ru: 'Проверка ссылки' },
   readFile: { ka: 'ფაილის ატვირთვა და წაკითხვა', en: 'Upload and read the file', ru: 'Загрузка и чтение файла' },
@@ -176,7 +184,112 @@ function musicFrom(sec: number, lang: Lang): string {
   return lang === 'en' ? ` · music from ${at}` : lang === 'ru' ? ` · музыка с ${at}` : ` · მუსიკა ${at}-დან`;
 }
 
+export const ASSEMBLY_STEPS = ['upload', 'find', 'plan', 'prepare', 'cutParts', 'joinParts', 'syncqc', 'finish'] as const;
+const ASSEMBLY_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, music: 5, qc: 6, completed: 7 };
+
+/** Is this card an intro + body + outro edit? From the quote once it is back, before it from the words and the files. */
+export function isAssemblyCard(s: Pick<AgentMontageState, 'quote' | 'names' | 'prompt'>): boolean {
+  if (s.quote) return s.quote.cutting === 'assembly';
+  const names = s.names ?? [];
+  if (names.some((n) => AUDIO_NAME.test(n) || IMAGE_NAME.test(n))) return false;
+  return assemblyWords(s.prompt ?? '', names.length) !== null;
+}
+
+const ROLE_WORD: Record<string, Record<Lang, string>> = {
+  intro: { ka: 'ინტრო', en: 'Intro', ru: 'Интро' },
+  body: { ka: 'ძირითადი', en: 'Body', ru: 'Основная' },
+  outro: { ka: 'აუტრო', en: 'Outro', ru: 'Аутро' },
+};
+const BY_WORD: Record<string, Record<Lang, string>> = {
+  black: { ka: 'შავი კადრი', en: 'black frames', ru: 'чёрные кадры' },
+  scene: { ka: 'სცენის ჭრა', en: 'scene cut', ru: 'склейка' },
+  silence: { ka: 'პაუზა', en: 'pause', ru: 'пауза' },
+  speech: { ka: 'ხმა', en: 'voice', ru: 'голос' },
+  asked: { ka: 'შენი დრო', en: 'your time', ru: 'ваше время' },
+};
+const clockSec = (t: number) => {
+  const whole = Math.floor(Math.max(0, t));
+  const tenth = Math.round((Math.max(0, t) - whole) * 10) % 10;
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}${tenth ? `.${tenth}` : ''}`;
+};
+
+/** „ინტრო · ვიდეო 2 · 0:00–0:02.1 (შავი კადრი)" for every part: what was found, from which file, and by what. */
+function partsLines(q: NonNullable<AgentMontageState['quote']>, lang: Lang): string | undefined {
+  const parts = q.assembly?.parts;
+  if (!parts?.length) return undefined;
+  const vid = lang === 'en' ? 'video' : lang === 'ru' ? 'видео' : 'ვიდეო';
+  return parts.map((p) => {
+    const by = [...new Set([p.startBy, p.endBy])].filter((k) => BY_WORD[k]).map((k) => BY_WORD[k]![lang]).join(', ');
+    return `${ROLE_WORD[p.role]?.[lang] ?? p.role} · ${vid} ${p.file + 1} · ${clockSec(p.startSec)}–${clockSec(p.endSec)}${by ? ` (${by})` : ''}`;
+  }).join('\n');
+}
+
+function assemblyTask(s: AgentMontageState, locale: string): TaskCardModel {
+  const lang = pick(locale);
+  const q = s.quote;
+  const total = s.names?.length ?? 0;
+  const ranAt = s.stage ? (ASSEMBLY_STAGE_AT[s.stage] ?? 3) : 3;
+  let at: number;
+  let mode: 'active' | 'waiting' | 'done' | End;
+  let status: TaskStatus;
+  let statusText: string;
+  switch (s.phase) {
+    case 'reading':
+      at = total > 0 && (s.uploaded ?? 0) >= total ? 1 : 0; mode = 'active'; status = 'working'; statusText = say('working', lang); break;
+    case 'quoted':
+      at = 2; mode = 'waiting'; status = 'waiting'; statusText = say('waiting', lang); break;
+    case 'running':
+      at = ranAt; mode = 'active'; status = 'working'; statusText = say(s.stopping ? 'stopping' : 'working', lang); break;
+    case 'done':
+      at = ASSEMBLY_STEPS.length; mode = 'done'; status = 'done'; statusText = say('done', lang); break;
+    case 'cancelled':
+      at = ranAt; mode = 'stopped'; status = 'stopped'; statusText = say('stopped', lang); break;
+    case 'dismissed':
+      at = 2; mode = 'stopped'; status = 'stopped'; statusText = say('dismissed', lang); break;
+    case 'failed':
+    default:
+      at = q ? ranAt : s.error === 'upload_failed' ? 0 : 1; mode = 'failed'; status = 'failed'; statusText = say('failed', lang); break;
+  }
+  const states = lay(ASSEMBLY_STEPS, at, mode);
+  const found = q ? partsLines(q, lang) : undefined;
+  const n = q?.assembly?.parts.length ?? 0;
+  const planDetail = q
+    ? (lang === 'en' ? `${n} part${n === 1 ? '' : 's'} · ${sec(q.totalSec)} s · ${q.aspect} · ${priceLabel(q.credits, locale)}`
+      : lang === 'ru' ? `частей: ${n} · ${sec(q.totalSec)} с · ${q.aspect} · ${priceLabel(q.credits, locale)}`
+        : `${n} ნაწილი · ${sec(q.totalSec)} წმ · ${q.aspect} · ${priceLabel(q.credits, locale)}`)
+    : undefined;
+  const steps: TaskStep[] = ASSEMBLY_STEPS.map((key, i) => {
+    const state = states[i]!;
+    const step: TaskStep = { key, label: say(key, lang), state };
+    if (key === 'upload') {
+      if (state === 'active' && total > 0) step.note = `${Math.min(s.uploaded ?? 0, total)}/${total}`;
+      else if (state === 'done' && total) step.detail = lang === 'en' ? `${total} videos` : lang === 'ru' ? `${total} видео` : `${total} ვიდეო`;
+    }
+    if (key === 'find') {
+      if (state === 'active') step.note = say('findNote', lang);
+      else if (found) step.detail = found;
+    }
+    if (key === 'plan') {
+      if (planDetail && state !== 'pending' && state !== 'skipped') step.detail = planDetail;
+      if (state === 'waiting') step.note = say('waitStart', lang);
+      if (state === 'stopped') step.note = say('dismissed', lang);
+    }
+    if (state === 'active' && s.stopping) step.note = say('stopping', lang);
+    if (key === 'syncqc' && state === 'done') {
+      step.detail = lang === 'en' ? `every part found in the output · sound in sync` : lang === 'ru' ? 'все части в итоге · звук синхронен' : 'ყველა ნაწილი შედეგშია · ხმა სინქრონშია';
+    }
+    if (key === 'finish' && state === 'done') step.detail = say('savedLib', lang);
+    return step;
+  });
+  const clock = clockOf(s.phase, s.t0, s.t1);
+  const model = finish(say('agentAssembly', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
+  const inputs = montageInputs(s, locale);
+  const notice = unplannedText(montageUnplanned(s.prompt, true), locale);
+  return { ...model, ...(inputs ? { inputs } : {}), ...(notice ? { notice } : {}) };
+}
+
 export function montageTask(s: AgentMontageState, locale: string): TaskCardModel {
+  if (isAssemblyCard(s)) return assemblyTask(s, locale);
   const lang = pick(locale);
   const q = s.quote;
   const total = s.names?.length ?? 0;
@@ -208,10 +321,15 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
 
   // Photos are named apart once the quote knows them; before it every picture counts as a clip.
   const stills = q?.stills ?? 0;
-  const clips = Math.max(0, total - 1 - stills);
+  // The sound files really sent (a montage of clips alone has none: GG 2026-11-05's card said „1 მუსიკა" for two videos).
+  const sounds = q?.manifest?.length
+    ? q.manifest.filter((m) => m.kind === 'audio' || m.kind === 'voice').length
+    : (s.names ?? []).filter((n) => AUDIO_NAME.test(n)).length;
+  const clips = Math.max(0, total - sounds - stills);
   const photoPart = stills ? (lang === 'en' ? ` · ${stills} photo${stills === 1 ? '' : 's'}` : lang === 'ru' ? ` · фото: ${stills}` : ` · ${stills} ფოტო`) : '';
+  const soundPart = sounds ? (lang === 'en' ? ` · ${sounds} track${sounds === 1 ? '' : 's'}` : lang === 'ru' ? ` · трек: ${sounds}` : ` · ${sounds} მუსიკა`) : '';
   const filesDetail = total > 0
-    ? (lang === 'en' ? `${clips} clip${clips === 1 ? '' : 's'}${photoPart} · 1 track` : lang === 'ru' ? `клипов: ${clips}${photoPart} · трек: 1` : `${clips} კლიპი${photoPart} · 1 მუსიკა`)
+    ? (lang === 'en' ? `${clips} clip${clips === 1 ? '' : 's'}${photoPart}${soundPart}` : lang === 'ru' ? `клипов: ${clips}${photoPart}${soundPart}` : `${clips} კლიპი${photoPart}${soundPart}`)
     : undefined;
   // Where the song comes in, when it is not its top: the owner typed „0.58" (2026-10-11) and the card never said that the
   // plan had read 0.58 s. Named here, a wrong start is seen before Start.

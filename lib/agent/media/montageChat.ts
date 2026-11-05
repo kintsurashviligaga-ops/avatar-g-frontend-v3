@@ -522,7 +522,7 @@ function cuttingText(q: MontageQuote, lang: Lang): string {
 }
 
 /** Agent G's plan, in words: what it found, what it will make, what it costs, and that nothing starts before Confirm. */
-export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string): string {
+export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string, withGo = true): string {
   const lang = pick(locale);
   const found = cuttingText(q, lang);
   const st = q.stills ?? 0;
@@ -560,8 +560,34 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${noted}${ramp}${trans}${files}${left}\n${engine} ${price} ${go}`;
+  return `${found}\n${plan}${from}${noted}${ramp}${trans}${files}${left}\n${engine} ${price}${withGo ? ` ${go}` : ''}`;
 }
+
+/**
+ * The bubble's words while the edit runs and once it is ready: the plan stays (what was found, what is being made) and
+ * the step it is on is added under it, the way a chat assistant narrates its work. GG 2026-11-05 10:21Z: the plan used
+ * to be replaced by a bare „მონტაჟს ვიწყებ", so the chat said nothing about what was being done.
+ */
+export function runningText(q: MontageQuote | undefined, names: string[] | undefined, stage: string | null | undefined, locale: string): string {
+  const lang = pick(locale);
+  const words = q?.cutting === 'assembly' && stage && ASSEMBLY_STAGE[stage] ? ASSEMBLY_STAGE[stage]![lang] : stageText(stage, locale);
+  const now = `${stageMark(stage)} ${words}…`;
+  return q ? `${quoteText(q, names, locale, false)}\n\n${now}` : now;
+}
+
+export function readyText(q: MontageQuote | undefined, names: string[] | undefined, durationSec: number, locale: string): string {
+  const done = `✓ ${doneText(durationSec, locale, q?.sound)}`;
+  return q ? `${quoteText(q, names, locale, false)}\n\n${done}` : done;
+}
+
+/** An intro + body + outro edit says its own steps: there are no shots or music to speak of. */
+const ASSEMBLY_STAGE: Record<string, Record<Lang, string>> = {
+  normalize: { ka: 'ინტროს, ძირითად ნაწილს და აუტროს ზუსტად კადრზე ვჭრი', en: 'Cutting the intro, the body and the outro on the exact frame', ru: 'Режу интро, основную часть и аутро точно по кадру' },
+  stitch: { ka: 'ნაწილებს ერთ ვიდეოდ ვაბამ', en: 'Joining the parts into one video', ru: 'Склеиваю части в одно видео' },
+  qc: { ka: 'ვამოწმებ, რომ ხმა და სურათი სინქრონშია და ყველა ნაწილი შედეგშია', en: 'Checking the sound is in sync and every part is in the output', ru: 'Проверяю синхрон звука и что все части в итоге' },
+};
+
+const stageMark = (stage: string | null | undefined) => (stage === 'qc' || stage === 'completed' ? '🔎' : '⏳');
 
 /**
  * The quote's files, in the user's order: number, name, video or music, length. „Every clip is used" closes it: the

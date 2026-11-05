@@ -185,6 +185,23 @@ test('A + B + A: the parts cut where they really start and end, frame-exact, the
   expect(audits).toEqual(['quote:ok', 'run:ok:queued', 'run:ok:started', 'run:ok:delivered']);
 });
 
+test("GG's own sentence, no roles sent (the chat's path): video 2 gives the intro and the logo outro, video 1 is the body", async () => {
+  const B = file('body.mp4', makeB());
+  const A = file('bumper.mp4', makeA());
+  const store = memoryLeaseStore();
+  const d = deps(store, []);
+  const prompt = 'პირველი ვიდეო დაამონტაჟე, მეორე ვიდეოდან ინტრო და ბოლო ლოგოს სცენა ამოიღე და პირველი ვიდეო დაამონტაჟე სწორედ';
+  const q = await quoteMontage(d, { userId: 'u', files: [B, A], prompt });
+  if (!q.ok) throw new Error(`quote: ${q.error} ${q.message}`);
+  expect(q.quote.cutting).toBe('assembly');
+  expect(q.quote.assembly!.parts.map((p) => [p.role, p.file])).toEqual([['intro', 1], ['body', 0], ['outro', 1]]);
+  expect(q.quote.selection).toBeUndefined();
+  const queued = await enqueueMontageJob(d, { userId: 'u', request: q.request, token: q.token });
+  if (!queued.ok) throw new Error(`run: ${queued.error}`);
+  const r = await workMontageJob(d, { jobId: queued.jobId, worker: 'w-gg' });
+  if (r.ran !== true || r.outcome !== 'delivered') throw new Error(`work: ${JSON.stringify(r)} ${store.rows.get(queued.jobId)?.error ?? ''}`);
+}, 120_000);
+
 test('one clip with no break inside cannot be split into intro and outro: refused, with the times as the way out', async () => {
   const out = join(dir, 'flat.mp4');
   ff(['-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=30:duration=4', '-f', 'lavfi', '-i', 'sine=f=300:duration=4', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', out]);
