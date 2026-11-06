@@ -1,0 +1,18 @@
+{
+  "model": "veo-3.1-generate-001",
+  "adapter": "lib/veo/vertexClient.ts submitVertexVeo + pollVertexVeo (buildVertexPayload): text only, 4 s, 720p, sound",
+  "ms": 34219,
+  "polls": 2,
+  "estimateUsd": 1.6,
+  "at": "2026-11-06T05:54:50.558Z",
+  "media": {
+    "bytes": 572910,
+    "sha256": "d8c2cf1feefbf84b402fe1d920f50482545a3fe58502b02865cb2c24fd67c463",
+    "mimeType": "video/mp4",
+    "durationSec": 4.011,
+    "width": 1280,
+    "height": 720,
+    "hasVideoTrack": true,
+    "hasAudioTrack": true
+  }
+}

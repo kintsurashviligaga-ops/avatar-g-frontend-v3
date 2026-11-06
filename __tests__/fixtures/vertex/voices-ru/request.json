@@ -1,0 +1,4 @@
+{
+  "method": "GET",
+  "url": "https://texttospeech.googleapis.com/v1/voices?languageCode=ru-RU"
+}

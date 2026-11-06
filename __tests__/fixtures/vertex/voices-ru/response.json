@@ -1,0 +1,151 @@
+{
+  "status": 200,
+  "body": {
+    "voices": [
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Chirp3-HD-Aoede",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Chirp3-HD-Charon",
+        "ssmlGender": "MALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Chirp3-HD-Fenrir",
+        "ssmlGender": "MALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Chirp3-HD-Kore",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Chirp3-HD-Leda",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Chirp3-HD-Orus",
+        "ssmlGender": "MALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Chirp3-HD-Puck",
+        "ssmlGender": "MALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Chirp3-HD-Zephyr",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Standard-A",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Standard-B",
+        "ssmlGender": "MALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Standard-C",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Standard-D",
+        "ssmlGender": "MALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Standard-E",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Wavenet-A",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Wavenet-B",
+        "ssmlGender": "MALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Wavenet-C",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Wavenet-D",
+        "ssmlGender": "MALE",
+        "naturalSampleRateHertz": 24000
+      },
+      {
+        "languageCodes": [
+          "ru-RU"
+        ],
+        "name": "ru-RU-Wavenet-E",
+        "ssmlGender": "FEMALE",
+        "naturalSampleRateHertz": 24000
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "model": "gemini-2.5-flash-preview-tts",
+  "adapter": "app/api/tts/gemini/route.ts (read-aloud): Georgian, default voice Aoede, no languageCode (the first run's call answered 500 INTERNAL)",
+  "ms": 669,
+  "estimateUsd": 0.01,
+  "at": "2026-11-06T06:05:14.787Z"
+}

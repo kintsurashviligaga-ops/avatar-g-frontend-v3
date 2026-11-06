@@ -1,0 +1,7 @@
+{
+  "model": "chirp_3",
+  "adapter": "lib/voice-v2v/chirpStt.ts transcribeWithChirp: the listed-languages request",
+  "ms": 1387,
+  "estimateUsd": 0.01,
+  "at": "2026-11-06T06:05:15.458Z"
+}

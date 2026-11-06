@@ -1,0 +1,14 @@
+{
+  "model": "gemini-3.1-flash-image",
+  "adapter": "lib/ai/geminiImage.ts generateGeminiImage (buildGeminiImageBody)",
+  "ms": 10971,
+  "estimateUsd": 0.07,
+  "at": "2026-11-06T05:54:11.262Z",
+  "media": {
+    "bytes": 1873637,
+    "sha256": "fb282f114b35a3a2c0a44f36cf805980bdace9569d79aa6c2c12696ed0526c65",
+    "mimeType": "image/png",
+    "width": 1376,
+    "height": 768
+  }
+}

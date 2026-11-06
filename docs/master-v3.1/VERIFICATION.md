@@ -154,7 +154,7 @@ on that PR.
 
 | Gate | Status | Why |
 |---|---|---|
-| Live paid provider certification (one contract call per model on the Production Vertex project) | **unverified** | needs the owner's billing authorisation; v3.1 forbids discovering access with repeated billed probes. Owner-run paid tests that did happen are listed in `CAPABILITY_MATRIX.md` with their date and budget |
+| Live paid provider certification (one contract call per model on the Production Vertex project) | **done 2026-11-06; two requests failed** (§6) | the owner approved it (card 2026-11-05 20:15Z, $5 cap; card 2026-11-06 06:01Z for Chirp 3 and one more Gemini TTS call); about $2.20 in total |
 | Live chat first-token benchmark (p50 ≤ 1.5 s, p95 ≤ 4 s) | **unverified** | Phase 3 decision 3 (budget for about 60 Flash turns) is still open |
 | Preview, warm, with a seeded test account | **unverified** | Phase 3 decision 4 (a Preview test account in the shared database) is still open |
 | Real hardware (iPhone Safari, Android Chrome), real microphone and speaker | **unverified** by this phase | only emulated sizes and touch here; the owner verified Live calls on an iPhone (2026-10-31) and Georgian/Russian/English dictation (2026-11-01) by hand |
@@ -181,3 +181,45 @@ PLAYWRIGHT_BASE_URL=http://localhost:3300 npx playwright test tests/phase6-matri
 # route → provider / billing scan:
 python3 scripts/audit/route_reach.py . route-reach.json
 ```
+
+## 6. Paid certification (2026-11-06)
+
+The owner chose certification on 2026-11-05 20:15Z ("სერტიფიკაცია $5": one paid call per uncertified model, $5 at most
+in total). Localhost and Previews cannot reach Vertex with the app's identity, so the calls ran on the owner's Mac with
+the owner's existing gcloud sign-in (`x-goog-user-project` = the Production project). The runner is
+`scripts/certify/vertex-contract.mjs`: Vertex and Cloud speech hosts only, the cap checked before the first call, a
+ledger written before every call, no retry of any kind, and a second run refused. Its plans are
+`scripts/certify/vertex-contract-plan.json` (run 1) and `vertex-contract-plan-2.json` (run 2, the owner's card
+2026-11-06 06:01Z: Chirp 3 on the recorded Georgian MP3, pinned by its sha256, and Gemini TTS once more).
+
+| Call | Model, location | Run | Answer | Fixture (`__tests__/fixtures/vertex/`) |
+|---|---|---|---|---|
+| Photo, 16:9 | `gemini-3.1-flash-image`, `global` | 1 | 200: a 1376×768 PNG (+ a `thoughtSignature` part) | `image/` |
+| Music, 60 s instrumental | `lyria-3-pro-preview`, `global` | 1 | 200: a 58.9 s MP3, 44.1 kHz, + two caption parts | `lyria-pro/` |
+| Read-aloud, Georgian, voice Aoede | `gemini-2.5-flash-preview-tts`, `global` | 1 and 2 | **500 INTERNAL both times** | `gemini-tts/`, `gemini-tts-2/` |
+| Georgian voice (video, telephony) | Gemini-TTS on Cloud TTS (`gemini-2.5-flash-tts`, Kore) | 1 | 200: a 4.6 s MP3 | `cloud-tts-ka/` |
+| Russian voices list (free) | Cloud TTS | 1 | 200: 18 ru-RU voices; the adapter's pick is `ru-RU-Chirp3-HD-Aoede` | `voices-ru/` |
+| Russian voice | Cloud TTS, `ru-RU-Chirp3-HD-Aoede` | 1 | 200: a 2.7 s MP3 | `cloud-tts-ru/` |
+| Dictation, listed languages (`ka-GE`, `ru-RU`, `en-US`) | `chirp_3`, `us` | 2 | **400 INVALID_ARGUMENT** | `chirp-listed/` |
+| Dictation, Georgian only | `chirp_3`, `us` | 2 | 200: "ეს არის ქართული ხმის შემოწმება ვიდეოსთვის." word for word | `chirp-ka/` |
+| Video, fast, photo as first frame | `veo-3.1-fast-generate-001`, `us-central1` | 1 | 200, done after 3 polls: one 4.0 s 1280×720 MP4 with video and audio tracks | `veo-fast/` |
+| Video, standard, text | `veo-3.1-generate-001`, `us-central1` | 1 | 200, done after 2 polls: one 4.0 s 1280×720 MP4 with video and audio tracks | `veo-standard/` |
+
+Spend (the runner's estimates; Google's bill is the authority): run 1 $2.18 (`summary.json`), run 2 $0.03
+(`summary-2.json`); Google does not bill a 4xx/5xx, so the real figure is likely about $2.17. Run 1 sent no Chirp
+request: its input was to be the Gemini TTS audio, which never came.
+
+Contract tests, no network: `__tests__/contracts/vertex/plan.contract.test.ts` (each recorded request is what our
+adapter sends for the same input) and `__tests__/contracts/vertex/recorded.contract.test.ts` (each adapter reads the
+recorded answer: the PNG and not the signature, the MP3 and not the captions, the Cloud TTS audio, the voice pick from
+the real list, Chirp's Georgian leg after the 400, both Veo operations as one MP4, and read-aloud answering 502
+`tts_failed` after the 500 without another provider). The fixtures hold no media bytes, project id or token (tested).
+
+What it found:
+
+1. **Read-aloud's default model does not answer on Vertex** for the request the route sends (two 500s, eleven minutes
+   apart). If Production sets `GEMINI_TTS_MODEL` to another allowlisted model, read-aloud there is not affected; that
+   setting and Production's runtime logs were not readable from this session. Not retried further without the owner.
+2. **Chirp 3 refuses the listed-languages request** (400). The adapter already handles it, so dictation works, but in
+   the Georgian locale only the Georgian-only request ever answers. Whether Google refuses the Preview `ka-GE` beside
+   GA languages or several languages at `us` is not proven.
