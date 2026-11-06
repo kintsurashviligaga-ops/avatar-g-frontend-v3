@@ -27,9 +27,10 @@ the per-service studios remain as the engines behind it.
 
 | Service | Gap | Why it is open |
 |---|---|---|
-| Music | Pro (up to 184 s) has no owner-verified run; ka/ru vocals are owner-accepted, not Google-documented | needs a budgeted run; Google's language list |
+| Music | Pro has a contract fixture (2026-11-06, a 60 s instrumental) but no owner-judged long or sung run; ka/ru vocals are owner-accepted, not Google-documented | the owner's listening; Google's language list |
 | Music | Music Studio v1 (quote → approve → job page) is off in Production; the chat path serves users | the owner has not asked to turn it on |
-| Photo | `gemini-3.1-flash-image` has no contract fixture; mask editing and reference customisation have no separate verified contract | needs a budgeted contract call |
+| Photo | text-to-image on `gemini-3.1-flash-image` is verified (contract, 2026-11-06); mask editing and reference customisation have no separate verified contract | each needs its own budgeted contract call |
+| Speech | read-aloud's default Gemini TTS model answered 500 on both certification calls (2026-11-06); Chirp 3's listed-languages request answers 400 (the Georgian-only request works) | `VERIFICATION.md` §6; the owner decides the next step |
 | Video | `veo-3.2-*`, `-preview` and `lite` ids exist in code without verification | they are not offered; delete or verify |
 | Video | new dialogue on an uploaded speaking video | Omni keeps uploaded speech (unsupported) |
 | Avatar | own-photo Live avatar; lip-sync to the user's own audio | `BLOCKED_EXTERNAL`; `CAPABILITY_UNAVAILABLE` |

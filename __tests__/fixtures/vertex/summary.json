@@ -1,0 +1,147 @@
+{
+  "project": "{project}",
+  "finishedAt": "2026-11-06T05:55:40.443Z",
+  "estimateSentUsd": 2.18,
+  "capUsd": 5,
+  "results": [
+    {
+      "id": "image",
+      "model": "gemini-3.1-flash-image",
+      "status": 200,
+      "ms": 10971,
+      "media": {
+        "bytes": 1873637,
+        "sha256": "fb282f114b35a3a2c0a44f36cf805980bdace9569d79aa6c2c12696ed0526c65",
+        "mimeType": "image/png",
+        "width": 1376,
+        "height": 768
+      },
+      "usage": {
+        "promptTokenCount": 25,
+        "candidatesTokenCount": 1120,
+        "totalTokenCount": 1145,
+        "trafficType": "ON_DEMAND",
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 25
+          }
+        ],
+        "candidatesTokensDetails": [
+          {
+            "modality": "IMAGE",
+            "tokenCount": 1120
+          }
+        ]
+      }
+    },
+    {
+      "id": "lyria-pro",
+      "model": "lyria-3-pro-preview",
+      "status": 200,
+      "ms": 20732,
+      "media": {
+        "bytes": 1420210,
+        "sha256": "28f7bc73eace96b528b9cb0df338576eac3f168981d8486b04dddc87b4fd0937",
+        "mimeType": "audio/mpeg",
+        "durationSec": 58.854,
+        "frames": 2253,
+        "sampleRate": 44100
+      },
+      "usage": {
+        "candidatesTokenCount": 3199,
+        "totalTokenCount": 3199,
+        "trafficType": "ON_DEMAND",
+        "candidatesTokensDetails": [
+          {
+            "modality": "AUDIO",
+            "tokenCount": 3199
+          }
+        ]
+      }
+    },
+    {
+      "id": "gemini-tts",
+      "model": "gemini-2.5-flash-preview-tts",
+      "status": 500,
+      "ms": 623
+    },
+    {
+      "id": "cloud-tts-ka",
+      "model": "gemini-2.5-flash-tts",
+      "status": 200,
+      "ms": 3799,
+      "media": {
+        "bytes": 18336,
+        "sha256": "5d16adfc9851ceacc95345b10e8c8e04f7d2ba2c241acecd0ef7b1a7b6deb6f5",
+        "mimeType": "audio/mpeg",
+        "durationSec": 4.584,
+        "frames": 191,
+        "sampleRate": 24000
+      }
+    },
+    {
+      "id": "voices-ru",
+      "model": "Cloud Text-to-Speech voices list (free)",
+      "status": 200,
+      "ms": 190,
+      "pick": "ru-RU-Chirp3-HD-Aoede"
+    },
+    {
+      "id": "cloud-tts-ru",
+      "model": "Cloud Text-to-Speech, best ru-RU voice",
+      "status": 200,
+      "ms": 512,
+      "media": {
+        "bytes": 10752,
+        "sha256": "db9449ad70876c0e5a6689a901e279ffe93eb551f6501f6123bbd3251179eaf1",
+        "mimeType": "audio/mpeg",
+        "durationSec": 2.688,
+        "frames": 112,
+        "sampleRate": 24000
+      }
+    },
+    {
+      "id": "chirp-listed",
+      "skipped": "missing:gemini-tts.wavBase64"
+    },
+    {
+      "id": "chirp-ka",
+      "skipped": "missing:gemini-tts.wavBase64"
+    },
+    {
+      "id": "veo-standard",
+      "model": "veo-3.1-generate-001",
+      "status": 200,
+      "ms": 34219,
+      "done": true,
+      "media": {
+        "bytes": 572910,
+        "sha256": "d8c2cf1feefbf84b402fe1d920f50482545a3fe58502b02865cb2c24fd67c463",
+        "mimeType": "video/mp4",
+        "durationSec": 4.011,
+        "width": 1280,
+        "height": 720,
+        "hasVideoTrack": true,
+        "hasAudioTrack": true
+      }
+    },
+    {
+      "id": "veo-fast",
+      "model": "veo-3.1-fast-generate-001",
+      "status": 200,
+      "ms": 52295,
+      "done": true,
+      "media": {
+        "bytes": 1219125,
+        "sha256": "e7ee2467e544fca6af8f564daad80f09645bd8b6a5d4315433b8a28dd065cee9",
+        "mimeType": "video/mp4",
+        "durationSec": 4.011,
+        "width": 1280,
+        "height": 720,
+        "hasVideoTrack": true,
+        "hasAudioTrack": true
+      }
+    }
+  ]
+}
