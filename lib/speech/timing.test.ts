@@ -96,3 +96,21 @@ test('the phases are the route\'s steps in order, and every one round-trips', ()
   for (const p of SPEECH_PHASES) { m.advance(1); clock.lap(p); }
   expect(Object.keys(parseSpeechTiming(clock.header())!.phases)).toEqual([...SPEECH_PHASES]);
 });
+
+// GG's card 2026-11-06: 1.5–3.1 s of a chunk was "network". A fresh instance loading the route is part of that.
+test('a cold start is named in the header, read back, and carried to the row as part of the network', () => {
+  const m = manual();
+  const clock = new SpeechClock(m.now);
+  clock.cold(812.4);
+  m.advance(200); clock.lap('auth');
+  m.advance(3_000); clock.lap('google');
+  expect(clock.header()).toBe('auth;dur=200, google;dur=3000, cold;dur=812, total;dur=3200');
+  const timing = parseSpeechTiming(clock.header())!;
+  expect(timing).toEqual({ phases: { auth: 200, google: 3_000 }, totalMs: 3_200, attempts: 1, coldMs: 812 });
+  const row = speechTimingRow(timing, 5_000);
+  expect(row).toMatchObject({ googleMs: 3_000, oursMs: 200, networkMs: 1_800, coldMs: 812 });
+  // A warm request says nothing of it.
+  const warm = parseSpeechTiming('auth;dur=200, total;dur=3200')!;
+  expect(warm).not.toHaveProperty('coldMs');
+  expect(speechTimingRow(warm, 5_000)).not.toHaveProperty('coldMs');
+});

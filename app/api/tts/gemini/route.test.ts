@@ -579,7 +579,7 @@ describe("the owner's listening trial (body.model)", () => {
   });
 
   // GG 2026-11-06: every chunk cost about 4 s before any audio; the card must say where (lib/speech/timing).
-  test("the trial's answer says where its time went (Server-Timing): our checks, the token, Google, booking", async () => {
+  test("the trial's answer says where its time went (Server-Timing): our checks, the token, Google, booking (off Vercel)", async () => {
     mockAdmin = true;
     const tokenMock = getVertexAccessToken as jest.MockedFunction<typeof getVertexAccessToken>;
     const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
@@ -591,6 +591,21 @@ describe("the owner's listening trial (body.model)", () => {
     // The token is asked for before Google is (so its time is its own), and nothing else changes: one Google call.
     expect(tokenMock.mock.invocationCallOrder[0]!).toBeLessThan(fetchSpy.mock.invocationCallOrder[0]!);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('only the first request on a fresh instance tells the trial it was a cold start', async () => {
+    mockAdmin = true;
+    let fresh!: typeof POST;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- a fresh copy of the route: a new instance
+      ({ POST: fresh } = require('./route') as { POST: typeof POST });
+    });
+    const first = parseSpeechTiming((await fresh(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }))).headers.get('server-timing'));
+    expect(first?.coldMs).toEqual(expect.any(Number));
+    expect(first!.coldMs!).toBeGreaterThanOrEqual(0);
+    const second = parseSpeechTiming((await fresh(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }))).headers.get('server-timing'));
+    expect(second).not.toBeNull();
+    expect(second).not.toHaveProperty('coldMs');
   });
 
   test('a token that cannot be minted early changes nothing: the call meets it as always', async () => {
@@ -612,19 +627,151 @@ describe("the owner's listening trial (body.model)", () => {
     expect(timing?.phases).toHaveProperty('wait');
   }, 20_000);
 
-  test('every ordinary request (and anyone else naming a model) gets no timing and no early token', async () => {
-    const tokenMock = getVertexAccessToken as jest.MockedFunction<typeof getVertexAccessToken>;
+  test('every ordinary request (and anyone else naming a model) gets no timing', async () => {
     const plain = await POST(post({ text: 'hello', locale: 'en' }));
     expect(plain.headers.get('server-timing')).toBeNull();
     mockAdmin = false;
     const asked = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
     expect(asked.headers.get('server-timing')).toBeNull();
-    // Only the calls themselves asked for a token.
-    expect(tokenMock).toHaveBeenCalledTimes(fetchSpy.mock.calls.length);
     fetchSpy.mockImplementation(async () => new Response('{"error":{"status":"NOT_FOUND"}}', { status: 404 }));
     const failed = await POST(post({ text: 'hello', locale: 'en' }));
     expect(failed.status).toBe(502);
     expect(failed.headers.get('server-timing')).toBeNull();
+  });
+});
+
+// GG's trial card (2026-11-06): the checks ran one after another (budget ~0.3 s, a fresh token ~0.2 s) and the booking
+// held every chunk's audio back (~0.3 s). They now run together and the booking follows the audio; nothing is skipped.
+describe('the checks run together, and the booking follows the audio', () => {
+  const tokenMock = () => getVertexAccessToken as jest.MockedFunction<typeof getVertexAccessToken>;
+  const byKey = () => checkRateLimitByKey as jest.MockedFunction<typeof checkRateLimitByKey>;
+  /** A promise this test settles itself. */
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+  /** Let the route run up to where it waits on what this test holds (a few turns of the event loop). */
+  const ticks = async (n = 5) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0)); };
+
+  test('the daily cap, the budget and the token are asked at once; Google only after the budget says yes', async () => {
+    const budget = deferred<boolean>();
+    const cap = deferred<NextResponse | null>();
+    budgetMock.mockImplementationOnce(() => budget.promise);
+    byKey().mockImplementationOnce(() => cap.promise);
+    const pending = POST(post({ text: 'hello', locale: 'en' }));
+    await ticks();
+    // All three are under way while neither the cap nor the budget has answered…
+    expect(byKey()).toHaveBeenCalledWith(USER_ID, RATE_LIMITS.TTS_USER);
+    expect(budgetMock).toHaveBeenCalledWith('hello', 'gemini-2.5-flash-preview-tts');
+    expect(tokenMock()).toHaveBeenCalledTimes(1);
+    // …and nothing is asked of the model yet.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    cap.resolve(null);
+    await ticks();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    budget.resolve(true);
+    const res = await pending;
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('the verdicts keep their order: the daily cap answers first, even when the budget would refuse too', async () => {
+    byKey().mockResolvedValueOnce(NextResponse.json({ error: 'Too many requests' }, { status: 429 }));
+    budgetMock.mockResolvedValueOnce(false);
+    const res = await POST(post({ text: 'hello', locale: 'en' }));
+    expect(res.status).toBe(429);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(bookMock).not.toHaveBeenCalled();
+  });
+
+  test('a budget refusal calls no model, although the token was being minted meanwhile', async () => {
+    budgetMock.mockResolvedValueOnce(false);
+    const res = await POST(post({ text: 'hello', locale: 'en' }));
+    expect(res.status).toBe(503);
+    expect(tokenMock()).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(bookMock).not.toHaveBeenCalled();
+  });
+
+  test('no token is minted for a guest, a too-long text, or when Vertex is not configured', async () => {
+    mockUser = null;
+    expect((await POST(post({ text: 'hello', locale: 'en' }))).status).toBe(401);
+    mockUser = { id: USER_ID };
+    expect((await POST(post({ text: 'a'.repeat(SPEECH_MAX_CHARS + 1), locale: 'en' }))).status).toBe(413);
+    for (const k of Object.keys(VERTEX_ENV)) delete process.env[k];
+    expect((await POST(post({ text: 'hello', locale: 'en' }))).status).toBe(503);
+    expect(tokenMock()).not.toHaveBeenCalled();
+    expect(budgetMock).not.toHaveBeenCalled();
+  });
+
+  test('a token that cannot be minted early changes nothing for an ordinary request: the call meets it as always', async () => {
+    tokenMock().mockRejectedValueOnce(new Error('sts down'));
+    const res = await POST(post({ text: 'hello', locale: 'en' }));
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(sentHeaders().Authorization).toBe('Bearer vertex-token');
+  });
+
+  describe('on Vercel (a request context with waitUntil)', () => {
+    const CONTEXT = Symbol.for('@vercel/request-context');
+    const holder = globalThis as unknown as Record<symbol, unknown>;
+    let handed: Array<Promise<unknown>>;
+    beforeEach(() => {
+      handed = [];
+      holder[CONTEXT] = { get: () => ({ waitUntil: (p: Promise<unknown>) => { handed.push(p); } }) };
+    });
+    afterEach(() => { delete holder[CONTEXT]; });
+
+    test('the audio is sent without waiting for the booking, and the booking still lands with the same numbers', async () => {
+      const booked = deferred<undefined>();
+      bookMock.mockImplementationOnce(() => booked.promise);
+      fetchSpy.mockImplementation(async () => okAudio({ promptTokenCount: 9, candidatesTokenCount: 30, totalTokenCount: 39 }));
+      const res = await POST(post({ text: 'hello', locale: 'en' }));
+      // The answer is here while the booking has not finished.
+      expect(res.status).toBe(200);
+      expect(inspectWav(new Uint8Array(await res.arrayBuffer())).ok).toBe(true);
+      expect(handed).toHaveLength(1);
+      await ticks();
+      expect(bookMock).toHaveBeenCalledTimes(1);
+      expect(bookMock.mock.calls[0]![0]).toMatchObject({
+        model: 'gemini-2.5-flash-preview-tts', inputTokens: 9, outputTokens: 30, totalTokens: 39, userId: USER_ID,
+      });
+      booked.resolve(undefined);
+      await expect(handed[0]).resolves.toBeUndefined();
+    });
+
+    test('audio Google sent but we refuse is still booked after the answer', async () => {
+      fetchSpy.mockImplementation(async () => geminiAudioResponse([{ pcm: WAV_DOUBLE_WRAPPED, mimeType: 'audio/wav' }]));
+      const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const res = await POST(post({ text: 'hello', locale: 'en' }));
+        expect(res.status).toBe(502);
+        expect(await res.json()).toMatchObject({ error: 'tts_bad_audio' });
+        expect(handed).toHaveLength(1);
+        await handed[0];
+        expect(bookMock).toHaveBeenCalledTimes(1);
+      } finally {
+        err.mockRestore();
+      }
+    });
+
+    test("the trial's timing no longer has a booking step: it does not hold the audio back", async () => {
+      mockAdmin = true;
+      const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+      const timing = parseSpeechTiming(res.headers.get('server-timing'));
+      expect(Object.keys(timing!.phases)).toEqual(['limit', 'body', 'auth', 'quota', 'model', 'budget', 'token', 'google', 'decode']);
+      await handed[0];
+      expect(bookMock).toHaveBeenCalledTimes(1);
+    });
+
+    test('no audio at all books nothing, on Vercel too', async () => {
+      fetchSpy.mockImplementation(async () => geminiAudioResponse([{ text: 'I cannot read that.' }]));
+      const res = await POST(post({ text: 'hello', locale: 'en' }));
+      expect(res.status).toBe(502);
+      expect(handed).toHaveLength(0);
+      expect(bookMock).not.toHaveBeenCalled();
+    });
   });
 });
 
