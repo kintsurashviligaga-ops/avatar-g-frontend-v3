@@ -7,9 +7,9 @@ import { BottomSheet } from './BottomSheet';
  * What the composer's „+" opens — the tools (docs/DESIGN.md §8), each a line icon, a name and one line of what it does.
  * Choosing a tool closes the sheet and puts it in the composer as a chip.
  *
- * ⚠️ FILES ARE NOT HERE ANY MORE. The one attach button lived at the top of this sheet, two taps from the composer, and
- * the owner asked for it beside „+" where people look for it (2026-10-03): it is the composer's paperclip now
- * (OmniStudio, `data-testid="composer-attach"`), drawn only for a tool that takes files.
+ * Files: the one attach entry is the first row of the composer's „+“ sheet (ServicePicker `attach`,
+ * `data-testid="composer-attach"`), drawn only for a tool that takes files. It was a paperclip beside „+“ from 2026-10-03
+ * until GG asked for Gemini's one-icon prompt bar (2026-11-06).
  */
 export interface ToolEntry {
   id: string;

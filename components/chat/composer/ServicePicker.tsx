@@ -10,7 +10,7 @@
  * puts the service in the composer; the conversation on screen stays (GG 2026-10-25, one conversation).
  */
 import type { RefObject } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Paperclip } from 'lucide-react';
 import { AnchoredPopover } from '@/components/studio/create/OptionPicker';
 import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import type { ToolEntry } from '@/components/studio/ui/ToolSheet';
@@ -24,7 +24,7 @@ export interface ServicePickerSection {
 const TITLE = { ka: 'სერვისები', en: 'Services', ru: 'Сервисы' } as const;
 const CLOSE = { ka: 'დახურვა', en: 'Close', ru: 'Закрыть' } as const;
 
-export function ServicePicker({ open, onClose, locale, desktop, anchorRef, sections, activeId, onTool, title }: {
+export function ServicePicker({ open, onClose, locale, desktop, anchorRef, sections, activeId, onTool, title, attach }: {
   open: boolean;
   onClose: () => void;
   locale: string;
@@ -36,6 +36,11 @@ export function ServicePicker({ open, onClose, locale, desktop, anchorRef, secti
   onTool: (id: string) => void;
   /** Overrides the accessible name (e.g. „აირჩიე ხელსაწყო" when opened from a panel's tool switch). */
   title?: string;
+  /**
+   * The composer's ONE attach entry (GG 2026-11-06, Gemini's prompt bar: „+“ is the only icon left of the text). Drawn as
+   * the sheet's first row for a tool that takes files; the hint says what this tool takes. Absent → no row.
+   */
+  attach?: { label: string; hint?: string; onAttach: () => void };
 }) {
   const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const label = title ?? TITLE[lang];
@@ -43,6 +48,20 @@ export function ServicePicker({ open, onClose, locale, desktop, anchorRef, secti
   const shown = sections.filter((s) => s.tools.length > 0);
   const body = (
     <div data-testid="service-picker">
+      {attach ? (
+        <button type="button" data-testid="composer-attach" aria-label={attach.label}
+          title={attach.hint ? `${attach.label} — ${attach.hint}` : attach.label}
+          // ⚠️ Closes the sheet FIRST, then opens the OS picker inside the same tap (a picker opened after an await loses
+          // the user activation on iOS and never shows).
+          onClick={() => { onClose(); attach.onAttach(); }}
+          className="mb-1 flex min-h-[52px] w-full touch-manipulation items-center gap-3.5 rounded-2xl px-3 text-left transition-colors hover:bg-app-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+          <Paperclip size={20} aria-hidden="true" className="shrink-0 text-app-text/80" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-medium leading-tight text-app-text">{attach.label}</span>
+            {attach.hint ? <span className="mt-0.5 block truncate text-[12.5px] leading-tight text-app-muted">{attach.hint}</span> : null}
+          </span>
+        </button>
+      ) : null}
       {shown.map((sec, i) => (
         <section key={sec.id} data-testid={`service-group-${sec.id}`}>
           <p className={`px-3 pb-1 text-[12px] font-medium text-app-muted ${i === 0 ? 'pt-1' : 'pt-3'}`}>{sec.label}</p>

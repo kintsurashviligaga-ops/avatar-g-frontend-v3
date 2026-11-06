@@ -273,14 +273,14 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
-    test('the paperclip beside „+“ attaches, „+“ opens the tools — Chat, then Video, image, music and avatar one tap away', async ({ page }) => {
+    test('„+“ attaches (its first row) and opens the tools — Chat, then Video, image, music and avatar one tap away', async ({ page }) => {
       await openDashboard(page);
-      // Video takes files: the paperclip sits right after „+“ and says what it is.
-      await expect(page.getByTestId('composer-attach')).toHaveAccessibleName('ფაილის მიმაგრება');
+      // One icon (GG 2026-11-06): no paperclip beside „+“; Video takes files, so the sheet's first row attaches.
+      await expect(page.locator('[data-tour="composer"]').getByTestId('composer-attach')).toHaveCount(0);
       await page.getByTestId('plus').click();
       const sheet = page.getByTestId('tool-sheet');
       await expect(sheet).toBeVisible();
-      await expect(sheet.getByTestId('attach')).toHaveCount(0);
+      await expect(sheet.getByTestId('composer-attach')).toHaveAccessibleName('ფაილის მიმაგრება');
       // The unified composer (GG 2026-10-25): the catalog's usable services in three groups — the chat, then the five
       // makers in GG's order, then everything else; GG's hidden tools stay out.
       const group = (id: string) => sheet.getByTestId(`service-group-${id}`).getByRole('button');

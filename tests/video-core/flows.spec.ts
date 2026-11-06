@@ -30,8 +30,9 @@ import {
 const FILM_URL = 'https://e2e-media.supabase.co/films/final-master.mp4';
 const press = async (el: Locator, isMobile: boolean): Promise<void> => { if (isMobile) await el.tap(); else await el.click(); };
 
-/** The paperclip → the OS file chooser → these files (what a user does; no hidden-input shortcut). */
+/** „+“ → its attach row → the OS file chooser → these files (what a user does; no hidden-input shortcut). */
 async function chooseFiles(page: Page, isMobile: boolean, files: Array<{ name: string; mimeType: string; buffer: Buffer }>): Promise<void> {
+  await press(page.getByTestId('plus'), isMobile);
   const chooser = page.waitForEvent('filechooser');
   await press(page.getByTestId('composer-attach'), isMobile);
   await (await chooser).setFiles(files);
