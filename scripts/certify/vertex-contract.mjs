@@ -16,6 +16,8 @@
  *  · no credential is created, stored or printed: the bearer comes from `gcloud auth print-access-token` (the identity
  *    already signed in on the machine), lives in memory, and is never written to a file or a log line.
  *  · fixtures are sanitized: media bytes become {bytes, sha256}; the project id becomes {project}.
+ *  · a plan may name `inputs`: a file already on disk (a recording from an earlier run), pinned by its sha256 and read
+ *    relative to the plan file, usable as "{{<input id>.base64}}". A missing or changed file stops the run before any call.
  *
  *   node vertex-contract.mjs --project <id> [--plan <file>] [--out <dir>] --dry-run
  *   node vertex-contract.mjs --project <id> [--plan <file>] [--out <dir>] --confirm paid-certification [--resume]
@@ -88,6 +90,15 @@ export function validatePlan(plan) {
   const cap = Number(plan.capUsd);
   if (!Number.isFinite(cap) || cap <= 0 || cap > OWNER_CAP_USD) throw new Error(`plan capUsd must be > 0 and ≤ ${OWNER_CAP_USD}`);
   const ids = new Set();
+  for (const [id, input] of Object.entries(plan.inputs ?? {})) {
+    if (!/^[a-z0-9][a-z0-9.-]{1,60}$/.test(id)) throw new Error('every input needs an id (a-z 0-9 . -)');
+    if (!input || typeof input.file !== 'string' || !SAFE_INPUT_RE.test(input.file) || input.file.split('/').some((seg) => seg === '..' || seg === '.')) {
+      throw new Error(`input ${id}: file must be a plain relative path inside the plan's folder`);
+    }
+    if (typeof input.mimeType !== 'string' || !/^[a-z]+\/[a-z0-9.+-]+$/.test(input.mimeType)) throw new Error(`input ${id}: mimeType is required`);
+    if (typeof input.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(input.sha256)) throw new Error(`input ${id}: sha256 is required`);
+    ids.add(id);
+  }
   let total = 0;
   for (const c of plan.calls) {
     if (!c || typeof c.id !== 'string' || !/^[a-z0-9][a-z0-9.-]{1,60}$/.test(c.id)) throw new Error('every call needs an id (a-z 0-9 . -)');
@@ -104,13 +115,33 @@ export function validatePlan(plan) {
     if (c.kind === 'get' && est !== 0) throw new Error(`${c.id}: a get is free (estimateUsd 0)`);
     if (c.kind !== 'get' && (c.body === undefined || c.body === null)) throw new Error(`${c.id}: a ${c.kind} call needs a body`);
     for (const dep of c.requires ?? []) {
-      if (!ids.has(dep)) throw new Error(`${c.id}: requires ${dep}, which is not an earlier call`);
+      if (!ids.has(dep)) throw new Error(`${c.id}: requires ${dep}, which is not an input or an earlier call`);
     }
     total += est;
   }
   total = Math.round(total * 1e6) / 1e6;
   if (total > cap) throw new Error(`the plan's estimates ($${total.toFixed(3)}) exceed its cap ($${cap})`);
   return { total, cap };
+}
+
+const SAFE_INPUT_RE = /^[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}$/;
+const INPUT_MAX_BYTES = 10 * 1024 * 1024;
+
+/** The plan's inputs as refs ({base64, mimeType}) plus their facts, read relative to the plan; throws on any mismatch. */
+export function loadInputs(plan, planPath) {
+  const refs = {};
+  const facts = {};
+  for (const [id, input] of Object.entries(plan.inputs ?? {})) {
+    const file = join(dirname(resolve(planPath)), input.file);
+    if (!existsSync(file)) throw new Error(`input ${id}: ${input.file} is not there (nothing was sent)`);
+    const buf = readFileSync(file);
+    if (buf.length === 0 || buf.length > INPUT_MAX_BYTES) throw new Error(`input ${id}: ${input.file} is empty or too large`);
+    const sha256 = createHash('sha256').update(buf).digest('hex');
+    if (sha256 !== input.sha256) throw new Error(`input ${id}: ${input.file} is not the recorded file (sha256 differs; nothing was sent)`);
+    refs[id] = { base64: buf.toString('base64'), mimeType: input.mimeType };
+    facts[id] = { file: input.file, bytes: buf.length, sha256, mimeType: input.mimeType };
+  }
+  return { refs, facts };
 }
 
 // ── references between calls ─────────────────────────────────────────────────────────────────────────────────────
@@ -406,6 +437,8 @@ export async function run(opts, deps = {}) {
   const { total, cap } = validatePlan(plan);
   log(`plan: ${plan.calls.length} calls, estimate $${total.toFixed(3)}, cap $${cap}, project ${opts.project}`);
   for (const c of plan.calls) log(`  ${c.id.padEnd(22)} ${c.kind.padEnd(4)} $${Number(c.estimateUsd).toFixed(3)}  ${c.url.replace('{project}', opts.project)}`);
+  const inputs = loadInputs(plan, opts.plan);
+  for (const [id, f] of Object.entries(inputs.facts)) log(`  input ${id}: ${f.file} (${f.bytes} bytes, sha256 ${f.sha256.slice(0, 12)}…, matches the recording)`);
   if (opts.dryRun) {
     log('dry run: nothing sent');
     return { dryRun: true, total };
@@ -430,7 +463,7 @@ export async function run(opts, deps = {}) {
     'x-goog-user-project': opts.project,
     ...extra,
   });
-  const refs = {};
+  const refs = { ...inputs.refs };
   const results = [];
   let estimateSent = 0;
   let projectNumber = null;
@@ -594,6 +627,7 @@ export async function run(opts, deps = {}) {
     finishedAt: new Date().toISOString(),
     estimateSentUsd: Math.round(estimateSent * 1e6) / 1e6,
     capUsd: cap,
+    ...(Object.keys(inputs.facts).length ? { inputs: inputs.facts } : {}),
     results: sanitize(results, opts.project, projectNumber),
   };
   writeFileSync(join(opts.out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);

@@ -260,3 +260,30 @@ test('Veo 3.1 standard: a 4 s text clip is submitted as planned (720p, sound, on
   expect(out.ok).toBe(true);
   expect(sent).toEqual([{ url: plannedUrl(c), method: 'POST', body: c.body }]);
 });
+
+const PLAN2 = JSON.parse(readFileSync(path.join(__dirname, '../../../scripts/certify/vertex-contract-plan-2.json'), 'utf8')) as {
+  capUsd: number;
+  calls: PlanCall[];
+  inputs: Record<string, { file: string; mimeType: string; sha256: string }>;
+};
+
+test('second plan (owner card 2026-11-06): Gemini TTS is the same request again, Chirp 3 is what the adapter sends for the recorded MP3', async () => {
+  const again = PLAN2.calls.find((c) => c.id === 'gemini-tts-2')!;
+  expect(again.url).toBe(call('gemini-tts').url);
+  expect(again.body).toEqual(call('gemini-tts').body);
+  const listed = PLAN2.calls.find((c) => c.id === 'chirp-listed')!;
+  const ka = PLAN2.calls.find((c) => c.id === 'chirp-ka')!;
+  expect(PLAN2.inputs['ka-mp3']).toMatchObject({ file: 'out/media/cloud-tts-ka.mp3', mimeType: 'audio/mpeg' });
+  // The recorded file's pin is the one the first run's fixture names.
+  const recorded = JSON.parse(readFileSync(path.join(__dirname, '../../fixtures/vertex/cloud-tts-ka/meta.json'), 'utf8')) as { media: { sha256: string } };
+  expect(PLAN2.inputs['ka-mp3']!.sha256).toBe(recorded.media.sha256);
+  const mp3 = Buffer.from([0xff, 0xf3, 0x84, 0xc4, ...Array.from({ length: 400 }, (_, i) => i % 251)]);
+  const georgian = { results: [{ alternatives: [{ transcript: 'ეს არის' }], languageCode: 'ka-ge' }], metadata: { totalBilledDuration: '5s' } };
+  answers.push(json(georgian), json(georgian));
+  await transcribeWithChirp(new Uint8Array(mp3), 'ka-GE');
+  const refs = { 'ka-mp3': { base64: mp3.toString('base64') } };
+  expect(sent).toEqual([
+    { url: plannedUrl(listed), method: 'POST', body: substitute(listed.body, refs) },
+    { url: plannedUrl(ka), method: 'POST', body: substitute(ka.body, refs) },
+  ]);
+});

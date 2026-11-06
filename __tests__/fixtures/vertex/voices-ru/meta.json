@@ -1,0 +1,7 @@
+{
+  "model": "Cloud Text-to-Speech voices list (free)",
+  "adapter": "lib/audio/google-tts.ts pickBestGoogleVoice",
+  "ms": 190,
+  "estimateUsd": 0,
+  "at": "2026-11-06T05:54:47.417Z"
+}

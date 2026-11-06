@@ -1,0 +1,15 @@
+{
+  "model": "lyria-3-pro-preview",
+  "adapter": "lib/ai/lyriaMusic.ts generateLyriaTrack (buildLyriaVertexBody), as app/api/ai/music composes a 60 s instrumental",
+  "ms": 20732,
+  "estimateUsd": 0.08,
+  "at": "2026-11-06T05:54:22.246Z",
+  "media": {
+    "bytes": 1420210,
+    "sha256": "28f7bc73eace96b528b9cb0df338576eac3f168981d8486b04dddc87b4fd0937",
+    "mimeType": "audio/mpeg",
+    "durationSec": 58.854,
+    "frames": 2253,
+    "sampleRate": 44100
+  }
+}

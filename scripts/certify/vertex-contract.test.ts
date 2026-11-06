@@ -29,7 +29,8 @@ import {
   validatePlan,
   wavFromPcm16,
 } from './vertex-contract.mjs';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const PROJECT = 'certify-project';
 const TOKEN = 'ya29.fake-access-token-for-the-runner-test';
@@ -116,6 +117,30 @@ describe('arguments and the plan', () => {
   test('the committed plan passes, at about $2.20 of $5', () => {
     const committed = JSON.parse(readFileSync(path.join(__dirname, 'vertex-contract-plan.json'), 'utf8'));
     expect(validatePlan(committed)).toEqual({ total: 2.2, cap: 5 });
+  });
+
+  test('the second plan (owner card 2026-11-06) passes: three calls, $0.03 of $0.10, and both runs together stay under $5', () => {
+    const first = JSON.parse(readFileSync(path.join(__dirname, 'vertex-contract-plan.json'), 'utf8'));
+    const second = JSON.parse(readFileSync(path.join(__dirname, 'vertex-contract-plan-2.json'), 'utf8'));
+    expect(validatePlan(second)).toEqual({ total: 0.03, cap: 0.1 });
+    expect(second.calls.map((c: Call) => c.id)).toEqual(['gemini-tts-2', 'chirp-listed', 'chirp-ka']);
+    expect(validatePlan(first).total + validatePlan(second).cap).toBeLessThanOrEqual(5);
+  });
+
+  test('inputs: a plain relative path inside the plan folder, a mime type and a sha256 pin', () => {
+    const chirp: Call = {
+      id: 'chirp', kind: 'sync', estimateUsd: 0.01, requires: ['ka'],
+      url: 'https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize', body: { content: '{{ka.base64}}' },
+    };
+    const sha256 = 'a'.repeat(64);
+    const withInput = (input: unknown) => () => validatePlan({ ...plan([chirp]), inputs: { ka: input } });
+    expect(withInput({ file: 'out/media/ka.mp3', mimeType: 'audio/mpeg', sha256 })()).toEqual({ total: 0.01, cap: 5 });
+    expect(withInput({ file: '../secrets/ka.mp3', mimeType: 'audio/mpeg', sha256 })).toThrow(/plain relative path/);
+    expect(withInput({ file: '/etc/passwd', mimeType: 'audio/mpeg', sha256 })).toThrow(/plain relative path/);
+    expect(withInput({ file: 'out/./ka.mp3', mimeType: 'audio/mpeg', sha256 })).toThrow(/plain relative path/);
+    expect(withInput({ file: 'out/ka.mp3', sha256 })).toThrow(/mimeType/);
+    expect(withInput({ file: 'out/ka.mp3', mimeType: 'audio/mpeg' })).toThrow(/sha256/);
+    expect(() => validatePlan(plan([chirp]))).toThrow(/requires ka/);
   });
 });
 
@@ -342,5 +367,47 @@ describe('the run', () => {
     expect(JSON.parse(String(net.sent[1]!.init.body)).voice.name).toBe('ru-RU-Chirp3-HD-Aoede');
     const fixture = JSON.parse(readFileSync(path.join(out, 'fixtures/voices-ru/response.json'), 'utf8'));
     expect(fixture.body.voices.map((v: { name: string }) => v.name)).toEqual(['ru-RU-Standard-A', 'ru-RU-Chirp3-HD-Aoede']);
+  });
+
+  const chirpOnFile: Call = {
+    id: 'chirp-ka', model: 'chirp_3', kind: 'sync', estimateUsd: 0.01, requires: ['ka-mp3'],
+    url: 'https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize',
+    body: { config: { autoDecodingConfig: {}, model: 'chirp_3', languageCodes: ['ka-GE'] }, content: '{{ka-mp3.base64}}' },
+  };
+  const recorded = Buffer.alloc(5000, 5);
+  const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+  const withRecording = (dir: string, bytes: Buffer) => {
+    const media = path.join(dir, 'out', 'media');
+    mkdirSync(media, { recursive: true });
+    writeFileSync(path.join(media, 'cloud-tts-ka.mp3'), bytes);
+  };
+  const filePlan = () => ({ ...plan([chirpOnFile], 0.1), inputs: { 'ka-mp3': { file: 'out/media/cloud-tts-ka.mp3', mimeType: 'audio/mpeg', sha256: sha(recorded) } } });
+
+  test('an input: the recorded file is sent as the content, and the summary names it (bytes and sha256, no bytes in files)', async () => {
+    const dir = tmp();
+    withRecording(dir, recorded);
+    const out = path.join(dir, 'out2');
+    const net = fakeNetwork([() => reply({ results: [{ alternatives: [{ transcript: 'ეს არის ქართული ხმის შემოწმება' }], languageCode: 'ka-ge' }] })]);
+    const summary = await run({ project: PROJECT, plan: writePlan(dir, filePlan()), out, dryRun: false, resume: false }, { ...quiet, fetch: net.fetch, token: () => TOKEN });
+    expect(JSON.parse(String(net.sent[0]!.init.body)).content).toBe(recorded.toString('base64'));
+    expect(summary.inputs).toEqual({ 'ka-mp3': { file: 'out/media/cloud-tts-ka.mp3', bytes: 5000, sha256: sha(recorded), mimeType: 'audio/mpeg' } });
+    expect(summary.results[0]).toMatchObject({ id: 'chirp-ka', status: 200, transcript: 'ეს არის ქართული ხმის შემოწმება' });
+    for (const f of filesUnder(out)) expect(readFileSync(f, 'utf8')).not.toContain(recorded.toString('base64'));
+  });
+
+  test('an input that is missing or not the recorded file stops the run before any call, the dry run too', async () => {
+    for (const bytes of [null, Buffer.alloc(5000, 6)]) {
+      const dir = tmp();
+      if (bytes) withRecording(dir, bytes);
+      const out = path.join(dir, 'out2');
+      const net = fakeNetwork([]);
+      const token = jest.fn(() => TOKEN);
+      const p = writePlan(dir, filePlan());
+      await expect(run({ project: PROJECT, plan: p, out, dryRun: true, resume: false }, { ...quiet, fetch: net.fetch, token })).rejects.toThrow(/input ka-mp3/);
+      await expect(run({ project: PROJECT, plan: p, out, dryRun: false, resume: false }, { ...quiet, fetch: net.fetch, token })).rejects.toThrow(/nothing was sent/);
+      expect(net.fetch).not.toHaveBeenCalled();
+      expect(token).not.toHaveBeenCalled();
+      expect(existsSync(path.join(out, 'ledger.json'))).toBe(false);
+    }
   });
 });
