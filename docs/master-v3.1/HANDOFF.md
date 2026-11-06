@@ -39,7 +39,7 @@ appendix). They passed the gates that ran on `main` after them; they had no PR r
 | Browser matrix: ka/en/ru × desktop/phone, keyboard and touch, reduced motion, guest boundary, fast navigation | **pass**: 15/15 on the production build and 15/15 on `next dev` |
 | Guest boundary of paid routes | **pass**: image, speech, Nano Banana, Veo avatar answer 401; music refuses before auth and is 401 past its gates (code read) |
 | CI on the PR head (incl. real Postgres, Music and Video Core E2E, BOG, speech, voice) | **pass**: every job on `4c5cd2d1`, first run; the one exception is BOG's real-sandbox job, skipped by its own guard (no sandbox credentials in the repository). Preview healthy on that commit. `VERIFICATION.md` §3 |
-| Live paid certification (one contract call per model) | **unverified**: needs the owner's budget |
+| Live paid certification (one contract call per model) | **done 2026-11-06** (owner cards 2026-11-05 20:15Z and 2026-11-06 06:01Z, about $2.20 of $5): image, Lyria Pro, Cloud TTS ka/ru, Chirp 3 Georgian, Veo fast and standard **verified (contract)**; read-aloud's default Gemini TTS model (500 twice) and Chirp 3's listed-languages request (400) **contract failed**. `VERIFICATION.md` §6 |
 | Live chat first-token benchmark | **unverified**: Phase 3 decision 3 open |
 | Preview, warm, seeded account | **unverified**: Phase 3 decision 4 open |
 | Real hardware | **unverified** by this phase (owner hand checks exist for Live on iPhone and mic dictation) |
@@ -61,8 +61,11 @@ appendix). They passed the gates that ran on `main` after them; they had no PR r
    from menus and search, a visible change, so it waits for the owner's OK.
 4. **60 routes still import a forbidden vendor client in their closure**, refused at run time and frozen by the
    ratchet. Cleanup, not an exposure.
-5. **Uncertified models in use**: `gemini-3.1-flash-image`, Lyria Pro, Gemini TTS, Cloud TTS, embeddings. They work
-   in Production; there is no captured contract fixture for them.
+5. **Read-aloud's default model answered 500 INTERNAL on both certification calls** (`gemini-2.5-flash-preview-tts`,
+   `global`, 2026-11-06). If Production does not set `GEMINI_TTS_MODEL` to another allowlisted model, read-aloud may be
+   failing for users with 502 `tts_failed` (no other provider is used). Not readable from this session: the setting's
+   value and the runtime logs. The owner can check by tapping read-aloud on myavatar.ge. Chirp 3's listed-languages
+   request is refused (400); dictation still works through its Georgian-only request. Embeddings remain uncertified.
 6. **Georgian and Russian sung lyrics** are outside Google's documented Lyria languages. The owner accepted Georgian
    after a test; Google could change behaviour without notice.
 7. **Signed links to chat results expire after 7 days** (offered earlier as a follow-up, not asked for).
@@ -82,6 +85,9 @@ is the owner's choice on how v3.1 is closed:
   contract test; nothing is repeated. v3.1 can then be closed with only the owner-dependent rows (hardware, benchmark,
   Preview account) open.
 - **B. Accept as it is**: close v3.1 with the rows above marked uncertified.
+
+**Chosen 2026-11-05 20:15Z: A.** Done 2026-11-06 in two owner-approved runs (about $2.20); #267 and #268 were merged
+the same evening (Production `a8d50b3`). Results and fixtures: `VERIFICATION.md` §6, `CAPABILITY_MATRIX.md`.
 
 Independent of A or B, the owner is asked to approve merging #267 (documents and tests) and #268 (the telephony TTS
 fix), to remove the four third-party keys from the Production environment (risk 1), and to answer Phase 3 decisions 3

@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "body": {
+    "metadata": {
+      "totalBilledDuration": "5s",
+      "requestId": "6dedd844-0000-256d-8218-d43a2ccdf3ef",
+      "prompt": "Transcribe the following speech segment in Georgian. Follow these specific instructions for formatting the answer:\n* Only output the transcript, with no newlines.\n* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 100 instead of one hundred etc.\n* Only output the transcript, exactly as said in the speech segment.\n* Do not continue the speech segment.\n* Include everything said in the speech segment.\n* Use mathematical notation where needed, eg. x ^ 6Y.\n* If there is background speech that is not part of the main conversation, discard the background speech and only output the main conversation.\n* If there is no clear speech, just output [BACKGROUND].\n* Respond in the original language of the speech, Georgian."
+    },
+    "results": [
+      {
+        "alternatives": [
+          {
+            "transcript": "ეს არის ქართული ხმის შემოწმება ვიდეოსთვის."
+          }
+        ],
+        "languageCode": "ka-GE"
+      }
+    ]
+  }
+}

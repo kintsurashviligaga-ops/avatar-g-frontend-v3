@@ -1,0 +1,36 @@
+{
+  "project": "{project}",
+  "finishedAt": "2026-11-06T06:05:18.492Z",
+  "estimateSentUsd": 0.03,
+  "capUsd": 0.1,
+  "inputs": {
+    "ka-mp3": {
+      "file": "out/media/cloud-tts-ka.mp3",
+      "bytes": 18336,
+      "sha256": "5d16adfc9851ceacc95345b10e8c8e04f7d2ba2c241acecd0ef7b1a7b6deb6f5",
+      "mimeType": "audio/mpeg"
+    }
+  },
+  "results": [
+    {
+      "id": "gemini-tts-2",
+      "model": "gemini-2.5-flash-preview-tts",
+      "status": 500,
+      "ms": 669
+    },
+    {
+      "id": "chirp-listed",
+      "model": "chirp_3",
+      "status": 400,
+      "ms": 1387,
+      "transcript": ""
+    },
+    {
+      "id": "chirp-ka",
+      "model": "chirp_3",
+      "status": 200,
+      "ms": 1640,
+      "transcript": "ეს არის ქართული ხმის შემოწმება ვიდეოსთვის."
+    }
+  ]
+}
