@@ -149,6 +149,7 @@ import {
 import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
+import { GenTaskCard } from './GenTaskCard';
 import { SpeechTrialPanel } from './SpeechTrialPanel';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 // The catalogue says which studios are live (a „მალე" tag otherwise); the tool list itself is lib/studio/tools.
@@ -2509,6 +2510,25 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const storyboardAbortRef = useRef<AbortController | null>(null);
   // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
   // render can be retried in one click without the user re-typing or re-uploading.
+  /**
+   * When each image / music / video / avatar bubble started and ended, as this tab watched it: the clock of its
+   * timeline card (components/studio/GenTaskCard). Keyed by the bubble's id (its index when it has none). A bubble
+   * this tab did not watch (a reopened chat) shows its result with no card.
+   */
+  const genClockRef = useRef(new Map<string, { from: number; to?: number }>());
+  const genClock = (key: string, live: boolean): { from: number; to?: number } | null => {
+    const map = genClockRef.current;
+    let c = map.get(key);
+    if (!c) {
+      if (!live) return null;
+      c = { from: Date.now() };
+      map.set(key, c);
+    } else if (!live && c.to === undefined) {
+      c = { ...c, to: Date.now() };
+      map.set(key, c);
+    }
+    return c;
+  };
   const lastVideoReqRef = useRef<{ filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' } | null>(null);
   // When the current generation started: a foreground film stamps its log lines against it.
   const genStartRef = useRef(0);
@@ -10068,6 +10088,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     ))}
                   </div>
                 ) : null}
+                {/* A render this tab watched keeps its timeline card above the result, folded to one line. */}
+                {m.role === 'assistant' && m.genKind && !m.batch && genClockRef.current.has(m.id ?? `i${i}`)
+                  && (m.imageUrl || m.audioUrl || m.videoUrl || m.text?.startsWith('⚠️') || m.text?.startsWith('⏹')) ? (
+                  <GenTaskCard
+                    input={{
+                      kind: m.genKind,
+                      phase: m.imageUrl || m.audioUrl || m.videoUrl ? 'done' : m.text.startsWith('⏹') ? 'stopped' : 'failed',
+                      ...(m.storyboard?.length ? { frames: { ready: m.storyboard.filter((s) => s.frameUrl).length, total: m.storyboard.length } } : {}),
+                      clock: genClock(m.id ?? `i${i}`, false),
+                    }}
+                    locale={locale}
+                  />
+                ) : null}
                 {m.imageUrl && !m.editJob && (
                   <div className="space-y-1.5">
                     {/* THE IMAGE IN ITS OWN SHAPE. It was `w-full object-contain` — a 4:5 portrait sat in a wide dark
@@ -10375,13 +10408,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   // the old staged-timer console, RemixStudioConsole, is retired from the UI with the director's console).
                   if ((pending || isInflightRemix) && m.remixOpKind) {
                     return (
-                      <ResultCard
-                        kind="video"
-                        aspect={ORIENT_ASPECT[m.orientation ?? videoOrientation]}
-                        state="rendering"
+                      <GenTaskCard
+                        input={{ kind: 'video', phase: 'working', stage: m.text, clock: genClock(m.id ?? `i${i}`, true) }}
                         locale={locale}
-                        stage={m.text}
-                        onCancel={() => cancelBubbleJob(m)}
+                        onStop={() => cancelBubbleJob(m)}
                       />
                     );
                   }
@@ -10396,11 +10426,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     // A ×2/×4 batch draws one ResultCard per tile above (each with its own percent) — an aggregate
                     // card under the grid would say the same thing twice.
                     if (kind === 'image' && m.batch && m.batch.tiles.length > 0) return null;
-                    // THE RESULT'S SHAPE FROM THE FIRST SECOND: the tile a job renders into has the ratio of the
-                    // media it will become, so the feed does not jump when it lands (ResultCard).
-                    const cardAspect = kind === 'video' ? ORIENT_ASPECT[m.orientation ?? videoOrientation]
-                      : kind === 'image' ? (m.regen?.kind === 'image' ? m.regen.aspect : imgAspect)
-                      : kind === 'lipsync' ? lipFormat : '1:1';
                     // The film poll's own percent (videoProgress). Image, music and avatar report none, so their card
                     // reads 0 until the result (§3.3: no number paced to the clock; it was 5x off on the default image tier).
                     const cardPct = kind === 'video' && typeof m.videoProgress === 'number' ? m.videoProgress : undefined;
@@ -10420,16 +10445,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                             ))}
                           </div>
                         )}
-                        <ResultCard
-                          kind={kind === 'lipsync' ? 'avatar' : kind}
-                          aspect={cardAspect}
-                          state={typeof cardPct === 'number' && cardPct >= 96 ? 'finalizing' : 'rendering'}
+                        <GenTaskCard
+                          input={{
+                            kind,
+                            phase: 'working',
+                            ...(typeof cardPct === 'number' ? { pct: cardPct } : {}),
+                            stage: m.text,
+                            ...(m.storyboard?.length ? { frames: { ready: m.storyboard.filter((s) => s.frameUrl).length, total: m.storyboard.length } } : {}),
+                            clock: genClock(m.id ?? `i${i}`, true),
+                          }}
                           locale={locale}
-                          pct={cardPct}
-                          stage={m.text}
-                          poster={m.storyboard?.find((s) => s.frameUrl)?.frameUrl ?? null}
                           // This bubble's own job — its queue job when it has one, else the foreground render.
-                          onCancel={() => cancelBubbleJob(m)}
+                          onStop={() => cancelBubbleJob(m)}
                         />
                         {/* GG 2026-10-18: the old Director's Console (9-agent crew under „Details") is retired from the UI;
                             the loading card above is the one progress view. */}
