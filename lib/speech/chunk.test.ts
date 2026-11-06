@@ -6,6 +6,7 @@ import {
   SPEECH_CHUNK_MAX_CHARS,
   SPEECH_CHUNK_MIN_CHARS,
   SPEECH_CHUNK_RAMP,
+  SPEECH_LEAD_MAX_CHARS,
   chunkIndexAt,
   chunkSpeech,
   speechSentences,
@@ -73,10 +74,12 @@ describe('sentences', () => {
 });
 
 describe('chunks', () => {
-  test('defaults: 600 characters, between 40 and the route limit', () => {
-    expect(SPEECH_CHUNK_MAX_CHARS).toBe(600);
+  test('defaults: 180 characters (GG 2026-11-06: 600 timed out), between 40 and the route limit; a 50-character lead', () => {
+    expect(SPEECH_CHUNK_MAX_CHARS).toBe(180);
     expect(SPEECH_CHUNK_MIN_CHARS).toBe(40);
+    expect(SPEECH_LEAD_MAX_CHARS).toBe(50);
     expect(SPEECH_CHUNK_MAX_CHARS).toBeLessThanOrEqual(SPEECH_MAX_CHARS);
+    expect(SPEECH_LEAD_MAX_CHARS).toBeLessThan(SPEECH_CHUNK_MAX_CHARS);
   });
 
   test.each([[''], ['   '], ['\n\n\t ']])('blank text %j has no chunks', (s) => {
@@ -147,15 +150,18 @@ describe('chunks', () => {
     test('GG, Production 2026-10-24: "გამარჯობა!" is no longer followed by a 600-character request', () => {
       const lens = ramped(reply).map((c) => c.text.length);
       expect(texts(reply).length).toBeLessThan(lens.length);
-      expect(chunkSpeech(reply, { leadSentence: true }).map((c) => c.text.length)[1]).toBeGreaterThan(500); // the old cut
+      expect(chunkSpeech(reply, { leadSentence: true, maxChars: 600 }).map((c) => c.text.length)[1]).toBeGreaterThan(500); // the old cut
       expect(lens[0]).toBe('გამარჯობა!'.length);
       for (let k = 1; k < lens.length; k++) {
         const before = lens[k - 1]! + (k >= 2 ? lens[k - 2]! : 0);
         expect(lens[k]).toBeLessThanOrEqual(Math.min(SPEECH_CHUNK_MAX_CHARS, Math.max(SPEECH_CHUNK_MIN_CHARS + SENT.length, Math.floor(SPEECH_CHUNK_RAMP * before))));
       }
-      // It grows: the last full chunks are far longer than the second one, and none passes the limit.
-      expect(Math.max(...lens)).toBeGreaterThan(lens[1]! * 4);
+      // It grows: the later chunks are longer than the second one, and none passes the limit (since 2026-11-06 that is
+      // 180 characters, two of these sentences). Under a wider limit the growth goes on, far past the second chunk.
+      expect(Math.max(...lens)).toBeGreaterThan(lens[1]!);
       expect(Math.max(...lens)).toBeLessThanOrEqual(SPEECH_CHUNK_MAX_CHARS);
+      const wide = ramped(reply, { maxChars: 600 }).map((c) => c.text.length);
+      expect(Math.max(...wide)).toBeGreaterThan(wide[1]! * 4);
       expect(coverageFault(reply, ramped(reply), SPEECH_CHUNK_MAX_CHARS)).toBeNull();
     });
 
@@ -180,11 +186,38 @@ describe('chunks', () => {
       const src = `${first} The end.`;
       expect(first.length).toBeGreaterThan(220);
       const out = ramped(src).map((c) => c.text);
-      expect(out[0]!.length).toBeLessThanOrEqual(220);
+      expect(out[0]!.length).toBeLessThanOrEqual(SPEECH_LEAD_MAX_CHARS);
       expect(out[0]!.endsWith(',')).toBe(true);
       expect(out.join(' ')).toBe(src);
-      // Without the ramp it was one chunk.
-      expect(chunkSpeech(src, { leadSentence: true }).map((c) => c.text)).toEqual([src]);
+      // Without the ramp, and with the old 600-character limit, it was one chunk.
+      expect(chunkSpeech(src, { leadSentence: true, maxChars: 600 }).map((c) => c.text)).toEqual([src]);
+    });
+
+    test('GG 2026-11-06: a long first sentence with no clause mark is cut between two words within the lead', () => {
+      const first = 'ეს არის ძალიან გრძელი პირველი წინადადება რომელშიც მძიმე არ არის და მაინც უნდა დაიწყოს კითხვა სწრაფად რადგან მომხმარებელი ელოდება ხმას';
+      const src = `${first}. მეორე წინადადება.`;
+      expect(first.length).toBeGreaterThan(SPEECH_LEAD_MAX_CHARS * 2);
+      const chunks = ramped(src);
+      const out = chunks.map((c) => c.text);
+      expect(out[0]!.length).toBeLessThanOrEqual(SPEECH_LEAD_MAX_CHARS);
+      expect(out[0]!.length).toBeGreaterThan(SPEECH_LEAD_MAX_CHARS * 0.4);
+      expect(src.startsWith(`${out[0]} `)).toBe(true); // a whole-word prefix
+      expect(out.join(' ')).toBe(src);
+      expect(coverageFault(src, chunks, SPEECH_CHUNK_MAX_CHARS)).toBeNull();
+    });
+
+    test('a first sentence only a little over the lead is read whole: no tail under 40 characters is cut off', () => {
+      const first = 'This first sentence is a little longer than fifty letters';
+      expect(first.length).toBeGreaterThan(SPEECH_LEAD_MAX_CHARS);
+      expect(first.length).toBeLessThan(SPEECH_LEAD_MAX_CHARS + SPEECH_CHUNK_MIN_CHARS);
+      const src = `${first}. The rest.`;
+      expect(ramped(src).map((c) => c.text)[0]).toBe(`${first}.`);
+    });
+
+    test('GG 2026-11-06: a long Georgian reply never sends a chunk over 180 characters', () => {
+      const lens = ramped(reply).map((c) => c.text.length);
+      expect(Math.max(...lens)).toBeLessThanOrEqual(180);
+      expect(coverageFault(reply, ramped(reply), 180)).toBeNull();
     });
 
     test('a sentence with no clause mark that fits is read whole, up to maxChars', () => {
