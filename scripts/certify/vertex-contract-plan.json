@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "approvedBy": "owner decision card 2026-11-05 20:15Z: one paid call per uncertified model, $5 in total at most",
+  "capUsd": 5,
+  "calls": [
+    {
+      "id": "image",
+      "model": "gemini-3.1-flash-image",
+      "adapter": "lib/ai/geminiImage.ts generateGeminiImage (buildGeminiImageBody)",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-3.1-flash-image:generateContent",
+      "estimateUsd": 0.07,
+      "body": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              { "text": "A red paper lantern glowing above a cobblestone street in old Tbilisi at dusk, warm light. No people, no text." }
+            ]
+          }
+        ],
+        "generationConfig": { "responseModalities": ["IMAGE"], "imageConfig": { "aspectRatio": "16:9" } }
+      }
+    },
+    {
+      "id": "lyria-pro",
+      "model": "lyria-3-pro-preview",
+      "adapter": "lib/ai/lyriaMusic.ts generateLyriaTrack (buildLyriaVertexBody), as app/api/ai/music composes a 60 s instrumental",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/lyria-3-pro-preview:generateContent",
+      "estimateUsd": 0.08,
+      "body": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              { "text": "About 60 seconds long, with a complete structure and a real ending. Calm acoustic guitar and soft strings, warm and hopeful. Instrumental, no vocals." }
+            ]
+          }
+        ],
+        "generationConfig": { "responseModalities": ["AUDIO", "TEXT"] }
+      }
+    },
+    {
+      "id": "gemini-tts",
+      "model": "gemini-2.5-flash-preview-tts",
+      "adapter": "app/api/tts/gemini/route.ts (read-aloud): Georgian, default voice Aoede, no languageCode",
+      "kind": "sync",
+      "url": "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent",
+      "estimateUsd": 0.01,
+      "body": {
+        "contents": [
+          { "role": "user", "parts": [{ "text": "Read aloud verbatim: გამარჯობა, ეს არის ხმის მოკლე შემოწმება." }] }
+        ],
+        "generationConfig": {
+          "responseModalities": ["AUDIO"],
+          "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Aoede" } } }
+        }
+      }
+    },
+    {
+      "id": "cloud-tts-ka",
+      "model": "gemini-2.5-flash-tts",
+      "adapter": "lib/audio/google-tts.ts synthesizeGoogleTts: Georgian reads with Gemini-TTS on Cloud Text-to-Speech",
+      "kind": "sync",
+      "url": "https://texttospeech.googleapis.com/v1/text:synthesize",
+      "estimateUsd": 0.01,
+      "body": {
+        "input": { "text": "ეს არის ქართული ხმის შემოწმება ვიდეოსთვის." },
+        "voice": { "languageCode": "ka-GE", "name": "Kore", "modelName": "gemini-2.5-flash-tts" },
+        "audioConfig": { "audioEncoding": "MP3" }
+      }
+    },
+    {
+      "id": "voices-ru",
+      "model": "Cloud Text-to-Speech voices list (free)",
+      "adapter": "lib/audio/google-tts.ts pickBestGoogleVoice",
+      "kind": "get",
+      "url": "https://texttospeech.googleapis.com/v1/voices?languageCode=ru-RU",
+      "estimateUsd": 0,
+      "pick": { "languageCode": "ru-RU", "gender": "FEMALE", "variant": 0 }
+    },
+    {
+      "id": "cloud-tts-ru",
+      "model": "Cloud Text-to-Speech, best ru-RU voice",
+      "adapter": "lib/audio/google-tts.ts synthesizeGoogleTts: a classic (Chirp 3 HD tier) voice for Russian",
+      "kind": "sync",
+      "url": "https://texttospeech.googleapis.com/v1/text:synthesize",
+      "estimateUsd": 0.01,
+      "requires": ["voices-ru"],
+      "body": {
+        "input": { "text": "Это короткая проверка голоса." },
+        "voice": { "languageCode": "ru-RU", "name": "{{voices-ru.pick}}" },
+        "audioConfig": { "audioEncoding": "MP3", "speakingRate": 1, "pitch": 0 }
+      }
+    },
+    {
+      "id": "chirp-listed",
+      "model": "chirp_3",
+      "adapter": "lib/voice-v2v/chirpStt.ts transcribeWithChirp: the listed-languages request",
+      "kind": "sync",
+      "url": "https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize",
+      "estimateUsd": 0.01,
+      "requires": ["gemini-tts"],
+      "body": {
+        "config": { "autoDecodingConfig": {}, "model": "chirp_3", "languageCodes": ["ka-GE", "ru-RU", "en-US"] },
+        "content": "{{gemini-tts.wavBase64}}"
+      }
+    },
+    {
+      "id": "chirp-ka",
+      "model": "chirp_3",
+      "adapter": "lib/voice-v2v/chirpStt.ts transcribeWithChirp: the Georgian-only request sent beside it",
+      "kind": "sync",
+      "url": "https://us-speech.googleapis.com/v2/projects/{project}/locations/us/recognizers/_:recognize",
+      "estimateUsd": 0.01,
+      "requires": ["gemini-tts"],
+      "body": {
+        "config": { "autoDecodingConfig": {}, "model": "chirp_3", "languageCodes": ["ka-GE"] },
+        "content": "{{gemini-tts.wavBase64}}"
+      }
+    },
+    {
+      "id": "veo-fast",
+      "model": "veo-3.1-fast-generate-001",
+      "adapter": "lib/veo/vertexClient.ts submitVertexVeo + pollVertexVeo (buildVertexPayload): photo as the first frame, 4 s, 720p, sound",
+      "kind": "lro",
+      "url": "https://us-central1-aiplatform.googleapis.com/v1/projects/{project}/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning",
+      "contentType": "application/json; charset=utf-8",
+      "estimateUsd": 0.4,
+      "requires": ["image"],
+      "body": {
+        "instances": [
+          {
+            "prompt": "The lantern sways gently in the evening breeze, soft ambient street sounds. No people, no text.",
+            "image": { "bytesBase64Encoded": "{{image.base64}}", "mimeType": "{{image.mimeType}}" }
+          }
+        ],
+        "parameters": {
+          "aspectRatio": "16:9",
+          "durationSeconds": 4,
+          "resolution": "720p",
+          "sampleCount": 1,
+          "personGeneration": "allow_adult",
+          "generateAudio": true
+        }
+      }
+    },
+    {
+      "id": "veo-standard",
+      "model": "veo-3.1-generate-001",
+      "adapter": "lib/veo/vertexClient.ts submitVertexVeo + pollVertexVeo (buildVertexPayload): text only, 4 s, 720p, sound",
+      "kind": "lro",
+      "url": "https://us-central1-aiplatform.googleapis.com/v1/projects/{project}/locations/us-central1/publishers/google/models/veo-3.1-generate-001:predictLongRunning",
+      "contentType": "application/json; charset=utf-8",
+      "estimateUsd": 1.6,
+      "body": {
+        "instances": [
+          {
+            "prompt": "A slow dolly-in on a white ceramic teacup on a wooden table beside a sunlit window, thin steam rising, soft morning light. No people, no text."
+          }
+        ],
+        "parameters": {
+          "aspectRatio": "16:9",
+          "durationSeconds": 4,
+          "resolution": "720p",
+          "sampleCount": 1,
+          "personGeneration": "allow_adult",
+          "generateAudio": true
+        }
+      }
+    }
+  ]
+}
