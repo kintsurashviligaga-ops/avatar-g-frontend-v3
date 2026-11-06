@@ -137,6 +137,24 @@ describe('the browser wiring', () => {
     expect(chunk.synthMs).toBeGreaterThanOrEqual(0);
     expect(chunk.audioMs).toBe(wavAudioMs(WAV_MONO_24K.length, '|24000x1'));
     expect(chunk.miss).toBeUndefined();
+    // An answer without Server-Timing (an older deployment) records no timing.
+    expect(chunk.timing).toBeUndefined();
+  });
+
+  test("GG 2026-11-06: a trial chunk also records where the route's time went", async () => {
+    window.history.replaceState({}, '', '/ka/studio?tts=gemini-2.5-flash-preview-tts');
+    const rec = speechTrialRecorder();
+    rec.onState({ status: 'loading', owner: 'omni:c:5', index: 0 });
+    const timed = { ...PROFILE, 'server-timing': 'auth;dur=180, budget;dur=320, google;dur=3600, book;dur=20, total;dur=4150' };
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({
+      ...wav(),
+      headers: { get: (k: string) => timed[k.toLowerCase() as keyof typeof timed] ?? null },
+    }));
+    await browserSpeechDeps(null).synth('Hello.', 'en', new AbortController().signal);
+    const t = rec.snapshot()!.chunks[0]!.timing!;
+    expect(t).toMatchObject({ googleMs: 3_600, attempts: 1, oursMs: 520, steps: [{ phase: 'budget', ms: 320 }, { phase: 'auth', ms: 180 }] });
+    // The fake answers at once, faster than the route's own total: no network figure is made up.
+    expect(t.networkMs).toBeNull();
   });
 
   test('a trial chunk the route refused records why, and nothing plays', async () => {

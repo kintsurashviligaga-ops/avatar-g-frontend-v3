@@ -138,6 +138,18 @@ test('speechResult hands back the WAV like fetchSpeech, and a caller that alread
   expect(hangs).not.toHaveBeenCalled();
 });
 
+test("speechResult passes on the route's Server-Timing (the trial's), on an answer and on a miss; none without it", async () => {
+  const TIMING = 'auth;dur=180, google;dur=3600, total;dur=3900';
+  const ok = await speechResult('hello', 'en', undefined, (async () =>
+    new Response(Buffer.from(WAV_MONO_24K), { status: 200, headers: { 'server-timing': TIMING } })) as unknown as typeof fetch);
+  expect(ok.ok && ok.timing).toBe(TIMING);
+  const miss = await speechResult('hello', 'en', undefined, (async () =>
+    new Response('{"error":"tts_failed","status":503}', { status: 502, headers: { 'server-timing': TIMING } })) as unknown as typeof fetch);
+  expect(miss).toEqual({ ok: false, miss: { status: 502, error: 'tts_failed', cause: 'Google 503' }, timing: TIMING });
+  const plain = await speechResult('hello', 'en', undefined, (async () => wav()) as unknown as typeof fetch);
+  expect(plain).not.toHaveProperty('timing');
+});
+
 test('missCause says only what the body states, in a bounded, plain form', () => {
   expect(missCause(null)).toBeNull();
   expect(missCause({ error: 'tts_failed' })).toBeNull();

@@ -9,6 +9,7 @@
  * is on, the replay cache is bypassed (lib/speech/player browserSpeechDeps): it would replay audio of another model,
  * and a replay would also make the model under trial sound faster than it is.
  */
+import type { SpeechTimingRow } from './timing';
 
 /** The models the trial can pick: the default, so its timing is heard without the cache, and the two 3.8 ones. */
 export const SPEECH_TRIAL_MODELS: readonly string[] = [
@@ -77,6 +78,11 @@ export interface SpeechTrialChunk {
    * owner's 3.8 trial (2026-10-24) read nothing and the screenshot could not say why.
    */
   readonly miss?: string;
+  /**
+   * Where the route's time went (lib/speech/timing): Google, our own steps and the network. Absent when the route sent
+   * no timing (an older deployment, or an answer that never arrived).
+   */
+  readonly timing?: SpeechTimingRow;
 }
 
 /**
