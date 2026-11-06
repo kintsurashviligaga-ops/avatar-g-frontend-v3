@@ -68,6 +68,8 @@ export function speechTrialModel(env: SpeechTrialEnv | null = browserEnv()): str
 
 /** One chunk of a trial read: its length, how long the route took, and how much audio it sent. */
 export interface SpeechTrialChunk {
+  /** The chunk's place in the read (0-based). Absent: the row keeps the place it arrived in. */
+  readonly index?: number;
   readonly chars: number;
   readonly synthMs: number;
   /** null when no audio came back. */
@@ -148,10 +150,19 @@ export class SpeechTrialRecorder {
     else if (s.status === 'done' || s.status === 'failed' || s.status === 'idle') this.set({ ...r, done: true });
   }
 
-  /** One chunk's answer, in the order they were asked for. */
+  /**
+   * One chunk's answer. Answers arrive in any order (several are asked at once), so the rows are kept in the read's
+   * order by `index`; a row without one stays where it arrived.
+   */
   onChunk(chunk: SpeechTrialChunk): void {
     const r = this.current;
-    if (r && !r.done) this.set({ ...r, chunks: [...r.chunks, chunk] });
+    if (!r || r.done) return;
+    const chunks = [...r.chunks];
+    const at = chunk.index;
+    const before = at === undefined ? -1 : chunks.findIndex((c) => c.index !== undefined && c.index > at);
+    if (before < 0) chunks.push(chunk);
+    else chunks.splice(before, 0, chunk);
+    this.set({ ...r, chunks });
   }
 
   /** The latest trial read (under way or finished), or null before the first. */

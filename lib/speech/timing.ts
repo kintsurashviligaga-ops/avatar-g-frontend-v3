@@ -12,7 +12,8 @@
 
 /**
  * The route's phases, in the order they run. `wait` is the pause before a retry; `google` adds up every attempt and
- * reading Google's answer; `decode` is unwrapping the audio; `book` is recording the usage before the audio is sent.
+ * reading Google's answer; `decode` is unwrapping the audio; `book` is recording the usage before the audio is sent,
+ * which happens only off Vercel now: on Vercel the usage is booked right after the audio is sent (2026-11-06).
  */
 export const SPEECH_PHASES = ['limit', 'body', 'auth', 'quota', 'model', 'budget', 'token', 'google', 'wait', 'decode', 'book'] as const;
 export type SpeechPhase = (typeof SPEECH_PHASES)[number];
@@ -25,6 +26,7 @@ export class SpeechClock {
   private last: number;
   private readonly spent = new Map<SpeechPhase, number>();
   private attempts = 0;
+  private coldMs: number | null = null;
 
   constructor(private readonly now: () => number = () => Date.now()) {
     this.startedAt = this.last = now();
@@ -42,7 +44,15 @@ export class SpeechClock {
     this.attempts += 1;
   }
 
-  /** The `Server-Timing` value: every phase that ran, then the total, in whole milliseconds. */
+  /**
+   * This request was the first on a fresh instance, whose route took `ms` to load before it (lib/speech/bootMark). That
+   * time passed before the clock started, so it is not in the total: the browser counts it as network.
+   */
+  cold(ms: number): void {
+    this.coldMs = Math.max(0, ms);
+  }
+
+  /** The `Server-Timing` value: every phase that ran, a cold start if there was one, then the total, in whole ms. */
   header(): string {
     const parts: string[] = [];
     for (const phase of SPEECH_PHASES) {
@@ -50,6 +60,7 @@ export class SpeechClock {
       if (ms === undefined) continue;
       parts.push(phase === 'google' && this.attempts > 1 ? `google;dur=${Math.round(ms)};desc="${this.attempts}"` : `${phase};dur=${Math.round(ms)}`);
     }
+    if (this.coldMs !== null) parts.push(`cold;dur=${Math.round(this.coldMs)}`);
     parts.push(`total;dur=${Math.round(Math.max(0, this.now() - this.startedAt))}`);
     return parts.join(', ');
   }
@@ -61,6 +72,8 @@ export interface SpeechTiming {
   readonly totalMs: number;
   /** Calls made to Google (1 unless the route retried). */
   readonly attempts: number;
+  /** Present when the request was the first on a fresh instance: how long the route took to load before it. */
+  readonly coldMs?: number;
 }
 
 const PHASE_SET = new Set<string>(SPEECH_PHASES);
@@ -70,6 +83,7 @@ export function parseSpeechTiming(header: string | null | undefined): SpeechTimi
   if (!header || header.length > 1_000) return null;
   const phases: Partial<Record<SpeechPhase, number>> = {};
   let totalMs: number | null = null;
+  let coldMs: number | null = null;
   let attempts = 1;
   for (const entry of header.split(',')) {
     const [rawName, ...params] = entry.split(';').map((s) => s.trim());
@@ -85,12 +99,14 @@ export function parseSpeechTiming(header: string | null | undefined): SpeechTimi
     }
     if (dur === null || !Number.isFinite(dur) || dur < 0) continue;
     if (name === 'total') totalMs = dur;
+    else if (name === 'cold') coldMs = dur;
     else if (PHASE_SET.has(name)) {
       phases[name as SpeechPhase] = dur;
       if (name === 'google' && desc && /^\d{1,2}$/.test(desc)) attempts = Math.max(1, Number(desc));
     }
   }
-  return totalMs === null ? null : { phases, totalMs, attempts };
+  if (totalMs === null) return null;
+  return coldMs === null ? { phases, totalMs, attempts } : { phases, totalMs, attempts, coldMs };
 }
 
 /**
@@ -104,6 +120,8 @@ export interface SpeechTimingRow {
   readonly oursMs: number;
   /** null when the browser's measure is shorter than the route's (clocks cannot be compared then). */
   readonly networkMs: number | null;
+  /** Part of the network figure: the route loading on a fresh instance before this request (absent when warm). */
+  readonly coldMs?: number;
   readonly steps: ReadonlyArray<{ readonly phase: SpeechPhase; readonly ms: number }>;
 }
 
@@ -118,5 +136,6 @@ export function speechTimingRow(timing: SpeechTiming, browserMs: number): Speech
     .sort((a, b) => b.ms - a.ms);
   // A retry's pause is spent because Google failed: it counts with Google.
   const googleMs = (timing.phases.google ?? 0) + (timing.phases.wait ?? 0);
-  return { googleMs, attempts: timing.attempts, oursMs, networkMs, steps };
+  const row = { googleMs, attempts: timing.attempts, oursMs, networkMs, steps };
+  return timing.coldMs === undefined ? row : { ...row, coldMs: timing.coldMs };
 }

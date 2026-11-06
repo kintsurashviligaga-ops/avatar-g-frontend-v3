@@ -32,6 +32,8 @@
  * This is SEPARATE from /api/elevenlabs/tts on purpose — that route (Cloud TTS since MASTER TASK v3.1 PR 5d) powers
  * the film and orchestrator voice-overs; this one is the chat read-aloud.
  */
+// First, so it is evaluated before everything below: when this route began to load on the instance (cold start).
+import { SPEECH_ROUTE_LOADING_AT } from '@/lib/speech/bootMark';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
@@ -43,6 +45,7 @@ import { isAdminIdentity, type AdminCandidate } from '@/lib/auth/adminGuard';
 import { liveVoiceFor, resolveAgentProfile, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { bookChatUsage, chatBudgetAllows } from '@/lib/services/billing/chatBudget';
+import { runAfterResponse } from '@/lib/platform/afterResponse';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import {
   SPEECH_CONTRACT_VERSION, SPEECH_HEADERS, SPEECH_MAX_CHARS, SPEECH_RESPONSE_MIME, speechPacing,
@@ -192,11 +195,18 @@ function retryableTtsFailure(status: number, detail: string, hadLanguageCode: bo
   return false;
 }
 
+/** Whether this instance has served a request yet: the first one after a cold start says so to the trial. */
+let servedOnInstance = false;
+
 export async function POST(req: NextRequest) {
   // The one deadline is counted from here, so the checks below spend from it too.
   const startedAt = Date.now();
   // Where the time goes, phase by phase; sent back only to the owner's listening trial (lib/speech/timing).
   const clock = new SpeechClock();
+  if (!servedOnInstance) {
+    servedOnInstance = true;
+    clock.cold(startedAt - SPEECH_ROUTE_LOADING_AT);
+  }
   // Its own bucket (RATE_LIMITS.TTS): a long reply is ~14 chunk requests, which the shared WRITE bucket 429'd.
   const limited = await checkRateLimit(req, RATE_LIMITS.TTS);
   if (limited) return limited;
@@ -222,18 +232,35 @@ export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id)) return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
   clock.lap('auth');
+  // Vertex AI must be able to serve (v3.1: the only transport; an AI Studio key never makes it possible). Read once here,
+  // judged after the daily cap below, as it always was.
+  const blocked = googleTransportBlocker() !== null;
+  // ⚡ The checks from here on do not depend on each other, so they start together and are judged one by one in the
+  // order they always were (daily cap, transport, model, budget). GG's trial card (2026-11-06, iPhone) showed them one
+  // after another: the budget ~0.3 s and, on a fresh instance, the Workload Identity token ~0.2 s, on every chunk.
+  //   · The daily cap still counts every signed-in request, refused or not, exactly as before.
+  //   · No call to Google's model is made until every check has answered yes: the budget pre-check still comes before
+  //     any spend and still fails closed.
+  //   · The token is asked for meanwhile, only past the sign-in gate and only when Vertex is configured. Minting it
+  //     is free (Google's STS and IAM Credentials, no model call) and the memoised client keeps it for the hour, so the
+  //     call below finds it ready instead of minting it then. A failure here changes nothing: the call meets it as always.
+  const capP = user?.id ? checkRateLimitByKey(user.id, RATE_LIMITS.TTS_USER) : Promise.resolve(null);
+  const modelP = blocked ? null : modelFor(user, body.model);
+  const budgetP = modelP ? modelP.then(({ model: m }) => chatBudgetAllows(text, m)) : null;
+  const tokenP = blocked ? null : getVertexAccessToken(false).then(() => true, () => false);
+  // A check that is not reached (an earlier one refused) must not surface later as an unhandled rejection.
+  void modelP?.catch(() => undefined);
+  void budgetP?.catch(() => undefined);
+
   // Per-ACCOUNT daily ceiling, keyed on the verified uid (the IP bucket above is only the burst guard).
-  if (user?.id) {
-    const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.TTS_USER);
-    if (capped) return capped;
-  }
+  const capped = await capP;
+  if (capped) return capped;
   clock.lap('quota');
 
-  // Vertex AI must be able to serve (v3.1: the only transport; an AI Studio key never makes it possible). The error
-  // name predates Vertex and is kept for the client.
-  if (googleTransportBlocker()) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
+  // The error name predates Vertex and is kept for the client.
+  if (!modelP || !budgetP) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
 
-  const { model, trial } = await modelFor(user, body.model);
+  const { model, trial } = await modelP;
   const profile = resolveAgentProfile({
     personaId: typeof body.personaId === 'string' ? body.personaId : null,
     customPersona: body.customPersona,
@@ -241,16 +268,16 @@ export async function POST(req: NextRequest) {
   const voiceName = pickVoice(profile, body.voice, body.gender, locale);
   clock.lap('model');
 
-  // Platform budget pre-check, before any provider I/O. Fails CLOSED inside chatBudgetAllows (MASTER TASK v3.1): a guard
-  // fault is a 503 here too, never unmetered speech.
-  if (!(await chatBudgetAllows(text, model))) {
+  // Platform budget pre-check, before any call to the model. Fails CLOSED inside chatBudgetAllows (MASTER TASK v3.1): a
+  // guard fault is a 503 here too, never unmetered speech.
+  if (!(await budgetP)) {
     return NextResponse.json({ error: 'budget_exhausted' }, { status: 503 });
   }
   clock.lap('budget');
-  // The trial alone times the Workload Identity token apart from Google: the call below asks the same memoised client,
-  // which then answers from its cache. A failure here changes nothing: the call below meets it and answers as always.
+  // The trial alone waits for the token here, so its card shows what is left of it apart from Google (on a warm
+  // instance, nothing). Every other request lets the call below pick it up.
   if (trial) {
-    await getVertexAccessToken(false).catch(() => null);
+    await tokenP;
     clock.lap('token');
   }
   // What the trial is told, on its answer and on a failure the card shows.
@@ -347,15 +374,18 @@ export async function POST(req: NextRequest) {
     clock.lap('decode');
 
     // Book what Google reported (TTS-family rates in costModel) — also when the audio it sent is refused below, since
-    // Google has charged for it either way. Estimate from the audio length only when it reported nothing. Bounded: the
-    // audio is the product, bookkeeping must not hold it back. An answer with no audio at all books nothing, as before.
+    // Google has charged for it either way. Estimate from the audio length only when it reported nothing. An answer
+    // with no audio at all books nothing, as before.
+    // ⚡ On Vercel the booking runs right AFTER the audio is sent (waitUntil keeps the function alive until it lands,
+    // within maxDuration): it is still booked every time, it just no longer holds the audio back (~0.3 s a chunk on
+    // GG's trial card, 2026-11-06). Off Vercel (local runs, tests) it is awaited first, bounded, exactly as before.
     if (audio.ok || audio.audioParts > 0) {
       const u = data?.usageMetadata;
       const inputTokens = count(u?.promptTokenCount);
       const seconds = audio.ok ? audio.info.durationMs / 1000 : audio.audioBytes / (ESTIMATE_RATE * 2);
       const outputTokens = count(u?.candidatesTokenCount) ?? Math.ceil(seconds * AUDIO_TOKENS_PER_SECOND);
       const totalTokens = count(u?.totalTokenCount);
-      await settleWithin(
+      const book = () =>
         bookChatUsage({
           model,
           ...(inputTokens !== undefined ? { inputTokens } : {}),
@@ -363,10 +393,11 @@ export async function POST(req: NextRequest) {
           ...(totalTokens !== undefined ? { totalTokens } : {}),
           inputChars: prompt.length,
           userId: user?.id ?? null,
-        }),
-        1_500,
-      );
-      clock.lap('book');
+        });
+      if (!runAfterResponse(book, 'tts/gemini book')) {
+        await settleWithin(book(), 1_500);
+        clock.lap('book');
+      }
     }
 
     if (!audio.ok && audio.fault === 'no_audio') return NextResponse.json({ error: 'tts_empty' }, { status: 502 });
