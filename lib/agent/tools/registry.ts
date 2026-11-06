@@ -10,7 +10,11 @@
  *              inspect  reads one of the user's OWN files (attached to this request) or a public video link with a
  *                       model and says what is in it. No job, no credits, nothing stored or changed; its answer is a
  *                       description, never an authorisation (lib/agent/media/analyzeExec).
- *            There is NO effect that lets a model start a job, spend credits or change the user's data. Those run only
+ *              versioned  changes files in the user's OWN workspace (lib/agent/workspace) and nothing else. Every
+ *                       write or delete there is a new version and the one before stays restorable, so a model's
+ *                       change can always be undone by the user; it starts no job and spends nothing (storage only).
+ *            There is NO effect that lets a model start a job, spend credits or change the user's data beyond that
+ *            undoable workspace. Those run only
  *            on the user's own Confirm, through a route that holds the session and the signed quote: the confirmed
  *            actions below. defineTool refuses any other effect, so an "execute" tool cannot be registered by mistake.
  *   input    a zod schema. The model's input is parsed before the tool sees it (unknown keys dropped, every field
@@ -26,8 +30,8 @@
 import { z } from 'zod';
 import type { AgentTool } from '@/lib/agent/react/coordinator';
 
-export type ToolEffect = 'read' | 'prepare' | 'quote' | 'inspect';
-const EFFECTS: readonly string[] = ['read', 'prepare', 'quote', 'inspect'];
+export type ToolEffect = 'read' | 'prepare' | 'quote' | 'inspect' | 'versioned';
+const EFFECTS: readonly string[] = ['read', 'prepare', 'quote', 'inspect', 'versioned'];
 
 /**
  * What the user's Confirm runs, and where. The model never calls these: a quote tool returns a plan, the user sees it
@@ -62,7 +66,7 @@ export const CONFIRMED_ACTIONS = {
     route: '/api/agent/sandbox/run',
     action: 'run',
     access: 'AGENT_G_SANDBOX',
-    does: 'runs the quoted Python or JavaScript once per quote in an isolated Vercel Sandbox (no network, no keys, 60 s), booked in the $20 ledger first (lib/agent/sandbox/codeQuote)',
+    does: 'runs the quoted Python, JavaScript or shell script once per quote in an isolated Vercel Sandbox (no network, no keys, 60 s), booked in the $20 ledger first; a workspace run gets the workspace files and saves what it writes as new versions (lib/agent/sandbox/codeQuote)',
   },
 } as const;
 export type ConfirmedAction = keyof typeof CONFIRMED_ACTIONS;

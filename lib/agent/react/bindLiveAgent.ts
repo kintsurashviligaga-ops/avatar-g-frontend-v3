@@ -139,10 +139,21 @@ export const AGENT_EDIT_NOTE =
 /** Added when the code tool is on: the agent plans a run and never claims it ran. */
 export const AGENT_CODE_NOTE =
   'When working something out needs a program (a calculation, a data transformation, a check of an algorithm), write a ' +
-  'short Python or JavaScript program that prints its result and call quote_code_run with it. It checks the program and ' +
-  'returns the plan; it runs nothing. The program runs only when the user presses Start on the plan, in an isolated ' +
-  'sandbox with no internet, no files of theirs and no keys, for at most 60 seconds. Never say the program already ran ' +
-  'and never invent its output.';
+  'short Python, JavaScript or shell program that prints its result and call quote_code_run with it. It checks the ' +
+  'program and returns the plan; it runs nothing. The program runs only when the user presses Start on the plan, in an ' +
+  'isolated sandbox with no internet and no keys, for at most 60 seconds (with workspace: true, in their workspace ' +
+  'folder). Never say the program already ran and never invent its output.';
+
+/** Added when the workspace is open to this user (with the sandbox): their own folder of files, every change undoable. */
+export const AGENT_WORKSPACE_NOTE =
+  'The user has a workspace: a folder of their files that stays between chats (data, scripts, results). ' +
+  'workspace_list_files shows it, workspace_read_file reads one file, workspace_write_file saves a text file, ' +
+  'workspace_delete_file removes one, workspace_link gives a download link and workspace_export files one in their ' +
+  'Library. Every write or delete keeps the version before it, so the user can always restore it. To process files ' +
+  'with a program, call quote_code_run with workspace: true: the program runs in that folder, reads the files by their ' +
+  'paths (for example data/sales.csv), and every file it writes (a CSV, a chart PNG, a PDF) is saved back as a new ' +
+  'version. Python can use the standard library only (no internet, so no pip install). Say which files you read and ' +
+  'wrote; never claim a file exists that the list does not show.';
 
 /** Added when Google Drive is open to this user: only the files they picked, read only. */
 export const AGENT_DRIVE_NOTE =
@@ -183,6 +194,13 @@ export const MAX_CODE_QUOTES_PER_RUN = 2;
 export const driveToolOn = (ctx: AgentContext): boolean => !!ctx.driveDeps?.cfg;
 /** Each read downloads one file (≤ 10 MB): four per request, one list. */
 export const MAX_DRIVE_READS_PER_RUN = 4;
+/** The workspace goes with the sandbox: a workspace is what a code run reads and writes. */
+export const workspaceToolOn = (ctx: AgentContext): boolean => ctx.sandbox === true;
+/** Workspace reads and writes per request: enough for a small task, never a loop over a whole folder. */
+export const MAX_WORKSPACE_READS_PER_RUN = 8;
+export const MAX_WORKSPACE_WRITES_PER_RUN = 6;
+/** A text file Agent G writes in one call (the code itself is capped at 64 KB elsewhere). */
+export const MAX_WORKSPACE_WRITE_CHARS = 200_000;
 
 type RunMeter = ReturnType<typeof newRunMeter>;
 
@@ -369,6 +387,24 @@ const editAsk = z.object({
 }).refine((a) => editAskOf(withSource(a)) !== null, { message: 'A field was set that its op does not take.' });
 
 /** A track the model passes on is the user's own lines: typed (lib/agent/media/editWords editAskOf takes no other). */
+/** One workspace action on Agent G's default workspace, as an observation (never a throw). */
+async function workspaceCall(
+  ctx: AgentContext,
+  body: Record<string, unknown>,
+  shape?: (b: Record<string, unknown>) => Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const [{ liveWorkspaceStore, liveExportDeps, AGENT_WORKSPACE_TITLE }, { workspaceAction }] = await Promise.all([
+    import('@/lib/agent/workspace/live'),
+    import('@/lib/agent/workspace/actions'),
+  ]);
+  const store = liveWorkspaceStore();
+  const w = await store.ensure(ctx.userId, AGENT_WORKSPACE_TITLE);
+  if (!w.ok) return { error: w.error, message: w.message };
+  const r = await workspaceAction(store, liveExportDeps(), ctx.userId, { ...body, workspaceId: w.workspace.id }, 'agent');
+  if (r.body.ok !== true) return { error: r.body.error, message: r.body.message };
+  return shape ? shape(r.body) : r.body;
+}
+
 function withSource(a: Record<string, unknown>): Record<string, unknown> {
   const t = a.track as Record<string, unknown> | undefined;
   return t ? { ...a, track: { ...t, source: 'typed' } } : a;
@@ -625,17 +661,29 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     effect: 'quote',
     confirms: 'code_run',
     description:
-      "PLAN ONLY — run a short program in an isolated sandbox (no internet, no files, no keys, 1 CPU, 60 s). Input {language: 'python'|'node', code}. " +
-      'The program must print its result to stdout. Returns the plan; runs nothing until the user presses Start; free for the user.',
-    input: z.object({ language: z.enum(['python', 'node']), code: z.string().min(1).max(64 * 1024) }),
+      "PLAN ONLY — run a short program in an isolated sandbox (no internet, no keys, 1 CPU, 60 s). Input {language: 'python'|'node'|'shell', code, workspace?: boolean}. " +
+      'With workspace: true it runs in the user\'s workspace folder: it can read those files, and every file it writes is saved back. ' +
+      'The program must print a short summary to stdout. Returns the plan; runs nothing until the user presses Start; free for the user.',
+    input: z.object({
+      language: z.enum(['python', 'node', 'shell']),
+      code: z.string().min(1).max(64 * 1024),
+      workspace: z.boolean().optional(),
+    }),
     offered: (ctx) => codeToolOn(ctx),
     limit: MAX_CODE_QUOTES_PER_RUN,
-    run: async ({ language, code }, ctx) => {
+    run: async ({ language, code, workspace }, ctx) => {
       const [{ quoteCodeRun }, { liveCodeDeps }] = await Promise.all([
         import('@/lib/agent/sandbox/codeQuote'),
         import('@/lib/agent/sandbox'),
       ]);
-      const r = quoteCodeRun(await liveCodeDeps(), { userId: ctx.userId, request: { language, code } });
+      let workspaceId: string | undefined;
+      if (workspace && workspaceToolOn(ctx)) {
+        const { liveWorkspaceStore, AGENT_WORKSPACE_TITLE } = await import('@/lib/agent/workspace/live');
+        const w = await liveWorkspaceStore().ensure(ctx.userId, AGENT_WORKSPACE_TITLE);
+        if (!w.ok) return { error: w.error, message: w.message };
+        workspaceId = w.workspace.id;
+      }
+      const r = quoteCodeRun(await liveCodeDeps(), { userId: ctx.userId, request: { language, code, ...(workspaceId ? { workspaceId } : {}) } });
       if (!r.ok) return { error: r.error, message: r.message };
       ctx.onCodeQuote?.(r);
       return {
@@ -644,6 +692,7 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
         language: r.quote.language,
         maxSeconds: r.quote.wallSec,
         network: 'none',
+        workspace: workspaceId ? 'the user\'s workspace: its files are readable, written files are saved back' : 'none',
         credits: 0,
         next: 'The user presses Start on the plan; nothing runs before that. Do not state any output.',
       };
@@ -681,6 +730,70 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       if (!r.ok) return { error: r.reason, message: r.reason === 'not_connected' ? 'Google Drive is not linked.' : r.reason === 'not_found' ? 'That file was not picked or does not exist.' : 'The file could not be read.' };
       return { name: r.name, text: r.text };
     },
+  }),
+  // workspace_*: the user's own workspace (lib/agent/workspace), Agent G's default one. Reads are free; a write or delete
+  // is a new version the user can undo (effect 'versioned'), and nothing here starts a job or spends anything.
+  defineTool({
+    name: 'workspace_list_files',
+    effect: 'inspect',
+    description:
+      "The files in the user's workspace (a folder that stays between chats). Input {}. Returns {files: [{path, bytes, v, by, type}], totalBytes}. Changes nothing; free.",
+    input: z.object({}).passthrough(),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async (_a, ctx) => workspaceCall(ctx, { action: 'files' }, (b) => ({
+      files: ((b.files as Array<Record<string, unknown>>) ?? []).map((f) => ({ path: f.path, bytes: f.bytes, v: f.v, by: f.by, type: f.type })),
+      totalBytes: b.totalBytes,
+    })),
+  }),
+  defineTool({
+    name: 'workspace_read_file',
+    effect: 'inspect',
+    description:
+      "One file of the user's workspace. Input {path, v?}. Text files come back as {text} (long ones cut); others as {bytes, type, url}. Changes nothing; free.",
+    input: z.object({ path: z.string().trim().min(1).max(200), v: num(z.number().int().min(1)).optional() }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: MAX_WORKSPACE_READS_PER_RUN,
+    run: async ({ path, v }, ctx) => workspaceCall(ctx, { action: 'read', path, ...(v ? { v } : {}) }),
+  }),
+  defineTool({
+    name: 'workspace_write_file',
+    effect: 'versioned',
+    description:
+      "Save a text file (CSV, JSON, Markdown, code…) in the user's workspace. Input {path, text}. A file already there gets a new version; the old one stays restorable. Free.",
+    input: z.object({ path: z.string().trim().min(1).max(200), text: z.string().max(MAX_WORKSPACE_WRITE_CHARS) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: MAX_WORKSPACE_WRITES_PER_RUN,
+    run: async ({ path, text }, ctx) => workspaceCall(ctx, { action: 'write', path, text }, (b) => ({ saved: b.file })),
+  }),
+  defineTool({
+    name: 'workspace_delete_file',
+    effect: 'versioned',
+    description:
+      "Remove a file from the user's workspace. Input {path}. Its versions are kept, so the user can restore it. Free.",
+    input: z.object({ path: z.string().trim().min(1).max(200) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async ({ path }, ctx) => workspaceCall(ctx, { action: 'delete', path }),
+  }),
+  defineTool({
+    name: 'workspace_link',
+    effect: 'inspect',
+    description: "A download link (7 days) for one file of the user's workspace. Input {path}. Returns {url}. Free.",
+    input: z.object({ path: z.string().trim().min(1).max(200) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 4,
+    run: async ({ path }, ctx) => workspaceCall(ctx, { action: 'link', path }, (b) => ({ path: b.path, url: b.url })),
+  }),
+  defineTool({
+    name: 'workspace_export',
+    effect: 'versioned',
+    description:
+      "File a copy of one workspace file in the user's Library (pictures → Images, PDFs and other files → Docs). Input {path}. The workspace file is unchanged; the user can delete the Library copy. Free.",
+    input: z.object({ path: z.string().trim().min(1).max(200) }),
+    offered: (ctx) => workspaceToolOn(ctx),
+    limit: 3,
+    run: async ({ path }, ctx) => workspaceCall(ctx, { action: 'export', path }),
   }),
   // analyze_media: describe one attached file (or a public YouTube video) with Gemini, by reference. The model names the
   // file by its number, never a path; the answer is a description and starts nothing.
@@ -761,6 +874,7 @@ export async function runLiveAgent(
   const systemExtra = [
     mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
     analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', codeToolOn(ctx) ? AGENT_CODE_NOTE : '', driveToolOn(ctx) ? AGENT_DRIVE_NOTE : '',
+    workspaceToolOn(ctx) ? AGENT_WORKSPACE_NOTE : '',
     opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({

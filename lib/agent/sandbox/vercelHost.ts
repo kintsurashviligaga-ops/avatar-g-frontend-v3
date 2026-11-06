@@ -13,12 +13,14 @@
 import 'server-only';
 import type { SandboxHandle, SandboxHost, SandboxHostSpec } from './runner';
 
-const RUNTIME = { python: 'python3.13', node: 'node24' } as const;
+// A shell script runs on the Python image: bash, coreutils and python3 are all there.
+const RUNTIME = { python: 'python3.13', node: 'node24', shell: 'python3.13' } as const;
 const WORKDIR = '/vercel/sandbox';
 
 /** The parts of @vercel/sandbox this file uses: a test passes a fake instead. */
 export interface VercelSandboxLike {
-  writeFiles(files: { path: string; content: string }[]): Promise<void>;
+  writeFiles(files: { path: string; content: string | Uint8Array }[]): Promise<void>;
+  readFileToBuffer(file: { path: string; cwd?: string }): Promise<Buffer | null>;
   runCommand(params: {
     cmd: string;
     args: string[];
@@ -56,6 +58,12 @@ export function vercelHost(create: VercelCreate = sdkCreate): SandboxHost {
       return {
         async writeFile(path, content) {
           await sbx.writeFiles([{ path: `${WORKDIR}/${path}`, content }]);
+        },
+        async writeBytes(path, bytes) {
+          await sbx.writeFiles([{ path: `${WORKDIR}/${path}`, content: new Uint8Array(bytes) }]);
+        },
+        async readBytes(path) {
+          return sbx.readFileToBuffer({ path: `${WORKDIR}/${path}` });
         },
         async exec(cmd, args, signal) {
           const done = await sbx.runCommand({ cmd, args, cwd: WORKDIR, env: {}, signal });

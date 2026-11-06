@@ -16,6 +16,9 @@ function fakeCreate() {
         seen.cmds.push({ cmd: p.cmd, args: p.args, cwd: p.cwd, env: p.env });
         return { exitCode: 0, stdout: async () => 'hi\n', stderr: async () => '' };
       },
+      async readFileToBuffer({ path }) {
+        return path.endsWith('/out.csv') ? Buffer.from('a,b\n') : null;
+      },
       async stop() {
         seen.stopped++;
       },
@@ -50,5 +53,17 @@ describe('getSandboxRunner', () => {
     expect(getSandboxRunner(null, {} as NodeJS.ProcessEnv)).toBe(disabledSandbox);
     expect(getSandboxRunner(null, { SANDBOX_ENABLED: 'true' } as unknown as NodeJS.ProcessEnv)).toBe(disabledSandbox);
     expect(getSandboxRunner(null, { SANDBOX_ENABLED: '1' } as unknown as NodeJS.ProcessEnv)).not.toBe(disabledSandbox);
+  });
+
+  it('carries workspace bytes in and out of the workdir; a shell script runs on the Python image', async () => {
+    const { create, seen } = fakeCreate();
+    const h = await vercelHost(create).create({ language: 'shell', vcpus: 1, memoryMb: 512, timeoutMs: 1000, allowedDomains: [], env: {} });
+    expect(seen.params!.runtime).toBe('python3.13');
+    await h.writeBytes!('data/in.csv', Buffer.from('x'));
+    const f = seen.files[0] as { path: string; content: Uint8Array };
+    expect(f.path).toBe('/vercel/sandbox/data/in.csv');
+    expect(Buffer.from(f.content).toString()).toBe('x');
+    expect((await h.readBytes!('out.csv'))!.toString()).toBe('a,b\n');
+    expect(await h.readBytes!('missing.txt')).toBeNull();
   });
 });
