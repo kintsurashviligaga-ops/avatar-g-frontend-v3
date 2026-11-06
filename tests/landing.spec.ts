@@ -289,7 +289,8 @@ for (const vp of VIEWPORTS) {
       const create = await group('create').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
       expect(create).toEqual(['service-video', 'service-image', 'service-music', 'service-avatar', 'service-interior']);
       await expect(sheet.getByTestId('service-video')).toHaveAttribute('aria-pressed', 'true');
-      await expect(group('extra').first()).toContainText('პროდუქტის რეკლამა');
+      // The product ad was removed (#235): VFX leads the extra group.
+      await expect(group('extra').first()).toContainText('VFX');
       for (const hidden of ['swap', 'photo', 'photoshoot', 'motion', 'dubbing', 'presentation']) {
         await expect(sheet.getByTestId(`service-${hidden}`)).toHaveCount(0);
       }
