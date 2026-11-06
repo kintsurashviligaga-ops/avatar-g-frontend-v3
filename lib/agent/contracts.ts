@@ -68,7 +68,9 @@ export type CapabilityId =
   /** Read one of the user's files (or a public YouTube video) with Gemini and say what is in it; nothing is cut (PART 3, G1). */
   | 'media.analyze'
   /** Run a short Python or JavaScript program in the isolated Vercel Sandbox; no network, no keys (Master Task v2.0, Phase 3). */
-  | 'agent.code-run';
+  | 'agent.code-run'
+  /** Open public web pages in a fresh sandboxed Chromium; results saved in the user's workspace (ACTION 3, lib/agent/browser). */
+  | 'agent.browser';
 
 /** An edit of something that already exists. */
 export type EditOp =

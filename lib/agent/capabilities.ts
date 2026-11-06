@@ -240,6 +240,15 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
     qc: null, artifact: 'text', library: 'chat-history', label: 'BUILT_NOT_PROVEN',
     liveTool: { name: 'quote_code_run', confirms: 'code_run' }, flag: 'AGENT_G_SANDBOX',
   }),
+  'agent.browser': c({
+    id: 'agent.browser', serviceId: null,
+    does: 'Open public web pages in a fresh sandboxed Chromium (goto, click, type, press, wait, read text, screenshot) and keep what it found in the user\'s workspace',
+    routes: ['/api/agent/browser/run'], engine: 'Vercel Sandbox microVM from a Chromium snapshot, 2 vCPU, public sites only, private ranges denied (lib/agent/browser)',
+    pricing: { key: null, charge: 'free' }, approval: 'plan-start', timeoutSec: 240, retry: 'none',
+    idempotency: 'one task per signed quote (jobId claimed in request_idempotency; fails closed)', cancel: 'client-abort',
+    qc: null, artifact: 'text', library: 'chat-history', label: 'BUILT_NOT_PROVEN',
+    liveTool: { name: 'quote_browser_task', confirms: 'browser_run' }, flag: 'AGENT_G_SANDBOX',
+  }),
   'media.analyze': c({
     id: 'media.analyze', serviceId: null,
     does: 'Read one of the user\'s files (video, sound, PDF, picture) or a public YouTube video and say what is in it: scenes, moments, what is said, an answer to a question. It cuts nothing: ffmpeg still decides every cut',
