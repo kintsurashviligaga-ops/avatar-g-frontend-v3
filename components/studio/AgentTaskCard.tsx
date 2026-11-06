@@ -1,14 +1,16 @@
 'use client';
 
 /**
- * AgentTaskCard — Agent G's work in the chat as a task panel (lib/agent/media/taskSteps): a header with the count of
- * steps done and a clock, the loading loop while Agent G works (the one picture of a wait, the owner's rule of
- * 2026-10-17), every step from the first upload to the saved result in one list joined by a line, a lit ring on the
- * step in progress, ✓ on the steps done, an empty circle on the steps ahead, and the card's own buttons under it.
- * It stays in the thread after the work ends, with every step and where it ended; the header folds the list away.
+ * AgentTaskCard — Agent G's work in the chat as a collapsible timeline (lib/agent/media/taskSteps; GG 2026-11-06
+ * 06:30Z): a header with the count of steps done („3/9 ნაბიჯი"), the status, a clock and a chevron; under it the
+ * loading loop while Agent G works, then every step from the first upload to the saved result in one vertical list
+ * joined by a line: a spinner on the step in progress, a blue ✓ on the steps done, an empty circle on the steps ahead,
+ * each with its title and a smaller line of detail. The list folds and unfolds smoothly, a step that appears slides
+ * in, and nothing moves for a user who asked the system for less motion. The card follows the job live (the follows
+ * wait on app/api/tasks/stream), stays in the thread after the work ends, and keeps its buttons outside the fold.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, Film, Hand, Image as ImageIcon, Mic, Minus, Music2, Sparkles, Square, X } from 'lucide-react';
+import { Check, ChevronDown, Film, Hand, Image as ImageIcon, Loader2, Mic, Minus, Music2, Sparkles, Square, X } from 'lucide-react';
 import { clockText, type StepState, type TaskCardModel } from '@/lib/agent/media/taskSteps';
 import { LoadingLoop } from './ui/LoadingLoop';
 import { ProgressLine } from './ui/controls';
@@ -24,10 +26,15 @@ function StepIcon({ state }: { state: StepState }) {
   const box = 'relative z-[1] flex h-5 w-5 shrink-0 items-center justify-center rounded-full';
   switch (state) {
     case 'done':
-      return <span className={`${box} bg-app-accent text-app-bg`}><Check size={12} strokeWidth={3} aria-hidden="true" /></span>;
+      return <span data-icon="check" className={`${box} bg-app-accent text-white motion-safe:animate-[step-pop_220ms_ease-out]`}><Check size={12} strokeWidth={3} aria-hidden="true" /></span>;
     case 'active':
-      // A still lit ring: the step in progress. The loading loop at the card's head is the only moving picture.
-      return <span className={`${box} bg-app-surface ring-2 ring-app-accent`}><span className="h-[7px] w-[7px] rounded-full bg-app-accent" /></span>;
+      // The step in progress spins (GG 2026-11-06: „მიმდინარე პროცესზე უნდა ტრიალებდეს"); with reduced motion it is a
+      // still lit ring.
+      return (
+        <span data-icon="spinner" className={`${box} bg-app-surface text-app-accent ring-2 ring-app-accent/35`}>
+          <Loader2 size={13} strokeWidth={2.5} aria-hidden="true" className="motion-safe:animate-spin" />
+        </span>
+      );
     case 'waiting':
       return <span className={`${box} bg-app-accent/15 text-app-accent ring-2 ring-app-accent/70`}><Hand size={11} aria-hidden="true" /></span>;
     case 'failed':
@@ -119,7 +126,16 @@ export function AgentTaskCard({
       {/* The run's own percent, as a number (§3.3: no bar). The header already says what is running. */}
       {model.pct !== null ? <ProgressLine pct={model.pct} ariaLabel={model.title} className="mx-4 mb-1 justify-start" /> : null}
 
-      <div id={listId} hidden={folded}>
+      {/* The fold: rows from 0 to the list's own height, so it opens and closes smoothly (no jump, no fixed height). */}
+      <div
+        id={listId}
+        data-folded={folded ? 'true' : 'false'}
+        aria-hidden={folded || undefined}
+        // React 18 has no `inert` prop: the attribute itself keeps a folded list out of tab order and touch.
+        {...(folded ? ({ inert: '' } as Record<string, string>) : {})}
+        className={`grid motion-safe:transition-[grid-template-rows,opacity] motion-safe:duration-300 motion-safe:ease-out ${folded ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}
+      >
+      <div className="min-h-0 overflow-hidden">
         {/* Every file the task works on, by name and in the order sent: the user sees nothing was left out. */}
         {model.inputs?.files.length ? (
           <ul aria-label={t.files} data-testid={`${testId}-files`} className="flex flex-wrap gap-1.5 px-4 pt-3">
@@ -139,10 +155,10 @@ export function AgentTaskCard({
             const last = i === model.steps.length - 1;
             const muted = s.state === 'pending' || s.state === 'skipped';
             return (
-              <li key={s.key} data-step={s.key} data-state={s.state} aria-current={s.state === 'active' ? 'step' : undefined} className="relative flex gap-3 pb-3.5 last:pb-2">
+              <li key={s.key} data-step={s.key} data-state={s.state} aria-current={s.state === 'active' ? 'step' : undefined} className="relative flex gap-3 pb-3.5 last:pb-2 motion-safe:animate-fade-in">
                 {/* The line that joins this step to the next: lit up to where the work has got. */}
                 {!last ? (
-                  <span aria-hidden="true" className={`absolute left-[9.5px] top-6 bottom-0.5 w-px ${s.state === 'done' ? 'bg-app-accent/50' : 'bg-app-border/30'}`} />
+                  <span aria-hidden="true" className={`absolute left-[9.5px] top-6 bottom-0.5 w-px motion-safe:transition-colors motion-safe:duration-500 ${s.state === 'done' ? 'bg-app-accent/60' : 'bg-app-border/30'}`} />
                 ) : null}
                 <StepIcon state={s.state} />
                 <div className="min-w-0 flex-1 pt-px">
@@ -170,6 +186,7 @@ export function AgentTaskCard({
           <p data-testid={`${testId}-notice`} role="note" className="px-4 pb-2 text-[12px] leading-[1.4] text-app-warning">{model.notice}</p>
         ) : null}
         {footer ? <div className="px-4 pb-2">{footer}</div> : null}
+      </div>
       </div>
       {/* The buttons stay when the list is folded: Stop must never hide behind a fold. */}
       {children ? <div className="flex flex-wrap items-center gap-2 px-4 pb-4 pt-1">{children}</div> : null}

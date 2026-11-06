@@ -30,6 +30,10 @@ const NEVER_RUNS: Record<string, { ffmpeg?: string; resvg?: string }> = {
     ffmpeg: 'enqueue and status only; the watermark runs in /api/agent/video-queue/drain',
     resvg: 'enqueue and status only; the watermark runs in /api/agent/video-queue/drain',
   },
+  '/api/tasks/stream': {
+    ffmpeg: 'relays reads of /api/tasks over HTTP (that route starts the workers); reaches taskView for its types and parseTaskId only',
+    resvg: 'relays reads of /api/tasks over HTTP (that route starts the workers); reaches taskView for its types and parseTaskId only',
+  },
   '/api/agent/media/audio': { resvg: 'takes the sound out of a video; draws no text' },
   '/api/agent/media/analyze': { resvg: 'probes the file; draws nothing' },
   '/api/agent/run': { resvg: 'its tools quote; renders run in the edit and task workers' },

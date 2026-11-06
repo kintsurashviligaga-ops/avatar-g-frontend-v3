@@ -210,6 +210,7 @@ import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuot
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, resumeAgentAudio, runAgentAudio, type AudioClientRun } from '@/lib/agent/media/audioClient';
 import { findLinks } from '@/lib/agent/media/audioSource';
 import { peekTask, type FollowDeps } from '@/lib/agent/media/jobFollow';
+import { watchTask } from '@/lib/agent/media/taskStream';
 import { notStartedText, persistAudio, persistEdit, persistMontage, persistRun, restoreAgentCards } from '@/lib/agent/media/cardPersist';
 import { KEEP_OPEN_CHAT_EVENT } from '@/lib/chat/keepOpenChat';
 import { newestWorkingCard } from '@/lib/agent/media/workingCard';
@@ -9228,8 +9229,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
     now: () => Date.now(),
     alive: () => mountedRef.current,
+    // The job's live stream: each step change reaches the card at once (app/api/tasks/stream); polling without it.
+    watch: (jobId) => watchTask(jobId, { lang: locale }),
     onProgress,
-  }), []);
+  }), [locale]);
   const montageProgress = useCallback((id: string): FollowDeps['onProgress'] => (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running'
     // The stage is kept even while a Stop is on its way: the card marks the step the edit stops on.
     ? {
@@ -9429,6 +9432,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       now: () => Date.now(),
       // A studio no longer on screen stops too: the one that replaced it (a language switch) follows the run itself.
       stopped: () => !mountedRef.current || runFollowRef.current.get(id) !== runId,
+      watch: (rid, after) => watchTask(rid, { lang: locale, ...(after !== undefined ? { after } : {}) }),
       onTask: (task, evs) => patchMsgById(id, (m) => (mine(m) && m.runJob ? { ...m, runJob: { ...m.runJob, task, events: evs } } : m)),
     }, runId, events ? { events } : {});
     if (!end.ok && end.code === 'stopped') return;
