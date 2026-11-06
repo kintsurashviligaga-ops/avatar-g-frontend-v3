@@ -428,8 +428,9 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('price-tag')).toHaveCount(0);
       const pill = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
       const chip = (await page.getByTestId('active-service-switch').boundingBox())!;
-      expect(chip.y).toBeGreaterThanOrEqual(pill.y - 1); // the service chip is IN the composer
-      expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
+      // GG 2026-11-06: the service chip sits in the row right ABOVE the one-row pill (not in it, not under it).
+      expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + 1);
+      expect(pill.y - (chip.y + chip.height)).toBeLessThanOrEqual(16);
       await page.getByTestId('composer-input').fill('A quiet harbour at dawn');
       const send = page.getByTestId('run-button');
       const settings = await openSettings(page);

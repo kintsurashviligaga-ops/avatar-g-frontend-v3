@@ -236,7 +236,7 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
   test('„+“ is the ONE icon left of the text — its first row attaches, one picker takes a photo, a video and a PDF together, all in the tray', async ({ page }) => {
     await openChat(page);
     const plus = page.getByTestId('plus');
-    const pill = page.locator('[data-tour="composer"]');
+    const pill = page.getByTestId('composer-pill');
     // GG 2026-11-06: no paperclip in the pill — „+“ · the text · mic · the blue circle, on ONE row.
     await expect(pill.getByTestId('composer-attach')).toHaveCount(0);
     const [p, t] = [(await plus.boundingBox())!, (await page.getByTestId('composer-input').boundingBox())!];

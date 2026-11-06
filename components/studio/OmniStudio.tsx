@@ -11899,7 +11899,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // bottom edge (items-end); the attachment tray and a persona chip sit ABOVE the pill, so nothing pushes the row apart.
   // ⚠️ The empty box never wraps its placeholder (nowrap + ellipsis while empty): on a 320 px phone the text column is
   // ~140 px and a wrapped „ჰკითხე MyAvatar-ს“ used to grow the pill to two lines around nothing.
-  const chatSingleRow = chatOnly;
+  // Since GG's „კი გააგრძელე" (2026-11-06) every service's box is this one row too: the service chip and its quick-setting chips
+  // moved to a row ABOVE the pill (composer-service-row), so the pill itself is only „+“ · text · mic · Run.
+  const oneRow = true;
   // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
   const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
   return (
@@ -12449,7 +12451,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             a long text grows the box upward and the controls stay on its bottom edge.
             ⚠️ The textarea stays this pill's DIRECT child in every shape (tests measure `textarea/..` as the pill),
             so the one-row shape is made by `display: contents` on the control row and `order`, never by moving it.
-            data-tour: the first-run tour's step 1 points here, and focusComposer finds the box through it (lib/onboarding). */}
+            data-tour (on the wrapper above): the first-run tour's step 1 points there, and focusComposer finds the box through it. */}
+        {/* The tour anchor wraps the persona chip / service row AND the pill (GG 2026-11-06): the first-run tour card sits
+            beside all of them, so it never covers the service chips above the one-row pill. */}
+        <div data-tour="composer">
           {/* The persona in use, as Gemini shows a chosen Gem — ABOVE the one-row pill (GG 2026-11-06), so it never squeezes the
               text: tap the name to change it, ✕ to go back to the default assistant. The same choice the sidebar row and the
               switcher's persona row show. */}
@@ -12473,11 +12478,71 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             </span>
           </div>
           )}
-        <div data-tour="composer" className={chatOnly
-          ? `flex min-h-[60px] bg-app-elevated/80 px-2 py-2 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.16)] ring-1 ring-app-border/10 backdrop-blur-md transition-shadow duration-200 focus-within:ring-app-accent/40 sm:px-3 ${chatSingleRow ? 'items-end gap-1 rounded-[50px] sm:gap-2' : 'flex-col rounded-[28px]'}`
-          : 'rounded-[24px] border border-app-border/15 bg-app-elevated px-3 py-3 min-h-[52px] sm:px-4 shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40'}>
-          {/* Full-width prompt on its own line — a long prompt is never squeezed into a
-              narrow column by the controls (the old single-row pill did exactly that). */}
+        {/* THE SERVICE ROW, above the one-row pill (GG 2026-11-06): the service chip [icon name ▾ | ✕] and its quick-setting chips —
+            what used to be the box's second and third rows — so the pill stays „+“ · text · mic · Run on every service. */}
+        {!chatOnly && (
+          <div data-testid="composer-service-row" className="mb-1.5 flex min-w-0 items-center gap-1.5 px-1">
+            {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the chat has no
+                settings to open, and „+“ (like the sidebar) already switches the tool. ActiveServiceChip (GG's unified composer,
+                2026-10-25): [icon name ▾ | ✕] — ▾ reopens „+", ✕ is back to the chat. Every part is a 44 px target; the name
+                truncates instead of wrapping. The name is the app's text colour, the icon the accent: accent text on the accent
+                tint measured 4.1 : 1 in the dark theme and 3.6 : 1 in the light one at 12.5 px — under WCAG AA
+                (tests/unified-composer.spec.ts, 11). */}
+          <div data-testid="active-service-chip" className="inline-flex h-11 min-w-0 shrink-0 items-center rounded-full bg-app-accent/15 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
+            {/* 1. სერვისის სწრაფი შეცვლა (ხსნის სერვისების სიას) */}
+            <button
+              type="button"
+              onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
+              data-testid="active-service-switch" aria-haspopup="dialog" aria-expanded={toolSheetOpen && toolPickOnly}
+              aria-label={`${toolLabel} — ${locale === 'en' ? 'switch service' : locale === 'ru' ? 'сменить сервис' : 'სერვისის შეცვლა'}`}
+              title={locale === 'en' ? 'Switch service' : locale === 'ru' ? 'Сменить сервис' : 'სერვისის შეცვლა'}
+              className="inline-flex h-11 min-w-0 items-center gap-1 overflow-hidden rounded-full pl-2.5 pr-1 text-app-text sm:gap-1.5 sm:pl-3 sm:pr-2 transition-colors hover:bg-app-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+            >
+              <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
+              <span className="max-w-[88px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
+              {/* On a phone the ▾ gives its 13 px to the name (aria-haspopup still says it opens the list). */}
+              <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 opacity-80 sm:block" />
+            </button>
+
+            {/* 2. პარამეტრების პანელის ჩაკეცვა / გახსნა — only for a service with no quick-settings row: there the row's ⋯ is it. */}
+            {!quickSettings && <button
+              type="button"
+              onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}
+              data-testid="options-toggle"
+              aria-expanded={isDesktop ? panelOpen : optionsOpen}
+              aria-label={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
+              title={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
+              className="inline-flex h-11 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
+            >
+              <SlidersHorizontal size={14} aria-hidden="true" className="shrink-0" />
+              <span className="hidden max-w-[160px] truncate whitespace-nowrap sm:inline">
+                {toolSummary || (locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები')}
+              </span>
+            </button>}
+
+            {/* 3. ✕ სერვისის დახურვა და მთავარ ჩატში დაბრუნება */}
+            <button
+              type="button"
+              onClick={() => {
+                setPanelOpen(false);
+                setOptionsOpen(false);
+                setImageWorkspaceOpen(false);
+                setPanelService(null);
+                selectTool('chat');
+              }}
+              aria-label={locale === 'en' ? 'Close service and return to chat' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის დახურვა და ჩატში დაბრუნება'}
+              title={locale === 'en' ? 'Close service (back to chat)' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის გათიშვა (ჩატში დაბრუნება)'}
+              data-testid="active-service-close"
+              className="inline-flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-rose-500/20 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          </div>
+            {quickSettings ? <div className="min-w-0 flex-1 overflow-hidden">{quickSettings}</div> : null}
+          </div>
+        )}
+        <div data-testid="composer-pill" className={`flex min-h-[60px] bg-app-elevated/80 px-2 py-2 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.16)] ring-1 ring-app-border/10 backdrop-blur-md transition-shadow duration-200 focus-within:ring-app-accent/40 sm:px-3 ${oneRow ? 'items-end gap-1 rounded-[50px] sm:gap-2' : 'flex-col rounded-[28px]'}`}>
+          {/* The prompt takes the row's free width (flex-grow) between „+“ and mic · Run (GG 2026-11-06). */}
           <textarea
             ref={taRef}
             data-testid="composer-input"
@@ -12502,90 +12567,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             disabled={enhancing}
             placeholder={composerPlaceholder}
             className={chatOnly
-              ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? `min-h-[44px] min-w-0 flex-1 px-1.5 py-2.5 sm:px-2 ${input ? '' : 'overflow-hidden text-ellipsis whitespace-nowrap'}` : 'min-h-[40px] w-full px-3 py-2'}`
+              ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${oneRow ? `min-h-[44px] min-w-0 flex-1 px-1.5 py-2.5 sm:px-2 ${input ? '' : 'overflow-hidden text-ellipsis whitespace-nowrap'}` : 'min-h-[40px] w-full px-3 py-2'}`
               // Not drawn while the tool's Create screen holds the description (composerTextHidden, above): the pill keeps
               // [+] · the tool chip · mic · send. With a desktop's panel closed the box is back — Agent G's line (it answers,
               // asks, confirms with the price) — and the video tool's placeholder is locked copy (docs/DESIGN.md §7).
-              : `${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
+              : `${composerTextHidden ? 'hidden ' : ''}max-h-40 min-h-[44px] min-w-0 flex-1 resize-none border-0 bg-transparent px-1.5 py-2.5 text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 sm:px-2 ${input ? '' : 'overflow-hidden text-ellipsis whitespace-nowrap'}`}
           />
-          {/* QUICK SETTINGS (the unified composer, GG 2026-10-25): the service's main choices as one row of chips in the box,
-              each opening the picker the settings already use — the full settings stay one tap away (⚙). */}
-          {quickSettings}
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
-          <div className={chatSingleRow ? 'contents' : `mt-1.5 flex w-full ${chatOnly ? 'flex-wrap' : 'flex-nowrap'} items-center justify-between gap-0.5 px-0 pt-1 sm:gap-1 sm:px-1 border-t border-white/[0.06]`}>
+          <div className={oneRow ? 'contents' : `mt-1.5 flex w-full ${chatOnly ? 'flex-wrap' : 'flex-nowrap'} items-center justify-between gap-0.5 px-0 pt-1 sm:gap-1 sm:px-1 border-t border-white/[0.06]`}>
             <button type="button" ref={plusRef} onClick={() => { setToolPickOnly(false); setToolSheetOpen((v) => !v); }}
               aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
               aria-label={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
               title={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
               className={chatOnly
-                ? `group flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-text/90 transition-colors duration-200 hover:bg-app-border/10 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10 ${chatSingleRow ? 'order-first' : ''}`
-                : 'flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
+                ? `group flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-text/90 transition-colors duration-200 hover:bg-app-border/10 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10 ${oneRow ? 'order-first' : ''}`
+                : 'order-first flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
               {/* In the chat the „+“ turns into „×“ while its sheet is open, as Gemini's does. */}
               <Plus size={chatOnly ? 22 : 20} aria-hidden="true" className={chatOnly ? 'transition-transform duration-200 group-aria-expanded:rotate-45 motion-reduce:transition-none' : undefined} />
             </button>
             {/* ONE icon left of the text (GG 2026-11-06): the paperclip that sat beside „+“ is gone — attaching is the first row of
                 the „+“ sheet (ServicePicker `attach`), as in Gemini's prompt bar. */}
-            {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
-                chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
-            {!chatOnly && (
-              // ActiveServiceChip (GG's unified composer, 2026-10-25): [icon name ▾ | ✕] — ▾ reopens „+", ✕ is back to the chat.
-              // Every part is a 44 px target; the name truncates instead of wrapping the row onto a second line.
-              // The name is the app's text colour, the icon the accent: accent text on the accent tint measured 4.1 : 1 in the
-              // dark theme and 3.6 : 1 in the light one at 12.5 px — under WCAG AA (tests/unified-composer.spec.ts, 11).
-              <div data-testid="active-service-chip" className="inline-flex h-11 min-w-0 shrink items-center rounded-full bg-app-accent/15 text-[12.5px] font-medium text-app-text ring-1 ring-app-accent/30">
-                {/* 1. სერვისის სწრაფი შეცვლა (ხსნის სერვისების სიას) */}
-                <button
-                  type="button"
-                  onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
-                  data-testid="active-service-switch" aria-haspopup="dialog" aria-expanded={toolSheetOpen && toolPickOnly}
-                  aria-label={`${toolLabel} — ${locale === 'en' ? 'switch service' : locale === 'ru' ? 'сменить сервис' : 'სერვისის შეცვლა'}`}
-                  title={locale === 'en' ? 'Switch service' : locale === 'ru' ? 'Сменить сервис' : 'სერვისის შეცვლა'}
-                  className="inline-flex h-11 min-w-0 items-center gap-1 overflow-hidden rounded-full pl-2.5 pr-1 text-app-text sm:gap-1.5 sm:pl-3 sm:pr-2 transition-colors hover:bg-app-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
-                >
-                  <ToolIcon size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
-                  <span className="max-w-[88px] truncate whitespace-nowrap font-semibold sm:max-w-[150px]">{toolLabel}</span>
-                  {/* On a phone the ▾ gives its 13 px to the name (aria-haspopup still says it opens the list). */}
-                  <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 opacity-80 sm:block" />
-                </button>
-
-                {/* 2. პარამეტრების პანელის ჩაკეცვა / გახსნა — only for a service with no quick-settings row: there the row's ⋯ is it. */}
-                {!quickSettings && <button
-                  type="button"
-                  onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen((v) => !v))}
-                  data-testid="options-toggle"
-                  aria-expanded={isDesktop ? panelOpen : optionsOpen}
-                  aria-label={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
-                  title={locale === 'en' ? 'Toggle settings panel' : locale === 'ru' ? 'Свернуть/развернуть настройки' : 'პარამეტრების ჩაკეცვა / გახსნა'}
-                  className="inline-flex h-11 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11.5px] text-app-text/90 transition-colors hover:bg-white/[0.12]"
-                >
-                  <SlidersHorizontal size={14} aria-hidden="true" className="shrink-0" />
-                  <span className="hidden max-w-[160px] truncate whitespace-nowrap sm:inline">
-                    {toolSummary || (locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები')}
-                  </span>
-                </button>}
-
-                {/* 3. ✕ სერვისის დახურვა და მთავარ ჩატში დაბრუნება */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPanelOpen(false);
-                    setOptionsOpen(false);
-                    setImageWorkspaceOpen(false);
-                    setPanelService(null);
-                    selectTool('chat');
-                  }}
-                  aria-label={locale === 'en' ? 'Close service and return to chat' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის დახურვა და ჩატში დაბრუნება'}
-                  title={locale === 'en' ? 'Close service (back to chat)' : locale === 'ru' ? 'Закрыть сервис' : 'სერვისის გათიშვა (ჩატში დაბრუნება)'}
-                  data-testid="active-service-close"
-                  className="inline-flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-rose-500/20 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
-                >
-                  <X size={15} aria-hidden="true" />
-                </button>
-              </div>
-            )}
-            <div className={chatSingleRow ? 'hidden' : 'flex-1'} />
+            {/* With the text hidden (a Create screen holds the description) the spacer keeps mic and Run on the right. */}
+            <div className={oneRow && !composerTextHidden ? 'hidden' : 'flex-1'} />
 
             {/* Right action: Stop while busy · Wand+Send when there's something to send ·
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
@@ -12722,6 +12727,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </>
             )}
           </div>
+        </div>
         </div>
         {/* Under the EMPTY chat's box: the four quick buttons and nothing else (GG's UI plan, 2026-10-18: one box and four
             quick actions — video, image, music, avatar). A tap opens that tool with what is typed here as its description;

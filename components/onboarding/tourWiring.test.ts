@@ -19,11 +19,16 @@ const chrome = read('components', 'studio', 'ChatChrome.tsx');
 const hub = read('components', 'studio', 'ServiceHub.tsx');
 
 describe('tour anchors', () => {
-  it('the composer pill is the composer anchor, and the composer textarea sits inside it', () => {
+  it('the composer anchor wraps the service row and the pill, and the composer textarea is the pill\'s first child', () => {
+    // GG 2026-11-06: the service chips sit ABOVE the one-row pill, so the anchor is a wrapper around both — the tour
+    // card placed beside it never covers them.
     expect(omni.match(/data-tour="composer"/g)).toHaveLength(1);
-    const pill = omni.indexOf('<div data-tour="composer"');
+    const anchor = omni.indexOf('<div data-tour="composer"');
+    const pill = omni.indexOf('<div data-testid="composer-pill"');
     const box = omni.indexOf('data-testid="composer-input"');
-    expect(pill).toBeGreaterThan(0);
+    expect(anchor).toBeGreaterThan(0);
+    expect(pill).toBeGreaterThan(anchor);
+    expect(omni.slice(anchor, pill)).toContain('data-testid="composer-service-row"');
     expect(box).toBeGreaterThan(pill);
     // Nothing but the pill's own className between them: the textarea is the pill's first element child.
     const between = omni.slice(pill, box);
