@@ -1,4 +1,5 @@
 import { IDLE_SPEECH, SpeechPlayer, speechPlayer, type SpeechAudio, type SpeechFault, type SpeechPlayerDeps } from '@/lib/speech/player';
+import { SPEECH_CHUNK_MAX_CHARS, SPEECH_LEAD_MAX_CHARS } from '@/lib/speech/chunk';
 import { wrapPcm16 } from '@/lib/speech/wav';
 import { pcm16Tone } from '../../../tests/fixtures/speechAudio';
 import { createReadAloud, READ_ALOUD_MAX_CHARS, readerSnapshot } from './readAloud';
@@ -59,8 +60,12 @@ test('the whole message is read, in order, every character once — never cut at
   }
   const sent = h.calls.map((c) => c.text);
   expect(sent.join(' ')).toBe(LONG);
-  for (const s of sent) expect(s.length).toBeLessThanOrEqual(600);
-  for (const s of sent.slice(0, -1)) expect(s).toMatch(/whole\.$/); // cut at sentence ends
+  for (const s of sent) expect(s.length).toBeLessThanOrEqual(SPEECH_CHUNK_MAX_CHARS);
+  // The first chunk is the one the listener waits for: short, cut between two words (GG 2026-11-06). The others are
+  // cut at sentence ends.
+  expect(sent[0]!.length).toBeLessThanOrEqual(SPEECH_LEAD_MAX_CHARS);
+  expect(LONG.startsWith(`${sent[0]} `)).toBe(true);
+  for (const s of sent.slice(1, -1)) expect(s).toMatch(/whole\.$/);
   expect(h.snap()).toMatchObject({ status: 'completed', chunk: sent.length, total: sent.length });
 });
 
