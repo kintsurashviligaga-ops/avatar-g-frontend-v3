@@ -68,6 +68,12 @@ export const CONFIRMED_ACTIONS = {
     access: 'AGENT_G_SANDBOX',
     does: 'runs the quoted Python, JavaScript or shell script once per quote in an isolated Vercel Sandbox (no network, no keys, 60 s), booked in the $20 ledger first; a workspace run gets the workspace files and saves what it writes as new versions (lib/agent/sandbox/codeQuote)',
   },
+  browser_run: {
+    route: '/api/agent/browser/run',
+    action: 'run',
+    access: 'AGENT_G_SANDBOX',
+    does: 'opens the quoted public pages once per quote in a fresh sandboxed Chromium (public sites only, private ranges denied, no login, no keys, 2 min), booked in the $20 ledger first; screenshots and texts are saved in the user\'s workspace (lib/agent/browser/quote)',
+  },
 } as const;
 export type ConfirmedAction = keyof typeof CONFIRMED_ACTIONS;
 

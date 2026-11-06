@@ -62,6 +62,7 @@ import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 import type { EditQuoteResult } from '@/lib/agent/media/editExec';
 import type { CodeQuoteResult } from '@/lib/agent/sandbox/codeQuote';
+import type { BrowserQuoteResult } from '@/lib/agent/browser/quote';
 import type { DriveDeps } from '@/lib/connectors/google/drive';
 import {
   ASPECTS, FITS, GRADES, MAX_ADJUST, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS,
@@ -90,6 +91,10 @@ export interface AgentContext extends ImageToolContext {
   sandbox?: boolean;
   /** Receives every signed code-run plan; the route hands the last one to the client's Start card. */
   onCodeQuote?: (quote: Extract<CodeQuoteResult, { ok: true }>) => void;
+  /** The sandboxed browser is switched on for this user (AGENT_G_SANDBOX + BROWSER_ENABLED, decided by the route). */
+  browser?: boolean;
+  /** Receives every signed browser plan; the route hands the last one to the client's Start card. */
+  onBrowserQuote?: (quote: Extract<BrowserQuoteResult, { ok: true }>) => void;
   /** Google Drive is linked-able for this user (CONNECTORS_DRIVE + configured), wired by the route. Read only. */
   driveDeps?: DriveDeps;
 }
@@ -155,6 +160,16 @@ export const AGENT_WORKSPACE_NOTE =
   'version. Python can use the standard library only (no internet, so no pip install). Say which files you read and ' +
   'wrote; never claim a file exists that the list does not show.';
 
+/** Added when the browser tool is on: the agent plans the steps and never claims it saw a page it did not open. */
+export const AGENT_BROWSER_NOTE =
+  'When the answer needs a live public web page (a price, a table, a page\'s current text, a screenshot), plan the ' +
+  'steps and call quote_browser_task: goto a public https address, then click / type / press / wait as needed, text to ' +
+  'read the page (or one element by CSS selector), screenshot to keep a picture. It checks the steps and returns the ' +
+  'plan; it opens nothing. The steps run only when the user presses Start, in a fresh sandboxed browser with no ' +
+  'login, no cookies and no keys (never plan a sign-in or a payment). What it reads and the screenshots are saved in ' +
+  'the user\'s workspace under browser/<task>/ (text-1.txt, <name>.png, steps.json), where a later workspace program ' +
+  'or workspace_read_file can use them. Never say the page was opened and never invent its content.';
+
 /** Added when Google Drive is open to this user: only the files they picked, read only. */
 export const AGENT_DRIVE_NOTE =
   'The user can link their Google Drive. You see ONLY the files they picked in Google\'s picker, nothing else in their ' +
@@ -194,6 +209,11 @@ export const MAX_CODE_QUOTES_PER_RUN = 2;
 export const driveToolOn = (ctx: AgentContext): boolean => !!ctx.driveDeps?.cfg;
 /** Each read downloads one file (≤ 10 MB): four per request, one list. */
 export const MAX_DRIVE_READS_PER_RUN = 4;
+/** The browser tool: the sandbox gate, the browser switched on, and a route that hands the plan back. */
+export const browserToolOn = (ctx: AgentContext): boolean =>
+  ctx.sandbox === true && ctx.browser === true && typeof ctx.onBrowserQuote === 'function';
+/** A browser quote is a policy check and a signature: two per request is plenty. */
+export const MAX_BROWSER_QUOTES_PER_RUN = 2;
 /** The workspace goes with the sandbox: a workspace is what a code run reads and writes. */
 export const workspaceToolOn = (ctx: AgentContext): boolean => ctx.sandbox === true;
 /** Workspace reads and writes per request: enough for a small task, never a loop over a whole folder. */
@@ -698,6 +718,53 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       };
     },
   }),
+  // quote_browser_task: plan only (see AGENT_BROWSER_NOTE). The steps are checked and signed for the user's workspace;
+  // the token goes to the user's Start card, never back to the model, and runs only on Start (/api/agent/browser/run).
+  defineTool({
+    name: 'quote_browser_task',
+    effect: 'quote',
+    confirms: 'browser_run',
+    description:
+      'PLAN ONLY — open public web pages in a sandboxed browser (no login, no keys, at most 20 steps, 5 screenshots, 2 minutes). ' +
+      "Input {steps: [{op:'goto',url} | {op:'click',selector} | {op:'type',selector,text} | {op:'press',key} | {op:'wait',ms} | " +
+      "{op:'text',selector?} | {op:'screenshot',name?}]}; the first step is goto. Results are saved in the user's workspace under browser/<task>/. " +
+      'Returns the plan; opens nothing until the user presses Start; free for the user.',
+    input: z.object({
+      steps: z.array(z.object({
+        op: z.enum(['goto', 'click', 'type', 'press', 'wait', 'text', 'screenshot']),
+        url: z.string().max(2000).optional(),
+        selector: z.string().max(300).optional(),
+        text: z.string().max(500).optional(),
+        key: z.string().max(20).optional(),
+        ms: z.number().optional(),
+        name: z.string().max(40).optional(),
+      })).min(1).max(20),
+    }),
+    offered: (ctx) => browserToolOn(ctx),
+    limit: MAX_BROWSER_QUOTES_PER_RUN,
+    run: async ({ steps }, ctx) => {
+      const [{ quoteBrowserTask }, { liveBrowserDeps }, { liveWorkspaceStore, AGENT_WORKSPACE_TITLE }] = await Promise.all([
+        import('@/lib/agent/browser/quote'),
+        import('@/lib/agent/browser'),
+        import('@/lib/agent/workspace/live'),
+      ]);
+      const w = await liveWorkspaceStore().ensure(ctx.userId, AGENT_WORKSPACE_TITLE);
+      if (!w.ok) return { error: w.error, message: w.message };
+      const r = quoteBrowserTask(await liveBrowserDeps(), { userId: ctx.userId, request: { steps, workspaceId: w.workspace.id } });
+      if (!r.ok) return { error: r.error, message: r.message };
+      ctx.onBrowserQuote?.(r);
+      return {
+        planned: true,
+        opened: false,
+        sites: r.quote.hosts,
+        steps: r.quote.steps,
+        maxSeconds: r.quote.wallSec,
+        savesTo: `workspace ${r.quote.folder}/`,
+        credits: 0,
+        next: 'The user presses Start on the plan; nothing opens before that. Do not state what the pages say.',
+      };
+    },
+  }),
   // drive_list_files / drive_read_file: the Drive files the user PICKED (scope drive.file, GG 2026-11-01), read only.
   defineTool({
     name: 'drive_list_files',
@@ -874,7 +941,7 @@ export async function runLiveAgent(
   const systemExtra = [
     mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
     analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', codeToolOn(ctx) ? AGENT_CODE_NOTE : '', driveToolOn(ctx) ? AGENT_DRIVE_NOTE : '',
-    workspaceToolOn(ctx) ? AGENT_WORKSPACE_NOTE : '',
+    workspaceToolOn(ctx) ? AGENT_WORKSPACE_NOTE : '', browserToolOn(ctx) ? AGENT_BROWSER_NOTE : '',
     opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   const result = await runReActLoop({

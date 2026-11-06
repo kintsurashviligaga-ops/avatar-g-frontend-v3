@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { LIVE_TOOL_SPECS } from '../react/bindLiveAgent';
 import { CONFIRMED_ACTIONS, allowlistOf, bindTools, defineTool, type ToolEffect } from './registry';
 
-test('the live allowlist, exactly: three that read or prepare, inspectors (a file, the picked Drive files, the workspace), six quotes that lead to a user-confirmed run, and three undoable workspace changes', () => {
+test('the live allowlist, exactly: three that read or prepare, inspectors (a file, the picked Drive files, the workspace), seven quotes that lead to a user-confirmed run, and three undoable workspace changes', () => {
   // Changing this list is a review decision: a new tool lands here with its effect, or not at all.
   expect(allowlistOf(LIVE_TOOL_SPECS)).toEqual({
     quote_image: 'quote',
@@ -24,6 +24,7 @@ test('the live allowlist, exactly: three that read or prepare, inspectors (a fil
     quote_audio_from_link: 'quote',
     quote_media_edit: 'quote',
     quote_code_run: 'quote',
+    quote_browser_task: 'quote',
     analyze_media: 'inspect',
     drive_list_files: 'inspect',
     drive_read_file: 'inspect',
@@ -36,12 +37,13 @@ test('the live allowlist, exactly: three that read or prepare, inspectors (a fil
   });
   expect(LIVE_TOOL_SPECS.find((s) => s.name === 'analyze_media')?.confirms).toBeUndefined();
   expect(LIVE_TOOL_SPECS.filter((s) => s.name.startsWith('drive_')).map((s) => s.confirms)).toEqual([undefined, undefined]);
-  expect(LIVE_TOOL_SPECS.filter((s) => s.effect === 'quote').map((s) => s.confirms)).toEqual(['image_run', 'montage_run', 'montage_run', 'audio_extract_run', 'media_edit_run', 'code_run']);
+  expect(LIVE_TOOL_SPECS.filter((s) => s.effect === 'quote').map((s) => s.confirms)).toEqual(['image_run', 'montage_run', 'montage_run', 'audio_extract_run', 'media_edit_run', 'code_run', 'browser_run']);
   expect(CONFIRMED_ACTIONS.montage_run).toMatchObject({ route: '/api/agent/media/montage', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });
   expect(CONFIRMED_ACTIONS.audio_extract_run).toMatchObject({ route: '/api/agent/media/audio', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });
   expect(CONFIRMED_ACTIONS.media_edit_run).toMatchObject({ route: '/api/agent/media/edit', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });
   expect(CONFIRMED_ACTIONS.code_run).toMatchObject({ route: '/api/agent/sandbox/run', action: 'run', access: 'AGENT_G_SANDBOX' });
-  expect(Object.keys(CONFIRMED_ACTIONS)).toEqual(['image_run', 'montage_run', 'audio_extract_run', 'media_edit_run', 'code_run']);
+  expect(CONFIRMED_ACTIONS.browser_run).toMatchObject({ route: '/api/agent/browser/run', action: 'run', access: 'AGENT_G_SANDBOX' });
+  expect(Object.keys(CONFIRMED_ACTIONS)).toEqual(['image_run', 'montage_run', 'audio_extract_run', 'media_edit_run', 'code_run', 'browser_run']);
   for (const s of LIVE_TOOL_SPECS) expect(s.limit).toBeGreaterThan(0);
 });
 
@@ -121,4 +123,18 @@ test('the workspace tools go with the sandbox flag, and only they may make a ver
     expect(s.offered?.({ userId: 'u', sandbox: true } as never)).toBe(true);
   }
   expect(LIVE_TOOL_SPECS.filter((s) => s.effect === 'versioned').every((s) => s.name.startsWith('workspace_'))).toBe(true);
+});
+
+test('the browser plan is offered only with the sandbox gate, the browser switched on and a route that takes the plan', () => {
+  const b = LIVE_TOOL_SPECS.find((s) => s.name === 'quote_browser_task')!;
+  const take = () => undefined;
+  expect(b.confirms).toBe('browser_run');
+  expect(b.offered?.({ userId: 'u' } as never)).toBe(false);
+  expect(b.offered?.({ userId: 'u', sandbox: true, onBrowserQuote: take } as never)).toBe(false);
+  expect(b.offered?.({ userId: 'u', browser: true, onBrowserQuote: take } as never)).toBe(false);
+  expect(b.offered?.({ userId: 'u', sandbox: true, browser: true } as never)).toBe(false);
+  expect(b.offered?.({ userId: 'u', sandbox: true, browser: true, onBrowserQuote: take } as never)).toBe(true);
+  // The model's steps are parsed before the tool runs: an unknown op never reaches the policy.
+  expect(b.input.safeParse({ steps: [{ op: 'eval', url: 'x' }] }).success).toBe(false);
+  expect(b.input.safeParse({ steps: [{ op: 'goto', url: 'https://example.com' }] }).success).toBe(true);
 });

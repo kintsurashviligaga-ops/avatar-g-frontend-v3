@@ -242,6 +242,10 @@ export const RATE_LIMITS = {
   // CODE_RUN_BURST — the code-run route's own per-minute bucket (quote + run = 2 calls a block). Not EXPENSIVE: that
   // bucket is shared with the chat turn and 20 other routes, so a second block in the same minute was refused.
   CODE_RUN_BURST:    { maxRequests: 20,  windowMs: 60_000,           keyPrefix: 'rl:coderun:min' } as const,
+  // BROWSER_RUN_USER / BROWSER_RUN_BURST — Agent G browser tasks (lib/agent/browser/quote): each task is a 2-vCPU
+  // sandbox in the same $20 ledger as code runs, so fewer per day than code runs.
+  BROWSER_RUN_USER:  { maxRequests: 30,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:browser:user' } as const,
+  BROWSER_RUN_BURST: { maxRequests: 20,  windowMs: 60_000,           keyPrefix: 'rl:browser:min' } as const,
   // The public support form (/api/support), per IP. Each accepted post can send an email through Resend to the support
   // inbox; with no limit at all, one script could fill the inbox and burn the sending quota. 5 per 15 minutes is more
   // than any person writes to support.
