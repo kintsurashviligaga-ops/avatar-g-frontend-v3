@@ -9,6 +9,7 @@
  * a second Start replays the same run, a yes names the quote it is for, and a stop or a resume is the owner's own.
  */
 import { cancelTask, postJson, readJson, POLL_MS, SEND_TRIES, TASKS_ROUTE, type Fetch } from '@/lib/agent/media/jobFollow';
+import { STREAM_WAIT_MS, type TaskWatch } from '@/lib/agent/media/taskStream';
 import { isFinalStatus } from '@/lib/tasks/statusModel';
 import type { TaskView } from '@/lib/tasks/taskView';
 import type { RunEvent } from './runEngine';
@@ -114,6 +115,8 @@ export interface RunFollowDeps {
   onTask: (task: TaskView, events: RunEvent[]) => void;
   /** The card stopped following (a resume took over, the bubble went away): end quietly. */
   stopped?: () => boolean;
+  /** The run's live stream (lib/agent/media/taskStream watchTask): each step and event reaches the card at once. */
+  watch?: (runId: string, after: number | undefined) => TaskWatch | null;
 }
 
 export type RunFollowEnd = { ok: true; task: TaskView; events: RunEvent[] } | { ok: false; code: 'network' | 'not_found' | 'unauthenticated' | 'stopped' };
@@ -127,36 +130,54 @@ export async function followRun(deps: RunFollowDeps, runId: string, opts: { even
   const until = deps.now() + RUN_FOLLOW_MS;
   let first = true;
   let unknown = 0;
-  while (deps.now() < until) {
-    if (deps.stopped?.()) return { ok: false, code: 'stopped' };
-    if (first) first = false;
-    else await deps.sleep(POLL_MS);
-    if (deps.stopped?.()) return { ok: false, code: 'stopped' };
-    const after = events.length ? events[events.length - 1]!.seq : undefined;
-    let res: Response;
-    let body: Record<string, unknown> | null;
-    try {
-      res = await deps.fetch(`${TASKS_ROUTE}?id=${encodeURIComponent(runId)}${after !== undefined ? `&after=${after}` : ''}`, { credentials: 'include', cache: 'no-store' });
-      body = await readJson(res);
-    } catch {
-      continue; // offline for a moment: the run goes on
+  let watch: TaskWatch | null = null;
+  let seen = false;
+  try {
+    while (deps.now() < until) {
+      if (deps.stopped?.()) return { ok: false, code: 'stopped' };
+      if (!watch && seen && deps.watch) watch = deps.watch(runId, events.length ? events[events.length - 1]!.seq : undefined);
+      if (first) first = false;
+      else if (watch && !watch.dead) {
+        // The stream hands each change over at once; a quiet one still gets a read of our own.
+        const streamed = await watch.next(STREAM_WAIT_MS);
+        if (deps.stopped?.()) return { ok: false, code: 'stopped' };
+        if (streamed) {
+          events = mergeEvents(events, streamed.events);
+          deps.onTask(streamed, events);
+          if (isFinalStatus(streamed.status)) return { ok: true, task: streamed, events };
+          continue;
+        }
+      } else await deps.sleep(POLL_MS);
+      if (deps.stopped?.()) return { ok: false, code: 'stopped' };
+      const after = events.length ? events[events.length - 1]!.seq : undefined;
+      let res: Response;
+      let body: Record<string, unknown> | null;
+      try {
+        res = await deps.fetch(`${TASKS_ROUTE}?id=${encodeURIComponent(runId)}${after !== undefined ? `&after=${after}` : ''}`, { credentials: 'include', cache: 'no-store' });
+        body = await readJson(res);
+      } catch {
+        continue; // offline for a moment: the run goes on
+      }
+      const task = res.ok && body?.ok === true && body.task && typeof body.task === 'object' ? (body.task as TaskView) : null;
+      if (task) {
+        seen = true;
+        events = mergeEvents(events, task.events);
+        deps.onTask(task, events);
+        if (isFinalStatus(task.status)) return { ok: true, task, events };
+        continue;
+      }
+      if (res.status === 401) return { ok: false, code: 'unauthenticated' };
+      if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') {
+        // Just created and not readable yet, or not this user's: a few reads, then say so.
+        if (++unknown >= 3) return { ok: false, code: 'not_found' };
+        continue;
+      }
+      // 429 or a 5xx: read again on the next tick.
     }
-    const task = res.ok && body?.ok === true && body.task && typeof body.task === 'object' ? (body.task as TaskView) : null;
-    if (task) {
-      events = mergeEvents(events, task.events);
-      deps.onTask(task, events);
-      if (isFinalStatus(task.status)) return { ok: true, task, events };
-      continue;
-    }
-    if (res.status === 401) return { ok: false, code: 'unauthenticated' };
-    if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') {
-      // Just created and not readable yet, or not this user's: a few reads, then say so.
-      if (++unknown >= 3) return { ok: false, code: 'not_found' };
-      continue;
-    }
-    // 429 or a 5xx: read again on the next tick.
+    return { ok: false, code: 'network' };
+  } finally {
+    watch?.close();
   }
-  return { ok: false, code: 'network' };
 }
 
 /** The user's yes to one step's own price, bound to that quote. The run's state after it. */
