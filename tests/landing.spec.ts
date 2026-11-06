@@ -388,6 +388,23 @@ for (const vp of VIEWPORTS) {
       await page.route('**/api/nanobanana/image', () => { /* held open: the job stays in flight */ });
       await openDashboard(page);
       await startImageJob(page);
+      if (vp.name === 'phone') {
+        // The thread draws the job as Agent G's timeline card (GG 2026-11-06 „კი, ყველგან"): the steps, the loop, Stop.
+        const card = page.getByTestId('gen-image-card');
+        await expect(card).toHaveAttribute('data-phase', 'working');
+        await expect(card.getByText('1/3 ნაბიჯი')).toBeVisible();
+        await expect(card.locator('[data-step="render"]')).toHaveAttribute('data-state', 'active');
+        const loop = card.getByTestId('loading-loop');
+        await expect.poll(() => loop.evaluate((v) => { const el = v as HTMLVideoElement; return !el.paused && el.muted && el.currentTime > 0; }), { timeout: 15_000 }).toBe(true);
+        await page.screenshot({ path: `test-results/loading-loop-${vp.name}.png` });
+        const stop = card.getByTestId('gen-image-stop');
+        expect((await stop.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+        await stop.click();
+        await expect(page.locator('[data-testid="gen-image-card"][data-phase="working"]')).toHaveCount(0);
+        await expect(page.getByText('⏹ შეჩერდა')).toBeVisible();
+        return;
+      }
+      // The desktop Image tool's Result pane keeps the studio tile in the picture's own shape.
       const card = page.getByTestId('result-card');
       await expect(card).toHaveAttribute('data-state', 'rendering');
       await expect(card.getByText(/^სურათი · 9:16 · \d+%$/)).toBeVisible();
@@ -404,10 +421,8 @@ for (const vp of VIEWPORTS) {
       expect(box.height).toBeGreaterThanOrEqual(44);
       await cancel.click();
       await expect(page.getByTestId('result-card')).toHaveCount(0);
-      // The stop is said in the thread on a phone; on a desktop the thread is behind the Result pane's „Conversation“
-      // disclosure and the pane itself goes back to its empty state.
-      if (vp.name === 'phone') await expect(page.getByText('⏹ შეჩერდა')).toBeVisible();
-      else await expect(page.getByTestId('result-empty')).toBeVisible();
+      // On a desktop the thread is behind the Result pane's „Conversation“ disclosure and the pane goes back to empty.
+      await expect(page.getByTestId('result-empty')).toBeVisible();
     });
 
     test('when the image lands, the card gives way to it', async ({ page }) => {
@@ -417,6 +432,8 @@ for (const vp of VIEWPORTS) {
       await startImageJob(page);
       await expect(page.locator('img[src="/brand/v1/card-image.jpg"]').first()).toBeVisible();
       await expect(page.getByTestId('result-card')).toHaveCount(0);
+      // On a phone the thread's timeline card folds to one line above the picture: every step done.
+      if (vp.name === 'phone') await expect(page.getByTestId('gen-image-card')).toHaveAttribute('data-phase', 'done');
     });
 
     test('the video price is on the chat box\'s Send — it follows quality and length — and nothing sits under the composer', async ({ page }) => {

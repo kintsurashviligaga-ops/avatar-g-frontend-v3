@@ -62,7 +62,7 @@ function Clock({ clock }: { clock: NonNullable<TaskCardModel['clock']> }) {
 }
 
 export function AgentTaskCard({
-  model, locale, testId, phase, footer, children,
+  model, locale, testId, phase, footer, children, defaultFolded = false,
 }: {
   model: TaskCardModel;
   locale: string;
@@ -73,10 +73,12 @@ export function AgentTaskCard({
   footer?: ReactNode;
   /** The card's buttons for this phase (Start · Cancel, Stop, Upload). */
   children?: ReactNode;
+  /** Start folded (a finished render's card sits above its result as one line). */
+  defaultFolded?: boolean;
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = L[lang];
-  const [folded, setFolded] = useState(false);
+  const [folded, setFolded] = useState(defaultFolded);
   const active = model.steps.find((s) => s.state === 'active' || s.state === 'waiting' || s.state === 'failed' || s.state === 'stopped');
   const tone = model.status === 'done' ? 'text-app-success' : model.status === 'failed' ? 'text-app-danger' : model.status === 'waiting' ? 'text-app-accent' : 'text-app-muted';
   const listId = `${testId}-steps`;
