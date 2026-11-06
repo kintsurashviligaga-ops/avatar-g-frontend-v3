@@ -65,6 +65,8 @@ import { bookChatUsage, chatBudgetAllows } from '../../../../lib/services/billin
 import { isAdminIdentity } from '../../../../lib/auth/adminGuard';
 import { inspectWav } from '../../../../lib/speech/wav';
 import { SPEECH_MAX_CHARS } from '../../../../lib/speech/contract';
+import { parseSpeechTiming } from '../../../../lib/speech/timing';
+import { getVertexAccessToken } from '../../../../lib/veo/vertexAuth';
 import {
   L16_24K,
   MONO_16K,
@@ -574,6 +576,55 @@ describe("the owner's listening trial (body.model)", () => {
     process.env.GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
     await POST(post({ text: 'hello', locale: 'en' }));
     expect(sent().contents[0]!.parts[0]!.text).toBe('hello');
+  });
+
+  // GG 2026-11-06: every chunk cost about 4 s before any audio; the card must say where (lib/speech/timing).
+  test("the trial's answer says where its time went (Server-Timing): our checks, the token, Google, booking", async () => {
+    mockAdmin = true;
+    const tokenMock = getVertexAccessToken as jest.MockedFunction<typeof getVertexAccessToken>;
+    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(res.status).toBe(200);
+    const timing = parseSpeechTiming(res.headers.get('server-timing'));
+    expect(timing).not.toBeNull();
+    expect(Object.keys(timing!.phases)).toEqual(['limit', 'body', 'auth', 'quota', 'model', 'budget', 'token', 'google', 'decode', 'book']);
+    expect(timing!.attempts).toBe(1);
+    // The token is asked for before Google is (so its time is its own), and nothing else changes: one Google call.
+    expect(tokenMock.mock.invocationCallOrder[0]!).toBeLessThan(fetchSpy.mock.invocationCallOrder[0]!);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('a token that cannot be minted early changes nothing: the call meets it as always', async () => {
+    mockAdmin = true;
+    const tokenMock = getVertexAccessToken as jest.MockedFunction<typeof getVertexAccessToken>;
+    tokenMock.mockRejectedValueOnce(new Error('sts down'));
+    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("a trial chunk Google refused also says where its time went, with the attempts", async () => {
+    mockAdmin = true;
+    fetchSpy.mockImplementation(async () => new Response('{"error":{"status":"UNAVAILABLE"}}', { status: 503 }));
+    const res = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(res.status).toBe(502);
+    const timing = parseSpeechTiming(res.headers.get('server-timing'));
+    expect(timing?.attempts).toBe(2);
+    expect(timing?.phases).toHaveProperty('wait');
+  }, 20_000);
+
+  test('every ordinary request (and anyone else naming a model) gets no timing and no early token', async () => {
+    const tokenMock = getVertexAccessToken as jest.MockedFunction<typeof getVertexAccessToken>;
+    const plain = await POST(post({ text: 'hello', locale: 'en' }));
+    expect(plain.headers.get('server-timing')).toBeNull();
+    mockAdmin = false;
+    const asked = await POST(post({ text: 'hello', locale: 'en', model: 'gemini-3.8-flash-tts' }));
+    expect(asked.headers.get('server-timing')).toBeNull();
+    // Only the calls themselves asked for a token.
+    expect(tokenMock).toHaveBeenCalledTimes(fetchSpy.mock.calls.length);
+    fetchSpy.mockImplementation(async () => new Response('{"error":{"status":"NOT_FOUND"}}', { status: 404 }));
+    const failed = await POST(post({ text: 'hello', locale: 'en' }));
+    expect(failed.status).toBe(502);
+    expect(failed.headers.get('server-timing')).toBeNull();
   });
 });
 
