@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { LIVE_TOOL_SPECS } from '../react/bindLiveAgent';
 import { CONFIRMED_ACTIONS, allowlistOf, bindTools, defineTool, type ToolEffect } from './registry';
 
-test('the live allowlist, exactly: three that read or prepare, three that inspect (a file, the picked Drive files), six that quote and lead to a user-confirmed run', () => {
+test('the live allowlist, exactly: three that read or prepare, inspectors (a file, the picked Drive files, the workspace), six quotes that lead to a user-confirmed run, and three undoable workspace changes', () => {
   // Changing this list is a review decision: a new tool lands here with its effect, or not at all.
   expect(allowlistOf(LIVE_TOOL_SPECS)).toEqual({
     quote_image: 'quote',
@@ -27,6 +27,12 @@ test('the live allowlist, exactly: three that read or prepare, three that inspec
     analyze_media: 'inspect',
     drive_list_files: 'inspect',
     drive_read_file: 'inspect',
+    workspace_list_files: 'inspect',
+    workspace_read_file: 'inspect',
+    workspace_write_file: 'versioned',
+    workspace_delete_file: 'versioned',
+    workspace_link: 'inspect',
+    workspace_export: 'versioned',
   });
   expect(LIVE_TOOL_SPECS.find((s) => s.name === 'analyze_media')?.confirms).toBeUndefined();
   expect(LIVE_TOOL_SPECS.filter((s) => s.name.startsWith('drive_')).map((s) => s.confirms)).toEqual([undefined, undefined]);
@@ -105,4 +111,14 @@ test('the Drive tools are offered only when the route hands Drive deps with a co
     expect(s.offered?.({ userId: 'u', driveDeps: { cfg: null, store: null, tableReady: false } } as never)).toBe(false);
     expect(s.offered?.({ userId: 'u', driveDeps: { cfg: {}, store: null, tableReady: false } } as never)).toBe(true);
   }
+});
+
+test('the workspace tools go with the sandbox flag, and only they may make a versioned (undoable) change', () => {
+  const ws = LIVE_TOOL_SPECS.filter((s) => s.name.startsWith('workspace_'));
+  expect(ws).toHaveLength(6);
+  for (const s of ws) {
+    expect(s.offered?.({ userId: 'u' } as never)).toBe(false);
+    expect(s.offered?.({ userId: 'u', sandbox: true } as never)).toBe(true);
+  }
+  expect(LIVE_TOOL_SPECS.filter((s) => s.effect === 'versioned').every((s) => s.name.startsWith('workspace_'))).toBe(true);
 });

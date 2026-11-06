@@ -56,7 +56,7 @@ export interface FiledRun {
 /** The PDF's content. Pure. Returns null only when the spec checker refuses it (it should not). */
 export function codeRunSpec(run: FiledRun, locale: DocumentLocale): DocumentSpec | null {
   const t = T[locale];
-  const lang = run.language === 'python' ? 'Python' : 'JavaScript';
+  const lang = run.language === 'python' ? 'Python' : run.language === 'shell' ? 'Shell (bash)' : 'JavaScript';
   const outBlocks = blocks(run.stdout, t.cut);
   const sections = [
     { heading: t.out, blocks: outBlocks.length ? outBlocks : [{ type: 'paragraph' as const, text: t.none }] },

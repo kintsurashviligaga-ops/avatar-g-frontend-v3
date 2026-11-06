@@ -2,7 +2,9 @@
  * /api/agent/sandbox/run — Agent G runs Python or JavaScript in an isolated Vercel Sandbox (lib/agent/sandbox/codeQuote).
  *
  *   GET                                       { enabled } for THIS user; never 404, so the chat asks first.
- *   POST { action: 'quote', request: { language, code } }
+ *   POST { action: 'quote', request: { language, code, workspace?: true } }
+ *        workspace: true runs it in the user's Agent G workspace (lib/agent/workspace): its files go in, what the
+ *        program writes is saved back as new versions. The server resolves it to the workspace id, which is signed.
  *        checks the code against the sandbox policy with this server's limits (1 vCPU, 60 s, no network, no keys) and
  *        signs the plan → { ok, quote, request, token }. Nothing runs; free.
  *   POST { action: 'run', request, token }   the plan the user pressed Start on, once → { ok, exitCode, stdout, stderr,
@@ -64,7 +66,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const deps = await liveCodeDeps();
   if (body?.action === 'quote') {
-    const r = quoteCodeRun(deps, { userId: user.id, request: body.request });
+    let request = body.request;
+    const asked = request && typeof request === 'object' ? (request as Record<string, unknown>) : null;
+    if (asked?.workspace === true) {
+      // Only ever the caller's own workspace: the id comes from their uid here, never from the body.
+      const { liveWorkspaceStore, AGENT_WORKSPACE_TITLE } = await import('@/lib/agent/workspace/live');
+      const w = await liveWorkspaceStore().ensure(user.id, AGENT_WORKSPACE_TITLE);
+      if (!w.ok) return NextResponse.json({ ok: false, error: 'runner_failed', message: w.message }, { status: 503, headers: NO_STORE });
+      const { workspace: _w, ...rest } = asked;
+      request = { ...rest, workspaceId: w.workspace.id };
+    }
+    const r = quoteCodeRun(deps, { userId: user.id, request });
     return NextResponse.json(r, { status: r.ok ? 200 : STATUS[r.error], headers: NO_STORE });
   }
   if (body?.action === 'run') {
