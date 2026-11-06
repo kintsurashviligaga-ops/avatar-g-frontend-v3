@@ -1,4 +1,5 @@
--- 20261101a_connector_accounts.sql — NOT YET APPLIED. Needs GG's OK, then GG runs it in the Supabase SQL Editor.
+-- 20261101a_connector_accounts.sql — APPLIED to Production by GG in the Supabase SQL Editor after his 2026-11-01 07:26Z OK.
+-- Verified read-only 2026-11-06 (docs/production-truth/prod_schema_readonly.sql): table present, no anon/authenticated grant.
 --
 -- Agent G Phase 4 (Google Drive, GG 2026-11-01 07:00Z: only the files the user picks, scope drive.file). One row per
 -- user and provider holds the OAuth refresh token ENCRYPTED by the server (AES-256-GCM, CONNECTOR_TOKEN_KEY, the user id

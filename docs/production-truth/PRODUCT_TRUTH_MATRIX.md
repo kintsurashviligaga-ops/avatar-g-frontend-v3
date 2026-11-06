@@ -30,16 +30,31 @@ Preview whose database is this ref, because Previews share Production's DB and w
 Production. `profiles` and `generation_jobs` are core tables every Production page and render uses.
 
 Claude cannot read the Production DB (Supabase MCP answers "You do not have permission", re-tried 2026-11-06).
-Read-only proof = `docs/production-truth/prod_schema_readonly.sql`, run by GG in
-https://supabase.com/dashboard/project/zwksnayknzggdcenqqxy/sql/new . Until its result is pasted back, the rows below
-marked *DB unverified* stay as stated.
+Read-only proof = `docs/production-truth/prod_schema_readonly.sql`. **GG ran it 2026-11-06 ~15:55Z** in the Supabase SQL
+Editor of the project marked `main · PRODUCTION` and posted the result (13 rows, screenshot in the project thread):
+
+| kind | name | migration | present |
+|---|---|---|---|
+| table | chat_messages | 20260801 | true |
+| table | connector_accounts | 20261101a | true |
+| table | credit_ledger | 20261002a..d | true |
+| table | generation_jobs | base / 20261031a | true |
+| table | library_favorites | 20261024a | true |
+| table | profiles | base | true |
+| table | request_idempotency | 20261013a | true |
+| table | research_context_files | 20261003b | **false** |
+| table | sandbox_spend | 20261031b | true |
+| function | reserve_sandbox_spend | 20261031b | true |
+| function | settle_sandbox_spend | 20261031b | true |
+| check | anon/authenticated have NO grant on connector_accounts | 20261101a | true |
+| check | generation_jobs allows service_type document | 20261031a | true |
 
 | Migration | Owner action recorded | Indirect runtime evidence | Status |
 |---|---|---|---|
-| 20261031a generation_jobs `document` kind | GG ran it 2026-10-31 06:31Z | DOC-01 PDFs saved in Library (GG 10-31), code-run PDFs in Library (GG 11-01) | Applied (runtime-proven) |
-| 20261031b `sandbox_spend` + reserve/settle | GG ran it 2026-10-31 ~16:38Z | `reserve` fails closed: CODE-01 succeeded 11-01, so the reserve call worked | Applied (runtime-proven), DB unverified |
-| 20261101a `connector_accounts` | Header still says "NOT YET APPLIED" (stale). GG approved prod for admins 11-01 07:26Z and ran the steps in `drive-setup-ka.md` | GG linked Drive and picked a PDF on myavatar.ge 2026-11-05; linking writes this table (`lib/connectors/google/store.ts`) | Very likely applied, DB unverified; fix the header after the SQL |
-| 20261003b `research_context_files` | Not applied | Local-files row answered 503; hidden by #261 | Not applied (BLOCKED_OWNER) |
+| 20261031a generation_jobs `document` kind | GG ran it 2026-10-31 06:31Z | DOC-01 and code-run PDFs in Library | **Applied, DB-verified 2026-11-06** |
+| 20261031b `sandbox_spend` + reserve/settle | GG ran it 2026-10-31 ~16:38Z | CODE-01 succeeded 11-01 (reserve fails closed) | **Applied, DB-verified 2026-11-06** |
+| 20261101a `connector_accounts` | GG ran it after the 11-01 07:26Z OK (`drive-setup-ka.md`); header corrected in this PR | GG linked Drive 2026-11-05 | **Applied, DB-verified 2026-11-06**, no anon/authenticated grant |
+| 20261003b `research_context_files` | Not applied | Local-files row answered 503; hidden by #261 | **Not applied, DB-verified** (BLOCKED_OWNER) |
 
 ## 3. Production flags (names and plain values only; secrets not read)
 
@@ -89,7 +104,7 @@ workflow on myavatar.ge with a recorded result) · BLOCKED_OWNER · BLOCKED_EXTE
 |---|---|---|---|
 | W1 | Run a Python/JS chat code block (quote → Start → result) [admins] | PROVEN_PRODUCTION | CODE-01 GG iPhone 2026-11-01 (5050, exit 0); 1 vCPU, 60 s, deny-all, 50 runs/day |
 | W2 | Each run filed as a PDF in Library [admins] | PROVEN_PRODUCTION | GG 2026-11-01 06:58Z (#252) |
-| W3 | $20 lifetime sandbox cap shared across instances | PROVEN_PRODUCTION (fail-closed path), DB unverified | `sandbox_spend` reserve worked for CODE-01; confirm rows with the SQL |
+| W3 | $20 lifetime sandbox cap shared across instances | PROVEN_PRODUCTION | table + reserve/settle present in Prod DB (SQL 2026-11-06); reserve worked for CODE-01 |
 | W4 | Code-run for every user | BLOCKED_OWNER | `AGENT_G_SANDBOX=all` needs GG's OK |
 | W5 | Persistent workspace id, files, `workspace_read/write/list/export/delete` | MISSING | ACTION 2 |
 | W6 | Terminal, dependency install, multi-file project, Stop/Resume/Retry | MISSING | ACTION 2 |
@@ -109,7 +124,7 @@ workflow on myavatar.ge with a recorded result) · BLOCKED_OWNER · BLOCKED_EXTE
 |---|---|---|---|
 | M1 | MyAvatar as an MCP server (outbound) | BUILT | `apps/myavatar-mcp-server`, not deployed |
 | M2 | Agent G MCP client gateway | MISSING | #257 Gemini MCP prototype is a draft on `feature/gemini-mcp` (not in prod; itself lists unfinished OAuth/authz) |
-| M3 | Google OAuth (PKCE, encrypted refresh token, revoke) [admins] | PROVEN_PRODUCTION (link step) | #254/#255 in prod; GG linked Drive 2026-11-05 |
+| M3 | Google OAuth (PKCE, encrypted refresh token, revoke) [admins] | PROVEN_PRODUCTION (link step) | #254/#255 in prod; GG linked Drive 2026-11-05; `connector_accounts` present, no client grants (SQL 2026-11-06) |
 | M4 | Google Picker, `drive.file` only [admins] | PROVEN_PRODUCTION (desktop / Chrome) | GG picked a PDF 11-05; iPhone Safari 2nd open fails (third-party cookies), draft #256 |
 | M5 | Agent G answers from a picked Drive file (DRIVE-01) | BLOCKED_OWNER | tools `drive_list_files/drive_read_file` in prod; DRIVE-01 not yet run by GG |
 | M6 | Drive questions routed to Agent G from chat and Live | BUILT (unmerged) | #264 open, not draft, updated 11-05; needs GG merge OK |
@@ -172,8 +187,7 @@ workflow on myavatar.ge with a recorded result) · BLOCKED_OWNER · BLOCKED_EXTE
 
 ## 5. What changes the statuses next
 
-1. GG runs `prod_schema_readonly.sql` (one read-only query) and pastes the result → W3, M3 rows lose "DB unverified";
-   fix the stale header of `20261101a_connector_accounts.sql`.
+1. Done 2026-11-06: Production schema verified by GG's read-only SQL (§2); `20261101a` header corrected.
 2. GG tries one montage and one chat render → P3, P4 to PROVEN_PRODUCTION.
 3. GG runs DRIVE-01 and decides on #264 → M5, M6.
 4. GG removes the 5 legacy keys in Vercel Production → S5.
