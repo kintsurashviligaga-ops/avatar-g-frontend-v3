@@ -45,7 +45,7 @@ describe('the chat hands an open-site ask to Agent G (GG 2026-11-07 06:58Z)', ()
     expect(site).toBeLessThan(turn.indexOf('const isOtherMediaAsk'));
     expect(turn.slice(0, site)).toContain('browserOnRef.current');
     expect(src).toContain("fetch('/api/agent/browser/run', { credentials: 'same-origin' })");
-    expect(src).toContain('<PlanStartCard key={`b-${m.browserPlan.token.slice(-12)}`} kind="browser"');
+    expect(src).toContain('<AutoTaskCard key={`b-${m.browserPlan.token.slice(-12)}`} goal={m.browserGoal || m.text} first={{ kind: \'browser\', plan: m.browserPlan }}');
   });
 });
 

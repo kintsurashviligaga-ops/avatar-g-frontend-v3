@@ -61,7 +61,7 @@ type Phase =
   | { phase: 'failed'; message: string };
 
 /** A screenshot the run saved, shown in the card (GG 2026-11-07 07:47Z: „არ ჩანს რომ რამეს აკეთებს"). */
-function ShotImage({ workspaceId, path }: { workspaceId: string; path: string }) {
+export function ShotImage({ workspaceId, path }: { workspaceId: string; path: string }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
