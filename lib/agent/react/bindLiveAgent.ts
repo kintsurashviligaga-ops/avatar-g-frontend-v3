@@ -162,7 +162,8 @@ export const AGENT_WORKSPACE_NOTE =
 
 /** Added when the browser tool is on: the agent plans the steps and never claims it saw a page it did not open. */
 export const AGENT_BROWSER_NOTE =
-  'When the answer needs a live public web page (a price, a table, a page\'s current text, a screenshot), plan the ' +
+  'When the answer needs a live public web page (a price, a table, a page\'s current text, a screenshot), or the user ' +
+  'asks to open or visit a site („გახსენი youtube"), plan the ' +
   'steps and call quote_browser_task: goto a public https address, then click / type / press / wait as needed, text to ' +
   'read the page (or one element by CSS selector), screenshot to keep a picture. It checks the steps and returns the ' +
   'plan; it opens nothing. The steps run only when the user presses Start, in a fresh sandboxed browser with no ' +

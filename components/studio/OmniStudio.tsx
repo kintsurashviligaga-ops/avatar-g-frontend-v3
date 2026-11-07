@@ -205,6 +205,8 @@ import { analyzeAnswerText, analyzeAsk, analyzeErrorText, analyzeReadingText, an
 import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
+import { openSiteAsk, openSiteGoal } from '@/lib/agent/browser/openSiteAsk';
+import { PlanStartCard, type SignedPlan } from '@/components/agent/PlanStartCard';
 import { planChatTurn, wordsAreForChat, wordsAskToBeTold, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
@@ -1148,6 +1150,8 @@ interface FilmSnap {
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
 interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** The video service's ONE clip, asked before it is made (components/studio/clip): the words, photos, length, frame and price; Create runs it. Never persisted. */ clipAsk?: ClipAskState; /** A delivered clip's own order: „უკეთესად გააკეთე" asks for the same clip again, changed. Never persisted. */ clipSpec?: { prompt: string; photos: string[]; seconds: number; aspect: DirectClipAspect }; /** A clip, an edit or an extend Omni made here: its signed job id, so „გააგრძელე" continues THAT clip by Omni's own interaction, speech and all (lib/video/omniEdit omniSourceOfJob). Persisted with the clip (here and in its saved row): the chat opened again continues it too. */ omniJob?: string; /** A video attached in the Video tool, edited or extended by Omni (components/studio/clip/EditAskCard): the words, the video, Edit / Extend, the price; Create runs it. Never persisted. */ editAsk?: EditAskState; /** The Renders tray's row for this bubble's clip or edit (the route's `taskId`): the bubble narrates it, so the tray leaves it alone (GG 2026-10-26 08:46Z: the tray covered the card). */ clipTask?: string; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; /** A PDF Agent G wrote (app/api/documents/create): its link, storage path, file name and facts (pages · size). Persisted when the link is https (a device-only blob: copy is not). */ docUrl?: string; docPath?: string; docName?: string; docInfo?: string; /** The PDF is being written now: a spinner and the seconds so far, no reply buttons (GG 2026-10-31 11:23Z). Never persisted. */ docWorking?: number; engine?: string;
+  /** A browser plan Agent G signed for an „open this site" ask typed in the chat (lib/agent/browser/openSiteAsk): its Start card; nothing opens before Start. Never persisted. */
+  browserPlan?: SignedPlan;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -9442,6 +9446,43 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ? { ...m, text: runPlanText(chain, { names, credits: r.plan.credits, editsText: chainEditsText(chain, locale) }, locale), runJob: { ...m.runJob!, phase: 'planned', plan: r.plan, spec: r.spec, token: r.token } }
       : { ...m, text: `⚠️ ${runErrorText(r.code, locale)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, newAgentRunBubble, patchMsgById, persistChatTurn, uploaderOnce]);
+  // „გახსენი youtube" in the chat (lib/agent/browser/openSiteAsk): is the browser open to this user? Asked once; the route
+  // answers { enabled } for everyone (never 404), and a failed read keeps the ask in the chat as before.
+  const browserOnRef = useRef(false);
+  useEffect(() => {
+    let live = true;
+    void fetch('/api/agent/browser/run', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { enabled?: unknown } | null) => { if (live) browserOnRef.current = j?.enabled === true; })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  // Agent G plans the open-site ask (POST /api/agent/run: free, opens nothing); its signed browser plan becomes the Start card
+  // under its reply. Without a plan its words are the answer (it may say why), never a claim that the page was opened.
+  const planBrowserAsk = useCallback(async (text: string, goal: string, viaVoice: boolean) => {
+    const id = `agent-browser-${Date.now()}`;
+    const planning = locale === 'en' ? 'Agent G is planning the browser steps…' : locale === 'ru' ? 'Agent G планирует шаги браузера…' : 'Agent G ბრაუზერის ნაბიჯებს გეგმავს…';
+    setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', id, text: planning, notice: true }]);
+    persistChatTurn('user', text);
+    let reply: string;
+    let plan: SignedPlan | undefined;
+    try {
+      const res = await fetch('/api/agent/run', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal, maxSteps: 6 }),
+      });
+      const body = (await res.json().catch(() => null)) as { answer?: unknown; browserQuote?: SignedPlan } | null;
+      plan = body?.browserQuote && typeof body.browserQuote.token === 'string' ? body.browserQuote : undefined;
+      const answer = typeof body?.answer === 'string' ? body.answer.trim() : '';
+      reply = answer || (plan
+        ? (locale === 'en' ? 'The plan is ready. Press Start to open the page.' : locale === 'ru' ? 'План готов. Нажмите «Старт», чтобы открыть страницу.' : 'გეგმა მზადაა. გვერდის გასახსნელად დააჭირეთ „დაწყებას".')
+        : (locale === 'en' ? '⚠️ Agent G could not plan the browser steps. Try again.' : locale === 'ru' ? '⚠️ Agent G не смог спланировать шаги браузера. Попробуйте ещё раз.' : '⚠️ Agent G-მ ბრაუზერის ნაბიჯები ვერ დაგეგმა. სცადეთ თავიდან.'));
+    } catch {
+      reply = locale === 'en' ? '⚠️ Agent G could not be reached.' : locale === 'ru' ? '⚠️ Agent G недоступен.' : '⚠️ Agent G-სთან კავშირი ვერ დამყარდა.';
+    }
+    patchMsgById(id, (m) => ({ ...m, text: reply, ...(plan ? { browserPlan: plan } : {}) }));
+    persistChatTurn('assistant', reply);
+  }, [locale, patchMsgById, persistChatTurn]);
   // Follow one run to its end on this card. Each read is the run as the server has it; the card draws nothing itself.
   const followAgentRun = useCallback(async (id: string, runId: string, events?: RunEvent[]) => {
     runFollowRef.current.set(id, runId);
@@ -9879,6 +9920,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
       analyzeOn: agentAnalyzeOn,
     };
+    // „გახსენი youtube" (GG 2026-11-07 06:58Z): the chat model has no browser, so an open-site ask goes to Agent G, which
+    // plans the steps and puts its Start card here. Only for whoever the browser is open to; nothing opens before Start.
+    const siteAsk = browserOnRef.current && attachments.length === 0 ? openSiteAsk(text) : null;
+    if (siteAsk) {
+      setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+      void planBrowserAsk(text, openSiteGoal(text, siteAsk), viaVoice);
+      return true;
+    }
     const isOtherMediaAsk = /(?:სურათ|ფოტო|ნახატ|image|photo|picture|ავატარ|avatar)/iu.test(text) || (/(?:მუსიკ|სიმღერ|music|song)/iu.test(text) && !/(?:კლიპ|ვიდეო|video|clip|სცენ)/iu.test(text));
     const isVideoCreationAsk = !isOtherMediaAsk && /(?:(?:შექმენ|დააგენერირ|გააკეთ|მინდა)[\s\S]{0,40}(?:ვიდეო|ფილმ|კლიპ|სცენ)|ახალი\s*ვიდეო|სარეკლამო\s*(?:ვიდეო|კლიპ)|[1-6][- ]?სცენ|სცენა\s*[1-9]|მუსიკალურ\s*(?:კლიპ|ვიდეო)|video\s*generat|make\s*a\s*video|create\s*video)/iu.test(text);
     // A video ask is ONE clip (GG 2026-10-25 16:10Z): its length is the one the words name (4 · 6 · 8 · 10 s) or the panel's,
@@ -10615,6 +10664,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     onApprove={(step, quoteId) => void approveAgentRun(m.id!, step, quoteId)} onRetry={() => void retryAgentRun(m.id!)} />
                 )}
                 {m.role === 'assistant' && m.analyzeJob && <AgentAnalyzeCard state={m.analyzeJob} locale={locale} />}
+                {m.role === 'assistant' && m.browserPlan && (
+                  <div className="mt-3 w-full max-w-[36rem]" data-testid="agent-browser-plan">
+                    <PlanStartCard key={`b-${m.browserPlan.token.slice(-12)}`} kind="browser" plan={m.browserPlan} locale={locale} />
+                  </div>
+                )}
                 {m.role === 'assistant' && m.montage && m.videoUrl && (
                   <div className="mt-3 w-full max-w-[36rem] space-y-2" data-testid="agent-montage-result">
                     <ChatVideoPlayer
