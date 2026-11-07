@@ -537,7 +537,7 @@ describe('the hands — validators', () => {
   it('the rule tells the model it may click and chain steps — and that other sites\' buttons are not its to press', () => {
     expect(LIVE_ACTIONS_RULE).toMatch(/click and\s+type_text/);
     expect(LIVE_ACTIONS_RULE).toMatch(/\[App\]/);
-    expect(LIVE_ACTIONS_RULE).toMatch(/cannot press\s+buttons, fill forms, sign in or pay on other websites/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/you cannot press\s+buttons yourself — Agent G can \(ask_agent_g, above\); you never sign in or pay on other websites/);
     expect(LIVE_ACTIONS_RULE).toMatch(/never\s+spend credits, pay, delete or sign out/);
   });
 });
@@ -564,7 +564,10 @@ describe('ask_agent_g', () => {
     expect(d).toMatch(/written answer with its sources/);
     expect(d).toMatch(/one Google search or one page is not enough/);
     expect(d).toMatch(/up to about a minute, so tell the user you are on it/);
-    expect(d).toMatch(/cannot render media, spend credits, sign in, buy or press buttons on other sites/);
+    expect(d).toMatch(/cannot render media, spend credits, sign in or buy/);
+    // GG 2026-11-07 07:38Z: „open it and click" goes to Agent G's own browser (a Start card), not to a link only.
+    expect(d).toMatch(/own cloud browser and a Start card/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/wants YOU to open a site and click.*call ask_agent_g/s);
     expect(LIVE_ACTIONS_RULE).toMatch(/call ask_agent_g with the whole task/);
     expect(LIVE_ACTIONS_RULE).toMatch(/Tell the user you are on it first \(it can take up to a minute\)/);
   });
