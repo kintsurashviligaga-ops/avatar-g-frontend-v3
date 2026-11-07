@@ -14,6 +14,7 @@ import {
   type AutoTaskEvent, type AutoTaskIO, type BrowserOut, type CodeOut, type LiveOut, type PlanOut, type SignedPlanLike,
 } from '@/lib/agent/task/autoTask';
 import { ShotImage } from './PlanStartCard';
+import { agentScreen, type ScreenStep } from '@/lib/agent/screen/store';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T = {
@@ -124,6 +125,35 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
   const firstSteps: PlannedStep[] = first.kind === 'browser' && Array.isArray((first.plan.request as { steps?: unknown })?.steps)
     ? (first.plan.request as { steps: PlannedStep[] }).steps : [];
 
+  // Agent G's computer on the right (GG 2026-11-07 09:36Z): every step and the page the browser is on, as it changes.
+  useEffect(() => {
+    if (t0 === null) return;
+    const steps: ScreenStep[] = [];
+    let picture: string | undefined;
+    let url: string | undefined;
+    for (const r of rounds) {
+      const planned: PlannedStep[] = r.kind === 'browser' && Array.isArray((r.plan.request as { steps?: unknown })?.steps) ? (r.plan.request as { steps: PlannedStep[] }).steps : [];
+      const res = r.result;
+      const doneSteps = res && res.ok ? (res as BrowserOut & { ok: true }).steps : r.live?.steps;
+      if (r.kind === 'code') steps.push({ label: t.code, state: !res ? 'run' : res.ok ? 'ok' : 'fail' });
+      planned.forEach((st, i) => {
+        const d = doneSteps?.[i];
+        steps.push({ label: browserStepLabel(st, lang), state: d ? (d.ok ? 'ok' : 'fail') : !res && i === (r.live?.steps.length ?? 0) ? 'run' : res && !res.ok ? 'fail' : 'todo' });
+      });
+      if (r.live?.picture) picture = r.live.picture;
+      url = (res && res.ok ? (res as { finalUrl?: string }).finalUrl : undefined) || r.live?.url || url;
+    }
+    if (thinking && phase === 'running') steps.push({ label: t.thinking, state: 'run' });
+    agentScreen.publish({
+      key: first.plan.token, steps,
+      phase: phase === 'quoted' ? 'running' : phase === 'running' ? 'running' : phase === 'done' ? 'done' : 'stopped',
+      ...(t1 !== null ? { endedAt: t1 } : {}),
+      ...(picture ? { picture } : {}), ...(url ? { url } : {}),
+      ...(end ? { note: end } : {}),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rounds, thinking, phase, end, t0, t1]);
+
   function onEvent(e: AutoTaskEvent) {
     if (e.type === 'round') { setThinking(false); setRounds((r) => [...r, { round: e.round, kind: e.kind, plan: e.plan }]); }
     else if (e.type === 'browser_done' || e.type === 'code_done') setRounds((r) => r.map((x) => (x.round === e.round ? { ...x, result: e.result } : x)));
@@ -142,7 +172,12 @@ export function AutoTaskCard({ goal, first, locale, io = fetchAutoTaskIO, onFini
   async function start() {
     if (phase !== 'quoted' || STARTED.has(first.plan.token)) return;
     STARTED.add(first.plan.token);
-    setT0(Date.now()); setNow(Date.now());
+    const at = Date.now();
+    setT0(at); setNow(at);
+    agentScreen.publish({
+      key: first.plan.token, source: 'browser', goal, phase: 'running', startedAt: at,
+      steps: firstSteps.map((st) => ({ label: browserStepLabel(st, lang), state: 'todo' as const })),
+    });
     const ac = new AbortController();
     abort.current = ac;
     setPhase('running');
