@@ -124,7 +124,8 @@ export function needsConfirm(a: SiteAction, snap: Pick<SiteSnapshot, 'els'>): bo
 }
 
 /** One line for the step list: what was done, in the user's language. */
-export function siteStepLabel(a: SiteAction, snap: Pick<SiteSnapshot, 'els'>, lang: 'ka' | 'en' | 'ru'): string {
+/** `intent` words it as what Agent G is about to do (the Allow dialog), not what it did. */
+export function siteStepLabel(a: SiteAction, snap: Pick<SiteSnapshot, 'els'>, lang: 'ka' | 'en' | 'ru', intent = false): string {
   const name = (ref: number) => {
     const l = snap.els.find((e) => e.ref === ref)?.label ?? '';
     return l.length > 40 ? `${l.slice(0, 40)}…` : l;
@@ -134,6 +135,10 @@ export function siteStepLabel(a: SiteAction, snap: Pick<SiteSnapshot, 'els'>, la
     en: { click: 'Clicked', type: 'Typed', in: ' into', select: 'Chose', up: 'Scrolled up', down: 'Scrolled down', go: 'Went to', wait: 'Waited', done: 'Finished', ask: 'Asks you' },
     ru: { click: 'Нажал', type: 'Ввёл', in: ' в', select: 'Выбрал', up: 'Прокрутил вверх', down: 'Прокрутил вниз', go: 'Перешёл на', wait: 'Подождал', done: 'Закончил', ask: 'Спрашивает' },
   }[lang];
+  if (intent) {
+    const I = { ka: { click: 'დააკლიკოს', type: 'ჩაწეროს', select: 'აირჩიოს', go: 'გადავიდეს' }, en: { click: 'Click', type: 'Type', select: 'Choose', go: 'Go to' }, ru: { click: 'Нажать', type: 'Ввести', select: 'Выбрать', go: 'Перейти на' } }[lang];
+    Object.assign(L, I);
+  }
   switch (a.op) {
     case 'click': return `${L.click} „${name(a.ref)}“`;
     case 'type': return `${L.type} „${a.text.length > 30 ? `${a.text.slice(0, 30)}…` : a.text}“ — „${name(a.ref)}“${L.in}`;

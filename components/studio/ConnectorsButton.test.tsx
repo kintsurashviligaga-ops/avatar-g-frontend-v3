@@ -14,7 +14,7 @@ describe('ConnectorsButton (GG 2026-11-07: beside „+")', () => {
     fireEvent.click(screen.getByTestId('composer-connectors'));
     await waitFor(() => expect(screen.getByTestId('connector-row-google_drive').getAttribute('data-state')).toBe('linked'));
     expect(screen.getByTestId('connector-row-gmail').getAttribute('data-state')).toBe('soon');
-    expect(screen.getByTestId('connector-row-premiere').getAttribute('data-state')).toBe('soon');
+    expect(screen.getByTestId('connector-row-premiere').getAttribute('data-state')).toBe('export');
     expect((screen.getByTestId('connector-row-gmail') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId('connector-row-google_drive'));
     expect(openConnectors).toHaveBeenCalled();

@@ -56,3 +56,12 @@ describe('site actions (GG 2026-11-07 09:36Z)', () => {
     expect(cleanSnapshot({ els: 'no' })).toBeNull();
   });
 });
+
+describe('siteStepLabel intent', () => {
+  it('words the Allow dialog as what Agent G is about to do', () => {
+    const snap = { els: [{ ref: 1, kind: 'button', label: 'Buy ✦20' }] };
+    expect(siteStepLabel({ op: 'click', ref: 1 }, snap, 'en', true)).toBe('Click „Buy ✦20“');
+    expect(siteStepLabel({ op: 'click', ref: 1 }, snap, 'ka', true)).toBe('დააკლიკოს „Buy ✦20“');
+    expect(siteStepLabel({ op: 'click', ref: 1 }, snap, 'en')).toBe('Clicked „Buy ✦20“');
+  });
+});

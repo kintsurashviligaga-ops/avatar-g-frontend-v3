@@ -47,7 +47,7 @@ export async function runSiteTask(io: SiteIO, goal: string, lang: 'ka' | 'en' | 
     const label = siteStepLabel(a, snap, lang);
     if (needsConfirm(a, snap)) {
       on({ type: 'step', label, state: 'run' });
-      const ok = await io.confirm(label);
+      const ok = await io.confirm(siteStepLabel(a, snap, lang, true));
       if (!ok || signal.aborted) { on({ type: 'step', label, state: 'fail' }); return on({ type: 'end', reason: 'user' }); }
     } else {
       on({ type: 'step', label, state: 'run' });
