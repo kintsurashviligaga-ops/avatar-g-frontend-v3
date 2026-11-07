@@ -75,7 +75,7 @@ export function AgentScreenPanel({ locale }: { locale: string }) {
   if (!s) return null;
   if (hidden) {
     return (
-      <button type="button" data-testid="agent-screen-reopen" onClick={() => { agentScreen.show(); setSheet(true); }}
+      <button type="button" data-agent-ignore="" data-testid="agent-screen-reopen" onClick={() => { agentScreen.show(); setSheet(true); }}
         style={{ position: 'fixed', right: 16, bottom: FLOAT_BOTTOM, zIndex: 85, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999, border: '1px solid rgba(56,189,248,0.4)', background: 'rgba(11,15,23,0.95)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
         <Monitor size={14} aria-hidden />{t.open}{s.phase === 'running' && <Loader2 size={13} className="animate-spin" aria-hidden />}
       </button>
@@ -83,7 +83,7 @@ export function AgentScreenPanel({ locale }: { locale: string }) {
   }
   if (!wide && !sheet) {
     return (
-      <button type="button" data-testid="agent-screen-pill" onClick={() => setSheet(true)}
+      <button type="button" data-agent-ignore="" data-testid="agent-screen-pill" onClick={() => setSheet(true)}
         style={{ position: 'fixed', right: 12, bottom: FLOAT_BOTTOM, zIndex: 85, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999, border: '1px solid rgba(56,189,248,0.4)', background: 'rgba(11,15,23,0.95)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
         {s.phase === 'running' ? <span style={{ width: 7, height: 7, borderRadius: 999, background: '#ef4444' }} aria-hidden /> : <Check size={13} color="#38bdf8" aria-hidden />}
         {s.phase === 'running' ? `LIVE · ${clock(now - s.startedAt)}` : t.title}
@@ -93,7 +93,7 @@ export function AgentScreenPanel({ locale }: { locale: string }) {
 
   const status = s.phase === 'running' ? `${t.working} ${clock(now - s.startedAt)}` : s.phase === 'done' ? t.done(clock((s.endedAt ?? now) - s.startedAt)) : t.stopped;
   return (
-    <aside data-testid="agent-screen" aria-label={t.title}
+    <aside data-testid="agent-screen" data-agent-ignore="" aria-label={t.title}
       style={wide
         ? { position: 'fixed', top: 0, right: 0, bottom: 0, width: 'var(--agent-screen-w)', zIndex: 80, display: 'flex', flexDirection: 'column', background: '#0b0f17', borderLeft: '1px solid rgba(255,255,255,0.1)', color: '#fff' }
         : { position: 'fixed', inset: 0, zIndex: 120, display: 'flex', flexDirection: 'column', background: '#0b0f17', color: '#fff', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
