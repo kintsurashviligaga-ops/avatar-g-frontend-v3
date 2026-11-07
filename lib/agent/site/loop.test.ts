@@ -34,7 +34,7 @@ describe('runSiteTask', () => {
   test('a paid click waits for the user; "No" stops it and nothing is clicked', async () => {
     const { x, acted, asked } = io([{ op: 'click', ref: 2 }]);
     const ev = await run(x);
-    expect(asked).toEqual(['დააკლიკა „შექმნა ✦28“']);
+    expect(asked).toEqual(['დააკლიკოს „შექმნა ✦28“']);
     expect(acted).toEqual([]);
     expect(ev[ev.length - 1]).toEqual({ type: 'end', reason: 'user' });
   });

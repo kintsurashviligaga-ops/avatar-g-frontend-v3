@@ -51,7 +51,7 @@ describe('SiteAgentHost (GG 2026-11-07 09:36Z: Agent G works on myavatar.ge itse
     const off = onSiteTaskResult((r) => results.push(r));
     render(<SiteAgentHost locale="en" />);
     act(() => startSiteTask('make a video'));
-    expect((await screen.findByTestId('site-agent-confirm')).textContent).toContain('Clicked „შექმნა ✦28“');
+    expect((await screen.findByTestId('site-agent-confirm')).textContent).toContain('Click „შექმნა ✦28“');
     fireEvent.click(screen.getByTestId('site-agent-deny'));
     await waitFor(() => expect(results).toHaveLength(1));
     off();
