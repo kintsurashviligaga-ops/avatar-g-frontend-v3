@@ -1,7 +1,7 @@
 /** @jest-environment node */
 import { memorySpendStore } from '@/lib/agent/sandbox/budget';
 import { checkBrowserTask, type BrowserPlan } from './policy';
-import { BROWSER_DENY_SUBNETS, browserWorstCaseUsd, hostBrowserRunner, type BrowserHost, type BrowserHostSpec } from './runner';
+import { BROWSER_DENY_SUBNETS, browserWorstCaseUsd, hostBrowserRunner, type BrowserHost, type BrowserHostSpec, type BrowserLive } from './runner';
 import { BROWSER_SCRIPT } from './script';
 
 const plan = (() => {
@@ -97,5 +97,39 @@ describe('hostBrowserRunner', () => {
   it('no result file is a failure, never an empty success', async () => {
     const { host } = fakeHost(undefined);
     expect(await hostBrowserRunner(host, memorySpendStore()).run(plan, sig())).toMatchObject({ ok: false, error: 'runner_failed' });
+  });
+
+  it('while the driver runs, it reads the progress and the live picture and hands them on (GG 08:38Z live view)', async () => {
+    jest.useFakeTimers();
+    try {
+      const jpg = Buffer.from([0xff, 0xd8, 0xff]);
+      let finish: () => void = () => {};
+      let progress: unknown = { finalUrl: 'https://example.com/', steps: [{ op: 'goto', ok: true, url: 'https://example.com/', title: 'Example' }] };
+      const host: BrowserHost = {
+        async create() {
+          return {
+            async writeFile() {},
+            async readBytes(p) { return p === 'result.json' ? Buffer.from(JSON.stringify(progress)) : p === 'live.jpg' ? jpg : null; },
+            async exec() { await new Promise<void>((r) => { finish = r; }); return { exitCode: 0, stdout: '', stderr: '' }; },
+            async stop() {},
+          };
+        },
+      };
+      const seen: BrowserLive[] = [];
+      const run = hostBrowserRunner(host, memorySpendStore()).run(plan, sig(), (l) => seen.push(l));
+      await jest.advanceTimersByTimeAsync(1600);
+      expect(seen).toEqual([{ steps: [{ op: 'goto', ok: true, url: 'https://example.com/', title: 'Example' }], url: 'https://example.com/', jpeg: jpg }]);
+      await jest.advanceTimersByTimeAsync(1600); // nothing new: nothing handed on
+      expect(seen).toHaveLength(1);
+      progress = { finalUrl: 'https://example.com/', steps: [{ op: 'goto', ok: true }, { op: 'text', ok: true, text: 'Hello' }, { op: 'screenshot', ok: true, shot: 'home' }] };
+      await jest.advanceTimersByTimeAsync(1600);
+      expect(seen[1]!.steps.map((x) => x.op)).toEqual(['goto', 'text', 'screenshot']);
+      expect(JSON.stringify(seen[1])).not.toContain('Hello'); // the live view carries no page text
+      finish();
+      const r = await run;
+      expect(r.ok).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

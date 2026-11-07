@@ -44,8 +44,13 @@ export interface BrowserHost {
   create(spec: BrowserHostSpec): Promise<Required<Pick<SandboxHandle, 'writeFile' | 'readBytes' | 'exec' | 'stop'>>>;
 }
 
+/** What the browser is doing right now: the steps so far, the page it is on, a small picture of it (JPEG). */
+export interface BrowserLive { steps: Array<{ op: string; ok: boolean; url?: string; title?: string }>; url: string; jpeg?: Buffer }
+/** How often the live view is read while the driver runs. */
+export const BROWSER_LIVE_MS = 1500;
+
 export interface BrowserRunner {
-  run(plan: BrowserPlan, signal: AbortSignal): Promise<BrowserResult>;
+  run(plan: BrowserPlan, signal: AbortSignal, onLive?: (l: BrowserLive) => void): Promise<BrowserResult>;
 }
 
 export const disabledBrowser: BrowserRunner = {
@@ -79,7 +84,7 @@ export function hostBrowserRunner(host: BrowserHost, spend: SandboxSpendStore, o
   const cap = opts.cap ?? SANDBOX_CAP_USD;
   const now = opts.now ?? Date.now;
   return {
-    async run(plan, signal) {
+    async run(plan, signal, onLive) {
       if (signal.aborted) return { ok: false, error: 'cancelled', message: 'Cancelled before start.' };
       const wallSec = browserWallSec(plan);
       const reserved = browserWorstCaseUsd(plan);
@@ -99,7 +104,35 @@ export function hostBrowserRunner(host: BrowserHost, spend: SandboxSpendStore, o
         };
         await handle.writeFile('task.json', JSON.stringify(task));
         await handle.writeFile('run.mjs', BROWSER_SCRIPT);
-        const out = await handle.exec('node', ['run.mjs'], timer.signal);
+        const running = handle.exec('node', ['run.mjs'], timer.signal);
+        if (onLive) {
+          // Read the driver's progress while it runs: result.json is rewritten after every step, live.jpg with it.
+          const h = handle;
+          let done = false;
+          let seen = -1;
+          void running.finally(() => { done = true; }).catch(() => undefined);
+          void (async () => {
+            while (!done && !timer.signal.aborted) {
+              await new Promise((r) => setTimeout(r, BROWSER_LIVE_MS));
+              if (done) break;
+              const raw = await h.readBytes('result.json').catch(() => null);
+              let p: { steps?: unknown; finalUrl?: unknown } | null = null;
+              try { p = raw ? JSON.parse(raw.toString('utf8')) : null; } catch { p = null; }
+              const steps = stepsOf(p?.steps);
+              if (!p || steps.length === seen) continue;
+              seen = steps.length;
+              const jpeg = await h.readBytes('live.jpg').catch(() => null);
+              try {
+                onLive({
+                  steps: steps.map(({ op, ok, url, title }) => ({ op, ok, ...(url ? { url } : {}), ...(title ? { title } : {}) })),
+                  url: typeof p.finalUrl === 'string' ? p.finalUrl.slice(0, 2000) : '',
+                  ...(jpeg && jpeg.length < 400_000 ? { jpeg } : {}),
+                });
+              } catch { /* a listener that throws never stops the run */ }
+            }
+          })();
+        }
+        const out = await running;
         if (timer.signal.aborted) {
           return signal.aborted
             ? { ok: false, error: 'cancelled', message: 'Cancelled.' }

@@ -20,7 +20,9 @@ describe('PlanStartCard', () => {
     }));
     (global as { fetch?: unknown }).fetch = fetchMock;
     render(<PlanStartCard kind="browser" plan={plan} locale="en" />);
-    expect(screen.getByText(/example\.com/)).toBeTruthy();
+    expect(screen.getByText('example.com')).toBeTruthy();
+    // GG 2026-11-07 07:47Z: the planned steps are shown before Start, in words.
+    expect(screen.getByTestId('browser-planned-steps').textContent).toContain('Open example.com');
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     await waitFor(() => expect(screen.getByText(/browser\/abc\/text-1\.txt/)).toBeTruthy());
@@ -30,6 +32,26 @@ describe('PlanStartCard', () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({ action: 'run', request: plan.request, token: 'tok' });
     expect(screen.getByText('Hello')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
+  });
+
+  it('while it runs it says so with a clock; done, it shows the screenshots and tells the chat where it ended', async () => {
+    let finish: (v: Response) => void = () => {};
+    const fetchMock = jest.fn((u: string) => (u === '/api/agent/browser/run'
+      ? new Promise<Response>((r) => { finish = r; })
+      : json(200, { ok: true, url: 'https://x.supabase.co/shot.png' })));
+    (global as { fetch?: unknown }).fetch = fetchMock;
+    const done = jest.fn();
+    render(<PlanStartCard kind="browser" plan={plan} locale="en" onDone={done} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(screen.getByTestId('plan-running').textContent).toMatch(/Running… 0:0\d/);
+    finish(await json(200, {
+      ok: true, finalUrl: 'https://example.com/next',
+      steps: [{ op: 'goto', ok: true, url: 'https://example.com/', title: 'Example' }, { op: 'screenshot', ok: true }],
+      workspace: { id: 'ws_abcdefgh12', folder: 'browser/abc', written: [{ path: 'browser/abc/home.png', v: 1, bytes: 3000 }] },
+    }));
+    await waitFor(() => expect(screen.getByTestId('browser-shot')).toBeTruthy());
+    expect(done).toHaveBeenCalledWith({ finalUrl: 'https://example.com/next', title: 'Example' });
+    expect(JSON.parse(String((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toEqual({ action: 'link', workspaceId: 'ws_abcdefgh12', path: 'browser/abc/home.png' });
   });
 
   it('shows the server\'s reason when the run is refused', async () => {
