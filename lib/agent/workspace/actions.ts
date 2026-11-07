@@ -14,6 +14,8 @@
  *   export   {workspaceId, path, task?}  a copy in the Library (pictures → Images, everything else → Docs)
  *   render_pdf {workspaceId, path, out?, task?}  a JSON DocumentSpec (lib/documents/spec) drawn as a PDF (FiraGO, so
  *                                        Georgian survives) and saved as a new version next to it
+ *   premiere_xml {workspaceId, path, out?, task?}  a JSON montage spec (lib/video/premiereXml) written as a Premiere Pro
+ *                                        project (.xml, FCP7 xmeml) next to it; the clips stay where they are
  *   task_plan  {workspaceId, plan}       a new task graph (lib/agent/taskGraph) saved as tasks/<id>.json
  *   task_read  {workspaceId, graph}      a task graph and its one-line-per-step summary
  *
@@ -25,6 +27,7 @@
 import { isTextPath, normalizeWsPath, wsContentType, WS_MAX_FILE_BYTES } from './paths';
 import type { WorkspaceStore, WsError } from './store';
 import { documentSpecSchema, type DocumentSpec } from '@/lib/documents/spec';
+import { premiereMedia, premiereSpecSchema, premiereXml } from '@/lib/video/premiereXml';
 import { graphSummary } from '@/lib/agent/taskGraph';
 import { checkTaskReady, createGraph, readGraph, taskRefOf, taskStep, type TaskRef } from '@/lib/agent/taskGraphStore';
 import type { TaskKind } from '@/lib/agent/taskGraph';
@@ -165,6 +168,25 @@ export async function workspaceAction(
       await s.step?.end(w.ok ? { ok: true, outputs: [w.file.path] } : { ok: false, error: w.message });
       return w.ok ? { status: 200, body: { ok: true, from: r.path, file: w.file } } : out(w);
     }
+    case 'premiere_xml': {
+      if (typeof body.path !== 'string' || !/\.json$/i.test(body.path)) return bad('path: a .json montage spec');
+      const xmlPath = typeof body.out === 'string' && body.out.trim() ? normalizeWsPath(body.out.trim()) : normalizeWsPath(body.path.replace(/\.json$/i, '') + '.xml');
+      if (!xmlPath || !/\.xml$/i.test(xmlPath)) return bad('out: a workspace path ending in .xml');
+      const r = await store.read(userId, ws, body.path);
+      if (!r.ok) return out(r);
+      let json: unknown;
+      try { json = JSON.parse(r.bytes.toString('utf8')); } catch { return bad(`${r.path}: not valid JSON`); }
+      const spec = premiereSpecSchema.safeParse(json);
+      if (!spec.success) {
+        const i = spec.error.issues[0];
+        return bad(`${r.path}: not a montage spec (${i ? `${i.path.join('.') || 'root'}: ${i.message}` : 'shape'})`);
+      }
+      const s = await startStep(store, userId, ws, body.task, 'export', runId('premiere'), [r.path]);
+      if (!s.ok) return s.res;
+      const w = await store.write(userId, ws, xmlPath, Buffer.from(premiereXml(spec.data), 'utf8'), by);
+      await s.step?.end(w.ok ? { ok: true, outputs: [w.file.path] } : { ok: false, error: w.message });
+      return w.ok ? { status: 200, body: { ok: true, from: r.path, file: w.file, media: premiereMedia(spec.data) } } : out(w);
+    }
     case 'task_plan': {
       const g = await createGraph(store, userId, ws, body.plan, new Date());
       return g.ok ? { status: 200, body: { ok: true, graph: g.graph, summary: graphSummary(g.graph) } } : bad(`plan: ${g.error}`);
@@ -175,6 +197,6 @@ export async function workspaceAction(
       return g.ok ? { status: 200, body: { ok: true, graph: g.graph, summary: graphSummary(g.graph) } } : { status: 404, body: { ok: false, error: 'not_found', message: g.error } };
     }
     default:
-      return bad('action: list, create, files, read, write, delete, restore, history, link, export, render_pdf, task_plan or task_read');
+      return bad('action: list, create, files, read, write, delete, restore, history, link, export, render_pdf, premiere_xml, task_plan or task_read');
   }
 }

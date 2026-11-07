@@ -35,6 +35,8 @@ test('the live allowlist, exactly: three that read or prepare, inspectors (a fil
     workspace_link: 'inspect',
     workspace_export: 'versioned',
     workspace_render_pdf: 'versioned',
+    // GG card 2026-11-07 08:02Z: the montage as a Premiere Pro project (.xml written in the workspace).
+    workspace_premiere_xml: 'versioned',
     workspace_task_plan: 'versioned',
     workspace_task_read: 'inspect',
   });
@@ -120,7 +122,7 @@ test('the Drive tools are offered only when the route hands Drive deps with a co
 
 test('the workspace tools go with the sandbox flag, and only they may make a versioned (undoable) change', () => {
   const ws = LIVE_TOOL_SPECS.filter((s) => s.name.startsWith('workspace_'));
-  expect(ws).toHaveLength(9);
+  expect(ws).toHaveLength(10);
   for (const s of ws) {
     expect(s.offered?.({ userId: 'u' } as never)).toBe(false);
     expect(s.offered?.({ userId: 'u', sandbox: true } as never)).toBe(true);
